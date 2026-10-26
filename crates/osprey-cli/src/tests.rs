@@ -20,6 +20,7 @@ fn cli(path: impl Into<String>, mode: &str, policy: Policy) -> Cli {
         path: path.into(),
         mode: mode.to_string(),
         quiet: true,
+        warnings: Warnings::Report,
         policy,
         memory: "gc".to_string(),
         target: "native".to_string(),

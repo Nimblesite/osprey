@@ -11,7 +11,10 @@
 //! test suites ([TESTING-CLI-RUN], `test_cmd`). Every compiling mode gates on Hindley-Milner
 //! type inference first — an ill-typed program never reaches codegen — and on
 //! the capability sandbox (`--sandbox`, `--no-http`, `--no-websocket`,
-//! `--no-fs`, `--no-ffi`). `--quiet` suppresses non-essential output. The C
+//! `--no-fs`, `--no-ffi`). `--quiet` suppresses progress output and nothing
+//! else: errors and warnings are diagnostics and print regardless.
+//! `--no-warnings` skips the warning pass, which packaging builds use because
+//! the redundant-annotation oracle re-infers the program per proof. The C
 //! driver used to link the emitted IR is `clang`, overridable via `OSPREY_CC`.
 //!
 //! `osprey lsp` runs the Language Server Protocol over stdio (the `osprey-lsp`

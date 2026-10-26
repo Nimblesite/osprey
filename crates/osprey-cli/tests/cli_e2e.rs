@@ -1490,17 +1490,53 @@ fn bare_result_variants_compile_and_select_the_correct_arm() {
 }
 
 #[test]
-fn quiet_skips_warnings_entirely() {
-    // `--quiet` suppresses non-essential output. A warning is advice, so under
-    // `--quiet` it is neither printed nor computed: the redundant-annotation
-    // oracle re-infers the whole program per proof, which is exactly the cost
-    // a packaging build must not pay for text nobody will read.
+fn quiet_silences_progress_and_keeps_warnings() {
+    // `--quiet` is progress-only. A warning is a diagnostic: it names a defect
+    // in the program, so it prints under `--quiet` exactly as it does without.
     let prog = temp_osp("quiet_warn", "let n: int = 42\nprint(\"v=${n}\")\n");
     let loud = run_file(&prog, &["--check"]);
     assert_eq!(loud.code, Some(0), "stderr={}", loud.stderr);
     assert!(loud.stderr.contains("redundant"), "{}", loud.stderr);
+    assert!(loud.stdout.contains(": ok ("), "{}", loud.stdout);
     let o = run_file(&prog, &["--check", "--quiet"]);
     assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
     assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
+    assert_eq!(o.stderr, loud.stderr, "--quiet changed the diagnostics");
+}
+
+#[test]
+fn no_warnings_skips_the_warning_pass() {
+    // The explicit opt-out drops advice: nothing on stderr, nothing computed.
+    let prog = temp_osp("no_warn", "let n: int = 42\nprint(\"v=${n}\")\n");
+    let o = run_file(&prog, &["--check", "--quiet", "--no-warnings"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
     assert!(o.stderr.trim().is_empty(), "{}", o.stderr);
+}
+
+#[test]
+fn no_warnings_never_hides_type_errors() {
+    // Errors are never advice: the opt-out drops warnings, not the reason a
+    // build failed.
+    let prog = temp_osp("no_warn_error", "fn broken(unused) = missing\n");
+    let o = run_file(&prog, &["--check", "--quiet", "--no-warnings"]);
+    assert_ne!(o.code, Some(0));
+    assert!(o.stderr.contains("missing"), "{}", o.stderr);
+}
+
+#[test]
+fn hunt_reports_a_compile_error_before_looking_for_the_engine() {
+    // [SYMEX-CLI]: exit 1 for a program that does not compile, 2 for a
+    // toolchain problem. The compile verdict comes first, so a machine without
+    // KLEE still tells the author about the syntax error instead of about KLEE.
+    let prog = temp_osp("hunt_broken", "fn broken( = \n");
+    let out = Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .args(["hunt", &prog.to_string_lossy(), "--quiet"])
+        .env("OSPREY_KLEE", "/nonexistent/klee")
+        .output()
+        .expect("spawn osprey hunt");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("syntax error"), "{stderr}");
+    assert!(!stderr.contains("klee was not found"), "{stderr}");
 }

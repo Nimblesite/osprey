@@ -141,7 +141,8 @@ hello from the Python flavor
 | `osprey f.py --run --memory=arc` | Choose the memory backend: `gc` (default tracing collector), `arc` (reference counting) or explicit `none` (unmanaged allocation) |
 | `osprey f.py --compile --target=wasm32 --memory=none` | WebAssembly. Other targets: `native` (default), `ios`, `ios-sim`, `macos`, `android-arm64`, `android-x64`, `python` |
 | `osprey f.py --run --sandbox` | Deny HTTP, WebSocket, file system, process and FFI capabilities. Individual subset flags: `--no-http`, `--no-websocket`, `--no-fs`, `--no-ffi` |
-| `osprey f.py --run --quiet` | Suppress compiler progress output |
+| `osprey f.py --run --quiet` | Suppress compiler progress output; warnings and errors still print |
+| `osprey f.py --run --no-warnings` | Skip the warning pass entirely; errors still print |
 | `osprey f --flavor python` | Force the Python flavor regardless of extension |
 | `osprey build [dir]` | Build the project whose `osprey.toml` is in `dir` (default `.`) |
 | `osprey test [path] [--filter name]` | Run Osprey tests |

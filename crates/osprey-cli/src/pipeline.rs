@@ -1,6 +1,6 @@
 //! Pipeline support for the compiler driver.
 
-use crate::invocation::{Cli, TEST_COVERAGE_BUILD_ENV};
+use crate::invocation::{Cli, Warnings, TEST_COVERAGE_BUILD_ENV};
 #[cfg(test)]
 use crate::native::stem_of;
 use crate::native::{build_input, compile_ir, execute_native, NativeOptions};
@@ -100,7 +100,7 @@ pub(super) fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
             }
         },
         "--list-tests" => print_metadata(&osprey_lsp::tests_json(input.program())),
-        "--llvm" | "--run" | "--compile" if report_type_errors(input, cli.quiet) > 0 => {
+        "--llvm" | "--run" | "--compile" if report_type_errors(input, cli.warnings) > 0 => {
             ExitCode::FAILURE
         }
         "--llvm" | "--run" | "--compile" if target_error(cli, input).is_some() => ExitCode::FAILURE,
@@ -137,23 +137,25 @@ fn print_ir(cli: &Cli, input: &CompilationInput) -> ExitCode {
 /// redundant annotation is a defect to delete, never a reason to fail a build
 /// ([TYPE-ANNOTATION-REDUNDANT]).
 ///
-/// `quiet` drops the warnings altogether, not just their printing: the
-/// redundant-annotation oracle re-infers the whole program once per proof,
-/// a cost a packaging build (`osprey build ... --quiet`) must not pay for
-/// advice nobody will read. Errors are never quiet.
-pub(crate) fn report_type_errors(input: &CompilationInput, quiet: bool) -> usize {
+/// `--quiet` never reaches here: it silences progress, and a warning is a
+/// diagnostic, not progress. Only `--no-warnings` ([`Warnings::Skip`]) skips
+/// the warning pass, and it skips the computation too:
+/// the redundant-annotation oracle re-infers the whole program once per
+/// proof, which a packaging build must not pay for advice nobody reads.
+/// Errors are reported either way.
+pub(crate) fn report_type_errors(input: &CompilationInput, warnings: Warnings) -> usize {
     let errors = osprey_types::check_program(input.program());
     for e in &errors {
         eprintln!("{}", input.diagnostic(e.position, &e.message));
     }
-    if !quiet {
+    if warnings == Warnings::Report {
         warnings::report(input, &warnings::collect(input));
     }
     errors.len()
 }
 
 pub(super) fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
-    if report_type_errors(input, cli.quiet) == 0 && target_error(cli, input).is_none() {
+    if report_type_errors(input, cli.warnings) == 0 && target_error(cli, input).is_none() {
         if !cli.quiet {
             println!(
                 "{}: ok ({} statements)",

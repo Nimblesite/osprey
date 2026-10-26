@@ -173,12 +173,12 @@ jobs:
       - name: Compile package manager client (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
-        # --quiet skips the warning pass (see scripts/make/extension.mk).
-        run: target/release/osprey build packages/manager/cli --quiet -o target/osprey-pkg
+        # --no-warnings skips the warning pass (see scripts/make/extension.mk).
+        run: target/release/osprey build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg
       - name: Compile package manager client (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: target/release/osprey.exe build packages/manager/cli --quiet -o target/osprey-pkg.exe
+        run: target/release/osprey.exe build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
 
       - name: Build portable package workspace
         if: runner.os == 'Linux'

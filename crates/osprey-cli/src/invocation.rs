@@ -5,10 +5,10 @@ use osprey_syntax::Flavor;
 
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
---symbols | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml|python] \
+--symbols | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings] [--debug] [--profile] [--flavor default|ml|python] \
 [--memory=gc|arc|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|python] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
-       osprey build [project] [--quiet] [--debug] [--memory=gc|arc|none] \
+       osprey build [project] [--quiet] [--no-warnings] [--debug] [--memory=gc|arc|none] \
 [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|python] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
 [--coverage-json <path>] [--memory=gc|arc|none]\n\
@@ -39,12 +39,22 @@ impl MobileExports {
     }
 }
 
+/// Whether the warning pass runs. `--no-warnings` skips it, computation and
+/// all. `--quiet` never touches it: quiet silences progress, and a warning is
+/// a diagnostic, not progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Warnings {
+    Report,
+    Skip,
+}
+
 /// The parsed invocation: source path, mode flag, and behaviour switches.
 #[derive(Debug)]
 pub(crate) struct Cli {
     pub(super) path: String,
     pub(super) mode: String,
     pub(super) quiet: bool,
+    pub(super) warnings: Warnings,
     pub(super) policy: Policy,
     /// The memory backend linked behind `@osp_alloc`: `none` (explicit malloc
     /// passthrough), `gc` (tracing collector), or `arc` (reference counting).
@@ -126,6 +136,7 @@ fn default_invocation(project_build: bool) -> Cli {
         path: String::new(),
         mode: mode.into(),
         quiet: false,
+        warnings: Warnings::Report,
         policy: Policy::allow_all(),
         memory: "gc".into(),
         target: "native".into(),
@@ -185,6 +196,7 @@ fn parse_option(
     }
     match argument {
         "--quiet" => cli.quiet = true,
+        "--no-warnings" => cli.warnings = Warnings::Skip,
         "--debug" => cli.debug = true,
         "--profile" => cli.profile = true,
         "--entry-only" => cli.exports = MobileExports::EntryOnly,

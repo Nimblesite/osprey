@@ -89,10 +89,10 @@ fn child_exit_code_maps_codes_and_signals() {
 fn report_type_errors_counts_zero_for_valid_and_more_for_ill_typed() {
     let ok = osprey_syntax::parse_program("let x = 1\nprint(x)\n").program;
     let ok = CompilationInput::script("ok.osp", String::new(), ok);
-    assert_eq!(report_type_errors(&ok, false), 0);
+    assert_eq!(report_type_errors(&ok, Warnings::Report), 0);
     let bad = osprey_syntax::parse_program("let y = 1 + \"oops\" - true\n").program;
     let bad = CompilationInput::script("bad.osp", String::new(), bad);
-    assert!(report_type_errors(&bad, false) > 0);
+    assert!(report_type_errors(&bad, Warnings::Report) > 0);
 }
 
 fn temp_source(name: &str, body: &str) -> String {
@@ -165,7 +165,7 @@ fn report_type_errors_prints_positioned_diagnostics() {
     // exercising the `Some(position)` diagnostic arm.
     let bad = osprey_syntax::parse_program("print(missingVariable)\n").program;
     let bad = CompilationInput::script("bad.osp", String::new(), bad);
-    assert!(report_type_errors(&bad, false) > 0);
+    assert!(report_type_errors(&bad, Warnings::Report) > 0);
 }
 
 #[test]

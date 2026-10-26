@@ -61,8 +61,11 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
 /// toolchain problem, `1` for a program that does not compile or a finding
 /// that reproduced (or any finding without replay), `0` otherwise.
 fn hunt(options: &Options) -> Result<(String, ExitCode), ExitCode> {
-    let toolchain = toolchain::locate(options.memory).map_err(|message| tool_error(&message))?;
+    // Compile before looking for the engine: a program that does not compile
+    // is the author's problem and exits 1 whether or not KLEE is installed. A
+    // missing engine must not mask a syntax error as a toolchain failure.
     let input = load(options)?;
+    let toolchain = toolchain::locate(options.memory).map_err(|message| tool_error(&message))?;
     let module = module::symbolic_module(&input, options.input_bytes).map_err(|error| {
         eprintln!("{}: {error}", input.display_path());
         ExitCode::FAILURE
@@ -165,7 +168,7 @@ fn load(options: &Options) -> Result<CompilationInput, ExitCode> {
     let cli =
         parse_args(std::slice::from_ref(&options.path)).map_err(|message| tool_error(&message))?;
     let input = load_input(&cli)?;
-    if report_type_errors(&input, cli.quiet) != 0 {
+    if report_type_errors(&input, cli.warnings) != 0 {
         return Err(ExitCode::FAILURE);
     }
     Ok(input)

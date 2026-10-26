@@ -27,16 +27,18 @@ _profiler_ui: $(PROFILER_UI_BUILT)
 # The editor ships a compiled Osprey package client; installations never compile
 # package-manager application sources on the user's machine. [PACKAGE-API]
 REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \))
-# `--quiet` skips the warning pass: the redundant-annotation oracle re-infers
-# the whole program per proof, which on the client's 22k lines is the
-# difference between minutes and the CI job timeout. Package warnings are
-# the editor's and `osprey --check`'s to show; a packaging build only ships.
+# `--no-warnings` skips the warning pass: the redundant-annotation oracle
+# re-infers the whole program once per proof, which on the client is the
+# difference between 40 s and 31 min (one 7 s solve per annotation site).
+# `--quiet` alone silences progress only; warnings are diagnostics and would
+# still be computed. Package warnings are `osprey --check`'s and the editor's
+# to show; a packaging build only ships.
 target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
-	$(BIN) build packages/manager/cli --quiet -o $@
+	$(BIN) build packages/manager/cli --quiet --no-warnings -o $@
 
 PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/native/src packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
 target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
-	$(BIN) build packages/manager/editor --target=wasm32 --quiet -o $@
+	$(BIN) build packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
 _vsix_bundle: target/osprey-pkg target/package-workspace.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
