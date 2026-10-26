@@ -106,7 +106,7 @@ def float_of(text):
         case "-inf":
             return 0.0 - exp(1000.0)
         case _:
-            return unwrap_or(parseFloat(text), exp(1000.0) - exp(1000.0))
+            return unwrap_or(parseFloat(text), abs(exp(1000.0) - exp(1000.0)))
 
 
 def line(outcome):
