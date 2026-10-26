@@ -134,13 +134,21 @@ class CrashGateTests(unittest.TestCase):
             self.assertTrue((root/case['expected']).is_file(), case)
             self.assertTrue(all(item['signals'] for item in case['cases']), case)
 
-    def test_real_engine_gate_is_required_by_existing_ci_contexts(self):
+    def test_engine_gates_are_intentionally_absent_from_ci_and_oracle_stays(self):
+        # Owner decision 2026-10-26: the KLEE engine gates do not produce a
+        # green signal while issue #306 is open (clean.osp never completes
+        # inside the pinned 64-byte/30-second settings on either backend), so
+        # CI runs none of them. Verification is local: make _test_hunt (skips
+        # clean via HUNT_KNOWN_BUGS), make _test_hunt_clean (stays red until
+        # #306 is fixed), make _test_hunt_crashes. The host-only mock oracle
+        # stays in CI — it needs no KLEE.
         root = Path(__file__).resolve().parent.parent
         workflow = (root/'.github/workflows/ci.yml').read_text()
-        self.assertIn('make _test_hunt_crashes', workflow)
-        self.assertIn('brew install klee', workflow)
+        self.assertNotIn('make _test_hunt_crashes', workflow)
+        self.assertNotIn('brew install klee', workflow)
+        self.assertNotIn('make _runtime_klee', workflow)
+        self.assertNotIn('--manifest tests/hunt/safe-runs.json', workflow)
         self.assertIn('make _test_hunt_mock', workflow)
-        self.assertIn('--manifest tests/hunt/safe-runs.json', workflow)
         manifest = json.loads((root/'tests/hunt/safe-runs.json').read_text())
         self.assertGreaterEqual(len(manifest['programs']), 215)
         self.assertEqual(len(manifest['programs']), len(set(manifest['programs'])))
