@@ -164,6 +164,7 @@ fn emit_closure_fn(
     let (ret_spelling, _) = spelling(definition.sig);
     let saved = cg.enter_nested_fn();
     begin_named_source(cg, fn_name, definition.source_name, definition.position);
+    cg.cov_hit(definition.source_name.and(definition.position)); // [TESTING-COVERAGE-CODEGEN]
     let params = prepare_body(cg, cell_ty, caps, definition);
     let emitted = closure_return(cg, definition.body, *ret_ty, *ret_inner);
     cg.exit_nested_fn(saved, &ret_spelling, fn_name, &params);

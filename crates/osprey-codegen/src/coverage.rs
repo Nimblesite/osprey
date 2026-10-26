@@ -292,6 +292,35 @@ mod tests {
       }\n\
       print(toString(handled))\n";
 
+    const NAMED_CALLBACKS: &str = "type Box =\n    held : int\ninvoke f x = f x\nsaveOne box = box.held\nsaveMany box =\n    n = box.held\n    n\nprint \"${invoke saveOne (Box(held = 1))}|${invoke saveMany (Box(held = 2))}\"\n";
+
+    fn callback_header_owners(module: &str, line: u32) -> Vec<&str> {
+        let counter = format!("i64* @__osp_cov_hits.{line}");
+        module
+            .split("\n}")
+            .filter(|body| {
+                body.lines()
+                    .any(|line| line.contains("store i64") && line.ends_with(&counter))
+            })
+            .filter_map(|body| body.rsplit("define ").next())
+            .collect()
+    }
+
+    #[test]
+    fn named_callback_headers_are_bumped_inside_the_emitted_closure() {
+        let parsed = osprey_syntax::parse_program_for_path("callbacks.ospml", NAMED_CALLBACKS);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let module = crate::compile_program_coverage(&parsed.program).expect("coverage lowering");
+        for line in [4, 5] {
+            let owners = callback_header_owners(&module, line);
+            assert_eq!(owners.len(), 1, "header {line}: {module}");
+            assert!(
+                owners.iter().all(|owner| owner.contains("@__closure_fn_")),
+                "header {line} must count invocation, not creation: {owners:?}"
+            );
+        }
+    }
+
     fn coverage_codegen() -> Codegen {
         Codegen::with_options(
             osprey_types::ProgramTypes::default(),
