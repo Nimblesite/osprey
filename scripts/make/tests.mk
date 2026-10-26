@@ -352,7 +352,8 @@ _conformance-arc:
 # checks out a tree with no bin/ and falls through to PATH — which makes it
 # exactly the kind of failure a developer cannot reproduce from a green CI run.
 # Restaging keeps `make test` honest about which compiler it just tested.
-_test_vscode_extension: _vsix_bundle $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+# CI consumes the exact stage-1 bundle; public `make test` builds it first.
+_test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
 	cp $(BIN) target/path-bin/osprey

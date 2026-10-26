@@ -56,6 +56,7 @@ test: build
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
 	$(MAKE) _test_profiler
+	$(MAKE) _vsix_bundle
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
 	$(MAKE) _test_bench_tools

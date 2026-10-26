@@ -245,6 +245,8 @@ jobs:
           # compiler itself resolves them via compiler/lib.
           path: |
             target/release/osprey
+            target/osprey-pkg
+            target/package-workspace.wasm
             compiler/lib/
             compiler/bin/*.a
             examples/projects/modules/src/web/bundle.ospml
@@ -582,8 +584,18 @@ jobs:
         with:
           name: osprey-extension
           path: vscode-extension/
+      - name: Restore bundled extension assets
+        run: |
+          set -euo pipefail
+          bundles=(vscode-extension/osprey-*.vsix)
+          test "${#bundles[@]}" -eq 1
+          bundle_dir=$(mktemp -d)
+          trap 'rm -rf "$bundle_dir"' EXIT
+          unzip -q "${bundles[0]}" 'extension/bin/*' -d "$bundle_dir"
+          mkdir -p vscode-extension/bin
+          cp -R "$bundle_dir/extension/bin/." vscode-extension/bin/
       - name: Restore artifact permissions
-        run: chmod +x target/release/osprey
+        run: chmod +x target/release/osprey target/osprey-pkg vscode-extension/bin/linux-x64/osprey vscode-extension/bin/linux-x64/osprey-pkg
 
       - name: Extension suite with V8 coverage
         run: xvfb-run -a make _test_vscode_extension

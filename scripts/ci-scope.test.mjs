@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, cpSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -78,6 +78,79 @@ test('all workflows use the shared classifier and content checks remain required
   assert.match(linux, /make -C Book check\n/)
 })
 
+test('extension tests receive and reuse the build job\'s complete bundle', () => {
+  const build = job('build', '.github/workflows/ci.yml')
+  for (const payload of ['target/osprey-pkg', 'target/package-workspace.wasm']) {
+    assert.match(build, new RegExp(`^ +${payload.replaceAll('.', '\\.')}\\s*$`, 'm'), payload)
+  }
+  const tests = readFileSync('scripts/make/tests.mk', 'utf8')
+  const prerequisites = tests.match(/^_test_vscode_extension:(.*)$/m)?.[1] ?? ''
+  assert.match(prerequisites, /\b_vsix_verify\b/)
+  assert.doesNotMatch(prerequisites, /\b_vsix_bundle\b/)
+  const commands = makeRecipe('test')
+  assert.ok(commands.indexOf('$(MAKE) _vsix_bundle') >= 0)
+  assert.ok(commands.indexOf('$(MAKE) _vsix_bundle') < commands.indexOf('$(MAKE) _test_vscode_extension'))
+  const extension = job('test-extension', '.github/workflows/ci.yml')
+  for (const required of [/name: Restore bundled extension assets/, /chmod \+x[^\n]*target\/osprey-pkg/,
+    /chmod \+x[^\n]*vscode-extension\/bin\/linux-x64\/osprey-pkg/]) assert.match(extension, required)
+})
+
+function restoreStagedBundle(root) {
+  cpSync(join(root, 'vscode-extension/bin'), join(root, 'extension/bin'), { recursive: true })
+  const zipped = spawnSync('zip', ['-qr', 'vscode-extension/osprey-fixture.vsix', 'extension'], { cwd: root, encoding: 'utf8' })
+  assert.equal(zipped.status, 0, zipped.stderr)
+  rmSync(join(root, 'extension'), { recursive: true })
+  rmSync(join(root, 'vscode-extension/bin'), { recursive: true })
+  const block = job('test-extension', '.github/workflows/ci.yml').split('- name: Restore bundled extension assets\n')[1] ?? ''
+  const run = block.match(/^ {8}run: \|\n((?: {10}.*\n)+)/m)?.[1] ?? ''
+  assert.notEqual(run, '', 'CI must restore assets from the built VSIX')
+  const result = spawnSync('bash', ['-euo', 'pipefail', '-c', run.split('\n').map(line => line.slice(10)).join('\n')], { cwd: root, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+}
+
+const nativeArchives = ['fiber_runtime', 'http_runtime'].flatMap(name => ['', '_gc', '_arc'].map(mode => `lib${name}${mode}.a`))
+
+function writeBundlePayloads(root, platform) {
+  const payloads = [['target/release/osprey', 'osprey'], ['target/osprey-pkg', 'osprey-pkg'],
+    ['target/package-workspace.wasm', 'package-workspace.wasm'], ...nativeArchives.map(name => [`compiler/bin/${name}`, name])]
+  for (const dir of ['target/release', 'compiler/bin', platform, 'vscode-extension/scripts']) mkdirSync(join(root, dir), { recursive: true })
+  writeFileSync(join(root, 'vscode-extension/scripts/verify-package-client.mjs'), readFileSync('vscode-extension/scripts/verify-package-client.mjs'))
+  for (const [source, name] of payloads) {
+    const bytes = name.endsWith('.wasm') ? Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]) : '#!/bin/sh\nexit 97\n'
+    for (const file of [source, `${platform}/${name}`]) writeFileSync(join(root, file), bytes, { mode: 0o755 })
+  }
+}
+
+function stagedBundleFixture(change = () => {}) {
+  const root = mkdtempSync(join(tmpdir(), 'osprey-staged-bundle-'))
+  const host = `${process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
+  const platform = `vscode-extension/bin/${host}`
+  try {
+    writeBundlePayloads(root, platform)
+    restoreStagedBundle(root)
+    change(root, platform)
+    return spawnSync('make', ['-f', resolve('scripts/make/extension.mk'), '_vsix_verify',
+      'BIN=target/release/osprey', 'EXT_DIR=vscode-extension', `EXT_PLATFORM=${host}`, 'RTB=compiler/bin',
+      `NATIVE_RUNTIME_ARCHIVES=${nativeArchives.map(name => `compiler/bin/${name}`).join(' ')}`], { cwd: root, encoding: 'utf8' })
+  } finally { rmSync(root, { recursive: true, force: true }) }
+}
+
+test('staged bundle verification fails closed without recompiling a payload', () => {
+  const complete = stagedBundleFixture()
+  assert.equal(complete.status, 0, complete.stdout + complete.stderr)
+  for (const name of ['osprey', 'osprey-pkg', 'package-workspace.wasm', ...nativeArchives]) {
+    const missing = stagedBundleFixture((root, platform) => rmSync(join(root, platform, name)))
+    assert.notEqual(missing.status, 0, `${name}: missing payload accepted`)
+    const stale = stagedBundleFixture((root, platform) => writeFileSync(join(root, platform, name), 'stale'))
+    assert.notEqual(stale.status, 0, `${name}: stale payload accepted`)
+  }
+  const invalid = stagedBundleFixture((root, platform) => {
+    for (const file of ['target/package-workspace.wasm', `${platform}/package-workspace.wasm`]) writeFileSync(join(root, file), 'invalid WASM')
+  })
+  assert.notEqual(invalid.status, 0, 'matching invalid WASM accepted')
+  assert.match(invalid.stderr, /Invalid package workspace WASM/)
+})
+
 test('malformed detection input fails the gate instead of skipping required jobs', () => {
   const temporary = mkdtempSync(join(tmpdir(), 'osprey-ci-scope-'))
   try {
@@ -149,6 +222,7 @@ test('package coverage preserves the complete test recipe and checks without rer
 test('required coverage runs the real Hunt expectations and default-budget regression', () => {
   const coverage = job('coverage', '.github/workflows/ci.yml')
   assert.match(coverage, /make _runtime_klee\s+make _test_hunt\s+python3 scripts\/test-hunt-default-budget\.py\s+make _test_hunt_crashes/)
+  assert.match(readFileSync('scripts/make/tests.mk', 'utf8'), /for backend in gc arc; do for p in tests\/hunt\/\*\.osp; do/)
 })
 
 test('ported packages remain in the unfiltered Rust workspace gate', () => {
