@@ -21,6 +21,12 @@ Owner: OspreyKleePi1 (pi). Scope: plan 0034 (`docs/plans/0034-symbolic-execution
 
 The engine change that made ARC-complete exploration possible: `--solver-backend=z3 --solver-optimize-divides` in `crates/osprey-cli/src/hunt/engine.rs` (spec `[SYMEX-KLEE-INVOCATION]`, now 20 arguments). On `clean.osp` at the 30-second budget this cut partial states from 18 to 3 (GC) and 19 to 3 (ARC); ARC's remaining 3 stragglers finish with the same flags in CI's runner profile. Keeping `--max-solver-time=30s` (forked solver) is mandatory: the in-process solver measured 6 explored paths with 1 complete.
 
+## GitHub issues
+
+- #306 — clean.osp never completes inside the pinned gate (both backends; full fix-attempt history)
+- #307 — GC root instrumentation refuses 47/215 corpus programs (unsupported stack control)
+- #308 — pre-receive hook declines every git push (infra; API workaround)
+
 ## Specific issues left
 
 1. **`clean.osp` incomplete exploration (the known bug, both backends).** `clean.osp` prints a symbolic integer (`picked ${v} at ${i}`); the digit/length queries over the unconstrained value exceed the pinned 30-second budget (~49 s measured on idle Apple silicon with `--solver-backend=z3 --solver-optimize-divides`), so the earlier "ARC passes" observation was load-dependent flake, not a stable pass. Under GC the input line's bytes additionally reach the conservative scan as one expression web. The 30-second budget is not negotiable per the plan; the fix must make the exploration cheaper.

@@ -391,7 +391,17 @@ jobs:
         with:
           name: osprey-build
       - name: Restore artifact permissions
-        run: chmod +x target/release/osprey
+        run: chmod +x target/release/osprey target/osprey-pkg
+      - name: Install uv for Python integration
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.11.3"
+          python-version: "3.12"
+          enable-cache: false
+      - name: Require Python integration prerequisites
+        run: |
+          uv --version
+          uv python install 3.12
       - name: Package manager security and integration suites
         run: make _test_registry REGISTRY_MEMORY=gc
 
@@ -413,7 +423,17 @@ jobs:
         with:
           name: osprey-build
       - name: Restore artifact permissions
-        run: chmod +x target/release/osprey
+        run: chmod +x target/release/osprey target/osprey-pkg
+      - name: Install uv for Python integration
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.11.3"
+          python-version: "3.12"
+          enable-cache: false
+      - name: Require Python integration prerequisites
+        run: |
+          uv --version
+          uv python install 3.12
       - name: Package manager security and integration suites
         run: make _test_registry REGISTRY_MEMORY=arc
 

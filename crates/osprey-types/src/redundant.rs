@@ -21,6 +21,8 @@ mod cost_tests;
 #[path = "redundant_proofs.rs"]
 mod proofs;
 use proofs::Proofs;
+// Logical batching must not change with the host's available worker count.
+const ANNOTATION_SEARCH_WINDOW: usize = 16;
 /// The window search that selects one jointly removable annotation set
 /// ([TYPE-ANNOTATION-REDUNDANT]). Its [`preserves`] oracle stays here beside
 /// the diagnostics it serves.
@@ -156,7 +158,7 @@ pub fn redundant_annotation_sites_for(
     let removable = if proofs.keeps(&written, &all) {
         all
     } else {
-        search::accumulate_with(&proofs, &written, &all, judges())
+        search::accumulate_with(&proofs, &written, &all, ANNOTATION_SEARCH_WINDOW)
     };
     removable
         .iter()

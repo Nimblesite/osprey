@@ -259,6 +259,18 @@ test('application ports have an independent complete backend gate', () => {
   assert.match(apps, /run: make _test_python_app_ports/)
 })
 
+function assertRealUv(registry, memory) {
+  for (const requirement of [/uses: astral-sh\/setup-uv@[0-9a-f]{40}\b/,
+    /version: "0\.11\.3"/, /python-version: "3\.12"/, /uv python install 3\.12/, /run: chmod \+x target\/release\/osprey target\/osprey-pkg/]) assert.match(registry, requirement)
+  const available = registry.indexOf('uv --version')
+  assert.ok(available >= 0, 'real uv must be available')
+  assert.ok(available < registry.indexOf('run: make _test_registry'), 'uv must be installed before package tests')
+  const local = makeRecipe('test')
+  const suite = `$(MAKE) _test_registry REGISTRY_MEMORY=${memory}`
+  assert.ok(local.includes(suite))
+  assert.ok(local.indexOf('$(MAKE) target/osprey-pkg') >= 0 && local.indexOf('$(MAKE) target/osprey-pkg') < local.indexOf(suite))
+}
+
 test('package manager security suites gate CI and local tests under GC and ARC', () => {
   const coverage = job('coverage', '.github/workflows/ci.yml')
   assert.match(coverage, /if:.*always\(\)/)
@@ -267,12 +279,13 @@ test('package manager security suites gate CI and local tests under GC and ARC',
     assert.match(registry, /needs: \[changes, build\]/)
     assert.ok(registry.includes(`name: "Tests: package manager (${memory})"`))
     assert.ok(registry.includes(`run: make _test_registry REGISTRY_MEMORY=${memory}`))
+    assertRealUv(registry, memory)
     assert.ok(coverage.includes(`test-registry-${memory}`))
     assert.ok(coverage.includes('test "${{ needs.test-registry-' + memory + '.result }}" = "success"'))
     assert.ok(readFileSync('scripts/verify-branch-protection.mjs', 'utf8').includes(`'Tests: package manager (${memory})'`))
-    assert.ok(makeRecipe('test').includes(`$(MAKE) _test_registry REGISTRY_MEMORY=${memory}`))
   }
   const commands = makeRecipe('_test_registry', 'scripts/make/tests.mk')
+  assert.match(commands.join('\n'), /OSPREY_PACKAGE_CLIENT=.*target\/osprey-pkg.*python3 scripts\/test-package-publication\.py/)
   for (const suite of ['fixture-check', 'manifest/tests', 'cli/tests', 'tests', 'e2e']) {
     assert.ok(commands.includes(`./$(BIN) test packages/manager/${suite} --memory=$(REGISTRY_MEMORY)`), suite)
   }

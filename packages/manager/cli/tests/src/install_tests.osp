@@ -31,17 +31,21 @@ module InstallTests {
     fn runInstall(reads, walks, webs, args) = {
         mut writes = ""
         mut ensures = ""
+        mut ensured: List<string> = []
         mut fetched = ""
+        mut written: List<Fixture::ReadRoute> = []
         let files = handler Host::Files {
-            read path => Fixture::readFor(reads, path)
+            read path => Fixture::readAfter(written, reads, path)
             write path content => {
+                written = listPrepend(written, Fixture::readRoute(path, content))
                 writes = "${writes}${path}=${content}|"
                 Success { value: byteLength(content) }
             }
         }
         let tree = handler Host::Tree {
-            walk dir => Fixture::walkFor(walks, dir)
+            walk dir => Fixture::walkAfter(written, walks, ensured, dir)
             ensure dir => {
+                ensured = listAppend(ensured, dir)
                 ensures = "${ensures}${dir}|"
                 Success { value: 0 }
             }

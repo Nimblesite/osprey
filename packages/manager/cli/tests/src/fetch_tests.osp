@@ -48,21 +48,32 @@ module FetchTests {
     fn runUnder(mode, routes, args) = {
         mut writes = ""
         mut ensures = ""
+        mut ensured: List<string> = []
+        mut written: List<Fixture::ReadRoute> = []
         let files = handler Host::Files {
-            read _path => Error { message: "fixture: fetch never reads" }
+            read path => match Fixture::readFor(written, path) {
+                Success { value } => Success { value: value }
+                Error => Error { message: "fixture: fetch never reads" }
+            }
             write path content => match mode {
                 "deny-writes" => Error { message: "no space left on device" }
+                "zero-writes" => Success { value: 0 }
+                "short-writes" => Success { value: intDiv(byteLength(content), 2) }
                 _ => {
-                    writes = "${writes}${path}=${content}|"
+                    let actual = if mode == "corrupt-writes" { "${content} tampered" } else { content }
+                    written = listPrepend(written, Fixture::readRoute(path, actual))
+                    writes = "${writes}${path}=${actual}|"
                     Success { value: byteLength(content) }
                 }
             }
         }
         let tree = handler Host::Tree {
-            walk _root => Error { message: "fixture: fetch never walks" }
+            walk root => if mode == "deny-walk" { Error { message: "fixture: walk failed" } }
+                else { Fixture::walkAfter(written, [], ensured, root) }
             ensure dir => match mode {
                 "deny-tree" => Error { message: "read-only file system" }
                 _ => {
+                    ensured = listAppend(ensured, dir)
                     ensures = "${ensures}${dir}|"
                     Success { value: 0 }
                 }
@@ -300,6 +311,22 @@ module FetchTests {
         ])
     }
 
+    fn installedBytes() = {
+        let rs = releases()
+        let routes = catalogRoutes(localBase, rs)
+        let short = attemptWith("short-writes", routes, ["@finch/ledger"])
+        let zero = attemptWith("zero-writes", routes, ["@finch/ledger"])
+        let changed = attemptWith("corrupt-writes", routes, ["@finch/ledger"])
+        let unreadable = attemptWith("deny-walk", routes, ["@finch/ledger"])
+        checkAll("success requires the actual installed bytes", [
+            short.report.status == 1 && startsWith(Fixture::line(short.report, 0), "fetch.write: short write"),
+            zero.report.status == 1 && startsWith(Fixture::line(zero.report, 0), "fetch.write: short write"),
+            failedOne(changed, "fetch.install-integrity"),
+            failedOne(unreadable, "fetch.install-integrity fixture: walk failed"),
+            unreadable.writes == ""
+        ])
+    }
+
     export fn run() = {
         test("fetch: newest release by epoch then ordinal", newest)
         test("fetch: epoch and digest targets", selection)
@@ -313,5 +340,6 @@ module FetchTests {
         test("fetch: --registry overrides the base URL", registryFlag)
         test("fetch: dispatch routing", routing)
         test("fetch: licenses and attribution are preserved", licenseBundle)
+        test("fetch: installed bytes are verified", installedBytes)
     }
 }

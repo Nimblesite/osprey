@@ -451,6 +451,8 @@ _test_registry:
 	./$(BIN) test packages/manager/tests --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry end-to-end: server, fetch and consumer build..."
 	./$(BIN) test packages/manager/e2e --memory=$(REGISTRY_MEMORY)
+	@echo "==> Native publication and installed-source integrity regressions..."
+	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(CURDIR)/target/osprey-pkg}" python3 scripts/test-package-publication.py
 
 # Blocked host capabilities, each asserted as the behavior the package system
 # needs. Red is the documented state until the capability lands in Osprey;

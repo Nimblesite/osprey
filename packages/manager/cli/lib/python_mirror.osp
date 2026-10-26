@@ -1,0 +1,50 @@
+namespace registry_cli;
+import registry_host::Host
+
+/// Disposable Python build inputs preserve the pinned relative layout without
+/// letting uv build backends write into canonical release trees.
+/// Implements [PACKAGE-PYTHON-UV].
+module PythonMirror {
+    let caches = [".osprey", ".git", ".deslop", "__pycache__", ".venv"]
+
+    fn cacheTest() = join(mapList(caches, fn(name) => "-name ${Host::shellWord(name)}"), " -o ")
+    fn selected(test) = "find . \\( ${cacheTest()} \\) -prune -o ${test}"
+
+    // Normalize before prefixing the temporary root: excess '..' must never
+    // climb out of staging, including for sibling checkout overrides.
+    fn normalize() = "normalize() ( set -f; IFS=/; set -- $1; out=; for part do case \"$part\" in ''|.) ;; ..) out=$(dirname \"$out\"); [ \"$out\" != . ] || out= ;; *) out=\"$out/$part\" ;; esac; done; [ -n \"$out\" ] || out=/; printf '%s\\n' \"$out\"; )"
+
+    fn copyMember(path) = join([
+        "source=\"$origin/.osprey/python/\"${Host::shellWord(path)}",
+        "destination=$(normalize \"$source\")",
+        "mkdir -p \"$stage$destination\"", checkedPath(path),
+        "( cd \"$source\" && ${selected("! -type d ! -type f -print")} > \"$stage/special\" && [ ! -s \"$stage/special\" ] && ${selected("-type f -print0")} > \"$stage/files\" && tar --null -T \"$stage/files\" -cf \"$stage/input.tar\" )",
+        "tar -C \"$stage$destination\" -xf \"$stage/input.tar\""
+    ], " && ")
+
+    fn setup(project) = [
+        "set -eu", normalize(), "cd ${Host::shellWord(if isEmpty(project) { "." } else { project })}",
+        "origin=$(pwd -P)", "stage=$(mktemp -d)",
+        "trap 'rm -rf \"$stage\"' 0", "trap 'exit 1' HUP INT TERM",
+        "stage=$(cd \"$stage\" && pwd -P)",
+        "workspace=\"$stage$origin/.osprey/python\"", "mkdir -p \"$workspace\" \"$stage/temporary\""
+    ]
+
+    fn checkedPath(path) = "[ \"$(cd \"$workspace/\"${Host::shellWord(path)} && pwd -P)\" = \"$stage$(normalize \"$origin/.osprey/python/\"${Host::shellWord(path)})\" ]"
+
+    fn digestFunction() = "digest() { if command -v sha256sum >/dev/null 2>&1; then sha256sum < \"$1\"; else shasum -a 256 < \"$1\"; fi | cut -d ' ' -f 1; }"
+
+    fn checkDigest(name, expected) = if isEmpty(expected) { ":" } else { "[ \"sha256:$(digest \"$workspace/${name}\")\" = ${Host::shellWord(expected)} ]" }
+
+    fn execute(words, writeLock, projectDigest, lockDigest) = [
+        "cp \"$origin/.osprey/python/pyproject.toml\" \"$workspace/pyproject.toml\"",
+        "if [ -f \"$origin/.osprey/python/uv.lock\" ]; then cp \"$origin/.osprey/python/uv.lock\" \"$workspace/uv.lock\"; fi",
+        digestFunction(), checkDigest("pyproject.toml", projectDigest), checkDigest("uv.lock", lockDigest),
+        "( cd \"$workspace\" && TMPDIR=\"$stage/temporary\" UV_PROJECT_ENVIRONMENT=\"$origin/.osprey/python/.venv\" uv ${words} )",
+        if writeLock { "( lock_output=$(mktemp \"$origin/.osprey/python/uv.lock.XXXXXXXX\") && trap 'rm -f \"$lock_output\"' 0 && cp \"$workspace/uv.lock\" \"$lock_output\" && mv -f \"$lock_output\" \"$origin/.osprey/python/uv.lock\" )" } else { ":" }
+    ]
+
+    /// All paths remain single shell words. Only successful `lock` copies its
+    /// output back; sync installs wheels into the real environment.
+    export fn command(project, paths, words, writeLock, projectDigest, lockDigest) = join(listConcat(listConcat(setup(project), mapList(paths, copyMember)), execute(words, writeLock, projectDigest, lockDigest)), " && ")
+}

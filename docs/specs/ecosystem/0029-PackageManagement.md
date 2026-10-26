@@ -712,23 +712,22 @@ spec 0041 needs none of this; it is Osprey source and has no Python dependency.
   (`[tool.uv.sources] name = { path = ... }`) on the root's own `pyproject.toml`
   when it has one and on the installed tree of every locked release that
   declares `python/interop`; `requires-python` is the intersection of theirs and
-  the declared floors. It then runs `uv lock` there, so uv resolves the union of
-  every member's Python requirements into one `.osprey/python/uv.lock`, and
+  the declared floors. It runs `uv lock` against independent temporary copies of those members with the same relative path layout, then copies only the resulting lock back to `.osprey/python/uv.lock`, and
   records `sha256` digests of both generated files under `root.python` in
   `osprey.lock`. uv's lock pins every Python distribution by hash itself.
-- `osprey fetch` runs `uv sync --frozen` in `.osprey/python`, creating the one
-  environment the project's Python interop uses. `python/interop` is the single
+- `osprey fetch` runs `uv sync --frozen --no-editable` against that temporary layout, creating the one environment at `.osprey/python/.venv`. Python imports use installed wheels after the temporary sources are removed; build metadata never becomes part of an immutable release tree. `python/interop` is the single
   system capability whose provider Osprey invokes, because the developer
   declared the plane and uv is its resolver; Osprey never installs uv, CPython
   or an OS package, and `doctor` reports the `python/uv` and interpreter floors
   as guidance like every other capability.
 - `verify --offline` regenerates `.osprey/python/pyproject.toml` from the lock,
-  compares both digests, and runs `uv lock --check --offline`; `build` and `run`
+  compares both digests, checks the copied generated inputs against the same pins before invoking uv, and runs `uv lock --check --offline` in the temporary layout; `build` and `run`
   run that check and fail on any mismatch. They never resolve, sync or access
   the network. Codes: `python.pyproject-missing`, `python.uv-lock-missing`,
   `python.workspace-digest`, `python.uv-lock-stale`, `python.environment-missing`;
   a `uv lock` or `uv sync --frozen` that exits non-zero is `python.uv-lock-failed`
   or `python.uv-sync-failed` with its status, and the lock is not written.
+- Temporary input copies reject symlinks and other special files. Each relative member path must resolve to its copied directory inside staging; an invalid path fails before any build backend runs. Normal root and sibling checkout paths retain their declared spelling and lock pins. Success, failure and handled termination remove the temporary copies and uv temporary files. The host uses `tar` and either `sha256sum` or `shasum` to copy and verify these inputs; a missing or failing utility fails the operation.
 - A graph with no member leaves `root.python` out of the lock, writes no
   project and never runs uv; `doctor` reports a missing uv as guidance.
 - A release lock of Milestone B pins the same two digests; a hermetic build
