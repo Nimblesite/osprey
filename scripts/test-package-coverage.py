@@ -12,6 +12,7 @@ import os
 import runpy
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from package_coverage_evidence import record_measurements, seal_evidence, source_inputs
 from package_coverage_test_support import (
@@ -456,6 +457,23 @@ class CheckerTests(unittest.TestCase):
                 self.assertTrue(fixture.result("demo")["missing_evidence"], label)
         fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
         self.assertEqual(fixture.collect().returncode, 0)
+
+    def test_configured_pool_bounds_actual_collection_overlap(self):
+        names = ["demo", *(f"peer{i}" for i in range(18))]
+        for count, expected_exit in ((5, 1), (4, 0)):
+            with self.subTest(required_overlap=count):
+                fixture = self.fixture({name: {"sources": {"src/lib.py": py_source(10)}} for name in names})
+                barrier = names[:count]
+                fixture.write_spec({name: {
+                    "report": own_report(name, 9, 10),
+                    "barrier": barrier if name in barrier else [],
+                } for name in names})
+                with patch.dict(os.environ, {"OSPREY_PACKAGE_JOBS": "4"}):
+                    result = fixture.collect()
+                self.assert_exit(result, expected_exit)
+                rows = fixture.summary()["packages"]
+                self.assertEqual({row["name"] for row in rows}, set(names))
+                self.assertEqual(all(row["pass"] for row in rows), count == 4)
 
     def test_all_package_suites_overlap_and_write_isolated_reports(self):
         names = ["demo", *(f"peer{i}" for i in range(17))]

@@ -1,28 +1,15 @@
 #!/usr/bin/env python3
-"""Per-package source coverage gates for the Osprey package bundles.
-Implements [PKG-COVERAGE-GATE].
+"""Per-package source coverage gates for the Osprey package bundles [PKG-COVERAGE-GATE].
 
-One report per package under `projects.packages`, never averaged: a package
-passes only when its OWN `packages/<name>/src` lines meet 90% or its higher threshold.
-Test fixtures, helpers and imported libraries (`packages/testing/src/check.py`,
-`tests/*.py`) appear in the compiler's JSON but must never pad the numerator or
-the denominator — a package whose tests are perfect and whose source is not has
-to fail.
+One report per package under `projects.packages`, never averaged: a package passes
+only when its OWN `packages/<name>/src` lines meet 90% or its higher threshold.
 
-    python3 scripts/package_coverage.py [--collect] [--compiler PATH]
-        [--reports PATH] [--thresholds PATH] [--root PATH] [--package NAME] [--memory gc|arc]
+    python3 scripts/package_coverage.py [--collect] [--compiler PATH] [--reports PATH]
+        [--thresholds PATH] [--root PATH] [--package NAME] [--memory gc|arc]
 
-`--collect` removes the package's stale report and log, reruns
-`<compiler> test packages/<name>/tests --coverage-json <report> --quiet --memory=gc`, and
-then gates the report. A nonzero exit, a stdout oracle that differs from
-`tests/expected_output.txt`, or an unwritable report invalidates the evidence,
-because the suite can print failures and still exit zero. Without `--collect`
-the existing `<reports>/<name>.json` files are gated and nothing is re-run.
-`--package` narrows the work but the whole package inventory is still checked.
-
-The runner appends `# coverage total:` and `# suites:` lines to the suite's own
-stdout, so exactly those two documented footer lines are removed before the
-oracle comparison; every other line must match the golden byte for byte.
+`--collect` reruns each suite (one compiler per CPU, or OSPREY_PACKAGE_JOBS) and gates
+its report; a nonzero exit, stdout differing from the golden, or an unwritable report
+invalidates the evidence. Without it the existing reports are gated and nothing re-runs.
 """
 
 from __future__ import annotations
@@ -451,12 +438,18 @@ def selected_names(configured: dict, requested: str | None) -> list[str] | None:
     return [requested] if requested in configured else None
 
 
+JOBS_ENV = "OSPREY_PACKAGE_JOBS"
+
+
 def worker_count(names: list[str], cpus: int | None = None) -> int:
-    """One compiler per CPU, never more. Each collection is a full `osprey test`
-    with the type checker's warning pass, so 19 of them at once exhausted the
-    CI runner's memory and the runner was shut down mid-step (exit 143) with
-    no coverage verdict at all, twice. Fewer workers than packages only
-    lengthens the wall clock on a machine that was already CPU-bound."""
+    """Bound collection by CPU count or OSPREY_PACKAGE_JOBS, and by package count.
+    Fewer workers keep every suite and threshold while limiting concurrent compilers.
+    """
+    configured = os.environ.get(JOBS_ENV)
+    if configured is not None:
+        if not configured.isdigit() or int(configured) < 1:
+            raise SystemExit(fail(f"{JOBS_ENV} must be a positive integer, got {configured!r}"))
+        cpus = int(configured)
     return max(1, min(len(names), cpus if cpus is not None else os.cpu_count() or 1))
 
 
