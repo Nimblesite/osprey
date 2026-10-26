@@ -587,6 +587,22 @@ jobs:
       - name: Install jq and Xvfb
         run: sudo apt-get install -y jq xvfb
 
+      # The package-workspace SDK host E2E tests compile fresh wasm32 fixtures
+      # with the bundled compiler (compileSdkWasm), so this job needs the same
+      # linker and sysroot the wasm job installs. The wasm runtime archive
+      # itself arrives in the osprey-build artifact. Without this step eight
+      # suites fail with "no WASI sysroot found".
+      - name: Install the wasm toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y lld wabt
+          curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
+          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
+          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
+          test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
+          echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
+
       # npm installs a packed copy of the built UI, so it is built first.
       - name: Build the shared profiler UI (lspkit submodule)
         run: make _profiler_ui

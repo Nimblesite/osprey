@@ -95,6 +95,17 @@ test('extension tests receive and reuse the build job\'s complete bundle', () =>
     /chmod \+x[^\n]*vscode-extension\/bin\/linux-x64\/osprey-pkg/]) assert.match(extension, required)
 })
 
+test('extension source fixtures have the WASI linker and sysroot before coverage', () => {
+  const extension = job('test-extension', '.github/workflows/ci.yml')
+  const beforeCoverage = extension.split('- name: Extension suite with V8 coverage')[0]
+  assert.match(beforeCoverage, /apt-get install[^\n]*\blld\b/)
+  assert.match(beforeCoverage, /wasi-sysroot-\$\{WASI_SDK_VERSION\}/)
+  assert.match(beforeCoverage, /test -d .*lib\/wasm32-wasip1/)
+  assert.match(beforeCoverage, /OSPREY_WASI_SYSROOT=.*>> "\$GITHUB_ENV"/)
+  const build = job('build', '.github/workflows/ci.yml')
+  assert.match(build, /compiler\/bin\/\*\.a/)
+})
+
 function restoreStagedBundle(root) {
   cpSync(join(root, 'vscode-extension/bin'), join(root, 'extension/bin'), { recursive: true })
   const zipped = spawnSync('zip', ['-qr', 'vscode-extension/osprey-fixture.vsix', 'extension'], { cwd: root, encoding: 'utf8' })
