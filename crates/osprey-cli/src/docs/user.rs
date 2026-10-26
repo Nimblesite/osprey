@@ -27,7 +27,7 @@ pub(super) fn pages(options: &Options) -> io::Result<Vec<Page>> {
     let cli = source_cli(path, options.flavor)?;
     let sources = crate::document_source::load(&cli).map_err(invalid)?;
     let input = sources.input(&cli).map_err(invalid)?;
-    if crate::report_type_errors(&input) != 0 {
+    if crate::report_type_errors(&input, cli.quiet) != 0 {
         return Err(invalid("documentation source has type errors"));
     }
     let symbols: Vec<Value> =

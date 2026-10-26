@@ -1488,3 +1488,19 @@ fn bare_result_variants_compile_and_select_the_correct_arm() {
         }
     }
 }
+
+#[test]
+fn quiet_skips_warnings_entirely() {
+    // `--quiet` suppresses non-essential output. A warning is advice, so under
+    // `--quiet` it is neither printed nor computed: the redundant-annotation
+    // oracle re-infers the whole program per proof, which is exactly the cost
+    // a packaging build must not pay for text nobody will read.
+    let prog = temp_osp("quiet_warn", "let n: int = 42\nprint(\"v=${n}\")\n");
+    let loud = run_file(&prog, &["--check"]);
+    assert_eq!(loud.code, Some(0), "stderr={}", loud.stderr);
+    assert!(loud.stderr.contains("redundant"), "{}", loud.stderr);
+    let o = run_file(&prog, &["--check", "--quiet"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
+    assert!(o.stderr.trim().is_empty(), "{}", o.stderr);
+}

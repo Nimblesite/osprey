@@ -165,7 +165,7 @@ fn load(options: &Options) -> Result<CompilationInput, ExitCode> {
     let cli =
         parse_args(std::slice::from_ref(&options.path)).map_err(|message| tool_error(&message))?;
     let input = load_input(&cli)?;
-    if report_type_errors(&input) != 0 {
+    if report_type_errors(&input, cli.quiet) != 0 {
         return Err(ExitCode::FAILURE);
     }
     Ok(input)

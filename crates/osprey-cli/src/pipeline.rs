@@ -100,7 +100,9 @@ pub(super) fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
             }
         },
         "--list-tests" => print_metadata(&osprey_lsp::tests_json(input.program())),
-        "--llvm" | "--run" | "--compile" if report_type_errors(input) > 0 => ExitCode::FAILURE,
+        "--llvm" | "--run" | "--compile" if report_type_errors(input, cli.quiet) > 0 => {
+            ExitCode::FAILURE
+        }
         "--llvm" | "--run" | "--compile" if target_error(cli, input).is_some() => ExitCode::FAILURE,
         "--llvm" => print_ir(cli, input),
         "--run" => run_program(cli, input),
@@ -134,17 +136,24 @@ fn print_ir(cli: &Cli, input: &CompilationInput) -> ExitCode {
 /// Warnings print alongside the errors and are deliberately not counted: a
 /// redundant annotation is a defect to delete, never a reason to fail a build
 /// ([TYPE-ANNOTATION-REDUNDANT]).
-pub(crate) fn report_type_errors(input: &CompilationInput) -> usize {
+///
+/// `quiet` drops the warnings altogether, not just their printing: the
+/// redundant-annotation oracle re-infers the whole program once per proof,
+/// a cost a packaging build (`osprey build ... --quiet`) must not pay for
+/// advice nobody will read. Errors are never quiet.
+pub(crate) fn report_type_errors(input: &CompilationInput, quiet: bool) -> usize {
     let errors = osprey_types::check_program(input.program());
     for e in &errors {
         eprintln!("{}", input.diagnostic(e.position, &e.message));
     }
-    warnings::report(input, &warnings::collect(input));
+    if !quiet {
+        warnings::report(input, &warnings::collect(input));
+    }
     errors.len()
 }
 
 pub(super) fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
-    if report_type_errors(input) == 0 && target_error(cli, input).is_none() {
+    if report_type_errors(input, cli.quiet) == 0 && target_error(cli, input).is_none() {
         if !cli.quiet {
             println!(
                 "{}: ok ({} statements)",

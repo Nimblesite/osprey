@@ -27,12 +27,16 @@ _profiler_ui: $(PROFILER_UI_BUILT)
 # The editor ships a compiled Osprey package client; installations never compile
 # package-manager application sources on the user's machine. [PACKAGE-API]
 REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \))
+# `--quiet` skips the warning pass: the redundant-annotation oracle re-infers
+# the whole program per proof, which on the client's 22k lines is the
+# difference between minutes and the CI job timeout. `make lint` still
+# reports the warnings of every package source.
 target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
-	$(BIN) build packages/manager/cli -o $@
+	$(BIN) build packages/manager/cli --quiet -o $@
 
 PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/native/src packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
 target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
-	$(BIN) build packages/manager/editor --target=wasm32 -o $@
+	$(BIN) build packages/manager/editor --target=wasm32 --quiet -o $@
 
 _vsix_bundle: target/osprey-pkg target/package-workspace.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \

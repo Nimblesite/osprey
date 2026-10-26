@@ -15,7 +15,7 @@ pub(super) fn check(
     backend: osprey_ast::Program,
     example: &DocExample,
 ) -> Result<(), String> {
-    if report_type_errors(input) != 0 {
+    if report_type_errors(input, cli.quiet) != 0 {
         return Err("documentation example failed compilation".into());
     }
     let input = CompilationInput::script(

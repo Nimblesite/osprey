@@ -22,7 +22,7 @@ pub(crate) fn run(cli: &Cli) -> ExitCode {
         Ok(input) => input,
         Err(error) => return crate::toolchain::fail(&error),
     };
-    if crate::report_type_errors(&input) != 0 {
+    if crate::report_type_errors(&input, cli.quiet) != 0 {
         return ExitCode::FAILURE;
     }
     run_sources(cli, &sources)
