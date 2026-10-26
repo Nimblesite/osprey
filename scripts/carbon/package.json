@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
-    "shiki": "^3.13.0"
+    "shiki": "^4.5.0"
   },
   "engines": {
     "node": ">=20"
