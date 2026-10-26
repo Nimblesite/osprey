@@ -5,8 +5,16 @@
 
 /* Strict decimal parsing; unsigned magnitude permits INT64_MIN without overflow. */
 #ifdef OSP_SYMBOLIC
+#ifdef __clang__
+/* optnone is clang-only; gcc fails -Werror=attributes on it. */
 #define OSP_PARSE_STEP __attribute__((noinline, optnone))
-size_t osp_hunt_input_capacity(const char *text);
+#else
+#define OSP_PARSE_STEP __attribute__((noinline))
+#endif
+/* The symbolic path consults the hunt input-capacity registry; the concrete
+   path below stays freestanding. Quoted lookup finds klee/hunt_mock.h beside
+   this header, exactly as memory_gc_symbolic_roots.h does. */
+#include "klee/hunt_mock.h"
 
 static OSP_PARSE_STEP int osp_decimal_bounded(const char *s, unsigned last, size_t capacity, uint64_t *out) {
     uint64_t value = 0;
@@ -79,12 +87,8 @@ static OSP_PARSE_STEP int osp_decimal_parse(const char *s, const char *p, unsign
 #endif
     return osp_decimal_magnitude(p, last, out);
 }
-#undef OSP_PARSE_STEP
 
-#ifdef OSP_SYMBOLIC
-__attribute__((noinline, optnone))
-#endif
-int64_t osp_parse_int_strict(const char *s, int64_t *out) {
+OSP_PARSE_STEP int64_t osp_parse_int_strict(const char *s, int64_t *out) {
     if (!s || s[0] == '\0' || !out) return 1;
     int neg = 0;
     const char *p = s;

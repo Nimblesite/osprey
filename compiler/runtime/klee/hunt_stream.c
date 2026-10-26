@@ -115,7 +115,7 @@ static long copy_initial_line(char *out, const struct osp_hunt_file *stream, lon
   long end = stream->len;
   int stopped = 0;
   for (long i = 0; i < cap; i++) {
-    int stop = !stopped & ((i == stream->len) | (stream->data[i] == '\n'));
+    int stop = (!stopped) & ((i == stream->len) | (stream->data[i] == '\n'));
     volatile uintptr_t mask = (uintptr_t)0 - (uintptr_t)stop;
     out[i] = (char)(stream->data[i] & ~(unsigned char)mask);
     end = (long)(((uintptr_t)i & mask) | ((uintptr_t)end & ~mask));
