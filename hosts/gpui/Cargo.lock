@@ -4391,6 +4391,7 @@ name = "osprey-gpui"
 version = "0.1.0"
 dependencies = [
  "gpui-kit",
+ "lyon",
  "serde",
  "serde_json",
 ]

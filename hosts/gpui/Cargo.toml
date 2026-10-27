@@ -8,6 +8,8 @@ publish = false
 
 [dependencies]
 gpui-kit = "0.8.1"
+# The same lyon GPUI tessellates with; only its stroke join type is named here.
+lyon = "1.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

@@ -425,12 +425,40 @@ test ("colours pack as RRGGBBAA", \() =>
     expect (Scenes::rgba (1, 2, 3, 4), 16909060)
     expect (Scenes::rgb (255, 255, 255), 4294967295))
 
-controlled value = Messages::route (Events::bind (ui::SceneInput(action = Typed), value) ?: ui::Act(act = Load), \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \_ => "frame", \(_, input) => Inputs::route (input, \(name, down) => "key ${name} ${down}", \(x, y, down) => "pointer ${x} ${y} ${down}"))
+controlled value = Messages::route (Events::bind (ui::SceneInput(action = Typed), value) ?: ui::Act(act = Load), \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \_ => "frame", \(_, input) => Inputs::route (input, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}"))
 
 // [UI-SCENE]: a scene's binding delivers keys and pointer positions and refuses anything else.
+stepCode (steps, index) = jsonInt (jsonIndex (listGet steps index ?: JsonNull) 0 ?: JsonNull) ?: 0 - 1
+
+// [UI-SCENE]: a path carries its builder commands, outline, paint and transform in the order a
+// host's path builder takes them, with float colours a host can use without rounding.
+test ("a path encodes its steps, outline, paint and transform", \() =>
+    steps = [ui::MoveTo(toX = 1.0, toY = 2.0), ui::LineTo(toX = 3.0, toY = 4.0), ui::CurveTo(toX = 5.0, toY = 6.0, ctrlX = 7.0, ctrlY = 8.0), ui::CubicTo(toX = 1.0, toY = 1.0, ctrlAX = 2.0, ctrlAY = 2.0, ctrlBX = 3.0, ctrlBY = 3.0), ui::ArcTo(radiusX = 30.0, radiusY = 30.0, rotation = 0.0, large = false, sweep = true, toX = 9.0, toY = 9.0), ui::Polygon(corners = [0.0, 0.0, 4.0, 0.0, 4.0, 4.0], closed = false), ui::Close]
+    gradient = ui::Linear(angle = 180.0, from = Scenes::hex (16436245, 1.0), fromAt = 0.7, to = ui::Hsl(hue = 0.0, saturation = 1.0, lightness = 0.5, opacity = 1.0), toAt = 1.0, oklab = true)
+    drawn = [Scenes::path (steps, ui::Filled, gradient, 0), Scenes::moved ([ui::MoveTo(toX = 0.0, toY = 0.0)], ui::Stroked(width = 1.0, dashes = [4.0, 2.0], bevel = true), ui::Solid(tint = Scenes::hex (16711680, 0.5)), 10.0, 200.0, 0.9, 1)]
+    walked = Encode::walk ([], Ui::canvas (drawn, Typed))
+    scene = listGet walked.nodes 0 ?: JsonNull
+    shapes = Doc::items (Doc::field (scene, "shapes"))
+    expect (Doc::decimal (scene, "width"), 0.0)
+    filled = listGet shapes 0 ?: JsonNull
+    expect (codeAt (shapes, 0), 5)
+    encodedSteps = Doc::items (jsonIndex filled 1 ?: JsonNull)
+    expect (join (mapList (range (0, 7) |> fold [] (\(out, i) => listAppend out i), \i => "${stepCode (encodedSteps, i)}")) ",", "0,1,2,3,4,5,6")
+    expect (Doc::write (listGet encodedSteps 4 ?: JsonNull), "[4,30.0,30.0,0.0,0,1,9.0,9.0]")
+    expect (Doc::write (jsonIndex filled 2 ?: JsonNull), "[0]")
+    expect (Doc::write (jsonIndex filled 4 ?: JsonNull), "[]")
+    paint = jsonIndex filled 3 ?: JsonNull
+    expect (jsonInt (jsonIndex paint 0 ?: JsonNull) ?: 0, 1)
+    expect (Doc::write (jsonIndex paint 4 ?: JsonNull), "[1,0.0,1.0,0.5,1.0]")
+    stroked = listGet shapes 1 ?: JsonNull
+    expect (Doc::write (jsonIndex stroked 2 ?: JsonNull), "[1,1.0,1,4.0,2.0]")
+    expect (Doc::write (jsonIndex stroked 3 ?: JsonNull), "[0,[0,1.0,0.0,0.0,0.5]]")
+    expect (Doc::write (jsonIndex stroked 4 ?: JsonNull), "[10.0,200.0,0.9]"))
+
 test ("a scene binding delivers keys and pointer positions in scene units", \() =>
     expect (controlled (JsonObject [Doc::str ("key", "ArrowLeft"), Doc::bit ("down", true)]), "key ArrowLeft true")
-    expect (controlled (JsonObject [JsonMember "x" (JsonFloat 12.5), JsonMember "y" (JsonInt 3), Doc::bit ("down", false)]), "pointer 12.5 3.0 false")
+    expect (controlled (JsonObject [JsonMember "x" (JsonFloat 12.5), JsonMember "y" (JsonInt 3), Doc::bit ("down", false)]), "pointer 12.5 3.0 false false")
+    expect (controlled (JsonObject [JsonMember "x" (JsonFloat 1.0), JsonMember "y" (JsonFloat 2.0), Doc::bit ("down", true), Doc::bit ("shift", true)]), "pointer 1.0 2.0 true true")
     expect (controlled (JsonString "left"), "tap"))
 
 framed : ui::Message<Act> -> float

@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use gpui_kit::*;
 
-use super::{Decoded, Shape, Transform};
+use super::{Decoded, Outline, Paint, Shape, Step, Tint, Transform};
 use crate::host::HostView;
 use crate::render::Ctx;
 
@@ -34,9 +34,10 @@ pub(super) fn canvas(
                     px(decoded.height * transform.scale),
                 ),
             };
-            let painted = window.with_content_mask(Some(ContentMask { bounds: field }), |window| {
-                paint(&decoded.shapes, transform, window, cx)
-            });
+            // A window-pixel scene paints anywhere in the window, as a GPUI canvas does.
+            let mask = (decoded.width > 0.).then_some(ContentMask { bounds: field });
+            let painted = window
+                .with_content_mask(mask, |window| paint(&decoded.shapes, transform, window, cx));
             if let Err(problem) = painted {
                 handle.update(cx, |view, _| view.diagnose_once(problem));
             }
@@ -113,6 +114,13 @@ fn paint_shape(
             colour,
             ..
         } => paint_glyphs(text, *x, *y, *size, *colour, transform, window, cx)?,
+        Shape::Path {
+            steps,
+            outline,
+            paint,
+            transform: moved,
+            ..
+        } => paint_path(steps, outline, paint, *moved, transform, window)?,
     }
     Ok(())
 }
@@ -191,4 +199,122 @@ fn paint_glyphs(
         cx,
     )
     .map_err(|problem| format!("scene glyphs could not be painted: {problem}"))
+}
+
+/// Replays a path's steps on GPUI's builder in the original call order; the application's own
+/// transform comes first and the scene's last, and a window-pixel scene adds no call at all.
+fn paint_path(
+    steps: &[Step],
+    outline: &Outline,
+    paint: &Paint,
+    moved: Option<(f32, f32, f32)>,
+    transform: Transform,
+    window: &mut Window,
+) -> Result<(), String> {
+    let mut builder = builder(outline, transform.scale);
+    for step in steps {
+        add(&mut builder, step);
+    }
+    if let Some((x, y, scale)) = moved {
+        builder.translate(point(px(x), px(y)));
+        builder.scale(scale);
+    }
+    if !transform.identity() {
+        builder.scale(transform.scale);
+        builder.translate(transform.origin);
+    }
+    let path = builder
+        .build()
+        .map_err(|problem| format!("scene path could not be built: {problem}"))?;
+    window.paint_path(path, background(paint));
+    Ok(())
+}
+
+/// Starts a fill or stroke builder; stroke widths and dashes scale with the scene, not the path.
+fn builder(outline: &Outline, scale: f32) -> PathBuilder {
+    match outline {
+        Outline::Fill => PathBuilder::fill(),
+        Outline::Stroke {
+            width,
+            bevel,
+            dashes,
+        } => {
+            let width = px(width * scale);
+            let mut builder = match bevel {
+                true => PathBuilder::stroke(width).with_style(PathStyle::Stroke(
+                    StrokeOptions::default()
+                        .with_line_width(f32::from(width))
+                        .with_line_join(lyon::tessellation::LineJoin::Bevel),
+                )),
+                false => PathBuilder::stroke(width),
+            };
+            if !dashes.is_empty() {
+                let dashes: Vec<Pixels> = dashes.iter().map(|dash| px(dash * scale)).collect();
+                builder = builder.dash_array(&dashes);
+            }
+            builder
+        }
+    }
+}
+
+/// Adds one step in scene units.
+fn add(builder: &mut PathBuilder, step: &Step) {
+    let at = |(x, y): (f32, f32)| point(px(x), px(y));
+    match step {
+        Step::Move(to) => builder.move_to(at(*to)),
+        Step::Line(to) => builder.line_to(at(*to)),
+        Step::Curve(to, ctrl) => builder.curve_to(at(*to), at(*ctrl)),
+        Step::Cubic(to, a, b) => builder.cubic_bezier_to(at(*to), at(*a), at(*b)),
+        Step::Arc {
+            radii,
+            rotation,
+            large,
+            sweep,
+            to,
+        } => builder.arc_to(at(*radii), px(*rotation), *large, *sweep, at(*to)),
+        Step::Polygon(corners, closed) => {
+            let corners: Vec<Point<Pixels>> = corners.iter().map(|corner| at(*corner)).collect();
+            builder.add_polygon(&corners, *closed);
+        }
+        Step::Close => builder.close(),
+    }
+}
+
+/// Converts a paint to GPUI's background without passing a colour through another space.
+fn background(paint: &Paint) -> Background {
+    match paint {
+        Paint::Solid(tint) => solid(*tint),
+        Paint::Linear {
+            angle,
+            from,
+            to,
+            oklab,
+        } => {
+            let gradient = linear_gradient(
+                *angle,
+                linear_color_stop(hsla(from.0), from.1),
+                linear_color_stop(hsla(to.0), to.1),
+            );
+            match oklab {
+                true => gradient.color_space(ColorSpace::Oklab),
+                false => gradient,
+            }
+        }
+    }
+}
+
+/// A solid background from the tint's own type, as GPUI converts an `Rgba` or `Hsla` itself.
+fn solid(tint: Tint) -> Background {
+    match tint {
+        Tint::Rgb([r, g, b, a]) => Rgba { r, g, b, a }.into(),
+        Tint::Hsl([h, s, l, a]) => Hsla { h, s, l, a }.into(),
+    }
+}
+
+/// The tint as `Hsla`, the type a gradient stop takes.
+fn hsla(tint: Tint) -> Hsla {
+    match tint {
+        Tint::Rgb([r, g, b, a]) => Rgba { r, g, b, a }.into(),
+        Tint::Hsl([h, s, l, a]) => Hsla { h, s, l, a },
+    }
 }

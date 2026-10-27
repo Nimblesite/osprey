@@ -66,6 +66,61 @@ pub enum Shape {
         colour: u32,
         depth: f32,
     },
+    Path {
+        steps: Arc<Vec<Step>>,
+        outline: Outline,
+        paint: Paint,
+        transform: Option<(f32, f32, f32)>,
+        depth: f32,
+    },
+}
+
+/// One path-builder command in scene units; curves name their end point first.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Step {
+    Move((f32, f32)),
+    Line((f32, f32)),
+    Curve((f32, f32), (f32, f32)),
+    Cubic((f32, f32), (f32, f32), (f32, f32)),
+    Arc {
+        radii: (f32, f32),
+        rotation: f32,
+        large: bool,
+        sweep: bool,
+        to: (f32, f32),
+    },
+    Polygon(Vec<(f32, f32)>, bool),
+    Close,
+}
+
+/// Fill, or stroke with a width, bevel or miter joins and an optional dash pattern.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Outline {
+    Fill,
+    Stroke {
+        width: f32,
+        bevel: bool,
+        dashes: Vec<f32>,
+    },
+}
+
+/// A float colour in the space the application gave it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Tint {
+    Rgb([f32; 4]),
+    Hsl([f32; 4]),
+}
+
+/// A solid tint or a two-stop linear gradient, angle in degrees.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Paint {
+    Solid(Tint),
+    Linear {
+        angle: f32,
+        from: (Tint, f32),
+        to: (Tint, f32),
+        oklab: bool,
+    },
 }
 
 impl Shape {
@@ -76,7 +131,8 @@ impl Shape {
             | Self::Disc { depth, .. }
             | Self::Strip { depth, .. }
             | Self::Sprite { depth, .. }
-            | Self::Glyphs { depth, .. } => depth,
+            | Self::Glyphs { depth, .. }
+            | Self::Path { depth, .. } => depth,
         }
     }
 }
@@ -89,8 +145,15 @@ pub struct Transform {
 }
 
 impl Transform {
-    /// Fits the complete scene inside `bounds`, leaving any excess as letterbox.
+    /// Fits the complete scene inside `bounds`, leaving any excess as letterbox; a zero-sized
+    /// scene is in window pixels, so its origin is the window's and its scale is one.
     fn new(bounds: Bounds<Pixels>, width: f32, height: f32) -> Self {
+        if width == 0. {
+            return Self {
+                origin: Point::default(),
+                scale: 1.,
+            };
+        }
         let scale =
             (f32::from(bounds.size.width) / width).min(f32::from(bounds.size.height) / height);
         let used = size(px(width * scale), px(height * scale));
@@ -100,6 +163,11 @@ impl Transform {
                 (bounds.size.height - used.height) / 2.,
             );
         Self { origin, scale }
+    }
+
+    /// Whether scene units are window pixels, so paths need no extra transform.
+    fn identity(self) -> bool {
+        self.scale == 1. && self.origin == Point::default()
     }
 
     /// Converts one scene-space point to window pixels.

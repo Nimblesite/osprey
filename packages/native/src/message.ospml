@@ -38,7 +38,7 @@ type Message A =
         control : A
         input : Input
 
-(** What a scene's input binding delivers: a key going down or up, or the pointer moving or pressing in scene units ([UI-SCENE]). *)
+(** What a scene's input binding delivers: a key going down or up, or the pointer moving or pressing in scene units with Shift held or not ([UI-SCENE]). *)
 type Input =
     Key
         keyName : string
@@ -47,6 +47,7 @@ type Input =
         pointerX : float
         pointerY : float
         pointerDown : bool
+        pointerShift : bool
 
 (** A host event before it is resolved: a control's ordinal and value, a completion, a lifecycle phase or a display frame. *)
 type Incoming =
@@ -101,7 +102,7 @@ module Events
     // A scene value names a key or a pointer position; `down` says pressed or released.
     input value = match Doc::has (value, "key")
         true => Key(keyName = Doc::text (value, "key"), keyDown = Doc::flag (value, "down"))
-        false => Pointer(pointerX = Doc::decimal (value, "x"), pointerY = Doc::decimal (value, "y"), pointerDown = Doc::flag (value, "down"))
+        false => Pointer(pointerX = Doc::decimal (value, "x"), pointerY = Doc::decimal (value, "y"), pointerDown = Doc::flag (value, "down"), pointerShift = Doc::flag (value, "shift"))
 
     (** The typed message for a value delivered to `binding`; the value kind must match. *)
     export bind<A> : (Binding<A>, Json) -> Result<Message<A>, Error>
@@ -142,8 +143,8 @@ module Messages
 
 (** Takes a scene's input apart for the application's `update` ([UI-SCENE]). *)
 module Inputs
-    (** Calls `keyed` with a key's name and whether it went down, or `pointed` with the pointer's scene position and whether it is pressed. *)
-    export route<R> : (Input, (string, bool) -> R, (float, float, bool) -> R) -> R !e
+    (** Calls `keyed` with a key's name and whether it went down, or `pointed` with the pointer's scene position, whether it is pressed and whether Shift is held. *)
+    export route<R> : (Input, (string, bool) -> R, (float, float, bool, bool) -> R) -> R !e
     route (input, keyed, pointed) = match input
         Key name down => keyed (name, down)
-        Pointer x y down => pointed (x, y, down)
+        Pointer x y down shift => pointed (x, y, down, shift)

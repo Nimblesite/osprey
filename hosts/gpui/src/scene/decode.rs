@@ -4,13 +4,16 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use super::{Decoded, Shape};
+use super::{Decoded, Outline, Paint, Shape, Step, Tint};
 use crate::render;
 
 /// Decodes and stably depth-sorts every shape in one scene patch.
 pub(super) fn decode(node: &Value, revision: u64) -> Result<Decoded, String> {
-    let width = positive(node.get("width"), "width")?;
-    let height = positive(node.get("height"), "height")?;
+    let width = dimension(node.get("width"), "width")?;
+    let height = dimension(node.get("height"), "height")?;
+    if (width == 0.) != (height == 0.) {
+        return Err("a window-pixel scene has zero width and zero height".to_owned());
+    }
     let mut shapes = render::list(node, "shapes")
         .iter()
         .map(shape)
@@ -44,6 +47,7 @@ fn shape(value: &Value) -> Result<Shape, String> {
         Some(2) => strip(values),
         Some(3) => sprite(values),
         Some(4) => glyphs(values),
+        Some(5) => path(values),
         code => Err(format!("unknown shape code {code:?}")),
     }
 }
@@ -130,6 +134,102 @@ fn glyphs(v: &[Value]) -> Result<Shape, String> {
     })
 }
 
+/// Decodes a path: builder steps, outline, paint, optional transform and depth.
+fn path(v: &[Value]) -> Result<Shape, String> {
+    arity(v, 6)?;
+    let steps = array(&v[1])?
+        .iter()
+        .map(|item| step(array(item)?))
+        .collect::<Result<Vec<_>, _>>()?;
+    let transform = match array(&v[4])? {
+        [] => None,
+        moved => Some((number(moved, 0)?, number(moved, 1)?, number(moved, 2)?)),
+    };
+    Ok(Shape::Path {
+        steps: Arc::new(steps),
+        outline: outline(array(&v[2])?)?,
+        paint: paint(array(&v[3])?)?,
+        transform,
+        depth: number(v, 5)?,
+    })
+}
+
+/// Decodes one builder command; curves carry their end point first, as GPUI's builder takes them.
+fn step(v: &[Value]) -> Result<Step, String> {
+    let point = |index| Ok::<_, String>((number(v, index)?, number(v, index + 1)?));
+    match v.first().and_then(Value::as_u64) {
+        Some(0) => Ok(Step::Move(point(1)?)),
+        Some(1) => Ok(Step::Line(point(1)?)),
+        Some(2) => Ok(Step::Curve(point(1)?, point(3)?)),
+        Some(3) => Ok(Step::Cubic(point(1)?, point(3)?, point(5)?)),
+        Some(4) => Ok(Step::Arc {
+            radii: point(1)?,
+            rotation: number(v, 3)?,
+            large: integer(v, 4)? != 0,
+            sweep: integer(v, 5)? != 0,
+            to: point(6)?,
+        }),
+        Some(5) => {
+            let corners = (2..v.len())
+                .step_by(2)
+                .map(point)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Step::Polygon(corners, integer(v, 1)? != 0))
+        }
+        Some(6) => Ok(Step::Close),
+        code => Err(format!("unknown path step {code:?}")),
+    }
+}
+
+/// Decodes a fill, or a stroke with its width, join and dash pattern.
+fn outline(v: &[Value]) -> Result<Outline, String> {
+    match v.first().and_then(Value::as_u64) {
+        Some(0) => Ok(Outline::Fill),
+        Some(1) => Ok(Outline::Stroke {
+            width: number(v, 1)?,
+            bevel: integer(v, 2)? != 0,
+            dashes: (3..v.len())
+                .map(|index| number(v, index))
+                .collect::<Result<_, _>>()?,
+        }),
+        code => Err(format!("unknown path outline {code:?}")),
+    }
+}
+
+/// Decodes a solid tint or a two-stop linear gradient.
+fn paint(v: &[Value]) -> Result<Paint, String> {
+    match v.first().and_then(Value::as_u64) {
+        Some(0) => Ok(Paint::Solid(tint(v.get(1))?)),
+        Some(1) => Ok(Paint::Linear {
+            angle: number(v, 1)?,
+            from: (tint(v.get(2))?, number(v, 3)?),
+            to: (tint(v.get(4))?, number(v, 5)?),
+            oklab: integer(v, 6)? != 0,
+        }),
+        code => Err(format!("unknown path paint {code:?}")),
+    }
+}
+
+/// Decodes a float sRGB or HSL colour, kept in its own space so no conversion rounds it.
+fn tint(value: Option<&Value>) -> Result<Tint, String> {
+    let v = array(value.ok_or("a path tint is missing")?)?;
+    arity(v, 5)?;
+    let channels = [number(v, 1)?, number(v, 2)?, number(v, 3)?, number(v, 4)?];
+    match v[0].as_u64() {
+        Some(0) => Ok(Tint::Rgb(channels)),
+        Some(1) => Ok(Tint::Hsl(channels)),
+        code => Err(format!("unknown tint space {code:?}")),
+    }
+}
+
+/// Reads a nested JSON array.
+fn array(value: &Value) -> Result<&[Value], String> {
+    value
+        .as_array()
+        .map(Vec::as_slice)
+        .ok_or_else(|| "a path field is not an array".to_owned())
+}
+
 /// Checks the exact tagged-array length before indexing its fields.
 fn arity(values: &[Value], expected: usize) -> Result<(), String> {
     if values.len() == expected {
@@ -155,12 +255,12 @@ fn number(values: &[Value], index: usize) -> Result<f32, String> {
     }
 }
 
-/// Reads a positive scene dimension.
-fn positive(value: Option<&Value>, name: &str) -> Result<f32, String> {
+/// Reads a scene dimension: positive for a unit space, zero for window pixels.
+fn dimension(value: Option<&Value>, name: &str) -> Result<f32, String> {
     let value = value
         .and_then(Value::as_f64)
-        .filter(|n| n.is_finite() && *n > 0.)
-        .ok_or(format!("scene {name} must be positive"))?;
+        .filter(|n| n.is_finite() && *n >= 0.)
+        .ok_or(format!("scene {name} must be zero or positive"))?;
     Ok(value as f32)
 }
 

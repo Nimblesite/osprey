@@ -222,11 +222,15 @@ fn new_view(
 
 /// The fixed native window dimensions and title.
 fn options() -> WindowOptions {
-    WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
+    // OSPREY_GPUI_WINDOW=default opens at GPUI's default size, as a port compared with a GPUI example must.
+    let bounds = (std::env::var("OSPREY_GPUI_WINDOW").as_deref() != Ok("default")).then(|| {
+        WindowBounds::Windowed(Bounds {
             origin: Default::default(),
             size: size(px(1200.), px(800.)),
-        })),
+        })
+    });
+    WindowOptions {
+        window_bounds: bounds,
         titlebar: Some(TitlebarOptions {
             title: Some("Osprey".into()),
             ..Default::default()

@@ -108,7 +108,7 @@ fn mouse_down(
             &handle,
             &binding,
             &key,
-            event.position,
+            (event.position, event.modifiers.shift),
             true,
             false,
             window,
@@ -128,7 +128,7 @@ fn mouse_up(
             &handle,
             &binding,
             &key,
-            event.position,
+            (event.position, event.modifiers.shift),
             false,
             false,
             window,
@@ -149,7 +149,7 @@ fn mouse_move(
             &handle,
             &binding,
             &key,
-            event.position,
+            (event.position, event.modifiers.shift),
             down,
             !down,
             window,
@@ -158,13 +158,13 @@ fn mouse_move(
     }
 }
 
-/// Converts and dispatches a pointer through the scene's existing binding.
+/// Converts and dispatches a pointer, with whether Shift is held, through the scene's existing binding.
 #[allow(clippy::too_many_arguments)]
 fn pointer(
     handle: &Entity<HostView>,
     binding: &Binding,
     key: &str,
-    position: Point<Pixels>,
+    (position, shift): (Point<Pixels>, bool),
     down: bool,
     hover: bool,
     window: &mut Window,
@@ -186,7 +186,7 @@ fn pointer(
             &binding.region,
             current(view, binding),
             binding.ordinal,
-            json!({"x": x, "y": y, "down": down}),
+            json!({"x": x, "y": y, "down": down, "shift": shift}),
         );
         view.dispatch(event, window, cx);
     });

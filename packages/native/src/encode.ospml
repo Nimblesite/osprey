@@ -160,6 +160,40 @@ module Encode
         Strip points color stroke depth => listConcat [JsonInt 2, JsonInt (intDiv (length points) 2)] (listConcat (mapList (points, \point => real point)) [JsonInt color, real stroke, JsonInt depth])
         Sprite index x y w h angle color depth => [JsonInt 3, JsonInt index, real x, real y, real w, real h, real angle, JsonInt color, JsonInt depth]
         Glyphs text x y size color depth => [JsonInt 4, JsonString text, real x, real y, real size, JsonInt color, JsonInt depth]
+        Path steps outline paint moveX moveY scale depth => [JsonInt 5, JsonArray (mapList (steps, step)), JsonArray (stroke outline), JsonArray (painted paint), JsonArray (moved (moveX, moveY, scale)), JsonInt depth]
+
+    flag on = match on
+        true => JsonInt 1
+        false => JsonInt 0
+
+    reals values = mapList (values, \value => real value)
+
+    tinted tint = match tint
+        Rgb r g b a => JsonArray [JsonInt 0, real r, real g, real b, real a]
+        Hsl h s l a => JsonArray [JsonInt 1, real h, real s, real l, real a]
+
+    // Codes: 0 move, 1 line, 2 quadratic curve (end, control), 3 cubic (end, control a, control b), 4 arc, 5 polygon, 6 close.
+    step command = match command
+        MoveTo x y => JsonArray [JsonInt 0, real x, real y]
+        LineTo x y => JsonArray [JsonInt 1, real x, real y]
+        CurveTo x y cx cy => JsonArray [JsonInt 2, real x, real y, real cx, real cy]
+        CubicTo x y ax ay bx by => JsonArray [JsonInt 3, real x, real y, real ax, real ay, real bx, real by]
+        ArcTo rx ry rotation large sweep x y => JsonArray [JsonInt 4, real rx, real ry, real rotation, flag large, flag sweep, real x, real y]
+        Polygon corners closed => JsonArray (listConcat [JsonInt 5, flag closed] (reals corners))
+        Close => JsonArray [JsonInt 6]
+
+    stroke outline = match outline
+        Filled => [JsonInt 0]
+        Stroked width dashes bevel => listConcat [JsonInt 1, real width, flag bevel] (reals dashes)
+
+    painted paint = match paint
+        Solid tint => [JsonInt 0, tinted tint]
+        Linear angle from fromAt to toAt oklab => [JsonInt 1, real angle, tinted from, real fromAt, tinted to, real toAt, flag oklab]
+
+    // An identity transform is sent as an empty array so the host builds the path untransformed.
+    moved (moveX, moveY, scale) = match moveX == 0.0 && moveY == 0.0 && scale == 1.0
+        true => []
+        false => [real moveX, real moveY, real scale]
 
     scene<A> : (List<Binding<A>>, float, float, List<string>, List<Primitive>, A) -> Walked<A>
     scene (bindings, width, height, atlas, primitives, action) = bound (bindings, SceneInput(action = action), "scene", [JsonMember "width" (real width), JsonMember "height" (real height), JsonMember "atlas" (Doc::strings atlas), JsonMember "shapes" (JsonArray (mapList (primitives, \primitive => JsonArray (numbers primitive))))])

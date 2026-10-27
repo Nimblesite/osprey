@@ -20,6 +20,26 @@ module Scenes
     (** `text` with its baseline starting at `x`, `y`, `size` units tall. *)
     export glyphs (text, x, y, size, color, depth) = Glyphs(glyphs = text, x = x, y = y, size = size, color = color, depth = depth)
 
+    (** A filled or stroked path built from `steps`, painted with `paint`, with no transform. *)
+    export path (steps, outline, paint, depth) = Path(steps = steps, outline = outline, paint = paint, moveX = 0.0, moveY = 0.0, scale = 1.0, depth = depth)
+
+    (** A path translated by `moveX`, `moveY` and then scaled by `scale`, as the host's path builder applies them. *)
+    export moved (steps, outline, paint, moveX, moveY, scale, depth) = Path(steps = steps, outline = outline, paint = paint, moveX = moveX, moveY = moveY, scale = scale, depth = depth)
+
+    (** An sRGB tint from a `0xRRGGBB` integer, each channel divided by 255, at `alpha` from 0 to 1. *)
+    export hex (value, alpha) =
+        handle Arith
+            divideByZero _ dividend => dividend
+        Rgb(red = toFloat (channel (value, 65536)) / 255.0, green = toFloat (channel (value, 256)) / 255.0, blue = toFloat (channel (value, 1)) / 255.0, alpha = alpha)
+
+    channel (value, place) =
+        handle Arith
+            divideByZero _ dividend => dividend
+            overflow _ _ _ _ => 0
+            remainderByZero _ => 0
+        shifted = intDiv value place
+        satSub shifted (satMul (intDiv shifted 256) 256)
+
     (** A colour packed as `0xRRGGBBAA` from channels 0 to 255. *)
     export rgba (r, g, b, a) = satAdd (satMul (satAdd (satMul (satAdd (satMul r 256) g) 256) b) 256) a
 

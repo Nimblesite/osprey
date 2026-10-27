@@ -7,7 +7,7 @@ Flock is an arcade herding game written entirely in Osprey with `@osprey/native`
 - **Arrow keys:** move the sheepdog while held.
 - **Pointer:** hold to steer toward a position in the field.
 - **P** or **Escape:** pause or resume.
-- **Settings:** choose the flock size for the next round and toggle sound.
+- **Settings:** choose the flock size for the next round. Your best five rounds are kept between runs.
 
 ## Run
 
@@ -27,5 +27,10 @@ The tests drive the real serialized `Runtime::start` and `Runtime::dispatch` bou
 
 ## Measured
 
-| Machine | Flock | FPS |
-| --- | --- | --- |
+`run.sh --bench 20`, window focused (macOS throttles the display clock of a window behind another):
+
+| Machine | Flock | FPS | Dispatch | Paint | Envelope |
+| --- | --- | --- | --- | --- | --- |
+| Apple M-series MacBook Pro, 120 Hz display | 1,000 birds | 107 to 120 | 5.8 to 7.3 ms | 0.3 ms | 90 to 140 KB |
+
+Without the window, 2,000 birds cost 21 ms and 5,000 birds 45 ms per frame through start and dispatch, so the 5,000-bird gate in [plan 0036](../../../docs/plans/0036-gpui-desktop-host.md) is not met yet.

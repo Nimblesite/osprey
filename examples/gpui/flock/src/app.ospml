@@ -30,7 +30,7 @@ module App
         false => Runtime::step store
 
     controlled (store, action, input) = match action
-        Play => Inputs::route (input, \(name, down) => Simulation::key (store, name, down), \(x, y, down) => Simulation::pointer (store, x, y, down))
+        Play => Inputs::route (input, \(name, down) => Simulation::key (store, name, down), \(x, y, down, _) => Simulation::pointer (store, x, y, down))
         _ => Runtime::step store
 
     (** Routes every framework message without matching cross-namespace constructors. *)
