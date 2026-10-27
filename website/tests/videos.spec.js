@@ -144,10 +144,13 @@ for (const width of [390, 1440]) {
 }
 
 for (const width of [390, 1440]) {
-  test(`homepage showcase film plays beside the deployment targets at ${width}px`, async ({ page }) => {
+  test(`homepage showcase film plays directly under the hero at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
-    const player = page.locator("#targets #showcase-video");
+    await expect(page.locator(".home > section").nth(1)).toHaveId("showcase");
+    await page.locator(".hero").getByRole("link", { name: "Watch the showcase" }).click();
+    const player = page.locator("#showcase #showcase-video");
+    await expect(player).toBeInViewport();
     await player.scrollIntoViewIfNeeded();
     await expect(player).toBeVisible();
     await expect(player).toHaveAttribute("poster", "/assets/videos/osprey-showcase-poster.jpg");

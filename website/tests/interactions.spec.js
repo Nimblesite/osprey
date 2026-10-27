@@ -175,7 +175,7 @@ test.describe("homepage flight and source examples", () => {
     await expect(page.locator("#example-default")).toContainText("handler Drafts");
     await expect(page.locator("#motion-toggle")).toBeHidden();
     await openInstallation(page);
-    await page.locator("#install").getByRole("link", { name: "Installation guide" }).click();
+    await page.locator("#install").getByRole("link", { name: "Getting started guide" }).click();
     await expect(page).toHaveURL(/\/docs\/installation\/$/);
     await context.close();
   });
@@ -261,20 +261,32 @@ test.describe("desktop interactions", () => {
     expect(heroH).toBeGreaterThanOrEqual(winH - 70);
     // The next section must start below the fold.
     const nextTop = await page.evaluate(
-      () => document.querySelector(".blue-box-installation").getBoundingClientRect().top
+      () => document.querySelector("#showcase").getBoundingClientRect().top
     );
     expect(nextTop).toBeGreaterThanOrEqual(winH - 5);
   });
 
   test("hero has a title and two working CTAs", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator(".hero-title")).toContainText("Osprey");
+    await expect(page.locator(".hero-title")).toContainText("Safe, elegant, fast.");
+    await expect(page.locator(".hero-title")).not.toContainText("Logic");
     await expect(page.locator(".hero-actions .btn")).toHaveCount(2);
-    await expect(page.locator(".home > section").nth(1)).toHaveClass(/home-install/);
+    await expect(page.locator(".home > section").nth(1)).toHaveId("showcase");
+    await expect(page.locator(".home > section").nth(2)).toHaveClass(/home-install/);
     await openInstallation(page);
     await page.goto("/");
     await page.locator(".hero-actions .btn", { hasText: "Try Osprey Online" }).click();
     await expect(page).toHaveURL(/\/playground\/$/);
+  });
+
+  test("install is a compact strip that leads to the getting started guide", async ({ page }) => {
+    await page.goto("/");
+    const install = page.locator("#install");
+    await expect(install.locator("code")).toContainText("brew install nimblesite/tap/osprey");
+    await expect(install.locator(".install-grid")).toHaveCount(0);
+    expect((await install.boundingBox()).height).toBeLessThan(260);
+    await install.getByRole("link", { name: "Getting started guide" }).click();
+    await expect(page).toHaveURL(/\/docs\/installation\/$/);
   });
 
   test("wasm demo seeds a browser SQLite db and runs queries", async ({ page }) => {
