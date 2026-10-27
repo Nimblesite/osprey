@@ -125,6 +125,7 @@ html:has(.home) { scroll-behavior: auto; }
 .overview-film video { display: block; width: 100%; height: auto; border: 1px solid var(--outline-variant); border-radius: var(--radius-lg); background: var(--surface-lowest); }
 .overview-film figcaption { margin-top: var(--space-3); color: var(--on-surface-variant); font-size: 0.78rem; }
 .overview-film figcaption a { white-space: nowrap; }
+.showcase-film { margin-top: var(--space-10); }
 .home .hero-title em { display: inline-block; }
 .home .hero-code [class*="language-"], .home .flight-code .language-python { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: no-preference) {
