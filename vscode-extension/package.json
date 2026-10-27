@@ -1,7 +1,7 @@
 {
   "name": "osprey",
   "displayName": "Osprey",
-  "description": "Syntax highlighting and language server for Osprey programming language",
+  "description": "Osprey: a safe, elegant, fast functional language with algebraic effects, inferred types and three syntax flavors. Language server, debugger, tests, profiler and bug hunting.",
   "version": "0.0.0-dev",
   "publisher": "nimblesite",
   "preview": true,
@@ -30,7 +30,12 @@
     "osprey",
     "functional",
     "programming",
-    "language"
+    "language",
+    "algebraic effects",
+    "effect handlers",
+    "type inference",
+    "llvm",
+    "webassembly"
   ],
   "main": "./out/client/src/extension.js",
   "activationEvents": [
