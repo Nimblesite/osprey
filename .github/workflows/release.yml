@@ -500,7 +500,7 @@ jobs:
       # without it the VSIX carries an LFS pointer the Marketplace rejects.
       - name: Fetch the logo the extension icon is copied from
         shell: bash
-        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif"
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/language-tour.gif"
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - uses: actions/download-artifact@v4
