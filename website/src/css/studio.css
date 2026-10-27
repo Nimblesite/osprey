@@ -1,0 +1,345 @@
+/* ============================ WebAssembly SQL demo ======================= */
+.wasm-hero {
+  padding-block: clamp(3rem, 8vw, 5rem);
+}
+.wasm-copy h1,
+.wasm-hero h1 {
+  font-size: var(--fs-display);
+  max-width: 18ch;
+  margin-bottom: var(--space-5);
+}
+.wasm-lede {
+  max-width: 62ch;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-body-lg);
+  margin-bottom: var(--space-6);
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary-container);
+  margin: 0 0 var(--space-2);
+}
+
+/* ---- WASM demo: JUST the 3 tabs, locked to the viewport. The PAGE never
+   scrolls; the footer is hidden and only the active panel scrolls inside. ---- */
+main:has(.wasm-studio) { height: calc(100dvh - var(--header-height)); overflow: hidden; }
+body:has(.wasm-studio) .site-footer { display: none; }
+.wasm-studio {
+  height: 100%;
+  padding-block: var(--space-4);
+  overflow: hidden;
+}
+.wasm-studio .container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+/* Slim live-status line (JS writes here). One line, no hero. */
+.banner-slim {
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.85rem;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+.wasm-tabbar {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.wasm-tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4) var(--space-5);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--on-surface-variant);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.wasm-tab:hover { background: var(--surface-low); color: var(--on-surface); }
+.wasm-tab.is-active {
+  background: var(--surface-low);
+  border-color: var(--outline-variant);
+  color: var(--on-surface);
+}
+.wasm-tab-k { font-size: var(--fs-h3); font-weight: 700; }
+.wasm-tab-sub {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--primary-container);
+}
+.wasm-panels { flex: 1; display: flex; min-height: 0; }
+.wasm-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  overflow: hidden;
+}
+.wasm-panel.is-active { display: flex; }
+/* Query panel: presets + editor + buttons fixed; the RESULT table takes the
+   rest and scrolls internally so the page never grows. */
+#panel-query .console { flex: 1; min-height: 0; grid-template-rows: auto auto auto 1fr; }
+#panel-query .editor-wrap { max-height: 40%; }
+#panel-query .editor-wrap .editor-hl,
+#panel-query .console textarea { height: 100%; min-height: 6rem; }
+#panel-query .tablewrap { min-height: 0; overflow: auto; }
+/* Source panel: the code window fills and scrolls internally. */
+#panel-source .wasm-code-window { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#panel-source .wasm-code-window pre { flex: 1; max-height: none; overflow: auto; min-height: 0; }
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+.section-head h2 { margin: 0; }
+.section-head .hint {
+  max-width: 38rem;
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: 0.9rem;
+}
+.banner {
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-low);
+  color: var(--on-surface-variant);
+}
+.banner.warn {
+  border-color: rgba(255, 190, 101, 0.35);
+  background: rgba(255, 190, 101, 0.06);
+  color: var(--tertiary);
+}
+.banner.ok {
+  border-color: rgba(80, 250, 123, 0.3);
+  background: rgba(80, 250, 123, 0.06);
+}
+
+/* ── add-data form ── */
+.add-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+.add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+.add-form input,
+.add-form select {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  color: var(--on-surface);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  min-width: 8rem;
+}
+.add-form input:focus,
+.add-form select:focus {
+  outline: none;
+  border-color: var(--primary-container);
+}
+.add-status {
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  min-height: 1.2em;
+  color: var(--on-surface-variant);
+}
+.add-status.ok { color: #50fa7b; }
+.add-status.err { color: var(--error); }
+
+/* ── SQL console with a live highlight layer under the textarea ── */
+.console {
+  display: grid;
+  gap: var(--space-4);
+}
+.editor-wrap {
+  position: relative;
+}
+.editor-wrap .editor-hl,
+.console textarea {
+  margin: 0;
+  width: 100%;
+  min-height: 9rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.6;
+  padding: var(--space-4);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+.editor-wrap .editor-hl {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-lowest);
+  pointer-events: none;
+  box-shadow: none;
+}
+.console textarea {
+  position: relative;
+  resize: vertical;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--on-surface);
+}
+.console textarea:focus {
+  outline: none;
+  border-color: var(--primary-container);
+  box-shadow: 0 0 0 3px rgba(119, 215, 244, 0.12);
+}
+.console-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.console-bar .spacer { flex: 1; }
+.preset {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--primary-container);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-pill);
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+.preset:hover { border-color: var(--primary-container); }
+.console-status {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--on-surface-variant);
+}
+.console-status.ok { color: #50fa7b; }
+.console-status.err { color: var(--error); }
+
+/* ── result table ── */
+.tablewrap {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+}
+table.data {
+  width: 100%;
+  min-width: 22rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+table.data th,
+table.data td {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--outline-variant);
+  white-space: nowrap;
+}
+table.data thead th {
+  background: var(--surface-high);
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+table.data tbody td {
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+table.data tbody td:first-child {
+  color: var(--on-surface);
+  font-weight: 600;
+}
+table.data tr:last-child td { border-bottom: 0; }
+table.data td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+/* ── Osprey source window ── */
+.wasm-code-window {
+  min-width: 0;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+.wasm-code-window .chrome {
+  height: 38px;
+  background: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+.wasm-code-window .chrome span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+.wasm-code-window .chrome span:nth-child(1) { background: #ff5f57; }
+.wasm-code-window .chrome span:nth-child(2) { background: #febc2e; }
+.wasm-code-window .chrome span:nth-child(3) { background: #28c840; }
+.wasm-code-window .chrome b {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--on-surface-variant);
+  font-weight: 500;
+}
+.wasm-code-window pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  max-width: 100%;
+  max-height: 34rem;
+}
+.muted {
+  color: var(--on-surface-variant);
+  padding: var(--space-4);
+  margin: 0;
+}
+.spin {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

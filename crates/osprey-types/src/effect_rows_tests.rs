@@ -46,6 +46,20 @@ pub(crate) fn assert_rejected_with(source: &str, expected: &[&str]) {
     }
 }
 
+/// `source`, parsed under `flavor`, is rejected for performing `print`
+/// outside its declared row.
+fn assert_print_outside_its_row(source: &str, flavor: Flavor) {
+    let parsed = parse_program_with_flavor(source, flavor);
+    assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+    let errors = check_program(&parsed.program);
+    assert!(
+        errors.iter().any(|error| {
+            error.message.contains("outside its declared row") && error.message.contains("print")
+        }),
+        "{flavor:?}: {errors:?}"
+    );
+}
+
 #[test]
 fn duplicate_handler_arms_are_rejected_in_both_flavors() {
     for (source, flavor) in [
@@ -135,16 +149,7 @@ fn explicit_empty_rows_cannot_hide_runtime_builtin_work() {
             Flavor::Ml,
         ),
     ] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(
-            errors.iter().any(|error| {
-                error.message.contains("outside its declared row")
-                    && error.message.contains("print")
-            }),
-            "{flavor:?}: {errors:?}"
-        );
+        assert_print_outside_its_row(source, flavor);
     }
 }
 
@@ -160,17 +165,7 @@ fn explicit_empty_rows_reject_unproven_callback_effects() {
             Flavor::Ml,
         ),
     ] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(
-            errors.iter().any(|error| {
-                error
-                    .message
-                    .contains("unproven effects outside its declared row")
-            }),
-            "{flavor:?}: {errors:?}"
-        );
+        rejects_with(flavor, source, "unproven effects outside its declared row");
     }
 }
 
@@ -218,20 +213,9 @@ fn open_tail_does_not_hide_a_direct_operation_outside_its_fixed_labels() {
             Flavor::Ml,
         ),
     ] {
-        let parsed = parse_program_with_flavor(accepted, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+        accepts(flavor, accepted);
 
-        let parsed = parse_program_with_flavor(rejected, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(
-            errors.iter().any(|error| {
-                error.message.contains("outside its declared row: Log.write")
-            }),
-            "{flavor:?}: {errors:?}"
-        );
+        rejects_with(flavor, rejected, "outside its declared row: Log.write");
     }
 }
 
@@ -244,16 +228,7 @@ fn open_tail_cannot_hide_a_direct_host_operation() {
             Flavor::Ml,
         ),
     ] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(
-            errors.iter().any(|error| {
-                error.message.contains("outside its declared row")
-                    && error.message.contains("print")
-            }),
-            "{flavor:?}: {errors:?}"
-        );
+        assert_print_outside_its_row(source, flavor);
     }
 }
 
@@ -269,15 +244,7 @@ fn a_closed_caller_cannot_erase_an_open_callback_requirement() {
             Flavor::Ml,
         ),
     ] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(
-            errors.iter().any(|error| {
-                error.message.contains("function `closed` calls a function with unproven effects")
-            }),
-            "{flavor:?}: {errors:?}"
-        );
+        rejects_with(flavor, source, "function `closed` calls a function with unproven effects");
     }
 }
 
@@ -293,10 +260,7 @@ fn nominal_record_row_entries_match_inferred_record_requests() {
             Flavor::Ml,
         ),
     ] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+        accepts(flavor, source);
     }
 }
 
@@ -505,12 +469,12 @@ fn a_curried_declared_row_bounds_the_full_application() {
 /// must still be reported when it hides inside a returned closure, where the
 /// stored summary is what the next iteration reads back.
 ///
-/// The unresolvable callee is an element that crossed into a SEPARATE eager
-/// callback slot, as in `an_element_mapped_into_one_callback_and_invoked_in_
-/// another_fails_closed` — not a top-level `let` alias, which this pass now
-/// resolves through the file-scope environment seeded under every function
-/// body ([`Analyzer::scoped_env`]). That alias is reported by its own truthful
-/// diagnostic, `unhandled effect operations at program entry`, instead.
+/// The callee is an element that crossed into a SEPARATE eager callback slot,
+/// as in `an_element_mapped_into_one_callback_and_invoked_in_another_fails_
+/// closed` — the slot now hands the callback the element, so the invocation
+/// resolves to the stored `ring` and is reported by its own truthful
+/// diagnostic, `unhandled effect operations at program entry`, instead of
+/// failing closed on the analyser's inability to see the binding.
 #[test]
 fn an_unresolvable_call_inside_a_returned_closure_is_still_rejected() {
     assert_rejected_with(
@@ -519,7 +483,7 @@ fn an_unresolvable_call_inside_a_returned_closure_is_still_rejected() {
          let armed = map(range(0, 3), |n| => ring)\n\
          fn make() = fn() => forEach(armed, |armedRing| => armedRing())\n\
          let answer = make()()\n",
-        &["effect provenance cannot be proven"],
+        &["unhandled effect operations at program entry: Alarm.ring"],
     );
 }
 

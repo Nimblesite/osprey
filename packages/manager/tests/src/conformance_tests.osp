@@ -1,0 +1,49 @@
+namespace registry_tests;
+import registry::Conformance
+import registry::Capabilities
+import registry_host::Host
+import registry_host::Native
+
+/// The language gate over the checked-in tree. Directory listing is a blocked
+/// capability (`files.directory`), so the live walk goes through the native
+/// `Process` handler; the classification itself is tested without it.
+module ConformanceTests {
+    let roots = "packages/manager schemas"
+
+    fn classification() = checkAll("only Osprey source and declarative inputs pass", [
+        length(Conformance::violations(["packages/manager/core/src/names.osp", "packages/manager/x.ospml", "schemas/package-registry.td"])) == 0,
+        length(Conformance::violations(["packages/manager/core/osprey.toml", "packages/manager/tests/fixtures/manifest.json", "packages/manager/README.md", "packages/manager/sample-registry/@demo/pyadd/1.1/uv.lock"])) == 0,
+        length(Conformance::violations(["packages/manager/supabase/migrations/schema.yaml", "packages/manager/ops/terraform/api.tf", "packages/manager/ops/terraform/.terraform.lock.hcl"])) == 0,
+        join(Conformance::violations(["packages/manager/host/shim.c", "packages/manager/cli/launch.sh", "packages/manager/web/app.js", "packages/manager/ops/migrate.py", "packages/manager/core/src/lib.rs", "packages/manager/web/index.html"]), ",") == "packages/manager/host/shim.c,packages/manager/cli/launch.sh,packages/manager/web/app.js,packages/manager/ops/migrate.py,packages/manager/core/src/lib.rs,packages/manager/web/index.html",
+        join(Conformance::violations(["packages/manager/tests/golden.ospx", "packages/manager/Makefile", "packages/manager/core/src/notes"]), ",") == "packages/manager/tests/golden.ospx,packages/manager/Makefile,packages/manager/core/src/notes"
+    ])
+
+    /// Delivered word primitives must not be reported as missing. Implements [PACKAGE-CONFORMANCE].
+    fn bitwiseInventory() = checkAll("word builtins agree with the doctor inventory", [
+        bitAnd(12, 10) == 8,
+        bitXor(12, 10) == 6,
+        shiftRightLogical(-16, 2) == 4611686018427387900,
+        !contains(join(mapList(Capabilities::blocked(), fn(cap) => cap.id), ","), "int.bitwise")
+    ])
+
+    fn listed() = {
+        let run = perform Host::Process.run("find ${roots} -type f -not -path '*/.osprey/*' | sort")
+        if run.status == 0 { filterList(lines(run.stdout), fn(line) => line != "") } else { [] }
+    }
+
+    fn checkedInTree() = {
+        let files = listed()
+        let violations = Conformance::violations(files)
+        checkAll("the checked-in package system contains no non-Osprey executable source", [
+            length(files) > 10,
+            length(violations) == 0,
+            join(violations, ",") == ""
+        ])
+    }
+
+    export fn run() = {
+        test("conformance: available word builtins are not blocked", bitwiseInventory)
+        test("conformance: classification", classification)
+        test("conformance: checked-in tree", fn() => Native::process()(checkedInTree))
+    }
+}

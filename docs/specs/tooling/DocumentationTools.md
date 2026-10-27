@@ -33,9 +33,8 @@ significant. A failure names the source, declaration, and example ordinal;
 the command exits unsuccessfully if any example fails or any examples section
 holds an orphaned `output` fence.
 
-Native examples support `--memory=default|gc|arc`; ARC execution additionally
-requires exactly one zero-live-object exit sentinel. `wasm32` uses the default
-allocator and `OSPREY_WASM_RUN` (default `wasmtime`) as its executable host.
+Native examples default to `gc` and support `--memory=gc|arc|none`; ARC execution additionally
+requires exactly one zero-live-object exit sentinel. `wasm32` requires explicit `--memory=none` and uses the unmanaged allocator and `OSPREY_WASM_RUN` (default `wasmtime`) as its executable host.
 Each runnable example has a 30-second execution limit, configurable through a
 positive `OSPREY_DOCTEST_TIMEOUT_MS`. Compilation is outside this execution limit.
 
@@ -203,33 +202,20 @@ values fail with a usage error instead of silently generating a different result
 
 ## Implementation and verification
 
-Plan 0018 was completed and retired after local acceptance on 2026-09-10.
-The implementation is shared by the compiler, editor, CLI exporter and doctest
-runner. [The usage guide](../../../website/src/docs/documentation.md) includes
-Default and ML examples that are extracted from the rendered page and executed
-by the browser acceptance suite.
+The implementation is shared by the compiler, editor, CLI exporter and doctest runner. [The usage guide](../../../website/src/docs/documentation.md) includes Default and ML examples extracted from the rendered page and executed by the browser suite.
 
-The final `make ci` passed formatting, strict lint, duplication checks, all
-workspace tests and coverage thresholds, native runtime checks, 316 editor
-tests, 17 bank browser tests, 78 HTML browser assertions and 32 mobile domain
-cases. CLI line coverage was 95.3%, above the unchanged 95% requirement.
+From the repository root:
 
-- The 104 CLI integration tests include 30 API export contracts, 18 doctest
-  execution contracts and two corpus-gate contracts. All 24 module fixtures
-  are exported through the public CLI in their source flavor.
-- The complete website suite passed 118 browser tests. Generated sites are
-  exercised over both `file://` and HTTP under a URL prefix; all three themes,
-  CSS ordering, keyboard/mobile behavior, link targets and inert Markdown
-  are asserted. The standalone gate is `make docs-html-test`.
-- The native corpus passed 213 assertion suites and byte-exact goldens under
-  each of the default, GC and ARC allocators; ARC reported no leaked objects.
-  Each pass also verified 18 alternative GPU-lowering runs and six doctests.
-- The WASM corpus passed all 147 portable goldens, 18 GPU-lowering checks and
-  six doctests, with the existing named capability exclusions unchanged.
+```sh
+cargo test -p osprey-cli --test cli_e2e api_docs
+cargo test -p osprey-cli --test cli_e2e doctests
+make docs-html-test
+```
 
-Regression coverage lives in the CLI's `tests/cases/api_docs*.rs` and
-`tests/cases/doctests*.rs`, `src/docs/html/tests*`,
-[`website/tests/api-docs.spec.js`](../../../website/tests/api-docs.spec.js), and
-[`scripts/verify-docs-html.mjs`](../../../scripts/verify-docs-html.mjs).
+The CLI tests check source validation, public API visibility, inferred signatures, authored pages and doctest execution. Renderer unit tests live under `crates/osprey-cli/src/docs/html/tests*`. The corpus harness separately runs doctests under native memory backends and WebAssembly, rejecting output drift, malformed summaries and ARC leaks.
 
-The 2026-09-11 template redesign passed a fresh complete `make ci`, 125 website browser tests (including 18 API documentation tests), and 81 standalone HTML browser assertions. CLI coverage increased to 95.4%; thresholds and corpus floors were unchanged. The templates are checked at 1440, 390 and 320 pixels, with assertions for distinct typography and geometry, public member counts, active navigation, code-text preservation, working outlines and no-JavaScript access. Regression tests also prevent fenced examples and member tables from supplying page titles or summaries. `node scripts/preview-docs.mjs` generates all three complete sites and a comparison gallery with desktop and phone screenshots.
+`make docs-html-test` builds the compiler and runs [the standalone Chromium checks](../../../scripts/verify-docs-html.mjs). They cover generated sites opened over `file://`, all three themes, custom CSS ordering, search, links, mobile/keyboard navigation and inert Markdown.
+
+For the [website's generated-documentation tests](../../../website/tests/api-docs.spec.js), run `cd website && npm test -- tests/api-docs.spec.js`. They additionally exercise HTTP hosting under a URL prefix, executable guide examples, responsive layouts and navigation without JavaScript.
+
+`node scripts/preview-docs.mjs` generates all three themed sites and a comparison gallery with desktop and phone screenshots. Passing documentation tests does not establish that unrelated compiler, editor or application checks pass; use the current CI results for that status.

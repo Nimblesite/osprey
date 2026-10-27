@@ -1,8 +1,8 @@
 //! Expression calls lowering.
+use super::arguments::call_builtin_with_values;
 use super::{
-    apply_bound_lambda, apply_lambda, arg_exprs, as_double, as_i64, binary_integer_builtin,
-    eval_arg, first_arg, gen_expr, gen_print, gen_user_call, is_binary_integer_builtin,
-    to_string_value, two_int_args, Codegen, CodegenError, Expr, FnSig, NamedArgument, Position,
+    apply_bound_lambda, apply_lambda, arg_exprs, eval_arg, gen_expr, gen_user_call, has_value_form,
+    is_binary_integer_builtin, Codegen, CodegenError, Expr, FnSig, LType, NamedArgument, Position,
     Result, Value,
 };
 
@@ -46,22 +46,45 @@ pub(crate) fn unapplied(mut expression: &Expr) -> &Expr {
 
 pub(crate) fn with_application<R>(
     cg: &mut Codegen,
+    function: &Expr,
     position: Option<Position>,
     generate: impl FnOnce(&mut Codegen) -> R,
 ) -> R {
-    let Some(bindings) = position
-        .and_then(|p| cg.prog.applications.get(&(p.line, p.column)))
-        .cloned()
-    else {
+    let Some(specialized) = application_types(cg, function, position) else {
         return generate(cg);
     };
-    let specialized = cg.prog.specialized(&bindings);
     let original = std::mem::replace(&mut cg.prog, specialized);
-    let previous = cg.application_caller.replace(original.clone());
+    let previous = cg.application_caller.replace(original);
     let result = generate(cg);
-    cg.prog = original;
-    cg.application_caller = previous;
+    if let Some(original) = std::mem::replace(&mut cg.application_caller, previous) {
+        cg.prog = original;
+    }
     result
+}
+
+fn application_types(
+    cg: &Codegen,
+    function: &Expr,
+    position: Option<Position>,
+) -> Option<osprey_types::ProgramTypes> {
+    position
+        .and_then(|position| cg.prog.applications.get(&(position.line, position.column)))
+        .map(|bindings| {
+            cg.prog
+                .specialized(bindings, application_scope(cg, function))
+        })
+}
+
+/// A call specializes its own body; expanded bindings may also mention other
+/// generic functions that must remain free for their later instantiations.
+fn application_scope<'a>(cg: &'a Codegen, function: &'a Expr) -> Option<&'a str> {
+    match unapplied(function) {
+        Expr::Identifier(name) => {
+            let name = cg.call_aliases.get(name).unwrap_or(name);
+            cg.fn_defs.contains_key(name).then_some(name.as_str())
+        }
+        _ => None,
+    }
 }
 
 /// Deferred generic dotted calls select against the instantiated receiver.
@@ -126,7 +149,9 @@ pub(super) fn gen_call(
         function, position, ..
     } = function
     {
-        return with_application(cg, *position, |cg| gen_call(cg, function, arguments, named));
+        return with_application(cg, function, *position, |cg| {
+            gen_call(cg, function, arguments, named)
+        });
     }
     // A directly-applied lambda (`x |> fn(y) => …`, `(fn(y) => …)(x)`) is
     // beta-reduced inline.
@@ -192,44 +217,10 @@ pub(super) fn gen_call(
         return apply_bound_lambda(cg, name, &params, &body, position, &slots);
     }
     match name {
-        "print" => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid("print needs one argument"))?;
-            let v = gen_expr(cg, arg)?;
-            gen_print(cg, v)
-        }
-        "toString" => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid("toString needs one argument"))?;
-            let v = gen_expr(cg, arg)?;
-            to_string_value(cg, v)
-        }
-        "abs" => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid("abs needs one argument"))?;
-            let value = gen_expr(cg, arg)?;
-            crate::arithmetic::absolute(cg, value)
-        }
-        // [BUILTIN-TOFLOAT] [GPU-CONVERT] Widening int → float: one `sitofp`,
-        // round-to-nearest-even, exact for |n| <= 2^53. Total, so no Result.
-        "toFloat" => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid("toFloat needs one argument"))?;
-            let v = gen_expr(cg, arg)?;
-            let n = as_i64(cg, v)?;
-            as_double(cg, n)
-        }
-        // [BUILTIN-MATH] sqrt/exp/log/tanh: one float call, total.
-        name if crate::arithmetic::is_float_function(name) => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid(format!("{name} needs one argument")))?;
-            let v = gen_expr(cg, arg)?;
-            crate::arithmetic::float_function(cg, name, v)
-        }
-        name if is_binary_integer_builtin(name) => {
-            let (left, right) = two_int_args(cg, name, arguments, named)?;
-            binary_integer_builtin(cg, name, left, right)
-        }
+        // Every intrinsic with a value form — print, toString, the float and
+        // integer builtins — lowers through the one table the iterator
+        // callbacks use, so a direct call and `gpuMap(toFloat)` agree.
+        name if has_value_form(name) => gen_value_form_builtin(cg, name, arguments, named),
         // Runtime builtins take precedence over a same-named user function: the
         // names below are reserved. Each dispatcher returns `None` when the name
         // is not its builtin, so the chain falls through to a user call.
@@ -247,6 +238,29 @@ pub(super) fn gen_call(
             gen_user_call(cg, name, arguments, named)
         }
     }
+}
+
+/// A value-form builtin called with argument expressions: the operands are
+/// evaluated in call order, an integer builtin's operands are coerced to `i64`
+/// [BUILTIN-BITWISE], and the shared value form does the lowering.
+fn gen_value_form_builtin(
+    cg: &mut Codegen,
+    name: &str,
+    arguments: &[Expr],
+    named: &[NamedArgument],
+) -> Result<Value> {
+    let integer = crate::arithmetic::is_word_builtin(name) || is_binary_integer_builtin(name);
+    let mut values = Vec::new();
+    for argument in arg_exprs(arguments, named) {
+        let value = gen_expr(cg, argument)?;
+        values.push(if integer {
+            crate::cast::coerce_to(cg, value, LType::I64)?
+        } else {
+            value
+        });
+    }
+    call_builtin_with_values(cg, name, &values)
+        .unwrap_or_else(|| Err(CodegenError::invalid(format!("{name} has no value form"))))
 }
 
 /// Normalize a value call before an inlining alias exposes a declaration's

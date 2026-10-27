@@ -33,6 +33,7 @@ env:
   PRODUCT_REPO: Nimblesite/osprey
   HOMEPAGE: https://ospreylang.dev
   DESCRIPTION: "Osprey — a functional language with algebraic effects, fibers, and compile-time safety"
+  WASI_SDK_VERSION: "24"
 
 jobs:
   audit:
@@ -133,6 +134,10 @@ jobs:
         with:
           version: ${{ needs.version.outputs.version }}
 
+      - name: Build Apple app runtime archives
+        if: runner.os == 'macOS'
+        run: make _runtime_ios _runtime_ios_sim _runtime_macos
+
       # ---- Windows: MSYS2 (MinGW C runtime) + cargo -------------------------
       - name: Install Rust (Windows)
         if: runner.os == 'Windows'
@@ -146,9 +151,11 @@ jobs:
           install: >-
             make
             mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-clang
             mingw-w64-ucrt-x86_64-llvm
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-sqlite3
       # The language server mounts lspkit's profiler, whose build script
       # generates its wire model with typeDiagram [PROF-LSP-HOST]. The
       # Linux/macOS leg gets it from setup-osprey-compiler.
@@ -164,6 +171,58 @@ jobs:
           set -euo pipefail
           make _runtime CC=gcc AR=ar SHELL=/usr/bin/bash MKDIR='mkdir -p'
           cargo build --release -p osprey-cli
+
+      - name: Compile package manager client (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        # --no-warnings skips the warning pass (see scripts/make/extension.mk).
+        run: target/release/osprey build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg
+      # The local package registry [PACKAGE-LOCAL-REGISTRY]: the folder-registry
+      # server and this repository's packages published into a folder registry.
+      # Not on Windows yet: the server's tree walk shells out to POSIX `find`.
+      - name: Build local package registry (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          target/release/osprey build packages/manager/api --quiet --no-warnings -o target/osprey-registry
+          scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
+      # osprey.exe is a native Windows process, so it resolves clang on the
+      # Windows PATH, where the runner's MSVC-target clang shadows the MSYS2 one
+      # and `link.exe` cannot find ssl.lib. Pin the UCRT64 clang, as ci-windows.yml does.
+      - name: Pin the MinGW clang (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          CC_PATH="$(cygpath -m /ucrt64/bin/clang.exe)"
+          "$CC_PATH" --version | head -1
+          echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"
+      - name: Compile package manager client (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: target/release/osprey.exe build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
+
+      - name: Build portable package workspace
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y lld wabt
+          curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
+          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
+          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
+          export OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot
+          make target/package-workspace.wasm
+          wasm-validate target/package-workspace.wasm
+      - name: Upload portable package workspace
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-workspace-wasm
+          path: target/package-workspace.wasm
+          if-no-files-found: error
 
       # ---- Verify version contract [SWR-VERSION-CLI-OUTPUT] ------------------
       - name: Verify version
@@ -184,6 +243,11 @@ jobs:
           staging="osprey-$v-$plat"
           mkdir -p "dist/$staging"
           cp "target/release/osprey${exe}" "dist/$staging/"
+          cp "target/osprey-pkg${exe}" "dist/$staging/"
+          if [ -z "$exe" ]; then
+            cp target/osprey-registry "dist/$staging/"
+            cp -R target/local-registry "dist/$staging/registry"
+          fi
           # The runtime archives used to be copied with `|| true`, so a build
           # that produced none still packaged, published and reached Homebrew —
           # a compiler that can link nothing, shipped green. Find the directory
@@ -203,6 +267,17 @@ jobs:
               exit 1
             }
           done
+          if [[ "$plat" == darwin-* ]]; then
+            for target in ios ios_sim macos; do
+              for mode in "" _arc; do
+                archive="libosprey_runtime_${target}${mode}.a"
+                [ -s "dist/$staging/$archive" ] || {
+                  echo "::error::$archive missing from $staging"
+                  exit 1
+                }
+              done
+            done
+          fi
           tar -czf "dist/$staging.tar.gz" -C dist "$staging"
           # macOS ships shasum (Perl) but not sha256sum; Windows Git Bash ships
           # sha256sum but not shasum; Linux has both. Identical output format
@@ -439,13 +514,17 @@ jobs:
       # without it the VSIX carries an LFS pointer the Marketplace rejects.
       - name: Fetch the logo the extension icon is copied from
         shell: bash
-        run: git lfs install --local && git lfs pull --include=website/src/assets/images/logo.png
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif"
       - uses: actions/setup-node@v7
         with: { node-version: '20' }
       - uses: actions/download-artifact@v8
         with:
           name: osprey-${{ matrix.artifact }}
           path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: package-workspace-wasm
+          path: dist/package-workspace
       - name: Stage bundled compiler + manifest
         shell: bash
         env:
@@ -456,6 +535,7 @@ jobs:
           dest="vscode-extension/bin/${{ matrix.target }}"
           mkdir -p "$dest"
           cp -r "dist/osprey-${VERSION}-${{ matrix.target }}/." "$dest/"
+          cp dist/package-workspace/package-workspace.wasm "$dest/"
           # Stamp + bundle shipwright.json so the extension can version-check the
           # bundled binary at activation. [EDITOR-VERSIONING]
           node -e '
@@ -482,7 +562,9 @@ jobs:
           npm run compile
       - name: Package VSIX
         working-directory: vscode-extension
-        run: npx vsce package --target ${{ matrix.target }}
+        run: |
+          npx vsce package --target ${{ matrix.target }}
+          node scripts/verify-readme.mjs osprey-${{ matrix.target }}-${{ needs.version.outputs.version }}.vsix
       - name: Verify bundled binary is inside the VSIX
         shell: bash
         working-directory: vscode-extension
@@ -490,6 +572,12 @@ jobs:
           set -euo pipefail
           exe=""; [ "${{ runner.os }}" = "Windows" ] && exe=".exe"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey${exe}"
+          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-pkg${exe}"
+          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/package-workspace.wasm"
+          if [ -z "$exe" ]; then
+            unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-registry"
+            unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/registry/@osprey/"
+          fi
       # Packaging is per-platform (each VSIX bundles the matching native binary);
       # publishing is centralised in the publish-marketplace / publish-openvsx
       # jobs so the registry tokens live in one least-privilege place.

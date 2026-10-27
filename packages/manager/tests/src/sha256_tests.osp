@@ -1,0 +1,36 @@
+namespace registry_tests;
+import registry::Sha256
+import registry::Bytes
+
+/// SHA-256 vectors from FIPS 180-4 plus padding-boundary and raw-digest checks.
+module Sha256Tests {
+    fn ints(xs) = join(mapList(xs, fn(b) => "${b}"), ",")
+    fn repeated(n) = repeat("a", n) ?: ""
+
+    fn vectors() = checkAll("FIPS 180-4 SHA-256 vectors", [
+        Sha256::hex([]) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        Sha256::ofString("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        Sha256::ofString("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+        Sha256::ofString("abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu") == "cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1"
+    ])
+
+    fn paddingBoundaries() = checkAll("padding boundaries at 55..65 bytes", [
+        Sha256::ofString(repeated(55)) == "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318",
+        Sha256::ofString(repeated(56)) == "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a",
+        Sha256::ofString(repeated(63)) == "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34",
+        Sha256::ofString(repeated(64)) == "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb",
+        Sha256::ofString(repeated(65)) == "635361c48bb9eab14198e76ea8ab7f1a41685d6ad62aa9146d301d4f17eb0ae0"
+    ])
+
+    fn rawDigest() = checkAll("digest of a byte list and its length", [
+        ints(Sha256::digest([0, 255, 128])) == "247,66,185,101,241,86,193,3,116,188,35,174,169,110,58,138,255,143,172,214,252,7,157,239,234,163,2,25,173,134,242,17",
+        length(Sha256::digest(Bytes::ofString("abc"))) == 32,
+        Sha256::ofString(repeated(65536)) == "bf718b6f653bebc184e1479f1935b8da974d701b893afcf49e701f3e2f9f9c5a"
+    ])
+
+    export fn run() = {
+        test("sha256: FIPS 180-4 vectors", vectors)
+        test("sha256: padding boundaries", paddingBoundaries)
+        test("sha256: raw digest", rawDigest)
+    }
+}

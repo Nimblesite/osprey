@@ -2,6 +2,8 @@
 //! symbolic object on one explored path, big-endian framed
 //! (klee/lib/Basic/KTest.cpp, versions 3 and 4).
 
+const FILE_PROTOCOL_NAME: &str = "osprey.hunt.files.v2";
+
 /// One path's concrete inputs.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Ktest {
@@ -103,14 +105,51 @@ impl Ktest {
     /// Every opened file's bytes by path: the objects that are not stdin, a
     /// length, an open flag, or an entropy, clock or errno draw.
     pub(crate) fn files(&self) -> Vec<(String, Vec<u8>)> {
+        if self.has_typed_files() {
+            return self.typed_files();
+        }
         self.objects
             .iter()
-            .filter(|object| is_file_stream(&object.name))
+            .filter(|object| self.is_file_stream(&object.name))
             .filter_map(|object| {
                 self.stream(&object.name)
                     .map(|bytes| (object.name.clone(), bytes))
             })
             .collect()
+    }
+
+    fn has_typed_files(&self) -> bool {
+        self.object(FILE_PROTOCOL_NAME).and_then(host_int) == Some(2)
+            && self.object(&format!("{FILE_PROTOCOL_NAME}.len")).is_none()
+    }
+
+    fn typed_files(&self) -> Vec<(String, Vec<u8>)> {
+        self.objects
+            .iter()
+            .filter_map(|object| self.typed_file(object))
+            .collect()
+    }
+
+    fn typed_file(&self, object: &Object) -> Option<(String, Vec<u8>)> {
+        let path = object.name.strip_prefix("file.data:")?;
+        let opened = self.object(&format!("file.ok:{path}")).and_then(host_int)?;
+        if opened != 1 {
+            return None;
+        }
+        let length = self
+            .object(&format!("file.len:{path}"))
+            .and_then(host_int)?;
+        let bytes = object.bytes.get(..length).unwrap_or(&object.bytes).to_vec();
+        Some((path.to_string(), bytes))
+    }
+
+    fn is_file_stream(&self, name: &str) -> bool {
+        is_file_stream(name)
+            || (self.object(&format!("{name}.ok")).and_then(host_int) == Some(1)
+                && self
+                    .object(&format!("{name}.len"))
+                    .and_then(host_int)
+                    .is_some())
     }
 }
 
@@ -159,19 +198,129 @@ mod tests {
         let bytes = encode(&[
             ("stdin", b"9\nxxxxxx"),
             ("stdin.len", &2i32.to_le_bytes()),
+            ("stdin.line.0.len", &1i64.to_le_bytes()),
+            ("stdin.line.1.len", &2i64.to_le_bytes()),
             ("data.txt.ok", &[1, 0, 0, 0]),
             ("data.txt", b"payload!"),
             ("data.txt.len", &7i32.to_le_bytes()),
             ("entropy.0", &[0; 8]),
         ]);
         let ktest = parse(&bytes).expect("ktest");
-        assert_eq!(ktest.objects.len(), 6);
+        assert_eq!(ktest.objects.len(), 8);
         assert_eq!(ktest.stream("stdin"), Some(b"9\n".to_vec()));
         assert_eq!(
             ktest.files(),
             vec![("data.txt".to_string(), b"payload".to_vec())]
         );
         assert_eq!(ktest.stream("missing"), None);
+    }
+
+    fn file_with_metadata_name(name: &str) -> Ktest {
+        let length = format!("{name}.len");
+        let opened = format!("{name}.ok");
+        parse(&encode(&[
+            (name, b"9trailing"),
+            (&length, &1i32.to_le_bytes()),
+            (&opened, &1i32.to_le_bytes()),
+        ]))
+        .expect("valid file stream")
+    }
+
+    #[test]
+    fn real_files_with_metadata_like_names_keep_their_replay_bytes() {
+        for name in [
+            "input.len",
+            "input.ok",
+            "entropy.data",
+            "clock.data",
+            "errno.data",
+        ] {
+            let ktest = file_with_metadata_name(name);
+            assert_eq!(ktest.stream(name), Some(b"9".to_vec()), "{name}");
+            assert_eq!(
+                ktest.files(),
+                vec![(name.to_string(), b"9".to_vec())],
+                "{name}"
+            );
+        }
+    }
+
+    fn typed_file_records(path: &str, byte: u8) -> [Object; 3] {
+        [
+            ("file.ok:", 1i32.to_le_bytes().to_vec()),
+            ("file.len:", 1i32.to_le_bytes().to_vec()),
+            ("file.data:", vec![byte]),
+        ]
+        .map(|(prefix, bytes)| Object {
+            name: format!("{prefix}{path}"),
+            bytes,
+        })
+    }
+
+    #[test]
+    fn legacy_files_named_like_new_protocol_kinds_remain_files() {
+        for name in ["file.ok:data", "file.len:data", "file.data:data"] {
+            assert_eq!(
+                file_with_metadata_name(name).files(),
+                vec![(name.to_string(), b"9".to_vec())],
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_legacy_file_named_like_the_protocol_marker_keeps_its_contents() {
+        let length = format!("{FILE_PROTOCOL_NAME}.len");
+        let opened = format!("{FILE_PROTOCOL_NAME}.ok");
+        let version = 2i32.to_le_bytes();
+        let ktest = parse(&encode(&[
+            (FILE_PROTOCOL_NAME, &version),
+            (&length, &4i32.to_le_bytes()),
+            (&opened, &1i32.to_le_bytes()),
+        ]))
+        .expect("legacy file with marker-like contents");
+        assert_eq!(
+            ktest.files(),
+            vec![(FILE_PROTOCOL_NAME.to_string(), version.to_vec())]
+        );
+    }
+
+    const TYPED_FILES: [(&str, u8); 6] = [
+        ("x", b'A'),
+        ("x.ok", b'B'),
+        ("stdin", b'C'),
+        ("x.len", b'D'),
+        ("file.data:x", b'E'),
+        ("stdin.line.0.len", b'F'),
+    ];
+
+    fn typed_files_fixture() -> Ktest {
+        let mut ktest = parse(&encode(&[
+            (FILE_PROTOCOL_NAME, &2i32.to_le_bytes()),
+            ("stdin", b"9"),
+            ("stdin.len", &1i32.to_le_bytes()),
+            ("stdin.line.0.len", &1i64.to_le_bytes()),
+        ]))
+        .expect("stdin");
+        ktest.objects.extend(
+            TYPED_FILES
+                .iter()
+                .flat_map(|(path, byte)| typed_file_records(path, *byte)),
+        );
+        ktest
+    }
+
+    #[test]
+    fn typed_file_names_cannot_collide_with_flags_lengths_or_stdin() {
+        let ktest = typed_files_fixture();
+        assert_eq!(ktest.stream("stdin"), Some(b"9".to_vec()));
+        assert_eq!(
+            ktest.files(),
+            TYPED_FILES
+                .iter()
+                .map(|(path, byte)| (path.to_string(), vec![*byte]))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

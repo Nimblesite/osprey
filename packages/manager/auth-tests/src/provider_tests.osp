@@ -1,0 +1,52 @@
+namespace registry_auth_tests;
+import registry_api::Supabase
+
+/// Provider fixtures are test handlers, never a production verifier fallback.
+module ProviderTests {
+    fn code(result) = match result {
+        Error { message } => message
+        Success => ""
+    }
+
+    fn fixture(config, token, status, body) = {
+        handle Supabase::Provider {
+            request method base path headers payload => if method == "GET" && base == config.supabaseOrigin
+            && path == "/auth/v1/user" && contains(headers, "Authorization: Bearer ${token}") && payload == "" {
+                Success { value: Supabase::Reply { status: status, body: body } }
+            } else { Error { message: "unexpected-provider-request" } }
+        }
+        Supabase::verify(config, token)
+    }
+
+    fn stableIdentity(config) = match fixture(config, "fixture-token", 200,
+        "{\"id\":\"auth-subject\",\"email\":\"ignored@example.test\",\"identities\":[{\"provider\":\"github\",\"provider_id\":\"123456\"}],\"user_metadata\":{\"admin\":true,\"organization\":\"attacker\"}}") {
+        Error { message } => check("verified provider identity", "ok", message)
+        Success { value } => checkAll("authority uses immutable provider fields, never email or metadata", [
+                value.authSubject == "auth-subject", value.githubId == "123456"
+        ])
+    }
+
+    fn rejectedIdentity(config) = checkAll("failed, ambiguous or non-GitHub provider identities are rejected", [
+            code(fixture(config, "fixture-token", 401, "{}")) == "auth.provider-rejected",
+            code(fixture(config, "fixture-token", 200, "{\"id\":\"x\",\"identities\":[]}")) == "auth.github-identity",
+            code(fixture(config, "fixture-token", 200, "{\"id\":\"x\",\"user_metadata\":{\"provider_id\":\"123\"}}")) == "auth.github-identity",
+            code(fixture(config, "fixture-token", 200, "{\"id\":\"x\",\"identities\":[{\"provider\":\"github\",\"provider_id\":\"1\"},{\"provider\":\"github\",\"provider_id\":\"2\"}]}")) == "auth.github-identity",
+            code(fixture(config, "fixture-token", 200, "not-json")) == "auth.provider-json"
+    ])
+
+    fn refusedTransport(config) = {
+        handle Supabase::Provider {
+            request _method _base _path _headers _payload => Error { message: "fixture-outage" }
+        }
+        checkAll("provider outages and header injection never authenticate", [
+                code(Supabase::verify(config, "fixture-token")) == "auth.provider-unavailable",
+                code(Supabase::verify(config, "token\r\nX-Forged: yes")) == "auth.provider-token"
+        ])
+    }
+
+    export fn run(config) = {
+        test("auth: provider immutable identity", fn() => stableIdentity(config))
+        test("auth: provider denial cases", fn() => rejectedIdentity(config))
+        test("auth: provider transport denial", fn() => refusedTransport(config))
+    }
+}

@@ -288,7 +288,10 @@ impl Lowerer<'_> {
                 pattern: arm
                     .child_by_field_name("pattern")
                     .map_or(Pattern::Wildcard, |p| self.lower_pattern(p)),
-                body: self.lower_expr_field(*arm, "body"),
+                body: crate::desugar::positioned(
+                    self.lower_expr_field(*arm, "body"),
+                    Some(self.pos(*arm)),
+                ),
             })
             .collect()
     }
@@ -501,9 +504,6 @@ impl Lowerer<'_> {
             "float" => Expr::Float(self.text(inner).parse().unwrap_or(0.0)),
             "boolean" => Expr::Bool(self.text(inner) == "true"),
             "string" => {
-                // Equal-length `string`/`interpolated_string` token matches let the
-                // plain `string` rule win, so a `"...${e}..."` can arrive tagged as
-                // `string`. Detect the `${` marker here and interpolate either way.
                 let raw = self.text(inner);
                 if raw.contains("${") {
                     Expr::InterpolatedStr(lower_interpolation(
@@ -590,24 +590,15 @@ fn pipe_into(left: Expr, right: Expr) -> Expr {
 )]
 mod tests {
     use crate::parse_tree;
+    use crate::test_support::find_kind;
     use crate::test_support::stmts;
     use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt};
-    use tree_sitter::Node;
 
     fn let_value(src: &str) -> Expr {
         match stmts(src).into_iter().next() {
             Some(Stmt::Let { value, .. }) => value,
             other => panic!("expected let, got {other:?}"),
         }
-    }
-
-    fn find_kind<'t>(node: Node<'t>, kind: &str) -> Option<Node<'t>> {
-        if node.kind() == kind {
-            return Some(node);
-        }
-        let mut cursor = node.walk();
-        let kids: Vec<Node<'t>> = node.children(&mut cursor).collect();
-        kids.into_iter().find_map(|c| find_kind(c, kind))
     }
 
     #[test]
@@ -954,8 +945,18 @@ mod tests {
             Expr::Match { arms, .. } => {
                 assert_eq!(arms.len(), 2, "got {arms:?}");
                 // The first arm's body kept its spaced call ...
+                let Expr::Block {
+                    statements,
+                    value: Some(body),
+                    position,
+                } = &arms[0].body
+                else {
+                    panic!("arm 0 lost its source anchor: {:?}", arms[0].body);
+                };
+                assert_eq!(statements.as_slice(), []);
+                assert_eq!(*position, Some(osprey_ast::Position { line: 2, column: 4 }));
                 assert!(
-                    matches!(arms[0].body, Expr::Call { .. }),
+                    matches!(body.as_ref(), Expr::Call { .. }),
                     "arm 0 body: {:?}",
                     arms[0].body
                 );

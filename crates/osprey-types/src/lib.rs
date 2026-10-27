@@ -20,6 +20,8 @@ mod arithmetic;
 pub use arithmetic::fold_arithmetic;
 mod builtin_constraints;
 mod builtin_docs;
+mod builtin_docs_core;
+mod builtin_docs_gpu;
 mod builtin_docs_lang;
 mod builtin_docs_signals;
 mod builtin_docs_sys;
@@ -31,6 +33,8 @@ mod check;
 mod comparison;
 mod convert;
 mod ctx;
+#[cfg(test)]
+mod deferred_arith_tests;
 mod effect_rows;
 #[cfg(test)]
 mod effect_rows_exports_tests;
@@ -90,6 +94,8 @@ mod undocumented;
 #[cfg(test)]
 mod undocumented_tests;
 mod unify;
+#[cfg(test)]
+mod unify_position_tests;
 mod unused;
 #[cfg(test)]
 mod unused_tests;
@@ -114,7 +120,7 @@ pub use redundant::{
 pub use staging::{lower_static_checked, signal_dependencies};
 pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
 pub use undocumented::{undocumented_exports, UNDOCUMENTED_EXPORT};
-pub use unused::{unused_symbols, UnusedKind, UnusedSymbol};
+pub use unused::{checked_method_reads, unused_symbols, UnusedKind, UnusedSymbol};
 
 #[cfg(test)]
 #[expect(

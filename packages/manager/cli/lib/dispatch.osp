@@ -1,0 +1,74 @@
+namespace registry_cli;
+import registry_cli::Flags
+import registry_cli::Fetch
+import registry_cli::Reports
+import registry_cli::Doctor
+import registry_cli::Init
+import registry_cli::Add
+import registry_cli::Remove
+import registry_cli::Update
+import registry_cli::Use
+import registry_cli::Publish
+import registry_cli::Install
+import registry_cli::Verify
+import registry_cli::Build
+import registry_cli::Lock
+import registry_cli::Tree
+import registry_cli::Why
+
+/// Command routing for the Osprey package frontend. Implements the command
+/// surface of [PACKAGE-API] one command at a time: a command the
+/// specification lists but this build lacks says so with its own status,
+/// which is different from a command the specification does not know.
+module Dispatch {
+    let notImplementedStatus = 3
+    let planned = ["login", "audit", "yank"]
+    let usage = [
+        "usage: osprey-pkg [--json] <command>",
+        "commands: help, doctor, package init, add, remove, update, use, lock, fetch, verify, build, tree, why, publish --folder",
+        "specified, not yet implemented: login, audit, yank"
+    ]
+
+    fn unknown(command) = Reports::usage(listPrepend(usage, "unknown command: ${command}"))
+
+    fn notImplemented(command) = Reports::Report {
+        status: notImplementedStatus,
+        lines: ["not implemented: ${command} (plan 0020, Milestone A)"]
+    }
+
+    fn other(command) = if listContains(planned, command) { notImplemented(command) } else { unknown(command) }
+
+    /// A target-less `fetch` (no positional target word) installs the lock.
+    fn fetchIsInstall(args) = isEmpty(args) || startsWith(listGet(args, 0) ?: "", "--")
+
+    fn fetchOrInstall(args) = if fetchIsInstall(args) { Install::run(args) } else { Fetch::run(args) }
+
+    /// `package init` is the one `package` subcommand this build has.
+    fn packageCommand(args) = {
+        let word = listGet(args, 0) ?: ""
+        if word == "init" { Init::run(Flags::tail(args)) } else { unknown("package ${word}") }
+    }
+
+    /// The same report as one canonical JSON line (`--json <command> …`).
+    fn jsonOf(report: Reports::Report) = Reports::Report { status: report.status, lines: [Reports::json(report)] }
+
+    /// Route one argument vector to its command.
+    export fn run(args) -> Reports::Report = match listGet(args, 0) ?: "help" {
+        "--json" => jsonOf(run(Flags::tail(args)))
+        "help" => Reports::success(usage)
+        "doctor" => Doctor::report()
+        "package" => packageCommand(Flags::tail(args))
+        "add" => Add::run(Flags::tail(args))
+        "remove" => Remove::run(Flags::tail(args))
+        "update" => Update::run(Flags::tail(args))
+        "use" => Use::run(Flags::tail(args))
+        "publish" => Publish::run(Flags::tail(args))
+        "fetch" => fetchOrInstall(Flags::tail(args))
+        "lock" => Lock::run(Flags::tail(args))
+        "verify" => Verify::run(Flags::tail(args))
+        "build" => Build::run(Flags::tail(args))
+        "tree" => Tree::run(Flags::tail(args))
+        "why" => Why::run(Flags::tail(args))
+        command => other(command)
+    }
+}

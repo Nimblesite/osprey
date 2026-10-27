@@ -1,0 +1,43 @@
+namespace registry_web;
+import registry::Names
+import registry_web::Html
+import registry_web::Model
+import registry_web::Warnings
+
+/// The org-scoped browse/search screen. Every result displays its
+/// organization identity and its known security warnings, and if any listed
+/// package's security evidence is unavailable the entire screen hides — a
+/// listing that cannot report warnings is a false negative
+/// ([PACKAGE-OWNERSHIP-MAINTENANCE]). Implements the browse row of
+/// [PACKAGE-HOSTED-ROUTES] as pure, wasm-portable string rendering.
+module Browse {
+    export fn render(listings, query) = match Model::gateAll(listings, fn(l) => Names::display(l.pkg.key), fn(l) => l.evidence) {
+        Error { message } => Model::hidden("web.evidence-unavailable: ${message}")
+        Success => Model::shown(Html::document("Browse packages - Osprey Package Registry", body(listings, query)))
+    }
+
+    fn body(listings, query) = join(["<main id=\"browse\"><h1>Browse packages</h1>", searchForm(query), results(listings, query), "</main>"], "")
+
+    /// The search form is inert markup in the server-agnostic render; the
+    /// transport host owns its wiring (README.md records that boundary).
+    fn searchForm(query) = "<form role=\"search\"><label for=\"browse-q\">Search organization/package</label><input id=\"browse-q\" type=\"search\" name=\"q\" value=\"${Html::escape(query)}\"></form>"
+
+    fn results(listings, query) = {
+        let found = filterList(listings, fn(l) => contains(Names::display(l.pkg.key), query))
+        "<section aria-labelledby=\"browse-results-h\"><h2 id=\"browse-results-h\">${length(found)} result(s) for '${Html::escape(query)}'</h2>${join(mapList(found, item), "")}</section>"
+    }
+
+    /// One result. Only called after `render`'s gate passed, so the
+    /// evidence is verified and its warnings may be shown; a hidden screen
+    /// renders no items at all.
+    fn item(l) = {
+        let key = Names::display(l.pkg.key)
+        join([
+            "<article class=\"package\" aria-labelledby=\"${Html::id(key)}-h\"><h3 id=\"${Html::id(key)}-h\">${Html::escape(key)}</h3>",
+            Html::field("Organization", "@${l.orgHandle}"),
+            Html::field("Status", "${Model::stateName(l.pkg)}, ${Model::careName(l.care)}"),
+            Html::field("Security review evidence", Model::reviewOf(l.evidence)),
+            Warnings::block(Model::warningsOf(l.evidence)),
+            "</article>"], "")
+    }
+}

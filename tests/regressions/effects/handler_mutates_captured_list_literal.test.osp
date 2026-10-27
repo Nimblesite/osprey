@@ -1,0 +1,24 @@
+/// A `mut` list literal that a handler arm appends to lives in a shared heap
+/// cell. The literal's flat layout must become a runtime list before it is
+/// stored, or the arm's `listAppend` reads the wrong representation and the
+/// program segfaults. Found by `osprey hunt` as a reproduced `memory` finding
+/// at the arm; the same program with `listAppend([], "seed")` was fine.
+effect Collect {
+    push: fn(string) -> Unit
+}
+
+fn build(n) = {
+    mut parts = ["seed"]
+    handle Collect {
+        push s => {
+            parts = listAppend(parts, s)
+        }
+    }
+    range(0, n) |> forEach(fn(i) => perform Collect.push("${i}"))
+    parts
+}
+
+fn joined(xs) = foldList(xs, "", fn(acc, s) => acc + s + "|")
+
+let made = build(3)
+print("${length(made)} ${joined(made)}")

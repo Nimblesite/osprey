@@ -18,14 +18,14 @@ The running project becomes a template. The reader keeps it or replaces its doma
 4. Keep outside work at named boundaries
 5. Add tests before widening the feature surface
 6. Measure before optimizing or changing memory mode
-7. State alpha and platform limits in the project README
+7. State compatibility and platform limits in the project README
 8. Choose a command-line, supported browser, native-service, or native-mobile route
 
 ## Current boundaries for a capstone
 
 Begin with an observable result and a testable pure model. Name the outside operations as effects, choose callable handlers at application entry points, and keep expected failures in `Result`. Install a handler before its callback runs. A browser event or native host callback is a later entry point and must handle its own effect requirements; a handler installed only during startup is not still active afterwards.
 
-Project modules and cross-flavor imports are available. Use logical namespaces and exported module members to separate the model, operation declarations, adapters, and entry points. Do not make the plan depend on the package manager or registry: their specification describes intended behavior, not available install or publish commands.
+Project modules and cross-flavor imports are available. Use logical namespaces and exported module members to separate the model, operation declarations, adapters, and entry points. Use checked-in source roots or the [folder-registry workflow](https://www.ospreylang.dev/docs/package-manager/) for dependencies. Pin releases in `osprey.lock`; do not assume the planned public package website or authenticated publishing is available.
 
 Choose the deployment route with its host and test environment:
 
@@ -38,9 +38,9 @@ Choose the deployment route with its host and test environment:
 
 Mobile handlers may describe commands which their host executes, then receive completion events. Plan that protocol explicitly instead of assuming a synchronous file or HTTP adapter can be copied unchanged. iOS app builds and simulator tests need macOS and Xcode; an Android or shared-language test does not establish that the SwiftUI application builds.
 
-Keep the scope within current runtime capabilities. WebAssembly and mobile use the default memory backend and have host-service boundaries. Native fibers use pthreads; cancellation, scopes, and deadlines are planned. Measure performance on the actual target before making speed claims.
+Keep the scope within current runtime capabilities. WebAssembly and mobile use the explicit unmanaged `none` backend and have host-service boundaries. Native fibers use pthreads; cancellation, scopes, and deadlines are planned. Measure performance on the actual target before making speed claims.
 
-Write these constraints next to the relevant feature in the project README. Osprey remains alpha software; record the compiler build and the checks actually run. A skipped platform build is an evidence gap to report, not a successful test.
+Write these constraints next to the relevant feature in the project README. Osprey continues to evolve; record the compiler build and the checks actually run. A skipped platform build is an evidence gap to report, not a successful test.
 
 ## Compiler-feedback exercise
 

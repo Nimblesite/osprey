@@ -4,9 +4,9 @@
 
 The entry workflow is a Python team compiling the parts of its application written in Osprey, calling native functions from its existing Python process, and continuing to call established Python libraries from Osprey. Teams can adopt algebraic effects without replacing the interpreter, environment or model stack. Native compilation is not evidence of a workload speedup: measure boundary overhead and complete workloads before performance claims.
 
-## Ownership and coordination
+## Scope and coordination
 
-Use the existing checkout and active branch. No worktrees, extra branches, git mutations or subagents. The Python Flavor agent owns syntax/frontend implementation, spec 0041, plan 0031 and the proposed GPT-2 port. Interop owns the CLI host target, shared host ABI reuse, runtime shim, Python package, tests and this plan/spec. General Cleanup owns build reorganization, spec indexes and website generation; the small runtime `-fPIC` correction is recorded for that owner. Use `.git/agent-coordination/AGENT-MESSAGING.txt`, `message.py` and its locked text inboxes for active collaboration. Preserve other owners' changes and serialize full CI.
+This plan owns the Python host target, checked ABI, runtime callbacks, loader package and interop tests. [Plan 0031](0031-python-flavor.md) owns syntax/frontend and authoring-tool coverage. Follow [repository instructions](../../AGENTS.md), preserve other owners' changes and coordinate validation in the primary checkout.
 
 ## Delivered foundation
 
@@ -31,7 +31,7 @@ Do not mark `@python` delivered merely because decorators parse. Frontend/runtim
 
 The installed [LLM dataset audit](../../python/osprey/dataset_audit/README.md) is the substantial application: Python teams can clean local SFT datasets, detect evaluation contamination/conflicting answers and enforce actual tokenizer context budgets before training. Native Osprey Python-flavor effects drive Python services, which call native Osprey policy back for every row. SQLite preserves cross-batch indexes; fresh workers constrain retained native heap lifetime. Atomic publication and all-records transaction verification make callback failures explicit. The acceptance run covers all 15,011 Dolly records with a real GPT-2 tokenizer, without model weights or a GPU. Privacy and near-match limitations are documented alongside the results.
 
-The loader supports editable/wheel installation and runnable effects examples. Add model interoperability around the existing GPT-2 code once the Python flavor can compile it: Python owns checkpoint/model ecosystem; Osprey owns a checked native calculation; both directions use the same bridge. Keep the independent reference unchanged. Mixed projects, installed compiler/runtime discovery and model-stack acceptance remain further work; installed-package execution outside the checkout and module import failures already have evidence.
+The loader supports editable/wheel installation and runnable effects examples. Python-flavor GPT-2 generation already compiles and runs. The remaining model task is interoperation with the existing Python stack: Python owns checkpoint/model ecosystem; Osprey owns a checked native calculation; both directions use the same bridge. Keep the independent reference unchanged. Mixed projects, installed compiler/runtime discovery and model-stack acceptance remain further work; installed-package execution outside the checkout and module import failures already have evidence.
 
 General aggregate exports, list/record conversion and automatic import hooks need a versioned ABI design; they must not guess layouts from names. Python decorators for compiling source fragments should not execute a function to infer its Osprey type. Existing `.py` ownership selection remains the Python Flavor contract.
 
@@ -53,9 +53,9 @@ Add reclaiming memory backends and stable returned-allocation release before cla
 - [x] Runnable effects/Python-flavor examples and installed-wheel smoke test.
 - [x] Installed real-world dataset-audit application with native Python-flavor effects and bidirectional calls per record.
 - [x] Complete public Dolly/GPT-2-tokenizer acceptance, plus malformed-input, cross-batch, privacy and callback-rollback checks.
-- [ ] Full shared-branch validation after both Python owners release their work.
+- [ ] Full cross-flavor project/editor/target validation against the current frontend and host bridge.
 - [ ] Typed `@python` binding AST/effects/types and all-flavor direct-call execution.
-- [ ] Python-flavor GPT-2 interoperability example after frontend availability.
+- [ ] Python-hosted GPT-2 interoperability example; standalone Python-flavor generation is already implemented.
 - [ ] Tensor storage ownership/stream bridge with real device evidence.
 - [ ] Reclaiming memory, concurrent host calls and optional standalone embedding.
 

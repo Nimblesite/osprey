@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hosted registry environment inventory",
+  "description": "Provisioning evidence format for plan 0020; schema validity alone never authorizes deployment or publication.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["environment", "review", "hostnames", "cloudflare", "gcp", "supabase", "github", "secretReferences", "commitments"],
+  "properties": {
+    "environment": { "enum": ["staging", "production"] },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deploymentOwner", "securityReviewer", "evidenceReference"],
+      "properties": {
+        "deploymentOwner": { "$ref": "#/$defs/text" },
+        "securityReviewer": { "$ref": "#/$defs/text" },
+        "evidenceReference": { "$ref": "#/$defs/text" }
+      }
+    },
+    "hostnames": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["website", "api", "content", "apiOAuthCallback", "supabaseOAuthCallback"],
+      "properties": {
+        "website": { "$ref": "#/$defs/hostname" },
+        "api": { "$ref": "#/$defs/hostname" },
+        "content": { "$ref": "#/$defs/hostname" },
+        "apiOAuthCallback": { "$ref": "#/$defs/callbackUrl", "pattern": "^https://[^/]+/v1/auth/github/callback$" },
+        "supabaseOAuthCallback": { "$ref": "#/$defs/callbackUrl", "pattern": "^https://[^/]+/auth/v1/callback$" }
+      }
+    },
+    "cloudflare": {
+      "$ref": "#/$defs/resources",
+      "required": ["zone", "plan", "pagesProject", "dnsRecords", "wafRules", "rateLimits", "originAuthentication", "cacheRules"]
+    },
+    "gcp": {
+      "$ref": "#/$defs/resources",
+      "required": ["project", "region", "artifactRegistry", "loadBalancer", "certificate", "serverlessNeg", "cloudArmor", "cloudRunServices", "workloadIdentity", "deployIdentity", "runtimeIdentity", "incidentIdentity", "backupDestination"]
+    },
+    "supabase": {
+      "$ref": "#/$defs/resources",
+      "required": ["project", "region", "migrationRole", "runtimeRole", "privateBuckets", "backupDestination"]
+    },
+    "github": {
+      "$ref": "#/$defs/resources",
+      "required": ["oauthApp", "app", "installation", "webhookConfiguration", "governanceRepository"]
+    },
+    "secretReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cloudflareDeploy", "edgeOrigin", "databaseMigration", "databaseRuntime", "githubOAuth", "githubApp", "githubWebhook", "sessionEncryption"],
+      "properties": {
+        "cloudflareDeploy": { "$ref": "#/$defs/secretReference" },
+        "edgeOrigin": { "$ref": "#/$defs/secretReference" },
+        "databaseMigration": { "$ref": "#/$defs/secretReference" },
+        "databaseRuntime": { "$ref": "#/$defs/secretReference" },
+        "githubOAuth": { "$ref": "#/$defs/secretReference" },
+        "githubApp": { "$ref": "#/$defs/secretReference" },
+        "githubWebhook": { "$ref": "#/$defs/secretReference" },
+        "sessionEncryption": { "$ref": "#/$defs/secretReference" }
+      }
+    },
+    "commitments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rootCustodians", "releaseHsm", "statusHsm", "buildPlatforms", "witnessOrganizations", "crossLog", "governancePublication", "dnssec", "accountRecovery", "notificationDelivery", "privacyRetention"],
+      "properties": {
+        "rootCustodians": { "$ref": "#/$defs/commitmentList", "minItems": 5, "maxItems": 5 },
+        "releaseHsm": { "$ref": "#/$defs/commitment" },
+        "statusHsm": { "$ref": "#/$defs/commitment" },
+        "buildPlatforms": { "$ref": "#/$defs/commitmentList", "minItems": 2 },
+        "witnessOrganizations": { "$ref": "#/$defs/commitmentList", "minItems": 4 },
+        "crossLog": { "$ref": "#/$defs/commitment" },
+        "governancePublication": { "$ref": "#/$defs/commitment" },
+        "dnssec": { "$ref": "#/$defs/commitment" },
+        "accountRecovery": { "$ref": "#/$defs/commitment" },
+        "notificationDelivery": { "$ref": "#/$defs/commitment" },
+        "privacyRetention": { "$ref": "#/$defs/commitment" }
+      }
+    }
+  },
+  "$defs": {
+    "text": { "type": "string", "pattern": "\\S" },
+    "hostname": { "type": "string", "maxLength": 253, "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$" },
+    "callbackUrl": { "type": "string", "maxLength": 300, "pattern": "^https://(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}/" },
+    "resources": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/resource" }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "owner", "evidenceReference"],
+      "properties": {
+        "reference": { "$ref": "#/$defs/text" },
+        "owner": { "$ref": "#/$defs/text" },
+        "evidenceReference": { "$ref": "#/$defs/text" }
+      }
+    },
+    "secretReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceName", "version", "owner", "rotationEvidenceReference"],
+      "properties": {
+        "resourceName": { "type": "string", "pattern": "^projects/[^/\\s]+/secrets/[^/\\s]+$" },
+        "version": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "owner": { "$ref": "#/$defs/text" },
+        "rotationEvidenceReference": { "$ref": "#/$defs/text" }
+      }
+    },
+    "commitmentList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/commitment" }
+    },
+    "commitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "providerCommitmentReference", "leadTimeDays", "readinessEvidenceReference"],
+      "properties": {
+        "owner": { "$ref": "#/$defs/text" },
+        "providerCommitmentReference": { "$ref": "#/$defs/text" },
+        "leadTimeDays": { "type": "integer", "minimum": 0 },
+        "readinessEvidenceReference": { "$ref": "#/$defs/text" }
+      }
+    }
+  }
+}

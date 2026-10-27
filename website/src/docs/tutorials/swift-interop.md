@@ -16,12 +16,12 @@ Osprey compiles to native code with a plain C interface ([the iOS target specifi
 
 **Interop** here means two languages calling each other inside one process. The calls go both ways:
 
-- **Swift calls Osprey.** The compiler builds the Osprey project into a static library, `libOspreyApp.a`, and writes a C header, `libOspreyApp.h`, beside it. Each Osprey `export` becomes a C prototype in that header, and Swift calls it through a bridging header.
-- **Osprey calls Swift.** Osprey declares each host function it needs with `extern`. Swift defines that function with `@_cdecl`, so the linker finds exactly that C name. [`StorageServices.swift`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/OspreyStorage/StorageServices.swift) holds every one of them.
+- **Swift calls Osprey.** The compiler builds the project into a static library, `libOspreyApp.a`, with a C header, `libOspreyApp.h`. Entry-source functions with supported scalar signatures become C prototypes that Swift calls through a bridging header.
+- **Osprey calls Swift.** Osprey declares host functions with `extern`; Swift defines them with `@_cdecl`. Disk operations live in [`StorageServices.swift`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/OspreyStorage/StorageServices.swift), and Photos operations in [`PhotoLibrary.swift`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/OspreyStorage/PhotoLibrary.swift).
 
 The video then shows how the app stays testable. Osprey only reaches the Swift functions through an [algebraic effect](/docs/effects/) handler at the boundary. A test handler answers the same effect with fixed data, so the whole browser runs in tests with no Swift and no disk. Finally, it shows one Xcode target building the same Osprey code for the Mac, the iPhone and the iPhone simulator.
 
-Every app shot in the video is the real app measuring a staged folder. Every line of code shown is quoted from the [`examples/macos`](https://github.com/Nimblesite/osprey/tree/main/examples/macos) folder of the repository.
+The recording predates the Full Disk Access argument and Photos handler. Use the [current walkthrough](/docs/mac-and-iphone-apps/) for runnable code.
 
 ## Get it working
 
@@ -47,11 +47,13 @@ target/release/osprey examples/macos/storage/test --run   # the Osprey tests, wi
 examples/macos/run.sh --smoke                             # the real walk and screens on this Mac
 ```
 
-The app opens on your home folder. Choose a folder to rank it, click any folder to open it, and use the eye button (⇧⌘.) to leave hidden files out of every total. Right-click a folder and choose Open in Finder to see it in a Finder window. The app never asks for disk access: it reads only folder metadata, the information Finder shows. The [example's README](https://github.com/Nimblesite/osprey/tree/main/examples/macos#permissions) explains how.
+On Mac, the app starts at the whole disk. macOS can ask for access to protected folders during the walk; refused folders count as unreadable. Without Full Disk Access, other apps' data stays guarded until you choose a folder in the system picker or grant access in Settings. The [example's README](https://github.com/Nimblesite/osprey/tree/main/examples/macos#permissions) explains the permission flow.
+
+Choose a folder to rank it, click a folder to open it, or use the eye button (⇧⌘.) to exclude hidden files from the totals. On Mac, right-click a folder to open it in Finder. The iPhone app measures its own container and, with permission, the photo library.
 
 ## Read the walkthrough
 
-[Build a Mac and iPhone app with Osprey and Swift](/docs/mac-and-iphone-apps/) writes out the same steps with the full code. For an app that also handles SQLite and HTTP through effects, see [iOS and Android apps](/docs/mobile-apps/). Osprey is alpha software.
+[Build a Mac and iPhone app with Osprey and Swift](/docs/mac-and-iphone-apps/) writes out the same steps with the full code. For an app that also handles SQLite and HTTP through effects, see [iOS and Android apps](/docs/mobile-apps/). Osprey is actively evolving.
 
 ## Transcript
 

@@ -1,6 +1,5 @@
 use super::*;
 use crate::testkit::shows;
-use std::path::{Path, PathBuf};
 
 const SOURCE: &str = "extern fn host_log(message: string) -> int\n\
     fn greet(name: string) -> string = \"hello ${name}\"\n\
@@ -66,14 +65,14 @@ fn thunks_rename_the_entry_and_forward_with_the_c_bool_convention() {
     // [IOS-TARGET-ENTRY] [IOS-HOST-ABI]
     let (abi, ir) = abi_of(SOURCE);
     let out = with_host_abi(&ir, &abi).expect("thunked");
-    assert!(out.contains("define i32 @osprey_main() "), "entry renamed");
-    assert!(!out.contains("@main("), "no `main` symbol survives");
-    shows(
+    crate::testkit::contents(
         &out,
         &[
+            "define i32 @osprey_main() ",
             "define zeroext i1 @osprey_flag(i1 zeroext %p0) {",
             "  %r = call i1 @flag(i1 %p0)\n  ret i1 %r",
         ],
+        &["@main("],
     );
     assert!(out
         .contains("define void @osprey_shout(i8* %p0) {\n  call i64 @shout(i8* %p0)\n  ret void"));
@@ -114,17 +113,7 @@ fn header_declares_entry_exports_and_imports_in_c() {
 fn project_symbols_export_under_their_qualified_c_name() {
     // [IOS-HOST-ABI]
     let source = "namespace app;\nfn greet(name: string) -> string = name\nfn main() = print(greet(\"x\"))\n";
-    let program = osprey_project::assemble(
-        &osprey_project::ProjectConfig::for_root(Path::new("/tmp/ios-abi-project")),
-        &[osprey_project::SourceFile {
-            path: PathBuf::from("main.osp"),
-            flavor: osprey_syntax::Flavor::Default,
-            source: source.to_string(),
-            program: osprey_syntax::parse_program(source).program,
-        }],
-    )
-    .expect("assemble")
-    .program;
+    let program = crate::tests::assembled_program(source, "/tmp/ios-abi-project", "main.osp");
     let types = osprey_types::infer_program(&program);
     let ir = osprey_codegen::compile_library(&program).expect("lowers");
     let abi = host_abi(&program, &types, &ir).expect("abi");
@@ -149,7 +138,7 @@ fn a_boundary_name_clash_is_refused() {
     let source = "extern fn osprey_greet(s: string) -> int\nfn greet(s: string) -> int = osprey_greet(s)\nfn main() = print(\"${greet(\\\"x\\\")}\")\n";
     let (program, types, ir) = checked(source);
     let err = host_abi(&program, &types, &ir).expect_err("clash");
-    assert!(err.contains("osprey_greet"), "{err}");
+    shows(&err, &["osprey_greet"]);
 }
 
 #[test]
@@ -198,20 +187,16 @@ fn imports_use_c_bool_attributes_and_adapt_unit_returns() {
     let source = "extern fn host_flag(b: bool) -> bool\nextern fn host_log(b: bool) -> Unit\nfn flag(b) = host_flag(b)\nfn log(b) = host_log(b)\n";
     let (abi, ir) = abi_of(source);
     let out = with_host_abi(&ir, &abi).expect("adapted imports");
-    assert!(
-        out.contains("declare zeroext i1 @host_flag(i1 zeroext)"),
-        "{out}"
+    crate::testkit::contents(
+        &out,
+        &[
+            "declare zeroext i1 @host_flag(i1 zeroext)",
+            "call zeroext i1 @host_flag(i1 zeroext %p0)",
+            "declare void @host_log(i1 zeroext)",
+            "call void @host_log(i1 zeroext %p0)\n  ret i64 0",
+        ],
+        &["call i64 @host_log("],
     );
-    assert!(
-        out.contains("call zeroext i1 @host_flag(i1 zeroext %p0)"),
-        "{out}"
-    );
-    assert!(out.contains("declare void @host_log(i1 zeroext)"), "{out}");
-    assert!(
-        out.contains("call void @host_log(i1 zeroext %p0)\n  ret i64 0"),
-        "{out}"
-    );
-    assert!(!out.contains("call i64 @host_log("), "{out}");
 }
 
 #[test]
@@ -264,7 +249,7 @@ fn duplicate_namespace_export_names_are_rejected() {
     let source = format!("fn {name_a}() = 1\nfn {name_b}() = 2\n");
     let (program, types, ir) = checked(&source);
     let error = host_abi(&program, &types, &ir).expect_err("flattened names collide");
-    assert!(error.contains("osprey_app_x_y"), "{error}");
+    shows(&error, &["osprey_app_x_y"]);
 }
 
 #[test]
@@ -278,9 +263,9 @@ fn header_parameter_names_do_not_collide_with_c_keywords_or_macros() {
         imports: vec![],
     };
     let h = header_for_target(&abi, "demo.osp", "ios");
-    assert!(
-        h.contains("void osprey_run(bool osprey_arg0, int64_t osprey_arg1);"),
-        "{h}"
+    shows(
+        &h,
+        &["void osprey_run(bool osprey_arg0, int64_t osprey_arg1);"],
     );
 }
 
@@ -330,7 +315,7 @@ fn imported_or_defined_adapter_names_are_rejected() {
     ] {
         let (program, types, ir) = checked(source);
         let error = host_abi(&program, &types, &ir).expect_err("adapter name collision");
-        assert!(error.contains("__osprey_host_flag"), "{error}");
+        shows(&error, &["__osprey_host_flag"]);
     }
 }
 
@@ -377,10 +362,9 @@ fn exports_with_their_own_handler_are_supported() {
     );
 }
 
-#[test]
-fn generated_header_and_ir_compile_with_clang() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "extern fn host_flag(b: bool) -> bool\nextern fn host_log(n: int) -> Unit\nextern fn host_handle(n: int) -> Ptr\nfn flag(b) = host_flag(b)\nfn log(n) = host_log(n)\nfn handle(n) = host_handle(n)\nfn score(n) = toFloat(n)\nfn text() = \"hello\"\n";
-    let (abi, ir) = abi_of(source);
+/// Clang accepts `abi`'s iOS header as freestanding C and as C++, warnings
+/// as errors.
+fn headers_compile(abi: &HostAbi) -> Result<(), Box<dyn std::error::Error>> {
     for language in ["c-header", "c++-header"] {
         clang_accepts(
             &[
@@ -391,9 +375,17 @@ fn generated_header_and_ir_compile_with_clang() -> Result<(), Box<dyn std::error
                 "-fsyntax-only",
                 "-",
             ],
-            &header_for_target(&abi, "demo.osp", "ios"),
+            &header_for_target(abi, "demo.osp", "ios"),
         )?;
     }
+    Ok(())
+}
+
+#[test]
+fn generated_header_and_ir_compile_with_clang() -> Result<(), Box<dyn std::error::Error>> {
+    let source = "extern fn host_flag(b: bool) -> bool\nextern fn host_log(n: int) -> Unit\nextern fn host_handle(n: int) -> Ptr\nfn flag(b) = host_flag(b)\nfn log(n) = host_log(n)\nfn handle(n) = host_handle(n)\nfn score(n) = toFloat(n)\nfn text() = \"hello\"\n";
+    let (abi, ir) = abi_of(source);
+    headers_compile(&abi)?;
     clang_accepts(
         &[
             "-target",
@@ -447,19 +439,7 @@ fn headers_accept_standard_c_macros_and_typedefs_as_parameters(
         )],
         imports: vec![],
     };
-    for language in ["c-header", "c++-header"] {
-        clang_accepts(
-            &[
-                "-ffreestanding",
-                "-Werror",
-                "-x",
-                language,
-                "-fsyntax-only",
-                "-",
-            ],
-            &header_for_target(&abi, "demo.osp", "ios"),
-        )?;
-    }
+    headers_compile(&abi)?;
     Ok(())
 }
 

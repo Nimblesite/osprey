@@ -247,11 +247,83 @@ pub(crate) fn result_inner(ty: &Type) -> Option<LType> {
 
 /// Whether a function type yields a concrete closure ABI: every parameter and
 /// return are variable-free. Result returns keep their wrapper in the ABI.
+/// A `Result`'s ERROR channel is phantom — the `Error` variant's payload is
+/// always a string message, and the channel never shapes the value
+/// representation — so a still-open error variable does not keep the closure
+/// generic. Implements [TYPE-FN-CLOSURE].
 pub(crate) fn fn_value_concrete(ty: &Type) -> bool {
     match ty {
         Type::Fun { params, ret } => {
-            !params.iter().any(osprey_types::has_type_var) && !osprey_types::has_type_var(ret)
+            params.iter().all(abi_shape_concrete) && abi_shape_concrete(ret)
         }
         _ => false,
+    }
+}
+
+/// Whether a type's ABI shape is concrete: every part that actually travels in
+/// the value representation is variable-free. A `Result`'s error channel is
+/// phantom (the `Error` variant stores a string message), so it is skipped.
+fn abi_shape_concrete(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => false,
+        Type::Con { name, args } if name == names::RESULT => {
+            args.first().is_none_or(abi_shape_concrete)
+        }
+        Type::Con { args, .. } => args.iter().all(abi_shape_concrete),
+        Type::Fun { params, ret } => {
+            params.iter().all(abi_shape_concrete) && abi_shape_concrete(ret)
+        }
+        Type::Record { fields, .. } => fields.values().all(abi_shape_concrete),
+        Type::Union { variants, .. } => variants.iter().all(abi_shape_concrete),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{fn_value_concrete, Type};
+    use osprey_types::names;
+
+    fn result(ok: Type) -> Type {
+        Type::Con {
+            name: names::RESULT.into(),
+            args: vec![ok, Type::Var(7)],
+        }
+    }
+
+    fn string() -> Type {
+        Type::Con {
+            name: names::STRING.into(),
+            args: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_result_error_channel_is_phantom_for_the_closure_abi() {
+        // `fn() -> Result<string, t7>`: the success channel is concrete, the
+        // error channel is still open. The ABI is concrete either way, because
+        // the Error variant's payload is always a string message.
+        let closure = Type::Fun {
+            params: vec![],
+            ret: Box::new(result(string())),
+        };
+        assert!(fn_value_concrete(&closure));
+    }
+
+    #[test]
+    fn an_open_success_channel_still_keeps_the_closure_generic() {
+        let closure = Type::Fun {
+            params: vec![],
+            ret: Box::new(result(Type::Var(3))),
+        };
+        assert!(!fn_value_concrete(&closure));
+    }
+
+    #[test]
+    fn an_open_parameter_still_keeps_the_closure_generic() {
+        let closure = Type::Fun {
+            params: vec![Type::Var(4)],
+            ret: Box::new(result(string())),
+        };
+        assert!(!fn_value_concrete(&closure));
     }
 }

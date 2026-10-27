@@ -13,7 +13,7 @@ use crate::runtime::{gen_print, to_string_value};
 use osprey_ast::{Expr, InterpolatedPart, NamedArgument, Parameter, Position, Stmt};
 
 mod operators;
-use operators::{checked_intrinsic, gen_binary, gen_checked_arith, gen_unary, two_int_args};
+use operators::{checked_intrinsic, gen_binary, gen_checked_arith, gen_unary};
 pub(crate) use operators::{emit_overflow_arith, gen_comparison};
 mod calls;
 use calls::{gen_call, gen_method_call};
@@ -22,8 +22,8 @@ mod lambdas;
 use lambdas::{apply_bound_lambda, apply_lambda, with_lambda_captures};
 pub(crate) use lambdas::{apply_lambda_values, fit_lambda_return, inline_sig, reduce_lambda};
 mod arguments;
-use arguments::{binary_integer_builtin, eval_arg, gen_user_call, is_binary_integer_builtin};
 pub(crate) use arguments::{call_with_values, has_value_form};
+use arguments::{eval_arg, gen_user_call, is_binary_integer_builtin};
 
 mod block;
 mod identifier;
@@ -86,7 +86,7 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             function, position, ..
         } => match crate::builtin_values::intrinsic_value(cg, function, *position) {
             Some(value) => value,
-            None => with_application(cg, *position, |cg| gen_expr(cg, function)),
+            None => with_application(cg, function, *position, |cg| gen_expr(cg, function)),
         },
         Expr::Binary {
             op, left, right, ..

@@ -126,15 +126,28 @@ static void emit_field(sink *out, const spec *s, const char *prefix, const char 
   }
 }
 
+// Compare the original number with concrete powers instead of repeatedly
+// asking the solver whether a symbolic quotient is zero.
+static int digit_length(unsigned long long value, unsigned base) {
+  int length = 0;
+  unsigned long long threshold = 1;
+  do {
+    length++;
+    if (threshold > UINT64_MAX / base) break;
+    threshold *= base;
+  } while (value >= threshold);
+  return length;
+}
+
 // Digits of `value` in `base`, written backwards from the end of `digits`.
 static int unsigned_digits(unsigned long long value, unsigned base, int upper, char *digits) {
-  const char *alphabet = upper ? "0123456789ABCDEF" : "0123456789abcdef";
-  int length = 0;
-  do {
-    digits[DIGITS_MAX - 1 - length] = alphabet[value % base];
-    value /= base;
-    length++;
-  } while (value != 0);
+  int length = digit_length(value, base);
+  unsigned long long divisor = 1;
+  for (int i = 0; i < length; i++) {
+    unsigned digit = (unsigned)((value / divisor) % base);
+    digits[DIGITS_MAX - 1 - i] = (char)(base <= 10 || digit < 10 ? ('0' | digit) : (upper ? 'A' : 'a') + digit - 10);
+    divisor *= base;
+  }
   return length;
 }
 
@@ -184,8 +197,14 @@ static void emit_unsigned(sink *out, const spec *s, va_list *arguments) {
   unsigned long long value = unsigned_argument(s, arguments);
   unsigned base = s->conversion == 'o' ? 8 : s->conversion == 'u' ? 10 : 16;
   int upper = s->conversion == 'X';
-  const char *prefix = s->alt && value != 0 ? (base == 8 ? "0" : upper ? "0X" : "0x") : "";
-  emit_integer(out, s, value, prefix, base, upper);
+  spec adjusted = *s;
+  if (s->alt && base == 8 && s->precision >= 0) {
+    int minimum = digit_length(value, 8) + (value != 0);
+    if (adjusted.precision < minimum) adjusted.precision = minimum;
+  }
+  int prefixed = s->alt && value != 0 && (base != 8 || s->precision < 0);
+  const char *prefix = prefixed ? (base == 8 ? "0" : upper ? "0X" : "0x") : "";
+  emit_integer(out, &adjusted, value, prefix, base, upper);
 }
 
 static void emit_pointer(sink *out, spec *s, va_list *arguments) {

@@ -1,0 +1,31 @@
+{
+  "reviewed_on": "2026-10-25",
+  "copyright_holder": "NIMBLESITE PTY LTD, Australia",
+  "license": "MIT",
+  "applications": {
+    "classifier": {
+      "repository": "https://github.com/karpathy/micrograd",
+      "commit": "7bc720e951fe422b8f8814aa5aa1b64121d26b4c",
+      "source": "https://github.com/karpathy/micrograd/blob/7bc720e951fe422b8f8814aa5aa1b64121d26b4c/demo.ipynb",
+      "source_sha256": "bd1b1a59bf07c3abf3ce6899aedd6c345594d19bf54d12257d8c5a5bca5c23ab",
+      "license_role": "reference-only",
+      "reused_material": []
+    },
+    "vector-search": {
+      "repository": "https://github.com/facebookresearch/faiss",
+      "commit": "0f0f728166218eab2605054c713cdf2646628014",
+      "source": "https://github.com/facebookresearch/faiss/blob/0f0f728166218eab2605054c713cdf2646628014/tutorial/python/1-Flat.py",
+      "source_sha256": "ef52a07c81bf94ae043f615c521711c69d82a29a20af6363fed1c6ea20c71d22",
+      "license_role": "reference-only",
+      "reused_material": []
+    },
+    "text-evaluation": {
+      "repository": "https://github.com/google-research/google-research",
+      "commit": "5b09c22d73a9d35eb6c5d2a99b95677a45053466",
+      "source": "https://github.com/google-research/google-research/blob/5b09c22d73a9d35eb6c5d2a99b95677a45053466/rouge/rouge.py",
+      "source_sha256": "5ea927632b41d7cf9dc4e31e0232b901315712106f0e307d28f32aa2f2056dbe",
+      "license_role": "reference-only",
+      "reused_material": []
+    }
+  }
+}

@@ -1,0 +1,8 @@
+[project]
+name = "hosted-tests"
+source_roots = ["src", "../api/lib", "../core/src", "../host/src"]
+default_namespace = "hosted_tests"
+entry = "src/main.osp"
+
+[modules]
+allow_wildcard_imports = false

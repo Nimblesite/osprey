@@ -14,20 +14,8 @@ const DYNAMIC_EFFECT: &str = "effect Wide { control op: fn(int, string) -> int }
        0 }\n";
 
 fn symbolic_module(src: &str) -> String {
-    let parsed = parse_program(src);
-    assert!(
-        parsed.errors.is_empty(),
-        "syntax errors: {:?}",
-        parsed.errors
-    );
-    compile_program_symbolic(
-        &parsed.program,
-        DebugSource {
-            filename: "debug.osp".to_string(),
-            directory: "/tmp".to_string(),
-        },
-    )
-    .expect("symbolic codegen should succeed")
+    compile_program_symbolic(&parsed(src, Flavor::Default), tmp_source("debug.osp"))
+        .expect("symbolic codegen should succeed")
 }
 
 #[test]
@@ -51,7 +39,7 @@ fn klee_mode_carries_debug_metadata_without_debug_flag() {
         symbolic.contains("!DICompileUnit") && symbolic.contains("!DILocation"),
         "{symbolic}"
     );
-    assert!(!symbolic.contains("optnone"));
+    testkit::contents(&symbolic, &[], &["optnone"]);
 }
 
 /// Programs whose symbolic and `--debug` builds are compared line for line:
@@ -93,10 +81,9 @@ fn klee_mode_is_the_debug_build_with_abort_for_exit() {
 fn every_klee_module_has_metadata_no_optnone_and_no_fatal_exit() {
     for src in PROGRAMS {
         let symbolic = symbolic_module(src);
-        assert!(symbolic.contains("!DICompileUnit"), "{src}");
-        assert!(symbolic.contains("debug.osp"), "{src}");
-        assert!(!symbolic.contains("optnone"), "{src}");
-        assert!(!symbolic.contains("call void @exit(i32 1)"), "{src}");
+        shows(&symbolic, &["!DICompileUnit", "debug.osp"]);
+        testkit::contents(&symbolic, &[], &["optnone"]);
+        testkit::contents(&symbolic, &[], &["call void @exit(i32 1)"]);
         assert_eq!(symbolic, symbolic_module(src), "deterministic: {src}");
     }
 }
@@ -109,19 +96,21 @@ fn every_abort_follows_its_message_and_ends_the_block() {
     let aborts: Vec<usize> = lines
         .iter()
         .enumerate()
-        .filter(|(_, line)| **line == "call void @abort()")
+        .filter(|(_, line)| line.starts_with("call void @abort()"))
         .map(|(at, _)| at)
         .collect();
     assert!(!aborts.is_empty(), "{symbolic}");
     for at in aborts {
         let before = lines.get(at.wrapping_sub(1)).copied().unwrap_or_default();
         let after = lines.get(at + 1).copied().unwrap_or_default();
-        assert!(before.contains("call i32 @puts("), "{before}");
-        assert_eq!(after, "unreachable");
+        shows(before, &["call i32 @puts("]);
+        assert!(after.starts_with("unreachable"), "{after}");
     }
-    assert!(symbolic.contains("unhandled effect: Wide.op"), "{symbolic}");
-    assert!(symbolic.contains("declare void @abort()"));
-    assert!(!symbolic.contains("declare void @exit(i32)"));
+    shows(
+        &symbolic,
+        &["unhandled effect: Wide.op", "declare void @abort()"],
+    );
+    testkit::contents(&symbolic, &[], &["declare void @exit(i32)"]);
 }
 
 /// The plain build is untouched by the switch: same guard count, `exit`.

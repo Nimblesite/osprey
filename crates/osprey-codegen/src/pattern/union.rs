@@ -1,5 +1,5 @@
 //! Union pattern lowering.
-use super::{bind_value, emit_arm, finish_phi, open_guarded_arm, take_catch_all};
+use super::{bind_value, emit_arm, finish_phi, match_mark, open_guarded_arm, take_catch_all};
 use crate::builder::Codegen;
 use crate::builder::CtorView;
 use crate::error::{CodegenError, Result};
@@ -86,7 +86,7 @@ pub(super) fn gen_union_match(
     let tag = discriminant(cg, disc, owner);
 
     let end = cg.fresh_label();
-    let mark = crate::arc::frame_mark(cg);
+    let mark = match_mark(cg);
     let mut phi_in: Vec<(Value, String)> = Vec::new();
     let variants = cg.union_variants(owner).unwrap_or(&[]).to_vec();
 

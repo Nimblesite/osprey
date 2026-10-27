@@ -36,13 +36,13 @@ Recommended order:
 
 ## Current Osprey Baseline
 
-Osprey today is a Rust compiler that emits textual LLVM IR and links it with C
-runtime archives. The CLI already has two targets, but both still use the LLVM
-path:
+Osprey's Rust compiler emits textual LLVM IR and links it with C runtime archives. All current targets use this LLVM path. Two representative outputs are:
 
 - `native`: LLVM IR -> `clang` -> native executable linked with the C runtime.
 - `wasm32`: same Osprey LLVM IR -> `clang --target=wasm32-wasip1` ->
   `wasm-ld` -> WASI module linked with a wasm-portable C runtime subset.
+
+The CLI also emits iOS, macOS and Android C ABI archives and a Python-callable shared library through LLVM. These outputs do not provide a JavaScript or .NET IL backend.
 
 The WebAssembly target is instructive. It reused the existing LLVM pipeline and
 only needed target selection, a wasm runtime archive, and link-driver changes.
@@ -433,16 +433,16 @@ as scheduling/runtime primitives rather than as the semantics of effects.
 
 Local Osprey context:
 
-- [README.md](../../README.md)
+- [README.md](../README.md)
 - [Algebraic Effects spec](specs/language/0017-AlgebraicEffects.md)
 - [Fibers and Concurrency spec](specs/language/0011-LightweightFibersAndConcurrency.md)
 - [WebAssembly target spec](specs/compiler/0022-WebAssemblyTarget.md)
-- [Algebraic effects roadmap](../plans/0016-algebraic-effects-and-handlers.md)
-- [`crates/osprey-codegen/src/effects.rs`](../../crates/osprey-codegen/src/effects.rs)
-- [`crates/osprey-codegen/src/fiber.rs`](../../crates/osprey-codegen/src/fiber.rs)
-- [`compiler/runtime/effects_runtime.c`](../../compiler/runtime/effects_runtime.c)
-- [`compiler/runtime/effects_coro.c`](../../compiler/runtime/effects_coro.c)
-- [`compiler/runtime/fiber_runtime.c`](../../compiler/runtime/fiber_runtime.c)
+- [Algebraic effects roadmap](plans/0016-algebraic-effects-and-handlers.md)
+- [`crates/osprey-codegen/src/effects.rs`](../crates/osprey-codegen/src/effects.rs)
+- [`crates/osprey-codegen/src/fiber.rs`](../crates/osprey-codegen/src/fiber.rs)
+- [`compiler/runtime/effects_runtime.c`](../compiler/runtime/effects_runtime.c)
+- [`compiler/runtime/effects_coro.c`](../compiler/runtime/effects_coro.c)
+- [`compiler/runtime/fiber_runtime.c`](../compiler/runtime/fiber_runtime.c)
 
 External references:
 

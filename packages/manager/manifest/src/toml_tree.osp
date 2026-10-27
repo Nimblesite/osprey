@@ -1,0 +1,221 @@
+namespace registry;
+import registry::Toml
+import registry::TomlValues
+
+/// Tree navigation over a parsed TOML `Table`: pair lookup, focus-aware table
+/// and array-of-tables insertion, and the key-path definition rules that turn
+/// `[a.b]`, `[[a]]` and `a.b = 1` into nested tables. Fails are located reason
+/// codes produced through `Toml::failSpan`. Implements [PACKAGE-MANIFEST].
+module TomlTree {
+    type PathStep = Key { name: string } | Item { index: int }
+    type Parent = { root: Toml::Value, path: List<PathStep> }
+    /// Header focus includes array indices, keeping nested tables inside their owning element.
+    export type Doc = { root: Toml::Value, focus: List<PathStep>, arrays: List<List<PathStep>> }
+    /// The result of appending an array-of-tables element.
+    export type ArrDef = { root: Toml::Value, index: int }
+    /// A document with no headers or array-of-tables declarations.
+    export let emptyDoc = Doc { root: Toml::emptyTable, focus: [], arrays: [] }
+
+    // -- tree navigation ----------------------------------------------------
+
+    /// The pair at `i`, or a stable missing pair past the end.
+    export fn pairAt(pairs, i) = listGet(pairs, i) ?: Toml::missingPair
+
+    /// The index of the first pair whose key is `key`, or -1.
+    export fn findPair(pairs, key) = fold(range(0, length(pairs)), -1, fn(acc, i) => if acc == -1 && pairAt(pairs, i).key == key { i } else { acc })
+
+    fn childOfKey(v, key) = match v {
+        Toml::Table { pairs } => pairAt(pairs, findPair(pairs, key)).value
+        _ => Toml::emptyTable
+    }
+
+    fn setPair(pairs, key, span, newValue) = match findPair(pairs, key) >= 0 {
+        true => range(0, length(pairs)) |> map(fn(i) => if pairAt(pairs, i).key == key { Toml::Pair { key: key, value: newValue, span: pairAt(pairs, i).span } } else { pairAt(pairs, i) }) |> toList
+        false => listAppend(pairs, Toml::Pair { key: key, value: newValue, span: span })
+    }
+
+    fn setChildKey(v, key, span, newChild) = match v {
+        Toml::Table { pairs } => Toml::Table { pairs: setPair(pairs, key, span, newChild) }
+        _ => v
+    }
+
+    fn replaceAt(items, index, item) = range(0, length(items)) |> map(fn(i) => if i == index { item } else { listGet(items, i) ?: item }) |> toList
+
+    fn itemAt(v, index) = match v {
+        Toml::Arr { items } => listGet(items, index) ?: Toml::emptyTable
+        _ => Toml::emptyTable
+    }
+
+    fn stepAt(v, step) = match step {
+        Key { name } => childOfKey(v, name)
+        Item { index } => itemAt(v, index)
+    }
+
+    fn tableAt(root, path) = foldList(path, root, stepAt)
+    fn dropPath(path) = range(1, length(path)) |> map(fn(i) => listGet(path, i) ?: (Key { name: "" })) |> toList
+
+    fn setTableAt(root, path, table) = match isEmpty(path) {
+        true => table
+        false => {
+            let step = listGet(path, 0) ?: (Key { name: "" })
+            let updated = setTableAt(stepAt(root, step), dropPath(path), table)
+            match step {
+                Key { name } => setChildKey(root, name, Toml::zeroSpan, updated)
+                Item { index } => match root {
+                    Toml::Arr { items } => Toml::Arr { items: replaceAt(items, index, updated) }
+                    _ => root
+                }
+            }
+        }
+    }
+
+    // -- key-path insertion -------------------------------------------------
+
+    // Recursive through insertNested/insertDeep: codegen needs the return type spelled out.
+    fn insertInto(table, segs, val) -> Result<Toml::Value, string> = match length(segs) == 1 {
+        true => insertLeaf(table, listGet(segs, 0) ?: TomlValues::missingKeySeg, val)
+        false => insertNested(table, segs, val)
+    }
+
+    fn insertNested(table, segs, val) = {
+        let seg = listGet(segs, 0) ?: TomlValues::missingKeySeg
+        match childOrCreate(table, seg) {
+            Error { message } => Error { message: message }
+            Success { value } => insertDeep(table, seg, segs, value, val)
+        }
+    }
+
+    fn insertDeep(table, seg, segs, child, val) = match insertInto(child, dropSeg(segs), val) {
+        Success { value } => Success { value: setChildKey(table, seg.name, seg.span, value) }
+        Error { message } => Error { message: message }
+    }
+
+    fn insertLeaf(table, seg, val) = match table {
+        Toml::Table { pairs } => match findPair(pairs, seg.name) >= 0 {
+            true => Error { message: Toml::failSpan(seg.span, "toml.duplicate-key") }
+            false => Success { value: Toml::Table { pairs: listAppend(pairs, Toml::Pair { key: seg.name, value: val, span: seg.span }) } }
+        }
+        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    }
+
+    fn childOrCreate(table, seg) = match table {
+        Toml::Table { pairs } => match findPair(pairs, seg.name) >= 0 {
+            true => childOrExisting(pairs, findPair(pairs, seg.name), seg)
+            false => Success { value: Toml::emptyTable }
+        }
+        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    }
+
+    // `Table =>` cannot be written qualified outside Toml (issue: qualified
+    // payload-free variant patterns), so ask Toml::isTable instead.
+    fn childOrExisting(pairs, i, seg) = match Toml::isTable(pairAt(pairs, i).value) {
+        true => Success { value: pairAt(pairs, i).value }
+        false => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    }
+
+    fn dropSeg(segs) = range(1, length(segs)) |> map(fn(i) => listGet(segs, i) ?: TomlValues::missingKeySeg) |> toList
+
+    fn knownArray(arrays, path) = foldList(arrays, false, fn(found, candidate) => found || structuralEquals(candidate, path))
+    fn keyPath(parent, seg) = listAppend(parent.path, Key { name: seg.name })
+
+    fn missingParent(parent, seg, table) = Success { value: Parent {
+        root: setTableAt(parent.root, parent.path, setChildKey(table, seg.name, seg.span, Toml::emptyTable)),
+        path: keyPath(parent, seg)
+    } }
+
+    fn existingParent(parent, arrays, seg, child) = if Toml::isTable(child) {
+        Success { value: Parent { root: parent.root, path: keyPath(parent, seg) } }
+    } else { match child {
+        Toml::Arr { items } => if !isEmpty(items) && knownArray(arrays, keyPath(parent, seg)) {
+            Success { value: Parent { root: parent.root, path: listAppend(keyPath(parent, seg), Item { index: length(items) - 1 }) } }
+        } else { Error { message: Toml::failSpan(seg.span, "toml.not-a-table") } }
+        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    } }
+
+    fn descendParent(parent, arrays, seg) = match tableAt(parent.root, parent.path) {
+        Toml::Table { pairs } => if findPair(pairs, seg.name) < 0 { missingParent(parent, seg, Toml::Table { pairs: pairs }) }
+            else { existingParent(parent, arrays, seg, pairAt(pairs, findPair(pairs, seg.name)).value) }
+        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    }
+
+    // Recursive header resolution retains every array element in its typed path.
+    fn headerParent(parent, arrays, segs) -> Result<Parent, string> = if isEmpty(segs) { Success { value: parent } } else {
+        match descendParent(parent, arrays, listGet(segs, 0) ?: TomlValues::missingKeySeg) {
+            Error { message } => Error { message: message }
+            Success { value } => headerParent(value, arrays, dropSeg(segs))
+        }
+    }
+
+    fn parentSegs(segs) = range(0, length(segs) - 1) |> map(fn(i) => listGet(segs, i) ?: TomlValues::missingKeySeg) |> toList
+    fn withTable(parent, table, focus, arrays) = Doc { root: setTableAt(parent.root, parent.path, table), focus: focus, arrays: arrays }
+
+    fn tableHeader(doc, parent, seg) = match defineLeaf(tableAt(parent.root, parent.path), seg) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: withTable(parent, value, keyPath(parent, seg), doc.arrays) }
+    }
+
+    fn hasKey(table, key) = match table {
+        Toml::Table { pairs } => findPair(pairs, key) >= 0
+        _ => false
+    }
+
+    fn arrayHeader(doc, parent, seg) = {
+        let table = tableAt(parent.root, parent.path)
+        let path = keyPath(parent, seg)
+        let known = knownArray(doc.arrays, path)
+        if hasKey(table, seg.name) && !known { Error { message: Toml::failSpan(seg.span, "toml.not-a-table") } }
+        else { match appendArrayLeaf(table, seg) {
+            Error { message } => Error { message: message }
+            Success { value } => Success { value: withTable(parent, value.root, listAppend(path, Item { index: value.index }), if known { doc.arrays } else { listAppend(doc.arrays, path) }) }
+        } }
+    }
+
+    fn defineHeader(doc, segs, array) = match headerParent(Parent { root: doc.root, path: [] }, doc.arrays, parentSegs(segs)) {
+        Error { message } => Error { message: message }
+        Success { value } => if array { arrayHeader(doc, value, listGet(segs, length(segs) - 1) ?: TomlValues::missingKeySeg) }
+            else { tableHeader(doc, value, listGet(segs, length(segs) - 1) ?: TomlValues::missingKeySeg) }
+    }
+
+    /// Define a table header, descending into the latest declared array elements. [PACKAGE-MANIFEST]
+    export fn defineTable(doc, segs) = defineHeader(doc, segs, false)
+    /// Append an array element; ordinary arrays and inline tables cannot become header arrays.
+    export fn defineArrayTable(doc, segs) = defineHeader(doc, segs, true)
+
+    fn defineLeaf(root, seg) = match root {
+        Toml::Table { pairs } => match findPair(pairs, seg.name) >= 0 {
+            true => defineExisting(pairs, findPair(pairs, seg.name), seg)
+            false => Success { value: Toml::Table { pairs: listAppend(pairs, Toml::Pair { key: seg.name, value: Toml::emptyTable, span: seg.span }) } }
+        }
+        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    }
+
+    // `Table =>` cannot be written qualified outside Toml (issue: qualified
+    // payload-free variant patterns), so ask Toml::isTable instead.
+    fn defineExisting(pairs, i, seg) = match Toml::isTable(pairAt(pairs, i).value) {
+        true => Error { message: Toml::failSpan(seg.span, "toml.duplicate-key") }
+        false => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    }
+
+    fn appendArrayLeaf(root, seg) = match root {
+        Toml::Table { pairs } => match findPair(pairs, seg.name) >= 0 {
+            true => appendExisting(pairs, findPair(pairs, seg.name), seg)
+            false => Success { value: ArrDef { root: Toml::Table { pairs: listAppend(pairs, Toml::Pair { key: seg.name, value: Toml::Arr { items: [Toml::emptyTable] }, span: seg.span }) }, index: 0 } }
+        }
+        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    }
+
+    fn appendExisting(pairs, i, seg) = match pairAt(pairs, i).value {
+        Toml::Arr { items } => Success { value: ArrDef { root: Toml::Table { pairs: setPair(pairs, seg.name, seg.span, Toml::Arr { items: listAppend(items, Toml::emptyTable) }) }, index: length(items) } }
+        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    }
+
+    /// Insert a key-path value at the focus's current table, or the first
+    /// problem. [PACKAGE-MANIFEST]
+    export fn insertAtFocus(doc, segs, val) = {
+        let current = tableAt(doc.root, doc.focus)
+        match insertInto(current, segs, val) {
+            Success { value } => Success { value: Doc { root: setTableAt(doc.root, doc.focus, value), focus: doc.focus, arrays: doc.arrays } }
+            Error { message } => Error { message: message }
+        }
+    }
+}

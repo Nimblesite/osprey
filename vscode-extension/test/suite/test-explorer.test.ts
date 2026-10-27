@@ -1092,10 +1092,10 @@ suite("Osprey Test Explorer", () => {
 
     // [TESTING-COVERAGE-VSCODE] calc proof, end to end: the Coverage button's
     // exact path — coverageSink → executeRunRequest → real compiler →
-    // --coverage-json → parsed hits → FileCoverage. The fixture has exactly 3
-    // coverable lines (double:1, unused:3, test:5) and executes 2 of them, so
-    // the run MUST surface covered=2/total=3 — the 66.7% VS Code displays.
-    test("the Coverage profile path yields covered=2/total=3 for the fixture", async function () {
+    // --coverage-json → parsed hits → FileCoverage. The fixture covers the
+    // function, test registration and assertion (1, 5, 6); unused (3) stays
+    // uncovered. Every source line and its hit count must reach the gutter.
+    test("the Coverage profile path yields covered=3/total=4 for the fixture", async function () {
       if (!compiler) {
         this.skip();
       }
@@ -1115,8 +1115,16 @@ suite("Osprey Test Explorer", () => {
       assert.strictEqual(received.length, 1, "one FileCoverage per suite file");
       const fc = received[0];
       assert.strictEqual(fc.uri.fsPath, coverageUri.fsPath);
-      assert.strictEqual(fc.statementCoverage.covered, 2, "executed lines");
-      assert.strictEqual(fc.statementCoverage.total, 3, "coverable lines");
+      assert.strictEqual(fc.statementCoverage.covered, 3, "executed lines");
+      assert.strictEqual(fc.statementCoverage.total, 4, "coverable lines");
+      assert.deepStrictEqual(
+        detailedCoverageFor(fc).map((s) => [
+          (s.location as vscode.Position).line,
+          s.executed,
+        ]),
+        [[0, 1], [2, 0], [4, 1], [5, 1]],
+        "every executable source line keeps its exact hit count",
+      );
       const zeroHit = detailedCoverageFor(fc).find(
         (s) => (s.location as vscode.Position).line === 2,
       );

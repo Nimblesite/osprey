@@ -1,0 +1,8 @@
+[project]
+name = "registry-auth-tests"
+source_roots = ["src", "../api/lib", "../host/src", "../core/src"]
+default_namespace = "registry_auth_tests"
+entry = "src/main.osp"
+
+[modules]
+allow_wildcard_imports = false

@@ -1,8 +1,0 @@
-{
-  "spec": "[PACKAGE-FOLDER-REGISTRY]",
-  "description": "Every folder-lock fixture in this folder.",
-  "cases": [
-    "rejections",
-    "roundtrip"
-  ]
-}

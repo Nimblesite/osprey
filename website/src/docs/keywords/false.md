@@ -4,7 +4,7 @@ title: "false (Keyword)"
 description: "Boolean literal representing the logical value false."
 ---
 
-**Description:** Boolean literal representing the logical value false.
+`false` is a `bool` literal in Default and ML syntax. Python syntax spells it `False`.
 
 ## Example
 

@@ -1,0 +1,247 @@
+namespace registry;
+import registry::Names
+import registry::Maybe
+
+/// The hosted governance domain: organizations, memberships, the single
+/// package administrator, explicit per-package grants, authority epochs,
+/// handover holds and freeze status, as pure typed transitions with stable
+/// reason codes. Implements [PACKAGE-OWNERSHIP-MODEL], [PACKAGE-OWNERSHIP-ADMIN],
+/// [PACKAGE-OWNERSHIP-PERMISSIONS] and [PACKAGE-OWNERSHIP-MAINTENANCE].
+///
+/// No cryptography lives here and none is imitated. Boundary authority
+/// arrives only as `Proof` — the already-verified result of the host's
+/// WebAuthn (human) or ephemeral DSSE (workflow) ceremony
+/// ([PACKAGE-HOSTED-AUTH]). A transition re-checks the proof's actor,
+/// membership, ceremony and exact canonical statement; supplied scope,
+/// role or user text is never authority.
+module Governance {
+    export type PrincipalId = string
+    export type OrgId = string
+    export type MembershipId = string
+
+    export type PrincipalKind = Human | Workflow
+    export type PrincipalState = PrincipalActive | Suspended
+    export type Principal = { id: PrincipalId, kind: PrincipalKind, status: PrincipalState }
+
+    export type Organization = { id: OrgId, orgHandle: string, governanceEpoch: int }
+
+    export type MembershipRole = Custodian | Member
+    export type MembershipState = MemberActive | Revoked
+    export type Membership = { id: MembershipId, org: OrgId, principal: PrincipalId, role: MembershipRole, status: MembershipState, authorityEpoch: int }
+
+    /// The grantable capabilities [PACKAGE-OWNERSHIP-PERMISSIONS]. There is
+    /// no `admin`, no wildcard and no bundle: the administrator seat is the
+    /// package row, not a permission.
+    export type Permission = PublishRelease | YankRelease | EditMetadata | ManageMaintenance | ManageSecurity
+    export type GrantState = GrantActive | GrantRevoked
+    export type Grant = { id: string, package: string, membership: MembershipId, permission: Permission, grantor: MembershipId, packageEpoch: int, memberEpoch: int, expiresAt: Maybe::Maybe<int>, status: GrantState }
+
+    export type PackageState = Draft | Active | WriteFrozen | Deprecated | Tombstoned
+    export type Package = { id: string, key: Names::Key, org: OrgId, admin: MembershipId, status: PackageState, authorityEpoch: int }
+
+    export type Ceremony = WebAuthn | EphemeralDsse
+    export type Verification = HostVerified | Rejected { reason: string }
+    export type Proof = { ceremony: Ceremony, actor: PrincipalId, membership: MembershipId, statement: string, verification: Verification }
+
+    export type TransferState = Pending | Accepted | Completed | Cancelled | Declined | Expired
+    export type Transfer = { id: string, package: string, current: MembershipId, proposed: MembershipId, expectedEpoch: int, notBefore: int, expiresAt: int, acceptance: Maybe::Maybe<Proof>, status: TransferState }
+
+    export type Registry = { principals: List<Principal>, organizations: List<Organization>, memberships: List<Membership>, packages: List<Package>, grants: List<Grant>, transfers: List<Transfer> }
+
+    /// Sequence two `Result`s, threading the first value: every transition
+    /// is one nested chain of these, so each guard reads on its own line.
+    export fn andThen(result, next) = match result {
+        Success { value } => next(value)
+        Error { message } => Error { message: message }
+    }
+
+    fn firstWhere(list, predicate) = foldList(list, Maybe::none(), fn(found, item) =>
+        match Maybe::isPresent(found) {
+            true => found
+            false => if predicate(item) { Maybe::some(item) } else { found }
+        })
+
+    fn found(maybe, code) = Maybe::fold(maybe, Error { message: code }, fn(value) => Success { value: value })
+
+    export fn principalOf(registry, id) = found(firstWhere(registry.principals, fn(p: Principal) => p.id == id), "governance.principal.missing")
+    export fn organizationOf(registry, id) = found(firstWhere(registry.organizations, fn(o: Organization) => o.id == id), "governance.organization.missing")
+    export fn membershipOf(registry, id) = found(firstWhere(registry.memberships, fn(m: Membership) => m.id == id), "governance.membership.missing")
+    export fn packageOf(registry, id) = found(firstWhere(registry.packages, fn(p: Package) => p.id == id), "governance.package.missing")
+    export fn transferOf(registry, id) = found(firstWhere(registry.transfers, fn(t: Transfer) => t.id == id), "governance.transfer.missing")
+    export fn grantOf(registry, id) = found(firstWhere(registry.grants, fn(g: Grant) => g.id == id), "governance.grant.missing")
+
+    /// The organization's package row for one leaf name, in any lifecycle
+    /// status: tombstones keep occupying their key [PACKAGE-NAMES-NO-SITTING].
+    export fn packageByName(registry, org, name) = firstWhere(registry.packages, fn(p: Package) => p.org == org && p.key.name == name)
+    export fn organizationByHandle(registry, orgHandle) = firstWhere(registry.organizations, fn(o: Organization) => o.orgHandle == orgHandle)
+
+    export fn isActive(membership: Membership) = match membership.status {
+        MemberActive => true
+        Revoked => false
+    }
+
+    export fn isCustodian(membership: Membership) = match membership.role {
+        Custodian => true
+        Member => false
+    }
+
+    export fn isHuman(principal: Principal) = match principal.kind {
+        Human => true
+        Workflow => false
+    }
+
+    export fn isLive(principal: Principal) = match principal.status {
+        PrincipalActive => true
+        Suspended => false
+    }
+
+    /// A proposal that has not concluded: it still occupies the package's
+    /// one live slot [PACKAGE-OWNERSHIP-ADMIN].
+    export fn isLiveTransfer(transfer: Transfer) = match transfer.status {
+        Pending => true
+        Accepted => true
+        _ => false
+    }
+
+    /// A proposal the recipient has already accepted.
+    export fn isAcceptedTransfer(transfer: Transfer) = match transfer.status {
+        Accepted => true
+        _ => false
+    }
+
+    /// A package that has not seen its first accepted release.
+    export fn isDraft(pkg: Package) = match pkg.status {
+        Draft => true
+        _ => false
+    }
+
+    export fn isActiveGrant(grant: Grant) = match grant.status {
+        GrantActive => true
+        GrantRevoked => false
+    }
+
+    export fn permissionName(permission) = match permission {
+        PublishRelease => "publish-release"
+        YankRelease => "yank-release"
+        EditMetadata => "edit-metadata"
+        ManageMaintenance => "manage-maintenance"
+        ManageSecurity => "manage-security"
+    }
+
+    /// Permission equality by canonical name.
+    export fn samePermission(a, b) = permissionName(a) == permissionName(b)
+
+    export fn activeMemberOf(membership: Membership) = match isActive(membership) {
+        true => Success { value: membership }
+        false => Error { message: "governance.membership.inactive" }
+    }
+
+    export fn sameOrgMember(membership: Membership, org) = match membership.org == org {
+        true => Success { value: membership }
+        false => Error { message: "governance.membership.other-org" }
+    }
+
+    export fn humanPrincipal(principal: Principal) = match isHuman(principal) {
+        true => Success { value: principal }
+        false => Error { message: "governance.principal.workflow" }
+    }
+
+    export fn livePrincipal(principal: Principal) = match isLive(principal) {
+        true => Success { value: principal }
+        false => Error { message: "governance.principal.suspended" }
+    }
+
+    /// Package writes need a writable lifecycle status
+    /// [PACKAGE-OWNERSHIP-MAINTENANCE]; each refusal names its status.
+    export fn writable(pkg: Package) = match pkg.status {
+        Draft => Success { value: pkg }
+        Active => Success { value: pkg }
+        WriteFrozen => Error { message: "governance.package.frozen" }
+        Deprecated => Error { message: "governance.package.deprecated" }
+        Tombstoned => Error { message: "governance.package.tombstoned" }
+    }
+
+    /// Operational authorization needs an active package: a draft has no
+    /// releases, and frozen, deprecated and tombstoned packages refuse
+    /// operations with their own reason codes.
+    export fn operational(pkg: Package) = match pkg.status {
+        Active => Success { value: pkg }
+        Draft => Error { message: "governance.package.draft" }
+        WriteFrozen => Error { message: "governance.package.frozen" }
+        Deprecated => Error { message: "governance.package.deprecated" }
+        Tombstoned => Error { message: "governance.package.tombstoned" }
+    }
+
+    /// Demand one exact verified proof: the host ceremony accepted it, it
+    /// was performed by `membership`/`actor`, and it signs exactly
+    /// `statement`. A refused proof, another actor or another statement is
+    /// never authority.
+    export fn requireProof(proof, actor, membership, statement) = match proof.verification {
+        Rejected { reason } => Error { message: "governance.proof.rejected:${reason}" }
+        HostVerified => match proof.membership == membership {
+            false => Error { message: "governance.proof.wrong-membership" }
+            true => match proof.actor == actor {
+                false => Error { message: "governance.proof.wrong-actor" }
+                true => match proof.statement == statement {
+                    false => Error { message: "governance.proof.statement-mismatch" }
+                    true => Success { value: proof }
+                }
+            }
+        }
+    }
+
+    /// Human control acts are signed through WebAuthn; a workflow DSSE proof
+    /// is never organizational authority [PACKAGE-OWNERSHIP-PERMISSIONS].
+    export fn requireHumanCeremony(proof) = match proof.ceremony {
+        WebAuthn => Success { value: proof }
+        EphemeralDsse => Error { message: "governance.proof.ceremony" }
+    }
+
+    /// The exact current package administrator's fresh human proof for
+    /// `statement` [PACKAGE-OWNERSHIP-ADMIN]: an active human membership that
+    /// is exactly the package's single admin reference. Custodians, members,
+    /// other organizations' admins and workflows all fail here.
+    export fn requireAdmin(registry, pkg: Package, proof, statement) = match proof.membership == pkg.admin {
+        false => Error { message: "governance.admin.not-current" }
+        true => andThen(membershipOf(registry, proof.membership), fn(m: Membership) =>
+            andThen(activeMemberOf(m), fn(_) =>
+                andThen(principalOf(registry, m.principal), fn(p: Principal) =>
+                    andThen(livePrincipal(p), fn(_) =>
+                        andThen(humanPrincipal(p), fn(_) =>
+                            andThen(requireHumanCeremony(proof), fn(_) =>
+                                requireProof(proof, m.principal, m.id, statement)))))))
+    }
+
+    /// The canonical statements every proof signs. A statement binds the
+    /// whole decision — identities, epochs, permission and expiry — so a
+    /// proof for one decision can never authorize another.
+    export fn organizationStatement(id, orgHandle, founder) = "create-organization|${id}|@${orgHandle}|first-custodian:${founder}"
+    export fn custodianStatement(org, target) = "grant-custodianship|org:${org}|to:${target}"
+    export fn revocationStatement(org, target) = "revoke-membership|org:${org}|membership:${target}"
+    export fn invitationStatement(org, principal, membership) = "invite-member|org:${org}|principal:${principal}|membership:${membership}"
+    export fn membershipAcceptanceStatement(org, principal, membership) = "accept-membership|org:${org}|principal:${principal}|membership:${membership}"
+    export fn creationStatement(id, key: Names::Key, admin) = "create-package|${id}|${Names::display(key)}|admin:${admin}"
+    export fn grantStatement(key: Names::Key, epoch, to, permission, expiresAt) = "grant|${Names::display(key)}|epoch:${epoch}|to:${to}|${permissionName(permission)}|expires:${Maybe::orElse(expiresAt, 0)}"
+    export fn revokeGrantStatement(key: Names::Key, epoch, grant) = "revoke-grant|${Names::display(key)}|epoch:${epoch}|grant:${grant}"
+    export fn revokeAllStatement(key: Names::Key, epoch) = "revoke-grants|${Names::display(key)}|epoch:${epoch}"
+    export fn renewalStatement(key: Names::Key, epoch, to, permission, expiresAt) = "renew-grant|${Names::display(key)}|epoch:${epoch}|to:${to}|${permissionName(permission)}|expires:${Maybe::orElse(expiresAt, 0)}"
+    export fn deprecateStatement(key: Names::Key, epoch) = "deprecate|${Names::display(key)}|epoch:${epoch}"
+    export fn tombstoneStatement(key: Names::Key, epoch) = "tombstone|${Names::display(key)}|epoch:${epoch}"
+    export fn proposalStatement(key: Names::Key, epoch, current, proposed) = "handover-propose|${Names::display(key)}|epoch:${epoch}|from:${current}|to:${proposed}"
+    export fn handoverAcceptanceStatement(id, key: Names::Key, epoch, current, proposed) = "handover-accept|${id}|${Names::display(key)}|epoch:${epoch}|from:${current}|to:${proposed}"
+    export fn cancelStatement(id) = "handover-cancel|${id}"
+    export fn declineStatement(id) = "handover-decline|${id}"
+
+    /// Replace one row in place; historical evidence rows are never deleted.
+    export fn replaceMembership(registry, updated: Membership) = registry { memberships: mapList(registry.memberships, fn(m: Membership) => if m.id == updated.id { updated } else { m }) }
+    export fn replacePackage(registry, updated: Package) = registry { packages: mapList(registry.packages, fn(p: Package) => if p.id == updated.id { updated } else { p }) }
+    export fn replaceGrant(registry, updated: Grant) = registry { grants: mapList(registry.grants, fn(g: Grant) => if g.id == updated.id { updated } else { g }) }
+    export fn replaceTransfer(registry, updated: Transfer) = registry { transfers: mapList(registry.transfers, fn(t: Transfer) => if t.id == updated.id { updated } else { t }) }
+
+    /// Revoke every grant row of one package, the outgoing administrator's
+    /// included [PACKAGE-OWNERSHIP-ADMIN]; the rows stay as audit evidence.
+    export fn revokeGrantsOf(registry, id) = registry { grants: mapList(registry.grants, fn(g: Grant) => if g.package == id { g { status: GrantRevoked } } else { g }) }
+
+    /// The live (pending or accepted) handover proposal of one package, if any.
+    export fn liveTransferFor(registry, id) = firstWhere(registry.transfers, fn(t: Transfer) => t.package == id && isLiveTransfer(t))
+}

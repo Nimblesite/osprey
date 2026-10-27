@@ -1,0 +1,5 @@
+[project]
+name = "hunt-python-crash"
+source_roots = ["."]
+python_sources = ["main.py"]
+entry = "main.py"

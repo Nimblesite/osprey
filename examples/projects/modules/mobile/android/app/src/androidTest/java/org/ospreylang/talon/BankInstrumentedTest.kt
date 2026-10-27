@@ -249,7 +249,9 @@ class BankInstrumentedTest : InstrumentationTestCase() {
     private fun findTag(root: View, tag: String) = views(root).firstOrNull { it.tag == tag }
     private fun screenshot(name: String) {
         settleFrames()
-        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+        val window = ui { app.window }
+        val captured = if (android.os.Build.VERSION.SDK_INT >= 34) instrumentation.uiAutomation.takeScreenshot(window) else instrumentation.uiAutomation.takeScreenshot()
+        val bitmap = requireNotNull(captured) { "Screenshot $name could not capture the committed native window" }
         val colors = mutableSetOf<Int>()
         for (y in bitmap.height / 8 until bitmap.height * 7 / 8 step maxOf(1, bitmap.height / 70)) {
             for (x in bitmap.width / 10 until bitmap.width * 9 / 10 step maxOf(1, bitmap.width / 50)) colors.add(bitmap.getPixel(x, y))

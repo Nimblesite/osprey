@@ -11,4 +11,4 @@ These are unmodified captures of the running native apps on 7 September 2026. Th
 
 The iOS application was also signed, installed, launched, and verified on a physical iPhone 16. These website images are simulator and emulator captures, not photographs of that phone.
 
-To refresh the assets, run the apps using [the mobile guide](../../../../../examples/mobile/README.md), wait for a successful refresh, and capture their actual windows. Use `xcrun simctl io <simulator-id> screenshot <file.png>` on iOS and `adb -s <device-id> exec-out screencap -p > <file.png>` on Android. Keep the screenshot files shared by the website and repository READMEs.
+To refresh the assets, run the apps using [the mobile guide](https://github.com/Nimblesite/osprey/blob/main/examples/mobile/README.md), wait for a successful refresh, and capture their actual windows. Use `xcrun simctl io <simulator-id> screenshot <file.png>` on iOS and `adb -s <device-id> exec-out screencap -p > <file.png>` on Android. Keep the screenshot files shared by the website and repository READMEs.

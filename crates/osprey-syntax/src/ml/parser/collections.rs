@@ -2,62 +2,48 @@
 use super::{MlExpr, MlField, MlType, Parser, TokKind};
 
 impl Parser<'_> {
-    /// A bracket literal: a `[ k => v, … ]` map when a top-level `=>` (or the
-    /// explicit empty form `[=>]`) is present, otherwise a `[ a, b, c ]` list
-    /// ([FLAVOR-ML-LIST], [FLAVOR-ML-MAP]). Layout is suppressed inside brackets,
-    /// so elements may span lines.
+    /// Parse the first expression before distinguishing a list from a map.
+    /// Lambda and match arrows belong to that expression, not the collection.
+    /// Implements [FLAVOR-ML-LIST], [FLAVOR-ML-MAP].
     pub(in crate::ml) fn list(&mut self) -> MlExpr {
-        if self.bracket_is_map() {
-            return self.map_literal();
-        }
         let open = self.pos();
-        self.advance(); // `[`
-        let mut items = Vec::new();
-        if !matches!(self.peek(), TokKind::RBracket) {
+        self.advance();
+        if self.eat(&TokKind::FatArrow) {
+            self.close_bracket();
+            return MlExpr::Map(Vec::new());
+        }
+        if self.eat(&TokKind::RBracket) {
+            return MlExpr::List(Vec::new(), open);
+        }
+        let first = self.expr(0);
+        if self.eat(&TokKind::FatArrow) {
+            return self.map_tail(first);
+        }
+        self.list_tail(first, open)
+    }
+
+    fn list_tail(&mut self, first: MlExpr, open: super::Position) -> MlExpr {
+        let mut items = vec![first];
+        while self.more_in_list(&TokKind::RBracket) {
             items.push(self.expr(0));
-            while self.eat(&TokKind::Comma) {
-                if matches!(self.peek(), TokKind::RBracket) {
-                    break; // tolerate a trailing comma
-                }
-                items.push(self.expr(0));
-            }
         }
-        if !self.eat(&TokKind::RBracket) {
-            self.error("expected ']'");
-        }
+        self.close_bracket();
         MlExpr::List(items, open)
     }
 
-    /// Non-consuming lookahead: does the bracket group opening at the current `[`
-    /// hold map entries? True when a `=>` appears at the group's own nesting
-    /// depth before the matching `]`, or for the explicit empty form `[=>]`.
-    pub(in crate::ml) fn bracket_is_map(&self) -> bool {
-        self.group_has_at_top_level(&TokKind::FatArrow)
+    fn map_tail(&mut self, first_key: MlExpr) -> MlExpr {
+        let mut entries = vec![(first_key, self.expr(0))];
+        while self.more_in_list(&TokKind::RBracket) {
+            entries.push(self.map_entry());
+        }
+        self.close_bracket();
+        MlExpr::Map(entries)
     }
 
-    /// `[ k => v ( , k => v )* ]` or the empty `[=>]` — a map literal. Each entry
-    /// is `key => value`; it lowers to the same [`Expr::Map`] the Default
-    /// `{ k: v }` produces ([FLAVOR-ML-MAP]).
-    pub(in crate::ml) fn map_literal(&mut self) -> MlExpr {
-        self.advance(); // `[`
-        let mut entries = Vec::new();
-        // The explicit empty form `[=>]` yields a zero-entry map.
-        if self.eat(&TokKind::FatArrow) {
-            let _ = self.eat(&TokKind::RBracket);
-            return MlExpr::Map(entries);
-        }
-        if !matches!(self.peek(), TokKind::RBracket) {
-            loop {
-                entries.push(self.map_entry());
-                if !self.more_in_list(&TokKind::RBracket) {
-                    break;
-                }
-            }
-        }
+    fn close_bracket(&mut self) {
         if !self.eat(&TokKind::RBracket) {
             self.error("expected ']'");
         }
-        MlExpr::Map(entries)
     }
 
     /// One `key => value` map entry.

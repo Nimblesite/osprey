@@ -11,6 +11,7 @@
 void klee_make_symbolic(void *address, size_t count, const char *name);
 int klee_range(int begin, int end, const char *name);
 void klee_assume(uintptr_t condition);
+size_t klee_get_obj_size(const void *object);
 __attribute__((noreturn)) void klee_report_error(const char *file, int line,
                                                  const char *message,
                                                  const char *suffix);

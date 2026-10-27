@@ -19,10 +19,7 @@ fn hovering_a_parameter_in_the_body_holes_it_exactly_as_the_declaration_does() {
         !in_body.contains("t5") && !in_body.contains("<t"),
         "a body hover must not leak an inference artefact: {in_body}"
     );
-    assert!(
-        in_body.contains("List<_>"),
-        "a body hover holes the unsolved element exactly as the declaration does: {in_body}"
-    );
+    shows(&in_body, &["List<_>"]);
 }
 
 #[test]
@@ -37,7 +34,7 @@ fn an_inferred_signature_fills_resolved_slots_and_holes_the_unsolved_ones() {
         U16,
     )
     .expect("hover over `area`");
-    assert!(concrete.contains("fn area(r: int)"), "{concrete}");
+    shows(&concrete, &["fn area(r: int)"]);
     // `xs` is proven to be a LIST; only its element type stays open. The
     // choice used to be `List<t5>` or nothing, and nothing won, because
     // `t5` is an inference artefact whose number shifts when an unrelated
@@ -51,10 +48,7 @@ fn an_inferred_signature_fills_resolved_slots_and_holes_the_unsolved_ones() {
             U16,
         )
         .expect("hover over `classify`");
-    assert!(
-        generic.contains("fn classify(xs: List<_>) -> int"),
-        "the proven `List` must survive with a hole for its element: {generic}"
-    );
+    shows(&generic, &["fn classify(xs: List<_>) -> int"]);
     // The artefact itself stays banned, which is what the bare rendering
     // was really protecting.
     assert!(
@@ -82,8 +76,7 @@ fn an_ml_document_is_answered_in_the_ml_flavor_end_to_end() {
     // does not highlight. Re-apply the flavor at the presentation edge.
     let ml = "inc : int -> int\ninc x = x + 1\n";
     let hov = hover(ml, "file:///tour.ospml", 1, 0, U16).expect("hover");
-    shows(&hov, &["```osprey-ml", "inc : int -> int"]);
-    assert!(!hov.contains("fn inc("), "{hov}");
+    crate::testkit::contents(&hov, &["```osprey-ml", "inc : int -> int"], &["fn inc("]);
     // The identical program under a `.osp` path keeps the Default spelling,
     // proving the flavor — not the content — drives the rendering.
     let default_src = "fn inc(x: int) -> int = x + 1\n";
@@ -96,7 +89,7 @@ fn hover_on_a_let_binding_uses_the_name_and_type_form() {
     // A `let` has no signature, so hover renders the `name: type` fallback.
     let src = "let limit: int = 10\nfn main() -> Unit = print(limit)\n";
     let md = hover(src, "file:///a.osp", 0, 5, U16).expect("hover");
-    assert!(md.contains("limit: int"), "{md}");
+    shows(&md, &["limit: int"]);
 }
 
 #[test]
@@ -128,9 +121,9 @@ fn hover_on_a_documented_default_function_renders_its_docs() {
         U16,
     )
     .expect("hover over documented bridge regression");
-    assert!(
-        md.contains("This case verifies outer-handler reachability before and after resume."),
-        "real function documentation: {md}"
+    shows(
+        &md,
+        &["This case verifies outer-handler reachability before and after resume."],
     );
 }
 
@@ -147,24 +140,16 @@ fn hover_on_performed_effect_operation_shows_type_and_effect_docs() {
         "        mark label => resume ()\n",
         "    traced ()\n",
     );
-    let col = col_of(src, 4, "mark");
-    let md = hover(src, "file:///trace.ospml", 4, col, U16)
-        .expect("hover over performed effect operation");
+    let md = hover_at(src, "file:///trace.ospml", 4, "mark");
 
-    assert!(md.contains("Trace.mark"), "qualified operation: {md}");
+    shows(&md, &["Trace.mark"]);
     assert!(
         md.contains("string") && md.contains("Unit"),
         "operation type: {md}"
     );
-    assert!(
-        md.contains("Records trace markers."),
-        "owning effect docs: {md}"
-    );
+    shows(&md, &["Records trace markers."]);
     for line in [2usize, 7] {
-        let col = col_of(src, line, "mark");
-        let row = u32::try_from(line).expect("line fits");
-        let site = hover(src, "file:///trace.ospml", row, col, U16)
-            .unwrap_or_else(|| panic!("hover over effect-operation site on line {line}"));
+        let site = hover_at(src, "file:///trace.ospml", line, "mark");
         shows(
             &site,
             &["Trace.mark : string => Unit", "Records trace markers."],
@@ -193,9 +178,7 @@ fn static_effect_names_hover_at_declaration_handler_and_perform() {
         "fn make() = perform Backends::Tensor.build(1)\n",
     );
     for line in [2usize, 6, 12] {
-        let row = u32::try_from(line).expect("line fits");
-        let md = hover(src, "file:///t.osp", row, col_of(src, line, "Tensor"), U16)
-            .unwrap_or_else(|| panic!("hover over `Tensor` on line {line}"));
+        let md = hover_at(src, "file:///t.osp", line, "Tensor");
         shows(
             &md,
             &[
@@ -205,8 +188,7 @@ fn static_effect_names_hover_at_declaration_handler_and_perform() {
         );
     }
     let ml = "(** Tensor operations a handler answers. *)\nstatic effect Tensor B\n    build : int => B\n";
-    let md = hover(ml, "file:///t.ospml", 1, col_of(ml, 1, "Tensor"), U16)
-        .expect("hover over the ML `Tensor` declaration");
+    let md = hover_at(ml, "file:///t.ospml", 1, "Tensor");
     shows(
         &md,
         &[
@@ -230,15 +212,15 @@ fn ml_effect_operations_hover_with_their_own_docs() {
         "    (** Announce a result without expecting a reply. *)\n",
         "    tell : string => Unit\n",
     );
-    let ask = hover(src, "file:///p.ospml", 3, col_of(src, 3, "ask"), U16)
-        .expect("hover over `ask` declaration");
-    let tell = hover(src, "file:///p.ospml", 5, col_of(src, 5, "tell"), U16)
-        .expect("hover over `tell` declaration");
+    let ask = hover_at(src, "file:///p.ospml", 3, "ask");
+    let tell = hover_at(src, "file:///p.ospml", 5, "tell");
 
-    assert!(ask.contains("Ask the operator a question"), "{ask}");
-    assert!(!ask.contains("Announce a result"), "leaked sibling: {ask}");
-    assert!(tell.contains("Announce a result"), "{tell}");
-    assert!(!tell.contains("Ask the operator"), "leaked sibling: {tell}");
+    crate::testkit::contents(
+        &ask,
+        &["Ask the operator a question"],
+        &["Announce a result"],
+    );
+    crate::testkit::contents(&tell, &["Announce a result"], &["Ask the operator"]);
 }
 
 /// The Default flavor's `///` operation docs lower to the same model.
@@ -253,14 +235,15 @@ fn default_effect_operations_hover_with_their_own_docs() {
         "    tell: fn(string) -> Unit\n",
         "}\n",
     );
-    let ask = hover(src, "file:///p.osp", 3, col_of(src, 3, "ask"), U16)
-        .expect("hover over `ask` declaration");
-    let tell = hover(src, "file:///p.osp", 5, col_of(src, 5, "tell"), U16)
-        .expect("hover over `tell` declaration");
+    let ask = hover_at(src, "file:///p.osp", 3, "ask");
+    let tell = hover_at(src, "file:///p.osp", 5, "tell");
 
-    assert!(ask.contains("Ask the operator a question"), "{ask}");
-    assert!(!ask.contains("Announce a result"), "leaked sibling: {ask}");
-    assert!(tell.contains("Announce a result"), "{tell}");
+    crate::testkit::contents(
+        &ask,
+        &["Ask the operator a question"],
+        &["Announce a result"],
+    );
+    shows(&tell, &["Announce a result"]);
 }
 
 /// An operation with no doc of its own still shows the owning effect's, so
@@ -272,9 +255,8 @@ fn undocumented_operation_falls_back_to_the_effect_doc() {
         "effect Trace\n",
         "    mark : string => Unit\n",
     );
-    let md = hover(src, "file:///t.ospml", 2, col_of(src, 2, "mark"), U16)
-        .expect("hover over undocumented operation");
-    assert!(md.contains("Records trace markers."), "{md}");
+    let md = hover_at(src, "file:///t.ospml", 2, "mark");
+    shows(&md, &["Records trace markers."]);
 }
 
 #[test]
@@ -286,10 +268,12 @@ fn ml_pipeline_hover_shows_its_native_documentation() {
     let md = hover(src, "file:///resume_lifo_audit.test.ospml", line, col, U16)
         .expect("hover over documented ML pipeline");
 
-    assert!(md.contains("pipeline : Unit -> int"), "ML signature: {md}");
-    assert!(
-        md.contains("This helper performs two ordered steps and combines their supplied values."),
-        "ML documentation: {md}"
+    shows(
+        &md,
+        &[
+            "pipeline : Unit -> int",
+            "This helper performs two ordered steps and combines their supplied values.",
+        ],
     );
 }
 
@@ -301,16 +285,14 @@ fn hover_on_a_doc_link_resolves_to_the_referenced_element() {
                    fn helper(n) = checkedAdd(n, 1)\n\
                    /// Calls [helper] to do the work.\n\
                    fn main() = helper(1)\n";
-    let col = col_of(src, 2, "helper");
-    let md = hover(src, "file:///a.osp", 2, col, U16).expect("hover over [helper]");
+    let md = hover_at(src, "file:///a.osp", 2, "helper");
     // `helper` annotates nothing, so both slots come from the checker:
     // `n: int`, returning the `Result` that `checkedAdd` produces
     // ([ARITH-CHECKED], [LSP-HOVER-INFERRED-SIGNATURE]).
-    assert!(
-        md.contains("fn helper(n: int) -> Result<int, Error>"),
-        "resolves to helper's inferred signature: {md}"
+    shows(
+        &md,
+        &["fn helper(n: int) -> Result<int, Error>", "A helper."],
     );
-    assert!(md.contains("A helper."), "shows helper's docs: {md}");
 }
 
 /// The annotation-free house style must still hover with real types: both
@@ -318,14 +300,12 @@ fn hover_on_a_doc_link_resolves_to_the_referenced_element() {
 #[test]
 fn unannotated_functions_hover_with_inferred_types() {
     let osp = "fn double(n) = n * 2\n";
-    let md = hover(osp, "file:///d.osp", 0, col_of(osp, 0, "double"), U16)
-        .expect("hover over unannotated Default function");
-    assert!(md.contains("fn double(n: int) -> int"), "{md}");
+    let md = hover_at(osp, "file:///d.osp", 0, "double");
+    shows(&md, &["fn double(n: int) -> int"]);
 
     let ml = "double n = n * 2\n";
-    let md = hover(ml, "file:///d.ospml", 0, col_of(ml, 0, "double"), U16)
-        .expect("hover over unannotated ML function");
-    assert!(md.contains("double : int -> int"), "{md}");
+    let md = hover_at(ml, "file:///d.ospml", 0, "double");
+    shows(&md, &["double : int -> int"]);
 }
 
 #[test]
@@ -335,8 +315,7 @@ fn hover_on_a_dotted_doc_link_resolves_the_owner() {
                    effect Console { emit: fn(string) -> Unit }\n\
                    /// Uses [Console.emit] to print.\n\
                    fn go() = 1\n";
-    let col = col_of(src, 2, "Console");
-    let md = hover(src, "file:///a.osp", 2, col, U16).expect("hover over [Console.emit]");
+    let md = hover_at(src, "file:///a.osp", 2, "Console");
     assert!(
         md.contains("Console") && md.contains("Emits lines."),
         "{md}"
@@ -348,15 +327,14 @@ fn hover_on_a_parameter_shows_its_type_inside_its_own_body() {
     // A parameter is not a `let`, so the binding table never held it and
     // hovering one — the most common hover in any typed body — returned
     // nothing at all. Implements [LSP-HOVER-WRITTEN].
-    let in_body = col_of(SRC, 0, "(a, b)");
-    let annotated = hover(SRC, "file:///a.osp", 0, in_body, U16).expect("hover over `a`");
-    assert!(annotated.contains("a: int"), "{annotated}");
+    let annotated = hover_at(SRC, "file:///a.osp", 0, "(a, b)");
+    shows(&annotated, &["a: int"]);
 
     // With no annotation the type still comes from the checker, which is
     // the whole point of a Hindley-Milner surface: nothing was written.
     let inferred = "fn twice(n) = n * 2\n";
     let md = hover(inferred, "file:///a.osp", 0, 14, U16).expect("hover over `n`");
-    assert!(md.contains("n: int"), "{md}");
+    shows(&md, &["n: int"]);
 
     // A parameter is in scope only inside its own function: `n` must not
     // answer from `twice` while the cursor is in a later declaration.
@@ -369,8 +347,8 @@ fn hover_on_a_parameter_shows_its_type_inside_its_own_body() {
         ("file:///a.osp", "/// Runs work.\n///\n/// # Parameters\n/// - work: what runs under the handler.\nfn under(work) = work()\n", "work()"),
         ("file:///a.ospml", "(** Runs work.\n\n    # Parameters\n    - work: what runs under the handler. *)\nunder work = work ()\n", "work ()"),
     ] {
-        let md = hover(src, uri, 4, col_of(src, 4, call), U16).expect("hover over `work`");
-        assert!(md.contains("what runs under the handler."), "{uri}: {md}");
+        let md = hover_at(src, uri, 4, call);
+        shows(&md, &["what runs under the handler."]);
     }
 }
 
@@ -383,7 +361,7 @@ fn hover_on_a_written_type_name_explains_it() {
     // A declared type still resolves to its declaration, not to this table.
     let declared = "type Shade = Light | Dark\nfn pick(s: Shade) = s\n";
     let hovered = hover(declared, "file:///a.osp", 1, 12, U16).expect("hover over `Shade`");
-    assert!(hovered.contains("Shade"), "{hovered}");
+    shows(&hovered, &["Shade"]);
 }
 
 #[test]
@@ -396,10 +374,7 @@ fn hover_on_a_keyword_explains_it() {
                    handle Log { emit msg => resume msg }\n\
                    in match 1 { _ => 0 }\n";
     for (line, kw) in [(1usize, "handle"), (2, "in"), (2, "match")] {
-        let col = col_of(src, line, kw);
-        let row = u32::try_from(line).expect("line fits");
-        let md = hover(src, "file:///a.osp", row, col, U16)
-            .unwrap_or_else(|| panic!("no hover for keyword `{kw}`"));
+        let md = hover_at(src, "file:///a.osp", line, kw);
         assert!(md.contains(kw), "hover for `{kw}` names it: {md}");
     }
 }
@@ -439,13 +414,10 @@ test(\"identity\", fn() => expect(add(5, 0), 5))
     // The SECOND case's hover shows the second case's docs, not the first's.
     let second = hover(src, "file:///suite.test.osp", 12, 1, U16).expect("hover over `test`");
     assert!(second.starts_with("**Test:** identity"), "{second}");
-    assert!(
-        second.contains("Zero is the additive identity."),
-        "{second}"
-    );
-    assert!(
-        !second.contains("Addition is commutative."),
-        "no bleed between cases: {second}"
+    crate::testkit::contents(
+        &second,
+        &["Zero is the additive identity."],
+        &["Addition is commutative."],
     );
 }
 
@@ -467,7 +439,7 @@ fn hovering_an_ml_test_call_shows_its_block_documentation() {
                    test \"commutes\" (\\() => check \"c\" (add 1 2) (add 2 1))\n";
     let md = hover(src, "file:///suite.test.ospml", 3, 1, U16).expect("hover over `test`");
     assert!(md.starts_with("**Test:** commutes"), "{md}");
-    assert!(md.contains("Addition is commutative."), "{md}");
+    shows(&md, &["Addition is commutative."]);
 }
 
 #[test]
@@ -477,8 +449,16 @@ fn hovering_test_away_from_a_case_falls_back_to_the_builtin() {
     // user-declared `test` binding keeps hovering as itself.
     let src = "/// A local shadow.\nlet test = 1\nprint(\"${test}\")\n";
     let md = hover(src, "file:///a.osp", 1, 5, U16).expect("hover over the binding");
-    shows(&md, &["test: int", "A local shadow."]);
-    assert!(!md.contains("**Test:**"), "not a test case: {md}");
+    crate::testkit::contents(&md, &["test: int", "A local shadow."], &["**Test:**"]);
+}
+
+/// Hover at the first `needle` on 0-based `line`, failing with a message
+/// naming the needle and line when nothing answers — the cursor placement
+/// every doc-hover test repeats.
+fn hover_at(src: &str, uri: &str, line: usize, needle: &str) -> String {
+    let row = u32::try_from(line).unwrap_or_else(|_| panic!("line {line} does not fit"));
+    hover(src, uri, row, col_of(src, line, needle), U16)
+        .unwrap_or_else(|| panic!("no hover for `{needle}` on line {line} of {uri}"))
 }
 
 /// The 0-based (line, column) of a cursor sitting inside the declaration

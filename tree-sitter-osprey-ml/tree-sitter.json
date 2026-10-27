@@ -1,0 +1,16 @@
+{
+  "grammars": [{
+    "name": "osprey_ml",
+    "camelcase": "OspreyMl",
+    "scope": "source.osprey-ml",
+    "path": ".",
+    "file-types": ["ospml"]
+  }],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Native Osprey ML flavor tree-sitter grammar",
+    "links": {"repository": "https://github.com/Nimblesite/osprey"}
+  },
+  "bindings": {"rust": true}
+}

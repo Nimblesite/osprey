@@ -25,7 +25,7 @@ The running **Flight Log** project grows in four passes:
 3. **Let it interact.** Request effects, use files or HTTP, and coordinate fibers.
 4. **Make it yours.** Choose a target, optionally choose another source flavor, inspect performance, and plan a capstone.
 
-Default flavor carries the complete path. ML appears later as an optional translation of concepts the reader already owns. Future flavors can join the same role without restructuring the book.
+Default flavor carries the complete path. ML appears later as an optional translation of concepts the reader already owns. Python-style syntax is also available and compiles through the same types, effects and compiler; it is distinct from CPython interop.
 
 ## Recurring chapter contract
 
@@ -51,7 +51,7 @@ No chapter introduces more than four conceptual families. Every factual visual i
 - Why the book leads with Default flavor
 - How Flight Log checkpoints work
 - How to use a coding agent without outsourcing understanding
-- Alpha-software and edition boundaries
+- Language evolution and edition boundaries
 - Visual: the four-part reading journey
 
 ## Part I — Make the computer do something
@@ -259,6 +259,7 @@ No chapter introduces more than four conceptual families. Every factual visual i
 
 - Default remains the complete teaching path
 - ML is an optional layout-and-currying surface
+- Python is an optional syntax surface using `def`, f-strings and decorated effects; CPython libraries require explicit interop
 - Same shared checking and code generation after lowering
 - One file selects one flavor; a project may contain current flavor extensions
 - Translate with an agent, then `--check` and test
@@ -279,7 +280,7 @@ No chapter introduces more than four conceptual families. Every factual visual i
 - Name outside work as effects or boundary calls
 - Add tests before expanding the surface
 - Measure performance before selecting a memory mode or optimizing
-- State alpha and roadmap constraints in a project README
+- State compatibility and roadmap constraints in a project README
 - Three capstone routes: command-line tool, supported browser app, small native service
 - Flight Log checkpoint: turn the running project into a one-page build plan
 - Visuals: capstone canvas; evidence path; next-step map
@@ -313,7 +314,7 @@ No chapter introduces more than four conceptual families. Every factual visual i
 - A complete API or built-in-function reference
 - Teaching ML before the Default path is comfortable
 - Claims that Osprey will always have exactly two source flavors
-- Roadmap-only package management, structured concurrency scopes, or strict static memory; project modules and cross-flavor imports are implemented
+- Hosted package publishing and public trust services, structured concurrency scopes, or strict static memory; folder-registry publication, verified downloads, locked builds, project modules and cross-flavor imports are implemented
 - Pretending all WebAssembly targets have native runtime services
 - Presenting C calls as covered by Osprey's memory-safety guarantee
 - Invented diagnostics, Playground screens, benchmark results, or performance rankings

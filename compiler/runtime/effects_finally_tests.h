@@ -88,6 +88,28 @@ static void death_finish_without_a_finalizer(void) {
   __osprey_finalizer_finish();
 }
 
+static void t_owner_frames_preserve_returned_frames_and_clear_abandoned_slots(void) {
+  void *outer = &env_a;
+  void *inner = &env_b;
+  void *empty = NULL;
+  void **outer_slots[] = {&outer};
+  void **inner_slots[] = {&inner, &empty};
+  OspOwnerFrame first, second;
+  __osprey_owner_frame_push(&first, outer_slots, 1);
+  __osprey_owner_frame_push(&second, inner_slots, 2);
+  __osprey_owner_frame_pop(&second);
+  __osprey_owner_frames_unwind();
+  CHECK(outer == NULL && inner == &env_b);
+  __osprey_owner_frame_push(&second, inner_slots, 2);
+  __osprey_owner_frames_unwind();
+  CHECK(inner == NULL && empty == NULL);
+  __osprey_owner_frames_unwind();
+}
+
+static void death_owner_frame_underflow(void) {
+  __osprey_owner_frame_pop(NULL);
+}
+
 // A mask answers with whatever was visible just outside the activation it
 // skips; nested masks skip successive activations, a handler installed under
 // the mask shadows it as usual, and popping restores the hidden activation.
@@ -130,6 +152,8 @@ static void t_instances_are_independent_capabilities(void) {
 }
 
 static void t_finally_mask_and_instances(void) {
+  t_owner_frames_preserve_returned_frames_and_clear_abandoned_slots();
+  CHECK(osp_death_signal(death_owner_frame_underflow) == SIGABRT);
   t_finally_runs_outside_its_activation();
   t_finally_unwinds_inner_to_outer();
   t_finally_reentrant_unwind_runs_each_once();

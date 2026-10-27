@@ -1,0 +1,84 @@
+namespace registry_web;
+
+/// Pure HTML construction for the registry website. Every untrusted byte
+/// passes through `escape` before it reaches a document, and anchor
+/// identifiers are collapsed to the package-name grammar, so a hostile
+/// registry- or user-supplied string can never open a tag, an attribute or
+/// an anchor target. Implements the browser/cache adversarial row of
+/// [PACKAGE-HOSTED-CONFORMANCE]; the browser transport itself is the
+/// recorded remaining integration (see README.md).
+module Html {
+    let space = 32
+    let delete = 127
+    let amp = 38
+    let lt = 60
+    let gt = 62
+    let quote = 34
+    let apostrophe = 39
+    let hyphen = 45
+    let lowerA = 97
+    let lowerZ = 122
+    let digit0 = 48
+    let digit9 = 57
+
+    type Scan = { out: string, start: int }
+
+    fn control(b) = b < space || b == delete
+
+    /// The substitution for one byte, `""` for every byte kept verbatim:
+    /// controls become `?` (a registry string cannot carry one anywhere),
+    /// and the five HTML-significant bytes become entities, covering text
+    /// and attribute contexts alike because quotes are escaped.
+    fn substitution(b) = if control(b) { "?" }
+        else if b == amp { "&amp;" }
+        else if b == lt { "&lt;" }
+        else if b == gt { "&gt;" }
+        else if b == quote { "&quot;" }
+        else if b == apostrophe { "&#39;" }
+        else { "" }
+
+    fn between(text, from, to) = take(drop(text, from), to - from)
+
+    fn scanByte(text, acc: Scan, i) = match substitution(byteAt(text, i) ?: space) {
+        "" => acc
+        sub => Scan { out: acc.out + between(text, acc.start, i) + sub, start: i + 1 }
+    }
+
+    /// `text` with every control byte and every HTML-significant byte
+    /// neutralized. One pass over bytes, so UTF-8 sequences pass through
+    /// untouched and byte ranges stay aligned.
+    export fn escape(text) = {
+        let n = byteLength(text)
+        let scanned = fold(range(0, n), Scan { out: "", start: 0 }, fn(acc, i) => scanByte(text, acc, i))
+        scanned.out + between(text, scanned.start, n)
+    }
+
+    fn idByte(b) = if (b >= lowerA && b <= lowerZ) || (b >= digit0 && b <= digit9) || b == hyphen {
+        fromCodePoint(b) ?: "-"
+    } else { "-" }
+
+    /// An `id`-safe spelling of `text`: every byte outside `[a-z0-9-]`
+    /// becomes a hyphen, so heading anchors cannot be smuggled through a
+    /// package key, an organization handle or a query.
+    export fn id(text) = fold(range(0, byteLength(text)), "", fn(out, i) => out + idByte(byteAt(text, i) ?: hyphen))
+
+    /// A whole document. The shell (navigation, styles, transport wiring)
+    /// belongs to the deployment host; this is the complete, accessible
+    /// page a screen test can assert against.
+    export fn document(title, body) = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>${escape(title)}</title></head><body>${body}</body></html>"
+
+    /// One element pair around already-built markup.
+    export fn el(tag, body) = "<${tag}>${body}</${tag}>"
+
+    /// A labelled section with a heading target for `aria-labelledby`.
+    export fn section(idText, heading, body) = "<section id=\"${id(idText)}\" aria-labelledby=\"${id(idText)}-h\"><h2 id=\"${id(idText)}-h\">${escape(heading)}</h2>${body}</section>"
+
+    /// One escaped paragraph of text.
+    export fn paragraph(text) = el("p", escape(text))
+
+    /// One escaped `term: value` field.
+    export fn field(term, value) = el("p", "<strong>${escape(term)}:</strong> ${escape(value)}")
+
+    /// One escaped advisory note.
+    export fn note(text) = "<p class=\"notice\" role=\"note\">${escape(text)}</p>"
+}

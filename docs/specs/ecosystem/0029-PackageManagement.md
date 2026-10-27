@@ -16,7 +16,7 @@
 > data plane. It is not needed to build, run, or use a registry, and it never
 > replaces the folder registry.
 
-**Status:** normative target; implementation is in progress under [`registry/`](../../../registry/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](../../package-manager-research.md).
+**Status:** normative target; implementation is in progress under [`packages/manager/`](../../../packages/manager/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](../../package-manager-research.md).
 
 This specification defines a source-derived, content-addressed package system.
 It deliberately rejects uploaded archives, publisher binaries, lifecycle hooks,
@@ -127,21 +127,16 @@ instead of detecting the attack:
 
 ## Capability confinement `[PACKAGE-CAPABILITY-CONFINEMENT]`
 
-Algebraic effects already make an Osprey library unable to perform an effect its
-caller does not handle. The one remaining door is the set of ambient builtins
-that any function may call without declaring anything: `readFile`, `writeFile`,
-`gpuLoad`, `loadTensor`, `spawnProcess`, `awaitProcess`, `cleanupProcess`,
-`input`, `termRawMode`, and every `http*` and `websocket*` builtin. Confinement
-closes that door for every published package, so the effect system becomes the
-whole security boundary.
+Confinement requires every published package's file, process, network and terminal access to pass through consumer-handled effects or explicitly granted capabilities. Ambient builtins such as `readFile`, `writeFile`, `gpuLoad`, `loadTensor`, process operations, terminal operations and HTTP/WebSocket operations need checks beyond effect declarations.
+
+**Publication boundary:** the source scanner records named ambient builtins and declared system capabilities. Raw native declarations (`extern fn`, ML `extern`, and Python `@extern`) are unclassified and source-bundle assembly rejects them with `source.unclassified-builtin` before local publication writes registry files. Comments, literal text and ordinary identifiers named `extern` do not count as native declarations. Installed-dependency execution remains unverified; this publication rule does not establish the complete runtime confinement requirement below.
 
 - Each ambient builtin belongs to exactly one **ambient capability**, named in
   the capability grammar of `[PACKAGE-MANIFEST]`: `io/files` (`readFile`,
   `writeFile`, `gpuLoad`, `loadTensor`), `io/process` (`spawnProcess`,
   `awaitProcess`, `cleanupProcess`), `io/network` (every `http*` and
   `websocket*` builtin) and `io/terminal` (`input`, `termRawMode`). The map is a
-  fixture derived from the compiler's builtin list; a builtin the map does not
-  name is `io/unknown` and rejects publication until the map is updated.
+  fixture validated against the compiler's declared ambient builtin groups; adding an unclassified builtin to those groups fails the inventory regression. At publication, unknown `term` names followed by an uppercase letter become `io/unknown` and reject publication. The current source scan does not automatically identify arbitrary new ambient builtin names.
 - A release's **capability surface** is the set of ambient capabilities whose
   builtins its canonical source tree names, plus its `[system.*]` capabilities.
   The conformance scan of `[PACKAGE-CONFORMANCE]` computes it over the tree and
@@ -154,14 +149,18 @@ whole security boundary.
   grants it on that dependency explicitly:
   `"@acme/cli" = { epoch = 1, min_release = 0, capabilities = ["io/process"] }`.
   Grants are never transitive: a dependency of a dependency needs the root's own
-  grant on its key. A root project's own source is unconfined.
+  grant on its key. A root project's own source is unconfined. Grants name
+  ambient capabilities (`io/…`) only: a `[system.*]` capability in a surface is
+  declared, not granted, because its plane answers it (`[PACKAGE-MANIFEST]`,
+  `[PACKAGE-PYTHON-UV]`), so a release that declares `python/interop` is a
+  candidate without a grant and the lock still pins the name in its surface.
 - The resolver treats an ungranted ambient capability exactly as an ungranted
   system capability (`[PACKAGE-RESOLUTION]`): the release is not a candidate,
   and `resolution.capability` names the key and the capability.
 - `fetch` and `build` recompute the surface of every installed tree and fail
   with `capability.surface` when it differs from the lock. The folder registry
-  enforces all of this today, because its client holds every candidate's
-  verified source; Milestone B adds the signed surface to catalog metadata so
+  applies these surface checks to every candidate's verified source; native
+  extern coverage remains the delivery gap above. Milestone B adds the signed surface to catalog metadata so
   an excluded candidate is never fetched.
 - Plan 0020 records a compiler request so the type level repeats the proof:
   refuse an ambient builtin in a dependency source root unless the root grants
@@ -248,7 +247,11 @@ publish worms).
   lock but carries a different digest (an edited release or an equivocating
   registry), and `lock.release-vanished` when a release of the current lock is
   absent from the listing (rollback, freeze or yank). The second is accepted
-  only with `--accept-removals`, which the output names.
+  only with `--accept-removals`, which the output names. A current lock that
+  does not decode is refused with its `lock.*` code rather than replaced, so a
+  damaged lock is never silently regenerated; only an absent lock is a fresh
+  start. A listed release whose manifest is rejected is excluded as a
+  candidate with `lock.invalid-manifest`, never selected.
 - C6. Installing executes nothing: no hook, script, generator or import-time
   step exists in the format, and install copies verified text files. `build`
   compiles each installed tree through its own `source_roots` and
@@ -378,13 +381,15 @@ Osprey implements every package-system component. Osprey effect handlers provide
 
 ## Implementation language `[PACKAGE-IMPLEMENTATION-LANGUAGE]`
 
-The package manager and registry MUST be implemented 100% in Osprey. All executable source delivered for this system MUST be `.osp` or `.ospml`, including command parsing and routing, manifest parsing, domain rules, resolution, canonical serialization, hashing and signature handling, locks, caches, filesystem atomicity, process isolation, authentication, network protocols, HSM/forge adapters, API services, publication and verification pipelines, scoring, discovery, browser behavior, tests, independent reference implementations, migration runners, and operational tooling.
+The package manager and registry MUST be implemented 100% in Osprey. All executable source delivered for this system MUST be `.osp` or `.ospml`, including command parsing and routing, manifest parsing, domain rules, resolution, canonical serialization, hashing and signature handling, locks, caches, filesystem atomicity, process isolation, authentication, network protocols, HSM/forge adapters, API services, publication and verification pipelines, scoring, discovery, browser behavior, tests, independent reference implementations and operational tooling.
 
 A Rust host, Rust CLI bridge, native shim, shell launcher, or implementation in any other language MUST NOT be introduced for the package system. Calling a non-Osprey package implementation through an Osprey wrapper does not satisfy this requirement. The browser application MUST be compiled from Osprey to WebAssembly; handwritten application JavaScript is not permitted.
 
 The existing compiler and runtime are build and execution infrastructure, not locations for package-system implementation. The Osprey frontend MUST invoke the existing compiler through Osprey process effects; this work MUST NOT add package-specific code to the compiler or runtime in another language. Existing operating-system interfaces, installed libraries, and external services remain platform dependencies. Their use does not authorize new non-Osprey adapters, wrappers, or package logic. Osprey bindings and effect handlers own every package interaction with those dependencies.
 
-The canonical typeDiagram model, TOML manifests, JSON fixtures, declarative database schemas/RLS policies, styles, and deployment configuration are data, not alternative implementation languages. They MUST NOT contain executable package behavior. Generated machine code, WebAssembly, and compiler-generated interop are build artifacts, not handwritten source exceptions.
+Database provisioning explicitly uses the external DataProviderMigrate deployment tool and the checked-in declarative migration YAML required by spec 0045. This is the sole schema executor, not an alternative package-service implementation; do not add handwritten SQL migrations, C# runtime code, alternate ORM models or a custom migration runner. Authorization, proof verification and package state machines remain Osprey.
+
+The canonical typeDiagram model, TOML manifests, JSON fixtures, declarative database schemas/RLS policies, uv lock files, styles, and deployment configuration are data, not alternative implementation languages. They MUST NOT contain executable package behavior. Generated machine code, WebAssembly, and compiler-generated interop are build artifacts, not handwritten source exceptions.
 
 If Osprey cannot express or safely perform a required operation, implementation MUST record the missing capability and an Osprey regression case as a delivery blocker. It MUST NOT substitute another language, invent an unverified security primitive, weaken the contract, or report the blocked feature as complete. Cryptography and host operations retain every audit, conformance, and platform requirement in specs 0029–0032.
 
@@ -436,7 +441,16 @@ registry needs only the Osprey toolchain, the server, and the folder.
 
 At startup the server walks the root, validates each release, and computes its
 `SourceDigest` with the shared core. The catalog is the set of valid releases
-keyed by digest. A restart rebuilds it; there is no other state.
+keyed by digest. A restart rebuilds it; there is no other state. The client's
+`publish --folder <registry-root> [--breaking]` places a project as the next
+release of that folder: the release tree is the manifest, every file under its
+`source_roots`, its `python_sources`, its declared assets and its legal documents, checked and
+digested exactly as the server will before a byte is written, at the next
+ordinal of the newest epoch, at the next epoch with `--breaking`, or at `1.1`
+for a new package. The authenticated `publish` of spec 0030 replaces this once
+the trust plane exists.
+
+**`[PACKAGE-LICENSE-DISTRIBUTION]`** Root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files, including `.txt` and `.md` forms, and the complete `LICENSES/` directory are included automatically, case-insensitively, without asset declarations. They participate in `SourceDigest` and remain in the source bundle and installed tree. When copied source, adapted implementation or licensed data is incorporated, its applicable ownership, conditions and modification notices are retained. Reimplementing an API or using an oracle does not by itself impose the reference package's license. Applications redistributing compiled derivatives must supply the applicable documents with their distribution.
 
 ### Endpoints
 
@@ -459,7 +473,7 @@ a strong `ETag`. Errors are `application/problem+json` with a stable `code`.
 The download format is one canonical JSON document:
 
 ```json
-{"digest":"<SourceDigest hex>","epoch":0,"files":[{"path":"osprey.toml","text":"..."}],"key":"@scope/name","ordinal":3}
+{"digest":"<SourceDigest hex>","epoch":1,"files":[{"path":"osprey.toml","text":"..."}],"key":"@scope/name","ordinal":3}
 ```
 
 `files` is sorted by unsigned path bytes and holds every file of the release
@@ -489,14 +503,27 @@ client writes `osprey.lock` in folder-lock format `0` instead, as RFC 8785
 canonical JSON:
 
 ```json
-{"format":0,"packages":[{"dependencies":[...],"release":{...}}],"root":{"dependencies":[...],"manifestDigest":"sha256:..."}}
+{"format":0,"packages":[{"dependencies":[...],"release":{...},"surface":[...]}],"root":{"dependencies":[...],"manifestDigest":"sha256:..."}}
 ```
 
 - `root.manifestDigest` is the root's canonical `PackageManifest` digest and
   `root.dependencies` its `DependencyEdge` list, both as `[PACKAGE-MANIFEST]`
-  projects them.
+  projects them. `root.python` is present only when the graph has a Python
+  plane: `{"pyprojectDigest","uvLockDigest"}`, the `sha256:` digests of the
+  generated `.osprey/python/pyproject.toml` and its `uv.lock`
+  (`[PACKAGE-PYTHON-UV]`); any other shape is `lock.shape`.
 - `packages` holds one entry per selected release, ordered by `ReleaseId`: the
-  `ReleaseId` and the Runtime/Build `DependencyEdge` list of its manifest.
+  `ReleaseId`, the Runtime/Build `DependencyEdge` list of its manifest, and
+  `surface`, its capability surface as a canonical set of strings
+  (`[PACKAGE-CAPABILITY-CONFINEMENT]`); a decoder refuses any other shape with
+  `lock.shape`.
+- The development lock `osprey.local.lock` of `[PACKAGE-LOCAL-OVERRIDE]` is the
+  same document plus `overrides`, present only when non-empty: one
+  `{"epoch","manifestDigest","package","path"}` per key taken from a local
+  checkout, sorted by key. An overridden key appears in `packages` with its
+  checkout's source digest, its overlay epoch and its baseline's ordinal (zero
+  without a baseline), so the release lock's bytes never carry the member and a
+  development lock with no overrides is byte-identical to a release lock.
 - The selection is the output of the one resolver of `[PACKAGE-RESOLUTION]`
   over the registry's releases. There is no greedy fallback here either.
 - Build and run commands MUST fail when `manifestDigest` differs from the
@@ -521,6 +548,31 @@ bytes match what was requested, not who published them. The TUF metadata,
 transparency log, and provenance of `[PACKAGE-REGISTRY]` layer onto these same
 endpoints in Milestone B without changing the layout, the bundle, or the paths.
 
+### Local registry `[PACKAGE-LOCAL-REGISTRY]`
+
+Until the hosted registry exists, the local registry is how anyone gets
+packages. It is this folder registry, run on loopback over the repository's
+own packages:
+
+- **Staging.** Every `packages/<dir>/osprey.toml` that declares a `[package]`
+  name is placed into one registry root with `publish --folder`, so each release
+  passes the same source, capability and digest checks the server applies. A
+  package that fails them, such as one with a raw `extern` declaration under
+  `[PACKAGE-CAPABILITY-CONFINEMENT]`, is reported and not staged.
+  `scripts/stage-local-registry.sh` does this and `make registry-serve` serves
+  the result on `http://127.0.0.1:8787`, the client's default registry.
+- **Editor.** The VS Code extension bundles the server (`osprey-registry`) and
+  the staged root (`bin/<platform>/registry/`). Its *Start Local Package
+  Registry* and *Stop Local Package Registry* commands, the explorer action on
+  `osprey.toml` and the status-bar item start and stop it. The extension writes
+  the server's configuration file into its own storage, binds the address and
+  port of the configured loopback registry, and treats the registry as ready
+  only when `GET /v1/health` answers 200. It stops only a server it started.
+- **Prompt.** When the package manager opens against a loopback registry that
+  does not answer `GET /v1/health`, the extension asks whether to start the
+  local registry and opens the package manager only once it answers. A remote
+  registry is never started or probed this way.
+
 ## Names and ownership `[PACKAGE-NAMES]`
 
 A canonical name is `@scope/name`. Components contain only lowercase ASCII
@@ -528,15 +580,13 @@ letters, digits, and interior hyphens; a scope is 1-39 characters and a name is
 1-63. Unicode display names are allowed but never resolve. Unscoped names are
 invalid, and only the project governance role can publish under `@osprey`.
 
-Scopes are backed by stable principal IDs, not mutable email domains. The
-registry warns on skeleton/confusable similarity and quarantines evidence of
-impersonation, but similarity alone cannot suppress a legitimate package.
-Package names and scopes are permanent tombstones after deletion.
+Preventing name sitting is a primary requirement: a package leaf name is never globally claimable. Reserving/publishing/tombstoning `@org-a/helper-functions` cannot prevent `@org-b/helper-functions`; all availability and uniqueness decisions include the organization. The website must never describe a leaf name as globally taken. See `[PACKAGE-NAMES-NO-SITTING]` in [spec 0045](0045-OrganizationPackageGovernance.md).
 
-Normal transfer requires signatures from old and new owners, a 30-day public
-notice, and a logged finalization. Recovery without the old owner requires a
-30-day quarantine plus approval by two of three independent registry-security
-custodians. Every ownership and recovery event is transparent and appealable.
+Every scope represents a registry organization with a stable organization ID and accepted memberships, never a personal account. Every package belongs to that organization and has exactly one active-member administrator; only that administrator grants explicit package permissions, including publication, to any number of accepted members. Organization governance roles do not implicitly publish or administer packages. The detailed binding contract is [organization package governance](0045-OrganizationPackageGovernance.md). Identical leaf names may exist in different organizations; there is no global leaf-name reservation or fallback.
+
+The registry warns on skeleton/confusable similarity and quarantines evidence of impersonation, but similarity alone cannot suppress a legitimate package. Package names and organization handles are permanent tombstones after deletion.
+
+Changing package administrator is an audited handover that preserves its owning organization and key. Moving responsibility between organizations requires signatures from old and new organizational authorities, a 30-day public notice and logged finalization, creating a new canonical key with a migration pointer rather than reparenting old releases. Recovery without the old authority requires a 30-day quarantine plus approval by two of three independent registry-security custodians. Every ownership and recovery event is transparent and appealable.
 
 ## Release identity and compatibility `[PACKAGE-IDENTITY]`
 
@@ -593,7 +643,12 @@ dependencies, optional dependency features, Git URLs, tags, branches, and path
 dependencies are invalid. A dependency always retains its canonical package
 key, regardless of whether development obtains its source locally or from the
 registry. `min_release = 0` means any release in the epoch; positive values set
-an additive-contract floor.
+an additive-contract floor. A root entry may add `capabilities = [...]`, the
+ambient capabilities the root grants that one key under
+`[PACKAGE-CAPABILITY-CONFINEMENT]`; each name follows the capability grammar
+(`manifest.dependency.capability` otherwise), the grants of one key across the
+three tables merge into one canonical set, and the canonical manifest carries
+them as `grants` (spec 0031 `DependencyGrant`).
 
 ```toml
 [project]
@@ -625,7 +680,7 @@ run by CPython.
 A system capability name is one or more segments of `[a-z0-9][a-z0-9.-]{0,63}`
 joined by single `/` characters, at most 128 bytes in all, such as
 `sqlite/c-api`; `min_revision` is a non-negative integer and each capability
-appears once per manifest. A threshold-signed registry/enterprise catalog—not
+appears once per manifest. A threshold-signed registry or enterprise catalog—not
 the publisher—maps a system capability to approved providers, artifacts, native
 closures and provenance.
 `osprey doctor` uses an authorized read-only host effect and prints that guidance;
@@ -682,21 +737,24 @@ spec 0041 needs none of this; it is Osprey source and has no Python dependency.
   (`[tool.uv.sources] name = { path = ... }`) on the root's own `pyproject.toml`
   when it has one and on the installed tree of every locked release that
   declares `python/interop`; `requires-python` is the intersection of theirs and
-  the declared floors. It then runs `uv lock` there, so uv resolves the union of
-  every member's Python requirements into one `.osprey/python/uv.lock`, and
+  the declared floors. It runs `uv lock` against independent temporary copies of those members with the same relative path layout, then copies only the resulting lock back to `.osprey/python/uv.lock`, and
   records `sha256` digests of both generated files under `root.python` in
   `osprey.lock`. uv's lock pins every Python distribution by hash itself.
-- `osprey fetch` runs `uv sync --frozen` in `.osprey/python`, creating the one
-  environment the project's Python interop uses. `python/interop` is the single
+- `osprey fetch` runs `uv sync --frozen --no-editable` against that temporary layout, creating the one environment at `.osprey/python/.venv`. Python imports use installed wheels after the temporary sources are removed; build metadata never becomes part of an immutable release tree. `python/interop` is the single
   system capability whose provider Osprey invokes, because the developer
   declared the plane and uv is its resolver; Osprey never installs uv, CPython
   or an OS package, and `doctor` reports the `python/uv` and interpreter floors
   as guidance like every other capability.
 - `verify --offline` regenerates `.osprey/python/pyproject.toml` from the lock,
-  compares both digests, and runs `uv lock --check --offline`; `build` and `run`
+  compares both digests, checks the copied generated inputs against the same pins before invoking uv, and runs `uv lock --check --offline` in the temporary layout; `build` and `run`
   run that check and fail on any mismatch. They never resolve, sync or access
   the network. Codes: `python.pyproject-missing`, `python.uv-lock-missing`,
-  `python.workspace-digest`, `python.uv-lock-stale`, `python.environment-missing`.
+  `python.workspace-digest`, `python.uv-lock-stale`, `python.environment-missing`;
+  a `uv lock` or `uv sync --frozen` that exits non-zero is `python.uv-lock-failed`
+  or `python.uv-sync-failed` with its status, and the lock is not written.
+- Temporary input copies reject symlinks and other special files. Each relative member path must resolve to its copied directory inside staging; an invalid path fails before any build backend runs. Normal root and sibling checkout paths retain their declared spelling and lock pins. Success, failure and handled termination remove the temporary copies and uv temporary files. The host uses `tar` and either `sha256sum` or `shasum` to copy and verify these inputs; a missing or failing utility fails the operation.
+- A graph with no member leaves `root.python` out of the lock, writes no
+  project and never runs uv; `doctor` reports a missing uv as guidance.
 - A release lock of Milestone B pins the same two digests; a hermetic build
   consumes the synced environment and the per-distribution hashes in `uv.lock`
   as declared inputs.

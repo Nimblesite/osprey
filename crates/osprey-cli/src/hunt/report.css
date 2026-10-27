@@ -1,0 +1,223 @@
+*{
+  box-sizing:border-box}
+html{
+  color-scheme:dark;
+  scroll-behavior:smooth}
+body{
+  margin:0;
+  background:var(--surface);
+  color:var(--on-surface);
+  font:16px/1.65 var(--font-sans)}
+a{
+  color:var(--primary);
+  text-underline-offset:4px}
+a:focus-visible,summary:focus-visible,pre:focus-visible{
+  outline:2px solid var(--primary-container);
+  outline-offset:5px}
+main{
+  max-width:1120px;
+  padding:32px 24px 64px;
+  margin:auto}
+header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:24px;
+  padding-bottom:24px;
+  border-bottom:1px solid var(--outline-variant)}
+.brand{
+  font-size:23px;
+  font-weight:600;
+  text-decoration:none;
+  letter-spacing:-.7px}
+.brand span{
+  font-weight:400;
+  color:var(--on-surface-variant);
+  margin-left:8px}
+.hero{
+  padding:64px 0 40px}
+.eyebrow{
+  font:13px var(--font-mono);
+  color:var(--primary-container);
+  margin:0 0 16px}
+h1{
+  font-size:clamp(32px,5vw,58px);
+  font-weight:550;
+  line-height:1.12;
+  letter-spacing:-1.8px;
+  max-width:900px;
+  margin:0 0 24px}
+h2{
+  font-size:26px;
+  letter-spacing:-.6px;
+  font-weight:500;
+  margin:0 0 24px}
+h3{
+  font-size:22px;
+  line-height:1.3;
+  font-weight:500;
+  margin:0 0 16px}
+h4{
+  font-size:16px;
+  margin:24px 0 8px}
+p{
+  margin:0 0 16px}
+.lead{
+  max-width:760px;
+  font-size:19px;
+  color:var(--on-surface-variant)}
+.program,.location{
+  font:14px/1.6 var(--font-mono);
+  color:var(--on-surface-variant);
+  overflow-wrap:anywhere}
+.stats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:16px;
+  margin:32px 0 0}
+.stats div{
+  padding:20px 24px;
+  background:var(--surface-container);
+  border:1px solid var(--outline-variant);
+  border-radius:12px}
+.stats dt{
+  font-size:13px;
+  color:var(--on-surface-variant)}
+.stats dd{
+  font-size:30px;
+  font-weight:500;
+  margin:8px 0 0}
+.stats dd span{
+  font-size:16px;
+  color:var(--on-surface-variant)}
+.card{
+  padding:28px 32px;
+  background:var(--surface-container);
+  border:1px solid var(--outline-variant);
+  border-radius:12px;
+  margin:0 0 24px;
+  min-width:0}
+.failure{
+  border-left:3px solid var(--error)}
+.notice{
+  border-left:3px solid var(--primary-container)}
+.verdict{
+  color:var(--primary-container);
+  font-size:14px}
+.failure .verdict{
+  color:var(--error)}
+pre{
+  margin:12px 0 0;
+  padding:20px;
+  background:var(--surface-lowest);
+  border:1px solid var(--outline-variant);
+  border-radius:8px;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  font:13px/1.75 var(--font-mono);
+  max-width:100%;
+  overflow:auto}
+code{
+  font-family:var(--font-mono);
+  font-size:.9em;
+  overflow-wrap:anywhere}
+.source{
+  padding:12px 0}
+.source code{
+  font-size:13px}
+.line{
+  display:block;
+  padding:0 16px;
+  min-height:1.75em}
+.number{
+  display:inline-block;
+  min-width:3em;
+  user-select:none;
+  color:var(--on-surface-variant)}
+.selected{
+  background:var(--surface-highest);
+  border-left:3px solid var(--primary-container);
+  padding-left:13px}
+.selected .number{
+  color:var(--primary-container)}
+summary{
+  cursor:pointer;
+  font-size:21px;
+  font-weight:500}
+summary span{
+  font:13px/1.6 var(--font-mono);
+  color:var(--on-surface-variant);
+  margin-left:12px}
+details[open] summary{
+  margin-bottom:24px}
+.ai{
+  max-height:640px}
+footer{
+  padding-top:24px;
+  color:var(--on-surface-variant);
+  font-size:13px}
+.skip{
+  position:absolute;
+  left:24px;
+  top:-100px;
+  background:var(--surface-container);
+  padding:12px}
+.skip:focus{
+  top:8px}
+@media(max-width:640px){
+  main{
+  padding:20px 16px 40px}
+.hero{
+  padding:40px 0 32px}
+h1{
+  letter-spacing:-1px}
+.stats{
+  grid-template-columns:1fr;
+  gap:8px}
+.stats div{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 20px}
+.stats dd{
+  margin:0;
+  font-size:24px}
+.card{
+  padding:24px 20px}
+summary span{
+  display:block;
+  margin:8px 0 0}
+header{
+  gap:16px}
+.lead{
+  font-size:17px}
+}
+@media(prefers-reduced-motion:reduce){
+  html{
+  scroll-behavior:auto}
+}
+@media print{
+  html{
+  color-scheme:light}
+body{
+  background:white;
+  color:black}
+main{
+  max-width:none}
+.card,.stats div,pre{
+  background:white;
+  color:black;
+  border:1px solid #777}
+.ai{
+  max-height:none}
+a,.verdict,.program,.location,.lead,.stats dt,.stats dd span,.number{
+  color:#333}
+details{
+  break-inside:avoid}
+}
+.counts-note {
+  max-width:760px;
+  margin-top:20px;
+  color:var(--on-surface-variant);
+  font-size:14px;
+}

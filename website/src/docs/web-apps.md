@@ -325,7 +325,7 @@ The application is served at `http://127.0.0.1:18790`. The generated `examples/p
 The example's web build performs four jobs:
 
 1.  esbuild bundles React, the host, and CSS for the browser;
-2.  `osprey examples/projects/modules/client --target=wasm32 --compile` builds the multi-file client project;
+2.  `osprey examples/projects/modules/client --target=wasm32 --memory=none --compile` builds the multi-file client project;
 3.  the embed script replaces one sentinel with the Wasm bytes; and
 4.  it generates an Osprey `Bundle` module whose `style()` and `script()` values the native server returns as `/app.css` and `/app.js`.
 
@@ -359,7 +359,7 @@ Start by adapting the reference host rather than installing it from npm; the pac
 Compile a directory project by pointing the compiler at the directory that contains `osprey.toml`:
 
 ``` bash
-osprey path/to/my-app/client --target=wasm32 --compile -o path/to/app.wasm
+osprey path/to/my-app/client --target=wasm32 --memory=none --compile -o path/to/app.wasm
 ```
 
 Then bundle or load the module with a host that supplies its WASI and `osprey_web` imports. Serve the app over HTTP rather than opening an HTML file directly; browser module loading and `fetch` are origin-based.

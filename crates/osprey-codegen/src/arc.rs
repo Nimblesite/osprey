@@ -15,7 +15,6 @@
 
 use crate::builder::Codegen;
 use crate::llty::Value;
-use osprey_ast::{Expr, Stmt};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
 const RELEASE_DECL: &str = "declare void @osp_release(i8*)";
@@ -44,6 +43,8 @@ struct Entry {
 /// statements, loop bodies). Swapped wholesale across `enter_nested_fn`.
 pub(crate) struct ArcLedger {
     frames: Vec<Vec<Entry>>,
+    /// What each frame in `frames` delimits, kept in step with it.
+    kinds: Vec<FrameKind>,
     /// Open conditional regions as (frame depth, ledger length at the branch).
     /// [`consume_fresh`] retires an owner AT ITS USE and removes its ledger
     /// entry, which is only sound when that use is on every path out of the
@@ -58,6 +59,7 @@ impl ArcLedger {
     pub(crate) fn new() -> ArcLedger {
         ArcLedger {
             frames: vec![Vec::new()],
+            kinds: vec![FrameKind::Scope],
             cond_floors: Vec::new(),
         }
     }
@@ -189,38 +191,6 @@ pub(crate) fn release_unique(cg: &mut Codegen, ptr: &str) {
     cg.emit(format!("call void @osp_release_unique(i8* {ptr})"));
 }
 
-/// Perceus "move into constructor" (TR §2.3, the *own* argument rule): a store
-/// into a heap slot normally dups, because the owning block's drop mask will
-/// release that slot at the object's death. But when the stored pointer is a
-/// freshly-produced owner the current region still holds, the store can MOVE it
-/// instead — the +1 the region was about to drop at its end becomes the field's
-/// reference. No dup, no region-end release: `store_field` calls this before
-/// falling back to [`dup_store`], turning `retain(x); store x, field; …;
-/// release(x)` into a single `store x, field` on every constructor argument.
-///
-/// The safety gate is *unnamed entry of the innermost frame* — the exact rc == 1
-/// shape [`consume_fresh`] proves. `let`-bound owners are *named* and a value
-/// that might be read again is therefore never moved out from under its later
-/// uses; cell-backed `mut` owners ([`own_beyond_stmt`]) and every parent-region
-/// owner live in an outer frame and are likewise excluded. A borrow (parameter,
-/// field load, phi) was never registered, so it is not found and the caller
-/// dups it as before. Returns true when it consumed an owner.
-pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
-    let slot = cg.arc.frames.last_mut().and_then(|frame| {
-        frame
-            .iter()
-            .rposition(|e| e.operand == operand && e.name.is_none())
-            .map(|at| frame.remove(at).slot)
-    });
-    match slot {
-        Some(slot) => {
-            cg.emit(format!("store i8* null, i8** {slot}"));
-            true
-        }
-        None => false,
-    }
-}
-
 /// The innermost frame's current length — the mark a `match` captures BEFORE
 /// generating its arms, so [`move_phi_owners`] can tell arm-produced owners
 /// from values that already existed at the join (above all: the scrutinee).
@@ -267,34 +237,15 @@ fn conditional_floor(cg: &Codegen) -> usize {
 /// the arms — the scrutinee, an outer temporary — and lives on EVERY path, so
 /// consuming it through the phi would leak it on the arms that yield something
 /// else. Borrows (parameters, field loads) were never registered and fail the
-/// gate, keeping the caller's dup/drop. Pure ledger bookkeeping: it emits no
-/// code, and the dup/drop calls it repositions are no-ops off ARC — the one IR
-/// still serves every backend. [GC-ARC-PERCEUS]
+/// gate, keeping the caller's dup/drop. Clear transferred slots so abandonment
+/// cannot release both an incoming owner and its phi. [GC-ARC-PERCEUS]
 pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value, mark: usize) {
-    if !managed(cg, out) {
+    if !managed(cg, out) || !incoming_owners_match(cg, incoming, mark, |_| true) {
         return;
     }
-    let consumable = |e: &Entry| e.name.is_none() && incoming.contains(&e.operand);
-    let all_fresh = cg.arc.frames.last().is_some_and(|f| {
-        incoming.iter().all(|op| {
-            f.iter()
-                .skip(mark)
-                .any(|e| e.operand == *op && e.name.is_none())
-        })
-    });
-    if !all_fresh {
-        return;
-    }
-    // Exactly one arm runs, so the phi holds no managed references whenever
-    // EVERY arm it selects from held none. Without carrying the flag across the
-    // join, `own` below re-registers the merged owner as impure and
-    // `consume_fresh` can no longer retire it at its unwrap — the drop sinks to
-    // the region end, which is past any tail call in the same expression and
-    // costs the callee its tail position. [GC-ARC-PERCEUS]
-    let all_pure = incoming_all_pure(cg, incoming, mark);
-    if let Some(f) = cg.arc.frames.last_mut() {
-        let tail = f.split_off(mark.min(f.len()));
-        f.extend(tail.into_iter().filter(|e| !consumable(e)));
+    let all_pure = incoming_owners_match(cg, incoming, mark, |e| e.pure_scalar);
+    for slot in take_phi_slots(cg, incoming, mark) {
+        cg.emit(format!("store i8* null, i8** {slot}"));
     }
     own(cg, out);
     if all_pure {
@@ -302,24 +253,51 @@ pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value
     }
 }
 
-/// Whether every arm-produced owner feeding a phi was proved pure-scalar.
-fn incoming_all_pure(cg: &Codegen, incoming: &[String], mark: usize) -> bool {
+fn take_phi_slots(cg: &mut Codegen, incoming: &[String], mark: usize) -> Vec<String> {
+    let Some(frame) = cg.arc.frames.last_mut() else {
+        return Vec::new();
+    };
+    let (moved, kept): (Vec<_>, Vec<_>) = frame
+        .split_off(mark.min(frame.len()))
+        .into_iter()
+        .partition(|e| e.name.is_none() && incoming.contains(&e.operand));
+    frame.extend(kept);
+    moved.into_iter().map(|e| e.slot).collect()
+}
+
+fn incoming_owners_match(
+    cg: &Codegen,
+    incoming: &[String],
+    mark: usize,
+    accepts: impl Fn(&Entry) -> bool,
+) -> bool {
     cg.arc.frames.last().is_some_and(|f| {
         incoming.iter().all(|op| {
             f.iter()
                 .skip(mark)
-                .any(|e| e.operand == *op && e.name.is_none() && e.pure_scalar)
+                .any(|e| e.operand == *op && e.name.is_none() && accepts(e))
         })
     })
 }
 
-/// Open a region: statement, loop body.
-pub(crate) fn push_frame(cg: &mut Codegen) {
+/// What a ledger frame delimits. A statement's owners die when the statement
+/// closes; a scope — the function body, a loop body, a kernel or comparator
+/// body — is where a binding made inside it lives. [GC-ARC-PERCEUS]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FrameKind {
+    Statement,
+    Scope,
+}
+
+/// Open a region of the given kind.
+pub(crate) fn push_frame(cg: &mut Codegen, kind: FrameKind) {
     cg.arc.frames.push(Vec::new());
+    cg.arc.kinds.push(kind);
 }
 
 /// Close the innermost region: drop every owner it still holds.
 pub(crate) fn pop_frame(cg: &mut Codegen) {
+    let _ = cg.arc.kinds.pop();
     if let Some(frame) = cg.arc.frames.pop() {
         release_entries(cg, &frame);
     }
@@ -403,11 +381,19 @@ fn take_entry(cg: &mut Codegen, operand: &str) -> Option<Entry> {
     Some(frame.remove(at))
 }
 
-/// Push `entry` into the frame beneath the innermost (the region that
-/// outlives the closing statement); the innermost when it is the only one.
+/// Push `entry` into the innermost scope frame: the region that outlives the
+/// closing statement. A binding made in a loop body belongs to the iteration,
+/// not the whole function: with frames `[function, loop]` and no statement
+/// frame between them, choosing "the frame beneath the innermost" put a record
+/// captured by the loop body's closure in the FUNCTION frame, where the loop
+/// overwrote its slot each iteration and leaked every value but the last.
 fn push_parent(cg: &mut Codegen, entry: Entry) {
-    let n = cg.arc.frames.len();
-    let at = if n >= 2 { n - 2 } else { n - 1 };
+    let at = cg
+        .arc
+        .kinds
+        .iter()
+        .rposition(|kind| *kind == FrameKind::Scope)
+        .unwrap_or(0);
     if let Some(frame) = cg.arc.frames.get_mut(at) {
         frame.push(entry);
     }
@@ -472,6 +458,7 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
         release_entries(cg, frame);
     }
     cg.arc.frames = vec![Vec::new()];
+    cg.arc.kinds = vec![FrameKind::Scope];
 }
 
 /// A candidate value is about to escape boxed as an `i64` across a fiber /
@@ -481,90 +468,9 @@ pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
     retain_val(cg, v);
 }
 
-/// Drop owners introduced in the current lexical scope when that scope's
-/// continuation no longer references them (M6 last-use precision, TR Fig. 6).
-/// Runs only at function ledger depth: statement/loop frames cannot establish
-/// enclosing liveness. The lexical gate is equally important: a block inside
-/// one match arm must not remove an outer owner from the global ledger, because
-/// sibling arms bypass that path-local drop.
-pub(crate) fn release_dead_after<S: std::borrow::Borrow<Stmt>>(
-    cg: &mut Codegen,
-    rest: &[S],
-    value: Option<&Expr>,
-) {
-    if cg.arc.frames.len() != 1 {
-        return;
-    }
-    let mut live = std::collections::BTreeSet::new();
-    osprey_ast::freevars::free_idents_of_stmts(rest, value, &mut live);
-    // An inline lambda the continuation can still apply keeps what it closes
-    // over alive, though the continuation never names those captures.
-    live.extend(crate::closure::reach(cg, &live));
-    live.extend(crate::iter::stage_aliases(cg));
-    release_dead(cg, &live);
-}
-
-fn release_dead(cg: &mut Codegen, live: &std::collections::BTreeSet<String>) {
-    let mut dead = Vec::new();
-    let scope = cg.scope_id();
-    if let Some(frame) = cg.arc.frames.first_mut() {
-        let mut kept = Vec::new();
-        for e in frame.drain(..) {
-            match &e.name {
-                Some(n) if e.binding_scope == scope && !live.contains(n) => dead.push(e),
-                _ => kept.push(e),
-            }
-        }
-        *frame = kept;
-    }
-    release_entries(cg, &dead);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::llty::LType;
-
-    fn owner_names(cg: &Codegen) -> Vec<&str> {
-        cg.arc
-            .frames
-            .first()
-            .into_iter()
-            .flatten()
-            .filter_map(|entry| entry.name.as_deref())
-            .collect()
-    }
-
-    fn bind_owner(cg: &mut Codegen, name: &str) {
-        let owner = Value::new(format!("%{name}"), LType::Ptr);
-        own(cg, &owner);
-        bind_owned(cg, name, &owner);
-    }
-
-    #[test]
-    fn last_use_only_drains_the_current_lexical_scope() {
-        let mut cg = Codegen::new();
-        cg.begin_function("scope_arc", None);
-        bind_owner(&mut cg, "outer");
-        cg.push_scope();
-        bind_owner(&mut cg, "inner");
-
-        release_dead(&mut cg, &std::collections::BTreeSet::new());
-
-        assert_eq!(owner_names(&cg), ["outer"]);
-    }
-
-    #[test]
-    fn sibling_scope_cannot_drain_another_arms_owner() {
-        let mut cg = Codegen::new();
-        cg.begin_function("branch_arc", None);
-        cg.push_scope();
-        bind_owner(&mut cg, "arm_owner");
-        cg.pop_scope();
-        cg.push_scope();
-
-        release_dead(&mut cg, &std::collections::BTreeSet::new());
-
-        assert_eq!(owner_names(&cg), ["arm_owner"]);
-    }
-}
+mod constructors;
+mod last_use;
+mod unwind;
+pub(crate) use constructors::consume_into_store;
+pub(crate) use last_use::release_dead_after;
+pub(crate) use unwind::instrument as instrument_unwind;

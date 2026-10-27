@@ -39,6 +39,9 @@ pub(crate) fn arguments(
         "--optimize",
         "--kdalloc",
         "--rng-initial-seed=5489",
+        "--search=dfs",
+        "--solver-backend=z3",
+        "--solver-optimize-divides",
         "--check-div-zero",
         "--check-overshift",
         "--emit-all-errors",
@@ -54,16 +57,31 @@ pub(crate) fn arguments(
     .collect()
 }
 
+/// How the engine ended: on its own, or killed by its own watchdog once the
+/// budget was spent while a solver query was still running. A halted run has
+/// still written the states it dumped on the way out, so it is read like any
+/// other and reported as cut at the budget, not as a tool failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Ending {
+    Finished,
+    Halted,
+}
+
+/// The reason a halted run's report carries under "incomplete".
+pub(crate) const HALTED_REASON: &str =
+    "KLEE's watchdog killed the run at the budget while a solver query was still running";
+
 /// KLEE exits 0 whether or not it found errors; a non-zero exit is the engine
-/// itself failing, reported with the tail of what it said. Its stderr goes to
-/// `stderr_path` (a pipe could fill and stall it), and the engine is killed
-/// if it outlives the budget plus the loading grace.
+/// itself failing, reported with what it said, unless its own watchdog ended
+/// the run at the budget. Its stderr goes to `stderr_path` (a pipe could fill
+/// and stall it), and the engine is killed if it outlives the budget plus the
+/// loading grace.
 pub(crate) fn run(
     klee: &Path,
     arguments: &[String],
     stderr_path: &Path,
     max_time: u64,
-) -> Result<(), String> {
+) -> Result<Ending, String> {
     let stderr_file = std::fs::File::create(stderr_path)
         .map_err(|error| format!("cannot create {}: {error}", stderr_path.display()))?;
     let mut child = Command::new(klee)
@@ -80,14 +98,44 @@ pub(crate) fn run(
             limit.as_secs()
         )
     })?;
-    if status.success() {
-        return Ok(());
-    }
     let stderr = std::fs::read_to_string(stderr_path).unwrap_or_default();
+    let crashed = stderr.contains("llvm::sys::PrintStackTrace");
+    if status.success() && !crashed {
+        return Ok(Ending::Finished);
+    }
+    if halted_by_watchdog(&stderr) && !crashed {
+        return Ok(Ending::Halted);
+    }
+    let reason = if crashed {
+        "interpreter crashed".to_string()
+    } else {
+        status.to_string()
+    };
     Err(format!(
-        "klee failed ({status}):\n{}",
-        tail(&stderr, 12).join("\n")
+        "klee failed ({reason}):\n{}",
+        excerpt(&stderr).join("\n")
     ))
+}
+
+/// KLEE's `--watchdog` reports the kill it is about to make with this line.
+pub(crate) fn halted_by_watchdog(stderr: &str) -> bool {
+    stderr.contains("WATCHDOG: time expired")
+}
+
+/// What the engine said, head and tail: LLVM prints a fatal error before its
+/// stack trace, so the last lines alone would show only frames.
+pub(crate) fn excerpt(stderr: &str) -> Vec<&str> {
+    let lines: Vec<&str> = stderr
+        .lines()
+        .filter(|line| !is_noise(line) && !line.trim().is_empty())
+        .collect();
+    if lines.len() <= 18 {
+        return lines;
+    }
+    let mut shown: Vec<&str> = lines.iter().take(6).copied().collect();
+    shown.push("...");
+    shown.extend(tail(stderr, 12));
+    shown
 }
 
 /// The last `count` lines that are not target-mismatch noise: the module and
@@ -149,12 +197,24 @@ mod tests {
         assert_eq!(args.first().map(String::as_str), Some("--libc=klee"));
         assert!(args.contains(&"-link-llvm-lib=rt.bc".to_string()));
         assert!(args.contains(&"--max-time=7s".to_string()));
+        assert!(args.contains(&"--max-solver-time=30s".to_string()));
         assert!(args.contains(&"--output-dir=out".to_string()));
         assert!(
             args.contains(&"--kdalloc".to_string())
                 && args.contains(&"--emit-all-errors".to_string())
         );
         assert_eq!(args.last().map(String::as_str), Some("p.ll"));
+    }
+
+    #[test]
+    fn depth_first_search_finishes_each_symbolic_path_before_moving_on() {
+        let args = arguments(
+            Path::new("rt.bc"),
+            Path::new("out"),
+            (30, 2000),
+            Path::new("p.ll"),
+        );
+        assert!(args.contains(&"--search=dfs".to_string()));
     }
 
     #[test]
@@ -194,7 +254,25 @@ mod tests {
     fn a_missing_engine_is_an_error_naming_it() {
         let path = stderr_path("missing");
         let error = run(Path::new("/nonexistent/klee"), &[], &path, 1).expect_err("missing klee");
-        assert!(error.contains("could not run /nonexistent/klee"));
+        crate::testkit::shows(&error, &["could not run /nonexistent/klee"]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_crashed_interpreter_is_not_hidden_by_its_watchdog_status() {
+        let path = stderr_path("watchdog-crash");
+        for status in [0, 1, 137] {
+            let script = format!(
+                "printf '%s\\n' 'KLEE: WARNING: KLEE: WATCHDOG: time expired' ' #0 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int)' >&2; exit {status}"
+            );
+            let result = run(Path::new("/bin/sh"), &["-c".into(), script], &path, 1);
+            assert!(
+                result.is_err(),
+                "interpreter crash with watchdog status {status}: {result:?}"
+            );
+            assert!(result.expect_err("crash").contains("PrintStackTrace"));
+        }
         let _ = std::fs::remove_file(&path);
     }
 
@@ -221,16 +299,5 @@ mod tests {
         )
         .is_ok());
         let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn the_solver_is_bounded_too() {
-        let args = arguments(
-            Path::new("rt.bc"),
-            Path::new("out"),
-            (7, 2000),
-            Path::new("p.ll"),
-        );
-        assert!(args.contains(&"--max-solver-time=30s".to_string()));
     }
 }

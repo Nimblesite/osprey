@@ -1,7 +1,7 @@
 //! Lexically aware value, declaration, and constructor rewriting.
 
 use crate::model::SymbolKey;
-use crate::purity::is_pure;
+use crate::purity::{is_function_reference, is_pure};
 use crate::resolve::{symbol_key, Context, Locals, Resolver};
 use osprey_ast::{Expr, Stmt, TypeParam};
 
@@ -60,7 +60,9 @@ impl Resolver<'_> {
         let mut value = constant.value;
         self.rewrite_expr(&mut value, &context, &mut Locals::default());
         let _ = self.constant_active.remove(key);
-        if is_pure(&value) && !self.invalid_constants.contains(key) {
+        if (is_pure(&value) || is_function_reference(&value, self.graph))
+            && !self.invalid_constants.contains(key)
+        {
             let _ = self.constant_cache.insert(key.clone(), value.clone());
             Some(value)
         } else {
@@ -222,9 +224,12 @@ impl Resolver<'_> {
                 value,
                 position,
             } => {
-                if !locals.values.contains(name)
-                    && self.resolve_bare(name, context, *position).is_some()
-                {
+                let target = if locals.values.contains(name) {
+                    None
+                } else {
+                    self.resolve_bare(name, context, *position)
+                };
+                if target.is_some_and(|key| !self.entry_cell(&key, context)) {
                     self.error(
                         context.source,
                         *position,
@@ -236,6 +241,17 @@ impl Resolver<'_> {
             Stmt::Expr { value, .. } => self.rewrite_expr(value, context, locals),
             _ => {}
         }
+    }
+
+    /// Whether `key` is a file-scope cell of the entry source, assigned from
+    /// that source: its handler arms own it ([MODULES-FILE-SCOPE-BINDING]).
+    fn entry_cell(&self, key: &SymbolKey, context: &Context) -> bool {
+        context.source == self.entry_source
+            && self.graph.declarations.get(key).is_some_and(|declaration| {
+                declaration.state_owner
+                    && declaration.owner.is_empty()
+                    && declaration.source == self.entry_source
+            })
     }
 
     #[expect(
@@ -299,7 +315,7 @@ impl Resolver<'_> {
             } => {
                 self.rewrite_expr(function, context, locals);
                 if let Expr::FieldAccess { field, .. } = function.as_mut() {
-                    self.rewrite_value_name(field, context, false);
+                    self.rewrite_method_name(field, context);
                 }
                 for argument in type_args {
                     self.rewrite_type(argument, context, locals);
@@ -327,7 +343,7 @@ impl Resolver<'_> {
                 named_arguments,
             } => {
                 self.rewrite_expr(target, context, locals);
-                self.rewrite_value_name(method, context, false);
+                self.rewrite_method_name(method, context);
                 self.rewrite_exprs(arguments, context, locals);
                 for argument in named_arguments {
                     self.rewrite_expr(&mut argument.value, context, locals);

@@ -1,0 +1,14 @@
+[project]
+name = "faiss"
+source_roots = ["src"]
+python_sources = ["src/metrics.py", "src/selectors.py", "src/flat.py", "src/idmap.py", "src/normalize.py", "src/kmeans.py", "src/scalar.py", "src/pq.py"]
+default_namespace = "faiss"
+
+[package]
+name = "@osprey/faiss"
+license = "MIT"
+summary = "Vector search: flat L2/IP indexes, ID maps, k-means, product and scalar quantizers matching faiss-cpu 1.15.1"
+keywords = ["faiss", "knn", "python-flavor", "vector-search"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

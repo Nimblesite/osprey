@@ -407,8 +407,8 @@ impl<'a> Lowerer<'a> {
     /// index names because they have no source spelling
     /// ([TYPE-UNION-POSITIONAL]).
     fn lower_positional_payload(&self, node: Node<'_>) -> Vec<TypeField> {
-        (0..node.named_child_count())
-            .filter_map(|i| node.named_child(i))
+        let mut cursor = node.walk();
+        node.named_children(&mut cursor)
             .enumerate()
             .map(|(slot, ty)| TypeField {
                 name: osprey_ast::positional_field_name(slot),
@@ -841,22 +841,12 @@ fn negate_literal(e: Expr) -> Expr {
     reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
 )]
 mod tests {
+    use crate::test_support::find_kind;
     use crate::test_support::{
         assert_doc_pair, assert_summary, one_stmt, program, stmt_doc, stmts,
     };
     use crate::{parse_program, parse_tree};
     use osprey_ast::{Expr, Pattern, Stmt};
-    use tree_sitter::Node;
-
-    /// Find the first descendant node of a given kind anywhere in the tree.
-    fn find_kind<'t>(node: Node<'t>, kind: &str) -> Option<Node<'t>> {
-        if node.kind() == kind {
-            return Some(node);
-        }
-        let mut cursor = node.walk();
-        let children: Vec<Node<'t>> = node.children(&mut cursor).collect();
-        children.into_iter().find_map(|c| find_kind(c, kind))
-    }
 
     // ---------- [TESTING-DOC] expression-statement documentation ----------
 

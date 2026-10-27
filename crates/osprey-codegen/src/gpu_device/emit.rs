@@ -256,8 +256,46 @@ impl Emitter<'_> {
             ("sqrt" | "exp" | "ln" | "tanh", [(Ty::Float, a)]) => {
                 unary(Ty::Float, format!("{name}64({a})"))
             }
+            // The unary float functions of [BUILTIN-MATH] and its sections:
+            // one call into the device math library, total and pure.
+            (
+                "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sinh" | "cosh" | "asinh"
+                | "acosh" | "atanh" | "log2" | "log10" | "log1p" | "expm1" | "erf" | "erfc"
+                | "floor" | "ceil" | "trunc" | "round",
+                [(Ty::Float, a)],
+            ) => unary(Ty::Float, format!("{name}64({a})")),
+            // Binary float functions [BUILTIN-MATH-TRIG] [BUILTIN-MATH-LOG]
+            // [BUILTIN-MATH-ROUNDING].
+            ("pow" | "atan2" | "hypot" | "fmod" | "copysign", [(Ty::Float, a), (Ty::Float, b)]) => {
+                unary(Ty::Float, format!("{name}64({a}, {b})"))
+            }
+            // [BUILTIN-FLOAT32] the binary32 emulation; [BUILTIN-FLOAT-BITS]
+            // the bit-level views. A device float IS its binary64 word, so
+            // floatBits is the identity and floatFromBits a cast of the word.
+            ("float32", [(Ty::Float, a)]) => unary(Ty::Float, format!("float32_64({a})")),
+            ("floatBits", [(Ty::Float, a)]) => unary(Ty::Int, a.clone()),
+            ("floatFromBits", [(Ty::Int, a)]) => unary(Ty::Float, a.clone()),
+            ("float32Bits", [(Ty::Float, a)]) => unary(Ty::Int, format!("float32_bits({a})")),
+            ("float32FromBits", [(Ty::Int, a)]) => {
+                unary(Ty::Float, format!("float32_from_bits({a})"))
+            }
             ("abs", [(Ty::Int, a)]) => unary(Ty::Int, format!("osprey_abs({a}, fault)")),
             ("abs", [(Ty::Float, a)]) => unary(Ty::Float, format!("abs64({a})")),
+            // [BUILTIN-BITWISE] the word operations; the shifts are total on
+            // the device exactly as on the host.
+            ("bitAnd", [(Ty::Int, a), (Ty::Int, b)]) => unary(Ty::Int, format!("(({a}) & ({b}))")),
+            ("bitOr", [(Ty::Int, a), (Ty::Int, b)]) => unary(Ty::Int, format!("(({a}) | ({b}))")),
+            ("bitXor", [(Ty::Int, a), (Ty::Int, b)]) => unary(Ty::Int, format!("(({a}) ^ ({b}))")),
+            ("bitNot", [(Ty::Int, a)]) => unary(Ty::Int, format!("(~({a}))")),
+            ("shiftLeft", [(Ty::Int, a), (Ty::Int, b)]) => {
+                unary(Ty::Int, format!("shl64({a}, {b})"))
+            }
+            ("shiftRight", [(Ty::Int, a), (Ty::Int, b)]) => {
+                unary(Ty::Int, format!("shr64({a}, {b})"))
+            }
+            ("shiftRightLogical", [(Ty::Int, a), (Ty::Int, b)]) => {
+                unary(Ty::Int, format!("shru64({a}, {b})"))
+            }
             ("wrapAdd", [(Ty::Int, a), (Ty::Int, b)]) => {
                 unary(Ty::Int, format!("(long)((ulong)({a}) + (ulong)({b}))"))
             }

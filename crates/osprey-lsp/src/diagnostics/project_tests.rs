@@ -147,6 +147,8 @@ fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
 
     let source = "print(missing)\n";
     let project = AssembledProject {
+        source_dependencies: Vec::new(),
+        method_candidates: Vec::new(),
         warnings: Vec::new(),
         state_boundaries: Vec::new(),
         program: osprey_syntax::parse_program(source).program,

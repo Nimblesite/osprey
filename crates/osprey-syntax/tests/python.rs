@@ -283,7 +283,8 @@ fn python_intrinsics_reject_invalid_arity_and_context_managers() {
         "yield_fiber(1, 2)\n",
         "send(1)\n",
         "recv()\n",
-        "update(1, x=2)\n",
+        "update()\n",
+        "update(a, b, x=2)\n",
         "unwrap_or(result)\n",
         "unwrap_or(result, 0, 1)\n",
         "unwrap_or(result, fallback=0)\n",
@@ -516,6 +517,101 @@ fn python_qualified_variant_patterns_across_imports_equal_default_ast() {
 }
 
 #[test]
+fn python_qualified_pascal_case_calls_with_positional_arguments_stay_calls() {
+    // A port's constructor functions carry the original library's class names.
+    // Imported declaration identity is resolved after parsing.
+    equal(
+        "import logits_process as LogitsProcess\nlet w = LogitsProcess::TopKLogitsWarper(3, fv, 1)\n",
+        "import logits_process as LogitsProcess\nw = LogitsProcess.TopKLogitsWarper(3, fv, 1)\n",
+    );
+    // No arguments cannot distinguish an imported factory from a constructor.
+    let parsed = parse("import shapes as Shapes\ne = Shapes.Empty()\n");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let Some(Stmt::Let { value, .. }) = parsed
+        .program
+        .statements
+        .iter()
+        .find(|stmt| matches!(stmt, Stmt::Let { name, .. } if name == "e"))
+    else {
+        panic!("expected the `e` binding");
+    };
+    assert!(
+        matches!(value, Expr::Call { function, arguments, named_arguments }
+            if matches!(function.as_ref(), Expr::Path(path) if path.to_string() == "Shapes::Empty")
+                && arguments.is_empty() && named_arguments.is_empty()),
+        "expected an unresolved qualified call, got {value:?}"
+    );
+}
+
+#[test]
+fn python_builtin_json_positional_construction_and_patterns_equal_default_ast() {
+    // [BUILTIN-JSON-TYPED], [FLAVOR-PYTHON-EXPRESSIONS]: the built-in `Json`
+    // union has positional payloads, so `JsonObject([...])` and `JsonInt(3)` are
+    // saturated constructor applications kept as calls for assembly to fold,
+    // and `case JsonNull:` is the nullary variant, not a capture. Both flavors
+    // lower the same calls and patterns to the same canonical AST.
+    equal(
+        "let doc = JsonObject([JsonMember(\"tags\", JsonArray([JsonString(\"fast\"), JsonString(\"typed\")]))])\nfn kind(json) = match json { JsonObject(members) => length(members)\n JsonArray(items) => length(items)\n JsonInt(n) => n\n JsonNull => 0\n _ => 0 }\n",
+        "doc = JsonObject([JsonMember(\"tags\", JsonArray([JsonString(\"fast\"), JsonString(\"typed\")]))])\ndef kind(json):\n    match json:\n        case JsonObject(members):\n            return len(members)\n        case JsonArray(items):\n            return len(items)\n        case JsonInt(n):\n            return n\n        case JsonNull:\n            return 0\n        case _:\n            return 0\n",
+    );
+}
+
+#[test]
+fn python_rejects_bindings_that_shadow_builtin_renames() {
+    // `len` lowers to `length` and `//` lowers to `intDiv`; a binding that
+    // shadows either target would silently redirect the lowering, so it is
+    // rejected with a diagnostic naming both names.
+    for source in [
+        "length = 5\nn = len(xs)\n",
+        "def length(xs):\n    return 1\n",
+        "intDiv = 5\nq = a // b\n",
+    ] {
+        let parsed = parse(source);
+        assert!(!parsed.errors.is_empty(), "silently accepted {source}");
+        assert!(
+            parsed
+                .errors
+                .iter()
+                .any(|error| error.message.contains("shadows the builtin")),
+            "missing shadow diagnostic: {:?}",
+            parsed.errors
+        );
+    }
+}
+
+#[test]
+fn python_update_accepts_an_expression_record_argument() {
+    // [FLAVOR-PYTHON-EXPRESSIONS]: `update(expr, field=value)` binds `expr`
+    // once to a generated name, then updates that binding, because the
+    // canonical `Expr::Update` names a record variable, never an expression.
+    let parsed = parse("def f():\n    return update(blank(), kind=\"x\")\n");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let Some(record) = find_update_record(&parsed.program) else {
+        panic!("expected an `Expr::Update`");
+    };
+    assert_eq!(record, "$upd0", "the generated record binding");
+}
+
+#[test]
+fn python_rejects_nested_function_definitions() {
+    for source in [
+        "def outer():\n    def inner():\n        return 1\n    return inner()\n",
+        "def outer():\n    f = lambda: 1\n    def inner():\n        return 2\n    return f()\n",
+    ] {
+        let parsed = parse(source);
+        assert!(!parsed.errors.is_empty(), "silently accepted {source}");
+        assert!(
+            parsed
+                .errors
+                .iter()
+                .any(|error| error.message.contains("nested `def`")),
+            "missing nested-def diagnostic: {:?}",
+            parsed.errors
+        );
+    }
+}
+
+#[test]
 fn python_pep695_function_type_parameters_equal_default_ast() {
     // [FLAVOR-PYTHON-TYPING]
     equal(
@@ -661,6 +757,29 @@ fn expr_match(expr: &Expr) -> Option<Vec<osprey_ast::MatchArm>> {
             .iter()
             .find_map(stmt_match)
             .or_else(|| value.as_ref().and_then(|v| expr_match(v))),
+        _ => None,
+    }
+}
+
+fn find_update_record(program: &osprey_ast::Program) -> Option<String> {
+    program.statements.iter().find_map(|stmt| match stmt {
+        Stmt::Function { body, .. } | Stmt::Let { value: body, .. } => expr_update(body),
+        _ => None,
+    })
+}
+
+fn expr_update(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Update { record, .. } => Some(record.clone()),
+        Expr::Block {
+            statements, value, ..
+        } => statements
+            .iter()
+            .find_map(|stmt| match stmt {
+                Stmt::Function { body, .. } | Stmt::Let { value: body, .. } => expr_update(body),
+                _ => None,
+            })
+            .or_else(|| value.as_ref().and_then(|v| expr_update(v))),
         _ => None,
     }
 }

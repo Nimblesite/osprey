@@ -1,0 +1,195 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Fetch
+import registry_cli::Listing
+import registry_cli::ManifestEdit
+import registry_cli::Transaction
+import registry_cli::Use
+import registry::Identity
+import registry::Maybe
+import registry::Names
+
+/// `osprey-pkg add <key-or-path> [--epoch N] [--registry <base-url>] [--project <dir>]`.
+/// `add @scope/name` chooses the key's newest epoch (or the lineage `--epoch N`
+/// names) and the newest ordinal in it as the floor, writes the dependency
+/// line under `[dependencies]`, and relocks atomically; exact digests go only
+/// to the lock ([PACKAGE-API], plan 0020 Phase 4). `add <path>` takes the key
+/// from the checkout's `[package]`, writes the dependency with the published
+/// baseline's ordinal as the floor (zero and epoch 1 when nothing is
+/// published, so the dependency is development-only), relocks the release
+/// lock when a baseline exists, then maps the checkout in the overlay and
+/// relocks the development lock ([PACKAGE-LOCAL-OVERRIDE]); a failure writes
+/// back the manifest and the release lock. A key already declared is
+/// `add.exists`; a key or epoch the registry does not list is the listing's code.
+module Add {
+    let failStatus = 1
+    let usageCode = "add.usage"
+    let existsCode = "add.exists"
+    let restoreCode = "add.restore"
+    let epochFlag = "--epoch"
+    let usageText = ["usage: osprey-pkg add <@scope/name | path> [--epoch N] [--registry <base-url>] [--project <dir>]"]
+
+    /// The key to add, the `--epoch` word ("" for the newest) and the relock settings.
+    type Request = { key: Names::Key, epochWord: string, settings: Transaction::Settings }
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    fn settingsOf(parsed) = Transaction::Settings {
+        base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry),
+        project: Flags::project(parsed),
+        acceptRemovals: false,
+        fresh: false,
+        local: false
+    }
+
+    // Shared field names need typed receivers (issue #273).
+    fn keyOf(req: Request) = req.key
+    fn settingsIn(req: Request) = req.settings
+    fn epochWordOf(req: Request) = req.epochWord
+    fn baseOf(s: Transaction::Settings) = s.base
+    fn projectOf(s: Transaction::Settings) = s.project
+    fn statusOf(r: Reports::Report) = r.status
+    fn linesOf(r: Reports::Report) = r.lines
+    fn epochOfId(id: Identity::ReleaseId) = id.epoch
+    fn ordinalOfId(id: Identity::ReleaseId) = id.ordinal
+
+    fn parsedEpoch(word) = match parseInt(word) {
+        Success { value } => Success { value: value }
+        Error => Error { message: usageCode }
+    }
+
+    fn chosenEpoch(req, listing) = if epochWordOf(req) == "" { Listing::newestEpoch(listing, keyOf(req)) } else { parsedEpoch(epochWordOf(req)) }
+
+    // ---- add @scope/name ----
+
+    fn committed(req, text, epoch, floor) = Transaction::commit(settingsIn(req), text,
+        ManifestEdit::withEdge(text, ManifestEdit::edgeLine(keyOf(req), epoch, floor)),
+        ["added ${Names::display(keyOf(req))} e${epoch}.r${floor}"])
+
+    fn withEpoch(req, text, listing, epoch) = match Listing::newestOrdinal(listing, keyOf(req), epoch) {
+        Error { message } => failed([message])
+        Success { value } => committed(req, text, epoch, value)
+    }
+
+    fn withListing(req, text, listing) = match chosenEpoch(req, listing) {
+        Error { message } => if message == usageCode { usageReport() } else { failed([message]) }
+        Success { value } => withEpoch(req, text, listing, value)
+    }
+
+    fn withText(req, text) = match Listing::fetch(baseOf(settingsIn(req))) {
+        Error { message } => failed([message])
+        Success { value } => withListing(req, text, value)
+    }
+
+    fn declared(req, text) = if ManifestEdit::hasEdge(text, keyOf(req)) { failed(["${existsCode} ${Names::display(keyOf(req))}"]) } else { withText(req, text) }
+
+    fn withRequest(req) = match Project::manifestTextAt(projectOf(settingsIn(req))) {
+        Error { message } => failed([message])
+        Success { value } => declared(req, value)
+    }
+
+    fn requestOf(parsed, key) = Request { key: key, epochWord: Flags::given(parsed, epochFlag, ""), settings: settingsOf(parsed) }
+
+    fn withKey(key, parsed) = withRequest(requestOf(parsed, key))
+
+    // ---- add <path> ([PACKAGE-LOCAL-OVERRIDE]) ----
+
+    fn releaseIn(listing, key, epoch, ordinal) = foldList(listing, Identity::blank(), fn(found, r: Identity::ReleaseId) => if Names::same(r.key, key) && r.epoch == epoch && r.ordinal == ordinal { r } else { found })
+
+    fn newestIn(listing, key, epoch) = match Listing::newestOrdinal(listing, key, epoch) {
+        Error => Maybe::none()
+        Success { value } => Maybe::some(releaseIn(listing, key, epoch, value))
+    }
+
+    /// The published baseline of the checkout's key: the newest release of the
+    /// epoch in force, none when nothing is published.
+    fn baselineFor(req, listing) = match chosenEpoch(req, listing) {
+        Error => Maybe::none()
+        Success { value } => newestIn(listing, keyOf(req), value)
+    }
+
+    fn epochFor(req, baseline) = Maybe::fold(baseline, parseInt(epochWordOf(req)) ?: 1, epochOfId)
+    fn floorFor(baseline) = Maybe::fold(baseline, 0, ordinalOfId)
+
+    fn writeBack(path, text) = if text == "" { Success { value: 0 } } else { perform Host::Files.write(path, text) }
+
+    fn withRestoreNote(report, result) = match result {
+        Error { message } => failed(listAppend(linesOf(report), "${restoreCode} ${message}"))
+        Success => report
+    }
+
+    /// Write back the manifest and the release lock after a failed development relock.
+    fn restored(req, previousText, previousLock, report) = {
+        let s = settingsIn(req)
+        let manifest = writeBack(Project::manifestPathAt(projectOf(s)), previousText)
+        let lock = writeBack(Project::lockPathAt(projectOf(s)), previousLock)
+        withRestoreNote(withRestoreNote(report, manifest), lock)
+    }
+
+    /// Map the checkout and relock the development lock; a failure undoes the manifest and release lock.
+    fn mappedLocal(req, path, previousText, previousLock, released) = {
+        let s = settingsIn(req)
+        let local = Use::mapLocal(baseOf(s), projectOf(s), keyOf(req), path, epochWordOf(req))
+        if statusOf(local) == 0 { Reports::success(listConcat(linesOf(released), linesOf(local))) } else { restored(req, previousText, previousLock, local) }
+    }
+
+    fn writtenOnly(s, text, line, note) = match perform Host::Files.write(Project::manifestPathAt(projectOf(s)), ManifestEdit::withEdge(text, line)) {
+        Error { message } => failed([message])
+        Success => Reports::success(listAppend(note, "development-only: nothing published for this key"))
+    }
+
+    fn releasedFor(req, text, line, note, baseline) = if Maybe::isPresent(baseline) {
+        Transaction::commit(settingsIn(req), text, ManifestEdit::withEdge(text, line), note)
+    } else {
+        writtenOnly(settingsIn(req), text, line, note)
+    }
+
+    /// The dependency line is written; with a baseline the release lock is
+    /// recomputed too, without one the dependency stays development-only.
+    fn declaredLocal(req, path, text, baseline) = {
+        let epoch = epochFor(req, baseline)
+        let line = ManifestEdit::edgeLine(keyOf(req), epoch, floorFor(baseline))
+        let previousLock = perform Host::Files.read(Project::lockPathAt(projectOf(settingsIn(req)))) ?: ""
+        let released = releasedFor(req, text, line, ["added ${Names::display(keyOf(req))} e${epoch}.r${floorFor(baseline)} from ${path}"], baseline)
+        if statusOf(released) == 0 { mappedLocal(req, path, text, previousLock, released) } else { released }
+    }
+
+    fn withLocalListing(req, path, text) = match Listing::fetch(baseOf(settingsIn(req))) {
+        Error { message } => failed([message])
+        Success { value } => declaredLocal(req, path, text, baselineFor(req, value))
+    }
+
+    fn declaredPath(req, path, text) = if ManifestEdit::hasEdge(text, keyOf(req)) { failed(["${existsCode} ${Names::display(keyOf(req))}"]) } else { withLocalListing(req, path, text) }
+
+    fn withLocalKey(parsed, path, key) = {
+        let req = requestOf(parsed, key)
+        match Project::manifestTextAt(projectOf(settingsIn(req))) {
+            Error { message } => failed([message])
+            Success { value } => declaredPath(req, path, value)
+        }
+    }
+
+    fn withPath(parsed, path) = match Use::localKey(Flags::project(parsed), path) {
+        Error { message } => failed([message])
+        Success { value } => withLocalKey(parsed, path, value)
+    }
+
+    fn withWord(parsed, word) = if startsWith(word, "@") {
+        match Names::parse(word) {
+            Error => usageReport()
+            Success { value } => withKey(value, parsed)
+        }
+    } else { withPath(parsed, word) }
+
+    fn routed(parsed, word) = if word == "" || startsWith(word, "--") { usageReport() } else { withWord(parsed, word) }
+
+    /// The whole command: the key or path word first, then the flags.
+    export fn run(args) = match Flags::parse(Flags::tail(args), [epochFlag, Fetch::registryFlag, Flags::projectFlag], []) {
+        Error => usageReport()
+        Success { value } => routed(value, listGet(args, 0) ?: "")
+    }
+}

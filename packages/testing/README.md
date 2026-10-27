@@ -8,6 +8,8 @@ Assertions for the Python-flavor package ports ([spec 0043](../../docs/specs/eco
 | `Check.close`, `Check.close_all` | `numpy.isclose`, `numpy.allclose` | `close_all` names the first differing index |
 | `Check.equal`, `Check.ints_equal`, `Check.truth` | `assert a == b` | Exact |
 | `Check.strictly(work)` | — | Runs a suite under a policy that stops at the first integer overflow or zero division |
+| `Check.lenient(work)` | — | A hunt driver's policy ([PORT-HUNT]): an overflow yields the wrapped value, a zero division or remainder yields zero |
+| `Check.specials()` | — | `+inf`, `-inf`, NaN, `exp(700)` and the subnormal `exp(-745)`, the values a hunt mixes into its symbolic inputs |
 
 The suite in `tests/` compares each verdict with real `numpy.isclose`; `scripts/oracles/testing.py` regenerates `tests/expected.py` from it.
 

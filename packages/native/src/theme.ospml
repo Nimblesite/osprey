@@ -1,0 +1,58 @@
+// Implements [UI-THEME]: colours, spacing and motion are Osprey values sent
+// once; the backend resolves roles and never holds its own palette.
+namespace ui
+
+(** One semantic colour role, `#RRGGBB` in each appearance. *)
+type Token =
+    tokenName : string
+    tokenLight : string
+    tokenDark : string
+
+(** The application's theme: colour tokens with light and dark values, a spacing scale in points, and feedback and settle durations in milliseconds ([UI-THEME]). *)
+type Theme =
+    tokens : List<Token>
+    spacing : List<int>
+    feedback : int
+    settle : int
+
+(** WCAG 2 relative luminance and contrast ratios for theme colours. *)
+module Contrast
+    digit code = indexOf "0123456789ABCDEF" (toUpperCase code) ?: 0
+
+    channel (hex, at) =
+        high = digit (substring hex at (satAdd at 1) ?: "0")
+        low = digit (substring hex (satAdd at 1) (satAdd at 2) ?: "0")
+        toFloat (satAdd (satMul high 16) low) / 255.0
+
+    linear value = match value <= 0.04045
+        true => value / 12.92
+        false => exp (2.4 * ln ((value + 0.055) / 1.055))
+
+    (** WCAG 2 relative luminance of `#RRGGBB`. *)
+    export luminance hex = 0.2126 * linear (channel (hex, 1)) + 0.7152 * linear (channel (hex, 3)) + 0.0722 * linear (channel (hex, 5))
+
+    (** WCAG 2 contrast ratio between two `#RRGGBB` colours, at least 1. *)
+    export ratio (first, second) =
+        a = luminance first
+        b = luminance second
+        // Both divisors are at least 0.05, so this arm is unreachable.
+        handle Arith
+            divideByZero _ dividend => dividend
+        match a >= b
+            true => (a + 0.05) / (b + 0.05)
+            false => (b + 0.05) / (a + 0.05)
+
+(** Encodes a theme and looks up its tokens ([UI-THEME]). *)
+module Themes
+    token item = JsonObject [Doc::str ("name", item.tokenName), Doc::str ("light", item.tokenLight), Doc::str ("dark", item.tokenDark)]
+
+    (** The theme in protocol form: every token's light and dark colours, the spacing scale and motion durations. *)
+    export encode theme = JsonObject [
+        JsonMember "tokens" (JsonArray (mapList (theme.tokens, \item => token item))),
+        JsonMember "spacing" (JsonArray (mapList (theme.spacing, \value => JsonInt value))),
+        Doc::num ("feedback", theme.feedback),
+        Doc::num ("settle", theme.settle),
+    ]
+
+    (** The token called `name`, or an error when the theme has none. *)
+    export named (theme, name) = Lists::find (theme.tokens, \item => item.tokenName == name)

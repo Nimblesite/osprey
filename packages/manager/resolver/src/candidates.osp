@@ -1,0 +1,70 @@
+namespace registry;
+import registry::Identity
+import registry::ManifestModel
+import registry::Names
+import registry::Resolution
+
+/// Candidate normalization under [PACKAGE-RESOLUTION]: a catalog entry is a
+/// candidate when its activation is Eligible (or Yanked and exactly present
+/// in `current`), its targets contain `graph.target`, and every capability is
+/// in `graph.granted`. Excluded entries keep their exclusion reason — revoked,
+/// yanked, no-target or capability — which `Explain` reads when the hard
+/// clauses leave a key without candidates.
+module Candidates {
+    let revoked = "revoked"
+    let yanked = "yanked"
+    let noTarget = "no-target"
+    let capability = "capability"
+
+    // `Resolution::Entry` shares `release` and `dependencies` with the lock
+    // records; issue #273 needs every entry receiver typed.
+    /// True when the release appears in `current` with the same identity.
+    export fn inCurrent(graph, r) = foldList(graph.current, false, fn(found, c: Identity::ReleaseId) => found || Identity::same(c, r))
+
+    /// The activation gate: Eligible, or Yanked and captured in `current`.
+    export fn stateOk(graph, e: Resolution::Entry) = e.activation != "Revoked" && (e.activation != "Yanked" || inCurrent(graph, e.release))
+
+    /// The target gate: `graph.target` is among the release's targets.
+    export fn targetOk(graph, e: Resolution::Entry) = listContains(e.targets, graph.target)
+
+    /// An ambient capability (`io/…`) needs a grant; a `[system.*]` capability
+    /// such as `python/interop` or `sqlite/c-api` is a requirement the provider
+    /// plane answers, never something the root grants ([PACKAGE-CAPABILITY-CONFINEMENT]).
+    fn ambient(c) = startsWith(c, "io/")
+
+    /// The capability gate: every ambient capability of the release's surface
+    /// is granted to every key or to this release's key by the root; grants are
+    /// never transitive ([PACKAGE-CAPABILITY-CONFINEMENT]).
+    export fn capsOk(graph, e: Resolution::Entry) = {
+        let own = ManifestModel::grantedTo(graph.grants, e.release.key)
+        foldList(e.capabilities, true, fn(ok, c) => ok && (!ambient(c) || listContains(graph.granted, c) || listContains(own, c)))
+    }
+
+    fn stateReason(graph, e: Resolution::Entry) = if e.activation == "Revoked" { revoked } else if stateOk(graph, e) { "" } else { yanked }
+
+    fn gateReason(graph, e) = if !targetOk(graph, e) { noTarget } else if capsOk(graph, e) { "" } else { capability }
+
+    /// The first failing gate for one entry, or "" when it is a candidate.
+    export fn reasonOf(graph, e) = {
+        let activation = stateReason(graph, e)
+        if activation != "" { activation } else { gateReason(graph, e) }
+    }
+
+    /// The release of one entry.
+    export fn releaseOf(e: Resolution::Entry) = e.release
+
+    /// The dependency edges of one entry.
+    export fn edgesOf(e: Resolution::Entry) = e.dependencies
+
+    /// The capability surface of one entry.
+    export fn capabilitiesOf(e: Resolution::Entry) = e.capabilities
+
+    /// Every candidate in catalog order.
+    export fn all(graph) = filterList(graph.catalog, fn(e) => reasonOf(graph, e) == "")
+
+    /// All catalog entries for one key, candidate or not.
+    export fn ofKey(graph, key) = filterList(graph.catalog, fn(e: Resolution::Entry) => Names::same(e.release.key, key))
+
+    /// The state-viable entries for one key: activation gate only.
+    export fn viableOfKey(graph, key) = filterList(ofKey(graph, key), fn(e) => stateOk(graph, e))
+}

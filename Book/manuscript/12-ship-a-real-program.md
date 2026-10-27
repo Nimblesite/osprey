@@ -32,21 +32,23 @@ The planned checkpoint turns the tested project into a native executable, then b
 
 Value effects and validated static handler discharge have native, WebAssembly, and mobile paths. Dynamic control handlers require the native target. Static selection removes handled effect dispatch; it does not imply that all calls, allocations, or other runtime work disappear.
 
-Mobile hosts provide platform networking through their C boundary. Keep records, collections, and handler values inside Osprey and expose supported scalar wrapper functions. Returned strings must be copied as documented by the mobile target guides; the current default allocator exposes no stable host release API for returned strings.
+Mobile hosts provide platform networking through their C boundary. Keep records, collections, and handler values inside Osprey and expose supported scalar wrapper functions. Returned strings must be copied as documented by the mobile target guides; the unmanaged `none` allocator exposes no stable host release API for returned strings.
 
 ## Memory, debugging, and project boundaries
 
-- Native builds accept `--memory=default`, `--memory=gc`, and `--memory=arc`. The default backend retains general allocations; proved-unique releases are a narrower optimization. GC and ARC have different reclamation behavior, so measure a representative workload before choosing one.
-- The conservative GC contract covers Apple and glibc-Linux root discovery. It is not supported on Windows, and collection is disabled after a second allocator thread appears. Do not promise that selecting GC bounds memory in a concurrent native program.
-- WebAssembly and mobile targets accept only `--memory=default`. The CLI rejects unsupported memory choices even with `--check`; it does not silently substitute a runtime. Strict static-memory checking and tail-call optimization remain unimplemented.
-- `--debug` uses unoptimized native code with debug information. `--profile` keeps optimization and supplies profiling metadata. These native flags are rejected for WebAssembly and mobile targets; profiling a debug build would answer a different performance question.
-- Project directories and `osprey.toml` manifests work. Logical namespaces and module imports are independent of source file paths, and one project may contain Default and ML files. Package registry and package-manager workflows are still design work; a working project is not evidence that dependency download or publication commands exist.
+GC is the native default because ordinary retain/release calls do no work: it defers reclamation to collection rather than updating reference counts at ownership changes as ARC does. This reduces that bookkeeping, while accepting conservative retention and collection pauses. ARC releases values when their last owner is dropped; choose it when prompt reclamation matters, on Windows, or when allocating fibers need continued reclamation. Neither choice is universally faster. Both are automatic and require no ownership annotations. See the [memory contract](https://www.ospreylang.dev/spec/0018-memorymanagement/#backend-selection-mem-backends) for the tradeoff and current limits.
 
-For an existing program, `osprey hello.osp --check` checks syntax, types, and target restrictions; building can still uncover unsupported operations. `osprey hello.osp --run` compiles and executes it. `osprey hello.osp --compile -o hello` creates a native executable. Supply `--target=wasm32` when checking or compiling for that target; a successful native check does not establish WebAssembly support. A project path may replace the single-file path.
+- Native builds default to `--memory=gc`; use `--memory=arc` for reference counting. Unmanaged execution requires explicit `--memory=none`; the old `--memory=default` spelling is rejected. The unmanaged `none` backend retains general allocations; proved-unique releases are a narrower optimization. GC and ARC have different reclamation behavior, so measure a representative workload before choosing one.
+- The conservative GC contract covers Apple and glibc-Linux root discovery. It is not supported on Windows, and collection is disabled after a second allocator thread appears. Do not promise that selecting GC bounds memory in a concurrent native program.
+- WebAssembly and mobile targets accept only `--memory=none`. The CLI rejects unsupported memory choices even with `--check`; it does not silently substitute a runtime. Strict static-memory checking and tail-call optimization remain unimplemented.
+- `--debug` uses unoptimized native code with debug information. `--profile` keeps optimization and supplies profiling metadata. These native flags are rejected for WebAssembly and mobile targets; profiling a debug build would answer a different performance question.
+- Project directories and `osprey.toml` manifests support mixed Default, ML and Python-flavor sources. Logical namespaces and imports are independent of file paths. The [package client](https://www.ospreylang.dev/docs/package-manager/) resolves and verifies folder-registry releases, builds from locks, supports local overrides and publishes to a registry folder. Hosted authenticated publishing remains planned.
+
+For an existing program, `osprey hello.osp --check` checks syntax, types, and target restrictions; building can still uncover unsupported operations. `osprey hello.osp --run` compiles and executes it. `osprey hello.osp --compile -o hello` creates a native executable. Supply `--target=wasm32 --memory=none` when checking or compiling for that target; a successful native check does not establish WebAssembly support. A project path may replace the single-file path.
 
 ## Compiler-feedback exercise
 
-Check the Chapter 1 hello program with `--target=wasm32 --memory=gc`. The current CLI rejects it with `error: wasm32 supports --memory=default; other runtime archives are not available`. Choose a supported target/runtime combination and retain the limitation in the artifact's instructions.
+Check the Chapter 1 hello program with `--target=wasm32 --memory=gc`. The current CLI rejects it with `error: wasm32 requires explicit --memory=none; managed runtime archives are not available for this target`. Choose a supported target/runtime combination and retain the limitation in the artifact's instructions.
 
 ## Flight Log checkpoint
 

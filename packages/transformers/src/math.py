@@ -15,7 +15,7 @@ own RNG stream is not reproduced, so callers pass an explicit draw. Values from
 the usual libm last-digit spread. Implements [PORT-TEST-ORACLE].
 """
 
-__all__ = ["softmax", "log_softmax", "argmax", "multinomial", "neg_inf"]
+__all__ = ["softmax", "log_softmax", "argmax", "multinomial", "neg_inf", "max_f", "max_i", "min_f", "min_i"]
 
 
 def neg_inf():
@@ -29,7 +29,23 @@ def list_max(xs):
 
 
 def max_f(a, x):
+    """The larger of two floats."""
     return x if x > a else a
+
+
+def min_f(a, b):
+    """The smaller of two floats."""
+    return a if a < b else b
+
+
+def max_i(a, b):
+    """The larger of two ints."""
+    return a if a > b else b
+
+
+def min_i(a, b):
+    """The smaller of two ints."""
+    return a if a < b else b
 
 
 def softmax(logits):

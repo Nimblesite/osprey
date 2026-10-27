@@ -5,6 +5,12 @@ use crate::conv::{as_double, as_i64};
 use crate::error::Result;
 use crate::llty::{LType, Value};
 
+mod math;
+pub(crate) use math::{
+    binary_float_function, bit_not, bitwise, float32_bits, float32_from_bits, float32_round,
+    float_bits, float_from_bits, float_to_int, is_binary_float_function, is_word_builtin,
+};
+
 pub(crate) fn binary(
     cg: &mut Codegen,
     op: &str,
@@ -157,16 +163,40 @@ pub(crate) fn absolute(cg: &mut Codegen, value: Value) -> Result<Value> {
     integer_absolute(cg, value)
 }
 
-/// The unary float functions [BUILTIN-MATH]. `sqrt`, `exp` and `ln` are the
-/// LLVM intrinsics (`ln` is `llvm.log`; the name `log` is left to programs,
-/// whose loggers want it), `tanh` the libm symbol (its intrinsic is
-/// younger than the oldest toolchain the targets build with); each is one
-/// `double -> double` call a device emitter maps to its own math library.
-const FLOAT_FUNCTIONS: [(&str, &str); 4] = [
+/// The unary float functions [BUILTIN-MATH] and its sections. `sqrt`, `exp`,
+/// `ln`, `sin`, `cos`, `log2`, `log10`, `floor`, `ceil`, `trunc` and `round`
+/// are LLVM intrinsics (`ln` is `llvm.log`; the name `log` is left to programs,
+/// whose loggers want it; `round` is `llvm.roundeven`, which rounds halfway
+/// cases to even — Python's `round` and numpy's — never C's half-away `round`);
+/// the rest are the C library's symbols (their intrinsics are younger than
+/// the oldest toolchain the targets build with). Each is one `double ->
+/// double` call a device emitter maps to its own math library.
+const FLOAT_FUNCTIONS: [(&str, &str); 25] = [
     ("sqrt", "llvm.sqrt.f64"),
     ("exp", "llvm.exp.f64"),
     ("ln", "llvm.log.f64"),
     ("tanh", "tanh"),
+    ("sin", "llvm.sin.f64"),
+    ("cos", "llvm.cos.f64"),
+    ("tan", "tan"),
+    ("asin", "asin"),
+    ("acos", "acos"),
+    ("atan", "atan"),
+    ("sinh", "sinh"),
+    ("cosh", "cosh"),
+    ("asinh", "asinh"),
+    ("acosh", "acosh"),
+    ("atanh", "atanh"),
+    ("log2", "llvm.log2.f64"),
+    ("log10", "llvm.log10.f64"),
+    ("log1p", "log1p"),
+    ("expm1", "expm1"),
+    ("erf", "erf"),
+    ("erfc", "erfc"),
+    ("floor", "llvm.floor.f64"),
+    ("ceil", "llvm.ceil.f64"),
+    ("trunc", "llvm.trunc.f64"),
+    ("round", "llvm.roundeven.f64"),
 ];
 
 pub(crate) fn is_float_function(name: &str) -> bool {
@@ -251,4 +281,32 @@ pub(crate) fn total(cg: &mut Codegen, name: &str, left: Value, right: Value) -> 
         cg.emit_reg(format!("trunc i128 {clamped} to i64")),
         LType::I64,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_unary_float_function_emits_one_double_call() {
+        let mut cg = Codegen::new();
+        cg.begin_function("math", None);
+        for (name, _) in FLOAT_FUNCTIONS {
+            let _ = float_function(&mut cg, name, Value::new("1.0", LType::Double)).unwrap();
+        }
+        cg.emit("ret i64 0");
+        cg.finish_function("i64", "math", &[]);
+        let ir = cg.render();
+        // Each intrinsic or libm symbol is declared and called once per name.
+        for (name, symbol) in FLOAT_FUNCTIONS {
+            assert!(
+                ir.contains(&format!("declare double @{symbol}(double)")),
+                "{name}: missing declaration in\n{ir}"
+            );
+            assert!(
+                ir.contains(&format!("call double @{symbol}(double ")),
+                "{name}: missing call in\n{ir}"
+            );
+        }
+    }
 }

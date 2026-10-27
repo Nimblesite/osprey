@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 /// Lower a statement inside its own ARC region: temporaries the statement
 /// produced and did not bind drop at its end [GC-ARC-PERCEUS].
 pub(crate) fn gen_local_stmt(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
-    crate::arc::push_frame(cg);
+    crate::arc::push_frame(cg, crate::arc::FrameKind::Statement);
     let lowered = gen_stmt_kind(cg, stmt);
     crate::arc::pop_frame(cg);
     lowered

@@ -1,0 +1,6 @@
+[project]
+name = "re-tests"
+source_roots = [".", "../src", "../../testing/src"]
+python_sources = ["../src/program.py", "../src/unicode.py", "../src/tables.py", "../src/builder.py", "../src/charset.py", "../src/escapes.py", "../src/flags.py", "../src/width.py", "../src/parser.py", "../src/engine.py", "../src/api.py", "../../testing/src/check.py", "expected.py", "main.py"]
+default_namespace = "re_tests"
+entry = "main.py"

@@ -1,0 +1,14 @@
+[project]
+name = "re"
+source_roots = ["src"]
+python_sources = ["src/program.py", "src/unicode.py", "src/tables.py", "src/builder.py", "src/charset.py", "src/escapes.py", "src/flags.py", "src/width.py", "src/parser.py", "src/engine.py", "src/api.py"]
+default_namespace = "re"
+
+[package]
+name = "@osprey/re"
+license = "MIT AND Unicode-DFS-2016"
+summary = "CPython's re regular-expression engine: parser, backtracking matcher and Unicode tables"
+keywords = ["python-flavor", "re", "regex", "regular-expressions"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

@@ -1,39 +1,27 @@
 // The flight is a pre-rendered film: no perpetual canvas or animation loop.
 const video = document.querySelector('#flight-video');
-const toggle = document.querySelector('#motion-toggle');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-let enabled = !reduced.matches && !navigator.connection?.saveData;
 let visible = false;
 
-function showMotionState() {
-  toggle.textContent = enabled ? 'Pause motion' : 'Play motion';
-  toggle.setAttribute('aria-label', toggle.textContent);
-}
-
 async function syncMotion() {
-  showMotionState();
-  if (!enabled || !visible || document.hidden) return video.pause();
+  if (reduced.matches || navigator.connection?.saveData || !visible || document.hidden) return video.pause();
   video.muted = true;
   if (!video.getAttribute('src')) video.src = video.dataset.src;
   try {
     await video.play();
   } catch (error) {
     if (error.name === 'AbortError') return;
-    enabled = false;
-    showMotionState();
+    video.pause();
   }
 }
 
-toggle.hidden = false;
-toggle.addEventListener('click', () => { enabled = !enabled; void syncMotion(); });
-reduced.addEventListener('change', () => { enabled = !reduced.matches; void syncMotion(); });
-document.addEventListener('visibilitychange', () => { void syncMotion(); });
+reduced.addEventListener('change', syncMotion);
+navigator.connection?.addEventListener('change', syncMotion);
+document.addEventListener('visibilitychange', syncMotion);
 new IntersectionObserver(([entry]) => {
   visible = entry.isIntersecting;
   void syncMotion();
 }, { threshold: 0.1 }).observe(video);
-showMotionState();
-
 const flavorControls = document.querySelectorAll('.flavor-controls button[data-flavor]');
 
 function selectFlavor(button) {
@@ -51,7 +39,7 @@ for (const button of flavorControls) {
   button.addEventListener('click', () => selectFlavor(button));
 }
 
-const sections = document.querySelectorAll('.home .hero-content, .home .section-heading, .home .language-grid article');
+const sections = document.querySelectorAll('.home .section-heading, .home .language-grid article');
 const reveal = new IntersectionObserver((entries) => {
   for (const entry of entries) {
     if (!entry.isIntersecting) continue;
@@ -60,3 +48,4 @@ const reveal = new IntersectionObserver((entries) => {
   }
 }, { threshold: 0.08 });
 for (const section of sections) reveal.observe(section);
+document.querySelector('.home').classList.add('motion-ready');

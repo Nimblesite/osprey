@@ -19,6 +19,7 @@ mod driver;
 mod validation;
 pub use driver::check_program;
 pub use driver::check_program_exports;
+pub(crate) use driver::infer_annotation_candidate;
 pub(crate) use driver::infer_checked;
 pub use driver::infer_program;
 mod publish;
@@ -271,6 +272,11 @@ pub(crate) struct Checker {
     /// resolution pass, which re-enters the same selection to settle every
     /// pending site against its operands' final types.
     pub(crate) defer_arith: bool,
+    /// The source position of the expression currently being inferred — the
+    /// innermost enclosing expression that carries one. Unify failures record
+    /// it, so a "cannot unify" diagnostic names the expression that failed
+    /// instead of the file alone.
+    pub(crate) expr_position: Option<Position>,
 }
 
 /// The binding name that means "throw this away" — the one spelling that opts

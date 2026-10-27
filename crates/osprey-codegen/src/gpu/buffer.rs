@@ -56,7 +56,7 @@ fn buffer_literal(
 /// buffer sized at the *source* length, because the kept count is not known
 /// until the loop has run.
 pub(super) fn kept_counter(cg: &mut Codegen) -> String {
-    let kept = cg.emit_reg("alloca i64");
+    let kept = cg.hoist_slot("i64");
     cg.emit(format!("store i64 0, i64* {kept}"));
     kept
 }
@@ -72,10 +72,7 @@ pub(super) fn push_kept(cg: &mut Codegen, out: &Value, kept: &str, word: &str) {
 /// Append `word` only when `verdict` (an `i1` operand) holds — one compaction
 /// step of `gpuFilter` [GPU-FILTER].
 pub(super) fn push_if_kept(cg: &mut Codegen, verdict: &str, out: &Value, kept: &str, word: &str) {
-    let keep = cg.fresh_label();
-    let skip = cg.fresh_label();
-    cg.emit(format!("br i1 {verdict}, label %{keep}, label %{skip}"));
-    cg.start_block(&keep);
+    let skip = cg.open_guard(verdict);
     push_kept(cg, out, kept, word);
     cg.emit(format!("br label %{skip}"));
     cg.start_block(&skip);
@@ -100,7 +97,7 @@ fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
     let out = buffer_alloc(cg, &span, GPU_OWNER.to_string());
     let kept = kept_counter(cg);
     let lp = open_range_loop(cg, &start, &end);
-    crate::arc::push_frame(cg);
+    crate::arc::push_frame(cg, crate::arc::FrameKind::Scope);
     let v = crate::iter::replay(cg, &stages, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
     let elem = v.ty;
     let word = scalar_word(cg, v, "a toGpu element")?;

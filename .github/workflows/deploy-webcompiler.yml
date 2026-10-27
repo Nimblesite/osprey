@@ -7,8 +7,18 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Direct `workflow_dispatch` runs must pass the same dependency vulnerability
+  # audit as the release pipeline: the audit job is unconditional and the deploy
+  # below cannot start until it is green.
+  audit:
+    name: Dependency audit deploy gate
+    uses: ./.github/workflows/ci-audit.yml
+    permissions:
+      contents: read
+
   deploy:
     name: Deploy Web Compiler
+    needs: audit
     runs-on: ubuntu-latest
     concurrency: webcompiler-deploy-group
 

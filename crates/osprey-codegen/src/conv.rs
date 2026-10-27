@@ -186,10 +186,7 @@ mod tests {
                 .count(),
             1
         );
-        assert!(
-            !ir.contains(" = fptosi double"),
-            "poison-producing conversion: {ir}"
-        );
+        crate::testkit::contents(&ir, &[], &[" = fptosi double"]);
         for operand in SATURATION_OPERANDS {
             assert_saturation_call(&ir, operand);
         }

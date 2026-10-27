@@ -1,0 +1,432 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry_cli::Listing
+import registry_cli::Install
+import registry_cli::Overlay
+import registry_cli::PythonPlane
+import registry::Candidates
+import registry::Digests
+import registry::Identity
+import registry::Manifest
+import registry::ManifestJson
+import registry::ManifestModel
+import registry::Maybe
+import registry::Names
+import registry::Release
+import registry::Resolve
+import registry::Resolution
+import registry::Surface
+
+/// `osprey-pkg lock [--local] [--registry <base-url>] [--project <dir>] [--accept-removals]`:
+/// the only command that chooses releases ([PACKAGE-HARDENING] C5). One
+/// GET /v1/packages lists every release of the folder registry; each is
+/// fetched and verified through `Fetch::fetched`, its manifest parsed and its
+/// capability surface recomputed, the one resolver of [PACKAGE-RESOLUTION]
+/// run, and `<dir>/osprey.lock` written ([PACKAGE-FOLDER-REGISTRY]). With
+/// `--local` the overlay `osprey.local.toml` replaces each overridden key's
+/// published candidates with its local checkout and `osprey.local.lock` is
+/// written instead ([PACKAGE-LOCAL-OVERRIDE]); the release lock never sees an
+/// override. It fails closed, writing nothing, on `lock.release-replaced`, on
+/// `lock.release-vanished` without `--accept-removals`, and on a current lock
+/// that does not decode.
+module Lock {
+    let failStatus = 1
+    let usageCode = "lock.usage"
+    let replacedCode = "lock.release-replaced"
+    let vanishedCode = "lock.release-vanished"
+    let invalidCode = "lock.invalid-manifest"
+    let localManifestCode = "lock.local-manifest"
+    let localKeyCode = "lock.local-key"
+    let lockCodePrefix = "lock."
+    let removalsFlag = "--accept-removals"
+    let localFlag = "--local"
+    let usageText = ["usage: osprey-pkg lock [--local] [--registry <base-url>] [--project <dir>] [--accept-removals]"]
+
+    /// `fresh` drops the current lock's choices from the resolver's `current`,
+    /// so `update` moves to the newest releases; `local` targets the
+    /// development lock with the overlay applied.
+    type CommandLine = { base: string, project: string, acceptRemovals: bool, fresh: bool, local: bool }
+    /// One listed release after its verified fetch: its identity and its verified files.
+    type Fetched = { fetchedRelease: Identity::ReleaseId, bundle: Release::Served }
+    /// The resolver's catalog plus the warning lines gathered on the way.
+    type Catalog = { candidates: List<Resolution::Entry>, warnings: List<string> }
+    /// The current lock: its releases and its packages, both empty without a lock.
+    type Previous = { current: List<Identity::ReleaseId>, locked: List<Lockfile::Package> }
+    /// One overridden key as the resolver and the lock see it.
+    type LocalTree = { candidate: Resolution::Entry, override: Lockfile::Override, tree: List<Release::File> }
+    /// What local mode adds: the overlay's mappings and their checkouts.
+    type Locals = { mappings: List<Overlay::Mapping>, trees: List<LocalTree> }
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    fn commandLine(parsed) = CommandLine {
+        base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry),
+        project: Flags::project(parsed),
+        acceptRemovals: Flags::has(parsed, removalsFlag),
+        fresh: false,
+        local: Flags::has(parsed, localFlag)
+    }
+
+    // Shared field names (`key`, `digest`, `release`, `packages`, `dependencies`,
+    // `path`, `epoch`) need typed receivers (issue #273).
+    fn freshOf(cmd: CommandLine) = cmd.fresh
+    fn localOf(cmd: CommandLine) = cmd.local
+    fn keyOf(id: Identity::ReleaseId) = id.key
+    fn digestOf(id: Identity::ReleaseId) = id.digest
+    fn spot(id: Identity::ReleaseId) = "${Names::display(id.key)} e${id.epoch}.r${id.ordinal}"
+    fn releaseOf(p: Lockfile::Package) = p.release
+    fn packagesOf(lock: Lockfile::Lock) = lock.packages
+    fn edgesOf(m: ManifestModel::Manifest) = m.dependencies
+    fn grantsOf(m: ManifestModel::Manifest) = m.grants
+    fn systemCapabilities(m: ManifestModel::Manifest) = mapList(m.systemRequirements, fn(s: ManifestModel::SystemRequirement) => s.capability)
+    fn filesOf(b: Release::Served) = b.files
+    fn candidateOf(t: LocalTree) = t.candidate
+    fn overrideOf(t: LocalTree) = t.override
+    fn treeFiles(t: LocalTree) = t.tree
+    fn bundleOf(f: Fetched) = f.bundle
+    fn fetchedRelease(f: Fetched) = f.fetchedRelease
+    fn overridePath(o: Lockfile::Override) = o.path
+    fn mappingsOf(l: Locals) = l.mappings
+    fn treesOf(l: Locals) = l.trees
+
+    /// Same key, epoch and ordinal: the slot a release occupies, digest aside.
+    fn sameSpot(a: Identity::ReleaseId, b: Identity::ReleaseId) = Names::same(a.key, b.key) && a.epoch == b.epoch && a.ordinal == b.ordinal
+
+    // ---- the current lock ----
+
+    fn previousOf(lock) = Previous { current: mapList(packagesOf(lock), releaseOf), locked: packagesOf(lock) }
+
+    /// Local mode starts from the development lock when one decodes and from
+    /// the release lock otherwise; a damaged development lock is still refused.
+    fn devOrRelease(project) = match Project::readLocalLockAt(project) {
+        Success { value } => Success { value: value }
+        Error { message } => if startsWith(message, lockCodePrefix) { Error { message: message } } else { Project::readLockAt(project) }
+    }
+
+    fn currentLockAt(cmd: CommandLine) = if cmd.local { devOrRelease(cmd.project) } else { Project::readLockAt(cmd.project) }
+
+    /// The current lock; a missing file is an empty one, but a file that does
+    /// not decode is its `lock.*` refusal, so a damaged lock is never replaced
+    /// silently ([PACKAGE-HARDENING] C3).
+    fn previousAt(cmd) = match currentLockAt(cmd) {
+        Error { message } => if startsWith(message, lockCodePrefix) { Error { message: message } } else { Success { value: Previous { current: [], locked: [] } } }
+        Success { value } => Success { value: previousOf(value) }
+    }
+
+    // ---- hardening checks ([PACKAGE-HARDENING] C5), published keys only ----
+
+    fn published(current, locals) = filterList(current, fn(c) => !Overlay::overridden(mappingsOf(locals), keyOf(c)))
+
+    fn replacedBy(current, listed) = foldList(current, "", fn(line, c) =>
+        if line != "" || !sameSpot(c, listed) || digestOf(c) == digestOf(listed) { line }
+        else { "${replacedCode} ${spot(listed)} ${digestOf(c)} ${digestOf(listed)}" })
+
+    /// The refusal for the first listed release that re-serves a locked slot
+    /// under another digest, else "".
+    fn replacedLine(current, listing) = foldList(listing, "", fn(line, l) => if line != "" { line } else { replacedBy(current, l) })
+
+    fn inListing(listing, c) = foldList(listing, false, fn(found, l) => found || sameSpot(l, c))
+
+    /// The locked published releases the listing no longer carries.
+    fn vanished(current, listing) = filterList(current, fn(c) => !inListing(listing, c))
+
+    fn vanishedLine(c) = "${vanishedCode} ${Lockfile::compact(c)}"
+
+    /// The refusal names the flag that would accept the removal (spec 0029 "Folder lock").
+    fn vanishedRefusal(c) = "${vanishedLine(c)} (rerun with ${removalsFlag} to drop it from the lock)"
+
+    // ---- fetching the listing ----
+
+    /// Fetch, verify and install one listed release, keeping its files.
+    fn appendFetched(done, base, project, release) = match Fetch::fetched(project, base, digestOf(release)) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: listAppend(done, Fetched { fetchedRelease: release, bundle: value }) }
+    }
+
+    fn fetchOne(base, project, acc, release) = match acc {
+        Error => acc
+        Success { value } => appendFetched(value, base, project, release)
+    }
+
+    /// Every listed release fetched in listing order; the first failure stops the run.
+    fn fetchAll(base, project, listing) = foldList(listing, Success { value: [] }, fn(acc, release) => fetchOne(base, project, acc, release))
+
+    // ---- the catalog ----
+
+    /// A folder registry carries no target data, so every candidate is
+    /// Eligible for the empty target; its capabilities are the surface
+    /// recomputed from its verified files ([PACKAGE-CAPABILITY-CONFINEMENT]).
+    fn entryOf(release, manifest, fileList) = Resolution::Entry {
+        release: release,
+        activation: "Eligible",
+        targets: [""],
+        capabilities: Surface::ofRelease(fileList, systemCapabilities(manifest)),
+        dependencies: edgesOf(manifest)
+    }
+
+    fn withWarning(acc: Catalog, line) = Catalog { candidates: acc.candidates, warnings: listAppend(acc.warnings, line) }
+    fn withCandidate(acc: Catalog, entry) = Catalog { candidates: listAppend(acc.candidates, entry), warnings: acc.warnings }
+
+    /// An accepted manifest is a candidate; a rejected one is excluded with a warning.
+    fn classified(acc, f: Fetched) = match Manifest::accepted(Manifest::parse(Install::manifestTextIn(filesOf(f.bundle)))) {
+        Error { message } => withWarning(acc, "${invalidCode} ${Lockfile::compact(f.fetchedRelease)} ${message}")
+        Success { value } => withCandidate(acc, entryOf(f.fetchedRelease, value, filesOf(f.bundle)))
+    }
+
+    fn catalogOf(fetched, warnings) = foldList(fetched, Catalog { candidates: [], warnings: warnings }, classified)
+
+    /// The published candidates of an overridden key give way to its local checkout.
+    fn withLocals(catalog: Catalog, locals) = Catalog {
+        candidates: listConcat(filterList(catalog.candidates, fn(e) => !Overlay::overridden(mappingsOf(locals), keyOf(Candidates::releaseOf(e)))), mapList(treesOf(locals), candidateOf)),
+        warnings: catalog.warnings
+    }
+
+    // ---- local checkouts ([PACKAGE-LOCAL-OVERRIDE]) ----
+
+    fn localDir(project, m) = Project::localDirAt(project, Overlay::pathOf(m))
+
+    fn localFiles(project, m) = match perform Host::Tree.walk(localDir(project, m)) {
+        Error { message } => Error { message: "${localManifestCode} ${Names::display(Overlay::keyOf(m))} ${message}" }
+        Success { value } => Install::filesOfWalked(value, localDir(project, m))
+    }
+
+    fn publishedKey(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Names::blank(), fn(p: ManifestModel::Publication) => p.package)
+
+    /// The local manifest must be accepted and name the overridden key as its package.
+    fn localManifest(m, fileList) = match Manifest::accepted(Manifest::parse(Install::manifestTextIn(fileList))) {
+        Error { message } => Error { message: "${localManifestCode} ${Names::display(Overlay::keyOf(m))} ${message}" }
+        Success { value } => if Names::same(publishedKey(value), Overlay::keyOf(m)) { Success { value: value } } else { Error { message: "${localKeyCode} ${Names::display(Overlay::keyOf(m))}" } }
+    }
+
+    /// A local has its baseline's ordinal, or zero when nothing is published.
+    fn baselineOrdinal(m) = Maybe::fold(Overlay::baselineOf(m), 0, fn(id: Identity::ReleaseId) => id.ordinal)
+
+    fn localRelease(m, digest) = Identity::ReleaseId { key: Overlay::keyOf(m), epoch: Overlay::epochOf(m), ordinal: baselineOrdinal(m), digest: digest }
+
+    fn treeOf(m, fileList, mf, digest, manifestDigest) = LocalTree {
+        tree: fileList,
+        candidate: entryOf(localRelease(m, digest), mf, fileList),
+        override: Lockfile::Override { package: Overlay::keyOf(m), path: Overlay::pathOf(m), epoch: Overlay::epochOf(m), manifestDigest: manifestDigest }
+    }
+
+    fn withDigest(m, fileList, mf, digest) = match ManifestJson::digest(mf) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: treeOf(m, fileList, mf, digest, value) }
+    }
+
+    fn withManifestOfLocal(m, fileList, mf) = match Install::digestOfFiles(fileList) {
+        Error { message } => Error { message: message }
+        Success { value } => withDigest(m, fileList, mf, value)
+    }
+
+    fn withLocalFiles(m, fileList) = match localManifest(m, fileList) {
+        Error { message } => Error { message: message }
+        Success { value } => withManifestOfLocal(m, fileList, value)
+    }
+
+    fn localTreeOf(project, m) = match localFiles(project, m) {
+        Error { message } => Error { message: message }
+        Success { value } => withLocalFiles(m, value)
+    }
+
+    fn appendTree(done, project, m) = match localTreeOf(project, m) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: listAppend(done, value) }
+    }
+
+    fn localTrees(project, mappings) = foldList(mappings, Success { value: [] }, fn(acc, m) => match acc {
+        Error => acc
+        Success { value } => appendTree(value, project, m)
+    })
+
+    fn withMappings(project, mappings) = match localTrees(project, mappings) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: Locals { mappings: mappings, trees: value } }
+    }
+
+    /// The overlay and its checkouts in local mode; nothing otherwise.
+    fn localsAt(cmd: CommandLine) = if !cmd.local { Success { value: Locals { mappings: [], trees: [] } } } else { match Overlay::readAt(cmd.project) {
+        Error { message } => Error { message: message }
+        Success { value } => withMappings(cmd.project, value)
+    } }
+
+    // ---- the lock and its delta ----
+
+    fn entryFor(candidates, release) -> Result<Resolution::Entry, string> = foldList(candidates, Error { message: "none" }, fn(acc, e) => match acc {
+        Success => acc
+        Error => if Identity::same(Candidates::releaseOf(e), release) { Success { value: e } } else { acc }
+    })
+
+    /// The lock package of a selected release: its Runtime/Build edges and its
+    /// surface; every selected release is a candidate, so the fallback never prints.
+    fn packageOf(candidates, release) = match entryFor(candidates, release) {
+        Success { value } => Lockfile::Package { release: release, dependencies: ManifestModel::activeEdges(Candidates::edgesOf(value)), surface: Candidates::capabilitiesOf(value) }
+        Error => Lockfile::Package { release: release, dependencies: [], surface: [] }
+    }
+
+    /// ` (local <path>)` after an overridden key.
+    fn localSuffix(locals, key) = match Overlay::mappingFor(mappingsOf(locals), key) {
+        Success { value } => " (local ${Overlay::pathOf(value)})"
+        Error => ""
+    }
+
+    fn marked(mark, p, locals) = "${mark} ${Lockfile::compact(releaseOf(p))}${localSuffix(locals, keyOf(releaseOf(p)))}"
+
+    /// `+` added, `=` unchanged, `~` another release of a locked key.
+    fn deltaOf(previous, p, locals) = match Lockfile::packageFor(previous, keyOf(releaseOf(p))) {
+        Error => marked("+", p, locals)
+        Success { value } => if Identity::same(releaseOf(value), releaseOf(p)) { marked("=", p, locals) } else { marked("~", p, locals) }
+    }
+
+    fn stillLocked(next, p) = match Lockfile::packageFor(next, keyOf(releaseOf(p))) {
+        Success => true
+        Error => false
+    }
+
+    fn removedLines(previous, next, locals) = mapList(filterList(previous, fn(p) => !stillLocked(next, p)), fn(p) => marked("-", p, locals))
+
+    fn deltaLines(next, previous, locals) = listConcat(mapList(next, fn(p) => deltaOf(previous, p, locals)), removedLines(previous, next, locals))
+
+    fn lockPath(cmd: CommandLine) = if cmd.local { Project::localLockPathAt(cmd.project) } else { Project::lockPathAt(cmd.project) }
+
+    fn writeLock(cmd, lock) = match Lockfile::encode(lock) {
+        Error { message } => Error { message: message }
+        Success { value } => perform Host::Files.write(lockPath(cmd), value)
+    }
+
+    /// The root's per-dependency grants are the only grants; nothing is granted to every key.
+    fn graphOf(manifest, prev: Previous, catalog: Catalog, fresh) = Resolution::Graph { target: "", granted: [], grants: grantsOf(manifest), rootDeps: edgesOf(manifest), current: if fresh { [] } else { prev.current }, catalog: catalog.candidates }
+
+    fn lockOf(manifest, digest, packages, locals, python) = Lockfile::Lock { root: Lockfile::Root { manifestDigest: digest, dependencies: edgesOf(manifest) }, packages: packages, overrides: mapList(treesOf(locals), overrideOf), python: python }
+
+    // ---- the Python plane ([PACKAGE-PYTHON-UV]) ----
+
+    fn fileNamed(fileList, name) = foldList(fileList, "", fn(found, f: Release::File) => if f.relPath == name { f.content } else { found })
+
+    /// The files of a selected release: its checkout when overridden, else its verified bundle.
+    fn filesFor(release, locals, fetched) = match Overlay::mappingFor(mappingsOf(locals), keyOf(release)) {
+        Success => foldList(treesOf(locals), [], fn(found, t) => if Identity::same(Candidates::releaseOf(candidateOf(t)), release) { treeFiles(t) } else { found })
+        Error => foldList(fetched, [], fn(found, f) => if Identity::same(fetchedRelease(f), release) { filesOf(bundleOf(f)) } else { found })
+    }
+
+    /// Where a selected release's tree sits, relative to `.osprey/python`.
+    fn pythonPathFor(release, locals) = match Overlay::mappingFor(mappingsOf(locals), keyOf(release)) {
+        Success { value } => "../../${Overlay::pathOf(value)}"
+        Error => "../packages/${Names::display(keyOf(release))}/${Digests::hexOf(digestOf(release))}"
+    }
+
+    fn memberFor(release, locals, fetched) = {
+        let fileList = filesFor(release, locals, fetched)
+        match Manifest::accepted(Manifest::parse(Install::manifestTextIn(fileList))) {
+            Error { message } => Error { message: message }
+            Success { value } => PythonPlane::memberOf(value, pythonPathFor(release, locals), fileNamed(fileList, "pyproject.toml"))
+        }
+    }
+
+    fn appendMember(done, member) = match member {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: Maybe::fold(value, done, fn(m) => listAppend(done, m)) }
+    }
+
+    fn rootMember(cmd: CommandLine, manifest) = PythonPlane::memberOf(manifest, "../..", perform Host::Files.read(Project::pathAt(cmd.project, "pyproject.toml")) ?: "")
+
+    /// Every member of the uv project: the root when it declares the plane, then each selected release that does.
+    fn members(cmd, manifest, releases, locals, fetched) = foldList(releases, appendMember([], rootMember(cmd, manifest)), fn(acc, r) => match acc {
+        Error => acc
+        Success { value } => appendMember(value, memberFor(r, locals, fetched))
+    })
+
+    /// The plane's pins when any member declares it, none otherwise.
+    fn pythonPins(cmd: CommandLine, memberList) = if isEmpty(memberList) { Success { value: Maybe::none() } } else { match PythonPlane::locked(cmd.project, memberList) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: Maybe::some(value) }
+    } }
+
+    fn pythonLines(cmd: CommandLine, python) = Maybe::fold(python, [], fn(p) => [PythonPlane::lockedLine(cmd.project)])
+
+    fn writtenWith(cmd, manifest, digest, prev: Previous, catalog: Catalog, locals, packages, python) = match writeLock(cmd, lockOf(manifest, digest, packages, locals, python)) {
+        Error { message } => failed([message])
+        Success => Reports::success(listConcat(listConcat(catalog.warnings, deltaLines(packages, prev.locked, locals)), pythonLines(cmd, python)))
+    }
+
+    fn withMembers(cmd, manifest, digest, prev, catalog, locals, packages, memberList) = match pythonPins(cmd, memberList) {
+        Error { message } => failed([message])
+        Success { value } => writtenWith(cmd, manifest, digest, prev, catalog, locals, packages, value)
+    }
+
+    fn written(cmd, manifest, digest, prev: Previous, catalog: Catalog, locals, releases, fetched) = {
+        let packages = mapList(releases, fn(r) => packageOf(catalog.candidates, r))
+        match members(cmd, manifest, releases, locals, fetched) {
+            Error { message } => failed([message])
+            Success { value } => withMembers(cmd, manifest, digest, prev, catalog, locals, packages, value)
+        }
+    }
+
+    fn locked(cmd, manifest, prev, catalog, locals, releases, fetched) = match ManifestJson::digest(manifest) {
+        Error { message } => failed([message])
+        Success { value } => written(cmd, manifest, value, prev, catalog, locals, releases, fetched)
+    }
+
+    fn explained(catalog: Catalog, code, packages) = failed(listConcat(catalog.warnings, listPrepend(mapList(packages, Names::display), code)))
+
+    // ---- the command ----
+
+    fn solved(cmd, manifest, prev, catalog, locals, fetched) = match Resolve::solve(graphOf(manifest, prev, catalog, freshOf(cmd))) {
+        Resolution::Lock { releases } => locked(cmd, manifest, prev, catalog, locals, releases, fetched)
+        Resolution::Explain { code, packages } => explained(catalog, code, packages)
+    }
+
+    fn resolved(cmd: CommandLine, manifest, prev, locals, listing, warnings) = match fetchAll(cmd.base, cmd.project, listing) {
+        Error { message } => failed([message])
+        Success { value } => solved(cmd, manifest, prev, withLocals(catalogOf(value, warnings), locals), locals, value)
+    }
+
+    fn withRemovals(cmd: CommandLine, manifest, prev: Previous, locals, listing) = {
+        let gone = vanished(published(prev.current, locals), listing)
+        if isEmpty(gone) { resolved(cmd, manifest, prev, locals, listing, []) }
+        else if cmd.acceptRemovals { resolved(cmd, manifest, prev, locals, listing, mapList(gone, vanishedLine)) }
+        else { failed(mapList(gone, vanishedRefusal)) }
+    }
+
+    fn checked(cmd, manifest, prev: Previous, locals, listing) = {
+        let replaced = replacedLine(published(prev.current, locals), listing)
+        if replaced == "" { withRemovals(cmd, manifest, prev, locals, listing) } else { failed([replaced]) }
+    }
+
+    fn withLocalsOf(cmd: CommandLine, manifest, prev, locals) = match Listing::fetch(cmd.base) {
+        Error { message } => failed([message])
+        Success { value } => checked(cmd, manifest, prev, locals, value)
+    }
+
+    fn withPrevious(cmd, manifest, prev) = match localsAt(cmd) {
+        Error { message } => failed([message])
+        Success { value } => withLocalsOf(cmd, manifest, prev, value)
+    }
+
+    fn withManifest(cmd, manifest) = match previousAt(cmd) {
+        Error { message } => failed([message])
+        Success { value } => withPrevious(cmd, manifest, value)
+    }
+
+    fn withCommand(cmd: CommandLine) = match Project::readAt(cmd.project) {
+        Error { message } => failed([message])
+        Success { value } => withManifest(cmd, value)
+    }
+
+    /// The whole command. Implements [PACKAGE-FOLDER-REGISTRY], [PACKAGE-HARDENING] C5 and [PACKAGE-LOCAL-OVERRIDE].
+    export fn run(args) = match Flags::parse(args, [Fetch::registryFlag, Flags::projectFlag], [removalsFlag, localFlag]) {
+        Error => usageReport()
+        Success { value } => withCommand(commandLine(value))
+    }
+
+    /// The command as `add`, `remove`, `update` and `use` run it after a file
+    /// change: `fresh` makes the current lock's choices non-sticky, `local`
+    /// targets the development lock.
+    export fn relock(base, project, fresh, acceptRemovals, local) = withCommand(CommandLine { base: base, project: project, acceptRemovals: acceptRemovals, fresh: fresh, local: local })
+}

@@ -256,6 +256,37 @@ fn callable_field_does_not_read_a_same_named_local_but_ufcs_does() {
 }
 
 #[test]
+fn checked_method_reads_distinguish_fields_and_fallbacks() {
+    for (source, expected) in [
+        (
+            "fn run(value) = 99\nlet action = { run: fn() => 42 }\nlet result = action.run()\n",
+            false,
+        ),
+        ("fn run(value) = value\nlet result = 42.run()\n", true),
+    ] {
+        let parsed = parse_program_with_flavor(source, Flavor::Default);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let reads = crate::checked_method_reads(&parsed.program).expect("checked method reads");
+        assert_eq!(reads.values().any(|name| name == "run"), expected);
+    }
+}
+
+#[test]
+fn checked_method_reads_refuse_invalid_or_unresolved_programs() {
+    for source in [
+        "let result = missing.run()\n",
+        "fn run(value) = 99\nfn apply(value) = value.run()\n",
+    ] {
+        let parsed = parse_program_with_flavor(source, Flavor::Default);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        assert!(
+            crate::checked_method_reads(&parsed.program).is_err(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn collection_values_named_arguments_and_interpolation_read_locals() {
     // The callback interpolates each collection's length: a list or map has no
     // printable rendering, so interpolating one is rejected, and the read this

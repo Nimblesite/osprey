@@ -1,0 +1,9 @@
+[project]
+name = "registry-cli"
+# Shared client dependencies only; hosted/server modules have their own projects.
+source_roots = ["src", "lib", "../manifest/src", "../resolver/src", "../core/src/arithmetic.osp", "../core/src/bundle.osp", "../core/src/bytes.osp", "../core/src/canonical.osp", "../core/src/capabilities.osp", "../core/src/digests.osp", "../core/src/domains.osp", "../core/src/identity.osp", "../core/src/json.osp", "../core/src/json_read.osp", "../core/src/json_scan.osp", "../core/src/manifest_model.osp", "../core/src/maybe.osp", "../core/src/names.osp", "../core/src/objective.osp", "../core/src/order.osp", "../core/src/paths.osp", "../core/src/policy.osp", "../core/src/release.osp", "../core/src/release_files.osp", "../core/src/release_path.osp", "../core/src/sha256.osp", "../core/src/source.osp", "../core/src/spdx.osp", "../core/src/surface.osp", "../core/src/utf8.osp", "../host/src/host.osp", "../host/src/native.osp"]
+default_namespace = "osprey_pkg"
+entry = "src/main.osp"
+
+[modules]
+allow_wildcard_imports = false

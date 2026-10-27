@@ -1,0 +1,41 @@
+namespace registry_cli;
+import registry::Names
+
+/// The line edits `add`, `remove` and `update --breaking` make to
+/// `osprey.toml`: one `"@scope/name" = { epoch = N, min_release = M }` line
+/// under `[dependencies]` per dependency, added, removed or retargeted, with
+/// every other line of the manifest kept byte for byte ([PACKAGE-MANIFEST]).
+module ManifestEdit {
+    let header = "[dependencies]"
+    let newline = "\n"
+
+    fn linesOf(text) = split(text, newline) ?: [text]
+
+    fn keyText(key) = "\"${Names::display(key)}\""
+
+    fn isEdge(line, key) = startsWith(trim(line), keyText(key))
+
+    /// Whether a dependency line for `key` is present in any dependency table.
+    export fn hasEdge(text, key) = foldList(linesOf(text), false, fn(found, line) => found || isEdge(line, key))
+
+    /// The canonical dependency line.
+    export fn edgeLine(key, epoch, floor) = "${keyText(key)} = { epoch = ${epoch}, min_release = ${floor} }"
+
+    fn afterHeader(lines, line) = foldList(lines, [], fn(acc, l) => if trim(l) == header { listConcat(acc, [l, line]) } else { listAppend(acc, l) })
+
+    fn terminated(text) = if endsWith(text, newline) { text } else { text + newline }
+
+    /// The text with `line` inserted after the `[dependencies]` header, which
+    /// is appended first when the manifest has none.
+    export fn withEdge(text, line) = if contains(text, header) {
+        join(afterHeader(linesOf(text), line), newline)
+    } else {
+        terminated(text) + newline + header + newline + line + newline
+    }
+
+    /// The text without the dependency line for `key`.
+    export fn withoutEdge(text, key) = join(filterList(linesOf(text), fn(line) => !isEdge(line, key)), newline)
+
+    /// The text with the dependency line for `key` rewritten to `epoch` and `floor`.
+    export fn retargeted(text, key, epoch, floor) = join(mapList(linesOf(text), fn(line) => if isEdge(line, key) { edgeLine(key, epoch, floor) } else { line }), newline)
+}

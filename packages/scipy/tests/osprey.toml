@@ -1,0 +1,6 @@
+[project]
+name = "scipy-tests"
+source_roots = [".", "../src", "../../testing/src"]
+python_sources = ["../src/support.py", "../src/zeta.py", "../src/gamma.py", "../src/beta.py", "../src/combinatorics.py", "../src/logistic.py", "../src/information.py", "../src/boxcox.py", "../src/special.py", "../../testing/src/check.py", "expected.py", "main.py"]
+default_namespace = "scipy_tests"
+entry = "main.py"

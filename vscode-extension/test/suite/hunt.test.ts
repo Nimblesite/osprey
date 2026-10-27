@@ -4,6 +4,10 @@
 
 import * as assert from "assert";
 import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
+import * as vscode from "vscode";
+import { activateWithServer, waitFor } from "./profiler-kit";
 import { DiagnosticSeverity } from "vscode";
 import {
   HUNT_SOURCE,
@@ -17,6 +21,39 @@ import {
 } from "../../client/src/hunt";
 
 const program = path.resolve("/work/app/main.osp");
+
+function huntOutput(root: string, source: string): string {
+  return fs.readdirSync(root, { recursive: true })
+    .filter((name) => String(name).endsWith("Osprey Hunt.log"))
+    .map((name) => fs.readFileSync(path.join(root, String(name)), "utf8"))
+    .find((text) => text.includes(source)) ?? "";
+}
+
+async function runBrokenHunt(root: string, source: string): Promise<string> {
+  fs.writeFileSync(source, "fn main( = @@@\n");
+  const document = await vscode.workspace.openTextDocument(source);
+  await vscode.window.showTextDocument(document);
+  await vscode.commands.executeCommand("osprey.hunt");
+  return waitFor(() => huntOutput(path.join(root, "logs"), source),
+    (text) => text.includes("=== HUNT FAILED (exit"), 15000, "Hunt compiler failure");
+}
+
+suite("Hunt command E2E", () => {
+  test("a real compiler failure reaches the Hunt output channel", async function () {
+    this.timeout(30000);
+    await activateWithServer();
+    const root = process.env.OSPREY_TEST_USER_DATA;
+    assert.ok(root, "the runner supplies its isolated VS Code log directory");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-hunt-editor-"));
+    const source = path.join(dir, "broken.osp");
+    try {
+      const output = await runBrokenHunt(root, source);
+      assert.match(output, /=== HUNT FAILED \(exit 1\) ===\n\S/);
+      assert.match(output, /syntax error near/);
+      assert.ok(!output.includes("Hunt reported no findings"), output);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
 
 function report(overrides: Partial<HuntReport> = {}): HuntReport {
   return {
@@ -61,12 +98,32 @@ suite("hunt report", () => {
   test("summarises findings, replay and exploration in one line", () => {
     assert.strictEqual(
       huntSummary(report()),
-      "Hunt: 2 findings (1 reproduced natively), 12 paths (10 complete) explored by KLEE.",
+      "Hunt: 2 findings (1 reproduced natively), 12 paths explored, 10 normal exits.",
     );
     assert.strictEqual(
       huntSummary(report({ findings: [] })),
-      "Hunt found no bugs: 12 paths (10 complete) explored by KLEE.",
+      "Hunt reported no findings; analysis unfinished (12 paths explored, 10 normal exits).",
     );
+  });
+
+  test("unfinished and unexplored runs are never described as clean", () => {
+    const bodies = [
+      report({ findings: [] }),
+      report({ findings: [], incomplete: [{ test: "cut", reason: "time budget" }] }),
+      report({ findings: [], explored: { paths: 0, completed: 0, instructions: 0, elapsed: "" } }),
+    ];
+    for (const body of bodies) {
+      assert.ok(huntSummary(body).includes("unfinished"), huntSummary(body));
+      assert.ok(!huntSummary(body).includes("found no bugs"), huntSummary(body));
+    }
+  });
+
+  test("a fully completed empty report makes only a bounded no-findings claim", () => {
+    const explored = { paths: 1, completed: 1, instructions: 42, elapsed: "00:00:01" };
+    assert.strictEqual(huntSummary(report({ findings: [], explored })),
+      "Hunt reported no findings: 1 paths explored, 1 normal exits.");
+    const extra = { ...report(), context: { engineArguments: ["--max-time=8s"] } };
+    assert.strictEqual(parseHuntReport(JSON.stringify(extra))?.engine, "KLEE");
   });
 
   test("a reproduced finding is an error, klee-only a warning, unmodelled information", () => {
@@ -174,10 +231,10 @@ suite("hunt report permutations", () => {
   test("the summary counts findings and reproductions in every mix", () => {
     const at = (replay: string) => ({ ...base, replay });
     const cases: [HuntReport["findings"], string][] = [
-      [[at("klee-only")], "Hunt: 1 finding (0 reproduced natively), 12 paths (10 complete) explored by KLEE."],
-      [[at("reproduced")], "Hunt: 1 finding (1 reproduced natively), 12 paths (10 complete) explored by KLEE."],
-      [[at("reproduced"), at("reproduced"), at("skipped")], "Hunt: 3 findings (2 reproduced natively), 12 paths (10 complete) explored by KLEE."],
-      [[at("not-run"), at("not-run")], "Hunt: 2 findings (0 reproduced natively), 12 paths (10 complete) explored by KLEE."],
+      [[at("klee-only")], "Hunt: 1 finding (0 reproduced natively), 12 paths explored, 10 normal exits."],
+      [[at("reproduced")], "Hunt: 1 finding (1 reproduced natively), 12 paths explored, 10 normal exits."],
+      [[at("reproduced"), at("reproduced"), at("skipped")], "Hunt: 3 findings (2 reproduced natively), 12 paths explored, 10 normal exits."],
+      [[at("not-run"), at("not-run")], "Hunt: 2 findings (0 reproduced natively), 12 paths explored, 10 normal exits."],
     ];
     for (const [findings, summary] of cases) {
       assert.strictEqual(huntSummary(report({ findings })), summary);
@@ -185,7 +242,7 @@ suite("hunt report permutations", () => {
     const incomplete = [{ test: "t", reason: "Execution halting." }];
     assert.strictEqual(
       huntSummary(report({ findings: [], incomplete })),
-      "Hunt found no bugs: 12 paths (10 complete) explored by KLEE.",
+      "Hunt reported no findings; analysis unfinished (12 paths explored, 10 normal exits).",
       "incomplete paths are not findings",
     );
   });

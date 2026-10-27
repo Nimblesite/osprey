@@ -1,5 +1,5 @@
-// Process spawning has no model under the engine, so the path through it is
-// one deterministic `unmodelled` finding at this line [SYMEX-MOCK-UNSUPPORTED].
-fn onEvent(processID: int, eventType: int, data: string) -> Unit = print(data)
+/// Process spawning has no model under the engine, so the path through it is
+/// one deterministic `unmodelled` finding at the spawn [SYMEX-MOCK-UNSUPPORTED].
+fn onEvent(_processID: int, _eventType: int, data: string) = print(data)
 let started = spawnProcess("echo hi", onEvent)
 print("spawned")

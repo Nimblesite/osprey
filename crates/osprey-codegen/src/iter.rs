@@ -154,7 +154,7 @@ fn each_range_elem(
     let stages = stages_of(cg, range);
     let (start, end) = bounds(cg, range);
     let lp = open_range_loop(cg, &start, &end);
-    crate::arc::push_frame(cg);
+    crate::arc::push_frame(cg, crate::arc::FrameKind::Scope);
     let elem = replay(cg, &stages, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
     body(cg, elem)?;
     crate::arc::pop_frame(cg);
@@ -191,7 +191,7 @@ pub(crate) fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value
     crate::arc::escape_retain(cg, &initial);
     let tmpl = initial.clone();
     let boxed = box_to_i64(cg, initial);
-    let acc = cg.emit_reg("alloca i64");
+    let acc = cg.hoist_slot("i64");
     cg.emit(format!("store i64 {}, i64* {acc}", boxed.operand));
     Ok((acc, tmpl))
 }
@@ -313,7 +313,7 @@ fn each_list_elem(
     body: impl FnOnce(&mut Codegen, &ListLoop, Value) -> Result<()>,
 ) -> Result<()> {
     let lp = open_list_loop(cg, &l.operand);
-    crate::arc::push_frame(cg);
+    crate::arc::push_frame(cg, crate::arc::FrameKind::Scope);
     let elem = crate::collections::elem_value(cg, l, &lp.elem);
     body(cg, &lp, elem)?;
     crate::arc::pop_frame(cg);

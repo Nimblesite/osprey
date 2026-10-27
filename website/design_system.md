@@ -1,6 +1,6 @@
 # Osprey design system
 
-Osprey looks like logic in flight: a midnight canvas, luminous cyan, precise type, and room to think. This applies to the website, diagrams, video, captions, and posters. Start every brief with [the messaging guide](../docs/messaging.md): show a need, choose a handler, show the result.
+Osprey looks safe, elegant and fast: a midnight canvas, luminous cyan, precise type, and room to think. This applies to the website, diagrams, video, captions, and posters. Start every brief with [the messaging guide](../docs/messaging.md): show a need, choose a handler, show the result.
 
 ## Source of truth
 
@@ -30,13 +30,13 @@ Use an 8px spacing rhythm, a 1200px website container, and 24px gutters. Give ea
 
 ## Motion
 
-The bird starts automatically, muted and looping. Pause it when it leaves the viewport or the tab is hidden; keep a pause control and preserve the visitor's choice. Reduced-motion and data-saving preferences show the poster until the visitor opts in.
+The decorative bird starts automatically, muted and looping, without a playback button. Pause it when it leaves the viewport or the tab is hidden. Reduced-motion and data-saving preferences show the poster instead.
 
 Use 150–250ms feedback for controls, a brief 8–12px entrance for a headline, and a slow, low-amplitude drift for atmospheric light. Reveal a section once as it enters view. Animate opacity and transforms; avoid perpetual page-wide repainting. Reduced motion shows the final state immediately. Content and navigation must remain usable without JavaScript.
 
 ## Video and sound
 
-A homepage film is a short demonstration, not a feature inventory. Open with effects. Show real source, the handler choice, and its output; end with one next step and an alpha qualification. Use the same bird, navy surfaces, cyan focus, fonts, syntax colors, and thin code-panel outlines as the page. A change of handler can become a visual transition: the code stays anchored while the implementation and result change.
+A homepage film is a short demonstration, not a feature inventory. Open with effects. Show real source, the handler choice, and its output; end with one next step and a concrete maturity qualification. Use the same bird, navy surfaces, cyan focus, fonts, syntax colors, and thin code-panel outlines as the page. A change of handler can become a visual transition: the code stays anchored while the implementation and result change.
 
 Compose landscape films at 1920×1080 with at least 80px safe margins. Keep each headline to two short lines. Show one code idea at a time; captions sit in their own lower safe area. Produce H.264/AAC with fast start, a deliberate poster, English WebVTT captions, and a lightweight web encode.
 
@@ -44,4 +44,4 @@ Narration explains what the viewer sees in concrete language. Use the TikTok fac
 
 ## Review
 
-Read [messaging](../docs/messaging.md) before writing a frame. Check every code excerpt against its source and every claim against demonstrated behavior. Inspect the poster and representative frames; watch the encoded film with sound. Check the homepage at desktop and phone widths, automatic bird playback, pause/resume, reduced motion, captions, keyboard focus, and overflow. Build and run the website tests before handoff.
+Read [messaging](../docs/messaging.md) before writing a frame. Check every code excerpt against its source and every claim against demonstrated behavior. Inspect the poster and representative frames; watch the encoded film with sound. Check the homepage at desktop and phone widths, automatic bird playback, offscreen pause/resume, reduced motion, captions, keyboard focus, and overflow. Build and run the website tests before handoff.

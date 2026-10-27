@@ -47,6 +47,17 @@ void __osprey_finalizer_push(OspFinalizer run, void *env);
 void __osprey_finalizer_finish(void);
 void __osprey_finalizer_unwind(void);
 
+// Stack-resident owner frames mirror codegen's null-initialized ARC slots.
+// Abandonment runs user finalizers before releasing the remaining owners.
+typedef struct OspOwnerFrame {
+    struct OspOwnerFrame *previous;
+    void ***slots;
+    int64_t count;
+} OspOwnerFrame;
+void __osprey_owner_frame_push(void *frame, void ***slots, int64_t count);
+void __osprey_owner_frame_pop(void *frame);
+void __osprey_owner_frames_unwind(void);
+
 // Operand kinds in an operation mailbox. A MANAGED slot holds a heap pointer
 // the mailbox OWNS — the performer hands over its +1 at suspend and retiring
 // the mailbox releases it. A SCALAR slot is a bare machine word nobody owns.

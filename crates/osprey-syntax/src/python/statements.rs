@@ -74,20 +74,26 @@ impl Lowerer<'_> {
             "import_from_statement" | "import_statement" => return self.imported(node),
             "expression_statement" => return self.expression_statement(Self::first(node)?),
             "pass_statement" => return Ok(None),
-            "if_statement" => Self::expression_statement_value(self.if_expression(node, false)?),
-            "with_statement" => Self::expression_statement_value(self.with_handler(node, false)?),
-            "match_statement" => Self::expression_statement_value(self.matching(node, false)?),
-            "for_statement" => Self::expression_statement_value(self.for_statement(node)?),
+            "if_statement" => {
+                Self::expression_statement_value(self.if_expression(node, false)?, node)
+            }
+            "with_statement" => {
+                Self::expression_statement_value(self.with_handler(node, false)?, node)
+            }
+            "match_statement" => {
+                Self::expression_statement_value(self.matching(node, false)?, node)
+            }
+            "for_statement" => Self::expression_statement_value(self.for_statement(node)?, node),
             _ => return self.unsupported(node),
         };
         Ok(Some(statement))
     }
 
-    fn expression_statement_value(value: Expr) -> Stmt {
+    fn expression_statement_value(value: Expr, node: Node<'_>) -> Stmt {
         Stmt::Expr {
             value,
             doc: None,
-            position: None,
+            position: Some(position(node)),
         }
     }
 
@@ -139,6 +145,12 @@ impl Lowerer<'_> {
 
     pub(super) fn function(&mut self, node: Node<'_>) -> Result<Stmt> {
         Self::synchronous(node)?;
+        if !self.file_scope() {
+            return Err(Self::error(
+                node,
+                "nested `def` has no Osprey lowering; bind a lambda to a name instead",
+            ));
+        }
         let _ = self.declaration_name(node)?;
         self.scoped(true, |lowerer| lowerer.function_body(node))
     }
@@ -274,16 +286,17 @@ impl Lowerer<'_> {
         let then = self.scoped(false, |lowerer| {
             lowerer.suite(Lowerer::field(*node, "consequence")?, tail)
         })?;
-        Ok(crate::desugar::bool_match(
-            condition,
-            then,
-            self.alternatives(rest, tail)?,
+        Ok(crate::desugar::positioned(
+            crate::desugar::bool_match(condition, then, self.alternatives(rest, tail)?),
+            Some(position(*node)),
         ))
     }
 }
 
 fn suite_block(node: Node<'_>, statements: Vec<Stmt>, value: Option<Expr>) -> Expr {
-    crate::desugar::block(statements, value.map(Box::new), Some(position(node)))
+    let position = Some(position(node));
+    let value = value.map(|value| Box::new(crate::desugar::positioned(value, position)));
+    crate::desugar::block(statements, value, position)
 }
 
 /// The callback a `for` statement hands to `forEach`: one iteration variable,

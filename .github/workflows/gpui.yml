@@ -1,0 +1,140 @@
+name: GPUI host
+
+# Plan 0036 phase 4 ([GPUI-HOST-TARGETS], [GPUI-HOST-VERIFICATION]): on each desktop system, build
+# the CLI and its native runtime, compile the example applications for that system's desktop
+# target, build the GPUI host against them and run the host's tests and the recorded-event smoke
+# runs of the probe and Flock. The smoke runs open no window, so no display is needed. The
+# frame-rate bench stays on a Mac with a display; hosted runners have none to pace frames.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "hosts/gpui/**"
+      - "packages/native/**"
+      - "examples/gpui/**"
+      - "crates/osprey-cli/src/desktop.rs"
+      - "crates/osprey-project/**"
+      - "compiler/runtime/**"
+      - ".github/workflows/gpui.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unix:
+    name: GPUI host (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Install typeDiagram
+        uses: ./.github/actions/typediagram
+
+      # Rust, clang/LLVM, the native C runtime archives and the release CLI.
+      - name: Setup Osprey Compiler
+        uses: ./.github/actions/setup-osprey-compiler
+
+      # GPUI's Linux backends link X11, Wayland, Vulkan, fontconfig and ALSA.
+      - name: GPUI system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev libfreetype-dev libasound2-dev libzstd-dev
+
+      # The Mac slice is the `macos` app-library target, with the Metal adapter.
+      - name: Mac app-library runtime
+        if: runner.os == 'macOS'
+        run: make _runtime_macos
+
+      - name: Native framework suite
+        run: ./target/release/osprey test packages/native/tests
+
+      - name: Example suites
+        run: |
+          ./target/release/osprey test examples/gpui/flock/test
+          ./target/release/osprey test examples/gpui/painting/test
+
+      - name: Host tests and clippy
+        working-directory: hosts/gpui
+        run: |
+          bash run.sh --smoke
+          cargo test --release
+          cargo clippy --release -- -D warnings
+        env:
+          OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
+
+      - name: Flock recorded-event smoke
+        run: bash examples/gpui/flock/run.sh --smoke
+        env:
+          OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
+
+  windows:
+    name: GPUI host (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # The C runtime is built with MinGW (as in ci-windows.yml), so the host links it with Rust's
+      # GNU target and the UCRT64 clang and llvm-ar build the windows-x64 app archive.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          update: true
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-sqlite3
+
+      - name: Install Rust (stable, GNU target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install typeDiagram
+        uses: ./.github/actions/typediagram
+
+      - name: Build C runtime archives (MinGW)
+        shell: msys2 {0}
+        run: make _runtime CC=gcc AR=ar
+
+      - name: Build osprey (release)
+        run: cargo build --release -p osprey-cli
+
+      - name: Pin the MinGW clang and llvm-ar
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          echo "OSPREY_CC=$(cygpath -m /ucrt64/bin/clang.exe)" >> "$GITHUB_ENV"
+          echo "OSPREY_AR=$(cygpath -m /ucrt64/bin/llvm-ar.exe)" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> "$GITHUB_ENV"
+
+      - name: Native framework suite
+        shell: msys2 {0}
+        run: ./target/release/osprey.exe test packages/native/tests
+
+      - name: Host tests and smoke runs
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          export OSPREY_BIN="$PWD/target/release/osprey.exe"
+          bash hosts/gpui/run.sh --smoke
+          (cd hosts/gpui && cargo test --release)
+          bash examples/gpui/flock/run.sh --smoke

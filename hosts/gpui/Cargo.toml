@@ -1,0 +1,19 @@
+[package]
+name = "osprey-gpui"
+version = "0.1.0"
+edition = "2021"
+description = "The GPUI host of Osprey Native: the seam between GPUI and an Osprey application compiled as a C ABI library"
+license = "MIT"
+publish = false
+
+[dependencies]
+gpui-kit = "0.8.1"
+# The same lyon GPUI tessellates with; only its stroke join type is named here.
+lyon = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+debug = 1
+
+[workspace]

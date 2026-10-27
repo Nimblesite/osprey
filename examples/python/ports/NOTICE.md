@@ -1,0 +1,15 @@
+# Application port provenance
+
+Copyright (c) 2026 NIMBLESITE PTY LTD, Australia. The original Osprey implementations in this directory use the [MIT license](LICENSE). Upstream authors retain their own copyrights.
+
+These examples independently implement reduced versions of existing Python application workflows using Osprey libraries. They do not bundle the original Python programs, notebook output, model weights or datasets. The source review found no copied implementation, comments or documentation blocks. Matching token runs consisted of short syntax and API identifiers; that check supports the source review but does not establish legal clearance by itself. Pinned references and source SHA-256 digests are in [source-audit.json](source-audit.json).
+
+| Example | Original application | Upstream license and attribution | Changes |
+| --- | --- | --- | --- |
+| Classifier | [Andrej Karpathy's micrograd demo notebook](https://github.com/karpathy/micrograd/blob/7bc720e951fe422b8f8814aa5aa1b64121d26b4c/demo.ipynb) | MIT; Copyright 2020 Andrej Karpathy | Reimplements the hinge-loss/L2/SGD training workflow with an immutable graph. Uses a 2→8→8→1 model, 16 fixed XOR points, 30 steps, a held-out split and a console report instead of the notebook's random moons data, larger model and plots. Adds safetensors round-trip checks. |
+| Vector search | [FAISS flat-index tutorial](https://github.com/facebookresearch/faiss/blob/0f0f728166218eab2605054c713cdf2646628014/tutorial/python/1-Flat.py) | MIT; tutorial copyright Meta Platforms, Inc. and affiliates; repository grant copyright Facebook, Inc. and affiliates | Reimplements the create/add/search workflow with 24 deterministic eight-dimensional vectors. Adds inner-product search, normalization, NumPy distance checks, SciPy softmax and safetensors round trips. The original tutorial demonstrates L2 search only. |
+| Text evaluation | [Google Research ROUGE application](https://github.com/google-research/google-research/blob/5b09c22d73a9d35eb6c5d2a99b95677a45053466/rouge/rouge.py) | Apache-2.0; Copyright 2026 The Google Research Authors | Reimplements the scoring/reporting workflow for fixed candidates. Replaces file globs, absl flags, CSV and bootstrap aggregation with a Markdown report, best-reference ROUGE, corpus BLEU/chrF and WordPiece statistics. |
+
+The upstream licenses above describe the reference applications. This review identified no reused expressive material requiring additional upstream license files in these examples. It does not relicense upstream code or transfer upstream copyrights to NIMBLESITE. Any future copying or adaptation of upstream implementation requires a new material review and preservation of the applicable original notices and license terms.
+
+Imported Osprey libraries retain their existing [package provenance and material-specific terms](../../../packages/README.md). Importing a port does not copy its reference repository into this directory. Their required notices remain with their respective package bundles.

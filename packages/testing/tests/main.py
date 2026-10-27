@@ -25,8 +25,48 @@ def oracle_cases():
     return listConcat(finite, toList(map(range(len(Expected.SPECIAL)), special)))
 
 
+def remainder(a, b):
+    return a % b
+
+
+def plus(a, b):
+    return a + b
+
+
+def strict_fault(name, work, expected):
+    match Check.strictly(work):
+        case Error(message=message):
+            return Check.equal(name, message, expected)
+        case Success():
+            return Check.failed(name, "the fault did not abort its region")
+
+
+def explicit_fault_case():
+    return strict_fault("strictly.explicit_fault", lambda: print(toString(perform(Check.Fault.halt("explicit test fault")))), "explicit test fault")
+
+
+def quotient(a, b):
+    return a / b
+
+
+def arithmetic_fault_cases():
+    return [
+        strict_fault("strictly.overflow", lambda: print(toString(plus(9223372036854775807, 1))), "integer overflow: 9223372036854775807 + 1"),
+        strict_fault("strictly.division", lambda: print(toString(quotient(3.0, 0.0))), "division by zero: 3.0 / 0"),
+        strict_fault("strictly.remainder", lambda: print(toString(remainder(7, 0))), "remainder by zero: 7 % 0"),
+        Check.equal("lenient.division", Check.lenient(lambda: quotient(3.0, 0.0)), 0.0),
+    ]
+
+
 def helper_cases():
     return [
+        explicit_fault_case(),
+        Check.close("close.pair", 1.0, 1.0000001, RTOL, ATOL),
+        Check.equal("outcome.detail", Check.Outcome(name="o", ok=False, detail="why").detail, "why"),
+        Check.equal("lenient.remainder", Check.lenient(lambda: remainder(7, 0)), 0),
+        Check.equal("lenient.overflow", Check.lenient(lambda: plus(9223372036854775807, 1)), -9223372036854775808),
+        Check.truth("specials.infinities", unwrap_or(listGet(Check.specials(), 0), 0.0) == Check.float_of("inf") and unwrap_or(listGet(Check.specials(), 1), 0.0) == Check.float_of("-inf"), "the first two specials are the infinities"),
+        Check.truth("specials.nan", Check.near(unwrap_or(listGet(Check.specials(), 2), 0.0), Check.float_of("nan"), 0.0, 0.0), "the third special is NaN"),
         Check.close_all("close_all.lists", [1.0, 2.0, 3.0], [1.0, 2.0, 3.0000001], RTOL, ATOL),
         Check.truth("close_all.length", not Check.close_all("x", [1.0], [1.0, 2.0], RTOL, ATOL).ok, "lengths differ"),
         Check.equal("close_all.detail", Check.close_all("x", [1.0, 5.0], [1.0, 2.0], RTOL, ATOL).detail, "index 1: got 5.0, want 2.0"),
@@ -40,7 +80,7 @@ def helper_cases():
 
 
 def main():
-    match Check.strictly(lambda: Check.report(listConcat(oracle_cases(), helper_cases()))):
+    match Check.strictly(lambda: Check.report(listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases()))):
         case Success(value=value):
             return value
         case Error(message=message):

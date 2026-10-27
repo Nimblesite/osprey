@@ -292,7 +292,7 @@ pub(in crate::ml) fn result_default(scrutinee: Expr, fallback: Expr) -> Expr {
 pub(in crate::ml) fn lower_arm(arm: MlArm) -> MatchArm {
     MatchArm {
         pattern: lower_pattern(arm.pattern),
-        body: lower_expr(arm.body),
+        body: crate::desugar::positioned(lower_expr(arm.body), Some(arm.pos)),
     }
 }
 

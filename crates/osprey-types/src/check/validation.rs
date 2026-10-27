@@ -44,23 +44,58 @@ impl Checker {
 
     /// Settle every arithmetic overload left open by
     /// [`Checker::deferred_arith`], now that nothing further can constrain an
-    /// operand. Resolving one site can constrain another's operand — `fn twice(x)
-    /// = x + x` used by `fn quad(y) = twice(y) + twice(y)` — so this repeats
-    /// until a pass changes nothing, which it must: each pass either resolves a
-    /// site or leaves the substitution untouched.
+    /// operand. A site is settled only once something DECIDES it — an
+    /// operand, or a result another use already pinned
+    /// ([`Self::arith_site_decided`]) — because the integer default is a
+    /// guess, and a guessed variable is exactly how
+    /// `abs(a - b) <= atol + rtol * abs(b)` failed: the `abs` site settled
+    /// first, before the subtraction feeding it, and poisoned every float use
+    /// of the operand they share. When nothing new can become ready the first
+    /// open site defaults, which is safe: a site nothing decides can only
+    /// ever be wanted at the default. Resolving one site can constrain
+    /// another's operand — `fn twice(x) = x + x` used by
+    /// `fn quad(y) = twice(y) + twice(y)` — so each pass re-tests readiness.
     pub(super) fn resolve_deferred_arithmetic(&mut self) {
         self.defer_arith = false;
-        for _ in 0..self.builtin_uses.len().saturating_add(1) {
+        let mut pending: Vec<(String, Type)> = self
+            .builtin_uses
+            .iter()
+            .filter(|(name, _)| crate::expr::is_deferred_arith(name))
+            .cloned()
+            .collect();
+        while !pending.is_empty() {
             let before = self.ctx.bound_count();
             self.resolve_field_uses();
-            let uses = self.builtin_uses.clone();
-            for (name, ty) in &uses {
-                self.resolve_deferred_arith(name, ty);
+            let mut settled: Vec<(String, Type)> = Vec::new();
+            pending.retain(|(name, site)| {
+                let ready = self.arith_site_decided(site);
+                if ready {
+                    settled.push((name.clone(), site.clone()));
+                }
+                !ready
+            });
+            for (name, site) in &settled {
+                self.resolve_deferred_arith(name, site);
             }
-            if self.ctx.bound_count() == before {
-                return;
+            if !pending.is_empty() && self.ctx.bound_count() == before {
+                let (name, site) = pending.remove(0);
+                self.resolve_deferred_arith(&name, &site);
             }
         }
+    }
+
+    /// Whether something already decides this deferred site's overload: any
+    /// operand, or the result another use has pinned to a concrete type. An
+    /// undecided site must not guess — the integer default is only safe once
+    /// nothing can still want float.
+    fn arith_site_decided(&mut self, site: &Type) -> bool {
+        let Type::Fun { params, ret } = self.ctx.apply(site) else {
+            return false;
+        };
+        params
+            .iter()
+            .chain(std::iter::once(ret.as_ref()))
+            .any(|ty| !matches!(self.ctx.apply(ty), Type::Var(_)))
     }
 
     /// Build the instantiated field types of a constructor against fresh type

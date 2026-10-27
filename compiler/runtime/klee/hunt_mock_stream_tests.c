@@ -6,6 +6,7 @@
 #include "hunt_mock_tests.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 enum { EBADF_VALUE = 9, ENOENT_VALUE = 2, EINVAL_VALUE = 22, ENFILE_VALUE = 23 };
 enum { SEEK_SET_VALUE = 0, SEEK_CUR_VALUE = 1, SEEK_END_VALUE = 2 };
@@ -61,6 +62,8 @@ static void stdin_reads_exactly_its_length_at_every_cap(void) {
   static const long caps[] = {-5, 0, 1, 7, 64, OSP_HUNT_STREAM_MAX, OSP_HUNT_STREAM_MAX + 100};
   for (size_t c = 0; c < sizeof(caps) / sizeof(caps[0]); c++) {
     long cap = clamp_cap(caps[c]);
+    osp_hunt_input_bytes = caps[c];
+    hunt_check(osp_hunt_file_buffer_capacity() == (size_t)cap + 2, about("file buffer follows the symbolic cap plus short-read/NUL slack", caps[c], cap));
     long lengths[] = {0, 1, cap / 2, cap, cap + 5};
     for (size_t l = 0; l < sizeof(lengths) / sizeof(lengths[0]); l++) {
       long expected = lengths[l] > cap ? cap : lengths[l];
@@ -159,7 +162,7 @@ static void read_one_file(long cap, long length) {
   seeks_stay_inside_the_length(file, cap, length);
   rewind(file);
   hunt_check(ftello(file) == 0 && !feof(file) && fread(buffer, 1, sizeof(buffer), file) == got, about("rewind rereads the same stream", cap, length));
-  int named = strcmp(hunt_range_name(0), "in.dat.ok") == 0 && (cap == 0 || (strcmp(hunt_range_name(1), "in.dat.len") == 0 && strcmp(hunt_last_symbolic(), "in.dat") == 0));
+  int named = strcmp(hunt_range_name(0), "file.ok:in.dat") == 0 && (cap == 0 || (strcmp(hunt_range_name(1), "file.len:in.dat") == 0 && strcmp(hunt_last_symbolic(), "file.data:in.dat") == 0));
   hunt_check(named, about("a file is <path> with <path>.ok and <path>.len", cap, length));
   (void)fclose(file);
 }
@@ -186,7 +189,7 @@ static void every_open_is_a_fresh_stream(void) {
   hunt_queue_range(2);
   FILE_ *second = fopen("a.txt", "r");
   hunt_check(second != NULL && fread(buffer, 1, 8, second) == 2 && buffer[0] == 'Z', "a reopened path reads fresh symbolic bytes");
-  int names = strcmp(hunt_range_name(0), "a.txt.ok") == 0 && strcmp(hunt_range_name(1), "a.txt.len") == 0 && strcmp(hunt_range_name(2), "a.txt.ok") == 0 && strcmp(hunt_range_name(3), "a.txt.len") == 0;
+  int names = strcmp(hunt_range_name(0), "file.ok:a.txt") == 0 && strcmp(hunt_range_name(1), "file.len:a.txt") == 0 && strcmp(hunt_range_name(2), "file.ok:a.txt") == 0 && strcmp(hunt_range_name(3), "file.len:a.txt") == 0;
   hunt_check(names && hunt_range_count() == 4, "each open draws its own .ok and .len");
   (void)fclose(second);
 }
@@ -313,8 +316,162 @@ static void names_carry_their_suffix_and_index(void) {
   hunt_check(strlen(name) == OSP_HUNT_NAME_MAX - 1, "a long name is cut to the name limit and terminated");
 }
 
+static void file_names_cannot_alias_metadata(void) {
+  hunt_reset();
+  FILE_ *file = open_symbolic("x.ok", 1, 1);
+  hunt_check(file != NULL && fgetc(file) >= 0, "the metadata-like file is readable");
+  hunt_check(strcmp(hunt_last_symbolic(), "file.data:x.ok") == 0, "file data has a distinct namespace");
+  hunt_check(strcmp(hunt_range_name(0), "file.ok:x.ok") == 0, "open flags have a distinct namespace");
+  hunt_check(strcmp(hunt_range_name(1), "file.len:x.ok") == 0, "file lengths have a distinct namespace");
+  if (file != NULL) (void)fclose(file);
+}
+
+// Runtime integration: the symbolic-sized buffer retains every byte and NUL.
+static void runtime_file_at_bound(long cap, long length) {
+  hunt_reset();
+  osp_hunt_input_bytes = cap;
+  long bounded = clamp_cap(cap);
+  long expected = length > bounded ? bounded : length;
+  hunt_queue_range(1);
+  queue_pattern(bounded);
+  hunt_queue_range((int)length);
+  char path[] = "boundary.txt";
+  char *text = read_file(path);
+  int copied = text != NULL && matches_pattern((const unsigned char *)text, expected, 0) && text[expected] == '\0';
+  hunt_check(copied, about("readFile preserves all bounded bytes and terminates", cap, length));
+  hunt_check(osp_hunt_calls[OSP_HUNT_CALL_FREAD] == 1, "readFile needs one bounded read");
+  free(text);
+}
+
+static void runtime_files_at_every_cap_and_length(void) {
+  static const long caps[] = {-5, 0, 1, 7, 64, OSP_HUNT_STREAM_MAX, OSP_HUNT_STREAM_MAX + 100};
+  for (size_t index = 0; index < sizeof(caps) / sizeof(caps[0]); index++) {
+    long cap = clamp_cap(caps[index]);
+    long lengths[] = {0, 1, cap / 2, cap, cap + 5};
+    for (size_t length = 0; length < sizeof(lengths) / sizeof(lengths[0]); length++) {
+      runtime_file_at_bound(caps[index], lengths[length]);
+    }
+  }
+}
+
+static char line_bytes[OSP_HUNT_STREAM_MAX];
+
+static void prepare_runtime_line(long cap, long length, long newline) {
+  hunt_reset();
+  osp_hunt_input_bytes = cap;
+  long bound = clamp_cap(cap);
+  memset(line_bytes, 'x', (size_t)bound);
+  if (newline >= 0 && newline < bound) {
+    line_bytes[newline] = '\n';
+  }
+  hunt_queue_bytes(line_bytes, (size_t)bound);
+  hunt_queue_range((int)length);
+}
+
+static void runtime_line_at_bound(long cap, long length, long newline) {
+  prepare_runtime_line(cap, length, newline);
+  long end = newline >= 0 && newline < length ? newline : length;
+  char *line = osp_input();
+  hunt_check(line != NULL, about("runtime line allocates its result", cap, length));
+  if (line == NULL) {
+    return;
+  }
+  hunt_check(memcmp(line, line_bytes, (size_t)end) == 0 && line[end] == '\0',
+             about("runtime line keeps all bytes before the first newline", length, newline));
+  hunt_check(osp_hunt_calls[OSP_HUNT_CALL_READ] == (unsigned)end + 1,
+             about("runtime line consumes exactly its bytes and delimiter or EOF", length, newline));
+  int next = newline >= 0 && newline + 1 < length ? 'x' : -1;
+  hunt_check(getchar() == next, about("runtime line leaves the next unread byte", length, newline));
+  free(line);
+}
+
+static void runtime_lines_at_every_bound(void) {
+  static const long caps[] = {-5, 0, 1, 7, 64, OSP_HUNT_STREAM_MAX, OSP_HUNT_STREAM_MAX + 100};
+  for (size_t c = 0; c < sizeof(caps) / sizeof(caps[0]); c++) {
+    long bound = clamp_cap(caps[c]);
+    long lengths[] = {0, bound / 2, bound};
+    for (size_t l = 0; l < sizeof(lengths) / sizeof(lengths[0]); l++) {
+      long length = lengths[l];
+      long newlines[] = {-1, 0, length / 2, length - 1};
+      for (size_t n = 0; n < sizeof(newlines) / sizeof(newlines[0]); n++) {
+        runtime_line_at_bound(caps[c], length, newlines[n]);
+      }
+    }
+  }
+}
+
+static void runtime_line_preserves_embedded_nul_and_later_reads(void) {
+  static const char bytes[] = {'a', '\0', 'b', '\n', 'c'};
+  hunt_reset();
+  osp_hunt_input_bytes = sizeof(bytes);
+  hunt_queue_bytes(bytes, sizeof(bytes));
+  hunt_queue_range(sizeof(bytes));
+  char *line = osp_input();
+  hunt_check(line != NULL, "embedded NUL line allocates its result");
+  if (line != NULL) {
+    hunt_check(memcmp(line, bytes, 3) == 0 && line[3] == '\0', "embedded NUL does not end the input read");
+    hunt_check(line[4] == bytes[4], "fixed-address termination preserves bytes after the delimiter");
+    hunt_check(osp_hunt_calls[OSP_HUNT_CALL_READ] == 4, "embedded NUL consumes through the newline");
+    free(line);
+  }
+  char *next = osp_input();
+  hunt_check(next != NULL && strcmp(next, "c") == 0, "later input starts after the newline");
+  free(next);
+}
+
+static void runtime_line_matches_bytes(const char *bytes, long length, long *cursor) {
+  long start = *cursor;
+  while (*cursor < length && bytes[*cursor] != '\n') (*cursor)++;
+  long count = *cursor - start;
+  unsigned reads = osp_hunt_calls[OSP_HUNT_CALL_READ];
+  char *line = osp_input();
+  hunt_check(line != NULL, "every byte pattern allocates an input line");
+  if (line != NULL) {
+    hunt_check(memcmp(line, bytes + start, (size_t)count) == 0 && line[count] == '\0',
+               "input preserves raw bytes through the first newline or EOF");
+    free(line);
+  }
+  hunt_check(osp_hunt_calls[OSP_HUNT_CALL_READ] - reads == (unsigned)count + 1,
+             "each input consumes exactly the line and delimiter or EOF read");
+  if (*cursor < length) (*cursor)++;
+}
+
+static void line_constraints_have_one_exact_solution(const char *bytes, long length, long cap) {
+  long expected = 0;
+  while (expected < length && bytes[expected] != '\n') expected++;
+  for (long candidate = -1; candidate <= cap + 1; candidate++) {
+    int valid = osp_hunt_valid_line_end((const unsigned char *)bytes, length, candidate, cap);
+    hunt_check(valid == (candidate == expected), "line constraints preserve exactly the first newline or EOF");
+  }
+}
+
+static void runtime_lines_cover_every_byte_position_and_eof(void) {
+  char bytes[] = {'a', 'b', '\n', 'c', 'd', '\n', 'e', 'f'};
+  for (unsigned byte = 0; byte < 256; byte++) {
+    for (size_t at = 0; at < sizeof(bytes); at++) {
+      char original = bytes[at];
+      bytes[at] = (char)byte;
+      for (long length = 0; length <= (long)sizeof(bytes); length++) {
+        hunt_reset();
+        osp_hunt_input_bytes = sizeof(bytes);
+        hunt_queue_bytes(bytes, sizeof(bytes));
+        hunt_queue_range((int)length);
+        long cursor = 0;
+        line_constraints_have_one_exact_solution(bytes, length, sizeof(bytes));
+        for (int line = 0; line < 5; line++) runtime_line_matches_bytes(bytes, length, &cursor);
+        hunt_check(cursor == length && feof(osp_hunt_stdin), "repeated input exhausts the exact symbolic length");
+      }
+      bytes[at] = original;
+    }
+  }
+}
+
 void hunt_mock_stream_tests(void) {
+  runtime_lines_cover_every_byte_position_and_eof();
+  runtime_line_preserves_embedded_nul_and_later_reads();
+  runtime_lines_at_every_bound();
   stdin_reads_exactly_its_length_at_every_cap();
+  runtime_files_at_every_cap_and_length();
   read_returns_the_stream_in_any_chunk_size();
   fgets_reads_lines_at_every_buffer_size();
   files_read_and_seek_at_every_cap_and_length();
@@ -324,4 +481,5 @@ void hunt_mock_stream_tests(void) {
   standard_descriptors_go_to_the_sink();
   every_draw_is_a_fresh_numbered_object();
   names_carry_their_suffix_and_index();
+  file_names_cannot_alias_metadata();
 }

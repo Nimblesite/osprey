@@ -19,6 +19,13 @@ ok near.special(nan, nan)
 ok near.special(nan, 1.0)
 ok near.special(-inf, -inf)
 ok near.special(inf, 1e+308)
+ok strictly.explicit_fault
+ok close.pair
+ok outcome.detail
+ok lenient.remainder
+ok lenient.overflow
+ok specials.infinities
+ok specials.nan
 ok close_all.lists
 ok close_all.length
 ok close_all.detail
@@ -28,4 +35,8 @@ ok ints_text.empty
 ok float_of.number
 ok float_of.unparseable_is_nan
 ok summary
-30 passed, 0 failed
+ok strictly.overflow
+ok strictly.division
+ok strictly.remainder
+ok lenient.division
+41 passed, 0 failed

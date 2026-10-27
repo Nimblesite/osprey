@@ -1,0 +1,6 @@
+[project]
+name = "rouge_score-tests"
+source_roots = [".", "../src", "../../sacrebleu/src", "../../testing/src"]
+python_sources = ["../src/stemmer.py", "../src/tokenize.py", "../src/scorer.py", "../../sacrebleu/src/text.py", "../../sacrebleu/src/ngrams.py", "../../testing/src/check.py", "expected.py", "main.py"]
+default_namespace = "rouge_score_tests"
+entry = "main.py"

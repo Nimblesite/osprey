@@ -1,6 +1,6 @@
 [project]
 name = "transformers-hunt-math"
-source_roots = ["../..", "."]
-python_sources = ["../../src/math.py", "../../src/lists.py", "hunt_math.py"]
+source_roots = ["../..", "../../../testing/src", "."]
+python_sources = ["../../../testing/src/check.py", "../../src/math.py", "../../src/lists.py", "hunt_math.py"]
 default_namespace = "transformers_hunt"
 entry = "hunt_math.py"

@@ -25,7 +25,7 @@ let updated = {
 print("${first.value} / ${updated.value}")
 ```
 
-```ospml
+```osprey-ml
 static effect Signal T
     read : Unit => T
 count () = perform Signal<int>.read ()
@@ -71,7 +71,7 @@ let across = signalFramesFromJson(jsonDecode(jsonEncode(signalFramesJson(second)
 print("nav@${toString(signalRevisionOf(second, "nav"))} kept@${toString(signalRevisionOf(across, "nav"))}")
 ```
 
-```ospml
+```osprey-ml
 type Route =
     tab : string
 tab () = (perform Signal<Route>.read ()).tab

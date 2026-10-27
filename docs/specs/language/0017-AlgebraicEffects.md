@@ -2,7 +2,7 @@
 
 Effects let application code ask for work without fixing its implementation. A handler decides how that work happens. Use them to manage logging, storage, configuration, retries and other interactions at a clear application boundary. The compiler tracks the required operations and rejects an application that has not provided them.
 
-This is the single normative effects contract for both flavors, including staging and continuations. Delivery status and independent comparisons belong
+This is the normative effects contract shared by Default, ML and Python flavors, including staging and continuations. Examples below use Default and ML; [Python Flavor Syntax](0041-PythonFlavorSyntax.md#effect-declarations--flavor-python-effect) specifies Python's supported effect and handler notation. Delivery status and independent comparisons belong
 to [plan 0016](../../plans/0016-algebraic-effects-and-handlers.md); the
 [runnable guide](../../../examples/handlers/README.md) identifies what the current
 prototype can execute.

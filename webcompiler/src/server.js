@@ -184,7 +184,7 @@ app.post('/api/compile', compilerEndpoint({
     label: 'Compile',
     requestLog: '📝 Compile request received',
     codeLog: '🔍 CODE BEING COMPILED:',
-    args: ['--sandbox', '--ast'],
+    args: ['--ast'],
     failure: (result, errorOutput) => ({
         status: 422,
         body: { error: errorOutput || `Compilation failed with exit code ${result.exitCode}` }
@@ -203,7 +203,8 @@ app.post('/api/run', compilerEndpoint({
             errorOutput.includes('undefined variable') ||
             errorOutput.includes('syntax error') ||
             errorOutput.includes('type mismatch') ||
-            errorOutput.includes('Compilation failed')
+            errorOutput.includes('Compilation failed') ||
+            errorOutput.includes('security:')
         return {
             status: isCompilationError ? 422 : 400,
             body: {
@@ -255,20 +256,17 @@ deleteAllTempFolders()
 
 // THREAD-SAFE Helper function to run Osprey compiler
 // Each request gets its own UUID-named folder for complete isolation
-// Always uses --sandbox flag for security (disables HTTP, WebSocket, file system, and FFI access)
+// Implements [SECURITY-CAPABILITY-GATES]: compile and run share one mandatory sandbox.
 function runOspreyCompiler(args, code = '', flavor = 'default') {
     return new Promise(async (resolve, reject) => {
-        // Diagnostics removed - too verbose for production logging
         // Create a unique UUID folder for this request - THREAD SAFE!
         const requestId = randomUUID()
         const tempBaseDir = '/tmp/osprey-temp'
         const tempRequestDir = path.join(tempBaseDir, requestId)
-        // The compiler picks the source flavor from the file extension
-        // (`.ospml` ⇒ ML, `.osp` ⇒ Default), so name the temp file to match the
-        // flavor the playground selected — ML (offside-rule) source parses only
-        // through the ML frontend. [FLAVOR-SELECT]
-        const isMl = flavor === 'ml' || flavor === 'ospml'
-        const tempFile = path.join(tempRequestDir, isMl ? 'main.ospml' : 'main.osp')
+        // Implements [FLAVOR-SELECT]: use the requested syntax frontend.
+        const extensions = { ml: 'ospml', ospml: 'ospml', python: 'py', py: 'py' }
+        const extension = extensions[flavor] || 'osp'
+        const tempFile = path.join(tempRequestDir, `main.${extension}`)
 
         try {
             // Create the unique temp directory for this request
@@ -276,25 +274,8 @@ function runOspreyCompiler(args, code = '', flavor = 'default') {
             await fs.mkdir(tempRequestDir, { recursive: true })
             console.log(`📁 Created temp folder: ${requestId}`)
 
-            // Verify temp directory was created
-            const tempStats = await fs.stat(tempRequestDir)
-            console.log(`📊 Temp directory stats: ${JSON.stringify({
-                isDirectory: tempStats.isDirectory(),
-                mode: tempStats.mode,
-                uid: tempStats.uid,
-                gid: tempStats.gid
-            })}`)
-
             console.log(`💾 Writing temp file: ${tempFile}`)
             await fs.writeFile(tempFile, code)
-            
-            // Verify file was written
-            const fileStats = await fs.stat(tempFile)
-            console.log(`📊 Temp file stats: ${JSON.stringify({
-                size: fileStats.size,
-                isFile: fileStats.isFile(),
-                mode: fileStats.mode
-            })}`)
             
             // Use the osprey binary from PATH (installed in Docker) or fall back
             // to the local Rust release build (cargo build --release)
@@ -302,29 +283,11 @@ function runOspreyCompiler(args, code = '', flavor = 'default') {
                 ? 'osprey'
                 : path.resolve(__dirname, '../../target/release/osprey')
             
-            // Check if osprey binary exists and is executable
-            console.log(`🔍 Checking osprey binary: ${ospreyPath}`)
-            try {
-                if (ospreyPath === 'osprey') {
-                    console.log(`🔍 Using osprey from PATH`)
-                } else {
-                    const binaryStats = await fs.stat(ospreyPath)
-                    console.log(`📊 Osprey binary stats: ${JSON.stringify({
-                        size: binaryStats.size,
-                        isFile: binaryStats.isFile(),
-                        mode: binaryStats.mode,
-                        executable: (binaryStats.mode & 0o111) !== 0
-                    })}`)
-                }
-            } catch (e) {
-                console.error(`❌ Error checking osprey binary: ${e.message}`)
-            }
-            
             const startTime = Date.now()
             console.log(`🔨 Running: ${ospreyPath} ${tempFile} ${args.join(' ')}`)
             console.log(`⏰ Started at: ${new Date().toISOString()}`)
             
-            const child = spawn(ospreyPath, [tempFile, ...args], {
+            const child = spawn(ospreyPath, [tempFile, '--sandbox', ...args], {
                 stdio: 'pipe',
                 cwd: tempRequestDir, // Run in the temp directory
                 timeout: 20000 

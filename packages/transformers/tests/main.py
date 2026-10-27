@@ -9,7 +9,7 @@ all its floats as repr strings, decoded here with `Check.float_of`."""
 from testing import Check
 from transformers_expected import Expected
 from transformers import Generation, Lists, LogitsProcess, StoppingCriteria
-from transformers.Math import argmax, log_softmax, multinomial, neg_inf, softmax
+from transformers.Math import argmax, log_softmax, max_f, max_i, min_f, min_i, multinomial, neg_inf, softmax
 
 ARITH = 1e-12
 EXP = 1e-9
@@ -25,9 +25,6 @@ def decode_rows(xs):
     """Every row of a `list[list[str]]` constant, decoded into floats."""
     return toList(map(range(len(xs)), lambda i: floats_of(unwrap_or(listGet(xs, i), []))))
 
-
-def min_i(a, b):
-    return a if a < b else b
 
 
 def applied(processor: LogitsProcess.Processor, ids, scores):
@@ -168,7 +165,13 @@ def helper_cases():
     tails = toList(map(range(len(Expected.HELP_LASTN_OUT)), lambda i: Check.ints_equal(f"last_n[{i}]", Lists.last_n(unwrap_or(listGet(Expected.HELP_LASTN_XS, i), []), unwrap_or(listGet(Expected.HELP_LASTN_N, i), 0)), unwrap_or(listGet(Expected.HELP_LASTN_OUT, i), []))))
     stoppers = [StoppingCriteria.MaxLengthCriteria(5), StoppingCriteria.EosTokenCriteria([4])]
     any_done = toList(map(range(len(Expected.STOPANY_DONE)), lambda i: Check.equal(f"stopped_any[{i}]", StoppingCriteria.stopped_any(stoppers, unwrap_or(listGet(Expected.STOP_IDS, i), [])), unwrap_or(listGet(Expected.STOPANY_DONE, i), False))))
-    return listConcat(contains, listConcat(tails, any_done))
+    extrema = [
+        Check.equal("min_i", min_i(3, 7), 3),
+        Check.equal("max_i", max_i(3, 7), 7),
+        Check.equal("min_f", min_f(0.5, -2.0), -2.0),
+        Check.equal("max_f", max_f(0.5, -2.0), 0.5),
+    ]
+    return listConcat(contains, listConcat(tails, listConcat(any_done, extrema)))
 
 
 def model_logits(tokens):

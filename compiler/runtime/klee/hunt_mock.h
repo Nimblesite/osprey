@@ -14,13 +14,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define OSP_HUNT_FILE_PROTOCOL_NAME "osprey.hunt.files.v2"
+
 enum {
+  OSP_HUNT_FILE_PROTOCOL_VERSION = 2,
   // Largest symbolic stream; `osp_hunt_input_bytes` picks the size in use.
   OSP_HUNT_STREAM_MAX = 4096,
   // Files open at once; `fopen` fails with ENFILE beyond this.
   OSP_HUNT_FILE_SLOTS = 8,
-  // Longest symbolic object name, including the `.len` / `.ok` suffixes.
-  OSP_HUNT_NAME_MAX = 128,
+  // Preserve the original path capacity plus the file-kind prefix.
+  OSP_HUNT_NAME_MAX = 128 + sizeof("file.data:"),
 };
 
 // The libc entry points a program can reach, counted per process.
@@ -64,6 +67,11 @@ struct osp_hunt_file {
 // Symbolic size of every readable stream. Weak so the tool's strong
 // definition, appended to the program module, wins.
 extern long osp_hunt_input_bytes;
+// One byte beyond the input cap forces a short read; one holds the NUL.
+size_t osp_hunt_file_buffer_capacity(void);
+int osp_hunt_initial_input(char **out);
+size_t osp_hunt_input_capacity(const char *text);
+int osp_hunt_valid_line_end(const unsigned char *data, long length, long end, long cap);
 
 // Where written bytes go. The default discards them; tests capture them.
 extern void (*osp_hunt_sink)(const char *data, size_t count);

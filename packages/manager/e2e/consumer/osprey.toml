@@ -1,0 +1,8 @@
+[project]
+name = "consumer"
+source_roots = ["src"]
+default_namespace = "consumer"
+entry = "src/main.osp"
+
+[dependencies]
+"@demo/report" = { epoch = 1, min_release = 1 }

@@ -1,4 +1,5 @@
 #include "http_shared.h"
+#include "socket_safety.h"
 
 // Native text-frame client transport [BUILTIN-WEBSOCKET-CLIENT]
 // (docs/specs/runtime/0015-WebSockets.md). The language surface exposes no receive
@@ -60,7 +61,7 @@ static int64_t ws_upgrade(int sock, const char *host, int port,
     if (len < 0 || (size_t)len >= sizeof(handshake)) {
         return -7;
     }
-    if (send(sock, handshake, (size_t)len, 0) < 0) {
+    if (osp_socket_send(sock, handshake, (size_t)len) < 0) {
         return -7;
     }
     char response[1024];

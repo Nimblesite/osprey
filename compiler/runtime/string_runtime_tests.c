@@ -16,6 +16,8 @@
  */
 
 #include <assert.h>
+#include <ctype.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -675,6 +677,56 @@ static void test_parse_int_signs(void) {
     printf("  ok  parse_int_signs (boundary + sign + leading zeros + rejection)\n");
 }
 
+static void test_parse_int_long_prefixes(void) {
+    const char *accepted[] = {"0000000000000000000000000000000000000",
+        "+000000000000000000009223372036854775807",
+        "-000000000000000000009223372036854775808", "999999999", "1000000000",
+        "1000000001", "999999999999999999", "1000000000000000000"};
+    const int64_t expected[] = {0, INT64_MAX, INT64_MIN, 999999999, 1000000000,
+        1000000001, 999999999999999999LL, 1000000000000000000LL};
+    const char *rejected[] = {"000000000000000000009223372036854775808",
+        "-000000000000000000009223372036854775809",
+        "10000000000000000000", "-10000000000000000000",
+        "00000000000000000000x", "123456789012345678x", "-000+1"};
+    int64_t value = 0;
+    for (size_t i = 0; i < sizeof(accepted) / sizeof(*accepted); i++) {
+        assert(osp_parse_int_strict(accepted[i], &value) == 0);
+        assert(value == expected[i]);
+    }
+    for (size_t i = 0; i < sizeof(rejected) / sizeof(*rejected); i++) {
+        value = 71;
+        assert(osp_parse_int_strict(rejected[i], &value) != 0);
+        assert(value == 71);
+    }
+}
+
+/* libc supplies the independent value/range oracle; Osprey rejects whitespace. */
+static void check_parse_int_oracle(const char *text) {
+    char *end = NULL;
+    errno = 0;
+    long long expected = strtoll(text, &end, 10);
+    int valid = end != text && *end == 0 && errno != ERANGE && !isspace((unsigned char)*text);
+    int64_t value = 71;
+    assert((osp_parse_int_strict(text, &value) == 0) == valid);
+    assert(value == (valid ? (int64_t)expected : 71));
+}
+
+static void test_parse_int_byte_mutations(void) {
+    const char *seeds[] = {"9223372036854775807", "-9223372036854775808",
+        "+000000000000000000000000000000000000000000009223372036854775807"};
+    for (size_t seed = 0; seed < sizeof(seeds) / sizeof(*seeds); seed++) {
+        for (size_t at = 0; at < strlen(seeds[seed]); at++) {
+            for (unsigned byte = 0; byte <= 255; byte++) {
+                char text[96];
+                strcpy(text, seeds[seed]);
+                text[at] = (char)byte;
+                check_parse_int_oracle(text);
+            }
+        }
+    }
+    assert(osp_parse_int_strict("1", NULL) != 0);
+}
+
 /* ---------- O(1) byte / codepoint cursor (BUILTIN-STRING-CURSOR) ---------- */
 
 static void test_cursor_byte_length(void) {
@@ -1045,6 +1097,8 @@ int main(void) {
     test_split_pathological();
     test_pad_overflow_guards();
     test_parse_int_signs();
+    test_parse_int_long_prefixes();
+    test_parse_int_byte_mutations();
     test_cursor_byte_length();
     test_cursor_byte_at();
     test_cursor_codepoint_at();

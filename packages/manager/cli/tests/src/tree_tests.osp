@@ -1,0 +1,134 @@
+namespace registry_tests;
+import registry_host::Host
+import registry_cli::Dispatch
+import registry_cli::Lockfile
+import registry_tests::Fixture
+import registry::ManifestModel
+import registry::Names
+
+/// `tree` and `why` over a four-package lock read through the files fixture:
+/// the indented tree with its `(build)` suffix and the ` *` repeat mark, every
+/// chain `why` prints for a shared dependency, the `why.not-locked` refusal,
+/// the usage reports and the missing-lock code; the network and the tree
+/// walker are never touched. Implements the `tree`/`why` rows of
+/// [PACKAGE-API] over the folder lock of [PACKAGE-FOLDER-REGISTRY].
+module TreeTests {
+    let manifestText = "[project]\nname = \"app\"\nsource_roots = [\"src\"]\n"
+    let rootDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    fn runCommand(reads, args) = {
+        let files = handler Host::Files {
+            read path => Fixture::readFor(reads, path)
+            write path content => Error { message: "fixture: tree never writes ${path} (${byteLength(content)} bytes)" }
+        }
+        let tree = handler Host::Tree {
+            walk dir => Error { message: "fixture: tree never walks ${dir}" }
+            ensure dir => Error { message: "fixture: tree never ensures ${dir}" }
+        }
+        let web = handler Host::Web {
+            get base path => Error { message: "fixture: tree never fetches ${base}${path}" }
+        }
+        let process = handler Host::Process {
+            run command => Host::Run { status: 0, stdout: "", stderr: "fixture: tree never runs ${command}" }
+        }
+        process(fn() => files(fn() => tree(fn() => web(fn() => Dispatch::run(args)))))
+    }
+
+    // ---- the lock: app -> report (runtime), tool (build); report -> greeting, maths; maths -> greeting ----
+
+    fn files(name) = [Fixture::file("osprey.toml", "[project]\nname = \"${name}\"\nsource_roots = [\"src\"]\n"), Fixture::file("src/${name}.osp", "fn ${name}() = 1\n")]
+
+    fn greeting() = Fixture::served("@demo/greeting/1.1", files("greeting"))
+    fn maths() = Fixture::served("@demo/maths/1.2", files("maths"))
+    fn report() = Fixture::served("@demo/report/1.1", files("report"))
+    fn tool() = Fixture::served("@demo/tool/1.1", files("tool"))
+
+    fn key(name) = Names::Key { scope: "demo", name: name }
+    fn requirement(name) = ManifestModel::Requirement { package: key(name), epoch: 1, minimumOrdinal: 1 }
+    fn runtime(name) = ManifestModel::Runtime { requirement: requirement(name) }
+    fn buildEdge(name) = ManifestModel::Build { requirement: requirement(name) }
+    fn pkg(s, deps) = Lockfile::Package { release: Fixture::idOf(s), dependencies: deps, surface: [] }
+
+    fn lockText() = Lockfile::encode(Lockfile::release(
+            Lockfile::Root { manifestDigest: rootDigest, dependencies: [runtime("report"), buildEdge("tool")] },
+            [pkg(greeting(), []), pkg(maths(), [runtime("greeting")]), pkg(report(), [runtime("greeting"), runtime("maths")]), pkg(tool(), [])])) ?: ""
+
+    fn reads() = [Fixture::readRoute("osprey.toml", manifestText), Fixture::readRoute("osprey.lock", lockText())]
+
+    fn compact(s) = Lockfile::compact(Fixture::idOf(s))
+
+    // ---- cases ----
+
+    /// The whole tree: root edges in lock order, subtrees once, repeats marked.
+    fn wholeTree() = {
+        let a = runCommand(reads(), ["tree"])
+        checkAll("tree prints the locked graph with (build) and * marks", [
+                a.status == 0,
+                structuralEquals(a.lines, [
+                        "app",
+                        "  ${compact(report())}",
+                        "    ${compact(greeting())}",
+                        "    ${compact(maths())}",
+                        "      ${compact(greeting())} *",
+                        "  ${compact(tool())} (build)"
+                ])
+        ])
+    }
+
+    /// Every chain from the root to a shared dependency, in edge order.
+    fn whyShared() = {
+        let a = runCommand(reads(), ["why", "@demo/greeting"])
+        checkAll("why prints every chain to a shared dependency", [
+                a.status == 0,
+                structuralEquals(a.lines, [
+                        "app > ${compact(report())} > ${compact(greeting())}",
+                        "app > ${compact(report())} > ${compact(maths())} > ${compact(greeting())}"
+                ])
+        ])
+    }
+
+    /// A direct build dependency is one chain of two.
+    fn whyDirect() = {
+        let a = runCommand(reads(), ["why", "@demo/tool"])
+        checkAll("why prints the one chain to a direct dependency", [
+                a.status == 0,
+                structuralEquals(a.lines, ["app > ${compact(tool())}"])
+        ])
+    }
+
+    /// A key the lock does not pin, a bad word and a bad flag.
+    fn refusals() = {
+        let missing = runCommand(reads(), ["why", "@demo/none"])
+        let badWord = runCommand(reads(), ["why", "nonsense"])
+        let badFlag = runCommand(reads(), ["tree", "--bogus"])
+        let noLock = runCommand([Fixture::readRoute("osprey.toml", manifestText)], ["tree"])
+        checkAll("why.not-locked, why.usage, tree.usage and tree.no-lock", [
+                missing.status == 1,
+                Fixture::line(missing, 0) == "why.not-locked @demo/none",
+                badWord.status == 2,
+                Fixture::line(badWord, 0) == "why.usage",
+                badFlag.status == 2,
+                Fixture::line(badFlag, 0) == "tree.usage",
+                noLock.status == 1,
+                startsWith(Fixture::line(noLock, 0), "tree.no-lock ")
+        ])
+    }
+
+    fn directDependencies() = {
+        let directManifest = manifestText + "[dependencies]\n\"@demo/report\" = { epoch = 1 }\n[build-dependencies]\n\"@demo/tool\" = { epoch = 1 }\n"
+        let result = runCommand([Fixture::readRoute("osprey.toml", directManifest)], ["tree", "--direct"])
+        checkAll("editor lists parsed direct dependencies without a lock or network", [
+                result.status == 0,
+                structuralEquals(result.lines, ["@demo/report", "@demo/tool"])
+        ])
+    }
+
+    /// Every tree and why test.
+    export fn run() = {
+        test("tree: the locked graph", wholeTree)
+        test("why: every chain to a shared dependency", whyShared)
+        test("why: a direct dependency", whyDirect)
+        test("tree/why: refusals", refusals)
+        test("tree: direct dependencies without a lock", directDependencies)
+    }
+}

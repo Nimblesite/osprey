@@ -4,19 +4,24 @@ The corresponding TestingFramework contract is [here](../language/0027-TestingFr
 
 ## CLI
 
-### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>] [--memory=default|gc|arc]` — `[TESTING-CLI-RUN]`
+### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>] [--memory=gc|arc|none]` — `[TESTING-CLI-RUN]`
 
 Runs test files and aggregates results. `path` (default `.`) is a single file
 (run as-is, regardless of naming), a project directory (see
 `[TESTING-PROJECT-SUITE]`), or a directory searched recursively for
 `[TESTING-FILE-CONVENTION]` files in sorted order. Hidden, `target`, and
 `node_modules` directories are skipped; symlinks are not followed. Each file
-runs like `osprey <file> --run`, with its TAP output under a
-`# file: <path>` header. `--filter` sets `OSPREY_TEST_FILTER` for child
+runs like `osprey <file> --run --no-warnings`, with its TAP output under a
+`# file: <path>` header. A suite is executed, not reviewed: the warning pass
+re-infers the whole program once per annotation site, which on a large
+project costs minutes per suite, and its output never reaches a suite's
+oracle. `osprey <path> --check` is where warnings are read. `--filter` sets `OSPREY_TEST_FILTER` for child
 processes. The runner prints `# suites: X passed, Y failed` and exits `1` if a
 suite fails to compile, fails to run, or skips a case without naming a reason
 (`[TESTING-SKIP-REASON]`), otherwise `0`. An empty discovery set fails with
 `no test files found`.
+
+Standalone file suites run in separate temporary working directories, removed after each suite finishes, including failures. Source paths and the selected cache directory are resolved before changing directories. Relative output files therefore stay out of the caller's directory. Project suites retain the caller's working directory.
 
 **`[TESTING-PROJECT-SUITE]`** A `path` that is a directory holding an
 `osprey.toml` is one project suite. It runs like `osprey <dir> --run`: the
@@ -29,9 +34,9 @@ other.
 
 One invocation runs every discovered suite under exactly one memory backend.
 `--memory=gc` selects tracing garbage collection, `--memory=arc` selects
-Perceus reference counting, and `--memory=default` explicitly selects the
-non-reclaiming backend. Omitting `--memory` delegates the choice to the compiler
-default.
+Perceus reference counting, and `--memory=none` explicitly selects the
+non-reclaiming backend. Omitting `--memory` uses the compiler default, `gc`.
+The old `--memory=default` spelling is rejected.
 
 **`[TESTING-PARALLEL]`** Independent suites compile and run concurrently by
 default. Their captured stdout and stderr are replayed in sorted suite order,
@@ -44,15 +49,11 @@ argument validation with exit code `2`.
 
 The Android corpus harness defaults to one worker because all suites share the attached device's memory budget. An explicit `OSPREY_TEST_JOBS` overrides that default; host CPU count does not select device concurrency.
 
-**`[TESTING-NATIVE-CACHE]`** Native test runs reuse a content-addressed
-executable when the suite sources, compiler binary, runtime archive, memory
-mode, build kind, compiler command, and optimization setting are unchanged.
-The cache key includes both native runtime archives, so built-in HTTP and
-WebSocket suites remain cacheable. Named system-library `@link` directives are
-part of the source key and remain cacheable. Sources with custom `@linkdir`
-search paths bypass the cache because those external inputs cannot be validated
-from source alone. A cache miss builds to a process-unique staging path and
-publishes atomically, so concurrent runners never execute a partial artifact.
+**`[TESTING-NATIVE-CACHE]`** Native test runs cache LLVM IR and object code for an assembled program and build configuration. Memory backends can share those artifacts, while each memory mode links its own executable. Reuse depends on the assembled sources and project settings, Osprey and C compiler identities, build kind and optimization setting. Executable keys additionally include the memory mode and both native runtime archives.
+
+`OSPREY_TEST_CACHE_DIR` selects the cache directory; the test runner defaults to `osprey-test-cache-v1` under the system temporary directory. Use a new private directory for a fresh build. Custom `@linkdir` search paths bypass caching because their external inputs cannot be validated from source alone. Named system-library `@link` directives remain part of the source key. Builds that preserve debug artifacts or override debug optimization also bypass caching.
+
+Every invocation executes the suite again and produces fresh results; `--coverage` runs collect fresh counters. Cache misses build to process-unique staging paths and publish atomically, so concurrent runners never execute a partial artifact.
 
 ### `osprey <file> --list-tests` — `[TESTING-LIST]`
 

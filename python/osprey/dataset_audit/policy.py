@@ -23,8 +23,8 @@ def decide(valid, secret, personal, allow_personal, is_train, evaluation_match, 
            completion_chars, minimum_completion):
     privacy = privacy_issue(secret, personal, allow_personal)
     overlap = overlap_issue(is_train, evaluation_match, evaluation_similarity, duplicate, conflict, local_similarity, threshold)
-    length = length_issue(chars, max_chars, tokens, max_tokens, completion_chars, minimum_completion)
-    return 1 if not valid else privacy if privacy != 0 else overlap if overlap != 0 else length
+    limits = length_issue(chars, max_chars, tokens, max_tokens, completion_chars, minimum_completion)
+    return 1 if not valid else privacy if privacy != 0 else overlap if overlap != 0 else limits
 
 
 def reason_name(code):

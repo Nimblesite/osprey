@@ -81,17 +81,7 @@ pub(crate) fn bind_params_from(
     param_tys: &[ParamSig],
     first: usize,
 ) -> Vec<(LType, String)> {
-    let mut out = Vec::with_capacity(parameters.len());
-    for (i, (p, pty)) in parameters.iter().zip(param_tys).enumerate() {
-        let reg = crate::llty::param_register(first + i);
-        let value = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), None);
-        if let Some(ty) = &value.inferred_type {
-            cg.bind_fn_local(&p.name, ty.clone());
-        }
-        cg.bind(p.name.clone(), value);
-        out.push((pty.ty, reg));
-    }
-    out
+    crate::cast::bind_params(cg, parameters, param_tys, std::iter::repeat(None), first)
 }
 
 /// Build the cell and hand back its `i8*` handle. Capture-free closures share
@@ -121,7 +111,8 @@ pub(crate) fn cell_value(
         caps.iter()
             .map(|c| crate::meta::MetaField::of_slot_ty(&c.val.llvm_ty())),
     );
-    let cell = cg.malloc_struct(cell_ty, crate::meta::struct_meta(&mf));
+    let meta = cg.struct_meta(&mf);
+    let cell = cg.malloc_struct(cell_ty, meta);
     let fpp = cg.emit_reg(format!(
         "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 0"
     ));
@@ -256,10 +247,7 @@ pub(crate) fn cell_call(
 ) -> Value {
     let (ret_spelling, plist) = spelling_with_env(sig);
     let cellp = cg.emit_reg(format!("bitcast i8* {handle} to {{ i8* }}*"));
-    let fpp = cg.emit_reg(format!(
-        "getelementptr {{ i8* }}, {{ i8* }}* {cellp}, i32 0, i32 0"
-    ));
-    let fp8 = cg.emit_reg(format!("load i8*, i8** {fpp}"));
+    let fp8 = crate::aggregate::load_field(cg, "{ i8* }", &cellp, 0, LType::Str);
     let fp = cg.emit_reg(format!("bitcast i8* {fp8} to {ret_spelling} ({plist})*"));
     let mut args = vec![format!("i8* {handle}")];
     args.extend_from_slice(typed_args);

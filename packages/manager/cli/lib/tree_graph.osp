@@ -1,0 +1,139 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry_cli::Verify
+import registry_cli::Reports
+import registry::Canonical
+import registry::Identity
+import registry::Json
+import registry::ManifestModel
+import registry::Names
+
+/// `tree --graph`: the editor projection of the locked package graph as one
+/// canonical JSON value ([PACKAGE-API]). Direct edges come from the manifest,
+/// packages and edges from the folder lock; the locked graph is never inferred
+/// from installed directory names. Presence and findings come from the same
+/// offline verification `verify` runs, so a missing tree is `present: false`
+/// with `verify.missing`, and altered bytes stay present with `verify.digest`.
+/// A missing lock is an explicit not-locked graph (`tree.no-lock`) so a new
+/// project with no dependencies still has a graph; a corrupt lock is an error.
+module TreeGraph {
+    let failStatus = 1
+    let notLockedCode = "tree.no-lock"
+    let missingCode = "verify.missing"
+
+    type Finding = { code: string, detail: string }
+
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    fn member(key, value) = Json::Member { key: key, value: value }
+    fn str(text) = Json::Str { text: text }
+    fn bool(flag) = Json::Bool { flag: flag }
+    fn obj(members) = Json::Obj { members: members }
+    fn arr(items) = Json::Arr { items: items }
+    fn textList(texts) = arr(mapList(texts, str))
+
+    // Shared field names need typed receivers (issue #273).
+    fn releaseOf(p: Lockfile::Package) = p.release
+    fn edgesOf(p: Lockfile::Package) = p.dependencies
+    fn packagesOf(lock: Lockfile::Lock) = lock.packages
+    fn keyOf(id: Identity::ReleaseId) = id.key
+    fn reqKey(edge) = ManifestModel::requirementOf(edge).package
+    fn nameOf(m: ManifestModel::Manifest) = m.projectName
+    fn depsOf(m: ManifestModel::Manifest) = m.dependencies
+
+    fn versionOf(id: Identity::ReleaseId) = "e${id.epoch}.r${id.ordinal}"
+    fn directKeys(manifest) = Names::distinct(mapList(depsOf(manifest), reqKey))
+    fn edgeKeys(edges) = Names::distinct(mapList(edges, reqKey))
+
+    fn findingOf(line) = match indexOf(line, " ") {
+        Success { value } => Finding { code: take(line, value), detail: drop(line, value + 1) }
+        Error => Finding { code: line, detail: "" }
+    }
+
+    fn codeOf(f: Finding) = f.code
+    fn detailOf(f: Finding) = f.detail
+    fn codeIn(line) = codeOf(findingOf(line))
+    fn detailIn(line) = detailOf(findingOf(line))
+
+    fn distinctTexts(texts) = foldList(texts, [], fn(acc, text) => if listContains(acc, text) { acc } else { listAppend(acc, text) })
+    fn codesOf(lines) = distinctTexts(mapList(lines, codeIn))
+
+    fn packageLines(lines, keyText) = filterList(lines, fn(line) => detailIn(line) == keyText)
+    fn packageFindings(lines, keyText) = codesOf(packageLines(lines, keyText))
+
+    fn presentOf(lines, keyText) = !foldList(lines, false, fn(found, line) =>
+        found || (codeIn(line) == missingCode && detailIn(line) == keyText))
+
+    fn isPackageKey(packages, text) = foldList(packages, false, fn(found, p: Lockfile::Package) =>
+        found || Names::display(keyOf(releaseOf(p))) == text)
+
+    fn globalLines(lines, packages) = filterList(lines, fn(line) => !isPackageKey(packages, detailIn(line)))
+
+    fn dependentsOf(packages, key) = Names::distinct(foldList(packages, [], fn(acc, p: Lockfile::Package) =>
+        if !Names::same(keyOf(releaseOf(p)), key) && Names::includes(edgeKeys(edgesOf(p)), key) {
+            listAppend(acc, keyOf(releaseOf(p)))
+        } else { acc }))
+
+    fn packageValue(lines, direct, packages, pkg: Lockfile::Package) = {
+        let id = releaseOf(pkg)
+        let keyText = Names::display(keyOf(id))
+        obj([
+            member("key", str(keyText)),
+            member("version", str(versionOf(id))),
+            member("digest", str(id.digest)),
+            member("direct", bool(Names::includes(direct, keyOf(id)))),
+            member("dependencies", textList(mapList(edgeKeys(edgesOf(pkg)), Names::display))),
+            member("dependents", textList(mapList(dependentsOf(packages, keyOf(id)), Names::display))),
+            member("findings", textList(packageFindings(lines, keyText))),
+            member("present", bool(presentOf(lines, keyText)))
+        ])
+    }
+
+    fn packagesValue(lines, direct, packages) = arr(mapList(packages, fn(p: Lockfile::Package) => packageValue(lines, direct, packages, p)))
+
+    fn graphValue(manifest, lock, lines) = {
+        let direct = directKeys(manifest)
+        let packages = packagesOf(lock)
+        obj([
+            member("project", str(nameOf(manifest))),
+            member("direct", textList(mapList(direct, Names::display))),
+            member("packages", packagesValue(lines, direct, packages)),
+            member("findings", textList(codesOf(globalLines(lines, packages))))
+        ])
+    }
+
+    fn notLockedValue(manifest) = obj([
+        member("project", str(nameOf(manifest))),
+        member("direct", textList(mapList(directKeys(manifest), Names::display))),
+        member("packages", arr([])),
+        member("findings", textList([notLockedCode]))
+    ])
+
+    fn serialized(value) = match Canonical::serialize(value) {
+        Success { value } => Reports::success([value])
+        Error { message } => failed([message])
+    }
+
+    fn withLock(project, manifest, lock) = {
+        let lines = Reports::findings(Verify::verifyReleaseAt(project))
+        serialized(graphValue(manifest, lock, lines))
+    }
+
+    fn withLockText(project, manifest, text) = match Lockfile::decode(text) {
+        Error { message } => failed([message])
+        Success { value } => withLock(project, manifest, value)
+    }
+
+    fn withManifest(project, manifest) = match perform Host::Files.read(Project::lockPathAt(project)) {
+        Error => serialized(notLockedValue(manifest))
+        Success { value } => withLockText(project, manifest, value)
+    }
+
+    /// The graph of the project at `project` as one canonical JSON report line.
+    export fn reportAt(project) = match Project::readAt(project) {
+        Error { message } => failed([message])
+        Success { value } => withManifest(project, value)
+    }
+}

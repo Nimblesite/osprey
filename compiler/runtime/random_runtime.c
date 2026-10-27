@@ -23,6 +23,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef OSP_SYMBOLIC
+#include "klee/hunt_mock.h"
+#endif
 
 #if defined(__wasm__)
 // wasm32-wasip1 gets its entropy from the WASI `random_get` host call, which
@@ -195,6 +198,10 @@ static int osp_input_byte(void) { return getchar(); }
 // newline, returning a heap string ("" on EOF/empty). The caller owns the
 // result, matching the string-runtime builtins which also malloc their returns.
 char *osp_input(void) {
+#ifdef OSP_SYMBOLIC
+  char *symbolic = NULL;
+  if (osp_hunt_initial_input(&symbolic)) return symbolic;
+#endif
   size_t cap = OSP_INPUT_INIT_CAP;
   size_t len = 0;
   char *buf = (char *)malloc(cap);

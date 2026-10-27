@@ -84,10 +84,16 @@ const walk = (dir, out = []) => {
 const isTestFile = (path) =>
   path.includes("/tests/") ||
   path.includes("/test/") ||
+  (path.endsWith("/tests.rs") && hasTestModuleDeclaration(path)) ||
   path.endsWith("_tests.rs") ||
   path.includes("test_support") ||
   path.includes("testutil") ||
   path.includes("/benchmarks/");
+
+const hasTestModuleDeclaration = (path) =>
+  ["main.rs", "lib.rs", "mod.rs"].some((parent) =>
+    /^\s*#\[cfg\(test\)\]\s*mod tests\s*;/m.test(files.get(join(dirname(path), parent)) ?? ""),
+  );
 
 // The 1-based [start, end] of the brace block opening at `start`, or of a
 // single `;`-terminated declaration when no brace follows.

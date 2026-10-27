@@ -109,6 +109,12 @@ def run1_list(processors, ids, scores):
     return out[0].tolist()
 
 
+def columns(C, prefix, names, cases):
+    """Write position `k` of every case tuple as the constant `<prefix>_<names[k]>`."""
+    for k, name in enumerate(names):
+        C[f"{prefix}_{name}"] = [case[k] for case in cases]
+
+
 # ---------------------------------------------------------------------------
 # Math primitives: softmax/log_softmax/argmax/multinomial, all via torch.
 # ---------------------------------------------------------------------------
@@ -157,21 +163,14 @@ def add_temperature(C):
         for r in (R0, R4, R6, R5):
             p = TemperatureLogitsWarper(temperature=temp)
             cases.append((temp, [], r, run1(p, [], r)))
-    C["TEMP_TEMP"] = [t for t, _, _, _ in cases]
-    C["TEMP_IDS"] = [[] for _ in cases]
-    C["TEMP_SCORES"] = [r for _, _, r, _ in cases]
-    C["TEMP_EXPECTED"] = [e for _, _, _, e in cases]
+    columns(C, "TEMP", ("TEMP", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def add_warper(C, prefix, name, make, settings, rows):
     """Cases for a warper taking one setting plus min_tokens_to_keep, over `rows`:
     the setting under `<prefix>_<name>`, the keep count, empty ids, inputs, outputs."""
-    cases = [(x, m, r, run1(make(x, m), [], r)) for x, m in settings for r in rows]
-    C[f"{prefix}_{name}"] = [x for x, _, _, _ in cases]
-    C[f"{prefix}_MIN"] = [m for _, m, _, _ in cases]
-    C[f"{prefix}_IDS"] = [[] for _ in cases]
-    C[f"{prefix}_SCORES"] = [r for _, _, r, _ in cases]
-    C[f"{prefix}_EXPECTED"] = [e for _, _, _, e in cases]
+    cases = [(x, m, [], r, run1(make(x, m), [], r)) for x, m in settings for r in rows]
+    columns(C, prefix, (name, "MIN", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def add_warpers(C):
@@ -197,11 +196,7 @@ def add_repetition_penalty(C):
         for ids, scores in zip(ids_rows, scores_rows):
             proc = RepetitionPenaltyLogitsProcessor(penalty=pen, prompt_ignore_length=ign)
             cases.append((pen, ign, ids, scores, run1(proc, ids, scores)))
-    C["REPP_PEN"] = [x for x, _, _, _, _ in cases]
-    C["REPP_IGNORE"] = [g for _, g, _, _, _ in cases]
-    C["REPP_IDS"] = [i for _, _, i, _, _ in cases]
-    C["REPP_SCORES"] = [s for _, _, _, s, _ in cases]
-    C["REPP_EXPECTED"] = [e for _, _, _, _, e in cases]
+    columns(C, "REPP", ("PEN", "IGNORE", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def add_no_repeat_ngram(C):
@@ -219,10 +214,7 @@ def add_no_repeat_ngram(C):
         for ids, scores in zip(ids_rows, scores_rows):
             proc = NoRepeatNGramLogitsProcessor(ngram_size=n)
             cases.append((n, ids, scores, run1(proc, ids, scores)))
-    C["NRN_N"] = [n for n, _, _, _ in cases]
-    C["NRN_IDS"] = [i for _, i, _, _ in cases]
-    C["NRN_SCORES"] = [s for _, _, s, _ in cases]
-    C["NRN_EXPECTED"] = [e for _, _, _, e in cases]
+    columns(C, "NRN", ("N", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def add_min_length(C):
@@ -231,11 +223,7 @@ def add_min_length(C):
         for ids in ([0, 1], [0, 1, 2], [0, 1, 2, 3], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4, 5]):
             proc = MinLengthLogitsProcessor(min_length=ml, eos_token_id=eos)
             cases.append((ml, eos, ids, R2, run1(proc, ids, R2)))
-    C["MINL_LEN"] = [ml for ml, _, _, _, _ in cases]
-    C["MINL_EOS"] = [e for _, e, _, _, _ in cases]
-    C["MINL_IDS"] = [i for _, _, i, _, _ in cases]
-    C["MINL_SCORES"] = [s for _, _, _, s, _ in cases]
-    C["MINL_EXPECTED"] = [e for _, _, _, _, e in cases]
+    columns(C, "MINL", ("LEN", "EOS", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def add_min_new_tokens(C):
@@ -246,12 +234,7 @@ def add_min_new_tokens(C):
                 prompt_length_to_skip=skip, min_new_tokens=new, eos_token_id=eos
             )
             cases.append((skip, new, eos, ids, R2, run1(proc, ids, R2)))
-    C["MNT_SKIP"] = [s for s, _, _, _, _, _ in cases]
-    C["MNT_NEW"] = [n for _, n, _, _, _, _ in cases]
-    C["MNT_EOS"] = [e for _, _, e, _, _, _ in cases]
-    C["MNT_IDS"] = [i for _, _, _, i, _, _ in cases]
-    C["MNT_SCORES"] = [s for _, _, _, _, s, _ in cases]
-    C["MNT_EXPECTED"] = [e for _, _, _, _, _, e in cases]
+    columns(C, "MNT", ("SKIP", "NEW", "EOS", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def add_forced_bos(C):
@@ -260,10 +243,7 @@ def add_forced_bos(C):
         for ids in ([7], [7, 8], [7, 8, 9]):
             proc = ForcedBOSTokenLogitsProcessor(bos_token_id=bos)
             cases.append((bos, ids, R0, run1(proc, ids, R0)))
-    C["FBOS_BOS"] = [b for b, _, _, _ in cases]
-    C["FBOS_IDS"] = [i for _, i, _, _ in cases]
-    C["FBOS_SCORES"] = [s for _, _, s, _ in cases]
-    C["FBOS_EXPECTED"] = [e for _, _, _, e in cases]
+    columns(C, "FBOS", ("BOS", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def add_forced_eos(C):
@@ -272,11 +252,7 @@ def add_forced_eos(C):
         for ids in ([0, 1], [0, 1, 2], [0, 1, 2, 3], [0, 1, 2, 3, 4]):
             proc = ForcedEOSTokenLogitsProcessor(max_length=ml, eos_token_id=eos)
             cases.append((ml, eos, ids, R0, run1(proc, ids, R0)))
-    C["FEOS_MAX"] = [ml for ml, _, _, _, _ in cases]
-    C["FEOS_EOS"] = [e for _, e, _, _, _ in cases]
-    C["FEOS_IDS"] = [i for _, _, i, _, _ in cases]
-    C["FEOS_SCORES"] = [s for _, _, _, s, _ in cases]
-    C["FEOS_EXPECTED"] = [e for _, _, _, _, e in cases]
+    columns(C, "FEOS", ("MAX", "EOS", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def add_suppress_tokens(C):
@@ -285,10 +261,7 @@ def add_suppress_tokens(C):
         for r in (R0, R2, R4, R6):
             proc = SuppressTokensLogitsProcessor(suppress_tokens=supp)
             cases.append((supp, [], r, run1(proc, [], r)))
-    C["SUPP_TOKENS"] = [s for s, _, _, _ in cases]
-    C["SUPP_IDS"] = [[] for _ in cases]
-    C["SUPP_SCORES"] = [r for _, _, r, _ in cases]
-    C["SUPP_EXPECTED"] = [e for _, _, _, e in cases]
+    columns(C, "SUPP", ("TOKENS", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def bad_words_ref(bad_words_ids, eos_ids, ids, scores):
@@ -330,10 +303,7 @@ def add_bad_words(C):
         real = run1(proc, ids, R0)
         ref = bad_words_ref(long_bad_words, [5], ids, R0)
         assert real == ref, (ids, real, ref)
-    C["BAD_BADWORDS"] = [b for b, _, _, _ in cases]
-    C["BAD_IDS"] = [i for _, i, _, _ in cases]
-    C["BAD_SCORES"] = [s for _, _, s, _ in cases]
-    C["BAD_EXPECTED"] = [e for _, _, _, e in cases]
+    columns(C, "BAD", ("BADWORDS", "IDS", "SCORES", "EXPECTED"), cases)
 
 
 def add_composition(C):

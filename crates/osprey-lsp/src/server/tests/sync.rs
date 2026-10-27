@@ -114,8 +114,13 @@ async fn incremental_change_and_close_update_the_vfs() {
     );
 
     h.notify("textDocument/didClose", text_doc(URI)).await;
-    // The read/route loop is sequential: a reply to a following request proves
-    // the preceding `didClose` notification has already been processed.
+    // An ordinary request stays behind document updates; shutdown has its own
+    // responsive transport path and can bypass busy diagnostics.
+    let barrier = h.request(901, "initialize", Value::Null).await;
+    assert!(
+        barrier.error.is_none(),
+        "ordered request succeeds: {barrier:?}"
+    );
     let synced = h.request(1, "shutdown", Value::Null).await;
     assert!(is_null_result(&synced));
     assert!(

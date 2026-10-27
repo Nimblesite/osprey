@@ -1,0 +1,208 @@
+namespace registry_tests;
+import registry_host::Host
+import registry_cli::Build
+import registry_cli::Fetch
+import registry_cli::Lockfile
+import registry_cli::Reports
+import registry_cli::Project
+import registry_tests::Fixture
+import registry::ManifestJson
+
+/// `build [--run]` against fixture hosts: the offline verify must pass before
+/// the derived project is written and the compiler invoked; the derived
+/// `osprey.toml` uses each package's own `source_roots` and `python_sources`
+/// ([PACKAGE-HARDENING] C6), and a package whose manifest is rejected fails
+/// with `build.manifest` before any compiler run. Implements
+/// [PACKAGE-FOLDER-REGISTRY] build tests.
+module BuildTests {
+    let compilerPath = "osprey"
+    let project = "/abs"
+    let derivedPath = ".osprey/build/osprey.toml"
+    let otherDigest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+    /// What one run observed: the report, the derived manifest, the ensured
+    /// directories and the compiler commands, each "" when none.
+    type Attempt = { report: Reports::Report, derived: string, derivedAt: string, ensures: string, commands: string }
+
+    fn runBuild(reads, walks, args) = {
+        mut derived = ""
+        mut derivedAt = ""
+        mut ensures = ""
+        mut commands = ""
+        let files = handler Host::Files {
+            read path => Fixture::readFor(reads, path)
+            write path content => {
+                derived = content
+                derivedAt = path
+                Success { value: byteLength(content) }
+            }
+        }
+        let tree = handler Host::Tree {
+            walk dir => Fixture::walkFor(walks, dir)
+            ensure dir => {
+                ensures = "${ensures}${dir}|"
+                Success { value: 0 }
+            }
+        }
+        let web = handler Host::Web {
+            get base path => Error { message: "fixture: build never fetches ${base}${path}" }
+        }
+        let process = handler Host::Process {
+            run command => {
+                commands = "${commands}${command}|"
+                Host::Run { status: 0, stdout: "built\n", stderr: "" }
+            }
+        }
+        let report = process(fn() => files(fn() => tree(fn() => web(fn() => Build::run(args)))))
+        Attempt { report: report, derived: derived, derivedAt: derivedAt, ensures: ensures, commands: commands }
+    }
+
+    // ---- the project and its two packages ----
+
+    fn manifestText() = "[project]\nname = \"app\"\nsource_roots = [\"src\"]\ndefault_namespace = \"app\"\nentry = \"src/main.osp\"\n"
+
+    fn oneManifest() = "[project]\nname = \"one\"\nsource_roots = [\"lib\", \"src\"]\npython_sources = [\"src/model.py\"]\n"
+
+    fn twoManifest() = "[project]\nname = \"two\"\nsource_roots = [\"src\"]\n"
+
+    fn one() = Fixture::served("@demo/one/1.1", [
+        Fixture::file("osprey.toml", oneManifest()),
+        Fixture::file("lib/one.osp", "fn one() = 1\n"),
+        Fixture::file("src/model.py", "# osprey: flavor=python\ndef model():\n    return 1\n")
+    ])
+
+    fn two() = Fixture::served("@demo/two/1.1", [Fixture::file("osprey.toml", twoManifest()), Fixture::file("src/two.osp", "fn two() = 2\n")])
+
+    fn bad() = Fixture::served("@demo/one/1.1", [
+        Fixture::file("osprey.toml", "[project]\nname = \"\"\nsource_roots = [\"src\"]\n"),
+        Fixture::file("src/one.osp", "fn one() = 1\n")
+    ])
+
+    fn pkgOf(s) = Lockfile::Package { release: Fixture::idOf(s), dependencies: [], surface: [] }
+
+    fn lockText(digest, packages) = Lockfile::encode(Lockfile::release(Lockfile::Root { manifestDigest: digest, dependencies: [] }, packages)) ?: ""
+
+    /// The lock whose manifest digest matches the project's manifest.
+    fn matchingLock(packages) = lockText(ManifestJson::digest(Fixture::manifestOf(manifestText())) ?: "", packages)
+
+    fn installDir(s) = Fetch::installDirAt(project, Fixture::idOf(s))
+
+    fn readsFor(s) = mapList(Fixture::filesOf(s), fn(f) => Fixture::readRoute("${installDir(s)}/${f.relPath}", f.content))
+
+    fn walkOf(s) = Fixture::walkRoute(installDir(s), mapList(Fixture::filesOf(s), fn(f) => f.relPath))
+
+    fn readsOf(lock, packages) = listConcat(
+        [Fixture::readRoute("${project}/osprey.toml", manifestText()), Fixture::readRoute("${project}/osprey.lock", lock)],
+        foldList(packages, [], fn(acc, s) => listConcat(acc, readsFor(s))))
+
+    fn walksOf(packages) = mapList(packages, walkOf)
+
+    fn quoted(path) = "\"${path}\""
+
+    /// The derived project: the root's own roots first, then each package's
+    /// own roots in lock order; the python sources likewise.
+    fn derivedText() = {
+        let roots = [quoted("../../src"), quoted("../../${Fetch::installDir(Fixture::idOf(one()))}/lib"), quoted("../../${Fetch::installDir(Fixture::idOf(one()))}/src"), quoted("../../${Fetch::installDir(Fixture::idOf(two()))}/src")]
+        let python = [quoted("../../${Fetch::installDir(Fixture::idOf(one()))}/src/model.py")]
+        join([
+            "[project]",
+            "name = \"app\"",
+            "source_roots = [${join(roots, ", ")}]",
+            "python_sources = [${join(python, ", ")}]",
+            "default_namespace = \"app\"",
+            "entry = " + quoted("../../src/main.osp"),
+            "[modules]",
+            "allow_wildcard_imports = false"
+        ], "\n")
+    }
+
+    // ---- cases ----
+
+    /// A passing verify writes the exact derived project and runs the compiler.
+    fn derived() = {
+        let packages = [one(), two()]
+        let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
+        checkAll("the derived osprey.toml is exact and the compiler runs", [
+            a.report.status == 0,
+            a.derived == derivedText(),
+            a.derivedAt == "${project}/${derivedPath}",
+            a.ensures == "${project}/.osprey/build|",
+            a.commands == "'${compilerPath}' build '${project}/.osprey/build' -o '${project}/.osprey/build/app'|",
+            Fixture::line(a.report, 0) == "built"
+        ])
+    }
+
+    /// `build --run` compiles through the run form.
+    fn runForm() = {
+        let packages = [one(), two()]
+        let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--run", "--project", project])
+        checkAll("build --run invokes the compiler run form", [
+            a.report.status == 0,
+            a.commands == "'${compilerPath}' '${project}/.osprey/build' --run|"
+        ])
+    }
+
+    fn relativeBuildAt(dir, args) = {
+        let text = manifestText() + "python_sources = [\"src/model.py\"]\n"
+        let lock = lockText(ManifestJson::digest(Fixture::manifestOf(text)) ?: "", [])
+        let reads = [Fixture::readRoute(Project::manifestPathAt(dir), text), Fixture::readRoute(Project::lockPathAt(dir), lock)]
+        let a = runBuild(reads, [], args)
+        checkAll("relative project ${dir} is rebased from the derived manifest", [
+            a.report.status == 0,
+            a.derivedAt == Project::pathAt(dir, derivedPath),
+            contains(a.derived, "source_roots = [\"../../src\"]"),
+            contains(a.derived, "python_sources = [\"../../src/model.py\"]"),
+            contains(a.derived, "entry = \"../../src/main.osp\"")
+        ])
+    }
+
+    fn relativeBuilds() = {
+        relativeBuildAt(".", [])
+        relativeBuildAt(".", ["--run"])
+        relativeBuildAt("some/project", ["--project", "some/project"])
+    }
+
+    fn relativePythonSources() = {
+        let packages = [one(), two()]
+        let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
+        checkAll("derived Python sources obey the compiler's manifest-relative path contract", [
+            a.report.status == 0,
+            !contains(a.derived, "python_sources = [\"/")
+        ])
+    }
+
+    /// A failing verify runs no compiler and writes nothing.
+    fn verifyFailure() = {
+        let packages = [one(), two()]
+        let a = runBuild(readsOf(lockText(otherDigest, mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
+        checkAll("a verify failure is the build's failure and compiles nothing", [
+            a.report.status == 1,
+            Fixture::line(a.report, 0) == "verify.manifest-digest",
+            a.derived == "",
+            a.ensures == "",
+            a.commands == ""
+        ])
+    }
+
+    /// A package whose installed manifest is rejected is `build.manifest`.
+    fn buildManifestRejected() = {
+        let packages = [bad(), two()]
+        let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
+        checkAll("a rejected package manifest is build.manifest with no compiler run", [
+            a.report.status == 1,
+            startsWith(Fixture::line(a.report, 0), "build.manifest @demo/one manifest.project.name at "),
+            a.derived == "",
+            a.commands == ""
+        ])
+    }
+
+    /// Every build test.
+    export fn run() = {
+        test("build: derived project bytes and compiler invocation", derived)
+        test("build: --run invokes the run form", runForm)
+        test("build: default and relative source paths", relativeBuilds)
+        test("build: Python sources remain manifest-relative", relativePythonSources)
+        test("build: a verify failure compiles nothing", verifyFailure)
+        test("build: a rejected package manifest is build.manifest", buildManifestRejected)
+    }
+}

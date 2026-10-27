@@ -11,7 +11,17 @@
 use super::findings::{self, Class, Finding, Frame, Location, Replay, Scan};
 use super::ktest;
 use std::collections::BTreeSet;
+use std::fmt::Write;
 use std::path::PathBuf;
+
+/// One stack to parse, the user frame it must pick and the runtime frame.
+type LocationCase<'a> = (
+    &'a [(&'a str, u32)],
+    Option<(&'a str, u32)>,
+    Option<&'a str>,
+);
+/// A ktest body (or none), the stdin bytes it must yield and the stream count.
+type StdinCase<'a> = (Option<&'a [u8]>, &'a [u8], usize);
 
 /// The spec's class table, row by row.
 const SUFFIXES: [(&str, Class); 22] = [
@@ -157,7 +167,7 @@ fn a_run_with_every_suffix_yields_every_class_once_per_line() {
     }
     let scan = findings::scan(&dir.0).expect("scan");
     assert_eq!(scan.findings.len(), SUFFIXES.len());
-    assert!(scan.incomplete.is_empty());
+    assert_eq!(scan.incomplete, Vec::new());
     for (n, (finding, (suffix, class))) in scan.findings.iter().zip(SUFFIXES).enumerate() {
         assert_eq!(finding.test, format!("test{n:06}"));
         assert_eq!((finding.suffix.as_str(), finding.class), (suffix, class));
@@ -333,21 +343,21 @@ fn the_message_is_the_first_error_line_trimmed() {
     }
 }
 
-/// The Osprey location is the first `.osp`/`.ospml` frame not in the prelude;
+/// The Osprey location is the first `.osp`/`.ospml`/`.py` frame not in the prelude;
 /// the runtime frame is the first `.c` frame.
 #[test]
 fn the_location_is_the_top_user_frame_and_the_runtime_frame_the_top_c_frame() {
     let prelude = osprey_types::PRELUDE_LINE_BASE;
     let stack = |frames: &[(&str, u32)]| {
-        let lines: String = frames
-            .iter()
-            .enumerate()
-            .map(|(n, (file, line))| format!("\t#{n} in f{n}() at {file}:{line}\n"))
-            .collect();
-        format!("Error: e\nStack: \n{lines}")
+        let mut lines = String::from("Error: e\nStack: \n");
+        for (n, (file, line)) in frames.iter().enumerate() {
+            let _ = writeln!(lines, "\t#{n} in f{n}() at {file}:{line}");
+        }
+        lines
     };
-    let cases: [(&[(&str, u32)], Option<(&str, u32)>, Option<&str>); 9] = [
+    let cases: [LocationCase<'_>; 10] = [
         (&[("a.osp", 1)], Some(("a.osp", 1)), None),
+        (&[("main.py", 7)], Some(("main.py", 7)), None),
         (
             &[("r.c", 5), ("a.osp", 2), ("b.osp", 3)],
             Some(("a.osp", 2)),
@@ -400,7 +410,7 @@ fn a_finding_takes_stdin_and_files_from_its_ktest_or_none() {
         ("entropy.0", &[7; 8]),
         ("clock.0", &[0; 8]),
     ]);
-    let cases: [(Option<&[u8]>, &[u8], usize); 4] = [
+    let cases: [StdinCase<'_>; 4] = [
         (Some(full.as_slice()), b"42\n", 1),
         (None, b"", 0),
         (Some(&b"garbage"[..]), b"", 0),
@@ -450,40 +460,28 @@ fn dedupe_keeps_one_per_class_and_place_over_the_full_matrix() {
 /// The key falls back from location to runtime frame to message.
 #[test]
 fn the_dedupe_key_falls_back_in_spec_order() {
+    let abort = |at: Option<(&str, u32)>, frame: Option<&str>, message: &str| {
+        sample(Class::Abort, at, frame, message)
+    };
+    let a1 = Some(("a.osp", 1));
     let pairs = [
+        (abort(a1, Some("x"), "m1"), abort(a1, Some("y"), "m2"), 1),
         (
-            sample(Class::Abort, Some(("a.osp", 1)), Some("x"), "m1"),
-            sample(Class::Abort, Some(("a.osp", 1)), Some("y"), "m2"),
+            abort(None, Some("r.c:1 in f"), "m1"),
+            abort(None, Some("r.c:1 in f"), "m2"),
             1,
         ),
         (
-            sample(Class::Abort, None, Some("r.c:1 in f"), "m1"),
-            sample(Class::Abort, None, Some("r.c:1 in f"), "m2"),
-            1,
-        ),
-        (
-            sample(Class::Abort, None, Some("r.c:1 in f"), "m"),
-            sample(Class::Abort, None, Some("r.c:2 in f"), "m"),
+            abort(None, Some("r.c:1 in f"), "m"),
+            abort(None, Some("r.c:2 in f"), "m"),
             2,
         ),
+        (abort(None, None, "m"), abort(None, None, "m"), 1),
+        (abort(None, None, "m"), abort(None, None, "n"), 2),
+        (abort(a1, None, "m"), sample(Class::Arith, a1, None, "m"), 2),
         (
-            sample(Class::Abort, None, None, "m"),
-            sample(Class::Abort, None, None, "m"),
-            1,
-        ),
-        (
-            sample(Class::Abort, None, None, "m"),
-            sample(Class::Abort, None, None, "n"),
-            2,
-        ),
-        (
-            sample(Class::Abort, Some(("a.osp", 1)), None, "m"),
-            sample(Class::Arith, Some(("a.osp", 1)), None, "m"),
-            2,
-        ),
-        (
-            sample(Class::Abort, Some(("a.osp", 1)), None, "m"),
-            sample(Class::Abort, Some(("b.osp", 1)), None, "m"),
+            abort(a1, None, "m"),
+            abort(Some(("b.osp", 1)), None, "m"),
             2,
         ),
     ];

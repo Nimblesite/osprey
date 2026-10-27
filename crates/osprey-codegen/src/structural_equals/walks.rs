@@ -123,7 +123,7 @@ impl<'a> MapWalk<'a> {
 
     /// Run the walk with its key and value cursor slots.
     fn run(&self, cg: &mut Codegen) -> Result<()> {
-        let (kp, vp) = (cg.emit_reg("alloca i64"), cg.emit_reg("alloca i64"));
+        let (kp, vp) = (cg.hoist_slot("i64"), cg.hoist_slot("i64"));
         self.entries(cg, &kp, &vp)
     }
 }

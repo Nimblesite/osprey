@@ -1,5 +1,5 @@
-// Parsing an empty object and an empty array must be clean: closing an empty
-// container copies zero children, and must not form a pointer from null.
+/// Parsing an empty object and an empty array must be clean: closing an empty
+/// container copies zero children, and must not form a pointer from null.
 fn parses(text) = match jsonParse(text) {
     Success { value } => (jsonFree(value) ?: -1) == 0
     Error => false

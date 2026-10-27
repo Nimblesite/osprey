@@ -1,6 +1,34 @@
 use super::*;
 
 #[test]
+fn registry_classifies_the_compilers_ambient_builtin_inventory() {
+    let mut ambient = TypeEnv::new();
+    for declare in [files, terminal, http, websocket, tensors] {
+        declare(&mut ambient);
+    }
+    let surface = include_str!("../../../../packages/manager/core/src/surface.osp");
+    for name in ambient.bound_names() {
+        assert!(
+            name.starts_with("http")
+                || name.starts_with("websocket")
+                || surface.contains(&format!("named(\"{name}\",")),
+            "registry leaves compiler ambient builtin {name} unclassified"
+        );
+    }
+}
+
+/// Assert each builtin `name` prints exactly `signature`.
+fn assert_signatures(expected: &[(&str, &str)]) {
+    for &(name, signature) in expected {
+        assert_eq!(
+            builtin_signature(name).as_deref(),
+            Some(signature),
+            "{name}"
+        );
+    }
+}
+
+#[test]
 fn registers_core_and_polymorphic_builtins() {
     let e = base_env();
     assert!(e.get("print").is_some());
@@ -67,6 +95,10 @@ fn network_builtins_match_the_runtime_status_abi() {
             "httpPost",
             "httpPost : (int, string, string, string) -> int",
         ),
+        (
+            "httpPostResponse",
+            "httpPostResponse : (int, string, string, string) -> Result<int, Error>",
+        ),
         ("httpPut", "httpPut : (int, string, string, string) -> int"),
         ("httpDelete", "httpDelete : (int, string, string) -> int"),
         (
@@ -77,13 +109,7 @@ fn network_builtins_match_the_runtime_status_abi() {
         ("websocketClose", "websocketClose : (int) -> int"),
         ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
     ];
-    for (name, signature) in expected {
-        assert_eq!(
-            builtin_signature(name).as_deref(),
-            Some(signature),
-            "{name}"
-        );
-    }
+    assert_signatures(&expected);
 }
 
 #[test]
@@ -100,13 +126,7 @@ fn public_maps_use_the_runtime_string_key_abi() {
         ),
         ("mapKeys", "mapKeys : (Map<string, t0>) -> List<string>"),
     ];
-    for (name, signature) in expected {
-        assert_eq!(
-            builtin_signature(name).as_deref(),
-            Some(signature),
-            "{name}"
-        );
-    }
+    assert_signatures(&expected);
 }
 
 #[test]
@@ -121,13 +141,7 @@ fn iterator_builtins_do_not_advertise_runtime_lists() {
         ("forEach", "forEach : (Iterator<t0>, (t0) -> Unit) -> Unit"),
         ("fold", "fold : (Iterator<t0>, t1, (t1, t0) -> t1) -> t1"),
     ];
-    for (name, signature) in expected {
-        assert_eq!(
-            builtin_signature(name).as_deref(),
-            Some(signature),
-            "{name}"
-        );
-    }
+    assert_signatures(&expected);
 }
 
 #[test]
@@ -149,11 +163,5 @@ fn list_combinators_and_sort_match_the_runtime_list_surface() {
             "listSort : (List<int> | List<string>) -> List<t0>",
         ),
     ];
-    for (name, signature) in expected {
-        assert_eq!(
-            builtin_signature(name).as_deref(),
-            Some(signature),
-            "{name}"
-        );
-    }
+    assert_signatures(&expected);
 }

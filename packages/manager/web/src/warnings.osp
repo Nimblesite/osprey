@@ -1,0 +1,26 @@
+namespace registry_web;
+import registry::Order
+import registry_web::Html
+import registry_web::Model
+
+/// Security-warning markup shared by every screen that shows a package:
+/// the worst-severity-first list, or the explicit no-warnings statement.
+/// A warning-free rendering is only reachable after the evidence gate
+/// passed — screens without evidence hide entirely
+/// ([PACKAGE-OWNERSHIP-MAINTENANCE]).
+module Warnings {
+    fn at(warnings, i) = listGet(warnings, i) ?: Model::Warning { code: "", summary: "", severity: Model::Low }
+
+    fn order(warnings) = fn(i, j) => Order::thenCompare(
+        Order::compareInts(Model::severityRank(at(warnings, i).severity), Model::severityRank(at(warnings, j).severity)),
+        Order::compareStrings(at(warnings, i).code, at(warnings, j).code))
+
+    fn item(warning: Model::Warning) = "<li class=\"warning ${Model::severityName(warning.severity)}\"><strong>${Model::severityName(warning.severity)}</strong> <code>${Html::escape(warning.code)}</code> ${Html::escape(warning.summary)}</li>"
+
+    /// The warnings body for a package whose evidence is verified.
+    export fn block(warnings) = if isEmpty(warnings) {
+        "<p class=\"warnings none\">No known security warnings.</p>"
+    } else {
+        "<ul class=\"warnings\">${join(mapList(Order::permutation(length(warnings), order(warnings)), fn(i) => item(at(warnings, i))), "")}</ul>"
+    }
+}

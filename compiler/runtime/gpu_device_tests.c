@@ -14,6 +14,7 @@
 
 #include "gpu_f64.metal"
 #include "gpu_math64.metal"
+#include "gpu_math_ext.metal"
 #include "gpu_device_lib.metal"
 
 void *osprey_gpu_alloc(int64_t length);

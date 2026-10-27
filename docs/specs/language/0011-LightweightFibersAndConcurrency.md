@@ -39,7 +39,7 @@ task = spawn (work 41)
 answer = await task
 ```
 
-`await` returns the fiber's complete source type and never erases a `Result` channel. A fiber is inside the arithmetic totality guarantee: arithmetic in a spawned body cannot trap or wrap silently, and a fault reaches the enclosing `Arith` handler through the serialized `[EFFECTS-FIBER-PERFORM]` round trip, or the program is rejected ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Each spawn site allocates a distinct capture cell. Pointer and floating-point values likewise return with their source type.
+`await` returns the fiber's complete source type and never erases a `Result` channel. Host arithmetic in a spawned body reaches the enclosing `Arith` handler through the serialized `[EFFECTS-FIBER-PERFORM]` round trip, or the program is rejected ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Launching a selected-device kernel from a fiber retains the current [device-recovery limitation](0037-ArithmeticEffects.md#device-recovery-arith-device-recovery): a kernel fault aborts instead of reaching that handler. Each spawn site allocates a distinct capture cell. Pointer and floating-point values likewise return with their source type.
 
 A `Fiber<T>` handle is reusable: awaiting the same completed fiber more than
 once MUST return the same `T` value on every call. For a managed `T`, every

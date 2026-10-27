@@ -19,6 +19,8 @@ void hunt_reset(void);
 void hunt_queue_bytes(const char *bytes, size_t count);
 // Values the next `klee_range` calls return, in order (clamped to the range).
 void hunt_queue_range(int value);
+void hunt_set_object_size(size_t size);
+void hunt_mock_parse_tests(void);
 // The name of the `at`th `klee_range` call since the last reset.
 const char *hunt_range_name(size_t at);
 size_t hunt_range_count(void);
@@ -26,6 +28,8 @@ size_t hunt_range_count(void);
 const char *hunt_last_symbolic(void);
 
 // ---- the doubles under test, through their libc names ----------------------
+
+char *osp_input(void);
 
 typedef struct osp_hunt_file FILE_;
 FILE_ *fopen(const char *path, const char *mode);
@@ -65,6 +69,9 @@ double fmod(double x, double y);
 extern FILE_ *osp_hunt_stdout;
 extern FILE_ *osp_hunt_stdin;
 extern int osp_hunt_errno;
+
+// Runtime integration exercised by both suites.
+char *read_file(char *path);
 
 // ---- captured output -------------------------------------------------------
 

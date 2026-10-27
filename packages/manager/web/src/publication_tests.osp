@@ -1,0 +1,76 @@
+namespace registry_web;
+import registry_web::Model
+import registry_web::Publications
+import registry_web::WebFixtures
+
+/// The publication monitor: pending, rejected and quarantined intents each
+/// labelled with their reasons, member-only, and hidden entirely when any
+/// entry's security evidence is unavailable
+/// ([PACKAGE-HOSTED-ROUTES]).
+module PublicationTests {
+    fn board() = [WebFixtures::pendingPublication(), WebFixtures::rejectedPublication(), WebFixtures::quarantinedPublication()]
+
+    /// Every status is distinguishable and carries its reason.
+    fn statusesAndReasons() = match Publications::render(board(), WebFixtures::publisher()) {
+        Model::Shown { html } => checkAll("web: publication statuses and reasons", [
+            contains(html, "Pending: awaiting WebAuthn assertion for the frozen source digest"),
+            contains(html, "Rejected: proof.statement-mismatch"),
+            contains(html, "authority epoch stale: 0 != 1"),
+            contains(html, "Quarantined: source verification quarantined"),
+            contains(html, "Actor: prin-pub-1")
+        ])
+        Model::Hidden { reason } => check("web: publication statuses and reasons", "shown screen", "hidden: ${reason}")
+    }
+
+    /// A pending intent is labelled a proposal, never an accepted release.
+    fn proposalNotRelease() = match Publications::render(board(), WebFixtures::publisher()) {
+        Model::Shown { html } => check("web: pending labelled proposal", "proposal label present", html)
+        Model::Hidden { reason } => check("web: pending labelled proposal", "shown screen", "hidden: ${reason}")
+    }
+
+    /// Same leaf name under two organizations: both boards render their own
+    /// package identity.
+    fn sameLeafDistinctBoards() = match Publications::render([WebFixtures::pendingPublication(), WebFixtures::quarantinedPublication()], WebFixtures::publisher()) {
+        Model::Shown { html } => checkAll("web: same leaf distinct boards", [
+            contains(html, "@atlas/util"),
+            contains(html, "@border/util")
+        ])
+        Model::Hidden { reason } => check("web: same leaf distinct boards", "shown screen", "hidden: ${reason}")
+    }
+
+    /// One entry without evidence hides the entire screen with its reason.
+    fn missingEvidenceHidesAll() = match Publications::render(listAppend(board(), [WebFixtures::publicationWithoutEvidence()]), WebFixtures::publisher()) {
+        Model::Shown { html } => check("web: publications hide when evidence unavailable", "hidden screen", "shown")
+        Model::Hidden { reason } => checkAll("web: publications hide when evidence unavailable", [
+            startsWith(reason, "web.evidence-unavailable"),
+            contains(reason, "@atlas/util"),
+            contains(reason, "registry.evidence-pending")
+        ])
+    }
+
+    /// Anonymous visitors get no publication information at all.
+    fn anonymousHidden() = match Publications::render(board(), WebFixtures::anonymous()) {
+        Model::Hidden { reason } => check("web: publications member only", "web.publications.member-only", reason)
+        Model::Shown { html } => check("web: publications member only", "hidden screen", "shown")
+    }
+
+    /// Hostile reasons and actors are escaped.
+    fn hostileStrings() = match Publications::render([WebFixtures::hostilePublication()], WebFixtures::publisher()) {
+        Model::Shown { html } => checkAll("web: hostile publication strings escaped", [
+            contains(html, "&lt;/article&gt;&lt;script&gt;alert(1)&lt;/script&gt;"),
+            !contains(html, "<script>"),
+            contains(html, "Actor: prin-&#39;-(1)")
+        ])
+        Model::Hidden { reason } => check("web: hostile publication strings escaped", "shown screen", "hidden: ${reason}")
+    }
+
+    /// The suite.
+    export fn run() = {
+        test("web: publication statuses and reasons", statusesAndReasons)
+        test("web: pending labelled proposal", proposalNotRelease)
+        test("web: same leaf distinct boards", sameLeafDistinctBoards)
+        test("web: publications hide when evidence unavailable", missingEvidenceHidesAll)
+        test("web: publications member only", anonymousHidden)
+        test("web: hostile publication strings escaped", hostileStrings)
+    }
+}

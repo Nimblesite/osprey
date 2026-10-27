@@ -1,0 +1,75 @@
+// Implements [UI-COMPONENTS-SYMBOLS] and [UI-CONTEXT-PLATFORM]: icons and
+// platforms are typed and host-neutral. Each host maps a symbol to its own
+// icon set (SF Symbols, Codicons, Lucide); applications never name one.
+namespace ui
+
+(** A semantic icon. The wire carries its lowercase name and each host draws it from its own icon set; `NoSymbol` draws nothing. *)
+type Symbol = NoSymbol | Add | Delete | Dismiss | Check | Warning | Info | Question | Search | Settings | Star | Play | Pause | Stop | Refresh | Folder | Document | Package | Inbox | Globe | External | Lock | Shield | Branch | Tag | Clock | Person | Cursor | Chevron
+
+(** The operating system a host runs on, from the start context; a name this framework does not know arrives as `OtherPlatform`. *)
+type Platform =
+    Macos
+    Ios
+    Linux
+    Windows
+    Android
+    Web
+    OtherPlatform
+        platformName : string
+
+(** Wire names for symbols and platforms. *)
+module Symbols
+    (** The protocol name of `symbol`: its lowercase variant name, or empty for `NoSymbol`. *)
+    export name : Symbol -> string
+    name symbol = match symbol
+        NoSymbol => ""
+        Add => "add"
+        Delete => "delete"
+        Dismiss => "dismiss"
+        Check => "check"
+        Warning => "warning"
+        Info => "info"
+        Question => "question"
+        Search => "search"
+        Settings => "settings"
+        Star => "star"
+        Play => "play"
+        Pause => "pause"
+        Stop => "stop"
+        Refresh => "refresh"
+        Folder => "folder"
+        Document => "document"
+        Package => "package"
+        Inbox => "inbox"
+        Globe => "globe"
+        External => "external"
+        Lock => "lock"
+        Shield => "shield"
+        Branch => "branch"
+        Tag => "tag"
+        Clock => "clock"
+        Person => "person"
+        Cursor => "cursor"
+        Chevron => "chevron"
+
+    (** The platform a host named in its start context. *)
+    export platform : string -> Platform
+    platform text = match text
+        "macos" => Macos
+        "ios" => Ios
+        "linux" => Linux
+        "windows" => Windows
+        "android" => Android
+        "web" => Web
+        _ => OtherPlatform(platformName = text)
+
+    (** The protocol name of `platform`. *)
+    export platformText : Platform -> string
+    platformText platform = match platform
+        Macos => "macos"
+        Ios => "ios"
+        Linux => "linux"
+        Windows => "windows"
+        Android => "android"
+        Web => "web"
+        OtherPlatform text => text

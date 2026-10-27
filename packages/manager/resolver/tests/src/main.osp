@@ -1,0 +1,12 @@
+namespace registry_tests;
+import registry::Policy
+import registry_tests::SatTests
+
+/// The resolver suites, kept apart from `packages/manager/tests` until the SAT core
+/// type-checks (plan 0020 Phase 3).
+fn suites() = {
+    SatTests::run()
+    0
+}
+
+fn main() = Policy::guarded(suites)

@@ -9,6 +9,10 @@ Do not edit: rerun the oracle."""
 __all__ = ["PAIRS", "VERDICTS", "SPECIAL", "SPECIAL_VERDICTS"]
 
 PAIRS = [[1.000001, 1.0], [1.001, 1.0], [0.0, 1e-09], [0.0, 1e-07], [-1.0, -1.0000001], [1e+300, 1.0000001e+300], [1e+300, 1.0001e+300], [5e-324, 0.0], [-0.0, 0.0], [100.0, 100.001], [100.0, 100.002], [1e-08, 2e-08], [-3.5, 3.5], [2.0, 1.99998], [2.0, 1.99997]]
+"""Finite (got, want) pairs, as floats."""
 VERDICTS = [True, False, True, False, True, True, False, True, True, True, False, True, False, True, False]
+"""numpy.isclose's verdict for each finite pair."""
 SPECIAL = [["inf", "inf"], ["inf", "-inf"], ["nan", "nan"], ["nan", "1.0"], ["-inf", "-inf"], ["inf", "1e+308"]]
+"""Pairs holding infinities or NaN, each float as its repr text."""
 SPECIAL_VERDICTS = [True, False, True, False, True, False]
+"""numpy.isclose's verdict for each special pair."""

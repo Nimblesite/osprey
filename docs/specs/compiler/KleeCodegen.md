@@ -26,7 +26,7 @@ The entry builds one value per parameter of `<name>` from the parameter's inferr
 | `int` | 64-bit `klee_make_symbolic` |
 | `bool` | `klee_range(0, 2, name)` |
 | `float` | Concrete samples from a fixed set (0, -0, ±1, ±inf, NaN, smallest subnormal), one KLEE run each, because KLEE concretises floating point |
-| `string` | A byte stream ([SYMEX-MOCK-STREAM](../tooling/SymbolicExecution.md#byte-streams-the-one-stateful-model-symex-mock-stream)) turned into an Osprey string |
+| `string` | A byte stream ([SYMEX-MOCK-STREAM](../tooling/SymbolicExecution.md#byte-streams-the-one-stateful-model--symex-mock-stream)) turned into an Osprey string |
 | `List<T>` | `klee_range(0, 5, name)` elements, each built recursively |
 | `Map<K, V>` | `klee_range(0, 5, name)` entries over builders for K and V |
 | Record | Each field built recursively |

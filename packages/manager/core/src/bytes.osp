@@ -1,0 +1,71 @@
+namespace registry;
+
+/// Byte sequences are `List<int>` with every element in 0..255. Osprey strings
+/// end at their first NUL byte, so binary envelopes never travel as strings.
+/// Implements the `u32be`/`u64be`/hex encodings of [PACKAGE-SOURCE-CANONICAL]
+/// and the digest spelling of [PACKAGE-TYPE-INVARIANTS].
+module Bytes {
+    let hexDigits = "0123456789abcdef"
+    let byteRange = 256
+    let wordRange = 4294967296
+    let runWindow = 256
+
+    fn at(s, i) = match byteAt(s, i) {
+        Success { value } => value
+        Error => 0
+    }
+
+    /// The raw bytes of a string, in order. `at` matches instead of using `?:`
+    /// because `?:` inside a million-iteration pipeline crashes the runtime
+    /// today (probe `runtime.default-operator-pipeline` in `packages/manager/blockers`).
+    export fn ofString(s) = range(0, byteLength(s)) |> map(fn(i) => at(s, i)) |> toList
+
+    fn windowEnd(text, i) = if i + runWindow < byteLength(text) { i + runWindow } else { byteLength(text) }
+
+    /// The end of the run of bytes of `text` satisfying `keep` that starts at
+    /// `i`, looking at most 256 bytes ahead. Recursive scanners consume one
+    /// run per call, so a long string costs a stack frame per window rather
+    /// than per byte: Osprey does not guarantee tail calls, and per-byte
+    /// recursion overflows the stack near 6,000 bytes.
+    export fn runEnd(text, i, keep) = fold(range(i, windowEnd(text, i)), i, fn(end, k) =>
+        if end == k && keep(at(text, k)) { k + 1 } else { end })
+
+    /// Four big-endian bytes of a value in 0..2^32-1.
+    export fn u32be(n) = [
+        intDiv(n, 16777216) % byteRange,
+        intDiv(n, 65536) % byteRange,
+        intDiv(n, 256) % byteRange,
+        n % byteRange
+    ]
+
+    /// Eight big-endian bytes of a non-negative value.
+    export fn u64be(n) = listConcat(u32be(intDiv(n, wordRange)), u32be(n % wordRange))
+
+    fn hexDigit(nibble) = substring(hexDigits, nibble, nibble + 1) ?: ""
+
+    /// Two lowercase hex digits of one byte.
+    export fn hexByte(b) = hexDigit(intDiv(b, 16) % 16) + hexDigit(b % 16)
+
+    /// Lowercase hex of a byte sequence.
+    export fn hex(bytes) = join(mapList(bytes, hexByte), "")
+
+    fn hexValue(b) = if b >= 48 && b <= 57 { b - 48 } else if b >= 97 && b <= 102 { b - 87 } else { 0 }
+
+    fn hexPair(hex, i) = hexValue(at(hex, 2 * i)) * 16 + hexValue(at(hex, 2 * i + 1))
+
+    /// The bytes of lowercase hex text; a non-hex digit reads as zero, so
+    /// callers validate untrusted hex first (`Digests::parse`).
+    export fn fromHex(hex) = range(0, intDiv(byteLength(hex), 2)) |> map(fn(i) => hexPair(hex, i)) |> toList
+
+    fn lowerHexDigit(b) = (b >= 48 && b <= 57) || (b >= 97 && b <= 102)
+
+    /// True when every byte of `text` from `from` up to `to` is a lowercase
+    /// hex digit, the spelling of digests and UUIDs ([PACKAGE-TYPE-INVARIANTS]).
+    export fn lowerHexBetween(text, from, to) = fold(range(from, to), true, fn(ok, i) => ok && lowerHexDigit(at(text, i)))
+
+    /// Concatenation of several byte sequences, in order.
+    export fn concatAll(parts) = foldList(parts, [], fn(acc, part) => listConcat(acc, part))
+
+    /// True when every element is a byte.
+    export fn wellFormed(bytes) = foldList(bytes, true, fn(ok, b) => ok && b >= 0 && b < byteRange)
+}

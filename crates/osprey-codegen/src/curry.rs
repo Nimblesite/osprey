@@ -47,7 +47,7 @@ pub(crate) fn try_spine(
     let Some((first, rest)) = groups.split_first() else {
         return Ok(None);
     };
-    crate::expr::with_application(cg, application, |cg| {
+    crate::expr::with_application(cg, &Expr::Identifier(head.to_owned()), application, |cg| {
         crate::genfn::try_inline(cg, head, first.0, first.1, rest)
     })
 }

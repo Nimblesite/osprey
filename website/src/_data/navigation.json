@@ -1,12 +1,14 @@
 {
   "main": [
-    { "text": "Install", "url": "/docs/installation/" },
-    { "text": "Effects", "url": "/docs/effects/" },
-    { "text": "Spec", "url": "/spec/" },
+    { "text": "Start here", "url": "/docs/", "group": "Docs" },
+    { "text": "Tutorials", "url": "/docs/tutorials/", "group": "Docs" },
+    { "text": "Build applications", "url": "/docs/web-apps/", "group": "Docs" },
+    { "text": "Packages", "url": "/docs/package-manager/", "group": "Docs" },
+    { "text": "Language", "url": "/spec/language/", "group": "Docs" },
+    { "text": "Reference", "url": "/docs/stdlib/", "group": "Docs" },
     { "text": "Playground", "url": "/playground/" },
-    { "text": "Docs", "url": "/docs/" },
-    { "text": "Benchmarks", "url": "/benchmarks/" },
     { "text": "Blog", "url": "/blog/" },
+    { "text": "Discord", "url": "https://discord.gg/faH4xjd5zh", "external": true },
     { "text": "GitHub", "url": "https://github.com/Nimblesite/osprey", "external": true }
   ],
   "docs": [
@@ -14,6 +16,7 @@
       "title": "Start here",
       "items": [
         { "text": "Documentation home", "url": "/docs/" },
+        { "text": "Python flavor for AI agents", "url": "/docs/python-flavor-for-ai/" },
         { "text": "Algebraic effects", "url": "/docs/effects/" },
         { "text": "One model, two backends", "url": "/docs/one-model-two-backends/" },
         { "text": "Python flavor", "url": "/docs/python-flavor/" },
@@ -25,33 +28,49 @@
       "title": "Tutorials",
       "items": [
         { "text": "All tutorials", "url": "/docs/tutorials/" },
+        { "text": "CPU profiler", "url": "/docs/tutorials/profiler/" },
         { "text": "Osprey and Swift (video)", "url": "/docs/tutorials/swift-interop/" }
       ]
     },
     {
       "title": "Build applications",
       "items": [
+        { "text": "Osprey Native", "url": "/docs/osprey-native/" },
         { "text": "Web apps", "url": "/docs/web-apps/" },
         { "text": "iOS and Android apps", "url": "/docs/mobile-apps/" },
         { "text": "Mac and iPhone apps", "url": "/docs/mac-and-iphone-apps/" },
+        { "text": "WebAssembly studio", "url": "/wasm/" },
         { "text": "Playground", "url": "/playground/" },
-        { "text": "WebAssembly studio", "url": "/wasm/" }
+        { "text": "Document your modules", "url": "/docs/documentation/" },
+        { "text": "Hunt for bugs", "url": "/docs/hunt/" }
+      ]
+    },
+    {
+      "title": "Packages",
+      "items": [
+        { "text": "Package manager", "url": "/docs/package-manager/" },
+        { "text": "Packages in VS Code", "url": "/docs/packages-in-vscode/" },
+        { "text": "Package specification", "url": "/spec/0029-packagemanagement/" }
       ]
     },
     {
       "title": "Language",
       "items": [
         { "text": "Language specification", "url": "/spec/language/" },
-        { "text": "Feature status", "url": "/status/" },
-        { "text": "Keywords", "url": "/docs/keywords/" }
+        { "text": "Keywords", "url": "/docs/keywords/" },
+        { "text": "Reactive signals", "url": "/docs/reactive-signals/" },
+        { "text": "Feature status", "url": "/status/" }
       ]
     },
     {
       "title": "Reference",
       "items": [
+        { "text": "API overview", "url": "/docs/stdlib/" },
         { "text": "Functions", "url": "/docs/functions/" },
         { "text": "Types", "url": "/docs/types/" },
-        { "text": "Operators", "url": "/docs/operators/" }
+        { "text": "Operators", "url": "/docs/operators/" },
+        { "text": "Benchmarks", "url": "/benchmarks/" },
+        { "text": "Releases", "url": "/docs/releases/" }
       ]
     }
   ],
@@ -71,6 +90,7 @@
         { "text": "Video Tutorials", "url": "/docs/tutorials/" },
         { "text": "Algebraic Effects", "url": "/docs/effects/" },
         { "text": "Python Flavor", "url": "/docs/python-flavor/" },
+        { "text": "Package Manager", "url": "/docs/package-manager/" },
         { "text": "Web Apps Guide", "url": "/docs/web-apps/" },
         { "text": "Mobile Apps Guide", "url": "/docs/mobile-apps/" },
         { "text": "Feature Status", "url": "/status/" },
@@ -81,6 +101,7 @@
       "title": "Community",
       "items": [
         { "text": "Blog", "url": "/blog/" },
+        { "text": "Discord", "url": "https://discord.gg/faH4xjd5zh" },
         { "text": "GitHub", "url": "https://github.com/Nimblesite/osprey" },
         { "text": "Issues", "url": "https://github.com/Nimblesite/osprey/issues" }
       ]

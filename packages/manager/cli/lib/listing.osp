@@ -1,0 +1,41 @@
+namespace registry_cli;
+import registry_cli::Fetch
+import registry::Identity
+import registry::Names
+
+/// The folder registry's one listing, `GET /v1/packages`, as release
+/// identities, and the choices `add` and `update` make over it: the newest
+/// epoch of a key and the newest ordinal inside an epoch
+/// ([PACKAGE-FOLDER-REGISTRY], [PACKAGE-API]).
+module Listing {
+    let unknownCode = "listing.unknown-package"
+    let epochCode = "listing.unknown-epoch"
+
+    // `ReleaseId` shares its fields with other records; issue #273 needs the
+    // receivers spelled out.
+    fn keyOf(id: Identity::ReleaseId) = id.key
+    fn epochOf(id: Identity::ReleaseId) = id.epoch
+    fn ordinalOf(id: Identity::ReleaseId) = id.ordinal
+
+    /// Every release the registry lists, in listing order.
+    export fn fetch(base) = match Fetch::getBody(base, Fetch::packagesListingPath) {
+        Error { message } => Error { message: message }
+        Success { value } => Fetch::parsePackages(value)
+    }
+
+    fn ofKey(listing, key) = filterList(listing, fn(r) => Names::same(keyOf(r), key))
+
+    fn largest(releases, measure) = foldList(releases, 0, fn(best, r) => if measure(r) > best { measure(r) } else { best })
+
+    /// The newest epoch of `key`, or `listing.unknown-package`.
+    export fn newestEpoch(listing, key) = {
+        let releases = ofKey(listing, key)
+        if isEmpty(releases) { Error { message: "${unknownCode} ${Names::display(key)}" } } else { Success { value: largest(releases, epochOf) } }
+    }
+
+    /// The newest ordinal of `key` in `epoch`, or `listing.unknown-epoch`.
+    export fn newestOrdinal(listing, key, epoch) = {
+        let releases = filterList(ofKey(listing, key), fn(r) => epochOf(r) == epoch)
+        if isEmpty(releases) { Error { message: "${epochCode} ${Names::display(key)} e${epoch}" } } else { Success { value: largest(releases, ordinalOf) } }
+    }
+}

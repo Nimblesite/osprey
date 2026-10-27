@@ -1,4 +1,5 @@
 #include "http_shared.h"
+#include "socket_safety.h"
 #include <time.h>
 
 // Standard OpenSSL includes - works on all platforms
@@ -201,7 +202,7 @@ int send_websocket_frame(int socket_fd, const char *payload) {
   // `frame` is unsigned char; Winsock's send() takes `const char *` (POSIX
   // takes `const void *`). Cast at the call site — portable both ways, mirrors
   // the setsockopt/accept/bind casts.
-  return send(socket_fd, (const char *)frame, frame_len, 0);
+  return osp_socket_send(socket_fd, (const char *)frame, frame_len);
 }
 
 // WebSocket frame parsing (shared)

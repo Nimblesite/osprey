@@ -1,0 +1,123 @@
+namespace registry;
+import registry::Toml
+import registry::Maybe
+import registry::ManifestModel
+import registry::ManifestSections
+import registry::ManifestDeps
+
+/// `osprey.toml` to the canonical manifest, or one located reason code.
+/// Parsing, every section rule and the cross-table rules run here; nothing
+/// is parsed by the compiler's Rust project loader on this path.
+/// Implements [PACKAGE-MANIFEST].
+module Manifest {
+    export type Problem = { code: string, line: int, column: int }
+    export type Verdict = Accepted { manifest: ManifestModel::Manifest } | Rejected { problem: Problem }
+
+    let encodedSeparator = " at "
+    let positionSeparator = ":"
+    let topLevelKeys = ["project", "modules", "package", "dependencies", "build-dependencies", "test-dependencies", "system", "assets"]
+
+    fn numberAfter(text, separator, fallback) = match indexOf(text, separator) {
+        Success { value } => parseInt(drop(text, value + 1)) ?: fallback
+        Error => fallback
+    }
+
+    fn numberBefore(text, separator, fallback) = match indexOf(text, separator) {
+        Success { value } => parseInt(take(text, value)) ?: fallback
+        Error => fallback
+    }
+
+    /// Decode `code at line:column`; a message without a position is at 1:1.
+    export fn problemOf(message) = match indexOf(message, encodedSeparator) {
+        Error => Problem { code: message, line: 1, column: 1 }
+        Success { value } => Problem {
+            code: take(message, value),
+            line: numberBefore(drop(message, value + byteLength(encodedSeparator)), positionSeparator, 1),
+            column: numberAfter(drop(message, value + byteLength(encodedSeparator)), positionSeparator, 1)
+        }
+    }
+
+    /// `code at line:column`.
+    export fn describe(problem) = "${problem.code} at ${problem.line}:${problem.column}"
+
+    /// The dependency edges and the root's grants, parsed from the same tables.
+    type Edges = { edges: List<ManifestModel::Edge>, grants: List<ManifestModel::Grant> }
+
+    fn assemble(project: ManifestSections::Project, wildcard, publication, deps: Edges, systems, assets) = ManifestModel::Manifest {
+        projectName: project.name,
+        sourceRoots: project.sourceRoots,
+        defaultNamespace: project.defaultNamespace,
+        entry: project.entry,
+        flavor: project.flavor,
+        allowWildcardImports: wildcard,
+        publication: publication,
+        testRoots: project.testRoots,
+        pythonSources: project.pythonSources,
+        dependencies: deps.edges,
+        grants: deps.grants,
+        systemRequirements: systems,
+        assets: assets
+    }
+
+    fn rejected(message) = Rejected { problem: problemOf(message) }
+
+    /// A published manifest keeps every `python_sources` entry inside one of
+    /// its `source_roots` so the capability scan covers it ([PACKAGE-MANIFEST]).
+    fn rooted(entry, roots) = foldList(roots, false, fn(found, root) => found || startsWith(entry, root + "/"))
+
+    fn anyUnrooted(project) = foldList(project.pythonSources, false, fn(found, entry) => found || !rooted(entry, project.sourceRoots))
+
+    fn publishable(project: ManifestSections::Project, publication, root) = if Maybe::isPresent(publication) && anyUnrooted(project) {
+        rejected("manifest.python-source-unrooted at ${ManifestSections::spanOf(ManifestSections::pairsOf(root), "project", ManifestSections::rootSpan()).line}:1")
+    } else { withDependencies(project, publication, root) }
+
+    fn withDependencies(project, publication, root) = match ManifestDeps::dependencies(root) {
+        Error { message } => rejected(message)
+        Success { value } => withGrants(project, publication, root, value)
+    }
+
+    fn withGrants(project, publication, root, edges) = match ManifestDeps::grants(root) {
+        Error { message } => rejected(message)
+        Success { value } => withSystems(project, publication, root, Edges { edges: edges, grants: value })
+    }
+
+    fn withSystems(project, publication, root, dependencies) = match ManifestDeps::systems(root) {
+        Error { message } => rejected(message)
+        Success { value } => withAssets(project, publication, root, dependencies, value)
+    }
+
+    fn withAssets(project, publication, root, dependencies, systems) = match ManifestDeps::assets(root) {
+        Error { message } => rejected(message)
+        Success { value } => withModules(project, publication, root, dependencies, systems, value)
+    }
+
+    fn withModules(project, publication, root, dependencies, systems, assets) = match ManifestSections::modules(root) {
+        Error { message } => rejected(message)
+        Success { value } => Accepted { manifest: assemble(project, value, publication, dependencies, systems, assets) }
+    }
+
+    fn withPublication(project, root) = match ManifestSections::publication(root) {
+        Error { message } => rejected(message)
+        Success { value } => publishable(project, value, root)
+    }
+
+    fn fromTable(root) = match ManifestSections::unknownKeys(ManifestSections::pairsOf(root), topLevelKeys, "manifest.unknown-table") {
+        Error { message } => rejected(message)
+        Success => match ManifestSections::project(root) {
+            Error { message } => rejected(message)
+            Success { value } => withPublication(value, root)
+        }
+    }
+
+    /// The verdict for one manifest text.
+    export fn parse(text) = match Toml::parse(text) {
+        Error { message } => rejected(message)
+        Success { value } => fromTable(value)
+    }
+
+    /// The manifest of an accepted verdict, for callers that already checked.
+    export fn accepted(verdict) = match verdict {
+        Accepted { manifest } => Success { value: manifest }
+        Rejected { problem } => Error { message: describe(problem) }
+    }
+}

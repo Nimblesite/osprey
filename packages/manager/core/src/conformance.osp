@@ -1,0 +1,27 @@
+namespace registry;
+
+/// The implementation-language gate: every executable source under the
+/// package system is Osprey, and everything else is one of the declarative
+/// inputs the specification names (manifests, JSON fixtures, the typeDiagram
+/// schema, Markdown). Implements [PACKAGE-IMPLEMENTATION-LANGUAGE].
+module Conformance {
+    export type Kind = OspreySource | Declarative | Forbidden
+
+    let ospreyExtensions = [".osp", ".ospml"]
+    // `.lock` is a uv lock (TOML data) in a sample package or an `osprey.lock`
+    // fixture: pins, never executable source ([PACKAGE-PYTHON-UV]).
+    let declarativeExtensions = [".toml", ".json", ".yaml", ".yml", ".tf", ".hcl", ".md", ".td", ".txt", ".sql", ".expectedoutput", ".lock"]
+
+    fn hasAny(path, extensions) = foldList(extensions, false, fn(found, ext) => found || endsWith(path, ext))
+
+    /// What a path under the package system is allowed to be.
+    export fn classify(path) = if hasAny(path, ospreyExtensions) { OspreySource }
+        else if hasAny(path, declarativeExtensions) { Declarative }
+        else { Forbidden }
+
+    /// The paths that violate the gate, in input order.
+    export fn violations(paths) = filterList(paths, fn(path) => match classify(path) {
+        Forbidden => true
+        _ => false
+    })
+}

@@ -2,6 +2,16 @@
 
 use osprey_ast::{Expr, InterpolatedPart};
 
+/// [MODULES-INIT]: a declared function reference executes no initializer.
+pub(crate) fn is_function_reference(expression: &Expr, graph: &crate::model::ProjectGraph) -> bool {
+    let Expr::Identifier(name) = expression else {
+        return false;
+    };
+    graph.declarations.iter().any(|(key, declaration)| {
+        declaration.kind == crate::model::DeclKind::Function && key.mangled() == name.as_str()
+    })
+}
+
 pub(crate) fn is_pure(expression: &Expr) -> bool {
     match expression {
         Expr::Integer(_) | Expr::Float(_) | Expr::Str(_) | Expr::Bool(_) => true,

@@ -440,9 +440,6 @@ mod tests {
     #[test]
     fn an_unrecognised_mode_is_an_error_not_a_fallback() {
         let message = parsed(Some("nope")).err().unwrap_or_default();
-        assert!(
-            message.contains("OSPREY_GPU_KERNELS=nope"),
-            "unexpected message: {message}"
-        );
+        crate::testkit::shows(&message, &["OSPREY_GPU_KERNELS=nope"]);
     }
 }

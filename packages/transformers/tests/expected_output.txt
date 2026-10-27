@@ -388,5 +388,9 @@ ok stopped_any[2]
 ok stopped_any[3]
 ok stopped_any[4]
 ok stopped_any[5]
+ok min_i
+ok max_i
+ok min_f
+ok max_f
 ok generate
-391 passed, 0 failed
+395 passed, 0 failed

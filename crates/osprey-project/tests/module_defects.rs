@@ -10,13 +10,13 @@ use osprey_ast::Stmt;
 use osprey_project::{assemble, SourceFile};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 use std::path::PathBuf;
-use support::config;
+use support::{config, contains, error_messages};
 
 #[test]
 fn imported_record_calls_use_declaration_identity_instead_of_capitalization(
 ) -> Result<(), Vec<osprey_project::ProjectError>> {
-    let library = support::parsed("values.osp", Flavor::Default, "namespace ledger;\nmodule Values { export type Box<T> = { amount: T }\nexport fn Upper(work) = work() }\n");
-    let main = support::parsed("main.py", Flavor::Python, "# osprey: namespace=app\nfrom ledger import Values as V\nfrom ledger.Values import Box, Upper\ndef main():\n    one = V.Box[int](amount=41)\n    two = Box(amount=\"two\")\n    print(f\"{one.amount}:{two.amount}:{Upper(lambda: 42)}\")\n");
+    let library = support::parsed("values.osp", Flavor::Default, "namespace ledger;\nmodule Values { export type Box<T> = { amount: T }\nexport type Token = Ready\nexport fn Upper(work) = work()\nexport fn Empty() = 42 }\n");
+    let main = support::parsed("main.py", Flavor::Python, "# osprey: namespace=app\nfrom ledger import Values as V\nfrom ledger.Values import Box, Upper\ndef main():\n    token = V.Ready()\n    one = V.Box[int](amount=41)\n    two = Box(amount=\"two\")\n    print(f\"{one.amount}:{two.amount}:{Upper(lambda: 42)}:{V.Empty()}\")\n");
     let project = assemble(&config("main.py"), &[main, library])?;
     let errors = osprey_types::check_program(&project.program);
     assert!(errors.is_empty(), "{errors:?}");
@@ -230,4 +230,242 @@ fn alias_expansion_preserves_separate_written_annotation_sites() -> Result<(), S
         assert_eq!(lines, expected_lines, "{flavor:?}: {sites:?}");
     }
     Ok(())
+}
+
+fn parent_python_entry_fixture() -> std::io::Result<(PathBuf, PathBuf)> {
+    let root =
+        std::env::temp_dir().join(format!("osprey_parent_python_entry_{}", std::process::id()));
+    let project = root.join(".osprey/build");
+    std::fs::create_dir_all(&project)?;
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::create_dir_all(root.join("lib"))?;
+    std::fs::write(
+        root.join("src/main.py"),
+        "# osprey: flavor=python\ndef main():\n    return print(\"parent entry\")\n",
+    )?;
+    std::fs::write(root.join("lib/main.py"), "# osprey: flavor=python\n# osprey: namespace=app\n# osprey: module=Values\n__all__ = [\"answer\"]\ndef answer():\n    return 7\n")?;
+    std::fs::write(project.join("osprey.toml"), "[project]\nsource_roots = [\"../../src\", \"../../lib\"]\npython_sources = [\"../../src/main.py\", \"../../lib/main.py\"]\ndefault_namespace = \"app\"\nentry = \"../../src/main.py\"\n")?;
+    Ok((root, project))
+}
+
+#[test]
+fn python_entry_is_resolved_relative_to_a_derived_manifest() -> std::io::Result<()> {
+    let (root, project) = parent_python_entry_fixture()?;
+    let loaded = osprey_project::load_and_assemble(&project);
+    let expected = root.join("src/main.py").canonicalize()?;
+    std::fs::remove_dir_all(root)?;
+    assert!(loaded.is_ok(), "{loaded:#?}");
+    assert_eq!(
+        loaded.ok().and_then(|p| p.entry().map(|e| e.path.clone())),
+        Some(expected)
+    );
+    Ok(())
+}
+
+const STATE_READ_EXPRESSIONS: [&str; 26] = [
+    "[count]",
+    "{ value: count }",
+    "{ \"key\": count }",
+    "\"${count}\"",
+    "count[0]",
+    "count.value",
+    "-count",
+    "count + 1",
+    "length(count)",
+    "count |> abs",
+    "match true { true => count false => 0 }",
+    "await(count)",
+    "recv(count)",
+    "send(count, 0)",
+    "send(0, count)",
+    "yield count",
+    "resume(count)",
+    "select { _ => count }",
+    "mask CounterFx { count }",
+    "perform CounterFx.next(count)",
+    "length(text: count)",
+    "count.method(value: 0)",
+    "{ mut local = 0\n local = count\n local }",
+    "handler CounterFx { next => 0 return value => count }",
+    "handler CounterFx { next => 0 finally => count }",
+    "count { value: 0 }",
+];
+
+#[test]
+fn nested_expression_shapes_cannot_hide_state_reads() {
+    for expression in STATE_READ_EXPRESSIONS {
+        let source = state_source(expression);
+        let messages = error_messages(&config("state.osp"), &[source]);
+        assert!(
+            contains(&messages, "only accessible inside"),
+            "{expression}: {messages:?}"
+        );
+    }
+}
+
+#[test]
+fn nested_expression_shapes_allow_a_shadowing_local_binding() {
+    for expression in STATE_READ_EXPRESSIONS {
+        let source = state_source(&format!("{{ let count = 0\n {expression} }}"));
+        let result = assemble(&config("state.osp"), &[source]);
+        assert!(result.is_ok(), "{expression}: {result:?}");
+    }
+}
+
+#[test]
+fn immutable_module_values_cannot_capture_owned_cells() {
+    let original = state_source("0");
+    let source = support::parsed(
+        "state.osp",
+        Flavor::Default,
+        &original
+            .source
+            .replace("fn inspect() = 0", "let snapshot = count"),
+    );
+    let messages = error_messages(&config("state.osp"), &[source]);
+    assert!(
+        contains(&messages, "only accessible inside"),
+        "{messages:?}"
+    );
+}
+
+const SHADOWED_STATE_EXPRESSIONS: [&str; 6] = [
+    "{ let count = 7\n count }",
+    "(fn(count) => count)(7)",
+    "match 7 { count => count }",
+    "match [7] { [count, ...rest] => count _ => 0 }",
+    "match { count: 7 } { { count } => count }",
+    "match Pick(7) { Pick(count) => count Other => 0 }",
+];
+
+#[test]
+fn local_bindings_shadow_cells_without_authorizing_later_reads() {
+    for expression in SHADOWED_STATE_EXPRESSIONS {
+        let source = state_source(expression);
+        let result = assemble(&config("state.osp"), &[source]);
+        assert!(result.is_ok(), "{expression}: {result:?}");
+        let escaped = state_source(&format!("{{ let local = {expression}\n count }}"));
+        let messages = error_messages(&config("state.osp"), &[escaped]);
+        assert!(
+            contains(&messages, "only accessible inside"),
+            "{expression}: {messages:?}"
+        );
+    }
+}
+
+fn state_source(expression: &str) -> SourceFile {
+    support::parsed("state.osp", Flavor::Default, &format!(
+        "namespace app;\ntype Choice = Pick(int) | Other\nstate module Counter {{\n mut count = 0\n export effect CounterFx {{ next: fn() -> int }}\n fn inspect() = {expression}\n export fn run(body) = {{\n handle CounterFx {{ next => count }}\n body()\n }}\n}}\n"
+    ))
+}
+
+const SIGNATURE_REJECTIONS: &[(&str, &str)] = &[
+    ("signature S { let value: int }\nmodule M : S { let value: string = \"wrong\" }", "value `value` type does not match"),
+    ("signature S { fn f(x: int, y: int) -> int }\nmodule M : S { fn f(x) = x }", "parameter count does not match"),
+    ("signature S { fn f<T>(x: T) -> T }\nmodule M : S { fn f<T, U>(x: T) -> T = x }", "function `f` generic arity"),
+    ("signature S { fn f() -> int }\nmodule M : S { fn f() -> string = \"wrong\" }", "return type does not match"),
+    ("signature S { fn f(x: int) -> int }\nmodule M : S { extern fn f(x: string) -> int }", "parameter types do not match"),
+    ("signature S { fn f(x: int) -> int }\nmodule M : S { extern fn f(x: int) -> string }", "return type does not match"),
+    ("signature S { type Box<T> }\nmodule M : S { type Box<T, U> = { value: T } }", "type `Box` generic arity"),
+    ("signature S { type Value = int }\nmodule M : S { type Value = string }", "manifest type `Value` does not match"),
+    ("signature S { type Value = int }\nmodule M : S { type Value = Ready }", "manifest type `Value` does not match"),
+    ("module M : Missing { fn f() = 0 }", "unknown signature `Missing`"),
+    ("signature S { fn f() -> int }\nmodule M : S { let f = 0 }", "wrong declaration kind"),
+    ("signature Inner { fn f() -> int }\nsignature Outer { module Child : Inner }\nmodule M : Outer { module Child { fn f() = 0 } }", "nested module `Child` does not match"),
+    ("effect E { ping: fn() -> int }\nsignature S { fn f() -> int ![] }\nmodule M : S { fn f() -> int ![E] = perform E.ping() }", "effect row does not match"),
+    ("signature S { fn f() -> int ![|e] }\nmodule M : S { fn f() -> int ![] = 0 }", "effect row does not match"),
+];
+
+#[test]
+fn signature_shapes_reject_explicitly_incompatible_declarations() {
+    for (body, expected) in SIGNATURE_REJECTIONS {
+        let source = support::parsed(
+            "main.osp",
+            Flavor::Default,
+            &format!("namespace app;\n{body}\n"),
+        );
+        let messages = error_messages(&config("main.osp"), &[source]);
+        assert!(contains(&messages, expected), "{body}: {messages:?}");
+    }
+}
+
+const SIGNATURE_ACCEPTED: &[&str] = &[
+    "signature S { let value: int }\nmodule M : S { let value: int = 7 }",
+    "signature S { fn f(x: int) -> int }\nmodule M : S { extern fn f(x: int) -> int }",
+    "signature S { fn f<T>(x: T) -> T }\nmodule M : S { fn f<U>(x: U) -> U = x }",
+    "signature S { type Box<T> = List<T> }\nmodule M : S { type Box<U> = List<U> }",
+    "signature Inner { fn f() -> int }\nsignature Outer { module Child : Inner }\nmodule M : Outer { module Child : Inner { fn f() = 0 } }",
+    "module Wrapper { signature S { fn f() -> int }\n export module M : S { fn f() = 0 } }",
+    "effect E<T> { ping: fn(T) -> int }\nsignature S { fn f() -> int ![E<int>] }\nmodule M : S { fn f() -> int ![E<int>] = 0 }",
+];
+
+#[test]
+fn signature_compatible_controls_assemble_and_typecheck() {
+    for body in SIGNATURE_ACCEPTED {
+        let source = support::parsed(
+            "main.osp",
+            Flavor::Default,
+            &format!("namespace app;\n{body}\nfn main() = 0\n"),
+        );
+        let project = assemble(&config("main.osp"), &[source]).expect(body);
+        let errors = osprey_types::check_program(&project.program);
+        assert!(errors.is_empty(), "{body}: {errors:?}");
+    }
+}
+
+const MODULE_BOUNDARY_REJECTIONS: &[(&str, &str)] = &[
+    ("fn main(value) = value", "project entry function `main` cannot have parameters"),
+    ("module A { export extern fn shared(x: int) -> int }\nmodule B { export extern fn shared(x: int) -> int }\nfn main() = 0", "external symbol `shared` is declared by multiple modules"),
+    ("module M { export fn value() = 0 }\nlet held = M\nfn main() = 0", "is not a value"),
+    ("let session = input()\nfn read() = session\nfn main() = 0", "cannot be captured by a project declaration"),
+    ("let NotType = 0\nfn bad(value: NotType) = value\nfn main() = 0", "does not name a type"),
+    ("let NotEffect = 0\nfn bad() ![NotEffect] = 0\nfn main() = 0", "does not name an effect"),
+];
+
+#[test]
+fn module_boundaries_preserve_entry_and_symbol_kinds() {
+    for (body, expected) in MODULE_BOUNDARY_REJECTIONS {
+        let source = support::parsed(
+            "main.osp",
+            Flavor::Default,
+            &format!("namespace app;\n{body}\n"),
+        );
+        let messages = error_messages(&config("main.osp"), &[source]);
+        assert!(contains(&messages, expected), "{body}: {messages:?}");
+    }
+}
+
+fn imported_record_sources(call: &str) -> [SourceFile; 2] {
+    [
+        support::parsed(
+            "main.osp",
+            Flavor::Default,
+            &format!("namespace app;\nimport shared::Data::{{Point}}\nfn main() = {call}\n"),
+        ),
+        support::parsed(
+            "data.osp",
+            Flavor::Default,
+            "namespace shared;\nmodule Data { export type Point<T> = { value: T } }\n",
+        ),
+    ]
+}
+
+#[test]
+fn imported_record_constructors_reject_positional_fields() {
+    for call in ["Point(7)", "Point<int>(7)"] {
+        let messages = error_messages(&config("main.osp"), &imported_record_sources(call));
+        assert!(
+            contains(&messages, "record construction requires named fields"),
+            "{call}: {messages:?}"
+        );
+    }
+}
+
+#[test]
+fn imported_record_constructors_accept_named_fields_and_type_arguments() {
+    for call in ["Point(value: 7)", "Point<int>(value: 7)"] {
+        let project = assemble(&config("main.osp"), &imported_record_sources(call)).expect(call);
+        let errors = osprey_types::check_program(&project.program);
+        assert!(errors.is_empty(), "{call}: {errors:?}");
+    }
 }

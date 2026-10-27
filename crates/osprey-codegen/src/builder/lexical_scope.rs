@@ -98,11 +98,11 @@ impl Codegen {
     pub(crate) fn with_caller_types<T>(&mut self, emit: impl FnOnce(&mut Self) -> T) -> T {
         let original = self
             .application_caller
-            .clone()
+            .take()
             .map(|caller| std::mem::replace(&mut self.prog, caller));
         let result = emit(self);
         if let Some(original) = original {
-            self.prog = original;
+            self.application_caller = Some(std::mem::replace(&mut self.prog, original));
         }
         result
     }

@@ -9,6 +9,7 @@ float in it written as its repr string ("inf", "-inf", "nan", "1.5"); its type i
 list of strings throughout, and the suite decodes each with `testing.Check.float_of`.
 """
 import math
+import json
 import pathlib
 import platform
 
@@ -33,17 +34,20 @@ def literal(value, floats_as_text=False):
     if isinstance(value, int):
         return str(value)
     if isinstance(value, str):
-        return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+        return json.dumps(value, ensure_ascii=False)
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(literal(v, floats_as_text) for v in value) + "]"
     raise TypeError(f"no Python-flavor literal for {type(value).__name__}")
 
 
-def write(package, summary, versions, constants):
+def write(package, summary, versions, constants, docs=None):
     """Write packages/<package>/tests/expected.py holding `constants` (name -> value).
 
     `versions` maps each oracle package name to its version string, recorded with the
     CPython version in the module docstring so a regenerated module states its source.
+    `docs` maps a constant's name to its one-line documentation; every constant is an
+    exported value and gets a PEP 257 attribute docstring, the given one or a default
+    naming the oracle, so the flavor's undocumented-export warning never fires.
     """
     provenance = ", ".join(f"{name} {version}" for name, version in sorted(versions.items()))
     lines = [
@@ -58,7 +62,9 @@ def write(package, summary, versions, constants):
         "__all__ = [" + ", ".join(f'"{name}"' for name in constants) + "]",
         "",
     ]
-    lines += [f"{name} = {literal(value, non_finite(value))}" for name, value in constants.items()]
+    for name, value in constants.items():
+        doc = (docs or {}).get(name, f"Oracle value `{name}`, computed by scripts/oracles/{package}.py.")
+        lines += [f"{name} = {literal(value, non_finite(value))}", f'"""{doc}"""']
     target = ROOT / "packages" / package / "tests" / "expected.py"
     target.write_text("\n".join(lines) + "\n")
     return target

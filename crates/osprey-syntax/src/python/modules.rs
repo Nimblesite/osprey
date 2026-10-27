@@ -2,7 +2,7 @@
 //! Implements [FLAVOR-PYTHON-INTEROP], [FLAVOR-PYTHON-SELECT].
 use super::context::{children, position, Lowerer, Result};
 use osprey_ast::{
-    DocScope, Expr, ImportDecl, ImportMember, ImportSelection, ImportTarget, ModuleItem,
+    stmt_meta, DocScope, Expr, ImportDecl, ImportMember, ImportSelection, ImportTarget, ModuleItem,
     ModuleKind, NamespaceName, Position, Program, Stmt, SymbolPath, Visibility,
 };
 use std::collections::BTreeMap;
@@ -67,7 +67,7 @@ impl Lowerer<'_> {
     fn check_export_names(&self, statements: &[Stmt]) -> Result<()> {
         let names = statements
             .iter()
-            .filter_map(declared_name)
+            .filter_map(stmt_meta::declaration_name)
             .collect::<std::collections::BTreeSet<_>>();
         for (name, position) in &self.exports {
             if !names.contains(name.as_str()) {
@@ -82,7 +82,7 @@ impl Lowerer<'_> {
 
     fn module_item(&self, statement: Stmt) -> ModuleItem {
         ModuleItem {
-            visibility: if declared_name(&statement)
+            visibility: if stmt_meta::declaration_name(&statement)
                 .is_some_and(|name| self.exports.contains_key(name))
             {
                 Visibility::Exported
@@ -208,17 +208,6 @@ impl Lowerer<'_> {
             return self.unsupported(node);
         }
         Ok(text.split('.').map(str::to_owned).collect())
-    }
-}
-
-fn declared_name(statement: &Stmt) -> Option<&str> {
-    match statement {
-        Stmt::Let { name, .. }
-        | Stmt::Function { name, .. }
-        | Stmt::Extern { name, .. }
-        | Stmt::Type { name, .. }
-        | Stmt::Effect { name, .. } => Some(name),
-        _ => None,
     }
 }
 

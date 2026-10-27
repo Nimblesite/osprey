@@ -28,7 +28,8 @@ pub(crate) fn make_result(
     errmsg: &str,
 ) -> Result<Value> {
     let value = coerce_to(cg, value, inner)?;
-    let obj = cg.malloc_struct(RESULT_STRUCT, result_meta(inner));
+    let meta = result_meta(cg, inner);
+    let obj = cg.malloc_struct(RESULT_STRUCT, meta);
     store_payload(cg, &obj, &value);
     store_status(cg, &obj, disc, errmsg);
     let mut out = Value::result(obj, inner).with_payload_owner(value.osp_ty);
@@ -37,14 +38,16 @@ pub(crate) fn make_result(
     Ok(out)
 }
 
-fn result_meta(inner: LType) -> i64 {
+fn result_meta(cg: &Codegen, inner: LType) -> i64 {
     use crate::meta::MetaField;
+    // The payload is a physical `i64` on every target even when it carries a
+    // managed pointer, so it is a `ManagedWord`, not a pointer-size slot.
     let payload = if inner.is_managed_ptr() {
-        MetaField::PtrManaged
+        MetaField::ManagedWord
     } else {
         MetaField::Word
     };
-    crate::meta::struct_meta(&[payload, MetaField::Byte, MetaField::PtrManaged])
+    cg.struct_meta(&[payload, MetaField::Byte, MetaField::PtrManaged])
 }
 
 fn store_status(cg: &mut Codegen, object: &str, disc: &str, errmsg: &str) {
@@ -149,15 +152,22 @@ pub(crate) fn result_from_i64(
     msg: Option<&str>,
     reason: Option<&str>,
 ) -> Result<Value> {
-    let err = cg.emit_reg(format!("icmp slt i64 {result}, 0"));
-    make_result_if_err_because(
-        cg,
-        Value::new(result, LType::I64),
-        LType::I64,
-        &err,
-        msg,
-        reason,
-    )
+    let failed = format!("icmp slt i64 {result}, 0");
+    result_unless(cg, result, LType::I64, &failed, msg, reason)
+}
+
+/// A `Result` over the C word `operand` of type `ty`: Error when the IR
+/// predicate `failed` holds, carrying `msg` unless the runtime's `reason` wins.
+fn result_unless(
+    cg: &mut Codegen,
+    operand: &str,
+    ty: LType,
+    failed: &str,
+    msg: Option<&str>,
+    reason: Option<&str>,
+) -> Result<Value> {
+    let err = cg.emit_reg(failed);
+    make_result_if_err_because(cg, Value::new(operand, ty), ty, &err, msg, reason)
 }
 
 /// `Result<string, _>` from a possibly-NULL C `char*` (`ptr` an `i8*` operand):
@@ -172,15 +182,8 @@ pub(crate) fn result_from_nullable(
     err: Option<&str>,
     reason: Option<&str>,
 ) -> Result<Value> {
-    let is_null = cg.emit_reg(format!("icmp eq i8* {ptr}, null"));
-    make_result_if_err_because(
-        cg,
-        Value::new(ptr, LType::Str),
-        LType::Str,
-        &is_null,
-        err,
-        reason,
-    )
+    let failed = format!("icmp eq i8* {ptr}, null");
+    result_unless(cg, ptr, LType::Str, &failed, err, reason)
 }
 
 /// Branch on a Result's discriminant: load it, test `== 0` (Success), and emit

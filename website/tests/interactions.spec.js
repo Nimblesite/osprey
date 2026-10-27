@@ -1,7 +1,5 @@
-// User-interaction tests with explicit assertions: navigation, the hero,
-// the mobile menu drawer, and the prose Table-of-Contents.
 const { test, expect } = require("@playwright/test");
-const { paintedColours } = require("./helpers");
+const { paintedColours, VIEWPORTS } = require("./helpers");
 const { mkdir, readFile, writeFile } = require("node:fs/promises");
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");
@@ -13,15 +11,18 @@ async function executeExample(source, file) {
 }
 
 async function verifyDraftExample(source, file) {
-  expect(await executeExample(source, file)).toBe("Saved / Retry: offline\n");
+  expect(await executeExample(source, file)).toBe("Saved\n");
   expect(await readFile(path.join(path.dirname(file), "draft.txt"), "utf8")).toBe("Ship it.");
-  const offline = source.replace('print("${disk(saveDraft)} / ${offline(saveDraft)}")', 'print(offline(saveDraft))')
-    .replace('print "${disk saveDraft} / ${offline saveDraft}"', 'print (offline saveDraft)')
-    .replace('print(f"{disk(saveDraft)} / {offline(saveDraft)}")', 'print(offline(saveDraft))');
+  const offline = source.replace('writeFile(path, text)', source.startsWith('# osprey:') ? 'Error(message="offline")' : 'Error { message: "offline" }')
+    .replace('writeFile path text', 'Error(message = "offline")');
   const isolated = path.join(path.dirname(file), "offline", path.basename(file));
   expect(offline).not.toBe(source);
   expect(await executeExample(offline, isolated)).toBe("Retry: offline\n");
   await expect(readFile(path.join(path.dirname(isolated), "draft.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+  const unhandled = source.replace('disk(onSave)', 'onSave()').replace('disk onSave', 'onSave ()');
+  expect(unhandled).not.toBe(source);
+  expect(await exampleResult(unhandled, path.join(path.dirname(file), "unhandled", path.basename(file))))
+    .toContain("unhandled effect operations at program entry: Drafts.save");
 }
 
 // stdout of a program that runs, or the compiler's diagnostic for one it rejects.
@@ -33,7 +34,61 @@ async function exampleResult(source, file) {
   }
 }
 
+async function heroBounds(page) {
+  return page.evaluate(() => ({ scrollY, boxes:
+    [".hero", ".hero-title", ".hero-code .flight-code", ".hero-code-caption", ".hero-footnote", ".effect-story"].map(selector => {
+      const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
+      return { x, y, width, height };
+    }) }));
+}
+
+async function scrollSource(source) {
+  await source.hover({ position: { x: 20, y: 20 } });
+  await source.page().mouse.wheel(0, 200);
+  await expect.poll(() => source.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+}
+
+async function openInstallation(page) {
+  const action = page.locator(".hero-actions").getByRole("link", { name: "Install Osprey", exact: true });
+  await action.click();
+  await expect(page).toHaveURL(/\/#install$/);
+  await expect(page.locator("#install .section-title")).toBeInViewport();
+}
+
 test.describe("homepage flight and source examples", () => {
+  for (const viewport of VIEWPORTS) {
+    test(`homepage keeps a fixed code box when switching flavors @ ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.goto("/");
+      await page.evaluate(() => document.fonts.ready);
+      await page.locator(".flavor-controls").scrollIntoViewIfNeeded();
+      const initial = await heroBounds(page);
+      for (const flavor of ["ml", "python", "default"]) {
+        await page.locator(`.flavor-controls [data-flavor="${flavor}"]`).click();
+        const source = page.locator(`#example-${flavor}`);
+        await expect(source).toBeVisible();
+        expect(await heroBounds(page)).toEqual(initial);
+        expect(await source.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(2);
+        if (flavor === "python") await scrollSource(source);
+        expect(await heroBounds(page)).toEqual(initial);
+      }
+    });
+  }
+  test("homepage opens in Default flavor with inactive examples out of the layout", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator('.flavor-controls [aria-pressed="true"]')).toHaveText("Default");
+    await expect(page.locator("#source-extension")).toHaveText(".osp");
+    await expect(page.locator("#example-default")).toBeVisible();
+    for (const flavor of ["ml", "python"]) {
+      const source = page.locator(`#example-${flavor}`);
+      await expect(source).toBeHidden();
+      expect(await source.evaluate(element => element.getBoundingClientRect().height)).toBe(0);
+    }
+    await page.reload();
+    await expect(page.locator('.flavor-controls [aria-pressed="true"]')).toHaveText("Default");
+  });
+
   test("all three flavor examples execute with the displayed output", async ({ page }, testInfo) => {
     await page.goto("/");
     for (const [flavor, extension] of [["default", "osp"], ["ml", "ospml"], ["python", "py"]]) {
@@ -47,14 +102,14 @@ test.describe("homepage flight and source examples", () => {
         const readme = await readFile(path.resolve("../README.md"), "utf8");
         expect(readme.match(/```osprey\n([\s\S]*?)\n```/)[1]).toBe(text);
       }
-      expect(`${await page.locator(".hero .code-result samp").textContent()}\n`).toBe("Saved / Retry: offline\n");
+      expect(`${await page.locator(".hero .code-result samp").textContent()}\n`).toBe("Saved\n");
     }
   });
 
   test("the effects guide preserves runnable authored examples in both flavors", async ({ page }, testInfo) => {
     await page.goto("/docs/effects/");
     const blocks = page.locator('pre > code.language-osprey, pre > code.language-osprey-ml');
-    const outputs = ["Saved / Retry: offline\n", "Saved / Retry: offline\n", "Retry: offline\n", "Saved: Ship it.\n", "30\n", "Submitted / Cancelled\n", "Report: Saved\n"];
+    const outputs = ["Saved\n", "Saved\n", "Retry: offline\n", "Saved: Ship it.\n", "30\n", "Submitted / Cancelled\n", "Report: Saved\n"];
     await expect(blocks).toHaveCount(outputs.length);
     for (let i = 0; i < outputs.length; i++) {
       const block = blocks.nth(i);
@@ -87,22 +142,18 @@ test.describe("homepage flight and source examples", () => {
     }
   });
 
-  test("motion plays, pauses on demand and stays paused after scrolling", async ({ page }) => {
+  test("motion starts automatically without a button and resumes when visible", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/");
     const video = page.locator("#flight-video");
+    await expect(page.locator("#motion-toggle")).toHaveCount(0);
     await expect(video).toHaveAttribute("autoplay", "");
     await expect.poll(() => video.evaluate((el) => el.currentTime)).toBeGreaterThan(2);
     expect(await video.evaluate((el) => el.getVideoPlaybackQuality().totalVideoFrames)).toBeGreaterThan(15);
-    await page.getByRole("button", { name: "Pause motion", exact: true }).click();
-    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
     await page.locator(".home-install").scrollIntoViewIfNeeded();
+    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
     await page.locator(".hero-title").scrollIntoViewIfNeeded();
-    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
-    await page.getByRole("button", { name: "Play motion", exact: true }).click();
     await expect.poll(() => video.evaluate((el) => el.paused)).toBe(false);
-    await page.locator(".home-install").scrollIntoViewIfNeeded();
-    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
   });
 
   test("reduced motion loads the poster without fetching the film", async ({ page }) => {
@@ -110,7 +161,7 @@ test.describe("homepage flight and source examples", () => {
     const requests = [];
     page.on("request", (request) => { if (/osprey-flight\.(webm|mp4)$/.test(request.url())) requests.push(request.url()); });
     await page.goto("/", { waitUntil: "networkidle" });
-    await expect(page.getByRole("button", { name: "Play motion", exact: true })).toBeVisible();
+    await expect(page.locator("#motion-toggle")).toHaveCount(0);
     expect(requests).toEqual([]);
     expect(await page.locator("#flight-video").evaluate((el) => el.paused)).toBe(true);
     await expect(page.locator("#flight-video")).toHaveAttribute("poster", /osprey-flight\.png$/);
@@ -123,21 +174,74 @@ test.describe("homepage flight and source examples", () => {
     await expect(page.locator(".hero-title")).toBeVisible();
     await expect(page.locator("#example-default")).toContainText("handler Drafts");
     await expect(page.locator("#motion-toggle")).toBeHidden();
-    await page.getByRole("link", { name: "Explore effects" }).click();
-    await expect(page).toHaveURL(/\/docs\/effects\/$/);
+    await openInstallation(page);
+    await page.locator("#install").getByRole("link", { name: "Getting started guide" }).click();
+    await expect(page).toHaveURL(/\/docs\/installation\/$/);
     await context.close();
   });
 });
+
+for (const width of [1440, 390]) {
+  test(`navigation separates documentation from destinations at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/docs/");
+    if (width < 900) await page.locator("#mobile-menu-toggle").click();
+    const nav = page.locator("#site-navigation");
+    await expect(nav.locator("summary", { hasText: "Tools" })).toHaveCount(0);
+    for (const [label, url] of [["Playground", "/playground/"], ["Blog", "/blog/"], ["Discord", "https://discord.gg/faH4xjd5zh"]]) {
+      const link = nav.locator(":scope > li > a", { hasText: label });
+      await expect(link).toBeVisible();
+      await expect(link).toHaveAttribute("href", url);
+    }
+    await expect(nav.locator(":scope > li > a", { hasText: "Benchmarks" })).toHaveCount(0);
+    await nav.locator("summary", { hasText: "Docs" }).click();
+    await nav.getByRole("link", { name: "Packages", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/package-manager\/$/);
+  });
+}
 
 test.describe("desktop interactions", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   test("nav links navigate to the right pages", async ({ page }) => {
     await page.goto("/");
-    await page.locator(".nav-link", { hasText: "Spec" }).click();
-    await expect(page).toHaveURL(/\/spec\/$/);
-    await page.locator(".nav-link", { hasText: "Docs" }).click();
+    await expect(page.locator("#site-navigation > li")).toHaveCount(5);
+    await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
+    await page.locator(".nav-submenu").getByRole("link", { name: "Language", exact: true }).click();
+    await expect(page).toHaveURL(/\/spec\/language\/$/);
+    await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
+    await page.locator(".nav-submenu").getByRole("link", { name: "Start here", exact: true }).click();
     await expect(page).toHaveURL(/\/docs\/$/);
+  });
+
+  test("Docs submenu supports keyboard and outside-click dismissal", async ({ page }) => {
+    await page.goto("/");
+    const docs = page.locator(".nav-group");
+    const summary = docs.locator("summary");
+    await expect(docs).toHaveCount(1);
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    await expect(docs.getByRole("link").first()).toBeVisible();
+    // The open menu overlays the title's centre; click its corner, outside the menu.
+    await page.locator(".hero-title").click({ position: { x: 8, y: 8 } });
+    await expect(docs).not.toHaveAttribute("open", "");
+    await summary.click();
+    await page.keyboard.press("Escape");
+    await expect(docs).not.toHaveAttribute("open", "");
+    await expect(summary).toBeFocused();
+  });
+
+  test("header submenus remain usable without JavaScript", async ({ browser }) => {
+    for (const width of [1440, 390]) {
+      const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width, height: 900 } });
+      const page = await context.newPage();
+      await page.goto("/");
+      const nav = page.locator("#site-navigation");
+      await nav.locator("summary", { hasText: "Docs" }).click();
+      await nav.getByRole("link", { name: "Tutorials", exact: true }).click();
+      await expect(page).toHaveURL(/\/docs\/tutorials\/$/);
+      await context.close();
+    }
   });
 
   test("logo returns to home", async ({ page }) => {
@@ -157,17 +261,32 @@ test.describe("desktop interactions", () => {
     expect(heroH).toBeGreaterThanOrEqual(winH - 70);
     // The next section must start below the fold.
     const nextTop = await page.evaluate(
-      () => document.querySelector(".blue-box-installation").getBoundingClientRect().top
+      () => document.querySelector("#showcase").getBoundingClientRect().top
     );
     expect(nextTop).toBeGreaterThanOrEqual(winH - 5);
   });
 
   test("hero has a title and two working CTAs", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator(".hero-title")).toContainText("Osprey");
+    await expect(page.locator(".hero-title")).toContainText("Safe, elegant, fast.");
+    await expect(page.locator(".hero-title")).not.toContainText("Logic");
     await expect(page.locator(".hero-actions .btn")).toHaveCount(2);
+    await expect(page.locator(".home > section").nth(1)).toHaveId("showcase");
+    await expect(page.locator(".home > section").nth(2)).toHaveClass(/home-install/);
+    await openInstallation(page);
+    await page.goto("/");
     await page.locator(".hero-actions .btn", { hasText: "Try Osprey Online" }).click();
     await expect(page).toHaveURL(/\/playground\/$/);
+  });
+
+  test("install is a compact strip that leads to the getting started guide", async ({ page }) => {
+    await page.goto("/");
+    const install = page.locator("#install");
+    await expect(install.locator("code")).toContainText("brew install nimblesite/tap/osprey");
+    await expect(install.locator(".install-grid")).toHaveCount(0);
+    expect((await install.boundingBox()).height).toBeLessThan(260);
+    await install.getByRole("link", { name: "Getting started guide" }).click();
+    await expect(page).toHaveURL(/\/docs\/installation\/$/);
   });
 
   test("wasm demo seeds a browser SQLite db and runs queries", async ({ page }) => {
@@ -275,15 +394,6 @@ test.describe("desktop interactions", () => {
     expect(runBody.code).toContain("fn account()");
   });
 
-  test("homepage example code is not clipped", async ({ page }) => {
-    await page.goto("/");
-    const clips = await page.evaluate(() =>
-      [...document.querySelectorAll(".hero-code pre")].map((pre) => pre.scrollWidth - pre.clientWidth)
-    );
-    expect(clips.length).toBeGreaterThan(0);
-    for (const c of clips) expect(c, "code block horizontal clip (px)").toBeLessThanOrEqual(2);
-  });
-
   test("prose page shows a TOC with scroll-spy", async ({ page }) => {
     await page.goto("/spec/0001-introduction/");
     const toc = page.locator(".toc");
@@ -311,80 +421,6 @@ test.describe("desktop interactions", () => {
     const color = await h2.evaluate((el) => getComputedStyle(el).color);
     // on-surface (#dce1fb) — NOT the cyan link colour (#77d7f4 / #bdeeff).
     expect(color).toBe("rgb(220, 225, 251)");
-  });
-});
-
-test.describe("mobile interactions", () => {
-  test.use({ viewport: { width: 390, height: 844 } });
-
-  test("mobile menu opens and closes", async ({ page }) => {
-    await page.goto("/");
-    const toggle = page.locator("#mobile-menu-toggle");
-    const links = page.locator(".nav-links");
-    await expect(toggle).toBeVisible();
-    await expect(links).toBeHidden();
-    await toggle.click();
-    await expect(links).toBeVisible();
-    await expect(page.locator(".nav-link", { hasText: "Docs" })).toBeVisible();
-    await toggle.click();
-    await expect(links).toBeHidden();
-  });
-
-  test("mobile menu link navigates", async ({ page }) => {
-    await page.goto("/");
-    await page.locator("#mobile-menu-toggle").click();
-    await page.locator(".nav-link", { hasText: "Blog" }).click();
-    await expect(page).toHaveURL(/\/blog\/$/);
-  });
-
-  test("hero actions stack full-width on mobile", async ({ page }) => {
-    await page.goto("/");
-    const widths = await page.evaluate(() => {
-      const btns = [...document.querySelectorAll(".hero-actions .btn")];
-      return { btn: btns[0].getBoundingClientRect().width, actions: document.querySelector(".hero-actions").getBoundingClientRect().width };
-    });
-    // Each button should span (nearly) the full actions row.
-    expect(widths.btn).toBeGreaterThan(widths.actions * 0.9);
-  });
-
-  test("TOC sidebar is hidden on mobile", async ({ page }) => {
-    await page.goto("/spec/0001-introduction/");
-    await expect(page.locator(".toc-aside")).toBeHidden();
-  });
-});
-
-test.describe("documentation sub-page navigation", () => {
-  test("groups subpages on desktop and remains available on mobile", async ({ browser }) => {
-    const desktop = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    await desktop.goto("/docs/web-apps/");
-
-    await expect(desktop.locator(".prose-layout .prose")).toBeVisible();
-    const navigation = desktop.locator(".toc-aside .docs-nav-desktop");
-    await expect(navigation).toBeVisible();
-    await expect(navigation.locator(".docs-nav-section-title")).toHaveText([
-      "Start here",
-      "Tutorials",
-      "Build applications",
-      "Language",
-      "Reference",
-    ]);
-    await expect(navigation.getByRole("link", { name: "Web apps" })).toHaveClass(/active/);
-
-    const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    await mobile.goto("/docs/web-apps/");
-    const mobileNavigation = mobile.locator(".docs-nav-mobile");
-    await expect(mobileNavigation).toBeVisible();
-    await mobileNavigation.locator("summary").click();
-    await expect(mobileNavigation.getByRole("link", { name: "My First App" })).toBeVisible();
-
-    await desktop.close();
-    await mobile.close();
-  });
-
-  test("keeps the single-file first app tutorial in Default flavor", async ({ page }) => {
-    await page.goto("/docs/my-first-app/");
-    await expect(page.locator('.prose pre[data-flavor="default"]')).not.toHaveCount(0);
-    await expect(page.locator('.prose pre[data-flavor="ml"]')).toHaveCount(0);
   });
 });
 

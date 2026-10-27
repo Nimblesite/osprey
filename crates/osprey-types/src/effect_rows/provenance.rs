@@ -233,17 +233,8 @@ pub(super) fn shift_value_levels(value: &mut Value, amount: usize, minimum_level
             Callable::Unknown => {}
         }
     }
-    for nested in value.fields.values_mut() {
+    for nested in value.container_children_mut() {
         shift_value_levels(nested, amount, minimum_level);
-    }
-    if let Some(element) = &mut value.element {
-        shift_value_levels(element, amount, minimum_level);
-    }
-    if let Some(success) = &mut value.result_payload {
-        shift_value_levels(success, amount, minimum_level);
-    }
-    if let Some(payload) = &mut value.fiber_payload {
-        shift_value_levels(payload, amount, minimum_level);
     }
     shift_summary_from(&mut value.deferred, amount, minimum_level);
 }

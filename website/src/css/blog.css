@@ -1,0 +1,92 @@
+/* ============================ Blog index ================================= */
+/* Midnight Synthetic card grid (docs/designs/blog-grid). Solid Level-1 surface
+   with a hairline white stroke; featured first post spans the full row. */
+.blog-index { padding-block: clamp(2.5rem, 6vw, 4rem); }
+.blog-posts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gutter);
+}
+.blog-posts .card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  background: #0d1836;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius);
+}
+.blog-posts .card-content { display: flex; flex-direction: column; flex: 1; padding: var(--space-6); }
+/* Header image (placeholder until the generated PNG slots in at the same path). */
+.card-media { display: block; aspect-ratio: 16 / 9; overflow: hidden; background: var(--surface-low); }
+.card-media picture { display: block; width: 100%; height: 100%; }
+.card-media img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--transition); }
+.blog-posts .card:hover .card-media img { transform: scale(1.03); }
+/* Featured: first post spans every column as a side-by-side card — text on the
+   left, hero image on the right (docs/designs/blog-grid). A stacked full-width
+   banner towers over the fold; the split keeps the hero compact and balanced. */
+.blog-posts .card:first-child {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  align-items: stretch;
+  min-height: 22rem;
+}
+.blog-posts .card:first-child .card-content {
+  order: 1;
+  justify-content: center;
+  padding: clamp(var(--space-6), 4vw, var(--space-10));
+}
+.blog-posts .card:first-child .card-media {
+  order: 2;
+  aspect-ratio: auto;
+  height: 100%;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+}
+.blog-posts .card:first-child .card-title { font-size: var(--fs-h2); }
+.blog-posts .card:first-child .card-excerpt {
+  font-size: var(--fs-body-lg);
+  max-width: 60ch;
+  -webkit-line-clamp: 4;
+}
+.card-tags { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--primary-container);
+  background: rgba(119, 215, 244, 0.1);
+  padding: 0.25rem 0.55rem;
+  border-radius: var(--radius-sm);
+}
+.card-title { font-size: var(--fs-h3); line-height: var(--lh-tight); margin: 0 0 var(--space-3); }
+.card-title a { color: var(--on-surface); transition: color var(--transition-fast); }
+.card-title a:hover { color: var(--primary-container); }
+.card-excerpt {
+  color: var(--on-surface-variant);
+  margin: 0 0 var(--space-5);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid rgba(62, 72, 76, 0.4);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--on-surface-variant);
+}
+.empty-state {
+  text-align: center;
+  padding: var(--space-16) var(--space-4);
+  color: var(--on-surface-variant);
+}

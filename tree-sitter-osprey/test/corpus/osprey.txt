@@ -286,7 +286,7 @@ let t = if score >= 90 { "A" } else if score >= 80 { "B" } else { "C" }
           consequence: (expression
             (primary_expression
               (literal
-                (string))))
+                (string (string_content)))))
           alternative: (if_expression
             condition: (expression
               (binary_expression
@@ -300,11 +300,11 @@ let t = if score >= 90 { "A" } else if score >= 80 { "B" } else { "C" }
             consequence: (expression
               (primary_expression
                 (literal
-                  (string))))
+                  (string (string_content)))))
             alternative: (expression
               (primary_expression
                 (literal
-                  (string))))))))))
+                  (string (string_content)))))))))))
 
 ================================================================================
 Pipe chain (left-associative) with UFCS-style calls
@@ -373,7 +373,7 @@ import std.io.file
     (import_statement
       (import_target
         (namespace_name
-          (string)))
+          (string (string_content))))
       (import_tail
         (identifier))))
   (statement
@@ -601,7 +601,7 @@ test("undocumented", bareCase)
             (expression
               (primary_expression
                 (literal
-                  (string))))
+                  (string (string_content)))))
             (expression
               (primary_expression
                 (identifier))))))))
@@ -616,7 +616,7 @@ test("undocumented", bareCase)
             (expression
               (primary_expression
                 (literal
-                  (string))))
+                  (string (string_content)))))
             (expression
               (primary_expression
                 (identifier)))))))))
@@ -721,7 +721,7 @@ fn main() = pick<int, string>(1, "two")
             (expression
               (primary_expression
                 (literal
-                  (string))))))))))
+                  (string (string_content)))))))))))
 
 ================================================================================
 A nested type argument closes two lists with one angle pair [TYPE-GENERICS-APPLY]
@@ -808,3 +808,40 @@ type Control = { label: string, press: fn(string) -> int ![Log] }
               (effect_list
                 (effect_ref
                   name: (identifier))))))))))
+
+================================================================================
+Interpolation exposes conditional expressions [STRING-INTERPOLATION]
+================================================================================
+
+fn describe(value) = "${if value > 0 { value + 1 } else { value - 1 }}"
+
+--------------------------------------------------------------------------------
+
+(source_file (statement (function_declaration name: (identifier) parameters: (parameter_list (parameter name: (identifier))) body: (expression (primary_expression (literal (interpolated_string (interpolation expression: (expression (if_expression
+          condition: (expression
+            (binary_expression
+              left: (expression
+                (primary_expression
+                  (identifier)))
+              right: (expression
+                (primary_expression
+                  (literal
+                    (integer))))))
+          consequence: (expression
+            (binary_expression
+              left: (expression
+                (primary_expression
+                  (identifier)))
+              right: (expression
+                (primary_expression
+                  (literal
+                    (integer))))))
+          alternative: (expression
+            (binary_expression
+              left: (expression
+                (primary_expression
+                  (identifier)))
+              right: (expression
+                (primary_expression
+                  (literal
+                    (integer))))))))))))))))

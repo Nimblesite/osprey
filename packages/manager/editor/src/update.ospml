@@ -1,0 +1,114 @@
+namespace registry_editor
+import ui::Doc
+import ui::Runtime
+import ui::Messages
+import ui::Lists
+
+module Update
+    remaining current = match current.packageWaiting > 0
+        true => satSub current.packageWaiting 1
+        false => 0
+
+    currentTicket (current, prefix) = "${prefix}:${current.packageGeneration}"
+
+    knownTicket (current, ticket) = Lists::any (["package/catalog", "package/graph", "package/add", "package/remove", "package/fetch"], \prefix => ticket == currentTicket (current, prefix))
+
+
+    completeCatalog (current, result, waiting) = match Reports::catalogBody result
+        Error problem => Runtime::step (Store::fault (current, problem))
+        Success body => match Packages::validCatalog (Doc::parse body)
+            Error problem => Runtime::step (Store::fault (current, problem))
+            Success entries => Runtime::step (Store::withCatalog (current, entries, waiting))
+
+    completeGraph (current, result, waiting) = match Reports::graph result
+        Error problem => Runtime::step (Store::fault (current, problem))
+        Success completion => match completion
+            MissingLock reason => Runtime::step (Store::withGraph (current, Store::absent reason, waiting))
+            ResolvedGraph graph => Runtime::step (Store::withGraph (current, Store::workspaceOf graph, waiting))
+
+    checked (current, result, next) = match Reports::process result
+        Error problem => Runtime::step (Store::fault (current, problem))
+        Success report => match Reports::succeeded report
+            Error problem => Runtime::step (Store::fault (current, problem))
+            Success _ => next current
+
+    fetchLocked current =
+        generation = satAdd current.packageGeneration 1
+        ready = Store::change (current, "Fetching and verifying locked packages…", generation, 1)
+        Store::request (ready, Store::fetchRequest (ready, "package/fetch:${generation}"))
+
+    received (current, ticket, result) = match take ticket (indexOf ticket ":" ?: 0)
+        "package/catalog" => completeCatalog (current, result, remaining current)
+        "package/graph" => completeGraph (current, result, remaining current)
+        "package/add" => checked (current, result, fetchLocked)
+        "package/remove" => checked (current, result, Store::refresh)
+        "package/fetch" => checked (current, result, Store::refresh)
+        _ => Runtime::step current
+
+    completed (current, ticket, outcome) = match knownTicket (current, ticket)
+        false => Runtime::step current
+        true => match outcome
+            Error problem => Runtime::step (Store::fault (current, problem))
+            Success result => received (current, ticket, result)
+
+    execute (current, verb, key) =
+        generation = satAdd current.packageGeneration 1
+        notice = "${verb} ${key}…"
+        ready = Store::change (current, notice, generation, 1)
+        match Store::changeRequest (ready, verb, key, "package/${verb}:${generation}")
+            Error problem => Runtime::step (Store::fault (ready, problem))
+            Success request => Runtime::asking (ready, [request])
+
+    confirmUnverified (current, key) = match Packages::isLoopback current.packageRegistry
+        true => Runtime::step (Store::begin (current, "Confirm adding ${key} from the unverified local registry.", "add", key))
+        false => Runtime::step (Store::fault (current, "Hosted listing for ${key} has no authenticated audit evidence; installation is disabled."))
+
+    addCatalog (current, item) = match isEmpty item.catalogFindings
+        false => Runtime::step (Store::fault (current, "Recorded findings block installing ${item.catalogKey}."))
+        true => confirmUnverified (current, item.catalogKey)
+
+    addPackage (current, item) = match item.entryDirect
+        true => Runtime::step (Store::status (current, "${item.entryIdentity.entryKey} is already a direct dependency.", false, false))
+        false => match isEmpty item.entryFindings
+            true => confirmUnverified (current, item.entryIdentity.entryKey)
+            false => Runtime::step (Store::fault (current, "Recorded findings block adding ${item.entryIdentity.entryKey}."))
+
+    startAdd current = match current.packagePending || current.packageSelection == ""
+        true => Runtime::step current
+        false => match Packages::catalogAt (current.packageCatalog, current.packageSelection)
+            Success item => addCatalog (current, item)
+            Error _ => match Packages::packageAt (current.packageGraph.workspacePackages, current.packageSelection)
+                Success item => addPackage (current, item)
+                Error _ => Runtime::step (Store::fault (current, "Select a package before adding it."))
+
+    startRemove current = match current.packagePending || current.packageSelection == ""
+        true => Runtime::step current
+        false => match Packages::packageAt (current.packageGraph.workspacePackages, current.packageSelection)
+            Error _ => Runtime::step (Store::fault (current, "Select an installed package before removing it."))
+            Success item => match item.entryDirect
+                false => Runtime::step (Store::status (current, "Only direct dependencies can be removed.", false, false))
+                true => Runtime::step (Store::confirm (Store::begin (current, "Confirm removing ${item.entryIdentity.entryKey} from this project.", "remove", item.entryIdentity.entryKey), "remove", item.entryIdentity.entryKey))
+
+    confirmAction current = match current.packageConfirming == "add" || current.packageConfirming == "remove"
+        false => Runtime::step (Store::clearConfirm current)
+        true => match current.packageConfirmKey == ""
+            true => Runtime::step (Store::clearConfirm current)
+            false => execute (Store::clearConfirm current, current.packageConfirming, current.packageConfirmKey)
+
+    tapped (current, action) = match action
+        Refresh => Store::refresh current
+        Add => startAdd current
+        Remove => startRemove current
+        Confirm => confirmAction current
+        DismissAlert => Runtime::step (Store::clearConfirm current)
+        _ => Runtime::step current
+
+    typed (current, action, value) = match action
+        Search => Runtime::step (Store::edit (current, value, current.packageSelection, current.packageTab))
+        Selected => Runtime::step (Store::edit (current, current.packageSearch, value, current.packageTab))
+        TabSwitch => match value == "installed" || value == "browse"
+            true => Runtime::step (Store::edit (current, current.packageSearch, current.packageSelection, value))
+            false => Runtime::step current
+        _ => Runtime::step current
+
+    export apply (_, current, message) = Messages::route (message, \action => tapped (current, action), \(action, value) => typed (current, action, value), \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(ticket, outcome) => completed (current, ticket, outcome), \_ => Runtime::step current, \_ => Runtime::step current, \(_, _) => Runtime::step current)

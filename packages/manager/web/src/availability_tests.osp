@@ -1,0 +1,43 @@
+namespace registry_web;
+import registry_web::Availability
+import registry_web::Model
+import registry_web::WebFixtures
+
+/// The per-organization name check: scoped answers only, never a global
+/// claim, with hostile leaf names escaped
+/// ([PACKAGE-NAMES-NO-SITTING]).
+module AvailabilityTests {
+    /// The same leaf name is taken in one organization and free in the
+    /// other, and each answer names its own organization.
+    fn scopedAnswers() = checkAll("web: availability scoped per org", [
+        match Availability::render("atlas", "util", true) {
+            Model::Shown { html } => contains(html, "already taken within @atlas") && contains(html, "scoped to @atlas only")
+            Model::Hidden { reason } => false
+        },
+        match Availability::render("border", "util", false) {
+            Model::Shown { html } => contains(html, "available under @border") && contains(html, "scoped to @border only")
+            Model::Hidden { reason } => false
+        }
+    ])
+
+    /// No rendering may claim anything about the leaf name globally.
+    fn neverGlobal() = match Availability::render("atlas", "util", true) {
+        Model::Shown { html } => check("web: availability never global", "no global claim", html)
+        Model::Hidden { reason } => check("web: availability never global", "shown screen", "hidden: ${reason}")
+    }
+
+    fn hostileLeaf() = match Availability::render("atlas", "<b>owned</b>", false) {
+        Model::Shown { html } => checkAll("web: availability escapes hostile leaf", [
+            contains(html, "&lt;b&gt;owned&lt;/b&gt;"),
+            !contains(html, "<b>owned</b>")
+        ])
+        Model::Hidden { reason } => check("web: availability escapes hostile leaf", "shown screen", "hidden: ${reason}")
+    }
+
+    /// The suite.
+    export fn run() = {
+        test("web: availability scoped per org", scopedAnswers)
+        test("web: availability never global", neverGlobal)
+        test("web: availability escapes hostile leaf", hostileLeaf)
+    }
+}

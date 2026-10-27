@@ -1,0 +1,89 @@
+{
+  "spec": "[PACKAGE-RESOLUTION]",
+  "description": "The only release of A that meets the minimumOrdinal floor (ordinal 2) needs the capability io/files, which the root grants on @a/app alone (grants are per key, never transitive); it is a candidate and the lock selects it.",
+  "target": "x86_64-linux",
+  "grantedCapabilities": [],
+  "root": {
+    "dependencies": [
+      {
+        "Runtime": {
+          "requirement": {
+            "package": {
+              "scope": "a",
+              "name": "app"
+            },
+            "epoch": 1,
+            "minimumOrdinal": 2
+          }
+        }
+      }
+    ]
+  },
+  "current": [],
+  "catalog": [
+    {
+      "release": {
+        "package": {
+          "scope": "a",
+          "name": "app"
+        },
+        "epoch": 1,
+        "ordinal": 1,
+        "digest": "sha256:0000000000000001000000000000000100000000000000010000000000000001"
+      },
+      "state": {
+        "Eligible": {}
+      },
+      "targets": [
+        "x86_64-linux"
+      ],
+      "capabilities": [],
+      "dependencies": []
+    },
+    {
+      "release": {
+        "package": {
+          "scope": "a",
+          "name": "app"
+        },
+        "epoch": 1,
+        "ordinal": 2,
+        "digest": "sha256:0000000000000002000000000000000200000000000000020000000000000002"
+      },
+      "state": {
+        "Eligible": {}
+      },
+      "targets": [
+        "x86_64-linux"
+      ],
+      "capabilities": [
+        "io/files"
+      ],
+      "dependencies": []
+    }
+  ],
+  "expect": {
+    "lock": [
+      {
+        "package": {
+          "scope": "a",
+          "name": "app"
+        },
+        "epoch": 1,
+        "ordinal": 2,
+        "digest": "sha256:0000000000000002000000000000000200000000000000020000000000000002"
+      }
+    ]
+  },
+  "grants": [
+    {
+      "package": {
+        "scope": "a",
+        "name": "app"
+      },
+      "capabilities": [
+        "io/files"
+      ]
+    }
+  ]
+}

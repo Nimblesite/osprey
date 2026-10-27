@@ -52,13 +52,17 @@ export function parseHuntReport(stdout: string): HuntReport | undefined {
 
 /** One line for the notification and the channel. */
 export function huntSummary(report: HuntReport): string {
-  const paths = `${report.explored.paths} paths (${report.explored.completed} complete)`;
+  const paths = `${report.explored.paths} paths explored, ${report.explored.completed} normal exits`;
   if (report.findings.length === 0) {
-    return `Hunt found no bugs: ${paths} explored by KLEE.`;
+    const unfinished = report.incomplete.length > 0 || report.explored.paths === 0
+      || report.explored.completed < report.explored.paths;
+    return unfinished
+      ? `Hunt reported no findings; analysis unfinished (${paths}).`
+      : `Hunt reported no findings: ${paths}.`;
   }
   const reproduced = report.findings.filter((f) => f.replay === "reproduced").length;
   const noun = report.findings.length === 1 ? "finding" : "findings";
-  return `Hunt: ${report.findings.length} ${noun} (${reproduced} reproduced natively), ${paths} explored by KLEE.`;
+  return `Hunt: ${report.findings.length} ${noun} (${reproduced} reproduced natively), ${paths}.`;
 }
 
 /** A finding that reproduced is an error; one the native run did not confirm is a warning. */

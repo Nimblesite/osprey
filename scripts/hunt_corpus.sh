@@ -33,25 +33,10 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# A project (a directory holding osprey.toml) is one program; the files under
-# it are its modules, not programs of their own.
-in_project() {
-  dir=$(dirname "$1")
-  while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
-    [ -f "$dir/osprey.toml" ] && return 0
-    dir=$(dirname "$dir")
-  done
-  return 1
-}
+# Shared inventory keeps standalone files separate from project modules.
 if [ ${#PROGRAMS[@]} -eq 0 ]; then
-  while IFS= read -r project; do PROGRAMS+=("$(dirname "$project")"); done < <(
-    find tests examples -name osprey.toml -not -path '*/failscompilation/*' | sort
-  )
-  while IFS= read -r program; do
-    in_project "$program" || PROGRAMS+=("$program")
-  done < <(
-    find tests examples \( -name '*.osp' -o -name '*.ospml' \) \
-      -not -path 'tests/hunt/*' -not -path '*/failscompilation/*' | sort
+  while IFS= read -r program; do PROGRAMS+=("$program"); done < <(
+    python3 scripts/hunt_programs.py tests examples | sed '\#^tests/hunt/#d'
   )
 fi
 if [ "$ALL" -eq 0 ] && [ -f tests/HUNT_UNPORTABLE.txt ]; then

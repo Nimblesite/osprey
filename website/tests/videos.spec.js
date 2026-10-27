@@ -11,7 +11,7 @@ const SITE = path.resolve(__dirname, "../_site");
 const ORIGIN = "https://www.ospreylang.dev";
 const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
-const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/"];
+const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/", "/docs/packages-in-vscode/"];
 const read = (file) => fs.readFileSync(path.join(SITE, file), "utf8");
 const jsonLd = (html) =>
   [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
@@ -84,6 +84,13 @@ test("only the watch page carries the video's markup", () => {
   expect(watchPages.sort()).toEqual(WATCH_PAGES.map((watch) => `${watch.slice(1)}index.html`).sort());
 });
 
+test("the package guide links to the canonical package video watch page", () => {
+  const html = read("docs/package-manager/index.html");
+  expect(html).toContain('class="video-card" href="/docs/packages-in-vscode/"');
+  expect(jsonLd(html).some((data) => data["@type"] === "VideoObject")).toBe(false);
+  expect(read("video-sitemap.xml")).toContain(`${ORIGIN}/docs/packages-in-vscode/`);
+});
+
 test("a ?t= link starts the video there and a chapter seeks in place", async ({ page }) => {
   await page.goto(`${WATCH}?t=50`);
   const video = page.locator("figure.video video");
@@ -133,6 +140,26 @@ for (const width of [390, 1440]) {
     expect(await player.evaluate((video) => video.muted)).toBe(false);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await captureHomepage(page, width);
+  });
+}
+
+for (const width of [390, 1440]) {
+  test(`homepage showcase film plays directly under the hero at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await expect(page.locator(".home > section").nth(1)).toHaveId("showcase");
+    await page.locator(".hero").getByRole("link", { name: "Watch the showcase" }).click();
+    const player = page.locator("#showcase #showcase-video");
+    await expect(player).toBeInViewport();
+    await player.scrollIntoViewIfNeeded();
+    await expect(player).toBeVisible();
+    await expect(player).toHaveAttribute("poster", "/assets/videos/osprey-showcase-poster.jpg");
+    await expect(player.locator("source")).toHaveAttribute("src", "/assets/videos/osprey-showcase.mp4");
+    await expect(player).toHaveAttribute("aria-label", /web, Android, iPhone, macOS/);
+    await player.evaluate((video) => video.play());
+    await expect.poll(() => player.evaluate((video) => video.currentTime)).toBeGreaterThan(0.5);
+    expect(await player.evaluate((video) => video.videoWidth)).toBe(1920);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
 

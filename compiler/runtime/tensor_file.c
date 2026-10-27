@@ -181,14 +181,31 @@ static char *read_header(FILE *f, const char *op, const char *path, int64_t *dat
   return header;
 }
 
+static const char *json_space(const char *at) {
+  return at + strspn(at, " \t\r\n");
+}
+
+static const char *member_value(const char *entry, const char *quoted_name) {
+  size_t length = strlen(quoted_name);
+  const char *at = entry;
+  while ((at = strstr(at, quoted_name)) != NULL) {
+    const char *after = json_space(at + length);
+    if (*after == ':') {
+      return json_space(after + 1);
+    }
+    at += length;
+  }
+  return NULL;
+}
+
 // The dtype named in one tensor's header entry, or 0 when it is not a float
 // format this reader widens.
 static OspDtype dtype_of(const char *entry) {
-  const char *at = strstr(entry, "\"dtype\":\"");
-  if (!at) {
+  const char *at = member_value(entry, "\"dtype\"");
+  if (!at || *at != '"') {
     return 0;
   }
-  at += strlen("\"dtype\":\"");
+  at++;
   if (strncmp(at, "F64\"", 4) == 0) return OSP_DT_F64;
   if (strncmp(at, "F32\"", 4) == 0) return OSP_DT_F32;
   if (strncmp(at, "F16\"", 4) == 0) return OSP_DT_F16;
@@ -196,19 +213,31 @@ static OspDtype dtype_of(const char *entry) {
   return 0;
 }
 
+static int read_offset(const char **cursor, char separator, int64_t *value) {
+  const char *number = json_space(*cursor);
+  char *after = NULL;
+  errno = 0;
+  *value = (int64_t)strtoll(number, &after, 10);
+  if (after == number || errno == ERANGE) {
+    return 0;
+  }
+  const char *delimiter = json_space(after);
+  if (*delimiter != separator) {
+    return 0;
+  }
+  *cursor = delimiter + 1;
+  return 1;
+}
+
 // `[begin,end]` byte offsets relative to the data section, or 0 when absent.
 static int offsets_of(const char *entry, int64_t *begin, int64_t *end) {
-  const char *at = strstr(entry, "\"data_offsets\":[");
-  if (!at) {
+  const char *at = member_value(entry, "\"data_offsets\"");
+  if (!at || *at != '[') {
     return 0;
   }
-  char *after = NULL;
-  *begin = (int64_t)strtoll(at + strlen("\"data_offsets\":["), &after, 10);
-  if (!after || *after != ',') {
-    return 0;
-  }
-  *end = (int64_t)strtoll(after + 1, &after, 10);
-  return after && *after == ']' && *begin >= 0 && *end >= *begin;
+  at++;
+  return read_offset(&at, ',', begin) && read_offset(&at, ']', end) &&
+         *begin >= 0 && *end >= *begin;
 }
 
 // The header entry for `name` — the text between its `{` and `}` — isolated
@@ -220,8 +249,9 @@ static char *entry_of(char *header, const char *name) {
   if (!key) {
     return NULL;
   }
-  (void)snprintf(key, len, "\"%s\":", name);
-  char *at = strstr(header, key);
+  (void)snprintf(key, len, "\"%s\"", name);
+  const char *value = member_value(header, key);
+  char *at = value && *value == '{' ? header + (value - header) : NULL;
   free(key);
   char *close = at ? strchr(at, '}') : NULL;
   if (!close) {

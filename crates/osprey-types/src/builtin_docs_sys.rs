@@ -8,26 +8,56 @@
 use crate::builtin_docs::BuiltinDoc;
 use crate::builtin_docs_lang::builtin_doc;
 
+const JSON_DECODE_EXAMPLE: &str = "fn encode(value) = match jsonEncode(value) {\n    Success { value } => value\n    Error { message } => message\n}\nmatch jsonDecode(\"[1]\") {\n    Success { value } => print(encode(value))\n    Error { message } => print(message)\n}";
+
+const JSON_ENCODE_EXAMPLE: &str = "match jsonEncode(JsonArray([JsonInt(1)])) {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}";
+
+const JSON_DOCUMENT_EXAMPLE: &str = "fn inspect(document) = {\n    let summary = \"name=${jsonGet(document, \"name\")}; items=${jsonLength(document, \"items\")}\"\n    let released = jsonFree(document)\n    \"${summary}; released=${released}\"\n}\nmatch jsonParse(\"{\\\"name\\\":\\\"osprey\\\",\\\"items\\\":[1,2]}\") {\n    Success { value } => print(inspect(value))\n    Error { message } => print(message)\n}";
+
+const PROCESS_EXAMPLE: &str = "fn onEvent(_pid, kind, data) = print(\"${kind}: ${trim(data)}\")\nmatch spawnProcess(\"echo hello\", onEvent) {\n    Success { value } => {\n        let exitCode = awaitProcess(value)\n        cleanupProcess(value)\n        print(\"exit: ${exitCode}\")\n    }\n    Error { message } => print(\"Process failed: ${message}\")\n}";
+
+const HTTP_CLIENT_EXAMPLE: &str = "let client = httpCreateClient(\"http://127.0.0.1:18898\", 1000)\nprint(if client > 0 { \"closed: ${httpCloseClient(client)}\" } else { \"client error: ${client}\" })";
+
+const RAW_KEY_EXAMPLE: &str = "// Run in an interactive terminal; raw mode is restored before printing.\ntermRawMode(1)\nlet key = termReadKey()\ntermRawMode(0)\nprint(key)";
+
+const CURSOR_EXAMPLE: &str = "let hidden = termHideCursor()\nlet moved = termMoveCursor(1, 1)\nlet shown = termShowCursor()\nprint(\"hide=${hidden}; move=${moved}; show=${shown}\")";
+
+const WEBSOCKET_EXAMPLE: &str = "fn communicate(server, connection) = {\n    let sent = websocketSend(connection, \"Hello\")\n    let broadcast = websocketServerBroadcast(server, \"Welcome\")\n    let closed = websocketClose(connection)\n    \"sent=${sent}; broadcast=${broadcast}; closed=${closed}\"\n}\nfn exchange(server) = {\n    let connection = websocketConnect(\"ws://127.0.0.1:18899/chat\")\n    if connection > 0 { communicate(server, connection) } else { \"connection error: ${connection}\" }\n}\nlet server = websocketCreateServer(18899, \"127.0.0.1\", \"/chat\")\nlet listening = if server > 0 { websocketServerListen(server) } else { server }\nprint(if listening == 0 { exchange(server) } else { \"server error: ${listening}\" })";
+
+const FIBER_EXAMPLE: &str = "fn work() = \"done\"\nlet worker = spawn work()\nlet result = await(worker)\nprint(\"${result}; finished=${fiberDone(worker)}\")";
+
+const CHANNEL_EXAMPLE: &str = "fn receive(channel) = recv(channel)\nlet channel = Channel(1)\nlet worker = spawn receive(channel)\nsend(channel, 42)\nprint(await(worker))";
+
+macro_rules! http_example {
+    ($action:literal) => { http_example!("", $action) };
+    ($helpers:literal, $action:literal) => {
+        concat!($helpers, "fn reply(_method, _path, _headers, _body) = HttpResponse {\n    status: 200, headers: \"X-Demo: hi\\r\\n\", contentType: \"text/plain\",\n    streamFd: -1, isComplete: true, partialBody: \"hello\"\n}\nfn runRequest(client) = {\n    let result = ", $action, "\n    let closed = httpCloseClient(client)\n    \"${result}; client close=${closed}\"\n}\nfn request() = {\n    let client = httpCreateClient(\"http://127.0.0.1:18898\", 1000)\n    if client > 0 { runRequest(client) } else { \"client error: ${client}\" }\n}\nfn serve(server) = {\n    let listening = httpListen(server, reply)\n    let result = if listening == 0 { request() } else { \"listen error: ${listening}\" }\n    let stopped = httpStopServer(server)\n    \"${result}; server stop=${stopped}\"\n}\nlet server = httpCreateServer(18898, \"127.0.0.1\")\nprint(if server > 0 { serve(server) } else { \"server error: ${server}\" })")
+    };
+}
+macro_rules! http_response_example {
+    () => { http_example!("fn inspect(response) = {\n    let summary = \"status=${httpResponseStatus(response)}; body=${httpResponseBody(response)}; header=${httpResponseHeader(response, \"X-Demo\")}\"\n    let released = httpResponseFree(response)\n    \"${summary}; released=${released}\"\n}\n", "match httpGetResponse(client, \"/\", \"\") {\n        Success { value } => inspect(value)\n        Error { message } => message\n    }") };
+}
+
 /// `files` built-in documentation. Prose only — types come from the
 /// authoritative scheme in `builtins.rs`, joined by name.
 pub(crate) static FILES: &[BuiltinDoc] = &[
     builtin_doc!(
         "readFile",
-        "Reads the entire contents of a file as a string.",
+        "Reads a text file into a `Result<string, Error>`. The NUL-terminated string ABI is not a binary-buffer interface.",
         ["filename" => "Path to the file to read"],
-        "let content = readFile(\"input.txt\")\nprint(\"File read\")",
+        "match readFile(\"input.txt\") {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "writeFile",
-        "Writes content to a file. Creates the file if it doesn't exist. Returns number of bytes written.",
+        "Writes text, creating the file if needed. Returns `Result<int, Error>` containing the number of bytes written.",
         ["filename" => "Path to the file to write", "content" => "Content to write to the file"],
-        "let result = writeFile(\"output.txt\", \"Hello, World!\")\nprint(\"File written\")",
+        "match writeFile(\"output.txt\", \"Hello, World!\") {\n    Success { value } => print(\"${value} bytes written\")\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "loadTensor",
-        "Reads one named F64, F32, F16 or BF16 tensor out of a safetensors file as a List<float>, every element widened exactly. Nothing touches the GPU surface.",
+        "Reads one named F64, F32, F16 or BF16 tensor out of a safetensors file as a `List<float>`, every element widened exactly. Nothing touches the GPU surface.",
         ["path" => "Path to the .safetensors file", "name" => "Tensor name in its header, e.g. \"wte.weight\""],
-        "match loadTensor(\"model.safetensors\", \"wte.weight\") {\n  Success { value } => print(\"${listLength(value)} floats\")\n  Error { message } => print(message)\n}",
+        "// Supply a safetensors file containing the named tensor.\nmatch loadTensor(\"model.safetensors\", \"wte.weight\") {\n  Success { value } => print(\"${listLength(value)} floats\")\n  Error { message } => print(message)\n}",
     ),
 ];
 
@@ -38,85 +68,91 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
         "httpCreateClient",
         "Creates an HTTP client and returns its handle, or a negative runtime error.",
         ["base_url" => "Base URL for requests (e.g., \"http://api.example.com\")", "timeout" => "Request timeout in milliseconds"],
-        "let clientId = httpCreateClient(\"http://httpbin.org\", 5000)\nprint(\"Client created\")",
+        HTTP_CLIENT_EXAMPLE,
     ),
     builtin_doc!(
         "httpCloseClient",
         "Closes the HTTP client and returns the runtime status.",
         ["clientID" => "Client identifier to close"],
-        "let result = httpCloseClient(clientId)\nprint(\"Client closed\")",
+        HTTP_CLIENT_EXAMPLE,
     ),
     builtin_doc!(
         "httpGet",
         "Makes an HTTP GET request and returns its status code, or a negative transport error.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path (e.g., \"/api/users\")", "headers" => "Additional headers (e.g., \"Authorization: Bearer token\")"],
-        "let status = httpGet(clientId, \"/get\", \"\")\nprint(\"GET request status: ${status}\")",
+        http_example!("toString(httpGet(client, \"/\", \"\"))"),
     ),
     builtin_doc!(
         "httpGetResponse",
         "Sends an HTTP GET request and returns a response handle for inspecting the status, headers, and body.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path, e.g. \"/api/users\"", "headers" => "Additional request headers, or \"\" for none"],
-        "match httpGetResponse(client, \"/users\", \"\") {\n  Success { value } => print(\"status: ${httpResponseStatus(value)}\")\n  Error { message } => print(message)\n}",
+        http_response_example!(),
+    ),
+    builtin_doc!(
+        "httpPostResponse",
+        "Sends an HTTP POST request and returns a response handle as Result<int, Error>; inspect and free it like a GET response.",
+        ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "body" => "Request body", "headers" => "Additional request headers"],
+        http_example!("match httpPostResponse(client, \"/\", \"hello\", \"Content-Type: text/plain\") {\n        Success { value } => {\n            let status = httpResponseStatus(value)\n            let released = httpResponseFree(value)\n            \"status=${status}; released=${released}\"\n        }\n        Error { message } => message\n    }"),
     ),
     builtin_doc!(
         "httpResponseBody",
-        "Returns the body of a response handle as a string.",
+        "Returns a copy of the response body as `Result<string, Error>`. An invalid or released handle returns Error; the copied body survives httpResponseFree.",
         ["responseID" => "Handle returned by httpGetResponse"],
-        "match httpResponseBody(response) {\n  Success { value } => print(value)\n  Error { message } => print(message)\n}",
+        http_response_example!(),
     ),
     builtin_doc!(
         "httpResponseFree",
         "Releases a response handle; an invalid handle or double free returns Error.",
         ["responseID" => "Handle returned by httpGetResponse"],
-        "match httpResponseFree(response) {\n  Success { value } => print(\"released\")\n  Error { message } => print(message)\n}",
+        http_response_example!(),
     ),
     builtin_doc!(
         "httpResponseStatus",
-        "Returns the HTTP status code of a response handle.",
+        "Returns the HTTP status code, or -1 for an invalid or released response handle.",
         ["responseID" => "Handle returned by httpGetResponse"],
-        "let code = httpResponseStatus(response)  // 200",
+        http_response_example!(),
     ),
     builtin_doc!(
         "httpResponseHeader",
-        "Returns the value of the named header from a response handle.",
+        "Returns the named header as `Result<string, Error>`, matching its name without case sensitivity. A missing header or invalid handle returns Error.",
         ["responseID" => "Handle returned by httpGetResponse", "name" => "Header name, e.g. \"Content-Type\""],
-        "match httpResponseHeader(response, \"Content-Type\") {\n  Success { value } => print(value)\n  Error { message } => print(message)\n}",
+        http_response_example!(),
     ),
     builtin_doc!(
         "httpPost",
         "Makes an HTTP POST request and returns its status code, or a negative transport error.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "body" => "Request body data", "headers" => "Additional headers"],
-        "let status = httpPost(clientId, \"/post\", \"{\\\"key\\\":\\\"value\\\"}\", \"Content-Type: application/json\")\nprint(\"POST status: ${status}\")",
+        http_example!("toString(httpPost(client, \"/\", \"hello\", \"Content-Type: text/plain\"))"),
     ),
     builtin_doc!(
         "httpPut",
         "Makes an HTTP PUT request and returns its status code, or a negative transport error.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "body" => "Request body data", "headers" => "Additional headers"],
-        "let status = httpPut(clientId, \"/put\", \"{\\\"updated\\\":\\\"data\\\"}\", \"Content-Type: application/json\")\nprint(\"PUT status: ${status}\")",
+        http_example!("toString(httpPut(client, \"/\", \"updated\", \"Content-Type: text/plain\"))"),
     ),
     builtin_doc!(
         "httpDelete",
         "Makes an HTTP DELETE request and returns its status code, or a negative transport error.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "headers" => "Additional headers"],
-        "let status = httpDelete(clientId, \"/delete\", \"\")\nprint(\"DELETE status: ${status}\")",
+        http_example!("toString(httpDelete(client, \"/\", \"\"))"),
     ),
     builtin_doc!(
         "httpCreateServer",
         "Creates an HTTP server bound to the specified port and address.",
         ["port" => "Port number to bind to (1-65535)", "address" => "IP address to bind to (e.g., \"127.0.0.1\", \"0.0.0.0\")"],
-        "let serverId = httpCreateServer(8080, \"127.0.0.1\")\nprint(\"Server created with ID: ${serverId}\")",
+        http_example!("toString(httpGet(client, \"/\", \"\"))"),
     ),
     builtin_doc!(
         "httpListen",
         "Starts the HTTP server with a request handler and returns 0 or a negative runtime error.",
         ["serverID" => "Server identifier from httpCreateServer", "handler" => "Request handler function"],
-        "let result = httpListen(serverId, requestHandler)\nprint(\"Server listening\")",
+        http_example!("toString(httpGet(client, \"/\", \"\"))"),
     ),
     builtin_doc!(
         "httpStopServer",
         "Stops the HTTP server and returns the runtime status.",
         ["serverID" => "Server identifier to stop"],
-        "let result = httpStopServer(serverId)\nprint(\"Server stopped\")",
+        http_example!("toString(httpGet(client, \"/\", \"\"))"),
     ),
 ];
 
@@ -127,115 +163,115 @@ pub(crate) static JSON: &[BuiltinDoc] = &[
         "jsonParse",
         "Parses a JSON string and returns an opaque document handle for querying, or an error on malformed input.",
         ["text" => "The JSON text to parse"],
-        "match jsonParse(\"{\\\"name\\\": \\\"osprey\\\"}\") {\n  Success { value } => print(\"parsed\")\n  Error { message } => print(message)\n}",
+        JSON_DOCUMENT_EXAMPLE,
     ),
     builtin_doc!(
         "jsonGet",
         "Returns a JSON scalar at the given path as a string. Arrays, objects, invalid paths, and invalid handles return Error.",
         ["document" => "Handle returned by jsonParse", "path" => "Dotted keys and bracketed indices, e.g. \"user.items[0].name\""],
-        "match jsonGet(doc, \"name\") {\n  Success { value } => print(value)\n  Error { message } => print(message)\n}",
+        JSON_DOCUMENT_EXAMPLE,
     ),
     builtin_doc!(
         "jsonLength",
         "Returns an array length or object member count at the given path, or -1 for an invalid path, handle, or scalar.",
         ["document" => "Handle returned by jsonParse", "path" => "Path to an array or object; empty means the root"],
-        "let n = jsonLength(doc, \"items\")",
+        JSON_DOCUMENT_EXAMPLE,
     ),
     builtin_doc!(
         "jsonFree",
         "Releases a parsed JSON document handle obtained from jsonParse.",
         ["document" => "Handle returned by jsonParse"],
-        "jsonFree(doc)",
+        JSON_DOCUMENT_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonDecodeOpen",
         "Internal primitive of jsonDecode: parses a document into slots for the typed walk. Call jsonDecode instead.",
         ["text" => "The JSON text to decode"],
-        "jsonDecode(\"[1]\")",
+        JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonDecodeClose",
         "Internal primitive of jsonDecode: frees a document the walk has finished with. Call jsonDecode instead.",
         ["document" => "Handle from __jsonDecodeOpen"],
-        "jsonDecode(\"[1]\")",
+        JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonNodeKind",
         "Internal primitive of jsonDecode: the kind code of one value. Call jsonDecode instead.",
         ["document" => "Handle from __jsonDecodeOpen", "node" => "Slot of a value; the root is slot 0"],
-        "jsonDecode(\"[1]\")",
+        JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonNodeFirst",
         "Internal primitive of jsonDecode: the first slot of a container's children. Call jsonDecode instead.",
         ["document" => "Handle from __jsonDecodeOpen", "node" => "Slot of a container; the root is slot 0"],
-        "jsonDecode(\"[1]\")",
+        JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonNodeEnd",
         "Internal primitive of jsonDecode: the slot after a container's last child. Call jsonDecode instead.",
         ["document" => "Handle from __jsonDecodeOpen", "node" => "Slot of a container; the root is slot 0"],
-        "jsonDecode(\"[1]\")",
+        JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonNodeKey",
         "Internal primitive of jsonDecode: the member name of an object's child. Call jsonDecode instead.",
         ["document" => "Handle from __jsonDecodeOpen", "node" => "Slot of an object member; the root is slot 0"],
-        "jsonDecode(\"[1]\")",
+        JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonNodeText",
         "Internal primitive of jsonDecode: a string's value. Call jsonDecode instead.",
         ["document" => "Handle from __jsonDecodeOpen", "node" => "Slot of a string; the root is slot 0"],
-        "jsonDecode(\"[1]\")",
+        JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonNodeInt",
         "Internal primitive of jsonDecode: an integer's value. Call jsonDecode instead.",
         ["document" => "Handle from __jsonDecodeOpen", "node" => "Slot of an integer; the root is slot 0"],
-        "jsonDecode(\"[1]\")",
+        JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonNodeFloat",
         "Internal primitive of jsonDecode: a float's value. Call jsonDecode instead.",
         ["document" => "Handle from __jsonDecodeOpen", "node" => "Slot of a float; the root is slot 0"],
-        "jsonDecode(\"[1]\")",
+        JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonWriterOpen",
         "Internal primitive of jsonEncode: opens a single-buffer writer. Call jsonEncode instead.",
         [],
-        "jsonEncode(JsonNull)",
+        JSON_ENCODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonWriteRaw",
         "Internal primitive of jsonEncode: appends a structural token. Call jsonEncode instead.",
         ["writer" => "Handle from __jsonWriterOpen", "token" => "Literal JSON text"],
-        "jsonEncode(JsonNull)",
+        JSON_ENCODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonWriteString",
         "Internal primitive of jsonEncode: appends one quoted, escaped string. Call jsonEncode instead.",
         ["writer" => "Handle from __jsonWriterOpen", "text" => "The string to quote"],
-        "jsonEncode(JsonNull)",
+        JSON_ENCODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonWriteInt",
         "Internal primitive of jsonEncode: appends one integer. Call jsonEncode instead.",
         ["writer" => "Handle from __jsonWriterOpen", "number" => "The integer"],
-        "jsonEncode(JsonNull)",
+        JSON_ENCODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonWriteFloat",
         "Internal primitive of jsonEncode: appends one finite float. Call jsonEncode instead.",
         ["writer" => "Handle from __jsonWriterOpen", "number" => "The float"],
-        "jsonEncode(JsonNull)",
+        JSON_ENCODE_EXAMPLE,
     ),
     builtin_doc!(
         "__jsonWriterClose",
         "Internal primitive of jsonEncode: closes a writer and returns its document, or the first refusal. Call jsonEncode instead.",
         ["writer" => "Handle from __jsonWriterOpen"],
-        "jsonEncode(JsonNull)",
+        JSON_ENCODE_EXAMPLE,
     ),
 ];
 
@@ -246,13 +282,13 @@ pub(crate) static CONCURRENCY: &[BuiltinDoc] = &[
         "await",
         "Waits for a fiber to finish and returns its result, suspending the current fiber until then.",
         ["fiber" => "The fiber to await"],
-        "let result = await(worker)",
+        FIBER_EXAMPLE,
     ),
     builtin_doc!(
         "fiberDone",
         "Returns 1 if the given fiber has finished, 0 otherwise.",
         ["fiber" => "The fiber to test"],
-        "let finished = fiberDone(worker)  // 0 or 1",
+        FIBER_EXAMPLE,
     ),
     builtin_doc!(
         "yield",
@@ -270,19 +306,19 @@ pub(crate) static CONCURRENCY: &[BuiltinDoc] = &[
         "Channel",
         "Creates a buffered channel with a positive capacity.",
         ["capacity" => "Positive number of buffered values"],
-        "let ch = Channel(10)",
+        CHANNEL_EXAMPLE,
     ),
     builtin_doc!(
         "send",
         "Blocks while the channel is full, then sends a value and returns Unit.",
         ["channel" => "The channel to send to", "value" => "The value to send"],
-        "send(ch, 42)",
+        CHANNEL_EXAMPLE,
     ),
     builtin_doc!(
         "recv",
         "Blocks while the channel is empty, then receives its oldest value.",
         ["channel" => "The channel to receive from"],
-        "let value = recv(ch)",
+        CHANNEL_EXAMPLE,
     ),
 ];
 
@@ -293,43 +329,43 @@ pub(crate) static WEBSOCKET: &[BuiltinDoc] = &[
         "websocketCreateServer",
         "Creates a WebSocket server and returns its handle, or a negative runtime error.",
         ["port" => "Port number to bind to (1-65535)", "address" => "IP address to bind to (e.g., \"127.0.0.1\", \"0.0.0.0\")", "path" => "WebSocket endpoint path (e.g., \"/chat\", \"/live\")"],
-        "let serverId = websocketCreateServer(8080, \"127.0.0.1\", \"/chat\")\nprint(serverId)",
+        WEBSOCKET_EXAMPLE,
     ),
     builtin_doc!(
         "websocketServerListen",
         "Starts the WebSocket server and returns 0 or a negative runtime error.",
         ["serverID" => "Server identifier from websocketCreateServer"],
-        "let status = websocketServerListen(serverId)\nprint(status)",
+        WEBSOCKET_EXAMPLE,
     ),
     builtin_doc!(
         "websocketServerBroadcast",
-        "Broadcasts one text frame and returns the number of connections written.",
+        "Broadcasts one text frame and returns the number of connections written, or a negative error.",
         ["serverID" => "Server identifier", "message" => "Message to broadcast to all clients"],
-        "let sent = websocketServerBroadcast(serverId, \"Welcome!\")\nprint(sent)",
+        WEBSOCKET_EXAMPLE,
     ),
     builtin_doc!(
         "websocketKeepAlive",
         "Blocks until SIGINT or SIGTERM so server threads remain alive.",
         [],
-        "websocketKeepAlive()  // Blocks until Ctrl+C",
+        "// A long-running server; Ctrl+C stops the keep-alive loop.\nlet server = websocketCreateServer(18899, \"127.0.0.1\", \"/chat\")\nlet listening = if server > 0 { websocketServerListen(server) } else { server }\nprint(\"listen status: ${listening}\")\nif listening == 0 { websocketKeepAlive() } else { print(\"server could not start\") }",
     ),
     builtin_doc!(
         "websocketConnect",
-        "Connects to a WebSocket server at the given URL and returns a connection id.",
+        "Connects to a ws:// URL and returns a connection handle, or a negative error. wss:// is rejected; incoming frames have no receive callback.",
         ["url" => "WebSocket URL, e.g. \"ws://localhost:8080/chat\""],
-        "let conn = websocketConnect(\"ws://localhost:8080/chat\")",
+        WEBSOCKET_EXAMPLE,
     ),
     builtin_doc!(
         "websocketSend",
         "Sends one text frame and returns 0 or a negative runtime error.",
         ["wsID" => "WebSocket identifier from websocketConnect", "message" => "Message to send"],
-        "let status = websocketSend(wsId, \"Hello, WebSocket!\")\nprint(status)",
+        WEBSOCKET_EXAMPLE,
     ),
     builtin_doc!(
         "websocketClose",
         "Closes the WebSocket connection and returns the runtime status.",
         ["wsID" => "WebSocket identifier to close"],
-        "let status = websocketClose(wsId)\nprint(status)",
+        WEBSOCKET_EXAMPLE,
     ),
 ];
 
@@ -340,23 +376,23 @@ pub(crate) static TERMINAL: &[BuiltinDoc] = &[
         "termReadKey",
         "Reads a single keypress from the terminal and returns it as a string.",
         [],
-        "match termReadKey() {\n  Success { value } => print(\"key: ${value}\")\n  Error { message } => print(message)\n}",
+        RAW_KEY_EXAMPLE,
     ),
     builtin_doc!(
         "termRawMode",
         "Enables (1) or disables (0) raw terminal input mode, so keypresses arrive unbuffered.",
         ["enabled" => "1 to enable raw mode, 0 to restore cooked mode"],
-        "termRawMode(1)",
+        RAW_KEY_EXAMPLE,
     ),
     builtin_doc!(
         "termCols",
-        "Returns the terminal width in columns.",
+        "Returns the terminal width in columns, or -1 when unavailable.",
         [],
         "let width = termCols()",
     ),
     builtin_doc!(
         "termRows",
-        "Returns the terminal height in rows.",
+        "Returns the terminal height in rows, or -1 when unavailable.",
         [],
         "let height = termRows()",
     ),
@@ -364,42 +400,42 @@ pub(crate) static TERMINAL: &[BuiltinDoc] = &[
         "termClear",
         "Clears the terminal screen.",
         [],
-        "termClear()",
+        "let cleared = termClear()\nprint(\"clear status: ${cleared}\")",
     ),
     builtin_doc!(
         "termMoveCursor",
         "Moves the terminal cursor to the given row and column.",
         ["row" => "Target row (1-based)", "col" => "Target column (1-based)"],
-        "termMoveCursor(1, 1)",
+        CURSOR_EXAMPLE,
     ),
     builtin_doc!(
         "termHideCursor",
         "Hides the terminal cursor.",
         [],
-        "termHideCursor()",
+        CURSOR_EXAMPLE,
     ),
     builtin_doc!(
         "termShowCursor",
         "Shows the terminal cursor.",
         [],
-        "termShowCursor()",
+        CURSOR_EXAMPLE,
     ),
     builtin_doc!(
         "spawnProcess",
         "Spawns a process and reports stdout, stderr and exit events through the required callback. Returns a handle for the running process.",
         ["command" => "The command to execute", "callback" => "Required callback receiving (processID, eventType, data); event types are stdout (1), stderr (2) and exit (3)"],
-        "fn processEventHandler(processID: int, eventType: int, data: string) -> Unit = {\n    match eventType {\n        1 => print(\"STDOUT: ${data}\")\n        2 => print(\"STDERR: ${data}\")\n        3 => print(\"EXIT: ${data}\")\n        _ => print(\"Unknown event\")\n    }\n}\nlet result = spawnProcess(\"echo hello\", processEventHandler)\nmatch result {\n    Success { value } => {\n        let exitCode = awaitProcess(value)\n        cleanupProcess(value)\n    }\n    Error { message } => print(\"Failed\")\n}",
+        PROCESS_EXAMPLE,
     ),
     builtin_doc!(
         "awaitProcess",
         "Waits for a spawned process to complete and returns its exit code. Blocks until the process finishes.",
         ["handle" => "Process ID from spawnProcess"],
-        "let exitCode = awaitProcess(processHandle)\nprint(\"Process exited with code: ${toString(exitCode)}\")",
+        PROCESS_EXAMPLE,
     ),
     builtin_doc!(
         "cleanupProcess",
         "Cleans up resources associated with a completed process. Should be called after awaitProcess.",
         ["handle" => "Process ID from spawnProcess"],
-        "cleanupProcess(processHandle)  // Free process resources",
+        PROCESS_EXAMPLE,
     ),
 ];

@@ -56,6 +56,7 @@ pub(crate) const HTTP_FNS: &[&str] = &[
     "httpDelete",
     "httpCloseClient",
     "httpGetResponse",
+    "httpPostResponse",
     "httpResponseStatus",
     "httpResponseBody",
     "httpResponseHeader",

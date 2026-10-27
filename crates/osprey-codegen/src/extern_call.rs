@@ -91,6 +91,7 @@ fn lookup(name: &str) -> Option<Sig> {
         "httpDelete" => sig("http_delete", &[I64, Str, Str], Ret::Int),
         "httpCloseClient" => sig("http_close_client", &[I64], Ret::Int),
         "httpGetResponse" => sig("http_get_response", &[I64, Str, Str], Ret::ResultInt),
+        "httpPostResponse" => sig("http_post_response", &[I64, Str, Str, Str], Ret::ResultInt),
         "httpResponseStatus" => sig("http_response_status", &[I64], Ret::Int),
         "httpResponseBody" => sig("http_response_body", &[I64], Ret::ResultStr(None)),
         "httpResponseHeader" => sig("http_response_header", &[I64, Str], Ret::ResultStr(None)),
@@ -184,7 +185,7 @@ fn argument_value(
     match expr {
         Expr::TypeApply {
             function, position, ..
-        } => crate::expr::with_application(cg, *position, |cg| {
+        } => crate::expr::with_application(cg, function, *position, |cg| {
             argument_value(cg, function, want, name, index)
         }),
         Expr::Identifier(n)
@@ -345,7 +346,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing {function}"));
             let body = &ir[start..ir[start..].find("\n}").map_or(ir.len(), |n| start + n)];
             assert!(body.contains(&format!("call i64 @{callee}")), "{body}");
-            assert!(body.contains("ret i64 0"), "Unit must return zero: {body}");
+            crate::testkit::shows(body, &["ret i64 0"]);
         }
     }
 
@@ -365,8 +366,13 @@ mod tests {
             parsed.errors
         );
         let ir = crate::compile_program(&parsed.program).expect("file builtin codegen");
-        assert!(ir.contains("declare void @osp_io_error_clear()"), "{ir}");
-        assert!(ir.contains("declare i8* @osp_io_error_take()"), "{ir}");
+        crate::testkit::shows(
+            &ir,
+            &[
+                "declare void @osp_io_error_clear()",
+                "declare i8* @osp_io_error_take()",
+            ],
+        );
         for (callee, ret) in [("write_file", "i64"), ("read_file", "i8*")] {
             let call = format!("call {ret} @{callee}(");
             let at = ir.find(&call).unwrap_or_else(|| panic!("missing {callee}"));
@@ -376,15 +382,11 @@ mod tests {
                     > before.rfind("call i8* @osp_io_error_take()"),
                 "{callee}: the clear must be the last channel op before the call"
             );
-            assert!(
-                after.contains("call i8* @osp_io_error_take()"),
-                "{callee}: no take after the call"
-            );
+            crate::testkit::shows(after, &["call i8* @osp_io_error_take()"]);
         }
         // The reason outranks the static fallback, so a producer that recorded
         // one is never reported as the placeholder.
-        assert!(ir.contains("File read error"), "fallback dropped: {ir}");
-        assert!(ir.contains("icmp ne i8* "), "no reason-present test: {ir}");
+        crate::testkit::shows(&ir, &["File read error", "icmp ne i8* "]);
     }
 
     #[test]
@@ -408,11 +410,8 @@ mod tests {
             before.rfind("call void @osp_io_error_clear()").is_some(),
             "{ir}"
         );
-        assert!(after.contains("call i8* @osp_io_error_take()"), "{ir}");
-        assert!(
-            !ir.contains("osprey_gpu_"),
-            "loadTensor reached the GPU surface: {ir}"
-        );
+        crate::testkit::shows(after, &["call i8* @osp_io_error_take()"]);
+        crate::testkit::contents(&ir, &[], &["osprey_gpu_"]);
     }
 
     #[test]
@@ -445,6 +444,6 @@ mod tests {
         ] {
             assert!(ir.contains(&format!("@{symbol}")), "missing {symbol}: {ir}");
         }
-        assert!(!ir.contains("@websocketCreateServer"), "{ir}");
+        crate::testkit::contents(&ir, &[], &["@websocketCreateServer"]);
     }
 }

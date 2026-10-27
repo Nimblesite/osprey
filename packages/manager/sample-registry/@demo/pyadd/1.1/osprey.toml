@@ -1,0 +1,14 @@
+[project]
+name = "pyadd"
+source_roots = ["src"]
+default_namespace = "demo_pyadd"
+
+[package]
+name = "@demo/pyadd"
+license = "MIT"
+summary = "A sample package that declares the Python interop plane"
+keywords = ["python", "sample"]
+
+[system.python]
+capability = "python/interop"
+min_revision = 31200

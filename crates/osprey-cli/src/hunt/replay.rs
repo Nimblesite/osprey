@@ -6,31 +6,40 @@
 
 use super::findings::{Class, Finding, Replay};
 use super::process::wait_bounded;
-use crate::native::{build_input, child_exit_code, scratch_stem, NativeOptions};
+use crate::native::{build_input, scratch_stem, NativeOptions};
 use crate::project::CompilationInput;
 use osprey_debug::BuildKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::time::Duration;
 
 /// A program that never exits (a server, a prompt loop) cannot reproduce a
 /// finding; its replay is skipped after this long.
 const REPLAY_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub(crate) fn replay(input: &CompilationInput, findings: &mut [Finding]) -> Result<(), String> {
+pub(crate) fn replay(
+    input: &CompilationInput,
+    findings: &mut [Finding],
+    memory: &str,
+) -> Result<(), String> {
+    // An unmodelled finding is skipped whether or not anything else runs, so a
+    // report with only unmodelled findings reads the same as a mixed one.
+    for finding in findings
+        .iter_mut()
+        .filter(|finding| finding.class == Class::Unmodelled)
+    {
+        finding.replay =
+            Replay::Skipped("an unmodelled call stops the path under KLEE only".to_string());
+    }
     if !findings.iter().any(replayable) {
         return Ok(());
     }
     let stem = scratch_stem(input.display_path());
     let exe = std::env::temp_dir().join(format!("{stem}-hunt.out"));
     let workdir = std::env::temp_dir().join(format!("{stem}-hunt-replay"));
-    build_input(
-        input,
-        &exe,
-        NativeOptions::new("default", BuildKind::Release),
-    )
-    .map_err(|code| format!("the native build for replay failed (exit {code:?})"))?;
+    build_input(input, &exe, NativeOptions::new(memory, BuildKind::Release))
+        .map_err(|code| format!("the native build for replay failed (exit {code:?})"))?;
     let outcome = replay_all(&exe, &workdir, findings);
     let _ = std::fs::remove_file(&exe);
     let _ = std::fs::remove_dir_all(&workdir);
@@ -38,16 +47,27 @@ pub(crate) fn replay(input: &CompilationInput, findings: &mut [Finding]) -> Resu
 }
 
 fn replayable(finding: &Finding) -> bool {
-    finding.class != Class::Unmodelled
+    finding.class != Class::Unmodelled && matches!(finding.replay, Replay::NotRun)
 }
 
-fn replay_all(exe: &Path, workdir: &Path, findings: &mut [Finding]) -> Result<(), String> {
-    for finding in findings.iter_mut() {
-        finding.replay = if replayable(finding) {
-            run_one(exe, workdir, finding)?
-        } else {
-            Replay::Skipped("an unmodelled call stops the path under KLEE only".to_string())
-        };
+pub(super) fn replay_all(
+    exe: &Path,
+    workdir: &Path,
+    findings: &mut [Finding],
+) -> Result<(), String> {
+    let mut reproduced = std::collections::BTreeSet::new();
+    for finding in findings.iter_mut().filter(|finding| replayable(finding)) {
+        let key = (
+            finding.class,
+            super::findings::place(finding, &finding.message),
+        );
+        if reproduced.contains(&key) {
+            continue;
+        }
+        finding.replay = run_one(exe, workdir, finding)?;
+        if matches!(finding.replay, Replay::Reproduced(_)) {
+            let _ = reproduced.insert(key);
+        }
     }
     Ok(())
 }
@@ -72,7 +92,7 @@ pub(crate) fn run_one(exe: &Path, workdir: &Path, finding: &Finding) -> Result<R
         let _ = stdin.write_all(&finding.stdin);
     }
     match wait_bounded(&mut child, REPLAY_TIMEOUT)? {
-        Some(status) => Ok(outcome(child_exit_code(status))),
+        Some(status) => Ok(outcome(status)),
         None => Ok(Replay::Skipped(format!(
             "the native program did not exit within {}s",
             REPLAY_TIMEOUT.as_secs()
@@ -103,13 +123,25 @@ fn write_files(workdir: &Path, files: &[(String, Vec<u8>)]) -> Option<String> {
     None
 }
 
-/// `child_exit_code` folds a signal death into `128 + signal`; only a signal
-/// reproduces a finding, since a non-zero `main` is a program's own choice.
-pub(crate) fn outcome(code: u8) -> Replay {
-    match code.checked_sub(128) {
-        Some(signal) if signal > 0 => Replay::Reproduced(signal_name(signal)),
-        _ => Replay::KleeOnly,
+/// Only a signal death reproduces a finding: a non-zero exit is the program's
+/// own choice, even one at or above 128, which a shell would spell the same
+/// way as a signal.
+pub(crate) fn outcome(status: ExitStatus) -> Replay {
+    match signal_of(status) {
+        Some(signal) => Replay::Reproduced(signal_name(signal)),
+        None => Replay::KleeOnly,
     }
+}
+
+#[cfg(unix)]
+fn signal_of(status: ExitStatus) -> Option<u8> {
+    use std::os::unix::process::ExitStatusExt;
+    status.signal().and_then(|signal| u8::try_from(signal).ok())
+}
+
+#[cfg(not(unix))]
+fn signal_of(_status: ExitStatus) -> Option<u8> {
+    None
 }
 
 fn signal_name(signal: u8) -> String {
@@ -123,6 +155,15 @@ fn signal_name(signal: u8) -> String {
         n if n == bus => "SIGBUS".to_string(),
         n => format!("signal {n}"),
     }
+}
+
+/// A raw wait status for tests: the exit code in the high byte, a signal in
+/// the low seven bits.
+#[cfg(test)]
+#[cfg(unix)]
+pub(super) fn raw_status(exit_code: i32, signal: i32) -> ExitStatus {
+    use std::os::unix::process::ExitStatusExt;
+    ExitStatus::from_raw((exit_code << 8) | signal)
 }
 
 #[cfg(test)]
@@ -145,14 +186,25 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn only_a_signal_reproduces() {
-        assert_eq!(outcome(0), Replay::KleeOnly);
-        assert_eq!(outcome(3), Replay::KleeOnly);
-        assert_eq!(outcome(128), Replay::KleeOnly);
-        assert_eq!(outcome(128 + 11), Replay::Reproduced("SIGSEGV".into()));
-        assert_eq!(outcome(128 + 6), Replay::Reproduced("SIGABRT".into()));
-        assert_eq!(outcome(128 + 8), Replay::Reproduced("SIGFPE".into()));
+        assert_eq!(outcome(raw_status(0, 0)), Replay::KleeOnly);
+        assert_eq!(outcome(raw_status(3, 0)), Replay::KleeOnly);
+        assert_eq!(outcome(raw_status(128, 0)), Replay::KleeOnly);
+        assert_eq!(outcome(raw_status(139, 0)), Replay::KleeOnly);
+        assert_eq!(
+            outcome(raw_status(0, 11)),
+            Replay::Reproduced("SIGSEGV".into())
+        );
+        assert_eq!(
+            outcome(raw_status(0, 6)),
+            Replay::Reproduced("SIGABRT".into())
+        );
+        assert_eq!(
+            outcome(raw_status(0, 8)),
+            Replay::Reproduced("SIGFPE".into())
+        );
         assert_eq!(signal_name(4), "SIGILL");
         assert_eq!(signal_name(5), "SIGTRAP");
         assert_eq!(
@@ -200,7 +252,7 @@ mod tests {
             &finding(Vec::new()),
         )
         .expect_err("missing");
-        assert!(error.contains("could not run"));
+        crate::testkit::shows(&error, &["could not run"]);
         let _ = std::fs::remove_dir_all(&workdir);
     }
 }

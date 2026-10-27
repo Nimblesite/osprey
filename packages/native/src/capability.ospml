@@ -1,0 +1,116 @@
+// Implements [UI-EFFECTS]: platform work is a typed, bounded request. Bulk
+// results land in host-held slices named by the request, so large outputs
+// never travel back through an event.
+namespace ui
+
+(** One HTTP request header. *)
+type Header =
+    headerName : string
+    headerValue : string
+
+(** A bounded, mechanical operation only the host can perform: every one states its limits, and its result returns as a completion ([UI-EFFECTS]). Work only one host or product can do, such as reading one operating system's settings, is a `HostCall` in a namespace that host answers. `Animate` turns the host's frame clock on or off: while it runs, every display refresh reaches `update` as a `Frame` ([UI-SCENE]). *)
+type Capability =
+    Run
+        executable : string
+        arguments : List<string>
+        timeout : int
+        outputLimit : int
+        runSlice : string
+    ListDirectories
+        directories : List<string>
+        entryLimit : int
+        listSlice : string
+    ReadTexts
+        texts : List<string>
+        textLimit : int
+        textSlice : string
+    StoreRead
+        readName : string
+        readLimit : int
+        readSlice : string
+    StoreWrite
+        writeName : string
+        writeSlice : string
+    StoreList
+        folder : string
+    StoreDelete
+        deleteName : string
+    Http
+        method : string
+        url : string
+        headers : List<Header>
+        body : string
+        responseLimit : int
+        deadline : int
+        httpSlice : string
+    HostCall
+        hostNamespace : string
+        hostOperation : string
+        hostArguments : Json
+        hostTimeout : int
+        hostLimit : int
+        hostSlice : string
+    ChooseFile
+        types : List<string>
+        chosenLimit : int
+        chosenSlice : string
+    ChooseFolder
+    SaveFile
+        suggested : string
+        exportSlice : string
+    Reveal
+        revealPath : string
+    Cancel
+        cancelled : string
+    Animate
+        animated : bool
+
+(** A capability with the ticket its completion will carry. Put a generation in the ticket to recognise stale completions. *)
+type Request =
+    ticket : string
+    capability : Capability
+
+(** Text the host holds under `sliceKey` for later fetches, so large slices need not travel in the opaque state. *)
+type SliceWrite =
+    sliceKey : string
+    sliceText : string
+
+(** Builds capability requests and host slice writes, and encodes requests for the protocol ([UI-EFFECTS]). *)
+module Requests
+    str key value = Doc::str (key, value)
+
+    num key value = Doc::num (key, value)
+
+    strings key values = JsonMember key (Doc::strings values)
+
+    header item = JsonObject [str "name" item.headerName, str "value" item.headerValue]
+
+    run executable arguments timeout limit slice = [str "kind" "run", str "executable" executable, strings "arguments" arguments, num "timeout" timeout, num "limit" limit, str "slice" slice]
+
+    http method url headers body limit deadline slice = [str "kind" "http", str "method" method, str "url" url, JsonMember "headers" (JsonArray (mapList (headers, \item => header item))), str "body" body, num "limit" limit, num "timeout" deadline, str "slice" slice]
+
+    members capability = match capability
+        Run executable arguments timeout limit slice => run executable arguments timeout limit slice
+        ListDirectories paths limit slice => [str "kind" "list-directories", strings "paths" paths, num "limit" limit, str "slice" slice]
+        ReadTexts paths limit slice => [str "kind" "read-texts", strings "paths" paths, num "limit" limit, str "slice" slice]
+        StoreRead name limit slice => [str "kind" "store-read", str "name" name, num "limit" limit, str "slice" slice]
+        StoreWrite name slice => [str "kind" "store-write", str "name" name, str "slice" slice]
+        StoreList name => [str "kind" "store-list", str "name" name]
+        StoreDelete name => [str "kind" "store-delete", str "name" name]
+        Http method url headers body limit deadline slice => http method url headers body limit deadline slice
+        HostCall space operation arguments timeout limit slice => [str "kind" "host-call", str "namespace" space, str "operation" operation, JsonMember "arguments" arguments, num "timeout" timeout, num "limit" limit, str "slice" slice]
+        ChooseFile types limit slice => [str "kind" "choose-file", strings "types" types, num "limit" limit, str "slice" slice]
+        ChooseFolder => [str "kind" "choose-folder"]
+        SaveFile name slice => [str "kind" "save-file", str "name" name, str "slice" slice]
+        Reveal path => [str "kind" "reveal", str "path" path]
+        Cancel target => [str "kind" "cancel", str "target" target]
+        Animate on => [str "kind" "animate", Doc::bit ("on", on)]
+
+    (** The protocol form of `request`: its ticket beside the capability's kind and arguments. *)
+    export encode request = JsonObject (listPrepend (members request.capability) (str "ticket" request.ticket))
+
+    (** A request for `capability` whose completion returns to `update` under `ticket`. *)
+    export ask (ticket, capability) = Request(ticket = ticket, capability = capability)
+
+    (** A host-held slice write: the host keeps `text` under `key` until it is written again. *)
+    export write (key, text) = SliceWrite(sliceKey = key, sliceText = text)

@@ -116,11 +116,11 @@ Persistent collections make the ownership model especially concrete. Two version
 
 This is the part I like most. Immutability gives you simple source semantics, and the compiler turns the resulting ownership structure into ownership-aware runtime behaviour. You get persistent values without asking every object to survive until the end of the process.
 
-## What the current measurements say
+## What the recorded measurements show
 
 I do not want to turn one benchmark into a universal performance claim. Still, the committed [Osprey benchmark run](/benchmarks/) shows why this work matters.
 
-On `binarytrees`, the default allocator reached **603.8 MiB** of peak memory and completed in **248.7 ms**. The ARC build reached **2.8 MiB** and completed in **216.4 ms**. ARC reclaimed the short-lived tree nodes throughout the run, and its bookkeeping did not slow this particular result.
+On `binarytrees`, the then-default unmanaged allocator reached **603.8 MiB** of peak memory and completed in **248.7 ms**. The ARC build reached **2.8 MiB** and completed in **216.4 ms**. ARC reclaimed the short-lived tree nodes throughout the run, and its bookkeeping did not slow this particular result.
 
 Different programs create different ownership patterns, so you should read those numbers as one reproducible data point. The useful result is that the implementation now gives us a real way to measure reference-counted reclamation across the benchmark suite instead of reasoning from a design document.
 

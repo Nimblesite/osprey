@@ -1,0 +1,171 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry_cli::Listing
+import registry_cli::ManifestEdit
+import registry_cli::Overlay
+import registry_cli::Transaction
+import registry::Identity
+import registry::ManifestModel
+import registry::Maybe
+import registry::Names
+
+/// `osprey-pkg update [--breaking] [--accept-removals] [--registry <base-url>] [--project <dir>]`:
+/// relock the release lock without the current lock's choices being sticky,
+/// so every key moves to the newest release inside its epoch and the report
+/// shows the `~` lines. `--breaking` first retargets each root dependency
+/// whose key has a newer epoch in the listing to that epoch (floor 1), prints
+/// one `epoch @scope/name eN -> eM` line per change, and relocks atomically.
+/// While the overlay is active the published base is resolved first, each
+/// mapping's baseline is replaced by the base's node for its key (only
+/// `--breaking` may move an override's epoch), the development lock is
+/// relocked, and a failure restores both the overlay and the release lock
+/// ([PACKAGE-API], [PACKAGE-LOCAL-OVERRIDE]).
+module Update {
+    let failStatus = 1
+    let usageCode = "update.usage"
+    let restoreCode = "update.restore"
+    let breakingFlag = "--breaking"
+    let removalsFlag = "--accept-removals"
+    let firstOrdinal = 1
+    let usageText = ["usage: osprey-pkg update [--breaking] [--accept-removals] [--registry <base-url>] [--project <dir>]"]
+
+    /// The manifest text being rewritten and the migration report so far.
+    type Draft = { draft: string, notes: List<string> }
+    /// The overlay's mappings being rebased and the report so far.
+    type Rebase = { mappings: List<Overlay::Mapping>, notes: List<string> }
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    fn settingsOf(parsed) = Transaction::Settings {
+        base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry),
+        project: Flags::project(parsed),
+        acceptRemovals: Flags::has(parsed, removalsFlag),
+        fresh: true,
+        local: false
+    }
+
+    fn asLocal(s: Transaction::Settings) = Transaction::Settings { base: s.base, project: s.project, acceptRemovals: s.acceptRemovals, fresh: false, local: true }
+
+    // Shared field names need typed receivers (issue #273).
+    fn baseOf(s: Transaction::Settings) = s.base
+    fn projectOf(s: Transaction::Settings) = s.project
+    fn edgesOf(m: ManifestModel::Manifest) = m.dependencies
+    fn statusOf(r: Reports::Report) = r.status
+    fn linesOf(r: Reports::Report) = r.lines
+    fn packagesOf(lock: Lockfile::Lock) = lock.packages
+    fn releaseOf(p: Lockfile::Package) = p.release
+    fn epochOfId(id: Identity::ReleaseId) = id.epoch
+    fn note(req: ManifestModel::Requirement, epoch) = "epoch ${Names::display(req.package)} e${req.epoch} -> e${epoch}"
+
+    // ---- the release update ----
+
+    fn moved(d: Draft, req: ManifestModel::Requirement, epoch) = Draft {
+        draft: ManifestEdit::retargeted(d.draft, req.package, epoch, firstOrdinal),
+        notes: listAppend(d.notes, note(req, epoch))
+    }
+
+    /// One root requirement: retargeted when the listing has a newer epoch,
+    /// untouched otherwise (a key the listing lacks is left for `lock` to report).
+    fn retarget(listing, d, req: ManifestModel::Requirement) = match Listing::newestEpoch(listing, req.package) {
+        Error => d
+        Success { value } => if value > req.epoch { moved(d, req, value) } else { d }
+    }
+
+    fn draftOf(manifest, text, listing) = foldList(mapList(edgesOf(manifest), ManifestModel::requirementOf), Draft { draft: text, notes: [] }, fn(d, req) => retarget(listing, d, req))
+
+    fn committed(s, text, d: Draft) = if isEmpty(d.notes) { Transaction::relock(s) } else { Transaction::commit(s, text, d.draft, d.notes) }
+
+    fn withListing(s, manifest, text, listing) = committed(s, text, draftOf(manifest, text, listing))
+
+    fn withManifest(s, manifest, text) = match Listing::fetch(baseOf(s)) {
+        Error { message } => failed([message])
+        Success { value } => withListing(s, manifest, text, value)
+    }
+
+    fn withText(s, text) = match Project::readAt(projectOf(s)) {
+        Error { message } => failed([message])
+        Success { value } => withManifest(s, value, text)
+    }
+
+    fn breaking(s) = match Project::manifestTextAt(projectOf(s)) {
+        Error { message } => failed([message])
+        Success { value } => withText(s, value)
+    }
+
+    fn released(s, breakingWanted) = if breakingWanted { breaking(s) } else { Transaction::relock(s) }
+
+    // ---- the overlay rebase ([PACKAGE-LOCAL-OVERRIDE]) ----
+
+    fn baselineText(baseline) = Maybe::fold(baseline, "none", Identity::display)
+
+    /// The base's node for the mapping's key, if the release lock has one.
+    fn baseNode(lock, m) = match Lockfile::packageFor(packagesOf(lock), Overlay::keyOf(m)) {
+        Error => Maybe::none()
+        Success { value } => Maybe::some(releaseOf(value))
+    }
+
+    fn rebased(m, baseline, breakingWanted) = Overlay::Mapping {
+        package: Overlay::keyOf(m),
+        path: Overlay::pathOf(m),
+        epoch: if breakingWanted { Maybe::fold(baseline, Overlay::epochOf(m), epochOfId) } else { Overlay::epochOf(m) },
+        baseline: baseline
+    }
+
+    fn rebaseOne(lock, breakingWanted, r: Rebase, m) = {
+        let baseline = baseNode(lock, m)
+        let changed = baselineText(baseline) != baselineText(Overlay::baselineOf(m))
+        Rebase {
+            mappings: listAppend(r.mappings, rebased(m, baseline, breakingWanted)),
+            notes: if changed { listAppend(r.notes, "baseline ${Names::display(Overlay::keyOf(m))} ${baselineText(Overlay::baselineOf(m))} -> ${baselineText(baseline)}") } else { r.notes }
+        }
+    }
+
+    fn rebaseAll(lock, breakingWanted, mappings) = foldList(mappings, Rebase { mappings: [], notes: [] }, fn(r, m) => rebaseOne(lock, breakingWanted, r, m))
+
+    /// A failed development relock restores the release lock too, so the update changes nothing.
+    fn restoredRelease(s, previousRelease, report) = if statusOf(report) == 0 || previousRelease == "" { report } else { match perform Host::Files.write(Project::lockPathAt(projectOf(s)), previousRelease) {
+        Error { message } => failed(listAppend(linesOf(report), "${restoreCode} ${message}"))
+        Success => report
+    } }
+
+    fn relockedLocal(s, mappings, previousOverlay, previousRelease, lock, breakingWanted, releaseLines) = {
+        let r = rebaseAll(lock, breakingWanted, mappings)
+        let local = Transaction::commitOverlay(asLocal(s), previousOverlay, Overlay::render(mappingsOf(r)), listConcat(releaseLines, notesOf(r)))
+        restoredRelease(s, previousRelease, local)
+    }
+
+    fn mappingsOf(r: Rebase) = r.mappings
+    fn notesOf(r: Rebase) = r.notes
+
+    fn withNewBase(s, mappings, previousOverlay, previousRelease, breakingWanted, releaseReport) = match Project::readLockAt(projectOf(s)) {
+        Error { message } => failed(listAppend(linesOf(releaseReport), message))
+        Success { value } => relockedLocal(s, mappings, previousOverlay, previousRelease, value, breakingWanted, linesOf(releaseReport))
+    }
+
+    /// Resolve the published base first; then rebase every mapping and relock the development lock.
+    fn overlayUpdate(s, mappings, breakingWanted) = {
+        let previousOverlay = Overlay::textAt(projectOf(s))
+        let previousRelease = perform Host::Files.read(Project::lockPathAt(projectOf(s))) ?: ""
+        let releaseReport = released(s, breakingWanted)
+        if statusOf(releaseReport) != 0 { releaseReport } else { withNewBase(s, mappings, previousOverlay, previousRelease, breakingWanted, releaseReport) }
+    }
+
+    fn withOverlay(s, breakingWanted, mappings) = if Overlay::active(mappings) { overlayUpdate(s, mappings, breakingWanted) } else { released(s, breakingWanted) }
+
+    fn withFlags(parsed) = match Overlay::readAt(Flags::project(parsed)) {
+        Error { message } => failed([message])
+        Success { value } => withOverlay(settingsOf(parsed), Flags::has(parsed, breakingFlag), value)
+    }
+
+    /// The whole command.
+    export fn run(args) = match Flags::parse(args, [Fetch::registryFlag, Flags::projectFlag], [breakingFlag, removalsFlag]) {
+        Error => usageReport()
+        Success { value } => withFlags(value)
+    }
+}

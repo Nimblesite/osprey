@@ -1,0 +1,60 @@
+namespace registry_cli;
+
+/// Flag parsing shared by every lock-consuming command of [PACKAGE-API]: a
+/// valued flag takes the next word, a switch stands alone, and any other word
+/// is a usage error. One definition, so no command grows its own argument
+/// loop and `--project` means the same thing everywhere.
+module Flags {
+    /// One valued flag and the word that followed it.
+    export type Given = { word: string, given: string }
+    /// The parsed command line: valued flags in order, switches in order.
+    export type Parsed = { pairs: List<Given>, switches: List<string> }
+
+    /// The flag that names the project directory ([PACKAGE-HARDENING] C2).
+    export let projectFlag = "--project"
+    /// The project directory when `--project` is absent: the working directory.
+    export let defaultProject = "."
+
+    fn withPair(parsed, word, given) = Parsed { pairs: listAppend(parsed.pairs, Given { word: word, given: given }), switches: parsed.switches }
+    fn withSwitch(parsed, word) = Parsed { pairs: parsed.pairs, switches: listAppend(parsed.switches, word) }
+
+    fn valuedAt(args, i, valued, switches, parsed, word) -> Result<Parsed, string> = if i + 1 >= length(args) {
+        Error { message: word }
+    } else {
+        parseAt(args, i + 2, valued, switches, withPair(parsed, word, listGet(args, i + 1) ?: ""))
+    }
+
+    fn step(args, i, valued, switches, parsed, word) -> Result<Parsed, string> = if listContains(valued, word) {
+        valuedAt(args, i, valued, switches, parsed, word)
+    } else if listContains(switches, word) {
+        parseAt(args, i + 1, valued, switches, withSwitch(parsed, word))
+    } else {
+        Error { message: word }
+    }
+
+    fn parseAt(args, i, valued, switches, parsed) -> Result<Parsed, string> = if i >= length(args) {
+        Success { value: parsed }
+    } else {
+        step(args, i, valued, switches, parsed, listGet(args, i) ?: "")
+    }
+
+    /// Parse `args` against the accepted valued flags and switches; the
+    /// error names the offending word (a flag missing its value, or a word
+    /// no flag accepts).
+    export fn parse(args, valued, switches) = parseAt(args, 0, valued, switches, Parsed { pairs: [], switches: [] })
+
+    // `Given` shares no field with another record, but the receiver is typed
+    // to match the other shared-field readers (issue #273).
+    /// The word given to a valued flag, else `fallback`; the last occurrence wins.
+    export fn given(parsed, word, fallback) = foldList(parsed.pairs, fallback, fn(acc, g: Given) => if g.word == word { g.given } else { acc })
+
+    /// The project directory: `--project <dir>` or the working directory.
+    export fn project(parsed) = given(parsed, projectFlag, defaultProject)
+
+    /// Whether a switch was given.
+    export fn has(parsed, word) = listContains(parsed.switches, word)
+
+    /// The words after the first: a command's argument vector after its
+    /// name, or a command's flags after its positional word.
+    export fn tail(args) = range(1, length(args)) |> map(fn(i) => listGet(args, i) ?: "") |> toList
+}

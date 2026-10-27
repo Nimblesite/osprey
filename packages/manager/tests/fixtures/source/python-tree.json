@@ -1,0 +1,34 @@
+{
+  "spec": "[PACKAGE-PYTHON-UV]",
+  "description": "A tree that declares the Python plane: its pyproject.toml and uv.lock are ordinary SourceDigest entries, sorted by path with every other file, so a changed Python requirement changes the release digest.",
+  "files": [
+    {
+      "path": "osprey.toml",
+      "content": "[project]\nname = \"pyadd\"\nsource_roots = [\"src\"]\n\n[system.python]\ncapability = \"python/interop\"\nmin_revision = 31200\n",
+      "sha256": "2c6fecaa2c47242378e7b30bcf9402c82b05088d091dba12c9ee2071bcddc7fb"
+    },
+    {
+      "path": "pyproject.toml",
+      "content": "[project]\nname = \"pyadd\"\nversion = \"0.1.0\"\nrequires-python = \">=3.12\"\ndependencies = []\n",
+      "sha256": "65bfe8c7bbcf4aee908ad1571bd36eaf09595712edd8b8e5fe51ab789b1bfa10"
+    },
+    {
+      "path": "src/pyadd.osp",
+      "content": "fn add(a, b) = a + b\n",
+      "sha256": "59678465df647752bac89843594999c6f51b3a406de3160f6a6846cc58836d1d"
+    },
+    {
+      "path": "uv.lock",
+      "content": "version = 1\nrevision = 2\nrequires-python = \">=3.12\"\n\n[[package]]\nname = \"pyadd\"\nversion = \"0.1.0\"\nsource = { editable = \".\" }\n",
+      "sha256": "7ba52124e6ee8da8757c94a56332f0ae400b683af7866d3b5ec7d1e08b0724f7"
+    }
+  ],
+  "envelopeHex": "6f73707265792e736f757263652e763100000000040000000b6f73707265792e746f6d6c0000000000000000742c6fecaa2c47242378e7b30bcf9402c82b05088d091dba12c9ee2071bcddc7fb0000000e707970726f6a6563742e746f6d6c00000000000000005865bfe8c7bbcf4aee908ad1571bd36eaf09595712edd8b8e5fe51ab789b1bfa100000000d7372632f70796164642e6f737000000000000000001559678465df647752bac89843594999c6f51b3a406de3160f6a6846cc58836d1d0000000775762e6c6f636b00000000000000007e7ba52124e6ee8da8757c94a56332f0ae400b683af7866d3b5ec7d1e08b0724f7",
+  "envelopeLength": 246,
+  "sourceDigest": "sha256:8f15b9a0ba41fbb7eb5c3850c01414fa523d396466e0d624e0c104953080194e",
+  "digestSubstitution": {
+    "path": "uv.lock",
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "sourceDigest": "sha256:8a109c80c012514d7aad128806b43bd8dbc760f18c90af7e7cd32ac431d3075e"
+  }
+}

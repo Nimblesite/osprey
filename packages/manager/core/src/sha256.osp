@@ -1,0 +1,113 @@
+namespace registry;
+import registry::Bytes
+
+/// SHA-256 over byte lists, per FIPS 180-4, producing the 32 digest bytes
+/// behind every `sha256:` envelope. Words stay in 0..2^32-1; bitwise
+/// operations use integer bitwise instructions, rotation is masked to 32 bits, and every
+/// addition is reduced mod 2^32. Implements the digest function of
+/// [PACKAGE-TYPE-INVARIANTS].
+module Sha256 {
+    let wordRange = 4294967296
+    let wordMask = 4294967295
+
+    let K = [
+        1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221,
+        3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580,
+        3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986,
+        2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895,
+        666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037,
+        2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344,
+        430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779,
+        1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298
+    ]
+
+    let initHash = [1779033703, 3144134277, 1013904242, 2773480762, 1359893119, 2600822924, 528734635, 1541459225]
+
+    type State = { a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int }
+
+    fn notW(x) = wrapSub(wordMask, x)
+    fn modAdd(a, b) = wrapAdd(a, b) % wordRange
+
+    fn rotr(x, n) = bitAnd(bitOr(shiftRightLogical(x, n), shiftLeft(x, wrapSub(32, n))), wordMask)
+    fn shr(x, n) = shiftRightLogical(x, n)
+
+    fn sigma0(x) = bitXor(bitXor(rotr(x, 7), rotr(x, 18)), shr(x, 3))
+    fn sigma1(x) = bitXor(bitXor(rotr(x, 17), rotr(x, 19)), shr(x, 10))
+    fn bigSigma0(x) = bitXor(bitXor(rotr(x, 2), rotr(x, 13)), rotr(x, 22))
+    fn bigSigma1(x) = bitXor(bitXor(rotr(x, 6), rotr(x, 11)), rotr(x, 25))
+    // `x & y` and `~x & z` are bit-disjoint, so OR equals the FIPS XOR here.
+    fn choose(x, y, z) = bitOr(bitAnd(x, y), bitAnd(notW(x), z))
+    fn majority(x, y, z) = bitXor(bitXor(bitAnd(x, y), bitAnd(x, z)), bitAnd(y, z))
+
+    fn wordAt(padded, base) = {
+        let b0 = listGet(padded, base) ?: 0
+        let b1 = listGet(padded, wrapAdd(base, 1)) ?: 0
+        let b2 = listGet(padded, wrapAdd(base, 2)) ?: 0
+        let b3 = listGet(padded, wrapAdd(base, 3)) ?: 0
+        wrapAdd(wrapAdd(wrapMul(b0, 16777216), wrapMul(b1, 65536)), wrapAdd(wrapMul(b2, 256), b3))
+    }
+
+    fn schedule(padded, off) = {
+        let words = range(0, 16) |> map(fn(i) => wordAt(padded, wrapAdd(off, wrapMul(i, 4)))) |> toList
+        fold(range(16, 64), words, fn(acc, i) => {
+            let s1 = sigma1(listGet(acc, wrapSub(i, 2)) ?: 0)
+            let s0 = sigma0(listGet(acc, wrapSub(i, 15)) ?: 0)
+            listAppend(acc, modAdd(modAdd(modAdd(s1, listGet(acc, wrapSub(i, 7)) ?: 0), s0), listGet(acc, wrapSub(i, 16)) ?: 0))
+        })
+    }
+
+    fn compressRound(st, w, i) = {
+        let t1 = modAdd(modAdd(modAdd(modAdd(st.h, bigSigma1(st.e)), choose(st.e, st.f, st.g)), listGet(K, i) ?: 0), listGet(w, i) ?: 0)
+        let t2 = modAdd(bigSigma0(st.a), majority(st.a, st.b, st.c))
+        State { a: modAdd(t1, t2), b: st.a, c: st.b, d: st.c, e: modAdd(st.d, t1), f: st.e, g: st.f, h: st.g }
+    }
+
+    fn stateOf(h) = State {
+        a: listGet(h, 0) ?: 0,
+        b: listGet(h, 1) ?: 0,
+        c: listGet(h, 2) ?: 0,
+        d: listGet(h, 3) ?: 0,
+        e: listGet(h, 4) ?: 0,
+        f: listGet(h, 5) ?: 0,
+        g: listGet(h, 6) ?: 0,
+        h: listGet(h, 7) ?: 0
+    }
+
+    fn addState(h, st) = [
+        modAdd(listGet(h, 0) ?: 0, st.a),
+        modAdd(listGet(h, 1) ?: 0, st.b),
+        modAdd(listGet(h, 2) ?: 0, st.c),
+        modAdd(listGet(h, 3) ?: 0, st.d),
+        modAdd(listGet(h, 4) ?: 0, st.e),
+        modAdd(listGet(h, 5) ?: 0, st.f),
+        modAdd(listGet(h, 6) ?: 0, st.g),
+        modAdd(listGet(h, 7) ?: 0, st.h)
+    ]
+
+    fn compressBlock(h, padded, bi) = {
+        let w = schedule(padded, wrapMul(bi, 64))
+        let st = fold(range(0, 64), stateOf(h), fn(acc, i) => compressRound(acc, w, i))
+        addState(h, st)
+    }
+
+    fn zeroBytes(k) = range(0, k) |> map(fn(_i) => 0) |> toList
+
+    fn pad(bytes) = {
+        let n = length(bytes) % 64
+        let pad = if n < 56 { wrapSub(56, n) } else { wrapSub(120, n) }
+        listConcat(bytes, listConcat([128], listConcat(zeroBytes(wrapSub(pad, 1)), Bytes::u64be(wrapMul(length(bytes), 8)))))
+    }
+
+    /// The 32 digest bytes of a byte list.
+    export fn digest(bytes) = {
+        let padded = pad(bytes)
+        let h = fold(range(0, intDiv(length(padded), 64)), initHash, fn(acc, bi) => compressBlock(acc, padded, bi))
+        foldList(h, [], fn(acc, word) => listConcat(acc, Bytes::u32be(word)))
+    }
+
+    /// Lowercase 64-character hex of the digest.
+    export fn hex(bytes) = Bytes::hex(digest(bytes))
+
+    /// Lowercase 64-character hex of the digest of a string's bytes.
+    export fn ofString(text) = hex(Bytes::ofString(text))
+}

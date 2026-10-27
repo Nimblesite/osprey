@@ -22,8 +22,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Direct `workflow_dispatch` runs must pass the same dependency vulnerability
+  # audit as the release pipeline: the audit job is unconditional and the deploy
+  # below cannot start until it is green.
+  audit:
+    name: Dependency audit deploy gate
+    uses: ./.github/workflows/ci-audit.yml
+    permissions:
+      contents: read
+
   build-and-deploy:
     name: Build Documentation and Deploy to GitHub Pages
+    needs: audit
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:

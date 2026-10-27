@@ -1,0 +1,76 @@
+{
+  "spec": "[PACKAGE-FOLDER-REGISTRY]",
+  "description": "One folder-lock document per rejection code: a format other than 0, a missing format member, a missing root member, two packages with the same key, and packages out of Identity order, and the [PACKAGE-HARDENING] C3 grammar probes: a traversal scope, a name outside [PACKAGE-NAMES], a traversal or short digest, and a manifest digest outside the sha256 envelope; and the pinned surface, which must be present and a canonical set of strings ([PACKAGE-CAPABILITY-CONFINEMENT]).",
+  "cases": [
+    {
+      "name": "format",
+      "code": "lock.format",
+      "text": "{\"format\":1,\"packages\":[],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "missing-format",
+      "code": "lock.format",
+      "text": "{\"packages\":[],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "shape",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[],\"root\":{\"dependencies\":[]}}"
+    },
+    {
+      "name": "duplicate-key",
+      "code": "lock.duplicate-key",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"one\",\"scope\":\"a\"}},\"surface\":[]},{\"dependencies\":[],\"release\":{\"digest\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":1,\"ordinal\":2,\"package\":{\"name\":\"one\",\"scope\":\"a\"}},\"surface\":[]}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "order",
+      "code": "lock.order",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"two\",\"scope\":\"b\"}},\"surface\":[]},{\"dependencies\":[],\"release\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"one\",\"scope\":\"a\"}},\"surface\":[]}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "scope-traversal",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"one\",\"scope\":\"../..\"}},\"surface\":[]}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "name-chars",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"One/x\",\"scope\":\"a\"}},\"surface\":[]}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "digest-traversal",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:../../x\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"one\",\"scope\":\"a\"}},\"surface\":[]}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "digest-short",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:abc\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"one\",\"scope\":\"a\"}},\"surface\":[]}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "manifest-digest-grammar",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[],\"root\":{\"dependencies\":[],\"manifestDigest\":\"md5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "surface-missing",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"one\",\"scope\":\"a\"}}}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "surface-unsorted",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"one\",\"scope\":\"a\"}},\"surface\":[\"io/process\",\"io/files\"]}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "surface-duplicate",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"one\",\"scope\":\"a\"}},\"surface\":[\"io/files\",\"io/files\"]}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    },
+    {
+      "name": "surface-not-strings",
+      "code": "lock.shape",
+      "text": "{\"format\":0,\"packages\":[{\"dependencies\":[],\"release\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"one\",\"scope\":\"a\"}},\"surface\":[1]}],\"root\":{\"dependencies\":[],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+    }
+  ]
+}

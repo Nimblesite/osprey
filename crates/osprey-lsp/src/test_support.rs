@@ -28,6 +28,23 @@ pub(crate) fn symbols(src: &str) -> String {
     crate::analysis::symbols_json(&parsed(src))
 }
 
+/// Whether `s` mentions an inference name (`t5`, `t42`): a `t` that starts an
+/// identifier and is followed by a digit. Anchoring on the identifier boundary
+/// keeps `int5` or a field named `total2` from matching while catching every
+/// position a type is rendered into — `<t5>`, `(t5)`, `-> t5`, ` t5,`. Pinned
+/// by the positive/negative leak-detector case in `inferred_views`.
+pub(crate) fn mentions_inference_name(s: &str) -> bool {
+    let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+    s.match_indices('t').any(|(at, _)| {
+        let starts_identifier = s[..at].chars().next_back().is_none_or(|c| !is_ident(c));
+        let then_digit = s[at + 1..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit());
+        starts_identifier && then_digit
+    })
+}
+
 /// The 0-based column just inside the first occurrence of `needle` on 0-based
 /// `line` of `src` — a cursor position over that word.
 pub(crate) fn col_of(src: &str, line: usize, needle: &str) -> u32 {

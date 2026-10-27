@@ -10,15 +10,16 @@
     reason = "test assertions: a missing element is a test failure, not a production panic"
 )]
 
-use super::options::{self, Options, HUNT_USAGE};
+use super::options::{self, args, Options, HUNT_USAGE};
 use std::collections::BTreeSet;
-
-fn args(list: &[&str]) -> Vec<String> {
-    list.iter().map(ToString::to_string).collect()
-}
 
 fn parsed(list: &[&str]) -> Result<Options, String> {
     options::parse(&args(list))
+}
+
+/// `parsed` over a command line written as one string.
+fn parsed_line(line: &str) -> Result<Options, String> {
+    parsed(&line.split_whitespace().collect::<Vec<_>>())
 }
 
 /// Every ordering of `items` (Heap's algorithm), for order-independence checks.
@@ -171,11 +172,16 @@ fn every_ordering_of_every_flag_reads_the_same() {
     ];
     let expected = Options {
         path: "demo.osp".into(),
+        memory: "gc",
         max_time: 9,
         max_memory: 300,
         input_bytes: 32,
         out: Some("runs dir".into()),
         json: true,
+        reports: options::ReportFormats {
+            html: true,
+            json: true,
+        },
         replay: false,
         quiet: true,
     };
@@ -220,23 +226,9 @@ fn every_subset_of_switches_sets_exactly_those_switches() {
 
 #[test]
 fn a_repeated_flag_keeps_its_last_value_and_switches_are_idempotent() {
-    let options = parsed(&[
-        "--max-time",
-        "5",
-        "a.osp",
-        "--max-time",
-        "7",
-        "--json",
-        "--json",
-        "--out",
-        "x",
-        "--out",
-        "y",
-        "--input-bytes",
-        "4096",
-        "--input-bytes",
-        "0",
-    ])
+    let options = parsed_line(
+        "--max-time 5 a.osp --max-time 7 --json --json --out x --out y --input-bytes 4096 --input-bytes 0",
+    )
     .expect("repeats");
     assert_eq!(options.max_time, 7);
     assert_eq!(options.input_bytes, 0);
@@ -250,23 +242,10 @@ fn a_repeated_flag_keeps_its_last_value_and_switches_are_idempotent() {
 /// `--seed-file` [SYMEX-REGRESSION], `--json` with a path, `=` forms.
 #[test]
 fn unknown_and_unbuilt_flags_are_refused_by_name() {
-    for flag in [
-        "--fn",
-        "--all-fns",
-        "--replay-host=windows",
-        "--replay-host",
-        "--seed-file",
-        "--json=report.json",
-        "--max-time=5",
-        "--input-bytes=8",
-        "--out=dir",
-        "--posix-runtime",
-        "--libc=uclibc",
-        "--external-calls=all",
-        "--Json",
-        "--",
-        "---json",
-    ] {
+    let refused = "--fn --all-fns --replay-host=windows --replay-host --seed-file \
+                   --json=report.json --max-time=5 --input-bytes=8 --out=dir --posix-runtime \
+                   --libc=uclibc --external-calls=all --Json -- ---json";
+    for flag in refused.split_whitespace() {
         for list in [vec!["a.osp", flag], vec![flag, "a.osp"]] {
             let error = parsed(&list).expect_err("unknown flag");
             assert!(error.contains(&format!("unknown option {flag}")), "{error}");
@@ -284,7 +263,7 @@ fn one_program_only_and_it_is_required() {
         vec!["-q", "a.osp"],
     ] {
         let error = parsed(&list).expect_err("second path");
-        assert!(error.contains("unexpected argument"), "{list:?}: {error}");
+        crate::testkit::shows(&error, &["unexpected argument"]);
     }
     for list in [
         vec![],
@@ -292,7 +271,7 @@ fn one_program_only_and_it_is_required() {
         vec!["--quiet", "--no-replay", "--max-time", "3"],
     ] {
         let error = parsed(&list).expect_err("no path");
-        assert!(error.contains("a source file is required"), "{error}");
+        crate::testkit::shows(&error, &["a source file is required"]);
     }
 }
 

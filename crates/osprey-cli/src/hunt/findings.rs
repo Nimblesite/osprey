@@ -104,6 +104,13 @@ pub(crate) struct Frame {
 }
 
 pub(crate) fn scan(directory: &Path) -> Result<Scan, String> {
+    let mut scan = scan_all(directory)?;
+    scan.findings = dedupe(scan.findings);
+    Ok(scan)
+}
+
+/// Preserve alternate inputs until native replay can confirm a witness [SYMEX-REPLAY].
+pub(crate) fn scan_all(directory: &Path) -> Result<Scan, String> {
     let mut names = std::fs::read_dir(directory)
         .map_err(|error| format!("cannot read {}: {error}", directory.display()))?
         .filter_map(Result::ok)
@@ -119,7 +126,6 @@ pub(crate) fn scan(directory: &Path) -> Result<Scan, String> {
     for name in names {
         record(&mut scan, directory, &name, &externals)?;
     }
-    scan.findings = dedupe(scan.findings);
     Ok(scan)
 }
 
@@ -163,6 +169,9 @@ fn record(
         Some(class) => {
             let inputs = inputs(directory, test);
             let mut found = finding(test, suffix, class, &report, inputs.as_ref());
+            if inputs.is_none() {
+                found.replay = Replay::Skipped("concrete KTEST input is missing or invalid; no input was invented for native replay".to_string());
+            }
             name_externals(&mut found, externals);
             scan.findings.push(found);
         }
@@ -257,7 +266,7 @@ pub(crate) fn finding(
 /// An Osprey frame in the user's own code: prelude functions carry prelude
 /// line numbers and are reported through their caller.
 fn is_user_source(frame: &Frame) -> bool {
-    matches!(extension(&frame.file), "osp" | "ospml") && !is_prelude_line(frame.line)
+    matches!(extension(&frame.file), "osp" | "ospml" | "py") && !is_prelude_line(frame.line)
 }
 
 fn extension(file: &str) -> &str {
@@ -265,8 +274,9 @@ fn extension(file: &str) -> &str {
 }
 
 /// One finding per class and top Osprey frame (or top C frame, or message,
-/// when there is none), keeping the first path that reached it.
-pub(crate) fn dedupe(findings: Vec<Finding>) -> Vec<Finding> {
+/// when there is none), preferring a natively reproduced witness.
+pub(crate) fn dedupe(mut findings: Vec<Finding>) -> Vec<Finding> {
+    findings.sort_by_key(|finding| !matches!(finding.replay, Replay::Reproduced(_)));
     let mut seen = std::collections::BTreeSet::new();
     findings
         .into_iter()
@@ -275,10 +285,16 @@ pub(crate) fn dedupe(findings: Vec<Finding>) -> Vec<Finding> {
 }
 
 fn dedupe_key(finding: &Finding) -> String {
+    place(finding, &finding.message)
+}
+
+/// Where a finding is: its Osprey `file:line`, else its runtime frame, else
+/// `fallback` [SYMEX-FINDINGS].
+pub(crate) fn place(finding: &Finding, fallback: &str) -> String {
     match (&finding.location, &finding.runtime_frame) {
         (Some(location), _) => format!("{}:{}", location.file, location.line),
         (None, Some(frame)) => frame.clone(),
-        (None, None) => finding.message.clone(),
+        (None, None) => fallback.to_string(),
     }
 }
 
@@ -297,29 +313,32 @@ File: /src/runtime/list_runtime.c\nLine: 88\nassembly.ll line: 4012\nState: 7\nS
 \t#000000019 in main() at index.osp:12\n\
 Info: \n\taddress: 94323213\n";
 
+    fn put(dir: &Path, name: &str, bytes: impl AsRef<[u8]>) {
+        std::fs::write(dir.join(name), bytes).expect(name);
+    }
+
     fn write_fixture(dir: &Path) {
         std::fs::create_dir_all(dir).expect("fixture dir");
-        std::fs::write(dir.join("test000001.ptr.err"), PTR_ERR).expect("err");
+        put(dir, "test000001.ptr.err", PTR_ERR);
         let ktest = ktest::encode(&[("stdin", b"9\nxx"), ("stdin.len", &2i32.to_le_bytes())]);
-        std::fs::write(dir.join("test000001.ktest"), ktest).expect("ktest");
-        std::fs::write(dir.join("test000002.ptr.err"), PTR_ERR).expect("duplicate");
-        std::fs::write(dir.join("test000003.early"), "max-time\n").expect("early");
-        std::fs::write(dir.join("test000004.solver.err"), "Error: solver timeout\n")
-            .expect("solver");
-        std::fs::write(dir.join("test000005.unmodelled.err"), "Error: unmodelled: fork\nStack: \n\t#000000001 in spawn() at /src/runtime/system_runtime.c:40\n").expect("unmodelled");
-        std::fs::write(dir.join("test000006.user.err"), "Error: external calls disallowed (in particular, external calls to functions prefixed with klee_ are not allowed)\nStack: \n\t#000000001 in main() at index.osp:41\n").expect("external");
-        std::fs::write(
-            dir.join("test000007.user.err"),
+        put(dir, "test000001.ktest", ktest);
+        put(dir, "test000002.ptr.err", PTR_ERR);
+        put(dir, "test000003.early", "max-time\n");
+        put(dir, "test000004.solver.err", "Error: solver timeout\n");
+        put(dir, "test000005.unmodelled.err", "Error: unmodelled: fork\nStack: \n\t#000000001 in spawn() at /src/runtime/system_runtime.c:40\n");
+        put(dir, "test000006.user.err", "Error: external calls disallowed (in particular, external calls to functions prefixed with klee_ are not allowed)\nStack: \n\t#000000001 in main() at index.osp:41\n");
+        put(
+            dir,
+            "test000007.user.err",
             "Error: invalid klee_assume call (provably false)\n",
-        )
-        .expect("user");
-        std::fs::write(
-            dir.join("messages.txt"),
+        );
+        put(
+            dir,
+            "messages.txt",
             "KLEE: WARNING: undefined reference to function: __osprey_coro_resume\n",
-        )
-        .expect("messages");
-        std::fs::write(dir.join("warnings.txt"), "KLEE: WARNING: Disallowed call to external function: __osprey_coro_new\nKLEE: WARNING: Disallowed call to external function: __osprey_coro_new\n").expect("warnings");
-        std::fs::write(dir.join("info"), "KLEE: done: explored paths = 3\n").expect("info");
+        );
+        put(dir, "warnings.txt", "KLEE: WARNING: Disallowed call to external function: __osprey_coro_new\nKLEE: WARNING: Disallowed call to external function: __osprey_coro_new\n");
+        put(dir, "info", "KLEE: done: explored paths = 3\n");
     }
 
     #[test]

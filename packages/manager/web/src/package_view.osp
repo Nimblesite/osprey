@@ -1,0 +1,47 @@
+namespace registry_web;
+import registry::Governance
+import registry::Names
+import registry_web::Html
+import registry_web::Model
+import registry_web::Warnings
+
+/// The package page: public identity, lifecycle, maintenance, the
+/// evidence-backed review and the security warnings. An organization member
+/// additionally sees the organization/permission context with the
+/// administrator seat and their own effective permissions; anonymous
+/// visitors get the public projection only — no membership or grant
+/// information ([PACKAGE-HOSTED-ROUTES], [PACKAGE-OWNERSHIP-MAINTENANCE]).
+module PackageView {
+    export fn render(l, access: Model::Access, now) = match Model::gate(l.evidence, Names::display(l.pkg.key)) {
+        Error { message } => Model::hidden("web.evidence-unavailable: ${message}")
+        Success => Model::shown(Html::document("${Names::display(l.pkg.key)} - Osprey Package Registry", body(l, access, now)))
+    }
+
+    fn body(l, access: Model::Access, now) = join([
+        "<main id=\"package\"><h1>${Html::escape(Names::display(l.pkg.key))}</h1>",
+        Html::field("Organization", "@${l.orgHandle}"),
+        Html::field("Status", "${Model::stateName(l.pkg)}, ${Model::careName(l.care)}"),
+        Html::field("Security review evidence", Model::reviewOf(l.evidence)),
+        warningsSection(l),
+        accessSection(l, access, now),
+        "</main>"], "")
+
+    fn warningsSection(l) = Html::section("warnings", "Security warnings", Warnings::block(Model::warningsOf(l.evidence)))
+
+    /// The organization context appears only for members of this package's
+    /// organization; it is never public ([PACKAGE-OWNERSHIP-PERMISSIONS]).
+    fn accessSection(l, access: Model::Access, now) = if Model::viewerOrgHandle(access.viewer) == l.orgHandle {
+        Html::section("access", "Organization and permissions", context(access, now))
+    } else { "" }
+
+    fn context(access: Model::Access, now) = join([
+        Html::field("Package administrator", access.admin),
+        Html::field("Your effective permissions", Model::permissionsOf(access, now)),
+        publishNotice(access, now)], "")
+
+    /// The admin-without-grant warning: an administrator seat alone never
+    /// implies a publishing capability [PACKAGE-OWNERSHIP-ADMIN].
+    fn publishNotice(access: Model::Access, now) = if Model::isAdministeredBy(access) && !Model::holdsNow(access, Governance::PublishRelease, now) {
+        Html::note(Model::publishGrantNotice())
+    } else { "" }
+}

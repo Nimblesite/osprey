@@ -1,5 +1,5 @@
 //! Result pattern lowering.
-use super::{bind_catch_all, bind_value, emit_arm, finish_phi};
+use super::{bind_catch_all, bind_value, emit_arm, finish_phi, match_mark};
 use crate::builder::Codegen;
 use crate::error::Result;
 use crate::llty::{LType, Value};
@@ -74,7 +74,7 @@ pub(super) fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]
 
     let (sl, el, end) = cg.diamond(&cond);
 
-    let mark = crate::arc::frame_mark(cg);
+    let mark = match_mark(cg);
     let mut phi_in: Vec<(Value, String)> = Vec::new();
     emit_result_arm(cg, &sl, success, succ_val, disc, &mut phi_in)?;
     emit_result_arm(cg, &el, error, err_val, disc, &mut phi_in)?;
@@ -131,7 +131,7 @@ pub(super) fn gen_list_get_match(
     if !builtin || !fusible {
         return Ok(None);
     }
-    within(cg, &applications, &mut |cg| {
+    within(cg, callee, &applications, &mut |cg| {
         fused_list_get(cg, arguments, arms)
     })
     .map(Some)
@@ -141,13 +141,14 @@ pub(super) fn gen_list_get_match(
 /// outermost first, exactly as an ordinary call would be generated.
 fn within(
     cg: &mut Codegen,
+    callee: &Expr,
     applications: &[Option<osprey_ast::Position>],
     generate: &mut dyn FnMut(&mut Codegen) -> Result<Value>,
 ) -> Result<Value> {
     match applications.split_first() {
-        Some((position, rest)) => {
-            crate::expr::with_application(cg, *position, |cg| within(cg, rest, generate))
-        }
+        Some((position, rest)) => crate::expr::with_application(cg, callee, *position, |cg| {
+            within(cg, callee, rest, generate)
+        }),
         None => generate(cg),
     }
 }
@@ -158,7 +159,7 @@ fn fused_list_get(cg: &mut Codegen, arguments: &[Expr], arms: &[MatchArm]) -> Re
     let in_bounds = cg.call("i32", "osprey_list_in_bounds", "i8*, i64", &operands);
     let cond = cg.emit_reg(format!("icmp ne i32 {in_bounds}, 0"));
     let (sl, el, end) = cg.diamond(&cond);
-    let mark = crate::arc::frame_mark(cg);
+    let mark = match_mark(cg);
     let mut phi_in: Vec<(Value, String)> = Vec::new();
     cg.start_block(&sl);
     let raw = cg.call("i64", "osprey_list_get", "i8*, i64", &operands);

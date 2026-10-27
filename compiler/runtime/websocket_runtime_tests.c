@@ -12,6 +12,7 @@
 #include "http_shared.h"
 #include <assert.h>
 #include <signal.h>
+#include <sys/wait.h>
 
 int64_t websocket_connect(char *url);
 int64_t websocket_send(int64_t ws_id, char *message);
@@ -361,6 +362,30 @@ static void test_client_connect_failures(void) {
   close(listen_fd);
 }
 
+// A closed peer must return -3 even with the process's default SIGPIPE policy.
+// The rest of this suite ignores SIGPIPE, which otherwise hides this defect.
+static void ws_send_to_closed_peer(void) {
+  assert(signal(SIGPIPE, SIG_DFL) != SIG_ERR);
+  int sockets[2];
+  assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
+  assert(close(sockets[1]) == 0);
+  WebSocket connection = {.socket_fd = sockets[0], .is_connected = true};
+  assert(pthread_mutex_init(&connection.mutex, NULL) == 0);
+  websockets[1] = &connection;
+  _exit(websocket_send(1, "closed peer") == -3 ? 0 : 1);
+}
+
+static void test_closed_peer_preserves_process(void) {
+  pid_t child = fork();
+  assert(child >= 0);
+  if (child == 0) {
+    ws_send_to_closed_peer();
+  }
+  int status = 0;
+  assert(waitpid(child, &status, 0) == child);
+  assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+}
+
 // ------------------------------------------------------------- keep-alive
 
 static void *ws_shutdown_signaller(void *arg) {
@@ -391,6 +416,7 @@ static void test_keep_alive_until_signal(void) {
 
 int main(void) {
   signal(SIGPIPE, SIG_IGN); // a closed peer must surface as a send error
+  test_closed_peer_preserves_process();
   test_handle_validation();
   test_listen_bind_conflict();
   test_live_loopback_exchange();

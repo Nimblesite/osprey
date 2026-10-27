@@ -1,8 +1,8 @@
 // libm for the mock libc [SYMEX-MOCK-STATELESS]. KLEE concretises floating
 // point and lowers llvm.sqrt / llvm.exp / llvm.log to these names, so they are
 // plain C: bit-level exponent handling plus short series on reduced
-// arguments. Accuracy is within a few ulp, which is what the explored
-// program's branches need; the native replay prints through the real libm.
+// arguments. Native tests pin special cases and sampled finite results;
+// no universal ulp bound is established. Native replay uses the real libm.
 #include "hunt_mock.h"
 
 #include <math.h>
@@ -175,6 +175,7 @@ double log2(double x) { return log(x) / LN2; }
 
 static double integer_power(double base, long long exponent) {
   double result = 1.0;
+  base = exponent < 0 ? 1.0 / base : base;
   unsigned long long remaining = exponent < 0 ? 0ULL - (unsigned long long)exponent : (unsigned long long)exponent;
   for (; remaining != 0; remaining >>= 1) {
     if (remaining & 1) {
@@ -182,24 +183,30 @@ static double integer_power(double base, long long exponent) {
     }
     base *= base;
   }
-  return exponent < 0 ? 1.0 / result : result;
+  return result;
+}
+
+static double infinite_power(double magnitude, double exponent) {
+  return magnitude == 1.0 ? 1.0 : (magnitude > 1.0) == (exponent > 0.0) ? INFINITY : 0.0;
+}
+
+static double limiting_power(double base, double exponent, int odd) {
+  double result = (base == 0.0) == (exponent > 0.0) ? 0.0 : INFINITY;
+  return signbit(base) && odd ? -result : result;
 }
 
 double pow(double base, double exponent) {
   osp_hunt_note(OSP_HUNT_CALL_MATH);
-  if (exponent == 0.0) {
-    return 1.0;
-  }
-  if (base == 1.0 || isnan(base) || isnan(exponent)) {
-    return base == 1.0 ? 1.0 : NAN;
-  }
-  if (exponent == trunc(exponent) && fabs(exponent) < 9007199254740992.0) {
-    return integer_power(base, (long long)exponent);
-  }
-  if (base < 0.0) {
-    return NAN;
-  }
-  return exp(exponent * log(base));
+  if (exponent == 0.0 || base == 1.0) return 1.0;
+  if (isnan(base) || isnan(exponent)) return NAN;
+  if (isinf(exponent)) return infinite_power(fabs(base), exponent);
+  int integral = exponent == trunc(exponent);
+  int small = fabs(exponent) < 0x1p53;
+  int odd = integral && small && ((long long)exponent & 1);
+  if (base == 0.0 || isinf(base)) return limiting_power(base, exponent, odd);
+  if (base < 0.0 && !integral) return NAN;
+  if (integral && small) return integer_power(base, (long long)exponent);
+  return exp(exponent * log(fabs(base)));
 }
 
 // sin r for |r| <= pi by the Taylor series.

@@ -15,21 +15,25 @@ use std::path::Path;
 #[cfg(unix)]
 use std::path::PathBuf;
 
-/// `child_exit_code` folds a signal into 128 + n: everything at or below 128
-/// is a clean exit, everything above a signal.
+/// Every exit byte is the program's own choice and stays klee-only, 128 and
+/// above included; every signal reproduces, under its name or its number.
+#[cfg(unix)]
 #[test]
 fn every_exit_byte_maps_to_one_verdict() {
     for code in 0..=u8::MAX {
-        match replay::outcome(code) {
-            Replay::KleeOnly => assert!(code <= 128, "{code}"),
-            Replay::Reproduced(signal) => {
-                assert!(code > 128, "{code}");
-                assert!(
-                    signal.starts_with("SIG") || signal == format!("signal {}", code - 128),
-                    "{code}: {signal}"
-                );
-            }
-            other => panic!("exit {code} gave {other:?}"),
+        assert_eq!(
+            replay::outcome(replay::raw_status(i32::from(code), 0)),
+            Replay::KleeOnly,
+            "exit {code}"
+        );
+    }
+    for signal in 1..=31 {
+        match replay::outcome(replay::raw_status(0, signal)) {
+            Replay::Reproduced(name) => assert!(
+                name.starts_with("SIG") || name == format!("signal {signal}"),
+                "{signal}: {name}"
+            ),
+            other => panic!("signal {signal} gave {other:?}"),
         }
     }
 }
@@ -85,7 +89,7 @@ fn unmodelled_findings_are_skipped_even_when_nothing_else_is_replayed() {
         None,
         "unmodelled: fork",
     )];
-    replay::replay(&input, &mut findings).expect("nothing to build");
+    replay::replay(&input, &mut findings, "gc").expect("nothing to build");
     assert!(
         matches!(&findings[0].replay, Replay::Skipped(reason) if reason.contains("unmodelled")),
         "{:?}",
@@ -102,6 +106,47 @@ fn script(dir: &Dir, name: &str, body: &str) -> PathBuf {
     path
 }
 
+#[cfg(unix)]
+fn stdin_file_inputs() -> super::ktest::Ktest {
+    super::ktest::parse(&super::ktest::encode(&[
+        ("osprey.hunt.files.v2", &2i32.to_le_bytes()),
+        ("stdin", b"S\n"),
+        ("stdin.len", &2i32.to_le_bytes()),
+        ("file.ok:stdin", &1i32.to_le_bytes()),
+        ("file.len:stdin", &1i32.to_le_bytes()),
+        ("file.data:stdin", b"F"),
+    ]))
+    .expect("independent stdin and file streams")
+}
+
+#[cfg(unix)]
+#[test]
+fn stdin_and_a_file_named_stdin_reproduce_independently() {
+    let dir = Dir::new("stdin-file");
+    let exe = script(&dir, "probe", "IFS= read -r value; [ \"$value\" = S ] && [ \"$(cat stdin)\" = F ] && kill -ABRT $$; exit 0");
+    let inputs = stdin_file_inputs();
+    let mut finding = sample(Class::Memory, None, None, "m");
+    finding.stdin = inputs.stream("stdin").expect("stdin");
+    finding.files = inputs.files();
+    assert_eq!(finding.stdin, b"S\n");
+    assert_eq!(finding.files, vec![("stdin".into(), b"F".to_vec())]);
+    assert_eq!(
+        replay::run_one(&exe, &dir.0.join("work"), &finding).expect("replay"),
+        Replay::Reproduced("SIGABRT".into())
+    );
+}
+
+/// The verdict of replaying a memory finding against `exe` in `dir`.
+#[cfg(unix)]
+fn verdict_of(dir: &Dir, exe: &Path) -> Replay {
+    replay::run_one(
+        exe,
+        &dir.0.join("work"),
+        &sample(Class::Memory, None, None, "m"),
+    )
+    .expect("replay")
+}
+
 /// Each fatal signal the native program dies of is reported by name.
 #[cfg(unix)]
 #[test]
@@ -109,12 +154,7 @@ fn every_fatal_signal_reproduces_by_name() {
     let dir = Dir::new("signals");
     for signal in ["SEGV", "ABRT", "FPE", "ILL", "TRAP", "BUS"] {
         let exe = script(&dir, signal, &format!("kill -{signal} $$"));
-        let verdict = replay::run_one(
-            &exe,
-            &dir.0.join("work"),
-            &sample(Class::Memory, None, None, "m"),
-        )
-        .expect("replay");
+        let verdict = verdict_of(&dir, &exe);
         assert_eq!(
             verdict,
             Replay::Reproduced(format!("SIG{signal}")),
@@ -128,13 +168,7 @@ fn assert_klee_only_exits(name: &str, statuses: &[u8]) {
     let dir = Dir::new(name);
     for status in statuses {
         let exe = script(&dir, &format!("exit{status}"), &format!("exit {status}"));
-        let verdict = replay::run_one(
-            &exe,
-            &dir.0.join("work"),
-            &sample(Class::Memory, None, None, "m"),
-        )
-        .expect("replay");
-        assert_eq!(verdict, Replay::KleeOnly, "exit {status}");
+        assert_eq!(verdict_of(&dir, &exe), Replay::KleeOnly, "exit {status}");
     }
 }
 
@@ -220,4 +254,72 @@ fn a_program_that_ignores_a_large_stdin_still_replays() {
         replay::run_one(&exe, &dir.0.join("work"), &finding).expect("replay"),
         Replay::KleeOnly
     );
+}
+
+#[cfg(unix)]
+fn crash_replay_script(dir: &Dir) -> PathBuf {
+    script(dir, "replay", "read -r value; printf '%s\\n' \"$value\" >> \"$0.calls\"; [ \"$value\" = crash ] && kill -ABRT $$; exit 0")
+}
+
+#[cfg(unix)]
+fn assert_confirmed_witness(kept: &[super::findings::Finding]) {
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].stdin, b"crash\n");
+    assert_eq!(kept[0].replay, Replay::Reproduced("SIGABRT".into()));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_later_reproduced_witness_survives_deduplication() {
+    let dir = Dir::new("later-witness");
+    let exe = crash_replay_script(&dir);
+    let mut first = sample(Class::Memory, Some(("same.osp", 4)), None, "same fault");
+    first.stdin = b"quiet\n".to_vec();
+    let mut second = first.clone();
+    second.stdin = b"crash\n".to_vec();
+    for finding in [&mut first, &mut second] {
+        finding.replay = replay::run_one(&exe, &dir.0.join("work"), finding).expect("replay");
+    }
+    assert_eq!(first.replay, Replay::KleeOnly);
+    assert_eq!(second.replay, Replay::Reproduced("SIGABRT".into()));
+    let kept = super::findings::dedupe(vec![first, second]);
+    assert_confirmed_witness(&kept);
+}
+
+#[cfg(unix)]
+fn same_site_witnesses(dir: &Dir) -> Vec<super::findings::Finding> {
+    let report = b"Error: same fault\nStack: \n\t#0 in main() at same.osp:4\n";
+    for (n, input) in [b"quiet\n".as_slice(), b"crash\n", b"unneeded\n"]
+        .iter()
+        .enumerate()
+    {
+        dir.write(&format!("test{n:06}.ptr.err"), report);
+        dir.write(
+            &format!("test{n:06}.ktest"),
+            &super::ktest::encode(&[("stdin", input)]),
+        );
+    }
+    super::findings::scan_all(&dir.0)
+        .expect("all witnesses")
+        .findings
+}
+
+#[cfg(unix)]
+#[test]
+fn scan_replays_until_a_witness_reproduces_and_keeps_its_exact_input() {
+    let dir = Dir::new("scan-witnesses");
+    let exe = crash_replay_script(&dir);
+    let mut witnesses = same_site_witnesses(&dir);
+    assert_eq!(witnesses.len(), 3);
+    let no_replay = super::findings::scan(&dir.0).expect("no replay");
+    assert_eq!(no_replay.findings.len(), 1);
+    replay::replay_all(&exe, &dir.0.join("work"), &mut witnesses).expect("replay all");
+    assert_eq!(witnesses[0].replay, Replay::KleeOnly);
+    assert_eq!(witnesses[1].replay, Replay::Reproduced("SIGABRT".into()));
+    assert_eq!(witnesses[2].replay, Replay::NotRun);
+    let calls = std::fs::read(exe.with_file_name("replay.calls")).expect("calls");
+    assert_eq!(calls, b"quiet\ncrash\n");
+    let kept = super::findings::dedupe(witnesses);
+    assert_confirmed_witness(&kept);
+    assert_eq!(kept[0].test, "test000001");
 }

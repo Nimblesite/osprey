@@ -7,7 +7,7 @@ const { test, expect } = require("@playwright/test");
 const { PAGES, VIEWPORTS, collectProblems, paintedColours } = require("./helpers");
 
 const SITE = path.resolve(__dirname, "../_site");
-const OSPREY_CODE = /<code([^>]*)class="language-osprey(?:-ml)?"[^>]*>([\s\S]*?)<\/code>/g;
+const OSPREY_CODE = /<code([^>]*)class="language-(?:osprey(?:-ml)?|ospml|osp)"[^>]*>([\s\S]*?)<\/code>/g;
 const COMMENT_TOKEN = /<span class="token comment">[\s\S]*?<\/span>/g;
 const OSPREY_BLOCKS = "pre > code.language-osprey, pre > code.language-osprey-ml";
 
@@ -143,13 +143,30 @@ for (const pg of PAGES) {
   });
 }
 
+const proseOffsets = (elements) => elements.map((element) => {
+  const { x, width } = element.getBoundingClientRect();
+  return Math.abs(x + width / 2 - window.innerWidth / 2);
+});
+
+async function expectNavigationFits(links) {
+  for (const link of await links.all()) await expect(link).toBeInViewport({ ratio: 1 });
+  const overflowing = await links.evaluateAll((elements) => elements
+    .filter((element) => element.scrollWidth > element.clientWidth)
+    .map((element) => element.textContent.trim()));
+  expect(overflowing, "navigation text must fit inside each link's target").toEqual([]);
+}
+
 for (const width of [1280, 1440, 1920]) {
   test(`benchmark columns fit desktop landscape at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/benchmarks/");
     await page.evaluate(() => document.fonts.ready);
+    const prose = page.locator(".prose > :is(h1, h2, h3, p, ul, ol, pre)");
+    const centers = await prose.evaluateAll(proseOffsets);
+    expect(Math.max(...centers), "benchmark prose must be centered in the viewport").toBeLessThanOrEqual(2);
     const tables = page.locator(".comparison-table table");
     await expect(tables).toHaveCount(2);
+    expect(await tables.first().evaluate((table) => table.clientWidth / table.closest("article").clientWidth)).toBeGreaterThan(0.95);
     const overflow = await tables.evaluateAll((elements) => elements.map((element) => element.scrollWidth - element.clientWidth));
     expect(overflow, "every benchmark column must fit without horizontal scrolling").toEqual([0, 0]);
     for (const table of await tables.all()) {
@@ -159,3 +176,210 @@ for (const width of [1280, 1440, 1920]) {
     }
   });
 }
+
+test.describe("mobile interactions", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("mobile menu opens and closes", async ({ page }) => {
+    await page.goto("/");
+    const toggle = page.locator("#mobile-menu-toggle");
+    const links = page.locator(".nav-links");
+    await expect(toggle).toBeVisible();
+    await expect(links).toBeHidden();
+    await toggle.click();
+    await expect(links).toBeVisible();
+    await expect(links.locator("summary", { hasText: "Docs" })).toBeVisible();
+    await toggle.click();
+    await expect(links).toBeHidden();
+  });
+
+  test("mobile menu link navigates", async ({ page }) => {
+    await page.goto("/");
+    await page.locator("#mobile-menu-toggle").click();
+    await page.locator(".nav-link", { hasText: "Blog" }).click();
+    await expect(page).toHaveURL(/\/blog\/$/);
+  });
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 320 }, { width: 768, height: 320, font: "monospace" }]) {
+    test(`mobile menu links fit within ${viewport.width}x${viewport.height}${viewport.font ? " with fallback font" : ""}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto("/docs/");
+      if (viewport.font) await page.addStyleTag({ content: `:root { --font-sans: ${viewport.font}; }` });
+      await page.locator("#mobile-menu-toggle").click();
+      const controls = page.locator("#site-navigation > li > a, #site-navigation > li > details > summary");
+      await expect(controls).toHaveCount(5);
+      await expectNavigationFits(controls);
+      for (const group of await page.locator(".nav-group").all()) {
+        await group.locator("summary").click();
+        await expectNavigationFits(group.getByRole("link"));
+        await expectNavigationFits(controls);
+      }
+    });
+  }
+
+  test("hero actions stack full-width on mobile", async ({ page }) => {
+    await page.goto("/");
+    const widths = await page.evaluate(() => {
+      const btns = [...document.querySelectorAll(".hero-actions .btn")];
+      return { btn: btns[0].getBoundingClientRect().width, actions: document.querySelector(".hero-actions").getBoundingClientRect().width };
+    });
+    // Each button should span (nearly) the full actions row.
+    expect(widths.btn).toBeGreaterThan(widths.actions * 0.9);
+  });
+
+  test("TOC sidebar is hidden on mobile", async ({ page }) => {
+    await page.goto("/spec/0001-introduction/");
+    await expect(page.locator(".toc-aside")).toBeHidden();
+  });
+
+  test("mobile menu supports keyboard dismissal and restores focus", async ({ page }) => {
+    await page.goto("/");
+    const toggle = page.locator("#mobile-menu-toggle");
+    const links = page.locator(".nav-links");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toHaveAttribute("aria-controls", await links.getAttribute("id"));
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(links.locator("summary").first()).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(links).toBeHidden();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toBeFocused();
+  });
+
+  test("mobile menu closes outside the header and resets on resize", async ({ page }) => {
+    await page.goto("/docs/");
+    const toggle = page.locator("#mobile-menu-toggle");
+    const links = page.locator(".nav-links");
+    await toggle.click();
+    await page.mouse.click(10, 800);
+    await expect(links).toBeHidden();
+    await toggle.click();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(links).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(links).toBeHidden();
+  });
+});
+
+const orphanedDocs = (sources) => {
+  const pages = new Map(sources.map(([url, html]) => [url, new DOMParser().parseFromString(html, "text/html")]));
+  const reached = new Set(["/docs/"]);
+  for (const url of reached) {
+    for (const link of pages.get(url)?.querySelectorAll("a[href]") || []) {
+      const target = new URL(link.getAttribute("href"), "https://docs.test" + url);
+      if (target.origin === "https://docs.test" && pages.has(target.pathname)) reached.add(target.pathname);
+    }
+  }
+  return [...pages.keys()].filter((url) => !reached.has(url)).sort();
+};
+
+test("every published docs page is reachable from documentation home", async ({ page }) => {
+  const root = path.join(SITE, "docs");
+  const sources = fs.readdirSync(root, { recursive: true }).filter((file) => file.endsWith(".html")).map((file) => [
+    "/docs/" + file.replaceAll(path.sep, "/").replace(/index\.html$/, ""), fs.readFileSync(path.join(root, file), "utf8"),
+  ]);
+  expect(sources.length).toBeGreaterThan(100);
+  expect(await page.evaluate(orphanedDocs, sources)).toEqual([]);
+  expect(await page.evaluate(orphanedDocs, [["/docs/", ""], ["/docs/forgotten/", ""]])).toEqual(["/docs/forgotten/"]);
+});
+
+test("reactive signals is in the Language section and its ML example is highlighted", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/docs/reactive-signals/");
+  const section = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Language" });
+  await expect(section.getByRole("link", { name: "Reactive signals", exact: true })).toHaveClass(/active/);
+  const code = page.locator('pre[data-flavor="ml"] code').filter({ hasText: "signalSnapshot label" });
+  await expect(code).toHaveCount(1);
+  await expect(code.locator(".token.keyword").first()).toBeAttached();
+  expect(await paintedColours(code.locator(".token"))).toBeGreaterThan(1);
+});
+
+const DOC_SECTIONS = ["Start here", "Tutorials", "Build applications", "Packages", "Language", "Reference"];
+
+test.describe("documentation sub-page navigation", () => {
+  test("groups subpages and identifies the current desktop page", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/web-apps/");
+    await expect(page.locator(".prose-layout .prose")).toBeVisible();
+    const navigation = page.locator(".toc-aside .docs-nav-desktop");
+    await expect(navigation).toBeVisible();
+    await expect(navigation.locator(".docs-nav-section-title")).toHaveText(DOC_SECTIONS);
+    await expect(navigation.getByRole("link", { name: "Web apps", exact: true })).toHaveClass(/active/);
+  });
+
+  test("the site Docs menu mirrors the documentation sections", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/");
+    const sections = page.locator(".docs-nav-desktop .docs-nav-section");
+    const landings = await sections.evaluateAll((all) => all.map((section) => section.querySelector("a").getAttribute("href")));
+    const menu = page.locator(".nav-group .nav-submenu a");
+    await expect(menu).toHaveText(DOC_SECTIONS);
+    expect(await menu.evaluateAll((links) => links.map((link) => link.getAttribute("href")))).toEqual(landings);
+  });
+
+  test("Reference lists benchmarks and releases", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/releases/");
+    const reference = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Reference" });
+    await expect(reference.getByRole("link", { name: "Benchmarks", exact: true })).toHaveAttribute("href", "/benchmarks/");
+    await expect(reference.getByRole("link", { name: "Releases", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.locator("h1")).toHaveText("Releases");
+    await expect(page.locator(".prose a[href='https://github.com/Nimblesite/osprey/releases']")).toHaveCount(1);
+    await expect(page.locator(".nav-submenu a.active")).toHaveText("Reference");
+  });
+
+  for (const height of [600, 900]) {
+    test(`desktop docs navigation scrolls with the document at ${height}px`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height });
+      await page.goto("/docs/web-apps/");
+      const navigation = page.locator(".docs-nav-desktop");
+      await navigation.getByRole("link").first().hover();
+      await page.mouse.wheel(0, 400);
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+      expect(await navigation.evaluate((nav) => nav.scrollTop)).toBe(0);
+      const lastLink = navigation.getByRole("link", { name: "Operators", exact: true });
+      await lastLink.scrollIntoViewIfNeeded();
+      await expect(lastLink).toBeInViewport();
+      expect(await navigation.evaluate((nav) => nav.scrollHeight - nav.clientHeight)).toBe(0);
+    });
+  }
+
+  test("mobile docs groups expose the current section and expand on demand", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/docs/web-apps/");
+    const navigation = page.locator(".docs-nav-mobile");
+    await expect(navigation).toBeVisible();
+    await navigation.locator(":scope > summary").click();
+    await expect(navigation.locator(".docs-nav-section-title")).toHaveText(DOC_SECTIONS);
+    await expect(navigation.getByRole("link", { name: "Web apps", exact: true })).toBeVisible();
+    const firstApp = navigation.getByRole("link", { name: "My First App", exact: true });
+    await expect(firstApp).toBeHidden();
+    await navigation.locator("summary", { hasText: "Start here" }).click();
+    await expect(firstApp).toBeVisible();
+    await firstApp.click();
+    await expect(page).toHaveURL(/\/docs\/my-first-app\/$/);
+  });
+
+  test("mobile reference navigation works without JavaScript", async ({ browser }) => {
+    const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    await page.goto("/docs/functions/map/");
+    const navigation = page.locator(".docs-nav-mobile");
+    await navigation.locator(":scope > summary").click();
+    const functions = navigation.getByRole("link", { name: "Functions", exact: true });
+    await expect(functions).toBeVisible();
+    await expect(functions).toHaveAttribute("aria-current", "location");
+    await navigation.locator("summary", { hasText: "Packages" }).click();
+    await navigation.getByRole("link", { name: "Package manager", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/package-manager\/$/);
+    await context.close();
+  });
+
+  test("keeps the single-file first app tutorial in Default flavor", async ({ page }) => {
+    await page.goto("/docs/my-first-app/");
+    await expect(page.locator('.prose pre[data-flavor="default"]')).not.toHaveCount(0);
+    await expect(page.locator('.prose pre[data-flavor="ml"]')).toHaveCount(0);
+  });
+});

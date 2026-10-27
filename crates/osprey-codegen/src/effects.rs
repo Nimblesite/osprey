@@ -249,12 +249,7 @@ fn emit_unhandled_guard(cg: &mut Codegen, raw: &str, lookup_key: &str, operation
     });
     let msg = cg.string_constant(&format!("unhandled effect: {lookup_key}.{operation}"));
     let is_null = cg.emit_reg(format!("icmp eq i8* {raw}, null"));
-    let abort_lbl = cg.fresh_label();
-    let ok_lbl = cg.fresh_label();
-    cg.emit(format!(
-        "br i1 {is_null}, label %{abort_lbl}, label %{ok_lbl}"
-    ));
-    cg.start_block(&abort_lbl);
+    let ok_lbl = cg.open_guard(&is_null);
     let _ = cg.emit_reg(format!("call i32 @puts(i8* {})", msg.operand));
     cg.emit(stop);
     cg.emit("unreachable");

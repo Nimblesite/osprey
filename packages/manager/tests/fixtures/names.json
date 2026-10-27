@@ -1,0 +1,86 @@
+{
+  "spec": "[PACKAGE-NAMES]",
+  "valid": [
+    "@finch/ledger",
+    "@osprey/http",
+    "@a1/b-2",
+    "@a/a--b",
+    "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "@my-org/helper-functions",
+    "@another-org/helper-functions"
+  ],
+  "invalid": [
+    {
+      "text": "finch/ledger",
+      "code": "name.missing-at"
+    },
+    {
+      "text": "@finch",
+      "code": "name.unscoped-or-missing-slash"
+    },
+    {
+      "text": "@finch/ledger/extra",
+      "code": "name.extra-slash"
+    },
+    {
+      "text": "@/ledger",
+      "code": "name.scope.length"
+    },
+    {
+      "text": "@finch/",
+      "code": "name.name.length"
+    },
+    {
+      "text": "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x",
+      "code": "name.scope.length"
+    },
+    {
+      "text": "@x/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "code": "name.name.length"
+    },
+    {
+      "text": "@Finch/ledger",
+      "code": "name.scope.chars"
+    },
+    {
+      "text": "@finch/Ledger",
+      "code": "name.name.chars"
+    },
+    {
+      "text": "@finch/-ledger",
+      "code": "name.name.chars"
+    },
+    {
+      "text": "@finch-/ledger",
+      "code": "name.scope.chars"
+    },
+    {
+      "text": "@finch/led_ger",
+      "code": "name.name.chars"
+    },
+    {
+      "text": "@finch/lédger",
+      "code": "name.name.chars"
+    },
+    {
+      "text": "@finch/led ger",
+      "code": "name.name.chars"
+    },
+    {
+      "text": "@finch/ledger@e1.r1",
+      "code": "name.name.chars"
+    },
+    {
+      "text": "HelperFunctions",
+      "code": "name.missing-at"
+    },
+    {
+      "text": "helper-functions",
+      "code": "name.missing-at"
+    },
+    {
+      "text": "my-org/helper-functions",
+      "code": "name.missing-at"
+    }
+  ]
+}

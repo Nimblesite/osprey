@@ -5,6 +5,8 @@ Default source is tokenized by `tree-sitter-osprey`; ML source uses the lexer in
 and `NEWLINE` tokens. Both frontends share string unescaping and interpolation
 scanning.
 
+This chapter describes Default and ML tokens. The third frontend uses Python's concrete syntax; its marker, indentation, literals and supported forms are specified in [Python Flavor Syntax](0041-PythonFlavorSyntax.md).
+
 ## Identifiers
 
 Default identifiers use ASCII letters and underscores:

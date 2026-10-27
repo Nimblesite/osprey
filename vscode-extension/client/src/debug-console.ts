@@ -38,6 +38,11 @@ function selectedConsole(config: ConsoleConfiguration): DebugConsole {
   return choice;
 }
 
+/** Xcode's lldb-dap reports LLVM 21 yet times out on every `runInTerminal`
+ * launch, so it is recognised by where Xcode installs it. */
+const XCODE_ADAPTER =
+  /\/Contents\/Developer\/|^\/Library\/Developer\/CommandLineTools\//;
+
 /** Never let an older adapter silently ignore a requested terminal. */
 export async function resolveDebugConsole(
   config: ConsoleConfiguration,
@@ -46,6 +51,11 @@ export async function resolveDebugConsole(
 ): Promise<DebugConsole> {
   const choice = selectedConsole(config);
   if (choice === "internalConsole") return choice;
+  if (XCODE_ADAPTER.test(adapter)) {
+    throw new Error(
+      `${choice} cannot run under Xcode's lldb-dap (${adapter}), which never completes a terminal launch. Install Homebrew's adapter (brew install lldb) or choose internalConsole.`,
+    );
+  }
   const text = await version(adapter);
   const major = /\b(?:LLVM|lldb) version (\d+)\./i.exec(text)?.[1];
   if (major === undefined || Number(major) < 21) {

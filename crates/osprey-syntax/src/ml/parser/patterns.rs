@@ -33,12 +33,13 @@ impl Parser<'_> {
     }
 
     pub(in crate::ml) fn match_arm(&mut self) -> MlArm {
+        let pos = self.pos();
         let pattern = self.pattern();
         if !self.eat(&TokKind::FatArrow) {
             self.error("expected '=>' in match arm");
         }
         let body = self.body_after_eq();
-        MlArm { pattern, body }
+        MlArm { pattern, body, pos }
     }
 
     /// A match pattern, plus the diagnostic for the or-pattern users reach for

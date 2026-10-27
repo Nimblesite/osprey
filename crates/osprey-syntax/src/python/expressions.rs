@@ -199,15 +199,21 @@ impl Lowerer<'_> {
         arguments: Vec<Expr>,
         named: Vec<NamedArgument>,
     ) -> Result<Expr> {
-        if let Some((name, type_args)) = self.constructor_head(&callee) {
-            Self::named_fields_only(node, &arguments)?;
-            return Ok(construct(name, type_args, named));
-        }
-        Ok(Expr::Call {
-            function: Box::new(callee),
-            arguments,
-            named_arguments: named,
-        })
+        // A positional payload has no field names to supply: `JsonString("x")`
+        // is a saturated application of a positionally-declared constructor and
+        // stays a call so assembly folds it against the declaring unit (the
+        // built-in `Json` prelude) ([TYPE-UNION-POSITIONAL]). A call with no
+        // positional argument — named fields or none — is a construction.
+        let head = self.constructor_head(&callee);
+        let Some((name, type_args)) = head.filter(|_| arguments.is_empty()) else {
+            return Ok(Expr::Call {
+                function: Box::new(callee),
+                arguments,
+                named_arguments: named,
+            });
+        };
+        Self::named_fields_only(node, &arguments)?;
+        Ok(construct(name, type_args, named))
     }
 
     fn named_fields_only(node: Node<'_>, arguments: &[Expr]) -> Result<()> {
@@ -220,6 +226,10 @@ impl Lowerer<'_> {
         Ok(())
     }
 
+    /// The type a call constructs, if it constructs one. A name declared as a
+    /// class here always constructs. Imported names remain calls until the
+    /// project resolver distinguishes their declarations: capitalization alone
+    /// cannot distinguish a nullary factory from a record constructor.
     fn constructor_head(&self, callee: &Expr) -> Option<(String, Vec<osprey_ast::TypeExpr>)> {
         let (head, type_args) = match callee {
             Expr::TypeApply {

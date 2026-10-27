@@ -6,6 +6,8 @@ stopping criteria. They live here so `LogitsProcess` and `StoppingCriteria` do
 not each carry a private copy. All are total: out-of-range reads fall back to a
 sentinel instead of failing."""
 
+from transformers.Math import min_i
+
 __all__ = ["contains_int", "last_n"]
 
 
@@ -19,6 +21,3 @@ def last_n(xs, n):
     k = min_i(n, len(xs))
     return toList(map(range(k), lambda i: unwrap_or(listGet(xs, len(xs) - k + i), 0)))
 
-
-def min_i(a, b):
-    return a if a < b else b

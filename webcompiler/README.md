@@ -1,59 +1,40 @@
-# Osprey Web Playground
+# Osprey playground backend
 
-Web-based Osprey compiler playground with Monaco editor and LSP support.
+This directory contains the Node.js API and WebSocket bridge used by the [website playground](../website/src/playground/index.md). The editor lives in the website; there is no separate `webcompiler/index.html`.
 
-**Security**: All code execution runs in sandbox mode with HTTP, WebSocket, file system, and FFI access disabled for security.
+| Route | Behavior |
+| --- | --- |
+| `GET /api` | Health and service information |
+| `POST /api/compile` | Parse submitted source with `osprey --sandbox --ast` |
+| `POST /api/run` | Compile and execute submitted source with `osprey --sandbox --run` |
+| WebSocket `/lsp` | Forward JSON-RPC to an `osprey lsp` child over stdio |
 
-## Architecture
+POST bodies use `{"code":"print(\"Hello\")","flavor":"default"}`. Set `flavor` to `default`, `ml` or `python`; the server names their source files `.osp`, `.ospml` or `.py` respectively. Python flavor compiles Osprey source, not arbitrary CPython programs. Source markers still pass to the compiler. Responses separate `compilerOutput` and `programOutput`, with a `success` flag. Each compiler request gets a UUID-named temporary directory and a 20-second child-process timeout.
 
-**Node.js API server (port 3001)** - Handles compilation, execution, and LSP bridge
+## Run the backend
 
-```mermaid
-graph TB
-    subgraph "Browser (Port 8000)"
-        A["Monaco Editor<br/>index.html"]
-    end
-    
-    subgraph "Node.js Server (Port 3001)"
-        B["Express API<br/>/api/compile<br/>/api/run"]
-        C["WebSocket Bridge<br/>/lsp"]
-    end
-    
-    subgraph "External Processes"
-        D["Osprey Compiler<br/>osprey --sandbox --ast / --run"]
-        E["Osprey LSP<br/>stdio interface"]
-    end
-    
-    A -->|"HTTP Requests"| B
-    A -->|"WebSocket"| C
-    B -->|"Spawn Process"| D
-    C -->|"stdio"| E
+From the repository root, with Docker installed and running:
+
+```sh
+./webcompiler/start.sh
 ```
 
-## Quick Start
+The script rebuilds the image, replaces the local `osprey-web-compiler` container, maps port 3001 and follows its logs. The image supplies Node.js, the compiler, LLVM/clang and C runtime archives; Python is not a backend prerequisite. In another terminal:
 
-```bash
-./start.sh
+```sh
+curl http://localhost:3001/api
 ```
 
-Open http://localhost:8000
+For a local Node.js process, first build the compiler/runtime with `make build`, then run `npm ci` and `npm run server` from this directory. Development mode uses `target/release/osprey`; the container uses `osprey` on `PATH`.
 
-## Features
+The website runs separately with `npm run dev` from `website/`. Its playground currently configures the hosted API URL; set `API_URL` in the playground source to the local backend when testing both together. The backend allows the website's localhost:8080 origin.
 
-- Monaco editor with Osprey syntax highlighting
-- Compile/run buttons with sandbox security
-- WebSocket LSP connection
-- Real-time error feedback
-- Secure execution environment (no file system, HTTP, WebSocket, or FFI access)
+## Capability boundary
 
-## Requirements
+The shared compiler runner adds `--sandbox` to every compile and run request. The compiler rejects disabled filesystem, HTTP/WebSocket, process and FFI capabilities before generating or executing a program. Container permissions, memory limits and child timeouts are separate controls; the capability gate does not prove complete operating-system isolation or descendant cleanup.
 
-- Node.js
-- Python 3
-- Osprey compiler in PATH
+## Verification and ownership
 
-## Files
+[server.js](src/server.js), [Dockerfile](Dockerfile) and [start.sh](start.sh) define the running backend. [test.sh](test.sh) requires the local run endpoint's showcase to pass, then checks that both endpoints reject forbidden filesystem, FFI, HTTP and process operations with HTTP 422 and the expected security diagnostic. It needs `curl` and `jq`; these capability probes do not establish full operating-system isolation.
 
-- `index.html` - Single-page playground app
-- `src/server.js` - Node.js API and WebSocket server
-- `start.sh` - Startup script 
+[src/server.osp](src/server.osp) is an unused earlier prototype. Its [implementation note](src/plan.md) is separate from the Node.js service's current delivery status.

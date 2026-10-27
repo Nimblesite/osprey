@@ -22,7 +22,16 @@ def verdicts(pairs):
     return [bool(numpy.isclose(a, b, rtol=RTOL, atol=ATOL, equal_nan=True)) for a, b in pairs]
 
 
-if __name__ == "__main__":
+def main():
     write("testing", f"numpy.isclose(a, b, rtol={RTOL}, atol={ATOL}, equal_nan=True) verdicts.", {"numpy": numpy.__version__}, {
         "PAIRS": PAIRS, "VERDICTS": verdicts(PAIRS), "SPECIAL": SPECIAL, "SPECIAL_VERDICTS": verdicts(SPECIAL),
+    }, {
+        "PAIRS": "Finite (got, want) pairs, as floats.",
+        "VERDICTS": "numpy.isclose's verdict for each finite pair.",
+        "SPECIAL": "Pairs holding infinities or NaN, each float as its repr text.",
+        "SPECIAL_VERDICTS": "numpy.isclose's verdict for each special pair.",
     })
+
+
+if __name__ == "__main__":
+    main()

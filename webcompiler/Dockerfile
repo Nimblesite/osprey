@@ -25,6 +25,8 @@ COPY compiler/runtime /workspace/compiler/runtime
 COPY lspkit /workspace/lspkit
 # The compiler embeds this shared grammar in generated HTML documentation.
 COPY website/src/js/osprey-grammar.mjs /workspace/website/src/js/osprey-grammar.mjs
+# Hunt reports embed the same design tokens as the website.
+COPY website/src/css/variables.css /workspace/website/src/css/variables.css
 WORKDIR /workspace
 
 # The language server inside `osprey` mounts lspkit's profiler, whose build
@@ -82,9 +84,10 @@ WORKDIR /app
 COPY --from=osprey-builder /workspace/target/release/osprey /usr/local/bin/osprey
 
 # Copy the C runtime archives osprey links at --run time (the HTTP archive is a
-# superset containing the websocket + system objects; osprey links only these two)
-COPY --from=osprey-builder /workspace/compiler/lib/libfiber_runtime.a /usr/local/lib/libfiber_runtime.a
-COPY --from=osprey-builder /workspace/compiler/lib/libhttp_runtime.a /usr/local/lib/libhttp_runtime.a
+# superset containing the websocket + system objects). One pair per memory
+# backend is required: unmanaged, `_gc` and `_arc` for both fiber and HTTP.
+COPY --from=osprey-builder /workspace/compiler/lib/libfiber_runtime*.a /usr/local/lib/
+COPY --from=osprey-builder /workspace/compiler/lib/libhttp_runtime*.a /usr/local/lib/
 
 # Copy web compiler source
 COPY webcompiler/package*.json ./

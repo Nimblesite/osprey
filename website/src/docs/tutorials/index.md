@@ -1,14 +1,14 @@
 ---
 layout: page
-title: "Osprey video tutorials: watch real apps get built"
-description: Video tutorials for the Osprey language. Watch real Osprey apps get built, see the code on screen, then run each one yourself with the commands shown.
+title: "Osprey video tutorials"
+description: Video tutorials for Osprey applications and tools, including VS Code package management, profiling, and native app interop.
 permalink: /docs/tutorials/
 tags: [tutorials, video]
 ---
 
-Each tutorial is a short narrated video built around one real Osprey app. The video shows the app running and quotes the code from the repository as it goes. Under each video, the page lists the chapters, the commands to run the app yourself, and a full transcript.
+Watch real Osprey applications and tools. Each video includes captions, chapters and a transcript; the accompanying guide explains how to use the feature.
 
-{%- for item in collections.all | sort(false, false, "data.title") %}{% if item.data.video and item.url.startsWith("/docs/tutorials/") %}{% set v = item.data.video | video %}
+{%- for item in collections.all | sort(false, false, "data.title") %}{% if item.data.video and item.url.startsWith("/docs/") %}{% set v = item.data.video | video %}
 
 ## {{ v.name }}
 

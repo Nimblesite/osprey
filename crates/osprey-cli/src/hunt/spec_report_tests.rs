@@ -27,16 +27,34 @@ fn set(names: &[&str]) -> BTreeSet<String> {
     names.iter().map(ToString::to_string).collect()
 }
 
+/// The report over one finding under default options, as JSON and as text.
+fn rendered(finding: Finding) -> (serde_json::Value, String) {
+    let options = options::parse(&options::args(&["p.osp"])).expect("options");
+    let exploration = Exploration::default();
+    let scan = Scan {
+        findings: vec![finding],
+        incomplete: Vec::new(),
+    };
+    let report = Report {
+        program: "p.osp",
+        options: &options,
+        exploration: &exploration,
+        scan: &scan,
+        context: None,
+    };
+    (report::json(&report), report::text(&report))
+}
+
 /// `--json` carries exactly the spec's fields, at every nesting level.
 #[test]
 fn the_json_report_has_exactly_the_spec_fields() {
-    let options = options::parse(&[
-        "p.osp".to_string(),
-        "--max-time".into(),
-        "9".into(),
-        "--input-bytes".into(),
-        "0".into(),
-    ])
+    let options = options::parse(&options::args(&[
+        "p.osp",
+        "--max-time",
+        "9",
+        "--input-bytes",
+        "0",
+    ]))
     .expect("options");
     let exploration = Exploration {
         paths: 2,
@@ -58,19 +76,23 @@ fn the_json_report_has_exactly_the_spec_fields() {
         options: &options,
         exploration: &exploration,
         scan: &scan,
+        context: None,
     });
     assert_eq!(
         keys(&value),
         set(&[
             "program",
             "engine",
+            "memory",
             "budgetSeconds",
             "inputBytes",
             "explored",
             "findings",
-            "incomplete"
+            "incomplete",
+            "context"
         ])
     );
+    assert_eq!(value["memory"], "gc");
     assert_eq!(
         keys(&value["explored"]),
         set(&["paths", "completed", "instructions", "elapsed"])
@@ -132,26 +154,14 @@ fn every_replay_verdict_has_its_json_status_and_text() {
             "skipped (why not)",
         ),
     ];
-    let options = options::parse(&["p.osp".to_string()]).expect("options");
-    let exploration = Exploration::default();
     for (verdict, status, detail, text) in verdicts {
         let mut finding = sample(Class::Memory, Some(("p.osp", 3)), None, "m");
         finding.replay = verdict.clone();
-        let scan = Scan {
-            findings: vec![finding],
-            incomplete: Vec::new(),
-        };
-        let report = Report {
-            program: "p.osp",
-            options: &options,
-            exploration: &exploration,
-            scan: &scan,
-        };
-        let value = report::json(&report);
+        let (value, rendered_text) = rendered(finding);
         assert_eq!(value["findings"][0]["replay"], status);
         assert_eq!(value["findings"][0]["replayDetail"], detail);
         assert_eq!(report::replay_text(&verdict), text);
-        assert!(report::text(&report).contains(&format!("replay   {text}")));
+        assert!(rendered_text.contains(&format!("replay   {text}")));
     }
 }
 
@@ -162,25 +172,12 @@ fn input_bytes_are_escaped_in_text_and_json() {
         0u8, 0x7f, 0xff, b'"', b'\\', b'\n', b'\t', b'\'', b'a', b' ',
     ];
     let escaped = "\\x00\\x7f\\xff\\\"\\\\\\n\\t\\'a ";
-    let options = options::parse(&["p.osp".to_string()]).expect("options");
-    let exploration = Exploration::default();
     let mut finding = sample(Class::Memory, Some(("p.osp", 3)), Some("r.c:1 in f"), "m");
     finding.stdin = bytes.to_vec();
     finding.files = vec![("d/x.bin".into(), bytes.to_vec())];
-    let scan = Scan {
-        findings: vec![finding],
-        incomplete: Vec::new(),
-    };
-    let report = Report {
-        program: "p.osp",
-        options: &options,
-        exploration: &exploration,
-        scan: &scan,
-    };
-    let value = report::json(&report);
+    let (value, text) = rendered(finding);
     assert_eq!(value["findings"][0]["stdin"], escaped);
     assert_eq!(value["findings"][0]["files"][0]["bytes"], escaped);
-    let text = report::text(&report);
     assert!(text.contains(&format!("stdin    \"{escaped}\"")), "{text}");
     assert!(
         text.contains(&format!("file     d/x.bin = \"{escaped}\"")),
@@ -192,7 +189,7 @@ fn input_bytes_are_escaped_in_text_and_json() {
 /// runtime line appears only under a located finding.
 #[test]
 fn the_text_place_falls_back_like_the_dedupe_key() {
-    let options = options::parse(&["p.osp".to_string()]).expect("options");
+    let options = options::parse(&options::args(&["p.osp"])).expect("options");
     let exploration = Exploration::default();
     for (location, frame, place, runtime_line) in [
         (Some(("p.osp", 3)), Some("r.c:1 in f"), "p.osp:3", true),
@@ -209,10 +206,11 @@ fn the_text_place_falls_back_like_the_dedupe_key() {
             options: &options,
             exploration: &exploration,
             scan: &scan,
+            context: None,
         });
         assert!(text.contains(&format!("  memory     {place}\n")), "{text}");
         assert_eq!(text.contains("runtime  "), runtime_line, "{text}");
-        assert!(text.contains("findings: 1\n"), "{text}");
+        crate::testkit::shows(&text, &["findings: 1\n"]);
     }
 }
 
@@ -257,4 +255,113 @@ fn the_exit_code_matches_the_spec_for_every_mix_of_verdicts() {
             );
         }
     }
+}
+
+#[test]
+fn html_verdicts_distinguish_reproduced_unconfirmed_and_engine_only_findings() {
+    for (class, verdict, expected) in [
+        (
+            Class::Memory,
+            Replay::Reproduced("SIGSEGV".into()),
+            "Reproduced in a normal run",
+        ),
+        (
+            Class::Memory,
+            Replay::KleeOnly,
+            "Not reproduced in a normal run",
+        ),
+        (
+            Class::Arith,
+            Replay::NotRun,
+            "Not confirmed in a normal run",
+        ),
+        (
+            Class::Unmodelled,
+            Replay::Skipped("unsupported".into()),
+            "no program bug demonstrated",
+        ),
+    ] {
+        let mut finding = sample(class, Some(("p.osp", 3)), None, "message");
+        finding.replay = verdict;
+        assert!(super::report_explanation::verdict(&finding).contains(expected));
+    }
+}
+
+#[test]
+fn saved_reports_fail_loudly_when_the_output_directory_is_not_writable() {
+    let dir = super::spec_findings_tests::Dir::new("report-write-error");
+    dir.write("blocked", b"this is a file, not a directory");
+    let path = dir.0.join("blocked").display().to_string();
+    let options = options::parse(&options::args(&["p.osp", "--out", &path])).expect("options");
+    let scan = Scan::default();
+    let report = Report {
+        program: "p.osp",
+        options: &options,
+        exploration: &Exploration::default(),
+        scan: &scan,
+        context: None,
+    };
+    let error =
+        super::report_files::write(&report, "{}").expect_err("must not swallow write error");
+    crate::testkit::shows(&error, &["cannot save Hunt report"]);
+}
+
+fn html_for_scan(scan: &Scan, completed: u64) -> String {
+    let mut options = options::parse(&options::args(&["p.osp"])).expect("options");
+    options.reports.json = false;
+    super::report_html::render(
+        &Report {
+            program: "p.osp",
+            options: &options,
+            exploration: &Exploration {
+                paths: completed.max(1),
+                completed,
+                ..Exploration::default()
+            },
+            scan,
+            context: None,
+        },
+        "{}",
+    )
+}
+
+#[test]
+fn html_never_confuses_finished_unfinished_and_reproduced_results() {
+    let mut scan = Scan::default();
+    assert!(html_for_scan(&scan, 0).contains("No bugs found in an unfinished analysis"));
+    assert!(html_for_scan(&scan, 1).contains("No bugs found in the explored paths"));
+    let options = options::parse(&options::args(&["p.osp"])).expect("options");
+    let partial = Report {
+        program: "p.osp",
+        options: &options,
+        exploration: &Exploration {
+            paths: 3,
+            completed: 1,
+            ..Exploration::default()
+        },
+        scan: &scan,
+        context: None,
+    };
+    assert!(super::report_html::render(&partial, "{}")
+        .contains("No bugs found in an unfinished analysis"));
+    scan.incomplete.push(Incomplete {
+        test: "cut".into(),
+        reason: "time".into(),
+    });
+    assert!(html_for_scan(&scan, 1).contains("1 paths were not completed"));
+    scan.findings
+        .push(sample(Class::Memory, None, None, "invalid"));
+    assert!(html_for_scan(&scan, 1).contains("Findings need investigation"));
+    if let Some(finding) = scan.findings.first_mut() {
+        finding.replay = Replay::Reproduced("SIGSEGV".into());
+    }
+    let html = html_for_scan(&scan, 1);
+    crate::testkit::contents(
+        &html,
+        &[
+            "A crash was reproduced",
+            "could not identify an Osprey source line",
+        ],
+        &["Download JSON context"],
+    );
 }

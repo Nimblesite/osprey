@@ -4,6 +4,11 @@ use super::{
     TypeError,
 };
 
+#[cfg(test)]
+std::thread_local! {
+    static EFFECT_CHECKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Type-check a program. Returns every type error found (empty ⇒ well-typed).
 #[must_use]
 pub fn check_program(program: &Program) -> Vec<TypeError> {
@@ -15,8 +20,13 @@ pub fn check_program(program: &Program) -> Vec<TypeError> {
 pub fn check_program_exports(program: &Program, exports: &[&str]) -> Vec<TypeError> {
     match crate::staging::lower_static_checked(program) {
         Ok(lowered) => {
-            checked_program_with_exports(&lowered, exports, crate::staging::has_staging(program))
-                .errors
+            checked_program_with_exports(
+                &lowered,
+                exports,
+                crate::staging::has_staging(program),
+                false,
+            )
+            .errors
         }
         Err(errors) => errors,
     }
@@ -34,8 +44,22 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
 pub(crate) fn infer_checked(
     program: &Program,
 ) -> Result<crate::info::ProgramTypes, Vec<TypeError>> {
+    infer_checked_with_rejection(program, false)
+}
+
+/// Annotation trials need a verdict, not further diagnostics after rejection.
+pub(crate) fn infer_annotation_candidate(
+    program: &Program,
+) -> Result<crate::info::ProgramTypes, Vec<TypeError>> {
+    infer_checked_with_rejection(program, true)
+}
+
+fn infer_checked_with_rejection(
+    program: &Program,
+    reject_invalid: bool,
+) -> Result<crate::info::ProgramTypes, Vec<TypeError>> {
     let program = crate::prelude::with_prelude(program);
-    let checker = checked_program(&program);
+    let checker = checked_program_with_exports(&program, &[], false, reject_invalid);
     if checker.errors.is_empty() {
         Ok(publish_program(&program, checker, false))
     } else {
@@ -45,27 +69,40 @@ pub(crate) fn infer_checked(
 /// Collect declarations and type-check a program before either caller consumes
 /// diagnostics or publishes inferred backend metadata.
 pub(super) fn checked_program(program: &Program) -> Checker {
-    checked_program_with_exports(program, &[], false)
+    checked_program_with_exports(program, &[], false, false)
 }
 pub(super) fn checked_program_with_exports(
     program: &Program,
     exports: &[&str],
     source_validated: bool,
+    reject_invalid: bool,
 ) -> Checker {
     let mut checker = inferred_data_contracts(program, source_validated);
     loop {
         checker.resolve_field_uses();
-        let instances = effect_instances(&mut checker);
-        let effect_proof = crate::effect_rows::check(program, &instances, exports);
-        if !refine_handler_arguments(&mut checker, &instances) {
-            checker.errors.extend(effect_proof.errors);
-            checker.signal_queries = effect_proof.signal_queries;
-            checker.function_effects = effect_proof.functions;
+        if reject_invalid && !checker.errors.is_empty() {
+            return checker;
+        }
+        if settle_effect_contracts(&mut checker, program, exports) {
             break;
         }
     }
     finish_data_contracts(&mut checker, program);
     checker
+}
+
+fn settle_effect_contracts(checker: &mut Checker, program: &Program, exports: &[&str]) -> bool {
+    let instances = effect_instances(checker);
+    #[cfg(test)]
+    EFFECT_CHECKS.with(|calls| calls.set(calls.get() + 1));
+    let effect_proof = crate::effect_rows::check(program, &instances, exports);
+    if refine_handler_arguments(checker, &instances) {
+        return false;
+    }
+    checker.errors.extend(effect_proof.errors);
+    checker.signal_queries = effect_proof.signal_queries;
+    checker.function_effects = effect_proof.functions;
+    true
 }
 pub(super) fn inferred_data_contracts(program: &Program, source_validated: bool) -> Checker {
     let mut checker = Checker::new();
@@ -81,4 +118,65 @@ pub(super) fn finish_data_contracts(checker: &mut Checker, program: &Program) {
     checker.validate_builtin_uses();
     checker.validate_discards();
     checker.errors.extend(crate::init_order::check(program));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn program(source: &str) -> Program {
+        let parsed = osprey_syntax::parse_program(source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        parsed.program
+    }
+
+    fn oracle_checks(source: &str) -> (bool, usize) {
+        let program = program(source);
+        EFFECT_CHECKS.with(|calls| calls.set(0));
+        let accepted = crate::redundant::published(&program).is_some();
+        (accepted, EFFECT_CHECKS.with(std::cell::Cell::get))
+    }
+
+    #[test]
+    fn invalid_annotation_trials_reject_before_effect_analysis() {
+        assert_eq!(
+            oracle_checks("fn answer() -> int = \"wrong\"\n"),
+            (false, 0)
+        );
+    }
+
+    #[test]
+    fn valid_annotation_trials_still_run_effect_analysis() {
+        let (accepted, checks) = oracle_checks("fn answer() -> int = 7\n");
+        assert!(accepted);
+        assert!(checks > 0);
+    }
+
+    #[test]
+    fn annotation_trials_still_reject_unhandled_effects() {
+        let (accepted, checks) =
+            oracle_checks("effect Read { get: fn() -> int }\nlet value = perform Read.get()\n");
+        assert!(!accepted);
+        assert!(checks > 0);
+    }
+
+    #[test]
+    fn full_diagnostics_keep_effect_errors_after_type_errors() {
+        let program = program(
+            "effect Read { get: fn() -> int }\nfn answer() -> int = \"wrong\"\nperform Read.get()\n",
+        );
+        let errors = check_program(&program);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("cannot unify")),
+            "{errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("unhandled effect operations")),
+            "{errors:?}"
+        );
+    }
 }

@@ -30,7 +30,9 @@
 #include "memory_hooks.h"
 #include "memory_pool.h"
 
+#ifndef __wasi__
 #include <pthread.h>
+#endif
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -59,9 +61,14 @@ static OspArcHdr *arc_hdr(void *body) {
 
 // --- live-allocation registry (open addressing, tombstone deletion) -----------
 
+#ifdef OSP_SYMBOLIC
+#define OSP_ARC_INIT_CAP ((size_t)16)
+#else
 #define OSP_ARC_INIT_CAP ((size_t)1u << 14)
+#endif
 #define OSP_ARC_TOMB ((uintptr_t)1)
 
+#ifndef __wasi__
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // Adaptive locking. The heap starts single-threaded, where the sole thread
@@ -87,6 +94,12 @@ static inline void arc_unlock(void) {
     pthread_mutex_unlock(&g_lock);
   }
 }
+
+#else
+// WASI preview1 has one execution thread; thread creation is rejected upstream.
+static inline void arc_lock(void) {}
+static inline void arc_unlock(void) {}
+#endif
 
 static uintptr_t *g_tab = NULL; // body addresses; 0 = empty, 1 = tombstone
 static size_t g_cap = 0;
@@ -420,14 +433,26 @@ static void arc_drop_child_direct(void *child) {
 // 8 bytes is worse than it looks: -D_FORTIFY_SOURCE routes it through
 // __memcpy_chk, which never inlines and tails into _platform_memmove — ~7% of
 // binarytrees wall was spent copying one pointer at a time in the drop walk.
+//
+// Layout masks address exact pointer-sized slots on each target. Never scan
+// neighboring scalar bytes: an integer may equal an unrelated live address.
+#if UINTPTR_MAX == UINT32_MAX
+static inline void *arc_load_child(const char *at) {
+  uint32_t bits;
+  memcpy(&bits, at, sizeof bits);
+  return (void *)(uintptr_t)bits;
+}
+#else
 static inline void *arc_load_child(const char *at) {
   return *(void *const *)(const void *)at;
 }
+#endif
 
 static void arc_drop_masked(char *body, uint32_t size, uint64_t mask, int direct) {
-  for (unsigned i = 0; mask != 0 && (size_t)(i + 1) * 8 <= size; i++, mask >>= 1) {
+  const size_t stride = sizeof(void *);
+  for (unsigned i = 0; mask != 0 && ((size_t)i + 1) * stride <= size; i++, mask >>= 1) {
     if (mask & 1) {
-      void *child = arc_load_child(body + (size_t)i * 8);
+      void *child = arc_load_child(body + (size_t)i * stride);
       if (direct) {
         arc_drop_child_direct(child);
       } else {
@@ -437,13 +462,14 @@ static void arc_drop_masked(char *body, uint32_t size, uint64_t mask, int direct
   }
 }
 
-// The finalizer OSP_MEM_LIST_HDR_EXTERN bodies pass through (memory_hooks.h).
+// Finalizer of extern-backed list headers (registered by the list runtime).
 static void (*g_finalizer)(void *body);
 
 // { i64 len, i8* data }: run an EXTERN header's finalizer while its words are
-// intact, release elements (PTR kind only), then the array.
+// intact, release elements (PTR kind only), then the array. The body is
+// `sizeof(i64) + sizeof(pointer)` bytes: 16 natively, 12 on wasm32.
 static void arc_drop_list_hdr(char *body, uint32_t size, int kind) {
-  if (size < 16) {
+  if (size < sizeof(int64_t) + sizeof(void *)) {
     return;
   }
   if (kind == OSP_MEM_LIST_HDR_EXTERN && g_finalizer) {
@@ -454,7 +480,7 @@ static void arc_drop_list_hdr(char *body, uint32_t size, int kind) {
   char *data = (char *)arc_load_child(body + 8);
   if (data && kind == OSP_MEM_LIST_HDR_PTR) {
     for (int64_t j = 0; j < len; j++) {
-      arc_drop_child(arc_load_child(data + (size_t)j * 8));
+      arc_drop_child(arc_load_child(data + (size_t)j * sizeof(void *)));
     }
   }
   arc_drop_child(data);
@@ -463,7 +489,9 @@ static void arc_drop_list_hdr(char *body, uint32_t size, int kind) {
 // A flat array of managed pointers whose length the header's `size` carries —
 // the out-of-line internals of the value containers (a HAMT node's `children`,
 // a trie node's slots). The mask cannot express these: it is 56 bits wide and a
-// collision array is unbounded. Zero words (allocation slack) probe-miss.
+// collision array is unbounded. Zero words (allocation slack) probe-miss, and
+// the slots are `int64_t` holds (8 bytes on every target), so a wasm32 4-byte
+// load reads the low half — where an address always lands [MEM-BACKENDS].
 static void arc_drop_ptr_array(char *body, uint32_t size) {
   for (size_t off = 0; off + 8 <= size; off += 8) {
     arc_drop_child(arc_load_child(body + off));
@@ -575,7 +603,13 @@ void osp_collect(void) {}
 // the pthread_create that first lets a second thread reach the heap. Monotonic
 // and idempotent — once shared, the heap stays locked for the process.
 void osp_mem_notify_multithreaded(void) {
+#ifdef __wasi__
+  // No WASI threads are implemented; accepting this notification would lie.
+  fputs("FATAL: WASI ARC cannot activate multiple threads\n", stderr);
+  abort();
+#else
   atomic_store_explicit(&g_arc_mt, 1, memory_order_release);
+#endif
 }
 
 // Immortalize a shared C-runtime singleton (memory_hooks.h): rc < 0 makes

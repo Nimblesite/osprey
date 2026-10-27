@@ -1,0 +1,11 @@
+[project]
+name = "sacrebleu"
+source_roots = ["src"]
+python_sources = ["src/text.py", "src/tokenizer.py", "src/ngrams.py", "src/bleu.py", "src/chrf.py"]
+default_namespace = "sacrebleu"
+
+[package]
+name = "@osprey/sacrebleu"
+license = "MIT"
+summary = "BLEU and chrF evaluation metrics with sacrebleu's 13a tokenizer"
+keywords = ["bleu", "chrf", "evaluation", "metrics", "nmt", "python-flavor"]

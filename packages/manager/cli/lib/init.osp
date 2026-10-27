@@ -1,0 +1,53 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+
+/// `osprey-pkg package init [--name <project>] [--project <dir>]`: write the
+/// smallest accepted manifest, `[project]` with a name and `source_roots =
+/// ["src"]`, where none exists ([PACKAGE-API], [PACKAGE-MANIFEST]). The name
+/// defaults to the project directory's last segment, or `app` for the
+/// working directory. An existing manifest is `init.exists`, never rewritten.
+module Init {
+    let failStatus = 1
+    let usageCode = "init.usage"
+    let existsCode = "init.exists"
+    let nameFlag = "--name"
+    let defaultName = "app"
+    let usageText = ["usage: osprey-pkg package init [--name <project>] [--project <dir>]"]
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    fn lastSegment(path) = {
+        let parts = split(path, "/") ?: [path]
+        listGet(parts, length(parts) - 1) ?: ""
+    }
+
+    fn segmentName(project) = {
+        let segment = lastSegment(project)
+        if segment == "" || segment == "." { defaultName } else { segment }
+    }
+
+    fn nameOf(parsed) = Flags::given(parsed, nameFlag, segmentName(Flags::project(parsed)))
+
+    /// The smallest manifest `Manifest::parse` accepts.
+    export fn skeleton(name) = "[project]\nname = \"${name}\"\nsource_roots = [\"src\"]\n"
+
+    fn written(project, name) = match perform Host::Files.write(Project::manifestPathAt(project), skeleton(name)) {
+        Error { message } => failed([message])
+        Success => Reports::success(["wrote ${Project::manifestPathAt(project)}"])
+    }
+
+    fn at(project, name) = match perform Host::Files.read(Project::manifestPathAt(project)) {
+        Success => failed(["${existsCode} ${Project::manifestPathAt(project)}"])
+        Error => written(project, name)
+    }
+
+    /// The whole command.
+    export fn run(args) = match Flags::parse(args, [nameFlag, Flags::projectFlag], []) {
+        Error => usageReport()
+        Success { value } => at(Flags::project(value), nameOf(value))
+    }
+}

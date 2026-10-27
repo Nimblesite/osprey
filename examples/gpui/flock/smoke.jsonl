@@ -1,0 +1,12 @@
+// A null send observes the start envelope before any recorded event.
+{"send":null,"expect":{"regions":["root","field","hud","panel"],"requests":["animate","store-read"],"diagnostics":0}}
+{"send":{"kind":"frame","elapsed":0.016},"expect":{"patched":["field"],"diagnostics":0}}
+{"send":{"control":{"region":"hud","label":"Pause"},"value":null},"expect":{"text":{"region":"hud","contains":"Resume"},"requests":["animate"],"diagnostics":0}}
+{"send":{"control":{"region":"hud","label":"Resume"},"value":null},"expect":{"text":{"region":"hud","contains":"Pause"},"diagnostics":0}}
+{"send":{"control":{"region":"field"},"value":{"key":"left","down":true}},"expect":{"diagnostics":0}}
+{"send":{"kind":"frame","elapsed":0.016},"expect":{"patched":["field"],"diagnostics":0}}
+{"send":{"control":{"region":"field"},"value":{"x":-5000.0,"y":9000.0,"down":true}},"expect":{"diagnostics":0}}
+{"send":{"kind":"frame","elapsed":0.016},"expect":{"diagnostics":0}}
+{"send":{"kind":"frame","elapsed":0.016},"expect":{"diagnostics":0}}
+{"send":{"kind":"frame","elapsed":0.016},"expect":{"diagnostics":0}}
+{"send":{"control":{"region":"panel","label":"Flock size"},"value":"2000"},"expect":{"diagnostics":0}}

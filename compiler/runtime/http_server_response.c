@@ -51,17 +51,7 @@ int http_send_all(int socket_fd, const char *data, size_t length) {
 }
 
 bool http_configure_client_socket(int socket_fd) {
-#ifdef SO_NOSIGPIPE
-  int enabled = 1;
-  return setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (const char *)&enabled,
-                    sizeof(enabled)) == 0;
-#elif defined(MSG_NOSIGNAL) || defined(_WIN32)
-  (void)socket_fd;
-  return true;
-#else
-  (void)socket_fd;
-  return false;
-#endif
+  return osp_socket_configure_no_sigpipe(socket_fd);
 }
 
 static const char *status_reason(int64_t status) {

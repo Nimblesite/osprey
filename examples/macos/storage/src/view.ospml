@@ -189,9 +189,12 @@ module View
         true => "1 ${one}"
         false => "${Disk::formatCount count} ${many}"
 
-    summary ranking = "${Disk::formatBytes ranking.bytes} · ${plural ranking.count "item" "items"}"
+    summary model volume ranking =
+        whole = model.path == "/" || Phone::device model
+        size = pick (whole && volume.total > 0) "${Disk::formatBytes (used volume)} used" "${Disk::formatBytes ranking.bytes} measured"
+        "${size} · ${plural ranking.count "item" "items"}"
 
-    nothing () = Entry(path = "", bytes = 0, visible = 0, hidden = false, folder = false, guarded = false)
+    nothing () = Entry(path = "", bytes = 0, visible = 0, hidden = false, folder = false, guarded = false, link = false)
 
     capped share = pick (share > 1000) 1000 share
 
@@ -232,8 +235,8 @@ module View
             Native::field "tint" look.tint,
             Native::field "accent" (accent index),
             Native::field "style" (pick entry.hidden "hidden" ""),
-            Native::field "detail" (Disk::formatBytes bytes),
-            Native::field "caption" (Disk::shareText (bytes, ranking.bytes)),
+            Native::field "detail" (pick entry.link "Symbolic link" (Disk::formatBytes bytes)),
+            Native::field "caption" (pick entry.link "Target size excluded" (Disk::shareText (bytes, ranking.bytes))),
             Native::field "value" (toString (capped (Disk::permille (bytes, largest)))),
         ]
         listAppend output (pick entry.folder (folderRow model fields entry.path) (Native::node "entry" fields))
@@ -325,7 +328,7 @@ module View
     ready model volume listing photos =
         ranking = Disk::rank model.hidden (limit ()) listing.entries
         head = pick (model.path == model.root) (listConcat (listPrepend (Phone::sections model volume ranking photos) (overview volume)) (access model)) [pathbar volume model]
-        screen model volume (summary ranking) (listConcat head (contents model volume listing ranking))
+        screen model volume (summary model volume ranking) (listConcat head (contents model volume listing ranking))
 
     (** The screen for a browser: the volume, the walk's progress or failure, or the ranked contents of the open folder. *)
     export render model =

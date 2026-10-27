@@ -21,6 +21,7 @@
 #include <stdint.h>  // int64_t — explicit so the wasm32-wasip1 sysroot resolves it
 
 #include "effects_runtime.h"
+#include "memory_hooks.h"
 
 // Maximum handler stack depth per fiber
 #define MAX_HANDLER_STACK_DEPTH 1024
@@ -357,6 +358,39 @@ void __osprey_finalizer_unwind(void) {
     ensure_handler_stack_initialized();
     while (g_finalizers.count > 0) {
         run_innermost_finalizer();
+    }
+}
+
+// Implements [GC-ARC-PERCEUS] and [MULTI-COST-ABORT]: ordinary function
+// epilogues cannot run after pthread_exit abandons their suspended stack.
+static __thread OspOwnerFrame *g_owner_frames = NULL;
+
+void __osprey_owner_frame_push(void *raw, void ***slots, int64_t count) {
+    OspOwnerFrame *frame = raw;
+    frame->previous = g_owner_frames;
+    frame->slots = slots;
+    frame->count = count;
+    g_owner_frames = frame;
+}
+
+void __osprey_owner_frame_pop(void *raw) {
+    if (g_owner_frames == NULL || g_owner_frames != raw) {
+        fprintf(stderr, "FATAL: ARC owner frames returned out of order\n");
+        abort();
+    }
+    g_owner_frames = g_owner_frames->previous;
+}
+
+void __osprey_owner_frames_unwind(void) {
+    while (g_owner_frames != NULL) {
+        OspOwnerFrame *frame = g_owner_frames;
+        g_owner_frames = frame->previous;
+        for (int64_t i = frame->count; i > 0; i--) {
+            void **slot = frame->slots[i - 1];
+            void *value = *slot;
+            *slot = NULL;
+            osp_release(value);
+        }
     }
 }
 

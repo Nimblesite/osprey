@@ -122,15 +122,42 @@ const conditionMissing = gateBlock.some((line) => line.trim() === GATE_CONDITION
   ? []
   : [`${RELEASE_WORKFLOW}: \`${GATE_JOB}\` must be \`${GATE_CONDITION}\` or it is skipped by the failure it exists to catch`]
 
+// ---- The Windows release toolchain must be the one Windows CI proved --------
+// v0.23.0 shipped nothing: release.yml lacked the MinGW clang driver, so osprey
+// fell back to the runner's MSVC clang and `link.exe` could not find ssl.lib.
+
+const WINDOWS_CI_WORKFLOW = 'ci-windows.yml'
+const MSYS2_PACKAGE = /^\s+(mingw-w64-[A-Za-z0-9_.+-]+)\s*$/
+const msys2Packages = (file) =>
+  readWorkflow(file).map((line) => line.match(MSYS2_PACKAGE)).filter(Boolean).map((match) => match[1])
+const releasePackages = msys2Packages(RELEASE_WORKFLOW)
+const windowsToolchainDrift = msys2Packages(WINDOWS_CI_WORKFLOW)
+  .filter((name) => !releasePackages.includes(name))
+  .map((name) => `${RELEASE_WORKFLOW}: MSYS2 package \`${name}\` is installed by ${WINDOWS_CI_WORKFLOW} but not by the release build`)
+const mingwClangUnpinned = releaseLines.some((line) => line.includes('OSPREY_CC='))
+  ? []
+  : [`${RELEASE_WORKFLOW}: the Windows build must pin OSPREY_CC to the MinGW clang or osprey links with MSVC`]
+
 // ---- A gate that cannot run must not report success -------------------------
 
 const brokenParser = []
 if (jobsStart === -1) brokenParser.push(`no \`jobs:\` key in ${RELEASE_WORKFLOW} — the parser is broken, not the workflow`)
 if (gateStart === -1) brokenParser.push(`no \`${GATE_JOB}\` job in ${RELEASE_WORKFLOW} — the release backstop is gone`)
 if (jobNames.length < 8) brokenParser.push(`parsed only ${jobNames.length} jobs from ${RELEASE_WORKFLOW} — the parser is broken`)
+if (releasePackages.length === 0) brokenParser.push(`no MSYS2 packages parsed from ${RELEASE_WORKFLOW} — the parser is broken`)
 if (workflowFiles.length < 4) brokenParser.push(`found only ${workflowFiles.length} workflow files — this check is scanning nothing`)
 
-const failures = [...brokenParser, ...unreviewed, ...stale, ...unguarded, ...phantom, ...conditionMissing, ...credentialEnvironmentMissing]
+const failures = [
+  ...brokenParser,
+  ...unreviewed,
+  ...stale,
+  ...unguarded,
+  ...phantom,
+  ...conditionMissing,
+  ...credentialEnvironmentMissing,
+  ...windowsToolchainDrift,
+  ...mingwClangUnpinned,
+]
 
 if (failures.length > 0) {
   console.error('release gate guard: FAIL')

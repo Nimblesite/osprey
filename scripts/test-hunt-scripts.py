@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import tempfile
@@ -98,7 +99,7 @@ class ExpectMainTests(unittest.TestCase):
     def check(self, findings, expected_text, raw=None):
         with tempfile.TemporaryDirectory() as tmp:
             report_path, expected_path = Path(tmp) / "r.json", Path(tmp) / "case.expected"
-            report_path.write_text(raw if raw is not None else json.dumps(report(findings)))
+            report_path.write_text(raw if raw is not None else json.dumps(report(findings, completed=2 if findings else 3)))
             expected_path.write_text(expected_text)
             return run_main(hunt_expect, ["hunt_expect.py", str(report_path), str(expected_path)])
 
@@ -114,6 +115,22 @@ class ExpectMainTests(unittest.TestCase):
         code, out = self.check([finding()], "none\n")
         self.assertEqual(code, 1)
         self.assertIn("case: unexpected  memory main.osp:4", out)
+
+    def test_unexplored_incomplete_or_malformed_reports_fail(self):
+        for body in [report(paths=0, completed=0), report(completed=0), report(paths=3, completed=2),
+                     report(incomplete=[{"reason": "solver timeout"}]),
+                     {}, [], report(paths=-1), report(paths="3")]:
+            with self.subTest(body=body):
+                code, out = self.check([], "none", raw=json.dumps(body))
+                self.assertEqual(code, 1, out)
+
+    def test_recorded_process_failure_is_not_a_clean_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, e = Path(tmp) / "r.json", Path(tmp) / "c.expected"
+            r.write_text(json.dumps(report()))
+            e.write_text("none")
+            code, out = run_main(hunt_expect, ["hunt_expect.py", str(r), str(e), "2"])
+            self.assertEqual(code, 1, out)
 
     def test_missing_extra_and_wrong_line_or_class_all_fail(self):
         cases = [
@@ -246,6 +263,19 @@ class CorpusScriptTests(unittest.TestCase):
         self.assertTrue((ROOT / project / "osprey.toml").exists() or (ROOT / project).is_dir())
         _, _, codes = self.sweep("--all", project)
         self.assertEqual(list(codes), ["examples_gpt2_generate.project"])
+
+
+class HostCompilerTests(unittest.TestCase):
+    def test_mock_headers_compile_with_the_configured_host_compiler(self):
+        target = "hunt-host-flags:;@echo $(HUNT_MOCK_HOST_CFLAGS)"
+        flags = subprocess.check_output([
+            "make", "--no-print-directory", "-s", "-f", "Makefile", "-f", "-", "hunt-host-flags",
+        ], cwd=ROOT, input=target + "\n", text=True)
+        source = '#include <stdint.h>\n#include <stdarg.h>\n#include <stdio.h>\n#include "hunt_mock.h"\nint64_t mock_header_probe(FILE *f) { return f->readable; }\n'
+        compiler = shlex.split(os.environ.get("CC", "cc"))
+        process = subprocess.run(compiler + shlex.split(flags) + ["-I", "runtime/klee", "-fsyntax-only", "-x", "c", "-"],
+                                 cwd=ROOT / "compiler", input=source, text=True, capture_output=True)
+        self.assertEqual(process.returncode, 0, process.stderr)
 
 
 class FormatOracleTests(unittest.TestCase):

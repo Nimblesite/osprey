@@ -16,6 +16,8 @@ pub(crate) struct Report<'a> {
     pub(crate) options: &'a Options,
     pub(crate) exploration: &'a Exploration,
     pub(crate) scan: &'a Scan,
+    /// Exact engine invocation, raw diagnostics and source context for investigation.
+    pub(crate) context: Option<Value>,
 }
 
 pub(crate) fn text(report: &Report<'_>) -> String {
@@ -78,11 +80,7 @@ fn finding_text(finding: &Finding) -> String {
 }
 
 fn place(finding: &Finding) -> String {
-    match (&finding.location, &finding.runtime_frame) {
-        (Some(location), _) => format!("{}:{}", location.file, location.line),
-        (None, Some(frame)) => frame.clone(),
-        (None, None) => finding.test.clone(),
-    }
+    super::findings::place(finding, &finding.test)
 }
 
 pub(crate) fn replay_text(replay: &Replay) -> String {
@@ -133,7 +131,9 @@ fn describe_reason(reason: &str) -> &str {
 pub(crate) fn json(report: &Report<'_>) -> Value {
     json!({
         "program": report.program,
+        "context": report.context,
         "engine": "KLEE",
+        "memory": report.options.memory,
         "budgetSeconds": report.options.max_time,
         "inputBytes": report.options.input_bytes,
         "explored": {
@@ -188,10 +188,6 @@ pub(crate) fn exit_code(scan: &Scan, replayed: bool) -> ExitCode {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "test assertions: a missing element is a test failure, not a production panic"
-)]
 mod tests {
     use super::super::findings::{Class, Location};
     use super::*;
@@ -228,71 +224,43 @@ mod tests {
         (options, exploration, scan)
     }
 
+    fn build<'a>(parts: &'a (Options, Exploration, Scan), program: &'static str) -> Report<'a> {
+        Report {
+            program,
+            options: &parts.0,
+            exploration: &parts.1,
+            scan: &parts.2,
+            context: None,
+        }
+    }
+
     #[test]
     fn text_report_names_engine_place_input_and_replay() {
-        let (options, exploration, scan) = sample();
-        let text = text(&Report {
-            program: "index.osp",
-            options: &options,
-            exploration: &exploration,
-            scan: &scan,
-        });
-        assert!(text.contains("symbolic execution by KLEE"), "{text}");
-        assert!(text.contains("explored 3 paths (2 complete), 500 instructions, 00:00:01"));
-        assert!(text.contains("memory     index.osp:5"));
-        assert!(text.contains("runtime  list_runtime.c:88 in osp_list_get"));
-        assert!(text.contains("stdin    \"9\\n\""));
-        assert!(text.contains("file     data.txt = \"x\""));
-        assert!(text.contains("replay   reproduced (SIGSEGV)"));
-        assert!(
-            text.contains("incomplete: 1 path(s)") && text.contains("     1  max-time"),
-            "{text}"
+        let parts = sample();
+        let text = text(&build(&parts, "index.osp"));
+        crate::testkit::shows(
+            &text,
+            &[
+                "symbolic execution by KLEE",
+                "explored 3 paths (2 complete), 500 instructions, 00:00:01",
+                "memory     index.osp:5",
+                "runtime  list_runtime.c:88 in osp_list_get",
+                "stdin    \"9\\n\"",
+                "file     data.txt = \"x\"",
+                "replay   reproduced (SIGSEGV)",
+                "incomplete: 1 path(s)",
+                "     1  max-time",
+            ],
         );
     }
 
     #[test]
     fn a_clean_hunt_says_so() {
-        let (options, exploration, _) = sample();
-        let scan = Scan::default();
-        let text = text(&Report {
-            program: "ok.osp",
-            options: &options,
-            exploration: &exploration,
-            scan: &scan,
-        });
+        let mut parts = sample();
+        parts.2 = Scan::default();
+        let text = text(&build(&parts, "ok.osp"));
         assert!(text.contains("findings: none") && !text.contains("incomplete"));
-        assert_eq!(exit_code(&scan, true), ExitCode::SUCCESS);
-    }
-
-    #[test]
-    fn json_report_carries_the_editor_fields() {
-        let (options, exploration, scan) = sample();
-        let value = json(&Report {
-            program: "index.osp",
-            options: &options,
-            exploration: &exploration,
-            scan: &scan,
-        });
-        assert_eq!(value["engine"], "KLEE");
-        assert_eq!(value["explored"]["paths"], 3);
-        assert_eq!(value["findings"][0]["file"], "index.osp");
-        assert_eq!(value["findings"][0]["line"], 5);
-        assert_eq!(value["findings"][0]["replay"], "reproduced");
-        assert_eq!(value["findings"][0]["replayDetail"], "SIGSEGV");
-        assert_eq!(value["findings"][0]["stdin"], "9\\n");
-        assert_eq!(value["incomplete"][0]["reason"], "max-time");
-    }
-
-    #[test]
-    fn exit_code_follows_replay_status() {
-        let (_, _, mut scan) = sample();
-        assert_eq!(exit_code(&scan, true), ExitCode::FAILURE);
-        scan.findings[0].replay = Replay::KleeOnly;
-        assert_eq!(exit_code(&scan, true), ExitCode::SUCCESS);
-        assert_eq!(exit_code(&scan, false), ExitCode::FAILURE);
-        assert_eq!(replay_text(&Replay::NotRun), "not run");
-        assert!(replay_text(&Replay::Skipped("why".into())).contains("why"));
-        assert!(replay_text(&Replay::KleeOnly).starts_with("klee-only"));
+        assert_eq!(exit_code(&parts.2, true), ExitCode::SUCCESS);
     }
 
     #[test]
@@ -308,8 +276,13 @@ mod tests {
             reason: "solver timeout".into(),
         });
         let text = incomplete_text(&items);
-        assert!(text.contains("incomplete: 8 path(s)"), "{text}");
-        assert!(text.contains("     7  cut at the time budget"), "{text}");
-        assert!(text.contains("     1  solver timeout"), "{text}");
+        crate::testkit::shows(
+            &text,
+            &[
+                "incomplete: 8 path(s)",
+                "     7  cut at the time budget",
+                "     1  solver timeout",
+            ],
+        );
     }
 }

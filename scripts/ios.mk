@@ -7,17 +7,31 @@ IOS_RT_SRC ?= $(MOBILE_RT_SRC)
 
 .PHONY: ios ios-test macos macos-test _runtime_ios _runtime_ios_sim _runtime_macos _test_ios _test_ios_goldens _test_macos
 
-_runtime_ios:
+_runtime_ios: _runtime_ios_arc
 	@bash scripts/ios-runtime.sh iphoneos arm64-apple-ios15.0 \
 		$(RTB)/libosprey_runtime_ios.a $(B) -DOSPREY_IOS -- $(IOS_RT_SRC)
 
-_runtime_ios_sim:
+_runtime_ios_sim: _runtime_ios_sim_arc
 	@bash scripts/ios-runtime.sh iphonesimulator arm64-apple-ios15.0-simulator \
 		$(RTB)/libosprey_runtime_ios_sim.a $(B) -DOSPREY_IOS -- $(IOS_RT_SRC)
 
-_runtime_macos:
-	@bash scripts/ios-runtime.sh macosx arm64-apple-macos12.0 \
-		$(RTB)/libosprey_runtime_macos.a $(B) -DOSPREY_IOS -- $(IOS_RT_SRC)
+# The Mac slice also carries the Metal device adapter, so a desktop host such as
+# GPUI can run Osprey kernels on the GPU ([GPU-DEVICE], [GPUI-HOST-TARGETS]).
+MACOS_GPU_FLAGS ?= -DOSPREY_GPU_METAL=1 -Icompiler/bin
+
+_runtime_macos: _runtime_macos_arc compiler/bin/gpu_shader_source.h
+	@OSPREY_RUNTIME_OBJC=gpu_metal bash scripts/ios-runtime.sh macosx arm64-apple-macos12.0 \
+		$(RTB)/libosprey_runtime_macos.a $(B) -DOSPREY_IOS $(MACOS_GPU_FLAGS) -- $(IOS_RT_SRC)
+
+define apple_arc_runtime
+.PHONY: _runtime_$(1)_arc
+_runtime_$(1)_arc: $(if $(4),compiler/bin/gpu_shader_source.h)
+	@OSPREY_RUNTIME_SHIMS="$(MOBILE_ARC_SHIM_SRC)" OSPREY_RUNTIME_OBJC="$(4)" bash scripts/ios-runtime.sh $(2) $(3) \
+		$(RTB)/libosprey_runtime_$(1)_arc.a $(B) -DOSPREY_IOS $(if $(4),$(MACOS_GPU_FLAGS)) -- $(MOBILE_ARC_RT_SRC)
+endef
+$(eval $(call apple_arc_runtime,ios,iphoneos,arm64-apple-ios15.0))
+$(eval $(call apple_arc_runtime,ios_sim,iphonesimulator,arm64-apple-ios15.0-simulator))
+$(eval $(call apple_arc_runtime,macos,macosx,arm64-apple-macos12.0,gpu_metal))
 
 _test_macos:
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/test-macos.sh
@@ -27,6 +41,7 @@ _test_macos:
 	OSPREY_MACOS_SKIP_BUILD=1 bash examples/macos/run.sh --smoke
 
 _test_ios: _test_ios_goldens
+	/bin/bash scripts/test-runtime-memory.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/test-ios.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_IOS_SKIP_BUILD=1 bash examples/ios/run.sh --smoke
 

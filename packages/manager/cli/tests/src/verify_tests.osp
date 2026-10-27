@@ -1,0 +1,152 @@
+namespace registry_tests;
+import registry_host::Host
+import registry_cli::Verify
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry_cli::Reports
+import registry_tests::Fixture
+import registry::ManifestJson
+import registry::Release
+
+/// `verify --offline` against fixture hosts: the manifest and lock are read
+/// through the files fixture, installed trees through the tree fixture, and
+/// the network is never touched. Each stable code is asserted by name.
+/// Implements [PACKAGE-FOLDER-REGISTRY] offline-audit tests.
+module VerifyTests {
+    let rootDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    type Attempt = { report: Reports::Report }
+
+    fn runVerify(reads, walks, args) = {
+        let files = handler Host::Files {
+            read path => Fixture::readFor(reads, path)
+            write path content => Error { message: "fixture: verify never writes ${path} (${byteLength(content)} bytes)" }
+        }
+        let tree = handler Host::Tree {
+            walk dir => Fixture::walkFor(walks, dir)
+            ensure dir => Error { message: "fixture: verify never ensures ${dir}" }
+        }
+        let web = handler Host::Web {
+            get base path => Error { message: "fixture: verify never fetches ${base}${path}" }
+        }
+        let process = handler Host::Process {
+            run command => Host::Run { status: 0, stdout: "", stderr: "fixture: verify never runs ${command}" }
+        }
+        let report = process(fn() => files(fn() => tree(fn() => web(fn() => Verify::run(args)))))
+        Attempt { report: report }
+    }
+
+    fn manifestText() = "[project]\nname = \"app\"\nsource_roots = [\"src\"]\ndefault_namespace = \"app\"\nentry = \"src/main.osp\"\n\n[dependencies]\n\"@finch/http\" = { epoch = 2, min_release = 17 }\n"
+
+    fn digestOf(m) = ManifestJson::digest(m) ?: ""
+
+    fn pkgFiles() = [
+        Release::File { relPath: "osprey.toml", content: "key = http\n" },
+        Release::File { relPath: "src/main.osp", content: "fn get() = 1\n" }
+    ]
+
+    fn pkg() = Fixture::served("@finch/http/2.17", pkgFiles())
+
+    fn pkgOf() = Lockfile::Package { release: pkg().id, dependencies: [], surface: [] }
+
+    /// The same release with a surface the pure tree does not have: a tampered lock.
+    fn pkgPinning(surface) = Lockfile::Package { release: pkg().id, dependencies: [], surface: surface }
+
+    fn rootOf(manifestDigest, dependencies) = Lockfile::Root { manifestDigest: manifestDigest, dependencies: dependencies }
+
+    fn lockOf(root) = Lockfile::release(root, [pkgOf()])
+
+    fn lockPinning(root, surface) = Lockfile::release(root, [pkgPinning(surface)])
+
+    fn lockText(lock) = Lockfile::encode(lock) ?: ""
+
+    fn installDir() = Fetch::installDir(pkg().id)
+
+    fn readsForPkg() = mapList(pkg().files, fn(f: Release::File) => Fixture::readRoute("${installDir()}/${f.relPath}", f.content))
+
+    fn walkForPkg() = Fixture::walkRoute(installDir(), mapList(pkg().files, fn(f: Release::File) => f.relPath))
+
+    fn lockRead(text) = Fixture::readRoute("osprey.lock", text)
+    fn manifestRead() = Fixture::readRoute("osprey.toml", manifestText())
+
+    fn baseReads(lockText) = [manifestRead(), lockRead(lockText)]
+
+    /// A matching manifest, lock and installed tree: the success line.
+    fn success() = {
+        let m = Fixture::manifestOf(manifestText())
+        let lock = lockOf(rootOf(digestOf(m), m.dependencies))
+        let a = runVerify(listConcat(baseReads(lockText(lock)), readsForPkg()), [walkForPkg()], [])
+        checkAll("a matching lock verifies", [
+            a.report.status == 0,
+            length(a.report.lines) == 1,
+            Fixture::line(a.report, 0) == "verified 1 packages"
+        ])
+    }
+
+    /// The lock pins a different manifest than the current one.
+    fn manifestDigest() = {
+        let m = Fixture::manifestOf(manifestText())
+        let lock = lockOf(rootOf("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", m.dependencies))
+        let a = runVerify(listConcat(baseReads(lockText(lock)), readsForPkg()), [walkForPkg()], [])
+        checkAll("a stale manifest digest is verify.manifest-digest", [
+            a.report.status == 1,
+            Fixture::line(a.report, 0) == "verify.manifest-digest"
+        ])
+    }
+
+    /// The lock's root edges disagree with the manifest it pins.
+    fn dependencies() = {
+        let m = Fixture::manifestOf(manifestText())
+        let lock = lockOf(rootOf(digestOf(m), []))
+        let a = runVerify(listConcat(baseReads(lockText(lock)), readsForPkg()), [walkForPkg()], [])
+        checkAll("disagreeing edges are verify.dependencies", [
+            a.report.status == 1,
+            Fixture::line(a.report, 0) == "verify.dependencies"
+        ])
+    }
+
+    /// A locked package with no installed tree.
+    fn missing() = {
+        let m = Fixture::manifestOf(manifestText())
+        let lock = lockOf(rootOf(digestOf(m), m.dependencies))
+        let a = runVerify(baseReads(lockText(lock)), [], [])
+        checkAll("a package without a tree is verify.missing", [
+            a.report.status == 1,
+            Fixture::line(a.report, 0) == "verify.missing @finch/http"
+        ])
+    }
+
+    /// An installed tree whose digest differs from its release.
+    fn digestMismatch() = {
+        let m = Fixture::manifestOf(manifestText())
+        let lock = lockOf(rootOf(digestOf(m), m.dependencies))
+        let tampered = mapList(pkg().files, fn(f: Release::File) => Fixture::readRoute("${installDir()}/${f.relPath}", "${f.content} tampered"))
+        let a = runVerify(listConcat(baseReads(lockText(lock)), tampered), [walkForPkg()], [])
+        checkAll("a tampered tree is verify.digest", [
+            a.report.status == 1,
+            Fixture::line(a.report, 0) == "verify.digest @finch/http"
+        ])
+    }
+
+    /// A lock pinning a surface the installed tree does not have is
+    /// `capability.surface` ([PACKAGE-CAPABILITY-CONFINEMENT]).
+    fn surfaceMismatch() = {
+        let m = Fixture::manifestOf(manifestText())
+        let lock = lockPinning(rootOf(digestOf(m), m.dependencies), ["io/files"])
+        let a = runVerify(listConcat(baseReads(lockText(lock)), readsForPkg()), [walkForPkg()], [])
+        checkAll("a pinned surface the tree lacks is capability.surface", [
+            a.report.status == 1,
+            Fixture::line(a.report, 0) == "capability.surface @finch/http"
+        ])
+    }
+
+    /// Every verify test.
+    export fn run() = {
+        test("verify: a pinned surface the tree lacks", surfaceMismatch)
+        test("verify: a matching lock verifies", success)
+        test("verify: manifest digest mismatch", manifestDigest)
+        test("verify: dependency edges differ", dependencies)
+        test("verify: missing installed tree", missing)
+        test("verify: installed tree digest mismatch", digestMismatch)
+    }
+}

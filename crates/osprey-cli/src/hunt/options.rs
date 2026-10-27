@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 pub(crate) const HUNT_USAGE: &str =
     "usage: osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] \
-[--input-bytes <n>] [--out <dir>] [--json] [--no-replay] [--quiet]";
+[--memory=gc|arc] [--input-bytes <n>] [--out <dir>] [--json] [--no-html] [--no-json] [--no-replay] [--quiet]";
 
 /// Largest symbolic byte stream the mock libc holds (`OSP_HUNT_STREAM_MAX`).
 const INPUT_BYTES_MAX: u64 = 4096;
@@ -14,6 +14,8 @@ const INPUT_BYTES_MAX: u64 = 4096;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Options {
     pub(crate) path: String,
+    /// One backend shared by symbolic analysis and native replay.
+    pub(crate) memory: &'static str,
     /// KLEE's `--max-time` budget in seconds, enforced with `--watchdog`.
     pub(crate) max_time: u64,
     /// KLEE's `--max-memory` cap in megabytes; a long single path (a whole
@@ -24,20 +26,33 @@ pub(crate) struct Options {
     /// Where KLEE's output directory goes; a temporary directory when unset.
     pub(crate) out: Option<PathBuf>,
     pub(crate) json: bool,
+    pub(crate) reports: ReportFormats,
     /// Run each finding on the native build to tell `reproduced` from
     /// `klee-only` [SYMEX-REPLAY].
     pub(crate) replay: bool,
     pub(crate) quiet: bool,
 }
 
+/// Independently selected report files; stdout remains a separate option.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReportFormats {
+    pub(crate) html: bool,
+    pub(crate) json: bool,
+}
+
 pub(crate) fn parse(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         path: String::new(),
+        memory: "gc",
         max_time: 60,
         max_memory: 2000,
         input_bytes: 64,
         out: None,
         json: false,
+        reports: ReportFormats {
+            html: true,
+            json: true,
+        },
         replay: true,
         quiet: false,
     };
@@ -59,7 +74,13 @@ fn parse_one(
     rest: &mut std::slice::Iter<'_, String>,
 ) -> Result<(), String> {
     match argument {
+        "--memory" => options.memory = memory(value(argument, rest.next())?)?,
+        flag if flag.starts_with("--memory=") => {
+            options.memory = memory(flag.strip_prefix("--memory=").unwrap_or_default())?;
+        }
         "--json" => options.json = true,
+        "--no-html" => options.reports.html = false,
+        "--no-json" => options.reports.json = false,
         "--no-replay" => options.replay = false,
         "--quiet" => options.quiet = true,
         "--max-time" => options.max_time = number(argument, rest.next(), 1, u64::MAX)?,
@@ -81,6 +102,16 @@ fn parse_one(
     Ok(())
 }
 
+fn memory(name: &str) -> Result<&'static str, String> {
+    match name {
+        "gc" => Ok("gc"),
+        "arc" => Ok("arc"),
+        _ => Err(format!(
+            "osprey hunt: --memory must be gc or arc, not {name}"
+        )),
+    }
+}
+
 fn value<'a>(flag: &str, next: Option<&'a String>) -> Result<&'a str, String> {
     next.map(String::as_str)
         .ok_or_else(|| format!("osprey hunt: {flag} requires a value\n{HUNT_USAGE}"))
@@ -96,46 +127,30 @@ fn number(flag: &str, next: Option<&String>, min: u64, max: u64) -> Result<u64, 
         })
 }
 
+/// Owned arguments from literals, for tests of the parser and its callers.
+#[cfg(test)]
+pub(super) fn args(list: &[&str]) -> Vec<String> {
+    list.iter().map(ToString::to_string).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn args(list: &[&str]) -> Vec<String> {
-        list.iter().map(ToString::to_string).collect()
-    }
-
     #[test]
-    fn defaults_follow_the_spec() {
-        let options = parse(&args(&["demo.osp"])).expect("options parse");
-        assert_eq!(options.max_time, 60);
-        assert_eq!(options.max_memory, 2000);
-        assert_eq!(options.input_bytes, 64);
-        assert!(options.replay && !options.json && !options.quiet);
-        assert_eq!(options.out, None);
-    }
-
-    #[test]
-    fn every_flag_is_read() {
-        let options = parse(&args(&[
-            "--max-time",
-            "5",
-            "--max-memory",
-            "8000",
-            "demo.osp",
-            "--input-bytes",
-            "8",
-            "--json",
-            "--no-replay",
-            "--quiet",
-            "--out",
-            "runs",
-        ]))
-        .expect("options parse");
-        assert_eq!(options.max_time, 5);
-        assert_eq!(options.max_memory, 8000);
-        assert_eq!(options.input_bytes, 8);
-        assert!(options.json && !options.replay && options.quiet);
-        assert_eq!(options.out, Some(PathBuf::from("runs")));
+    fn hunt_selects_gc_or_arc_and_defaults_to_gc() {
+        let gc = parse(&args(&["case.osp", "--memory=gc"])).expect("GC hunt");
+        let arc = parse(&args(&["case.osp", "--memory=arc"])).expect("ARC hunt");
+        assert_eq!(parse(&args(&["case.osp"])).expect("GC by default"), gc);
+        assert_ne!(gc, arc, "the selected backends must remain distinct");
+        for mode in ["gc", "arc"] {
+            let flag = format!("--memory={mode}");
+            assert_eq!(
+                parse(&args(&["case.osp", "--memory", mode])),
+                parse(&args(&["case.osp", &flag]))
+            );
+        }
+        assert!(parse(&args(&["case.osp", "--memory=default"])).is_err());
     }
 
     #[test]

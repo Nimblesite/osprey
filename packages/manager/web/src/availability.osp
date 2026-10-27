@@ -1,0 +1,28 @@
+namespace registry_web;
+import registry_web::Html
+import registry_web::Model
+
+/// The per-organization name check. The answer is scoped to one
+/// organization and the text says so: it can never claim a leaf name is
+/// globally taken or globally free, because no such claim exists
+/// ([PACKAGE-NAMES-NO-SITTING]). Availability is a name answer, not a
+/// security statement.
+module Availability {
+    export fn render(orgHandle, leaf, takenInOrg) = Model::shown(Html::document(
+        "Check a package name - Osprey Package Registry", body(orgHandle, leaf, takenInOrg)))
+
+    fn body(orgHandle, leaf, takenInOrg) = join([
+        "<main id=\"availability\"><h1>Check a package name</h1>",
+        Html::field("Organization", "@${orgHandle}"),
+        verdict(orgHandle, leaf, takenInOrg),
+        Html::paragraph("This answer is scoped to @${orgHandle} only: the same leaf name under another organization is unaffected, and taking it there says nothing about @${orgHandle}."),
+        "</main>"], "")
+
+    /// "Taken" means taken within this organization, including its
+    /// tombstones; never a global unavailability claim.
+    fn verdict(orgHandle, leaf, takenInOrg) = if takenInOrg {
+        Html::paragraph("'${leaf}' is already taken within @${orgHandle}. Choose another name for this organization.")
+    } else {
+        Html::paragraph("'${leaf}' is available under @${orgHandle}.")
+    }
+}

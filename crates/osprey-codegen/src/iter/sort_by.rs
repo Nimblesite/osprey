@@ -125,7 +125,7 @@ fn orders_after(
     src: &str,
     (i, j): (&str, &str),
 ) -> Result<String> {
-    crate::arc::push_frame(cg);
+    crate::arc::push_frame(cg, crate::arc::FrameKind::Scope);
     let left_word = load_word(cg, src, i);
     let right_word = load_word(cg, src, j);
     let left = crate::collections::elem_value(cg, sort.list, &left_word);

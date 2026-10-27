@@ -20,7 +20,7 @@ Chapter 1 works on either path. Command blocks show the local form; Playground r
 
 ## One teaching surface first
 
-This book uses Default flavor, with optional ML comparisons. Osprey also has a partially implemented Python flavor; it does not run ordinary Python programs.
+A syntax flavor is a way to write the same Osprey language. This book uses Default braces, with optional ML comparisons. Python-style syntax is also available: `def`, f-strings and decorated effects share Osprey's inferred types, effect checks and compiler. It compiles Osprey source; ordinary Python libraries require explicit CPython interop.
 
 You do not need to choose among them now.
 
@@ -74,15 +74,15 @@ Keep three jobs for yourself:
 
 Ask the agent to show a small diff and run a specific check. If it changes the design while translating syntax, ask it to revert to the smallest behavior-preserving change.
 
-## Alpha means honest edges
+## Build with clear expectations
 
-Osprey is alpha software. Syntax, tooling, and implementation details can change. This working edition records its development compiler's identity and checks in `evidence.json`; a release version still needs to be pinned before publication.
+Osprey is actively evolving. Syntax, tooling, and implementation details can change. This working edition records its development compiler's identity and checks in `evidence.json`; a release version still needs to be pinned before publication.
 
-Project modules and imports between Default and ML files already work. The package manager remains planned. The later chapters distinguish using code in your own project from downloading and distributing packages.
+Projects can mix Default, ML and Python-flavor modules. The [package manager](https://www.ospreylang.dev/docs/package-manager/) supports a folder registry, verified downloads and locked builds; the hosted package website and public trust services remain planned. This book's examples use checked-in source roots.
 
 Examples identify their target when it matters. Native executables support dynamic control handlers with single-shot resumption; WebAssembly and mobile libraries currently support value handlers and static discharge, but reject dynamic control operations. Chapter 9 explains those terms beside runnable examples.
 
-Memory choices also have limits: the default allocator retains general allocations, while native GC and ARC are separate options. The Chapter 12 outline records the choices and deployment boundaries. Calling a C library crosses Osprey's memory-safety boundary.
+Memory choices also have limits: native builds default to tracing GC, with ARC available through `--memory=arc`. Explicit `--memory=none` opts into unmanaged allocation, which retains general allocations. The Chapter 12 outline records the choices and deployment boundaries. Calling a C library crosses Osprey's memory-safety boundary.
 
 Read each example's requirements and test the program on the target you plan to use.
 

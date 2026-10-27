@@ -1,0 +1,256 @@
+// Implements [UI-STORE], [UI-EVENTS] and [UI-PROTOCOL]: one serialized
+// dispatcher owns the session's store. It resolves events through issued
+// bindings, runs the application's `update`, refreshes the regions whose
+// signals changed and encodes the envelope. The application's render
+// receives the previous and next store and derives the changed signal
+// identities inside its handler block (`Signals::compare`).
+namespace ui
+
+(** What an update returns: the next store, the capabilities it asks for and the host slices it writes. *)
+type Step S =
+    stepStore : S
+    requests : List<Request>
+    writes : List<SliceWrite>
+
+(** Everything the opaque state carries between events: the host facts, the store and the last signal frames. *)
+type Session S =
+    sessionContext : Context
+    sessionStore : S
+    sessionFrames : List<SignalFrame>
+
+(** [UI-RESIDENT] One envelope and the session it leaves, for a host whose library keeps the session between calls. *)
+type Resident S =
+    residentSession : Session<S>
+    residentEnvelope : string
+
+(** Everything one envelope reports: the next session, the regions to patch, slice writes, requests, diagnostics and, at start, the theme. *)
+type Outgoing S A =
+    nextSession : Session<S>
+    previousFrames : List<SignalFrame>
+    rendered : List<KeyedSnapshot<Node<A>>>
+    outWrites : List<SliceWrite>
+    outRequests : List<Request>
+    diagnostics : List<string>
+    themeJson : Json
+
+(** The serialized dispatcher that owns a session's store: it starts a session, resolves each host event, runs `update`, refreshes the regions whose signals changed and encodes the envelope ([UI-STORE]). *)
+module Runtime
+    (** The protocol version every envelope carries; the host refuses any other. *)
+    export version = 1
+
+    (** A step that changes the store to `store` and asks for nothing. *)
+    export step<S> : S -> Step<S>
+    step store = Step(stepStore = store, requests = [], writes = [])
+
+    (** A step that changes the store to `store` and asks the host for `requests`. *)
+    export asking<S> : (S, List<Request>) -> Step<S>
+    asking (store, requests) = Step(stepStore = store, requests = requests, writes = [])
+
+    contextJson context = JsonObject [Doc::num ("now", context.now), Doc::num ("offset", context.offset), Doc::str ("platform", Symbols::platformText context.platform), Doc::str ("home", context.home), JsonMember "arguments" (Doc::strings context.arguments)]
+
+    (** The host facts in a launch or event document; absent members read as empty. *)
+    export context doc = Context(now = Doc::number (doc, "now"), offset = Doc::number (doc, "offset"), platform = Symbols::platform (Doc::text (doc, "platform")), home = Doc::text (doc, "home"), arguments = Doc::texts (doc, "arguments"))
+
+    saveSession<S> : (Session<S>, (S) -> Json) -> string !e
+    saveSession (session, save) = Doc::write (JsonObject [JsonMember "context" (contextJson session.sessionContext), JsonMember "store" (save session.sessionStore), JsonMember "frames" (signalFramesJson session.sessionFrames)])
+
+    loadSession<S> : (string, (Json) -> S) -> Session<S> !e
+    loadSession (saved, decodeStore) =
+        doc = Doc::parse saved
+        Session(sessionContext = context (Doc::field (doc, "context")), sessionStore = decodeStore (Doc::field (doc, "store")), sessionFrames = signalFramesFromJson (Doc::field (doc, "frames")))
+
+    (** The signal frames of rendered regions, which the next update compares against. *)
+    export frames<A> : List<KeyedSnapshot<Node<A>>> -> List<SignalFrame>
+    frames regions = mapList (regions, \region => signalFrame region)
+
+    (** `node` in protocol form, without its bindings. *)
+    export tree<A> : Node<A> -> Json
+    tree node = listGet (Encode::walk ([], node)).nodes 0 ?: JsonNull
+
+    patch<A> : KeyedSnapshot<Node<A>> -> Json
+    patch region = JsonObject [Doc::str ("key", region.snapshotKey), Doc::num ("revision", region.snapshotRevision), JsonMember "node" (tree region.snapshotValue)]
+
+    // A region is sent only when its revision moved: retained regions keep the host's copy.
+    patches<A> : (List<KeyedSnapshot<Node<A>>>, List<SignalFrame>) -> List<Json>
+    patches (regions, previous) = mapList (filterList (regions, \region => region.snapshotRevision != signalRevisionOf previous region.snapshotKey), \region => patch region)
+
+    removed<A> : (List<KeyedSnapshot<Node<A>>>, List<SignalFrame>) -> List<string>
+    removed (regions, previous) = mapList (filterList (previous, \frame => Lists::any (regions, \region => region.snapshotKey == signalFrameKey frame) == false), \frame => signalFrameKey frame)
+
+    slice write = JsonObject [Doc::str ("key", write.sliceKey), Doc::str ("text", write.sliceText)]
+
+    emit<S, A> : (Outgoing<S, A>, (S) -> Json) -> string !e
+    emit (out, save) = encoded (out, saveSession (out.nextSession, save))
+
+    encoded<S, A> : (Outgoing<S, A>, string) -> string !e
+    encoded (out, sessionText) = Doc::write (JsonObject [
+        Doc::num ("version", version),
+        Doc::str ("state", sessionText),
+        JsonMember "slices" (JsonArray (mapList (out.outWrites, \write => slice write))),
+        JsonMember "patches" (JsonArray (patches (out.rendered, out.previousFrames))),
+        JsonMember "removed" (Doc::strings (removed (out.rendered, out.previousFrames))),
+        JsonMember "requests" (JsonArray (mapList (out.outRequests, \request => Requests::encode request))),
+        JsonMember "diagnostics" (Doc::strings out.diagnostics),
+        JsonMember "theme" out.themeJson,
+    ])
+
+    (** The first envelope for a host `context` (`now`, `offset`, `platform`), with the theme and every region. *)
+    export start<S, A> : (string, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json, Theme) -> string !e
+    start (source, init, render, save, theme) =
+        host = context (Doc::parse source)
+        first = init host
+        regions = render (first.stepStore, first.stepStore, [], first.writes)
+        session = Session(sessionContext = host, sessionStore = first.stepStore, sessionFrames = frames regions)
+        emit (Outgoing(nextSession = session, previousFrames = [], rendered = regions, outWrites = first.writes, outRequests = first.requests, diagnostics = [], themeJson = Themes::encode theme), save)
+
+    // A rejected event alters nothing and says why.
+    refuse<S, A> : (Session<S>, string, (S) -> Json, List<KeyedSnapshot<Node<A>>>) -> string !e
+    refuse (session, problem, save, none) = emit (Outgoing(nextSession = session, previousFrames = [], rendered = none, outWrites = [], outRequests = [], diagnostics = [problem], themeJson = JsonNull), save)
+
+    // One issued binding at `ordinal` inside the region named `key`.
+    issued<A> : (List<KeyedSnapshot<Node<A>>>, string, int) -> Result<Binding<A>, Error>
+    issued (regions, key, ordinal) = match Lists::find (regions, \region => region.snapshotKey == key)
+        Error _ => Error(message = "Region ${key} is no longer shown")
+        Success region => match listGet (Encode::walk ([], region.snapshotValue)).bindings ordinal
+            Error _ => Error(message = "Unknown control ${ordinal} in region ${key}")
+            Success control => Success(value = control)
+
+    binding<A> : (List<KeyedSnapshot<Node<A>>>, string, int, Json) -> Result<Message<A>, Error>
+    binding (regions, key, ordinal, value) = match issued (regions, key, ordinal)
+        Error problem => Error(message = problem)
+        Success control => Events::bind (control, value)
+
+    // Re-renders only the named region from the unchanged store to recover the bindings it was drawn with.
+    drawn<S, A> : (Session<S>, string, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<KeyedSnapshot<Node<A>>, Error> !e
+    drawn (session, key, render) = match Lists::find (render (session.sessionStore, session.sessionStore, signalForced session.sessionFrames key, []), \region => region.snapshotKey == key)
+        Error _ => Error(message = "Region ${key} is no longer shown")
+        Success region => Success(value = region)
+
+    resolve<S, A> : (Session<S>, string, int, int, Json, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<Message<A>, Error> !e
+    resolve (session, key, revision, ordinal, value, render) = match revision > 0 && signalRevisionOf session.sessionFrames key == revision
+        false => Error(message = "Stale control: region ${key} revision ${revision} is not current")
+        true => binding (render (session.sessionStore, session.sessionStore, signalForced session.sessionFrames key, []), key, ordinal, value)
+
+    // [UI-EVENTS]: the trusted host's prior state recovers the control the person actually saw; the
+    // original revision must hold there, and the original binding must survive, by its typed action,
+    // exactly once among the region's current controls. Nothing matches by DOM appearance.
+    original<S, A> : (string, string, int, int, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (Json) -> S) -> Result<Binding<A>, Error> !e
+    original (prior, key, revision, ordinal, render, restoreStore) =
+        past = loadSession (prior, restoreStore)
+        match revision > 0 && signalRevisionOf past.sessionFrames key == revision
+            false => Error(message = "Stale control: region ${key} revision ${revision} is not current in the prior state")
+            true => match drawn (past, key, render)
+                Error problem => Error(message = problem)
+                Success region => issued ([region], key, ordinal)
+
+    redeliver<A> : (KeyedSnapshot<Node<A>>, Binding<A>, Json) -> Result<Message<A>, Error>
+    redeliver (region, past, value) =
+        twins = filterList ((Encode::walk ([], region.snapshotValue)).bindings, \control => structuralEquals control past)
+        match listGet twins 0
+            Error _ => Error(message = "The edited control no longer exists in region ${region.snapshotKey}")
+            Success only => match length twins
+                1 => Events::bind (only, value)
+                _ => Error(message = "More than one control in region ${region.snapshotKey} matches the edited control")
+
+    resolveEdit<S, A> : (Session<S>, string, string, int, int, Json, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (Json) -> S) -> Result<Message<A>, Error> !e
+    resolveEdit (session, prior, key, revision, ordinal, value, render, restoreStore) = match original (prior, key, revision, ordinal, render, restoreStore)
+        Error problem => Error(message = problem)
+        Success past => match drawn (session, key, render)
+            Error problem => Error(message = problem)
+            Success region => redeliver (region, past, value)
+
+    message<S, A> : (Session<S>, Incoming, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (Json) -> S) -> Result<Message<A>, Error> !e
+    message (session, body, render, restoreStore) = match body
+        Control key revision ordinal value => resolve (session, key, revision, ordinal, value, render)
+        PreviousControl prior key revision ordinal value => resolveEdit (session, prior, key, revision, ordinal, value, render, restoreStore)
+        Finished ticket result => Success(value = Completed(ticket = ticket, outcome = result))
+        Lifecycle phase => Success(value = Phase(phase = phase))
+        Tick elapsed => Success(value = Frame(elapsed = elapsed))
+
+    advance<S, A> : (Session<S>, Context, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json) -> string !e
+    advance (session, now, delivered, update, render, save) =
+        next = update (now, session.sessionStore, delivered)
+        regions = render (session.sessionStore, next.stepStore, session.sessionFrames, next.writes)
+        moved = Session(sessionContext = now, sessionStore = next.stepStore, sessionFrames = frames regions)
+        emit (Outgoing(nextSession = moved, previousFrames = session.sessionFrames, rendered = regions, outWrites = next.writes, outRequests = next.requests, diagnostics = [], themeJson = JsonNull), save)
+
+    deliver<S, A> : (Session<S>, Event, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json, (Json) -> S) -> string !e
+    deliver (session, event, update, render, save, restoreStore) =
+        host = session.sessionContext
+        now = host(now = event.eventNow)
+        match message (session, event.eventBody, render, restoreStore)
+            Error problem => refuse (session, problem, save, [])
+            Success delivered => advance (session, now, delivered, update, render, save)
+
+    // [UI-RESIDENT] What a resident envelope carries as its state: a marker, never the store.
+    residentState = "resident"
+
+    // [UI-SCENE-STREAM] A resident envelope's changed regions stream their scenes' rects, discs and sprites.
+    streamedPatch<A> : KeyedSnapshot<Node<A>> -> Json ![SceneStream | e]
+    streamedPatch region = JsonObject [Doc::str ("key", region.snapshotKey), Doc::num ("revision", region.snapshotRevision), JsonMember "node" (tree (Streams::split region.snapshotValue))]
+
+    resident<S, A> : Outgoing<S, A> -> Resident<S> ![SceneStream | e]
+    resident out = Resident(residentSession = out.nextSession, residentEnvelope = Doc::write (JsonObject [
+        Doc::num ("version", version),
+        Doc::str ("state", residentState),
+        JsonMember "slices" (JsonArray (mapList (out.outWrites, \write => slice write))),
+        JsonMember "patches" (JsonArray (mapList (filterList (out.rendered, \region => region.snapshotRevision != signalRevisionOf out.previousFrames region.snapshotKey), \region => streamedPatch region))),
+        JsonMember "removed" (Doc::strings (removed (out.rendered, out.previousFrames))),
+        JsonMember "requests" (JsonArray (mapList (out.outRequests, \request => Requests::encode request))),
+        JsonMember "diagnostics" (Doc::strings out.diagnostics),
+        JsonMember "theme" out.themeJson,
+    ]))
+
+    (** [UI-RESIDENT] A session holding `store` before `begin` has run, for the cell an application keeps its live session in. *)
+    export idle<S> : S -> Session<S>
+    idle store = Session(sessionContext = context JsonNull, sessionStore = store, sessionFrames = [])
+
+    (** [UI-RESIDENT] `start` for a library that keeps the session itself: the first envelope, whose state is only a marker, and the session to keep. *)
+    export begin<S, A> : (string, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Theme) -> Resident<S> ![SceneStream | e]
+    begin (source, init, render, theme) =
+        host = context (Doc::parse source)
+        first = init host
+        regions = render (first.stepStore, first.stepStore, [], first.writes)
+        session = Session(sessionContext = host, sessionStore = first.stepStore, sessionFrames = frames regions)
+        resident (Outgoing(nextSession = session, previousFrames = [], rendered = regions, outWrites = first.writes, outRequests = first.requests, diagnostics = [], themeJson = Themes::encode theme))
+
+    // A resident session has no saved prior state, so an edit made against an older revision cannot be recovered.
+    residentMessage<S, A> : (Session<S>, Incoming, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<Message<A>, Error> !e
+    residentMessage (session, body, render) = match body
+        Control key revision ordinal value => resolve (session, key, revision, ordinal, value, render)
+        PreviousControl _ key _ _ _ => Error(message = "Stale control: region ${key} changed and a resident session keeps no prior state")
+        Finished ticket result => Success(value = Completed(ticket = ticket, outcome = result))
+        Lifecycle phase => Success(value = Phase(phase = phase))
+        Tick elapsed => Success(value = Frame(elapsed = elapsed))
+
+    residentRefusal<S, A> : (Session<S>, string, List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]
+    residentRefusal (session, problem, none) = resident (Outgoing(nextSession = session, previousFrames = [], rendered = none, outWrites = [], outRequests = [], diagnostics = [problem], themeJson = JsonNull))
+
+    residentStep<S, A> : (Session<S>, Event, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]
+    residentStep (session, event, update, render) =
+        host = session.sessionContext
+        now = host(now = event.eventNow)
+        match residentMessage (session, event.eventBody, render)
+            Error problem => residentRefusal (session, problem, [])
+            Success delivered => residentAdvance (session, now, delivered, update, render)
+
+    residentAdvance<S, A> : (Session<S>, Context, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]
+    residentAdvance (session, now, delivered, update, render) =
+        next = update (now, session.sessionStore, delivered)
+        regions = render (session.sessionStore, next.stepStore, session.sessionFrames, next.writes)
+        moved = Session(sessionContext = now, sessionStore = next.stepStore, sessionFrames = frames regions)
+        resident (Outgoing(nextSession = moved, previousFrames = session.sessionFrames, rendered = regions, outWrites = next.writes, outRequests = next.requests, diagnostics = [], themeJson = JsonNull))
+
+    (** [UI-RESIDENT] `dispatch` for a library that keeps the session itself: the envelope after one host event and the session to keep. The store is never serialized, so a frame costs only `update`, the changed regions and the envelope. *)
+    export proceed<S, A> : (Session<S>, string, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]
+    proceed (session, source, update, render) = match Events::decode source
+        Error problem => residentRefusal (session, problem, [])
+        Success event => residentStep (session, event, update, render)
+
+    (** The next envelope after one host event, given the `state` the last envelope returned. *)
+    export dispatch<S, A> : (string, string, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json, (Json) -> S) -> string !e
+    dispatch (saved, source, update, render, save, restoreStore) =
+        session = loadSession (saved, restoreStore)
+        match Events::decode source
+            Error problem => refuse (session, problem, save, [])
+            Success event => deliver (session, event, update, render, save, restoreStore)

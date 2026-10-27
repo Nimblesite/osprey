@@ -10,8 +10,83 @@
 //! at exit when `OSPREY_COVERAGE=<path>` is set [TESTING-COVERAGE-ENV].
 
 use crate::builder::Codegen;
-use osprey_ast::{Expr, Position, Program, Stmt};
+use osprey_ast::{mutate, walk_program, AstVisitor, Expr, Position, Program, Stmt};
 use std::collections::BTreeSet;
+
+/// Keep source entries attached to the code that executes their bodies.
+/// Implements [TESTING-COVERAGE-CODEGEN]; unused arms retain zero counters.
+pub(crate) fn instrumented(program: &Program) -> Program {
+    let mut instrumented = program.clone();
+    for statement in &mut instrumented.statements {
+        mutate::statement_children_mut(statement, &mut mark_handler_entries);
+    }
+    instrumented
+}
+
+fn mark_handler_entries(expression: &mut Expr) {
+    mutate::children_mut(expression, &mut mark_handler_entries);
+    if let Expr::Handler {
+        stage,
+        arms,
+        body,
+        position,
+        ..
+    } = expression
+    {
+        arms.iter_mut().for_each(mark_arm_entry);
+        if stage.is_compile_time() {
+            **body = arm_entry((**body).clone(), *position);
+        }
+    }
+}
+
+pub(crate) fn instrument_expressions(program: &mut Program) {
+    for statement in &mut program.statements {
+        mutate::statement_children_mut(statement, &mut mark_expression_entries);
+    }
+}
+
+fn mark_expression_entries(expression: &mut Expr) {
+    mutate::children_mut(expression, &mut mark_expression_entries);
+    mark_expression_entry(expression);
+}
+
+fn mark_expression_entry(expression: &mut Expr) {
+    if let Expr::Block {
+        statements,
+        value: Some(_),
+        position: Some(position),
+    } = expression
+    {
+        if statements.is_empty() {
+            statements.push(entry_statement(Some(*position)));
+        }
+    }
+}
+
+fn mark_arm_entry(arm: &mut osprey_ast::HandlerArm) {
+    arm.body = arm_entry(arm.body.clone(), arm.position);
+}
+
+fn arm_entry(body: Expr, position: Option<Position>) -> Expr {
+    Expr::Block {
+        statements: vec![entry_statement(position)],
+        value: Some(Box::new(body)),
+        position: None,
+    }
+}
+
+fn entry_statement(position: Option<Position>) -> Stmt {
+    Stmt::Expr {
+        value: Expr::Block {
+            statements: Vec::new(),
+            value: None,
+            position: None,
+        },
+        doc: None,
+        position,
+    }
+}
 
 /// Per-module coverage state: the coverable lines. Seeded from the whole AST
 /// up front so an unexecuted (even never-lowered) line still counts against
@@ -27,17 +102,39 @@ pub(crate) struct CoverageState {
 }
 
 /// All coverable lines in `program`: function definitions plus positioned
-/// statements, recursing through nested blocks, lambdas, match/handler arms,
-/// and module/namespace bodies.
+/// statements anywhere in the shared AST traversal.
 fn coverable_lines(program: &Program) -> BTreeSet<u32> {
-    let mut lines = BTreeSet::new();
-    collect_stmts(&program.statements, &mut lines);
-    lines
+    let mut collector = CoverableLines::default();
+    walk_program(program, &mut collector);
+    collector.0
 }
 
-fn collect_stmts(stmts: &[Stmt], lines: &mut BTreeSet<u32>) {
-    for stmt in stmts {
-        collect_stmt(stmt, lines);
+#[derive(Default)]
+struct CoverableLines(BTreeSet<u32>);
+
+impl AstVisitor for CoverableLines {
+    fn expression(&mut self, expression: &Expr) {
+        if let Expr::Block {
+            statements,
+            value: Some(_),
+            position,
+        } = expression
+        {
+            if statements.is_empty() {
+                mark(*position, &mut self.0);
+            }
+        }
+    }
+
+    fn statement(&mut self, statement: &Stmt) {
+        let position = match statement {
+            Stmt::Function { position, .. }
+            | Stmt::Let { position, .. }
+            | Stmt::Assignment { position, .. }
+            | Stmt::Expr { position, .. } => *position,
+            _ => None,
+        };
+        mark(position, &mut self.0);
     }
 }
 
@@ -52,82 +149,6 @@ fn coverable_line(position: Option<Position>) -> Option<u32> {
 fn mark(position: Option<Position>, lines: &mut BTreeSet<u32>) {
     if let Some(line) = coverable_line(position) {
         let _ = lines.insert(line);
-    }
-}
-
-fn collect_stmt(stmt: &Stmt, lines: &mut BTreeSet<u32>) {
-    match stmt {
-        Stmt::Function { body, position, .. } => {
-            mark(*position, lines);
-            collect_expr(body, lines);
-        }
-        Stmt::Let {
-            value, position, ..
-        }
-        | Stmt::Assignment {
-            value, position, ..
-        }
-        | Stmt::Expr {
-            value, position, ..
-        } => {
-            mark(*position, lines);
-            collect_expr(value, lines);
-        }
-        Stmt::Namespace { body, .. } => collect_stmts(body, lines),
-        Stmt::Module { body, .. } => {
-            for item in body {
-                collect_stmt(&item.declaration, lines);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Recurse only into the expression forms that carry statements or arm bodies
-/// — the places nested coverable statements live.
-fn collect_expr(expr: &Expr, lines: &mut BTreeSet<u32>) {
-    match expr {
-        Expr::Block {
-            statements, value, ..
-        } => {
-            collect_stmts(statements, lines);
-            if let Some(v) = value {
-                collect_expr(v, lines);
-            }
-        }
-        Expr::Lambda { body, .. } => collect_expr(body, lines),
-        Expr::Match { value, arms } => {
-            collect_expr(value, lines);
-            for arm in arms {
-                collect_expr(&arm.body, lines);
-            }
-        }
-        Expr::Handler {
-            arms,
-            body,
-            return_clause,
-            finally,
-            ..
-        } => {
-            for arm in arms {
-                collect_expr(&arm.body, lines);
-            }
-            collect_expr(body, lines);
-            for clause in return_clause.iter().chain(finally) {
-                collect_expr(clause, lines);
-            }
-        }
-        Expr::Call {
-            function,
-            arguments,
-            ..
-        } => {
-            collect_expr(function, lines);
-            for a in arguments {
-                collect_expr(a, lines);
-            }
-        }
-        _ => {}
     }
 }
 
@@ -233,6 +254,17 @@ mod tests {
     use crate::builder::{Codegen, CodegenOptions};
     use osprey_ast::{Expr, Position, Program, Stmt};
 
+    #[test]
+    fn coverage_preserves_static_specialization_of_selected_closure_factories() {
+        let source = "static effect Read<B> {\nmake: fn() -> B\nvalue: fn() -> int\n}\nfn choose(flag) = if flag { fn() => perform Read.value() } else { fn() => perform Read.value() }\nfn run(flag) = {\nlet work = choose(flag)\nhandle static Read {\nmake => 0\nvalue => 7\n}\nprint(work())\n}\nfn other(flag) = {\nlet work = choose(flag)\nhandle static Read {\nmake => \"buffer\"\nvalue => 9\n}\nprint(work())\n}\nfn main() = {\nrun(true)\nother(false)\n}\n";
+        let parsed = osprey_syntax::parse_program(source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let plain = crate::compile_program(&parsed.program);
+        assert!(plain.is_ok(), "plain: {plain:?}");
+        let covered = crate::compile_program_coverage(&parsed.program);
+        assert!(covered.is_ok(), "coverage: {covered:?}");
+    }
+
     const NESTED_SOURCE: &str = "namespace sample {\n\
       module Stats {\n\
       fn choose(flag) = {\n\
@@ -260,6 +292,35 @@ mod tests {
       }\n\
       print(toString(handled))\n";
 
+    const NAMED_CALLBACKS: &str = "type Box =\n    held : int\ninvoke f x = f x\nsaveOne box = box.held\nsaveMany box =\n    n = box.held\n    n\nprint \"${invoke saveOne (Box(held = 1))}|${invoke saveMany (Box(held = 2))}\"\n";
+
+    fn callback_header_owners(module: &str, line: u32) -> Vec<&str> {
+        let counter = format!("i64* @__osp_cov_hits.{line}");
+        module
+            .split("\n}")
+            .filter(|body| {
+                body.lines()
+                    .any(|line| line.contains("store i64") && line.ends_with(&counter))
+            })
+            .filter_map(|body| body.rsplit("define ").next())
+            .collect()
+    }
+
+    #[test]
+    fn named_callback_headers_are_bumped_inside_the_emitted_closure() {
+        let parsed = osprey_syntax::parse_program_for_path("callbacks.ospml", NAMED_CALLBACKS);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let module = crate::compile_program_coverage(&parsed.program).expect("coverage lowering");
+        for line in [4, 5] {
+            let owners = callback_header_owners(&module, line);
+            assert_eq!(owners.len(), 1, "header {line}: {module}");
+            assert!(
+                owners.iter().all(|owner| owner.contains("@__closure_fn_")),
+                "header {line} must count invocation, not creation: {owners:?}"
+            );
+        }
+    }
+
     fn coverage_codegen() -> Codegen {
         Codegen::with_options(
             osprey_types::ProgramTypes::default(),
@@ -281,7 +342,10 @@ mod tests {
         cg.finish_function("i64", "f", &[]);
         cg.cov_emit_boot(); // extern must land even without a real main here
         let init = cg.cov_render_init().expect("coverage active");
-        assert!(init.contains("call void @osp_cov_register_line(i64 4, i64* @__osp_cov_hits.4)"));
+        crate::testkit::shows(
+            &init,
+            &["call void @osp_cov_register_line(i64 4, i64* @__osp_cov_hits.4)"],
+        );
         let module = cg.render();
         assert_eq!(
             module
@@ -317,7 +381,7 @@ mod tests {
         };
         cg.cov_seed(&program);
         let init = cg.cov_render_init().unwrap_or_default();
-        assert!(init.contains("i64 3,"), "{init}");
+        crate::testkit::shows(&init, &["i64 3,"]);
         assert!(!init.contains(&format!("i64 {},", prelude.line)), "{init}");
         assert!(!cg
             .render()
@@ -342,7 +406,7 @@ mod tests {
         assert!(parsed.errors.is_empty(), "syntax: {:?}", parsed.errors);
         // Namespace/module/function lines, then the handled region: the arm's
         // own statement (line 19) and the statement the handler governs (23).
-        let expected = std::collections::BTreeSet::from([3, 4, 5, 6, 15, 16, 19, 23, 26]);
+        let expected = std::collections::BTreeSet::from([3, 4, 5, 6, 7, 8, 15, 16, 19, 23, 26]);
         assert_eq!(coverable_lines(&parsed.program), expected);
         let mut cg = coverage_codegen();
         cg.cov_seed(&parsed.program);
@@ -351,7 +415,29 @@ mod tests {
             let global = format!("@__osp_cov_hits.{line} = internal global i64 0");
             assert!(module.contains(&global), "missing line {line}:\n{module}");
         }
-        assert_eq!(module.matches("internal global i64 0").count(), 9);
+        assert_eq!(module.matches("internal global i64 0").count(), 11);
+    }
+
+    #[test]
+    fn cov_seed_includes_uncalled_generic_branches_nested_in_containers() {
+        let source = "fn unused<T>(flag) = [\n\
+            match flag {\n\
+                true => {\n\
+                    let selected = 1\n\
+                    selected\n\
+                }\n\
+                false => {\n\
+                    let selected = 2\n\
+                    selected\n\
+                }\n\
+            }\n\
+        ]\n";
+        let parsed = osprey_syntax::parse_program(source);
+        assert!(parsed.errors.is_empty(), "syntax: {:?}", parsed.errors);
+        assert_eq!(
+            coverable_lines(&parsed.program),
+            std::collections::BTreeSet::from([1, 3, 4, 7, 8])
+        );
     }
 
     #[test]
@@ -364,7 +450,7 @@ mod tests {
         cg.emit("ret i64 0");
         cg.finish_function("i64", "caller", &[]);
         let module = cg.render();
-        assert!(module.contains("@__osp_cov_hits.8 = internal global i64 0"));
+        crate::testkit::shows(&module, &["@__osp_cov_hits.8 = internal global i64 0"]);
         assert_eq!(module.matches("store i64").count(), 1);
     }
 }

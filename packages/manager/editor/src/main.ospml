@@ -1,0 +1,2 @@
+namespace registry_editor
+main () = print (App::respond (input ()))

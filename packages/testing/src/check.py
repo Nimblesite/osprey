@@ -12,7 +12,7 @@ NaN equal only to NaN, so a reference value computed by CPython's numpy or
 torch under a different libm still compares. Implements [PORT-TEST-ORACLE].
 """
 
-__all__ = ["Outcome", "passed", "failed", "equal", "close", "close_all", "ints_equal", "truth", "near", "report", "summary", "ints_text", "float_of", "Fault", "strictly"]
+__all__ = ["Outcome", "passed", "failed", "equal", "close", "close_all", "ints_equal", "truth", "near", "report", "summary", "ints_text", "float_of", "Fault", "strictly", "lenient", "specials"]
 
 
 class Outcome:
@@ -106,7 +106,7 @@ def float_of(text):
         case "-inf":
             return 0.0 - exp(1000.0)
         case _:
-            return unwrap_or(parseFloat(text), exp(1000.0) - exp(1000.0))
+            return unwrap_or(parseFloat(text), abs(exp(1000.0) - exp(1000.0)))
 
 
 def line(outcome):
@@ -157,3 +157,25 @@ def strictly(work) -> Result[None, str]:
     with halting:
         with arithmetic:
             return Success(value=work())
+
+
+def specials():
+    """The non-finite and extreme binary64 values a hunt driver mixes into its
+    symbolic inputs ([PORT-HUNT]): +inf, -inf, NaN, exp(700) and the subnormal
+    exp(-745), so every non-finite path is explored on every run."""
+    return [exp(1000.0), 0.0 - exp(1000.0), exp(1000.0) - exp(1000.0), exp(700.0), exp(-745.0)]
+
+
+@handler(Arith)
+class lenient:
+    """A hunt driver's arithmetic policy ([PORT-HUNT]): every fault answers with a
+    value — the wrapped result for an overflow, zero for a division or remainder
+    by zero — so symbolic execution explores past it instead of stopping."""
+    def overflow(_op, _l, _r, wrapped):
+        return wrapped
+
+    def divideByZero(_op, _l):
+        return 0.0
+
+    def remainderByZero(_l):
+        return 0

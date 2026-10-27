@@ -1,0 +1,22 @@
+[package]
+name = "tree-sitter-osprey-ml"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Native ML flavor grammar for Osprey"
+build = "build.rs"
+
+[workspace]
+
+[lib]
+path = "bindings/rust/lib.rs"
+
+[dependencies]
+tree-sitter-language = "0.1"
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+tree-sitter = "0.25"
+

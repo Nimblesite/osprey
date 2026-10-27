@@ -1,0 +1,6 @@
+/// Deliberately planted: Union case invariant [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+type Command = Delete | Read
+let line = input()
+let result = if line == "U" { match Delete { Delete => abort()  Read => 0 } } else { 0 }
+print("result ${result}")
