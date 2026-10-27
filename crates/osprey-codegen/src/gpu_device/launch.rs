@@ -190,7 +190,7 @@ fn uniform_words(cg: &mut Codegen, uniforms: &[Value]) -> String {
         return "null".into();
     }
     let n = uniforms.len();
-    let array = cg.emit_reg(format!("alloca [{n} x i64]"));
+    let array = cg.hoist_slot(&format!("[{n} x i64]"));
     for (i, uniform) in uniforms.iter().enumerate() {
         let word = crate::conv::box_to_i64(cg, uniform.clone()).operand;
         let slot = cg.emit_reg(format!(

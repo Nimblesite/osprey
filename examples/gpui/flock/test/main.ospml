@@ -20,7 +20,11 @@ birdsOf envelope = Doc::items (Doc::field (worldOf envelope, "birds"))
 
 hawksOf envelope = Doc::items (Doc::field (worldOf envelope, "hawks"))
 
-at (item, index) = jsonFloat (jsonIndex item index ?: JsonNull) ?: 0.0
+// The session saves positions as integer hundredths of a unit.
+at (item, index) =
+    handle Arith
+        divideByZero _ dividend => dividend
+    toFloat (jsonInt (jsonIndex item index ?: JsonNull) ?: 0) / 100.0
 
 birdXAt (envelope, index) = at (listGet (birdsOf envelope) index ?: JsonNull, 0)
 

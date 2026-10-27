@@ -128,13 +128,16 @@ module Simulation
                         false => pace
                 Vector(vectorX = x * wanted / pace, vectorY = y * wanted / pace)
 
-    // Sixteen-unit cells; one integer key per cell keeps the grid's string formatting cheap.
+    // Sixteen-unit cells. The field is 21 by 13 cells; with a one-cell border the keys fit 23 by 15.
     cell value = floatToInt (floor (value * 0.0625)) ?: 0
 
-    cellKey (cx, cy) = "${satAdd (satMul cy 64) cx}"
+    // Every cell's map key, formatted once per frame: formatting a key per lookup cost a tenth of the frame.
+    keyTable () = range (0, 345) |> fold [] (\(out, i) => listAppend out "${i}")
 
-    grid : List<Bird> -> Map<string, List<Bird>>
-    grid birds = foldList (birds, Map (), \(cells, b) => mapSet cells (cellKey (cell b.birdX, cell b.birdY)) (listAppend (mapGet cells (cellKey (cell b.birdX, cell b.birdY)) ?: []) b))
+    cellKey (keys, cx, cy) = listGet keys (satAdd (satMul (satAdd cy 1) 23) (satAdd cx 1)) ?: ""
+
+    grid : (List<Bird>, List<string>) -> Map<string, List<Bird>>
+    grid (birds, keys) = foldList (birds, Map (), \(cells, b) => mapSet cells (cellKey (keys, cell b.birdX, cell b.birdY)) (listAppend (mapGet cells (cellKey (keys, cell b.birdX, cell b.birdY)) ?: []) b))
 
     sameBird (a, b) = a.birdX == b.birdX && a.birdY == b.birdY && a.birdVx == b.birdVx && a.birdVy == b.birdVy
 
@@ -147,7 +150,7 @@ module Simulation
         dx = b.birdX - other.birdX
         dy = b.birdY - other.birdY
         distance = squared (dx, dy)
-        match distance < 144.0 && sameBird (b, other) == false
+        match distance < 64.0 && sameBird (b, other) == false
             true => Nearby(sepX = sum.sepX + crowd (dx, distance), sepY = sum.sepY + crowd (dy, distance), alignX = sum.alignX + other.birdVx, alignY = sum.alignY + other.birdVy, cohereX = sum.cohereX + other.birdX, cohereY = sum.cohereY + other.birdY, nearCount = satAdd sum.nearCount 1)
             false => sum
 
@@ -158,10 +161,23 @@ module Simulation
             true => Vector(vectorX = dx * 0.08, vectorY = dy * 0.08)
             false => Vector(vectorX = 0.0, vectorY = 0.0)
 
-    // The nine cells around a bird are folded in place: concatenating them copied every neighbour list per bird.
-    gather (b, cells, sum, i) = foldList (mapGet cells (cellKey (satAdd (cell b.birdX) (satSub (satSub i (satMul (intDiv i 3) 3)) 1), satAdd (cell b.birdY) (satSub (intDiv i 3) 1))) ?: [], sum, \(total, other) => accumulate (b, total, other))
+    // Sight is eight units, half a cell, so a bird's flockmates lie in the 2 by 2 block of cells nearest it:
+    // its own cell and the neighbours on the sides of the cell it is closer to.
+    side value = match value * 0.0625 - floor (value * 0.0625) < 0.5
+        true => 0 - 1
+        false => 1
 
-    nearby (b, cells) = range (0, 9) |> fold (Nearby(sepX = 0.0, sepY = 0.0, alignX = 0.0, alignY = 0.0, cohereX = 0.0, cohereY = 0.0, nearCount = 0)) (\(sum, i) => gather (b, cells, sum, i))
+    gather (b, cells, keys, sum, i) = foldList (mapGet cells (cellKey (keys, satAdd (cell b.birdX) (satMul (satSub i (satMul (intDiv i 2) 2)) (side b.birdX)), satAdd (cell b.birdY) (satMul (intDiv i 2) (side b.birdY)))) ?: [], sum, \(total, other) => accumulate (b, total, other))
+
+    nearby (b, cells, keys) = range (0, 4) |> fold (alone ()) (\(sum, i) => gather (b, cells, keys, sum, i))
+
+    alone () = Nearby(sepX = 0.0, sepY = 0.0, alignX = 0.0, alignY = 0.0, cohereX = 0.0, cohereY = 0.0, nearCount = 0)
+
+    // About half the flock looks for flockmates each frame, chosen by a parity that changes as birds move;
+    // the other half keeps its heading. Every bird still moves, homes, flees and minds the dog every frame.
+    looks (b, frame) =
+        mixed = satAdd (floatToInt (floor (b.birdX * 8.0 + b.birdY * 8.0)) ?: 0) frame
+        satSub mixed (satMul (intDiv mixed 2) 2) == 0
 
     // Birds circle back toward the meadow and away from walls, so only herding brings them to the pen.
     homing (b) = Vector(vectorX = (70.0 - b.birdX) * 0.0015 + wall (b.birdX, 320.0), vectorY = (100.0 - b.birdY) * 0.0008 + wall (b.birdY, 200.0))
@@ -187,8 +203,10 @@ module Simulation
         Vector(vectorX = sum.vectorX + away.vectorX, vectorY = sum.vectorY + away.vectorY))
 
     // Separation, mean alignment and mean cohesion combine with homing, hawk panic and sheepdog repulsion.
-    steer (b, player, hawks, cells) =
-        sum = nearby (b, cells)
+    steer (b, player, hawks, cells, keys, frame) =
+        sum = match looks (b, frame)
+            true => nearby (b, cells, keys)
+            false => alone ()
         home = homing b
         scared = herd (b, player)
         fear = panic (b, hawks)
@@ -203,8 +221,8 @@ module Simulation
 
     wrapY value = clamp (value, 0.0, 200.0)
 
-    movedBird (b, cells, player, hawks, elapsed) =
-        velocity = steer (b, player, hawks, cells)
+    movedBird (b, cells, keys, player, hawks, frame, elapsed) =
+        velocity = steer (b, player, hawks, cells, keys, frame)
         Bird(birdX = wrapX (b.birdX + velocity.vectorX * elapsed * 60.0), birdY = wrapY (b.birdY + velocity.vectorY * elapsed * 60.0), birdVx = velocity.vectorX, birdVy = velocity.vectorY)
 
     closer (hawk, found, b) =
@@ -290,8 +308,9 @@ module Simulation
     physics (store, elapsed) =
         world = store.world
         player = movedPlayer (world, elapsed)
-        cells = grid world.birds
-        moved = mapList (world.birds, \b => movedBird (b, cells, player, world.hawks, elapsed))
+        keys = keyTable ()
+        cells = grid (world.birds, keys)
+        moved = mapList (world.birds, \b => movedBird (b, cells, keys, player, world.hawks, world.frameCount, elapsed))
         rescued = filterList (moved, \b => b.birdX >= 290.0)
         remaining = filterList (moved, \b => b.birdX < 290.0)
         hawks = mapList (world.hawks, \hawk => movedHawk (hawk, remaining, elapsed))
@@ -348,7 +367,11 @@ module Simulation
         text = perform ui::Slices.fetch "scores"
         Runtime::step (store(scores = Scores(best = mapList (Doc::items (Doc::parse text), \item => jsonInt item ?: 0), loaded = true)))
 
-    birdJson b = JsonArray [JsonFloat b.birdX, JsonFloat b.birdY, JsonFloat b.birdVx, JsonFloat b.birdVy]
+    // Positions in hundredths and velocities in thousandths of a unit, as integers: the session is written
+    // and read every frame, and integers spell and parse several times faster than shortest-round-trip floats.
+    scaled (value, by) = floatToInt (round (value * by)) ?: 0
+
+    birdJson b = JsonArray [JsonInt (scaled (b.birdX, 100.0)), JsonInt (scaled (b.birdY, 100.0)), JsonInt (scaled (b.birdVx, 1000.0)), JsonInt (scaled (b.birdVy, 1000.0))]
 
     hawkJson hawk = JsonArray [JsonFloat hawk.hawkX, JsonFloat hawk.hawkY]
 
@@ -373,7 +396,12 @@ module Simulation
 
     at (item, index) = jsonFloat (jsonIndex item index ?: JsonNull) ?: 0.0
 
-    restoreBird item = Bird(birdX = at (item, 0), birdY = at (item, 1), birdVx = at (item, 2), birdVy = at (item, 3))
+    unscaled (item, index, by) =
+        handle Arith
+            divideByZero _ dividend => dividend
+        toFloat (jsonInt (jsonIndex item index ?: JsonNull) ?: 0) / by
+
+    restoreBird item = Bird(birdX = unscaled (item, 0, 100.0), birdY = unscaled (item, 1, 100.0), birdVx = unscaled (item, 2, 1000.0), birdVy = unscaled (item, 3, 1000.0))
 
     restoreHawk item = Hawk(hawkX = at (item, 0), hawkY = at (item, 1))
 
