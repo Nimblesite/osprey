@@ -177,6 +177,16 @@ jobs:
         shell: bash
         # --no-warnings skips the warning pass (see scripts/make/extension.mk).
         run: target/release/osprey build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg
+      # The local package registry [PACKAGE-LOCAL-REGISTRY]: the folder-registry
+      # server and this repository's packages published into a folder registry.
+      # Not on Windows yet: the server's tree walk shells out to POSIX `find`.
+      - name: Build local package registry (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          target/release/osprey build packages/manager/api --quiet --no-warnings -o target/osprey-registry
+          scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
       # osprey.exe is a native Windows process, so it resolves clang on the
       # Windows PATH, where the runner's MSVC-target clang shadows the MSYS2 one
       # and `link.exe` cannot find ssl.lib. Pin the UCRT64 clang, as ci-windows.yml does.
@@ -234,6 +244,10 @@ jobs:
           mkdir -p "dist/$staging"
           cp "target/release/osprey${exe}" "dist/$staging/"
           cp "target/osprey-pkg${exe}" "dist/$staging/"
+          if [ -z "$exe" ]; then
+            cp target/osprey-registry "dist/$staging/"
+            cp -R target/local-registry "dist/$staging/registry"
+          fi
           # The runtime archives used to be copied with `|| true`, so a build
           # that produced none still packaged, published and reached Homebrew —
           # a compiler that can link nothing, shipped green. Find the directory
@@ -560,6 +574,10 @@ jobs:
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey${exe}"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-pkg${exe}"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/package-workspace.wasm"
+          if [ -z "$exe" ]; then
+            unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-registry"
+            unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/registry/@osprey/"
+          fi
       # Packaging is per-platform (each VSIX bundles the matching native binary);
       # publishing is centralised in the publish-marketplace / publish-openvsx
       # jobs so the registry tokens live in one least-privilege place.

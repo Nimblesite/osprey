@@ -106,7 +106,18 @@ every item lands with tests.
       endpoint with the Osprey HTTP client, and assert the bodies byte for byte.
       `packages/manager/e2e` builds and starts the server on `127.0.0.1:18797` and
       compares status, ETag and body of every endpoint with the pure `Router`.
-- [x] `make registry-serve` starts the server over the sample registry.
+- [x] `make registry-serve-sample` starts the server over the sample registry.
+- [x] Local registry `[PACKAGE-LOCAL-REGISTRY]`: `make registry-serve` publishes the
+      repository's own `packages/*` into `target/local-registry` with
+      `publish --folder` and serves it on `127.0.0.1:8787`. 16 of 19 packages
+      stage; `@osprey/jinja2`, `@osprey/numpy` and `@osprey/safetensors` are
+      refused with `source.unclassified-builtin` for their raw `@extern` panic
+      declarations. The VS Code extension bundles the server and the staged
+      tree, starts and stops it from commands, the `osprey.toml` explorer menu
+      and the status bar, and offers to start it when the package manager opens
+      against a silent loopback registry (`test/suite/local-registry.test.ts`).
+- [ ] Give the three refused packages a classified abort instead of a raw
+      `@extern` panic, so every package in `packages/` is served.
 - [x] Harden the server to `[PACKAGE-HARDENING]` S1–S3: `405` carries
       `Allow: GET`; every response carries `nosniff`, `default-src 'none'` and
       `no-referrer`; digest-addressed responses are `immutable`, the rest

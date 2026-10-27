@@ -246,6 +246,7 @@ jobs:
           path: |
             target/release/osprey
             target/osprey-pkg
+            target/osprey-registry
             target/package-workspace.wasm
             compiler/lib/
             compiler/bin/*.a
@@ -631,7 +632,7 @@ jobs:
           mkdir -p vscode-extension/bin
           cp -R "$bundle_dir/extension/bin/." vscode-extension/bin/
       - name: Restore artifact permissions
-        run: chmod +x target/release/osprey target/osprey-pkg vscode-extension/bin/linux-x64/osprey vscode-extension/bin/linux-x64/osprey-pkg
+        run: chmod +x target/release/osprey target/osprey-pkg target/osprey-registry vscode-extension/bin/linux-x64/osprey vscode-extension/bin/linux-x64/osprey-pkg vscode-extension/bin/linux-x64/osprey-registry
 
       - name: Extension suite with V8 coverage
         run: xvfb-run -a make _test_vscode_extension

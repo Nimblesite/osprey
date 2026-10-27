@@ -17,6 +17,6 @@ suite("installed VSIX packages", () => {
     assert.strictEqual(createHash("sha256").update(wasm).digest("hex"), process.env.OSPREY_VSIX_PACKAGE_WORKSPACE_SHA256);
     assert.ok(WebAssembly.validate(wasm), "the installed package workspace must be valid WASM");
     const commands = await vscode.commands.getCommands(true);
-    for (const command of ["osprey.packages.open", "osprey.packages.add", "osprey.packages.remove"]) assert.ok(commands.includes(command));
+    for (const command of ["osprey.packages.open", "osprey.packages.add", "osprey.packages.remove", "osprey.packages.startLocalRegistry", "osprey.packages.stopLocalRegistry"]) assert.ok(commands.includes(command));
   });
 });

@@ -172,6 +172,19 @@
         "enablement": "isWorkspaceTrusted"
       },
       {
+        "command": "osprey.packages.startLocalRegistry",
+        "title": "Start Local Package Registry",
+        "category": "Osprey",
+        "icon": "$(server-process)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "osprey.packages.stopLocalRegistry",
+        "title": "Stop Local Package Registry",
+        "category": "Osprey",
+        "icon": "$(debug-stop)"
+      },
+      {
         "command": "osprey.profiler.profileStart",
         "title": "Start Profiling",
         "category": "Osprey",
@@ -429,6 +442,11 @@
           "command": "osprey.packages.open",
           "when": "resourceFilename == osprey.toml",
           "group": "osprey@1"
+        },
+        {
+          "command": "osprey.packages.startLocalRegistry",
+          "when": "resourceFilename == osprey.toml",
+          "group": "osprey@2"
         }
       ]
     },
@@ -615,6 +633,18 @@
           "default": "http://127.0.0.1:8787",
           "scope": "resource",
           "description": "Package registry API origin. HTTPS is required except for loopback development."
+        },
+        "osprey.packages.localRegistry.serverPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Absolute path to osprey-registry, the local package registry server. Defaults to the server bundled with this extension."
+        },
+        "osprey.packages.localRegistry.root": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Folder registry the local server serves (@scope/name/<epoch>.<ordinal>/ releases). Defaults to the bundled snapshot of the Osprey repository's packages."
         },
         "osprey.packages.frontendPath": {
           "type": "string",

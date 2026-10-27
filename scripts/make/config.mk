@@ -8,7 +8,7 @@
 # =============================================================================
 
 .PHONY: build test lint fmt clean ci setup run install bench bench-osprey wasm wasm-site wasm-serve bank bank-web bank-test bank-e2e hawk hawk-install graphics graphics-smoke gpt2 gpt2-train \
-	registry-test registry-serve registry-blockers vsix-rebuild-reinstall \
+	registry-test registry-serve registry-serve-sample registry-blockers vsix-rebuild-reinstall \
 	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
 	_runtime_klee _test_hunt_mock \

@@ -118,10 +118,19 @@ hunt-corpus: build
 registry-test: build
 	$(MAKE) _test_registry
 
-## registry-serve: Serve packages/manager/sample-registry over HTTP on
-##                 127.0.0.1:8787 with the Osprey folder-registry server
-##                 (settings in packages/manager/api/registry-server.json).
-registry-serve: build
+## registry-serve: Serve this repository's packages (packages/*, published
+##                 into target/local-registry) over HTTP on 127.0.0.1:8787
+##                 with the Osprey folder-registry server. Ctrl-C stops it.
+registry-serve: target/osprey-registry target/local-registry.stamp
+	@$(MKDIR) target/local-registry-server
+	@printf '{ "root": "%s", "address": "127.0.0.1", "port": 8787 }\n' "$(abspath target/local-registry)" \
+	  > target/local-registry-server/registry-server.json
+	cd target/local-registry-server && $(abspath target/osprey-registry)
+
+## registry-serve-sample: Serve packages/manager/sample-registry (the @demo
+##                        packages the e2e consumer uses) on 127.0.0.1:8787
+##                        (settings in packages/manager/api/registry-server.json).
+registry-serve-sample: build
 	cd packages/manager/api && $(abspath $(BIN)) . --run
 
 ## registry-blockers: Probe the host capabilities plan 0020 still needs

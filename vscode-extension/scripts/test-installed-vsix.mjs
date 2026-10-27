@@ -38,7 +38,7 @@ const compilerHash = createHash("sha256")
   .update(fs.readFileSync(compiler))
   .digest("hex");
 const clientHashes = Object.fromEntries(
-  ["extension", "warning-fixes", "package-api", "package-commands", "package-frontend", "package-listing", "package-workspace"].map((name) => [
+  ["extension", "warning-fixes", "package-api", "package-commands", "package-frontend", "package-listing", "package-workspace", "local-registry"].map((name) => [
     name,
     createHash("sha256")
       .update(
