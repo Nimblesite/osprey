@@ -44,6 +44,8 @@ The [effects specification](specs/language/0017-AlgebraicEffects.md) defines sem
 
 ## Maturity and invitation
 
+The phrase "Logic, in flight" is banned in every form: it says nothing about Osprey. Use **Safe, elegant, fast.** instead.
+
 The maturity labels "alpha" and "experimental" are banned in Osprey messaging. Do not use either to describe the language or imply production readiness. Use **actively evolving**: Osprey is being used to build real applications, including the macOS storage app and Vigil, while language and tooling changes still require validation.
 
 Preferred copy: **Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.** Keep concrete feature limits beside the relevant claim. Invite people to build and report failures without promising stability or support that has not been demonstrated.
