@@ -1,0 +1,126 @@
+// Runtime-driven Flock regressions for scene simulation and host input ([UI-SCENE], [GPUI-HOST-SCENE]).
+namespace flocktests
+
+import ui::Doc
+import ui::Runtime
+import flock::App
+import flocktests::Probes
+
+fixtureWorld (birds, hawks) = flock::World(birds = birds, hawks = hawks, player = flock::Player(playerX = 160.0, playerY = 100.0), held = flock::Held(heldLeft = false, heldRight = false, heldUp = false, heldDown = false), targetX = 0.0, targetY = 0.0, targetActive = false, roundNumber = 1, scoreValue = 0, elapsedTotal = 0.0, frameCount = 0, fps = 0)
+
+fixture (birds, hawks) = flock::Store(world = fixtureWorld (birds, hawks), settings = flock::Settings(flockSize = 1000, soundOn = true, paused = false), scores = flock::Scores(best = [], loaded = false))
+
+bird (x, y, vx, vy) = flock::Bird(birdX = x, birdY = y, birdVx = vx, birdVy = vy)
+
+hawk (x, y) = flock::Hawk(hawkX = x, hawkY = y)
+
+worldOf envelope = Doc::field (Probes::stored envelope, "world")
+
+birdsOf envelope = Doc::items (Doc::field (worldOf envelope, "birds"))
+
+hawksOf envelope = Doc::items (Doc::field (worldOf envelope, "hawks"))
+
+at (item, index) = jsonFloat (jsonIndex item index ?: JsonNull) ?: 0.0
+
+birdXAt (envelope, index) = at (listGet (birdsOf envelope) index ?: JsonNull, 0)
+
+requestKinds envelope = join (mapList (Doc::items (Doc::field (envelope, "requests")), \request => Doc::text (request, "kind"))) ","
+
+fieldShapes envelope =
+    patch = listGet (Doc::items (Doc::field (envelope, "patches"))) 0 ?: JsonNull
+    Doc::items (Doc::field (Doc::field (patch, "node"), "shapes"))
+
+(** Starts and drives Flock through the actual serialized runtime boundary. *)
+module Probes
+    (** The application's first envelope with fixture-backed host slices. *)
+    export started () =
+        handle ui::Slices
+            fetch _ => "[40,30,20]"
+        Doc::parse (Runtime::start ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", App::initial, App::regions, App::save, App::theme ()))
+
+    session (envelope, store) =
+        saved = Doc::parse (Doc::text (envelope, "state"))
+        Doc::write (JsonObject [JsonMember "context" (Doc::field (saved, "context")), JsonMember "store" (App::save store), JsonMember "frames" (Doc::field (saved, "frames"))])
+
+    (** Dispatches an event against the current session. *)
+    export post (envelope, event) =
+        handle ui::Slices
+            fetch _ => "[40,30,20]"
+        Doc::parse (Runtime::dispatch (Doc::text (envelope, "state"), event, App::update, App::regions, App::save, App::restore))
+
+    (** Dispatches an event after replacing only the session's store fixture. *)
+    export postStore (envelope, store, event) =
+        handle ui::Slices
+            fetch _ => "[40,30,20]"
+        Doc::parse (Runtime::dispatch (session (envelope, store), event, App::update, App::regions, App::save, App::restore))
+
+    (** The opaque session's decoded application store. *)
+    export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
+
+    (** The patched region keys in protocol order. *)
+    export keys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \patch => Doc::text (patch, "key"))) ","
+
+frameEvent () = "{\"kind\":\"frame\",\"now\":2,\"elapsed\":0.0166667}"
+
+pauseEvent () = "{\"kind\":\"ui\",\"region\":\"field\",\"revision\":1,\"ordinal\":0,\"value\":{\"key\":\"p\",\"down\":true},\"now\":2}"
+
+scoresEvent () = "{\"kind\":\"completed\",\"ticket\":\"scores:read\",\"ok\":true,\"result\":null,\"now\":2}"
+
+test ("a frame moves every bird", \() =>
+    started = Probes::started ()
+    store = fixture ([bird (10.0, 20.0, 0.5, 0.1), bird (50.0, 60.0, 0.4, 0.2)], [])
+    after = Probes::postStore (started, store, frameEvent ())
+    expect (length (birdsOf after), 2)
+    expect (birdXAt (after, 0) == 10.0, false)
+    expect (birdXAt (after, 1) == 50.0, false))
+
+test ("a bird past x 290 is rescued and scores", \() =>
+    started = Probes::started ()
+    store = fixture ([bird (289.9, 20.0, 1.2, 0.0), bird (50.0, 60.0, 0.4, 0.2)], [])
+    after = Probes::postStore (started, store, frameEvent ())
+    expect (length (birdsOf after), 1)
+    expect (Doc::number (worldOf after, "score"), 1)
+    expect (Doc::number (worldOf after, "round"), 1))
+
+test ("a hawk within two units takes a bird without score", \() =>
+    started = Probes::started ()
+    store = fixture ([bird (50.0, 50.0, 0.4, 0.0), bird (100.0, 100.0, 0.4, 0.2)], [hawk (51.0, 50.0)])
+    after = Probes::postStore (started, store, frameEvent ())
+    expect (length (birdsOf after), 1)
+    expect (Doc::number (worldOf after, "score"), 0))
+
+test ("p pauses and requests animate off", \() =>
+    started = Probes::started ()
+    store = fixture ([bird (10.0, 20.0, 0.5, 0.1)], [])
+    after = Probes::postStore (started, store, pauseEvent ())
+    settings = Doc::field (Probes::stored after, "settings")
+    expect (Doc::flag (settings, "paused"), true)
+    expect (requestKinds after, "animate")
+    request = listGet (Doc::items (Doc::field (after, "requests"))) 0 ?: JsonNull
+    expect (Doc::flag (request, "on"), false))
+
+test ("start sends all regions and the animate and score-read requests", \() =>
+    started = Probes::started ()
+    expect (Probes::keys started, "field,hud,panel,root")
+    expect (requestKinds started, "animate,store-read")
+    expect (Doc::number (listGet (Doc::items (Doc::field (started, "requests"))) 1 ?: JsonNull, "limit"), 4096))
+
+test ("an empty round starts with five hundred more birds and one more hawk", \() =>
+    started = Probes::started ()
+    after = Probes::postStore (started, fixture ([], [hawk (35.0, 4.0)]), frameEvent ())
+    expect (length (birdsOf after), 1500)
+    expect (length (hawksOf after), 2)
+    expect (Doc::number (worldOf after, "round"), 2))
+
+test ("the scene contains every sprite plus the pen player and HUD glyphs", \() =>
+    started = Probes::started ()
+    store = fixture ([bird (10.0, 20.0, 0.5, 0.1), bird (50.0, 60.0, 0.4, 0.2)], [hawk (180.0, 4.0)])
+    after = Probes::postStore (started, store, frameEvent ())
+    expect (length (fieldShapes after), 6))
+
+test ("a completed scores read fills the best-score slice", \() =>
+    started = Probes::started ()
+    after = Probes::postStore (started, fixture ([bird (10.0, 20.0, 0.5, 0.1)], []), scoresEvent ())
+    scores = Doc::field (Probes::stored after, "scores")
+    expect (Doc::write (Doc::field (scores, "best")), "[40,30,20]")
+    expect (Doc::flag (scores, "loaded"), true))

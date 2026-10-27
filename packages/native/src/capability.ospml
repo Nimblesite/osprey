@@ -8,7 +8,7 @@ type Header =
     headerName : string
     headerValue : string
 
-(** A bounded, mechanical operation only the host can perform: every one states its limits, and its result returns as a completion ([UI-EFFECTS]). *)
+(** A bounded, mechanical operation only the host can perform: every one states its limits, and its result returns as a completion ([UI-EFFECTS]). `Animate` turns the host's frame clock on or off: while it runs, every display refresh reaches `update` as a `Frame` ([UI-SCENE]). *)
 type Capability =
     Run
         executable : string
@@ -75,6 +75,8 @@ type Capability =
         pane : string
     Cancel
         cancelled : string
+    Animate
+        animated : bool
 
 (** A capability with the ticket its completion will carry. Put a generation in the ticket to recognise stale completions. *)
 type Request =
@@ -119,6 +121,7 @@ module Requests
         Reveal path => [str "kind" "reveal", str "path" path]
         OpenSettings pane => [str "kind" "open-settings", str "pane" pane]
         Cancel target => [str "kind" "cancel", str "target" target]
+        Animate on => [str "kind" "animate", Doc::bit ("on", on)]
 
     (** The protocol form of `request`: its ticket beside the capability's kind and arguments. *)
     export encode request = JsonObject (listPrepend (members request.capability) (str "ticket" request.ticket))

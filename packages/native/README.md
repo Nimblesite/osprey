@@ -26,8 +26,9 @@ flowchart LR
 | `src/doc.ospml` | `Doc`: total readers and member builders over the built-in `Json`, for the framework's own trusted state |
 | `src/node.ospml` | `Node<A>`, `Tab<A>`, `Row<A>`, `Binding<A>`, the tone, role, side and axis unions, `Splitters` and the `Ui` constructors ([UI-COMPONENTS]) |
 | `src/encode.ospml` | `Encode::walk`: one depth-first walk that encodes a region and collects its bindings in ordinal order ([UI-PROTOCOL]) |
-| `src/message.ospml` | `Message<A>`, `Events::bind` and `Messages::route`: typed delivery of taps, text, flags, choices, sizes, completions and lifecycle ([UI-EVENTS]) |
+| `src/message.ospml` | `Message<A>`, `Input`, `Events::bind`, `Messages::route` and `Inputs::route`: typed delivery of taps, text, flags, choices, sizes, completions, lifecycle, frames and scene input ([UI-EVENTS], [UI-SCENE]) |
 | `src/capability.ospml` | `Capability`, `Request`, `SliceWrite` and `Requests` ([UI-EFFECTS]) |
+| `src/scene.ospml` | `Scenes`: scene primitives and packed colours ([UI-SCENE]) |
 | `src/reactive.ospml` | The `Slices` effect for host-held slices, `Keyed::region` and `Signals::written` ([UI-SIGNALS], [UI-REGIONS]) |
 | `src/theme.ospml` | `Theme`, `Token`, `Contrast` (WCAG 2 luminance and ratio) and `Themes` ([UI-THEME]) |
 | `src/runtime.ospml` | `Runtime::start` and `Runtime::dispatch`: the session, the envelope and the serialized update ([UI-STORE], [UI-PROTOCOL]) |
@@ -41,7 +42,7 @@ All application state is one Osprey store value per session, owned by the framew
 
 The store is a record of **slices**, each with its own record type, because a slice's type is its signal identity ([UI-SIGNALS]). One serialized dispatcher applies `update : (Context, S, Message<A>) -> Step<S>`, where a `Step` is the next store, the capability requests to run and the host-held slices written ([UI-EFFECTS]). `Message<A>` is a framework union: a resolved UI action, a capability completion or a lifecycle phase. `Context` carries the host clock, UTC offset, platform (`macos` or `ios`), home folder and launch arguments. The framework, not application code, decodes events, rejects stale or malformed input, runs `update`, refreshes regions and encodes the envelope. Updates are pure, so tests drive the real application with fixture messages.
 
-Small slices round-trip through the host as part of the opaque state string. Large slices are **host-held**: the host keeps their bytes by key, and the application fetches them through the `Slices.fetch` effect, answered by a host import in the native build and by fixtures in tests, before its static handler block; a write pending in the same update wins over the host's copy. This split exists because the Apple target's default allocator never frees ([Memory boundary](#memory-boundary)); decoding every slice on every keystroke would leak without bound.
+Small slices round-trip through the host as part of the opaque state string. Large slices are **host-held**: the host keeps their bytes by key, and the application fetches them through the `Slices.fetch` effect, answered by a host import in the native build and by fixtures in tests, before its static handler block; a write pending in the same update wins over the host's copy. This split keeps bulk data out of the opaque state, which the framework parses and re-encodes on every dispatch ([Memory boundary](#memory-boundary)); a large slice inside it would cost every keystroke a full decode.
 
 ## Signals and reactivity [UI-SIGNALS]
 
@@ -119,6 +120,12 @@ Updates request platform work by returning `Request` values in their `Step`: a `
 ## Theme and motion [UI-THEME]
 
 Semantic colour tokens, spacing, shapes and motion durations are Osprey values. The application's theme is sent once with the first envelope; the host resolves roles against the current appearance and never chooses raw colours itself. Contrast policy is computed and tested in Osprey (`Contrast::ratio`, WCAG 2 relative luminance). The system Reduce Motion preference always wins in the host.
+
+## Scenes and frames [UI-SCENE]
+
+A `Scene` node is a surface in the application's own unit space, drawn from a list of `Primitive` values: rectangles, discs, line strips, sprites by atlas index and glyph runs, each with a position, size, rotation, a packed `0xRRGGBBAA` colour and a depth that orders layers. `Scenes` builds them. The host scales the surface to fit, draws one pass per depth and sends keys and pointer positions, in scene units, through the node's single binding as `Controlled` messages; `Inputs::route` takes them apart. The encoding is one small array per primitive with a type code first, so a painter reads it without a schema and the encoder builds it in one `mapList`.
+
+An application that animates asks for the host's frame clock with the `Animate` capability and turns it off the same way. While the clock runs, every display refresh reaches `update` as a `Frame` carrying the seconds since the previous one; `update` moves the store and the scene's region refreshes like any other. Nothing in the host steps a simulation. The framework's per-frame cost at a given entity count is measured by `hosts/gpui/bench` and recorded in [plan 0036](../../docs/plans/0036-gpui-desktop-host.md).
 
 ## Protocol [UI-PROTOCOL]
 

@@ -11,6 +11,8 @@ import ui::Requests
 import ui::Signals
 import ui::Splitters
 import ui::Themes
+import ui::Scenes
+import ui::Inputs
 import uitests::Probes
 
 type Pair =
@@ -77,7 +79,7 @@ test ("an aside's splitter carries the column width and its limits and binds aft
     expect (Doc::number (doc, "keep"), Splitters::keep)
     expect (Doc::number (doc, "event"), 2))
 
-resized value = Messages::route (Events::bind (ui::SizeInput(action = Typed), value) ?: ui::Act(act = Load), \_ => 0 - 1, \(_, _) => 0 - 2, \(_, _) => 0 - 3, \(_, points) => points, \(_, _) => 0 - 4, \_ => 0 - 5)
+resized value = Messages::route (Events::bind (ui::SizeInput(action = Typed), value) ?: ui::Act(act = Load), \_ => 0 - 1, \(_, _) => 0 - 2, \(_, _) => 0 - 3, \(_, points) => points, \(_, _) => 0 - 4, \_ => 0 - 5, \_ => 0 - 6, \(_, _) => 0 - 7)
 
 // [UI-COMPONENTS-SPLITTER]: a dragged width reaches the application only within the splitter's limits, and only as a whole number of points.
 test ("a splitter delivers its dragged width clamped to its limits", \() =>
@@ -384,3 +386,68 @@ test ("context menus bind actions after their content controls", \() =>
     expect (Doc::number (Doc::field (doc, "body"), "event"), 0)
     expect (Doc::number (item, "event"), 1)
     expect (length walked.bindings, 2))
+
+codeAt (shapes, index) = jsonInt (jsonIndex (listGet shapes index ?: JsonNull) 0 ?: JsonNull) ?: 0 - 1
+
+arityAt (shapes, index) = length (Doc::items (listGet shapes index ?: JsonNull))
+
+// [UI-SCENE]: a scene encodes flat: one small array per primitive, a type code first, sprites by
+// atlas index, glyph text inline, and one input binding.
+test ("a scene encodes its primitives as flat typed arrays", \() =>
+    drawn = [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 0), Scenes::disc (5.0, 6.0, 7.0, Scenes::rgba (0, 0, 255, 128), 1), Scenes::strip ([0.0, 0.0, 10.0, 10.0], Scenes::rgb (0, 255, 0), 2.0, 1), Scenes::sprite (1, 8.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 2), Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3)]
+    walked = Encode::walk ([], Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)])
+    doc = listGet walked.nodes 0 ?: JsonNull
+    scene = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
+    shapes = Doc::items (Doc::field (scene, "shapes"))
+    expect (Doc::text (scene, "kind"), "scene")
+    expect (Doc::decimal (scene, "width"), 320.0)
+    expect (Doc::decimal (scene, "height"), 200.0)
+    expect (join (Doc::texts (scene, "atlas")) ",", "bird,hawk")
+    expect (length shapes, 5)
+    expect (codeAt (shapes, 0), 0)
+    expect (arityAt (shapes, 0), 8)
+    expect (jsonInt (jsonIndex (listGet shapes 0 ?: JsonNull) 6 ?: JsonNull) ?: 0 - 1, Scenes::rgb (255, 0, 0))
+    expect (codeAt (shapes, 1), 1)
+    expect (arityAt (shapes, 1), 6)
+    expect (codeAt (shapes, 2), 2)
+    expect (arityAt (shapes, 2), 9)
+    expect (jsonInt (jsonIndex (listGet shapes 2 ?: JsonNull) 1 ?: JsonNull) ?: 0 - 1, 2)
+    expect (codeAt (shapes, 3), 3)
+    expect (arityAt (shapes, 3), 9)
+    expect (jsonInt (jsonIndex (listGet shapes 3 ?: JsonNull) 1 ?: JsonNull) ?: 0 - 1, 1)
+    expect (codeAt (shapes, 4), 4)
+    expect (arityAt (shapes, 4), 7)
+    expect (jsonText (jsonIndex (listGet shapes 4 ?: JsonNull) 1 ?: JsonNull) ?: "", "Score 3")
+    expect (Doc::number (scene, "event"), 1)
+    expect (length walked.bindings, 2))
+
+test ("colours pack as RRGGBBAA", \() =>
+    expect (Scenes::rgba (1, 2, 3, 4), 16909060)
+    expect (Scenes::rgb (255, 255, 255), 4294967295))
+
+controlled value = Messages::route (Events::bind (ui::SceneInput(action = Typed), value) ?: ui::Act(act = Load), \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \_ => "frame", \(_, input) => Inputs::route (input, \(name, down) => "key ${name} ${down}", \(x, y, down) => "pointer ${x} ${y} ${down}"))
+
+// [UI-SCENE]: a scene's binding delivers keys and pointer positions and refuses anything else.
+test ("a scene binding delivers keys and pointer positions in scene units", \() =>
+    expect (controlled (JsonObject [Doc::str ("key", "ArrowLeft"), Doc::bit ("down", true)]), "key ArrowLeft true")
+    expect (controlled (JsonObject [JsonMember "x" (JsonFloat 12.5), JsonMember "y" (JsonInt 3), Doc::bit ("down", false)]), "pointer 12.5 3.0 false")
+    expect (controlled (JsonString "left"), "tap"))
+
+framed : ui::Message<Act> -> float
+framed message = Messages::route (message, \_ => 0.0 - 1.0, \(_, _) => 0.0 - 2.0, \(_, _) => 0.0 - 3.0, \(_, _) => 0.0 - 4.0, \(_, _) => 0.0 - 5.0, \_ => 0.0 - 6.0, \elapsed => elapsed, \(_, _) => 0.0 - 7.0)
+
+// [UI-SCENE]: a frame event reaches `update` as the seconds since the previous frame, and
+// an application that ignores it changes no region.
+test ("a frame event delivers its elapsed seconds and patches nothing when ignored", \() =>
+    expect (framed (ui::Frame(elapsed = 0.016)), 0.016)
+    started = Probes::started ()
+    after = Probes::post (started, "{\"kind\":\"frame\",\"now\":9,\"elapsed\":0.016}")
+    expect (Probes::problems after, "")
+    expect (Probes::keys after, ""))
+
+// [UI-SCENE]: the animate request turns the host's frame clock on or off.
+test ("an animate request carries its on flag", \() =>
+    doc = Requests::encode (Requests::ask ("clock:1", ui::Animate(animated = true)))
+    expect (Doc::text (doc, "kind"), "animate")
+    expect (Doc::flag (doc, "on"), true)
+    expect (Doc::text (doc, "ticket"), "clock:1"))

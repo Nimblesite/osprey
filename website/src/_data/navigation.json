@@ -35,6 +35,7 @@
     {
       "title": "Build applications",
       "items": [
+        { "text": "Osprey Native", "url": "/docs/osprey-native/" },
         { "text": "Web apps", "url": "/docs/web-apps/" },
         { "text": "iOS and Android apps", "url": "/docs/mobile-apps/" },
         { "text": "Mac and iPhone apps", "url": "/docs/mac-and-iphone-apps/" },

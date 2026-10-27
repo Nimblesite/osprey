@@ -1,0 +1,79 @@
+// Flock's keyed regions, scene primitives and semantic theme ([UI-SCENE], [UI-REGIONS]).
+namespace flock
+
+import ui::Ui
+import ui::Keyed
+import ui::Scenes
+import flock::Simulation
+
+(** The scene, HUD, settings and theme for Flock. *)
+module View
+    worldSlice () = perform Signal<World>.read ()
+
+    settingsSlice () = perform Signal<Settings>.read ()
+
+    scoresSlice () = perform Signal<Scores>.read ()
+
+    white () = Scenes::rgb (255, 255, 255)
+
+    penColour () = Scenes::rgba (46, 111, 237, 70)
+
+    birdColour () = Scenes::rgb (250, 250, 250)
+
+    hawkColour () = Scenes::rgb (255, 107, 107)
+
+    playerColour () = Scenes::rgb (92, 211, 146)
+
+    hudColour () = Scenes::rgb (20, 22, 27)
+
+    birdShape b = Scenes::sprite (0, b.birdX, b.birdY, 2.0, 2.0, atan2 b.birdVy b.birdVx, birdColour (), 1)
+
+    hawkShape hawk = Scenes::sprite (1, hawk.hawkX, hawk.hawkY, 4.0, 4.0, 0.0, hawkColour (), 1)
+
+    sceneText world = "Round ${world.roundNumber}  Score ${world.scoreValue}  Flock ${length world.birds}  FPS ${world.fps}"
+
+    // The pen, all sprites and one glyph run share a flat primitive list.
+    sceneShapes world = listConcat [Scenes::rect (305.0, 100.0, 30.0, 200.0, 0.0, penColour (), 0)] (listConcat (mapList (world.birds, birdShape)) (listConcat (mapList (world.hawks, hawkShape)) [Scenes::sprite (2, world.player.playerX, world.player.playerY, 3.0, 3.0, 0.0, playerColour (), 1), Scenes::glyphs (sceneText world, 4.0, 8.0, 5.0, hudColour (), 2)]))
+
+    (** The 320 by 200 field and its three-image atlas. *)
+    export field () = Ui::scene (320.0, 200.0, ["bird", "hawk", "player"], sceneShapes (worldSlice ()), Play)
+
+    pauseItem paused = match paused
+        true => [Ui::styled ("Paused", ui::Title, ui::Caution)]
+        false => []
+
+    // Pause is visible in the HUD as well as stopping the simulation clock.
+    hudItems (world, settings) = listConcat [Ui::badge ("Round ${world.roundNumber}", "play", ui::Accent), Ui::badge ("Score ${world.scoreValue}", "star", ui::Good), Ui::badge ("Flock ${length world.birds}", "tray", ui::Primary), Ui::badge ("FPS ${world.fps}", "gear", ui::Secondary), Ui::button ("Pause", "pause", TogglePause)] (pauseItem settings.paused)
+
+    (** Status badges and the pause control, refreshed with world or settings. *)
+    export hud () = Ui::row (hudItems (worldSlice (), settingsSlice ()))
+
+    bestRow (out, i) =
+        score = listGet (scoresSlice ()).best i ?: 0
+        listAppend out (Ui::item ("best-${i}", Ui::text "best ${satAdd i 1}: ${score}"))
+
+    scoreRows () = range (0, length (scoresSlice ()).best) |> fold [] bestRow
+
+    (** Flock-size and sound controls beside the persisted top-five scores. *)
+    export panel () =
+        settings = settingsSlice ()
+        Ui::section ("Settings", "", [Ui::picker ("Flock size", [Ui::choice ("1000", "1000"), Ui::choice ("2000", "2000"), Ui::choice ("5000", "5000"), Ui::choice ("10000", "10000")], "${settings.flockSize}", SizeChosen), Ui::toggle ("Sound", settings.soundOn, SoundToggled), Ui::rows (scoreRows (), "", NoOp)])
+
+    (** The stable region hierarchy; it reads no application signal. *)
+    export root () = Ui::column [Ui::slot "hud", Ui::slot "field", Ui::slot "panel"]
+
+    (** Rebuilds only regions whose world, settings or scores signals changed. *)
+    export regions (before, store, frames, _) =
+        handle static Signal<World>
+            read => store.world
+        handle static Signal<Settings>
+            read => store.settings
+        handle static Signal<Scores>
+            read => store.scores
+        changed = listConcat (signalChanges before.world store.world Simulation::worldStamp (signalDependencies worldSlice)) (listConcat (signalChanges before.settings store.settings Simulation::settingsJson (signalDependencies settingsSlice)) (signalChanges before.scores store.scores Simulation::scoresDocument (signalDependencies scoresSlice)))
+        [Keyed::region (frames, "field", changed, field), Keyed::region (frames, "hud", changed, hud), Keyed::region (frames, "panel", changed, panel), Keyed::region (frames, "root", changed, root)]
+
+    token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
+
+    (** Flock's light/dark semantic colours, spacing and motion durations. *)
+    export theme () = ui::Theme(tokens = [token ("accent", "#2F6FED", "#7FA7FF"), token ("caution", "#B86E00", "#FFB454"), token ("good", "#1E7F4F", "#5CD392"), token ("danger", "#C62828", "#FF6B6B"), token ("background", "#F4F6FA", "#14161B"), token ("text", "#111111", "#EEEEEE")], spacing = [4, 8, 12, 20, 28, 36], feedback = 120, settle = 220)

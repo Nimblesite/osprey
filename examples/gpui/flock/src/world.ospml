@@ -1,0 +1,353 @@
+// Flock's store, spatial-grid boids, input and round rules ([UI-SCENE], [GPUI-HOST-SCENE]).
+namespace flock
+
+import ui::Doc
+import ui::Lists
+import ui::Requests
+import ui::Runtime
+
+type Bird =
+    birdX : float
+    birdY : float
+    birdVx : float
+    birdVy : float
+
+type Hawk =
+    hawkX : float
+    hawkY : float
+
+type Player =
+    playerX : float
+    playerY : float
+
+type Held =
+    heldLeft : bool
+    heldRight : bool
+    heldUp : bool
+    heldDown : bool
+
+type World =
+    birds : List<Bird>
+    hawks : List<Hawk>
+    player : Player
+    held : Held
+    targetX : float
+    targetY : float
+    targetActive : bool
+    roundNumber : int
+    scoreValue : int
+    elapsedTotal : float
+    frameCount : int
+    fps : int
+
+type Settings =
+    flockSize : int
+    soundOn : bool
+    paused : bool
+
+type Scores =
+    best : List<int>
+    loaded : bool
+
+type Store =
+    world : World
+    settings : Settings
+    scores : Scores
+
+type Act = TogglePause | SizeChosen | SoundToggled | NoOp | Play
+
+type Vector =
+    vectorX : float
+    vectorY : float
+
+type Nearby =
+    sepX : float
+    sepY : float
+    alignX : float
+    alignY : float
+    cohereX : float
+    cohereY : float
+    nearCount : int
+
+type Nearest =
+    nearestBird : Bird
+    nearestDistance : float
+
+type Ranked =
+    rankedBest : List<int>
+    rankedIndex : int
+
+(** The module that owns Flock's simulation and serialized store. *)
+module Simulation
+    bird i = Bird(birdX = toFloat (satSub i (satMul (intDiv i 100) 100)) + 2.0, birdY = toFloat (intDiv i 100), birdVx = 0.6, birdVy = 0.2)
+
+    hawk i = Hawk(hawkX = toFloat (satMul i 50) + 35.0, hawkY = 4.0)
+
+    hawkCount round = match round >= 6
+        true => 6
+        false => round
+
+    emptyHeld () = Held(heldLeft = false, heldRight = false, heldUp = false, heldDown = false)
+
+    // A round starts in the left third, with its hawks spaced along the top.
+    freshWorld (count, round, score) = World(birds = range (0, count) |> fold [] (\(out, i) => listAppend out (bird i)), hawks = range (0, hawkCount round) |> fold [] (\(out, i) => listAppend out (hawk i)), player = Player(playerX = 160.0, playerY = 100.0), held = emptyHeld (), targetX = 160.0, targetY = 100.0, targetActive = false, roundNumber = round, scoreValue = score, elapsedTotal = 0.0, frameCount = 0, fps = 0)
+
+    (** A fresh game with one thousand birds and an empty score table. *)
+    export initialStore () = Store(world = freshWorld (1000, 1, 0), settings = Settings(flockSize = 1000, soundOn = true, paused = false), scores = Scores(best = [], loaded = false))
+
+    squared (x, y) = x * x + y * y
+
+    magnitude (x, y) = sqrt (squared (x, y))
+
+    bounded (x, y, high) =
+        handle Arith
+            divideByZero _ dividend => dividend
+        match squared (x, y) > high * high
+            true => Vector(vectorX = x * high / magnitude (x, y), vectorY = y * high / magnitude (x, y))
+            false => Vector(vectorX = x, vectorY = y)
+
+    // Speed clamps use one guarded division; zero velocity gains a small forward drift.
+    speed (x, y) =
+        handle Arith
+            divideByZero _ dividend => dividend
+        match squared (x, y) == 0.0
+            true => Vector(vectorX = 0.3, vectorY = 0.0)
+            false =>
+                pace = magnitude (x, y)
+                wanted = match pace < 0.3
+                    true => 0.3
+                    false => match pace > 1.2
+                        true => 1.2
+                        false => pace
+                Vector(vectorX = x * wanted / pace, vectorY = y * wanted / pace)
+
+    // Sixteen-unit cells; one integer key per cell keeps the grid's string formatting cheap.
+    cell value = floatToInt (floor (value * 0.0625)) ?: 0
+
+    cellKey (cx, cy) = "${satAdd (satMul cy 64) cx}"
+
+    grid : List<Bird> -> Map<string, List<Bird>>
+    grid birds = foldList (birds, Map (), \(cells, b) => mapSet cells (cellKey (cell b.birdX, cell b.birdY)) (listAppend (mapGet cells (cellKey (cell b.birdX, cell b.birdY)) ?: []) b))
+
+    sameBird (a, b) = a.birdX == b.birdX && a.birdY == b.birdY && a.birdVx == b.birdVx && a.birdVy == b.birdVy
+
+    accumulate (b, sum, other) =
+        dx = b.birdX - other.birdX
+        dy = b.birdY - other.birdY
+        distance = squared (dx, dy)
+        match distance < 144.0 && sameBird (b, other) == false
+            true => Nearby(sepX = sum.sepX + dx * (144.0 - distance) * 0.006944, sepY = sum.sepY + dy * (144.0 - distance) * 0.006944, alignX = sum.alignX + other.birdVx, alignY = sum.alignY + other.birdVy, cohereX = sum.cohereX + other.birdX, cohereY = sum.cohereY + other.birdY, nearCount = satAdd sum.nearCount 1)
+            false => sum
+
+    herd (b, player) =
+        dx = b.birdX - player.playerX
+        dy = b.birdY - player.playerY
+        match squared (dx, dy) < 1600.0
+            true => Vector(vectorX = dx * 0.08, vectorY = dy * 0.08)
+            false => Vector(vectorX = 0.0, vectorY = 0.0)
+
+    // The nine cells around a bird are folded in place: concatenating them copied every neighbour list per bird.
+    gather (b, cells, sum, i) = foldList (mapGet cells (cellKey (satAdd (cell b.birdX) (satSub (satSub i (satMul (intDiv i 3) 3)) 1), satAdd (cell b.birdY) (satSub (intDiv i 3) 1))) ?: [], sum, \(total, other) => accumulate (b, total, other))
+
+    nearby (b, cells) = range (0, 9) |> fold (Nearby(sepX = 0.0, sepY = 0.0, alignX = 0.0, alignY = 0.0, cohereX = 0.0, cohereY = 0.0, nearCount = 0)) (\(sum, i) => gather (b, cells, sum, i))
+
+    // Separation, mean alignment and mean cohesion combine with sheepdog repulsion.
+    steer (b, player, cells) =
+        sum = nearby (b, cells)
+        push = herd (b, player)
+        handle Arith
+            divideByZero _ dividend => dividend
+        match sum.nearCount == 0
+            true => speed (b.birdVx + push.vectorX, b.birdVy + push.vectorY)
+            false => speed (b.birdVx + sum.sepX * 0.08 + (sum.alignX / toFloat sum.nearCount - b.birdVx) * 0.04 + (sum.cohereX / toFloat sum.nearCount - b.birdX) * 0.002 + push.vectorX, b.birdVy + sum.sepY * 0.08 + (sum.alignY / toFloat sum.nearCount - b.birdVy) * 0.04 + (sum.cohereY / toFloat sum.nearCount - b.birdY) * 0.002 + push.vectorY)
+
+    wrapX value = match value < 0.0
+        true => value + 320.0
+        false => value
+
+    wrapY value = match value < 0.0
+        true => value + 200.0
+        false => match value >= 200.0
+            true => value - 200.0
+            false => value
+
+    movedBird (b, cells, player, elapsed) =
+        velocity = steer (b, player, cells)
+        Bird(birdX = wrapX (b.birdX + velocity.vectorX * elapsed * 60.0), birdY = wrapY (b.birdY + velocity.vectorY * elapsed * 60.0), birdVx = velocity.vectorX, birdVy = velocity.vectorY)
+
+    closer (hawk, found, b) =
+        distance = squared (hawk.hawkX - b.birdX, hawk.hawkY - b.birdY)
+        match distance < found.nearestDistance
+            true => Nearest(nearestBird = b, nearestDistance = distance)
+            false => found
+
+    // Hawks pursue the nearest bird using squared distances, avoiding square roots.
+    movedHawk (hawk, birds, elapsed) =
+        found = foldList (birds, Nearest(nearestBird = Bird(birdX = 0.0, birdY = 0.0, birdVx = 0.0, birdVy = 0.0), nearestDistance = 1000000.0), \(best, b) => closer (hawk, best, b))
+        delta = bounded (found.nearestBird.birdX - hawk.hawkX, found.nearestBird.birdY - hawk.hawkY, 0.9)
+        Hawk(hawkX = hawk.hawkX + delta.vectorX * elapsed * 60.0, hawkY = hawk.hawkY + delta.vectorY * elapsed * 60.0)
+
+    nearHawk (b, hawk) = squared (b.birdX - hawk.hawkX, b.birdY - hawk.hawkY) <= 4.0
+
+    taken (b, hawks) = length (filterList (hawks, \hawk => nearHawk (b, hawk))) > 0
+
+    clamp (value, low, high) = match value < low
+        true => low
+        false => match value > high
+            true => high
+            false => value
+
+    heldDirection (negative, positive) = match negative == positive
+        true => 0.0
+        false => match positive
+            true => 1.5
+            false => 0.0 - 1.5
+
+    // Held keys take priority; otherwise a pressed pointer supplies a target.
+    movedPlayer (world, elapsed) =
+        keyX = heldDirection (world.held.heldLeft, world.held.heldRight)
+        keyY = heldDirection (world.held.heldUp, world.held.heldDown)
+        point = match keyX == 0.0 && keyY == 0.0 && world.targetActive
+            true => bounded (world.targetX - world.player.playerX, world.targetY - world.player.playerY, 1.5)
+            false => bounded (keyX, keyY, 1.5)
+        Player(playerX = clamp (world.player.playerX + point.vectorX * elapsed * 60.0, 0.0, 320.0), playerY = clamp (world.player.playerY + point.vectorY * elapsed * 60.0, 0.0, 200.0))
+
+    clocked (world, elapsed) =
+        frames = satAdd world.frameCount 1
+        total = world.elapsedTotal + elapsed
+        handle Arith
+            divideByZero _ dividend => dividend
+        match frames >= 30
+            true => world(fps = floatToInt (round (30.0 / total)) ?: 0, elapsedTotal = 0.0, frameCount = 0)
+            false => world(fps = world.fps, elapsedTotal = total, frameCount = frames)
+
+    scoresJson values = Doc::write (JsonArray (mapList (values, \value => JsonInt value)))
+
+    rankedItem (out, value) = match out.rankedIndex < 5
+        true => Ranked(rankedBest = listAppend out.rankedBest value, rankedIndex = satAdd out.rankedIndex 1)
+        false => out
+
+    ranked values = (foldList (Lists::sortBy (values, \(a, b) => a > b), Ranked(rankedBest = [], rankedIndex = 0), rankedItem)).rankedBest
+
+    nextSize count = match satAdd count 500 > 20000
+        true => 20000
+        false => satAdd count 500
+
+    writeRequests changed = match changed
+        true => [Requests::ask ("scores:write", ui::StoreWrite(writeName = "flock-scores.json", writeSlice = "scores"))]
+        false => []
+
+    writeSlices changed text = match changed
+        true => [Requests::write ("scores", text)]
+        false => []
+
+    // A round transition retains the score and records only a changed top-five table.
+    finishRound (store, world) =
+        best = ranked (listAppend store.scores.best world.scoreValue)
+        text = scoresJson best
+        changed = text != scoresJson store.scores.best
+        settings = store.settings
+        scores = store.scores
+        count = nextSize store.settings.flockSize
+        next = Store(world = freshWorld (count, satAdd world.roundNumber 1, world.scoreValue), settings = settings(flockSize = count), scores = scores(best = best))
+        ui::Step(stepStore = next, requests = writeRequests changed, writes = writeSlices changed text)
+
+    physics (store, elapsed) =
+        world = store.world
+        player = movedPlayer (world, elapsed)
+        cells = grid world.birds
+        moved = mapList (world.birds, \b => movedBird (b, cells, player, elapsed))
+        rescued = filterList (moved, \b => b.birdX >= 290.0)
+        remaining = filterList (moved, \b => b.birdX < 290.0)
+        hawks = mapList (world.hawks, \hawk => movedHawk (hawk, remaining, elapsed))
+        survivors = filterList (remaining, \b => taken (b, hawks) == false)
+        scored = world(player = player, birds = survivors, hawks = hawks, scoreValue = satAdd world.scoreValue (length rescued))
+        match length survivors == 0
+            true => finishRound (store, scored)
+            false => ui::Step(stepStore = store(world = clocked (scored, elapsed)), requests = [], writes = [])
+
+    (** Advances one unpaused display frame, including rescue, predation and rounds. *)
+    export frame (store, elapsed) = match store.settings.paused
+        true => Runtime::step store
+        false => physics (store, elapsed)
+
+    (** Toggles pause and requests exactly one matching frame-clock change. *)
+    export togglePause store =
+        paused = store.settings.paused == false
+        settings = store.settings
+        Runtime::asking (store(settings = settings(paused = paused)), [Requests::ask ("clock", ui::Animate(animated = paused == false))])
+
+    (** Applies a picker choice to the flock size used by the next round. *)
+    export chooseSize (store, key) =
+        settings = store.settings
+        Runtime::step (store(settings = settings(flockSize = parseInt key ?: 1000)))
+
+    (** Applies the sound switch's delivered value. *)
+    export toggleSound (store, on) =
+        settings = store.settings
+        Runtime::step (store(settings = settings(soundOn = on)))
+
+    heldKey (held, name, down) = match name
+        "left" => held(heldLeft = down)
+        "right" => held(heldRight = down)
+        "up" => held(heldUp = down)
+        "down" => held(heldDown = down)
+        _ => held
+
+    movedKeys (store, name, down) =
+        world = store.world
+        Runtime::step (store(world = world(held = heldKey (world.held, name, down))))
+
+    (** Handles the host's exact scene key names ([GPUI-HOST-SCENE]). *)
+    export key (store, name, down) = match (name == "p" || name == "escape") && down
+        true => togglePause store
+        false => movedKeys (store, name, down)
+
+    (** Tracks a pointer target only while the pointer is pressed. *)
+    export pointer (store, x, y, down) =
+        world = store.world
+        Runtime::step (store(world = world(targetX = x, targetY = y, targetActive = down)))
+
+    (** Loads the host-held scores JSON, defaulting malformed or empty data to none. *)
+    export loadedScores store =
+        text = perform ui::Slices.fetch "scores"
+        Runtime::step (store(scores = Scores(best = mapList (Doc::items (Doc::parse text), \item => jsonInt item ?: 0), loaded = true)))
+
+    birdJson b = JsonArray [JsonFloat b.birdX, JsonFloat b.birdY, JsonFloat b.birdVx, JsonFloat b.birdVy]
+
+    hawkJson hawk = JsonArray [JsonFloat hawk.hawkX, JsonFloat hawk.hawkY]
+
+    heldJson held = JsonObject [Doc::bit ("left", held.heldLeft), Doc::bit ("right", held.heldRight), Doc::bit ("up", held.heldUp), Doc::bit ("down", held.heldDown)]
+
+    // Change detection must not encode five thousand birds twice per frame: every frame moves the
+    // flock, so the clock fields alone say the world changed, and the scalars cover input and rounds.
+    (** The world's scalar fields and counts, cheap to encode, differing whenever the world differs. *)
+    export worldStamp world = JsonObject [Doc::num ("frames", world.frameCount), JsonMember "elapsed" (JsonFloat world.elapsedTotal), Doc::num ("round", world.roundNumber), Doc::num ("score", world.scoreValue), Doc::num ("birds", length world.birds), Doc::num ("hawks", length world.hawks), Doc::num ("fps", world.fps), JsonMember "x" (JsonFloat world.player.playerX), JsonMember "y" (JsonFloat world.player.playerY), JsonMember "held" (heldJson world.held), JsonMember "targetX" (JsonFloat world.targetX), JsonMember "targetY" (JsonFloat world.targetY), Doc::bit ("targetActive", world.targetActive)]
+
+    (** The world slice as compact, completely restorable JSON. *)
+    export worldJson world = JsonObject [JsonMember "birds" (JsonArray (mapList (world.birds, birdJson))), JsonMember "hawks" (JsonArray (mapList (world.hawks, hawkJson))), JsonMember "player" (JsonObject [JsonMember "x" (JsonFloat world.player.playerX), JsonMember "y" (JsonFloat world.player.playerY)]), JsonMember "held" (heldJson world.held), JsonMember "targetX" (JsonFloat world.targetX), JsonMember "targetY" (JsonFloat world.targetY), Doc::bit ("targetActive", world.targetActive), Doc::num ("round", world.roundNumber), Doc::num ("score", world.scoreValue), JsonMember "elapsed" (JsonFloat world.elapsedTotal), Doc::num ("frames", world.frameCount), Doc::num ("fps", world.fps)]
+
+    (** The settings slice as JSON for change detection and persistence. *)
+    export settingsJson settings = JsonObject [Doc::num ("flockSize", settings.flockSize), Doc::bit ("sound", settings.soundOn), Doc::bit ("paused", settings.paused)]
+
+    (** The scores slice as JSON for change detection and persistence. *)
+    export scoresDocument scores = JsonObject [JsonMember "best" (JsonArray (mapList (scores.best, \value => JsonInt value))), Doc::bit ("loaded", scores.loaded)]
+
+    (** The whole application store as the opaque session's JSON. *)
+    export save store = JsonObject [JsonMember "world" (worldJson store.world), JsonMember "settings" (settingsJson store.settings), JsonMember "scores" (scoresDocument store.scores)]
+
+    at (item, index) = jsonFloat (jsonIndex item index ?: JsonNull) ?: 0.0
+
+    restoreBird item = Bird(birdX = at (item, 0), birdY = at (item, 1), birdVx = at (item, 2), birdVy = at (item, 3))
+
+    restoreHawk item = Hawk(hawkX = at (item, 0), hawkY = at (item, 1))
+
+    restoreHeld doc = Held(heldLeft = Doc::flag (doc, "left"), heldRight = Doc::flag (doc, "right"), heldUp = Doc::flag (doc, "up"), heldDown = Doc::flag (doc, "down"))
+
+    restoreWorld doc = World(birds = mapList (Doc::items (Doc::field (doc, "birds")), restoreBird), hawks = mapList (Doc::items (Doc::field (doc, "hawks")), restoreHawk), player = Player(playerX = Doc::decimal (Doc::field (doc, "player"), "x"), playerY = Doc::decimal (Doc::field (doc, "player"), "y")), held = restoreHeld (Doc::field (doc, "held")), targetX = Doc::decimal (doc, "targetX"), targetY = Doc::decimal (doc, "targetY"), targetActive = Doc::flag (doc, "targetActive"), roundNumber = Doc::number (doc, "round"), scoreValue = Doc::number (doc, "score"), elapsedTotal = Doc::decimal (doc, "elapsed"), frameCount = Doc::number (doc, "frames"), fps = Doc::number (doc, "fps"))
+
+    (** Restores every world, setting and score field from a saved session. *)
+    export restore doc =
+        settings = Doc::field (doc, "settings")
+        scores = Doc::field (doc, "scores")
+        Store(world = restoreWorld (Doc::field (doc, "world")), settings = Settings(flockSize = Doc::number (settings, "flockSize"), soundOn = Doc::flag (settings, "sound"), paused = Doc::flag (settings, "paused")), scores = Scores(best = mapList (Doc::items (Doc::field (scores, "best")), \item => jsonInt item ?: 0), loaded = Doc::flag (scores, "loaded")))

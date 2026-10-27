@@ -49,6 +49,13 @@ html:has(.home) { scroll-behavior: auto; }
 .model-section { border-bottom: 0; border-top: 1px solid #77d7f425; }
 .model-section .flight-code pre[class*="language-"] { min-height: 0; }
 .model-section .code-result samp { overflow-wrap: anywhere; }
+.pillars-section { background: var(--surface-lowest); }
+.pillars-grid { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 3rem; }
+.pillars-grid article { border-top: 1px solid #77d7f425; padding: 2rem 0; }
+.pillars-grid h3 { font-size: 1.2rem; font-weight: 500; letter-spacing: -0.03em; }
+.pillars-grid p { max-width: 47ch; color: var(--on-surface-variant); font-size: 0.92rem; }
+.pillars-grid a { font-size: 0.8rem; }
+@media (max-width: 900px) { .pillars-grid { grid-template-columns: 1fr; } }
 .language-section { background: var(--surface-lowest); }
 .language-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 5rem; }
 .language-grid article { border-top: 1px solid #77d7f425; padding: 2rem 0; }

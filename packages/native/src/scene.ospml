@@ -1,0 +1,27 @@
+// Implements [UI-SCENE]: a scene is a flat list of primitives in the
+// application's own unit space, drawn by the host in one pass per layer. The
+// application owns every position, colour and rule; the host owns pixels.
+namespace ui
+
+(** Builds scene primitives and packs their colours ([UI-SCENE]). Positions and sizes are in the scene's unit space, angles in radians, colours `0xRRGGBBAA`, and `depth` orders layers from the back. *)
+module Scenes
+    (** A filled rectangle centred on `x`, `y`, rotated by `angle`. *)
+    export rect (x, y, w, h, angle, color, depth) = Rect(x = x, y = y, w = w, h = h, angle = angle, color = color, depth = depth)
+
+    (** A filled circle centred on `x`, `y`. *)
+    export disc (x, y, radius, color, depth) = Disc(x = x, y = y, radius = radius, color = color, depth = depth)
+
+    (** A stroked polyline through `points`, given as `x0, y0, x1, y1, ...`, `stroke` units wide. *)
+    export strip (points, color, stroke, depth) = Strip(points = points, color = color, stroke = stroke, depth = depth)
+
+    (** The atlas image at `index`, centred on `x`, `y`, `w` by `h` units, rotated by `angle` and tinted by `color`. *)
+    export sprite (index, x, y, w, h, angle, color, depth) = Sprite(sprite = index, x = x, y = y, w = w, h = h, angle = angle, color = color, depth = depth)
+
+    (** `text` with its baseline starting at `x`, `y`, `size` units tall. *)
+    export glyphs (text, x, y, size, color, depth) = Glyphs(glyphs = text, x = x, y = y, size = size, color = color, depth = depth)
+
+    (** A colour packed as `0xRRGGBBAA` from channels 0 to 255. *)
+    export rgba (r, g, b, a) = satAdd (satMul (satAdd (satMul (satAdd (satMul r 256) g) 256) b) 256) a
+
+    (** An opaque colour packed as `0xRRGGBBFF` from channels 0 to 255. *)
+    export rgb (r, g, b) = rgba (r, g, b, 255)

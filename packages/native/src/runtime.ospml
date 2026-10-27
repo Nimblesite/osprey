@@ -157,6 +157,7 @@ module Runtime
         PreviousControl prior key revision ordinal value => resolveEdit (session, prior, key, revision, ordinal, value, render, restoreStore)
         Finished ticket result => Success(value = Completed(ticket = ticket, outcome = result))
         Lifecycle phase => Success(value = Phase(phase = phase))
+        Tick elapsed => Success(value = Frame(elapsed = elapsed))
 
     advance<S, A> : (Session<S>, Context, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json) -> string !e
     advance (session, now, delivered, update, render, save) =

@@ -1,0 +1,82 @@
+# GPUI Desktop Host [GPUI-HOST]
+
+**Status:** normative target under construction in `hosts/gpui`; the boundary and smoke run work, the window is being built. Delivery is tracked by [plan 0036](../../plans/0036-gpui-desktop-host.md). Nothing in this document establishes support until the plan records acceptance evidence.
+
+A GPUI host renders an [Osprey Native](../../../packages/native/README.md) application with [GPUI](https://gpui.rs), the GPU-accelerated Rust UI framework from Zed. It is a host in the [Osprey Native host family](../applications/0047-OspreyNativeHosts.md), after Vigil's SwiftUI host and the VS Code webview host, and the first that can run on macOS, Linux and Windows from one renderer. The first target is macOS.
+
+## The seam [GPUI-HOST-SEAM]
+
+The Rust crate is only the seam between GPUI and Osprey Native. It contains:
+
+- a loader that calls `osprey_main()` once and then the application's `start`/`dispatch` exports from the Osprey static library;
+- a store of regions keyed by the framework's region keys, patched from each envelope;
+- a renderer that maps every `Node` kind to GPUI elements;
+- adapters for the capabilities the host supports;
+- the frame clock ([GPUI-HOST-FRAME]).
+
+The crate contains no application logic. It never decides what a tap means, what a score is, what a row shows, where an entity moves or which entities collide. Any rule a test can state about the application belongs in Osprey. A reviewer rejects a Rust change that encodes application behaviour, with one exception: the renderer may clamp, cull and batch drawing for the GPU, provided the same scene drawn without those steps looks the same.
+
+## Boundary [GPUI-HOST-BOUNDARY]
+
+The host builds the application with `--target=macos` (later `linux-x64` and `windows-x64`, [GPUI-HOST-TARGETS]) and links the archive. The exports are the ones the SwiftUI host already calls:
+
+```c
+const char *start(const char *context);
+const char *dispatch(const char *saved, const char *event);
+```
+
+Calls are synchronous and serialized on GPUI's main thread. Input strings are borrowed for the call; the host copies the returned string immediately. The envelope is the one `@osprey/native` encodes ([NATIVE-HOSTS-TRANSPORT](../applications/0047-OspreyNativeHosts.md)): `version`, `state`, `slices`, `patches`, `removed`, `requests`, `diagnostics` and, at start, `theme`. The host rejects an envelope it cannot decode, an unknown node kind or an unknown capability, and shows the diagnostic. It never draws a fallback.
+
+`Context.platform` gains `linux` and `windows` beside `macos` and `ios`.
+
+## Rendering [GPUI-HOST-RENDER]
+
+The renderer keeps one GPUI view per region key. A patch replaces that region's node tree; `removed` drops the view and its bindings. A `Slot key` node embeds another region's view. Every stateful node's GPUI element id is its framework key, so focus, scroll offsets, text selection and expanded disclosures survive a patch that keeps the key.
+
+Each `Node` kind has exactly one mapping. The mapping table lives beside the renderer and the plan tracks its completeness; a kind without a mapping is a rejected envelope, not a blank area.
+
+Theme tokens from the start envelope resolve to GPUI colours, type scale and spacing. The renderer follows the system appearance for light and dark.
+
+## Events [GPUI-HOST-EVENTS]
+
+A control bound by the framework sends back the binding id it was issued, with its value (`Tap`, `TextInput`, `FlagInput`, `ChoiceInput`, `SizeInput`). The host adds nothing else. Keyboard input reaches Osprey as key events on the region that has focus; the host does not translate keys into actions.
+
+## Frame clock [GPUI-HOST-FRAME]
+
+An application turns the host's frame clock on with an `Animate` request (`{"kind":"animate","on":true,"ticket":…}`) and off with `on` false. The host completes the request like any other capability and, while the clock runs, delivers one event per display refresh:
+
+```json
+{"kind":"frame","now":<unix seconds>,"elapsed":<seconds since the previous frame>}
+```
+
+The host requests the next animation frame from GPUI after each dispatch, so the clock runs at the display's rate, and it stops while the window is hidden. A frame reaches `update` as the `Frame` member of `Message<A>` with its elapsed seconds; `update` returns the next store and the regions that changed, exactly as for any other event. The host never runs a simulation step of its own.
+
+## Scene [GPUI-HOST-SCENE]
+
+A `Scene` node is a surface in the application's own unit space, `width` by `height`, that the host scales uniformly to fit its region and letterboxes. It is drawn from `shapes`: one small array per primitive, a type code first, so the painter reads it without a schema ([UI-SCENE](../../../packages/native/README.md)):
+
+| Code | Primitive | Values after the code |
+| --- | --- | --- |
+| 0 | rectangle | x, y (centre), w, h, angle in radians, colour, depth |
+| 1 | disc | x, y, radius, colour, depth |
+| 2 | line strip | pair count, x0, y0, …, colour, stroke width, depth |
+| 3 | sprite | atlas index, x, y, w, h, angle, tint colour, depth |
+| 4 | glyphs | text, x, y, size, colour, depth |
+
+A colour is one integer packed `0xRRGGBBAA`; `depth` orders layers from the back; a sprite names its image by index into the node's `atlas`, a list of names the host resolves to textures it owns. The painter draws one pass per depth and instances primitives that share a sprite.
+
+The node carries one binding (`event`). The host sends keys as `{"key":<name>,"down":<bool>}` and the pointer as `{"x":…,"y":…,"down":<bool>}` in scene units through that binding, and nothing else; the application decides what a key or a position means. Key names are host-neutral: `left`, `right`, `up`, `down`, `space`, `enter`, `escape`, `tab`, `backspace`, and a single lowercase character for letters and digits; a key outside that vocabulary is not sent. A pointer event is sent on press, release and on movement while pressed, and once per movement when not pressed, at most once per frame.
+
+A scene is the only node whose patch may be large every frame. The host measures the time from `dispatch` return to the end of paint and reports it in its diagnostics overlay. The acceptance gate in the plan sets the entity count and frame rate the macOS build must hold; the framework's own per-frame cost is measured by `hosts/gpui/bench` and recorded in the plan.
+
+## Capabilities [GPUI-HOST-CAPABILITIES]
+
+The host answers `Run`, `ListDirectories`, `ReadTexts`, `StoreRead`, `StoreWrite`, `StoreList`, `StoreDelete`, `Http`, `ChooseFile`, `ChooseFolder`, `SaveFile`, `Reveal` and `Cancel` with Rust adapters. Each completion is an event through `dispatch`. A capability the host does not answer is rejected with a diagnostic naming it. Platform-only capabilities that remain in the framework are reached through `HostCall` and answered per host, or rejected.
+
+## Library targets [GPUI-HOST-TARGETS]
+
+A desktop static-library target exists per platform, with the same export selection, header generation and memory rules as the Mac slice of the iOS target: `macos` today, `linux-x64` and `windows-x64` as delivered by the plan. Apple archives default to ARC; the Linux and Windows archives use ARC, matching the Windows native contract.
+
+## Verification [GPUI-HOST-VERIFICATION]
+
+Acceptance requires: the Osprey application's own test suite passing against fixture messages; the host rendering the `packages/native/tests` probe application; a deterministic smoke run that drives the example application through recorded events and asserts the envelope; and a measured frame-rate run of the example application at the gated entity count on an Apple silicon Mac. Linux and Windows acceptance requires the same smoke run on those platforms in CI.

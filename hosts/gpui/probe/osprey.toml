@@ -1,0 +1,8 @@
+[project]
+name = "gpui-probe"
+source_roots = [".", "src", "../../../packages/native/src"]
+default_namespace = "app"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

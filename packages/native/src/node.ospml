@@ -134,6 +134,50 @@ type Node A =
         message : string
         visible : bool
         dismiss : A
+    Scene
+        sceneWidth : float
+        sceneHeight : float
+        atlas : List<string>
+        primitives : List<Primitive>
+        play : A
+
+(** One drawn shape of a scene in the scene's unit space: a position, a size, a rotation in radians, a packed `0xRRGGBBAA` colour and the layer it sits on, lower layers first ([UI-SCENE]). A sprite names its image by index into the scene's atlas. *)
+type Primitive =
+    Rect
+        x : float
+        y : float
+        w : float
+        h : float
+        angle : float
+        color : int
+        depth : int
+    Disc
+        x : float
+        y : float
+        radius : float
+        color : int
+        depth : int
+    Strip
+        points : List<float>
+        color : int
+        stroke : float
+        depth : int
+    Sprite
+        sprite : int
+        x : float
+        y : float
+        w : float
+        h : float
+        angle : float
+        color : int
+        depth : int
+    Glyphs
+        glyphs : string
+        x : float
+        y : float
+        size : float
+        color : int
+        depth : int
 
 (** One tab: its key, label, symbol and page. *)
 type Tab A =
@@ -160,6 +204,8 @@ type Binding A =
     ChoiceInput
         action : A
     SizeInput
+        action : A
+    SceneInput
         action : A
 
 (** [UI-COMPONENTS-SPLITTER] The limits of an aside's splitter in points: a column starts `initial` wide and stays between `least` and `most`, and the host never narrows the pane beside it below `keep`. *)
@@ -293,6 +339,10 @@ module Ui
     (** A row led by `symbol` under the heading `group`; consecutive rows of one group share that heading. *)
     export entry<A> : (string, string, string, Node<A>) -> Row<A>
     entry (key, symbol, group, cell) = Row(rowKey = key, rowSymbol = symbol, rowGroup = group, cell = cell)
+
+    (** [UI-SCENE] A surface `width` by `height` units that the host scales to fit, drawn from `primitives` with sprites taken from `atlas` by index. Keys and pointer positions in scene units reach `play` as `Controlled` messages. *)
+    export scene<A> : (float, float, List<string>, List<Primitive>, A) -> Node<A>
+    scene (width, height, atlas, primitives, play) = Scene(sceneWidth = width, sceneHeight = height, atlas = atlas, primitives = primitives, play = play)
 
     (** [UI-COMPONENTS-CONTEXT-MENU] Secondary actions for content; the host exposes them by pointer and keyboard context-menu gestures. *)
     export contextMenu<A> : (Node<A>, List<Node<A>>) -> Node<A>

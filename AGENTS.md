@@ -9,7 +9,8 @@ Clean up disk space routinely. If you put temporary files on the hard drive, you
 ## ⚠️ Invariants
 - **Subagents are illegal.**
 - **Linked worktrees are illegal.** Work only in the primary checkout; never create or recreate a linked worktree.
-- **External agents (pi) use only these models:** kimi-k3.1-pro-highspeed or kimi-k3.1-pro-highspeed (K3.1) (`moonshotai/kimi-k3`) -> GLM 5.3 (`zai/glm-5.3`, `zai/glm-5.3-flash`), DeepSeek V4.1-Flash-1017 and their flash variants. No other model, ever. If credit is out, ***tell the user*** but switch to a model that does have credit. No excuses about not enout credit.
+- **pi models: newest Kimi, DeepSeek or GLM only** (`pi --list-models`). Flash for easy bulk work; DeepSeek flash for grunt work.
+- 🛑 **Quota out? Tell the user, switch model. Never skip pi.**
 - ***You are responsible** for the work of the pi agents. You must review and fix all work that they create. Broken code created by pi is considered broken code created by you.
 - **Never ask the user questions.** Use your judgement, record assumptions, act autonomously.
 - **Answer punctually, not at length.** A few sentences or a short list; no essays, recaps or restating the question. Mark the one point the user must not miss with an emoji — nothing else gets one.

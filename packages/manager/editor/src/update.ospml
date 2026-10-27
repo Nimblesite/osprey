@@ -111,4 +111,4 @@ module Update
             false => Runtime::step current
         _ => Runtime::step current
 
-    export apply (_, current, message) = Messages::route (message, \action => tapped (current, action), \(action, value) => typed (current, action, value), \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(ticket, outcome) => completed (current, ticket, outcome), \_ => Runtime::step current)
+    export apply (_, current, message) = Messages::route (message, \action => tapped (current, action), \(action, value) => typed (current, action, value), \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(ticket, outcome) => completed (current, ticket, outcome), \_ => Runtime::step current, \_ => Runtime::step current, \(_, _) => Runtime::step current)
