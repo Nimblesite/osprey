@@ -16,8 +16,9 @@ pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyE
     let key = ctx.key.clone();
     let surface = div()
         .id(render::control_id(ctx, ordinal))
-        .size_full()
+        .w_full()
         .flex_grow(1.)
+        .min_h(px(320.))
         .track_focus(&focus)
         .on_key_down(key_down(handle.clone(), binding.clone()))
         .on_key_up(key_up(handle.clone(), binding.clone()))
@@ -183,7 +184,7 @@ fn pointer(
         let event = events::control(
             now(),
             &binding.region,
-            binding.revision,
+            current(view, binding),
             binding.ordinal,
             json!({"x": x, "y": y, "down": down}),
         );
@@ -199,6 +200,13 @@ fn reset_hover(key: &str, window: &mut Window, cx: &mut Context<HostView>) {
     });
 }
 
+/// A scene re-renders every frame, so input targets the region's live revision; its binding ordinal is stable.
+fn current(view: &HostView, binding: &Binding) -> u64 {
+    view.regions
+        .get(&binding.region)
+        .map_or(binding.revision, |region| region.revision)
+}
+
 /// Dispatches one already encoded scene value.
 fn send(
     handle: &Entity<HostView>,
@@ -211,7 +219,7 @@ fn send(
         let event = events::control(
             now(),
             &binding.region,
-            binding.revision,
+            current(view, binding),
             binding.ordinal,
             value,
         );

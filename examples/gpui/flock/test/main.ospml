@@ -112,11 +112,11 @@ test ("an empty round starts with five hundred more birds and one more hawk", \(
     expect (length (hawksOf after), 2)
     expect (Doc::number (worldOf after, "round"), 2))
 
-test ("the scene contains every sprite plus the pen player and HUD glyphs", \() =>
+test ("the scene holds the ground, every bird, each hawk, the dog and the pen label", \() =>
     started = Probes::started ()
     store = fixture ([bird (10.0, 20.0, 0.5, 0.1), bird (50.0, 60.0, 0.4, 0.2)], [hawk (180.0, 4.0)])
     after = Probes::postStore (started, store, frameEvent ())
-    expect (length (fieldShapes after), 6))
+    expect (length (fieldShapes after), 11))
 
 test ("a completed scores read fills the best-score slice", \() =>
     started = Probes::started ()

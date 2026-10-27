@@ -116,13 +116,33 @@ fn container(ctx: &mut Ctx, kind: &str, node: &Value) -> AnyElement {
 /// Lays out a vertical or horizontal child stack with framework spacing.
 fn stack(ctx: &mut Ctx, node: &Value) -> AnyElement {
     let vertical = string(node, "axis") != "horizontal";
+    let grows = holds_scene(ctx, node, 0);
     div()
         .flex()
+        .when(grows, |this| this.flex_grow(1.).min_h_0())
         .when(vertical, |this| this.flex_col())
         .when(!vertical, |this| this.flex_row())
         .gap(gap(ctx))
         .children(many(ctx, node, "children"))
         .into_any_element()
+}
+
+/// Whether a scene sits under this node, so its stacks pass free space down to it.
+fn holds_scene(ctx: &Ctx, node: &Value, depth: usize) -> bool {
+    if depth > 32 {
+        return false;
+    }
+    match string(node, "kind") {
+        "scene" => true,
+        "slot" => ctx
+            .view
+            .regions
+            .get(string(node, "key"))
+            .is_some_and(|region| holds_scene(ctx, &region.node, depth + 1)),
+        _ => list(node, "children")
+            .iter()
+            .any(|child| holds_scene(ctx, child, depth + 1)),
+    }
 }
 
 /// Draws text using its role and semantic theme tone.
@@ -376,7 +396,9 @@ pub fn diagnostics(view: &mut HostView, cx: &mut Context<HostView>) -> AnyElemen
         .border_color(cx.theme().border)
         .child(diagnostic_header(cx, messages.len(), expanded));
     if expanded {
-        strip = strip.children(diagnostic_lines(messages, cx));
+        // Only the latest few lines show, so a burst of diagnostics cannot push the application off screen.
+        let recent = messages[messages.len().saturating_sub(6)..].to_vec();
+        strip = strip.children(diagnostic_lines(recent, cx));
     }
     if view.animating {
         strip = strip.child(div().text_sm().child(format!(

@@ -154,3 +154,63 @@ fn diagnostics(view: &mut HostView, decoded: &Decoded) {
         view.diagnose_once("sprites draw as quads; the atlas is not loaded".to_owned());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{decode, Shape};
+    use serde_json::Value;
+
+    /// Every primitive decodes and equal depths retain their input order.
+    #[test]
+    fn decodes_every_shape_and_depth_order() {
+        let decoded = decode::decode(&fixture(), 9).unwrap();
+        let expected = vec![
+            Shape::Disc {
+                x: 5.,
+                y: 6.,
+                radius: 7.,
+                colour: 0x00ff00ff,
+                depth: 1.,
+            },
+            Shape::Rect {
+                x: 10.,
+                y: 20.,
+                w: 30.,
+                h: 40.,
+                angle: 0.5,
+                colour: 0xff0000ff,
+                depth: 2.,
+            },
+            Shape::Sprite {
+                atlas: 1,
+                x: 8.,
+                y: 9.,
+                w: 10.,
+                h: 11.,
+                angle: -0.5,
+                tint: 0xffffffff,
+                depth: 2.,
+            },
+            Shape::Strip {
+                points: vec![(0., 1.), (2., 3.)],
+                colour: 0x000000ff,
+                stroke: 2.5,
+                depth: 4.,
+            },
+            Shape::Glyphs {
+                text: "hello".to_owned(),
+                x: 1.,
+                y: 2.,
+                size: 12.,
+                colour: 0x11223344,
+                depth: 8.,
+            },
+        ];
+        assert_eq!(decoded.shapes.as_slice(), expected.as_slice());
+    }
+
+    /// Uses parsed JSON to stay below the test macro's recursion limit.
+    fn fixture() -> Value {
+        serde_json::from_str(r#"{"width":100,"height":50,"shapes":[[4,"hello",1,2,12,287454020,8],[0,10,20,30,40,0.5,4278190335,2],[1,5,6,7,16711935,1],[2,2,0,1,2,3,255,2.5,4],[3,1,8,9,10,11,-0.5,4294967295,2]]}"#).unwrap()
+    }
+}

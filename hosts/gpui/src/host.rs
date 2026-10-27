@@ -145,7 +145,10 @@ impl Render for HostView {
             .text_color(cx.theme().foreground)
             .child(
                 div()
+                    .flex()
+                    .flex_col()
                     .flex_grow(1.)
+                    .min_h_0()
                     .child(render::region(self, "root", window, cx)),
             )
             .child(render::diagnostics(self, cx))
@@ -195,6 +198,8 @@ fn open(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) {
             cx.new(|cx| new_view(regions, pending, bench, window, cx))
         })
         .expect("failed to open the Osprey window");
+        // A window launched from a terminal opens behind it, where macOS throttles its display clock.
+        cx.activate(true);
     });
 }
 

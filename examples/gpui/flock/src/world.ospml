@@ -79,7 +79,14 @@ type Ranked =
 
 (** The module that owns Flock's simulation and serialized store. *)
 module Simulation
-    bird i = Bird(birdX = toFloat (satSub i (satMul (intDiv i 100) 100)) + 2.0, birdY = toFloat (intDiv i 100), birdVx = 0.6, birdVy = 0.2)
+    // A deterministic hash in [0, 1): birds spread over the meadow with independent headings and no lattice.
+    noise (i, salt) =
+        wave = sin (toFloat i * 12.9898 + salt) * 43758.5453
+        wave - floor wave
+
+    bird i =
+        heading = noise (i, 3.1) * 6.2832
+        Bird(birdX = 10.0 + noise (i, 0.7) * 120.0, birdY = 10.0 + noise (i, 1.9) * 180.0, birdVx = cos heading * 0.7, birdVy = sin heading * 0.7)
 
     hawk i = Hawk(hawkX = toFloat (satMul i 50) + 35.0, hawkY = 4.0)
 
@@ -111,13 +118,13 @@ module Simulation
         handle Arith
             divideByZero _ dividend => dividend
         match squared (x, y) == 0.0
-            true => Vector(vectorX = 0.3, vectorY = 0.0)
+            true => Vector(vectorX = 0.5, vectorY = 0.0)
             false =>
                 pace = magnitude (x, y)
-                wanted = match pace < 0.3
-                    true => 0.3
-                    false => match pace > 1.2
-                        true => 1.2
+                wanted = match pace < 0.5
+                    true => 0.5
+                    false => match pace > 1.4
+                        true => 1.4
                         false => pace
                 Vector(vectorX = x * wanted / pace, vectorY = y * wanted / pace)
 
@@ -131,12 +138,17 @@ module Simulation
 
     sameBird (a, b) = a.birdX == b.birdX && a.birdY == b.birdY && a.birdVx == b.birdVx && a.birdVy == b.birdVy
 
+    // Separation acts only inside five units; beyond it alignment and cohesion pull birds into flocks.
+    crowd (delta, distance) = match distance < 25.0
+        true => delta * (25.0 - distance) * 0.04
+        false => 0.0
+
     accumulate (b, sum, other) =
         dx = b.birdX - other.birdX
         dy = b.birdY - other.birdY
         distance = squared (dx, dy)
         match distance < 144.0 && sameBird (b, other) == false
-            true => Nearby(sepX = sum.sepX + dx * (144.0 - distance) * 0.006944, sepY = sum.sepY + dy * (144.0 - distance) * 0.006944, alignX = sum.alignX + other.birdVx, alignY = sum.alignY + other.birdVy, cohereX = sum.cohereX + other.birdX, cohereY = sum.cohereY + other.birdY, nearCount = satAdd sum.nearCount 1)
+            true => Nearby(sepX = sum.sepX + crowd (dx, distance), sepY = sum.sepY + crowd (dy, distance), alignX = sum.alignX + other.birdVx, alignY = sum.alignY + other.birdVy, cohereX = sum.cohereX + other.birdX, cohereY = sum.cohereY + other.birdY, nearCount = satAdd sum.nearCount 1)
             false => sum
 
     herd (b, player) =
@@ -151,25 +163,31 @@ module Simulation
 
     nearby (b, cells) = range (0, 9) |> fold (Nearby(sepX = 0.0, sepY = 0.0, alignX = 0.0, alignY = 0.0, cohereX = 0.0, cohereY = 0.0, nearCount = 0)) (\(sum, i) => gather (b, cells, sum, i))
 
-    // Separation, mean alignment and mean cohesion combine with sheepdog repulsion.
+    // Birds circle back toward the meadow and away from walls, so only herding brings them to the pen.
+    homing (b) = Vector(vectorX = (70.0 - b.birdX) * 0.0015 + wall (b.birdX, 320.0), vectorY = (100.0 - b.birdY) * 0.0008 + wall (b.birdY, 200.0))
+
+    // Walls push back across a twelve-unit margin, harder the closer a bird gets, so birds turn instead of piling up.
+    wall (value, high) = match value < 12.0
+        true => (12.0 - value) * 0.04
+        false => match value > high - 12.0
+            true => (high - 12.0 - value) * 0.04
+            false => 0.0
+
+    // Separation, mean alignment and mean cohesion combine with homing, damping and sheepdog repulsion.
     steer (b, player, cells) =
         sum = nearby (b, cells)
-        push = herd (b, player)
+        home = homing b
+        scared = herd (b, player)
+        push = Vector(vectorX = scared.vectorX + home.vectorX, vectorY = scared.vectorY + home.vectorY)
         handle Arith
             divideByZero _ dividend => dividend
         match sum.nearCount == 0
             true => speed (b.birdVx + push.vectorX, b.birdVy + push.vectorY)
-            false => speed (b.birdVx + sum.sepX * 0.08 + (sum.alignX / toFloat sum.nearCount - b.birdVx) * 0.04 + (sum.cohereX / toFloat sum.nearCount - b.birdX) * 0.002 + push.vectorX, b.birdVy + sum.sepY * 0.08 + (sum.alignY / toFloat sum.nearCount - b.birdVy) * 0.04 + (sum.cohereY / toFloat sum.nearCount - b.birdY) * 0.002 + push.vectorY)
+            false => speed (b.birdVx + sum.sepX * 0.08 + (sum.alignX / toFloat sum.nearCount - b.birdVx) * 0.06 + (sum.cohereX / toFloat sum.nearCount - b.birdX) * 0.008 + push.vectorX, b.birdVy + sum.sepY * 0.08 + (sum.alignY / toFloat sum.nearCount - b.birdVy) * 0.06 + (sum.cohereY / toFloat sum.nearCount - b.birdY) * 0.008 + push.vectorY)
 
-    wrapX value = match value < 0.0
-        true => value + 320.0
-        false => value
+    wrapX value = clamp (value, 0.0, 320.0)
 
-    wrapY value = match value < 0.0
-        true => value + 200.0
-        false => match value >= 200.0
-            true => value - 200.0
-            false => value
+    wrapY value = clamp (value, 0.0, 200.0)
 
     movedBird (b, cells, player, elapsed) =
         velocity = steer (b, player, cells)
