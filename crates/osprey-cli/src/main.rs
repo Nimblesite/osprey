@@ -23,6 +23,7 @@
 
 mod android;
 mod debug_options;
+mod desktop;
 mod docs;
 mod doctests;
 mod document_entries;

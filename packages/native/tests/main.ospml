@@ -15,6 +15,7 @@ import ui::Scenes
 import ui::Inputs
 import ui::Symbols
 import ui::Pick
+import ui::Streams
 import ui::Runtime
 import uitests::Probes
 
@@ -536,3 +537,142 @@ test ("a start context carries a linux or windows platform", \() =>
 // [UI-EFFECTS]: work only one product or operating system can do travels as a host call, never as a framework capability.
 test ("product-specific work is a host call with its namespace and arguments", \() =>
     expect (requestText (ui::HostCall(hostNamespace = "probe", hostOperation = "read-config", hostArguments = JsonObject [JsonMember "paths" (Doc::strings ["app.toml"])], hostTimeout = 500, hostLimit = 128, hostSlice = "prefs")), "{\"ticket\":\"job:7\",\"kind\":\"host-call\",\"namespace\":\"probe\",\"operation\":\"read-config\",\"arguments\":{\"paths\":[\"app.toml\"]},\"timeout\":500,\"limit\":128,\"slice\":\"prefs\"}"))
+
+// [UI-SCENE-STREAM] A file-scope cell of the suite's entry, written only by the stream handler's arm.
+mut streamedTrace = ""
+
+streamedFrom node =
+    handle ui::SceneStream
+        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive}@${Streams::depth primitive};"
+    Streams::split node
+
+// [UI-RESIDENT] The probe application's first resident envelope and the session it leaves, and the
+// step after `event`; the probe draws no scene, so its stream stays empty.
+begun () =
+    handle ui::SceneStream
+        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive};"
+    Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"linux\"}", initial, regions, theme)
+
+proceeded (session, event) =
+    handle ui::SceneStream
+        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive};"
+    Runtime::proceed (session, event, update, regions)
+
+streamScene () = Ui::column [Ui::button ("Pause", ui::Pause, Load), Ui::scene (320.0, 200.0, ["bird"], [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 1), Scenes::strip ([0.0, 0.0, 10.0, 10.0], Scenes::rgb (0, 255, 0), 2.0, 1), Scenes::disc (5.0, 6.0, 7.0, Scenes::rgb (0, 0, 255), 2), Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3), Scenes::sprite (1, 8.0, 9.0, 2.0, 2.0, 0.25, Scenes::rgb (255, 255, 255), 4)], Typed)]
+
+// [UI-SCENE-STREAM]: rects, discs and sprites leave the envelope in drawing order; strips and glyphs stay, and the scene counts what it streamed.
+test ("a split scene streams its fixed-size primitives in order and keeps the rest", \() =>
+    walked = Encode::walk ([], streamedFrom (streamScene ()))
+    expect (streamedTrace, "0@1;1@2;3@4;")
+    scene = jsonIndex (jsonField (listGet walked.nodes 0 ?: JsonNull) "children" ?: JsonNull) 1 ?: JsonNull
+    shapes = Doc::items (Doc::field (scene, "shapes"))
+    expect (Doc::number (scene, "streamed"), 3)
+    expect (join (mapList (shapes, \shape => "${jsonInt (jsonIndex shape 0 ?: JsonNull) ?: 0 - 1}")) ",", "2,4")
+    expect (Doc::number (scene, "event"), 1)
+    expect (length walked.bindings, 2))
+
+// [UI-SCENE-STREAM]: an unsplit scene streams nothing and says so.
+test ("an enveloped scene reports nothing streamed", \() =>
+    scene = jsonIndex (jsonField (listGet (Encode::walk ([], streamScene ())).nodes 0 ?: JsonNull) "children" ?: JsonNull) 1 ?: JsonNull
+    expect (Doc::number (scene, "streamed"), 0)
+    expect (length (Doc::items (Doc::field (scene, "shapes"))), 5))
+
+streamedFields primitive = "${Streams::code primitive} ${Streams::index primitive} ${Streams::value (primitive, 0)} ${Streams::value (primitive, 1)} ${Streams::value (primitive, 2)} ${Streams::value (primitive, 3)} ${Streams::value (primitive, 4)} ${Streams::colour primitive} ${Streams::depth primitive}"
+
+// [UI-SCENE-STREAM]: the accessors a host import reads give each kind's code, atlas index, floats, colour and depth.
+test ("streamed primitives read back every field a host import takes", \() =>
+    expect (streamedFields (Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, 7, 1)), "0 0 1.0 2.0 3.0 4.0 0.5 7 1")
+    expect (streamedFields (Scenes::disc (5.0, 6.0, 7.0, 8, 2)), "1 0 5.0 6.0 7.0 0.0 0.0 8 2")
+    expect (streamedFields (Scenes::sprite (3, 8.0, 9.0, 2.0, 1.0, 0.25, 9, 4)), "3 3 8.0 9.0 2.0 1.0 0.25 9 4")
+    expect (Streams::streamed (Scenes::glyphs ("x", 0.0, 0.0, 1.0, 0, 0)), false))
+
+// [UI-RESIDENT]: a resident session's envelope carries a marker, never the store, and the session itself moves on.
+test ("a resident session keeps its store out of the envelope", \() =>
+    first = begun ()
+    doc = Doc::parse first.residentEnvelope
+    expect (Doc::text (doc, "state"), "resident")
+    expect (Probes::keys doc, "root,note")
+    expect (Symbols::platformText first.residentSession.sessionContext.platform, "linux")
+    tapped = proceeded (first.residentSession, Probes::tap ("root", 1, 0))
+    expect (Probes::keys (Doc::parse tapped.residentEnvelope), "root")
+    expect (tapped.residentSession.sessionStore.counter.tally, 1)
+    expect (Doc::text (Doc::parse tapped.residentEnvelope, "state"), "resident"))
+
+// [UI-RESIDENT]: stale controls are refused as in a saved session, and an edit against a prior state cannot be recovered.
+test ("a resident session refuses stale controls and prior-state edits without change", \() =>
+    first = begun ()
+    moved = proceeded (first.residentSession, Probes::tap ("root", 1, 0))
+    stale = proceeded (moved.residentSession, Probes::tap ("root", 1, 0))
+    expect (Probes::keys (Doc::parse stale.residentEnvelope), "")
+    expect (contains (Probes::problems (Doc::parse stale.residentEnvelope)) "Stale control", true)
+    expect (stale.residentSession.sessionStore.counter.tally, 1)
+    edited = proceeded (moved.residentSession, Probes::edit ("\"resident\"", "root", 1, 0, "null"))
+    expect (contains (Probes::problems (Doc::parse edited.residentEnvelope)) "keeps no prior state", true)
+    expect (edited.residentSession.sessionStore.counter.tally, 1))
+
+// One scene holding a single disc at `layer`, so the stream's order names the container it was found in.
+dot layer = Ui::scene (10.0, 10.0, [], [Scenes::disc (1.0, 1.0, 1.0, 0, layer)], Typed)
+
+everyContainer () = Ui::split [
+    Ui::screen ("T", "", [dot 1], [ui::Section(title = "S", footer = "", children = [dot 2])]),
+    Ui::layer [Ui::contextMenu (dot 3, [dot 4]), Ui::aside (dot 5, ui::Leading, dot 6, 300, Typed)],
+    ui::Tabs(tabs = [Ui::tab ("t", "T", ui::Tag, dot 7)], selected = "t", bind = Load),
+    Ui::rows ([Ui::entry ("r", ui::Star, "", dot 8)], "r", Load),
+    Ui::disclosure ("D", true, Load, [dot 9]),
+]
+
+// [UI-SCENE-STREAM]: every container is walked in the encoder's order: a screen's toolbar before its
+// children, a context menu's body before its actions, an aside's pane before its column.
+test ("a split streams scenes from every container in the encoder's order", \() =>
+    walked = Encode::walk ([], streamedFrom (everyContainer ()))
+    expect (length walked.nodes, 1)
+    expect (contains streamedTrace "1@1;1@2;1@3;1@4;1@5;1@6;1@7;1@8;1@9;", true))
+
+// [UI-SCENE-STREAM]: primitives that never stream read back neutral fields.
+test ("primitives that do not stream read back zero fields", \() =>
+    strip = Scenes::strip ([0.0, 0.0, 1.0, 1.0], 9, 1.0, 4)
+    expect ("${Streams::value (strip, 0)} ${Streams::colour strip} ${Streams::depth strip} ${Streams::index strip}", "0.0 0 0 0")
+    expect (Streams::streamed strip, false))
+
+frameEvent = "{\"kind\":\"frame\",\"now\":9,\"elapsed\":0.5}"
+
+// [UI-RESIDENT]: completions, lifecycle phases and frames reach `update` in a resident session, and text
+// that is not an event is refused without change.
+test ("a resident session delivers completions, phases and frames and refuses malformed text", \() =>
+    first = begun ()
+    done = proceeded (first.residentSession, "{\"kind\":\"completed\",\"ticket\":\"load:1\",\"ok\":true,\"result\":\"saved\",\"now\":7}")
+    expect (done.residentSession.sessionStore.note.memo, "saved")
+    phased = proceeded (done.residentSession, "{\"kind\":\"lifecycle\",\"phase\":\"active\",\"now\":8}")
+    expect (Probes::problems (Doc::parse phased.residentEnvelope), "")
+    framed = proceeded (phased.residentSession, frameEvent)
+    expect (framed.residentSession.sessionContext.now, 9)
+    broken = proceeded (framed.residentSession, "not json")
+    expect (contains (Probes::problems (Doc::parse broken.residentEnvelope)) "not JSON", true)
+    expect (broken.residentSession.sessionStore.note.memo, "saved"))
+
+// [UI-RESIDENT]: an idle session holds the store with no host facts and no regions yet.
+test ("an idle session holds only its store", \() =>
+    held = Runtime::idle 3
+    expect ("${held.sessionStore} ${length held.sessionFrames} ${held.sessionContext.now}", "3 0 0"))
+
+routed : ui::Message<Act> -> string
+routed message = Messages::route (message, \_ => "tap", \(_, text) => "text ${text}", \(_, on) => "flag ${on}", \(_, width) => "size ${width}", \(ticket, _) => "done ${ticket}", \phase => "phase ${phase}", \_ => "frame", \(_, _) => "input")
+
+boundAs (binding, value) = match Events::bind (binding, value)
+    Success delivered => routed delivered
+    Error problem => problem
+
+// [UI-EVENTS]: toggles deliver flags, pickers deliver keys, and a value of the wrong kind is refused.
+test ("toggles and pickers deliver their own value kinds and refuse others", \() =>
+    expect (boundAs (ui::FlagInput(action = Typed), JsonBool true), "flag true")
+    expect (boundAs (ui::FlagInput(action = Typed), JsonString "on"), "A toggle control sent a value of the wrong kind")
+    expect (boundAs (ui::ChoiceInput(action = Load), JsonString "b"), "text b")
+    expect (boundAs (ui::ChoiceInput(action = Load), JsonInt 1), "A choice control sent a value of the wrong kind")
+    expect (routed (ui::Phase(phase = "active")), "phase active"))
+
+// [UI-COMPONENTS]: progress, swatches, alerts, prominent buttons and leading asides keep their protocol spellings.
+test ("progress, swatches, alerts, prominent buttons and leading asides encode", \() =>
+    parts = Doc::items (Doc::field (listGet (Encode::walk ([], Ui::column [ui::Progress(label = "P", detail = "d"), ui::Swatch(name = "S", light = "#fff", dark = "#000"), ui::Alert(title = "A", message = "m", visible = true, dismiss = Load), Ui::action ("Go", ui::Play, ui::Prominent, true, Increment), Ui::aside (Ui::text "p", ui::Leading, Ui::text "c", 300, Typed)])).nodes 0 ?: JsonNull, "children"))
+    expect (join (mapList (parts, \part => Doc::text (part, "kind"))) ",", "progress,swatch,alert,button,aside")
+    expect (Doc::text (listGet parts 3 ?: JsonNull, "role"), "prominent")
+    expect (Doc::text (listGet parts 4 ?: JsonNull, "side"), "leading"))

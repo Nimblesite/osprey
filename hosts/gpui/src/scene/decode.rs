@@ -5,10 +5,16 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use super::{Decoded, Outline, Paint, Shape, Step, Tint};
+use crate::ffi::Streamed;
 use crate::render;
 
-/// Decodes and stably depth-sorts every shape in one scene patch.
-pub(super) fn decode(node: &Value, revision: u64) -> Result<Decoded, String> {
+/// Decodes and stably depth-sorts every shape in one scene patch: the node's own shapes, then the
+/// rects, discs and sprites the application streamed for it ([UI-SCENE-STREAM]).
+pub(super) fn decode(
+    node: &Value,
+    revision: u64,
+    streamed: &[Streamed],
+) -> Result<Decoded, String> {
     let width = dimension(node.get("width"), "width")?;
     let height = dimension(node.get("height"), "height")?;
     if (width == 0.) != (height == 0.) {
@@ -18,6 +24,9 @@ pub(super) fn decode(node: &Value, revision: u64) -> Result<Decoded, String> {
         .iter()
         .map(shape)
         .collect::<Result<Vec<_>, _>>()?;
+    for item in streamed {
+        shapes.push(streamed_shape(item)?);
+    }
     shapes.sort_by(|left, right| left.depth().total_cmp(&right.depth()));
     let has_rotation = shapes.iter().any(rotated);
     let has_sprites = shapes
@@ -31,6 +40,45 @@ pub(super) fn decode(node: &Value, revision: u64) -> Result<Decoded, String> {
         has_rotation,
         has_sprites,
     })
+}
+
+/// One streamed primitive in the shape the painter takes; codes are the scene encoding's.
+fn streamed_shape(item: &Streamed) -> Result<Shape, String> {
+    let [a, b, c, d, e] = item.values.map(|value| value as f32);
+    if !item.values.iter().all(|value| value.is_finite()) {
+        return Err("a streamed shape number is not finite".to_owned());
+    }
+    let colour = u32::try_from(item.colour).map_err(|_| "streamed colour exceeds 32 bits")?;
+    let depth = item.depth as f32;
+    match item.code {
+        0 => Ok(Shape::Rect {
+            x: a,
+            y: b,
+            w: c,
+            h: d,
+            angle: e,
+            colour,
+            depth,
+        }),
+        1 => Ok(Shape::Disc {
+            x: a,
+            y: b,
+            radius: c,
+            colour,
+            depth,
+        }),
+        3 => Ok(Shape::Sprite {
+            atlas: usize::try_from(item.index).map_err(|_| "streamed sprite index is negative")?,
+            x: a,
+            y: b,
+            w: c,
+            h: d,
+            angle: e,
+            tint: colour,
+            depth,
+        }),
+        code => Err(format!("unknown streamed shape code {code}")),
+    }
 }
 
 /// Whether this primitive carries a nonzero, currently undrawn angle.

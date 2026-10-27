@@ -18,7 +18,7 @@ The application is all Osprey: its state, its rules, its screens, every number i
 
 Two examples run on it today, on macOS:
 
-- **[Flock](https://github.com/Nimblesite/osprey/tree/main/examples/gpui/flock)**: a herding game with a thousand boids, hawks that hunt them, and a dog you steer to drive them into a pen. It runs at **119–120 fps on a 120 Hz M4 Max**, with Osprey's share of each frame between 3.4 and 4.4 ms.
+- **[Flock](https://github.com/Nimblesite/osprey/tree/main/examples/gpui/flock)**: a herding game with a thousand boids, hawks that hunt them, and a dog you steer to drive them into a pen. A thousand birds ran at **119–120 fps on a 120 Hz M4 Max**; 5,000 birds now cost **4.7 ms** of the 8.3 ms a 120 Hz frame allows.
 - **[Painting](https://github.com/Nimblesite/osprey/tree/main/examples/gpui/painting)**: a port of GPUI's own `examples/painting.rs`. Captured side by side at the same window size, the Osprey port and the Rust original differ in **zero pixels**, both on first paint and after the same freehand strokes are drawn into each.
 
 ## Two functions across the boundary
@@ -64,7 +64,13 @@ The encoder sends each primitive as one small array with a type code first, so t
 
 Flock animates by asking for the host's frame clock with an `Animate` capability. While it runs, every display refresh reaches `update` as a `Frame` message with the seconds since the last one. `update` moves the birds, and the field region refreshes like any other region. There is no simulation step in Rust.
 
-Getting to the display rate took profiling. The first version spent 7.3 ms of Osprey time per frame at a thousand birds, and over half of a frame went to copying neighbour lists. `osprey --profile` pointed at the hot spots. A sorted-index spatial grid, cheaper change detection and integer-scaled bird state brought `dispatch` under 4.5 ms. The thing still costing the most is the session round trip: the opaque state is parsed and re-encoded on every call, about a third of each frame. At 5,000 birds the frame rate falls well short of the plan's gate, and moving that state into a store the framework keeps in memory is the next lever.
+Getting to the display rate took profiling. The first version spent 7.3 ms of Osprey time per frame at a thousand birds, and over half of a frame went to copying neighbour lists. `osprey --profile` pointed at the hot spots, and a sorted spatial grid brought a thousand birds to the display rate. Five thousand birds still cost 29 ms of dispatch a frame, for three reasons, each with its own fix:
+
+- **The session round trip.** Every call parsed the opaque state, restored the store, then saved and re-encoded it. A *resident session* keeps the `Session` in a file-scope cell of the application's boundary file, and `Runtime::proceed` takes and returns it as a value; the envelope's state is just the marker `"resident"`.
+- **The scene as JSON.** Five thousand discs became five thousand JSON arrays, every float was spelled as text, and the host parsed 300 KB a frame. The *scene stream* sends each rect, disc and sprite to the host through one `extern` call instead, so the envelope is 1.7 KB.
+- **Allocation in the inner loop.** Each neighbour visit built a record. Each bird now steers by its first seven flockmates, the rule real starlings follow, in a walk that carries its sums as arguments and allocates once per bird.
+
+The framework's own share of a 5,000-sprite frame went from 14.7 ms to under 1 ms. I also tried moving the steering onto Osprey's GPU compute surface. It was slower, because Metal emulates 64-bit floats, so it stayed on the CPU.
 
 ## The framework names no host
 

@@ -420,7 +420,7 @@ fn wire(now: i64) -> Result<(), String> {
 /// The launch context the framework reads: the host platform, the person's
 /// home folder and the arguments the application was opened with.
 fn launch_context(now: i64) -> Result<String, String> {
-    let home = std::env::var("HOME").map_err(|problem| format!("HOME is not set: {problem}"))?;
+    let home = crate::home()?;
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     // The probe reads the platform and ignores the offset, so the smoke run
     // reports UTC rather than take a dependency to resolve local time.

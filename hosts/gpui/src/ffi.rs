@@ -92,6 +92,57 @@ pub extern "C" fn gpui_slice(key: *const c_char) -> *const c_char {
     }
 }
 
+/// One rect, disc or sprite a resident application streamed during the current call: the scene
+/// encoding's code, a sprite's atlas index, five floats, the packed colour and the depth ([UI-SCENE-STREAM]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Streamed {
+    pub code: i64,
+    pub index: i64,
+    pub values: [f64; 5],
+    pub colour: i64,
+    pub depth: i64,
+}
+
+/// The shapes streamed since the last `start` or `dispatch` began, in the order they arrived.
+static STREAM: Mutex<Vec<Streamed>> = Mutex::new(Vec::new());
+
+/// The runtime's scene-stream import ([UI-SCENE-STREAM]): appends one primitive and answers 0.
+#[no_mangle]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the import's C signature is one scalar per primitive field"
+)]
+pub extern "C" fn gpui_shape(
+    code: i64,
+    index: i64,
+    a: f64,
+    b: f64,
+    c: f64,
+    d: f64,
+    e: f64,
+    colour: i64,
+    depth: i64,
+) -> i64 {
+    if let Ok(mut stream) = STREAM.lock() {
+        stream.push(Streamed {
+            code,
+            index,
+            values: [a, b, c, d, e],
+            colour,
+            depth,
+        });
+    }
+    0
+}
+
+/// Takes every shape streamed during the last call, leaving the stream empty.
+pub fn take_stream() -> Vec<Streamed> {
+    STREAM
+        .lock()
+        .map(|mut stream| std::mem::take(&mut *stream))
+        .unwrap_or_default()
+}
+
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// The linked Osprey application: one archive, one calling thread.
@@ -115,6 +166,7 @@ impl Library {
     /// The start envelope for `context`; the caller keeps its `state`.
     pub fn start(context: &str) -> Result<String, String> {
         let source = held(context)?;
+        drop(take_stream());
         // SAFETY: the argument outlives the call and the result is copied at once.
         unsafe { copied(osprey_app_start(source.as_ptr())) }
     }
@@ -122,6 +174,7 @@ impl Library {
     /// The next envelope for the stored `state` and one event.
     pub fn dispatch(state: &str, event: &str) -> Result<String, String> {
         let saved = held(state)?;
+        drop(take_stream());
         let message = held(event)?;
         // SAFETY: both arguments outlive the call and the result is copied at once.
         unsafe { copied(osprey_app_dispatch(saved.as_ptr(), message.as_ptr())) }

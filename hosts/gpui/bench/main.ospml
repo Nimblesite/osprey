@@ -3,7 +3,9 @@
 // dispatch parses the session, runs `update`, re-encodes the store and emits
 // a scene of `count` sprites. `mode` selects what the run times: 0 starts
 // only, 1 dispatches `frames` frames, 2 parses the start envelope `frames`
-// times (the share the host's decoder would pay, not Osprey).
+// times (the share the host's decoder would pay, not Osprey), 3 runs `frames`
+// frames of a resident session whose sprites stream ([UI-RESIDENT],
+// [UI-SCENE-STREAM]): no store round trip and no scene JSON.
 namespace bench
 
 import ui::Ui
@@ -32,7 +34,7 @@ count = 5000
 
 frames = 120
 
-mode = 1
+mode = 3
 
 white () = Scenes::rgb (255, 255, 255)
 
@@ -79,7 +81,20 @@ stateOf text = Doc::text (Doc::parse text, "state")
 
 tick saved = stateOf (Runtime::dispatch (saved, frameEvent, update, regions, save, restore))
 
+// The stream's answer in this bench: a count of the sprites the host would have received.
+mut streamed = 0
+
+proceeded (session, _) = (Runtime::proceed (session, frameEvent, update, regions)).residentSession
+
+resident () =
+    handle ui::SceneStream
+        shape _ => streamed := satAdd streamed 1
+    first = Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", init, regions, theme)
+    last = range (0, frames) |> fold first.residentSession proceeded
+    satAdd (length last.sessionStore.flock.birds) streamed
+
 run (started, which) = match which
+    3 => resident ()
     1 => length (range (0, frames) |> fold (stateOf started) (\(saved, _) => tick saved))
     2 => range (0, frames) |> fold 0 (\(total, _) => satAdd total (length (Doc::text (Doc::parse started, "state"))))
     _ => length (stateOf started)

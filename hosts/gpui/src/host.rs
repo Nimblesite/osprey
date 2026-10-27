@@ -11,7 +11,7 @@ use crate::envelope::{self, Request};
 use crate::events;
 use crate::ffi::Library;
 use crate::regions::Regions;
-use crate::{clock, render, scene, store};
+use crate::{adapters, clock, render, scene, store};
 
 /// The one native view: framework regions, input editing state and host diagnostics.
 pub struct HostView {
@@ -32,6 +32,10 @@ pub struct HostView {
     pub fps: usize,
     pub dispatch_ms: f64,
     pub paint_ms: f64,
+    /// When the frame event now being drawn arrived, until its paint ends.
+    pub frame_started: Option<std::time::Instant>,
+    /// Main-thread time from the last frame event to the end of its paint.
+    pub frame_ms: f64,
     pub envelope_bytes: usize,
     pub bench: Option<clock::Bench>,
     pub(crate) messages: Vec<String>,
@@ -57,6 +61,8 @@ impl HostView {
             fps: 0,
             dispatch_ms: 0.,
             paint_ms: 0.,
+            frame_started: None,
+            frame_ms: 0.,
             envelope_bytes: 0,
             bench,
             messages: Vec::new(),
@@ -71,21 +77,66 @@ impl HostView {
         let next = Library::dispatch(self.regions.state(), &event);
         self.envelope_bytes = next.as_ref().map_or(0, String::len);
         self.settle(next.and_then(|text| envelope::parse(&text)));
-        for request in std::mem::take(&mut self.pending) {
-            if request.kind != "animate" && !request.kind.starts_with("store-") {
-                self.diagnose(format!(
-                    "unsupported capability {} ({})",
-                    request.kind, request.ticket
-                ));
-            }
-            let completion = match request.kind.as_str() {
-                "animate" => clock::answer(self, &request),
-                _ => store::completion(&request),
-            };
-            self.dispatch(completion, window, cx);
-        }
+        self.answer_pending(window, cx);
         clock::redraw(self, window, cx);
         cx.notify();
+    }
+
+    /// Answers every capability the latest envelopes requested ([GPUI-HOST-CAPABILITIES]);
+    /// an unknown kind is diagnosed and still completes with a protocol error.
+    fn answer_pending(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for request in std::mem::take(&mut self.pending) {
+            match request.kind.as_str() {
+                "animate" => {
+                    let completion = clock::answer(self, &request);
+                    self.dispatch(completion, window, cx);
+                }
+                "run" | "list-directories" | "read-texts" => {
+                    self.answer_in_background(request, window, cx);
+                }
+                "cancel" => {
+                    self.dispatch(adapters::completion(&request), window, cx);
+                }
+                "store-read" | "store-write" | "store-list" | "store-delete" => {
+                    self.dispatch(store::completion(&request), window, cx);
+                }
+                "choose-file" | "choose-folder" | "save-file" | "reveal" => {
+                    if let Some(completion) = adapters::dispatch_platform(&request, window, cx) {
+                        self.dispatch(completion, window, cx);
+                    }
+                }
+                kind => {
+                    self.diagnose(format!(
+                        "unsupported capability {kind} ({})",
+                        request.ticket
+                    ));
+                    let error = events::completed_err(
+                        now(),
+                        &request.ticket,
+                        &format!("unsupported capability {kind}"),
+                    );
+                    self.dispatch(error, window, cx);
+                }
+            }
+        }
+    }
+
+    /// Runs a blocking adapter (a process, a directory walk, file reads) on the background executor,
+    /// so a slow capability never stalls the window, and delivers its completion on the main thread.
+    fn answer_in_background(
+        &mut self,
+        request: Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let task = cx
+            .background_executor()
+            .spawn(async move { adapters::completion(&request) });
+        cx.spawn_in(window, async move |view, cx| {
+            let completion = task.await;
+            let _ = view.update_in(cx, |view, window, cx| view.dispatch(completion, window, cx));
+        })
+        .detach();
     }
 
     /// Applies a decoded result and discards stale editor bindings.
@@ -180,7 +231,7 @@ pub fn run() -> i32 {
 /// Performs all pre-window C calls on the main thread.
 fn start() -> Result<(Regions, Vec<Request>), String> {
     Library::init()?;
-    let home = std::env::var("HOME").map_err(|problem| format!("HOME is not set: {problem}"))?;
+    let home = crate::home()?;
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let context = events::start_context(
         now(),

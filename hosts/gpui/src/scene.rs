@@ -208,7 +208,16 @@ fn cached(ctx: &mut Ctx, node: &Value) -> Result<Decoded, String> {
     {
         return Ok(found.clone());
     }
-    let decoded = decode::decode(node, ctx.revision)?;
+    // [UI-SCENE-STREAM] A streamed scene's rects, discs and sprites come from the region, not the node.
+    let streamed = node
+        .get("streamSlot")
+        .and_then(Value::as_u64)
+        .and_then(|slot| {
+            let region = ctx.view.regions.get(&ctx.key)?;
+            region.streams.get(usize::try_from(slot).ok()?).cloned()
+        })
+        .unwrap_or_default();
+    let decoded = decode::decode(node, ctx.revision, &streamed)?;
     ctx.view.scenes.insert(ctx.key.clone(), decoded.clone());
     Ok(decoded)
 }
@@ -226,12 +235,59 @@ fn diagnostics(view: &mut HostView, decoded: &Decoded) {
 #[cfg(test)]
 mod tests {
     use super::{decode, Shape};
+    use crate::ffi::Streamed;
     use serde_json::Value;
+
+    /// Streamed shapes follow the node's own at equal depth and sort by depth with them ([UI-SCENE-STREAM]).
+    #[test]
+    fn streamed_shapes_join_the_depth_order_after_the_node_shapes() {
+        let streamed = [
+            Streamed {
+                code: 1,
+                index: 0,
+                values: [1., 2., 3., 0., 0.],
+                colour: 255,
+                depth: 4,
+            },
+            Streamed {
+                code: 0,
+                index: 0,
+                values: [4., 5., 6., 7., 0.],
+                colour: 511,
+                depth: 0,
+            },
+        ];
+        let node: Value = serde_json::from_str(
+            r#"{"width":10,"height":10,"shapes":[[1,9,9,1,65535,4]],"streamed":2}"#,
+        )
+        .unwrap();
+        let decoded = decode::decode(&node, 1, &streamed).unwrap();
+        let depths: Vec<_> = decoded.shapes.iter().map(Shape::depth).collect();
+        assert_eq!(depths, vec![0., 4., 4.]);
+        assert!(matches!(decoded.shapes[1], Shape::Disc { x, colour: 65535, .. } if x == 9.));
+        assert!(matches!(decoded.shapes[2], Shape::Disc { x, colour: 255, .. } if x == 1.));
+        assert!(matches!(decoded.shapes[0], Shape::Rect { w, .. } if w == 6.));
+    }
+
+    /// A streamed code outside rect, disc and sprite is refused, not drawn as a guess.
+    #[test]
+    fn unknown_streamed_codes_are_refused() {
+        let streamed = [Streamed {
+            code: 2,
+            index: 0,
+            values: [0.; 5],
+            colour: 0,
+            depth: 0,
+        }];
+        let node: Value =
+            serde_json::from_str(r#"{"width":10,"height":10,"shapes":[],"streamed":1}"#).unwrap();
+        assert!(decode::decode(&node, 1, &streamed).is_err());
+    }
 
     /// Every primitive decodes and equal depths retain their input order.
     #[test]
     fn decodes_every_shape_and_depth_order() {
-        let decoded = decode::decode(&fixture(), 9).unwrap();
+        let decoded = decode::decode(&fixture(), 9, &[]).unwrap();
         let expected = vec![
             Shape::Disc {
                 x: 5.,

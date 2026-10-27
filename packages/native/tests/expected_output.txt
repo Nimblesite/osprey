@@ -40,5 +40,16 @@ ok 39 - a pair encodes its label and value without a binding
 ok 40 - platforms decode to the union and encode back to their names
 ok 41 - a start context carries a linux or windows platform
 ok 42 - product-specific work is a host call with its namespace and arguments
-1..42
-# tests=42 passed=42 failed=0 skipped=0
+ok 43 - a split scene streams its fixed-size primitives in order and keeps the rest
+ok 44 - an enveloped scene reports nothing streamed
+ok 45 - streamed primitives read back every field a host import takes
+ok 46 - a resident session keeps its store out of the envelope
+ok 47 - a resident session refuses stale controls and prior-state edits without change
+ok 48 - a split streams scenes from every container in the encoder's order
+ok 49 - primitives that do not stream read back zero fields
+ok 50 - a resident session delivers completions, phases and frames and refuses malformed text
+ok 51 - an idle session holds only its store
+ok 52 - toggles and pickers deliver their own value kinds and refuse others
+ok 53 - progress, swatches, alerts, prominent buttons and leading asides encode
+1..53
+# tests=53 passed=53 failed=0 skipped=0

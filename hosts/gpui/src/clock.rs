@@ -15,6 +15,10 @@ pub struct Bench {
     pub frames: u64,
     pub dispatch_total: f64,
     pub paint_total: f64,
+    /// Main-thread time from each frame event to the end of the paint that shows it: dispatch,
+    /// envelope apply, layout and paint. Unlike `fps`, it does not depend on the display clock,
+    /// which macOS slows for a hidden window or a locked screen.
+    pub frame_total: f64,
 }
 
 impl Bench {
@@ -26,6 +30,7 @@ impl Bench {
             frames: 0,
             dispatch_total: 0.,
             paint_total: 0.,
+            frame_total: 0.,
         }
     }
 }
@@ -82,6 +87,7 @@ fn tick(view: &mut HostView, window: &mut Window, cx: &mut Context<HostView>) {
         view.frame_times.pop_front();
     }
     view.fps = view.frame_times.len();
+    view.frame_started = Some(arrived);
     let started = Instant::now();
     view.dispatch(events::frame(now(), elapsed), window, cx);
     view.dispatch_ms = started.elapsed().as_secs_f64() * 1000.;
@@ -97,6 +103,7 @@ fn record_bench(view: &mut HostView, arrived: Instant) {
     bench.frames += 1;
     bench.dispatch_total += view.dispatch_ms;
     bench.paint_total += view.paint_ms;
+    bench.frame_total += view.frame_ms;
     if arrived.duration_since(bench.started) < bench.duration {
         return;
     }
@@ -109,10 +116,11 @@ fn report(bench: &Bench, envelope: usize) {
     let frames = bench.frames.max(1) as f64;
     let seconds = bench.started.elapsed().as_secs_f64().max(f64::EPSILON);
     println!(
-        "bench fps={} dispatch_ms={} paint_ms={} envelope_bytes={} frames={}",
+        "bench fps={} dispatch_ms={} paint_ms={} frame_ms={} envelope_bytes={} frames={}",
         bench.frames as f64 / seconds,
         bench.dispatch_total / frames,
         bench.paint_total / frames,
+        bench.frame_total / frames,
         envelope,
         bench.frames
     );

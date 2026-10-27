@@ -3,6 +3,8 @@ namespace flock
 
 import ui::Doc
 import ui::Lists
+import ui::Pick
+import flock::Steering
 import ui::Requests
 import ui::Runtime
 
@@ -64,15 +66,8 @@ type Vector =
 type Grid =
     ordered : List<Bird>
     starts : List<int>
+    cellIds : List<int>
 
-type Nearby =
-    sepX : float
-    sepY : float
-    alignX : float
-    alignY : float
-    cohereX : float
-    cohereY : float
-    nearCount : int
 
 type Nearest =
     nearestBird : Bird
@@ -105,7 +100,20 @@ module Simulation
     freshWorld (count, round, score) = World(birds = range (0, count) |> fold [] (\(out, i) => listAppend out (bird i)), hawks = range (0, hawkCount round) |> fold [] (\(out, i) => listAppend out (hawk i)), player = Player(playerX = 160.0, playerY = 100.0), held = emptyHeld (), targetX = 160.0, targetY = 100.0, targetActive = false, roundNumber = round, scoreValue = score, elapsedTotal = 0.0, frameCount = 0, fps = 0)
 
     (** A fresh game with one thousand birds and an empty score table. *)
-    export initialStore () = Store(world = freshWorld (1000, 1, 0), settings = Settings(flockSize = 1000, soundOn = true, paused = false), scores = Scores(best = [], loaded = false))
+    export initialStore () = sizedStore 1000
+
+    (** A first round of `count` birds. *)
+    export sizedStore count = Store(world = freshWorld (count, 1, 0), settings = Settings(flockSize = count, soundOn = true, paused = false), scores = Scores(best = [], loaded = false))
+
+    // `--flock N` among the launch arguments starts with N birds (1 to 20,000); anything else starts with 1,000.
+    flagged (arguments, index) = match listGet arguments index
+        Success flag => flag == "--flock"
+        Error _ => false
+
+    (** The flock size the launch arguments ask for. *)
+    export launchSize arguments = range (0, length arguments) |> fold 1000 (\(size, index) => Pick::either (flagged (arguments, index), boundedSize (parseInt (listGet arguments (satAdd index 1) ?: "") ?: size), size))
+
+    boundedSize count = Pick::either (count < 1, 1000, Pick::either (count > 20000, 20000, count))
 
     squared (x, y) = x * x + y * y
 
@@ -157,95 +165,17 @@ module Simulation
         sorted = listSort (range (0, length birds) |> fold [] (\(out, i) => listAppend out (code (birds, i))))
         begun = range (0, length sorted) |> fold [] (\(starts, position) => opened (starts, position, listGet sorted position ?: 0))
         starts = range (length begun, 346) |> fold begun (\(out, _) => listAppend out (length sorted))
-        Grid(ordered = mapList (sorted, \value => birdOf (birds, value)), starts = starts)
-
-    sameBird (a, b) = a.birdX == b.birdX && a.birdY == b.birdY && a.birdVx == b.birdVx && a.birdVy == b.birdVy
-
-    // Separation acts only inside six units; beyond it alignment and cohesion pull birds into flocks.
-    crowd (delta, distance) = match distance < 36.0
-        true => delta * (36.0 - distance) * 0.03
-        false => 0.0
-
-    accumulate (b, sum, other) =
-        dx = b.birdX - other.birdX
-        dy = b.birdY - other.birdY
-        distance = squared (dx, dy)
-        match distance < 64.0 && sameBird (b, other) == false
-            true => Nearby(sepX = sum.sepX + crowd (dx, distance), sepY = sum.sepY + crowd (dy, distance), alignX = sum.alignX + other.birdVx, alignY = sum.alignY + other.birdVy, cohereX = sum.cohereX + other.birdX, cohereY = sum.cohereY + other.birdY, nearCount = satAdd sum.nearCount 1)
-            false => sum
-
-    herd (b, player) =
-        dx = b.birdX - player.playerX
-        dy = b.birdY - player.playerY
-        match squared (dx, dy) < 1600.0
-            true => Vector(vectorX = dx * 0.08, vectorY = dy * 0.08)
-            false => Vector(vectorX = 0.0, vectorY = 0.0)
-
-    // Sight is eight units, half a cell, so a bird's flockmates lie in the 2 by 2 block of cells nearest it:
-    // its own cell and the neighbours on the sides of the cell it is closer to.
-    side value = match value * 0.0625 - floor (value * 0.0625) < 0.5
-        true => 0 - 1
-        false => 1
-
-    run (cells, index, sum, b) = range (listGet cells.starts index ?: 0, listGet cells.starts (satAdd index 1) ?: 0) |> fold sum (\(total, j) => accumulate (b, total, listGet cells.ordered j ?: b))
-
-    gather (b, cells, sum, i) = run (cells, cellIndex (satAdd (cell b.birdX) (satMul (satSub i (satMul (intDiv i 2) 2)) (side b.birdX)), satAdd (cell b.birdY) (satMul (intDiv i 2) (side b.birdY))), sum, b)
-
-    nearby (b, cells) = range (0, 4) |> fold (alone ()) (\(sum, i) => gather (b, cells, sum, i))
-
-    alone () = Nearby(sepX = 0.0, sepY = 0.0, alignX = 0.0, alignY = 0.0, cohereX = 0.0, cohereY = 0.0, nearCount = 0)
+        Grid(ordered = mapList (sorted, \value => birdOf (birds, value)), starts = starts, cellIds = mapList (sorted, cellOf))
 
     // About half the flock looks for flockmates each frame, chosen by a parity that changes as birds move;
     // the other half keeps its heading. Every bird still moves, homes, flees and minds the dog every frame.
-    looks (b, frame) =
-        mixed = satAdd (floatToInt (floor (b.birdX * 8.0 + b.birdY * 8.0)) ?: 0) frame
+    looks (x, y, frame) =
+        mixed = satAdd (floatToInt (floor (x * 8.0 + y * 8.0)) ?: 0) frame
         satSub mixed (satMul (intDiv mixed 2) 2) == 0
-
-    // Birds circle back toward the meadow and away from walls, so only herding brings them to the pen.
-    homing (b) = Vector(vectorX = (70.0 - b.birdX) * 0.0015 + wall (b.birdX, 320.0), vectorY = (100.0 - b.birdY) * 0.0008 + wall (b.birdY, 200.0))
-
-    // Walls push back across a twelve-unit margin, harder the closer a bird gets, so birds turn instead of piling up.
-    wall (value, high) = match value < 12.0
-        true => (12.0 - value) * 0.04
-        false => match value > high - 12.0
-            true => (high - 12.0 - value) * 0.04
-            false => 0.0
-
-    // A bird within twenty units of a hawk bolts directly away from it, harder the closer it is.
-    flee (b, hawk) =
-        dx = b.birdX - hawk.hawkX
-        dy = b.birdY - hawk.hawkY
-        near = squared (dx, dy)
-        match near < 400.0
-            true => Vector(vectorX = dx * (400.0 - near) * 0.0004, vectorY = dy * (400.0 - near) * 0.0004)
-            false => Vector(vectorX = 0.0, vectorY = 0.0)
-
-    panic (b, hawks) = foldList (hawks, Vector(vectorX = 0.0, vectorY = 0.0), \(sum, hawk) =>
-        away = flee (b, hawk)
-        Vector(vectorX = sum.vectorX + away.vectorX, vectorY = sum.vectorY + away.vectorY))
-
-    // Separation, mean alignment and mean cohesion combine with homing, hawk panic and sheepdog repulsion.
-    steer (b, player, hawks, cells, frame) =
-        sum = match looks (b, frame)
-            true => nearby (b, cells)
-            false => alone ()
-        home = homing b
-        scared = herd (b, player)
-        fear = panic (b, hawks)
-        push = Vector(vectorX = scared.vectorX + home.vectorX + fear.vectorX, vectorY = scared.vectorY + home.vectorY + fear.vectorY)
-        handle Arith
-            divideByZero _ dividend => dividend
-        match sum.nearCount == 0
-            true => speed (b.birdVx + push.vectorX, b.birdVy + push.vectorY)
-            false => speed (b.birdVx + sum.sepX * 0.08 + (sum.alignX / toFloat sum.nearCount - b.birdVx) * 0.06 + (sum.cohereX / toFloat sum.nearCount - b.birdX) * 0.003 + push.vectorX, b.birdVy + sum.sepY * 0.08 + (sum.alignY / toFloat sum.nearCount - b.birdVy) * 0.06 + (sum.cohereY / toFloat sum.nearCount - b.birdY) * 0.003 + push.vectorY)
 
     wrapX value = clamp (value, 0.0, 320.0)
 
     wrapY value = clamp (value, 0.0, 200.0)
-
-    movedBird (b, cells, player, hawks, frame, elapsed) =
-        velocity = steer (b, player, hawks, cells, frame)
-        Bird(birdX = wrapX (b.birdX + velocity.vectorX * elapsed * 60.0), birdY = wrapY (b.birdY + velocity.vectorY * elapsed * 60.0), birdVx = velocity.vectorX, birdVy = velocity.vectorY)
 
     closer (hawk, found, b) =
         distance = squared (hawk.hawkX - b.birdX, hawk.hawkY - b.birdY)
@@ -327,11 +257,29 @@ module Simulation
         next = Store(world = freshWorld (count, satAdd world.roundNumber 1, world.scoreValue), settings = settings(flockSize = count), scores = scores(best = best))
         ui::Step(stepStore = next, requests = writeRequests changed, writes = writeSlices changed text)
 
+    // One bird of the sorted flock, steered by its first seven flockmates, homing, walls, the dog and hawks.
+    flyOne (flock, hawkXs, hawkYs, player, scale, frame, i) =
+        x = listGet flock.sortedX i ?: 0.0
+        y = listGet flock.sortedY i ?: 0.0
+        found = match looks (x, y, frame)
+            true => Steering::mates (flock, i)
+            false => Mates(mateCount = 0.0, mateSepX = 0.0, mateSepY = 0.0, mateAlignX = 0.0, mateAlignY = 0.0, mateCohereX = 0.0, mateCohereY = 0.0)
+        rawX = Steering::axis (x, y, listGet flock.sortedVx i ?: 0.0, found.mateCount, found.mateSepX, found.mateAlignX, found.mateCohereX, player.playerX, player.playerY, hawkXs, hawkYs, 70.0, 0.0015, 320.0)
+        rawY = Steering::axis (y, x, listGet flock.sortedVy i ?: 0.0, found.mateCount, found.mateSepY, found.mateAlignY, found.mateCohereY, player.playerY, player.playerX, hawkYs, hawkXs, 100.0, 0.0008, 200.0)
+        velocity = speed (rawX, rawY)
+        Bird(birdX = wrapX (x + velocity.vectorX * scale), birdY = wrapY (y + velocity.vectorY * scale), birdVx = velocity.vectorX, birdVy = velocity.vectorY)
+
+    // The flock moves in cell order as float lists (`Steering`), so no bird allocates while it looks around.
+    flown (cells, hawks, player, elapsed, frame) =
+        flock = Sorted(sortedX = mapList (cells.ordered, \b => b.birdX), sortedY = mapList (cells.ordered, \b => b.birdY), sortedVx = mapList (cells.ordered, \b => b.birdVx), sortedVy = mapList (cells.ordered, \b => b.birdVy), sortedCell = cells.cellIds, cellStarts = cells.starts)
+        hawkXs = mapList (hawks, \hawk => hawk.hawkX)
+        hawkYs = mapList (hawks, \hawk => hawk.hawkY)
+        range (0, length cells.ordered) |> fold [] (\(out, i) => listAppend out (flyOne (flock, hawkXs, hawkYs, player, elapsed * 60.0, frame, i)))
+
     physics (store, elapsed) =
         world = store.world
         player = movedPlayer (world, elapsed)
-        cells = grid world.birds
-        moved = mapList (world.birds, \b => movedBird (b, cells, player, world.hawks, world.frameCount, elapsed))
+        moved = flown (grid world.birds, world.hawks, player, elapsed, world.frameCount)
         rescued = filterList (moved, \b => b.birdX >= 290.0)
         remaining = filterList (moved, \b => b.birdX < 290.0)
         hawks = mapList (world.hawks, \hawk => movedHawk (hawk, remaining, elapsed))

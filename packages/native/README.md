@@ -40,7 +40,8 @@ flowchart LR
 | `src/scene.ospml` | `Scenes`: scene primitives and packed colours ([UI-SCENE]) |
 | `src/reactive.ospml` | The `Slices` effect for host-held slices, `Keyed::region` and `Signals::written` ([UI-SIGNALS], [UI-REGIONS]) |
 | `src/theme.ospml` | `Theme`, `Token`, `Contrast` (WCAG 2 luminance and ratio) and `Themes` ([UI-THEME]) |
-| `src/runtime.ospml` | `Runtime::start` and `Runtime::dispatch`: the session, the envelope and the serialized update ([UI-STORE], [UI-PROTOCOL]) |
+| `src/runtime.ospml` | `Runtime::start` and `Runtime::dispatch`: the session, the envelope and the serialized update ([UI-STORE], [UI-PROTOCOL]); `Runtime::begin` and `Runtime::proceed` for a resident session ([UI-RESIDENT]) |
+| `src/stream.ospml` | The `SceneStream` effect and `Streams`: a resident session's rects, discs and sprites sent to the host outside the envelope ([UI-SCENE-STREAM]) |
 | `tests/` | The package's suite: a two-slice probe application driven through the real `start`/`dispatch` path, plus encoding, ordinal, splitter, request, document, theme and list cases |
 
 Every export carries a documentation comment, and the analyzer (`osprey packages/native/tests --check`) reports none missing.
@@ -158,6 +159,20 @@ An application exports `Runtime::start (context, init, render, save, theme)` and
 | `theme` | First envelope only |
 
 Events are `{"kind":"ui","region","revision","ordinal","value","now"}`, `{"kind":"completed","ticket","ok","result","error","now"}` and `{"kind":"lifecycle","phase","now"}`. A host bounds string length, tree depth and node count before decoding.
+
+### Resident sessions [UI-RESIDENT]
+
+A host that links the application into its own process, as the GPUI host does, can keep the session in the library instead of round-tripping it. The application's boundary file declares a file-scope cell holding a `Session` (`Runtime::idle store` before the first call), and its `start` and `dispatch` exports call `Runtime::begin` and `Runtime::proceed`, which take and return the live session value; a handler arm stores the returned session in the cell ([MODULES-FILE-SCOPE-BINDING](../../docs/specs/language/0025-ModulesAndNamespaces.md)). The envelope's `state` is then the marker `"resident"`, which the host returns unchanged, and no event parses, restores, saves or re-encodes the store. Every other envelope field, and every rule for resolving events, is unchanged. A `ui-edit` event cannot be recovered, because there is no prior state to read, and is refused with a diagnostic. Hosts that keep only strings, such as the VS Code webview, use `start` and `dispatch`.
+
+### Scene stream [UI-SCENE-STREAM]
+
+In a resident session, a changed region's scenes send their rects, discs and sprites to the host through the `SceneStream` effect, one `shape` operation per primitive, depth first in the order the encoder walks the tree and, within a scene, in list order. The scene node keeps its strips, glyphs and paths in `shapes` and reports how many primitives it streamed in `streamed` (always present, 0 when nothing streamed). The application's boundary answers `shape` with a host import, reading the fields through `Streams::code`, `Streams::index`, `Streams::value`, `Streams::colour` and `Streams::depth`:
+
+```osprey-ml
+extern gpui_shape (code : int) (index : int) (a : float) (b : float) (c : float) (d : float) (e : float) (tint : int) (layer : int) -> int
+```
+
+The host clears its stream before each call, gives each scene with a nonzero `streamed` the next that many streamed primitives, then draws the node's own shapes followed by the streamed ones, stably sorted by depth. A count that does not match what arrived is a diagnostic. Flock streams its birds this way, so a frame of 5,000 birds carries an envelope of under 2 KB.
 
 ### Pending edits [UI-EVENTS]
 

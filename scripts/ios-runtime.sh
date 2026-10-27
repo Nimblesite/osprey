@@ -34,6 +34,8 @@ mirror="compiler/lib/$(basename "$archive")"
     "$clang" --version
     xcrun --sdk "$sdk" --show-sdk-build-version
     for source in "${sources[@]}"; do cksum "compiler/runtime/$source.c"; done
+    for source in ${OSPREY_RUNTIME_OBJC:-}; do cksum "compiler/runtime/$source.m"; done
+    if [[ -n ${OSPREY_RUNTIME_OBJC:-} ]]; then cksum compiler/bin/gpu_shader_source.h compiler/runtime/*.metal; fi
     cksum compiler/runtime/*.h scripts/ios-runtime.sh scripts/runtime-memory.sh scripts/ios.mk Makefile
 } >"$scratch/inputs"
 
@@ -41,6 +43,11 @@ if [[ ! -s "$archive" ]] || ! cmp -s "$scratch/inputs" "$fingerprint"; then
     echo "==> building Apple C runtime: $triple"
     for source in "${sources[@]}"; do
         compile_runtime_source "$source" "$clang" -target "$triple" -isysroot "$sdk_path" "${flags[@]}"
+    done
+    # Objective-C units, such as the Metal device adapter of the Mac slice ([GPU-DEVICE]).
+    for source in ${OSPREY_RUNTIME_OBJC:-}; do
+        "$clang" -target "$triple" -isysroot "$sdk_path" "${flags[@]}" -fobjc-arc \
+            "compiler/runtime/$source.m" -o "$scratch/$source.o"
     done
     "$libtool" -static -o "$scratch/runtime.a" "$scratch"/*.o
     mv "$scratch/runtime.a" "$archive"

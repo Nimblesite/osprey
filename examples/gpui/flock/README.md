@@ -14,8 +14,15 @@ Flock is an arcade herding game written entirely in Osprey with `@osprey/native`
 From the repository root:
 
 ```sh
-OSPREY_GPUI_APP="$PWD/examples/gpui/flock" hosts/gpui/run.sh
+make gpui-flock                                    # 1,000 birds
+bash examples/gpui/flock/run.sh --flock 5000       # any size from 1 to 20,000
 ```
+
+## How it stays fast
+
+- **Resident session.** [`main.ospml`](main.ospml) keeps the framework's `Session` in a file-scope cell and calls `Runtime::begin` and `Runtime::proceed`, so a frame never serializes or parses the flock ([UI-RESIDENT](../../../packages/native/README.md)).
+- **Scene stream.** Each bird's disc goes to the host through the `gpui_shape` import instead of the envelope, which stays under 2 KB a frame ([UI-SCENE-STREAM](../../../packages/native/README.md)).
+- **Bounded steering.** [`steering.ospml`](src/steering.ospml) reads the flock as float lists sorted by cell, and each bird steers by its first seven flockmates within eight units, the topological rule real starling flocks follow (Ballerini et al., PNAS 2008). The walk carries its sums as arguments and allocates once per bird; alternate halves of the flock look for flockmates each frame.
 
 ## Test
 
@@ -23,14 +30,15 @@ OSPREY_GPUI_APP="$PWD/examples/gpui/flock" hosts/gpui/run.sh
 ./target/release/osprey examples/gpui/flock/test --run --memory=arc
 ```
 
-The tests drive the real serialized `Runtime::start` and `Runtime::dispatch` boundary, including movement, rescue, predation, pause, rounds, scene encoding and score loading.
+The tests drive the real serialized `Runtime::start` and `Runtime::dispatch` boundary, including movement, rescue, predation, pause, rounds, scene encoding, score loading, launch sizes and the steering rules.
 
 ## Measured
 
-`run.sh --bench 20`, window focused (macOS throttles the display clock of a window behind another):
+`run.sh --bench 10 --flock N` on an Apple M4 Max MacBook Pro (120 Hz display). `frame` is main-thread time from a frame event to the end of the paint that shows it: dispatch, envelope apply, layout and paint. A 120 Hz frame has 8.3 ms.
 
-| Machine | Flock | FPS | Dispatch | Paint | Envelope |
-| --- | --- | --- | --- | --- | --- |
-| Apple M-series MacBook Pro, 120 Hz display | 1,000 birds | 107 to 120 | 5.8 to 7.3 ms | 0.3 ms | 90 to 140 KB |
+| Flock | Frame | Dispatch | Paint | Envelope |
+| --- | --- | --- | --- | --- |
+| 1,000 birds | 1.7 ms | 1.2 ms | 0.05 ms | 1.7 KB |
+| 5,000 birds | 4.7 ms | 4.0 ms | 0.2 ms | 1.7 KB |
 
-Without the window, 2,000 birds cost 21 ms and 5,000 birds 45 ms per frame through start and dispatch, so the 5,000-bird gate in [plan 0036](../../../docs/plans/0036-gpui-desktop-host.md) is not met yet.
+The window's own `fps` follows the display clock, which macOS slows to about 26 Hz while the screen is locked or the window is hidden; the frame cost above does not depend on it. Before the resident session and the scene stream, 5,000 birds cost 29 ms of dispatch and ran at 27 fps.

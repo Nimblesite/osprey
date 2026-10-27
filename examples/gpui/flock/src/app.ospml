@@ -11,7 +11,7 @@ import flock::View
 (** The application exported through Flock's two-function C boundary. *)
 module App
     (** Starts round one, the frame clock and the bounded high-score read. *)
-    export initial _ = Runtime::asking (Simulation::initialStore (), [Requests::ask ("clock", ui::Animate(animated = true)), Requests::ask ("scores:read", ui::StoreRead(readName = "flock-scores.json", readLimit = 4096, readSlice = "scores"))])
+    export initial context = Runtime::asking (Simulation::sizedStore (Simulation::launchSize context.arguments), [Requests::ask ("clock", ui::Animate(animated = true)), Requests::ask ("scores:read", ui::StoreRead(readName = "flock-scores.json", readLimit = 4096, readSlice = "scores"))])
 
     tapped (store, action) = match action
         TogglePause => Simulation::togglePause store

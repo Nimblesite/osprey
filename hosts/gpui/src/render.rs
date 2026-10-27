@@ -427,8 +427,8 @@ pub fn diagnostics(view: &mut HostView, cx: &mut Context<HostView>) -> AnyElemen
     }
     if view.animating {
         strip = strip.child(div().text_sm().child(format!(
-            "fps {} dispatch {:.3} paint {:.3} envelope {}",
-            view.fps, view.dispatch_ms, view.paint_ms, view.envelope_bytes
+            "fps {} dispatch {:.3} paint {:.3} frame {:.3} envelope {}",
+            view.fps, view.dispatch_ms, view.paint_ms, view.frame_ms, view.envelope_bytes
         )));
     }
     strip.into_any_element()

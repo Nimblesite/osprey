@@ -4,6 +4,8 @@ namespace flocktests
 import ui::Doc
 import ui::Runtime
 import flock::App
+import flock::Simulation
+import flock::Steering
 import flocktests::Probes
 
 fixtureWorld (birds, hawks) = flock::World(birds = birds, hawks = hawks, player = flock::Player(playerX = 160.0, playerY = 100.0), held = flock::Held(heldLeft = false, heldRight = false, heldUp = false, heldDown = false), targetX = 0.0, targetY = 0.0, targetActive = false, roundNumber = 1, scoreValue = 0, elapsedTotal = 0.0, frameCount = 0, fps = 0)
@@ -187,3 +189,35 @@ test ("a bird beside a hawk bolts away from it", \() =>
     after = Probes::postStore (started, store, frameEvent ())
     expect (length (birdsOf after), 2)
     expect (birdXAt (after, 0) < 50.0, true))
+
+// `--flock N` sizes the first round, bounded to 1 to 20,000; anything else keeps 1,000.
+test ("the launch arguments size the first flock", \() =>
+    expect (Simulation::launchSize ["--bench", "20", "--flock", "5000"], 5000)
+    expect (Simulation::launchSize [], 1000)
+    expect (Simulation::launchSize ["--flock"], 1000)
+    expect (Simulation::launchSize ["--flock", "lots"], 1000)
+    expect (Simulation::launchSize ["--flock", "0"], 1000)
+    expect (Simulation::launchSize ["--flock", "90000"], 20000)
+    expect (length (Simulation::sizedStore 2000).world.birds, 2000))
+
+// Twelve birds in one cell at (20 + i, 20), all still; the sorted flock as `Steering` reads it.
+huddle () =
+    xs = mapList ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], \i => 20.0 + toFloat i * 0.5)
+    flock::Sorted(sortedX = xs, sortedY = mapList (xs, \_ => 20.0), sortedVx = mapList (xs, \_ => 1.0), sortedVy = mapList (xs, \_ => 0.0), sortedCell = mapList (xs, \_ => 25), cellStarts = listConcat (range (0, 26) |> fold [] (\(out, _) => listAppend out 0)) (range (26, 346) |> fold [] (\(out, _) => listAppend out 12)))
+
+// A bird steers by at most its first seven flockmates in sight, never itself.
+test ("a bird counts at most seven flockmates and never itself", \() =>
+    found = Steering::mates (huddle (), 0)
+    expect (found.mateCount, 7.0)
+    expect (found.mateAlignX, 7.0)
+    expect (found.mateCohereX, 7.0 * 20.0 + 0.5 * (1.0 + 2.0 + 3.0 + 4.0 + 5.0 + 6.0 + 7.0)))
+
+// Flockmates are within eight units: a lone bird far from the others sees none.
+test ("a bird beyond eight units of every other sees no flockmate", \() =>
+    flock = huddle ()
+    alone = flock(sortedX = listAppend flock.sortedX 60.0, sortedY = listAppend flock.sortedY 60.0, sortedVx = listAppend flock.sortedVx 0.0, sortedVy = listAppend flock.sortedVy 0.0, sortedCell = listAppend flock.sortedCell 25)
+    expect ((Steering::mates (alone, 12)).mateCount, 0.0))
+
+// Alone, away from walls, the dog and hawks, a bird keeps its velocity plus homing toward the meadow.
+test ("an axis with no flockmates is the velocity plus homing", \() =>
+    expect (Steering::axis (100.0, 100.0, 1.0, 0.0, 0.0, 0.0, 0.0, 300.0, 180.0, [], [], 70.0, 0.0015, 320.0), 1.0 + (70.0 - 100.0) * 0.0015))

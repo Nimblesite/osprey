@@ -1,6 +1,6 @@
 # Plan 0036 — GPUI desktop host: Osprey Native on the GPU, first on the Mac
 
-Contract: [spec 0046](../specs/platforms/0046-GpuiDesktopHost.md). Framework: [`packages/native`](../../packages/native/README.md). Status: **phases 0 to 3 built; Flock plays in the window at the display rate for 1,000 birds; the 5,000-bird gate is not met; phase 4 (Linux and Windows) not started.**
+Contract: [spec 0046](../specs/platforms/0046-GpuiDesktopHost.md). Framework: [`packages/native`](../../packages/native/README.md). Status: **phases 0 to 3 built; Flock's frame at 5,000 birds costs 4.7 ms of a 120 Hz frame's 8.3 ms; phase 4 (Linux and Windows) built, its CI awaiting a first pull-request run.**
 
 ## Summary
 
@@ -54,7 +54,12 @@ Exit: **met for the window**; the probe app runs in a GPUI window. The envelope 
 
    Profile at 5,000: 28% `Doc::write` of which 20% is `osp_float_spelling` (shortest round-trip spelling of about 45,000 floats per frame: the scene's and the saved store's), 11% `Encode::scene`, 5% store restore, 5% store save, the rest ARC traffic and allocation.
 
-Exit: **not met at 120 Hz.** 5,000 sprites cost 14.7 ms in the framework alone, which holds 60 Hz with little room for the game's own simulation and none for a ProMotion display. Decision: JSON per frame stays for now and Flock's default flock size is whatever holds the display rate on the measured machine, shown in its HUD. Levers, in order: a faster float spelling in `compiler/runtime/float_spelling.c` (a binary search over precisions with `strtod` per probe today; Ryu-style would cut the 20%), a smaller saved store (positions as integers in hundredths spell and parse as integers), and only then the `scene(saved) -> const float *` export, which removes the scene's share but not the store round trip.
+Exit: **met.** The JSON-per-frame path above could not hold 120 Hz at 5,000 sprites, so two framework features replace it for hosts that link the application in-process:
+
+6. [x] **Resident session** ([UI-RESIDENT]): `Runtime::begin` and `Runtime::proceed` take and return the live `Session`; the application's boundary keeps it in a file-scope cell, which the compiler now allows in a project's entry source ([MODULES-FILE-SCOPE-BINDING], `crates/osprey-project`, tests in `tests/entry_cells.rs`). No frame parses, restores, saves or re-encodes the store; the envelope's `state` is the marker `"resident"`.
+7. [x] **Scene stream** ([UI-SCENE-STREAM]): a changed scene's rects, discs and sprites go to the host one `gpui_shape` call at a time instead of as JSON; the scene node carries only the count. The host gives each scene its run in the encoder's walk order and paints runs of same-depth quads inside one GPUI layer, so they take one draw order instead of one bounds-tree insertion each.
+
+   Measured with `hosts/gpui/bench` mode 3 (resident, streamed; M4 Max, ARC): 120 frames of 5,000 sprites, start-up included, in **0.12 s of CPU, under 1 ms per frame** against 14.7 ms on the JSON path.
 
 ### Phase 2 — Flock
 
@@ -71,9 +76,11 @@ Measured without a host (60 frame events through `start`/`dispatch`, M-series Ma
 | 2,000 | 21 ms | 60 Hz is the edge |
 | 5,000 | 45 ms | neither |
 
-The default flock is 1,000 and the settings picker offers 2,000, 5,000 and 10,000 for anyone who wants to watch the rate fall. The gate stays at 5,000 and is not met; the framework levers above come first, then the simulation's density (the starting grid packs about twenty birds per cell).
+The default flock is 1,000 and the settings picker offers 2,000, 5,000 and 10,000; `run.sh --flock N` starts with N.
 
-Exit: Flock is playable, the gate passes, the README shows the measured numbers with the machine they came from.
+5. [x] **The 5,000-bird gate.** Flock now runs resident and streamed (phase 1 steps 6 and 7) and steers on the CPU by each bird's first seven flockmates over float lists sorted by cell (`examples/gpui/flock/src/steering.ospml`), allocating once per bird. Moving the steering to Osprey's GPU compute surface was tried and rejected: Metal emulates binary64, so the kernels took 28 ms a frame on an M4 Max, and the host backend's `gpuGet` made them slower still. Measured with `run.sh --bench 10 --flock 5000` on an M4 Max MacBook Pro, 120 Hz display: **frame 4.7 ms** (main-thread time from the frame event to the end of its paint: dispatch 4.0 ms, envelope apply and layout 0.5 ms, paint 0.2 ms), envelope 1.7 KB, against the 8.3 ms a 120 Hz frame allows. The window's fps reading at the time was 26, because the screen was locked and macOS slows the display clock of a window that is not visible; the frame cost does not depend on that clock. Before this step, 5,000 birds cost 29 ms of dispatch and ran at 27 fps.
+
+Exit: **met on frame cost**: Flock is playable, 5,000 birds cost 4.7 ms of the 8.3 ms a 120 Hz frame allows, and the README shows the numbers with the machine they came from. A focused-window fps reading at 5,000 birds is still to be recorded with the screen unlocked.
 
 ### Phase 3 — make native host-agnostic
 
@@ -92,9 +99,11 @@ Exit: met. `packages/native` names no host, product or operating system outside 
 
 ### Phase 4 — Linux and Windows
 
-1. Desktop static-library targets `linux-x64` and `windows-x64` in the CLI, sharing export selection and header generation with the Mac slice (`crates/osprey-cli/src/ios_abi*.rs`), with ARC runtimes.
-2. Capability adapters for file dialogs, reveal and store on each platform.
-3. CI: the Flock smoke on all three platforms; the frame-rate bench on macOS only until Linux and Windows runners with GPUs exist.
+1. [x] Desktop static-library targets `linux-x64`, `linux-arm64` and `windows-x64` in the CLI (`crates/osprey-cli/src/desktop.rs`), with the Apple and Android slices' export selection and header generation, ARC by default, `clang -fPIC` (`OSPREY_CC`) and `llvm-ar` (`OSPREY_AR`) bundling the host's native runtime ([GPUI-HOST-TARGETS]). A slice builds on its own system; elsewhere `--compile` is refused naming where to build it, and `--check` works anywhere. Unit tests cover parsing, the host check and C `bool` extension. The macOS runtime slices now carry the Metal device adapter. The host's `build.rs` and `run.sh` choose the target and system libraries by operating system, and its home, log and store folders follow each system's conventions.
+2. [x] Capability adapters (pi #6, reviewed): `run` (no shell, deadline kill, output limit), `list-directories`, `read-texts`, `store-*` with a per-system root, `choose-file` (types enforced after the panel, which cannot filter), `choose-folder`, `save-file`, `reveal` through GPUI's own cross-platform panels, and `cancel`. Blocking adapters run on GPUI's background executor; an unknown kind is a diagnostic and an error completion. 15 unit tests.
+3. [x] CI: `.github/workflows/gpui.yml` runs the native, Flock and painting suites, the host's tests and clippy, and the probe and Flock smoke runs on macOS, Ubuntu and Windows (MSYS2 UCRT64 with Rust's GNU target, matching the MinGW runtime). The frame-rate bench stays on a Mac with a display. Not yet observed: the workflow runs on pull requests, and none has run since it was added; a local Linux run in Docker could not finish because the VM had 1.9 GB free.
+
+Exit: Linux and Windows smoke runs green in CI. Pending the first pull-request run.
 
 ## Risks
 

@@ -12,11 +12,13 @@ use std::collections::BTreeSet;
 pub(crate) fn collect(
     contributions: &[Contribution],
     sources: &[SourceMetadata],
+    entry_source: Option<usize>,
 ) -> (ProjectGraph, Vec<ProjectError>) {
     let mut collector = Collector {
         graph: ProjectGraph::default(),
         errors: Vec::new(),
         sources,
+        entry_source,
     };
     for (index, contribution) in contributions.iter().enumerate() {
         let namespace = contribution.namespace.label();
@@ -60,6 +62,9 @@ pub(crate) struct Collector<'a> {
     pub(crate) graph: ProjectGraph,
     pub(crate) errors: Vec<ProjectError>,
     pub(crate) sources: &'a [SourceMetadata],
+    /// The selected entry source, whose file scope may hold handler-owned
+    /// cells ([MODULES-FILE-SCOPE-BINDING]).
+    pub(crate) entry_source: Option<usize>,
 }
 
 impl Collector<'_> {
@@ -116,7 +121,7 @@ impl Collector<'_> {
                 position,
                 ..
             } => {
-                if *mutable && owner.is_empty() {
+                if *mutable && owner.is_empty() && self.entry_source != Some(source) {
                     self.error(source, *position, "namespace-level `mut` is forbidden");
                 }
                 let key = key(namespace, owner, name);
@@ -454,7 +459,7 @@ mod tests {
             imports: Vec::new(),
             statements,
         }];
-        collect(&contributions, &[]).0
+        collect(&contributions, &[], None).0
     }
 
     #[test]

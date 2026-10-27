@@ -42,23 +42,72 @@ pub(super) fn canvas(
                 handle.update(cx, |view, _| view.diagnose_once(problem));
             }
             let elapsed = started.elapsed().as_secs_f64() * 1000.;
-            handle.update(cx, |view, _| view.paint_ms = elapsed);
+            handle.update(cx, |view, _| {
+                view.paint_ms = elapsed;
+                if let Some(arrived) = view.frame_started.take() {
+                    view.frame_ms = arrived.elapsed().as_secs_f64() * 1000.;
+                }
+            });
         },
     )
     .size_full()
 }
 
-/// Paints decoded primitives in their stable depth order.
+/// Paints decoded primitives in their stable depth order. A long run of quads (rects, discs and
+/// sprites) sharing one depth paints inside one GPUI layer, so the run takes a single draw order instead of
+/// one bounds-tree insertion per quad; within a run GPUI keeps insertion order. Paths, strips and
+/// glyphs keep their own draw orders, which GPUI's path batching depends on.
 fn paint(
     shapes: &[Shape],
     transform: Transform,
     window: &mut Window,
     cx: &mut App,
 ) -> Result<(), String> {
-    for shape in shapes {
-        paint_shape(shape, transform, window, cx)?;
+    for (run, layered) in runs(shapes) {
+        let run = &shapes[run];
+        if layered {
+            let bounds = window.content_mask().bounds;
+            window.paint_layer(bounds, |window| {
+                run.iter()
+                    .try_for_each(|item| paint_shape(item, transform, window, cx))
+            })?;
+        } else {
+            run.iter()
+                .try_for_each(|item| paint_shape(item, transform, window, cx))?;
+        }
     }
     Ok(())
+}
+
+/// Splits depth-sorted shapes into consecutive runs that together cover every shape once: a run of
+/// quads sharing a depth, or a single other shape, each marked for a layer when it is long enough.
+fn runs(shapes: &[Shape]) -> Vec<(std::ops::Range<usize>, bool)> {
+    let mut found = Vec::new();
+    let mut start = 0;
+    while let Some(shape) = shapes.get(start) {
+        let length = shapes[start..]
+            .iter()
+            .take_while(|next| quad_like(next) && quad_like(shape) && next.depth() == shape.depth())
+            .count()
+            .max(1);
+        found.push((start..start + length, length >= LAYERED_RUN));
+        start += length;
+    }
+    found
+}
+
+/// The shortest run of same-depth quads worth one GPUI layer. A layer covers the scene, so it
+/// changes the draw orders GPUI gives the paths after it, and with them how overlapping
+/// translucent paths batch; a few quads paint one by one, as a native GPUI program paints them,
+/// which keeps the painting port pixel-identical to GPUI's own example.
+const LAYERED_RUN: usize = 64;
+
+/// Whether GPUI draws this primitive as a single quad.
+fn quad_like(shape: &Shape) -> bool {
+    matches!(
+        shape,
+        Shape::Rect { .. } | Shape::Disc { .. } | Shape::Sprite { .. }
+    )
 }
 
 /// Paints exactly one primitive with GPUI's low-level operations.
@@ -316,5 +365,54 @@ fn hsla(tint: Tint) -> Hsla {
     match tint {
         Tint::Rgb([r, g, b, a]) => Rgba { r, g, b, a }.into(),
         Tint::Hsl([h, s, l, a]) => Hsla { h, s, l, a },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{runs, LAYERED_RUN};
+    use crate::scene::Shape;
+
+    fn disc(depth: f32) -> Shape {
+        Shape::Disc {
+            x: 0.,
+            y: 0.,
+            radius: 1.,
+            colour: 0,
+            depth,
+        }
+    }
+
+    fn glyphs(depth: f32) -> Shape {
+        Shape::Glyphs {
+            text: "x".to_owned(),
+            x: 0.,
+            y: 0.,
+            size: 1.,
+            colour: 0,
+            depth,
+        }
+    }
+
+    /// Every shape is painted exactly once: short quad runs one by one, a long run in one layer,
+    /// and a depth change or a non-quad ends a run.
+    #[test]
+    fn runs_cover_every_shape_once_and_layer_only_long_quad_runs() {
+        let mut shapes: Vec<Shape> = (0..5).map(|_| disc(0.)).collect();
+        shapes.push(glyphs(0.));
+        shapes.extend((0..LAYERED_RUN).map(|_| disc(1.)));
+        shapes.push(disc(2.));
+        let found = runs(&shapes);
+        assert_eq!(
+            found,
+            vec![
+                (0..5, false),
+                (5..6, false),
+                (6..6 + LAYERED_RUN, true),
+                (6 + LAYERED_RUN..7 + LAYERED_RUN, false)
+            ]
+        );
+        let covered: usize = found.iter().map(|(run, _)| run.len()).sum();
+        assert_eq!(covered, shapes.len());
     }
 }

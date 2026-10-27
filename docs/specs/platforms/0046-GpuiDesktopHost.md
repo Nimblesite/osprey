@@ -1,6 +1,6 @@
 # GPUI Desktop Host [GPUI-HOST]
 
-**Status:** running on macOS in `hosts/gpui`: the window, renderer, scene painter, frame clock and recorded-event smoke run work, and two examples run on it (`examples/gpui/flock` and `examples/gpui/painting`, the latter pixel-identical to GPUI's own painting example). Linux and Windows are not started. Delivery is tracked by [plan 0036](../../plans/0036-gpui-desktop-host.md).
+**Status:** running on macOS in `hosts/gpui`: the window, renderer, scene painter, frame clock and recorded-event smoke run work, and two examples run on it (`examples/gpui/flock` and `examples/gpui/painting`, the latter pixel-identical to GPUI's own painting example). Linux and Windows have library targets and CI ([GPUI-HOST-TARGETS]). Delivery is tracked by [plan 0036](../../plans/0036-gpui-desktop-host.md).
 
 GPUI is a UI framework that draws with the GPU. It is not Osprey's GPU compute surface ([0034](../runtime/0034-GPUComputation.md)): an Osprey program here never touches the GPU itself. It describes a scene as data, and the Rust host hands that scene to GPUI, which batches, tessellates and draws it with Metal (Vulkan, DirectX later). [GPU-VS-GPUI](../runtime/0034-GPUComputation.md#gpu-compute-and-gpui-rendering--gpu-vs-gpui) sets out the difference.
 
@@ -76,6 +76,8 @@ A colour is one integer packed `0xRRGGBBAA`; `depth` orders layers from the back
 
 The node carries one binding (`event`). The host sends keys as `{"key":<name>,"down":<bool>}` and the pointer as `{"x":…,"y":…,"down":<bool>,"shift":<bool>}` in scene units through that binding, and nothing else; the application decides what a key or a position means. Key names are host-neutral: `left`, `right`, `up`, `down`, `space`, `enter`, `escape`, `tab`, `backspace`, and a single lowercase character for letters and digits; a key outside that vocabulary is not sent. A pointer event is sent on press, release and on movement while pressed, and once per movement when not pressed, at most once per frame.
 
+A resident application ([UI-RESIDENT](../../../packages/native/README.md)) streams a changed scene's rects, discs and sprites through the `gpui_shape` import instead of the envelope ([UI-SCENE-STREAM](../../../packages/native/README.md)). The host clears the stream before every `start` and `dispatch`, gives each scene node with a nonzero `streamed` the next run of that many shapes in the encoder's walk order (a screen's toolbar before its children, an aside's pane before its column), and paints the node's own shapes then the streamed ones, stably sorted by depth. A run of 64 or more quads that share a depth paints inside one GPUI layer, so it takes one draw order rather than one bounds-tree insertion per quad; shorter runs, paths, strips and glyphs keep their own orders, so a scene of a few shapes paints exactly as a native GPUI program paints it.
+
 A scene is the only node whose patch may be large every frame. The host measures the time from `dispatch` return to the end of paint and reports it in its diagnostics overlay. The acceptance gate in the plan sets the entity count and frame rate the macOS build must hold; the framework's own per-frame cost is measured by `hosts/gpui/bench` and recorded in the plan.
 
 ## Capabilities [GPUI-HOST-CAPABILITIES]
@@ -84,7 +86,15 @@ The host answers `Run`, `ListDirectories`, `ReadTexts`, `StoreRead`, `StoreWrite
 
 ## Library targets [GPUI-HOST-TARGETS]
 
-A desktop static-library target exists per platform, with the same export selection, header generation and memory rules as the Mac slice of the iOS target: `macos` today, `linux-x64` and `windows-x64` as delivered by the plan. Apple archives default to ARC; the Linux and Windows archives use ARC, matching the Windows native contract.
+A desktop static-library target exists per platform, with the same export selection, generated header and memory rules as the Mac slice of the iOS target:
+
+| `--target` | Built on | Archive contents | The host links |
+| --- | --- | --- | --- |
+| `macos` | macOS (Xcode) | the application and the Mac ARC runtime, with the Metal adapter | the archive, `libosprey_runtime_macos_arc.a` |
+| `linux-x64`, `linux-arm64` | Linux of that architecture | the application and the native ARC runtime (`libfiber_runtime_arc.a`) | the archive, `pthread`, `dl`, `m` |
+| `windows-x64` | Windows under MSYS2 UCRT64 | the application and the MinGW-built native ARC runtime | the archive, `ws2_32`, with Rust's `x86_64-pc-windows-gnu` target |
+
+A Linux or Windows slice is built on its own system, because it bundles that system's native runtime; asking for one elsewhere is refused with the system to build it on (`--check` still works anywhere). The CLI compiles the IR with `clang -O2 -fPIC` (`OSPREY_CC`) and bundles the runtime with `llvm-ar` (`OSPREY_AR`) (`crates/osprey-cli/src/desktop.rs`). `hosts/gpui/run.sh` picks the target for the system it runs on, and the host's `build.rs` links what the table says. All desktop slices default to ARC.
 
 ## Verification [GPUI-HOST-VERIFICATION]
 

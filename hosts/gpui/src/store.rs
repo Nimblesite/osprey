@@ -116,17 +116,66 @@ fn entry(name: &str) -> Result<PathBuf, String> {
     Ok(root()?.join(relative))
 }
 
-/// Returns `$HOME/Library/Application Support/Osprey/<app>`.
-fn root() -> Result<PathBuf, String> {
-    let home = std::env::var("HOME").map_err(|problem| format!("HOME is not set: {problem}"))?;
-    let app = std::env::var("OSPREY_GPUI_APP_NAME").unwrap_or_else(|_| "osprey".to_owned());
-    Ok(Path::new(&home)
+/// Returns the macOS store root: `$HOME/Library/Application Support/Osprey/<app>`.
+fn macos_root(home: &str, app: &str) -> PathBuf {
+    Path::new(home)
         .join("Library/Application Support/Osprey")
+        .join(app)
+}
+
+/// Returns the Linux store root: `$XDG_DATA_HOME/osprey/<app>`, falling back to
+/// `$HOME/.local/share/osprey/<app>` when `XDG_DATA_HOME` is unset or empty.
+fn linux_root(home: Option<&str>, data_home: Option<&str>, app: &str) -> Result<PathBuf, String> {
+    let base = data_home
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            home.filter(|value| !value.is_empty())
+                .map(|home| Path::new(home).join(".local/share"))
+        })
+        .ok_or_else(|| "HOME is not set".to_owned())?;
+    Ok(base.join("osprey").join(app))
+}
+
+/// Returns the Windows store root: `%APPDATA%\\Osprey\\<app>`.
+fn windows_root(app_data: Option<&str>, app: &str) -> Result<PathBuf, String> {
+    Ok(Path::new(app_data.ok_or("APPDATA is not set")?)
+        .join("Osprey")
         .join(app))
 }
 
+/// Selects the current platform's store root from environment values.
+fn root_from(
+    home: Option<&str>,
+    data_home: Option<&str>,
+    app_data: Option<&str>,
+    app: &str,
+) -> Result<PathBuf, String> {
+    if cfg!(target_os = "macos") {
+        return Ok(macos_root(home.ok_or("HOME is not set")?, app));
+    }
+    if cfg!(windows) {
+        return windows_root(app_data, app);
+    }
+    linux_root(home, data_home, app)
+}
+
+/// Returns the platform's application store root ([GPUI-HOST-CAPABILITIES]):
+/// macOS `~/Library/Application Support/Osprey/<app>`, Linux
+/// `$XDG_DATA_HOME/osprey/<app>` (or `~/.local/share/osprey/<app>`), Windows
+/// `%APPDATA%\\Osprey\\<app>`.
+fn root() -> Result<PathBuf, String> {
+    let app = std::env::var("OSPREY_GPUI_APP_NAME").unwrap_or_else(|_| "osprey".to_owned());
+    root_from(
+        std::env::var("HOME").ok().as_deref(),
+        std::env::var("XDG_DATA_HOME").ok().as_deref(),
+        std::env::var("APPDATA").ok().as_deref(),
+        &app,
+    )
+}
+
 /// Uses the sibling `<name>.tmp` required by the atomic replacement protocol.
-fn temporary(path: &Path) -> PathBuf {
+pub(crate) fn temporary(path: &Path) -> PathBuf {
     let mut name = OsString::from(path);
     name.push(".tmp");
     PathBuf::from(name)
@@ -135,4 +184,68 @@ fn temporary(path: &Path) -> PathBuf {
 /// Adds operation context without hiding the underlying I/O error.
 fn io_error(error: std::io::Error) -> String {
     format!("store operation failed: {error}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{linux_root, macos_root, root_from, windows_root};
+    use std::path::Path;
+
+    #[test]
+    /// Selects each platform's root from environment values alone, never the disk.
+    fn root_selection_is_pure_over_environment_values() {
+        assert_eq!(
+            macos_root("/Users/a", "app"),
+            Path::new("/Users/a/Library/Application Support/Osprey/app")
+        );
+        assert_eq!(
+            linux_root(Some("/home/a"), Some("/data"), "app").as_deref(),
+            Ok(Path::new("/data/osprey/app"))
+        );
+        assert_eq!(
+            linux_root(Some("/home/a"), Some(""), "app").as_deref(),
+            Ok(Path::new("/home/a/.local/share/osprey/app"))
+        );
+        assert_eq!(
+            linux_root(Some("/home/a"), None, "app").as_deref(),
+            Ok(Path::new("/home/a/.local/share/osprey/app"))
+        );
+        assert_eq!(
+            linux_root(None, None, "app").err().as_deref(),
+            Some("HOME is not set")
+        );
+        assert_eq!(
+            windows_root(Some(r"C:\Users\a\AppData\Roaming"), "app").as_deref(),
+            Ok(Path::new(r"C:\Users\a\AppData\Roaming")
+                .join("Osprey")
+                .join("app")
+                .as_path())
+        );
+        assert_eq!(
+            windows_root(None, "app").err().as_deref(),
+            Some("APPDATA is not set")
+        );
+    }
+
+    #[test]
+    /// Picks the convention of the platform the test binary runs on.
+    fn root_from_uses_the_current_platform() {
+        let selected = root_from(Some("/h"), Some("/d"), Some("C:/ad"), "app");
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            selected.as_deref(),
+            Ok(Path::new("/h/Library/Application Support/Osprey/app"))
+        );
+        #[cfg(all(unix, not(target_os = "macos")))]
+        assert_eq!(selected.as_deref(), Ok(Path::new("/d/osprey/app")));
+        #[cfg(windows)]
+        assert_eq!(selected.as_deref(), Ok(Path::new("C:/ad/Osprey/app")));
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            root_from(None, None, None, "app").err().as_deref(),
+            Some("HOME is not set")
+        );
+        #[cfg(not(target_os = "macos"))]
+        assert!(selected.is_ok());
+    }
 }
