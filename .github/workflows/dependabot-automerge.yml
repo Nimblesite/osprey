@@ -1,0 +1,154 @@
+# Based on Deslop's staging sweep and consolidation drain.
+# Version updates accumulate on dependabot-upgrades; only the tested
+# consolidation PR reaches main. Security PRs against main retain full CI.
+# Copy only the bump's paths so stale staging cannot revert newer workflows.
+# Workflow-file bumps use GitHub's merge API because GITHUB_TOKEN cannot push them.
+# Both main and staging must carry this workflow. Never use pull_request_target.
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+    branches:
+      - dependabot-upgrades
+  # Weekly drain heartbeat, shortly after Dependabot's own weekly runs. Runs
+  # from the default branch's copy of this file (see THE DRAIN above), adds no
+  # check runs to any PR, so the [GITHUB-DEPENDABOT] dead-skipped-check
+  # concern does not apply.
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sweep:
+    name: Sweep bump files into dependabot-upgrades
+    # Two independent gates, both required: the (unforgeable) Dependabot actor
+    # AND a `dependabot/*` source branch. actor-AND-source keeps the trust
+    # assumption explicit and resilient if the trigger set is ever widened.
+    # Scheduled runs carry neither, so they pass on the event name alone and
+    # execute only the drain step below.
+    if: github.event_name == 'schedule' || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/'))
+    # Deliberately the standard runner, NOT a larger/paid one: a trivial merge
+    # bot must not consume CI minutes meant for the real build matrix.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the staging branch
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: dependabot-upgrades
+          fetch-depth: 0
+
+      - name: Sweep the bump's files and retire the PR
+        if: github.event_name == 'pull_request'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Defense-in-depth: disable git hooks for every git op in this job, so
+          # staging attacker-influenced tree content can never execute a hook by
+          # construction. No hook is reachable today (hooks live in .git, not the
+          # tree), but this holds regardless of any future change.
+          git config --global core.hooksPath /dev/null
+          # Pull the bump branch and its base into stable local refs.
+          git fetch origin \
+            "+refs/heads/${PR_HEAD}:refs/remotes/origin/${PR_HEAD}" \
+            "+refs/heads/${PR_BASE}:refs/remotes/origin/${PR_BASE}"
+          # The PR's OWN changes: diff against the merge-base with its base
+          # branch, so nothing the base has accumulated rides along.
+          merge_base="$(git merge-base "origin/${PR_BASE}" "origin/${PR_HEAD}")"
+          changed_list="${RUNNER_TEMP}/dependabot-sweep-paths.z"
+          git diff -z --name-only "${merge_base}" "origin/${PR_HEAD}" \
+            > "${changed_list}"
+          # The token cannot PUSH workflow files, but the merge API is not a
+          # push: squash-merge the PR into the staging branch server-side (see
+          # header). Comment-and-leave-open is the conflict fallback only.
+          while IFS= read -r -d '' path; do
+            case "${path}" in
+              .github/workflows/*)
+                echo "bump edits ${path}; squash-merging the PR server-side instead of copying"
+                gh pr merge "${PR_URL}" --squash --delete-branch \
+                  || gh pr comment "${PR_URL}" --body \
+                    "Sweep could not squash-merge this workflow-file bump into \`dependabot-upgrades\` — likely a conflict with the staging tip. Comment \`@dependabot rebase\` and let the sweep retry, or merge manually."
+                exit 0
+                ;;
+            esac
+          done < "${changed_list}"
+          # Re-apply onto the LIVE staging tip and retry: concurrent Dependabot
+          # PRs race to push here, so each run restarts from whatever already
+          # landed. Copying (not merging) the bump's paths keeps clobber
+          # semantics: the latest bump of a file wins, every time.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin "+refs/heads/dependabot-upgrades:refs/remotes/origin/dependabot-upgrades"
+            git reset --hard "origin/dependabot-upgrades"
+            while IFS= read -r -d '' path; do
+              if git cat-file -e "origin/${PR_HEAD}:${path}" 2>/dev/null; then
+                git checkout "origin/${PR_HEAD}" -- "${path}"
+              else
+                git rm -q --ignore-unmatch -- "${path}"
+              fi
+            done < "${changed_list}"
+            if git diff --cached --quiet; then
+              echo "bump already staged on dependabot-upgrades; nothing to commit"
+              break
+            fi
+            git commit -q -m "build(deps): sweep ${PR_HEAD} into dependabot-upgrades"
+            if git push origin "HEAD:dependabot-upgrades"; then
+              break
+            fi
+            if [ "${attempt}" = "5" ]; then
+              echo "::error::could not push to dependabot-upgrades after 5 attempts"
+              exit 1
+            fi
+            sleep 5
+          done
+          # Retire only after the staging push succeeds; API failures stay red.
+          state="$(gh pr view "${PR_URL}" --json state --jq .state)"
+          if [ "${state}" = "OPEN" ]; then
+            gh pr close "${PR_URL}" --delete-branch \
+              --comment "Swept into \`dependabot-upgrades\` (latest bump of a file wins)."
+          elif git ls-remote --exit-code --heads origin "${PR_HEAD}" >/dev/null; then
+            git push origin --delete "${PR_HEAD}"
+          fi
+
+      # THE DRAIN (see header): without this step nothing ever flows OUT of the
+      # staging branch. Runs after every sweep and on the weekly schedule.
+      - name: Ensure the consolidation PR is open
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          open_count="$(gh pr list --repo "${GITHUB_REPOSITORY}" \
+            --head dependabot-upgrades --base main --state open \
+            --json number --jq 'length')"
+          if [ "${open_count}" != "0" ]; then
+            echo "consolidation PR already open; it tracks new sweeps by itself"
+            exit 0
+          fi
+          ahead="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/compare/main...dependabot-upgrades" \
+            --jq .ahead_by)"
+          if [ "${ahead}" = "0" ]; then
+            echo "staging branch has nothing to consolidate"
+            exit 0
+          fi
+          # Concurrent sweeps race to create; GitHub rejects the duplicate, so
+          # a failed create is fine exactly when a PR exists after all.
+          gh pr create --repo "${GITHUB_REPOSITORY}" \
+            --base main --head dependabot-upgrades \
+            --title "build(deps): consolidate dependabot-upgrades into main" \
+            --body "$(printf '%s\n' \
+              "Drains the swept Dependabot bumps into \`main\` — the single consolidation PR that ci.yml and ci-windows.yml gate . It tracks further sweeps until merged." \
+              "" \
+              "Opened by the Actions token, so GitHub holds this PR's workflow runs pending approval: **approve the pending workflow runs** on the Checks tab to fire CI before merging.")" \
+            || [ "$(gh pr list --repo "${GITHUB_REPOSITORY}" \
+                 --head dependabot-upgrades --base main --state open \
+                 --json number --jq 'length')" != "0" ]

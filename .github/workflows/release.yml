@@ -35,6 +35,12 @@ env:
   DESCRIPTION: "Osprey — a functional language with algebraic effects, fibers, and compile-time safety"
 
 jobs:
+  audit:
+    name: Dependency audit release gate
+    uses: ./.github/workflows/ci-audit.yml
+    permissions:
+      contents: read
+
   # --------------------------------------------------------------------------
   # Release scope (COST GATE) — diff this tag against the previous release tag and
   # decide which surfaces must publish, so the expensive macOS/Windows build matrix
@@ -61,12 +67,12 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # vscode-extension's lockfile links the shared profiler UI from the
         # lspkit submodule.
         with:
           submodules: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -114,7 +120,7 @@ jobs:
           - platform: win32-x64
             os: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
@@ -205,7 +211,7 @@ jobs:
           sha256() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$@"; else sha256sum "$@"; fi; }
           ( cd dist && sha256 "$staging.tar.gz" | tee "$staging.tar.gz.sha256" )
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: osprey-${{ matrix.platform }}
           path: dist/*.tar.gz*
@@ -213,17 +219,17 @@ jobs:
   # --------------------------------------------------------------------------
   github-release:
     name: Publish GitHub Release
-    needs: [version, build, scope]
+    needs: [version, build, scope, audit]
     # The standalone binary GitHub Release (and the brew/scoop jobs that depend on
     # it) only ship on a full release.
     if: ${{ needs.scope.outputs.full == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.version.outputs.version }}
           files: dist/*.tar.gz
@@ -266,12 +272,12 @@ jobs:
   # to install the runtime libs and depend on llvm (osprey shells out to it).
   brew:
     name: Publish Homebrew formula
-    needs: [version, github-release, preflight]
+    needs: [version, github-release, preflight, audit]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: dist, merge-multiple: true }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Nimblesite/homebrew-tap
           token: ${{ secrets.BREW_SCOOP_PAT }}
@@ -340,17 +346,17 @@ jobs:
   # llc/clang/gcc at compile time.
   scoop:
     name: Publish Scoop manifest
-    needs: [version, github-release, preflight]
+    needs: [version, github-release, preflight, audit]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: dist, merge-multiple: true }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Nimblesite/scoop-bucket
           token: ${{ secrets.BREW_SCOOP_PAT }}
           path: bucket
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '20' }
       - name: Write manifest
         env:
@@ -408,7 +414,7 @@ jobs:
   # extension launches a version-matched compiler verified by @nimblesite/shipwright-vscode.
   vsix:
     name: Publish VSIX ${{ matrix.target }}
-    needs: [version, build, scope]
+    needs: [version, build, scope, audit]
     # Package the per-platform VSIX only when the extension changed (or a full
     # release). build_matrix is guaranteed true here, so the bundled binary is
     # rebuilt at the new tag version.
@@ -425,7 +431,7 @@ jobs:
           - { os: ubuntu-latest, target: linux-x64,    artifact: linux-x64 }
           - { os: windows-latest, target: win32-x64,   artifact: win32-x64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # The extension links the shared profiler UI from the lspkit submodule.
         with:
           submodules: true
@@ -434,9 +440,9 @@ jobs:
       - name: Fetch the logo the extension icon is copied from
         shell: bash
         run: git lfs install --local && git lfs pull --include=website/src/assets/images/logo.png
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '20' }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-${{ matrix.artifact }}
           path: dist
@@ -488,7 +494,7 @@ jobs:
       # publishing is centralised in the publish-marketplace / publish-openvsx
       # jobs so the registry tokens live in one least-privilege place.
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: osprey-vsix-${{ matrix.target }}
           path: vscode-extension/*.vsix
@@ -506,7 +512,7 @@ jobs:
   # Nimblesite/NimblesiteDeployment docs/vscode-marketplace-oidc.md.
   publish-marketplace:
     name: Publish VSIX to VS Code Marketplace
-    needs: [version, vsix]
+    needs: [version, vsix, audit]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
@@ -514,13 +520,13 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '20' }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: osprey-vsix-*
           path: artifacts
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -563,16 +569,16 @@ jobs:
   # publish so one registry hiccup never blocks the other. [EDITOR-VSCODE]
   publish-openvsx:
     name: Publish VSIX to Open VSX
-    needs: [version, vsix, preflight]
+    needs: [version, vsix, preflight, audit]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
     permissions:
       contents: read
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '20' }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: osprey-vsix-*
           path: artifacts
@@ -612,7 +618,7 @@ jobs:
   # is skipped, so a prerelease never overwrites the live site.
   deploy-site:
     name: Deploy website to GitHub Pages
-    needs: [scope]
+    needs: [scope, audit]
     if: ${{ needs.scope.outputs.website == 'true' && !contains(github.ref_name, '-') }}
     uses: ./.github/workflows/deploy-pages.yml
     permissions:
@@ -622,7 +628,7 @@ jobs:
 
   deploy-webcompiler:
     name: Deploy web compiler
-    needs: [github-release]
+    needs: [github-release, audit]
     # Blocking, like every other channel. This deploy used to be non-fatal, and
     # the live playground consequently served a stale build for weeks behind a
     # green release. Nothing depends on this job, so failing it stops nothing —
@@ -646,6 +652,7 @@ jobs:
   release-complete:
     name: Release complete
     needs:
+      - audit
       - scope
       - version
       - build
@@ -687,7 +694,7 @@ jobs:
             | "\(.key)(\(.value.result))"' <<< "$RESULTS" | tr '\n' ' ')
 
           # These have no `if:` at all, so a skip means the run itself is broken.
-          required="scope version preflight"
+          required="scope version preflight audit"
           [ "$WANT_BUILD" != "true" ] || required="$required build"
           [ "$WANT_VSIX" != "true" ] || required="$required vsix publish-marketplace publish-openvsx"
           [ "$WANT_FULL" != "true" ] || required="$required github-release brew scoop deploy-webcompiler"

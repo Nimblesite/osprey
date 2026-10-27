@@ -158,6 +158,19 @@ suite("Profiler — Manifest", () => {
     assert.deepEqual(sync.withProfilerContributions(manifest.contributes), manifest.contributes);
   });
 
+  // The win32 release job checks package.json out with CRLF line endings; a
+  // byte comparison failed v0.22.0's Windows VSIX on an up-to-date manifest.
+  test("the sync check reads line endings as formatting, never as missing contributions", async () => {
+    const script = path.join(extensionRoot, "scripts", "sync-profiler-contributions.mjs");
+    const sync = (await import(script)) as { needsSync(text: string): boolean };
+    const text = fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8");
+    assert.equal(sync.needsSync(text), false, "the committed manifest is in sync");
+    assert.equal(sync.needsSync(text.replace(/\n/g, "\r\n")), false, "a CRLF checkout of it is in sync too");
+    const manifest = JSON.parse(text) as { contributes: { commands: unknown[] } };
+    const stale = { ...manifest, contributes: { ...manifest.contributes, commands: [] } };
+    assert.equal(sync.needsSync(`${JSON.stringify(stale, null, 2)}\r\n`), true, "a manifest missing the commands is out of sync");
+  });
+
   test("the installed profiler UI is the submodule's current build, not a stale packed copy", () => {
     const installed = path.join(extensionRoot, "node_modules", "@nimblesite", "lsp-profiler-ui", "out", "src");
     const built = path.resolve(extensionRoot, "..", "lspkit", "packages", "lsp-profiler-ui", "out", "src");

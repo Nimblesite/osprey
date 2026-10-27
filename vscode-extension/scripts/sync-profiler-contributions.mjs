@@ -42,16 +42,26 @@ export function withProfilerContributions(contributes) {
 
 const manifestPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
 
+/** The manifest `text` with the generator's current contributions, LF-terminated. */
+function synced(text) {
+  const manifest = JSON.parse(text);
+  return `${JSON.stringify({ ...manifest, contributes: withProfilerContributions(manifest.contributes) }, null, 2)}\n`;
+}
+
+/** Whether the manifest `text` lacks the current contributions. A Windows
+ * checkout has CRLF line endings, which are formatting, not contributions. */
+export function needsSync(text) {
+  return synced(text) !== text.replace(/\r\n/g, "\n");
+}
+
 function main() {
   const current = fs.readFileSync(manifestPath, "utf8");
-  const manifest = JSON.parse(current);
-  const next = `${JSON.stringify({ ...manifest, contributes: withProfilerContributions(manifest.contributes) }, null, 2)}\n`;
-  if (next === current) return;
+  if (!needsSync(current)) return;
   if (process.argv.includes("--check")) {
     console.error("package.json is missing the shared profiler contributions: run `npm run sync-profiler`.");
     process.exit(1);
   }
-  fs.writeFileSync(manifestPath, next);
+  fs.writeFileSync(manifestPath, synced(current));
   console.log(`wrote the shared profiler contributions into ${manifestPath}`);
 }
 
