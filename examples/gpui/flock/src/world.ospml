@@ -60,6 +60,11 @@ type Vector =
     vectorX : float
     vectorY : float
 
+(** The flock sorted by grid cell and the position where each cell's birds begin. *)
+type Grid =
+    ordered : List<Bird>
+    starts : List<int>
+
 type Nearby =
     sepX : float
     sepY : float
@@ -128,16 +133,31 @@ module Simulation
                         false => pace
                 Vector(vectorX = x * wanted / pace, vectorY = y * wanted / pace)
 
-    // Sixteen-unit cells. The field is 21 by 13 cells; with a one-cell border the keys fit 23 by 15.
+    // Sixteen-unit cells. The field is 21 by 13 cells; with a one-cell border they number 23 by 15.
     cell value = floatToInt (floor (value * 0.0625)) ?: 0
 
-    // Every cell's map key, formatted once per frame: formatting a key per lookup cost a tenth of the frame.
-    keyTable () = range (0, 345) |> fold [] (\(out, i) => listAppend out "${i}")
+    cellIndex (cx, cy) = satAdd (satMul (satAdd cy 1) 23) (satAdd cx 1)
 
-    cellKey (keys, cx, cy) = listGet keys (satAdd (satMul (satAdd cy 1) 23) (satAdd cx 1)) ?: ""
+    // Each bird's code is its cell index times 32768 plus its own index, so one integer sort groups the flock by cell.
+    code (birds, i) =
+        b = listGet birds i ?: Bird(birdX = 0.0, birdY = 0.0, birdVx = 0.0, birdVy = 0.0)
+        satAdd (satMul (cellIndex (cell b.birdX, cell b.birdY)) 32768) i
 
-    grid : (List<Bird>, List<string>) -> Map<string, List<Bird>>
-    grid (birds, keys) = foldList (birds, Map (), \(cells, b) => mapSet cells (cellKey (keys, cell b.birdX, cell b.birdY)) (listAppend (mapGet cells (cellKey (keys, cell b.birdX, cell b.birdY)) ?: []) b))
+    cellOf value = intDiv value 32768
+
+    birdOf (birds, value) = listGet birds (satSub value (satMul (cellOf value) 32768)) ?: Bird(birdX = 0.0, birdY = 0.0, birdVx = 0.0, birdVy = 0.0)
+
+    // Where each cell's run begins in the sorted flock: every cell up to this bird's starts at its position.
+    opened (starts, position, value) = range (length starts, satAdd (cellOf value) 1) |> fold starts (\(out, _) => listAppend out position)
+
+    // The flock sorted by cell and each cell's first position; cell k's birds are positions starts[k] to starts[k + 1].
+    // Grouping with an integer sort replaced a string-keyed map, whose inserts copied a list per bird.
+    grid : List<Bird> -> Grid
+    grid birds =
+        sorted = listSort (range (0, length birds) |> fold [] (\(out, i) => listAppend out (code (birds, i))))
+        begun = range (0, length sorted) |> fold [] (\(starts, position) => opened (starts, position, listGet sorted position ?: 0))
+        starts = range (length begun, 346) |> fold begun (\(out, _) => listAppend out (length sorted))
+        Grid(ordered = mapList (sorted, \value => birdOf (birds, value)), starts = starts)
 
     sameBird (a, b) = a.birdX == b.birdX && a.birdY == b.birdY && a.birdVx == b.birdVx && a.birdVy == b.birdVy
 
@@ -167,9 +187,11 @@ module Simulation
         true => 0 - 1
         false => 1
 
-    gather (b, cells, keys, sum, i) = foldList (mapGet cells (cellKey (keys, satAdd (cell b.birdX) (satMul (satSub i (satMul (intDiv i 2) 2)) (side b.birdX)), satAdd (cell b.birdY) (satMul (intDiv i 2) (side b.birdY)))) ?: [], sum, \(total, other) => accumulate (b, total, other))
+    run (cells, index, sum, b) = range (listGet cells.starts index ?: 0, listGet cells.starts (satAdd index 1) ?: 0) |> fold sum (\(total, j) => accumulate (b, total, listGet cells.ordered j ?: b))
 
-    nearby (b, cells, keys) = range (0, 4) |> fold (alone ()) (\(sum, i) => gather (b, cells, keys, sum, i))
+    gather (b, cells, sum, i) = run (cells, cellIndex (satAdd (cell b.birdX) (satMul (satSub i (satMul (intDiv i 2) 2)) (side b.birdX)), satAdd (cell b.birdY) (satMul (intDiv i 2) (side b.birdY))), sum, b)
+
+    nearby (b, cells) = range (0, 4) |> fold (alone ()) (\(sum, i) => gather (b, cells, sum, i))
 
     alone () = Nearby(sepX = 0.0, sepY = 0.0, alignX = 0.0, alignY = 0.0, cohereX = 0.0, cohereY = 0.0, nearCount = 0)
 
@@ -203,9 +225,9 @@ module Simulation
         Vector(vectorX = sum.vectorX + away.vectorX, vectorY = sum.vectorY + away.vectorY))
 
     // Separation, mean alignment and mean cohesion combine with homing, hawk panic and sheepdog repulsion.
-    steer (b, player, hawks, cells, keys, frame) =
+    steer (b, player, hawks, cells, frame) =
         sum = match looks (b, frame)
-            true => nearby (b, cells, keys)
+            true => nearby (b, cells)
             false => alone ()
         home = homing b
         scared = herd (b, player)
@@ -221,8 +243,8 @@ module Simulation
 
     wrapY value = clamp (value, 0.0, 200.0)
 
-    movedBird (b, cells, keys, player, hawks, frame, elapsed) =
-        velocity = steer (b, player, hawks, cells, keys, frame)
+    movedBird (b, cells, player, hawks, frame, elapsed) =
+        velocity = steer (b, player, hawks, cells, frame)
         Bird(birdX = wrapX (b.birdX + velocity.vectorX * elapsed * 60.0), birdY = wrapY (b.birdY + velocity.vectorY * elapsed * 60.0), birdVx = velocity.vectorX, birdVy = velocity.vectorY)
 
     closer (hawk, found, b) =
@@ -308,9 +330,8 @@ module Simulation
     physics (store, elapsed) =
         world = store.world
         player = movedPlayer (world, elapsed)
-        keys = keyTable ()
-        cells = grid (world.birds, keys)
-        moved = mapList (world.birds, \b => movedBird (b, cells, keys, player, world.hawks, world.frameCount, elapsed))
+        cells = grid world.birds
+        moved = mapList (world.birds, \b => movedBird (b, cells, player, world.hawks, world.frameCount, elapsed))
         rescued = filterList (moved, \b => b.birdX >= 290.0)
         remaining = filterList (moved, \b => b.birdX < 290.0)
         hawks = mapList (world.hawks, \hawk => movedHawk (hawk, remaining, elapsed))
@@ -365,7 +386,8 @@ module Simulation
     (** Loads the host-held scores JSON, defaulting malformed or empty data to none. *)
     export loadedScores store =
         text = perform ui::Slices.fetch "scores"
-        Runtime::step (store(scores = Scores(best = mapList (Doc::items (Doc::parse text), \item => jsonInt item ?: 0), loaded = true)))
+        // A round the hawks emptied scores nothing; files written before that rule may still hold zeros.
+        Runtime::step (store(scores = Scores(best = filterList (mapList (Doc::items (Doc::parse text), \item => jsonInt item ?: 0), \score => score > 0), loaded = true)))
 
     // Positions in hundredths and velocities in thousandths of a unit, as integers: the session is written
     // and read every frame, and integers spell and parse several times faster than shortest-round-trip floats.

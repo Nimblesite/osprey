@@ -39,7 +39,7 @@ module Probes
     (** The application's first envelope with fixture-backed host slices. *)
     export started () =
         handle ui::Slices
-            fetch _ => "[40,30,20]"
+            fetch _ => "[40,30,0,20]"
         Doc::parse (Runtime::start ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", App::initial, App::regions, App::save, App::theme ()))
 
     session (envelope, store) =
@@ -55,7 +55,7 @@ module Probes
     (** Dispatches an event after replacing only the session's store fixture. *)
     export postStore (envelope, store, event) =
         handle ui::Slices
-            fetch _ => "[40,30,20]"
+            fetch _ => "[40,30,0,20]"
         Doc::parse (Runtime::dispatch (session (envelope, store), event, App::update, App::regions, App::save, App::restore))
 
     (** The opaque session's decoded application store. *)
@@ -122,7 +122,7 @@ test ("the scene holds the ground, every bird, each hawk, the dog and the pen la
     after = Probes::postStore (started, store, frameEvent ())
     expect (length (fieldShapes after), 11))
 
-test ("a completed scores read fills the best-score slice", \() =>
+test ("a completed scores read fills the best-score slice and drops zero rounds", \() =>
     started = Probes::started ()
     after = Probes::postStore (started, fixture ([bird (10.0, 20.0, 0.5, 0.1)], []), scoresEvent ())
     scores = Doc::field (Probes::stored after, "scores")
