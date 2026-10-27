@@ -41,7 +41,7 @@ test ("editor never interprets empty findings as audit evidence", \() =>
     catalog = Doc::parse "{\"packages\":[{\"key\":\"@demo/report\",\"releases\":[{\"epoch\":1,\"ordinal\":1}],\"findings\":[]}]}"
     expect (exactArithmetic (\() => catalogHasEvidence catalog), false))
 
-unitContext () = ui::Context(now = 1, offset = 0, platform = "vscode", home = "/work", arguments = [])
+unitContext () = ui::Context(now = 1, offset = 0, platform = ui::OtherPlatform(platformName = "vscode"), home = "/work", arguments = [])
 
 stepFor (current, action) = Update::apply (unitContext (), current, ui::Act(act = action))
 

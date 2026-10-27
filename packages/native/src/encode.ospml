@@ -90,7 +90,7 @@ module Encode
     entryAt (walked, tabs, index) = match listGet tabs index
         Success tab =>
             inner = walk (walked.bindings, tab.page)
-            json = JsonObject [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" tab.tabSymbol, JsonMember "child" (first inner)]
+            json = JsonObject [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" (Symbols::name tab.tabSymbol), JsonMember "child" (first inner)]
             Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
         Error _ => walked
 
@@ -98,7 +98,7 @@ module Encode
     rowAt (walked, rows, index) = match listGet rows index
         Success item =>
             inner = walk (walked.bindings, item.cell)
-            json = JsonObject [str "key" item.rowKey, str "symbol" item.rowSymbol, str "group" item.rowGroup, JsonMember "child" (first inner)]
+            json = JsonObject [str "key" item.rowKey, str "symbol" (Symbols::name item.rowSymbol), str "group" item.rowGroup, JsonMember "child" (first inner)]
             Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
         Error _ => walked
 
@@ -203,20 +203,19 @@ module Encode
     export walk<A> : (List<Binding<A>>, Node<A>) -> Walked<A>
     walk (bindings, node) = match node
         Text value textRole textTone => leaf (bindings, "text", [str "text" value, str "role" (role textRole), str "tone" (tone textTone)])
-        Evidence label value => leaf (bindings, "evidence", [str "label" label, str "value" value])
-        Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" symbol, str "tone" (tone badgeTone)])
-        Label label symbol => leaf (bindings, "label", [str "label" label, str "symbol" symbol])
-        Icon symbol => leaf (bindings, "icon", [str "symbol" symbol])
+        Pair label value => leaf (bindings, "pair", [str "label" label, str "value" value])
+        Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" (Symbols::name symbol), str "tone" (tone badgeTone)])
+        Label label symbol => leaf (bindings, "label", [str "label" label, str "symbol" (Symbols::name symbol)])
+        Icon symbol => leaf (bindings, "icon", [str "symbol" (Symbols::name symbol)])
         Link label address => leaf (bindings, "link", [str "label" label, str "url" address])
         Spacer => leaf (bindings, "spacer", [])
         Divider => leaf (bindings, "divider", [])
         Segments values label => leaf (bindings, "segments", [JsonMember "tones" (toneList values), str "label" label])
-        Empty symbol title detail => leaf (bindings, "empty", [str "symbol" symbol, str "title" title, str "detail" detail])
+        Empty symbol title detail => leaf (bindings, "empty", [str "symbol" (Symbols::name symbol), str "title" title, str "detail" detail])
         Progress label detail => leaf (bindings, "progress", [str "label" label, str "detail" detail])
         Swatch name light dark => leaf (bindings, "swatch", [str "name" name, str "light" light, str "dark" dark])
         Slot key => leaf (bindings, "slot", [str "key" key])
-        Brand => leaf (bindings, "brand", [])
-        Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" symbol, str "role" (buttonRole buttonKind), bit "enabled" enabled])
+        Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" (Symbols::name symbol), str "role" (buttonRole buttonKind), bit "enabled" enabled])
         Field label value prompt secure multiline policy action => bound (bindings, TextInput(action = action), "field", [str "label" label, str "value" value, str "prompt" prompt, bit "secure" secure, bit "multiline" multiline, str "commit" (commit policy)])
         Toggle label on action => bound (bindings, FlagInput(action = action), "toggle", [str "label" label, bit "on" on])
         Picker label items selected action => bound (bindings, ChoiceInput(action = action), "picker", [str "label" label, JsonMember "choices" (choices items), str "selected" selected])

@@ -87,6 +87,7 @@ fn node(ctx: &mut Ctx, node: &Value) -> AnyElement {
         "stack" => stack(ctx, node),
         "text" => text(ctx, node),
         "label" => labelled(ctx, node),
+        "pair" => pair(ctx, node),
         "icon" => symbol(ctx, string(node, "symbol")),
         "badge" => badge(ctx, node),
         "button" => controls::button(ctx, node),
@@ -165,6 +166,16 @@ fn text(ctx: &mut Ctx, node: &Value) -> AnyElement {
 /// Draws an icon and label without interpreting the label.
 fn labelled(ctx: &mut Ctx, node: &Value) -> AnyElement {
     icon_label(ctx, node, gap(ctx)).into_any_element()
+}
+
+/// Draws a label and its value on one line, the label muted.
+fn pair(ctx: &mut Ctx, node: &Value) -> AnyElement {
+    div()
+        .flex()
+        .gap(gap(ctx))
+        .child(caption(ctx, string(node, "label")))
+        .child(string(node, "value").to_owned())
+        .into_any_element()
 }
 
 /// Draws the shared icon-and-label content used by labels and badges.
@@ -301,24 +312,37 @@ pub(super) fn control_id(ctx: &Ctx, ordinal: u64) -> String {
     format!("{}:{ordinal}", ctx.key)
 }
 
-/// Returns a known kit icon, with the SF Symbol spellings mapped explicitly.
+/// Maps a framework symbol name ([UI-COMPONENTS-SYMBOLS]) to its kit icon.
 pub(super) fn icon_name(name: &str) -> Option<IconName> {
     match name {
-        "plus" => Some(IconName::Plus),
-        "tray" => Some(IconName::Inbox),
-        "play" => Some(IconName::Play),
-        "gear" => Some(IconName::Settings),
-        "search" => Some(IconName::Search),
-        "info" => Some(IconName::Info),
-        "star" => Some(IconName::Star),
+        "add" => Some(IconName::Plus),
+        "delete" => Some(IconName::Delete),
+        "dismiss" => Some(IconName::Close),
         "check" => Some(IconName::Check),
         "warning" => Some(IconName::TriangleAlert),
-        "xmark" => Some(IconName::Close),
-        "trash" => Some(IconName::Delete),
+        "info" => Some(IconName::Info),
+        "question" => Some(IconName::CircleAlert),
+        "search" => Some(IconName::Search),
+        "settings" => Some(IconName::Settings),
+        "star" => Some(IconName::Star),
+        "play" => Some(IconName::Play),
+        "pause" => Some(IconName::Pause),
+        "stop" => Some(IconName::Square),
+        "refresh" => Some(IconName::RefreshCw),
         "folder" => Some(IconName::Folder),
+        "document" => Some(IconName::File),
+        "package" => Some(IconName::HardDrive),
+        "inbox" => Some(IconName::Inbox),
         "globe" => Some(IconName::Globe),
-        "link" => Some(IconName::ExternalLink),
-        "chevron.right" => Some(IconName::ChevronRight),
+        "external" => Some(IconName::ExternalLink),
+        "lock" => Some(IconName::EyeOff),
+        "shield" => Some(IconName::Ban),
+        "branch" => Some(IconName::Network),
+        "tag" => Some(IconName::Asterisk),
+        "clock" => Some(IconName::Loader),
+        "person" => Some(IconName::User),
+        "cursor" => Some(IconName::Inspector),
+        "chevron" => Some(IconName::ChevronRight),
         _ => None,
     }
 }
@@ -471,4 +495,33 @@ pub(super) fn list<'a>(node: &'a Value, name: &str) -> &'a [Value] {
     node.get(name)
         .and_then(Value::as_array)
         .map_or(&[], Vec::as_slice)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::icon_name;
+
+    /// Every `Symbols::name` in packages/native/src/symbol.ospml ([UI-COMPONENTS-SYMBOLS]).
+    const SYMBOLS: [&str; 28] = [
+        "add", "delete", "dismiss", "check", "warning", "info", "question", "search", "settings",
+        "star", "play", "pause", "stop", "refresh", "folder", "document", "package", "inbox",
+        "globe", "external", "lock", "shield", "branch", "tag", "clock", "person", "cursor",
+        "chevron",
+    ];
+
+    #[test]
+    fn every_framework_symbol_has_a_kit_icon() {
+        let missing: Vec<_> = SYMBOLS
+            .iter()
+            .filter(|name| icon_name(name).is_none())
+            .collect();
+        assert!(missing.is_empty(), "no kit icon for {missing:?}");
+    }
+
+    #[test]
+    fn platform_icon_spellings_are_not_symbols() {
+        for name in ["xmark", "trash", "gear", "shippingbox", "chevron.right", ""] {
+            assert!(icon_name(name).is_none(), "{name} should not map");
+        }
+    }
 }

@@ -7,6 +7,7 @@ import ui::Ui
 import ui::Doc
 import ui::Keyed
 import ui::Runtime
+import ui::Symbols
 import ui::Requests
 import ui::Messages
 
@@ -28,9 +29,9 @@ module App
 
     memoed () = (perform Signal<Memo>.read ()).memo
 
-    rootView () = Ui::column [Ui::text "Count ${tallied ()}", Ui::button ("Add", "plus", Increment), Ui::slot "note"]
+    rootView () = Ui::column [Ui::text "Count ${tallied ()}", Ui::button ("Add", ui::Add, Increment), Ui::slot "note"]
 
-    noteView () = Ui::column [ui::Field(label = "Note", value = memoed (), prompt = "Type here", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", "tray", Load)]
+    noteView () = Ui::column [ui::Field(label = "Note", value = memoed (), prompt = "Type here", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", ui::Inbox, Load)]
 
     tallySlice () = perform Signal<Tally>.read ()
 
@@ -48,7 +49,7 @@ module App
     make count text = Store(counter = Tally(tally = count), note = Memo(memo = text))
 
     (** The store at start: a zero count and the platform name as the note. *)
-    export initial context = Runtime::step (make 0 context.platform)
+    export initial context = Runtime::step (make 0 (Symbols::platformText context.platform))
 
     loaded outcome = match outcome
         Success result => jsonText result ?: "?"

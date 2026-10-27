@@ -247,7 +247,7 @@
         "threshold": 97.5
       },
       "native": {
-        "threshold": 91.7,
+        "threshold": 93.0,
         "language": "osprey"
       },
       "numpy": {

@@ -424,7 +424,13 @@ fn launch_context(now: i64) -> Result<String, String> {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     // The probe reads the platform and ignores the offset, so the smoke run
     // reports UTC rather than take a dependency to resolve local time.
-    Ok(events::start_context(now, 0, "macos", &home, &arguments))
+    Ok(events::start_context(
+        now,
+        0,
+        std::env::consts::OS,
+        &home,
+        &arguments,
+    ))
 }
 
 /// Unix seconds, the clock every event carries.

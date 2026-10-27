@@ -1,6 +1,6 @@
 # Plan 0036 — GPUI desktop host: Osprey Native on the GPU, first on the Mac
 
-Contract: [spec 0046](../specs/platforms/0046-GpuiDesktopHost.md). Framework: [`packages/native`](../../packages/native/README.md). Status: **phases 0 to 2 built; Flock plays in the window at the display rate for 1,000 birds; the 5,000-bird gate is not met.**
+Contract: [spec 0046](../specs/platforms/0046-GpuiDesktopHost.md). Framework: [`packages/native`](../../packages/native/README.md). Status: **phases 0 to 3 built; Flock plays in the window at the display rate for 1,000 birds; the 5,000-bird gate is not met; phase 4 (Linux and Windows) not started.**
 
 ## Summary
 
@@ -77,20 +77,18 @@ Exit: Flock is playable, the gate passes, the README shows the measured numbers 
 
 ### Phase 3 — make native host-agnostic
 
-The framework was shaped by one Apple host and one product. Each row is either generalized or removed before a second host inherits it.
+The framework was shaped by one Apple host and one product. Every shape below is generalized or removed, with tests in the package, both in-repo hosts and every consumer.
 
-| Shape | Where | Action |
-| --- | --- | --- |
-| `symbol : string` SF Symbols names on `Icon`, `Label`, `Badge`, `Button`, `Empty`, `Tab`, `Row` | [node.ospml](../../packages/native/src/node.ospml) | Replace with a typed `Symbol` union; each host maps it to its icon set. The only change a second host cannot work around cleanly. |
-| `ReadPropertyLists` | [capability.ospml:24](../../packages/native/src/capability.ospml#L24) | Vigil's macOS `.plist` scanning. Move behind `HostCall`. |
-| `RunningApplications`, `Fingerprint` | [capability.ospml:34](../../packages/native/src/capability.ospml#L34) | Vigil security probes. Move behind `HostCall`. |
-| `OpenSettings pane` | [capability.ospml:74](../../packages/native/src/capability.ospml#L74) | Pane names are macOS System Settings. Move behind `HostCall`. |
-| `Evidence label value` | [node.ospml:68](../../packages/native/src/node.ospml#L68) | A security-product idea. Rename to a generic key/value row or fold into `Label`. |
-| `Brand` | [node.ospml:95](../../packages/native/src/node.ospml#L95) | A hardcoded logo slot with no payload. Delete, or give it a `Symbol`. |
-| `platform : string` `macos`/`ios` | [message.ospml:10](../../packages/native/src/message.ospml#L10) | Make a union and add `linux`, `windows`. |
-| `Reveal`, `ChooseFile`, `ChooseFolder`, `SaveFile` | capability.ospml | Keep; every desktop has them. |
+1. [x] **Symbols.** `symbol : string` (SF Symbols names) on `Icon`, `Label`, `Badge`, `Button`, `Empty`, `Tab` and `Row` is now the typed `Symbol` union in [symbol.ospml](../../packages/native/src/symbol.ospml), sent as each member's lowercase name ([UI-COMPONENTS-SYMBOLS]). The GPUI host maps every member to a Lucide icon and the webview to a Codicon; both have a test that fails if a member is unmapped, and the native suite checks the names are distinct and that every symbol-carrying node sends its name.
+2. [x] **Product capabilities.** `ReadPropertyLists`, `Fingerprint`, `RunningApplications`, `OpenSettings` and `Run`'s property-list flag are gone. Work only one host or product can do is a `HostCall` in that host's namespace; the suite encodes one.
+3. [x] **`Evidence`** is now `Pair` (`Ui::pair`, wire kind `pair`), a label and its value; drawn by both hosts and tested in each.
+4. [x] **`Brand`** is deleted. `Keyed::region` used it as the stand-in for a retained region's never-sent node; that is now `Spacer`. The webview rejects a `brand` node as unknown.
+5. [x] **Platform.** `Context.platform` is the `Platform` union (`Macos`, `Ios`, `Linux`, `Windows`, `Android`, `Web`, `OtherPlatform name`), decoded by `Symbols::platform` ([UI-CONTEXT-PLATFORM]). The GPUI host sends `std::env::consts::OS` instead of a hard-coded `macos`.
+6. [x] `Reveal`, `ChooseFile`, `ChooseFolder` and `SaveFile` stay: every desktop has them.
 
-Vigil is updated in the same change so its build stays green; the Vigil-only capabilities become `HostCall` namespaces its SwiftUI host answers.
+Consumers updated in the same change: the manager's VS Code editor (rebuilt `package-workspace.wasm`), `packages/vscode`, the GPUI probe and bench, Flock, painting and the VS Code SDK end-to-end probe. Vigil builds against a vendored copy of the package (`.osprey/packages/@osprey/native`), so it keeps working unchanged; when it upgrades, its product capabilities become a `vigil` `HostCall` namespace and its SwiftUI host maps the symbol names to SF Symbols.
+
+Exit: met. `packages/native` names no host, product or operating system outside the `Platform` union.
 
 ### Phase 4 — Linux and Windows
 

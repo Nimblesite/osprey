@@ -3,11 +3,11 @@
 // construct an action.
 namespace ui
 
-(** Host facts for one dispatch: Unix seconds, the local UTC offset in seconds, `macos` or `ios`, the person's home folder and the launch arguments. *)
+(** Host facts for one dispatch: Unix seconds, the local UTC offset in seconds, the host's platform, the person's home folder and the launch arguments. *)
 type Context =
     now : int
     offset : int
-    platform : string
+    platform : Platform
     home : string
     arguments : List<string>
 

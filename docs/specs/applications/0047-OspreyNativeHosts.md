@@ -1,6 +1,6 @@
 # Osprey Native and its hosts [NATIVE-HOSTS]
 
-**Status:** two hosts run today: Vigil's SwiftUI host over the C ABI and the VS Code webview host over WASI frames ([`vscode-extension/client/src/osprey-ui`](../../../vscode-extension/client/src/osprey-ui)). A GPUI host is specified in [0046](../platforms/0046-GpuiDesktopHost.md) and not started. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native-hosts.md) delivers it.
+**Status:** two hosts run today: Vigil's SwiftUI host over the C ABI and the VS Code webview host over WASI frames ([`vscode-extension/client/src/osprey-ui`](../../../vscode-extension/client/src/osprey-ui)). A third, the GPUI desktop host ([0046](../platforms/0046-GpuiDesktopHost.md)), runs on macOS. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native-hosts.md) delivers it.
 
 ## Aim [NATIVE-HOSTS-AIM]
 
@@ -38,7 +38,7 @@ Both carry the same envelope: `version`, `state`, `slices`, `patches`, `removed`
 | SwiftUI | SwiftUI controls | C ABI | macOS, iOS | [Vigil](https://github.com/Nimblesite/vigil) | running |
 | Webview | HTML, CSS, Codicons | WASI frames | VS Code on every desktop | [`osprey-ui`](../../../vscode-extension/client/src/osprey-ui) | running |
 | Browser | HTML, CSS | WASI frames in a worker | any browser | planned, extracted from the webview host | not started |
-| GPUI | GPU primitives via GPUI | C ABI | macOS first, then Linux, Windows | `hosts/gpui` | [spec 0046](../platforms/0046-GpuiDesktopHost.md), not started |
+| GPUI | GPU primitives via GPUI | C ABI | macOS first, then Linux, Windows | `hosts/gpui` | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running on macOS |
 
 The webview and browser hosts share one TypeScript renderer; the VS Code one adds editor capabilities through [`@osprey/vscode`](../../../packages/vscode/README.md). A new host gets a row here and a column in the coverage matrix before any code merges.
 
@@ -46,7 +46,7 @@ The webview and browser hosts share one TypeScript renderer; the VS Code one add
 
 Every `Node` constructor in [`node.ospml`](../../../packages/native/src/node.ospml) and every `Capability` in [`capability.ospml`](../../../packages/native/src/capability.ospml) appears in a coverage matrix, one column per host, each cell `draws`, `rejects` or `n/a` (a capability with no meaning on that platform). The matrix is generated from the sources, not written by hand, and CI fails when a constructor is missing from it. A host's README links its column.
 
-Symbols are a closed, host-neutral vocabulary (a `Symbol` union once [plan 0036 phase 3](../../plans/0036-gpui-desktop-host.md) lands). Each host maps every member; a host with no icon for a member maps it to a named neutral glyph and records that in the matrix. Until the union exists, the symbol strings are the vocabulary and the webview's Codicon table is its reference list.
+Symbols are a closed, host-neutral vocabulary: the `Symbol` union in [`symbol.ospml`](../../../packages/native/src/symbol.ospml), sent as each member's lowercase name. Each host maps every member to its own icon set and tests that it does (the GPUI host's `every_framework_symbol_has_a_kit_icon`, the webview's Codicon test), so no member is drawn as a fallback. The framework holds no host's icon names, capabilities or product vocabulary; work only one host can do is a `HostCall`.
 
 ## Conformance [NATIVE-HOSTS-CONFORMANCE]
 

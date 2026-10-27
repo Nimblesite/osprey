@@ -1,6 +1,8 @@
 # GPUI Desktop Host [GPUI-HOST]
 
-**Status:** normative target under construction in `hosts/gpui`; the boundary and smoke run work, the window is being built. Delivery is tracked by [plan 0036](../../plans/0036-gpui-desktop-host.md). Nothing in this document establishes support until the plan records acceptance evidence.
+**Status:** running on macOS in `hosts/gpui`: the window, renderer, scene painter, frame clock and recorded-event smoke run work, and two examples run on it (`examples/gpui/flock` and `examples/gpui/painting`, the latter pixel-identical to GPUI's own painting example). Linux and Windows are not started. Delivery is tracked by [plan 0036](../../plans/0036-gpui-desktop-host.md).
+
+GPUI is a UI framework that draws with the GPU. It is not Osprey's GPU compute surface ([0034](../runtime/0034-GPUComputation.md)): an Osprey program here never touches the GPU itself. It describes a scene as data, and the Rust host hands that scene to GPUI, which batches, tessellates and draws it with Metal (Vulkan, DirectX later). [GPU-VS-GPUI](../runtime/0034-GPUComputation.md#gpu-compute-and-gpui-rendering--gpu-vs-gpui) sets out the difference.
 
 A GPUI host renders an [Osprey Native](../../../packages/native/README.md) application with [GPUI](https://gpui.rs), the GPU-accelerated Rust UI framework from Zed. It is a host in the [Osprey Native host family](../applications/0047-OspreyNativeHosts.md), after Vigil's SwiftUI host and the VS Code webview host, and the first that can run on macOS, Linux and Windows from one renderer. The first target is macOS.
 
@@ -27,7 +29,7 @@ const char *dispatch(const char *saved, const char *event);
 
 Calls are synchronous and serialized on GPUI's main thread. Input strings are borrowed for the call; the host copies the returned string immediately. The envelope is the one `@osprey/native` encodes ([NATIVE-HOSTS-TRANSPORT](../applications/0047-OspreyNativeHosts.md)): `version`, `state`, `slices`, `patches`, `removed`, `requests`, `diagnostics` and, at start, `theme`. The host rejects an envelope it cannot decode, an unknown node kind or an unknown capability, and shows the diagnostic. It never draws a fallback.
 
-`Context.platform` gains `linux` and `windows` beside `macos` and `ios`.
+The start context's `platform` is the operating system as `std::env::consts::OS` spells it (`macos`, `linux`, `windows`), which the framework decodes into its `Platform` union ([UI-CONTEXT-PLATFORM](../../../packages/native/README.md)).
 
 ## Rendering [GPUI-HOST-RENDER]
 
@@ -36,6 +38,8 @@ The renderer keeps one GPUI view per region key. A patch replaces that region's 
 Each `Node` kind has exactly one mapping. The mapping table lives beside the renderer and the plan tracks its completeness; a kind without a mapping is a rejected envelope, not a blank area.
 
 Theme tokens from the start envelope resolve to GPUI colours, type scale and spacing. The renderer follows the system appearance for light and dark.
+
+Every framework symbol ([UI-COMPONENTS-SYMBOLS](../../../packages/native/README.md)) maps to one of the Lucide icons that ship with `gpui-kit`; the host's unit tests fail if a symbol has no icon. An unknown symbol name draws a visible placeholder and a diagnostic. A `pair` node draws its label muted beside its value.
 
 ## Events [GPUI-HOST-EVENTS]
 

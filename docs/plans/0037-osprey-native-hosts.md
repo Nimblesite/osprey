@@ -44,6 +44,6 @@ Tracked in [plan 0036 phase 3](0036-gpui-desktop-host.md): typed `Symbol` union,
 
 ## Risks
 
-- **Symbol vocabulary.** It is SF Symbols names today (`arrow.clockwise`, `shippingbox`), mapped to Codicons by the webview with a neutral fallback. A typed union removes the fallback and the Apple spelling together; Vigil and the webview table change in the same commit.
+- **Symbol vocabulary.** Done: a typed `Symbol` union with neutral lowercase names replaced the SF Symbols strings. The GPUI and webview hosts map every member and test it. Vigil keeps its vendored copy of the package until it upgrades, when its SwiftUI host maps the same names to SF Symbols.
 - **Two renderers drifting.** The conformance suite is the only thing that stops the SwiftUI and HTML hosts disagreeing about a node. Phase 2 comes before any new host code.
 - **Webview extraction.** `capabilities.ts` and `webview-client.ts` are intertwined with VS Code's message channel; the split needs the existing `OSPREY_TEST_GREP='compiled SDK renderer E2E'` tests green before and after.

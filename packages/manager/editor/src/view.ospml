@@ -12,7 +12,7 @@ module View
     // The catalog carries no authenticated audit evidence until the audit
     // contract exists, so an empty findings list stays a caution everywhere.
     unverified = "No findings recorded; audit status unverified"
-    unverifiedSymbol = "questionmark.shield"
+    unverifiedSymbol () = ui::Shield
     auditBanner = "No verified security audit is available. Review each package's warnings before adding it."
     pausedNote = "Package actions are paused while package work is in progress."
     idleNote = "Actions apply to the selected package."
@@ -28,41 +28,41 @@ module View
     catalogRows snapshot = mapList (filterList (snapshot.packageCatalog, \item => matches (snapshot.packageSearch, catalogKey item)), \item => catalogRow item)
 
     presenceBadge item = match item.entryPresent
-        true => Ui::badge ("Installed", "checkmark.circle", ui::Good)
-        false => Ui::badge ("Missing from disk", "questionmark.folder", ui::Caution)
+        true => Ui::badge ("Installed", ui::Check, ui::Good)
+        false => Ui::badge ("Missing from disk", ui::Question, ui::Caution)
 
     dependencyBadge item = match item.entryDirect
-        true => Ui::badge ("Direct", "link", ui::Accent)
-        false => Ui::badge ("Transitive", "arrow.triangle.branch", ui::Secondary)
+        true => Ui::badge ("Direct", ui::External, ui::Accent)
+        false => Ui::badge ("Transitive", ui::Branch, ui::Secondary)
 
     findingsBadge findings = match isEmpty findings
-        true => Ui::badge (unverified, unverifiedSymbol, ui::Caution)
-        false => Ui::badge ("${length findings} findings", "exclamationmark.shield", ui::Danger)
+        true => Ui::badge (unverified, unverifiedSymbol (), ui::Caution)
+        false => Ui::badge ("${length findings} findings", ui::Shield, ui::Danger)
 
-    installedRow item = Ui::entry (installedKey item, "shippingbox", groupOf item, Ui::column [
+    installedRow item = Ui::entry (installedKey item, ui::Package, groupOf item, Ui::column [
         Ui::styled (installedKey item, ui::Headline, ui::Primary),
-        Ui::row [Ui::badge (item.entryIdentity.entryVersion, "tag", ui::Accent), presenceBadge item, dependencyBadge item, findingsBadge item.entryFindings],
+        Ui::row [Ui::badge (item.entryIdentity.entryVersion, ui::Tag, ui::Accent), presenceBadge item, dependencyBadge item, findingsBadge item.entryFindings],
     ])
 
     groupOf item = match item.entryDirect
         true => "Direct dependencies"
         false => "Transitive dependencies"
 
-    catalogRow item = Ui::entry (catalogKey item, "globe", "Registry", Ui::column [
+    catalogRow item = Ui::entry (catalogKey item, ui::Globe, "Registry", Ui::column [
         Ui::styled (catalogKey item, ui::Headline, ui::Primary),
-        Ui::row [Ui::badge (Packages::newest item, "tag", ui::Accent), findingsBadge item.catalogFindings],
+        Ui::row [Ui::badge (Packages::newest item, ui::Tag, ui::Accent), findingsBadge item.catalogFindings],
     ])
 
     searchField snapshot = ui::Field(label = "Search packages", value = snapshot.packageSearch, prompt = "Search @organization/package", secure = false, multiline = false, commit = ui::OnEdit, bind = Search)
 
     installedPage snapshot = match snapshot.packageGraph.workspaceMissing
-        true => Ui::empty ("lock", "No workspace graph", snapshot.packageGraph.workspaceReason)
+        true => Ui::empty (ui::Lock, "No workspace graph", snapshot.packageGraph.workspaceReason)
         false => match isEmpty (installedRows snapshot)
-            true => Ui::empty ("shippingbox", "No installed packages", "Add a package from the registry tab to start this project's dependency graph.")
+            true => Ui::empty (ui::Package, "No installed packages", "Add a package from the registry tab to start this project's dependency graph.")
             false => Ui::rows (installedRows snapshot, snapshot.packageSelection, Selected)
 
     catalogPage snapshot = match isEmpty (catalogRows snapshot)
-        true => Ui::empty ("globe", "No registry packages", "The registry returned no packages for this search.")
+        true => Ui::empty (ui::Globe, "No registry packages", "The registry returned no packages for this search.")
         false => Ui::rows (catalogRows snapshot, snapshot.packageSelection, Selected)
 
     installedCount snapshot = length (filterList (snapshot.packageGraph.workspacePackages, \item => item.entryPresent))
@@ -82,8 +82,8 @@ module View
         Ui::section ("Packages", footer snapshot, [
             searchField snapshot,
             ui::Tabs(tabs = [
-                Ui::tab ("installed", "Installed", "shippingbox", installedPage snapshot),
-                Ui::tab ("browse", "Browse registry", "globe", catalogPage snapshot),
+                Ui::tab ("installed", "Installed", ui::Package, installedPage snapshot),
+                Ui::tab ("browse", "Browse registry", ui::Globe, catalogPage snapshot),
             ], selected = snapshot.packageTab, bind = TabSwitch),
         ])
 
@@ -94,18 +94,18 @@ module View
     findingLines findings = mapList (findings, \finding => Ui::styled (finding, ui::Callout, ui::Danger))
 
     findingsSection findings = match isEmpty findings
-        true => Ui::section ("Security findings", "Findings are unverified local report data; none recorded is not an audit.", [Ui::badge (unverified, unverifiedSymbol, ui::Caution)])
+        true => Ui::section ("Security findings", "Findings are unverified local report data; none recorded is not an audit.", [Ui::badge (unverified, unverifiedSymbol (), ui::Caution)])
         false => Ui::section ("Security findings", "Resolve these findings before installing or adding this release.", findingLines findings)
 
     projectOf snapshot = match snapshot.packageGraph.workspaceProject
         "" => snapshot.packageWorkspace
         uri => uri
 
-    projectNode snapshot = Ui::evidence ("Project", projectOf snapshot)
+    projectNode snapshot = Ui::pair ("Project", projectOf snapshot)
 
     installedFacts item = Ui::column [
-        Ui::row [Ui::badge (item.entryIdentity.entryVersion, "tag", ui::Accent), presenceBadge item, dependencyBadge item],
-        Ui::evidence ("Digest", item.entryIdentity.entryDigest),
+        Ui::row [Ui::badge (item.entryIdentity.entryVersion, ui::Tag, ui::Accent), presenceBadge item, dependencyBadge item],
+        Ui::pair ("Digest", item.entryIdentity.entryDigest),
     ]
 
     installedBody (snapshot, item) = [
@@ -122,8 +122,8 @@ module View
     removeInstalledEnabled (snapshot, item) = snapshot.packagePending == false && item.entryDirect
 
     installedActions (snapshot, item) = [
-        Ui::action ("Add to project", "plus", ui::Plain, addInstalledEnabled (snapshot, item), Add),
-        Ui::action ("Remove dependency", "trash", ui::Destructive, removeInstalledEnabled (snapshot, item), Remove),
+        Ui::action ("Add to project", ui::Add, ui::Plain, addInstalledEnabled (snapshot, item), Add),
+        Ui::action ("Remove dependency", ui::Delete, ui::Destructive, removeInstalledEnabled (snapshot, item), Remove),
     ]
 
     catalogNote (snapshot, item) = match isEmpty item.catalogFindings
@@ -133,9 +133,9 @@ module View
             false => Ui::styled ("Audit status unverified. Hosted installation is disabled until an authenticated audit contract exists.", ui::Callout, ui::Danger)
 
     catalogFacts (snapshot, item) = Ui::column [
-        Ui::row [Ui::badge (Packages::newest item, "tag", ui::Accent), findingsBadge item.catalogFindings],
-        Ui::evidence ("Releases", join item.catalogVersions ", "),
-        Ui::evidence ("Registry", snapshot.packageRegistry),
+        Ui::row [Ui::badge (Packages::newest item, ui::Tag, ui::Accent), findingsBadge item.catalogFindings],
+        Ui::pair ("Releases", join item.catalogVersions ", "),
+        Ui::pair ("Registry", snapshot.packageRegistry),
     ]
 
     catalogBody (snapshot, item) = [
@@ -153,13 +153,13 @@ module View
         Error _ => false
 
     catalogActions (snapshot, item) = [
-        Ui::action ("Add to project", "plus", ui::Plain, addOffered (snapshot, item), Add),
-        Ui::action ("Remove dependency", "trash", ui::Destructive, removeOffered (snapshot, item.catalogKey), Remove),
+        Ui::action ("Add to project", ui::Add, ui::Plain, addOffered (snapshot, item), Add),
+        Ui::action ("Remove dependency", ui::Delete, ui::Destructive, removeOffered (snapshot, item.catalogKey), Remove),
     ]
 
     stateNote snapshot = match snapshot.packagePending
-        true => Ui::badge (pausedNote, "hourglass", ui::Caution)
-        false => Ui::badge (idleNote, "cursorarrow.click", ui::Secondary)
+        true => Ui::badge (pausedNote, ui::Clock, ui::Caution)
+        false => Ui::badge (idleNote, ui::Cursor, ui::Secondary)
 
     confirmationMessage snapshot = match snapshot.packageConfirming
         "remove" => "Removing ${snapshot.packageConfirmKey} from ${projectOf snapshot} rewrites the project manifest and lock. Its files stay in the store, but dependents must still resolve."
@@ -168,8 +168,8 @@ module View
     confirmation snapshot = Ui::column [
         ui::Alert(title = "Confirm ${snapshot.packageConfirming} ${snapshot.packageConfirmKey}", message = confirmationMessage snapshot, visible = true, dismiss = DismissAlert),
         Ui::row [
-            Ui::action ("Confirm ${snapshot.packageConfirming} ${snapshot.packageConfirmKey}", "checkmark.circle", ui::Destructive, true, Confirm),
-            Ui::button ("Cancel", "xmark", DismissAlert),
+            Ui::action ("Confirm ${snapshot.packageConfirming} ${snapshot.packageConfirmKey}", ui::Check, ui::Destructive, true, Confirm),
+            Ui::button ("Cancel", ui::Dismiss, DismissAlert),
         ],
     ]
 
@@ -185,25 +185,25 @@ module View
             Success item => Ui::contextMenu (detailColumn (snapshot, listConcat (installedBody (snapshot, item)) [Ui::row (installedActions (snapshot, item)), stateNote snapshot]), installedActions (snapshot, item))
             Error _ => match Packages::catalogAt (snapshot.packageCatalog, snapshot.packageSelection)
                 Success item => Ui::contextMenu (detailColumn (snapshot, listConcat (catalogBody (snapshot, item)) [Ui::row (catalogActions (snapshot, item)), stateNote snapshot]), catalogActions (snapshot, item))
-                Error _ => Ui::empty ("shippingbox", "A clear view of your dependencies", "Choose a package to inspect its release, dependencies, security findings and the packages that depend on it.")
+                Error _ => Ui::empty (ui::Package, "A clear view of your dependencies", "Choose a package to inspect its release, dependencies, security findings and the packages that depend on it.")
 
     noticeNode snapshot = match snapshot.packagePending
         true => ui::Progress(label = "Package work in progress", detail = snapshot.packageNotice)
         false => match snapshot.packageFault
-            true => Ui::badge (snapshot.packageNotice, "exclamationmark.triangle", ui::Danger)
-            false => Ui::badge (snapshot.packageNotice, "checkmark.circle", ui::Secondary)
+            true => Ui::badge (snapshot.packageNotice, ui::Warning, ui::Danger)
+            false => Ui::badge (snapshot.packageNotice, ui::Check, ui::Secondary)
 
     metrics snapshot = Ui::row [
-        Ui::evidence ("Installed", "${installedCount snapshot}"),
-        Ui::evidence ("Direct", "${directCount snapshot}"),
-        Ui::evidence ("Missing", "${length (missingItems snapshot)}"),
-        Ui::evidence ("Findings", "${findingsCount snapshot}"),
-        Ui::evidence ("Catalog", "${length snapshot.packageCatalog}"),
+        Ui::pair ("Installed", "${installedCount snapshot}"),
+        Ui::pair ("Direct", "${directCount snapshot}"),
+        Ui::pair ("Missing", "${length (missingItems snapshot)}"),
+        Ui::pair ("Findings", "${findingsCount snapshot}"),
+        Ui::pair ("Catalog", "${length snapshot.packageCatalog}"),
     ]
 
-    missingBadge item = Ui::badge ("${installedKey item} · missing from disk", "questionmark.folder", ui::Caution)
+    missingBadge item = Ui::badge ("${installedKey item} · missing from disk", ui::Question, ui::Caution)
 
-    missingRow item = Ui::entry (installedKey item, "questionmark.folder", groupOf item, Ui::column [missingBadge item, findingsBadge item.entryFindings])
+    missingRow item = Ui::entry (installedKey item, ui::Question, groupOf item, Ui::column [missingBadge item, findingsBadge item.entryFindings])
 
     missingSection snapshot = match isEmpty (missingItems snapshot)
         true => Ui::column []
@@ -222,7 +222,7 @@ module View
         false => noticeNode snapshot
 
     availableBody snapshot = [
-        Ui::row [Ui::badge ("Audit unverified", unverifiedSymbol, ui::Caution), Ui::caption snapshot.packageRegistry],
+        Ui::row [Ui::badge ("Audit unverified", unverifiedSymbol (), ui::Caution), Ui::caption snapshot.packageRegistry],
         Ui::caption auditBanner,
         dataMetrics snapshot,
         availableNotice snapshot,
@@ -232,11 +232,11 @@ module View
     ]
 
     screenBody snapshot = match snapshot.packageFault
-        true => [Ui::empty ("exclamationmark.triangle", "Package data unavailable", snapshot.packageNotice)]
+        true => [Ui::empty (ui::Warning, "Package data unavailable", snapshot.packageNotice)]
         false => match snapshot.packagePending
             true => [noticeNode snapshot]
             false => availableBody snapshot
 
     export rootView () =
         snapshot = current ()
-        Ui::screen ("Packages", projectOf snapshot, [Ui::button ("Refresh", "arrow.clockwise", Refresh)], screenBody snapshot)
+        Ui::screen ("Packages", projectOf snapshot, [Ui::button ("Refresh", ui::Refresh, Refresh)], screenBody snapshot)

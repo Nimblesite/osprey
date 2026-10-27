@@ -113,9 +113,9 @@ button:disabled { cursor: default; opacity: .48; }
 .codicon { flex: 0 0 auto; }
 .osp-icon { display: inline-flex; color: var(--osp-muted); }
 .osp-label { display: inline-flex; align-items: center; gap: 7px; }
-.osp-evidence { display: grid; grid-template-columns: minmax(90px, .5fr) 1fr; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--osp-border); }
-.osp-evidence-label { color: var(--osp-muted); }
-.osp-evidence-value { font-family: var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; }
+.osp-pair { display: grid; grid-template-columns: minmax(90px, .5fr) 1fr; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--osp-border); }
+.osp-pair-label { color: var(--osp-muted); }
+.osp-pair-value { font-family: var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; }
 .osp-badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 10%, transparent); }
 .osp-badge .codicon { font-size: 13px; }
 .osp-badge.osp-tone-primary { color: var(--osp-text); }

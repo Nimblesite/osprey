@@ -85,7 +85,7 @@ module View
         false => "Dashed"
 
     (** The instruction and the two buttons. *)
-    export header () = Ui::row [Ui::text "Mouse down any point and drag to draw lines (Hold on shift key to draw straight lines)", ui::Spacer, Ui::button (dashLabel (styleSlice ()).dashed, "", ToggleDash), Ui::button ("Clear", "", Clear)]
+    export header () = Ui::row [Ui::text "Mouse down any point and drag to draw lines (Hold on shift key to draw straight lines)", ui::Spacer, Ui::button (dashLabel (styleSlice ()).dashed, ui::NoSymbol, ToggleDash), Ui::button ("Clear", ui::NoSymbol, Clear)]
 
     (** The stable layout: header over canvas. *)
     export root () = Ui::column [Ui::slot "header", Ui::slot "canvas"]

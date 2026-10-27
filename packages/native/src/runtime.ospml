@@ -41,10 +41,10 @@ module Runtime
     export asking<S> : (S, List<Request>) -> Step<S>
     asking (store, requests) = Step(stepStore = store, requests = requests, writes = [])
 
-    contextJson context = JsonObject [Doc::num ("now", context.now), Doc::num ("offset", context.offset), Doc::str ("platform", context.platform), Doc::str ("home", context.home), JsonMember "arguments" (Doc::strings context.arguments)]
+    contextJson context = JsonObject [Doc::num ("now", context.now), Doc::num ("offset", context.offset), Doc::str ("platform", Symbols::platformText context.platform), Doc::str ("home", context.home), JsonMember "arguments" (Doc::strings context.arguments)]
 
     (** The host facts in a launch or event document; absent members read as empty. *)
-    export context doc = Context(now = Doc::number (doc, "now"), offset = Doc::number (doc, "offset"), platform = Doc::text (doc, "platform"), home = Doc::text (doc, "home"), arguments = Doc::texts (doc, "arguments"))
+    export context doc = Context(now = Doc::number (doc, "now"), offset = Doc::number (doc, "offset"), platform = Symbols::platform (Doc::text (doc, "platform")), home = Doc::text (doc, "home"), arguments = Doc::texts (doc, "arguments"))
 
     saveSession<S> : (Session<S>, (S) -> Json) -> string !e
     saveSession (session, save) = Doc::write (JsonObject [JsonMember "context" (contextJson session.sessionContext), JsonMember "store" (save session.sessionStore), JsonMember "frames" (signalFramesJson session.sessionFrames)])

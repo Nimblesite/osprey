@@ -29,7 +29,7 @@ const rows = {
   kind: "section", title: "Packages", footer: "",
   children: [
     { kind: "field", label: "Search", value: "", prompt: "<script>alert(1)</script>", secure: false, multiline: false, commit: "edit", bind: "Search", event: 0 },
-    { kind: "rows", selected: "a", rows: [{ key: "a", symbol: "shippingbox", group: "Installed", child: { kind: "text", text: "<img src=x onerror=alert(1)>", role: "body", tone: "primary" } }], event: 1 },
+    { kind: "rows", selected: "a", rows: [{ key: "a", symbol: "package", group: "Installed", child: { kind: "text", text: "<img src=x onerror=alert(1)>", role: "body", tone: "primary" } }], event: 1 },
   ],
 };
 
@@ -97,7 +97,7 @@ suite("package workspace renderer", () => {
   });
 
   test("a context menu keeps its secondary actions out of the body until opened", () => {
-    const menu = { kind: "context-menu", body: { kind: "text", text: "Package", role: "body", tone: "primary" }, items: [{ kind: "button", label: "Add", symbol: "plus", role: "plain", enabled: true, event: 2 }] };
+    const menu = { kind: "context-menu", body: { kind: "text", text: "Package", role: "body", tone: "primary" }, items: [{ kind: "button", label: "Add", symbol: "add", role: "plain", enabled: true, event: 2 }] };
     const html = renderWorkspace({ regions: regions(menu) });
     assert.ok(html.includes('data-context-host'), html);
     assert.ok(html.includes('role="menu" hidden'), html);
@@ -106,13 +106,24 @@ suite("package workspace renderer", () => {
 
   test("symbols name official Codicons and never emit hand-drawn artwork", () => {
     const html = renderWorkspace({ regions: regions({ kind: "stack", axis: "vertical", children: [
-      { kind: "badge", label: "Installed", symbol: "shippingbox", tone: "good" },
+      { kind: "badge", label: "Installed", symbol: "package", tone: "good" },
       { kind: "icon", symbol: "not-a-symbol" },
     ] }) });
     assert.ok(html.includes('codicon codicon-package'), html);
     assert.ok(html.includes('codicon codicon-info'), html);
     assert.ok(!html.includes("osp-symbol"), html);
     assert.ok(!html.includes("not-a-symbol"), html);
+  });
+
+  test("every framework symbol draws its own Codicon and a pair shows its label and value", () => {
+    // Every `Symbols::name` in packages/native/src/symbol.ospml ([UI-COMPONENTS-SYMBOLS]).
+    const names = ["add", "delete", "dismiss", "check", "warning", "info", "question", "search", "settings", "star", "play", "pause", "stop", "refresh", "folder", "document", "package", "inbox", "globe", "external", "lock", "shield", "branch", "tag", "clock", "person", "cursor", "chevron"];
+    for (const name of names) {
+      const html = renderWorkspace({ regions: regions({ kind: "icon", symbol: name }) });
+      assert.ok(name === "info" || !html.includes("codicon-info\""), `${name} fell back to the info mark`);
+    }
+    const html = renderWorkspace({ regions: regions({ kind: "pair", label: "Digest", value: "<sha>" }) });
+    assert.ok(html.includes('<span class="osp-pair-label">Digest</span><span class="osp-pair-value">&lt;sha&gt;</span>'), html);
   });
 
   test("only HTTPS links are active and the rows label is application text", () => {
@@ -177,23 +188,22 @@ type Act = Changed | Gone
 controls expanded = [
     Ui::toggle ("SDK switch", true, Changed),
     Ui::picker ("SDK choice", [Ui::choice ("a", "Alpha"), Ui::choice ("b", "Beta")], "a", Changed),
-    Ui::disclosure ("SDK details", expanded, Changed, [Ui::button ("Nested action", "plus", Changed)]),
+    Ui::disclosure ("SDK details", expanded, Changed, [Ui::button ("Nested action", ui::Add, Changed)]),
     ui::Field(label = "SDK notes", value = "one\ntwo", prompt = "Notes", secure = false, multiline = true, commit = ui::OnSubmit, bind = Changed),
     ui::Field(label = "SDK secret", value = "private", prompt = "Password", secure = true, multiline = false, commit = ui::OnSubmit, bind = Changed),
-    ui::Button(label = "SDK disabled", symbol = "lock", role = ui::Destructive, enabled = false, action = Changed),
+    ui::Button(label = "SDK disabled", symbol = ui::Lock, role = ui::Destructive, enabled = false, action = Changed),
     ui::Field(label = "SDK draft", value = "", prompt = "Draft", secure = false, multiline = false, commit = ui::OnEdit, bind = Changed),
 ]
 
 proof () = [
-    Ui::evidence ("SDK evidence", "37 lines"),
-    Ui::label ("SDK label", "info"),
+    Ui::pair ("SDK pair", "37 lines"),
+    Ui::label ("SDK label", ui::Info),
     ui::Spacer,
     ui::Divider,
     ui::Segments(tones = [ui::Good, ui::Caution, ui::Danger], label = "SDK health"),
-    Ui::empty ("tray", "SDK empty", "No items exist"),
+    Ui::empty (ui::Inbox, "SDK empty", "No items exist"),
     ui::Progress(label = "SDK progress", detail = "Compiling"),
     ui::Swatch(name = "SDK palette", light = "#112233", dark = "#ddeeff"),
-    ui::Brand,
 ]
 
 drawing expanded = Ui::screen ("SDK vocabulary", "Compiled from Osprey", [], [Ui::layer [Ui::section ("SDK proof", "SDK footer", listConcat (controls expanded) (proof ())) ]])
@@ -217,14 +227,14 @@ module Normalized
         value = perform Signal<string>.read ()
         match value == "removed"
             true => Ui::text "SDK removed"
-            false => Ui::column [Ui::field ("SDK normalized", value, "Normalized", Changed), Ui::button ("Hide field", "xmark", Gone)]
+            false => Ui::column [Ui::field ("SDK normalized", value, "Normalized", Changed), Ui::button ("Hide field", ui::Dismiss, Gone)]
     regions (before, value, frames, _) =
         handle static Signal<string>
             read => value
         changed = signalChanges before value (\text => JsonString text) (signalDependencies slice)
         [Keyed::region (frames, "root", changed, drawing)]
     initial _ = Runtime::step ""
-    update (_, current, message) = Messages::route (message, \_ => Runtime::step "removed", \(_, _) => Runtime::step "CANONICAL", \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \_ => Runtime::step current)
+    update (_, current, message) = Messages::route (message, \_ => Runtime::step "removed", \(_, _) => Runtime::step "CANONICAL", \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \_ => Runtime::step current, \_ => Runtime::step current, \(_, _) => Runtime::step current)
     save value = JsonString value
     restore doc = jsonText doc ?: ""
     palette = ui::Theme(tokens = [], spacing = [4], feedback = 160, settle = 220)
@@ -297,8 +307,8 @@ async function assertSdkComponents(frame: Frame): Promise<void> {
   assert.strictEqual(await frame.getByRole("heading", { name: "SDK empty" }).count(), 1);
   assert.strictEqual(await frame.getByRole("progressbar", { name: "SDK progress" }).textContent(), "SDK progressCompiling");
   assert.strictEqual(await frame.locator(".osp-swatch").getAttribute("style"), "--osp-swatch-light:#112233;--osp-swatch-dark:#ddeeff");
-  assert.strictEqual(await frame.getByRole("img", { name: "Osprey", exact: true }).count(), 2);
-  assert.strictEqual(await frame.getByText("SDK evidence", { exact: true }).count(), 1);
+  assert.strictEqual(await frame.getByRole("img", { name: "Osprey", exact: true }).count(), 1);
+  assert.strictEqual(await frame.getByText("SDK pair", { exact: true }).count(), 1);
   assert.strictEqual(await frame.getByText("SDK label", { exact: true }).count(), 1);
   assert.strictEqual(await frame.getByText("SDK footer", { exact: true }).count(), 1);
   assert.strictEqual(await frame.getByRole("button", { name: "Nested action", includeHidden: true }).isVisible(), true,

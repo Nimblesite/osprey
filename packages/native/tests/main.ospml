@@ -13,15 +13,18 @@ import ui::Splitters
 import ui::Themes
 import ui::Scenes
 import ui::Inputs
+import ui::Symbols
+import ui::Pick
+import ui::Runtime
 import uitests::Probes
 
-type Pair =
+type Ranked =
     name : string
     rank : int
 
 tree () = Ui::column [
     Ui::text "Title \"quoted\"\n",
-    Ui::button ("Go", "play", Increment),
+    Ui::button ("Go", ui::Play, Increment),
     Ui::section ("S", "", [ui::Field(label = "Q", value = "", prompt = "", secure = false, multiline = false, commit = ui::OnSubmit, bind = Typed)]),
     ui::Picker(label = "P", choices = [Ui::choice ("a", "A")], selected = "a", bind = Load),
 ]
@@ -31,7 +34,7 @@ encoded () = jsonEncode (listGet (Encode::walk ([], tree ())).nodes 0 ?: JsonNul
 kindAt doc path = jsonText (jsonField (jsonIndex (jsonField doc "children" ?: JsonNull) path ?: JsonNull) "kind" ?: JsonNull) ?: "missing"
 
 // [UI-COMPONENTS]: a disclosure binds before the controls it reveals.
-revealed () = Ui::layer [Ui::disclosure ("Limits", false, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
+revealed () = Ui::layer [Ui::disclosure ("Limits", false, Load, [Ui::label ("Scope", ui::Info), ui::Spacer, Ui::button ("Go", ui::Play, Increment)]), Ui::slot "alert"]
 
 test ("a disclosure takes its ordinal before the controls it reveals", \() =>
     walked = Encode::walk ([], revealed ())
@@ -45,7 +48,7 @@ test ("a disclosure takes its ordinal before the controls it reveals", \() =>
 
 // [UI-EVENTS]: a screen's toolbar controls are bound before its children.
 test ("a screen's toolbar controls take ordinals before its children", \() =>
-    walked = Encode::walk ([], Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)]))
+    walked = Encode::walk ([], Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", ui::Play, Increment)]))
     doc = listGet walked.nodes 0 ?: JsonNull
     field = jsonIndex (jsonField doc "toolbar" ?: JsonNull) 0 ?: JsonNull
     button = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
@@ -53,7 +56,7 @@ test ("a screen's toolbar controls take ordinals before its children", \() =>
     expect (jsonInt (jsonField button "event" ?: JsonNull) ?: 0 - 1, 1))
 
 // [UI-COMPONENTS]: an aside's pane binds before its column; rows carry their symbol and group.
-inspected () = Ui::aside (Ui::rows ([Ui::entry ("a", "star", "Recent", Ui::text "A")], "a", Load), ui::Trailing, Ui::column [Ui::icon "info", ui::Divider, Ui::button ("Go", "play", Increment)], 420, Typed)
+inspected () = Ui::aside (Ui::rows ([Ui::entry ("a", ui::Star, "Recent", Ui::text "A")], "a", Load), ui::Trailing, Ui::column [Ui::icon ui::Info, ui::Divider, Ui::button ("Go", ui::Play, Increment)], 420, Typed)
 
 test ("an aside's pane takes ordinals before its column and rows keep their symbol and group", \() =>
     walked = Encode::walk ([], inspected ())
@@ -92,13 +95,13 @@ test ("a splitter delivers its dragged width clamped to its limits", \() =>
 
 // [UI-COMPONENTS]: a link names its web destination and binds nothing; the host opens it in the browser.
 test ("a link carries its label and web address and takes no ordinal", \() =>
-    walked = Encode::walk ([], Ui::column [Ui::link ("Apple guide", "https://support.apple.com/102445"), Ui::button ("Go", "play", Increment)])
+    walked = Encode::walk ([], Ui::column [Ui::link ("Osprey guide", "https://example.test/guide"), Ui::button ("Go", ui::Play, Increment)])
     doc = listGet walked.nodes 0 ?: JsonNull
     link = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
     go = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
     expect (kindAt doc 0, "link")
-    expect (jsonText (jsonField link "label" ?: JsonNull) ?: "", "Apple guide")
-    expect (jsonText (jsonField link "url" ?: JsonNull) ?: "", "https://support.apple.com/102445")
+    expect (jsonText (jsonField link "label" ?: JsonNull) ?: "", "Osprey guide")
+    expect (jsonText (jsonField link "url" ?: JsonNull) ?: "", "https://example.test/guide")
     expect (jsonInt (jsonField link "event" ?: JsonNull) ?: 0 - 1, 0 - 1)
     expect (length walked.bindings, 1)
     expect (jsonInt (jsonField go "event" ?: JsonNull) ?: 0 - 1, 0))
@@ -244,7 +247,7 @@ test ("contrast follows WCAG relative luminance", \() =>
     expect (Contrast::ratio ("#777777", "#777777") < 1.0001, true))
 
 test ("sorting is stable and lists stay total", \() =>
-    pairs = [Pair(name = "b", rank = 1), Pair(name = "a", rank = 2), Pair(name = "b", rank = 3)]
+    pairs = [Ranked(name = "b", rank = 1), Ranked(name = "a", rank = 2), Ranked(name = "b", rank = 3)]
     sorted = Lists::sortBy (pairs, \(x, y) => x.name < y.name)
     expect (join (mapList (sorted, \pair => "${pair.name}${pair.rank}")) ",", "a2,b1,b3")
     expect (Lists::distinct ["a", "b", "a"], false)
@@ -253,7 +256,7 @@ test ("sorting is stable and lists stay total", \() =>
 
 // [UI-COMPONENTS] [UI-EVENTS]: tabs encode their pages and bind as one choice after the pages' controls; segments carry their tones.
 tabbed () = Ui::column [
-    ui::Tabs(tabs = [Ui::tab ("one", "One", "1.circle", Ui::button ("Go", "play", Increment)), Ui::tab ("two", "Two", "2.circle", Ui::caption "Second")], selected = "two", bind = Load),
+    ui::Tabs(tabs = [Ui::tab ("one", "One", ui::Tag, Ui::button ("Go", ui::Play, Increment)), Ui::tab ("two", "Two", ui::Star, Ui::caption "Second")], selected = "two", bind = Load),
     ui::Segments(tones = [ui::Good, ui::Danger], label = "2 states"),
 ]
 
@@ -268,14 +271,14 @@ test ("tabs carry their pages and bind after the pages' controls, and segments c
     expect (Doc::text (tabs, "selected"), "two")
     expect (Doc::number (tabs, "event"), 1)
     expect (Doc::text (second, "label"), "Two")
-    expect (Doc::text (second, "symbol"), "2.circle")
+    expect (Doc::text (second, "symbol"), "star")
     expect (Doc::text (Doc::field (second, "child"), "text"), "Second")
     expect (Doc::text (Doc::field (second, "child"), "role"), "caption")
     expect (join (Doc::texts (segments, "tones")) ",", "good,danger")
     expect (Doc::text (segments, "label"), "2 states"))
 
 // [UI-COMPONENTS]: every constructor encodes as the component it names, with its role, tone, axis and enabled state.
-built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::evidence ("Label", "Value"), Ui::badge ("Partial", "circle", ui::Caution), Ui::empty ("tray", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
+built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::pair ("Label", "Value"), Ui::badge ("Partial", ui::Info, ui::Caution), Ui::empty (ui::Inbox, "Nothing", "Why"), Ui::action ("Stop", ui::Stop, ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
 
 test ("every constructor encodes as the component it names", \() =>
     doc = listGet (Encode::walk ([], built ())).nodes 0 ?: JsonNull
@@ -283,7 +286,7 @@ test ("every constructor encodes as the component it names", \() =>
     parts = Doc::items (Doc::field (row, "children"))
     expect (Doc::text (doc, "kind"), "split")
     expect (Doc::text (row, "axis"), "horizontal")
-    expect (join (mapList (parts, \child => Doc::text (child, "kind"))) ",", "text,evidence,badge,empty,button,toggle,picker,rows")
+    expect (join (mapList (parts, \child => Doc::text (child, "kind"))) ",", "text,pair,badge,empty,button,toggle,picker,rows")
     expect (Doc::text (listGet parts 0 ?: JsonNull, "role"), "heading")
     expect (Doc::text (listGet parts 0 ?: JsonNull, "tone"), "accent")
     expect (Doc::text (listGet parts 2 ?: JsonNull, "tone"), "caution")
@@ -295,13 +298,13 @@ test ("every constructor encodes as the component it names", \() =>
 
 // [UI-EFFECTS]: a run and an HTTP request encode their bounds, headers and the slices their output lands in.
 test ("run and http requests encode their bounds, headers and slices", \() =>
-    run = Requests::encode (Requests::ask ("ps", ui::Run(executable = "/bin/ps", arguments = ["-axo", "pid="], timeout = 10000, outputLimit = 8000000, plist = false, runSlice = "work/run")))
+    run = Requests::encode (Requests::ask ("ps", ui::Run(executable = "/bin/ps", arguments = ["-axo", "pid="], timeout = 10000, outputLimit = 8000000, runSlice = "work/run")))
     expect (Doc::text (run, "ticket"), "ps")
     expect (Doc::text (run, "kind"), "run")
     expect (join (Doc::texts (run, "arguments")) " ", "-axo pid=")
     expect (Doc::number (run, "timeout"), 10000)
     expect (Doc::number (run, "limit"), 8000000)
-    expect (Doc::flag (run, "plist"), false)
+    expect (Doc::has (run, "plist"), false)
     expect (Doc::text (run, "slice"), "work/run")
     http = Requests::encode (Requests::ask ("kev", ui::Http(method = "GET", url = "https://example.test/feed", headers = [ui::Header(headerName = "Accept", headerValue = "application/json")], body = "", responseLimit = 1000, deadline = 30000, httpSlice = "work/http")))
     header = listGet (Doc::items (Doc::field (http, "headers"))) 0 ?: JsonNull
@@ -338,25 +341,21 @@ requestText capability = jsonEncode (Requests::encode (Requests::ask ("job:7", c
 // [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
 test ("filesystem and store requests preserve paths bounds and slices", \() =>
     expect (requestText (ui::ListDirectories(directories = ["/tmp", "/Users/me"], entryLimit = 12, listSlice = "listing")), "{\"ticket\":\"job:7\",\"kind\":\"list-directories\",\"paths\":[\"/tmp\",\"/Users/me\"],\"limit\":12,\"slice\":\"listing\"}")
-    expect (requestText (ui::ReadPropertyLists(plists = ["app.plist"], plistKeys = ["CFBundleName"], plistSuffixes = [".plist"], plistLimit = 128, plistSlice = "prefs")), "{\"ticket\":\"job:7\",\"kind\":\"read-plists\",\"paths\":[\"app.plist\"],\"keys\":[\"CFBundleName\"],\"suffixes\":[\".plist\"],\"limit\":128,\"slice\":\"prefs\"}")
     expect (requestText (ui::ReadTexts(texts = ["a.txt", "b.txt"], textLimit = 256, textSlice = "text")), "{\"ticket\":\"job:7\",\"kind\":\"read-texts\",\"paths\":[\"a.txt\",\"b.txt\"],\"limit\":256,\"slice\":\"text\"}")
-    expect (requestText (ui::Fingerprint(file = "a.txt", fileLimit = 64)), "{\"ticket\":\"job:7\",\"kind\":\"fingerprint\",\"path\":\"a.txt\",\"limit\":64}")
     expect (requestText (ui::StoreWrite(writeName = "note.txt", writeSlice = "draft")), "{\"ticket\":\"job:7\",\"kind\":\"store-write\",\"name\":\"note.txt\",\"slice\":\"draft\"}")
     expect (requestText (ui::StoreList(folder = "notes")), "{\"ticket\":\"job:7\",\"kind\":\"store-list\",\"name\":\"notes\"}")
     expect (requestText (ui::StoreDelete(deleteName = "old.txt")), "{\"ticket\":\"job:7\",\"kind\":\"store-delete\",\"name\":\"old.txt\"}"))
 
 // [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
 test ("desktop requests preserve picker export and cancellation payloads", \() =>
-    expect (requestText (ui::RunningApplications), "{\"ticket\":\"job:7\",\"kind\":\"running-applications\"}")
     expect (requestText (ui::ChooseFile(types = ["txt", "md"], chosenLimit = 2, chosenSlice = "picked")), "{\"ticket\":\"job:7\",\"kind\":\"choose-file\",\"types\":[\"txt\",\"md\"],\"limit\":2,\"slice\":\"picked\"}")
     expect (requestText (ui::ChooseFolder), "{\"ticket\":\"job:7\",\"kind\":\"choose-folder\"}")
     expect (requestText (ui::SaveFile(suggested = "report.txt", exportSlice = "export")), "{\"ticket\":\"job:7\",\"kind\":\"save-file\",\"name\":\"report.txt\",\"slice\":\"export\"}")
     expect (requestText (ui::Reveal(revealPath = "/tmp/report.txt")), "{\"ticket\":\"job:7\",\"kind\":\"reveal\",\"path\":\"/tmp/report.txt\"}")
-    expect (requestText (ui::OpenSettings(pane = "privacy")), "{\"ticket\":\"job:7\",\"kind\":\"open-settings\",\"pane\":\"privacy\"}")
     expect (requestText (ui::Cancel(cancelled = "old:7")), "{\"ticket\":\"job:7\",\"kind\":\"cancel\",\"target\":\"old:7\"}"))
 
 roleText role =
-    doc = listGet (Encode::walk ([], Ui::column [ui::Text(content = "sample", role = role, tone = ui::Primary), Ui::button ("Go", "play", Increment)])).nodes 0 ?: JsonNull
+    doc = listGet (Encode::walk ([], Ui::column [ui::Text(content = "sample", role = role, tone = ui::Primary), Ui::button ("Go", ui::Play, Increment)])).nodes 0 ?: JsonNull
     Doc::text (listGet (Doc::items (Doc::field (doc, "children"))) 0 ?: JsonNull, "role")
 
 // [UI-COMPONENTS]: every semantic text role keeps its protocol spelling.
@@ -378,7 +377,7 @@ test ("host capabilities preserve namespace operation arguments and bounds", \()
 
 // [UI-COMPONENTS-CONTEXT-MENU]: menu commands use the same issued binding IDs.
 test ("context menus bind actions after their content controls", \() =>
-    built = Ui::contextMenu (Ui::button ("Select", "cube", Increment), [Ui::button ("Remove", "trash", Load)])
+    built = Ui::contextMenu (Ui::button ("Select", ui::Package, Increment), [Ui::button ("Remove", ui::Delete, Load)])
     walked = Encode::walk ([], built)
     doc = listGet walked.nodes 0 ?: JsonNull
     item = listGet (Doc::items (Doc::field (doc, "items"))) 0 ?: JsonNull
@@ -395,7 +394,7 @@ arityAt (shapes, index) = length (Doc::items (listGet shapes index ?: JsonNull))
 // atlas index, glyph text inline, and one input binding.
 test ("a scene encodes its primitives as flat typed arrays", \() =>
     drawn = [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 0), Scenes::disc (5.0, 6.0, 7.0, Scenes::rgba (0, 0, 255, 128), 1), Scenes::strip ([0.0, 0.0, 10.0, 10.0], Scenes::rgb (0, 255, 0), 2.0, 1), Scenes::sprite (1, 8.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 2), Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3)]
-    walked = Encode::walk ([], Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)])
+    walked = Encode::walk ([], Ui::column [Ui::button ("Pause", ui::Pause, Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)])
     doc = listGet walked.nodes 0 ?: JsonNull
     scene = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
     shapes = Doc::items (Doc::field (scene, "shapes"))
@@ -479,3 +478,61 @@ test ("an animate request carries its on flag", \() =>
     expect (Doc::text (doc, "kind"), "animate")
     expect (Doc::flag (doc, "on"), true)
     expect (Doc::text (doc, "ticket"), "clock:1"))
+
+occurrences (names, name) = length (range (0, length names) |> fold [] (\(found, index) => Pick::either ((listGet names index ?: "") == name, listAppend found index, found)))
+
+symbolAt (parts, index) = Doc::text (listGet parts index ?: JsonNull, "symbol")
+
+symbols () = [ui::NoSymbol, ui::Add, ui::Delete, ui::Dismiss, ui::Check, ui::Warning, ui::Info, ui::Question, ui::Search, ui::Settings, ui::Star, ui::Play, ui::Pause, ui::Stop, ui::Refresh, ui::Folder, ui::Document, ui::Package, ui::Inbox, ui::Globe, ui::External, ui::Lock, ui::Shield, ui::Branch, ui::Tag, ui::Clock, ui::Person, ui::Cursor, ui::Chevron]
+
+// [UI-COMPONENTS-SYMBOLS]: every symbol has its own lowercase wire name, and only `NoSymbol` is empty.
+test ("every symbol encodes as a distinct host-neutral name", \() =>
+    names = mapList (symbols (), \symbol => Symbols::name symbol)
+    expect (join names ",", ",add,delete,dismiss,check,warning,info,question,search,settings,star,play,pause,stop,refresh,folder,document,package,inbox,globe,external,lock,shield,branch,tag,clock,person,cursor,chevron")
+    expect (Lists::any (names, \name => occurrences (names, name) != 1), false))
+
+// [UI-COMPONENTS-SYMBOLS]: every node that shows a symbol sends its name, and a row without one sends none.
+test ("labels, icons, badges, empty states, buttons, tabs and rows send their symbol names", \() =>
+    parts = Doc::items (Doc::field (listGet (Encode::walk ([], Ui::column [Ui::label ("L", ui::Folder), Ui::icon ui::Globe, Ui::badge ("B", ui::Shield, ui::Good), Ui::empty (ui::Search, "E", "D"), Ui::button ("Go", ui::Refresh, Increment), ui::Tabs(tabs = [Ui::tab ("t", "T", ui::Clock, Ui::text "page")], selected = "t", bind = Load), Ui::rows ([Ui::item ("plain", Ui::text "p"), Ui::entry ("led", ui::Person, "G", Ui::text "q")], "plain", Load)])).nodes 0 ?: JsonNull, "children"))
+    expect (join (mapList ([0, 1, 2, 3, 4], \index => symbolAt (parts, index))) ",", "folder,globe,shield,search,refresh")
+    expect (Doc::text (listGet (Doc::items (Doc::field (listGet parts 5 ?: JsonNull, "tabs"))) 0 ?: JsonNull, "symbol"), "clock")
+    rows = Doc::items (Doc::field (listGet parts 6 ?: JsonNull, "rows"))
+    expect (join (mapList (rows, \row => Doc::text (row, "symbol"))) ",", ",person"))
+
+// [UI-COMPONENTS]: a pair sends its label and value and takes no ordinal.
+test ("a pair encodes its label and value without a binding", \() =>
+    walked = Encode::walk ([], Ui::column [Ui::pair ("Digest", "sha256:ab"), Ui::button ("Go", ui::Play, Increment)])
+    parts = Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))
+    doc = listGet parts 0 ?: JsonNull
+    expect ("${Doc::text (doc, "kind")} ${Doc::text (doc, "label")}=${Doc::text (doc, "value")}", "pair Digest=sha256:ab")
+    expect (Doc::has (doc, "event"), false)
+    expect (Doc::number (listGet parts 1 ?: JsonNull, "event"), 0)
+    expect (length walked.bindings, 1))
+
+isLinux platform = match platform
+    ui::Linux => true
+    _ => false
+
+otherName platform = match platform
+    ui::OtherPlatform name => name
+    _ => ""
+
+platformRound text = Symbols::platformText (Symbols::platform text)
+
+// [UI-CONTEXT-PLATFORM]: every known platform round-trips, and an unknown host name survives as `OtherPlatform`.
+test ("platforms decode to the union and encode back to their names", \() =>
+    expect (join (mapList (["macos", "ios", "linux", "windows", "android", "web", "vscode", ""], platformRound)) ",", "macos,ios,linux,windows,android,web,vscode,")
+    expect (isLinux (Symbols::platform "linux"), true)
+    expect (otherName (Symbols::platform "haiku"), "haiku")
+    expect (otherName (Symbols::platform "windows"), ""))
+
+// [UI-CONTEXT-PLATFORM]: the start context decodes its platform into the union and echoes it unchanged.
+test ("a start context carries a linux or windows platform", \() =>
+    linux = Runtime::context (Doc::parse "{\"now\":5,\"offset\":0,\"platform\":\"linux\",\"home\":\"/home/me\",\"arguments\":[]}")
+    expect (Symbols::platformText linux.platform, "linux")
+    windows = Runtime::context (Doc::parse "{\"now\":5,\"offset\":0,\"platform\":\"windows\",\"home\":\"C:/Users/me\",\"arguments\":[]}")
+    expect (Symbols::platformText windows.platform, "windows"))
+
+// [UI-EFFECTS]: work only one product or operating system can do travels as a host call, never as a framework capability.
+test ("product-specific work is a host call with its namespace and arguments", \() =>
+    expect (requestText (ui::HostCall(hostNamespace = "probe", hostOperation = "read-config", hostArguments = JsonObject [JsonMember "paths" (Doc::strings ["app.toml"])], hostTimeout = 500, hostLimit = 128, hostSlice = "prefs")), "{\"ticket\":\"job:7\",\"kind\":\"host-call\",\"namespace\":\"probe\",\"operation\":\"read-config\",\"arguments\":{\"paths\":[\"app.toml\"]},\"timeout\":500,\"limit\":128,\"slice\":\"prefs\"}"))

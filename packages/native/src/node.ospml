@@ -65,18 +65,18 @@ type Node A =
         bind : A
     Slot
         key : string
-    Evidence
+    Pair
         label : string
         value : string
     Badge
         label : string
-        symbol : string
+        symbol : Symbol
         tone : Tone
     Label
         label : string
-        symbol : string
+        symbol : Symbol
     Icon
-        symbol : string
+        symbol : Symbol
     Link
         label : string
         address : string
@@ -86,13 +86,12 @@ type Node A =
         tones : List<Tone>
         label : string
     Empty
-        symbol : string
+        symbol : Symbol
         title : string
         detail : string
     Progress
         label : string
         detail : string
-    Brand
     Swatch
         name : string
         light : string
@@ -103,7 +102,7 @@ type Node A =
         bind : A
     Button
         label : string
-        symbol : string
+        symbol : Symbol
         role : ButtonRole
         enabled : bool
         action : A
@@ -257,13 +256,13 @@ type Paint =
 type Tab A =
     tabKey : string
     tabLabel : string
-    tabSymbol : string
+    tabSymbol : Symbol
     page : Node<A>
 
-(** A selectable row. Consecutive rows naming one `rowGroup` share its heading; an empty symbol or group draws none. *)
+(** A selectable row. Consecutive rows naming one `rowGroup` share its heading; `NoSymbol` or an empty group draws none. *)
 type Row A =
     rowKey : string
-    rowSymbol : string
+    rowSymbol : Symbol
     rowGroup : string
     cell : Node<A>
 
@@ -328,31 +327,31 @@ module Ui
     section (title, footer, children) = Section(title = title, footer = footer, children = children)
 
     (** A plain, enabled button with a label and symbol that delivers `action` when pressed. *)
-    export button<A> : (string, string, A) -> Node<A>
+    export button<A> : (string, Symbol, A) -> Node<A>
     button (label, symbol, action) = Button(label = label, symbol = symbol, role = Plain, enabled = true, action = action)
 
     (** A button with an explicit role and enabled state that delivers `act` when pressed. *)
-    export action<A> : (string, string, ButtonRole, bool, A) -> Node<A>
+    export action<A> : (string, Symbol, ButtonRole, bool, A) -> Node<A>
     action (label, symbol, role, enabled, act) = Button(label = label, symbol = symbol, role = role, enabled = enabled, action = act)
 
-    (** A label and its value on one line, such as an observed fact. *)
-    export evidence<A> : (string, string) -> Node<A>
-    evidence (label, value) = Evidence(label = label, value = value)
+    (** A label and its value on one line, such as a setting and its current value. *)
+    export pair<A> : (string, string) -> Node<A>
+    pair (label, value) = Pair(label = label, value = value)
 
     (** A status badge; its label and symbol carry the meaning, so colour is never the only signal. *)
-    export badge<A> : (string, string, Tone) -> Node<A>
+    export badge<A> : (string, Symbol, Tone) -> Node<A>
     badge (label, symbol, tone) = Badge(label = label, symbol = symbol, tone = tone)
 
     (** An empty state: a symbol, a title and a line of detail saying why there is nothing to show. *)
-    export empty<A> : (string, string, string) -> Node<A>
+    export empty<A> : (Symbol, string, string) -> Node<A>
     empty (symbol, title, detail) = Empty(symbol = symbol, title = title, detail = detail)
 
     (** Text led by a symbol. *)
-    export label<A> : (string, string) -> Node<A>
+    export label<A> : (string, Symbol) -> Node<A>
     label (content, symbol) = Label(label = content, symbol = symbol)
 
     (** A large decorative symbol, hidden from accessibility. *)
-    export icon<A> : string -> Node<A>
+    export icon<A> : Symbol -> Node<A>
     icon symbol = Icon(symbol = symbol)
 
     (** A labelled `https` web page the host opens in the browser; nothing is sent until a person follows it. *)
@@ -403,15 +402,15 @@ module Ui
     export choice (key, label) = Choice(choiceKey = key, choiceLabel = label)
 
     (** A tab named `key` with a label, a symbol and the page it shows. *)
-    export tab<A> : (string, string, string, Node<A>) -> Tab<A>
+    export tab<A> : (string, string, Symbol, Node<A>) -> Tab<A>
     tab (key, label, symbol, page) = Tab(tabKey = key, tabLabel = label, tabSymbol = symbol, page = page)
 
     (** A row with no symbol or group. *)
     export item<A> : (string, Node<A>) -> Row<A>
-    item (key, cell) = Row(rowKey = key, rowSymbol = "", rowGroup = "", cell = cell)
+    item (key, cell) = Row(rowKey = key, rowSymbol = NoSymbol, rowGroup = "", cell = cell)
 
     (** A row led by `symbol` under the heading `group`; consecutive rows of one group share that heading. *)
-    export entry<A> : (string, string, string, Node<A>) -> Row<A>
+    export entry<A> : (string, Symbol, string, Node<A>) -> Row<A>
     entry (key, symbol, group, cell) = Row(rowKey = key, rowSymbol = symbol, rowGroup = group, cell = cell)
 
     (** [UI-SCENE] A surface `width` by `height` units that the host scales to fit, drawn from `primitives` with sprites taken from `atlas` by index. Keys and pointer positions in scene units reach `play` as `Controlled` messages. *)

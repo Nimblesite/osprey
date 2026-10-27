@@ -182,7 +182,13 @@ fn start() -> Result<(Regions, Vec<Request>), String> {
     Library::init()?;
     let home = std::env::var("HOME").map_err(|problem| format!("HOME is not set: {problem}"))?;
     let arguments: Vec<String> = std::env::args().skip(1).collect();
-    let context = events::start_context(now(), local_offset()?, "macos", &home, &arguments);
+    let context = events::start_context(
+        now(),
+        local_offset()?,
+        std::env::consts::OS,
+        &home,
+        &arguments,
+    );
     let started = envelope::parse(&Library::start(&context)?)?;
     let mut regions = Regions::new();
     let pending = regions.apply(started);

@@ -28,5 +28,17 @@ ok 27 - desktop requests preserve picker export and cancellation payloads
 ok 28 - semantic text roles preserve every protocol spelling
 ok 29 - host capabilities preserve namespace operation arguments and bounds
 ok 30 - context menus bind actions after their content controls
-1..30
-# tests=30 passed=30 failed=0 skipped=0
+ok 31 - a scene encodes its primitives as flat typed arrays
+ok 32 - colours pack as RRGGBBAA
+ok 33 - a path encodes its steps, outline, paint and transform
+ok 34 - a scene binding delivers keys and pointer positions in scene units
+ok 35 - a frame event delivers its elapsed seconds and patches nothing when ignored
+ok 36 - an animate request carries its on flag
+ok 37 - every symbol encodes as a distinct host-neutral name
+ok 38 - labels, icons, badges, empty states, buttons, tabs and rows send their symbol names
+ok 39 - a pair encodes its label and value without a binding
+ok 40 - platforms decode to the union and encode back to their names
+ok 41 - a start context carries a linux or windows platform
+ok 42 - product-specific work is a host call with its namespace and arguments
+1..42
+# tests=42 passed=42 failed=0 skipped=0
