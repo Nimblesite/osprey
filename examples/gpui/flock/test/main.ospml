@@ -124,3 +124,62 @@ test ("a completed scores read fills the best-score slice", \() =>
     scores = Doc::field (Probes::stored after, "scores")
     expect (Doc::write (Doc::field (scores, "best")), "[40,30,20]")
     expect (Doc::flag (scores, "loaded"), true))
+
+// The field re-renders on every input, so each event names the field's latest patched revision.
+latestField (found, patch) = match Doc::text (patch, "key") == "field"
+    true => Doc::number (patch, "revision")
+    false => found
+
+fieldRevision envelope = foldList (Doc::items (Doc::field (envelope, "patches")), 1, latestField)
+
+pointerEvent (envelope, x, y, down) = "{\"kind\":\"ui\",\"region\":\"field\",\"revision\":${fieldRevision envelope},\"ordinal\":0,\"value\":{\"x\":${x},\"y\":${y},\"down\":${down}},\"now\":2}"
+
+keyEvent (envelope, name, down) = "{\"kind\":\"ui\",\"region\":\"field\",\"revision\":${fieldRevision envelope},\"ordinal\":0,\"value\":{\"key\":\"${name}\",\"down\":${down}},\"now\":2}"
+
+// Off-field input tests drive many frames, so they use three birds and no hawk: an emptied field would start a new round and reset the dog.
+small () = fixture ([bird (40.0, 40.0, 0.5, 0.1), bird (60.0, 120.0, 0.4, 0.2), bird (90.0, 80.0, 0.3, 0.3)], [])
+
+playerAt envelope = Doc::field (worldOf envelope, "player")
+
+frames (envelope, count) = range (0, count) |> fold envelope (\(current, _) => Probes::post (current, frameEvent ()))
+
+inField envelope =
+    x = Doc::decimal (playerAt envelope, "x")
+    y = Doc::decimal (playerAt envelope, "y")
+    x >= 0.0 && x <= 320.0 && y >= 0.0 && y <= 200.0
+
+test ("a drag far off the field keeps the dog inside it", \() =>
+    started = Probes::started ()
+    held = Probes::postStore (started, small (), pointerEvent (started, "-5000.5", "-9000.25", "true"))
+    after = frames (held, 120)
+    expect (inField after, true)
+    expect (length (birdsOf after) > 0, true))
+
+test ("a drag past the far corner keeps the dog inside it", \() =>
+    started = Probes::started ()
+    held = Probes::postStore (started, small (), pointerEvent (started, "1e9", "2.5e9", "true"))
+    after = frames (held, 120)
+    expect (inField after, true))
+
+test ("holding left and up pins the dog to the corner without failing", \() =>
+    started = Probes::started ()
+    leftHeld = Probes::postStore (started, small (), keyEvent (started, "left", "true"))
+    left = Probes::post (leftHeld, keyEvent (leftHeld, "up", "true"))
+    after = frames (left, 240)
+    expect (Doc::decimal (playerAt after, "x"), 0.0)
+    expect (Doc::decimal (playerAt after, "y"), 0.0))
+
+test ("a pointer released off the field stops chasing it", \() =>
+    started = Probes::started ()
+    pressed = Probes::postStore (started, small (), pointerEvent (started, "400.0", "300.0", "true"))
+    released = Probes::post (pressed, pointerEvent (pressed, "400.0", "300.0", "false"))
+    after = frames (released, 30)
+    expect (inField after, true)
+    expect (Doc::flag (worldOf after, "targetActive"), false))
+
+test ("a bird beside a hawk bolts away from it", \() =>
+    started = Probes::started ()
+    store = fixture ([bird (50.0, 50.0, 0.5, 0.0), bird (150.0, 150.0, 0.4, 0.2)], [hawk (55.0, 50.0)])
+    after = Probes::postStore (started, store, frameEvent ())
+    expect (length (birdsOf after), 2)
+    expect (birdXAt (after, 0) < 50.0, true))

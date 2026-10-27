@@ -26,7 +26,18 @@ pub(super) fn canvas(
         },
         move |_, (decoded, transform), window, cx| {
             let started = Instant::now();
-            if let Err(problem) = paint(&decoded.shapes, transform, window, cx) {
+            // Shapes outside the scene (a ring around a dog at the edge) are clipped to the letterboxed field.
+            let field = Bounds {
+                origin: transform.origin,
+                size: size(
+                    px(decoded.width * transform.scale),
+                    px(decoded.height * transform.scale),
+                ),
+            };
+            let painted = window.with_content_mask(Some(ContentMask { bounds: field }), |window| {
+                paint(&decoded.shapes, transform, window, cx)
+            });
+            if let Err(problem) = painted {
                 handle.update(cx, |view, _| view.diagnose_once(problem));
             }
             let elapsed = started.elapsed().as_secs_f64() * 1000.;

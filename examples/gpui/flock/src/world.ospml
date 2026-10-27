@@ -138,9 +138,9 @@ module Simulation
 
     sameBird (a, b) = a.birdX == b.birdX && a.birdY == b.birdY && a.birdVx == b.birdVx && a.birdVy == b.birdVy
 
-    // Separation acts only inside five units; beyond it alignment and cohesion pull birds into flocks.
-    crowd (delta, distance) = match distance < 25.0
-        true => delta * (25.0 - distance) * 0.04
+    // Separation acts only inside six units; beyond it alignment and cohesion pull birds into flocks.
+    crowd (delta, distance) = match distance < 36.0
+        true => delta * (36.0 - distance) * 0.03
         false => 0.0
 
     accumulate (b, sum, other) =
@@ -173,24 +173,38 @@ module Simulation
             true => (high - 12.0 - value) * 0.04
             false => 0.0
 
-    // Separation, mean alignment and mean cohesion combine with homing, damping and sheepdog repulsion.
-    steer (b, player, cells) =
+    // A bird within twenty units of a hawk bolts directly away from it, harder the closer it is.
+    flee (b, hawk) =
+        dx = b.birdX - hawk.hawkX
+        dy = b.birdY - hawk.hawkY
+        near = squared (dx, dy)
+        match near < 400.0
+            true => Vector(vectorX = dx * (400.0 - near) * 0.0004, vectorY = dy * (400.0 - near) * 0.0004)
+            false => Vector(vectorX = 0.0, vectorY = 0.0)
+
+    panic (b, hawks) = foldList (hawks, Vector(vectorX = 0.0, vectorY = 0.0), \(sum, hawk) =>
+        away = flee (b, hawk)
+        Vector(vectorX = sum.vectorX + away.vectorX, vectorY = sum.vectorY + away.vectorY))
+
+    // Separation, mean alignment and mean cohesion combine with homing, hawk panic and sheepdog repulsion.
+    steer (b, player, hawks, cells) =
         sum = nearby (b, cells)
         home = homing b
         scared = herd (b, player)
-        push = Vector(vectorX = scared.vectorX + home.vectorX, vectorY = scared.vectorY + home.vectorY)
+        fear = panic (b, hawks)
+        push = Vector(vectorX = scared.vectorX + home.vectorX + fear.vectorX, vectorY = scared.vectorY + home.vectorY + fear.vectorY)
         handle Arith
             divideByZero _ dividend => dividend
         match sum.nearCount == 0
             true => speed (b.birdVx + push.vectorX, b.birdVy + push.vectorY)
-            false => speed (b.birdVx + sum.sepX * 0.08 + (sum.alignX / toFloat sum.nearCount - b.birdVx) * 0.06 + (sum.cohereX / toFloat sum.nearCount - b.birdX) * 0.008 + push.vectorX, b.birdVy + sum.sepY * 0.08 + (sum.alignY / toFloat sum.nearCount - b.birdVy) * 0.06 + (sum.cohereY / toFloat sum.nearCount - b.birdY) * 0.008 + push.vectorY)
+            false => speed (b.birdVx + sum.sepX * 0.08 + (sum.alignX / toFloat sum.nearCount - b.birdVx) * 0.06 + (sum.cohereX / toFloat sum.nearCount - b.birdX) * 0.003 + push.vectorX, b.birdVy + sum.sepY * 0.08 + (sum.alignY / toFloat sum.nearCount - b.birdVy) * 0.06 + (sum.cohereY / toFloat sum.nearCount - b.birdY) * 0.003 + push.vectorY)
 
     wrapX value = clamp (value, 0.0, 320.0)
 
     wrapY value = clamp (value, 0.0, 200.0)
 
-    movedBird (b, cells, player, elapsed) =
-        velocity = steer (b, player, cells)
+    movedBird (b, cells, player, hawks, elapsed) =
+        velocity = steer (b, player, hawks, cells)
         Bird(birdX = wrapX (b.birdX + velocity.vectorX * elapsed * 60.0), birdY = wrapY (b.birdY + velocity.vectorY * elapsed * 60.0), birdVx = velocity.vectorX, birdVy = velocity.vectorY)
 
     closer (hawk, found, b) =
@@ -261,7 +275,10 @@ module Simulation
 
     // A round transition retains the score and records only a changed top-five table.
     finishRound (store, world) =
-        best = ranked (listAppend store.scores.best world.scoreValue)
+        // A round where the hawks took every bird scores nothing and is not a best round.
+        best = match world.scoreValue > 0
+            true => ranked (listAppend store.scores.best world.scoreValue)
+            false => store.scores.best
         text = scoresJson best
         changed = text != scoresJson store.scores.best
         settings = store.settings
@@ -274,7 +291,7 @@ module Simulation
         world = store.world
         player = movedPlayer (world, elapsed)
         cells = grid world.birds
-        moved = mapList (world.birds, \b => movedBird (b, cells, player, elapsed))
+        moved = mapList (world.birds, \b => movedBird (b, cells, player, world.hawks, elapsed))
         rescued = filterList (moved, \b => b.birdX >= 290.0)
         remaining = filterList (moved, \b => b.birdX < 290.0)
         hawks = mapList (world.hawks, \hawk => movedHawk (hawk, remaining, elapsed))
