@@ -82,15 +82,17 @@ html:has(.home) { scroll-behavior: auto; }
 .community-cta { display: flex; align-items: flex-end; justify-content: space-between; gap: 3rem; flex-wrap: wrap; }
 .community-cta .section-heading { margin-bottom: 0; }
 .community-actions { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
-.home-install { text-align: left; background: radial-gradient(ellipse at 50% 110%, #77d7f418, transparent 65%); padding-block: 6rem; }
-.home-install .section-title { text-align: left; font-size: clamp(3rem, 7vw, 6rem); font-weight: 500; letter-spacing: -0.06em; }
-.home-install .section-subtitle { margin-left: 0; text-align: left; }
-.home-install .install-card { background: transparent; border: 0; border-top: 1px solid var(--outline-variant); border-radius: 0; padding: 1.5rem 0; box-shadow: none; text-align: left; }
-.home-install .install-card:hover { transform: none; box-shadow: none; }
-.home-install .install-card h3 { font-size: 1rem; }
-.home-install .install-card p { font-size: 0.85rem; }
-.home-install .install-code { background: var(--surface-lowest); }
-.home-install .install-code pre { font-size: 0.7rem; }
+.home .showcase-section { padding-block: 1.5rem 4rem; }
+.showcase-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.25rem; margin-bottom: 1.25rem; }
+.showcase-heading h2 { margin: 0; font-size: clamp(1.3rem, 2.4vw, 2rem); font-weight: 500; letter-spacing: -0.03em; }
+.home .showcase-link { width: fit-content; color: var(--primary); }
+.showcase-link span { margin-right: 0.5rem; font-size: 0.7em; vertical-align: 0.15em; }
+.showcase-section .overview-film video { border-color: #77d7f440; box-shadow: 0 30px 90px #0008, 0 0 70px #77d7f41c; }
+.home-install { padding-block: 2.25rem; border-block: 1px solid var(--outline-variant); background: radial-gradient(ellipse at 50% 120%, #77d7f418, transparent 65%); }
+.install-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; }
+.home-install .section-title { margin: 0; font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 500; letter-spacing: -0.04em; }
+.home .install-strip pre { margin: 0; padding: 0.7rem 1rem; border-radius: 8px; background: var(--surface-lowest); font-size: 0.8rem; }
+.install-alt { flex-basis: 100%; margin: 0; color: var(--on-surface-variant); font-size: 0.8rem; }
 .home :is(a, button):focus-visible { outline: 2px solid var(--primary); outline-offset: 5px; }
 @media (max-width: 1000px) {
   .home-hero .hero-grid { grid-template-columns: 1fr; gap: 2rem; }
@@ -124,7 +126,6 @@ html:has(.home) { scroll-behavior: auto; }
   .deployment-target p { min-height: 0; }
   .home .mobile-gallery { transform: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
   .home .mobile-gallery figcaption span { font-size: 0.7rem; }
-  .home-install { padding-block: 4rem; }
   .community-actions .btn { width: 100%; justify-content: center; }
 }
 /* Motion keeps the final layout visible without scripts or animation support. */

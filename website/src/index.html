@@ -14,8 +14,8 @@ date: "git Last Modified"
   <div class="container hero-grid">
     <div class="hero-content">
       <a class="home-eyebrow status-link" href="/status/"><span class="status-dot"></span> Open source. Actively evolving. <span>↗</span></a>
-      <h1 class="hero-title" id="hero-title">Osprey.<br>Logic, <em>in flight.</em></h1>
-      <p class="hero-subtitle">Safety. Elegance. Performance.</p>
+      <h1 class="hero-title" id="hero-title">Osprey.<br>Safe, elegant, <em>fast.</em></h1>
+      <a class="hero-subtitle showcase-link" href="#showcase"><span aria-hidden="true">▶</span> Watch the showcase</a>
       <p class="hero-description">A functional language built to minimise bugs and failures: <strong>algebraic effects</strong> and <code>Result</code> instead of panics, inferred types that say more with less text, and native LLVM compilation.</p>
       <div class="hero-actions">
         <a href="#install" class="btn btn-primary btn-lg">Install Osprey <span aria-hidden="true">→</span></a>
@@ -37,9 +37,30 @@ date: "git Last Modified"
   </div>
 </section>
 
+<section class="section showcase-section" id="showcase" aria-labelledby="showcase-title">
+  <div class="container">
+    <div class="showcase-heading"><p class="home-eyebrow">01 / Built with Osprey</p><h2 id="showcase-title">Real apps on web, Android, iPhone, macOS and the GPU.</h2></div>
+    <figure class="overview-film showcase-film">
+      <video id="showcase-video" controls playsinline preload="none" poster="/assets/videos/osprey-showcase-poster.jpg" width="1920" height="1080" aria-label="Osprey showcase: apps built with Osprey running on web, Android, iPhone, macOS and the GPU">
+        <source src="/assets/videos/osprey-showcase.mp4" type="video/mp4">
+      </video>
+      <figcaption>Real footage: Talon Bank on web, Android and iPhone, Issue Inbox, Data Studio, Osprey Storage, Vigil, Metal scenes and Flock. Music: “Raving Energy” by Kevin MacLeod (incompetech.com), <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="home-install" id="install" aria-labelledby="install-title">
+  <div class="container install-strip">
+    <h2 class="section-title" id="install-title">Install Osprey.</h2>
+    <pre class="language-bash"><code class="language-bash">brew install nimblesite/tap/osprey</code></pre>
+    <a class="btn btn-primary" href="/docs/installation/">Getting started guide <span aria-hidden="true">→</span></a>
+    <p class="install-alt">Windows uses Scoop. Native compilation requires clang (LLVM 15+). Or <a href="/playground/">try Osprey online ↗</a></p>
+  </div>
+</section>
+
 <section class="section pillars-section" id="pillars" aria-labelledby="pillars-title">
   <div class="container">
-    <div class="section-heading"><p class="home-eyebrow">01 / Three pillars</p><h2 id="pillars-title">Safety. Elegance.<br><span class="muted-heading">Performance.</span></h2><p>Osprey exists to minimise bugs and failures, to express more program with less text, and to run natively. Every feature on this page serves one of the three.</p></div>
+    <div class="section-heading"><p class="home-eyebrow">02 / Three pillars</p><h2 id="pillars-title">Safety. Elegance.<br><span class="muted-heading">Performance.</span></h2><p>Osprey exists to minimise bugs and failures, to express more program with less text, and to run natively. Every feature on this page serves one of the three.</p></div>
     <div class="pillars-grid">
       <article><span class="feature-mark" aria-hidden="true">Result</span><h3>Safety</h3><p>Algebraic, with no panics. Failures are <code>Result</code> values the caller must handle, matching is exhaustive, integer arithmetic follows a stated <code>Arith</code> policy, and effects make outside work visible and replaceable.</p><a href="/spec/0017-algebraiceffects/">Read the effects contract ↗</a></article>
       <article><span class="feature-mark" aria-hidden="true">{ λ }</span><h3>Elegance</h3><p>Inferred types, effects instead of plumbing, and no separate async form. Less text means fewer tokens: programs are cheaper for AI agents to read and write, and easier for people to hold in their heads.</p><a href="/blog/2026-06-30-osprey-flavors/">Compare the syntax flavors ↗</a></article>
@@ -48,18 +69,6 @@ date: "git Last Modified"
   </div>
 </section>
 
-<section class="blue-box-installation home-install" id="install" aria-labelledby="install-title">
-  <div class="container">
-    <p class="home-eyebrow">02 / Get started</p><h2 class="section-title" id="install-title">Install Osprey.</h2><p class="section-subtitle">Run a program locally, or try the hosted Playground.</p>
-    <div class="install-grid">
-      <div class="install-card"><h3>Start in your browser</h3><p>Explore the language without installing anything.</p><a href="/playground/" class="btn btn-primary">Open Playground ↗</a></div>
-      <div class="install-card"><h3>macOS / Linux</h3><div class="install-code"><pre class="language-bash"><code class="language-bash">brew install nimblesite/tap/osprey</code></pre></div></div>
-      <div class="install-card"><h3>Windows</h3><div class="install-code"><pre class="language-bash"><code class="language-bash">scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
-scoop install osprey</code></pre></div></div>
-    </div>
-    <p class="support-note">Native compilation requires clang (LLVM 15+). <a href="/docs/installation/">Installation guide →</a> · <a href="https://github.com/Nimblesite/osprey">Contribute on GitHub ↗</a></p>
-  </div>
-</section>
 
 <section class="section effect-story" id="effects" aria-labelledby="effects-title">
   <div class="container">

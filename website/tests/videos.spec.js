@@ -143,6 +143,26 @@ for (const width of [390, 1440]) {
   });
 }
 
+for (const width of [390, 1440]) {
+  test(`homepage showcase film plays directly under the hero at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await expect(page.locator(".home > section").nth(1)).toHaveId("showcase");
+    await page.locator(".hero").getByRole("link", { name: "Watch the showcase" }).click();
+    const player = page.locator("#showcase #showcase-video");
+    await expect(player).toBeInViewport();
+    await player.scrollIntoViewIfNeeded();
+    await expect(player).toBeVisible();
+    await expect(player).toHaveAttribute("poster", "/assets/videos/osprey-showcase-poster.jpg");
+    await expect(player.locator("source")).toHaveAttribute("src", "/assets/videos/osprey-showcase.mp4");
+    await expect(player).toHaveAttribute("aria-label", /web, Android, iPhone, macOS/);
+    await player.evaluate((video) => video.play());
+    await expect.poll(() => player.evaluate((video) => video.currentTime)).toBeGreaterThan(0.5);
+    expect(await player.evaluate((video) => video.videoWidth)).toBe(1920);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
 test("homepage Python GPU excerpt includes the actual tensor operation", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator('#gpt2 code.language-python')).toContainText('return perform(Tensor.mat_mul(a, b, rows, inner, cols))');
