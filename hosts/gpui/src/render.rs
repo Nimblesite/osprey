@@ -121,7 +121,7 @@ fn stack(ctx: &mut Ctx, node: &Value) -> AnyElement {
         .flex()
         .when(grows, |this| this.flex_grow(1.).min_h_0())
         .when(vertical, |this| this.flex_col())
-        .when(!vertical, |this| this.flex_row())
+        .when(!vertical, |this| this.flex_row().items_center())
         .gap(gap(ctx))
         .children(many(ctx, node, "children"))
         .into_any_element()
@@ -148,10 +148,11 @@ fn holds_scene(ctx: &Ctx, node: &Value, depth: usize) -> bool {
 /// Draws text using its role and semantic theme tone.
 fn text(ctx: &mut Ctx, node: &Value) -> AnyElement {
     let role = string(node, "role");
+    // Body text takes the application's `text` token when its theme defines one.
     let fallback = if role == "caption" {
         ctx.cx.theme().muted_foreground
     } else {
-        ctx.cx.theme().foreground
+        tint(ctx, "text", ctx.cx.theme().foreground)
     };
     div()
         .text_color(tint(ctx, string(node, "tone"), fallback))
@@ -342,7 +343,7 @@ pub(super) fn missing_symbol(ctx: &mut Ctx, name: &str) -> AnyElement {
 }
 
 /// Resolves a semantic token, falling back to the kit theme.
-fn tint(ctx: &Ctx, name: &str, fallback: Hsla) -> Hsla {
+pub(super) fn tint(ctx: &Ctx, name: &str, fallback: Hsla) -> Hsla {
     colour(ctx.view.regions.theme(), name, ctx.dark).map_or(fallback, Hsla::from)
 }
 

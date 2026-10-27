@@ -25,6 +25,12 @@ renderer!(button, bound_button);
 fn bound_button(ctx: &mut Ctx, node: &Value, ordinal: u64) -> AnyElement {
     let handle = ctx.cx.entity();
     let binding = binding(ctx, ordinal);
+    if let Some(flat) = flat_button(ctx, node, ordinal) {
+        let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+            send(&handle, &binding, Value::Null, window, cx)
+        };
+        return flat.on_click(on_click).into_any_element();
+    }
     let styled = button_style(ctx, node, ordinal);
     let button = decorate(
         ctx,
@@ -35,6 +41,34 @@ fn bound_button(ctx: &mut Ctx, node: &Value, ordinal: u64) -> AnyElement {
         .disabled(!flag(node, "enabled"))
         .on_click(move |_, window, cx| send(&handle, &binding, Value::Null, window, cx))
         .into_any_element()
+}
+
+/// A plain button drawn as a flat GPUI div when the application's theme names `button` and
+/// `buttonText` colours, padded by its third and first spacing steps; otherwise the kit's button.
+fn flat_button(ctx: &Ctx, node: &Value, ordinal: u64) -> Option<Stateful<Div>> {
+    let theme = ctx.view.regions.theme();
+    let background = colour(theme, "button", ctx.dark)?;
+    let text = colour(theme, "buttonText", ctx.dark)?;
+    let enabled = flag(node, "enabled");
+    let plain = !matches!(string(node, "role"), "prominent" | "destructive");
+    let step = |index: usize| {
+        px(theme
+            .and_then(|theme| theme.spacing.get(index))
+            .copied()
+            .unwrap_or(0)
+            .max(0) as f32)
+    };
+    (plain && enabled).then(|| {
+        div()
+            .id(control_id(ctx, ordinal))
+            .child(string(node, "label").to_owned())
+            .bg(background)
+            .text_color(text)
+            .active(|this| this.opacity(0.8))
+            .flex()
+            .px(step(2))
+            .py(step(0))
+    })
 }
 
 /// Resolves the button's presentation role without changing its binding.

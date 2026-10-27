@@ -222,11 +222,10 @@ fn new_view(
 
 /// The fixed native window dimensions and title.
 fn options() -> WindowOptions {
-    // OSPREY_GPUI_WINDOW=default opens at GPUI's default size, as a port compared with a GPUI example must.
-    let bounds = (std::env::var("OSPREY_GPUI_WINDOW").as_deref() != Ok("default")).then(|| {
+    let bounds = window_size().map(|(width, height)| {
         WindowBounds::Windowed(Bounds {
             origin: Default::default(),
-            size: size(px(1200.), px(800.)),
+            size: size(px(width), px(height)),
         })
     });
     WindowOptions {
@@ -237,6 +236,19 @@ fn options() -> WindowOptions {
         }),
         ..Default::default()
     }
+}
+
+/// The content size: 1200 by 800, GPUI's default for OSPREY_GPUI_WINDOW=default, or its
+/// `WIDTHxHEIGHT`, so a port can open at exactly the size of the example it is compared with.
+fn window_size() -> Option<(f32, f32)> {
+    let requested = std::env::var("OSPREY_GPUI_WINDOW").unwrap_or_default();
+    if requested == "default" {
+        return None;
+    }
+    let parsed = requested
+        .split_once('x')
+        .and_then(|(width, height)| Some((width.parse().ok()?, height.parse().ok()?)));
+    Some(parsed.unwrap_or((1200., 800.)))
 }
 
 /// Parses the optional frame-run duration without changing normal or smoke launch.

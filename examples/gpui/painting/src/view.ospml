@@ -101,5 +101,5 @@ module View
 
     token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
 
-    (** White in both appearances, as the original paints its window. *)
-    export theme () = ui::Theme(tokens = [token ("background", "#FFFFFF", "#FFFFFF"), token ("text", "#000000", "#000000")], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)
+    (** White in both appearances with black text and flat black buttons, as the original paints its window. *)
+    export theme () = ui::Theme(tokens = [token ("background", "#FFFFFF", "#FFFFFF"), token ("text", "#000000", "#000000"), token ("button", "#000000", "#000000"), token ("buttonText", "#FFFFFF", "#FFFFFF")], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)

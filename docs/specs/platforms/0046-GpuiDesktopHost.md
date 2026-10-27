@@ -62,10 +62,15 @@ A `Scene` node is a surface in the application's own unit space, `width` by `hei
 | 2 | line strip | pair count, x0, y0, …, colour, stroke width, depth |
 | 3 | sprite | atlas index, x, y, w, h, angle, tint colour, depth |
 | 4 | glyphs | text, x, y, size, colour, depth |
+| 5 | path | steps, outline, paint, transform, depth (each of the first four an array, below) |
+
+A path's `steps` are arrays in the order a path builder takes them: `[0,x,y]` move, `[1,x,y]` line, `[2,x,y,cx,cy]` quadratic curve (end point first), `[3,x,y,ax,ay,bx,by]` cubic, `[4,rx,ry,rotation,large,sweep,x,y]` elliptical arc, `[5,closed,x0,y0,…]` polygon, `[6]` close. `outline` is `[0]` fill or `[1,width,bevel,dash…]` stroke. `paint` is `[0,tint]` solid or `[1,angle,tint,at,tint,at,oklab]`, a two-stop linear gradient in degrees. A tint is `[0,r,g,b,a]` sRGB or `[1,h,s,l,a]`, float channels from 0 to 1, kept in the application's space so no conversion rounds it. `transform` is `[]` or `[tx,ty,scale]`, applied as a translation then a scale. The host replays the steps on its own path builder in that order and adds no call of its own when the scene is in window pixels, so a path built the same way in a native GPUI program and in Osprey tessellates to the same pixels.
+
+A scene of zero width and height is in **window pixels**: no unit space, no letterbox and no clip, its origin the window's top left, as a GPUI canvas paints. `Ui::canvas` builds one.
 
 A colour is one integer packed `0xRRGGBBAA`; `depth` orders layers from the back; a sprite names its image by index into the node's `atlas`, a list of names the host resolves to textures it owns. The painter draws one pass per depth and instances primitives that share a sprite.
 
-The node carries one binding (`event`). The host sends keys as `{"key":<name>,"down":<bool>}` and the pointer as `{"x":…,"y":…,"down":<bool>}` in scene units through that binding, and nothing else; the application decides what a key or a position means. Key names are host-neutral: `left`, `right`, `up`, `down`, `space`, `enter`, `escape`, `tab`, `backspace`, and a single lowercase character for letters and digits; a key outside that vocabulary is not sent. A pointer event is sent on press, release and on movement while pressed, and once per movement when not pressed, at most once per frame.
+The node carries one binding (`event`). The host sends keys as `{"key":<name>,"down":<bool>}` and the pointer as `{"x":…,"y":…,"down":<bool>,"shift":<bool>}` in scene units through that binding, and nothing else; the application decides what a key or a position means. Key names are host-neutral: `left`, `right`, `up`, `down`, `space`, `enter`, `escape`, `tab`, `backspace`, and a single lowercase character for letters and digits; a key outside that vocabulary is not sent. A pointer event is sent on press, release and on movement while pressed, and once per movement when not pressed, at most once per frame.
 
 A scene is the only node whose patch may be large every frame. The host measures the time from `dispatch` return to the end of paint and reports it in its diagnostics overlay. The acceptance gate in the plan sets the entity count and frame rate the macOS build must hold; the framework's own per-frame cost is measured by `hosts/gpui/bench` and recorded in the plan.
 
