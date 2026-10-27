@@ -1,5 +1,7 @@
 # Painting
 
+![The Osprey port of GPUI's painting example running in the GPUI host, with dashed strokes selected](Screenshot.png)
+
 GPUI's `examples/painting.rs` (gpui-pre 0.3.10) ported to Osprey and run in the GPUI host. Everything the window shows comes from the Osprey application: the five black quads, the sixteen paths (translucent squares and circles, the Rust logo, a lightning bolt, an Oklab gradient star, a gradient banner, a pie chart, a bevel-joined wave) and the freehand lines you draw. Rust is only the host.
 
 ## Run
