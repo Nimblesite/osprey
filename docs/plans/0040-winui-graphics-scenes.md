@@ -1,6 +1,6 @@
 # Plan 0040 — Graphics scenes in a WinUI window
 
-Contract: [`examples/graphics/README.md`](../../examples/graphics/README.md). A spec is still owed, but at plan 0025 stage 5, not in this plan. Host: [plan 0038](0038-winui-windows-hosts.md). Status: **not started.**
+Contract: [`examples/graphics/README.md`](../../examples/graphics/README.md). A spec is still owed, but at plan 0025 stage 5, not in this plan. Host: [plan 0038](0038-winui-windows-hosts.md). Status: **phase 1 done in software on 2026-10-28**; phases 2 and 3 not started.
 
 This plan carries out [plan 0025](0025-gpu-graphics-backends.md)'s deferred stage 2, which verifies the Direct3D 12 backend. The owner asked for Windows versions of the examples on 2026-10-28, so stage 2 can now come ahead of stage 5.
 
@@ -31,7 +31,7 @@ flowchart LR
    - `title` shows the scene's title.
 3. **Composition swap chain.** In `ospgfx_d3d12_setup.c`, `osp_gfx_swapchain` creates the swap chain with `IDXGIFactory2::CreateSwapChainForComposition` instead of `CreateSwapChainForHwnd`: flip-sequential, B8G8R8A8, two buffers.
    - The host attaches it through `ISwapChainPanelNative::SetSwapChain`, declared with `GeneratedComInterface` so it is AOT-safe.
-   - Once this renders, the Win32 window code (`osp_gfx_make_window` and its message pump) is deleted. No Windows build would use it any more, so it would be dead code. Deleting it also gives `_setup.c` back the room under the 500-line cap that plan 0025 warns about.
+   - Once this renders, the Win32 window code is deleted: `ospgfx_d3d12_window.c` and the message pump in `ospgfx_d3d12.c`. No Windows build would use it any more, so it would be dead code.
 4. **The scene loop runs on its own thread.** Osprey's loop calls `osp_gfx_draw` until it returns 0, so `osprey_main` runs on a render thread while the UI thread runs WinUI.
    - `osp_gfx_open` blocks until `attach` returns.
    - `osp_gfx_draw` records, presents and resizes between frames, all on the render thread. It applies `SizeChanged` and `CompositionScaleChanged` through `state`, and returns 0 once the window has closed.
@@ -53,6 +53,8 @@ flowchart LR
 2. Fix what fails. Fixes are most likely in the two hazards plan 0025 names: cbuffer packing and the matrix convention.
 3. Replace every "unverified" notice in the README, the bridge headers, the Makefile and plan 0025 with what was observed, including the machine, adapter and date. Restore `-Werror` (`GFX_WARN`).
 
+Done on 2026-10-28, on GitHub's `windows-latest` runner rather than this machine. This machine's shell runs as a service in session 0, where a flip-model swap chain cannot present. The runner has no GPU, so every scene drew in software: 10 frames each at 6 to 15 fps, with a picture of each window after twenty seconds. The drift guard ran on this machine. The fixes were two C bindings, one shader preprocessor line, the WARP fallback and `OSPREY_GFX_FRAMES`. A hardware adapter and a frame compared with the Mac's at matched uniforms are still open.
+
 ### Phase 2 — the WinUI window
 
 1. Add a scene mode to the plan 0038 executable: `OspreyHost.exe --scene <scene.dll>`. The window holds a `SwapChainPanel` that fills it, with Mica on the title bar and an info bar showing the scene, the adapter and frames per second.
@@ -64,7 +66,7 @@ flowchart LR
 
 1. On Windows, `OSPREY_GFX_FRAMES=120 make graphics-smoke` renders each scene for 120 frames, captures the panel and fails if the frame is a single colour. That catches the "renders black" class of shader and packing errors.
 2. Delete the Win32 window path (decision 3), and update the README's layout table and plan 0025's status.
-3. Add the graphics job to `.github/workflows/winui.yml`. It runs `fxc` on every entry point, builds the bridge with warnings fatal, runs the drift guard and runs the 120-frame WARP smoke of all three scenes.
+3. Add the graphics job to `.github/workflows/winui.yml`. It runs `fxc` on every entry point, builds the bridge with warnings fatal, runs the drift guard and runs the 120-frame WARP smoke of all three scenes. `winui.yml` already does all but the drift guard, with a 10-frame smoke and a picture of each window, and without the single-colour check.
 
 ## Risks
 

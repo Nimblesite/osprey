@@ -1,7 +1,7 @@
 # Plan 0025 — GPU Graphics Backends: one shader library, many device APIs
 
 **Subsystem:** `examples/graphics/` (shader libraries, the shared ABI header, platform bridges) + `Makefile` (per-OS build recipes) + `crates/osprey-cli/tests/graphics_scenes.rs` with `graphics_scenes/{abi,frame}.rs` (the drift guard)
-**Status:** **macOS/Metal observed working (July 2026). Windows/D3D12 is written but has never been compiled, linked or run on Windows**; its per-frame path *is* compiled and executed on every CI platform against stubbed SDK calls and the real ABI header. Vulkan/SPIR-V is unstarted. The convergence with `gpu*` (stage 5) is unstarted.
+**Status:** **macOS/Metal observed working (July 2026). Windows/D3D12 compiles, links and draws every scene in software (2026-10-28)**; no hardware adapter has drawn it yet, and no frame has been compared with the Mac's. Its per-frame path is also compiled and executed on every CI platform against stubbed SDK calls and the real ABI header. Vulkan/SPIR-V is unstarted. The convergence with `gpu*` (stage 5) is unstarted.
 **Priority (set 2026-10-12): subordinate to [plan 0023](0023-gpu-computation.md).** The graphics examples exist to demonstrate capability. Work here is admissible only when it advances `gpu*` reaching a device; stages 2–4 below are therefore not scheduled on their own and run only when stage 5 names what it needs from them, and stage 5 itself waits on plan 0023's stage 4 emitter.
 **Spec:** none. `examples/graphics/README.md` is the current contract; a spec is owed if and when stage 5 lands, not before.
 **Sibling plan:** [0023 — GPU computation](0023-gpu-computation.md) owns the `gpu*` language surface, kernel extraction and every device backend. This plan owns only the window/drawable/shader-library plumbing those backends will reuse.
@@ -42,17 +42,19 @@ Pixel-for-pixel identity across platforms is **not** claimed and must not be. Th
 - **The Metal backend.** A Swift host in `macos/`: the scene compiles for the Mac slice ([IOS-TARGET-MACOS]) with `--entry-only`, and `GraphicsBridge.swift` defines the six imports with `@_cdecl` — AppKit window + `CAMetalLayer`, `makeLibrary(source:)` at open time — taking the data contract from `ospgfx_abi.h` through its bridging header. It replaced the Objective-C `ospgfx.m` dylib in October 2026, when it rendered 90 frames of each scene on a 1920×1200 drawable at 102–119 fps. The July 2026 measurement of 103 fps against 13 fps on the `gpu*` host backend is historical and lives, dated, in plan 0023's "What that costs, measured".
 - **The Osprey host.** `base/base.osp` holds the fixed-point trigonometry, the per-scene oscillator and grade tables and the frame loop, exactly once. `kali/`, `opal/`, `character/` are one-file projects importing `graphics::SceneBase`; each names `../base` as a second source root because Default Osprey cannot import across standalone scripts ([MODULES-MODEL], [MODULES-ENTRYPOINT]).
 - **Authored grade lives in Osprey, not the shader.** An offscreen A/B render at matched uniforms was byte-identical when the grade moved out of the shader; that is the bar stage 5 inherits.
-- **The shared ABI header**, `ospgfx_abi.h`: platform-neutral C11, imported into Swift on macOS, compiled on Windows (MinGW/MSVC, unverified) and on Linux by the frame-path test. The bridges' slot store, extent/scale validation and tick arithmetic are its inline helpers; each bridge keeps only the platform-specific wrapper (a store into the scene's uniforms in Swift, a direct pointer on Windows).
+- **The shared ABI header**, `ospgfx_abi.h`: platform-neutral C11, imported into Swift on macOS, compiled on Windows by MinGW (MSVC unverified) and on Linux by the frame-path test. The bridges' slot store, extent/scale validation and tick arithmetic are its inline helpers; each bridge keeps only the platform-specific wrapper (a store into the scene's uniforms in Swift, a direct pointer on Windows).
 - **The drift guard**: ten tests across `graphics_scenes.rs` (scene structure, Kali grade, fragment entries, bidirectional constant sets, cbuffer guard), `graphics_scenes/abi.rs` (header as canonical declaration, both mirrors, both bridges include-and-restate-nothing, one C ABI, host slot ranges) and `graphics_scenes/frame.rs` (the D3D12 frame functions compiled with clang `-Wall -Wextra -Werror` against the real header and stubbed SDK calls, every injected failure path asserted). An earlier mutation check of the pre-header structure detected 11/11 deliberate mutations; the post-header structure was re-checked on 2026-10-12 against the mutations listed under Landmines.
 - **`make graphics SCENE=…` splits by `$(OS)`**: macOS builds the scene's Swift host with `scripts/macos-host.sh`; Windows builds the D3D12 DLL, whose recipe depends on `ospgfx_abi.h`. `make graphics-smoke` renders each macOS scene for a fixed frame count.
 
-## What is written but unverified
+## What Windows has verified
 
-`base.hlsl`, `ospgfx_d3d12.h`, `ospgfx_d3d12_setup.c`, `ospgfx_d3d12.c` and the Makefile's `Windows_NT` branch have **never been compiled, linked or run on Windows**. They were written on macOS with no MSVC, no Windows SDK, no mingw-w64 and no fxc or dxc. Every one of those files says so at the top, `README.md` says so under "Verification status", and the Makefile branch says so in a comment. Do not remove those notices for tidiness; they are the only thing standing between "transcribed" and "works". What *is* verified on every platform is the per-frame control flow (`graphics_scenes/frame.rs`) and the ABI header's C.
+On 2026-10-28 the README's five Windows steps passed. On GitHub's `windows-latest` runner, fxc compiled every entry point, MSYS2 UCRT64's gcc built the bridge with `-Wall -Werror`, and the unchanged scenes type-checked and linked. Each scene then drew 10 frames in a real window on the runner's desktop, at 6 (Kali), 12 (Opal) and 15 (Character) fps, and CI keeps a picture of each window after twenty seconds. The drift guard passed on a Windows 11 workstation. The runner has no GPU, so Direct3D 12 drew in software. Two things are still open: a hardware adapter drawing the scenes, and a frame compared with the Mac's at matched uniforms, which is the only proof of the cbuffer packing and the matrix order.
 
-The shape of what was written, for whoever verifies it: three files, not one (`_setup.c` is within a dozen lines of the 500-LOC cap — split before adding); uniforms as 28 root-constant DWORDs with a compile-time budget assertion; every HRESULT through `osp_gfx_ok`; the scene sources untouched and the `.metal` → `.hlsl` extension swap done by the bridge from the file name; `GetCPUDescriptorHandleForHeapStart` called once and cached (the one C binding that historically diverges between MSVC and mingw-w64 — **if the Windows build fails, suspect this line first**); no WARP fallback. The shader is compiled through `D3DCompile` at Shader Model 5.0 — the legacy fxc path; Microsoft's current compiler is DXC (LLVM-based, required for Shader Model 6), and SM 5.0 is kept only because the library needs nothing from SM 6.
+The first compile found three mistakes. `LoadCursorW` needed `IDC_ARROW` cast to a wide string. `GetCPUDescriptorHandleForHeapStart` returns its structure through a hidden pointer, the binding this plan warned about. fxc's preprocessor has no `%`. All three are fixed, and the README's "Verification status" records them.
 
-The five commands that would settle it on Windows (fxc every entry, build the DLL warnings-fatal, type-check and link the unchanged scenes, run the drift guard, open a window for twenty seconds) are the how-to in [`examples/graphics/README.md`](../../examples/graphics/README.md) — not repeated here. Steps 1–4 need no display; step 5 needs a desktop session and a D3D12 adapter.
+The shape of what was written: four files, not one, with the Win32 window in `ospgfx_d3d12_window.c` so `_setup.c` stays near 410 lines. Uniforms travel as 28 root-constant DWORDs with a compile-time budget assertion, and every HRESULT goes through `osp_gfx_ok`. The scene sources are untouched, and the bridge swaps `.metal` for `.hlsl` from the file name. `GetCPUDescriptorHandleForHeapStart` is called once, through its vtable with the hidden pointer, and cached. When the default adapter cannot make a Direct3D 12 device, the bridge falls back to WARP, and it names the adapter that draws on stderr. The shader is compiled through `D3DCompile` at Shader Model 5.0 — the legacy fxc path; Microsoft's current compiler is DXC (LLVM-based, required for Shader Model 6), and SM 5.0 is kept only because the library needs nothing from SM 6.
+
+The five commands that would settle it on Windows (fxc every entry, build the DLL warnings-fatal, type-check and link the unchanged scenes, run the drift guard, open a window for twenty seconds) are the how-to in [`examples/graphics/README.md`](../../examples/graphics/README.md) — not repeated here. Steps 1–4 need no display; step 5 needs a desktop session. `winui.yml` runs steps 1–3 and 5 on a manual run of `ci-windows.yml`.
 
 ## Stages
 
@@ -62,9 +64,9 @@ Each stage keeps `make ci` green and must not change a single byte of `base/base
 
 Landed. Acceptance: `make graphics SCENE=kali|opal|character` opens a window and renders; the drift guard passes; the derived-constant and uniform-layout tests fail when either library drifts.
 
-### Stage 2 — verify the D3D12 backend — DEFERRED
+### Stage 2 — verify the D3D12 backend — DONE IN SOFTWARE, HARDWARE PENDING
 
-Not scheduled. Admissible only if stage 5 picks HLSL as its first emitted dialect, which it will not: the emitter must target the dialect whose hand-written library is *verified*, and that is Metal. Gate when it does run: the README's step 5 renders `kali` for twenty seconds with a non-zero frame rate, and steps 1–4 run in CI on a Windows runner. Expect fixes in the two hazards above and in HLSL spellings chosen blind (`(float3)0.0` splats, `(float)i` casts).
+Run on 2026-10-28, when the owner asked for Windows versions of the examples ([plan 0040](0040-winui-graphics-scenes.md)). The gate was that the README's step 5 renders `kali` for twenty seconds with a non-zero frame rate, and that steps 1–4 run on a Windows runner. It is met in software: steps 1–3 and 5 ran on GitHub's runner and step 4 on a Windows 11 workstation. The HLSL spellings chosen blind compiled as written; the fixes were elsewhere (see "What Windows has verified"). Stage 5 still targets Metal, the dialect verified on a GPU.
 
 ### Stage 3 — write the spec — DEFERRED to stage 5
 
@@ -97,10 +99,10 @@ Gate: one scene's fragment body written as an Osprey kernel, compiled to the pla
 
 ## Landmines
 
-- **`examples/graphics/` is not in the differential corpus and not in CI.** It needs a display. A change here is verified by running it, or it is not verified. `make -n graphics` only proves the recipe expands. The one exception is the frame-path test, which executes the D3D12 frame functions on every platform against stubs.
+- **`examples/graphics/` is not in the differential corpus, and only Windows draws it in CI.** `winui.yml` draws every scene on a manual Windows run; on macOS it needs a display and runs locally. A change here is verified by running it, or it is not verified. `make -n graphics` only proves the recipe expands. The frame-path test also executes the D3D12 frame functions on every platform against stubs.
 - **`ospgfx_abi.h` helpers are `static inline`.** clang suppresses `-Wunused-function` for them only when the header is *included*; pasting its text into a main file (as the frame test once did) fails `-Werror`. Include it with `-I`, never inline it.
-- **`_setup.c` is within a dozen lines of the 500-LOC cap.** Split before adding, not after.
-- **`GFX_WARN=-Wall` drops `-Werror`** deliberately, because unverified code plus fatal warnings is a bad first-run experience. Put `-Werror` back the day stage 2 passes.
+- **The bridge is split to stay under the 500-LOC cap.** The Win32 window is its own file; split again before `_setup.c` nears the cap, not after.
+- **`GFX_WARN` is `-Wall -Werror`.** The bridge compiles cleanly on Windows, so a new warning fails the build.
 - **Windows `make graphics` requires the MSYS2 UCRT64 shell.** Native PowerShell gets a one-line pointer to the README instead of a broken recipe.
 - **A shader error is otherwise invisible** — the bridge compiles the library at run time, so a typo surfaces as a window that refuses to open. `make _graphics-shader` turns that into a build failure and *skips quietly* when the toolchain is absent. A silent skip is not a pass.
 - **Mutations the post-header drift guard must keep catching** (re-run after touching it): `OSP_GFX_SLOTS` changed in the header alone; `#define OSP_GFX_SLOTS` reintroduced in a bridge; a screaming-snake constant added to one shader library only; `OSP_GFX_API` dropped from one D3D12 export; `float res[2];` dropped from the header.
@@ -118,13 +120,14 @@ Gate: one scene's fragment body written as an Osprey kernel, compiled to the pla
 - [x] **One ABI declaration** (`ospgfx_abi.h`) included by both bridges; bridges restate nothing; the frame-path test compiles the real header; both Makefile recipes depend on it.
 - [x] **Drift guard structural and bidirectional (branch review P2.9):** constant sets compared both ways with an explicit, exact HLSL-only whitelist; uniform-layout checks derived from the header; ABI checks split into `graphics_scenes/abi.rs`.
 
-### Stage 2 — D3D12 verification (deferred)
+### Stage 2 — D3D12 verification
 
 - [x] `base.hlsl` transcribed entry for entry, with the `float4` cbuffer packing, its `#error` divisibility guard, and the transposed `rotationFromTurns`.
 - [x] Three-file bridge, six exports, identical semantics and encodings, root-constant uniforms with a compile-time budget assertion, every HRESULT through `osp_gfx_ok`.
 - [x] Makefile `Windows_NT` branch + fxc entry-point check + PowerShell pointer.
 - [x] Frame-path failures propagate (branch review P1.13), pinned by `direct3d_frame_failures_are_reported_and_resources_retained`, which compiles the actual frame functions against the real ABI header with injected SDK failures. This verifies control flow, not Windows SDK compatibility or rendering.
-- [ ] Execute the README's five Windows steps; replace the "unverified" notices with observed results; restore `-Werror`; decide on a WARP fallback. **Deferred: not admissible under the current priority unless stage 5 needs HLSL.**
+- [x] Execute the README's five Windows steps; replace the "unverified" notices with observed results; restore `-Werror`; decide on a WARP fallback. Done on 2026-10-28: steps 1–3 and 5 on GitHub's Windows runner, step 4 on a Windows 11 workstation. WARP draws when the default adapter cannot make a Direct3D 12 device.
+- [ ] Draw the scenes on a hardware Direct3D 12 adapter, and compare a frame with the Mac's at matched uniforms.
 - [x] `vscode-extension/test/suite/extension.test.ts` no longer describes `examples/graphics/scene.metal` as a present file (comment fix).
 
 ### Stage 3 — spec (deferred to stage 5)

@@ -10,7 +10,7 @@ ifeq ($(OS),Windows_NT)
 # the import library below. The bridge compiles with gcc -Wall -Werror and all
 # four shader entries compile with fxc; `make _graphics-smoke` renders every scene.
 GFX_SHADER := $(GFX_DIR)/base.hlsl
-GFX_SRC    := $(GFX_DIR)/ospgfx_d3d12.c $(GFX_DIR)/ospgfx_d3d12_setup.c
+GFX_SRC    := $(GFX_DIR)/ospgfx_d3d12.c $(GFX_DIR)/ospgfx_d3d12_setup.c $(GFX_DIR)/ospgfx_d3d12_window.c
 GFX_DLL    := $(GFX_DIR)/ospgfx.dll
 GFX_LIB    := $(GFX_DIR)/libospgfx.dll.a
 GFX_SYSLIB := -ld3d12 -ldxgi -ld3dcompiler -ldxguid -luser32

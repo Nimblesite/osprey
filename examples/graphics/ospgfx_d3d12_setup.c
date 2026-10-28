@@ -1,9 +1,9 @@
-// One-time bring-up for the Direct3D 12 backend: the window, the device, the
-// swap chain, the render targets, the shaders, the root signature, the pipeline
-// state and the frame objects — everything `osp_gfx_open` builds once and
-// everything `osp_gfx_close` gives back. The C ABI and the per-frame path are
-// in ospgfx_d3d12.c; ospgfx_d3d12.h explains the split and carries the notice
-// that none of this has ever been compiled on the machine that wrote it.
+// One-time bring-up for the Direct3D 12 backend: the device, the swap chain, the
+// render targets, the shaders, the root signature, the pipeline state and the
+// frame objects — everything `osp_gfx_open` builds once in the window
+// ospgfx_d3d12_window.c makes, and everything `osp_gfx_close` gives back. The C
+// ABI and the per-frame path are in ospgfx_d3d12.c; ospgfx_d3d12.h explains the
+// split and records where all of it has been verified.
 
 #include "ospgfx_d3d12.h"
 
@@ -19,12 +19,6 @@
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "user32.lib")
 #endif
-
-// DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, spelled as its numeric value so
-// this file still builds against an SDK too old to declare the type.
-#define OSP_GFX_DPI_PER_MONITOR_V2 ((HANDLE)(INT_PTR)-4)
-
-static const wchar_t OSP_GFX_CLASS[] = L"OspreyGfxWindow";
 
 double osp_gfx_now(void) {
   LARGE_INTEGER frequency;
@@ -66,117 +60,6 @@ static void osp_gfx_report(ID3DBlob *errors, const char *what) {
   }
 }
 
-static LRESULT CALLBACK osp_gfx_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
-  OspGfxContext *ctx = (OspGfxContext *)GetWindowLongPtrW(window, GWLP_USERDATA);
-  if (message == WM_NCCREATE) {
-    CREATESTRUCTW *create = (CREATESTRUCTW *)lp;
-    (void)SetWindowLongPtrW(window, GWLP_USERDATA, (LONG_PTR)create->lpCreateParams);
-  } else if (ctx && (message == WM_CLOSE || message == WM_DESTROY)) {
-    ctx->closed = 1;
-  }
-  return DefWindowProcW(window, message, wp, lp);
-}
-
-static int osp_gfx_register_class(void) {
-  static int registered = 0;
-  WNDCLASSEXW cls;
-  if (registered) {
-    return 1;
-  }
-  ZeroMemory(&cls, sizeof cls);
-  cls.cbSize = sizeof cls;
-  cls.lpfnWndProc = osp_gfx_proc;
-  cls.hInstance = GetModuleHandleW(NULL);
-  // IDC_ARROW is an integer resource id spelled as a narrow string unless UNICODE is defined.
-  cls.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
-  cls.lpszClassName = OSP_GFX_CLASS;
-  registered = RegisterClassExW(&cls) != 0;
-  if (!registered) {
-    fprintf(stderr, "ospgfx: cannot register window class\n");
-  }
-  return registered;
-}
-
-// Titles arrive as UTF-8 from Osprey and Win32 wants UTF-16. A title that will
-// not convert is not worth failing an open over; fall back to the product name.
-static void osp_gfx_widen(const char *utf8, wchar_t *out, int cap) {
-  static const wchar_t fallback[] = L"Osprey";
-  int i = 0;
-  if (utf8 && *utf8 && MultiByteToWideChar(CP_UTF8, 0, utf8, -1, out, cap) > 0) {
-    return;
-  }
-  while (i < cap - 1 && fallback[i]) {
-    out[i] = fallback[i];
-    i++;
-  }
-  out[i] = L'\0';
-}
-
-// Per-monitor DPI awareness and GetDpiForSystem are Windows 10 additions with
-// no import library on an older SDK, so both are resolved at run time: this
-// file builds anywhere and simply renders at 96 DPI where they are absent.
-// Declaring awareness is what makes the window physical pixels rather than
-// something the compositor stretches — the Windows counterpart of drawing a
-// CAMetalLayer at the display's backing scale.
-static UINT osp_gfx_dpi(void) {
-  typedef HANDLE(WINAPI * OspGfxSetDpi)(HANDLE);
-  typedef UINT(WINAPI * OspGfxGetDpi)(void);
-  HMODULE user32 = GetModuleHandleW(L"user32.dll");
-  OspGfxSetDpi declare =
-      user32 ? (OspGfxSetDpi)(void *)GetProcAddress(user32, "SetProcessDpiAwarenessContext") : NULL;
-  OspGfxGetDpi query =
-      user32 ? (OspGfxGetDpi)(void *)GetProcAddress(user32, "GetDpiForSystem") : NULL;
-  if (declare) {
-    (void)declare(OSP_GFX_DPI_PER_MONITOR_V2);
-  }
-  return query ? query() : OSP_GFX_DPI_DEFAULT;
-}
-
-static RECT osp_gfx_window_rect(int64_t width, int64_t height, UINT dpi) {
-  RECT rect;
-  rect.left = 0;
-  rect.top = 0;
-  rect.right = (LONG)(width * (int64_t)dpi / (int64_t)OSP_GFX_DPI_DEFAULT);
-  rect.bottom = (LONG)(height * (int64_t)dpi / (int64_t)OSP_GFX_DPI_DEFAULT);
-  (void)AdjustWindowRect(&rect, OSP_GFX_WINDOW_STYLE, FALSE);
-  return rect;
-}
-
-// The swap chain is sized from the client area the window actually got, never
-// from what was asked for, so a DPI or border adjustment can never leave the
-// shader disagreeing with the framebuffer about the resolution.
-static int osp_gfx_client_size(OspGfxContext *ctx) {
-  RECT client;
-  if (!GetClientRect(ctx->window, &client) || client.right <= client.left ||
-      client.bottom <= client.top) {
-    fprintf(stderr, "ospgfx: window has no client area\n");
-    return 0;
-  }
-  ctx->width = (UINT)(client.right - client.left);
-  ctx->height = (UINT)(client.bottom - client.top);
-  return 1;
-}
-
-int osp_gfx_make_window(OspGfxContext *ctx, int64_t width, int64_t height,
-                        const char *title) {
-  wchar_t wide[OSP_GFX_TITLE_MAX];
-  RECT rect = osp_gfx_window_rect(width, height, osp_gfx_dpi());
-  if (!osp_gfx_register_class()) {
-    return 0;
-  }
-  osp_gfx_widen(title, wide, OSP_GFX_TITLE_MAX);
-  ctx->window = CreateWindowExW(0, OSP_GFX_CLASS, wide, OSP_GFX_WINDOW_STYLE, CW_USEDEFAULT,
-                                CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top,
-                                NULL, NULL, GetModuleHandleW(NULL), ctx);
-  if (!ctx->window) {
-    fprintf(stderr, "ospgfx: cannot create window\n");
-    return 0;
-  }
-  (void)ShowWindow(ctx->window, SW_SHOW);
-  (void)SetForegroundWindow(ctx->window);
-  return osp_gfx_client_size(ctx);
-}
-
 // No hardware adapter speaks Direct3D 12 on a virtual machine or in a remote
 // session, so WARP, the software rasterizer every Windows ships, draws instead.
 static HRESULT osp_gfx_warp_device(OspGfxContext *ctx, IDXGIFactory4 *factory) {
@@ -190,6 +73,23 @@ static HRESULT osp_gfx_warp_device(OspGfxContext *ctx, IDXGIFactory4 *factory) {
                            (void **)&ctx->device);
   IDXGIAdapter_Release(warp);
   return made;
+}
+
+// Names the adapter that draws, so a frame rate measured on WARP or on the basic
+// render driver of a machine without a GPU is never taken for one a GPU drew.
+static void osp_gfx_name_adapter(OspGfxContext *ctx, IDXGIFactory4 *factory) {
+  LUID luid;
+  IDXGIAdapter1 *adapter = NULL;
+  DXGI_ADAPTER_DESC1 desc;
+  (void)ctx->device->lpVtbl->GetAdapterLuid(ctx->device, &luid);
+  if (FAILED(IDXGIFactory4_EnumAdapterByLuid(factory, luid, &IID_IDXGIAdapter1, (void **)&adapter))) {
+    return;
+  }
+  if (SUCCEEDED(IDXGIAdapter1_GetDesc1(adapter, &desc))) {
+    fprintf(stderr, "ospgfx: drawing with %ls%s\n", desc.Description,
+            (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) ? " (software)" : "");
+  }
+  osp_gfx_release(adapter);
 }
 
 int osp_gfx_device(OspGfxContext *ctx, IDXGIFactory4 **factory) {
@@ -206,6 +106,7 @@ int osp_gfx_device(OspGfxContext *ctx, IDXGIFactory4 **factory) {
   if (!osp_gfx_ok(made, "D3D12CreateDevice")) {
     return 0;
   }
+  osp_gfx_name_adapter(ctx, *factory);
   ZeroMemory(&desc, sizeof desc);
   desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   made = ID3D12Device_CreateCommandQueue(ctx->device, &desc, &IID_ID3D12CommandQueue,
