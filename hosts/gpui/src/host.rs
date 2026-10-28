@@ -1,6 +1,7 @@
 //! The GPUI window and synchronous Osprey dispatch seam ([GPUI-HOST-SEAM]).
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
+#[cfg(not(windows))]
 use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -336,6 +337,7 @@ pub(crate) fn now() -> i64 {
 }
 
 /// Reads the platform timezone offset without adding a date/time dependency.
+#[cfg(not(windows))]
 fn local_offset() -> Result<i64, String> {
     let output = Command::new("date")
         .arg("+%z")
@@ -349,7 +351,47 @@ fn local_offset() -> Result<i64, String> {
     parse_offset(text.trim())
 }
 
+/// Reads the local UTC offset from the time zone Windows reports, with daylight saving applied:
+/// Windows has no `date` command outside MSYS2. Windows gives the bias in minutes west of UTC.
+#[cfg(windows)]
+fn local_offset() -> Result<i64, String> {
+    #[repr(C)]
+    struct SystemTime([u16; 8]);
+    #[repr(C)]
+    struct TimeZone {
+        bias: i32,
+        standard_name: [u16; 32],
+        standard_date: SystemTime,
+        standard_bias: i32,
+        daylight_name: [u16; 32],
+        daylight_date: SystemTime,
+        daylight_bias: i32,
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetTimeZoneInformation(zone: *mut TimeZone) -> u32;
+    }
+    const INVALID: u32 = u32::MAX;
+    const STANDARD: u32 = 1;
+    const DAYLIGHT: u32 = 2;
+    let mut zone = std::mem::MaybeUninit::<TimeZone>::zeroed();
+    // SAFETY: the call writes one TIME_ZONE_INFORMATION into the zeroed buffer it is given.
+    let id = unsafe { GetTimeZoneInformation(zone.as_mut_ptr()) };
+    if id == INVALID {
+        return Err("Windows could not report the local time zone".to_owned());
+    }
+    // SAFETY: the buffer was zeroed and the call succeeded, so every field holds a value.
+    let zone = unsafe { zone.assume_init() };
+    let extra = match id {
+        STANDARD => zone.standard_bias,
+        DAYLIGHT => zone.daylight_bias,
+        _ => 0,
+    };
+    Ok(-i64::from(zone.bias + extra) * 60)
+}
+
 /// Converts a `date +%z` value such as `+1030` to seconds.
+#[cfg(not(windows))]
 fn parse_offset(text: &str) -> Result<i64, String> {
     let valid = text.len() == 5 && matches!(text.as_bytes()[0], b'+' | b'-');
     if !valid || !text[1..].bytes().all(|byte| byte.is_ascii_digit()) {
