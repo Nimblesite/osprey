@@ -345,7 +345,8 @@ test ("filesystem and store requests preserve paths bounds and slices", \() =>
     expect (requestText (ui::ReadTexts(texts = ["a.txt", "b.txt"], textLimit = 256, textSlice = "text")), "{\"ticket\":\"job:7\",\"kind\":\"read-texts\",\"paths\":[\"a.txt\",\"b.txt\"],\"limit\":256,\"slice\":\"text\"}")
     expect (requestText (ui::StoreWrite(writeName = "note.txt", writeSlice = "draft")), "{\"ticket\":\"job:7\",\"kind\":\"store-write\",\"name\":\"note.txt\",\"slice\":\"draft\"}")
     expect (requestText (ui::StoreList(folder = "notes")), "{\"ticket\":\"job:7\",\"kind\":\"store-list\",\"name\":\"notes\"}")
-    expect (requestText (ui::StoreDelete(deleteName = "old.txt")), "{\"ticket\":\"job:7\",\"kind\":\"store-delete\",\"name\":\"old.txt\"}"))
+    expect (requestText (ui::StoreDelete(deleteName = "old.txt")), "{\"ticket\":\"job:7\",\"kind\":\"store-delete\",\"name\":\"old.txt\"}")
+    expect (requestText (ui::MeasureFolders(measureFolders = ["C:\\Users", "/home/me"], measureLimit = 5000, measureDeadline = 60000, measureSlice = "measured")), "{\"ticket\":\"job:7\",\"kind\":\"measure-folders\",\"folders\":[\"C:\\\\Users\",\"/home/me\"],\"limit\":5000,\"timeout\":60000,\"slice\":\"measured\"}"))
 
 // [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
 test ("desktop requests preserve picker export and cancellation payloads", \() =>
@@ -676,3 +677,15 @@ test ("progress, swatches, alerts, prominent buttons and leading asides encode",
     expect (join (mapList (parts, \part => Doc::text (part, "kind"))) ",", "progress,swatch,alert,button,aside")
     expect (Doc::text (listGet parts 3 ?: JsonNull, "role"), "prominent")
     expect (Doc::text (listGet parts 4 ?: JsonNull, "side"), "leading"))
+
+// Pinned to the suite's action union: the encoder is instantiated at one action type (#278).
+meterAt (amount, total) =
+    walked = Encode::walk ([], Ui::column [Ui::meter ("Used", amount, total, ui::Caution), Ui::button ("Go", ui::Play, Increment)])
+    jsonEncode (listGet (Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))) 0 ?: JsonNull) ?: "encode failed"
+
+// [UI-COMPONENTS-METER]: a meter's amount is clamped into its total, and its total is never below 1.
+test ("a meter sends its amount clamped into a total of at least one", \() =>
+    expect (meterAt (30, 120), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":30,\"total\":120,\"tone\":\"caution\"}")
+    expect (meterAt (500, 120), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":120,\"total\":120,\"tone\":\"caution\"}")
+    expect (meterAt (0 - 4, 120), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":0,\"total\":120,\"tone\":\"caution\"}")
+    expect (meterAt (3, 0), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":1,\"total\":1,\"tone\":\"caution\"}"))

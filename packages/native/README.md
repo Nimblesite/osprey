@@ -2,12 +2,13 @@
 
 Osprey Native is an application and UI framework for native hosts. An application keeps all of its state in one Osprey store, reads it through Osprey's built-in signals, describes its screens with typed `Node` components, binds controls to typed action values and requests platform work as typed, bounded capabilities. A host renders the framework's keyed regions with its own native controls, returns events by framework-issued IDs and completes capabilities. Everything that crosses the boundary is produced by the framework through Osprey's built-in `Json`; an application never writes protocol text, kind strings or style names.
 
-The framework names no host, product or operating system. An application is Osprey compiled to a library with a `start`/`dispatch` boundary; the host owns the window, draws the nodes with its own controls and answers capabilities. Three hosts speak the protocol today:
+The framework names no host, product or operating system. An application is Osprey compiled to a library with a `start`/`dispatch` boundary; the host owns the window, draws the nodes with its own controls and answers capabilities. Four hosts speak the protocol today:
 
 | Host | Where | Renders with |
 | --- | --- | --- |
 | GPUI desktop host | [hosts/gpui](../../hosts/gpui) ([spec 0046](../../docs/specs/platforms/0046-GpuiDesktopHost.md)) | Zed's GPU-accelerated Rust UI framework through `gpui-kit`; macOS today, Linux and Windows planned in [plan 0036](../../docs/plans/0036-gpui-desktop-host.md) |
 | VS Code webview host | [vscode-extension/client/src/osprey-ui](../../vscode-extension/client/src/osprey-ui) | HTML, CSS and Codicons, with the application compiled to WebAssembly ([packages/vscode](../vscode)) |
+| WinUI host | [hosts/winui](../../hosts/winui) ([spec 0048](../../docs/specs/platforms/0048-WinUiHost.md)) | WinUI controls and Segoe Fluent Icons on Windows, with the application compiled to a DLL |
 | External hosts | their own repositories | Any native toolkit, such as a SwiftUI host with SF Symbols, that implements this protocol |
 
 Anything only one host or product can do travels as a `HostCall` in a namespace that host answers ([UI-EFFECTS]), so no host's vocabulary leaks into the framework.
@@ -89,7 +90,7 @@ Every stateful or reorderable node has a stable semantic key, unique within its 
 | Group | Components |
 | --- | --- |
 | Structure | `Split` (navigation columns), `Tabs`, `Screen` (title, subtitle, toolbar), `Section` (title, footer), `Aside` (a pane with a column on its leading or trailing side, divided by a splitter whose width lives in the store, [UI-COMPONENTS-SPLITTER]), `Stack`, `Layer` (children drawn over one another), `Slot`, `Spacer`, `Divider` |
-| Content | `Text` with a semantic text role and tone, `Label` (text and symbol), `Icon` (a large decorative symbol), `Link` (a labelled `https` page the host opens in the browser and refuses any other address), `Pair` (a label and its value on one line), `Badge` (label, symbol, tone), `Segments` strip, `Empty` state, `Progress`, `Swatch` |
+| Content | `Text` with a semantic text role and tone, `Label` (text and symbol), `Icon` (a large decorative symbol), `Link` (a labelled `https` page the host opens in the browser and refuses any other address), `Pair` (a label and its value on one line), `Badge` (label, symbol, tone), `Segments` strip, `Empty` state, `Progress`, `Meter` (a labelled bar filled to an amount of a total in a tone, [UI-COMPONENTS-METER]), `Swatch` |
 | Collections | `Rows` with stable row keys, selection and per-row content; a row may lead with a symbol and name a group, and consecutive rows of one group share its heading |
 | Controls | `Button` with role and enabled flag, `Field` (secure or multiline, committing on edit or submit), `Toggle`, `Picker`, `Disclosure` (title and revealed children; the expansion is a flag binding taken before the children's ordinals) |
 | Presentation | `Alert` bound to a typed dismissal action |
@@ -129,7 +130,23 @@ When encoding a region, the framework assigns each binding an opaque ID: region 
 
 Updates request platform work by returning `Request` values in their `Step`: a `Capability` with an application-chosen ticket. The runtime encodes them into the envelope; the host completes each with a `completed` event carrying the ticket, and the application ignores completions whose ticket no longer matches, so stale, cancelled and superseded work never overwrites newer state. Bulk results land in host-held slices named by the request, so large outputs never travel back through an event.
 
-`Capability` is a typed union whose variants are mechanical primitives with explicit bounds chosen by Osprey, each one something every desktop can do: `Run` (shell-free executable, arguments, deadline, output limit), `ListDirectories`, `ReadTexts`, `StoreRead`, `StoreWrite`, `StoreList`, `StoreDelete` (app-private files), `Http` (method, URL, headers, body, response limit, deadline), `ChooseFile`, `ChooseFolder`, `SaveFile`, `Reveal`, `Cancel` and `Animate` ([UI-SCENE]). Work only one host or product can do, such as reading one operating system's settings files or opening its settings app, is a `HostCall`: a namespace, an operation, JSON arguments, a deadline, a result limit and a slice, answered only by the host that registered that namespace. A host that does not know a namespace completes the request with an error. Adapters return typed results or typed errors; they make no application decision, choose no paths beyond what Osprey named and never retry automatically. Rendering never starts work: only an explicit action, lifecycle message or completion produces requests.
+`Capability` is a typed union whose variants are mechanical primitives with explicit bounds chosen by Osprey, each one something every desktop can do: `Run` (shell-free executable, arguments, deadline, output limit), `ListDirectories`, `ReadTexts`, `StoreRead`, `StoreWrite`, `StoreList`, `StoreDelete` (app-private files), `Http` (method, URL, headers, body, response limit, deadline), `ChooseFile`, `ChooseFolder`, `SaveFile`, `MeasureFolders` ([UI-EFFECTS-MEASURE]), `Reveal`, `Cancel` and `Animate` ([UI-SCENE]). Work only one host or product can do, such as reading one operating system's settings files or opening its settings app, is a `HostCall`: a namespace, an operation, JSON arguments, a deadline, a result limit and a slice, answered only by the host that registered that namespace. A host that does not know a namespace completes the request with an error. Adapters return typed results or typed errors; they make no application decision, choose no paths beyond what Osprey named and never retry automatically. Rendering never starts work: only an explicit action, lifecycle message or completion produces requests.
+
+### Meter [UI-COMPONENTS-METER]
+
+`Ui::meter (label, amount, total, tone)` is a bar filled to `amount` out of `total` in `tone`, read out by `label`, such as the space a folder takes on its disk. The encoder sends `value` clamped into `0..total` and a `total` of at least 1, so a host divides safely and never draws past the end. `Progress` stays the indeterminate activity indicator.
+
+### Measuring folders [UI-EFFECTS-MEASURE]
+
+`MeasureFolders` measures each named folder's children to the bottom, within an entry limit and a deadline in milliseconds, and the host writes the result into the named host-held slice: `{"folders":[...]}`, in the order the folders were given. Each folder is `{path, error, missing, truncated, unreadable, bytes, visible, items, volume, entries}`, where `volume` is `{name, total, available}` and each entry is `{name, path, bytes, visible, items, hidden, folder, link, guarded}` for one child. The completion's result is `null`.
+
+The rules are the same on every host:
+
+- `bytes` are allocated bytes, and a file with several hard links counts once per walk. `visible` leaves out hidden items and everything below a hidden folder, as the platform's file manager hides them.
+- A link is listed and never followed, so its target is not counted and the walk stays on its volume. A cloud placeholder is never opened, so nothing downloads.
+- A folder that cannot be read adds one to `unreadable` and is not an error; a child that cannot be opened is listed `guarded`.
+- More children than the limit are measured but not listed, and set `truncated`, as does a walk that reaches its deadline. `Cancel` with the request's ticket stops the walk, which completes with the error `cancelled`.
+- The adapter sorts, hides, formats and decides nothing: [examples/storage](../../examples/storage/README.md) ranks, words and draws the result in Osprey.
 
 ## Theme and motion [UI-THEME]
 
@@ -169,10 +186,10 @@ A host that links the application into its own process, as the GPUI host does, c
 In a resident session, a changed region's scenes send their rects, discs and sprites to the host through the `SceneStream` effect, one `shape` operation per primitive, depth first in the order the encoder walks the tree and, within a scene, in list order. The scene node keeps its strips, glyphs and paths in `shapes` and reports how many primitives it streamed in `streamed` (always present, 0 when nothing streamed). The application's boundary answers `shape` with a host import, reading the fields through `Streams::code`, `Streams::index`, `Streams::value`, `Streams::colour` and `Streams::depth`:
 
 ```osprey-ml
-extern gpui_shape (code : int) (index : int) (a : float) (b : float) (c : float) (d : float) (e : float) (tint : int) (layer : int) -> int
+extern native_shape (code : int) (index : int) (a : float) (b : float) (c : float) (d : float) (e : float) (tint : int) (layer : int) -> int
 ```
 
-The host clears its stream before each call, gives each scene with a nonzero `streamed` the next that many streamed primitives, then draws the node's own shapes followed by the streamed ones, stably sorted by depth. A count that does not match what arrived is a diagnostic. Flock streams its birds this way, so a frame of 5,000 birds carries an envelope of under 2 KB.
+The host clears its stream before each call, gives each scene with a nonzero `streamed` the next that many streamed primitives, then draws the node's own shapes followed by the streamed ones, stably sorted by depth. A count that does not match what arrived is a diagnostic. A scene streaming 5,000 discs a frame this way keeps its envelope under 2 KB.
 
 ### Pending edits [UI-EVENTS]
 
@@ -186,7 +203,7 @@ A host initializes the library once, calls it only from its UI thread, copies ev
 
 ## Memory boundary
 
-Static libraries for the `macos`, `ios` and `android-*` targets and WebAssembly default to ARC; native executables default to GC and also support ARC. Exported application globals persist across host calls. Hosts must follow the generated target ABI and use its matching runtime when handling returned pointers and host-owned slice strings. The [macOS example](../../examples/macos) exercises the scalar ABI and persistent globals, and the GPUI host loads the same library form on the desktop.
+Static libraries for the `macos`, `ios` and `android-*` targets and WebAssembly default to ARC; native executables default to GC and also support ARC. Exported application globals persist across host calls. Hosts must follow the generated target ABI and use its matching runtime when handling returned pointers and host-owned slice strings. The GPUI host links the static library form on the desktop, and the WinUI host loads the `windows-x64` DLL form, which also defaults to ARC ([WINUI-HOST-DLL](../../docs/specs/platforms/0048-WinUiHost.md)).
 
 ## Using the package
 

@@ -51,5 +51,6 @@ ok 50 - a resident session delivers completions, phases and frames and refuses m
 ok 51 - an idle session holds only its store
 ok 52 - toggles and pickers deliver their own value kinds and refuse others
 ok 53 - progress, swatches, alerts, prominent buttons and leading asides encode
-1..53
-# tests=53 passed=53 failed=0 skipped=0
+ok 54 - a meter sends its amount clamped into a total of at least one
+1..54
+# tests=54 passed=54 failed=0 skipped=0

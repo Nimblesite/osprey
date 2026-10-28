@@ -21,7 +21,7 @@ bash examples/gpui/flock/run.sh --flock 5000       # any size from 1 to 20,000
 ## How it stays fast
 
 - **Resident session.** [`main.ospml`](main.ospml) keeps the framework's `Session` in a file-scope cell and calls `Runtime::begin` and `Runtime::proceed`, so a frame never serializes or parses the flock ([UI-RESIDENT](../../../packages/native/README.md)).
-- **Scene stream.** Each bird's disc goes to the host through the `gpui_shape` import instead of the envelope, which stays under 2 KB a frame ([UI-SCENE-STREAM](../../../packages/native/README.md)).
+- **Scene stream.** Each bird's disc goes to the host through the `native_shape` import instead of the envelope, which stays under 2 KB a frame ([UI-SCENE-STREAM](../../../packages/native/README.md)).
 - **Bounded steering.** [`steering.ospml`](src/steering.ospml) reads the flock as float lists sorted by cell, and each bird steers by its first seven flockmates within eight units, the topological rule real starling flocks follow (Ballerini et al., PNAS 2008). The walk carries its sums as arguments and allocates once per bird; alternate halves of the flock look for flockmates each frame.
 
 ## Test

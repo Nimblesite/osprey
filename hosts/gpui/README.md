@@ -22,7 +22,7 @@ hosts/gpui/run.sh --smoke       # start, tap Add, assert "Count 1" through the r
 | Path | Contents |
 | --- | --- |
 | `probe/` | The probe application: two slices, two regions, a counter, a note and a store read. Namespace `probe` holds the app; `main.ospml` exports only `start` and `dispatch`, so nothing else becomes a C export. |
-| `src/ffi.rs` | The C boundary: `osprey_main`, `osprey_app_start`, `osprey_app_dispatch`, the `gpui_slice` import for host-held slices ([GPUI-HOST-BOUNDARY]) and the `gpui_shape` import for streamed scene primitives ([UI-SCENE-STREAM]). |
+| `src/ffi.rs` | The C boundary: `osprey_main`, `osprey_app_start`, `osprey_app_dispatch`, the `native_slice` import for host-held slices ([GPUI-HOST-BOUNDARY]) and the `native_shape` import for streamed scene primitives ([UI-SCENE-STREAM]). |
 | `src/envelope.rs` | The envelope as `@osprey/native` emits it: `version`, `state`, `slices`, `patches`, `removed`, `requests`, `diagnostics`, `theme` ([NATIVE-HOSTS-TRANSPORT]). |
 | `src/regions.rs` | Regions by key, patched from each envelope, with each streamed scene's run of shapes. |
 | `src/scene.rs`, `src/scene/` | Scene decoding, the painter (quads, paths, strips, glyphs; same-depth quads in one GPUI layer) and scene input ([GPUI-HOST-SCENE]). |

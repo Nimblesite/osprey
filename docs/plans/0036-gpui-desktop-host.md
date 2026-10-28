@@ -57,7 +57,7 @@ Exit: **met for the window**; the probe app runs in a GPUI window. The envelope 
 Exit: **met.** The JSON-per-frame path above could not hold 120 Hz at 5,000 sprites, so two framework features replace it for hosts that link the application in-process:
 
 6. [x] **Resident session** ([UI-RESIDENT]): `Runtime::begin` and `Runtime::proceed` take and return the live `Session`; the application's boundary keeps it in a file-scope cell, which the compiler now allows in a project's entry source ([MODULES-FILE-SCOPE-BINDING], `crates/osprey-project`, tests in `tests/entry_cells.rs`). No frame parses, restores, saves or re-encodes the store; the envelope's `state` is the marker `"resident"`.
-7. [x] **Scene stream** ([UI-SCENE-STREAM]): a changed scene's rects, discs and sprites go to the host one `gpui_shape` call at a time instead of as JSON; the scene node carries only the count. The host gives each scene its run in the encoder's walk order and paints runs of same-depth quads inside one GPUI layer, so they take one draw order instead of one bounds-tree insertion each.
+7. [x] **Scene stream** ([UI-SCENE-STREAM]): a changed scene's rects, discs and sprites go to the host one `native_shape` call at a time instead of as JSON; the scene node carries only the count. The host gives each scene its run in the encoder's walk order and paints runs of same-depth quads inside one GPUI layer, so they take one draw order instead of one bounds-tree insertion each.
 
    Measured with `hosts/gpui/bench` mode 3 (resident, streamed; M4 Max, ARC): 120 frames of 5,000 sprites, start-up included, in **0.12 s of CPU, under 1 ms per frame** against 14.7 ms on the JSON path.
 

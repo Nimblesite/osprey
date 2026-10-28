@@ -1,19 +1,19 @@
 // The GPUI probe's C boundary, exported as `osprey_app_start` and
 // `osprey_app_dispatch` ([GPUI-HOST-BOUNDARY]). Strings the host passes in
-// are borrowed for the call; `gpui_slice` answers host-held slices.
+// are borrowed for the call; `native_slice` answers host-held slices.
 namespace app
 
 import ui::Runtime
 import probe::App
 
-extern gpui_slice (key : string) -> string
+extern native_slice (key : string) -> string
 
 start source =
     handle ui::Slices
-        fetch key => gpui_slice key
+        fetch key => native_slice key
     Runtime::start (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), \store => App::save store, App::theme ())
 
 dispatch (saved, event) =
     handle ui::Slices
-        fetch key => gpui_slice key
+        fetch key => native_slice key
     Runtime::dispatch (saved, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes), \store => App::save store, \doc => App::restore doc)

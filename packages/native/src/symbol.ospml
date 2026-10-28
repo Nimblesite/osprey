@@ -1,6 +1,6 @@
 // Implements [UI-COMPONENTS-SYMBOLS] and [UI-CONTEXT-PLATFORM]: icons and
 // platforms are typed and host-neutral. Each host maps a symbol to its own
-// icon set (SF Symbols, Codicons, Lucide); applications never name one.
+// icon set; applications never name one.
 namespace ui
 
 (** A semantic icon. The wire carries its lowercase name and each host draws it from its own icon set; `NoSymbol` draws nothing. *)

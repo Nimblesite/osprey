@@ -144,6 +144,11 @@ module Encode
         menu = all (body.bindings, actions)
         one (menu.bindings, kind "context-menu" [JsonMember "body" (first body), JsonMember "items" (JsonArray menu.nodes)])
 
+    // [UI-COMPONENTS-METER] The amount is clamped into 0..total and the total is at least 1, so a host divides safely.
+    meter (label, amount, total, meterTone) =
+        whole = Pick::either (total < 1, 1, total)
+        [str "label" label, num "value" (Pick::either (amount < 0, 0, Pick::either (amount > whole, whole, amount))), num "total" whole, str "tone" (tone meterTone)]
+
     leaf<A> : (List<Binding<A>>, string, List<JsonMember>) -> Walked<A>
     leaf (bindings, name, members) = one (bindings, kind name members)
 
@@ -214,6 +219,7 @@ module Encode
         Segments values label => leaf (bindings, "segments", [JsonMember "tones" (toneList values), str "label" label])
         Empty symbol title detail => leaf (bindings, "empty", [str "symbol" (Symbols::name symbol), str "title" title, str "detail" detail])
         Progress label detail => leaf (bindings, "progress", [str "label" label, str "detail" detail])
+        Meter label amount total meterTone => leaf (bindings, "meter", meter (label, amount, total, meterTone))
         Swatch name light dark => leaf (bindings, "swatch", [str "name" name, str "light" light, str "dark" dark])
         Slot key => leaf (bindings, "slot", [str "key" key])
         Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" (Symbols::name symbol), str "role" (buttonRole buttonKind), bit "enabled" enabled])

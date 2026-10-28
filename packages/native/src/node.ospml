@@ -92,6 +92,11 @@ type Node A =
     Progress
         label : string
         detail : string
+    Meter
+        label : string
+        amount : int
+        total : int
+        tone : Tone
     Swatch
         name : string
         light : string
@@ -366,6 +371,10 @@ module Ui
     (** Content revealed while `expanded` holds; toggling delivers a flag to `bind`. *)
     export disclosure<A> : (string, bool, A, List<Node<A>>) -> Node<A>
     disclosure (title, expanded, bind, children) = Disclosure(title = title, expanded = expanded, bind = bind, children = children)
+
+    (** [UI-COMPONENTS-METER] A bar filled to `amount` out of `total` in `tone`, read out with `label`, such as the space a folder takes on its disk. *)
+    export meter<A> : (string, int, int, Tone) -> Node<A>
+    meter (label, amount, total, tone) = Meter(label = label, amount = amount, total = total, tone = tone)
 
     (** A placeholder the host fills with the region named `key`, so that region refreshes on its own. *)
     export slot<A> : string -> Node<A>

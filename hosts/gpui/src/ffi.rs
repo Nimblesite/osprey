@@ -1,7 +1,7 @@
 //! The C boundary of an Osprey macOS archive and the host-held slices its
 //! runtime reads back ([GPUI-HOST-BOUNDARY]). Every export is called from one
 //! thread: `init`, `start` and `dispatch` are serialized on the GPUI main
-//! thread, and `gpui_slice` is answered on that same thread during a call.
+//! thread, and `native_slice` is answered on that same thread during a call.
 
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr, CString};
@@ -17,7 +17,7 @@ extern "C" {
     fn osprey_app_dispatch(saved: *const c_char, event: *const c_char) -> *const c_char;
 }
 
-/// The text the runtime fetches through `gpui_slice`, by slice key.
+/// The text the runtime fetches through `native_slice`, by slice key.
 static SLICES: OnceLock<Mutex<HashMap<String, CString>>> = OnceLock::new();
 
 /// Buffers this process already handed to the runtime. Nothing is ever freed
@@ -44,7 +44,7 @@ fn held(text: &str) -> Result<CString, String> {
         .map_err(|_| "Host text contained a NUL byte, which no C string can carry".to_owned())
 }
 
-/// Holds `text` under `key` for the runtime's next `gpui_slice` fetch.
+/// Holds `text` under `key` for the runtime's next `native_slice` fetch.
 pub fn put_slice(key: &str, text: &str) -> Result<(), String> {
     let value = held(text)?;
     let replaced = slices()
@@ -75,7 +75,7 @@ pub fn get_slice(key: &str) -> Option<String> {
 /// empty string when the host holds none. `key` must be null or a NUL-terminated
 /// C string valid for the call, as the generated header states.
 #[no_mangle]
-pub extern "C" fn gpui_slice(key: *const c_char) -> *const c_char {
+pub extern "C" fn native_slice(key: *const c_char) -> *const c_char {
     if key.is_null() {
         return absent().as_ptr();
     }
@@ -112,7 +112,7 @@ static STREAM: Mutex<Vec<Streamed>> = Mutex::new(Vec::new());
     clippy::too_many_arguments,
     reason = "the import's C signature is one scalar per primitive field"
 )]
-pub extern "C" fn gpui_shape(
+pub extern "C" fn native_shape(
     code: i64,
     index: i64,
     a: f64,

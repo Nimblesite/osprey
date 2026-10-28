@@ -4,14 +4,14 @@ namespace app
 import ui::Runtime
 import painting::App
 
-extern gpui_slice (key : string) -> string
+extern native_slice (key : string) -> string
 
 start source =
     handle ui::Slices
-        fetch key => gpui_slice key
+        fetch key => native_slice key
     Runtime::start (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), \store => App::save store, App::theme ())
 
 dispatch (saved, event) =
     handle ui::Slices
-        fetch key => gpui_slice key
+        fetch key => native_slice key
     Runtime::dispatch (saved, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes), \store => App::save store, \doc => App::restore doc)
