@@ -3,6 +3,7 @@
 # --target=macos on a Mac, linux-x64 or linux-arm64 on Linux, windows-x64 under Git Bash on Windows.
 #   run.sh            build and open the window
 #   run.sh --smoke    drive start/dispatch without a window and assert
+#   run.sh --build    build only; the host is target/release/osprey-gpui, the application linked in
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -18,4 +19,8 @@ esac
 mkdir -p "$app/build"
 "$compiler" "$app" --compile --target="$target" -o "$app/build/libOspreyApp.a"
 export OSPREY_GPUI_APP_DIR="$app/build"
-cd "$here" && cargo run --release --quiet -- "$@"
+cd "$here"
+if [ "${1:-}" = --build ]; then
+    exec cargo build --release --quiet
+fi
+exec cargo run --release --quiet -- "$@"

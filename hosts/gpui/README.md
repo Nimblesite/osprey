@@ -6,7 +6,7 @@ Rust is only the seam. It never interprets an action, holds application state or
 
 ## Build and run
 
-From the repository root, once: on an Apple silicon Mac with Xcode, `make macos` (the Mac ARC runtime, with the Metal adapter, and the compiler); on Linux, `make _runtime` and `cargo build --release -p osprey-cli` with clang, llvm-ar and GPUI's system libraries (see `.github/workflows/gpui.yml`); on Windows, the same under MSYS2 UCRT64 with `CARGO_BUILD_TARGET=x86_64-pc-windows-gnu` and `OSPREY_CC`/`OSPREY_AR` set to its clang and llvm-ar.
+From the repository root, once: on an Apple silicon Mac with Xcode, `make macos` (the Mac ARC runtime, with the Metal adapter, and the compiler); on Linux, `make _runtime` and `cargo build --release -p osprey-cli` with clang, llvm-ar and GPUI's system libraries (see `.github/workflows/gpui.yml`); on Windows, the same under MSYS2 UCRT64 with `OSPREY_CC`/`OSPREY_AR` set to its clang and llvm-ar, and the host built by MSYS2's own Rust (`mingw-w64-ucrt-x86_64-rust`) ahead of rustup's on `PATH`. Its build scripts run as GNU programs and everything links one UCRT; rustup's Rust with the GNU target builds GPUI's resource script as an MSVC library and links msvcrt beside the runtime's UCRT. `run.sh --build` builds without running, for a host started some other way.
 
 Then:
 
