@@ -48,7 +48,12 @@ function Show-Failure {
     }
 }
 
-$quoted = @('--self-test', $Script, $Shots, $Dll) + $Arguments | ForEach-Object { "`"$_`"" }
+# Each argument quoted as Windows reads a command line: backslashes before the closing quote are
+# doubled, or a folder such as C:\ would arrive as C:" and swallow the arguments after it.
+function Format-Argument([string] $Text) {
+    '"' + ($Text -replace '(\\+)$', '$1$1') + '"'
+}
+$quoted = @('--self-test', $Script, $Shots, $Dll) + $Arguments | ForEach-Object { Format-Argument $_ }
 $run = Start-Process -FilePath $Exe -ArgumentList $quoted -PassThru
 $null = $run.Handle  # keeps the exit code readable after a timed wait
 if (-not $run.WaitForExit($Seconds * 1000)) {

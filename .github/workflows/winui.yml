@@ -166,6 +166,21 @@ jobs:
             -Shots "${{ runner.temp }}/self-test/storage" `
             -Dumps $dumps
 
+      # The whole system drive, as a person would first measure it: the walk meets folders it may not
+      # read and may stop at its two-minute deadline, then Users opens from its row.
+      - name: Osprey Storage measures the C drive in a real window
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: >-
+          hosts/winui/self-test.ps1
+          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
+          -Dll examples/storage/build/storage.dll
+          -Script examples/storage/self-test-drive.json
+          -Shots "${{ runner.temp }}/self-test/storage-drive"
+          -Dumps "${{ runner.temp }}/dumps"
+          -Arguments 'C:\'
+          -Seconds 420
+
       - name: Flock in a real window
         if: ${{ !cancelled() }}
         shell: pwsh

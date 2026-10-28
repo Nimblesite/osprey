@@ -92,7 +92,7 @@ A desktop static-library target exists per platform, with the same export select
 | --- | --- | --- | --- |
 | `macos` | macOS (Xcode) | the application and the Mac ARC runtime, with the Metal adapter | the archive, `libosprey_runtime_macos_arc.a` |
 | `linux-x64`, `linux-arm64` | Linux of that architecture | the application and the native ARC runtime (`libfiber_runtime_arc.a`) | the archive, `pthread`, `dl`, `m` |
-| `windows-x64` | Windows under MSYS2 UCRT64 | the application and the MinGW-built native ARC runtime | the archive, `ws2_32`, with Rust's `x86_64-pc-windows-gnu` target |
+| `windows-x64` | Windows under MSYS2 UCRT64 | the application and the MinGW-built native ARC runtime | the archive, `ws2_32`, built by MSYS2's UCRT64 Rust (`x86_64-pc-windows-gnu`), so the host, GPUI and the runtime link one UCRT |
 
 A Linux or Windows slice is built on its own system, because it bundles that system's native runtime; asking for one elsewhere is refused with the system to build it on (`--check` still works anywhere). The CLI compiles the IR with `clang -O2 -fPIC` (`OSPREY_CC`) and bundles the runtime with `llvm-ar` (`OSPREY_AR`) (`crates/osprey-cli/src/desktop.rs`). `hosts/gpui/run.sh` picks the target for the system it runs on, and the host's `build.rs` links what the table says. All desktop slices default to ARC.
 
