@@ -34,7 +34,7 @@ dotnet publish OspreyHost -c Release       # Native AOT; trim and AOT warnings f
 
 Native AOT links with Visual Studio's C++ tools, so `vswhere.exe` must be on `PATH`: add `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`. Run the tests from PowerShell, not Git Bash. Git Bash's runtime enables the backup privilege, which reads folders their ACLs deny, so under Git Bash the denied-folder test is skipped and says why.
 
-`--self-test` drives the real window from a script beside each application ([WINUI-HOST-SELF-TEST]) and keeps a picture of the window after each `shot` step; `examples/storage/self-test.ps1` builds Storage's fixture tree first. CI runs Storage, Flock and Painting this way on the runner's desktop and keeps the pictures.
+`--self-test` drives the real window from a script beside each application ([WINUI-HOST-SELF-TEST]) and keeps a picture of the window after each `shot` step; `examples/storage/self-test.ps1` builds Storage's fixture tree first. CI runs Storage, Flock and Painting this way on the runner's desktop and keeps the pictures, then runs Storage again on the whole C drive with `examples/storage/self-test-drive.json` and `-Arguments 'C:\'`.
 
 ## Coverage
 
