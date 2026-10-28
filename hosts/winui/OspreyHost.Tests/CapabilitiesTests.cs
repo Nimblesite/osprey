@@ -7,7 +7,7 @@ public sealed class CapabilitiesTests
 {
     static JsonElement Request(Action<Utf8JsonWriter> members) => JsonDocument.Parse(Json.Object(members)).RootElement.Clone();
 
-    static Capabilities Host(string? chosen = null) => new(() => Task.FromResult(chosen));
+    static Capabilities Host(string? chosen = null) => new(() => Task.FromResult(chosen), new Store(Path.Combine(Path.GetTempPath(), "osprey-store-unused")));
 
     [Fact]
     public async Task AKindThisHostDoesNotAnswerFailsByName()

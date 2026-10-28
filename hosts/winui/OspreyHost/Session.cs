@@ -20,13 +20,13 @@ sealed class Session
     string state = "";
     bool applying;
 
-    public Session(Library library, Border root, DispatcherQueue queue, Action<IReadOnlyList<string>> report, Func<Task<string?>> pick)
+    public Session(Library library, string store, Border root, DispatcherQueue queue, Action<IReadOnlyList<string>> report, Func<Task<string?>> pick)
     {
         this.library = library;
         this.queue = queue;
         this.report = report;
         renderer = new Renderer(root, Control, report);
-        capabilities = new Capabilities(pick);
+        capabilities = new Capabilities(pick, new Store(store));
     }
 
     /// <summary>Starts the application with the launch context, then tells it the window is active.</summary>

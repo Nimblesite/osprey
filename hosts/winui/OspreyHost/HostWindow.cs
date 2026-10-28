@@ -62,7 +62,7 @@ sealed class HostWindow : Window
     {
         try
         {
-            var opened = new Session(Library.Open(library), root, DispatcherQueue, Report, Pick);
+            var opened = new Session(Library.Open(library), Store.RootFor(library), root, DispatcherQueue, Report, Pick);
             opened.Begin(arguments);
             return opened;
         }

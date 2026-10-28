@@ -22,7 +22,6 @@ public static class Coverage
     /// <summary>Capability kinds this host refuses with an error completion, not yet answered (plan 0038 phase 4).</summary>
     public static IReadOnlyList<string> Unanswered { get; } =
     [
-        "run", "list-directories", "read-texts", "store-read", "store-write", "store-list", "store-delete",
-        "http", "host-call", "choose-file", "save-file", "animate",
+        "run", "list-directories", "read-texts", "http", "host-call", "choose-file", "save-file", "animate",
     ];
 }

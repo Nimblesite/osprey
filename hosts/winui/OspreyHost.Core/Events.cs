@@ -93,6 +93,22 @@ public static class Json
 {
     static readonly JsonWriterOptions Relaxed = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
+    /// <summary>One JSON array of <paramref name="items"/>, in order.</summary>
+    public static string Array(IEnumerable<string> items)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer, Relaxed))
+        {
+            writer.WriteStartArray();
+            foreach (var item in items)
+            {
+                writer.WriteStringValue(item);
+            }
+            writer.WriteEndArray();
+        }
+        return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
     /// <summary>One JSON object holding the members <paramref name="members"/> writes.</summary>
     public static string Object(Action<Utf8JsonWriter> members)
     {

@@ -19,7 +19,7 @@ public sealed record Completion(string Ticket, bool Ok, string Result, string Er
 /// Osprey chose and reports what happened. They sort, hide, format and decide nothing. A kind this
 /// host does not answer completes with an error naming it, never silently.
 /// </summary>
-public sealed class Capabilities(Func<Task<string?>> chooseFolder)
+public sealed class Capabilities(Func<Task<string?>> chooseFolder, Store store)
 {
     /// <summary>The most entries one measured folder may list.</summary>
     public const long MaxEntries = 100_000;
@@ -28,7 +28,7 @@ public sealed class Capabilities(Func<Task<string?>> chooseFolder)
     public const long MaxDeadline = 10 * 60 * 1000;
 
     /// <summary>Every capability kind this host answers, for its coverage declaration [NATIVE-HOSTS-COVERAGE].</summary>
-    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "cancel"];
+    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "cancel", "store-read", "store-write", "store-list", "store-delete"];
 
     readonly ConcurrentDictionary<string, CancellationTokenSource> running = new();
 
@@ -42,6 +42,7 @@ public sealed class Capabilities(Func<Task<string?>> chooseFolder)
             "reveal" => Task.FromResult(Reveal(ticket, request)),
             "choose-folder" => Choose(ticket),
             "cancel" => Task.FromResult(Cancel(ticket, request)),
+            "store-read" or "store-write" or "store-list" or "store-delete" => Task.FromResult(store.Answer(ticket, request)),
             var kind => Task.FromResult(Completion.Failed(ticket, $"The Windows host does not answer {kind} requests")),
         };
     }
