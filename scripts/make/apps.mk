@@ -21,6 +21,8 @@ GFX_ENTRIES := osp_vertex:vs_5_0 osp_fragment:ps_5_0 \
 	osp_fragment_opal:ps_5_0 osp_fragment_character:ps_5_0
 GFX_SCENES := kali opal character
 GFX_SMOKE_FRAMES ?= 60
+# A scene that has not drawn its frames by then fails rather than holding the run.
+GFX_SMOKE_SECONDS ?= 300
 GFX_OUT := target/gfx
 
 ifeq ($(MSYSTEM),)
@@ -65,7 +67,7 @@ _graphics-smoke: $(GFX_LIB) _graphics-shader
 	@mkdir -p $(GFX_OUT)
 	@for scene in $(GFX_SCENES); do \
 		./$(BIN) $(GFX_DIR)/$$scene --compile --no-warnings -o $(GFX_OUT)/$$scene.exe || exit 1; \
-		report=$$(PATH="$(CURDIR)/$(GFX_DIR):$$PATH" OSPREY_GFX_FRAMES=$(GFX_SMOKE_FRAMES) $(GFX_OUT)/$$scene.exe) || exit 1; \
+		report=$$(PATH="$(CURDIR)/$(GFX_DIR):$$PATH" OSPREY_GFX_FRAMES=$(GFX_SMOKE_FRAMES) timeout $(GFX_SMOKE_SECONDS) $(GFX_OUT)/$$scene.exe) || exit 1; \
 		echo "$$report"; \
 		case "$$report" in *": $(GFX_SMOKE_FRAMES) frames in "*) ;; \
 			*) echo "graphics-smoke: $$scene did not draw $(GFX_SMOKE_FRAMES) frames" >&2; exit 1 ;; esac; \

@@ -63,6 +63,7 @@ sealed class SelfTest(HostWindow window, string script, string shots)
             var (verb, words) = steps[index];
             var named = $"{index + 1:00} {verb} {string.Join(" = ", words)}";
             log.AppendLine(named);
+            Progress.Note(named);
             if (await Do(verb, words) is { } failure)
             {
                 await Shoot($"{index + 1:00}-failed");

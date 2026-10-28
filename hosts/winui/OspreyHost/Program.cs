@@ -18,16 +18,23 @@ static class Program
             Console.Error.WriteLine(Launch.Usage);
             return 2;
         }
+        if (launch.Shots is { } shots)
+        {
+            Progress.Begin(shots);
+        }
         if (Desktop.Missing() is { } missing)
         {
             return Refused(launch, missing);
         }
+        Progress.Note("desktop visible");
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(started =>
         {
+            Progress.Note("WinUI started");
             SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
             _ = new HostApplication(launch);
         });
+        Progress.Note($"WinUI ended, exit code {Environment.ExitCode}");
         return Environment.ExitCode;
     }
 

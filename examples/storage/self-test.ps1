@@ -1,11 +1,14 @@
 # Osprey Storage in a real WinUI window [WINUI-HOST-SELF-TEST]: builds a small folder tree, opens
 # Storage on it with the WinUI host and drives the window with self-test.json, saving a PNG of the
 # window after each named step. Run it from a desktop session; a service session has no desktop.
-#   self-test.ps1 -Exe <OspreyHost.exe> -Dll <storage.dll> -Shots <folder>
+#   self-test.ps1 -Exe <OspreyHost.exe> -Dll <storage.dll> -Shots <folder> [-Dumps <folder>]
+# When the host fails it prints the trail the host left, and, given the folder Windows Error
+# Reporting writes OspreyHost.exe's crash dumps to, the debugger's analysis of each dump.
 param(
     [Parameter(Mandatory)] [string] $Exe,
     [Parameter(Mandatory)] [string] $Dll,
     [Parameter(Mandatory)] [string] $Shots,
+    [string] $Dumps = '',
     [int] $Seconds = 300
 )
 $ErrorActionPreference = 'Stop'
@@ -36,6 +39,20 @@ function Save-Desktop([string] $Path) {
     $picture.Dispose()
 }
 
+# Everything the host left behind when it failed: its trail, the desktop, the crash and its analysis.
+function Show-Failure {
+    Get-Content (Join-Path $Shots 'progress.txt') -ErrorAction SilentlyContinue
+    Save-Desktop (Join-Path $Shots 'failed-desktop.png')
+    Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Application Error' } -MaxEvents 2 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
+    $cdb = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers\x64\cdb.exe'
+    if ($Dumps -and (Test-Path $cdb)) {
+        Get-ChildItem $Dumps -Filter *.dmp -ErrorAction SilentlyContinue | ForEach-Object {
+            "== $($_.Name)"
+            & $cdb -z $_.FullName -c '.symfix; .reload; !analyze -v; q' 2>&1 | Select-String -NotMatch '^\s*$' | Select-Object -Last 150
+        }
+    }
+}
+
 Remove-Item $tree -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $Shots | Out-Null
 Write-Bytes "$tree\Videos\clip.bin" 3MB
@@ -50,13 +67,13 @@ try {
     $run = Start-Process -FilePath $Exe -ArgumentList $quoted -PassThru
     $null = $run.Handle  # keeps the exit code readable after a timed wait
     if (-not $run.WaitForExit($Seconds * 1000)) {
-        Save-Desktop (Join-Path $Shots 'stuck-desktop.png')
+        Show-Failure
         Stop-Process -Id $run.Id -Force
         throw "The window did not finish its self-test in $Seconds seconds"
     }
     Get-Content (Join-Path $Shots 'self-test.txt') -ErrorAction SilentlyContinue
     if ($run.ExitCode -ne 0) {
-        Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Application Error' } -MaxEvents 2 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
+        Show-Failure
         throw "The self-test failed with exit code $($run.ExitCode)"
     }
 }

@@ -16,9 +16,13 @@ sealed partial class HostApplication(Launch launch) : Application, IXamlMetadata
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        UnhandledException += (_, failed) => Progress.Note($"unhandled {failed.Exception.GetType().Name} 0x{failed.Exception.HResult:X8}: {failed.Message}");
+        Progress.Note("launched");
         Resources.MergedDictionaries.Add(new XamlControlsResources());
+        Progress.Note("control styles loaded");
         window = new HostWindow(launch.Library, launch.Arguments);
         window.Activate();
+        Progress.Note("window activated");
         if (launch is { Script: { } script, Shots: { } shots })
         {
             _ = Tested(new SelfTest(window, script, shots));
@@ -26,9 +30,19 @@ sealed partial class HostApplication(Launch launch) : Application, IXamlMetadata
     }
 
     // [WINUI-HOST-SELF-TEST] The process exits with the script's verdict once it has run.
+    // Anything the script did not expect is written to the trail and fails the test, rather than leaving the window open.
     async Task Tested(SelfTest test)
     {
-        Environment.ExitCode = await test.Run();
+        try
+        {
+            Environment.ExitCode = await test.Run();
+        }
+        catch (Exception problem)
+        {
+            Progress.Note($"self-test stopped: {problem}");
+            Environment.ExitCode = 1;
+        }
+        Progress.Note($"self-test finished, exit code {Environment.ExitCode}");
         Exit();
     }
 

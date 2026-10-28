@@ -133,11 +133,13 @@ jobs:
           $uac = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System).EnableLUA
           "session $((Get-Process -Id $PID).SessionId), user-interactive $([Environment]::UserInteractive), UAC $uac"
           query user 2>&1 | Out-String
+          exit 0  # query user reports through its exit code even when it lists a session
 
       - name: Graphics scenes on Direct3D 12
         if: ${{ !cancelled() }}
         shell: msys2 {0}
-        run: make _graphics-smoke CC=gcc BIN=target/release/osprey.exe
+        # The runner has no GPU, so Direct3D 12 draws with WARP on the CPU: a few frames per scene.
+        run: make _graphics-smoke CC=gcc BIN=target/release/osprey.exe GFX_SMOKE_FRAMES=3
 
       - name: Pictures of the graphics scenes
         if: ${{ !cancelled() }}
@@ -147,27 +149,36 @@ jobs:
           $shots = "${{ runner.temp }}/self-test/graphics"
           New-Item -ItemType Directory -Force $shots | Out-Null
           $env:PATH = "$PWD\examples\graphics;$env:PATH"
-          $env:OSPREY_GFX_FRAMES = '600'
+          $env:OSPREY_GFX_FRAMES = '100000'
           foreach ($scene in 'kali', 'opal', 'character') {
             $run = Start-Process "target\gfx\$scene.exe" -PassThru
-            Start-Sleep -Seconds 4
+            Start-Sleep -Seconds 25
             $screen = [Windows.Forms.Screen]::PrimaryScreen.Bounds
             $picture = [Drawing.Bitmap]::new($screen.Width, $screen.Height)
             $canvas = [Drawing.Graphics]::FromImage($picture)
             $canvas.CopyFromScreen($screen.Location, [Drawing.Point]::Empty, $screen.Size)
             $picture.Save("$shots\$scene.png", [Drawing.Imaging.ImageFormat]::Png)
             $canvas.Dispose(); $picture.Dispose()
-            if (-not $run.WaitForExit(60000)) { Stop-Process -Id $run.Id -Force }
+            Stop-Process -Id $run.Id -Force -ErrorAction SilentlyContinue
           }
 
+      # Windows Error Reporting keeps a full dump of a host that crashes, and the script prints the
+      # debugger's analysis of it; the dumps stay on the runner.
       - name: Osprey Storage in a real window
         if: ${{ !cancelled() }}
         shell: pwsh
-        run: >-
-          examples/storage/self-test.ps1
-          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
-          -Dll examples/storage/build/storage.dll
-          -Shots "${{ runner.temp }}/self-test/storage"
+        run: |
+          $dumps = "${{ runner.temp }}/dumps"
+          New-Item -ItemType Directory -Force $dumps | Out-Null
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\OspreyHost.exe'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -Value $dumps -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpType -Value 2 -PropertyType DWord -Force | Out-Null
+          examples/storage/self-test.ps1 `
+            -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe `
+            -Dll examples/storage/build/storage.dll `
+            -Shots "${{ runner.temp }}/self-test/storage" `
+            -Dumps $dumps
 
       - name: Keep the window's pictures
         if: always()

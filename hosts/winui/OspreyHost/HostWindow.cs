@@ -22,12 +22,16 @@ sealed class HostWindow : Window
 
     public HostWindow(string library, string[] arguments)
     {
+        Progress.Note("window created");
         Title = Path.GetFileNameWithoutExtension(library);
         SystemBackdrop = new MicaBackdrop();
+        Progress.Note("backdrop set");
         Fit();
         var root = new Border();
         Content = Layout(root);
+        Progress.Note("content set");
         session = Started(library, arguments, root);
+        Progress.Note(session is null ? "application not started" : "application started");
     }
 
     /// <summary>Every diagnostic shown since the window opened.</summary>
