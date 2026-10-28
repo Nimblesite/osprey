@@ -17,8 +17,9 @@ sealed partial class Renderer
 {
     readonly Dictionary<string, Border> holders = [];
     readonly Dictionary<string, UIElement> drawn = [];
-    readonly System.Runtime.CompilerServices.ConditionalWeakTable<ListView, Action<object>> clicks = new();
+    readonly Dictionary<string, Action<object>> clicks = [];
     readonly Dictionary<string, SceneView> scenes = [];
+    readonly Dictionary<string, RowDefinition> rooms = [];
     IReadOnlyList<Streamed> stream = [];
     int streamTaken;
     readonly Action<string, long, long, object?> control;
@@ -123,6 +124,17 @@ sealed partial class Renderer
             holder.Child = null;
             Detach(element);
             holder.Child = element;
+            Settle(key);
+        }
+    }
+
+    // A slot in a column takes the room left over only while its region fills. A region can change
+    // what it shows without its column being redrawn, so the slot's row is settled at every draw.
+    void Settle(string key)
+    {
+        if (rooms.TryGetValue(key, out var row) && regions.Find(key) is { } region)
+        {
+            row.Height = Fills(region.Node) ? Rest : GridLength.Auto;
         }
     }
 

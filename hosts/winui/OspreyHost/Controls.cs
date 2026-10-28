@@ -111,7 +111,11 @@ sealed partial class Renderer
         list.SelectedItem = list.Items.OfType<ListViewItem>().FirstOrDefault(item => (string)item.Tag == Text(node, "selected"));
         var emit = Emit(scope, node);
         Action<object> click = clicked => emit(Key(clicked));
-        clicks.AddOrUpdate(list, click);
+        // The list carries the name its handler is kept under. Its managed wrapper is no key: nothing
+        // holds the wrapper once the list is drawn, so it can be collected and remade for the same list.
+        var handle = $"{scope.Region}#{Envelopes.Number(node, "event")}";
+        list.Tag = handle;
+        clicks[handle] = click;
         list.ItemClick += (_, args) => click(args.ClickedItem);
         return list;
     }
@@ -119,7 +123,7 @@ sealed partial class Renderer
     /// <summary>Chooses a row through the handler its list's clicks run; false when it is in no drawn list.</summary>
     public bool Choose(ListViewItem row)
     {
-        if (ItemsControl.ItemsControlFromItemContainer(row) is ListView list && clicks.TryGetValue(list, out var click))
+        if (ItemsControl.ItemsControlFromItemContainer(row) is ListView { Tag: string handle } && clicks.TryGetValue(handle, out var click))
         {
             click(row);
             return true;

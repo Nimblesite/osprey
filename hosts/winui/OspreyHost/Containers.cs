@@ -8,11 +8,15 @@ namespace Osprey.Host.WinUI;
 /// <summary>Structure nodes: stacks, sections, pages, splits, layers, menus, asides and tabs [UI-COMPONENTS].</summary>
 sealed partial class Renderer
 {
-    static readonly HashSet<string> Fillers = ["rows", "empty", "slot", "aside", "scene"];
+    // Kinds that take the room left over in a column: lists, states and pages that scroll or lay
+    // themselves out in the room they are given, and scenes, which scale to it.
+    static readonly HashSet<string> Fillers = ["rows", "empty", "aside", "scene", "screen", "split"];
+    const int Nesting = 32;
+    static readonly GridLength Rest = new(1, GridUnitType.Star);
 
     /// <summary>
     /// Children in a row or column; a spacer takes the room left over, and in a column so does a
-    /// child that fills, such as rows or a region, which then scrolls on its own.
+    /// child that fills, such as rows or a scene, which then scrolls or scales on its own.
     /// </summary>
     UIElement Stack(Scope scope, JsonElement node)
     {
@@ -20,27 +24,56 @@ sealed partial class Renderer
         var grid = new Grid { RowSpacing = Gap(1), ColumnSpacing = Gap(1) };
         foreach (var child in Items(node, "children", item => item))
         {
-            var kind = Text(child, "kind");
-            var fills = kind == "spacer" || (!across && Fillers.Contains(kind));
-            Place(grid, Draw(scope, child), across, fills ? new GridLength(1, GridUnitType.Star) : GridLength.Auto);
+            var element = Draw(scope, child);
+            var room = Text(child, "kind") == "spacer" ? Rest : across ? GridLength.Auto : Room(child);
+            Remember(child, Place(grid, element, across, room));
+            if (across)
+            {
+                ((FrameworkElement)element).VerticalAlignment = VerticalAlignment.Center;
+            }
         }
         return grid;
     }
 
-    static void Place(Grid grid, UIElement element, bool across, GridLength room)
+    /// <summary>
+    /// Whether a node takes the room left over in a column: a kind that fills, a column holding one,
+    /// or a slot whose region fills now. A slot is settled again each time its region is drawn.
+    /// </summary>
+    bool Fills(JsonElement node, int depth = 0) => depth < Nesting && Text(node, "kind") switch
     {
+        "slot" => regions.Find(Text(node, "key")) is { } region && Fills(region.Node, depth + 1),
+        "stack" => Text(node, "axis") != "horizontal" && Items(node, "children", child => child).Any(child => Fills(child, depth + 1)),
+        var kind => Fillers.Contains(kind),
+    };
+
+    GridLength Room(JsonElement node) => Fills(node) ? Rest : GridLength.Auto;
+
+    // A slot's row in a column, kept so that drawing the slot's region settles the row again.
+    void Remember(JsonElement child, RowDefinition? row)
+    {
+        if (Text(child, "kind") == "slot" && row is not null)
+        {
+            rooms[Text(child, "key")] = row;
+        }
+    }
+
+    /// <summary>Adds a column or row of <paramref name="room"/> to the grid for the element; returns the row, if it was one.</summary>
+    static RowDefinition? Place(Grid grid, UIElement element, bool across, GridLength room)
+    {
+        RowDefinition? row = null;
         if (across)
         {
             Grid.SetColumn((FrameworkElement)element, grid.ColumnDefinitions.Count);
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = room });
-            ((FrameworkElement)element).VerticalAlignment = VerticalAlignment.Center;
         }
         else
         {
             Grid.SetRow((FrameworkElement)element, grid.RowDefinitions.Count);
-            grid.RowDefinitions.Add(new RowDefinition { Height = room });
+            row = new RowDefinition { Height = room };
+            grid.RowDefinitions.Add(row);
         }
         grid.Children.Add(element);
+        return row;
     }
 
     /// <summary>A card headed by its title as an eyebrow, with its footer as explanatory text.</summary>
@@ -95,17 +128,17 @@ sealed partial class Renderer
         return heading;
     }
 
+    // A page scrolls as a whole unless a child fills, or is a slot that may fill once its region is drawn.
     UIElement Body(Scope scope, IReadOnlyList<JsonElement> children)
     {
-        if (!children.Any(child => Fillers.Contains(Text(child, "kind"))))
+        if (!children.Any(child => Text(child, "kind") == "slot" || Fills(child)))
         {
             return new ScrollViewer { Content = Column(children.Select(child => Draw(scope, child))) };
         }
         var grid = new Grid { RowSpacing = Gap(2) };
         foreach (var child in children)
         {
-            var room = Fillers.Contains(Text(child, "kind")) ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
-            Place(grid, Draw(scope, child), false, room);
+            Remember(child, Place(grid, Draw(scope, child), false, Room(child)));
         }
         return grid;
     }

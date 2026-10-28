@@ -80,7 +80,7 @@ sealed class SelfTest(HostWindow window, string script, string shots)
         "gone" => Until(() => Find(words[0]) is null, $"\"{words[0]}\" still shows"),
         "invoke" => Act(words[0], Invoke),
         "toggle" => Act(words[0], Toggle),
-        "choose" => Act(words[0], element => Up<ListViewItem>(element) is { } row && window.Choose(row) ? null : "it is not in a row"),
+        "choose" => Act(words[0], Choose),
         "type" => Act(words[0], element => Type(element, words[1])),
         "shot" => Shot(words[0]),
         "sleep" => Slept(double.Parse(words[0], System.Globalization.CultureInfo.InvariantCulture)),
@@ -149,6 +149,20 @@ sealed class SelfTest(HostWindow window, string script, string shots)
         }
         box.Text = text;
         return null;
+    }
+
+    // A full collection first, so a row is chosen as it would be long after it was drawn, when the
+    // managed wrappers of its list may have been collected and remade.
+    string? Choose(FrameworkElement element)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        return Up<ListViewItem>(element) switch
+        {
+            null => "it is not in a row",
+            { } row when window.Choose(row) => null,
+            _ => "its row's list takes no choice",
+        };
     }
 
     static string? Invoked(Action action)
