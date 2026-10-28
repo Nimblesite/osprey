@@ -39,12 +39,21 @@ Both carry the same envelope: `version`, `state`, `slices`, `patches`, `removed`
 | Webview | HTML, CSS, Codicons | WASI frames | VS Code on every desktop | [`osprey-ui`](../../../vscode-extension/client/src/osprey-ui) | running |
 | Browser | HTML, CSS | WASI frames in a worker | any browser | planned, extracted from the webview host | not started |
 | GPUI | GPU primitives via GPUI | C ABI | macOS first, then Linux, Windows | `hosts/gpui` | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running on macOS |
+| WinUI | WinUI controls, Segoe Fluent Icons | C ABI, as a DLL | Windows | `hosts/winui` | [spec 0048](../platforms/0048-WinUiHost.md), tested without a window |
 
 The webview and browser hosts share one TypeScript renderer; the VS Code one adds editor capabilities through [`@osprey/vscode`](../../../packages/vscode/README.md). A new host gets a row here and a column in the coverage matrix before any code merges.
 
 ## Node and capability coverage [NATIVE-HOSTS-COVERAGE]
 
 Every `Node` constructor in [`node.ospml`](../../../packages/native/src/node.ospml) and every `Capability` in [`capability.ospml`](../../../packages/native/src/capability.ospml) appears in a coverage matrix, one column per host, each cell `draws`, `rejects` or `n/a` (a capability with no meaning on that platform). The matrix is generated from the sources, not written by hand, and CI fails when a constructor is missing from it. A host's README links its column.
+
+Each host declares its column in code, and its tests read the framework's sources and fail when a kind is missing from the declaration or declared twice:
+
+| Host | Column | Test |
+| --- | --- | --- |
+| GPUI | `DRAWN`, `REFUSED`, `ANSWERED` and `UNANSWERED` in [`coverage.rs`](../../../hosts/gpui/src/coverage.rs) | `cargo test coverage`, which also checks the lists against the host's match arms |
+| Webview | `RENDERED_KINDS` in [`render.ts`](../../../vscode-extension/client/src/osprey-ui/render.ts), `ANSWERED_CAPABILITIES` in [`capabilities.ts`](../../../vscode-extension/client/src/osprey-ui/capabilities.ts) | the renderer and capability suites in `vscode-extension/test/suite` |
+| WinUI | [`Coverage.cs`](../../../hosts/winui/OspreyHost.Core/Coverage.cs) | `CoverageTests`, with the renderer refusing to start unless it draws exactly the declared kinds |
 
 Symbols are a closed, host-neutral vocabulary: the `Symbol` union in [`symbol.ospml`](../../../packages/native/src/symbol.ospml), sent as each member's lowercase name. Each host maps every member to its own icon set and tests that it does (the GPUI host's `every_framework_symbol_has_a_kit_icon`, the webview's Codicon test), so no member is drawn as a fallback. The framework holds no host's icon names, capabilities or product vocabulary; work only one host can do is a `HostCall`.
 

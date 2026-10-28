@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything the host does that needs no window: the DLL boundary, the envelope, the region
+       store, events and the capability adapters ([WINUI-HOST-THIN]). -->
+  <PropertyGroup>
+    <RootNamespace>Osprey.Host</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="OspreyHost.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,11 +1,24 @@
 # Plan 0038 — WinUI host: Osprey Native apps on Windows
 
-Contract: spec 0048 `docs/specs/platforms/0048-WinUiHost.md` [WINUI-HOST], written in phase 0 before any host code. Framework: [`packages/native`](../../packages/native/README.md). Siblings:
+Contract: [spec 0048](../specs/platforms/0048-WinUiHost.md) [WINUI-HOST]. Framework: [`packages/native`](../../packages/native/README.md). Siblings:
 
 - [Plan 0039](0039-examples-on-osprey-native.md) ports every example to Osprey Native, starting with Osprey Storage.
 - [Plan 0040](0040-winui-graphics-scenes.md) puts the direct-GPU graphics scenes in a WinUI window.
 
-Status: **not started.** Branch: `feat/windows-native-winui`.
+Status: **in progress.** Branch: `feat/windows-native-winui`. Done on 2026-10-28, every item tested without a window:
+
+- [x] Spec 0048, and a WinUI row in spec 0047's host family and coverage table.
+- [x] The Windows dead-code errors in the CLI's test targets, gated like their users.
+- [x] The MSVC build of `osprey-runtime-sys`: `std::path::absolute` replaces `canonicalize`, whose `\\?\` path `cl.exe` cannot open.
+- [x] Phase 1: `osprey build --target=windows-x64 -o app.dll` with import slots and binders. Six CLI tests cover the slots, the C `bool` convention, the entry's check, the exports and binder clashes.
+- [x] Decision 6: the imports are `native_slice` and `native_shape` in every entry source, the GPUI host and spec 0046.
+- [x] Phase 2's host core: DLL loading, UTF-8 strings, envelopes, the region store, the symbol map and the theme. The renderer draws 29 kinds, refuses `scene`, and checks itself against the coverage declaration at start.
+- [x] Phase 3's adapters: `measure-folders` with the Windows walk, `reveal`, `choose-folder` and `cancel`. Osprey Storage starts, walks and dispatches through its real DLL in a test.
+- [x] Phase 4's coverage test on all three hosts, `winui.yml`, and the no-XAML, package and neutrality guards.
+- [x] Phase 0's AOT publish with warnings as errors: a 6.1 MB `OspreyHost.exe`, and 90 MB in 237 files with the WinUI runtime, on the WinUI component package alone.
+- [ ] The window seen on a desktop, and its self-test. This machine's shell runs in session 0, where WinUI cannot create a window.
+- [ ] The Win2D gate, the scene painter and the frame clock; Flock and Painting.
+- [ ] The `windows` `HostCall` for the elevated restart, the C fixture host, and phase 4's remaining adapters.
 
 ## Summary
 
@@ -23,7 +36,7 @@ It contains no C# UI framework and no code from any example.
 | App | Reaches WinUI in |
 | --- | --- |
 | The GPUI probe | Phase 2 |
-| [Osprey Storage](../../examples/macos/README.md), ported by plan 0039 phase 1 | Phase 3 |
+| [Osprey Storage](../../examples/storage/README.md), ported by plan 0039 phase 1 | Phase 3 |
 | [Flock](../../examples/gpui/flock/README.md) and [Painting](../../examples/gpui/painting/README.md) | Phase 4 |
 | [Issue Inbox](../../examples/mobile/README.md) | After plan 0039 phase 4 |
 | [Graphics scenes](../../examples/graphics/README.md): direct GPU, not Osprey Native | Plan 0040 |
@@ -66,7 +79,7 @@ flowchart LR
      - Any other `extern` that no `// @link(windows)` library defines fails the build, naming the extern. The CLI asks `llvm-nm` which symbols those libraries define.
      - The import thunks already exist: `import_thunk` and `adapt_import` in [`ios_abi.rs`](../../crates/osprey-cli/src/ios_abi.rs). DLL mode makes them call through the slot.
    - Because the boundary is fixed, the host declares its three exports by hand, and nothing is generated per app.
-6. **Host-neutral import names.** Flock, Painting and the probe import `gpui_slice` and `gpui_shape`. One change renames them to `native_slice` and `native_shape` everywhere they appear: the three entry sources, the GPUI host's `ffi.rs`, this host, and specs 0046 and 0047.
+6. **Host-neutral import names.** Flock, Painting and the probe import `native_slice` and `native_shape`, renamed from `gpui_slice` and `gpui_shape` in the three entry sources, the GPUI host's `ffi.rs` and spec 0046, so no host's name crosses the boundary. Done.
 7. **Scenes are painted with Win2D (`Microsoft.Graphics.Win2D` 1.4.0) [WINUI-HOST-SCENE].**
    - The surface is a `CanvasSwapChainPanel`. Rects and discs use `FillRectangle` and `FillCircle`.
    - Strips and paths use `CanvasGeometry` and `CanvasStrokeStyle`; the stroke style supplies Painting's dashes. Gradients use `CanvasLinearGradientBrush`.

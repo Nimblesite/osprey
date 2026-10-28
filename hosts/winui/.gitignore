@@ -1,0 +1,4 @@
+# .NET build output and local publish folders.
+bin/
+obj/
+publish/

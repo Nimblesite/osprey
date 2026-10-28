@@ -1,6 +1,6 @@
 # Plan 0039 — Every example on Osprey Native, Osprey Storage first
 
-Contract: [spec 0047](../specs/applications/0047-OspreyNativeHosts.md) [NATIVE-HOSTS] and the framework contract in [`packages/native/README.md`](../../packages/native/README.md) ([UI-STORE], [UI-SIGNALS], [UI-EFFECTS]). Hosts: GPUI ([plan 0036](0036-gpui-desktop-host.md)), WinUI ([plan 0038](0038-winui-windows-hosts.md)) and the shared host work in [plan 0037](0037-osprey-native-hosts.md). Status: **not started.** Branch: `feat/windows-native-winui`.
+Contract: [spec 0047](../specs/applications/0047-OspreyNativeHosts.md) [NATIVE-HOSTS] and the framework contract in [`packages/native/README.md`](../../packages/native/README.md) ([UI-STORE], [UI-SIGNALS], [UI-EFFECTS]). Hosts: GPUI ([plan 0036](0036-gpui-desktop-host.md)), WinUI ([plan 0038](0038-winui-windows-hosts.md)) and the shared host work in [plan 0037](0037-osprey-native-hosts.md). Status: **phase 1 in progress.** Branch: `feat/windows-native-winui`. `Meter` and `MeasureFolders` are in the framework, with 54 framework tests green under ARC and GC. [`examples/storage`](../../examples/storage/README.md) is the app, all Osprey, with 19 tests, and it runs on the WinUI host's adapters. The GPUI adapter and GPUI's `Meter`, `Split` and `ContextMenu` remain.
 
 ## Summary
 
