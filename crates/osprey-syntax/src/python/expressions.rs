@@ -241,12 +241,6 @@ impl Lowerer<'_> {
         };
         match head {
             Expr::Identifier(name) if self.is_constructor(name) => Some((name.clone(), type_args)),
-            // A qualified constructor constructs when its final segment is
-            // uppercase (`Module::Variant`), while a qualified function call
-            // (`Module::func`) stays a call.
-            Expr::Path(path) => path.last().and_then(|last| {
-                osprey_ast::is_constructor_name(last).then(|| (path.to_string(), type_args))
-            }),
             _ => None,
         }
     }
