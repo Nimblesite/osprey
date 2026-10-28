@@ -75,7 +75,7 @@ jobs:
       website: ${{ steps.decide.outputs.website || steps.first.outputs.website }}
       previous_tag: ${{ steps.prev.outputs.previous_tag }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0            # full history + tags for the tag-to-tag diff
           persist-credentials: false
@@ -107,12 +107,12 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "No previous tag — full release." >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
         if: steps.prev.outputs.previous_tag != ''
         with:
           toolchain: stable
 
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
         if: steps.prev.outputs.previous_tag != ''
         with:
           key: release-scope-${{ inputs.shipwright_rev }}

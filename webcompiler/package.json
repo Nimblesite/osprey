@@ -9,10 +9,10 @@
     "server": "node src/server.js"
   },
   "dependencies": {
-    "express": "^5.1.0",
+    "express": "^5.3.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/node": "20.17.50"
+    "@types/node": "26.6.5"
   }
 }

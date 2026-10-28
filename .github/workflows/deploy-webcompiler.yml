@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         # The image builds the compiler, whose workspace resolves through the
         # lspkit submodule [PROF-LSP-RUNTIME].
         with:

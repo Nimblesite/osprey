@@ -756,16 +756,16 @@
   },
   "dependencies": {
     "@nimblesite/lsp-profiler-ui": "file:../lspkit/packages/lsp-profiler-ui",
-    "@nimblesite/shipwright-vscode": "^0.5.4",
+    "@nimblesite/shipwright-vscode": "^0.11.0",
     "@preact/signals-core": "^1.14.4",
     "@vscode/codicons": "^0.0.46-24",
     "vscode-languageclient": "^10.1.2"
   },
   "devDependencies": {
-    "@types/glob": "^8.1.0",
+    "@types/glob": "^9.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.17.50",
-    "@types/sinon": "^17.0.4",
+    "@types/sinon": "^22.0.1",
     "@types/vscode": "^1.96.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
