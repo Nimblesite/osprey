@@ -16,6 +16,7 @@ sealed partial class Renderer
 {
     readonly Dictionary<string, Border> holders = [];
     readonly Dictionary<string, UIElement> drawn = [];
+    readonly System.Runtime.CompilerServices.ConditionalWeakTable<ListView, Action<object>> clicks = new();
     readonly Action<string, long, long, object?> control;
     readonly Action<IReadOnlyList<string>> report;
     readonly IReadOnlyDictionary<string, Func<Scope, JsonElement, UIElement>> kinds;

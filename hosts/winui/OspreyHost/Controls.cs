@@ -110,8 +110,21 @@ sealed partial class Renderer
         }
         list.SelectedItem = list.Items.OfType<ListViewItem>().FirstOrDefault(item => (string)item.Tag == Text(node, "selected"));
         var emit = Emit(scope, node);
-        list.ItemClick += (_, args) => emit(Key(args.ClickedItem));
+        Action<object> click = clicked => emit(Key(clicked));
+        clicks.AddOrUpdate(list, click);
+        list.ItemClick += (_, args) => click(args.ClickedItem);
         return list;
+    }
+
+    /// <summary>Chooses a row through the handler its list's clicks run; false when it is in no drawn list.</summary>
+    public bool Choose(ListViewItem row)
+    {
+        if (ItemsControl.ItemsControlFromItemContainer(row) is ListView list && clicks.TryGetValue(list, out var click))
+        {
+            click(row);
+            return true;
+        }
+        return false;
     }
 
     static string Grouped(ListView list, string current, string group)
@@ -164,7 +177,8 @@ sealed partial class Renderer
                 return button;
             case "toggle":
                 var toggle = new AppBarToggleButton { Label = Text(item, "label"), IsChecked = Flag(item, "on") };
-                toggle.Click += (_, _) => emit(toggle.IsChecked == true);
+                toggle.Checked += (_, _) => emit(true);
+                toggle.Unchecked += (_, _) => emit(false);
                 return toggle;
             default:
                 return new AppBarElementContainer { Content = Draw(scope, item), VerticalContentAlignment = VerticalAlignment.Center };

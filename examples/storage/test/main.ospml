@@ -31,13 +31,16 @@ chosenFolder (path, cancelled) = JsonObject [Doc::str ("path", path), Doc::bit (
 
 (** Starts and drives Osprey Storage through the framework's serialized runtime, with the host's measured slice as a fixture. *)
 module Probes
-    context (platform, folder) = Doc::write (JsonObject [Doc::num ("now", 1), Doc::num ("offset", 0), Doc::str ("platform", platform), Doc::str ("home", folder), JsonMember "arguments" (JsonArray [])])
+    context (platform, folder, arguments) = Doc::write (JsonObject [Doc::num ("now", 1), Doc::num ("offset", 0), Doc::str ("platform", platform), Doc::str ("home", folder), JsonMember "arguments" (Doc::strings arguments)])
 
-    (** Storage's first envelope on `platform` for a person whose home is `folder`. *)
-    export started (platform, folder) =
+    (** Storage's first envelope on `platform` for a person whose home is `folder`, launched with `arguments`. *)
+    export launchedWith (platform, folder, arguments) =
         handle ui::Slices
             fetch _ => ""
-        Doc::parse (Runtime::start (context (platform, folder), App::initial, App::regions, App::save, App::theme ()))
+        Doc::parse (Runtime::start (context (platform, folder, arguments), App::initial, App::regions, App::save, App::theme ()))
+
+    (** Storage's first envelope on `platform` for a person whose home is `folder`. *)
+    export started (platform, folder) = launchedWith (platform, folder, [])
 
     (** The envelope after `event`, with the host holding `measured` as the walk's slice. *)
     export post (envelope, event, measured) =
@@ -145,6 +148,12 @@ test ("launch opens home and asks the host to measure it", \() =>
     expect (Doc::number (request, "limit"), 20000)
     expect (Doc::number (request, "timeout"), 120000)
     expect (Probes::problems first, ""))
+
+test ("a folder named at launch opens first, and home stays in the sidebar", \() =>
+    first = Probes::launchedWith ("windows", home, ["D:\\Media"])
+    expect (Probes::measuring first, "D:\\Media")
+    expect (contains (Probes::text (first, "places")) "\"text\":\"Home\"", true)
+    expect (contains (Probes::text (first, "folder")) "\"title\":\"Media\"", true))
 
 test ("the listing shows progress until the walk completes", \() =>
     expect (contains (Probes::text (launch (), "listing")) "\"kind\":\"progress\"", true))

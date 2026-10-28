@@ -38,6 +38,9 @@ sealed class Session
         Send(Events.Lifecycle(Events.Now(), "active"));
     }
 
+    /// <summary>Chooses a row as a click on it would.</summary>
+    public bool Choose(ListViewItem row) => renderer.Choose(row);
+
     /// <summary>A control's value under the binding the framework issued.</summary>
     void Control(string region, long revision, long ordinal, object? value) =>
         Send(Events.Control(Events.Now(), region, revision, ordinal, value));

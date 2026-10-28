@@ -134,7 +134,12 @@ module App
     export initial context =
         system = Symbols::platformText context.platform
         home = Pick::either (context.home == "", Disk::fallback system, context.home)
-        Browse::measure (Browse::launched (system, home), home)
+        Browse::measure (Browse::launched (system, home), opening (home, context.arguments))
+
+    // A folder named at launch opens first; otherwise the person's home does.
+    opening (home, arguments) = match listGet arguments 0
+        Success folder => Pick::either (folder == "", home, folder)
+        Error _ => home
 
     (** Applies one message: a tap, a row choice, the hidden-items switch or a completion. *)
     export update (_, store, message) = Messages::route (message, \action => Browse::tapped (store, action), \(action, key) => Browse::chose (store, action, key), \(action, on) => Browse::toggled (store, action, on), \(_, _) => Runtime::step store, \(ticket, outcome) => Browse::completed (store, ticket, outcome), \_ => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)

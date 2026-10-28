@@ -1,0 +1,65 @@
+# Osprey Storage in a real WinUI window [WINUI-HOST-SELF-TEST]: builds a small folder tree, opens
+# Storage on it with the WinUI host and drives the window with self-test.json, saving a PNG of the
+# window after each named step. Run it from a desktop session; a service session has no desktop.
+#   self-test.ps1 -Exe <OspreyHost.exe> -Dll <storage.dll> -Shots <folder>
+param(
+    [Parameter(Mandatory)] [string] $Exe,
+    [Parameter(Mandatory)] [string] $Dll,
+    [Parameter(Mandatory)] [string] $Shots,
+    [int] $Seconds = 300
+)
+$ErrorActionPreference = 'Stop'
+$Exe = (Resolve-Path $Exe).Path
+$Dll = (Resolve-Path $Dll).Path
+$Shots = [IO.Path]::GetFullPath($Shots)
+$tree = Join-Path ([IO.Path]::GetTempPath()) 'osprey-storage-self-test'
+
+function Write-Bytes([string] $Path, [int] $Size) {
+    New-Item -ItemType Directory -Force (Split-Path $Path) | Out-Null
+    [IO.File]::WriteAllBytes($Path, [byte[]]::new($Size))
+}
+
+function Hide([string] $Path) {
+    $item = Get-Item -Force $Path
+    $item.Attributes = $item.Attributes -bor [IO.FileAttributes]::Hidden
+}
+
+# What a person sees when the window is stuck: the whole desktop.
+function Save-Desktop([string] $Path) {
+    Add-Type -AssemblyName System.Drawing, System.Windows.Forms
+    $screen = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $picture = [Drawing.Bitmap]::new($screen.Width, $screen.Height)
+    $canvas = [Drawing.Graphics]::FromImage($picture)
+    $canvas.CopyFromScreen($screen.Location, [Drawing.Point]::Empty, $screen.Size)
+    $picture.Save($Path, [Drawing.Imaging.ImageFormat]::Png)
+    $canvas.Dispose()
+    $picture.Dispose()
+}
+
+Remove-Item $tree -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $Shots | Out-Null
+Write-Bytes "$tree\Videos\clip.bin" 3MB
+Write-Bytes "$tree\Code\app.bin" 512KB
+Write-Bytes "$tree\Code\.git\pack.bin" 1MB
+Write-Bytes "$tree\notes.txt" 10KB
+Write-Bytes "$tree\.cache\big.bin" 2MB
+Hide "$tree\.cache"
+Hide "$tree\Code\.git"
+try {
+    $quoted = @('--self-test', "$PSScriptRoot\self-test.json", $Shots, $Dll, $tree) | ForEach-Object { "`"$_`"" }
+    $run = Start-Process -FilePath $Exe -ArgumentList $quoted -PassThru
+    $null = $run.Handle  # keeps the exit code readable after a timed wait
+    if (-not $run.WaitForExit($Seconds * 1000)) {
+        Save-Desktop (Join-Path $Shots 'stuck-desktop.png')
+        Stop-Process -Id $run.Id -Force
+        throw "The window did not finish its self-test in $Seconds seconds"
+    }
+    Get-Content (Join-Path $Shots 'self-test.txt') -ErrorAction SilentlyContinue
+    if ($run.ExitCode -ne 0) {
+        Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Application Error' } -MaxEvents 2 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
+        throw "The self-test failed with exit code $($run.ExitCode)"
+    }
+}
+finally {
+    Remove-Item $tree -Recurse -Force -ErrorAction SilentlyContinue
+}

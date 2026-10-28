@@ -29,6 +29,13 @@ jobs:
       - uses: ./.github/actions/detect-ci-scope
         id: filter
 
+  # The WinUI host and its examples in a real window (plan 0038). winui.yml runs by itself on pull
+  # requests that touch the host; a manual run of this workflow also runs it, because a workflow not
+  # yet on main cannot be dispatched by itself.
+  winui:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    uses: ./.github/workflows/winui.yml
+
   windows-core:
     # IMPORTANT: this name is a required status check on `main` (ruleset 6154907).
     # Renaming it will break branch protection — coordinate with the ruleset update.

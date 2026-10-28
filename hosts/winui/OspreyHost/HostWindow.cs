@@ -1,3 +1,5 @@
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -15,16 +17,34 @@ sealed class HostWindow : Window
     const int Height = 780;
 
     readonly InfoBar problems = new() { Severity = InfoBarSeverity.Error, IsOpen = false, Title = "Osprey" };
+    readonly List<string> reported = [];
     readonly Session? session;
 
     public HostWindow(string library, string[] arguments)
     {
         Title = Path.GetFileNameWithoutExtension(library);
         SystemBackdrop = new MicaBackdrop();
-        AppWindow.Resize(new SizeInt32(Width, Height));
+        Fit();
         var root = new Border();
         Content = Layout(root);
         session = Started(library, arguments, root);
+    }
+
+    /// <summary>Every diagnostic shown since the window opened.</summary>
+    public IReadOnlyList<string> Problems => reported;
+
+    /// <summary>The window's handle, for capturing what it shows.</summary>
+    public nint Handle => Win32Interop.GetWindowFromWindowId(AppWindow.Id);
+
+    /// <summary>Chooses <paramref name="row"/> as a click on it would; false when its list takes no choice.</summary>
+    public bool Choose(ListViewItem row) => session?.Choose(row) ?? false;
+
+    // The window opens at its own size, or smaller on a screen that cannot hold it, centred.
+    void Fit()
+    {
+        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var size = new SizeInt32(Math.Min(Width, area.Width), Math.Min(Height, area.Height));
+        AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width - size.Width) / 2, area.Y + (area.Height - size.Height) / 2, size.Width, size.Height));
     }
 
     Grid Layout(Border root)
@@ -60,6 +80,7 @@ sealed class HostWindow : Window
         {
             return;
         }
+        reported.AddRange(diagnostics);
         problems.Message = string.Join(Environment.NewLine, diagnostics);
         problems.IsOpen = true;
         System.Diagnostics.Debug.WriteLine(problems.Message);

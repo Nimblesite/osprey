@@ -4,7 +4,8 @@ name: WinUI host
 # compile Storage to a windows-x64 DLL, then run the WinUI host's tests and publish the host with
 # Native AOT. The tests drive the real DLL boundary, the envelope, the region store, the
 # capabilities and the folder walk, and guard coverage, no XAML and host neutrality. No test opens
-# a window, so no desktop session is needed.
+# a window. Then Osprey Storage runs in a real window on the runner's desktop, driven by its
+# self-test script, and the pictures of each step are kept as an artifact.
 on:
   pull_request:
     branches: [main]
@@ -19,9 +20,12 @@ on:
       - "compiler/runtime/**"
       - ".github/workflows/winui.yml"
   workflow_dispatch:
+  # ci-windows.yml calls it on a manual run, because a workflow not yet on main cannot be dispatched.
+  workflow_call:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Not github.workflow: a called workflow takes its caller's name, and sharing its group cancels it.
+  group: winui-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -78,7 +82,7 @@ jobs:
           mkdir -p examples/storage/build
           ./target/release/osprey.exe build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -89,7 +93,26 @@ jobs:
         shell: pwsh
         run: dotnet test --project OspreyHost.Tests
 
+      # Native AOT links with Visual Studio's C++ tools, which it finds through vswhere.
       - name: Native AOT publish
         working-directory: hosts/winui
         shell: pwsh
-        run: dotnet publish OspreyHost -c Release
+        run: |
+          $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          dotnet publish OspreyHost -c Release
+
+      - name: Osprey Storage in a real window
+        shell: pwsh
+        run: >-
+          examples/storage/self-test.ps1
+          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
+          -Dll examples/storage/build/storage.dll
+          -Shots "${{ runner.temp }}/self-test/storage"
+
+      - name: Keep the window's pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: winui-self-test
+          path: ${{ runner.temp }}/self-test
+          if-no-files-found: warn
