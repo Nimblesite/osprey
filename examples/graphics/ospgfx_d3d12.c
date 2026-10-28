@@ -48,6 +48,7 @@ OSP_GFX_API void *osp_gfx_open(int64_t width, int64_t height, int64_t scale,
     return NULL;
   }
   ctx->openedAt = osp_gfx_now();
+  ctx->frameLimit = getenv("OSPREY_GFX_FRAMES") ? strtoll(getenv("OSPREY_GFX_FRAMES"), NULL, 10) : 0;
   if (osp_gfx_build(ctx, width * scale, height * scale, title, shaderPath, fragmentName)) {
     return ctx;
   }
@@ -203,9 +204,13 @@ static int osp_gfx_frame(OspGfxContext *ctx, UINT index) {
          osp_gfx_submit(ctx);
 }
 
-// Returns 0 when the window closes or recording, presentation or draining fails.
+// Returns 0 when the window closes, when OSPREY_GFX_FRAMES frames have been drawn, or when
+// recording, presentation or draining fails; the Metal host counts frames the same way.
 OSP_GFX_API int64_t osp_gfx_draw(void *handle) {
   OspGfxContext *ctx = (OspGfxContext *)handle;
+  if (ctx && ctx->frameLimit > 0 && ctx->frames >= ctx->frameLimit) {
+    ctx->closed = 1;
+  }
   if (!ctx || ctx->closed) {
     return 0;
   }
@@ -213,6 +218,7 @@ OSP_GFX_API int64_t osp_gfx_draw(void *handle) {
     ctx->closed = 1;
     return 0;
   }
+  ctx->frames++;
   osp_gfx_pump_events(ctx);
   return ctx->closed ? 0 : 1;
 }

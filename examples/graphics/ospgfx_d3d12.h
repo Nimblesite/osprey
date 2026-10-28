@@ -113,6 +113,9 @@ typedef struct OspGfxContext {
   int closed;
   double openedAt;
   OspGfxUniforms uniforms;
+  // OSPREY_GFX_FRAMES ends a scene after that many frames, as if its window closed; 0 never does.
+  long long frameLimit;
+  long long frames;
 } OspGfxContext;
 
 // Seconds from the performance counter, which is monotonic, so a paused or
