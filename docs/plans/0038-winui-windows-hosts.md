@@ -24,7 +24,7 @@ Status: **in progress.** Branch: `feat/windows-native-winui`. Done on 2026-10-28
     - Theme styles are cast through WinRT, because under Native AOT a style can come back as a bare WinRT object.
     - Row handlers are keyed by a name their list carries, because a list's managed wrapper can be collected and remade.
     - A slot fills only when its region does, as on GPUI, and a split's panes take the window's full height.
-- [ ] Storage measuring the whole C drive in a real window, then opening Users from its row (`self-test-drive.json`).
+- [x] Storage measuring the whole C drive in a real window, then opening Users from its row (`self-test-drive.json`). On the runner the walk listed C:'s 43 items and said it had stopped at its deadline. Users then measured 5.4 GB in 6 items, with its hidden folders greyed and its two links not counted. `choose` scrolls a row the list has not made yet into view first.
 - [ ] The Win2D gate is no longer needed for correctness; whether WinUI shapes hold 5,000 birds at 60 Hz is still to measure.
 - [ ] The `windows` `HostCall` for the elevated restart, the C fixture host, and phase 4's remaining adapters.
 

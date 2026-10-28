@@ -14,7 +14,7 @@ examples/storage/run.sh --test         # the suite: no disk, no window, every op
 
 | Host | State |
 | --- | --- |
-| WinUI ([hosts/winui](../../hosts/winui)) | Draws every node Storage uses and answers `measure-folders`, `choose-folder`, `reveal` and `cancel` |
+| WinUI ([hosts/winui](../../hosts/winui)) | Draws every node Storage uses and answers `measure-folders`, `choose-folder`, `reveal` and `cancel`. On CI's Windows runner it passes `self-test.json` on a fixture tree, and `self-test-drive.json` on the whole C drive, in a real window |
 | GPUI ([hosts/gpui](../../hosts/gpui)) | Lacks `split`, `meter`, `context-menu` and `measure-folders` until [plan 0039](../../docs/plans/0039-examples-on-osprey-native.md) phase 1 lands, and reports each as a diagnostic |
 
 ## How it works
