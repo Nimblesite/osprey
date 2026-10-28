@@ -7,9 +7,9 @@
 // MSYS2 UCRT64's gcc and -Wall -Werror, and on GitHub's windows-latest runner the
 // unchanged scenes link against it and draw in real windows: 10 frames each of
 // Kali, Opal and Character, and a picture of each window after twenty seconds.
-// That runner has no GPU, so Direct3D 12 drew in software, and no frame has been
-// compared with the Mac's at matched uniforms, the only check of the cbuffer
-// packing and the matrix order. The first compile's three mistakes and their
+// That runner has no GPU, so Direct3D 12 drew on the Microsoft Basic Render
+// Driver, in software, and no frame has been compared with the Mac's at matched
+// uniforms, the only check of the cbuffer packing and the matrix order. The first compile's three mistakes and their
 // fixes are in README.md under "Verification status", with the commands.
 //
 // macos/GraphicsBridge.swift is the reference. It carries the rationale — Osprey

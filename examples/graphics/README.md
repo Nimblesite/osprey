@@ -106,9 +106,10 @@ runs locally through `make graphics-smoke`.
 the bridge with MSYS2 UCRT64's gcc and `-Wall -Werror`, compiled all four shader
 entries with the Windows SDK's fxc, linked the unchanged scenes against the
 bridge, and ran each in a real window on the runner's desktop for 10 frames at
-480×300: Kali at 6 fps, Opal at 12 and Character at 15. CI keeps a picture of
-each window after twenty seconds, and each shows its scene drawn. The runner has
-no GPU, so Direct3D 12 drew in software and those rates measure its CPU. No
+480×300, at 6 to 15 fps across runs. CI keeps a picture of each window after
+twenty seconds, and each shows its scene drawn. The runner has no GPU: the bridge
+names the Microsoft Basic Render Driver, Windows' software rasteriser, as the
+adapter that drew, so those rates measure the runner's CPU. No
 hardware adapter has drawn the scenes yet. The machine the Windows work was done
 on cannot show them either: its shell runs as a service in session 0, where a
 flip-model swap chain cannot present.

@@ -53,7 +53,7 @@ flowchart LR
 2. Fix what fails. Fixes are most likely in the two hazards plan 0025 names: cbuffer packing and the matrix convention.
 3. Replace every "unverified" notice in the README, the bridge headers, the Makefile and plan 0025 with what was observed, including the machine, adapter and date. Restore `-Werror` (`GFX_WARN`).
 
-Done on 2026-10-28, on GitHub's `windows-latest` runner rather than this machine. This machine's shell runs as a service in session 0, where a flip-model swap chain cannot present. The runner has no GPU, so every scene drew in software: 10 frames each at 6 to 15 fps, with a picture of each window after twenty seconds. The drift guard ran on this machine. The fixes were two C bindings, one shader preprocessor line, the WARP fallback and `OSPREY_GFX_FRAMES`. A hardware adapter and a frame compared with the Mac's at matched uniforms are still open.
+Done on 2026-10-28, on GitHub's `windows-latest` runner rather than this machine. This machine's shell runs as a service in session 0, where a flip-model swap chain cannot present. The runner has no GPU, so every scene drew on the Microsoft Basic Render Driver, in software: 10 frames each at 6 to 15 fps, with a picture of each window after twenty seconds. The drift guard ran on this machine. The fixes were two C bindings, one shader preprocessor line, the WARP fallback and `OSPREY_GFX_FRAMES`. A hardware adapter and a frame compared with the Mac's at matched uniforms are still open.
 
 ### Phase 2 — the WinUI window
 

@@ -80,7 +80,7 @@ sealed class SelfTest(HostWindow window, string script, string shots)
         "gone" => Until(() => Find(words[0]) is null, $"\"{words[0]}\" still shows"),
         "invoke" => Act(words[0], Invoke),
         "toggle" => Act(words[0], Toggle),
-        "choose" => Act(words[0], Choose),
+        "choose" => Chosen(words[0]),
         "type" => Act(words[0], element => Type(element, words[1])),
         "shot" => Shot(words[0]),
         "sleep" => Slept(double.Parse(words[0], System.Globalization.CultureInfo.InvariantCulture)),
@@ -150,6 +150,47 @@ sealed class SelfTest(HostWindow window, string script, string shots)
         box.Text = text;
         return null;
     }
+
+    // A row a person would scroll to: when nothing on screen shows `words`, the list holding such a
+    // row scrolls it into view, since a list makes rows only as they come into view.
+    async Task<string?> Chosen(string words)
+    {
+        if (await Until(() => Find(words) is not null || Listed(words) is not null, $"no row shows \"{words}\"") is { } missing)
+        {
+            return missing;
+        }
+        if (Find(words) is null && Listed(words) is { } listed)
+        {
+            listed.List.ScrollIntoView(listed.Row);
+            await Task.Delay(Settle);
+        }
+        return await Act(words, Choose);
+    }
+
+    // The list and row whose content shows `words`, whether or not the list has made the row yet.
+    (ListView List, ListViewItem Row)? Listed(string words)
+    {
+        var lists = window.Content is { } root ? Tree(root).OfType<ListView>() : Enumerable.Empty<ListView>();
+        foreach (var list in lists)
+        {
+            if (list.Items.OfType<ListViewItem>().FirstOrDefault(row => Holds(row.Content, words)) is { } row)
+            {
+                return (list, row);
+            }
+        }
+        return null;
+    }
+
+    // Whether a row's content holds text showing `words`: its panels, borders and content controls
+    // exist as soon as the row is built, before the list makes a visual tree for it.
+    static bool Holds(object? content, string words) => content switch
+    {
+        TextBlock text => text.Text == words,
+        Panel panel => panel.Children.Any(child => Holds(child, words)),
+        Border border => Holds(border.Child, words),
+        ContentControl control => Holds(control.Content, words),
+        _ => false,
+    };
 
     // A full collection first, so a row is chosen as it would be long after it was drawn, when the
     // managed wrappers of its list may have been collected and remade.
