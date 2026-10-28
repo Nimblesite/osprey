@@ -3,7 +3,8 @@ name: GPUI host
 # Plan 0036 phase 4 ([GPUI-HOST-TARGETS], [GPUI-HOST-VERIFICATION]): on each desktop system, build
 # the CLI and its native runtime, compile the example applications for that system's desktop
 # target, build the GPUI host against them and run the host's tests and the recorded-event smoke
-# runs of the probe and Flock. The smoke runs open no window, so no display is needed. The
+# runs of the probe and Flock. The smoke runs open no window, so no display is needed; on Windows,
+# Flock and Painting then open in real windows on the runner's desktop and are pictured. The
 # frame-rate bench stays on a Mac with a display; hosted runners have none to pace frames.
 on:
   pull_request:
@@ -19,9 +20,12 @@ on:
       - "scripts/window-picture.ps1"
       - ".github/workflows/gpui.yml"
   workflow_dispatch:
+  # ci-windows.yml calls it on a manual run, because a workflow not yet on main cannot be dispatched.
+  workflow_call:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Not github.workflow: a called workflow takes its caller's name, and sharing its group cancels it.
+  group: gpui-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
