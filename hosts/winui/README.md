@@ -4,38 +4,38 @@
 
 | Project | Holds |
 | --- | --- |
-| `OspreyHost.Core` | The DLL boundary and import slots, envelopes, the region store, events, the capability adapters and the Windows folder walk; nothing here needs a window |
-| `OspreyHost` | The window, the code-only renderer and the folder picker; Native AOT |
+| `OspreyHost.Core` | The DLL boundary and import slots, envelopes, the region store, events, the scene decoder, the capability adapters, the Windows folder walk and the store; nothing here needs a window |
+| `OspreyHost` | The window, the code-only renderer and scene painter, the frame clock, the folder picker and `--self-test`; Native AOT |
 | `OspreyHost.Tests` | xUnit v3 on Microsoft.Testing.Platform |
 
 ## Run
 
-From the repository root on Windows, with MSYS2 UCRT64's clang and llvm-ar as `OSPREY_CC` and `OSPREY_AR`:
-
-```sh
-examples/storage/run.sh --host=winui      # builds storage.dll and opens Osprey Storage
-```
-
-Or build any application yourself and pass its DLL:
+From the repository root on Windows, with MSYS2 UCRT64's clang and llvm-ar as `OSPREY_CC` and `OSPREY_AR`, build an application into a DLL and pass it to the host:
 
 ```sh
 ./target/release/osprey build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll
-dotnet run --project hosts/winui/OspreyHost -c Release -- examples/storage/build/storage.dll
+./target/release/osprey build examples/gpui/flock --target=windows-x64 -o examples/gpui/flock/build/flock.dll
+./target/release/osprey build examples/gpui/painting --target=windows-x64 -o examples/gpui/painting/build/painting.dll
+dotnet run --project hosts/winui/OspreyHost -c Release -- examples/gpui/flock/build/flock.dll
 ```
 
-The window must open in a desktop session. A shell running as a service, such as an SSH session in session 0, can run every test but cannot create the window: WinUI fails with `E_ACCESSDENIED` there.
+`examples/storage/run.sh --host=winui` does the build and run for Storage. The window must open in a desktop session: a shell running as a Windows service, such as an SSH session in session 0, can run every test but not the window, and the host says so and exits with code 3.
 
-## Test and publish
+## Test, publish and self-test
 
-From PowerShell in `hosts/winui`, after building `examples/storage/build/storage.dll` as above:
+From PowerShell in `hosts/winui`, after building the DLLs as above:
 
 ```powershell
-dotnet test --project OspreyHost.Tests     # 51 tests: boundary, protocol, capabilities, folder walk, guards
+dotnet test --project OspreyHost.Tests     # 75 tests: boundary, protocol, scenes, capabilities, walk, store, guards
 dotnet publish OspreyHost -c Release       # Native AOT; trim and AOT warnings fail the build
+./self-test.ps1 -Exe OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe `
+    -Dll ../../examples/gpui/flock/build/flock.dll -Script ../../examples/gpui/flock/self-test.json -Shots shots
 ```
 
 Native AOT links with Visual Studio's C++ tools, so `vswhere.exe` must be on `PATH`: add `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`. Run the tests from PowerShell, not Git Bash. Git Bash's runtime enables the backup privilege, which reads folders their ACLs deny, so under Git Bash the denied-folder test is skipped and says why.
 
+`--self-test` drives the real window from a script beside each application ([WINUI-HOST-SELF-TEST]) and keeps a picture of the window after each `shot` step; `examples/storage/self-test.ps1` builds Storage's fixture tree first. CI runs Storage, Flock and Painting this way on the runner's desktop and keeps the pictures.
+
 ## Coverage
 
-[`Coverage.cs`](OspreyHost.Core/Coverage.cs) is this host's column of the [coverage matrix](../../docs/specs/applications/0047-OspreyNativeHosts.md): 29 node kinds drawn, `scene` refused until plan 0038 phase 4 paints it with Win2D, and `measure-folders`, `reveal`, `choose-folder` and `cancel` answered. Every other capability completes with an error naming it. The tests read the framework's sources, so a kind added to `@osprey/native` fails them until this host draws, answers or refuses it.
+[`Coverage.cs`](OspreyHost.Core/Coverage.cs) is this host's column of the [coverage matrix](../../docs/specs/applications/0047-OspreyNativeHosts.md): every node kind drawn, scenes included, and `measure-folders`, `reveal`, `choose-folder`, `cancel`, the four store kinds and `animate` answered. Every other capability completes with an error naming it. The tests read the framework's sources, so a kind added to `@osprey/native` fails them until this host draws, answers or refuses it.

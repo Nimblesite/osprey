@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using WinRT;
 
 namespace Osprey.Host.WinUI;
 
@@ -25,9 +26,11 @@ sealed partial class Renderer
         ["picker"] = Picker, ["disclosure"] = Disclosure, ["alert"] = Alert, ["scene"] = Scene,
     };
 
-    static Brush Brush(string resource) => (Brush)Application.Current.Resources[resource];
+    // Theme resources are cast through WinRT's own query rather than a CLR cast: under Native AOT a
+    // style can come back from the dictionary as a bare WinRT object, which a CLR cast refuses.
+    static Brush Brush(string resource) => Application.Current.Resources[resource].As<Brush>();
 
-    static Style Style(string resource) => (Style)Application.Current.Resources[resource];
+    static Style Style(string resource) => Application.Current.Resources[resource].As<Style>();
 
     /// <summary>The brush for a tone; the primary tone is the theme's text colour.</summary>
     static Brush Tone(string tone) => Brush(tone switch

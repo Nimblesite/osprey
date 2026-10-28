@@ -16,8 +16,12 @@ Status: **in progress.** Branch: `feat/windows-native-winui`. Done on 2026-10-28
 - [x] Phase 3's adapters: `measure-folders` with the Windows walk, `reveal`, `choose-folder` and `cancel`. Osprey Storage starts, walks and dispatches through its real DLL in a test.
 - [x] Phase 4's coverage test on all three hosts, `winui.yml`, and the no-XAML, package and neutrality guards.
 - [x] Phase 0's AOT publish with warnings as errors: a 6.1 MB `OspreyHost.exe`, and 90 MB in 237 files with the WinUI runtime, on the WinUI component package alone.
-- [ ] The window seen on a desktop, and its self-test. This machine's shell runs in session 0, where WinUI cannot create a window.
-- [ ] The Win2D gate, the scene painter and the frame clock; Flock and Painting.
+- [x] Real windows in CI: the Windows runner's steps run on its signed-in desktop (session 2), and `ci-windows.yml` runs `winui.yml` on demand. The first real window found the start-up crash, a resource index the publish left out, and `EnableMsixTooling` fixed it.
+- [x] `--self-test` [WINUI-HOST-SELF-TEST]: scripts beside Storage, Flock and Painting drive the real window through the controls' automation peers and keep a picture of each step; a failing run leaves its start-up trail, a desktop picture and the crash dump's analysis.
+- [x] The scene painter and the frame clock, in WinUI's own shapes rather than Win2D: every primitive, paths with dashes and joins, CSS-angled gradients blended in Oklab, streamed shapes, scene input and `animate`. Flock streams 1,000 birds a frame and Painting takes a pointer stroke through their real DLLs in tests.
+- [x] The store capabilities, under `%APPDATA%\Osprey\<app>` as the GPUI host keeps them.
+- [ ] Storage, Flock and Painting passing their self-tests in a real window, with their pictures reviewed.
+- [ ] The Win2D gate is no longer needed for correctness; whether WinUI shapes hold 5,000 birds at 60 Hz is still to measure.
 - [ ] The `windows` `HostCall` for the elevated restart, the C fixture host, and phase 4's remaining adapters.
 
 ## Summary

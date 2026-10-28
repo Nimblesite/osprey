@@ -16,7 +16,7 @@ sealed partial class HostApplication(Launch launch) : Application, IXamlMetadata
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        UnhandledException += (_, failed) => Progress.Note($"unhandled {failed.Exception.GetType().Name} 0x{failed.Exception.HResult:X8}: {failed.Message}");
+        UnhandledException += (_, failed) => Progress.Note($"unhandled 0x{failed.Exception.HResult:X8}: {failed.Exception}");
         Progress.Note("launched");
         Resources.MergedDictionaries.Add(new XamlControlsResources());
         Progress.Note("control styles loaded");
