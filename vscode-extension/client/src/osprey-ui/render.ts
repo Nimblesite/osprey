@@ -133,6 +133,15 @@ function progress(node: Record<string, unknown>): string {
   return `<div class="osp-progress" role="progressbar" aria-label="${escapeHtml(text(node, "label"))}"><div class="osp-progress-track"><span></span></div><span class="osp-progress-label">${escapeHtml(text(node, "label"))}</span><span class="osp-progress-detail">${escapeHtml(text(node, "detail"))}</span></div>`;
 }
 
+// [UI-COMPONENTS-METER] A bar filled to value over total in its tone; the label reads it out.
+function meter(node: Record<string, unknown>): string {
+  const total = Math.max(1, number(node, "total"));
+  const value = Math.min(total, Math.max(0, number(node, "value")));
+  const tone = oneOf(text(node, "tone"), TONES, "accent");
+  const label = escapeHtml(text(node, "label"));
+  return `<div class="osp-meter osp-tone-${tone}" role="meter" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${value}" aria-label="${label}"><div class="osp-meter-track"><span style="width:${((value / total) * 100).toFixed(1)}%"></span></div><span class="osp-meter-label">${label}</span></div>`;
+}
+
 function swatch(node: Record<string, unknown>): string {
   const light = /^#[0-9a-fA-F]{6}$/.test(text(node, "light")) ? text(node, "light") : "transparent";
   const dark = /^#[0-9a-fA-F]{6}$/.test(text(node, "dark")) ? text(node, "dark") : "transparent";
@@ -295,6 +304,7 @@ const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Co
   segments,
   empty,
   progress,
+  meter,
   swatch,
   slot,
   button,
@@ -313,6 +323,9 @@ const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Co
   tabs: tabBody,
   rows,
 };
+
+/** Every node kind this webview draws ([NATIVE-HOSTS-COVERAGE]); any other kind is refused as a protocol defect. */
+export const RENDERED_KINDS: readonly string[] = Object.keys(RENDERERS);
 
 /** Render one protocol node; an unknown component is a protocol defect and throws. */
 export function renderNode(value: unknown, ctx: Context): string {

@@ -4,7 +4,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { createRequestExecutor, type CapabilityHost } from "../../client/src/osprey-ui/capabilities";
+import { ANSWERED_CAPABILITIES, createRequestExecutor, type CapabilityHost } from "../../client/src/osprey-ui/capabilities";
 import type { NativeRequest } from "../../client/src/osprey-ui/protocol";
 
 function temporary(): string {
@@ -234,6 +234,25 @@ suite("package workspace capabilities", () => {
       await assert.rejects(execute({ ticket: "h", kind: "host-call", namespace: "other", operation: "workspace.snapshot", arguments: {} }), /Unknown host namespace/);
       await assert.rejects(execute({ ticket: "h", kind: "host-call", namespace: "vscode", operation: "not.a.capability", arguments: {} }), /Unsupported VS Code capability/);
       await assert.rejects(execute({ ticket: "x", kind: "unknown" }), /Unsupported native capability/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("every framework capability is answered here or refused by name", async () => {
+    // Every `Capability` constructor in packages/native/src/capability.ospml, as the encoder names it
+    // ([NATIVE-HOSTS-COVERAGE]): a capability added to the framework fails here until this host answers or refuses it.
+    const refused = ["run", "list-directories", "read-texts", "store-read", "store-write", "store-list", "store-delete", "choose-file", "choose-folder", "save-file", "measure-folders", "reveal", "cancel", "animate"];
+    const source = fs.readFileSync(path.resolve(__dirname, "..", "..", "..", "..", "packages", "native", "src", "capability.ospml"), "utf8").replace(/\r/g, "");
+    const block = source.slice(source.indexOf("type Capability ="));
+    const body = block.slice(0, block.search(/\n\S/));
+    const kinds = [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) => match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase());
+    assert.ok(kinds.includes("measure-folders"), kinds.join(","));
+    assert.deepStrictEqual([...ANSWERED_CAPABILITIES, ...refused].sort(), [...kinds].sort());
+    const root = temporary();
+    try {
+      const execute = createRequestExecutor(hostFor(root));
+      for (const kind of refused) await assert.rejects(execute({ ticket: kind, kind }), /Unsupported native capability/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

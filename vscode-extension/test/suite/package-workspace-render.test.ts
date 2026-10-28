@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { Uri, ViewColumn, window, type WebviewPanel } from "vscode";
 import type { Browser, Frame } from "playwright-core";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
-import { renderWorkspace } from "../../client/src/osprey-ui/render";
+import { RENDERED_KINDS, renderWorkspace } from "../../client/src/osprey-ui/render";
 import { WEBVIEW_SCRIPT } from "../../client/src/osprey-ui/webview-client";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
 import { createWorkspaceSession } from "../../client/src/osprey-ui/session";
@@ -71,6 +71,29 @@ suite("package workspace renderer", () => {
 
   test("an unknown native component is a protocol defect, not a silent blank", () => {
     assert.throws(() => renderWorkspace({ regions: regions({ kind: "mystery" }) }), /Unknown native component/);
+  });
+
+  test("every framework node kind is drawn here except scenes, which the webview refuses", () => {
+    // Every `Node` constructor in packages/native/src/node.ospml, as the encoder names it ([NATIVE-HOSTS-COVERAGE]),
+    // so a component added to the framework fails here until the webview draws it or refuses it by name.
+    const source = fs.readFileSync(path.join(extensionRoot, "..", "packages", "native", "src", "node.ospml"), "utf8").replace(/\r/g, "");
+    const block = source.slice(source.indexOf("type Node A ="));
+    const body = block.slice(0, block.search(/\n\S/));
+    const kinds = [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) => match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase());
+    assert.ok(kinds.includes("meter") && kinds.includes("context-menu"), kinds.join(","));
+    assert.deepStrictEqual([...RENDERED_KINDS, "scene"].sort(), [...kinds].sort());
+    assert.throws(() => renderWorkspace({ regions: regions({ kind: "scene" }) }), /Unknown native component: scene/);
+  });
+
+  test("a meter fills its share of the total, clamped, in its tone", () => {
+    const html = renderWorkspace({ regions: regions({ kind: "stack", axis: "vertical", children: [
+      { kind: "meter", label: "30 of 120 used", value: 30, total: 120, tone: "caution" },
+      { kind: "meter", label: "<over>", value: 500, total: 120, tone: "nonsense" },
+    ] }) });
+    assert.ok(html.includes('class="osp-meter osp-tone-caution" role="meter" aria-valuemin="0" aria-valuemax="120" aria-valuenow="30" aria-label="30 of 120 used"'), html);
+    assert.ok(html.includes('style="width:25.0%"'), html);
+    assert.ok(html.includes('class="osp-meter osp-tone-accent" role="meter" aria-valuemin="0" aria-valuemax="120" aria-valuenow="120" aria-label="&lt;over&gt;"'), html);
+    assert.ok(html.includes('style="width:100.0%"'), html);
   });
 
   test("malformed or excessive trees fail explicitly instead of rendering a partial screen", () => {

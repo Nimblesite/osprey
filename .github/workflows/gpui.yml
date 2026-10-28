@@ -12,6 +12,7 @@ on:
       - "hosts/gpui/**"
       - "packages/native/**"
       - "examples/gpui/**"
+      - "examples/storage/**"
       - "crates/osprey-cli/src/desktop.rs"
       - "crates/osprey-project/**"
       - "compiler/runtime/**"
@@ -63,6 +64,7 @@ jobs:
         run: |
           ./target/release/osprey test examples/gpui/flock/test
           ./target/release/osprey test examples/gpui/painting/test
+          ./target/release/osprey test examples/storage/test
 
       - name: Host tests and clippy
         working-directory: hosts/gpui

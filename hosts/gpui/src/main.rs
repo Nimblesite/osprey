@@ -4,6 +4,8 @@
 
 mod adapters;
 mod clock;
+#[cfg(test)]
+mod coverage;
 mod envelope;
 mod events;
 mod ffi;
