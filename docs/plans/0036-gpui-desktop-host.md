@@ -1,6 +1,6 @@
 # Plan 0036 — GPUI desktop host: Osprey Native on the GPU, first on the Mac
 
-Contract: [spec 0046](../specs/platforms/0046-GpuiDesktopHost.md). Framework: [`packages/native`](../../packages/native/README.md). Status: **phases 0 to 3 built; Flock's frame at 5,000 birds costs 4.7 ms of a 120 Hz frame's 8.3 ms; phase 4 (Linux and Windows) built, its CI awaiting a first pull-request run.**
+Contract: [spec 0046](../specs/platforms/0046-GpuiDesktopHost.md). Framework: [`packages/native`](../../packages/native/README.md). Status: **phases 0 to 3 built; Flock's frame at 5,000 birds costs 4.7 ms of a 120 Hz frame's 8.3 ms; phase 4 (Linux and Windows) built and green in CI on macOS, Ubuntu and Windows on 2026-10-28.**
 
 ## Summary
 
@@ -101,9 +101,9 @@ Exit: met. `packages/native` names no host, product or operating system outside 
 
 1. [x] Desktop static-library targets `linux-x64`, `linux-arm64` and `windows-x64` in the CLI (`crates/osprey-cli/src/desktop.rs`), with the Apple and Android slices' export selection and header generation, ARC by default, `clang -fPIC` (`OSPREY_CC`) and `llvm-ar` (`OSPREY_AR`) bundling the host's native runtime ([GPUI-HOST-TARGETS]). A slice builds on its own system; elsewhere `--compile` is refused naming where to build it, and `--check` works anywhere. Unit tests cover parsing, the host check and C `bool` extension. The macOS runtime slices now carry the Metal device adapter. The host's `build.rs` and `run.sh` choose the target and system libraries by operating system, and its home, log and store folders follow each system's conventions.
 2. [x] Capability adapters (pi #6, reviewed): `run` (no shell, deadline kill, output limit), `list-directories`, `read-texts`, `store-*` with a per-system root, `choose-file` (types enforced after the panel, which cannot filter), `choose-folder`, `save-file`, `reveal` through GPUI's own cross-platform panels, and `cancel`. Blocking adapters run on GPUI's background executor; an unknown kind is a diagnostic and an error completion. 15 unit tests.
-3. [x] CI: `.github/workflows/gpui.yml` runs the native, Flock and painting suites, the host's tests and clippy, and the probe and Flock smoke runs on macOS, Ubuntu and Windows (MSYS2 UCRT64 with Rust's GNU target, matching the MinGW runtime). The frame-rate bench stays on a Mac with a display. Not yet observed: the workflow runs on pull requests, and none has run since it was added; a local Linux run in Docker could not finish because the VM had 1.9 GB free.
+3. [x] CI: `.github/workflows/gpui.yml` runs the native, Flock and painting suites, the host's tests and clippy, and the probe and Flock smoke runs on macOS, Ubuntu and Windows. On Windows the host builds with MSYS2 UCRT64's own Rust, so the host, GPUI and the MinGW runtime link one UCRT; rustup's Rust with the GNU target had built GPUI's resource script as an MSVC library and linked msvcrt. The Windows job then links Flock and Painting into the host in turn and pictures each window on the runner's desktop. The frame-rate bench stays on a Mac with a display. First observed on 2026-10-28, through a manual run of `ci-windows.yml`, which calls the workflow: green on all three systems.
 
-Exit: Linux and Windows smoke runs green in CI. Pending the first pull-request run.
+Exit: Linux and Windows smoke runs green in CI. Met on 2026-10-28.
 
 ## Risks
 

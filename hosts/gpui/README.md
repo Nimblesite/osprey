@@ -46,4 +46,4 @@ cd hosts/gpui/bench && ../../../target/release/osprey . --run --memory=arc --pro
 
 ## Status
 
-Plan 0036 phases 0 to 3 are built: the window, renderer, scene painter, frame clock, capabilities and two examples, Flock and a pixel-identical port of GPUI's painting example. Phase 4's Linux and Windows targets and CI are built; their first CI run is pending. Measurements are in the plan and in [Flock's README](../../examples/gpui/flock/README.md).
+Plan 0036 phases 0 to 3 are built: the window, renderer, scene painter, frame clock, capabilities and two examples, Flock and a pixel-identical port of GPUI's painting example. Phase 4's Linux and Windows targets run in CI: on 2026-10-28 the host's tests and smoke runs passed on macOS, Ubuntu and Windows, and on Windows Flock and Painting drew in real windows on the runner's desktop, in software since the runner has no GPU. Measurements are in the plan and in [Flock's README](../../examples/gpui/flock/README.md).
