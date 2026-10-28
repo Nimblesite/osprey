@@ -168,6 +168,12 @@ jobs:
           OSPREY_GPUI_APP_NAME=painting OSPREY_GPUI_WINDOW=default \
             pwsh -NoProfile -File scripts/window-picture.ps1 -Exe "$host" -Picture "$shots/painting.png"
 
+      # The host appends every panic to this log as well as stderr, so a window that died says why.
+      - name: The host's panic log
+        if: failure()
+        shell: pwsh
+        run: Get-Content "$env:LOCALAPPDATA\Osprey\Logs\gpui-panic.log" -ErrorAction SilentlyContinue
+
       - name: Keep the windows' pictures
         if: always()
         uses: actions/upload-artifact@v7
