@@ -12,6 +12,7 @@
 use super::spec_findings_tests::Dir;
 use super::toolchain::{KLEE_ENV, RUNTIME_ENV};
 use super::*;
+#[cfg(unix)]
 use crate::testkit::shows;
 use std::sync::{Mutex, MutexGuard};
 
@@ -33,6 +34,13 @@ File: list_runtime.c\nLine: 88\nassembly.ll line: 4012\nState: 7\nStack: \n\
 /// A scratch directory holding the program, the fake engine and its canned
 /// output; removed with the directory on drop.
 struct Scene {
+    #[cfg_attr(
+        not(unix),
+        expect(
+            dead_code,
+            reason = "held for its Drop, which removes the directory; only Unix tests read it"
+        )
+    )]
     dir: Dir,
     root: PathBuf,
 }
@@ -498,5 +506,6 @@ fn an_unmodelled_finding_fails_only_without_replay() {
     }
 }
 
+#[cfg(unix)]
 #[path = "report_artifact_tests.rs"]
 mod report_artifact_tests;

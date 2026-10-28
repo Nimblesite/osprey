@@ -113,16 +113,12 @@ pub(crate) fn build(
     scope: &ios_abi::ExportScope,
 ) -> Result<(), ExitCode> {
     validate(cli, target)?;
+    if target == Target::WindowsX64 && is_dll(out) {
+        return build_dll(cli, path, program, out, scope);
+    }
     crate::toolchain::validate_archive_output(out, target.platform()).map_err(|e| fail(&e))?;
     let (ir, header) = source(program, path, target, scope).map_err(|e| fail(&e))?;
-    let runtime_name = crate::linking::runtime_name("libfiber_runtime.a", &cli.memory);
-    let runtime = find_runtime_lib(&runtime_name).ok_or_else(|| {
-        fail(&format!(
-            "{runtime_name} not found; run `make` to build the {} runtime",
-            target.platform()
-        ))
-    })?;
-    let runtime = crate::linking::fresh_runtime(&runtime).map_err(|e| fail(&e))?;
+    let runtime = runtime_archive(cli, target)?;
     let scratch = Scratch::new(path, target.name())?;
     let ll = scratch.path.join("app.ll");
     let obj = scratch.path.join("app.o");
@@ -140,6 +136,64 @@ pub(crate) fn build(
         HINT,
     )?;
     publish(&archive, out, &header)
+}
+
+/// The native runtime this system's slice bundles, for the chosen memory backend.
+fn runtime_archive(cli: &Cli, target: Target) -> Result<String, ExitCode> {
+    let runtime_name = crate::linking::runtime_name("libfiber_runtime.a", &cli.memory);
+    let runtime = find_runtime_lib(&runtime_name).ok_or_else(|| {
+        fail(&format!(
+            "{runtime_name} not found; run `make` to build the {} runtime",
+            target.platform()
+        ))
+    })?;
+    crate::linking::fresh_runtime(&runtime).map_err(|e| fail(&e))
+}
+
+/// Whether `out` names a Windows DLL rather than an archive. [WINUI-HOST-DLL]
+fn is_dll(out: &Path) -> bool {
+    out.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("dll"))
+}
+
+/// Links the application and the native runtime into one DLL a host loads at run time, with its
+/// C header beside it. Every import becomes a slot the host binds. [WINUI-HOST-DLL]
+fn build_dll(
+    cli: &Cli,
+    path: &str,
+    program: &Program,
+    out: &Path,
+    scope: &ios_abi::ExportScope,
+) -> Result<(), ExitCode> {
+    let target = Target::WindowsX64;
+    let (ir, abi) = ios_abi::source_with_abi(program, path, target.name(), true, scope)
+        .map_err(|e| fail(&e))?;
+    let (ir, slotted) = ios_abi::windows_dll::adapt(&ir, &abi, true).map_err(|e| fail(&e))?;
+    let header = ios_abi::windows_dll::header(&abi.exports, &slotted, path, target.name());
+    let runtime = runtime_archive(cli, target)?;
+    let scratch = Scratch::new(path, target.name())?;
+    let ll = scratch.path.join("app.ll");
+    let dll = scratch.path.join("app.dll");
+    write(&ll, &ir)?;
+    run_tool(
+        &tool("OSPREY_CC", "clang"),
+        &dll_args(&ll, &runtime, &dll),
+        HINT,
+    )?;
+    publish(&dll, out, &header)
+}
+
+/// One self-contained DLL: the runtime and winpthreads are linked statically, so it needs only
+/// what every Windows system has. [WINUI-HOST-DEPLOY]
+pub(crate) fn dll_args(ll: &Path, runtime: &str, dll: &Path) -> Vec<String> {
+    let mut args: Vec<String> = ["-shared", "-O2", "-Wno-override-module"]
+        .map(String::from)
+        .to_vec();
+    args.extend([ll.display().to_string(), runtime.to_owned()]);
+    args.extend(["-o".to_owned(), dll.display().to_string()]);
+    args.extend(["-static", "-lpthread", "-lws2_32"].map(String::from));
+    args
 }
 
 const HINT: &str = "install clang and llvm-ar (LLVM), or set OSPREY_CC and OSPREY_AR";

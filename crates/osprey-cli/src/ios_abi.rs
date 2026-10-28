@@ -160,6 +160,8 @@ impl ExportScope {
 
 #[path = "ios_abi_selection.rs"]
 mod selection;
+#[path = "windows_dll.rs"]
+pub(crate) mod windows_dll;
 #[cfg(test)]
 use selection::host_abi;
 use selection::host_abi_selected;
