@@ -1,0 +1,15 @@
+{
+  "steps": [
+    { "wait": "Round 1" },
+    { "wait": "PEN" },
+    { "sleep": "3" },
+    { "shot": "1-flying" },
+    { "invoke": "Pause" },
+    { "wait": "Paused" },
+    { "shot": "2-paused" },
+    { "key": "p" },
+    { "gone": "Paused" },
+    { "sleep": "2" },
+    { "shot": "3-resumed" }
+  ]
+}

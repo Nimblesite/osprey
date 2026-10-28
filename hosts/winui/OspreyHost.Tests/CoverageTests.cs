@@ -17,8 +17,8 @@ public sealed class CoverageTests
     [Fact]
     public void EveryCapabilityKindIsAnsweredOrRefusedExactlyOnce()
     {
-        Assert.Equal(Framework.CapabilityKinds.Order(), Capabilities.Answered.Concat(Coverage.Unanswered).Order());
-        Assert.Empty(Capabilities.Answered.Intersect(Coverage.Unanswered));
+        Assert.Equal(Framework.CapabilityKinds.Order(), Coverage.Answered.Concat(Coverage.Unanswered).Order());
+        Assert.Empty(Coverage.Answered.Intersect(Coverage.Unanswered));
     }
 
     [Fact]

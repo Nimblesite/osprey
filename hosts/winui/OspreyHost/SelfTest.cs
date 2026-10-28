@@ -15,7 +15,8 @@ namespace Osprey.Host.WinUI;
 /// the application, through the controls' own automation peers, and saves what the window shows.
 /// A script names only what a person sees: words on screen, a button's label, a row's text. Steps:
 /// <c>wait</c> and <c>gone</c> for words, <c>invoke</c> a button, <c>toggle</c> a switch,
-/// <c>choose</c> a row, <c>type</c> into a field, and <c>shot</c> to save the window as a PNG.
+/// <c>choose</c> a row, <c>type</c> into a field, <c>key</c> to press a key in a scene,
+/// <c>sleep</c> for seconds while a scene animates, and <c>shot</c> to save the window as a PNG.
 /// Any diagnostic the window shows fails the test.
 /// </summary>
 sealed class SelfTest(HostWindow window, string script, string shots)
@@ -82,8 +83,16 @@ sealed class SelfTest(HostWindow window, string script, string shots)
         "choose" => Act(words[0], element => Up<ListViewItem>(element) is { } row && window.Choose(row) ? null : "it is not in a row"),
         "type" => Act(words[0], element => Type(element, words[1])),
         "shot" => Shot(words[0]),
+        "sleep" => Slept(double.Parse(words[0], System.Globalization.CultureInfo.InvariantCulture)),
+        "key" => Task.FromResult(window.Press(words[0]) ? null : "no scene is drawn to take a key"),
         _ => Task.FromResult<string?>($"there is no step called {verb}"),
     };
+
+    static async Task<string?> Slept(double seconds)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(seconds));
+        return null;
+    }
 
     async Task<string?> Shot(string name)
     {

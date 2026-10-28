@@ -43,6 +43,9 @@ sealed class HostWindow : Window
     /// <summary>Chooses <paramref name="row"/> as a click on it would; false when its list takes no choice.</summary>
     public bool Choose(ListViewItem row) => session?.Choose(row) ?? false;
 
+    /// <summary>Presses and releases a key in the scene on screen; false when no scene is drawn.</summary>
+    public bool Press(string key) => session?.Press(key) ?? false;
+
     // The window opens at its own size, or smaller on a screen that cannot hold it, centred.
     void Fit()
     {

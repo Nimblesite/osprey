@@ -22,7 +22,7 @@ sealed partial class Renderer
         ["swatch"] = (_, node) => Swatch(node), ["slot"] = Slot, ["stack"] = Stack, ["section"] = Section,
         ["screen"] = Screen, ["split"] = Split, ["layer"] = Layer, ["context-menu"] = ContextMenu, ["aside"] = Aside,
         ["tabs"] = Tabs, ["rows"] = Rows, ["button"] = Button, ["field"] = Field, ["toggle"] = Toggle,
-        ["picker"] = Picker, ["disclosure"] = Disclosure, ["alert"] = Alert,
+        ["picker"] = Picker, ["disclosure"] = Disclosure, ["alert"] = Alert, ["scene"] = Scene,
     };
 
     static Brush Brush(string resource) => (Brush)Application.Current.Resources[resource];

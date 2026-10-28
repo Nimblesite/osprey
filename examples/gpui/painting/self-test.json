@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "wait": "Clear" },
+    { "wait": "Dashed" },
+    { "sleep": "1" },
+    { "shot": "1-painting" },
+    { "invoke": "Dashed" },
+    { "wait": "Solid" },
+    { "shot": "2-dashed-chosen" }
+  ]
+}

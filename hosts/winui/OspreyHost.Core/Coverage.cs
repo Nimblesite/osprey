@@ -13,15 +13,18 @@ public static class Coverage
     [
         "text", "stack", "section", "screen", "split", "layer", "context-menu", "aside", "tabs", "slot",
         "pair", "badge", "label", "icon", "link", "spacer", "divider", "segments", "empty", "progress",
-        "meter", "swatch", "rows", "button", "field", "toggle", "picker", "disclosure", "alert",
+        "meter", "swatch", "rows", "button", "field", "toggle", "picker", "disclosure", "alert", "scene",
     ];
 
-    /// <summary>Node kinds this host refuses with a visible diagnostic, not yet drawn: scenes need Win2D (plan 0038 phase 4).</summary>
-    public static IReadOnlyList<string> Refused { get; } = ["scene"];
+    /// <summary>Node kinds this host refuses with a visible diagnostic: none.</summary>
+    public static IReadOnlyList<string> Refused { get; } = [];
+
+    /// <summary>Capability kinds this host answers: the adapters', and the frame clock, which the window keeps.</summary>
+    public static IReadOnlyList<string> Answered { get; } = [.. Capabilities.Answered, "animate"];
 
     /// <summary>Capability kinds this host refuses with an error completion, not yet answered (plan 0038 phase 4).</summary>
     public static IReadOnlyList<string> Unanswered { get; } =
     [
-        "run", "list-directories", "read-texts", "http", "host-call", "choose-file", "save-file", "animate",
+        "run", "list-directories", "read-texts", "http", "host-call", "choose-file", "save-file",
     ];
 }

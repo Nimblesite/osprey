@@ -54,6 +54,8 @@ public static class Events
             case string text: writer.WriteStringValue(text); break;
             case bool flag: writer.WriteBooleanValue(flag); break;
             case long whole: writer.WriteNumberValue(whole); break;
+            case KeyInput key: Keyed(writer, key); break;
+            case PointerInput pointer: Pointed(writer, pointer); break;
             case int whole: writer.WriteNumberValue(whole); break;
             default: throw new HostException($"A control cannot deliver a {value.GetType().Name}");
         }
@@ -77,6 +79,34 @@ public static class Events
         }
     });
 
+    // [UI-SCENE] A scene's key going down or up, by the name the framework reads.
+    static void Keyed(Utf8JsonWriter writer, KeyInput key)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("key", key.Key);
+        writer.WriteBoolean("down", key.Down);
+        writer.WriteEndObject();
+    }
+
+    // [UI-SCENE] The pointer in scene units, pressed or not, with Shift held or not.
+    static void Pointed(Utf8JsonWriter writer, PointerInput pointer)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("x", pointer.X);
+        writer.WriteNumber("y", pointer.Y);
+        writer.WriteBoolean("down", pointer.Down);
+        writer.WriteBoolean("shift", pointer.Shift);
+        writer.WriteEndObject();
+    }
+
+    /// <summary>One display frame [WINUI-HOST-FRAME]: the seconds since the previous one.</summary>
+    public static string Frame(long now, double elapsed) => Written(writer =>
+    {
+        writer.WriteString("kind", "frame");
+        writer.WriteNumber("now", now);
+        writer.WriteNumber("elapsed", elapsed);
+    });
+
     /// <summary>A lifecycle phase, such as the window becoming active.</summary>
     public static string Lifecycle(long now, string phase) => Written(writer =>
     {
@@ -87,6 +117,12 @@ public static class Events
 
     static string Written(Action<Utf8JsonWriter> members) => Json.Object(members);
 }
+
+/// <summary>A key a scene took, by the framework's name for it, going down or up [UI-SCENE].</summary>
+public sealed record KeyInput(string Key, bool Down);
+
+/// <summary>The pointer over a scene, in scene units, pressed or not, with Shift held or not [UI-SCENE].</summary>
+public sealed record PointerInput(double X, double Y, bool Down, bool Shift);
 
 /// <summary>JSON the host writes: escaped only where JSON requires, so text reaches Osprey as UTF-8.</summary>
 public static class Json

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Osprey.Host.Scenes;
 
 namespace Osprey.Host.WinUI;
 
@@ -17,6 +18,9 @@ sealed partial class Renderer
     readonly Dictionary<string, Border> holders = [];
     readonly Dictionary<string, UIElement> drawn = [];
     readonly System.Runtime.CompilerServices.ConditionalWeakTable<ListView, Action<object>> clicks = new();
+    readonly Dictionary<string, SceneView> scenes = [];
+    IReadOnlyList<Streamed> stream = [];
+    int streamTaken;
     readonly Action<string, long, long, object?> control;
     readonly Action<IReadOnlyList<string>> report;
     readonly IReadOnlyDictionary<string, Func<Scope, JsonElement, UIElement>> kinds;
@@ -52,13 +56,51 @@ sealed partial class Renderer
     }
 
     /// <summary>Redraws every region an envelope patched or removed, in the order it listed them.</summary>
-    public void Refresh(RegionStore store, IReadOnlyList<string> changed)
+    public void Refresh(RegionStore store, IReadOnlyList<string> changed, IReadOnlyList<Streamed> streamed)
     {
         regions = store;
+        (stream, streamTaken) = (streamed, 0);
         foreach (var key in changed)
         {
             Redraw(key);
         }
+        if (streamTaken != stream.Count)
+        {
+            report([$"The application streamed {stream.Count} shapes and its scenes took {streamTaken}"]);
+        }
+    }
+
+    /// <summary>
+    /// A scene [WINUI-HOST-SCENE]: its own shapes and the next shapes streamed for it, in the order the
+    /// framework wrote them, drawn into the view this scene keeps between frames.
+    /// </summary>
+    UIElement Scene(Scope scope, JsonElement node)
+    {
+        var count = (int)Math.Clamp(Envelopes.Number(node, "streamed"), 0, int.MaxValue);
+        if (count > stream.Count - streamTaken)
+        {
+            return Refused($"A scene expected {count} streamed shapes and {stream.Count - streamTaken} arrived");
+        }
+        var mine = stream.Skip(streamTaken).Take(count).ToList();
+        streamTaken += count;
+        Scenes.Scene scene;
+        try
+        {
+            scene = SceneDecoder.Decode(node, mine);
+        }
+        catch (HostException problem)
+        {
+            return Refused($"Invalid scene: {problem.Message}");
+        }
+        var key = $"{scope.Region}#{Envelopes.Number(node, "event")}";
+        if (!scenes.TryGetValue(key, out var view))
+        {
+            view = new SceneView();
+            scenes[key] = view;
+        }
+        Detach(view.Element);
+        view.Show(scene, Emit(scope, node));
+        return view.Element;
     }
 
     void Redraw(string key)
@@ -84,11 +126,34 @@ sealed partial class Renderer
         }
     }
 
+    /// <summary>Presses and releases a key in the first scene drawn, as its keyboard would; false when none is.</summary>
+    public bool Press(string key)
+    {
+        if (scenes.Values.FirstOrDefault() is not { } scene)
+        {
+            return false;
+        }
+        scene.Press(key);
+        return true;
+    }
+
+    // Takes an element kept between draws out of the tree it was last drawn into.
     static void Detach(UIElement? element)
     {
-        if (element is FrameworkElement { Parent: Border previous })
+        switch ((element as FrameworkElement)?.Parent)
         {
-            previous.Child = null;
+            case Border border:
+                border.Child = null;
+                break;
+            case Panel panel:
+                panel.Children.Remove(element);
+                break;
+            case ContentControl content:
+                content.Content = null;
+                break;
+            case Viewbox box:
+                box.Child = null;
+                break;
         }
     }
 

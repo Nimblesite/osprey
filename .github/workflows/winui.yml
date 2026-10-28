@@ -98,13 +98,15 @@ jobs:
           echo "OSPREY_CC=$(cygpath -m /ucrt64/bin/clang.exe)" >> "$GITHUB_ENV"
           echo "OSPREY_AR=$(cygpath -m /ucrt64/bin/llvm-ar.exe)" >> "$GITHUB_ENV"
 
-      - name: Storage suite and DLL
+      - name: Example suites and DLLs
         shell: msys2 {0}
         run: |
           set -euo pipefail
           ./target/release/osprey.exe test examples/storage/test
-          mkdir -p examples/storage/build
+          mkdir -p examples/storage/build examples/gpui/flock/build examples/gpui/painting/build
           ./target/release/osprey.exe build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll
+          ./target/release/osprey.exe build examples/gpui/flock --target=windows-x64 --no-warnings -o examples/gpui/flock/build/flock.dll
+          ./target/release/osprey.exe build examples/gpui/painting --target=windows-x64 --no-warnings -o examples/gpui/painting/build/painting.dll
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -139,28 +141,12 @@ jobs:
         if: ${{ !cancelled() }}
         shell: msys2 {0}
         # The runner has no GPU, so Direct3D 12 draws with WARP on the CPU: a few frames per scene.
-        run: make _graphics-smoke CC=gcc BIN=target/release/osprey.exe GFX_SMOKE_FRAMES=3
+        run: make _graphics-smoke CC=gcc BIN=target/release/osprey.exe GFX_SMOKE_FRAMES=10
 
       - name: Pictures of the graphics scenes
         if: ${{ !cancelled() }}
         shell: pwsh
-        run: |
-          Add-Type -AssemblyName System.Drawing, System.Windows.Forms
-          $shots = "${{ runner.temp }}/self-test/graphics"
-          New-Item -ItemType Directory -Force $shots | Out-Null
-          $env:PATH = "$PWD\examples\graphics;$env:PATH"
-          $env:OSPREY_GFX_FRAMES = '100000'
-          foreach ($scene in 'kali', 'opal', 'character') {
-            $run = Start-Process "target\gfx\$scene.exe" -PassThru
-            Start-Sleep -Seconds 25
-            $screen = [Windows.Forms.Screen]::PrimaryScreen.Bounds
-            $picture = [Drawing.Bitmap]::new($screen.Width, $screen.Height)
-            $canvas = [Drawing.Graphics]::FromImage($picture)
-            $canvas.CopyFromScreen($screen.Location, [Drawing.Point]::Empty, $screen.Size)
-            $picture.Save("$shots\$scene.png", [Drawing.Imaging.ImageFormat]::Png)
-            $canvas.Dispose(); $picture.Dispose()
-            Stop-Process -Id $run.Id -Force -ErrorAction SilentlyContinue
-          }
+        run: examples/graphics/pictures.ps1 -Shots "${{ runner.temp }}/self-test/graphics"
 
       # Windows Error Reporting keeps a full dump of a host that crashes, and the script prints the
       # debugger's analysis of it; the dumps stay on the runner.
@@ -179,6 +165,28 @@ jobs:
             -Dll examples/storage/build/storage.dll `
             -Shots "${{ runner.temp }}/self-test/storage" `
             -Dumps $dumps
+
+      - name: Flock in a real window
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: >-
+          hosts/winui/self-test.ps1
+          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
+          -Dll examples/gpui/flock/build/flock.dll
+          -Script examples/gpui/flock/self-test.json
+          -Shots "${{ runner.temp }}/self-test/flock"
+          -Dumps "${{ runner.temp }}/dumps"
+
+      - name: Painting in a real window
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: >-
+          hosts/winui/self-test.ps1
+          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
+          -Dll examples/gpui/painting/build/painting.dll
+          -Script examples/gpui/painting/self-test.json
+          -Shots "${{ runner.temp }}/self-test/painting"
+          -Dumps "${{ runner.temp }}/dumps"
 
       - name: Keep the window's pictures
         if: always()

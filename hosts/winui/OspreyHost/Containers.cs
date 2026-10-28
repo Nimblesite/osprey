@@ -8,7 +8,7 @@ namespace Osprey.Host.WinUI;
 /// <summary>Structure nodes: stacks, sections, pages, splits, layers, menus, asides and tabs [UI-COMPONENTS].</summary>
 sealed partial class Renderer
 {
-    static readonly HashSet<string> Fillers = ["rows", "empty", "slot", "aside"];
+    static readonly HashSet<string> Fillers = ["rows", "empty", "slot", "aside", "scene"];
 
     /// <summary>
     /// Children in a row or column; a spacer takes the room left over, and in a column so does a

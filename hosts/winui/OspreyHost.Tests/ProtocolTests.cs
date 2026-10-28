@@ -69,6 +69,24 @@ public sealed class ProtocolTests
     }
 
     [Fact]
+    public void ASceneSendsItsKeysAndPointerAsObjects()
+    {
+        using var key = JsonDocument.Parse(Events.Control(5, "field", 3, 0, new KeyInput("left", true)));
+        var pressed = Envelopes.Member(key.RootElement, "value");
+        Assert.Equal(("left", true), (Envelopes.Text(pressed, "key"), Envelopes.Flag(pressed, "down")));
+        using var pointer = JsonDocument.Parse(Events.Control(5, "field", 3, 0, new PointerInput(12.5, 7.25, true, false)));
+        var point = Envelopes.Member(pointer.RootElement, "value");
+        Assert.Equal((12.5, 7.25, true, false), (point.GetProperty("x").GetDouble(), point.GetProperty("y").GetDouble(), Envelopes.Flag(point, "down"), Envelopes.Flag(point, "shift")));
+    }
+
+    [Fact]
+    public void AFrameCarriesTheSecondsSinceThePreviousOne()
+    {
+        using var frame = JsonDocument.Parse(Events.Frame(9, 0.016));
+        Assert.Equal(("frame", 9L, 0.016), (Envelopes.Text(frame.RootElement, "kind"), Envelopes.Number(frame.RootElement, "now"), frame.RootElement.GetProperty("elapsed").GetDouble()));
+    }
+
+    [Fact]
     public void AControlCannotSendAValueTheFrameworkDoesNotRead() =>
         Assert.Throws<HostException>(() => Events.Control(5, "root", 1, 0, 1.5));
 

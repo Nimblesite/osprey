@@ -3,17 +3,73 @@ using System.Text.Json;
 namespace Osprey.Host.Tests;
 
 /// <summary>
-/// [WINUI-HOST-DLL] Osprey Storage compiled to a DLL and driven through the real boundary with no
-/// window: the import slots, start, the folder walk, the host-held slice and dispatch. Everything
-/// the application sends must be something this host draws, and nothing may come back as a
-/// diagnostic. Build the DLL first with <c>examples/storage/run.sh --host=winui</c>, or
-/// <c>osprey build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll</c>.
+/// [WINUI-HOST-DLL] The examples compiled to DLLs and driven through the real boundary with no
+/// window: the import slots, start, capabilities, host-held slices, streamed scene shapes and
+/// dispatch. Everything an application sends must be something this host draws, and nothing may
+/// come back as a diagnostic. Build each DLL first with
+/// <c>osprey build &lt;example&gt; --target=windows-x64 -o &lt;example&gt;/build/&lt;name&gt;.dll</c>.
 /// </summary>
 public sealed class BoundaryTests
 {
     const int Rounds = 8;
 
     static string Built => Path.Combine(Framework.Root, "examples", "storage", "build", "storage.dll");
+
+    static string Example(string name) => Path.Combine(Framework.Root, "examples", "gpui", name, "build", $"{name}.dll");
+
+    [Fact]
+    public void FlockStreamsItsFlockIntoItsSceneFrameAfterFrame()
+    {
+        var path = Example("flock");
+        Assert.SkipUnless(File.Exists(path), $"No {path}: build it with osprey build examples/gpui/flock --target=windows-x64");
+        var regions = new RegionStore();
+        var library = Library.Open(path);
+        var envelope = Received(library.Start(Events.Context(Events.Now(), 0, Path.GetTempPath(), [])), regions);
+        Assert.Contains(envelope.Requests, request => Envelopes.Text(request, "kind") == "animate" && Envelopes.Flag(request, "on"));
+        for (var frame = 0; frame < 3; frame++)
+        {
+            envelope = Received(library.Dispatch(envelope.State, Events.Frame(Events.Now(), 1.0 / 60)), regions);
+            var scenes = envelope.Patches.SelectMany(patch => Nodes(patch.Node)).Where(node => Envelopes.Text(node, "kind") == "scene").ToList();
+            var streamed = Shapes.Taken.ToList();
+            Assert.Equal(streamed.Count, scenes.Sum(scene => Envelopes.Number(scene, "streamed")));
+            Assert.True(streamed.Count >= 1000, $"{streamed.Count} shapes streamed for a flock of 1000");
+            var taken = 0;
+            foreach (var scene in scenes)
+            {
+                var count = (int)Envelopes.Number(scene, "streamed");
+                Assert.NotEmpty(Scenes.SceneDecoder.Decode(scene, streamed.GetRange(taken, count)).Shapes);
+                taken += count;
+            }
+        }
+    }
+
+    [Fact]
+    public void PaintingDrawsItsPathsAndTakesAStrokeFromThePointer()
+    {
+        var path = Example("painting");
+        Assert.SkipUnless(File.Exists(path), $"No {path}: build it with osprey build examples/gpui/painting --target=windows-x64");
+        var regions = new RegionStore();
+        var library = Library.Open(path);
+        var envelope = Received(library.Start(Events.Context(Events.Now(), 0, Path.GetTempPath(), [])), regions);
+        var (key, revision, canvas) = regions.All.SelectMany(region => Nodes(region.Node).Select(node => (region.Key, region.Revision, node))).Single(found => Envelopes.Text(found.node, "kind") == "scene");
+        var before = Scenes.SceneDecoder.Decode(canvas, []).Shapes.OfType<Scenes.PathShape>().Count();
+        var ordinal = Envelopes.Number(canvas, "event");
+        foreach (var (x, y, down) in new[] { (100.0, 400.0, true), (180.0, 430.0, true), (260.0, 420.0, false) })
+        {
+            envelope = Received(library.Dispatch(envelope.State, Events.Control(Events.Now(), key, regions.Find(key)!.Revision, ordinal, new PointerInput(x, y, down, false))), regions);
+        }
+        var after = Scenes.SceneDecoder.Decode(Nodes(regions.Find(key)!.Node).Single(node => Envelopes.Text(node, "kind") == "scene"), []);
+        Assert.True(after.Shapes.OfType<Scenes.PathShape>().Count() > before, $"{before} paths before the stroke, {after.Shapes.OfType<Scenes.PathShape>().Count()} after");
+        Assert.True(revision >= 1);
+    }
+
+    // Every JSON object below a node, the node first, in document order.
+    static IEnumerable<JsonElement> Nodes(JsonElement node) => node.ValueKind switch
+    {
+        JsonValueKind.Object => node.EnumerateObject().Select(member => member.Value).SelectMany(Nodes).Prepend(node),
+        JsonValueKind.Array => node.EnumerateArray().SelectMany(Nodes),
+        _ => [],
+    };
 
     [Fact]
     public async Task StorageMeasuresItsHomeThroughTheRealBoundary()

@@ -8,6 +8,9 @@
     <AssemblyName>OspreyHost</AssemblyName>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
+    <!-- Builds and publishes the resource index (OspreyHost.pri) that holds WinUI's theme dictionaries;
+         without it an unpackaged publish cannot load the controls' styles. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
     <PublishAot>true</PublishAot>
