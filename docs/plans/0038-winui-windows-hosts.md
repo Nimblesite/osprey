@@ -20,7 +20,11 @@ Status: **in progress.** Branch: `feat/windows-native-winui`. Done on 2026-10-28
 - [x] `--self-test` [WINUI-HOST-SELF-TEST]: scripts beside Storage, Flock and Painting drive the real window through the controls' automation peers and keep a picture of each step; a failing run leaves its start-up trail, a desktop picture and the crash dump's analysis.
 - [x] The scene painter and the frame clock, in WinUI's own shapes rather than Win2D: every primitive, paths with dashes and joins, CSS-angled gradients blended in Oklab, streamed shapes, scene input and `animate`. Flock streams 1,000 birds a frame and Painting takes a pointer stroke through their real DLLs in tests.
 - [x] The store capabilities, under `%APPDATA%\Osprey\<app>` as the GPUI host keeps them.
-- [ ] Storage, Flock and Painting passing their self-tests in a real window, with their pictures reviewed.
+- [x] Storage, Flock and Painting passing their self-tests in a real window, with their pictures reviewed. All three passed on the runner's desktop on 2026-10-28. Getting there took three fixes:
+    - Theme styles are cast through WinRT, because under Native AOT a style can come back as a bare WinRT object.
+    - Row handlers are keyed by a name their list carries, because a list's managed wrapper can be collected and remade.
+    - A slot fills only when its region does, as on GPUI, and a split's panes take the window's full height.
+- [ ] Storage measuring the whole C drive in a real window, then opening Users from its row (`self-test-drive.json`).
 - [ ] The Win2D gate is no longer needed for correctness; whether WinUI shapes hold 5,000 birds at 60 Hz is still to measure.
 - [ ] The `windows` `HostCall` for the elevated restart, the C fixture host, and phase 4's remaining adapters.
 

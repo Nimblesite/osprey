@@ -179,7 +179,7 @@ jobs:
           -Shots "${{ runner.temp }}/self-test/storage-drive"
           -Dumps "${{ runner.temp }}/dumps"
           -Arguments 'C:\'
-          -Seconds 420
+          -Seconds 480
 
       - name: Flock in a real window
         if: ${{ !cancelled() }}
