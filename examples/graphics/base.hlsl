@@ -46,7 +46,8 @@
 // The packing argument above holds only if the slot count is a whole number of
 // float4 registers. Otherwise it is not an error, it is a quiet half-register
 // of padding that shifts `res`, `time` and every uniform after them.
-#if (OSP_GFX_SLOTS % 4) != 0
+// fxc's preprocessor has no `%`, so the remainder is spelled with division.
+#if ((OSP_GFX_SLOTS / 4) * 4) != OSP_GFX_SLOTS
 #error OSP_GFX_SLOTS must be a multiple of 4 for the float4 packing below
 #endif
 

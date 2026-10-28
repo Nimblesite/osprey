@@ -64,8 +64,32 @@ jobs:
         shell: msys2 {0}
         run: make _runtime CC=gcc AR=ar
 
+      # Restored here and saved straight after the build, so a later step's failure keeps it.
+      - name: Restore the cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: winui-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: winui-cargo-
+
       - name: Build osprey (release)
         run: cargo build --release -p osprey-cli
+
+      - name: Save the cargo cache
+        if: steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
 
       - name: Pin the MinGW clang and llvm-ar
         shell: msys2 {0}
@@ -101,7 +125,43 @@ jobs:
           $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
           dotnet publish OspreyHost -c Release
 
+      # What a window can see here: the host needs a visible window station, and the graphics
+      # scenes need a desktop compositor for their swap chains.
+      - name: The runner's desktop
+        shell: pwsh
+        run: |
+          $uac = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System).EnableLUA
+          "session $((Get-Process -Id $PID).SessionId), user-interactive $([Environment]::UserInteractive), UAC $uac"
+          query user 2>&1 | Out-String
+
+      - name: Graphics scenes on Direct3D 12
+        if: ${{ !cancelled() }}
+        shell: msys2 {0}
+        run: make _graphics-smoke CC=gcc BIN=target/release/osprey.exe
+
+      - name: Pictures of the graphics scenes
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing, System.Windows.Forms
+          $shots = "${{ runner.temp }}/self-test/graphics"
+          New-Item -ItemType Directory -Force $shots | Out-Null
+          $env:PATH = "$PWD\examples\graphics;$env:PATH"
+          $env:OSPREY_GFX_FRAMES = '600'
+          foreach ($scene in 'kali', 'opal', 'character') {
+            $run = Start-Process "target\gfx\$scene.exe" -PassThru
+            Start-Sleep -Seconds 4
+            $screen = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $picture = [Drawing.Bitmap]::new($screen.Width, $screen.Height)
+            $canvas = [Drawing.Graphics]::FromImage($picture)
+            $canvas.CopyFromScreen($screen.Location, [Drawing.Point]::Empty, $screen.Size)
+            $picture.Save("$shots\$scene.png", [Drawing.Imaging.ImageFormat]::Png)
+            $canvas.Dispose(); $picture.Dispose()
+            if (-not $run.WaitForExit(60000)) { Stop-Process -Id $run.Id -Force }
+          }
+
       - name: Osprey Storage in a real window
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: >-
           examples/storage/self-test.ps1

@@ -87,7 +87,8 @@ static int osp_gfx_register_class(void) {
   cls.cbSize = sizeof cls;
   cls.lpfnWndProc = osp_gfx_proc;
   cls.hInstance = GetModuleHandleW(NULL);
-  cls.hCursor = LoadCursorW(NULL, IDC_ARROW);
+  // IDC_ARROW is an integer resource id spelled as a narrow string unless UNICODE is defined.
+  cls.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
   cls.lpszClassName = OSP_GFX_CLASS;
   registered = RegisterClassExW(&cls) != 0;
   if (!registered) {
@@ -176,6 +177,21 @@ int osp_gfx_make_window(OspGfxContext *ctx, int64_t width, int64_t height,
   return osp_gfx_client_size(ctx);
 }
 
+// No hardware adapter speaks Direct3D 12 on a virtual machine or in a remote
+// session, so WARP, the software rasterizer every Windows ships, draws instead.
+static HRESULT osp_gfx_warp_device(OspGfxContext *ctx, IDXGIFactory4 *factory) {
+  IDXGIAdapter *warp = NULL;
+  HRESULT made = IDXGIFactory4_EnumWarpAdapter(factory, &IID_IDXGIAdapter, (void **)&warp);
+  if (FAILED(made)) {
+    return made;
+  }
+  fprintf(stderr, "ospgfx: no Direct3D 12 hardware adapter; drawing with WARP\n");
+  made = D3D12CreateDevice((IUnknown *)warp, D3D_FEATURE_LEVEL_11_0, &IID_ID3D12Device,
+                           (void **)&ctx->device);
+  IDXGIAdapter_Release(warp);
+  return made;
+}
+
 int osp_gfx_device(OspGfxContext *ctx, IDXGIFactory4 **factory) {
   D3D12_COMMAND_QUEUE_DESC desc;
   HRESULT made = CreateDXGIFactory2(0, &IID_IDXGIFactory4, (void **)factory);
@@ -184,6 +200,9 @@ int osp_gfx_device(OspGfxContext *ctx, IDXGIFactory4 **factory) {
   }
   made = D3D12CreateDevice(NULL, D3D_FEATURE_LEVEL_11_0, &IID_ID3D12Device,
                            (void **)&ctx->device);
+  if (FAILED(made)) {
+    made = osp_gfx_warp_device(ctx, *factory);
+  }
   if (!osp_gfx_ok(made, "D3D12CreateDevice")) {
     return 0;
   }
@@ -242,10 +261,10 @@ static int osp_gfx_bind_target(OspGfxContext *ctx, UINT index,
 }
 
 // One render-target view per back buffer, cached so the frame path never asks
-// the heap for its start again. That call is the one place the C bindings for
-// D3D12 historically diverge between toolchains; a D3D12_CPU_DESCRIPTOR_HANDLE
-// is a single pointer-sized field, so it rides back in a register under the x64
-// ABI and MSVC's and mingw-w64's default bindings both return it by value.
+// the heap for its start again. A COM method returns a structure through a hidden
+// pointer even when it would fit in a register, so a by-value C binding reads
+// garbage; mingw-w64's and the Windows SDK's C headers both spell that pointer out
+// in the vtable, and calling the vtable with it is the form both declare.
 int osp_gfx_targets(OspGfxContext *ctx) {
   D3D12_CPU_DESCRIPTOR_HANDLE rtv;
   UINT step;
@@ -255,7 +274,7 @@ int osp_gfx_targets(OspGfxContext *ctx) {
   }
   step = ID3D12Device_GetDescriptorHandleIncrementSize(ctx->device,
                                                        D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-  rtv = ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(ctx->rtvHeap);
+  ctx->rtvHeap->lpVtbl->GetCPUDescriptorHandleForHeapStart(ctx->rtvHeap, &rtv);
   for (i = 0; i < OSP_GFX_FRAMES; i++, rtv.ptr += (SIZE_T)step) {
     if (!osp_gfx_bind_target(ctx, i, rtv)) {
       return 0;

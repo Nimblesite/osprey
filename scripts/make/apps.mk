@@ -7,11 +7,8 @@ SCENE ?= kali
 ifeq ($(OS),Windows_NT)
 # Direct3D 12. Built with the same MinGW UCRT64 toolchain that builds the C
 # runtime on Windows, so `// @link(windows): ospgfx` in base/base.osp resolves
-# the import library below.
-#
-# UNVERIFIED. This branch, the two C files it compiles and base.hlsl were all
-# written on a macOS machine with no Windows toolchain and have never been
-# built or run. $(GFX_DIR)/README.md says what would establish that they work.
+# the import library below. The bridge compiles with gcc -Wall -Werror and all
+# four shader entries compile with fxc; `make _graphics-smoke` renders every scene.
 GFX_SHADER := $(GFX_DIR)/base.hlsl
 GFX_SRC    := $(GFX_DIR)/ospgfx_d3d12.c $(GFX_DIR)/ospgfx_d3d12_setup.c
 GFX_DLL    := $(GFX_DIR)/ospgfx.dll
@@ -22,10 +19,13 @@ GFX_SYSLIB := -ld3d12 -ldxgi -ld3dcompiler -ldxguid -luser32
 # fragment cannot hide behind another scene running fine.
 GFX_ENTRIES := osp_vertex:vs_5_0 osp_fragment:ps_5_0 \
 	osp_fragment_opal:ps_5_0 osp_fragment_character:ps_5_0
+GFX_SCENES := kali opal character
+GFX_SMOKE_FRAMES ?= 60
+GFX_OUT := target/gfx
 
 ifeq ($(MSYSTEM),)
 # Native PowerShell has neither bash for the recipes below nor a MinGW cc.
-_graphics _graphics-shader:
+_graphics _graphics-shader _graphics-smoke:
 	@Write-Host "make graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
 else
 $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h $(GFX_DIR)/ospgfx_abi.h
@@ -35,18 +35,20 @@ $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h $(GFX_DIR)/ospgfx_abi.h
 
 # The bridge compiles the shader at run time, so an error in it would otherwise
 # only surface as a window that refuses to open. fxc is the same compiler
-# D3DCompile is, so checking here checks exactly what the bridge will do; the
-# Windows SDK ships it, but not on PATH, so the check skips when it is absent.
+# D3DCompile is, so checking here checks exactly what the bridge will do. The
+# Windows SDK ships it off PATH, so the newest SDK's copy is used when PATH has
+# none, and the check skips only when neither exists.
 _graphics-shader:
-	@if command -v fxc.exe >/dev/null 2>&1; then \
+	@fxc=$$(command -v fxc.exe || ls -d "/c/Program Files (x86)/Windows Kits/10/bin/"10.*/x64/fxc.exe 2>/dev/null | sort -V | tail -1); \
+	if [ -n "$$fxc" ]; then \
 		for entry in $(GFX_ENTRIES); do \
 			echo "==> checking $(GFX_SHADER) $${entry%%:*}"; \
-			fxc.exe -nologo -T $${entry##*:} -E $${entry%%:*} \
+			"$$fxc" -nologo -T $${entry##*:} -E $${entry%%:*} \
 				-Fo $(GFX_DIR)/.shadercheck.cso $(GFX_SHADER) || exit 1; \
 		done; \
 		$(RM) $(GFX_DIR)/.shadercheck.cso; \
 	else \
-		echo "==> skipping shader check (no fxc.exe on PATH)"; \
+		echo "==> skipping shader check (no fxc.exe on PATH or in the Windows SDK)"; \
 	fi
 
 # The DLL lives beside its source rather than beside the compiled scene, so the
@@ -54,6 +56,20 @@ _graphics-shader:
 _graphics: build $(GFX_LIB) _graphics-shader
 	@echo "==> launching Osprey graphics demo: $(SCENE) (close the window to exit)"
 	PATH="$(CURDIR)/$(GFX_DIR):$$PATH" ./$(BIN) $(GFX_DIR)/$(SCENE) --run
+
+# _graphics-smoke: every scene compiled to $(GFX_OUT) with the compiler at $(BIN)
+# and run for GFX_SMOKE_FRAMES frames on Direct3D 12; each must report them. A
+# scene's exit status does not say whether it drew, so its report line decides.
+# The window needs a desktop session: in session 0 the swap chain is refused.
+_graphics-smoke: $(GFX_LIB) _graphics-shader
+	@mkdir -p $(GFX_OUT)
+	@for scene in $(GFX_SCENES); do \
+		./$(BIN) $(GFX_DIR)/$$scene --compile --no-warnings -o $(GFX_OUT)/$$scene.exe || exit 1; \
+		report=$$(PATH="$(CURDIR)/$(GFX_DIR):$$PATH" OSPREY_GFX_FRAMES=$(GFX_SMOKE_FRAMES) $(GFX_OUT)/$$scene.exe) || exit 1; \
+		echo "$$report"; \
+		case "$$report" in *": $(GFX_SMOKE_FRAMES) frames in "*) ;; \
+			*) echo "graphics-smoke: $$scene did not draw $(GFX_SMOKE_FRAMES) frames" >&2; exit 1 ;; esac; \
+	done
 endif
 
 else

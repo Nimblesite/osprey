@@ -18,6 +18,10 @@ static class Program
             Console.Error.WriteLine(Launch.Usage);
             return 2;
         }
+        if (Desktop.Missing() is { } missing)
+        {
+            return Refused(launch, missing);
+        }
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(started =>
         {
@@ -25,5 +29,17 @@ static class Program
             _ = new HostApplication(launch);
         });
         return Environment.ExitCode;
+    }
+
+    // With no desktop to draw on, the reason goes where the person or the self-test will read it.
+    static int Refused(Launch launch, string reason)
+    {
+        Console.Error.WriteLine(reason);
+        if (launch.Shots is { } shots)
+        {
+            Directory.CreateDirectory(shots);
+            File.WriteAllText(Path.Combine(shots, "self-test.txt"), $"FAIL {reason}{Environment.NewLine}");
+        }
+        return 3;
     }
 }
