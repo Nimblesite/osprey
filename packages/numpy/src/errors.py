@@ -21,7 +21,7 @@ __all__ = [
     "concat_size_failed", "squeeze_failed", "stack_shape_failed",
     "matmul_mismatch", "index_out_of_bounds", "negative_dimensions",
     "linspace_samples", "moveaxis_len", "need_one_array", "inhomogeneous",
-    "broadcast_to_dims", "aligned_failed",
+    "broadcast_to_dims", "aligned_failed", "product_lengths",
 ]
 
 
@@ -89,6 +89,14 @@ def require(cond, message):
     ValueError carrying `message`. Bind the result to `_` at the call site —
     a failed guard abandons the computation before the binding happens."""
     return 0 if cond else fail(message)
+
+
+def product_lengths(side, has, needs):
+    """The error a row-major product gives when the `side` operand ("left" or
+    "right") holds `has` elements but its stated shape needs `needs`. The text
+    is the GPU runtime's own `gpuMatMul` error, so both interpretations fail
+    alike."""
+    return f"gpuMatMul: {side} operand: has {has} elements, the stated shape needs {needs}"
 
 
 def shape_text(shape):

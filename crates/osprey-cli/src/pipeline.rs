@@ -399,9 +399,9 @@ pub(super) fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
         "android-arm64" | "android-x64" => {
             toolchain::fail("Android libraries must run inside a host app; use --compile")
         }
-        "linux-x64" | "linux-arm64" | "windows-x64" => {
-            toolchain::fail("desktop app libraries must run inside a host such as hosts/gpui; use --compile")
-        }
+        "linux-x64" | "linux-arm64" | "windows-x64" => toolchain::fail(
+            "desktop app libraries must run inside a host such as hosts/gpui; use --compile",
+        ),
         name => match ios::Target::parse(name) {
             Some(target) => ios::validate(cli, target).map_or_else(
                 |code| code,

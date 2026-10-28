@@ -19,17 +19,8 @@ __all__ = [
     "truthy", "equal", "less", "concat_text", "repr_text", "contains", "dict_get", "attr_get", "key_of", "chars",
     "str_len", "str_get", "slice_list", "slice_str", "json_text", "str_split", "str_split_sep",
     "py_mod", "py_floordiv", "capitalize", "lookup", "bind", "bind_found", "bind_at", "dict_of", "dict_set",
-    "is_undefined", "is_none", "is_string", "is_number", "func", "num_of", "char_values", "halt", "is_error", "quarantine",
+    "is_undefined", "is_none", "is_string", "is_number", "func", "num_of", "char_values", "halt", "is_error",
 ]
-
-
-@extern
-def osprey_tensor_panic(message: str) -> str: ...
-
-
-def quarantine(message):
-    """Abort a proven silent failure; the native fatal-channel test pins this contract."""
-    return text(osprey_tensor_panic(message))
 
 
 K_NONE = "none"

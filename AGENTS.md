@@ -38,14 +38,20 @@ Clean up disk space routinely. If you put temporary files on the hard drive, you
 - Coverage thresholds live in `coverage-thresholds.json` and only go up.
 - Expand existing examples and tests instead of adding files; keep each concise, mixing many language constructs.
 
+## 🛑 Panics in Osprey are illegal
+- **Osprey has no panic, abort, exit or crash, and never will.** Every failure is a typed value: `Result<T, E>` or an effect discharged by a handler ([FAILURE-EXPLICIT]). This applies to the language, the standard library, `packages/`, examples, tests and generated code.
+- **Never add a panic builtin**, or any builtin, prelude function or runtime entry point that ends the program instead of returning an error.
+- **Never reach a panic through FFI.** No `extern`/`@extern` declaration may bind a C function that panics, aborts or exits (`osprey_*_panic`, `abort`, `exit`, ...). Never use one to dodge a `Result`.
+- **Never fake a value to avoid an error.** No zero, empty or placeholder value stands in for a failure; return the error.
+- Removing an existing Osprey panic is always in scope. Proposing one is a defect.
+
 ## Broken code
 On encountering code that fails silently:
 
-- Replace it with a panic and a comment explaining why the code is wrong.
+- In **Osprey**, make the failure a typed error (`Result` or an effect) that callers must handle, never a panic.
+- In **Rust or C** compiler and runtime code only, a panic with a comment explaining why the code is wrong is the quarantine; it never surfaces as an Osprey-level panic.
 - Write a test that fails because of the missing implementation.
-- Report the problem to the user. 
-
-A panic is found in seconds; a silent failure never is. This quarantine is the one place a panic is mandated.
+- Report the problem to the user.
 
 ## CI gates
 - **Protect the Dependabot auto-merge process.** `dependabot-upgrades` is permanent staging, never a disposable feature branch. Never delete it during merged-branch cleanup, rename it, protect it against the sweep bot, retarget routine updates to main, disable the sweep or consolidation PR, or add CI to staging. Preserve `.github/dependabot.yml` and `.github/workflows/dependabot-automerge.yml`; follow AgentPMO/Shipwright and the Deslop implementation. Updates accumulate automatically in staging and reach main through a fully tested consolidation PR. Any process change requires explicit user authorization.

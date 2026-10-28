@@ -27,7 +27,7 @@ These projects compose sibling modules through explicit `source_roots`. Registry
 
 `make registry-serve` serves the repository's own packages ([PACKAGE-LOCAL-REGISTRY](../../docs/specs/ecosystem/0029-PackageManagement.md)). It builds `target/osprey-pkg` and `target/osprey-registry`, publishes every `packages/*` that declares a `[package]` into `target/local-registry` with `publish --folder` ([`scripts/stage-local-registry.sh`](../../scripts/stage-local-registry.sh)) and serves that tree on `http://127.0.0.1:8787`. The VS Code extension bundles the same server and tree; its **Start Local Package Registry** command, `osprey.toml` explorer action and status-bar item run it, and opening the package manager against a silent loopback registry offers to start it.
 
-`@osprey/jinja2`, `@osprey/numpy` and `@osprey/safetensors` are refused while staging (`source.unclassified-builtin`): each declares a raw `@extern` panic, which capability confinement rejects.
+All 19 packages stage. A package that binds a raw native function is refused while staging (`source.unclassified-builtin`), as capability confinement requires.
 
 To try the `@demo` sample registry and the e2e consumer instead:
 

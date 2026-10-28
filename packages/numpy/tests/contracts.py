@@ -2,7 +2,7 @@
 # osprey: namespace=numpy_tests
 # osprey: module=Contracts
 """Public helper contracts and errors recorded by the CPython oracle."""
-from numpy import Array, Errors, Layout, Math, Storage
+from numpy import Array, Errors, Layout, Linalg, Math, Storage
 from numpy_expected import Expected
 from numpy_tests import Support as S
 from testing import Check
@@ -50,6 +50,17 @@ def caught_failure(work):
             return "missing error"
 
 
+def malformed_product():
+    """A 2x2 array holding three elements: both storage interpretations refuse
+    the product with the same ValueError instead of reading past the end."""
+    bad = Array.NDArray(shape=[2, 2], data=Storage.lift([1.0, 2.0, 3.0]))
+    match Errors.checked_values(lambda: Array.tolist(Linalg.matmul(bad, Array.eye(2)))):
+        case Error(message=message):
+            return message
+        case Success():
+            return "missing error"
+
+
 def unit_checked():
     match Errors.checked(lambda: None):
         case Success():
@@ -67,6 +78,7 @@ def error_cases(b):
         Check.equal(f"errors.fail.{b}", caught_failure(lambda: Errors.fail("sentinel")), "sentinel"),
         Check.equal(f"errors.require.{b}", caught_failure(lambda: Errors.require(False, "required")), "required"),
         Check.truth(f"errors.checked.{b}", unit_checked(), "unit work succeeds"),
+        Check.equal(f"errors.product_lengths.{b}", malformed_product(), Errors.product_lengths("left", 3, 4)),
     ])
 
 

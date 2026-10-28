@@ -52,7 +52,7 @@ impl Target {
         }
     }
 
-    /// x86-64 requires a C `bool` zero-extended by the caller; AArch64 leaves it to the callee.
+    /// x86-64 requires a C `bool` zero-extended by the caller; `AArch64` leaves it to the callee.
     fn zero_extends_bool(self) -> bool {
         matches!(self, Self::LinuxX64 | Self::WindowsX64)
     }
@@ -93,7 +93,13 @@ pub(crate) fn source(
     target: Target,
     scope: &ios_abi::ExportScope,
 ) -> Result<(String, String), String> {
-    ios_abi::source(program, path, target.name(), target.zero_extends_bool(), scope)
+    ios_abi::source(
+        program,
+        path,
+        target.name(),
+        target.zero_extends_bool(),
+        scope,
+    )
 }
 
 /// Compiles position-independent code and bundles it with the native runtime into one archive,
@@ -180,7 +186,7 @@ mod tests {
         assert!(on_host(Target::LinuxX64, "linux", "aarch64").is_err());
     }
 
-    /// x86-64 hosts need the caller to zero-extend a C bool; AArch64 does not.
+    /// x86-64 hosts need the caller to zero-extend a C bool; `AArch64` does not.
     #[test]
     fn bool_extension_follows_the_architecture() {
         assert!(Target::LinuxX64.zero_extends_bool());

@@ -35,7 +35,7 @@ make build
 make registry-serve
 ```
 
-`make registry-serve` builds the package client and the server, publishes every package under `packages/` into `target/local-registry` with `publish --folder`, and serves it. Each package passes the same source, capability and digest checks the server applies. Three ports, `@osprey/jinja2`, `@osprey/numpy` and `@osprey/safetensors`, are not served yet: their raw `@extern` panic declarations are refused by capability confinement (`source.unclassified-builtin`). Add a package to your own project with the extension, or with the client directly:
+`make registry-serve` builds the package client and the server, publishes every package under `packages/` into `target/local-registry` with `publish --folder`, and serves it. Each package passes the same source, capability and digest checks the server applies. Add a package to your own project with the extension, or with the client directly:
 
 ```sh
 echo "add @osprey/re --registry http://127.0.0.1:8787 --project $PWD/my-app" | ./target/osprey-pkg

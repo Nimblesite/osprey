@@ -75,9 +75,25 @@ module Model {
     export fn gelu(x) = 0.5 * x * (1.0 + tanh(geluScale * (x + geluCubic * x * x * x)))
     export fn gelus(f) = perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i)))
 
-    /// One tensor of the checkpoint; the handler aborts on a missing or
-    /// mis-typed tensor rather than fabricate a runnable model.
-    fn tensor(name) = perform Backends::Tensor.load(weightsDir + "/model.safetensors", name)
+    /// A tensor operation's buffer, or a fault that stops the run with the
+    /// reason ([FAILURE-EXPLICIT]). The fault never resumes, so `abandoned` is
+    /// never called; it only gives the stopped arm the buffer type.
+    fn orStop(result, abandoned) = match result {
+        Success { value } => value
+        Error { message } => stopped(message, abandoned)
+    }
+
+    fn stopped(message, abandoned) = {
+        let _ = Backends::stop(message)
+        abandoned()
+    }
+
+    /// The tensor `name` of the safetensors file at `path`; a missing or
+    /// mis-typed tensor stops the run rather than fabricate a runnable model.
+    export fn loaded(path, name) = orStop(perform Backends::Tensor.load(path, name), empty)
+
+    /// One tensor of the checkpoint.
+    fn tensor(name) = loaded(weightsDir + "/model.safetensors", name)
 
     fn layerAt(i) = {
         let p = "h.${i}."
@@ -111,8 +127,9 @@ module Model {
     /// transposed operand is a gather followed by `matMul`.
     export fn transpose(m, rows, cols) = perform Backends::Tensor.build(rows * cols, fn(i) => at(m, (i % rows) * cols + intDiv(i, rows)))
 
-    /// a [rows, inner] times b [inner, cols]; the handler aborts on failed work.
-    export fn product(a, b, rows, inner, cols) = perform Backends::Tensor.matMul(a, b, rows, inner, cols)
+    /// a [rows, inner] times b [inner, cols]; operands that disagree with the
+    /// stated shape stop the run.
+    export fn product(a, b, rows, inner, cols) = orStop(perform Backends::Tensor.matMul(a, b, rows, inner, cols), fn() => a)
 
     /// Sum of a contiguous run of a flat tensor.
     export fn sumRange(x, start, n) = range(start, start + n) |> fold(0.0, fn(a, i) => a + at(x, i))
