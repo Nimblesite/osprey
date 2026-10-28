@@ -1,0 +1,202 @@
+// Implements [NATIVE-APPS-ALL] for Osprey Storage: paths, sizes and ranking
+// are pure Osprey, decided per platform ([UI-CONTEXT-PLATFORM]), so the host
+// that walks the disk sorts, hides and formats nothing ([UI-EFFECTS-MEASURE]).
+namespace storage
+
+import ui::Lists
+import ui::Pick
+
+(** One child of a measured folder, measured to the bottom by the host ([UI-EFFECTS-MEASURE]): its allocated bytes, the bytes left once hidden items are left out, and the items below it. *)
+type Item =
+    itemName : string
+    itemPath : string
+    itemBytes : int
+    itemShown : int
+    itemCount : int
+    itemHidden : bool
+    itemFolder : bool
+    itemLink : bool
+    itemGuarded : bool
+
+(** The largest items counted under the hidden-items setting, largest first, with the size and number of everything counted. *)
+type Ranking =
+    rankTop : List<Item>
+    rankKept : int
+    rankFloor : int
+    rankBytes : int
+    rankCount : int
+
+(** Paths, sizes, shares and ranking for Osprey Storage, each decided for the platform the host runs on ([UI-CONTEXT-PLATFORM]). *)
+module Disk
+    (** Whether `system` is Windows, whose paths use backslashes, drive letters and network shares. *)
+    export windows system = system == "windows"
+
+    (** The separator between a path's folder names on `system`. *)
+    export separator system = Pick::either (windows system, "\\", "/")
+
+    (** The folder to open when the host names no home: the system drive on Windows, `/` elsewhere. *)
+    export fallback system = Pick::either (windows system, "C:\\", "/")
+
+    nonEmpty (kept, piece) = Pick::either (length piece > 0, listAppend kept piece, kept)
+
+    (** A path's folder names, outermost first, without separators. *)
+    export segments (system, path) = foldList (split path (separator system) ?: [], [], \(kept, piece) => nonEmpty (kept, piece))
+
+    // A drive root: a letter and a colon, with or without the separator after it.
+    drive path = (length path == 2 || (length path == 3 && endsWith path "\\")) && (substring path 1 2 ?: "") == ":"
+
+    // A network share's root: the server and the share, with nothing below them.
+    share (system, path) = startsWith path "\\\\" && length (segments (system, path)) <= 2
+
+    (** Whether `path` is the top of its volume on `system`, where Up goes nowhere. *)
+    export isRoot (system, path) = match windows system
+        true => drive path || share (system, path)
+        false => path == "/" || path == ""
+
+    // How many of a path's names make up its root: the drive, or the server and share.
+    depth (system, path) = match windows system
+        false => 0
+        true => Pick::either (startsWith path "\\\\", 2, 1)
+
+    (** The first `count` of `items`. *)
+    export top count items = match items
+        [] => []
+        [first, ...rest] => match count > 0
+            true => listPrepend (top (satSub count 1) rest) first
+            false => []
+
+    names (system, path) =
+        pieces = segments (system, path)
+        Lists::slice (pieces, depth (system, path), length pieces)
+
+    (** The top of the volume holding `path`: its drive or share on Windows, `/` elsewhere. *)
+    export rootOf (system, path) = match windows system
+        false => "/"
+        true => match startsWith path "\\\\"
+            true => "\\\\" + join (top 2 (segments (system, path))) "\\" + "\\"
+            false => take path 2 + "\\"
+
+    joined (system, root, pieces) = match length pieces > 0
+        false => root
+        true => match endsWith root (separator system)
+            true => root + join pieces (separator system)
+            false => root + separator system + join pieces (separator system)
+
+    (** The folder enclosing `path`; the top of a volume encloses itself. *)
+    export parent (system, path) = match isRoot (system, path)
+        true => path
+        false =>
+            below = names (system, path)
+            joined (system, rootOf (system, path), top (satSub (length below) 1) below)
+
+    (** The folders from the top of `path`'s volume down to `path`, outermost first. *)
+    export trail (system, path) =
+        root = rootOf (system, path)
+        below = names (system, path)
+        range (0, length below) |> fold [root] (\(folders, index) => listAppend folders (joined (system, root, top (satAdd index 1) below)))
+
+    last items fallback = match items
+        [] => fallback
+        [first, ...rest] => last rest first
+
+    (** The last folder name of `path`; the top of a volume goes by the path itself. *)
+    export name (system, path) = match isRoot (system, path)
+        true => path
+        false => last (segments (system, path)) path
+
+    // Windows counts in powers of 1,024 as File Explorer does; other systems count in powers of 1,000.
+    base system = Pick::either (windows system, 1024, 1000)
+
+    shown (tenths, unit) = match unit
+        "B" => "${intDiv tenths 10} B"
+        _ => "${intDiv tenths 10}.${tenths % 10} ${unit}"
+
+    // Rounded to the nearest unit; each division is by a literal, so it can neither overflow nor divide by zero.
+    divided (step, tenths) = match step == 1024
+        true => intDiv (satAdd tenths 512) 1024
+        false => intDiv (satAdd tenths 500) 1000
+
+    scaled (step, tenths, unit, larger) = match larger
+        [] => shown (tenths, unit)
+        [next, ...rest] => match tenths >= satMul step 10
+            true => scaled (step, divided (step, tenths), next, rest)
+            false => shown (tenths, unit)
+
+    (** `bytes` with one rounded decimal in the units `system` shows: powers of 1,024 on Windows, as File Explorer counts, and powers of 1,000 elsewhere. *)
+    export formatBytes (system, bytes) = match bytes < 0
+        true => "unknown"
+        false => scaled (base system, satMul bytes 10, "B", ["KB", "MB", "GB", "TB"])
+
+    (** A count with thousands separators. *)
+    export formatCount count = match count < 1000
+        true => toString count
+        false => formatCount (intDiv count 1000) + "," + (padStart (toString (count % 1000)) 3 "0" ?: "")
+
+    ratio scale part whole = match whole > 0
+        false => 0
+        true =>
+            handle Arith
+                overflow _ _ _ _ => 0
+                remainderByZero _ => 0
+            intDiv (satAdd (satMul part scale) (intDiv whole 2)) whole
+
+    (** The share of `whole`, rounded to a whole percent; an empty whole gives no share. *)
+    export percent (part, whole) = ratio 100 part whole
+
+    (** The same share in thousandths. *)
+    export permille (part, whole) = ratio 1000 part whole
+
+    (** A share as people read it: a sliver is "< 1%", never "0%". *)
+    export shareText (part, whole) = match percent (part, whole) == 0 && part > 0
+        true => "< 1%"
+        false => "${percent (part, whole)}%"
+
+    (** What an item counts for: everything below it, or only what is in sight. *)
+    export size (hidden, item) = Pick::either (hidden, item.itemBytes, item.itemShown)
+
+    (** Whether the hidden-items setting shows `item`. *)
+    export inSight (hidden, item) = hidden || item.itemHidden == false
+
+    // A folder the walk could not open has no size to rank.
+    counted (hidden, item) = inSight (hidden, item) && item.itemGuarded == false
+
+    placed hidden item items = match items
+        [] => [item]
+        [first, ...rest] => match size (hidden, item) > size (hidden, first)
+            true => listPrepend items item
+            false => listPrepend (placed hidden item rest) first
+
+    // A full ranking only changes when an item beats its smallest member, so
+    // most items of a large folder cost one comparison.
+    keep (hidden, limit, ranking, item) =
+        bytes = size (hidden, item)
+        totals = ranking(rankBytes = satAdd ranking.rankBytes bytes, rankCount = satAdd ranking.rankCount 1)
+        match ranking.rankKept >= limit && bytes <= ranking.rankFloor
+            true => totals
+            false =>
+                ranked = top limit (placed hidden item ranking.rankTop)
+                totals(rankTop = ranked, rankKept = length ranked, rankFloor = size (hidden, last ranked item))
+
+    step (hidden, limit, ranking, item) = match counted (hidden, item)
+        true => keep (hidden, limit, ranking, item)
+        false => ranking
+
+    (** The `limit` largest items counted under the hidden-items setting, largest first, with the size and number of everything counted. A loop visits the items, so a folder of any size keeps the stack flat. *)
+    export rank (hidden, limit, items) = foldList (items, Ranking(rankTop = [], rankKept = 0, rankFloor = 0, rankBytes = 0, rankCount = 0), \(ranking, item) => step (hidden, limit, ranking, item))
+
+    extension itemName =
+        pieces = split itemName "." ?: []
+        match length pieces > 1
+            true => toLowerCase (last pieces "")
+            false => ""
+
+    archives () = ["zip", "7z", "rar", "gz", "tgz", "tar", "xz", "bz2", "iso", "img", "vhd", "vhdx", "vmdk", "qcow2", "msi", "msix", "cab", "dmg", "pkg"]
+
+    (** The symbol leading an item's row: a link, a folder the walk could not read, a folder, an archive or any other file. *)
+    export look item = match item.itemLink
+        true => ui::External
+        false => match item.itemGuarded
+            true => ui::Lock
+            false => match item.itemFolder
+                true => ui::Folder
+                false => Pick::either (listContains (archives ()) (extension item.itemName), ui::Package, ui::Document)
