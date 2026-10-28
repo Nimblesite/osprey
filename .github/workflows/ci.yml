@@ -352,6 +352,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
+        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
+        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
           submodules: true
       - name: Setup Osprey toolchain (no rebuild)
