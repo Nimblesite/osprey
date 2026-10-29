@@ -95,3 +95,54 @@ fn branching_recursive_provenance_has_a_finite_size() {
         "recursive provenance grew without a size bound"
     );
 }
+
+#[test]
+fn a_call_result_fed_back_through_the_same_symbolic_call_is_cut_after_four_layers() {
+    // A recursion through a parameter's function field returns the result of
+    // `p.f(x)` as the next `x`; each fixed-point sweep nests one more
+    // `Returned` layer. Widening must cut that nesting well before the path
+    // depth limit, or the sweep count grows with the depth limit
+    // [EFFECTS-PROVENANCE].
+    fn layer(inner: Value) -> Value {
+        Value {
+            callable: Some(Callable::Parameter {
+                level: 0,
+                index: 2,
+                projection: vec![
+                    Projection::Field("build".to_owned()),
+                    Projection::Returned(Box::new(CallArguments {
+                        positional: vec![Some(inner)],
+                        named: Vec::new(),
+                    })),
+                ],
+            }),
+            ..Value::default()
+        }
+    }
+    fn call_layers(value: &Value) -> usize {
+        match &value.callable {
+            Some(Callable::Parameter { projection, .. }) => projection
+                .iter()
+                .filter_map(|part| match part {
+                    Projection::Returned(arguments) => arguments.positional.first(),
+                    _ => None,
+                })
+                .flatten()
+                .map(|inner| 1 + call_layers(inner))
+                .max()
+                .unwrap_or(1),
+            _ => 0,
+        }
+    }
+    let mut value = Value::unknown_callable();
+    for _ in 0..12 {
+        value = layer(value);
+    }
+    assert_eq!(call_layers(&value), 12);
+    let widened = widen_value(value, 0);
+    assert!(
+        call_layers(&widened) <= 4,
+        "{} layers survive",
+        call_layers(&widened)
+    );
+}

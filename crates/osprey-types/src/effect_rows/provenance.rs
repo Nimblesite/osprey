@@ -83,6 +83,13 @@ pub(super) fn merge_boxed_value(slot: &mut Option<Box<Value>>, incoming: Value) 
     }
 }
 
+/// How much of the provenance depth one call-shaped nesting spends: a value
+/// stored inside the arguments of a `Returned`/`Method` step is the result of
+/// a symbolic call fed into another, and a recursion through a parameter's
+/// function field produces one more such layer per fixed-point sweep. Four
+/// layers reach the depth limit, so the sweep count stays bounded.
+const CALL_NESTING_STEP: usize = MAX_PROVENANCE_DEPTH / 4;
+
 pub(super) fn widen_value(value: Value, depth: usize) -> Value {
     widen_value_budget(value, depth, MAX_PROVENANCE_NODES)
 }
@@ -133,7 +140,7 @@ pub(super) fn widen_callable(
             mut projection,
         } if level < MAX_PROVENANCE_DEPTH && projection.len() < MAX_PROVENANCE_DEPTH => {
             map_projection_values(&mut projection, |value| {
-                *value = widen_value_budget(value.clone(), depth + 1, budget);
+                *value = widen_value_budget(value.clone(), depth + CALL_NESTING_STEP, budget);
             });
             Callable::Parameter {
                 level,
