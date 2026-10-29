@@ -1,0 +1,108 @@
+namespace prooftests
+
+import proof::Naturals
+import proof
+    Natural
+
+(** Exact naturals for Lean's `natVal` literals. Every expected decimal
+    beyond a few digits comes from Python 3 integers (expression beside it);
+    no value is checked against itself. *)
+module NaturalTests
+    (** `text` read, or zero with the failure recorded. *)
+    nat (text) = match Naturals::parse text
+        Success n => n
+        Error message =>
+            check "a literal reads" "no error" message
+            Naturals::zero ()
+
+    shown (outcome) = match outcome
+        Success n => Naturals::show n
+        Error message => "error: ${message}"
+
+    sum (a, b) = Naturals::show (Naturals::add (nat a, nat b))
+
+    difference (a, b) = Naturals::show (Naturals::sub (nat a, nat b))
+
+    (** Every ordered pair of the grid, `(a + b) - b == a` and
+        `a - (a + b) == 0`, counted. *)
+    laws (grid) = foldList (grid, 0, \(count, a) => foldList (grid, count, \(inner, b) => satAdd inner (lawHolds (a, b))))
+
+    lawHolds (a, b) = match Naturals::equal (Naturals::sub (Naturals::add (nat a, nat b), nat b), nat a) && Naturals::isZero (Naturals::sub (nat a, Naturals::add (nat a, nat b))) && Naturals::equal (Naturals::add (nat a, nat b), Naturals::add (nat b, nat a))
+        true => 1
+        false => 0
+
+    grid () = ["0", "1", "2", "999999999", "1000000000", "1000000001", "9223372036854775807", "18446744073709551616", "1000000000000000000000000000007", "1606938044258990275541962092341162602522202993782792835301376", "999999999999999999999999999", "123456789012345678901234567890123456789012345678901234567890"]
+
+    export run () =
+        test ("parse and show round-trip every spelling, across limb borders", \() =>
+            expect (shown (Naturals::parse "0"), "0")
+            expect (shown (Naturals::parse "1"), "1")
+            expect (shown (Naturals::parse "999999999"), "999999999")
+            expect (shown (Naturals::parse "1000000000"), "1000000000")
+            expect (shown (Naturals::parse "1000000001"), "1000000001")
+            expect (shown (Naturals::parse "100000000000000000000"), "100000000000000000000")
+            expect (shown (Naturals::parse "1606938044258990275541962092341162602522202993782792835301376"), "1606938044258990275541962092341162602522202993782792835301376")
+            expect (Naturals::isZero (nat "0"), true)
+            expect (Naturals::isZero (nat "1000000000"), false))
+
+        test ("parse refuses every spelling lean4export does not write", \() =>
+            expect (shown (Naturals::parse ""), "error: not a natural literal: \"\"")
+            expect (shown (Naturals::parse "-1"), "error: not a natural literal: \"-1\"")
+            expect (shown (Naturals::parse "+1"), "error: not a natural literal: \"+1\"")
+            expect (shown (Naturals::parse "01"), "error: not a natural literal: \"01\"")
+            expect (shown (Naturals::parse "00"), "error: not a natural literal: \"00\"")
+            expect (shown (Naturals::parse " 1"), "error: not a natural literal: \" 1\"")
+            expect (shown (Naturals::parse "1 "), "error: not a natural literal: \"1 \"")
+            expect (shown (Naturals::parse "1.0"), "error: not a natural literal: \"1.0\"")
+            expect (shown (Naturals::parse "1e3"), "error: not a natural literal: \"1e3\"")
+            expect (shown (Naturals::parse "abc"), "error: not a natural literal: \"abc\"")
+            expect (shown (Naturals::parse "１"), "error: not a natural literal: \"１\""))
+
+        test ("add carries across limbs exactly", \() =>
+            expect (sum ("0", "0"), "0")
+            expect (sum ("999999999", "1"), "1000000000")
+            expect (sum ("999999999999999999999999999", "1"), "1000000000000000000000000000")
+            // 2**200 + (10**30 + 7)
+            expect (sum ("1606938044258990275541962092341162602522202993782792835301376", "1000000000000000000000000000007"), "1606938044258990275541962092342162602522202993782792835301383")
+            expect (sum ("1000000000000000000000000000007", "1606938044258990275541962092341162602522202993782792835301376"), "1606938044258990275541962092342162602522202993782792835301383"))
+
+        test ("sub borrows across limbs and truncates at zero", \() =>
+            expect (difference ("1000000000", "1"), "999999999")
+            expect (difference ("1000000000000000000000000000", "1"), "999999999999999999999999999")
+            // 2**200 - (10**30 + 7)
+            expect (difference ("1606938044258990275541962092341162602522202993782792835301376", "1000000000000000000000000000007"), "1606938044258990275541962092340162602522202993782792835301369")
+            expect (difference ("1", "2"), "0")
+            expect (difference ("999999999", "1000000000"), "0")
+            expect (difference ("5", "5"), "0")
+            expect (difference ("0", "0"), "0"))
+
+        test ("succ and predecessor are inverse, and zero has no predecessor", \() =>
+            expect (Naturals::show (Naturals::succ (nat "999999999999999999")), "1000000000000000000")
+            expect (shown (Naturals::predecessor (nat "1000000000000000000")), "999999999999999999")
+            expect (shown (Naturals::predecessor (nat "1")), "0")
+            expect (shown (Naturals::predecessor (nat "0")), "error: 0 is not a successor")
+            expect (Naturals::isZero (Naturals::one ()), false))
+
+        test ("compare, equal and le order by value, not spelling length of a limb", \() =>
+            expect (Naturals::compare (nat "999999999", nat "1000000000"), -1)
+            expect (Naturals::compare (nat "1000000000", nat "999999999"), 1)
+            expect (Naturals::compare (nat "1000000001", nat "1000000002"), -1)
+            expect (Naturals::compare (nat "2000000001", nat "1000000002"), 1)
+            expect (Naturals::compare (nat "0", nat "0"), 0)
+            expect (Naturals::equal (nat "18446744073709551616", nat "18446744073709551616"), true)
+            expect (Naturals::equal (nat "18446744073709551616", nat "18446744073709551617"), false)
+            expect (Naturals::le (nat "3", nat "3"), true)
+            expect (Naturals::le (nat "4", nat "3"), false)
+            expect (Naturals::le (nat "0", nat "123456789012345678901234567890"), true))
+
+        test ("ofInt and toInt convert exactly where an int fits, and refuse elsewhere", \() =>
+            expect (shown (Naturals::ofInt 0), "0")
+            expect (shown (Naturals::ofInt 1000000000), "1000000000")
+            expect (shown (Naturals::ofInt 9223372036854775807), "9223372036854775807")
+            expect (shown (Naturals::ofInt (-1)), "error: -1 is negative")
+            expect (Naturals::toInt (nat "999999999999999999") ?: -1, 999999999999999999)
+            expect (Naturals::toInt (nat "0") ?: -1, 0)
+            expect (Naturals::toInt (nat "1000000000000000000") ?: -1, -1))
+
+        test ("add and sub laws hold over every ordered pair of a 12-value grid", \() =>
+            expect (laws (grid ()), 144))
