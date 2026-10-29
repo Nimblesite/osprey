@@ -74,9 +74,13 @@ run_apple() {
     return 1
   fi
   print -r -- "$MOBILE_HOST_C" >"$work/host.c"
+  # The Mac slice carries the Metal device adapter, so its host links Metal and Foundation.
+  # [IOS-TARGET-MACOS] [GPU-DEVICE]
+  local -a frameworks=()
+  if [[ $TARGET == macos ]]; then frameworks=(-framework Foundation -framework Metal); fi
   xcrun --sdk "$APPLE_SDK_NAME" clang -target "$APPLE_TRIPLE" \
     -isysroot "$APPLE_SDK" -O2 -std=c11 -I"$work" \
-    "$work/host.c" "$work/golden.a" -o "$work/host" >>"$err" 2>&1 || return 1
+    "$work/host.c" "$work/golden.a" "${frameworks[@]}" -o "$work/host" >>"$err" 2>&1 || return 1
   if [[ $TARGET == macos ]]; then
     "$work/host" "$work" >"$out" 2>>"$err" </dev/null
   else

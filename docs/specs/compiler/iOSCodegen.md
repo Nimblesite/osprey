@@ -14,7 +14,7 @@ Device, simulator and Mac archives are separate products even though all three u
 
 ## The Mac slice [IOS-TARGET-MACOS]
 
-`--target=macos` is the iPhone target built for a Mac: the same options, header, thunks, entry, capability rules and runtime sources (`libosprey_runtime_macos_arc.a` compiles the iOS runtime sources with the iOS flags against the macOS SDK). For one program, the Mac slice emits the same adapted LLVM IR as `--target=ios` and a header that differs only in the slice it names, so Swift `@_cdecl` imports and calls written against one compile unchanged against the other. A Swift macOS host, command-line or app, links the archive exactly as an iPhone app does and owns every platform API. `--run` is rejected for this slice too; the host runs the program.
+`--target=macos` is the iPhone target built for a Mac: the same options, header, thunks, entry, capability rules and runtime sources (`libosprey_runtime_macos_arc.a` compiles the iOS runtime sources with the iOS flags against the macOS SDK). The Mac runtime also carries the Metal device adapter ([GPU-DEVICE]), so a desktop host such as GPUI runs kernels on the GPU, and a host linking the Mac archive links the Metal and Foundation frameworks. For one program, the Mac slice emits the same adapted LLVM IR as `--target=ios` and a header that differs only in the slice it names, so Swift `@_cdecl` imports and calls written against one compile unchanged against the other. A Swift macOS host, command-line or app, links the archive exactly as an iPhone app does and owns every platform API. `--run` is rejected for this slice too; the host runs the program.
 
 ## Compiler options [IOS-TARGET-OPTIONS]
 
