@@ -3,7 +3,7 @@
 Giant leaps - not baby steps
 Violent refactoring
 
-Contracts: [spec 0050](../specs/language/0050-TypeDisciplines.md) for the pluggable discipline seam and [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) for the `lean4` discipline and the Mathlib port. Status: **M0 and M2 implemented, M1 in progress, phase 1 seam partly implemented.** The road test (M0 to M3) is the first work; it needed one resolver change (positional constructors across files) and one codegen change (recursive `Result` returns). The adversarial review in [0041-dependent-types-and-mathlib-review.md](0041-dependent-types-and-mathlib-review.md) is answered item by item at its foot. Stabilization mode holds for the phases after it: none begins without the owner's go.
+Contracts: [spec 0050](../specs/language/0050-TypeDisciplines.md) for the pluggable discipline seam and [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) for the `lean4` discipline and the Mathlib port. Status: **M0, M1 (a `Prop`/`→` theorem from a recorded Lean export) and M2 implemented and gated by `make _test_proof_kernel` and the speed gate; M3 not started; phase 1 implemented except the two open boxes below.** The road test (M0 to M3) is the first work; it needed one resolver change (positional constructors across files) and one codegen change (recursive `Result` returns). The adversarial reviews [1](../reviews/0041-dependent-types-and-mathlib-review.md), [2](../reviews/0041-dependent-types-and-mathlib-review-2.md) and [3](../reviews/0041-dependent-types-and-mathlib-review-3.md) are each answered item by item at their foot. Stabilization mode holds for the phases after it: none begins without the owner's go.
 
 ## Summary
 
@@ -32,23 +32,27 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [x] Compiler: a positional union constructor applied from another file folds to its construction (`constructor_resolve.rs`, `resolve.rs`)
 - [x] Resolver test: imported positional variant accepted, imported record still needs named fields
 - [x] `examples/proof/kernel/expectedoutput` and `make _test_proof_kernel` (in `make test`) running the kernel under GC, ARC and wasm32
-- [x] `benchmarks/proof/run.sh` and `m0_identity`: Osprey kernel against Lean's kernel on `id_imp`, red when Osprey is slower
+- [x] `benchmarks/proof/run.sh` and `m0_identity`: a process-against-process regression gate (a compiled Osprey kernel with the theorem built in against `lean --run`, elaboration included), red when Osprey is slower; not kernel-speed evidence, which is `m1_export`
 - [x] Lean (elan) installed in CI (`test-proof` job, toolchain pinned) and the proof benchmark run on every kernel change
 - [x] `docs/reports/proof-road-test-2026-10-29.md`: lines, hours, language gaps
 - [x] Compiler: a recursive function returning `Result<T, _>` no longer needs a written signature (`abi_shape_concrete` at the return slot); an open success payload still does
 - [x] Review P0.1: `Terms::equal` is structural (indices, every universe argument), never printed; repeated-binder and universe-argument rejections in `tests/terms.ospml` and `tests/infer.ospml`
 - [x] Review P0.2: universe parameters instantiated at every constant use and unfold; arity and scope checked; `Levels::equal` structural on normal forms
-- [x] Review P1.5/6: `examples/proof/kernel/tests` (45 cases) in `make _test_proof_kernel` under GC, ARC and wasm32; golden regenerated with the M2 lines
+- [x] Review P1.5/6: `examples/proof/kernel/tests` (81 cases across seven suites) in `make _test_proof_kernel` under GC, ARC and wasm32, `failed=0` required of each; golden regenerated with the M2 and export lines
+- [x] Review 3 P0.1: the entry compiles again; two codegen record-tracking fixes rather than a rename (a `...rest` tail keeps its list type, and a call through generic inlining keeps the checker's concrete return type), each with a twin regression in `tests/core/collections/shared_field_list_recursion` that fails without it
 
 ### M1 — a recorded Lean export checks (a `Prop`/`→` theorem; inductives wait on M3)
-- [x] `lean4export` reader for the NDJSON format 3.1.0 the pinned exporter writes: names, levels, the M0 expression forms, `thm`/`def`/`axiom` (`src/export.ospml`; nine cases in `tests/export.ospml`); inductives, quotients and the expression forms M3 adds are refused by kind, never skipped
+- [x] `lean4export` reader for the NDJSON format 3.1.0 the pinned exporter writes: names, levels, the M0 expression forms, `thm`/`def`/`axiom` (`src/export.ospml`; eleven cases in `tests/export.ospml`); inductives, quotients and the expression forms M3 adds are refused by kind, never skipped
+- [x] Review 3 P1.5: every table index is defined once: a re-declared, reserved (name 0, level 0) or negative index is refused with its line, never rebound (six cases in `tests/export_mutations.ospml`, each red without the guard)
+- [x] Mutated exports (`tests/export_mutations.ospml`, 29 cases): every single-edit corruption of the recorded export is rejected, asserted on the rejection's kind, the statement as read and the proof's inferred type compared by `Terms::equal` with hand-built terms (`tests/shapes.ospml`), never on a rendering of Lean's hygienic names
 - [x] Every declaration of an export goes through `Infer::sort`/`Infer::check` before `Environment::add` (`Checked::exported` in `src/checked.ospml`, shared by the example and the benchmark entry)
 - [x] `id_imp` from a Lean export checks; the wrong proof is rejected with the kernel's mismatch (last two lines of `expectedoutput`)
 - [x] Fixture regenerated by a recorded Lean and `lean4export` version: `scripts/proof-export.sh` builds `benchmarks/proof/tools` (Lean 4.25.0, `lean4export` and `lean4checker` at their `v4.25.0` tags) and records `examples/proof/kernel/exports/id_imp.ndjson` (sha256 `2adb6bc5…8330d`); `Fixtures::idImp` is that text byte for byte and `idImpBad` is one documented edit of it ([report](../reports/proof-export-fixture-2026-10-29.md))
-- [x] `m1_export` benchmark input: `benchmarks/proof/m1_export` reads the recorded export from disk on the Osprey side and replays the same module through `lean4checker` on the Lean side
+- [x] `m1_export` benchmark input: `benchmarks/proof/m1_export` reads the recorded export from disk on the Osprey side and replays the same module through `lean4checker` on the Lean side; `lean.setup` re-exports the module every run and byte-compares it with the case's copy
+- [x] `m1_export` recorded, 2026-10-29, `PROOF_RUNS=10`, Lean 4.25.0 on arm64 macOS: Osprey 3 ms / 2256 KiB against `lean4checker` 433 ms / 52576 KiB, pass (`osprey_input` `2ab95a53…e053`, `lean_input` `637f6d7d…246d`, `osprey_binary` `748e523c…f7adf0`, `lean_binary` `be06b289…f9201`). Generated rows live in `target/proof/` and are not committed; this line is the record
 
 ### M2 — a proof is typed
-- [x] ML-layout proof parser for `theorem name (binders) : type := term` (`src/surface.ospml`)
+- [x] ML-layout proof parser for `theorem name (binders) : type := term` (`src/surface.ospml`), over a whitespace-delimited demo tokenizer: `p:=h`, `p→q` and `∀p` without spaces are not read
 - [x] Direct elaborator to M0 terms; `id_imp_typed`, `imp_trans`, `forall_typed` check and `wrong_typed` is rejected
 
 ### M3 — inductives
@@ -67,7 +71,7 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [x] Review P1.9: checker binary named by the digest of every package source, the manifest and the compiler (`discipline/inputs.rs`); results keyed on the request and the built binary; read failures are errors
 - [x] A checker may be a project directory (`[discipline] checker = "<dir>"` with its own `osprey.toml`), built like any project, so a discipline is not confined to one file; the directory's manifest and every module are build inputs
 - [x] Review P1.10, harness: a failed timed run is a red case, sha256 of every kernel source and both binaries, `getrusage` peak memory, reports under `target/`, `lean.cmd`/`args` per case
-- [x] Review P1.10, comparison: `m1_export` re-checks the same recorded module on both sides (Osprey reader of the export vs `lean4checker` replay, invoked directly with no `lake` start-up on Lean's clock); `osprey_input` hashes every kernel source and the export, `lean_input` the module, `lean.cmd` and `lean.setup`, `lean_binary` the `lean4checker` that ran (`lean.bin`)
+- [x] Review P1.10, comparison: `m1_export` re-checks the same recorded module on both sides (Osprey reader of the export vs `lean4checker` replay, invoked directly with no `lake` start-up on Lean's clock); `osprey_input` hashes every kernel source and the export, `lean_input` the module, `lean.cmd`, `lean.setup` and `lean.bin`, `lean_binary` the `lean4checker` that ran; `osprey_input` follows the manifest's `source_roots`, so the nine kernel modules outside the entry's project are in it
 - [x] Erased modules parsed by the ordinary frontend and checked against the written signature
 - [x] `osprey <file> --signature` prints the ML export signature the seam renders (`crates/osprey-cli/src/signature.rs`); `options.compiler` in every request
 - [x] `examples/disciplines/passthrough` with the round trip under GC, ARC and wasm32 (`make _test_disciplines`; the round trip is a project of its own rather than a `tests/` corpus twin, so the differential harness does not run it — the target diffs it byte-for-byte against its golden on all three)
@@ -156,7 +160,7 @@ A deliverable in its own right: after this phase any type system can be brought 
 1. The `types=` marker and `[project].types` ([TYPES-DISCIPLINE-SELECT]), the `[discipline]` manifest table ([TYPES-DISCIPLINE-REGISTRY]), `discipline-error` for an unknown or duplicate name.
 2. The seam: `check_module` in project assembly, in front of `check_program`, with the checker process, the JSON protocol, the time limit and the result cache ([TYPES-DISCIPLINE-SEAM], [TYPES-DISCIPLINE-PROTOCOL]). The erased module is parsed by the ordinary frontend and checked by `check_program` against the signature the checker wrote.
 3. The `passthrough` reference discipline under `examples/disciplines/`, proving the round trip both ways in the differential corpus under GC, ARC and wasm32.
-4. The `bounded` reference discipline: a real theory in about two hundred lines, erasing to `int`, with diagnostics through the protocol; the template every later discipline copies.
+4. The `bounded` reference discipline: a real theory in 767 lines over twelve modules, erasing to `int`, with diagnostics through the protocol; the template every later discipline copies.
 5. The failure tests of [TYPES-DISCIPLINE-VERIFICATION] and the grep test over `crates/`.
 
 Exit: both reference packages green; byte-identical output and diagnostics for every markerless program over the whole corpus; no benchmark change for `hm`-only projects.

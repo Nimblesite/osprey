@@ -324,9 +324,10 @@ _test_profiler:
 # Default and ML sources lower to identical IR; one worker prevents port races.
 # _test_proof_kernel: the proof kernel of plan 0041 (examples/proof/kernel)
 # checks `id_imp` and rejects the controls with the kernel's own reason,
-# byte-exact against its golden, and its assertion suite (adversarial
-# structural-equality and universe cases included) passes, under GC, ARC and
-# on wasm32 [PROOF-KERNEL]. No pipe hides a status: each suite run is written
+# byte-exact against its golden, and its 81-case assertion suite (adversarial
+# structural-equality and universe cases, every single-edit corruption of the
+# recorded export asserted on term structure, never on rendering) passes,
+# under GC, ARC and on wasm32 [PROOF-KERNEL]. No pipe hides a status: each suite run is written
 # to a file and its TAP summary must say `failed=0` on all three backends.
 _test_proof_kernel:
 	@echo "==> [proof] M0 kernel: GC, ARC, wasm32 against expectedoutput..."
