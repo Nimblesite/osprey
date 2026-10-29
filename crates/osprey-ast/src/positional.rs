@@ -64,20 +64,53 @@ pub fn fold_constructions(program: &mut Program, arities: &BTreeMap<String, usiz
 
 fn fold_expression(expression: &mut Expr, arities: &BTreeMap<String, usize>) {
     children_mut(expression, &mut |child| fold_expression(child, arities));
+    let Some((name, count)) = spine_head(expression) else {
+        return;
+    };
+    if arities.get(&name) != Some(&count) {
+        return;
+    }
+    let spine = std::mem::replace(expression, Expr::Identifier(String::new()));
+    *expression = construction(&name, unwind(spine));
+}
+
+/// The constructor name and total argument count of a call spine: one flat
+/// call `Both(a, b)`, or the curried spine `((Both a) b)` the ML frontend
+/// keeps for a qualified constructor whose arity it could not see.
+fn spine_head(expression: &Expr) -> Option<(String, usize)> {
     let Expr::Call {
         function,
         arguments,
         named_arguments,
     } = expression
     else {
-        return;
+        return None;
     };
-    let Expr::Identifier(name) = function.as_ref() else {
-        return;
-    };
-    if named_arguments.is_empty() && arities.get(name) == Some(&arguments.len()) {
-        let name = name.clone();
-        *expression = construction(&name, std::mem::take(arguments));
+    if !named_arguments.is_empty() {
+        return None;
+    }
+    match function.as_ref() {
+        Expr::Identifier(name) => Some((name.clone(), arguments.len())),
+        inner if arguments.len() == 1 => {
+            spine_head(inner).map(|(name, count)| (name, count + 1))
+        }
+        _ => None,
+    }
+}
+
+/// The arguments of a call spine in source order.
+fn unwind(expression: Expr) -> Vec<Expr> {
+    match expression {
+        Expr::Call {
+            function,
+            arguments,
+            ..
+        } => {
+            let mut all = unwind(*function);
+            all.extend(arguments);
+            all
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -108,6 +141,42 @@ mod tests {
             Stmt::Expr { value, .. } => Some(value),
             _ => None,
         }
+    }
+
+    #[test]
+    fn a_curried_spine_of_a_qualified_constructor_folds_when_saturated() {
+        let arities = BTreeMap::from([("Pair".to_owned(), 2)]);
+        let spine = Expr::Call {
+            function: Box::new(call("Pair", vec![Expr::Identifier("a".to_owned())])),
+            arguments: vec![Expr::Identifier("b".to_owned())],
+            named_arguments: Vec::new(),
+        };
+        let mut program = Program {
+            statements: vec![Stmt::Expr {
+                value: spine,
+                doc: None,
+                position: None,
+            }],
+            doc: None,
+        };
+        fold_constructions(&mut program, &arities);
+        let value = program.statements.first().and_then(folded);
+        assert_eq!(value.and_then(slots), Some(("Pair", vec!["0", "1"])));
+        let over = Expr::Call {
+            function: Box::new(call("Pair", vec![Expr::Identifier("a".to_owned())])),
+            arguments: vec![Expr::Identifier("b".to_owned()), Expr::Identifier("c".to_owned())],
+            named_arguments: Vec::new(),
+        };
+        let mut program = Program {
+            statements: vec![Stmt::Expr {
+                value: over,
+                doc: None,
+                position: None,
+            }],
+            doc: None,
+        };
+        fold_constructions(&mut program, &arities);
+        assert!(program.statements.first().and_then(folded).and_then(slots).is_none());
     }
 
     #[test]

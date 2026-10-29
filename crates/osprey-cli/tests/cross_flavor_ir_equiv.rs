@@ -138,11 +138,14 @@ fn ml_stems(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Recurse into `dir`, pushing every `.ospml` path into `out`.
+/// Recurse into `dir`, pushing every `.ospml` path into `out`. A symlinked
+/// directory (`benchmarks/proof/<case>/kernel` pointing at an example
+/// project) is not entered: its files are governed by the root they live in.
 fn collect_ospml(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         let path = entry.path();
-        if path.is_dir() {
+        let linked = entry.file_type().is_ok_and(|kind| kind.is_symlink());
+        if path.is_dir() && !linked {
             collect_ospml(&path, out);
         } else if path.extension().is_some_and(|x| x == "ospml") {
             out.push(path);
