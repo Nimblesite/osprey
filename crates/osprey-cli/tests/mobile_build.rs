@@ -1,5 +1,6 @@
-//! Exercise mobile driver orchestration without requiring SDKs in Rust CI.
-//! Actual object formats and execution are covered by test-ios/test-android.sh.
+//! Exercise mobile and desktop driver orchestration without requiring SDKs in Rust CI.
+//! Actual object formats and execution are covered by test-ios/test-android.sh and the GPUI
+//! host's CI jobs.
 #![cfg(unix)]
 
 use std::fs;
@@ -175,6 +176,77 @@ fn mobile_tool_failure_does_not_replace_existing_artifacts() -> std::io::Result<
             "must end in .a",
         );
     }
+    Ok(())
+}
+
+/// The desktop slice of the system running the test, if it has one; a Mac builds `macos`.
+fn host_desktop_target() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => Some("linux-x64"),
+        ("linux", "aarch64") => Some("linux-arm64"),
+        _ => None,
+    }
+}
+
+/// The fixture with a native runtime archive for every memory backend.
+fn desktop_fixture(name: &str) -> std::io::Result<Fixture> {
+    let fixture = Fixture::new(name)?;
+    for memory in ["", "_gc", "_arc"] {
+        let runtime = format!("compiler/bin/libfiber_runtime{memory}.a");
+        fs::write(fixture.0.join(runtime), "runtime fixture")?;
+    }
+    Ok(fixture)
+}
+
+/// A desktop build with the stub tools as the host's `OSPREY_CC` and `OSPREY_AR`.
+fn desktop(fixture: &Fixture, target: &str, output: &str) -> Command {
+    let mut cmd = fixture.command(target, output);
+    let _ = cmd
+        .env("OSPREY_CC", fixture.ndk_bin("28.2").join("clang"))
+        .env("OSPREY_AR", fixture.ndk_bin("28.2").join("llvm-ar"));
+    cmd
+}
+
+/// Another system's slice is refused before any tool runs; a slice is never run, and its output
+/// must be an archive. [GPUI-HOST-TARGETS]
+#[test]
+fn desktop_slices_refuse_other_systems_runs_and_non_archives() -> std::io::Result<()> {
+    let fixture = desktop_fixture("desktop-refusals")?;
+    let refused = desktop(&fixture, "windows-x64", "app.dll").output()?;
+    fails(&refused, "--target=windows-x64 builds on Windows x86_64");
+    assert!(!fixture.0.join("tools.log").exists(), "a refused slice ran a tool");
+    let Some(target) = host_desktop_target() else {
+        return Ok(());
+    };
+    fails(&desktop(&fixture, target, "app.o").output()?, "must end in .a");
+    let run = Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .current_dir(&fixture.0)
+        .args(["app.osp", "--run"])
+        .arg(format!("--target={target}"))
+        .output()?;
+    fails(&run, "desktop app libraries must run inside a host");
+    Ok(())
+}
+
+/// This system's slice compiles position-independent code with `OSPREY_CC`, archives it with the
+/// native runtime through `OSPREY_AR`, and publishes its header. [GPUI-HOST-TARGETS]
+#[test]
+fn desktop_slices_build_with_the_hosts_tools() -> std::io::Result<()> {
+    let Some(target) = host_desktop_target() else {
+        return Ok(());
+    };
+    let fixture = desktop_fixture("desktop-build")?;
+    let result = desktop(&fixture, target, "output/app.a").output()?;
+    assert!(result.status.success(), "{result:?}");
+    let archive = fs::read_to_string(fixture.0.join("output/app.a"))?;
+    assert_eq!(archive, "mobile archive\n");
+    let header = fs::read_to_string(fixture.0.join("output/app.h"))?;
+    assert!(header.contains("int64_t osprey_answer(void)"), "{header}");
+    let ir = fs::read_to_string(fixture.0.join("emitted.ll"))?;
+    assert!(ir.contains("define i64 @osprey_answer()"), "{ir}");
+    let log = fs::read_to_string(fixture.0.join("tools.log"))?;
+    assert!(log.lines().any(|line| line == "-fPIC"), "{log}");
+    assert!(log.contains("compiler/bin/libfiber_runtime"), "{log}");
     Ok(())
 }
 

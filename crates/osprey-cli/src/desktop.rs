@@ -216,7 +216,36 @@ pub(crate) fn compile_args(ll: &Path, obj: &Path) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{on_host, Target};
+    use super::{dll_args, is_dll, on_host, Target};
+    use std::path::Path;
+
+    /// A `.dll` output, in any case, selects the Windows DLL; anything else is an archive.
+    #[test]
+    fn a_dll_output_selects_the_windows_dll() {
+        assert!(is_dll(Path::new("build/storage.dll")));
+        assert!(is_dll(Path::new("STORAGE.DLL")));
+        assert!(!is_dll(Path::new("libOspreyApp.a")));
+        assert!(!is_dll(Path::new("storage")));
+    }
+
+    /// The DLL is self-contained: the runtime and winpthreads link statically beside Winsock.
+    #[test]
+    fn the_dll_links_its_runtime_statically() {
+        let args = dll_args(Path::new("app.ll"), "libfiber_runtime_gc.a", Path::new("app.dll"));
+        let expected = [
+            "-shared",
+            "-O2",
+            "-Wno-override-module",
+            "app.ll",
+            "libfiber_runtime_gc.a",
+            "-o",
+            "app.dll",
+            "-static",
+            "-lpthread",
+            "-lws2_32",
+        ];
+        assert_eq!(args, expected.map(String::from));
+    }
 
     /// Every desktop target spelling round-trips, and other targets are not desktop slices.
     #[test]

@@ -7,6 +7,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
 import * as path from "path";
+import { commands, ConfigurationTarget, extensions, workspace } from "vscode";
 import { shipwrightPlatform } from "../../client/src/client-config";
 import { fetchListingText } from "../../client/src/package-api";
 import {
@@ -20,6 +21,8 @@ import {
   ServerProcess,
   spawnServer,
   START_ACTION,
+  START_COMMAND,
+  STOP_COMMAND,
 } from "../../client/src/local-registry";
 
 interface FakeServer extends ServerProcess {
@@ -254,10 +257,37 @@ suite("local package registry server", () => {
       registry.stop();
       fs.rmSync(storage, { recursive: true, force: true });
     }
-    for (let i = 0; i < 40 && await healthCheck(`http://127.0.0.1:${port}`, 250); i++) await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.strictEqual(await healthCheck(`http://127.0.0.1:${port}`, 250), false);
+    await assertStopped(`http://127.0.0.1:${port}`);
+  });
+
+  // The extension's own wiring: its bundled layout, the configuration in its global storage,
+  // the output channel and the notifications, through the commands a person runs.
+  test("the start and stop commands run the bundled server for the configured origin", async function () {
+    this.timeout(120_000);
+    await extensions.getExtension("nimblesite.osprey")?.activate();
+    const config = workspace.getConfiguration("osprey");
+    const before = config.inspect<string>("packages.registry")?.workspaceValue;
+    const origin = `http://127.0.0.1:${await freePort()}`;
+    await config.update("packages.registry", origin, ConfigurationTarget.Workspace);
+    try {
+      assert.strictEqual(await commands.executeCommand(START_COMMAND), true);
+      assert.strictEqual(await healthCheck(origin), true);
+      await commands.executeCommand(STOP_COMMAND);
+      await assertStopped(origin);
+      await config.update("packages.registry", "https://packages.example", ConfigurationTarget.Workspace);
+      assert.strictEqual(await commands.executeCommand(START_COMMAND), false);
+    } finally {
+      await commands.executeCommand(STOP_COMMAND);
+      await config.update("packages.registry", before, ConfigurationTarget.Workspace);
+    }
   });
 });
+
+/** Waits briefly for a stopped server to release its port, then requires it silent. */
+async function assertStopped(origin: string): Promise<void> {
+  for (let i = 0; i < 40 && await healthCheck(origin, 250); i++) await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.strictEqual(await healthCheck(origin, 250), false);
+}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
