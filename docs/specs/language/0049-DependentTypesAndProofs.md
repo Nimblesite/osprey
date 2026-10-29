@@ -1,5 +1,11 @@
 # Dependent types, proofs and the Mathlib port [PROOF]
 
+## First goal: soundness, trust, verifiability [PROOF-GOAL]
+
+The only acceptable standard is soundness: no closed term of type `False` is derivable in the empty context, and a proposition is accepted as proved only when a kernel derivation of it exists. There is no tolerance for inconsistency, however small or obscure. Every accepting judgement is reproducible by an independent checker from the kernel's exported derivation, so trust rests on verification and never on the implementation.
+
+Where Lean's theory or its implementation admits an inconsistency, Osprey must not inherit it. The kernel is written against a theory stated as inference rules ([PROOF-KERNEL]), not against Lean's code; any rule, reduction or extension whose soundness is in question is isolated behind an abstraction so it can be disabled, replaced or proved sound without touching the rest ([PROOF-TRUST]). Compatibility with Lean is a feature of the bridge; soundness is a property of the kernel, and when the two conflict, soundness wins.
+
 **Status:** normative target; **no implementation started.** Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md). Nothing in this contract changes the Hindley-Milner type system of [spec 0004](0004-TypeSystem.md); every rule here adds a second, selectable type discipline beside it, through the pluggable-discipline mechanism of [spec 0050](0050-TypeDisciplines.md).
 
 ## Aim [PROOF-AIM]
@@ -68,6 +74,16 @@ The kernel is the only trusted component. It is a type checker for terms of Lean
 - **No counter can overflow into unsoundness.** Lean's reference-counting overflow became a use-after-free and then a proof of False. The kernel runs under Osprey's [ARITH-EFFECT](0037-ArithmeticEffects.md) policy with overflow as a typed fault, and under the GC backend by default; an ARC run is a cross-check, never the only check.
 - **Cross-checkers are pinned forward.** The Collatz episode passed `nanoda` because a week-old version was used. [PROOF-TRUST] step 2 runs the independent checker at its current release, records its version, and treats "both accept" as evidence only when both are current.
 - **Adversarial testing is continuous.** `tests/proof/adversarial/` grows with every published kernel exploit of any proof assistant, and an AI-driven fuzzing job proposes malformed declarations against the kernel on a schedule, reporting any acceptance as a showstopper.
+
+## Speed [PROOF-SPEED]
+
+Osprey checks faster than Lean. This is a requirement of the design, not a hope for the end: it is measured from the first milestone and gated by a test at every step, so a slower Osprey cannot be merged.
+
+- **Same work, same input.** Every benchmark runs Osprey's kernel and Lean's on the same `lean4export` file, on the same machine, in the same run, and records both wall times and peak memory. Lean's time is the time of `lean --run` of the pinned release's kernel re-check of that export (and, once available, `lean4lean` and `nanoda` as further baselines); Osprey's is the native build of the kernel under the project's memory backend. Nothing is compared to a number read elsewhere.
+- **The gate.** `benchmarks/proof/` holds one benchmark per milestone and phase: M0's identity proof, M1's one-theorem export, M3's `And`/`Iff`/`Eq` with `and_swap`, then Lean's core library, `Std`, and the full pinned Mathlib. Each benchmark is a test: it fails when Osprey's wall time is not below Lean's on the same input, and CI runs it on every change to the kernel. Elaboration and tactics get the same treatment in their phases, measured against `lake build` of the translated module.
+- **Why it is achievable.** The kernel is a pure program over a content-addressed term store with structural hash-consing, so definitional-equality checks are memoised across the whole library rather than per declaration; the whnf cache is keyed by term identity; `Nat` literals use the accelerated `bigint` operations of [PROOF-STDLIB]; there is no interpreter between the checker and the machine, because the kernel is compiled by Osprey's native backend. Each of these is a benchmarked line item, so a regression names its cause.
+- **The GPU does the bulk work.** Wherever a step of checking is data-parallel it is offloaded to the GPU through Osprey's existing GPU support: hashing and deduplicating the term store on import, the bulk definitional-equality and whnf passes over a whole library's declarations, parallel instance search, and the batch re-check of Mathlib after a sync. The kernel's judgements stay sequential and pure; what moves to the GPU is work the kernel would otherwise repeat, expressed as an effect (`Parallel.map` over a term batch) so the same kernel runs with a CPU handler in tests, under wasm32 and on a machine with no GPU, and with the GPU handler where one exists. Each offload is a benchmarked line item against its CPU handler, and a handler that is not faster is not used.
+- **What is claimed.** The claim is always a link to the dated report of [PROOF-TRUST-REPORT] with the hashes of both inputs and both binaries. The sentence "Osprey checks Mathlib faster than Lean" is published the day the full-Mathlib benchmark passes its gate, with the numbers, and not before.
 
 ## Lean export bridge [PROOF-EXPORT]
 
@@ -158,6 +174,24 @@ These are ordinary library additions, available to every Osprey program, and are
 - `osprey prove check <file|project>` elaborates and kernel-checks dependent modules; exit 0 on success, 1 with diagnostics naming the declaration and goal otherwise.
 - `osprey prove import`, `osprey prove port`, `osprey prove bench` as above.
 - The language server of [spec 0020](../tooling/0020-LanguageServerAndEditors.md) shows the goal state at the cursor inside a `by` block, hovers the type of any term, and offers `exact?` results as code actions.
+
+### Proof workbench [PROOF-WORKBENCH]
+
+The workbench's full contract is [spec 0051](../applications/0051-ProofWorkbench.md); this section states what the proof system owes it and what it may not have.
+
+Mathematicians write on a blackboard because no editor has been worth leaving it for. The workbench is the editor that is: an Osprey Native application ([`@osprey/native`](../../../packages/native/README.md)) in which a proof is written as mathematics, checked as it is written, and read back as mathematics. **The user writes no code.** Mathematics is the input; the ML proof surface of [PROOF-SURFACE-FLAVORS], the kernel term and the checker's verdict are outputs the workbench derives from it.
+
+- **Mathematics in, code out.** The buffer accepts mathematics as it is written on paper: Unicode notation (`∀`, `→`, `∧`, `ℕ`, subscripts, binders) typed directly, through the abbreviation table Lean users already know (`\forall`, `\to`, `\and`) or a palette; statements as `Theorem. For all p q, p ∧ q → q ∧ p.`; proof steps as the mathematician phrases them (`Assume h : p ∧ q.`, `By cases on h.`, `It suffices to show q.`, `Apply and_comm.`). The workbench translates each step to the proof surface and shows the generated `.ospml` beside the mathematics, always current, never required reading. The saved artifact is that generated file, so `osprey prove check` on it is the same check the workbench ran and a second tool needs nothing from the workbench.
+- **Live validation.** Every edit re-elaborates the enclosing declaration through the checker protocol of [TYPES-DISCIPLINE-PROTOCOL](0050-TypeDisciplines.md#checker-protocol-types-discipline-protocol); the goal pane shows the hypotheses and goal at the cursor, rendered as mathematics, and a failing step is underlined with the two terms that would not unify, not a parser message. Checking never blocks typing.
+- **Structured proof editing.** `cases`, `induction`, `constructor` and `exact?` are offered as code actions that insert the case split or the found term in place; a proof can be written by refining goals from the pane as well as by typing tactics.
+- **Library at hand.** Search over the pinned Mathlib by statement shape (`?a + ?b = ?b + ?a`) as well as by name; hover on any identifier shows its statement and docstring; jump to its Mathlib source and to the Lean original of a ported theorem.
+- **Reads like a paper.** A rendered view lays the file out as a document: statements as display mathematics, proofs collapsible, with the checker's verdict beside each declaration. The rendered view is the export, so a checked file is the paper.
+- **Every screen a mathematician owns.** The workbench is one Osprey application over `@osprey/native`, so it runs wherever that framework has a host: as a native macOS and iOS application, inside VS Code through `@osprey/vscode`, and in the browser compiled to wasm32 with a web host. One store, one `update`, one set of regions; the hosts differ only in what draws them. A proof written in the browser is the same file checked on the desktop.
+- **Beautiful, or not shipped.** Mathematics is typeset, not monospaced: a proper maths face for the rendered view and the goal pane, correct spacing around relations and operators, real fractions, radicals, sub- and superscripts and large operators, binders laid out as in a journal. Light and dark appearances through the framework theme ([UI-THEME]), motion only where it explains a change, nothing that flickers while checking. The visual bar is a page of Mathlib docs or a well-set paper; a screenshot of the workbench beside the same theorem in a printed journal is part of every release review.
+- **The blackboard, kept.** A scratch surface beside the proof accepts freehand strokes (pointer, pencil or finger) rendered as chalk on slate, with a chalk-stroke theme for the typed mathematics as well. Handwritten mathematics is recognised into the same statement and step input as typed text, so a sketch on the board can become a checked line. The board is a region like any other, its strokes a slice in the store, so it works on every host and is exercised by the same fixture tests.
+- **Nothing special for the workbench.** Every service it uses is a capability of the checker protocol or of the language server of spec 0020; a second editor gets the same services, and the discipline gains nothing that only the workbench can see.
+
+The workbench is measured by one test: a mathematician who has never used Osprey writes and checks `and_swap` in it in under ten minutes without reading documentation, recorded in the road-test report.
 
 ## Verification [PROOF-VERIFICATION]
 

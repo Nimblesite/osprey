@@ -40,6 +40,7 @@ A plain Osprey program, ML flavor, under `examples/proof/kernel/`, run with `osp
 - The proof: the term `fun (p : Prop) (h : p) => h` against the type `∀ (p : Prop), p → p`. `osprey run examples/proof/kernel/main.ospml` prints `checked: id_imp`.
 - The control: `fun (p q : Prop) (h : p) => h` against `∀ (p q : Prop), p → q` is rejected with the two terms that failed to be definitionally equal, as a typed `Result`, never a panic.
 - Both are corpus programs with `.expectedoutput`, so they run under GC, ARC and wasm32 from day one.
+- The first benchmark: `benchmarks/proof/m0_identity` times the Osprey kernel against Lean's kernel on the same identity theorem and fails if Osprey is slower ([PROOF-SPEED]). The harness, the report format and the gate exist from this milestone; every later milestone adds its input to the same harness.
 
 Answers: can a type checker with substitution, whnf and definitional equality be written comfortably in Osprey as it is today, and how fast does it run.
 
@@ -47,7 +48,7 @@ Answers: can a type checker with substitution, whnf and definitional equality be
 
 The same kernel reads the `lean4export` text of a one-theorem Lean file (`theorem id_imp : ∀ p : Prop, p → p := fun p h => h`): the export parser for constants, levels and the expression forms of M0, nothing more. The program checks Lean's term and prints the same line. A second Lean file with a wrong proof is a rejection test.
 
-Answers: does the kernel agree with Lean on real terms, and how much of the export format is painful to parse in Osprey.
+Answers: does the kernel agree with Lean on real terms, and how much of the export format is painful to parse in Osprey. The benchmark gains `m1_export`: the export is checked by both kernels and Osprey must be faster.
 
 ### M2 — a proof is typed, not pasted
 
@@ -98,7 +99,7 @@ Exit: both reference packages green; byte-identical output and diagnostics for e
 4. `tests/proof/adversarial/` seeded with the CVE-2026-72844 proof of concept and the other 2026 cases; the collision test; the overflow test.
 5. Cross-check against `lean4lean` and `nanoda` at current release on the same export.
 
-Gates, in order: Lean's core library checks; `Std` checks; the full pinned Mathlib export checks, cross-checked, with the first `docs/reports/proof-trust-<date>.md`. Wall time is recorded, not promised.
+Gates, in order: Lean's core library checks; `Std` checks; the full pinned Mathlib export checks, cross-checked, with the first `docs/reports/proof-trust-<date>.md`. Each gate has its speed test: Osprey's check of the same export is faster than Lean's on the same machine, or the gate is red ([PROOF-SPEED]).
 
 ### Phase 3 — surface language and elaborator [PROOF-SURFACE], [PROOF-ELAB]
 
@@ -134,6 +135,20 @@ Exit: the pinned Mathlib commit is fully available by Lean name (layer 1), its s
 
 Exit: the boundary rules hold in the differential corpus and a second discipline exists outside `crates/`.
 
+### Phase 7 — the proof workbench [PROOF-WORKBENCH]
+
+Delivered by [plan 0042](0042-proof-workbench.md) against [spec 0051](../specs/applications/0051-ProofWorkbench.md); its first three phases run in parallel with M0 to M3 here, and its phase 4 waits on M1 and M3. The steps below are the proof system's side of that plan.
+
+1. Mathematics as the only input: Unicode notation through the Lean abbreviation table and a palette, statements and proof steps written as a mathematician phrases them, translated to the ML proof surface and shown beside the mathematics. The user writes no code; the generated `.ospml` is the saved artifact.
+2. The goal pane over the checker protocol's goal-state capability, re-elaborating the declaration under the cursor on every edit without blocking typing; failing steps underlined with the terms that did not unify.
+3. Code actions for `cases`, `induction`, `constructor` and `exact?` that edit the proof in place; refining goals from the pane.
+4. Statement-shape search over the pinned Mathlib, hover with statement and docstring, jump to Mathlib source and to the Lean original.
+5. The rendered document view, which is also the export.
+6. The scratch board: freehand strokes rendered as chalk on slate, a chalk theme for typed mathematics, and handwriting recognition feeding the same statement and step input.
+7. Hosts: native macOS and iOS, VS Code through `@osprey/vscode`, and the browser through wasm32 with a web host; one application, three hosts, proven by the same fixture-driven `update` tests.
+
+Exit: a mathematician new to Osprey writes and checks `and_swap` in under ten minutes without documentation, recorded in the road-test report; every service used is reachable by any editor through spec 0020 or the checker protocol.
+
 ## Pi delegation
 
 Bulk, mechanical work goes to pi under the AGENTS.md rules: the `lean4export` parser, the tactic test corpora, the statement translator's per-module runs and the benchmark harness. Kernel code, the seam and the trust report are written and reviewed here.
@@ -148,3 +163,4 @@ Every public claim about trust, speed or automation is a link to a dated report 
 - Put a discipline name, a theory or a tactic in `crates/`.
 - Trust a tactic, a solver, a model or a hash.
 - Quote a benchmark, a wall time or a "most trusted" claim without a dated report in `docs/reports/`.
+- Merge a kernel, elaborator or tactic change that makes any `benchmarks/proof/` gate slower than Lean on the same input.
