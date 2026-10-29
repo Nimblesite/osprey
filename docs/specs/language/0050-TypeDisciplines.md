@@ -1,6 +1,6 @@
 # Pluggable type disciplines [TYPES-DISCIPLINE]
 
-**Status:** normative target; **no implementation started.** Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), phase 1. First consumer: the `lean4` discipline of [spec 0048](0048-DependentTypesAndProofs.md). This contract stands on its own: it is the mechanism by which any type system other than Hindley-Milner checks an Osprey module, and it is complete before any such system exists.
+**Status:** normative target; **no implementation started.** Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), phase 1. First consumer: the `lean4` discipline of [spec 0049](0049-DependentTypesAndProofs.md). This contract stands on its own: it is the mechanism by which any type system other than Hindley-Milner checks an Osprey module, and it is complete before any such system exists.
 
 ## Aim [TYPES-DISCIPLINE-AIM]
 
@@ -67,7 +67,7 @@ check_module(module, imported_signatures) ->
 - For any other discipline it runs the registered checker process, parses the erased module through the ordinary frontend of the flavor it declares, and checks the erased module **with `check_program` against the signature the checker wrote**, under the signature-ascription rules of [MODULES-SIGNATURE]. A checker whose erased output does not satisfy its own signature is reported as a `discipline-error` naming the checker, never as a type error in the user's module.
 - The result is consumed exactly where `check_program`'s result is consumed today. Inference, effect checking, redundancy analysis, monomorphisation, resolution and code generation never see the discipline name; a reviewer who finds a branch on it below the seam moves the logic into the checker before merge. This extends [FLAVOR-BOUNDARY](0023-LanguageFlavors.md#canonical-ast-boundary) from syntax to typing.
 
-Because every erased module passes `check_program`, a discipline cannot introduce an ill-typed program to the backend: the worst a wrong checker can do is reject a correct module or accept a module whose erased form is HM-correct but means something else, and the second is the discipline's trust problem, documented by that discipline ([PROOF-TRUST](0048-DependentTypesAndProofs.md#trust-proof-trust) for `lean4`).
+Because every erased module passes `check_program`, a discipline cannot introduce an ill-typed program to the backend: the worst a wrong checker can do is reject a correct module or accept a module whose erased form is HM-correct but means something else, and the second is the discipline's trust problem, documented by that discipline ([PROOF-TRUST](0049-DependentTypesAndProofs.md#trust-proof-trust) for `lean4`).
 
 ## Checker protocol [TYPES-DISCIPLINE-PROTOCOL]
 
@@ -100,7 +100,7 @@ Results are cached by the hash of the request and the checker binary; an unchang
 
 Modules of different disciplines meet only through export signatures.
 
-- **Into a discipline:** a checker receives the HM signatures of its imports. How it interprets HM types, effect rows and unions is its own rule, documented by the discipline ([PROOF-BOUNDARY](0048-DependentTypesAndProofs.md#boundary-with-hindley-milner-proof-boundary) for `lean4`); it must accept every HM signature or reject the import with a diagnostic, never silently narrow it.
+- **Into a discipline:** a checker receives the HM signatures of its imports. How it interprets HM types, effect rows and unions is its own rule, documented by the discipline ([PROOF-BOUNDARY](0049-DependentTypesAndProofs.md#boundary-with-hindley-milner-proof-boundary) for `lean4`); it must accept every HM signature or reject the import with a diagnostic, never silently narrow it.
 - **Out of a discipline:** only items in the export signature exist to other modules, and every one of them has an HM type. Anything the discipline's theory can express but HM cannot (a proof, a universe, a refinement predicate, a linearity annotation) is either erased from the signature or kept private. An importer that names a private item gets the ordinary unknown-export error from the HM checker.
 - **Effects:** the export signature declares effect rows like any signature; the erased module is effect-checked by `check_program` against them, so a discipline cannot smuggle an undeclared effect.
 - **Entry point:** a discipline module may be the entry source if its erased module contains the `main` that [MODULES-ENTRYPOINT](0025-ModulesAndNamespaces.md#entry-point-modules-entrypoint) requires.
@@ -108,7 +108,7 @@ Modules of different disciplines meet only through export signatures.
 
 ## The existing language is untouched [TYPES-DISCIPLINE-NO-HARM]
 
-The rules of [PROOF-NO-HARM](0048-DependentTypesAndProofs.md#the-existing-language-is-untouched-proof-no-harm) are the rules of this contract, restated for the seam alone:
+The rules of [PROOF-NO-HARM](0049-DependentTypesAndProofs.md#the-existing-language-is-untouched-proof-no-harm) are the rules of this contract, restated for the seam alone:
 
 1. A file with no `types=` marker and a project with no `[project].types` are lexed, parsed, inferred, effect-checked and lowered exactly as before; the differential corpus and `examples/` change no `.expectedoutput`.
 2. No new token, keyword or operator in `hm` modules. The marker is a comment, as the flavor marker is.
@@ -123,7 +123,7 @@ Two packages exist to prove the seam, independent of any prover:
 - **`passthrough`** (`examples/disciplines/passthrough/`): the checker runs `check_program`'s own rules by shelling out to `osprey check` on the module, then returns the module's inferred signature and the module itself as its erased form. It checks nothing new and demonstrates the round trip: an `hm` module importing a `passthrough` module, and the reverse, in the differential corpus under GC, ARC and wasm32, with output identical to the same program under `hm` alone.
 - **`bounded`** (`examples/disciplines/bounded/`): a deliberately small discipline that reads `// @bound n in 0..100` annotations on `int` parameters, checks every call site inside the module against them by interval arithmetic, and erases to plain `int`. It is the template for a real discipline: a theory the HM checker cannot express, diagnostics through the protocol, erasure to HM, and about two hundred lines. The refinement-type discipline over the KLEE/Z3 tooling of [plan 0034](../../plans/0034-symbolic-execution.md) grows from this template, outside `crates/`.
 
-The `lean4` discipline of spec 0048 is the first discipline with its own theory, kernel and library; it is built on this seam and adds nothing to it.
+The `lean4` discipline of spec 0049 is the first discipline with its own theory, kernel and library; it is built on this seam and adds nothing to it.
 
 ## Verification [TYPES-DISCIPLINE-VERIFICATION]
 

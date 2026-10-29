@@ -1,6 +1,6 @@
 # Dependent types, proofs and the Mathlib port [PROOF]
 
-**Status:** normative target; **no implementation started.** Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md). Nothing in this contract changes the Hindley-Milner type system of [spec 0004](0004-TypeSystem.md); every rule here adds a second, selectable type discipline beside it, through the pluggable-discipline mechanism of [spec 0049](0049-TypeDisciplines.md).
+**Status:** normative target; **no implementation started.** Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md). Nothing in this contract changes the Hindley-Milner type system of [spec 0004](0004-TypeSystem.md); every rule here adds a second, selectable type discipline beside it, through the pluggable-discipline mechanism of [spec 0050](0050-TypeDisciplines.md).
 
 ## Aim [PROOF-AIM]
 
@@ -16,18 +16,18 @@ This contract adds; it never alters. The rules below are testable and each has a
 
 1. **Every program that compiles today compiles unchanged, with identical output.** The differential corpus and `examples/` are the oracle: no `.expectedoutput` changes because of this contract, under GC, ARC and wasm32.
 2. **No new keyword, operator, token or marker in `hm` modules.** A file without `// osprey: types=` is lexed, parsed, inferred, effect-checked and lowered exactly as before; `theorem`, `∀`, `by` and the rest remain ordinary identifiers or syntax errors there, as today.
-3. **No change to `Type`, unification, effect rows, redundancy analysis, monomorphisation or any diagnostic text** in `crates/osprey-types`. The only addition is the single dispatch of [TYPES-DISCIPLINE-SEAM](0049-TypeDisciplines.md#seam-types-discipline-seam); a CI test fails if `crates/` mentions a discipline name, a theory or a tactic.
+3. **No change to `Type`, unification, effect rows, redundancy analysis, monomorphisation or any diagnostic text** in `crates/osprey-types`. The only addition is the single dispatch of [TYPES-DISCIPLINE-SEAM](0050-TypeDisciplines.md#seam-types-discipline-seam); a CI test fails if `crates/` mentions a discipline name, a theory or a tactic.
 4. **No new runtime obligation.** A program that uses no discipline links no kernel, no elaborator and no proof library; binary size, startup and the memory backends are unchanged, measured by the existing benchmarks.
 5. **No inference regression.** Hindley-Milner annotations stay redundant where they are redundant today ([TYPE-ANNOTATION-REDUNDANT](0004-TypeSystem.md#redundant-annotations--type-annotation-redundant)); a discipline cannot demand an annotation in an `hm` module.
 6. **Removal is a deletion.** Deleting the discipline packages and the one seam leaves the compiler as it was; nothing in `hm` depends on them.
 
 ## Discipline [PROOF-DISCIPLINE]
 
-`lean4` is a discipline under [spec 0049](0049-TypeDisciplines.md): a package declaring `[discipline] name = "lean4"`, selected per module by `// osprey: types=lean4`, run as a checker process through [TYPES-DISCIPLINE-PROTOCOL](0049-TypeDisciplines.md#checker-protocol-types-discipline-protocol), and meeting every other module at an HM export signature. Everything about registration, selection, the seam, the protocol, caching and the no-harm rules lives in spec 0049 and is not restated here; this contract adds only what is specific to Lean 4's theory.
+`lean4` is a discipline under [spec 0050](0050-TypeDisciplines.md): a package declaring `[discipline] name = "lean4"`, selected per module by `// osprey: types=lean4`, run as a checker process through [TYPES-DISCIPLINE-PROTOCOL](0050-TypeDisciplines.md#checker-protocol-types-discipline-protocol), and meeting every other module at an HM export signature. Everything about registration, selection, the seam, the protocol, caching and the no-harm rules lives in spec 0050 and is not restated here; this contract adds only what is specific to Lean 4's theory.
 
 ### Boundary with Hindley-Milner [PROOF-BOUNDARY]
 
-How the `lean4` checker reads and writes the signatures of [TYPES-DISCIPLINE-BOUNDARY](0049-TypeDisciplines.md#boundary-types-discipline-boundary):
+How the `lean4` checker reads and writes the signatures of [TYPES-DISCIPLINE-BOUNDARY](0050-TypeDisciplines.md#boundary-types-discipline-boundary):
 
 - **HM into lean4:** total. Every HM type is a simple type of the dependent theory (`int` is `Int`, `List<T>` is `List T`, `fn(a) -> b` is `a → b`, a record is a structure, a union is an inductive). An effect row `!{E}` becomes a monad-like effect type the elaborator understands; a `lean4` module may call any HM export.
 - **lean4 into HM:** by erasure. A `lean4` export is in the signature only when its erased type is an HM type ([PROOF-ERASE]). Proof arguments and propositions erase to nothing; type indices erase to their underlying simple type; an export whose erasure is not an HM type is private to `lean4` modules.
