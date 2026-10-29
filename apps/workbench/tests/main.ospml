@@ -1,0 +1,42 @@
+// The workbench suite ([WORKBENCH-VERIFICATION]): one file per module, each
+// case through the real modules; this file is the entry the manifest names,
+// because a test statement is only legal in the entry source.
+namespace workbenchtests
+
+import workbenchtests::NotationCases
+import workbenchtests::StepCases
+import workbenchtests::CorpusCases
+import workbenchtests::StatementCases
+
+test ("every row of the notation table expands to its symbol", NotationCases::everyRow)
+test ("expanding every expanded row again changes nothing", NotationCases::idempotentRow)
+test ("the table holds every abbreviation of the notation section", NotationCases::tableComplete)
+test ("an abbreviation followed by a space becomes its symbol", NotationCases::completed)
+test ("an abbreviation at the end of the buffer is not yet replaced", NotationCases::unfinished)
+test ("\\to completes and \\top stays as typed", NotationCases::toVersusTop)
+test ("the longest complete abbreviation wins", NotationCases::longest)
+test ("a punctuation abbreviation completes immediately", NotationCases::arrow)
+test ("subscript digits chain into a run", NotationCases::subscripts)
+test ("text without an abbreviation is unchanged and expanding twice changes nothing", NotationCases::total)
+test ("the palette lists the rows that start with what was typed", NotationCases::palette)
+import workbenchtests::FormulaCases
+
+test ("every sentence form reads to the same formula as its symbols", FormulaCases::sentences)
+test ("precedence and grouping read as the formula table says", FormulaCases::precedence)
+test ("a malformed formula names the column and what was expected", FormulaCases::faults)
+test ("formula equality is structural", FormulaCases::equality)
+
+test ("every written form of the step table reads to its step", StepCases::written)
+test ("the ten near-misses of the step table stay unknown", StepCases::nearMisses)
+test ("a proof body splits into its step sentences", StepCases::proofBody)
+test ("every step constructor becomes its tactic", StepCases::tactics)
+
+test ("every generated formula survives its shown round trip", CorpusCases::roundTrip)
+test ("the generated formula corpus has the exact derived count", CorpusCases::generatedCount)
+test ("every generated parenthesis is needed to preserve the formula", CorpusCases::minimalParentheses)
+
+test ("the spec's and_swap document reads to one declaration with its claim, variables and proof", StatementCases::andSwap)
+test ("all four heading words open declarations and unnamed headings take t_<n>", StatementCases::headings)
+test ("two declarations in one buffer split at the second heading", StatementCases::split)
+test ("an atom outside the bound variables reports the exact problem and fix", StatementCases::undeclared)
+test ("a claim that is not a formula is Bot with the fault's column and expectation", StatementCases::malformed)

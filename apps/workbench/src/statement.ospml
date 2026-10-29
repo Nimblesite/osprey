@@ -1,0 +1,232 @@
+// Implements [WORKBENCH-STATEMENT]: a buffer read into declarations, each a
+// heading with its name and bound variables, a claim read by `Formulas::read`,
+// the raw proof text, and every problem that stops the claim from reading or
+// that an undeclared atom raises.
+namespace workbench
+
+import workbench::Formulas
+import workbench::Lexer
+
+(** A theorem heading: its name, whether the writer named it, the variables `For all` binds, and the claim ([WORKBENCH-STATEMENT]). *)
+type Statement =
+    name : string
+    named : bool
+    variables : List<string>
+    claim : Formula
+
+(** Where a declaration went wrong, and the shortest change that repairs it ([WORKBENCH-STATEMENT]). *)
+type Problem =
+    line : int
+    column : int
+    message : string
+    fix : string
+
+(** A statement as written, the raw text of its proof steps, and every problem found in it ([WORKBENCH-STATEMENT]). *)
+type Declaration =
+    statement : Statement
+    proof : string
+    problems : List<Problem>
+
+(** The first and one-past-last line of one declaration, as 0-based line indices. *)
+type Bounds =
+    first : int
+    after : int
+
+(** One declaration's text before any formula is read: the name, the claim text with its 1-based line and column, and the proof. *)
+type Pieces =
+    name : string
+    named : bool
+    variables : List<string>
+    claim : string
+    line : int
+    column : int
+    proof : string
+
+(** What a statement sentence binds: the names after `For all`, the claim text after the comma, and the claim's offset in the sentence. *)
+type Binding =
+    names : List<string>
+    rest : string
+    shift : int
+
+(** Reads a whole buffer into the declarations its heading lines open ([WORKBENCH-STATEMENT]). *)
+module Statements
+    heads () = ["Theorem", "Lemma", "Proposition", "Example"]
+
+    codeAt (text, at) = codePointAt (text, at) ?: 0
+
+    width code = codePointWidth code ?: 1
+
+    blank code = code == 32 || code == 9 || code == 10 || code == 13
+
+    cut (text, from, to) = substring (text, from, to) ?: ""
+
+    // The byte offset where each line of `rows` begins: line `i` starts at entry `i`.
+    spots rows = scanSpots (rows, 0, 0, [])
+
+    scanSpots (rows, at, index, done) = match listGet rows index
+        Error _ => listReverse done
+        Success row => scanSpots (rows, satAdd (satAdd at (length row)) 1, satAdd index 1, listPrepend (done, at))
+
+    rowOf rows at = listGet rows at ?: ""
+
+    // The heading word `row` opens with, or "" when it opens no declaration.
+    headWord row = foldList (heads (), "", \(found, word) => pick (found, row, word))
+
+    pick (found, row, word) = match found
+        "" => match isHead (row, word)
+            true => word
+            false => ""
+        _ => found
+
+    isHead (row, word) = startsWith (row, word) && afterWord (row, length word)
+
+    afterWord (row, at) = match at >= length row
+        true => false
+        false =>
+            code = codeAt (row, at)
+            code == 32 || code == 46
+
+    // The indices of the lines that open declarations.
+    headLines (rows, at, done) = match listGet rows at
+        Error _ => listReverse done
+        Success row => match headWord row == ""
+            true => headLines (rows, satAdd at 1, done)
+            false => headLines (rows, satAdd at 1, listPrepend (done, at))
+
+    // The lines of one declaration: its heading line up to the next heading, or the end.
+    bounds (lineCount, found, at) =
+        later = match listGet found (satAdd at 1)
+            Error _ => lineCount
+            Success next => next
+        Bounds(first = listGet found at ?: 0, after = later)
+
+    // 0 up to `count - 1`, ascending.
+    range count = countUp (count, 0, [])
+
+    countUp (count, at, done) = match at >= count
+        true => listReverse done
+        false => countUp (count, satAdd at 1, listPrepend (done, at))
+
+    (** Every declaration of `text`, in document order, each with its raw proof text and its problems ([WORKBENCH-STATEMENT]). *)
+    export document text =
+        rows = lines text
+        marks = spots rows
+        found = headLines (rows, 0, [])
+        mapList (range (length found), \at => declare (text, rows, marks, at, bounds (length rows, found, at)))
+
+    declare (text, rows, marks, at, bound) =
+        from = listGet marks bound.first ?: 0
+        body = substring (text, from, listGet marks bound.after ?: length text) ?: ""
+        parts = sentence (rows, marks, from, body, headWord (rowOf rows bound.first))
+        reading = Formulas::read parts.claim
+        Declaration(statement = Statement(name = title (parts, at), named = parts.named, variables = parts.variables, claim = claimed reading), proof = parts.proof, problems = troubles (parts, reading))
+
+    // The declaration's title: the written name, or the numbered fallback for an unnamed heading.
+    title (parts, at) = match parts.named
+        true => parts.name
+        false =>
+            serial = satAdd at 1
+            "t_${serial}"
+
+    claimed reading = match reading
+        Read formula => formula
+        Faulted _ => Bot
+
+    troubles (parts, reading) = match reading
+        Read formula => undeclared (parts, formula)
+        Faulted fault => [faultProblem (parts, fault)]
+
+    faultProblem (parts, fault) = Problem(line = parts.line, column = satAdd parts.column (satSub fault.column 1), message = fault.expected, fix = "rewrite the claim so it reads")
+
+    undeclared (parts, formula) = mapList (free (formula, parts.variables, []), \name => Problem(line = parts.line, column = parts.column, message = "`" + name + "` is not declared", fix = "declare `" + name + "` with For all"))
+
+    (** The distinct atoms of `formula`, in first-appearance order ([WORKBENCH-STATEMENT]). *)
+    export atoms formula = free (formula, [], [])
+
+    // The distinct atoms of `formula` that `bound` does not name, first appearance first.
+    free (formula, bound, found) = match formula
+        Var name => match listContains (bound, name)
+            true => found
+            false => listAppend (found, name)
+        Not inner => free (inner, bound, found)
+        And left right => free (right, bound, free (left, bound, found))
+        Or left right => free (right, bound, free (left, bound, found))
+        Imp left right => free (right, bound, free (left, bound, found))
+        Iff left right => free (right, bound, free (left, bound, found))
+        Forall names inner => free (inner, foldList (names, bound, \(all, name) => listAppend (all, name)), found)
+        _ => found
+
+    // The heading name, the sentence read into a binder and claim, the claim's position, and the proof.
+    sentence (rows, marks, from, body, keyword) =
+        dot = match indexOf (body, ".")
+            Success at => at
+            Error _ => length body
+        name = trim (cut (body, length keyword, dot))
+        at = skipBlank (body, satAdd dot 1)
+        stop = sentenceStop (body, at)
+        bound = binder (cut (body, at, stop))
+        claimAt = satAdd (satAdd from at) bound.shift
+        hold = lineOf (marks, claimAt, 0)
+        Pieces(name = name, named = name != "", variables = bound.names, claim = bound.rest, line = satAdd hold 1, column = column (rowOf rows hold, listGet marks hold ?: 0, claimAt), proof = proofOf (body, stop))
+
+    // The 1-based column of byte offset `to` in the line that starts at `from`.
+    column (row, from, to) = satAdd (counted (row, from, to, 0)) 1
+
+    counted (row, at, to, count) = match at >= to
+        true => count
+        false => counted (row, satAdd at (width (codeAt (row, at))), to, satAdd count 1)
+
+    // The 0-based line that byte offset `at` falls in.
+    lineOf (marks, at, index) = match listGet marks (satAdd index 1)
+        Success next => match next <= at
+            true => lineOf (marks, at, satAdd index 1)
+            false => index
+        Error _ => index
+
+    skipBlank (text, at) = match at < length text && blank (codeAt (text, at))
+        true => skipBlank (text, satAdd at (width (codeAt (text, at))))
+        false => at
+
+    // The offset of the `.` that ends the sentence opening at `at`, or the end of the text.
+    sentenceStop (body, at) = match at >= length body
+        true => at
+        false => match codeAt (body, at) == 46
+            true => match satAdd at 1 >= length body || blank (codeAt (body, satAdd at 1))
+                true => at
+                false => sentenceStop (body, satAdd at 1)
+            false => sentenceStop (body, satAdd at (width (codeAt (body, at))))
+
+    // The proof text: everything after the statement sentence, with a leading `Proof.` sentence dropped.
+    proofOf (body, stop) = match stop >= length body
+        true => ""
+        false =>
+            at = skipBlank (body, satAdd stop 1)
+            marked = sentenceStop (body, at)
+            match trim (cut (body, at, marked)) == "Proof"
+                true => trim (cut (body, satAdd marked 1, length body))
+                false => trim (cut (body, at, length body))
+
+    // The bound names and claim text of one statement sentence: `For all p q,` binds, the rest claims.
+    binder text =
+        low = toLowerCase text
+        wide = lead low
+        comma = match indexOf (text, ",")
+            Success at => at
+            Error _ => length text
+        match wide == 0 || comma >= length text
+            true => Binding(names = [], rest = text, shift = 0)
+            false =>
+                from = skipBlank (text, satAdd comma 1)
+                Binding(names = boundNames (cut (text, wide, comma)), rest = cut (text, from, length text), shift = from)
+
+    // The byte width of the binder phrase the sentence opens with, or 0.
+    lead low = match startsWith (low, "for every ")
+        true => 10
+        false => match startsWith (low, "for all ")
+            true => 8
+            false => match startsWith (low, "∀ ")
+                true => 4
+                false => 0
+
+    // The names a binder lists: the name tokens of the part before its comma.
+    boundNames part = mapList (filterList (Lexer::tokens part, \token => token.kind == Name), \token => token.text)

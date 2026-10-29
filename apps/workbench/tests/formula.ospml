@@ -1,0 +1,66 @@
+// [WORKBENCH-FORMULA] cases: sentence forms, precedence, round trip and faults.
+namespace workbenchtests
+
+import workbench::Formulas
+
+(** The formula cases of [WORKBENCH-VERIFICATION]. *)
+module FormulaCases
+    shown text = match Formulas::read text
+        Read formula => Formulas::show formula
+        Faulted fault => "fault ${fault.column}: ${fault.expected}"
+
+    formula text = match Formulas::read text
+        Read found => found
+        Faulted _ => Bot
+
+    equalTexts (first, second) = Formulas::equal (formula first, formula second)
+
+    // The `(sentence, symbols)` pairs of the formula table that do not read to the same text.
+    differing pairs = filterList (pairs, \pair => shown pair.sentence != pair.symbols)
+
+    (** [WORKBENCH-FORMULA]: every sentence form of the formula table reads to its symbols. *)
+    export sentences () =
+        rows = [
+            { sentence = "p and q", symbols = "p ∧ q" },
+            { sentence = "p or q", symbols = "p ∨ q" },
+            { sentence = "not p", symbols = "¬p" },
+            { sentence = "it is not the case that p", symbols = "¬p" },
+            { sentence = "if p then q", symbols = "p → q" },
+            { sentence = "p implies q", symbols = "p → q" },
+            { sentence = "p if and only if q", symbols = "p ↔ q" },
+            { sentence = "p iff q", symbols = "p ↔ q" },
+            { sentence = "for all p q, p and q", symbols = "∀ p q, p ∧ q" },
+            { sentence = "for every p, p", symbols = "∀ p, p" },
+            { sentence = "true", symbols = "⊤" },
+            { sentence = "false", symbols = "⊥" },
+            { sentence = "If p AND q Then q and p", symbols = "p ∧ q → q ∧ p" },
+        ]
+        expect (join (mapList (differing rows, \pair => pair.sentence + " => " + shown pair.sentence), "; "), "")
+
+    (** [WORKBENCH-FORMULA]: `↔` loosest, `→` right associative, `∧` tightest, parentheses override. *)
+    export precedence () =
+        expect (shown "p → q → r", "p → q → r")
+        expect (shown "(p → q) → r", "(p → q) → r")
+        expect (shown "p ∧ q ∨ r", "p ∧ q ∨ r")
+        expect (shown "p ∧ (q ∨ r)", "p ∧ (q ∨ r)")
+        expect (shown "¬(p ∧ q)", "¬(p ∧ q)")
+        expect (shown "p ↔ q → r", "p ↔ q → r")
+        expect (shown "((p))", "p")
+        expect (shown "(∀ p, p) ∧ q", "(∀ p, p) ∧ q")
+
+    (** [WORKBENCH-FORMULA]: a fault names the column and the shortest fix. *)
+    export faults () =
+        expect (shown "p ∧", "fault 4: a proposition after `∧`")
+        expect (shown "p and", "fault 6: a proposition after `and`")
+        expect (shown "", "fault 1: a proposition")
+        expect (shown "(p ∧ q", "fault 7: `)`")
+        expect (shown "if p q", "fault 6: `then` after the condition")
+        expect (shown "for all, p", "fault 8: a name to bind")
+        expect (shown "∀ p q p", "fault 8: `,` after the bound names")
+        expect (shown "p q", "fault 3: the end of the formula or a connective before `q`")
+        expect (shown "p $ q", "fault 3: a proposition after `p`")
+
+    (** [WORKBENCH-FORMULA]: equality is structural. *)
+    export equality () =
+        expect (equalTexts ("p ∧ q", "p and q"), true)
+        expect (equalTexts ("p ∧ q", "q ∧ p"), false)

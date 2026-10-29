@@ -1,0 +1,121 @@
+// Implements [WORKBENCH-NOTATION]: mathematics is typed as on paper. The
+// abbreviation table below is the only place a symbol is spelled; every other
+// module reads the Unicode form `expand` leaves in the buffer.
+namespace workbench
+
+(** One row of the abbreviation table: `\abbreviation` becomes `symbol`. *)
+type Entry =
+    abbreviation : string
+    symbol : string
+
+(** The abbreviation table and the expansion of a buffer through it ([WORKBENCH-NOTATION]). *)
+module Notation
+    (** Every abbreviation and its symbol, in palette order: the Lean editor's spellings. *)
+    export table = [
+        Entry(abbreviation = "forall", symbol = "∀"),
+        Entry(abbreviation = "all", symbol = "∀"),
+        Entry(abbreviation = "exists", symbol = "∃"),
+        Entry(abbreviation = "ex", symbol = "∃"),
+        Entry(abbreviation = "to", symbol = "→"),
+        Entry(abbreviation = "r", symbol = "→"),
+        Entry(abbreviation = "->", symbol = "→"),
+        Entry(abbreviation = "iff", symbol = "↔"),
+        Entry(abbreviation = "lr", symbol = "↔"),
+        Entry(abbreviation = "and", symbol = "∧"),
+        Entry(abbreviation = "wedge", symbol = "∧"),
+        Entry(abbreviation = "or", symbol = "∨"),
+        Entry(abbreviation = "vee", symbol = "∨"),
+        Entry(abbreviation = "not", symbol = "¬"),
+        Entry(abbreviation = "neg", symbol = "¬"),
+        Entry(abbreviation = "N", symbol = "ℕ"),
+        Entry(abbreviation = "Z", symbol = "ℤ"),
+        Entry(abbreviation = "R", symbol = "ℝ"),
+        Entry(abbreviation = "le", symbol = "≤"),
+        Entry(abbreviation = "ge", symbol = "≥"),
+        Entry(abbreviation = "ne", symbol = "≠"),
+        Entry(abbreviation = "in", symbol = "∈"),
+        Entry(abbreviation = "notin", symbol = "∉"),
+        Entry(abbreviation = "sub", symbol = "⊆"),
+        Entry(abbreviation = "comp", symbol = "∘"),
+        Entry(abbreviation = "times", symbol = "×"),
+        Entry(abbreviation = "inv", symbol = "⁻¹"),
+        Entry(abbreviation = "_0", symbol = "₀"),
+        Entry(abbreviation = "_1", symbol = "₁"),
+        Entry(abbreviation = "_2", symbol = "₂"),
+        Entry(abbreviation = "_3", symbol = "₃"),
+        Entry(abbreviation = "_4", symbol = "₄"),
+        Entry(abbreviation = "_5", symbol = "₅"),
+        Entry(abbreviation = "_6", symbol = "₆"),
+        Entry(abbreviation = "_7", symbol = "₇"),
+        Entry(abbreviation = "_8", symbol = "₈"),
+        Entry(abbreviation = "_9", symbol = "₉"),
+        Entry(abbreviation = "^0", symbol = "⁰"),
+        Entry(abbreviation = "^1", symbol = "¹"),
+        Entry(abbreviation = "^2", symbol = "²"),
+        Entry(abbreviation = "^3", symbol = "³"),
+        Entry(abbreviation = "^4", symbol = "⁴"),
+        Entry(abbreviation = "^5", symbol = "⁵"),
+        Entry(abbreviation = "^6", symbol = "⁶"),
+        Entry(abbreviation = "^7", symbol = "⁷"),
+        Entry(abbreviation = "^8", symbol = "⁸"),
+        Entry(abbreviation = "^9", symbol = "⁹"),
+        Entry(abbreviation = "alpha", symbol = "α"),
+        Entry(abbreviation = "beta", symbol = "β"),
+        Entry(abbreviation = "gamma", symbol = "γ"),
+        Entry(abbreviation = "delta", symbol = "δ"),
+        Entry(abbreviation = "epsilon", symbol = "ε"),
+        Entry(abbreviation = "zeta", symbol = "ζ"),
+        Entry(abbreviation = "eta", symbol = "η"),
+        Entry(abbreviation = "theta", symbol = "θ"),
+        Entry(abbreviation = "iota", symbol = "ι"),
+        Entry(abbreviation = "kappa", symbol = "κ"),
+        Entry(abbreviation = "lambda", symbol = "λ"),
+        Entry(abbreviation = "mu", symbol = "μ"),
+        Entry(abbreviation = "nu", symbol = "ν"),
+        Entry(abbreviation = "xi", symbol = "ξ"),
+        Entry(abbreviation = "omicron", symbol = "ο"),
+        Entry(abbreviation = "pi", symbol = "π"),
+        Entry(abbreviation = "rho", symbol = "ρ"),
+        Entry(abbreviation = "sigma", symbol = "σ"),
+        Entry(abbreviation = "tau", symbol = "τ"),
+        Entry(abbreviation = "upsilon", symbol = "υ"),
+        Entry(abbreviation = "phi", symbol = "φ"),
+        Entry(abbreviation = "chi", symbol = "χ"),
+        Entry(abbreviation = "psi", symbol = "ψ"),
+        Entry(abbreviation = "omega", symbol = "ω"),
+    ]
+
+    letter code = (code >= 97 && code <= 122) || (code >= 65 && code <= 90) || (code >= 48 && code <= 57)
+
+    // An abbreviation ending in a letter or digit is complete only when a non-identifier character follows it;
+    // one ending in punctuation (`->`) is complete as soon as it is typed.
+    complete (rest, entry) =
+        size = length entry.abbreviation
+        last = byteAt (entry.abbreviation, satSub size 1) ?: 0
+        next = byteAt (rest, size) ?: satSub 0 1
+        startsWith (rest, entry.abbreviation) && (next >= 0 || !(letter last)) && !(letter last && letter next)
+
+    longer (best, entry) = match length entry.abbreviation > length best.abbreviation
+        true => entry
+        false => best
+
+    nothing = Entry(abbreviation = "", symbol = "")
+
+    // The longest complete abbreviation at the start of `rest`, the text after a backslash.
+    matched rest = foldList (filterList (table, \entry => complete (rest, entry)), nothing, \(best, entry) => longer (best, entry))
+
+    replaced (rest, done) =
+        entry = matched rest
+        match isEmpty entry.abbreviation
+            true => scan (rest, done + "\\")
+            false => scan (drop (rest, length entry.abbreviation), done + entry.symbol)
+
+    scan (text, done) = match indexOf (text, "\\")
+        Error _ => done + text
+        Success at => replaced (drop (text, satAdd at 1), done + take (text, at))
+
+    (** The buffer with every completed abbreviation replaced by its symbol; total and idempotent. *)
+    export expand text = scan (text, "")
+
+    (** The table rows whose abbreviation starts with `typed`, the text after a trailing backslash; every row when it is empty. *)
+    export palette typed = filterList (table, \entry => startsWith (entry.abbreviation, typed))

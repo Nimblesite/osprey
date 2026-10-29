@@ -1,0 +1,8 @@
+// osprey: types=lean4
+namespace proofs
+
+theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by
+    cases h with hp hq
+    constructor
+    exact hq
+    exact hp

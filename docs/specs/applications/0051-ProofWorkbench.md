@@ -8,7 +8,7 @@ Mathematicians and scientists work on blackboards because no editor has been wor
 
 The workbench is one Osprey application over `@osprey/native`: one store, one `update`, one set of regions, running unchanged inside VS Code, in a browser and as a native desktop and tablet application. The hosts differ only in what draws them.
 
-The standard is Lean's editor experience with the parts a scientist does not want removed: no `import` lines, no tactic names to learn before the first proof, no monospaced mathematics, and a board to scribble on that feeds the same proof.
+The standard is Lean's editor experience with the parts a scientist does not want removed: no `import` lines, no tactic names to learn before the first proof, no monospaced mathematics, and the board itself as the place the work starts: the workbench opens on a large writable board that feeds the same proof.
 
 ## Home and layout [WORKBENCH-LAYOUT]
 
@@ -58,7 +58,7 @@ type Formula =
     | Forall of List<string> * Formula
 ```
 
-`Formula::read : string -> Result<Formula, Fault>` accepts symbols and sentences in one grammar, so `p ∧ q → q ∧ p` and `if p and q then q and p` are the same value. Precedence, loosest first: `↔`, `→` (right associative), `∨`, `∧`, `¬`, atoms; parentheses override. Sentence forms, case-insensitive:
+`Formulas::read : string -> Reading` (`Read Formula` or `Faulted Fault`; a `Result`'s error channel carries only a message, so the typed fault needs its own union) accepts symbols and sentences in one grammar, so `p ∧ q → q ∧ p` and `if p and q then q and p` are the same value. Precedence, loosest first: `↔`, `→` (right associative), `∨`, `∧`, `¬`, atoms; parentheses override. Sentence forms, case-insensitive:
 
 | Written | Formula |
 | --- | --- |
@@ -121,7 +121,7 @@ type Goal = { hypotheses : List<(string, Formula)>, target : Formula }
 type Progress = { done : List<Goal>, open : List<Goal> }
 ```
 
-`Goals::start : Statement -> Progress` has one open goal: the variables as atoms and the claim as target. `Goals::apply : (Progress, Step) -> Result<Progress, Mismatch>` follows the tactic semantics:
+`Goals::start : Statement -> Progress` has one open goal: the variables as atoms and the claim as target. `Goals::apply : (Progress, Step) -> Outcome` (`Advanced Progress` or `Stuck Mismatch`, for the same reason) follows the tactic semantics:
 
 | Step | Precondition on the first open goal | Effect |
 | --- | --- | --- |
@@ -191,7 +191,7 @@ Hosts lay the tree out with a mathematics face (STIX Two Math or Latin Modern Ma
 
 ## The board [WORKBENCH-BOARD]
 
-A scratch surface beside the proof, because the first thing a scientist does with a problem is draw it. `@osprey/native` gains one control, `Board`, with a stroke binding:
+The board is the home surface, because the first thing a scientist does with a problem is draw it. The workbench opens on a large writable board filling the window; the proof and the goal column sit beside it, each collapsible, and the typed paper layout is the alternate the user switches to. `@osprey/native` gains one control, `Board`, with a stroke binding:
 
 ```
 type Stroke = { points : List<(int, int)>, width : int, at : int }
@@ -202,7 +202,7 @@ The host captures pointer, pencil and finger strokes at device resolution, sends
 
 **Recognition.** A lasso over strokes sends them, as points, through a `Recognise` request: the host's handwriting service where it has one (Apple PencilKit, the browser's handwriting API where present), answered as text. The text enters the same `Statement::read` and `Step::read` as typed input, so a sketched `p ∧ q → q ∧ p` becomes a checked line. Recognition is a capability like any other: typed request, ticket, bounded result, and a host without it answers `Unsupported`, which the board shows as a disabled lasso.
 
-**Chalk theme.** The typed mathematics has a second theme, `chalk`: the same tokens with the slate as canvas, the chalk off-white as text, a hand-set mathematics face and the stroke grain on rules and underlines, so a user who wants the whole workbench to be the board can have it. Both themes pass `Contrast::ratio` at 4.5:1 for body text.
+**Chalk theme.** The default theme is `chalk`, matching the board-first layout: the same tokens with the slate as canvas, the chalk off-white as text, a hand-set mathematics face and the stroke grain on rules and underlines. The `paper` theme (ink on off-white) goes with the paper layout. Both themes pass `Contrast::ratio` at 4.5:1 for body text.
 
 ## Library [WORKBENCH-LIBRARY]
 
@@ -221,7 +221,7 @@ One store, one slice per concern, each its own record type so that each is its o
 | `Verdicts` | session | verdict per declaration with its ticket |
 | `Board` | host | strokes |
 | `Library` | host | the environment and the current query |
-| `Layout` | session | which panes are open, splitter widths, the theme |
+| `Layout` | session | which surface leads (`Board`, the default, or `Paper`), which panes are open, splitter widths, the theme |
 
 The `generated` pane starts closed. A user who never opens it writes, reads, checks and exports a proof entirely as mathematics; the code exists for the checker and for the second tool, not for them.
 
@@ -233,7 +233,7 @@ Six keyed regions, so a keystroke re-sends only what it changed:
 
 | Region | Shows | Reads |
 | --- | --- | --- |
-| `root` | an `Aside` of the `document` with the `goal` column trailing, and the `board` below behind a disclosure | `Layout` |
+| `root` | board first: the `board` filling the window with the `document` and `goal` columns trailing, each collapsible; in the paper layout the `document` leads with the `goal` column trailing and the `board` behind a disclosure | `Layout` |
 | `document` | the text as an editor with faults and verdict badges per line, typeset mathematics inline when the line is not being edited | `Text`, `Parsed`, `Verdicts` |
 | `goal` | hypotheses and target at the cursor as `Math`, a mismatch when the step fails | `Progress`, `Text` |
 | `generated` | the emitted file, current line highlighted, read only | `Generated`, `Text` |

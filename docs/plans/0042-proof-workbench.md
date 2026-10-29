@@ -1,6 +1,6 @@
 # Plan 0042: the proof workbench
 
-Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **spec written; no implementation started.** The workbench needs no change to the compiler and nothing from plan 0041 until phase 4, so phases 1 to 3 start now. The application lives at `apps/workbench/`; every phase lands with its tests in `apps/workbench/tests/` and leaves `make ci` green.
+Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **phase 1 in progress.** Notation, formula, step, statement, goals and emit are written; the suite, the round-trip corpus and the coverage gate are being brought to green. The workbench needs no change to the compiler and nothing from plan 0041 until phase 4, so phases 1 to 3 start now. The application lives at `apps/workbench/`; every phase lands with its tests in `apps/workbench/tests/` and leaves `make ci` green.
 
 An agent picking this up reads spec 0051 and the [`@osprey/native` README](../../packages/native/README.md) first, then builds phase 1 exactly as laid out below. The phase order is the dependency order; nothing in a later phase is started before the earlier phase's exit holds.
 
@@ -10,11 +10,11 @@ Ticked as the work lands; a box is ticked only when its test exists in `apps/wor
 
 ### Phase 1 — the proof language
 - [ ] `apps/workbench/osprey.toml`, `tests/osprey.toml`, coverage threshold registered at 90%
-- [ ] `src/notation.ospml` with `Notation::expand` and `Notation::palette`, tested against the table
+- [x] `src/notation.ospml` with `Notation::expand` and `Notation::palette`, tested against the table
 - [ ] `src/formula.ospml`: `read`, `show`, `equal`; symbol and sentence forms; round-trip corpus
 - [ ] `src/statement.ospml` and `src/step.ospml`: headings, phrase table, `Unknown`; ten near-miss sentences
 - [ ] `src/goals.ospml`: `start`, `apply`, `Mismatch`; the 50-step timing case
-- [ ] `src/emit.ospml`: `tests/golden/and_swap.ospml` byte-identical; golden passes `--check` without the marker
+- [ ] `src/emit.ospml`: `tests/golden/and_swap.ospml.expected` byte-identical
 - [ ] Every function under 20 lines, every file under 500; suite at 90% line coverage
 
 ### Phase 2 — the application
@@ -44,9 +44,11 @@ Pure modules, no host, no framework yet. Tests first for every table in the spec
 4. `src/statement.ospml` and `src/step.ospml`: the headings, the phrase table, `Unknown`.
 5. `src/goals.ospml`: `Goals::start`, `Goals::apply`, `Mismatch`.
 6. `src/emit.ospml`: the canonical `.ospml`, binders lifted from leading `Assume`, `sorry` for `Unknown`.
-7. `tests/`: one file per module, the `and_swap` golden under `tests/golden/and_swap.ospml`, a generated-formula corpus for the round trip, the ten near-miss sentences, the 50-step timing case.
+7. `tests/`: one file per module, the `and_swap` golden under `tests/golden/and_swap.ospml.expected` (every `.ospml` under `tests/` is compiled as suite source, and the ML frontend has no `theorem` form until the discipline is registered), a generated-formula corpus for the round trip, the ten near-miss sentences, the 50-step timing case.
 
-Exit: the suite passes with 90% line coverage; the golden parses under the ML frontend (`osprey tests/golden/and_swap.ospml --check` with the marker line removed, because the discipline is not registered yet); every function under 20 lines, every file under 500.
+Exit: the suite passes with 90% line coverage; the emitter writes the golden byte for byte; every function under 20 lines, every file under 500. The golden is checked by `osprey prove check` in phase 4, once plan 0041 registers the `lean4` discipline; before that no frontend parses `theorem`.
+
+Deviations from the spec's signatures, recorded in spec 0051: a `Result`'s error channel holds only a string, so `Formulas::read` returns `Reading` (`Read` or `Faulted`) and `Goals::apply` returns `Outcome` (`Advanced` or `Stuck`). The suite has no clock, so the 50-step case asserts the run closes; the under-a-millisecond bound needs a benchmark under `benchmarks/` and is open.
 
 ## Phase 2 — the application over `@osprey/native` [WORKBENCH-STORE] [WORKBENCH-REGIONS] [WORKBENCH-VERDICT]
 

@@ -1,0 +1,7 @@
+[project]
+name = "workbench"
+source_roots = ["src", "../../packages/native/src"]
+default_namespace = "workbench"
+
+[modules]
+allow_wildcard_imports = false
