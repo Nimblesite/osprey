@@ -30,9 +30,9 @@ jobs:
         id: filter
 
   # The WinUI host and its examples in a real window (plan 0038), and the GPUI host on each desktop
-  # system (plan 0036). winui.yml and gpui.yml run by themselves on pull requests that touch their
-  # hosts; a manual run of this workflow also runs them, because a workflow not yet on main cannot be
-  # dispatched by itself.
+  # system (plan 0036). winui.yml and gpui.yml run by themselves on every pull request, as required
+  # checks; a manual run of this workflow also runs them, because a workflow not yet on main cannot
+  # be dispatched by itself.
   winui:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/winui.yml
