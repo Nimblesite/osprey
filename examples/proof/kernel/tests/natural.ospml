@@ -48,6 +48,8 @@ module NaturalTests
             expect (shown (Naturals::parse "999999999"), "999999999")
             expect (shown (Naturals::parse "1000000000"), "1000000000")
             expect (shown (Naturals::parse "1000000001"), "1000000001")
+            expect (shown (Naturals::parse "1000000010000000000"), "1000000010000000000")
+            expect (shown (Naturals::parse "1123456789"), "1123456789")
             expect (shown (Naturals::parse "100000000000000000000"), "100000000000000000000")
             expect (shown (Naturals::parse "1606938044258990275541962092341162602522202993782792835301376"), "1606938044258990275541962092341162602522202993782792835301376")
             expect (Naturals::isZero (nat "0"), true)

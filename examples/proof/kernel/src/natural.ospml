@@ -73,7 +73,13 @@ module Naturals
         [] => "0"
         [top, ...rest] => foldList (rest, toString top, \(text, limb) => "${text}${padded limb}")
 
-    padded (limb) = padStart (toString limb, 9, "0") ?: toString limb
+    (** A lower limb with its leading zeros, nine digits in all; built
+        totally, so no failure can be hidden behind a fallback. *)
+    padded (limb) = "${zeros (satSub 9 (byteLength (toString limb)))}${toString limb}"
+
+    zeros (count) = match count <= 0
+        true => ""
+        false => "0${zeros (satSub count 1)}"
 
     (** `value` as a natural, refused when negative; read through its
         decimal spelling, so no division is needed. *)
