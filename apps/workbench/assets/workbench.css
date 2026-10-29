@@ -98,7 +98,7 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
 .osp-frame-proof-step .osp-button { width: 100%; justify-content: flex-start; text-align: left; font: inherit; border-radius: 3px; padding: 6px 8px; align-items: baseline; }
 .osp-frame-proof-step .osp-button-prominent { color: var(--osp-brand-primary); background: var(--osp-brand-selection); }
 .osp-frame-proof-step-editor input { border: 0; border-bottom: 1px solid var(--osp-brand-accent); border-radius: 3px; background: var(--osp-brand-selection); padding: 12px 0; font: 24px var(--workbench-serif); }
-.osp-frame-proof-step-editor .osp-editor-surface, .osp-frame-proof-step-editor textarea { min-height: 0; height: 56px; }
+.osp-frame-proof-step-editor :is(.osp-axis-horizontal, .osp-editor, label, .osp-editor-surface, textarea) { min-height: 0; height: 100%; }
 .osp-frame-goal-margin .osp-role-title { font: 27px/1.2 var(--workbench-serif); }
 .osp-frame-goal-margin .osp-role-lead { font-size: 25px; }
 /* The margin's target is its largest text; the hypotheses beside it stay at reading size. */
@@ -246,4 +246,8 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
   .osp-frame-board-region { height: 488px; }
   .osp-frame-board-toolbar > .osp-axis-horizontal > .osp-spacer, .osp-frame-board-footer > .osp-axis-horizontal > .osp-spacer { display: none; }
   .osp-frame-source-heading > .osp-axis-horizontal { flex-wrap: nowrap; }
+}
+@media (min-width: 541px) and (max-width: 980px) {
+  .osp-frame-solution-column > .osp-axis-vertical:has(> .osp-frame-board-goals) { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 30px; align-items: start; }
+  .osp-frame-solution-column .osp-frame-board-goals { padding: 0 0 0 22px !important; border-top: 0 !important; border-left: 1px solid var(--osp-brand-divider); }
 }

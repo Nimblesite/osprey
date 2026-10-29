@@ -47,7 +47,9 @@ module WorkViews
         true => Palettes::chalk
         false => Palettes::initial ()
 
-    export header () = Ui::framed (plain(frameName = "app-header", frameControlPadding = 12, frameAlign = "center", frameControlHeight = 40, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 75, frameLeft = 36, frameRight = 36), Ui::row [wordmark (), ui::Spacer, Ui::framed (plain(frameName = "document-name", frameHeight = 42, frameGap = 6, frameHug = true, frameAlign = "center"), Ui::column [Ui::caption (documentTitle (draft ())), Ui::caption (documentStatus (perform Signal<Reviewed>.read ()).checks)]), ui::Spacer, Ui::button ("Play walkthrough", "play.fill", ToLearn), iconButton ("Switch appearance", appearanceSymbol (layout ()), ToggleTheme), iconButton ("Open workspace", "folder.open", OpenWorkspace), Ui::framed (plain(frameWidth = 82, frameHeight = 38, frameFont = "sans", frameTextSize = 12, frameLine = "outline", frameRadius = 5, frameQuietControls = true, frameControlHeight = 38), Ui::button ("Save", "square.and.arrow.down", SaveWorkspace))])
+    export header () = Ui::framed (plain(frameName = "app-header", frameControlPadding = 12, frameAlign = "center", frameControlHeight = 40, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 75, frameLeft = 36, frameRight = 36), Ui::row [wordmark (), ui::Spacer, Ui::framed (plain(frameName = "document-name", frameHeight = 42, frameGap = 6, frameHug = true, frameAlign = "center"), Ui::column [Ui::caption (documentTitle (draft ())), Ui::caption (documentStatus (perform Signal<Reviewed>.read ()).checks)]), ui::Spacer, headerActions (layout ())])
+
+    headerActions current = Ui::framed (plain(frameName = "header-actions", frameGap = 9, frameHug = true, frameAlign = "center"), Ui::row [Ui::button ("Play walkthrough", "play.fill", ToLearn), sizedIconButton ("Switch appearance", appearanceSymbol current, ToggleTheme, 40, 40), sizedIconButton ("Open workspace", "folder.open", OpenWorkspace, 44, 38), Ui::framed (plain(frameWidth = 82, frameHeight = 38, frameFont = "sans", frameTextSize = 12, frameLine = "outline", frameRadius = 5, frameQuietControls = true, frameControlHeight = 38), Ui::button ("Save", "square.and.arrow.down", SaveWorkspace))])
 
     appearanceSymbol current = match current.slate
         true => "sun.max"
@@ -55,7 +57,9 @@ module WorkViews
 
     export letter (family, size, italic, content, role, tone) = Ui::framed (text (family, size, italic), Ui::styled (content, role, tone))
 
-    iconButton (label, symbol, action) = Ui::framed (plain(frameHug = true, frameWidth = 38, frameHeight = 38, frameIconOnly = true, frameQuietControls = true, frameControlHeight = 38, frameAlign = "center"), Ui::button (label, symbol, action))
+    iconButton (label, symbol, action) = sizedIconButton (label, symbol, action, 38, 38)
+
+    sizedIconButton (label, symbol, action, width, height) = Ui::framed (plain(frameHug = true, frameWidth = width, frameHeight = height, frameIconOnly = true, frameQuietControls = true, frameControlHeight = height, frameAlign = "center"), Ui::button (label, symbol, action))
 
     export documentSize (full, rail) = match (layout ()).mode
         Working => match (layout ()).paperFirst
@@ -168,10 +172,14 @@ module WorkViews
         true => paperSurface current
 
     paperSurface current = match current.generatedOpen
-        false => Ui::framed (plain(frameTop = 40, frameRight = 84, frameBottom = 60, frameLeft = 84, frameName = "paper-document", frameGrow = true), Ui::aside (Ui::framed (plain(frameRight = 48), Ui::slot "document"), ui::Trailing, goalMargin (32, current), 270, Widen))
+        false => Ui::framed (plain(frameTop = 40, frameRight = 84, frameBottom = 60, frameLeft = 84, frameName = "paper-document", frameGrow = true), Ui::aside (Ui::framed (plain(frameRight = 48), Ui::slot "document"), ui::Trailing, goalMargin (32, current), librarySideWidth (current, 270, 430), Widen))
         true => Ui::framed (plain(frameLeft = 32, frameBottom = 60, frameName = "paper-document", frameGrow = true), sourceManuscript current)
 
-    sourceManuscript current = Ui::column [Ui::framed (plain(frameName = "source-manuscript"), Ui::boundedAside (Ui::framed (plain(frameRight = 24), Ui::slot "document"), ui::Trailing, goalMargin (20, current), 180, 160, 320, 360, Widen)), Ui::framed (plain(frameTop = 72, frameHug = true, frameInk = "accent", frameFont = "sans", frameTextSize = 13, frameQuietControls = true, frameControlHeight = 38, frameControlPadding = 0), Ui::button ("Show working board", "", ToBoard))]
+    librarySideWidth (current, ordinary, library) = match current.libraryOpen
+        true => library
+        false => ordinary
+
+    sourceManuscript current = Ui::column [Ui::framed (plain(frameName = "source-manuscript"), Ui::boundedAside (Ui::framed (plain(frameRight = 24), Ui::slot "document"), ui::Trailing, goalMargin (20, current), librarySideWidth (current, 180, 430), librarySideWidth (current, 160, 360), librarySideWidth (current, 320, 640), 360, Widen)), Ui::framed (plain(frameTop = 72, frameHug = true, frameInk = "accent", frameFont = "sans", frameTextSize = 13, frameQuietControls = true, frameControlHeight = 38, frameControlPadding = 0), Ui::button ("Show working board", "", ToBoard))]
 
     goalMargin (inset, current) = Ui::framed (plain(frameTop = 8, frameLeft = inset, frameName = "goal-margin", frameGap = 24), Ui::column (panes current))
 
@@ -279,8 +287,8 @@ module WorkViews
         false => satSub (length sentences) (unfinished (Drafts::editableText draft))
 
     stepEntry (draft, result) = match complete result && draft.selectedStep < 0
-        true => Ui::framed (plain(frameName = "proof-completion", frameTop = 0, frameGap = 0, frameFont = "sans", frameTextSize = 13, frameLineHeight = 22.75), Ui::column [Ui::framed (plain(frameHug = true, frameInk = "accent", frameControlHeight = 34, frameTrailingSymbols = true, frameQuietControls = true, frameControlPadding = 0), Ui::button ("Start the example again", "arrow.right", StartExample)), Ui::framed (plain(frameTop = 24), ui::Divider), Ui::framed (plain(frameTop = 16), Ui::caption "Draft goals complete. The kernel verdict is shown above.")])
-        false => Ui::framed (plain(frameTop = 0), Ui::framed (plain(frameName = "proof-step-editor", frameFont = "serif", frameTextSize = documentSize (24, 18), frameHeight = 56, frameFill = entryFill result, frameLine = entryLine result, frameLineEdge = "bottom", frameLeft = 9, frameRight = 8, frameGap = 7, frameRadius = 3, frameAlign = "center"), Ui::row [Ui::framed (plain(frameWidth = 22, frameFont = "sans", frameTextSize = 13), Ui::caption (entryNumber draft)), Ui::inlineEditor ("Write the next step…", Drafts::editableText draft, Drafts::entryCaret draft, StepEdit, StepPlace), iconButton ("Continue proof", "arrow.right", NextProofLine)]))
+        true => Ui::framed (plain(frameName = "proof-completion", frameTop = 0, frameGap = 0, frameFont = "sans", frameTextSize = 13, frameLineHeight = 16.0), Ui::column [Ui::framed (plain(frameHug = true, frameInk = "accent", frameControlHeight = 34, frameTrailingSymbols = true, frameQuietControls = true, frameControlPadding = 0), Ui::button ("Start the example again", "arrow.right", RestartExample)), Ui::framed (plain(frameTop = 24), ui::Divider), Ui::framed (plain(frameTop = 16), Ui::caption "Draft goals complete. The kernel verdict is shown above.")])
+        false => Ui::framed (plain(frameTop = 0), Ui::framed (plain(frameName = "proof-step-editor", frameFont = "serif", frameTextSize = documentSize (24, 18), frameHeight = documentSize (56, 49), frameFill = entryFill result, frameLine = entryLine result, frameLineEdge = "bottom", frameLeft = 9, frameRight = 8, frameGap = 7, frameRadius = 3, frameAlign = "center"), Ui::row [Ui::framed (plain(frameWidth = 22, frameFont = "sans", frameTextSize = 13), Ui::caption (entryNumber draft)), Ui::inlineEditor ("Write the next step…", Drafts::editableText draft, Drafts::entryCaret draft, StepEdit, StepPlace), iconButton ("Continue proof", "arrow.right", NextProofLine)]))
 
     initialStepHelp (draft, found) = match (layout ()).guided && draft.selectedStep < 0 && isEmpty (Steps::sentences found.proof) && Formulas::show found.statement.claim == "p ∧ q → q ∧ p"
         false => Ui::column []

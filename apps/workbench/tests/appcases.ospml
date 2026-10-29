@@ -314,6 +314,23 @@ module WorkflowCases
         entry = listGet (Doc::items (Doc::field (Doc::field (rows, "body"), "children"))) 1 ?: JsonNull
         expect (Doc::text (Doc::field (Doc::field (entry, "body"), "style"), "name"), "proof-step-editor")
         expect (Doc::number (Doc::field (entry, "style"), "top"), 0)
+        expectedHeight = match Doc::flag (stored envelope, "paper")
+            true => 56
+            false => 49
+        expect (Doc::number (Doc::field (Doc::field (entry, "body"), "style"), "height"), expectedHeight)
+
+    expectHeaderGeometry envelope =
+        actions = Drive::findNamed ("header-actions", Drive::node (envelope, "heading"))
+        expect (Doc::text (actions, "kind"), "framed")
+        expect (Doc::number (Doc::field (actions, "style"), "gap"), 9)
+        children = Doc::items (Doc::field (Doc::field (actions, "body"), "children"))
+        expect (length children, 4)
+        expect (Doc::number (Doc::field (listGet children 1 ?: JsonNull, "style"), "width"), 40)
+        expect (Doc::number (Doc::field (listGet children 2 ?: JsonNull, "style"), "width"), 44)
+
+    expectCompletionLeading envelope =
+        completion = Drive::findNamed ("proof-completion", Drive::node (envelope, "document"))
+        expect (jsonFloat (Doc::field (Doc::field (completion, "style"), "lineHeight")) ?: -1.0, 16.0)
 
     expectToolSpacing envelope =
         toolbar = Drive::findNamed ("board-toolbar", Drive::node (envelope, "board"))
@@ -323,8 +340,27 @@ module WorkflowCases
         expect (Doc::number (Doc::field (divider, "style"), "left"), 6)
         expect (Doc::number (Doc::field (divider, "style"), "right"), 6)
 
+    expectRestart guide =
+        drawn = AppCases::stroked guide
+        restarted = Drive::activate (drawn, guide, "document", "Start the example again")
+        expectStepInset restarted
+        before = stored drawn
+        after = stored restarted
+        expect (AppCases::check guide, "checked at -1")
+        expect (Doc::text (after, "text"), "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n")
+        expect (Doc::number (after, "selectedStep"), -1)
+        expect (startsWith (AppCases::check restarted, "checked"), false)
+        expect (Doc::number (after, "strokes"), 1)
+        expect (structuralEquals (Doc::field (before, "exampleBackup")) (Doc::field (after, "exampleBackup")), true)
+        returned = Drive::activate (restarted, guide, "root", "Return to working")
+        expect (Doc::flag (stored returned, "guided"), false)
+        expect (Doc::text (stored returned, "text"), "")
+
     export sourceModes () =
         guide = example ()
+        expectHeaderGeometry guide
+        expectCompletionLeading guide
+        expectRestart guide
         opened = Drive::activate (guide, guide, "root", "Source")
         expect (Doc::flag (stored opened, "paper"), true)
         expectProofLeading (opened, 35.0)

@@ -21,6 +21,8 @@ import ui::Splitters
 
 (** Edits to the document, each followed by the kernel's verdicts on it ([WORKBENCH-VERDICT]). *)
 module Drafts
+    export exampleStatement () = "Theorem and_swap. For all p q, p ∧ q → q ∧ p."
+
     export exampleAssumption () = "Assume h : p ∧ q."
 
     last text = match endsWith text "\n"
@@ -179,7 +181,7 @@ module Layouts
         DismissNotice => layout(noticeText = "", noticeBad = false)
         LeaveExample => layout(guided = false, previewText = "", previewSample = false)
         ToggleTheme => layout(slate = !layout.slate)
-        PreviewSample => layout(previewText = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.", previewSample = true)
+        PreviewSample => layout(previewText = Drafts::exampleStatement (), previewSample = true)
         DismissPreview => layout(previewText = "", previewSample = false)
         ToWork => layout(mode = Working)
         ToLearn => layout(mode = Learning)
@@ -220,6 +222,7 @@ module Update
         InsertExample => Runtime::step (Drafts::stepEdited (bench, Drafts::exampleAssumption ()))
         NextProofLine => Runtime::step (nextLine bench)
         StartExample => Runtime::step (exampleStarted bench)
+        RestartExample => Runtime::step (Drafts::edited (bench(draft = Drafts::unselected bench.draft), Drafts::exampleStatement () + "\nProof.\n"))
         LeaveExample => Runtime::step (exampleLeft bench)
         Undo => Runtime::step (bench(sketch = Inks::tapped (bench.sketch, action)))
         AskClear => Runtime::step (bench(sketch = Inks::tapped (bench.sketch, action)))
@@ -246,7 +249,7 @@ module Update
             bench(draft = saved.draft, verdicts = saved.verdicts, layout = layout(paperFirst = saved.layout.paperFirst), exampleBackup = JsonNull)
         _ => bench(layout = Layouts::tapped (bench.layout, LeaveExample))
 
-    exampleStarted bench = Drafts::edited (bench(layout = exampleLayout bench.layout, exampleBackup = exampleBackup bench), "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n" + Drafts::exampleAssumption () + "\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp.")
+    exampleStarted bench = Drafts::edited (bench(layout = exampleLayout bench.layout, exampleBackup = exampleBackup bench), Drafts::exampleStatement () + "\nProof.\n" + Drafts::exampleAssumption () + "\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp.")
 
     nextLine bench =
         source = bench.draft.draftText

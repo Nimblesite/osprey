@@ -105,7 +105,7 @@ module GoalViews
         Error _ => caption "No hypotheses."
         Success found => match found.statement.variables
             [] => caption "No hypotheses."
-            [first, ...rest] => Ui::framed (plain(frameGap = 12), Ui::column [micro "Propositions", Ui::framed (plain(frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Seq (foldList (rest, [ui::Sym first], \(nodes, name) => listConcat (nodes, [ui::Sym ",", ui::Sym name]))), join (found.statement.variables, ", ")))])
+            [first, ...rest] => Ui::framed (plain(frameGap = 12), Ui::column [micro "Propositions", Ui::framed (plain(frameCross = "start", frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Seq (foldList (rest, [ui::Sym first], \(nodes, name) => listConcat (nodes, [ui::Sym ",", ui::Sym name]))), join (found.statement.variables, ", ")))])
 
     hypothesis held = Ui::framed (plain(frameCross = "center", frameHug = !(WorkViews::layout ()).paperFirst, frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Op (":", ui::Sym held.name, Formulas::typeset held.formula), held.name + ": " + Formulas::show held.formula))
 
