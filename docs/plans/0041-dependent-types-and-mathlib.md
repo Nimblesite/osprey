@@ -1,10 +1,10 @@
 # Plan 0041 — Dependent types as a pluggable discipline, and Mathlib on Osprey
 
-Contracts: [spec 0049](../specs/language/0049-TypeDisciplines.md) for the pluggable discipline seam and [spec 0048](../specs/language/0048-DependentTypesAndProofs.md) for the `lean4` discipline and the Mathlib port. Status: **spec written; no implementation started.** The road test (M0 to M3) is the first work; it needs no compiler change. Stabilization mode holds for the phases after it: none begins without the owner's go.
+Contracts: [spec 0050](../specs/language/0050-TypeDisciplines.md) for the pluggable discipline seam and [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) for the `lean4` discipline and the Mathlib port. Status: **spec written; no implementation started.** The road test (M0 to M3) is the first work; it needs no compiler change. Stabilization mode holds for the phases after it: none begins without the owner's go.
 
 ## Summary
 
-Osprey gets a proof assistant whose checked library is Mathlib, built beside the language rather than into it. The Hindley-Milner type system, effect rows, monomorphisation and codegen of today's compiler are not touched; the compiler gains one dispatch seam ([TYPES-DISCIPLINE-SEAM], [spec 0049](../specs/language/0049-TypeDisciplines.md)) that hands a module marked `// osprey: types=<name>` to the package registered under that name. The first registered discipline is `lean4`: a kernel for Lean 4's type theory, an elaborator, tactics and the `@osprey/mathlib` package, all written in Osprey and compiled through the native backend. Other provers and other type systems register the same way ([TYPES-DISCIPLINE-REGISTRY]); the seam is a feature on its own, delivered and proved by two reference disciplines before any kernel is written, and nothing in this plan is the only way to put a solver on Osprey.
+Osprey gets a proof assistant whose checked library is Mathlib, built beside the language rather than into it. The Hindley-Milner type system, effect rows, monomorphisation and codegen of today's compiler are not touched; the compiler gains one dispatch seam ([TYPES-DISCIPLINE-SEAM], [spec 0050](../specs/language/0050-TypeDisciplines.md)) that hands a module marked `// osprey: types=<name>` to the package registered under that name. The first registered discipline is `lean4`: a kernel for Lean 4's type theory, an elaborator, tactics and the `@osprey/mathlib` package, all written in Osprey and compiled through the native backend. Other provers and other type systems register the same way ([TYPES-DISCIPLINE-REGISTRY]); the seam is a feature on its own, delivered and proved by two reference disciplines before any kernel is written, and nothing in this plan is the only way to put a solver on Osprey.
 
 ```mermaid
 flowchart LR
@@ -78,7 +78,7 @@ Scheduled by M3's findings, in the order the kernel needs them:
 
 Exit: each addition specified in spec 0012, corpus-tested under GC and ARC and on wasm32, with recorded benchmark numbers.
 
-### Phase 1 — pluggable disciplines [spec 0049](../specs/language/0049-TypeDisciplines.md)
+### Phase 1 — pluggable disciplines [spec 0050](../specs/language/0050-TypeDisciplines.md)
 
 A deliverable in its own right: after this phase any type system can be brought to Osprey as a package, with or without the prover that follows.
 
