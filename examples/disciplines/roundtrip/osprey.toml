@@ -1,0 +1,13 @@
+[project]
+name = "passthrough-roundtrip"
+source_roots = ["src"]
+default_namespace = "roundtrip"
+entry = "src/main.ospml"
+
+# The project uses the discipline by listing its package and nothing else
+# ([TYPES-DISCIPLINE-REGISTRY]); `path` is relative to this manifest.
+[dependencies]
+"@osprey/passthrough" = { path = "../passthrough" }
+
+[modules]
+allow_wildcard_imports = false

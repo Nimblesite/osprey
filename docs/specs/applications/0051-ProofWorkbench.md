@@ -258,7 +258,90 @@ One application, three hosts, proved by the same fixture-driven `update` tests; 
 
 ## Beautiful, or not shipped [WORKBENCH-DESIGN]
 
-The [Osprey design system](../../../website/design_system.md) governs colour, type and spacing; this application adds a mathematics face and the chalk theme. The bar is a well-set page of a journal: a screenshot of `and_swap` in the workbench beside the same theorem in a printed paper is part of every release review, and a release in which the mathematics is monospaced, the spacing around `→` is wrong, or the board's chalk looks like a vector line does not ship. Motion only where it explains a change (a goal closing, a badge filling); nothing flickers while a check runs; the system Reduce Motion preference always wins.
+The workbench has its own **Paper & Slate** identity, inspired by Osprey’s precision, semantic roles and spacing discipline. It does not copy the website’s midnight/cyan palette or developer-oriented composition. The board is the primary working surface; a person can keep sketches, calculations and the full written solution here without learning Osprey. Paper is the alternate reading and writing surface. Generated code is optional, closed initially, and never a prerequisite for editing mathematics.
+
+The implementation handoff is [the design system and workflow gallery](../../designs/proof-workbench/README.md). Its screenshots and playable study are design references, not evidence that the production workbench or proof kernel is implemented. All renderer and store changes still follow plan 0042 and its fixture tests.
+
+### Colour [WORKBENCH-DESIGN-COLOUR]
+
+These are application-owned semantic tokens, sent through `@osprey/native`; a host does not substitute its own palette. `Slate` below is the `chalk` theme’s appearance. Freehand chalk remains off-white on the same slate in both appearances. Uncoloured mathematical notation remains the primary reading material; colour carries focus or an explicit state.
+
+| Role | Paper | Slate / chalk | Meaning |
+| --- | --- | --- | --- |
+| `canvas` | `#FAFAF7` | `#202723` | Main working surface |
+| `inset` | `#F0F2ED` | `#191F1C` | Quiet secondary surface |
+| `surface` | `#FFFFFF` | `#29322D` | Open controls and contextual panes |
+| `primary` | `#242923` | `#ECEDE5` | Mathematical content and main text |
+| `secondary` | `#56615B` | `#B7C0B7` | Supporting text and labels |
+| `accent` | `#36635C` | `#A6C5BB` | Focus, selected tool, deliberate action |
+| `outline` | `#727C74` | `#7D8C80` | Required control boundaries |
+| `divider` | `#D7DDD5` | `#465348` | Decorative separation only |
+| `selection` | `#E4ECE5` | `#34473E` | Current proof step; paired with position or outline |
+| `good` | `#315D3B` | `#B3CE94` | Explicit successful result, always labelled |
+| `caution` | `#795719` | `#E6C077` | Pending or limited operation, always explained |
+| `danger` | `#9A3935` | `#F0A69B` | Rejected operation or mismatched step |
+| `dangerSurface` | `#F6E8E3` | `#453330` | Restrained diagnostic emphasis |
+| `board` | `#202723` | `#202723` | Freehand surface |
+| `chalk` | `#ECEDE5` | `#ECEDE5` | Freehand strokes |
+
+Minimum measured contrast across `canvas`, `inset` and `surface`: primary text 13.15:1 Paper / 11.21:1 Slate; secondary text 5.72:1 / 7.07:1; accent 6.02:1 / 7.13:1; semantic text at least 5.84:1 / 6.69:1; control outline 3.84:1 / 3.74:1. Chalk against board is 12.95:1. The application suite must test the exact token pairs it renders, including selection and diagnostic surfaces. Decorative dividers must never be the sole boundary of an interactive control.
+
+### Typography [WORKBENCH-DESIGN-TYPE]
+
+Use STIX Two Text for mathematical prose and STIX Two Math for formula layout. Use Geist for quiet controls, retaining a small family resemblance to Osprey. A host lacking STIX uses Latin Modern Math for mathematics as specified in [WORKBENCH-MATH]; do not simulate maths with spaced monospace text. Bundle and retain the selected font licences with the host.
+
+| Role | Desktop size / leading | Treatment |
+| --- | --- | --- |
+| Wordmark | 26 / 32 | STIX; italic “Proof”, upright “Workbench” |
+| Document title | 36–40 / 44 | STIX regular; 28–30 in the board side pane |
+| Display formula | 36–44 / natural math metrics | STIX Two Math; preserve layout tree |
+| Proof sentence | 22–24 / 34–38 | STIX; 19–20 in the board side pane |
+| Hypothesis / current goal | 24 / 32 and 36 / 44 | Variables italic; operators upright |
+| Controls and diagnostic explanation | 14 / 20 | Geist regular or medium |
+| Secondary label | 12 / 18 | Geist; avoid dense all-caps copy |
+| Optional source | 14 / 23 | Host monospace; never the mathematics face |
+
+Let the mathematics engine apply spacing classes: relation spacing around `→` and `=`, binary-operator spacing around `∧` and `+`, no extra spaces inside function application, real scalable delimiters and radicals. Do not insert spaces to fake mathematical layout. Subscripts and superscripts use the math font’s layout metrics; do not shrink an entire formula to make it fit a sidebar. Long expressions can scroll within their own region.
+
+### Surfaces and controls [WORKBENCH-DESIGN-SURFACES]
+
+At desktop widths, allocate roughly two thirds of the window to the board and one third to the proof and goal panes. Each secondary pane can collapse without losing the cursor, strokes or scroll position. Focus expands the existing board; it never creates a second board. Paper puts the document first with the goal in the margin and the same board behind its disclosure. Read presents the document as a continuous page. On a tablet, keep the board first and place supplementary regions below or in an explicitly opened sheet; never squeeze a desktop sidebar into an unreadable sliver.
+
+Use an 8-point spacing rhythm with 4-point subdivisions: 24–32-point working margins, 16–24 between groups, 8–12 within controls. Controls use 4–6-point corners and 1-point outlines; only status labels use a pill. A mathematical argument is a continuous page, not a stack of cards. Use alignment and whitespace before adding a surface or border. Touch controls have at least a 44-point hit area. Focus has a 2-point accent outline and 3-point offset. A selected tool or step also has shape or position evidence; colour alone never carries state.
+
+Scratch work is explicitly unverified. Recognition yields a reviewable transcription, preserves the original strokes, and requires an explicit insertion into the document. Unavailable recognition must explain its limit. Clear requires a second action in a keyboard-contained dialog; Escape cancels and returns focus to its trigger. Undo removes the most recent stroke. Board status and zoom controls occupy a separate strip, outside the drawing surface. Saving must preserve the actual working, not just the rendered theorem; the production save format and restore contract require their own implementation tests before shipping. Preserve board framing on reopen. Save/import feedback must remain visible at every width; errors persist until dismissed. Notation inserts at the caret or replaces the selection and restores editing focus.
+
+### Proof feedback and source [WORKBENCH-DESIGN-FEEDBACK]
+
+| State | Presentation | Never imply |
+| --- | --- | --- |
+| Editing | Stable typeset context, clear caret, restrained current-line tint | That a sentence was accepted while still being composed |
+| Goal closed | One quiet goal transition; explicit remaining goal or “No open draft goals” | A kernel verdict from the draft engine |
+| Mismatch | Local underline plus readable “Goal” and “This step” formulas side by side; plain-language reason | That every syntax error proves a proposition false |
+| Unsupported input | Neutral or caution-labelled explanation; preserve the sentence and avoid inferred propositions | That unrecognised wording is mathematically false |
+| Checking | Stable heading; small labelled progress indication; current revision ticket | That an old check applies to edited text |
+| Checked | Labelled filled badge from the current kernel result only | That a demo, recognition result, or scratch drawing was checked |
+| Rejected | Local mark with the checker’s actual reason and line | That the document is clean elsewhere without evidence |
+| Unchecked | Neutral outlined label and explicit reason | A success or a failure |
+
+Draft completion uses neutral text while unchecked; reserve success checkmarks for an actual checked result.
+
+Keep the source pane closed initially. On small screens, opening source must bring the panel into view and move focus into it; closing returns focus to its trigger. Opening it shows read-only generated source, line numbers and a restrained highlight tied to the selected proof step. Distinguish keywords, names, types, operators, comments and holes; `sorry` remains visibly a hole, never a successful completion. Paper source roles are plum `#794A64` keywords, mineral `#426B6B` types/operators, umber `#704F25` names and `secondary` comments; Slate uses `#D5B0C7`, `#A6C5BB`, `#DEC28F` and `#A6B5AA`. Body text, the caret and diagnostic marks retain their semantic roles. Export offers the generated file without making it the user’s main workflow.
+
+### Motion [WORKBENCH-DESIGN-MOTION]
+
+| Event | Timing | Behaviour |
+| --- | --- | --- |
+| Hover / selected control | 120–150 ms | Colour and outline only; no size change |
+| Pane reveal | 220–260 ms | Opacity plus at most 12 points of travel |
+| Goal closes | 280–350 ms | Previous goal yields to the next; at most 8 points of travel |
+| New proof step | 180–240 ms | Small opacity transition; keep caret and scroll anchored |
+| Board / Paper / Read | 300–380 ms | Preserve content, focus and position; do not flash an empty surface |
+| Erase | 100–150 ms | Subtle local dust fade; no full-board effect |
+
+Use an ease-out curve such as `(0.22, 1, 0.36, 1)`. Writing tracks the pointer immediately, independent of animation duration. Do not animate every keystroke, replay all prior proof steps, or flicker a verdict while checking. Reduced motion removes translation and decorative effects; state changes remain immediate and understandable. Guided design-tour captions are demonstration controls, not production application chrome.
+
+The release bar is a well-set journal page and a usable working board. Compare a real `and_swap` capture beside a printed page, check mathematical spacing, inspect light and dark appearances, test keyboard and pen input, preserve working across pane switches, and include the checker-unavailable path. A generated picture or a design prototype does not satisfy these release checks.
 
 ## Nothing special for the workbench [WORKBENCH-NO-SPECIAL]
 

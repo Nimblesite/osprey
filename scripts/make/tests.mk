@@ -344,6 +344,39 @@ _test_proof_kernel:
 	node scripts/wasm-smoke.mjs target/proof/kernel-tests.wasm >/dev/null
 	grep -q "failed=0" target/proof/kernel-tests.wasm.stdout.txt
 
+# _test_disciplines_passthrough: the `passthrough` reference discipline of spec
+# 0050 ([TYPES-DISCIPLINE-REFERENCE]), run by `_test_disciplines` below. Its
+# suite proves the marker rewrite, the stderr-to-diagnostic parser and the exact
+# protocol JSON; the round trip proves an `hm` module importing a disciplined one
+# and the reverse, byte-exact against its golden under GC, ARC and wasm32; the
+# same program with the marker removed prints the same bytes; and a planted type
+# error proves the discipline is what rejected the module, because the
+# diagnostic carries its prefix.
+_test_disciplines_passthrough:
+	@echo "==> [disciplines] passthrough checker suite..."
+	./$(BIN) test examples/disciplines/passthrough
+	@echo "==> [disciplines] passthrough round trip: GC, ARC, wasm32..."
+	./$(BIN) examples/disciplines/roundtrip --run --memory=gc 2>/dev/null | diff - examples/disciplines/roundtrip/expectedoutput
+	./$(BIN) examples/disciplines/roundtrip --run --memory=arc 2>/dev/null | diff - examples/disciplines/roundtrip/expectedoutput
+	@$(MKDIR) target/disciplines
+	./$(BIN) examples/disciplines/roundtrip --target=wasm32 --compile -o target/disciplines/roundtrip.wasm >/dev/null 2>&1
+	node scripts/wasm-smoke.mjs target/disciplines/roundtrip.wasm examples/disciplines/roundtrip/expectedoutput
+	@echo "==> [disciplines] the same program under hm alone (marker removed)..."
+	@rm -rf target/disciplines/roundtrip-hm && $(MKDIR) target/disciplines/roundtrip-hm/src
+	@cp examples/disciplines/roundtrip/src/main.ospml examples/disciplines/roundtrip/src/numbers.ospml target/disciplines/roundtrip-hm/src/
+	@grep -v 'osprey: types=passthrough' examples/disciplines/roundtrip/src/count.ospml > target/disciplines/roundtrip-hm/src/count.ospml
+	@grep -v '@osprey/passthrough' examples/disciplines/roundtrip/osprey.toml > target/disciplines/roundtrip-hm/osprey.toml
+	./$(BIN) target/disciplines/roundtrip-hm --run --memory=gc 2>/dev/null | diff - examples/disciplines/roundtrip/expectedoutput
+	@echo "==> [disciplines] the checker is what rejected a broken module..."
+	@rm -rf target/disciplines/roundtrip-broken && $(MKDIR) target/disciplines/roundtrip-broken/src
+	@cp examples/disciplines/roundtrip/src/main.ospml examples/disciplines/roundtrip/src/numbers.ospml examples/disciplines/roundtrip/src/count.ospml target/disciplines/roundtrip-broken/src/
+	@printf '    export broken () = 1 + "x"\n' >> target/disciplines/roundtrip-broken/src/count.ospml
+	@sed 's|"../passthrough"|"../../../examples/disciplines/passthrough"|' examples/disciplines/roundtrip/osprey.toml > target/disciplines/roundtrip-broken/osprey.toml
+	@if ./$(BIN) target/disciplines/roundtrip-broken --check > target/disciplines/broken.txt 2>&1; then \
+	  echo "FAIL: the module with a planted type error was accepted"; cat target/disciplines/broken.txt; exit 1; fi
+	@grep -q 'passthrough/check: type mismatch' target/disciplines/broken.txt
+	@cat target/disciplines/broken.txt
+
 _test_language_corpus:
 	@echo "==> [language] Default + ML assertion corpus..."
 	@OSPREY_TEST_JOBS=1 ./$(BIN) test tests
@@ -533,3 +566,40 @@ _deslop:
 	@echo "==> Duplication gate (deslop)..."
 	bash scripts/install-deslop.sh
 	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
+
+# _test_disciplines: the reference type disciplines of [TYPES-DISCIPLINE-REFERENCE]
+# (spec 0050). The `bounded` package reads `// @bound p in 0..100`, holds every
+# call site inside the module to it by interval arithmetic, and erases to plain
+# `int`; `bounded_roundtrip` links that erased module into an `hm` program, so a
+# green run proves the whole seam — checker build, protocol, erasure, signature
+# ascription — and not just the checker. Every leg is byte-exact: the program's
+# stdout against its golden under GC and ARC, the compiled wasm module against
+# the same golden under WASI, and the out-of-range call site against the
+# compiler's own stderr. The scratch copy keeps `path = "../bounded"` resolvable
+# (`target/disciplines/bounded` beside `target/disciplines/bounded_roundtrip`),
+# and `sed` drops the absolute prefix so the golden holds no checkout path.
+# The checker's assertion suite drives the built binary through the protocol.
+_test_disciplines:
+	@echo "==> [disciplines] bounded: GC, ARC, wasm32 against expectedoutput..."
+	./$(BIN) examples/disciplines/bounded_roundtrip --run --memory=gc 2>/dev/null | diff - examples/disciplines/bounded_roundtrip/expectedoutput
+	./$(BIN) examples/disciplines/bounded_roundtrip --run --memory=arc 2>/dev/null | diff - examples/disciplines/bounded_roundtrip/expectedoutput
+	@$(MKDIR) target/disciplines
+	./$(BIN) examples/disciplines/bounded_roundtrip --target=wasm32 --compile -o target/disciplines/bounded.wasm >/dev/null 2>&1
+	node scripts/wasm-smoke.mjs target/disciplines/bounded.wasm examples/disciplines/bounded_roundtrip/expectedoutput
+	@echo "==> [disciplines] bounded: an out-of-range call site is rejected..."
+	@$(RM) target/disciplines/bounded target/disciplines/bounded_roundtrip
+	cp -R examples/disciplines/bounded target/disciplines/bounded
+	cp -R examples/disciplines/bounded_roundtrip target/disciplines/bounded_roundtrip
+	cp target/disciplines/bounded_roundtrip/src/bad.ospml.rejected target/disciplines/bounded_roundtrip/src/percent.ospml
+	$(RM) target/disciplines/bounded_roundtrip/src/bad.ospml.rejected target/disciplines/bounded_roundtrip/expectedoutput
+	$(RM) target/disciplines/bounded/.osprey target/disciplines/bounded_roundtrip/.osprey
+	@./$(BIN) target/disciplines/bounded_roundtrip --check > target/disciplines/rejected.txt 2>&1; test $$? -ne 0
+	sed -e "s|$(CURDIR)/||g" target/disciplines/rejected.txt | diff - examples/disciplines/bounded_roundtrip/rejected.expectedoutput
+	@echo "==> [disciplines] bounded: the checker's protocol assertion suite..."
+	@OSPREY_BIN="$(abspath $(BIN))" ./$(BIN) test examples/disciplines/bounded --memory=gc 2>/dev/null > target/disciplines/bounded-suite.txt; tail -2 target/disciplines/bounded-suite.txt
+	grep -q "failed=0" target/disciplines/bounded-suite.txt
+	@echo "==> [disciplines] bounded: protocol responses byte-exact against their goldens..."
+	@$(MKDIR) target/disciplines/cache
+	./$(BIN) examples/disciplines/bounded/src/checker.ospml --compile --quiet --no-warnings -o target/disciplines/bounded-checker
+	node examples/disciplines/bounded/tests/protocol-check.mjs target/disciplines/bounded-checker "$(abspath $(BIN))" target/disciplines/cache examples/disciplines/bounded/tests/requests
+	$(MAKE) _test_disciplines_passthrough

@@ -1,0 +1,14 @@
+namespace roundtrip
+
+(** An `hm` module the `passthrough` module imports: the reverse direction of
+    the round trip. Every export is a monomorphic function with one parameter,
+    which is exactly what the checker can stub as an `extern` declaration. *)
+module Numbers
+    (** `n` doubled. *)
+    export twice n = n + n
+
+    (** `n` spelled out. The signature pins `int`: `toString` alone would make
+        the parameter generic, and an `extern` stub cannot spell a type
+        parameter. *)
+    export describe : int -> string
+    describe n = "n=" + toString n

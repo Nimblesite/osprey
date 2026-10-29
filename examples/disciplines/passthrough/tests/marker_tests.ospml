@@ -1,0 +1,31 @@
+namespace passthrough
+
+import passthrough::Marker
+
+(** Rewriting the discipline marker to `hm`: the checker's erasure returns the
+    module unchanged except for the line that selected the discipline. *)
+module MarkerTests
+    export run () =
+        test ("the ml marker line becomes hm", \() =>
+            expect (Marker::rewrite ("// osprey: types=passthrough\nnamespace Count\n"),
+                "// osprey: types=hm\nnamespace Count\n"))
+
+        test ("the squeezed and python marker forms are rewritten too", \() =>
+            expect (Marker::rewrite ("//osprey: types=passthrough\n# osprey: types=passthrough\n"),
+                "//osprey: types=hm\n# osprey: types=hm\n"))
+
+        test ("an unmarked module is returned byte for byte", \() =>
+            expect (Marker::rewrite ("namespace Count\n\nmodule Ops\n    export twice x = x\n"),
+                "namespace Count\n\nmodule Ops\n    export twice x = x\n"))
+
+        test ("a marker below the header is still the marker the compiler reads", \() =>
+            expect (Marker::rewrite ("namespace Count\n// osprey: types=passthrough\nmodule Ops\n"),
+                "namespace Count\n// osprey: types=hm\nmodule Ops\n"))
+
+        test ("a trailing newline survives the rewrite", \() =>
+            expect (Marker::rewrite ("// osprey: types=passthrough\nnamespace Count\n"),
+                "// osprey: types=hm\nnamespace Count\n"))
+
+        test ("a line that merely mentions the marker is not a marker line", \() =>
+            expect (Marker::rewrite ("s = \"types=passthrough\"\nnamespace Count\n"),
+                "s = \"types=passthrough\"\nnamespace Count\n"))

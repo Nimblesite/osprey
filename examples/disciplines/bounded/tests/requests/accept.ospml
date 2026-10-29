@@ -1,0 +1,13 @@
+// osprey: types=bounded
+
+namespace demo
+
+(** Percentages the discipline accepts. *)
+module Percent
+    (** `p` percent of `total`, for `p` between zero and one hundred. *)
+    // @bound p in 0..100
+    export scale (p, total) = intDiv (total * p, 100)
+
+    (** Literal and bounded-parameter calls, both inside the bound. *)
+    // @bound total in 0..1000
+    export twice total = intDiv (scale (50, total) + scale (25 + 25, 400), 2)

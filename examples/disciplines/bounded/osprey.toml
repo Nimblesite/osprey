@@ -1,0 +1,26 @@
+[package]
+name = "@osprey/bounded"
+
+# The package is also the home of its own suite, so
+# `osprey test examples/disciplines/bounded` runs it
+# ([TYPES-DISCIPLINE-VERIFICATION]). The suite depends on this same package,
+# which is how `tests/rate.ospml` is checked by the discipline below.
+[project]
+name = "bounded"
+# Listed file by file: `tests/requests/` holds protocol fixtures this project
+# must not compile, and the compiler rejects one of them on purpose.
+source_roots = ["tests/main.ospml", "tests/checks.ospml", "tests/rate.ospml"]
+default_namespace = "bounded"
+entry = "tests/main.ospml"
+
+[dependencies]
+"@osprey/bounded" = { path = "." }
+
+# What the compiler reads when a project marks a source `// osprey: types=bounded`:
+# the checker is one Osprey program, built from that file.
+[discipline]
+name = "bounded"
+checker = "src/checker.ospml"
+
+[modules]
+allow_wildcard_imports = false

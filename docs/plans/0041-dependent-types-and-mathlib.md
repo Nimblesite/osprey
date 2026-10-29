@@ -61,14 +61,18 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [x] `types=` marker and `[project].types`; `[discipline]` registry; `discipline-error`
 - [x] `check_module` seam in assembly, checker process, JSON protocol, time limit, result cache
 - [x] Review P0.3: sources visited in dependency order; a request carries the inferred ML signature of every `hm` module it imports and the checker-written signature of every disciplined one (`discipline/imports.rs`; three seam tests)
-- [ ] Review P0.3, rest: exported types and values in an inferred `hm` signature (functions only today); HM→discipline and discipline→HM programs through a real checker package
-- [ ] Review P1.8: process start, request write and checker build inside the deadline; a checker that never reads stdin
-- [ ] Review P1.9: build and result caches keyed on every checker input and the binary; read failures propagated
-- [ ] Review P1.10: benchmark re-checks the same export on both sides; failed timings rejected; portable memory measurement
+- [x] Review P0.3, rest / review 2 item 6: an inferred `hm` signature names every exported type and value it leaves out (`omitted[]`, protocol version 2), so no checker trusts a partial signature; an `hm` import that does not type-check is a `discipline-error` and no checker runs after it
+- [ ] Exported types and values rendered in an inferred `hm` signature (today named as omitted)
+- [x] Review P1.8: one deadline covers checker build, spawn, request write (own thread) and response; real-process regressions for a checker that never reads stdin (`discipline/runner_tests.rs`)
+- [x] Review P1.9: checker binary named by the digest of every package source, the manifest and the compiler (`discipline/inputs.rs`); results keyed on the request and the built binary; read failures are errors
+- [x] Review P1.10, harness: a failed timed run is a red case, sha256 of every kernel source and both binaries, `getrusage` peak memory, reports under `target/`, `lean.cmd`/`args` per case
+- [ ] Review P1.10, comparison: `m1_export` re-checks the recorded export on both sides (Osprey reader vs `lean4checker` replay)
 - [x] Erased modules parsed by the ordinary frontend and checked against the written signature
+- [x] `osprey <file> --signature` prints the ML export signature the seam renders (`crates/osprey-cli/src/signature.rs`); `options.compiler` in every request
 - [ ] `examples/disciplines/passthrough` with the round trip in the differential corpus (GC, ARC, wasm32)
 - [ ] `examples/disciplines/bounded`: a real theory erasing to `int`, diagnostics through the protocol
-- [ ] Failure tests of [TYPES-DISCIPLINE-VERIFICATION]; grep test over `crates/` for discipline names
+- [x] Failure tests of [TYPES-DISCIPLINE-VERIFICATION] (`discipline/tests.rs`: unknown, duplicate, crash, timeout, malformed, unparsable erased, signature failure, version)
+- [ ] Purity scan over `crates/` (`tests/discipline_purity.rs`, written; green once both reference packages register their names)
 - [ ] Byte-identical output and diagnostics for every markerless program; no `hm` benchmark change
 
 ### Phase 2 — kernel and trust

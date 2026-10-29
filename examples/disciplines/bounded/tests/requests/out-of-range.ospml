@@ -1,0 +1,12 @@
+// osprey: types=bounded
+
+namespace demo
+
+(** The module the out-of-range case rejects. *)
+module Percent
+    (** `p` percent of `total`. *)
+    // @bound p in 0..100
+    export scale (p, total) = total
+
+    (** A literal call outside the declared bound. *)
+    export wrong total = scale (150, total)

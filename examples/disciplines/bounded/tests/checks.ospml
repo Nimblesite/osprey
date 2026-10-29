@@ -1,0 +1,19 @@
+namespace bounded
+
+import bounded::Rate
+
+(** What the erased `Rate` does once the discipline has accepted it. The
+    module reaches this suite as plain `int` code, so these assertions also
+    pin the erasure: no annotation, marker or bound survives into the run. *)
+module Checks
+    export run () =
+        handle Arith
+            overflow _ _ _ wrapped => wrapped
+            divideByZero _ _ => 0.0
+            remainderByZero _ => 0
+        test ("a literal call inside the bound erases to plain arithmetic", \() =>
+            expect (toString (Rate::scale (50, 200)), "100"))
+        test ("a bounded parameter reaches another checked call", \() =>
+            expect (toString (Rate::half 200), "100"))
+        test ("the boundary values of the bound are accepted", \() =>
+            expect (toString (Rate::scale (0, 200)) + "/" + toString (Rate::scale (100, 200)), "0/200"))

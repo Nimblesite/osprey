@@ -1,14 +1,19 @@
 namespace proof
 
-(** The `lean4export` texts the kernel is checked against, held as strings
-    so the same cases run on wasm32, where a module has no files. The files
-    under `exports/` are the on-disk twins for the benchmark harness. *)
+(** The `lean4export` NDJSON texts the kernel is checked against, held as
+    strings so the same cases run on wasm32, where a module has no files.
+    `exports/id_imp.ndjson` is the on-disk twin the benchmark reads. *)
 module Fixtures
-    (** `theorem id_imp : ∀ (p : Prop), p → p := fun p h => h`, as
-        `lean4export` 0.1.2 writes it (names, then universes, then
-        expressions, then the declaration). *)
-    export idImp () = "0.1.2\n1 #NS 0 id_imp\n2 #NS 0 p\n3 #NS 0 h\n1 #ES 0\n2 #EV 0\n3 #EV 1\n4 #EP #BD 3 2 3\n5 #EP #BD 2 1 4\n6 #EL #BD 3 2 2\n7 #EL #BD 2 1 6\n#THM 1 5 7 0\n"
+    (** `theorem id_imp : ∀ (p : Prop), p → p := fun _ h => h` exactly as
+        the pinned lean4export (tag v4.25.0) wrote it: NDJSON format 3.1.0,
+        24 lines, recorded by scripts/proof-export.sh — sha256
+        `2adb6bc5ff4e2fcaf9d804548fc2eaf0753902effbac3d70e1657d1b5998330d`.
+        The binder names are Lean's hygienic ones
+        ([proof-export-fixture-2026-10-29](../../../docs/reports/proof-export-fixture-2026-10-29.md)). *)
+    export idImp () = "{\"meta\":{\"exporter\":{\"name\":\"lean4export\",\"version\":\"3.1.0\"},\"format\":{\"version\":\"3.1.0\"},\"lean\":{\"githash\":\"cdd38ac5115bdeec5f609e9126cce00f51ae88b3\",\"version\":\"4.25.0\"}}}\n{\"in\":1,\"str\":{\"pre\":0,\"str\":\"id_imp\"}}\n{\"in\":2,\"str\":{\"pre\":0,\"str\":\"p\"}}\n{\"ie\":0,\"sort\":0}\n{\"in\":3,\"str\":{\"pre\":0,\"str\":\"a\"}}\n{\"in\":4,\"str\":{\"pre\":3,\"str\":\"_@\"}}\n{\"in\":5,\"str\":{\"pre\":4,\"str\":\"_internal\"}}\n{\"in\":6,\"str\":{\"pre\":5,\"str\":\"_hyg\"}}\n{\"in\":7,\"num\":{\"i\":0,\"pre\":6}}\n{\"bvar\":0,\"ie\":1}\n{\"bvar\":1,\"ie\":2}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":2,\"name\":7,\"type\":1},\"ie\":3}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":3,\"name\":2,\"type\":0},\"ie\":4}\n{\"in\":8,\"str\":{\"pre\":0,\"str\":\"x\"}}\n{\"in\":9,\"str\":{\"pre\":8,\"str\":\"_@\"}}\n{\"in\":10,\"str\":{\"pre\":9,\"str\":\"IdImp\"}}\n{\"in\":11,\"num\":{\"i\":4195544489,\"pre\":10}}\n{\"in\":12,\"str\":{\"pre\":11,\"str\":\"_hygCtx\"}}\n{\"in\":13,\"str\":{\"pre\":12,\"str\":\"_hyg\"}}\n{\"in\":14,\"num\":{\"i\":10,\"pre\":13}}\n{\"in\":15,\"str\":{\"pre\":0,\"str\":\"h\"}}\n{\"ie\":5,\"lam\":{\"binderInfo\":\"default\",\"body\":1,\"name\":15,\"type\":1}}\n{\"ie\":6,\"lam\":{\"binderInfo\":\"default\",\"body\":5,\"name\":14,\"type\":0}}\n{\"thm\":{\"all\":[1],\"levelParams\":[],\"name\":1,\"type\":4,\"value\":6}}\n"
 
-    (** The same statement with the proof `fun p h => p`, which the kernel
-        must reject: expression 6 returns variable 1 instead of 0. *)
-    export idImpBad () = "0.1.2\n1 #NS 0 id_imp\n2 #NS 0 p\n3 #NS 0 h\n1 #ES 0\n2 #EV 0\n3 #EV 1\n4 #EP #BD 3 2 3\n5 #EP #BD 2 1 4\n6 #EL #BD 3 2 3\n7 #EL #BD 2 1 6\n#THM 1 5 7 0\n"
+    (** The recorded text with one edit: line 22, the inner `lam` of the
+        proof, changes its `"body":1` to `"body":2` — the `bvar 1` is `p`,
+        not `h` — so the proof term is `fun p h => p`, which has type
+        `∀ p, p → Prop`, not the statement. *)
+    export idImpBad () = "{\"meta\":{\"exporter\":{\"name\":\"lean4export\",\"version\":\"3.1.0\"},\"format\":{\"version\":\"3.1.0\"},\"lean\":{\"githash\":\"cdd38ac5115bdeec5f609e9126cce00f51ae88b3\",\"version\":\"4.25.0\"}}}\n{\"in\":1,\"str\":{\"pre\":0,\"str\":\"id_imp\"}}\n{\"in\":2,\"str\":{\"pre\":0,\"str\":\"p\"}}\n{\"ie\":0,\"sort\":0}\n{\"in\":3,\"str\":{\"pre\":0,\"str\":\"a\"}}\n{\"in\":4,\"str\":{\"pre\":3,\"str\":\"_@\"}}\n{\"in\":5,\"str\":{\"pre\":4,\"str\":\"_internal\"}}\n{\"in\":6,\"str\":{\"pre\":5,\"str\":\"_hyg\"}}\n{\"in\":7,\"num\":{\"i\":0,\"pre\":6}}\n{\"bvar\":0,\"ie\":1}\n{\"bvar\":1,\"ie\":2}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":2,\"name\":7,\"type\":1},\"ie\":3}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":3,\"name\":2,\"type\":0},\"ie\":4}\n{\"in\":8,\"str\":{\"pre\":0,\"str\":\"x\"}}\n{\"in\":9,\"str\":{\"pre\":8,\"str\":\"_@\"}}\n{\"in\":10,\"str\":{\"pre\":9,\"str\":\"IdImp\"}}\n{\"in\":11,\"num\":{\"i\":4195544489,\"pre\":10}}\n{\"in\":12,\"str\":{\"pre\":11,\"str\":\"_hygCtx\"}}\n{\"in\":13,\"str\":{\"pre\":12,\"str\":\"_hyg\"}}\n{\"in\":14,\"num\":{\"i\":10,\"pre\":13}}\n{\"in\":15,\"str\":{\"pre\":0,\"str\":\"h\"}}\n{\"ie\":5,\"lam\":{\"binderInfo\":\"default\",\"body\":2,\"name\":15,\"type\":1}}\n{\"ie\":6,\"lam\":{\"binderInfo\":\"default\",\"body\":5,\"name\":14,\"type\":0}}\n{\"thm\":{\"all\":[1],\"levelParams\":[],\"name\":1,\"type\":4,\"value\":6}}\n"

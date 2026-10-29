@@ -1,0 +1,16 @@
+// osprey: types=bounded
+
+namespace roundtrip
+
+(** Percentages of a bounded rate: the module the `bounded` discipline checks. *)
+module Percent
+    (** `p` percent of `total`, for `p` between zero and one hundred. *)
+    // @bound p in 0..100
+    export scale (p, total) = intDiv (total * p, 100)
+
+    (** Half of `total`, through a call the checker can bound. *)
+    // @bound total in 0..100000
+    export half total = scale (50, total)
+
+    (** A quarter of `total`, from an in-range literal call. *)
+    export quarter total = scale (25, total)

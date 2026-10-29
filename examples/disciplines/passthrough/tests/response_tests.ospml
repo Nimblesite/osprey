@@ -1,0 +1,27 @@
+namespace passthrough
+
+import passthrough::Response
+
+(** The response line is built by hand so the tests pin its exact bytes
+    against the protocol of [TYPES-DISCIPLINE-PROTOCOL]. *)
+module ResponseTests
+    export run () =
+        test ("accepted carries the signature and the erased module", \() =>
+            expect (Response::accepted ("signature Ops\n    twice : (int) -> int\n", "ml", "namespace Count\n"),
+                "{\"version\":1,\"result\":\"accepted\",\"signature\":\"signature Ops\\n    twice : (int) -> int\\n\",\"erased\":{\"flavor\":\"ml\",\"source\":\"namespace Count\\n\"},\"diagnostics\":[]}"))
+
+        test ("quotes and backslashes in the payload are escaped", \() =>
+            expect (Response::accepted ("", "ml", "m = \"a\\b\"\n"),
+                "{\"version\":1,\"result\":\"accepted\",\"signature\":\"\",\"erased\":{\"flavor\":\"ml\",\"source\":\"m = \\\"a\\\\b\\\"\\n\"},\"diagnostics\":[]}"))
+
+        test ("rejected embeds the diagnostic array text", \() =>
+            expect (Response::rejected ("[{\"code\":\"check\",\"severity\":\"error\",\"line\":5,\"column\":8,\"message\":\"boom\"}]"),
+                "{\"version\":1,\"result\":\"rejected\",\"signature\":\"\",\"erased\":null,\"diagnostics\":[{\"code\":\"check\",\"severity\":\"error\",\"line\":5,\"column\":8,\"message\":\"boom\"}]}"))
+
+        test ("an internal failure is one rejected diagnostic", \() =>
+            expect (Response::internal ("cannot write the scratch module"),
+                "{\"version\":1,\"result\":\"rejected\",\"signature\":\"\",\"erased\":null,\"diagnostics\":[{\"code\":\"internal\",\"severity\":\"error\",\"line\":null,\"column\":null,\"message\":\"cannot write the scratch module\"}]}"))
+
+        test ("an unstubbed import is one rejected diagnostic", \() =>
+            expect (Response::importsRejected ("passthrough cannot stub the whole-target import `Helpers::Ops`"),
+                "{\"version\":1,\"result\":\"rejected\",\"signature\":\"\",\"erased\":null,\"diagnostics\":[{\"code\":\"imports\",\"severity\":\"error\",\"line\":null,\"column\":null,\"message\":\"passthrough cannot stub the whole-target import `Helpers::Ops`\"}]"))

@@ -1,0 +1,1 @@
+{"version":2,"result":"rejected","diagnostics":[{"code":"out-of-range","severity":"error","line":12,"column":25,"message":"argument `p` to `scale` is in [150, 150], outside [0, 100]"}]}

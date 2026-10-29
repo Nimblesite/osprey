@@ -4,6 +4,8 @@ Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **p
 
 An agent picking this up reads spec 0051 and the [`@osprey/native` README](../../packages/native/README.md) first, then builds phase 1 exactly as laid out below. The phase order is the dependency order; nothing in a later phase is started before the earlier phase's exit holds.
 
+Design implementation reference: [Paper & Slate handoff](../designs/proof-workbench/README.md), [offline screen gallery](../designs/proof-workbench/index.html) and [playable workflow study](../designs/proof-workbench/prototype/index.html). These are reviewed design artifacts, not production phase completion. The canonical tokens, type and motion contract are in [WORKBENCH-DESIGN](../specs/applications/0051-ProofWorkbench.md#beautiful-or-not-shipped-workbench-design).
+
 ## Checklist
 
 Ticked as the work lands; a box is ticked only when its test exists in `apps/workbench/tests/`.

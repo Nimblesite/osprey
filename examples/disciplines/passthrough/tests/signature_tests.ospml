@@ -1,0 +1,53 @@
+namespace passthrough
+
+import passthrough::Signature
+
+helpers = "signature Ops\n    double : (int) -> int\n    tag : (int, string) -> string\n"
+
+(** Turning the ML export signature of an import into `extern` stubs: the
+    forms the compiler accepts, and honest refusals for the ones it does not. *)
+module SignatureTests
+    export run () =
+        test ("a monomorphic item becomes an extern with invented parameters", \() =>
+            expect (Signature::externOf ("    twice : (int) -> int"),
+                "extern twice (p0 : int) -> int"))
+
+        test ("several parameters become one parenthesised list per parameter", \() =>
+            expect (Signature::externOf ("    tag : (int, string) -> string"),
+                "extern tag (p0 : int) (p1 : string) -> string"))
+
+        test ("a curried return type stays written as the signature spells it", \() =>
+            expect (Signature::externOf ("    add : (int) -> (int) -> int"),
+                "extern add (p0 : int) -> (int) -> int"))
+
+        test ("a function-typed parameter keeps its own parentheses", \() =>
+            expect (Signature::externOf ("    apply : ((int) -> int, int) -> int"),
+                "extern apply (p0 : (int) -> int) (p1 : int) -> int"))
+
+        test ("a polymorphic item is refused: externs take no type binders", \() =>
+            expect (Signature::externOf ("    same<t0> : (t0) -> t0"),
+                "Error(passthrough cannot stub `same<t0>`: extern declarations take no type binders (the compiler answers `unexpected token Op(\"<\") in expression`))"))
+
+        test ("a zero-parameter item is refused: no zero-parameter extern parses", \() =>
+            expect (Signature::externOf ("    zero : () -> int"),
+                "Error(passthrough cannot stub `zero`: the compiler accepts no zero-parameter extern (`extern zero () -> int` does not parse))"))
+
+        test ("a non-function item is refused", \() =>
+            expect (Signature::externOf ("    value : int"),
+                "Error(passthrough cannot stub `value`: `int` is not a function type)"))
+
+        test ("a stub file declares the imported namespace and module", \() =>
+            expect (Signature::stubFile ("Helpers::Ops", helpers),
+                "namespace Helpers\n\nmodule Ops\n    extern double (p0 : int) -> int\n    extern tag (p0 : int) (p1 : string) -> string\n"))
+
+        test ("a selected member becomes the extern of that item alone", \() =>
+            expect (Signature::externOfMember ("double", helpers),
+                "extern double (p0 : int) -> int"))
+
+        test ("a member alias renames the stubbed extern", \() =>
+            expect (Signature::externOfMember ("tag as t", helpers),
+                "extern t (p0 : int) (p1 : string) -> string"))
+
+        test ("a member the signature does not export is refused", \() =>
+            expect (Signature::externOfMember ("triple", helpers),
+                "Error(the import selects `triple`, which the signature does not export)"))

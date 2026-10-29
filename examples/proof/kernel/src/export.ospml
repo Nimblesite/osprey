@@ -4,29 +4,31 @@ import proof::Levels
 import proof::Terms
 import proof::Environment
 
-(** The three tables of a `lean4export` file: dotted names, universe levels
-    and expressions, each numbered in its own space. Map keys are strings
-    because that is the one key the builtin maps take. *)
+(** The three tables of a `lean4export` NDJSON file: dotted names, universe
+    levels and expressions, each numbered in its own space. Map keys are
+    strings because that is the one key the builtin maps take. *)
 type Tables =
     names : Map<string, string>
     levels : Map<string, Level>
     exprs : Map<string, Term>
 
 (** The reader's state: the tables so far, the declarations in file order,
-    and the number of the line being read, `1` being the version line. *)
+    and the number of the line being read, `1` being the meta header. *)
 type Reading =
     tables : Tables
     decls : List<Decl>
     line : int
 
-(** Reader for the `lean4export` text format 0.1.x, the one code that parses
-    Lean's format ([PROOF-EXPORT]). Names, levels and expressions fill their
-    tables in increasing order, so an item only ever refers to lower indices
-    of its own table; name 0 is the anonymous root and level 0 is `Zero`.
-    The reader adds nothing to the theory: every declaration arrives as the
-    kernel's own `Decl`. *)
+(** Reader for `lean4export`'s NDJSON format 3.1.0 — the one code that
+    parses Lean's format ([PROOF-EXPORT]). Every line is one JSON object:
+    the `meta` header, an `in` name, an `il` level, an `ie` expression or
+    a declaration. Name 0 is the anonymous root and level 0 is `Zero`; an
+    item only ever refers to lower indices of its own table. The reader
+    adds nothing to the theory: every declaration arrives as the kernel's
+    own `Decl`, and the kinds M3 will bring — inductives, constructors,
+    recursors and quotients — are refused with the line kind named. *)
 module Export
-    (** Every declaration in the text, in file order. *)
+    (** Every declaration in the file, in file order. *)
     export read source = unfolded (foldList (lines source, Success(value = started ()), \(reading, text) => stepped (reading, text)))
 
     started () = Reading(tables = Tables(names = Map(), levels = Map(), exprs = Map()), decls = [], line = 1)
@@ -39,76 +41,101 @@ module Export
         Error message => Error(message = message)
         Success current => steppedAt (current, text)
 
-    (** The first line is the version string; it is ignored. *)
+    (** Line 1 is the meta header; every later line is one item. *)
     steppedAt (current, text) = match current.line
-        1 => Success(value = counted (current))
-        number => item (counted (current), number, words text)
+        1 => metaLine (current, text)
+        number => itemLine (counted (current), number, text)
 
     counted (current) = Reading(tables = current.tables, decls = current.decls, line = satAdd current.line 1)
-
-    item (next, number, tokens) = match length tokens == 0
-        true => Success(value = next)
-        false => wrapped (number, routed (next, tokens, tagOf (tokens)))
-
-    (** A table item names its own index before its tag; a declaration line
-        begins with the tag. Either way the tag is the `#` token. *)
-    tagOf (tokens) = match startsWith (listGet (tokens, 1) ?: "", "#")
-        true => listGet (tokens, 1) ?: ""
-        false => listGet (tokens, 0) ?: ""
 
     wrapped (number, outcome) = match outcome
         Success reading => Success(value = reading)
         Error reason => Error(message = "line ${toString number}: ${reason}")
 
-    (** Item kinds the kernel does not read: inductive specifications and
-        quotient initialisation arrive later in the port. *)
-    rejected (tag) = match listContains (["#IND", "#CTOR", "#REC", "#QUOT", "#EJ", "#EM", "#ELN", "#ELS"], tag)
-        true => Error(message = "unsupported: ${tag}")
-        false => Error(message = "unknown item ${tag}")
+    (** The header must name format version 3.1.0, whatever the exporter. *)
+    metaLine (current, text) = wrapped (1, metaVersion (counted (current), jsonDecode text))
 
-    routed (reading, tokens, tag) = match tag
-        "#NS" => named (reading, tokens, 2, false)
-        "#NI" => named (reading, tokens, 2, true)
-        "#US" => succed (reading, tokens, 2)
-        "#UM" => leveled (reading, tokens, 2, false)
-        "#UIM" => leveled (reading, tokens, 2, true)
-        "#UP" => paramed (reading, tokens, 2)
-        other => exprRouted (reading, tokens, other)
+    metaVersion (next, outcome) = upon (outcome, \json => upon (fieldIn (json, "meta"), \meta => upon (fieldIn (meta, "format"), \format => upon (textIn (format, "version"), \version => versionOk (next, version)))))
 
-    exprRouted (reading, tokens, tag) = match tag
-        "#EV" => varred (reading, tokens, 2)
-        "#ES" => sorted (reading, tokens, 2)
-        "#EC" => consted (reading, tokens, 2)
-        "#EA" => applied (reading, tokens, 2)
-        other => boundRouted (reading, tokens, other)
+    versionOk (next, version) = match version == "3.1.0"
+        true => Success(value = next)
+        false => Error(message = "format version ${version}, not 3.1.0")
 
-    boundRouted (reading, tokens, tag) = match tag
-        "#EL" => bound (reading, tokens, 2, true)
-        "#EP" => bound (reading, tokens, 2, false)
-        "#EZ" => letted (reading, tokens, 2)
-        other => declRouted (reading, tokens, other)
+    itemLine (next, number, text) = match text == ""
+        true => Success(value = next)
+        false => wrapped (number, routed (next, jsonDecode text))
 
-    declRouted (reading, tokens, tag) = match tag
-        "#AX" => axiomed (reading, tokens, 1)
-        "#DEF" => defined (reading, tokens, 1)
-        "#THM" => theoremed (reading, tokens, 1)
-        other => rejected (other)
+    (** A line is a name, a level, an expression or a declaration. *)
+    routed (reading, outcome) = upon (outcome, \json => routedName (reading, json))
 
-    tokenAt (tokens, at) = match listGet (tokens, at)
-        Success token => Success(value = token)
-        Error _ => Error(message = "truncated line")
+    routedName (reading, json) = match hasField (json, "in")
+        true => nameLine (reading, json)
+        false => routedLevel (reading, json)
 
-    intAt (tokens, at) = match tokenAt (tokens, at)
-        Success token => intOf (token)
-        Error reason => Error(message = reason)
+    routedLevel (reading, json) = match hasField (json, "il")
+        true => levelLine (reading, json)
+        false => routedExpr (reading, json)
 
-    intOf (token) = match parseInt token
+    routedExpr (reading, json) = match hasField (json, "ie")
+        true => exprLine (reading, json)
+        false => declLine (reading, json)
+
+    (** JSON access: every accessor names the member it cannot read, and
+        `upon` runs the next step only on success. *)
+    upon (outcome, next) = match outcome
+        Success value => next value
+        Error message => Error(message = message)
+
+    fieldIn (json, name) = match jsonField (json, name)
         Success value => Success(value = value)
-        Error _ => Error(message = "not an integer: ${token}")
+        Error _ => Error(message = "no ${name}")
 
-    nameAt (tables, tokens, at) = match intAt (tokens, at)
-        Success index => nameOf (tables, index)
-        Error reason => Error(message = reason)
+    hasField (json, name) = match jsonField (json, name)
+        Success _ => true
+        Error _ => false
+
+    textIn (json, name) = upon (fieldIn (json, name), \value => textAs (value, name))
+
+    textAs (value, name) = match jsonText value
+        Success text => Success(value = text)
+        Error _ => Error(message = "${name} is not a string")
+
+    intIn (json, name) = upon (fieldIn (json, name), \value => intAs (value, name))
+
+    intAs (value, name) = match jsonInt value
+        Success number => Success(value = number)
+        Error _ => Error(message = "${name} is not an integer")
+
+    arrayIn (json, name) = upon (fieldIn (json, name), \value => arrayAs (value, name))
+
+    arrayAs (value, name) = match value
+        JsonArray items => Success(value = items)
+        other => Error(message = "${name} is not an array")
+
+    (** The line's kind: the one member besides its index member. *)
+    kindOf (json, skip) = match json
+        JsonObject members => kindScan (members, skip)
+        other => Error(message = "not an object")
+
+    kindScan (members, skip) = match members
+        [] => Error(message = "no kind")
+        [first, ...rest] => kindPick (first, rest, skip)
+
+    kindPick (first, rest, skip) = match first
+        JsonMember name value => kindNamed (name, rest, skip)
+        other => Error(message = "no kind")
+
+    kindNamed (name, rest, skip) = match name == skip
+        true => kindScan (rest, skip)
+        false => Success(value = name)
+
+    (** A kind the format defines but the kernel does not read, or no kind
+        the reader knows: refused either way, with the kind named. *)
+    refused (json, skip, kinds) = upon (kindOf (json, skip), \kind => refusal (kind, listContains (kinds, kind)))
+
+    refusal (kind, known) = match known
+        true => Error(message = "unsupported: ${kind}")
+        false => Error(message = "unknown item: ${kind}")
 
     (** Name 0 is the anonymous root and prints as the empty prefix. *)
     nameOf (tables, index) = match index == 0
@@ -117,7 +144,7 @@ module Export
 
     namedEntry (tables, index) = match mapGet (tables.names, toString index)
         Success name => Success(value = name)
-        Error _ => Error(message = "unknown name #${toString index}")
+        Error _ => Error(message = "unknown name ${toString index}")
 
     (** Level 0 is `Zero`. *)
     levelOf (tables, index) = match index == 0
@@ -126,15 +153,11 @@ module Export
 
     leveledEntry (tables, index) = match mapGet (tables.levels, toString index)
         Success level => Success(value = level)
-        Error _ => Error(message = "unknown level #${toString index}")
-
-    exprAt (tables, tokens, at) = match intAt (tokens, at)
-        Success index => exprOf (tables, index)
-        Error reason => Error(message = reason)
+        Error _ => Error(message = "unknown level ${toString index}")
 
     exprOf (tables, index) = match mapGet (tables.exprs, toString index)
         Success term => Success(value = term)
-        Error _ => Error(message = "unknown expr #${toString index}")
+        Error _ => Error(message = "unknown expr ${toString index}")
 
     setTables (reading, tables) = Reading(tables = tables, decls = reading.decls, line = reading.line)
 
@@ -151,272 +174,160 @@ module Export
         "" => leaf
         other => "${other}.${leaf}"
 
-    named (reading, tokens, from, numeric) = match intAt (tokens, 0)
-        Success index => namedParent (reading, tokens, from, numeric, index)
-        Error reason => Error(message = reason)
+    (** A name is `str` or `num`; both name their dotted prefix by index. *)
+    nameLine (reading, json) = upon (intIn (json, "in"), \index => nameForm (reading, json, index))
 
-    namedParent (reading, tokens, from, numeric, index) = match intAt (tokens, from)
-        Success parent => namedLeaf (reading, tokens, from, numeric, index, parent)
-        Error reason => Error(message = reason)
+    nameForm (reading, json, index) = match hasField (json, "str")
+        true => nameStr (reading, json, index)
+        false => nameNum (reading, json, index)
 
-    namedLeaf (reading, tokens, from, numeric, index, parent) = match tokenAt (tokens, satAdd from 1)
-        Success leaf => numericLeaf (reading, numeric, index, parent, leaf)
-        Error reason => Error(message = reason)
+    nameStr (reading, json, index) = upon (fieldIn (json, "str"), \str => upon (intIn (str, "pre"), \parent => upon (textIn (str, "str"), \leaf => nameDone (reading, index, parent, leaf))))
 
-    (** A `#NI` leaf is a number, parsed so the table keeps one spelling. *)
-    numericLeaf (reading, numeric, index, parent, leaf) = match numeric
-        true => match intOf (leaf)
-            Success number => nameDone (reading, index, parent, toString number)
-            Error reason => Error(message = reason)
-        false => nameDone (reading, index, parent, leaf)
+    (** A `num` leaf is rendered in the table's one spelling. *)
+    nameNum (reading, json, index) = upon (fieldIn (json, "num"), \num => upon (intIn (num, "pre"), \parent => upon (intIn (num, "i"), \value => nameDone (reading, index, parent, toString value))))
 
-    nameDone (reading, index, parent, leaf) = match nameOf (reading.tables, parent)
-        Success prefix => Success(value = setName (reading, index, dotted (prefix, leaf)))
-        Error reason => Error(message = reason)
+    nameDone (reading, index, parent, leaf) = upon (nameOf (reading.tables, parent), \prefix => Success(value = setName (reading, index, dotted (prefix, leaf))))
 
-    succed (reading, tokens, from) = match intAt (tokens, 0)
-        Success index => succRef (reading, tokens, from, index)
-        Error reason => Error(message = reason)
+    (** A level is `succ`, `max`, `imax` or `param`. *)
+    levelLine (reading, json) = upon (intIn (json, "il"), \index => levelForm (reading, json, index))
 
-    succRef (reading, tokens, from, index) = match intAt (tokens, from)
-        Success ref => succDone (reading, index, ref)
-        Error reason => Error(message = reason)
+    levelForm (reading, json, index) = match hasField (json, "succ")
+        true => levelSucc (reading, json, index)
+        false => levelPair (reading, json, index)
 
-    succDone (reading, index, ref) = match levelOf (reading.tables, ref)
-        Success level => Success(value = setLevel (reading, index, Succ level))
-        Error reason => Error(message = reason)
+    levelSucc (reading, json, index) = upon (intIn (json, "succ"), \ref => upon (levelOf (reading.tables, ref), \level => Success(value = setLevel (reading, index, Succ level))))
 
-    leveled (reading, tokens, from, imax) = match intAt (tokens, 0)
-        Success index => leveledIndex (reading, tokens, from, imax, index)
-        Error reason => Error(message = reason)
+    levelPair (reading, json, index) = match hasField (json, "max")
+        true => paired (reading, json, index, "max", false)
+        false => levelIMax (reading, json, index)
 
-    leveledIndex (reading, tokens, from, imax, index) = match intAt (tokens, from)
-        Success left => leveledLeft (reading, tokens, from, imax, index, left)
-        Error reason => Error(message = reason)
+    levelIMax (reading, json, index) = match hasField (json, "imax")
+        true => paired (reading, json, index, "imax", true)
+        false => levelParam (reading, json, index)
 
-    leveledLeft (reading, tokens, from, imax, index, left) = match intAt (tokens, satAdd from 1)
-        Success right => leveledDone (reading, imax, index, left, right)
-        Error reason => Error(message = reason)
+    (** `max` and `imax` carry their two sides as one two-element array. *)
+    paired (reading, json, index, key, imax) = upon (arrayIn (json, key), \sides => upon (sideOf (sides, key, 0), \left => upon (sideOf (sides, key, 1), \right => pairedDone (reading, index, imax, left, right))))
 
-    leveledDone (reading, imax, index, left, right) = match levelOf (reading.tables, left)
-        Success first => leveledRight (reading, imax, index, right, first)
-        Error reason => Error(message = reason)
+    sideOf (sides, key, at) = upon (sideAt (sides, at, key), \value => intAs (value, "${key} side"))
 
-    leveledRight (reading, imax, index, right, first) = match levelOf (reading.tables, right)
-        Success second => Success(value = setLevel (reading, index, combined (imax, first, second)))
-        Error reason => Error(message = reason)
+    sideAt (sides, at, key) = match listGet (sides, at)
+        Success value => Success(value = value)
+        Error _ => Error(message = "${key} needs two sides")
+
+    pairedDone (reading, index, imax, left, right) = upon (levelOf (reading.tables, left), \first => upon (levelOf (reading.tables, right), \second => Success(value = setLevel (reading, index, combined (imax, first, second)))))
 
     combined (imax, first, second) = match imax
         true => IMax first second
         false => Max first second
 
-    paramed (reading, tokens, from) = match intAt (tokens, 0)
-        Success index => paramRef (reading, tokens, from, index)
-        Error reason => Error(message = reason)
+    (** A parameter level names its parameter through the name table. *)
+    levelParam (reading, json, index) = match hasField (json, "param")
+        true => paramLevel (reading, json, index)
+        false => refused (json, "il", [])
 
-    paramRef (reading, tokens, from, index) = match intAt (tokens, from)
-        Success ref => paramDone (reading, index, ref)
-        Error reason => Error(message = reason)
+    paramLevel (reading, json, index) = upon (intIn (json, "param"), \ref => upon (nameOf (reading.tables, ref), \name => Success(value = setLevel (reading, index, Param name))))
 
-    paramDone (reading, index, ref) = match nameOf (reading.tables, ref)
-        Success name => Success(value = setLevel (reading, index, Param name))
-        Error reason => Error(message = reason)
+    (** An expression is one of the M0 forms; anything else is refused. *)
+    exprLine (reading, json) = upon (intIn (json, "ie"), \index => exprForm (reading, json, index))
 
-    varred (reading, tokens, from) = match intAt (tokens, 0)
-        Success index => varredIndex (reading, tokens, from, index)
-        Error reason => Error(message = reason)
+    exprForm (reading, json, index) = match hasField (json, "sort")
+        true => sorted (reading, json, index)
+        false => exprBvar (reading, json, index)
 
-    varredIndex (reading, tokens, from, index) = match intAt (tokens, from)
-        Success n => Success(value = setExpr (reading, index, BVar n))
-        Error reason => Error(message = reason)
+    exprBvar (reading, json, index) = match hasField (json, "bvar")
+        true => varred (reading, json, index)
+        false => exprConst (reading, json, index)
 
-    sorted (reading, tokens, from) = match intAt (tokens, 0)
-        Success index => sortedRef (reading, tokens, from, index)
-        Error reason => Error(message = reason)
+    exprConst (reading, json, index) = match hasField (json, "const")
+        true => consted (reading, json, index)
+        false => exprApp (reading, json, index)
 
-    sortedRef (reading, tokens, from, index) = match intAt (tokens, from)
-        Success ref => sortedDone (reading, index, ref)
-        Error reason => Error(message = reason)
+    exprApp (reading, json, index) = match hasField (json, "app")
+        true => applied (reading, json, index)
+        false => exprLam (reading, json, index)
 
-    sortedDone (reading, index, ref) = match levelOf (reading.tables, ref)
-        Success level => Success(value = setExpr (reading, index, Sort level))
-        Error reason => Error(message = reason)
+    exprLam (reading, json, index) = match hasField (json, "lam")
+        true => lammed (reading, json, index)
+        false => exprForall (reading, json, index)
 
-    consted (reading, tokens, from) = match intAt (tokens, 0)
-        Success index => constRef (reading, tokens, from, index)
-        Error reason => Error(message = reason)
+    exprForall (reading, json, index) = match hasField (json, "forallE")
+        true => foralled (reading, json, index)
+        false => exprLet (reading, json, index)
 
-    constRef (reading, tokens, from, index) = match intAt (tokens, from)
-        Success ref => constName (reading, tokens, from, index, ref)
-        Error reason => Error(message = reason)
+    (** `letE`, the literal, projection, free-variable, metavariable and
+        metadata kinds M3 or later needs, or nothing the reader knows:
+        refused with the kind named. *)
+    exprLet (reading, json, index) = match hasField (json, "letE")
+        true => letted (reading, json, index)
+        false => refused (json, "ie", ["mdata", "proj", "natVal", "strVal", "fvar", "mvar"])
 
-    constName (reading, tokens, from, index, ref) = match nameOf (reading.tables, ref)
-        Success name => constLevels (reading, tokens, from, index, name)
-        Error reason => Error(message = reason)
+    sorted (reading, json, index) = upon (intIn (json, "sort"), \ref => upon (levelOf (reading.tables, ref), \level => Success(value = setExpr (reading, index, Sort level))))
 
-    (** Every token after the constant's name is a level index. *)
-    constLevels (reading, tokens, from, index, name) = match levelsOf (reading.tables, tokens, satAdd from 1)
-        Success levels => Success(value = setExpr (reading, index, Const name levels))
-        Error reason => Error(message = reason)
+    varred (reading, json, index) = upon (intIn (json, "bvar"), \depth => Success(value = setExpr (reading, index, BVar depth)))
 
-    levelsOf (tables, tokens, at) = match tokenAt (tokens, at)
-        Success token => levelTail (tables, tokens, at, token)
-        Error _ => Success(value = [])
+    (** A constant names its head and carries its level arguments. *)
+    consted (reading, json, index) = upon (fieldIn (json, "const"), \c => upon (intIn (c, "name"), \ref => upon (nameOf (reading.tables, ref), \name => upon (arrayIn (c, "us"), \items => upon (levelList (reading.tables, items), \levels => Success(value = setExpr (reading, index, Const name levels)))))))
 
-    levelTail (tables, tokens, at, token) = match intOf (token)
-        Success ref => levelHead (tables, tokens, at, ref)
-        Error reason => Error(message = reason)
+    (** Every element of a level-argument list, in order. *)
+    levelList (tables, items) = match items
+        [] => Success(value = [])
+        [first, ...rest] => upon (intAs (first, "level argument"), \ref => upon (levelOf (tables, ref), \level => upon (levelList (tables, rest), \levels => Success(value = listPrepend (levels, level)))))
 
-    levelHead (tables, tokens, at, ref) = match levelOf (tables, ref)
-        Success level => levelRest (tables, tokens, at, level)
-        Error reason => Error(message = reason)
+    applied (reading, json, index) = upon (fieldIn (json, "app"), \a => upon (intIn (a, "fn"), \head => upon (intIn (a, "arg"), \arg => upon (exprOf (reading.tables, head), \caller => upon (exprOf (reading.tables, arg), \value => Success(value = setExpr (reading, index, App caller value)))))))
 
-    levelRest (tables, tokens, at, level) = match levelsOf (tables, tokens, satAdd at 1)
-        Success rest => Success(value = listPrepend (rest, level))
-        Error reason => Error(message = reason)
+    (** `lam` and `forallE` differ only in the constructor; `binderInfo`
+        is validated and dropped, and the name is kept for printing. *)
+    lammed (reading, json, index) = upon (fieldIn (json, "lam"), \node => bound (reading, index, node, true))
 
-    applied (reading, tokens, from) = match intAt (tokens, 0)
-        Success index => appliedHead (reading, tokens, from, index)
-        Error reason => Error(message = reason)
+    foralled (reading, json, index) = upon (fieldIn (json, "forallE"), \node => bound (reading, index, node, false))
 
-    appliedHead (reading, tokens, from, index) = match intAt (tokens, from)
-        Success head => appliedThird (reading, tokens, from, index, head)
-        Error reason => Error(message = reason)
+    bound (reading, index, binder, lambda) = upon (textIn (binder, "binderInfo"), \info => boundInfo (reading, index, binder, lambda, info))
 
-    appliedThird (reading, tokens, from, index, head) = match intAt (tokens, satAdd from 1)
-        Success arg => appliedDone (reading, index, head, arg)
-        Error reason => Error(message = reason)
+    boundInfo (reading, index, binder, lambda, info) = match listContains (["default", "implicit", "strictImplicit", "instImplicit"], info)
+        true => boundName (reading, index, binder, lambda)
+        false => Error(message = "bad binderInfo ${info}")
 
-    appliedDone (reading, index, head, arg) = match exprOf (reading.tables, head)
-        Success caller => appliedArg (reading, index, caller, arg)
-        Error reason => Error(message = reason)
-
-    appliedArg (reading, index, applied, arg) = match exprOf (reading.tables, arg)
-        Success value => Success(value = setExpr (reading, index, App applied value))
-        Error reason => Error(message = reason)
-
-    (** `#EL` and `#EP` differ only in the constructor; the binder-info token
-        is checked and dropped, keeping the name. *)
-    bound (reading, tokens, from, lambda) = match intAt (tokens, 0)
-        Success index => boundInfo (reading, tokens, from, lambda, index)
-        Error reason => Error(message = reason)
-
-    boundInfo (reading, tokens, from, lambda, index) = match tokenAt (tokens, from)
-        Success info => boundNamed (reading, tokens, from, lambda, index, info)
-        Error reason => Error(message = reason)
-
-    boundNamed (reading, tokens, from, lambda, index, info) = match listContains (["#BD", "#BI", "#BS", "#BC"], info)
-        true => boundRef (reading, tokens, from, lambda, index)
-        false => Error(message = "bad binder info ${info}")
-
-    boundRef (reading, tokens, from, lambda, index) = match nameAt (reading.tables, tokens, satAdd from 1)
-        Success name => boundType (reading, tokens, from, lambda, index, name)
-        Error reason => Error(message = reason)
-
-    boundType (reading, tokens, from, lambda, index, name) = match exprAt (reading.tables, tokens, satAdd from 2)
-        Success domain => boundBody (reading, tokens, from, lambda, index, name, domain)
-        Error reason => Error(message = reason)
-
-    boundBody (reading, tokens, from, lambda, index, name, domain) = match exprAt (reading.tables, tokens, satAdd from 3)
-        Success inner => Success(value = setExpr (reading, index, boundForm (lambda, name, domain, inner)))
-        Error reason => Error(message = reason)
+    boundName (reading, index, binder, lambda) = upon (intIn (binder, "name"), \ref => upon (nameOf (reading.tables, ref), \name => upon (intIn (binder, "type"), \ty => upon (exprOf (reading.tables, ty), \domain => upon (intIn (binder, "body"), \body => upon (exprOf (reading.tables, body), \inner => Success(value = setExpr (reading, index, boundForm (lambda, name, domain, inner)))))))))
 
     boundForm (lambda, name, domain, inner) = match lambda
         true => Lam name domain inner
         false => Pi name domain inner
 
-    letted (reading, tokens, from) = match intAt (tokens, 0)
-        Success index => letName (reading, tokens, from, index)
-        Error reason => Error(message = reason)
+    (** A let carries name, type, value and body; `nondep` is a hint and
+        is dropped. *)
+    letted (reading, json, index) = upon (fieldIn (json, "letE"), \letE => upon (intIn (letE, "name"), \nref => upon (nameOf (reading.tables, nref), \name => upon (intIn (letE, "type"), \tref => upon (exprOf (reading.tables, tref), \domain => upon (intIn (letE, "value"), \vref => upon (exprOf (reading.tables, vref), \value => letBody (reading, index, letE, name, domain, value))))))))
 
-    letName (reading, tokens, from, index) = match nameAt (reading.tables, tokens, from)
-        Success name => letType (reading, tokens, from, index, name)
-        Error reason => Error(message = reason)
+    letBody (reading, index, letE, name, domain, value) = upon (intIn (letE, "body"), \bref => upon (exprOf (reading.tables, bref), \inner => Success(value = setExpr (reading, index, Let name domain value inner))))
 
-    letType (reading, tokens, from, index, name) = match exprAt (reading.tables, tokens, satAdd from 1)
-        Success ty => letValue (reading, tokens, from, index, name, ty)
-        Error reason => Error(message = reason)
+    (** A declaration line names one constant: `thm`, `def` and `axiom`
+        are the M1 forms, everything else is refused. *)
+    declLine (reading, json) = match hasField (json, "thm")
+        true => theoremed (reading, json)
+        false => declDef (reading, json)
 
-    letValue (reading, tokens, from, index, name, ty) = match exprAt (reading.tables, tokens, satAdd from 2)
-        Success value => letBody (reading, tokens, from, index, name, ty, value)
-        Error reason => Error(message = reason)
+    declDef (reading, json) = match hasField (json, "def")
+        true => defined (reading, json)
+        false => declAxiom (reading, json)
 
-    letBody (reading, tokens, from, index, name, ty, value) = match exprAt (reading.tables, tokens, satAdd from 3)
-        Success inner => Success(value = setExpr (reading, index, Let name ty value inner))
-        Error reason => Error(message = reason)
+    declAxiom (reading, json) = match hasField (json, "axiom")
+        true => axiomed (reading, json)
+        false => refused (json, "", ["inductive", "quot", "opaque"])
 
-    (** The universe parameters of a declaration, in file order. *)
-    paramsOf (tables, tokens, at) = match intAt (tokens, at)
-        Success count => paramList (tables, tokens, satAdd at 1, count)
-        Error reason => Error(message = reason)
+    theoremed (reading, json) = upon (fieldIn (json, "thm"), \thm => upon (declName (reading, thm), \name => upon (paramsOf (reading.tables, thm), \params => upon (typedOf (reading, thm), \ty => upon (intIn (thm, "value"), \vref => upon (exprOf (reading.tables, vref), \value => Success(value = addDecl (reading, Decl(name = name, params = params, ty = ty, body = Theorem value)))))))))
 
-    paramList (tables, tokens, at, count) = match count <= 0
-        true => Success(value = [])
-        false => paramOne (tables, tokens, at, count)
+    defined (reading, json) = upon (fieldIn (json, "def"), \defn => upon (declName (reading, defn), \name => upon (paramsOf (reading.tables, defn), \params => upon (typedOf (reading, defn), \ty => upon (intIn (defn, "value"), \vref => upon (exprOf (reading.tables, vref), \value => Success(value = addDecl (reading, Decl(name = name, params = params, ty = ty, body = Definition value)))))))))
 
-    paramOne (tables, tokens, at, count) = match nameAt (tables, tokens, at)
-        Success name => paramRest (tables, tokens, at, count, name)
-        Error reason => Error(message = reason)
+    axiomed (reading, json) = upon (fieldIn (json, "axiom"), \ax => upon (declName (reading, ax), \name => upon (paramsOf (reading.tables, ax), \params => upon (typedOf (reading, ax), \ty => Success(value = addDecl (reading, Decl(name = name, params = params, ty = ty, body = Axiom)))))))
 
-    paramRest (tables, tokens, at, count, name) = match paramList (tables, tokens, satAdd at 1, satSub count 1)
-        Success rest => Success(value = listPrepend (rest, name))
-        Error reason => Error(message = reason)
+    (** A declaration's name and statement, through the two tables. *)
+    declName (reading, json) = upon (intIn (json, "name"), \ref => nameOf (reading.tables, ref))
 
-    axiomed (reading, tokens, from) = match nameAt (reading.tables, tokens, from)
-        Success name => axiomType (reading, tokens, from, name)
-        Error reason => Error(message = reason)
+    typedOf (reading, json) = upon (intIn (json, "type"), \ref => exprOf (reading.tables, ref))
 
-    axiomType (reading, tokens, from, name) = match exprAt (reading.tables, tokens, satAdd from 1)
-        Success ty => axiomParams (reading, tokens, from, name, ty)
-        Error reason => Error(message = reason)
+    (** The universe parameters of a declaration, in file order: an array
+        of name-table indices. *)
+    paramsOf (tables, json) = upon (arrayIn (json, "levelParams"), \items => nameList (tables, items))
 
-    axiomParams (reading, tokens, from, name, ty) = match paramsOf (reading.tables, tokens, satAdd from 2)
-        Success params => Success(value = addDecl (reading, Decl(name = name, params = params, ty = ty, body = Axiom)))
-        Error reason => Error(message = reason)
-
-    theoremed (reading, tokens, from) = match nameAt (reading.tables, tokens, from)
-        Success name => theoremType (reading, tokens, from, name)
-        Error reason => Error(message = reason)
-
-    theoremType (reading, tokens, from, name) = match exprAt (reading.tables, tokens, satAdd from 1)
-        Success ty => theoremValue (reading, tokens, from, name, ty)
-        Error reason => Error(message = reason)
-
-    theoremValue (reading, tokens, from, name, ty) = match exprAt (reading.tables, tokens, satAdd from 2)
-        Success value => theoremParams (reading, tokens, from, name, ty, value)
-        Error reason => Error(message = reason)
-
-    theoremParams (reading, tokens, from, name, ty, value) = match paramsOf (reading.tables, tokens, satAdd from 3)
-        Success params => Success(value = addDecl (reading, Decl(name = name, params = params, ty = ty, body = Theorem value)))
-        Error reason => Error(message = reason)
-
-    defined (reading, tokens, from) = match nameAt (reading.tables, tokens, from)
-        Success name => defType (reading, tokens, from, name)
-        Error reason => Error(message = reason)
-
-    defType (reading, tokens, from, name) = match exprAt (reading.tables, tokens, satAdd from 1)
-        Success ty => defValue (reading, tokens, from, name, ty)
-        Error reason => Error(message = reason)
-
-    defValue (reading, tokens, from, name, ty) = match exprAt (reading.tables, tokens, satAdd from 2)
-        Success value => defHint (reading, tokens, from, name, ty, value)
-        Error reason => Error(message = reason)
-
-    (** The definition hint is `O`, `A` or `R [n]`; it is checked and skipped. *)
-    defHint (reading, tokens, from, name, ty, value) = match tokenAt (tokens, satAdd from 3)
-        Success hint => hinted (reading, tokens, from, name, ty, value, hint)
-        Error reason => Error(message = reason)
-
-    hinted (reading, tokens, from, name, ty, value, hint) = match hint
-        "O" => defParams (reading, tokens, satAdd from 4, name, ty, value)
-        "A" => defParams (reading, tokens, satAdd from 4, name, ty, value)
-        "R" => defReduction (reading, tokens, from, name, ty, value)
-        other => Error(message = "bad hint ${other}")
-
-    defReduction (reading, tokens, from, name, ty, value) = match intAt (tokens, satAdd from 4)
-        Success _ => defParams (reading, tokens, satAdd from 5, name, ty, value)
-        Error reason => Error(message = reason)
-
-    defParams (reading, tokens, from, name, ty, value) = match paramsOf (reading.tables, tokens, from)
-        Success params => Success(value = addDecl (reading, Decl(name = name, params = params, ty = ty, body = Definition value)))
-        Error reason => Error(message = reason)
+    nameList (tables, items) = match items
+        [] => Success(value = [])
+        [first, ...rest] => upon (intAs (first, "level parameter"), \index => upon (nameOf (tables, index), \name => upon (nameList (tables, rest), \names => Success(value = listPrepend (names, name)))))

@@ -588,6 +588,11 @@ jobs:
       - name: M0 proof kernel (GC, ARC and wasm32 goldens)
         run: make _test_proof_kernel
 
+      # The reference disciplines of spec 0050: Osprey checker packages built
+      # by the compiler's own runner, round-tripped under GC, ARC and wasm32.
+      - name: Reference disciplines (passthrough, bounded)
+        run: make _test_disciplines
+
       - name: Proof speed gate vs Lean
         run: zsh benchmarks/proof/run.sh
 

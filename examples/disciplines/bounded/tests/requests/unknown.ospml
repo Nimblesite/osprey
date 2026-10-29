@@ -1,0 +1,12 @@
+// osprey: types=bounded
+
+namespace demo
+
+(** The module the unknown-argument case rejects. *)
+module Percent
+    (** `p` percent of `total`. *)
+    // @bound p in 0..100
+    export scale (p, total) = total
+
+    (** The caller's `total` carries no bound, so the call cannot be checked. *)
+    export vague total = scale (total, 1)

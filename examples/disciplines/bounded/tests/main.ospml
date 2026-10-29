@@ -1,0 +1,6 @@
+namespace bounded
+
+import bounded::Checks
+
+main () =
+    Checks::run ()

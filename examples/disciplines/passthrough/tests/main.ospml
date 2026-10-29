@@ -1,0 +1,14 @@
+namespace passthrough
+
+import passthrough::MarkerTests
+import passthrough::SignatureTests
+import passthrough::SourceTests
+import passthrough::DiagnosticsTests
+import passthrough::ResponseTests
+
+main () =
+    MarkerTests::run ()
+    SignatureTests::run ()
+    SourceTests::run ()
+    DiagnosticsTests::run ()
+    ResponseTests::run ()
