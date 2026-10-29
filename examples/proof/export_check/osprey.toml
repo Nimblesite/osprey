@@ -1,0 +1,15 @@
+[project]
+name = "proof-export-check"
+# The kernel's theory modules are shared with examples/proof/kernel, listed
+# individually exactly as examples/proof/kernel/tests/osprey.toml lists them;
+# only the entry differs, reading the recorded export `id_imp.ndjson` from the
+# working directory instead of embedding it. benchmarks/proof/m1_export/kernel
+# links here, so the speed gate times this same program. main.ospml of the
+# example project is left out: its namespace-level `main` is legal only in the
+# selected entry.
+source_roots = ["src", "../kernel/src/level.ospml", "../kernel/src/term.ospml", "../kernel/src/env.ospml", "../kernel/src/reduce.ospml", "../kernel/src/infer.ospml", "../kernel/src/surface.ospml", "../kernel/src/export.ospml", "../kernel/src/checked.ospml", "../kernel/src/fixtures.ospml"]
+default_namespace = "proof"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

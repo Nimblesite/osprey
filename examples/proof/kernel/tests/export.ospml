@@ -1,6 +1,8 @@
 namespace prooftests
 
 import proof::Export
+import proof::Checked
+import proof::Environment
 import proof::Fixtures
 import proof::Terms
 import proof
@@ -22,6 +24,12 @@ module ExportTests
 
         test ("the embedded export is the recorded text: 24 lines, meta first, thm last", \() =>
             expect (shape (Fixtures::idImp ()), "24 | meta | thm"))
+
+        test ("an export that declares nothing is not a check of id_imp", \() =>
+            expect (Support::messageOf (Checked::exportedDeclaring (Environment::empty (), "", "id_imp")), "the export declares no `id_imp`"))
+
+        test ("the recorded export declares id_imp", \() =>
+            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::idImp (), "id_imp")), "declared"))
 
         test ("a format version the kernel does not read is refused with its version", \() =>
             expect (Support::messageOf (Export::read (versioned ("2.0.0") ?: "")), "line 1: unsupported format version 2.0.0"))
@@ -64,6 +72,10 @@ module ExportTests
     (** The recorded export's `meta` line, reused so every case starts from
         the one header the reader accepts. *)
     metaLine () = listGet (lines (Fixtures::idImp ()), 0) ?: ""
+
+    declaredOutcome (outcome) = match outcome
+        Success env => "declared"
+        Error message => message
 
     (** The recorded export with the format version renamed; the unused
     binder of `p → p` prints as an arrow, so the hygienic name of the

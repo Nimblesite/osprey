@@ -25,6 +25,16 @@ module Checked
         Success decls => foldList (decls, Success(value = env), \(so_far, decl) => declared (so_far, decl))
         Error message => Error(message = message)
 
+    (** `exported`, and the export must have declared `name`: an empty or
+        unrelated file checks nothing and is a rejection, never a pass. *)
+    export exportedDeclaring (env, text, name) = match exported (env, text)
+        Success checked => declaredIn (checked, name)
+        Error message => Error(message = message)
+
+    declaredIn (env, name) = match Environment::find (env, name)
+        Success decl => Success(value = env)
+        Error _ => Error(message = "the export declares no `${name}`")
+
     declared (so_far, decl) = match so_far
         Success env => declare (env, decl)
         Error message => Error(message = message)

@@ -335,6 +335,9 @@ _test_proof_kernel:
 	@$(MKDIR) target/proof
 	./$(BIN) examples/proof/kernel --target=wasm32 --compile -o target/proof/kernel.wasm >/dev/null 2>&1
 	node scripts/wasm-smoke.mjs target/proof/kernel.wasm examples/proof/kernel/expectedoutput
+	@echo "==> [proof] export re-check entry (the speed gate's Osprey side) reads the recorded export: GC, ARC..."
+	cd examples/proof/export_check && ../../../$(BIN) . --run --memory=gc 2>/dev/null | diff - expectedoutput
+	cd examples/proof/export_check && ../../../$(BIN) . --run --memory=arc 2>/dev/null | diff - expectedoutput
 	@echo "==> [proof] kernel suite (structural equality, universes, export reader): GC, ARC, wasm32..."
 	./$(BIN) examples/proof/kernel/tests --run --memory=gc 2>/dev/null > target/proof/kernel-tests.gc.txt; tail -1 target/proof/kernel-tests.gc.txt
 	grep -q "failed=0" target/proof/kernel-tests.gc.txt

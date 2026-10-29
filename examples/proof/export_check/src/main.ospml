@@ -1,0 +1,24 @@
+namespace proof
+
+import proof::Environment
+import proof::Checked
+
+// M1 of plan 0041 ([PROOF-SPEED], [PROOF-EXPORT]): the Osprey side of the
+// speed gate's m1_export case, and an example in its own right. It reads
+// id_imp.ndjson from the working directory — the lean4export NDJSON 3.1.0
+// text scripts/proof-export.sh records from benchmarks/proof/tools/IdImp.lean
+// — and puts every declaration through the kernel by the same
+// `Checked::exportedDeclaring` the example entry uses, which also requires
+// the export to have declared `id_imp`: an empty or unrelated file is a
+// rejection. The Lean side of the gate is benchmarks/proof/m1_export/lean.cmd:
+// lean4checker replays every declaration of the same module through Lean's
+// kernel. A rejection prints `rejected:` and never `checked:`, which is the
+// line the gate's preflight demands.
+
+report (outcome) = match outcome
+    Success env => print "checked: id_imp (export)"
+    Error message => print "rejected: id_imp (export): ${message}"
+
+main () = match readFile "id_imp.ndjson"
+    Success text => report (Checked::exportedDeclaring (Environment::empty (), text, "id_imp"))
+    Error message => print "rejected: id_imp (export): ${message}"

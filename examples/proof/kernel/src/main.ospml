@@ -36,7 +36,7 @@ surfaceReport (env, text) = match Surface::theorem text
     Success parsed => report (parsed.theoremName, typed (env, text))
     Error message => print "rejected: ${message}"
 
-exportReport (env, name, text) = report ("${name} (export)", Checked::exported (env, text))
+exportReport (env, name, text) = report ("${name} (export)", Checked::exportedDeclaring (env, text, name))
 
 main () =
     env = Environment::empty ()
