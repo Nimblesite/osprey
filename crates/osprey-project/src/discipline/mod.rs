@@ -10,12 +10,14 @@
 mod cache;
 mod erase;
 mod imports;
+mod inputs;
 pub mod protocol;
 mod registry;
 mod runner;
 #[cfg(test)]
 mod tests;
 
+pub use imports::export_signature;
 pub use registry::{Discipline, Registry};
 pub use runner::{CheckerRunner, ProcessRunner};
 
@@ -111,7 +113,12 @@ pub fn apply_with(
         };
         match check_module(config, registry, runner, source, seam) {
             Ok(checked) => visited.push(checked),
-            Err(error) => errors.push(error),
+            Err(error) => {
+                // A later module may import this one: no checker runs with a
+                // missing import signature.
+                errors.push(error);
+                break;
+            }
         }
     }
     if errors.is_empty() {

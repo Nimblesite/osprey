@@ -39,7 +39,7 @@ name = "lean4"                   # the word after `types=`
 checker = "src/checker.ospml"    # an Osprey program with `main`
 ```
 
-- The compiler holds no list of discipline names, no knowledge of any theory, and no code that runs only for one discipline. A CI test greps `crates/` for every registered discipline name and for the words `kernel`, `tactic`, `theorem` and `refinement`, and fails on a hit outside test fixtures.
+- The compiler holds no list of discipline names, no knowledge of any theory, and no code that runs only for one discipline. A CI test (`crates/osprey-project/tests/discipline_purity.rs`) scans the code under `crates/` for every registered discipline name in a string literal and for the words `tactic`, `theorem`, `refinement` and `lean4` anywhere, and fails on a hit outside comments and test modules. `kernel` is not searched because it is the keyword of the `kernel` handler region of spec 0035 and names the GPU pipeline throughout; the proof kernel lives under `examples/`, never under `crates/`.
 - A project uses a discipline by listing its package under `[dependencies]`; nothing else is configured. Two dependencies registering the same `name` is a `discipline-error` at project load, naming both packages.
 - The checker program is built once by the ordinary build pipeline, under the project's memory backend, and cached beside the package by content hash. A discipline is therefore itself an Osprey program under every rule of the language: no panics, typed `Result`, both backends, wasm32 where the package claims it.
 

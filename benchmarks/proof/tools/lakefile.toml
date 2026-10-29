@@ -1,0 +1,23 @@
+# Recording tools for the proof-kernel export fixture ([PROOF-EXPORT]):
+# a real Lean + lean4export run for `theorem id_imp`. Both dependencies are
+# pinned to the tags whose own lean-toolchain is exactly the one CI installs
+# for the test-proof job (leanprover/lean4:v4.25.0):
+#   lean4export  cfefafacc917b2d14c5f9bb092ed337f71317a4a (tag v4.25.0)
+#   lean4checker aa03950243dc18750c1546602ab054609ea8d57d (tag v4.25.0)
+# This rev of lean4export writes the NDJSON format 3.1.0, not the 0.1.2 text
+# format the kernel reads — see docs/reports/proof-export-fixture-2026-10-29.md
+# for the recorded evidence and the stop that follows from it.
+name = "idimp-tools"
+
+[[require]]
+name = "lean4export"
+git = "https://github.com/leanprover/lean4export"
+rev = "cfefafacc917b2d14c5f9bb092ed337f71317a4a"
+
+[[require]]
+name = "lean4checker"
+git = "https://github.com/leanprover/lean4checker"
+rev = "aa03950243dc18750c1546602ab054609ea8d57d"
+
+[[lean_lib]]
+name = "IdImp"

@@ -258,7 +258,7 @@ pub fn load(root: &Path) -> Result<(ProjectConfig, Vec<SourceFile>), Vec<Project
 
 /// The compiler a checker package is built with: `OSPREY_BIN` when set (the
 /// corpus harness points it at another build), else this executable.
-fn compiler_binary() -> PathBuf {
+pub(crate) fn compiler_binary() -> PathBuf {
     std::env::var_os("OSPREY_BIN")
         .map(PathBuf::from)
         .or_else(|| std::env::current_exe().ok())

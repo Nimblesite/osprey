@@ -21,6 +21,9 @@ struct Scripted {
     answer: Result<String, String>,
     calls: Cell<usize>,
     requests: std::cell::RefCell<Vec<String>>,
+    /// The binary identity this runner reports; a test changes it to pretend
+    /// the checker was rebuilt.
+    binary: Cell<u64>,
 }
 
 impl CheckerRunner for Scripted {
@@ -29,6 +32,10 @@ impl CheckerRunner for Scripted {
         self.requests.borrow_mut().push(request.to_string());
         self.answer.clone()
     }
+
+    fn binary_digest(&self, _: &Discipline) -> Result<u64, String> {
+        Ok(self.binary.get())
+    }
 }
 
 fn scripted(answer: Result<&str, &str>) -> Scripted {
@@ -36,6 +43,7 @@ fn scripted(answer: Result<&str, &str>) -> Scripted {
         answer: answer.map(str::to_string).map_err(str::to_string),
         calls: Cell::new(0),
         requests: std::cell::RefCell::new(Vec::new()),
+        binary: Cell::new(0),
     }
 }
 
@@ -219,7 +227,7 @@ fn rejection_carries_the_checker_diagnostics_prefixed_by_its_name() {
 fn every_checker_fault_is_a_discipline_error() {
     // Implements [TYPES-DISCIPLINE-VERIFICATION]: crash, timeout, malformed
     // response, unsupported version, unparsable erased module, missing signature.
-    let wrong_version = accepted(SIGNATURE, ERASED).replace("\"version\":1", "\"version\":2");
+    let wrong_version = accepted(SIGNATURE, ERASED).replace("\"version\":2", "\"version\":3");
     let unparsable = accepted(SIGNATURE, "module Nat\n    export zero = = 0\n");
     let unsigned = accepted("", ERASED);
     let cases: Vec<(&str, Result<&str, &str>, &str)> = vec![
@@ -234,7 +242,7 @@ fn every_checker_fault_is_a_discipline_error() {
             "time limit",
         ),
         ("malformed", Ok("{not json"), "malformed JSON"),
-        ("version", Ok(&wrong_version), "protocol version 2"),
+        ("version", Ok(&wrong_version), "protocol version 3"),
         ("unparsable", Ok(&unparsable), "cannot parse"),
         (
             "unsigned",
@@ -243,7 +251,7 @@ fn every_checker_fault_is_a_discipline_error() {
         ),
         (
             "noerased",
-            Ok(r#"{"version":1,"result":"accepted","signature":"","diagnostics":[]}"#),
+            Ok(r#"{"version":2,"result":"accepted","signature":"","diagnostics":[]}"#),
             "no erased module",
         ),
     ];
@@ -286,7 +294,7 @@ fn unchanged_request_is_answered_from_the_cache() {
             apply_with(&config, vec![source(MARKED)], &runner, &registry).expect("accepted");
     }
     assert_eq!(runner.calls.get(), 1);
-    assert!(Response::parse("{\"version\":1,\"result\":\"maybe\"}").is_err());
+    assert!(Response::parse("{\"version\":2,\"result\":\"maybe\"}").is_err());
 }
 
 fn source_at(path: &str, text: &str) -> SourceFile {
@@ -387,5 +395,161 @@ fn an_hm_module_nobody_disciplined_imports_is_never_inferred_on_its_own() {
     assert_eq!(
         requests_of(&runner)[0]["imports"].as_array().map(Vec::len),
         Some(0)
+    );
+}
+
+/// A package on disk: manifest, entry module and one imported module whose
+/// text a test rewrites.
+fn checker_package(name: &str) -> PathBuf {
+    let root = temp_project(name).directory;
+    let write = |relative: &str, text: &str| {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().unwrap_or(&root)).expect("dir");
+        std::fs::write(path, text).expect("write");
+    };
+    write(
+        "osprey.toml",
+        "[package]\nname = \"@osprey/bounded\"\n\n[discipline]\nname = \"bounded\"\nchecker = \"checker.ospml\"\n",
+    );
+    write(
+        "checker.ospml",
+        "namespace bounded\n\nimport bounded::Range\n\nmain () = Range::zero\n",
+    );
+    write(
+        "src/Range.ospml",
+        "namespace bounded\n\nmodule Range\n    export zero = 0\n",
+    );
+    root
+}
+
+#[test]
+fn changing_an_imported_checker_module_changes_the_build_digest_and_binary_name() {
+    // Implements [TYPES-DISCIPLINE-REGISTRY]: the checker is "built once ...
+    // cached beside the package by content hash" of its whole build, not of
+    // its entry module alone.
+    let root = checker_package("build-digest");
+    let discipline = bounded(&root);
+    let digest = inputs::build_digest(&discipline).expect("digest");
+    assert_eq!(
+        inputs::build_digest(&discipline).expect("digest"),
+        digest,
+        "unchanged inputs keep the digest"
+    );
+    let compiler = root.join("fake-compiler");
+    std::fs::write(&compiler, b"compiler one").expect("compiler");
+    let build_dir = root.join("build");
+    let built = build_dir.join(format!(
+        "bounded-{digest:016x}-{:016x}",
+        inputs::compiler_digest(&compiler).expect("compiler digest")
+    ));
+    std::fs::create_dir_all(&build_dir).expect("build dir");
+    std::fs::write(&built, b"built").expect("prebuilt binary");
+    let runner = ProcessRunner::new(compiler, build_dir);
+    assert_eq!(
+        runner
+            .executable(
+                &discipline,
+                std::time::Instant::now() + Duration::from_secs(5)
+            )
+            .expect("reused binary"),
+        built,
+        "a built binary is found again under the name its inputs hash to"
+    );
+    std::fs::write(
+        root.join("src/Range.ospml"),
+        "namespace bounded\n\nmodule Range\n    export zero = 1\n",
+    )
+    .expect("rewrite imported module");
+    assert_ne!(
+        inputs::build_digest(&discipline).expect("digest"),
+        digest,
+        "a change to an imported module is a change to an input"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_rebuilt_checker_binary_misses_the_result_cache() {
+    // Implements [TYPES-DISCIPLINE-PROTOCOL]: "results are cached by the hash
+    // of the request and the checker binary".
+    let config = temp_project("cache-binary");
+    let runner = scripted(Ok(&accepted(SIGNATURE, ERASED)));
+    let registry = registry(&config.directory);
+    for _ in 0..2 {
+        let _erased =
+            apply_with(&config, vec![source(MARKED)], &runner, &registry).expect("accepted");
+        runner.binary.set(runner.binary.get() + 1);
+    }
+    assert_eq!(runner.calls.get(), 2, "a new binary is a cache miss");
+    let _ = std::fs::remove_dir_all(&config.directory);
+}
+
+#[test]
+fn an_unreadable_checker_entry_is_an_error_and_not_a_cache_miss() {
+    let config = temp_project("cache-unreadable");
+    let discipline = bounded(&config.directory);
+    let runner = ProcessRunner::new(
+        config.directory.join("no-compiler"),
+        config.directory.join("build"),
+    );
+    let request = Request::new(&source(MARKED), &config, Vec::new());
+    let error = cache::run_cached(&config, &discipline, &runner, &request)
+        .expect_err("an unreadable checker is a discipline error");
+    assert!(error.contains("has no readable checker at"), "{error}");
+    assert!(error.contains("checker.ospml"), "{error}");
+    let _ = std::fs::remove_dir_all(&config.directory);
+}
+
+/// An `hm` module exporting a type and a value beside a function.
+const SHAPES_HM: &str = "namespace proof\n\nmodule Shapes\n    export type Shape = Dot | Line int\n    export limit = 3\n    export size s = 1\n";
+const USES_SHAPES: &str = "// osprey: types=bounded\nnamespace proof\n\nimport proof::Shapes\n\nmodule Thm\n    export zero = Shapes::size Dot\n";
+/// An `hm` module that does not type-check.
+const BROKEN_HM: &str = "namespace proof\n\nmodule Nat\n    export label s = listLength 1\n";
+
+#[test]
+fn an_inferred_signature_names_every_exported_item_it_leaves_out() {
+    let config = temp_project("imports-omitted");
+    let runner = scripted(Ok(&accepted(THM_SIGNATURE, THM_ERASED)));
+    let registry = registry(&config.directory);
+    let sources = vec![
+        source_at("src/Shapes.ospml", SHAPES_HM),
+        source_at("src/Thm.ospml", USES_SHAPES),
+    ];
+    let _ = apply_with(&config, sources, &runner, &registry);
+    let requests = requests_of(&runner);
+    let import = &requests[0]["imports"][0];
+    assert_eq!(
+        import["signature"],
+        "signature Shapes\n    size<t0> : (t0) -> int\n"
+    );
+    assert_eq!(
+        import["omitted"],
+        serde_json::json!(["type Shape", "value limit"]),
+        "a checker is told the signature is partial"
+    );
+    assert_eq!(requests[0]["version"], 2);
+}
+
+#[test]
+fn an_hm_import_that_does_not_type_check_is_an_error_and_never_a_signature() {
+    let config = temp_project("imports-broken");
+    let runner = scripted(Ok(&accepted(THM_SIGNATURE, THM_ERASED)));
+    let registry = registry(&config.directory);
+    let sources = vec![
+        source_at("src/Nat.ospml", BROKEN_HM),
+        source_at("src/Thm.ospml", THM_MARKED),
+    ];
+    let errors = apply_with(&config, sources, &runner, &registry).expect_err("rejected");
+    assert_eq!(
+        runner.calls.get(),
+        0,
+        "no checker runs after an import failed: {errors:?}"
+    );
+    assert!(
+        errors[0]
+            .message
+            .contains("could not be inferred for an importing checker"),
+        "{}",
+        errors[0].message
     );
 }

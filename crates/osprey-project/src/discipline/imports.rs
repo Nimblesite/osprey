@@ -10,6 +10,27 @@ use crate::{ProjectConfig, ProjectError, SourceFile};
 use osprey_ast::{NamespaceName, Stmt};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+/// The ML export signature of every module of `source`, for `osprey
+/// <file> --signature`: what a checker of an importing module would receive
+/// for it under `hm`, rendered by the same code.
+///
+/// # Errors
+/// Assembly or inference of the file failed; the diagnostic names it.
+pub fn export_signature(
+    config: &ProjectConfig,
+    source: &SourceFile,
+) -> Result<String, ProjectError> {
+    let mut exports = Exports::default();
+    exports.record_hm(config, source, &[])?;
+    Ok(exports
+        .order
+        .iter()
+        .filter_map(|key| exports.signatures.get(key))
+        .map(|import| import.signature.as_str())
+        .collect::<Vec<_>>()
+        .join(""))
+}
+
 /// Dependency order of `sources`: a file comes after every file it imports
 /// a module or namespace from; files in an import cycle keep their given
 /// order, which assembly reports as it does today.
@@ -86,7 +107,7 @@ fn import_keys(source: &SourceFile) -> Vec<String> {
                 keys.extend(body.iter().filter_map(|inner| match inner {
                     Stmt::Import(import) => Some(import_key(import)),
                     _ => None,
-                }))
+                }));
             }
             _ => {}
         }
@@ -158,7 +179,12 @@ impl Exports {
     pub(super) fn record_checked(&mut self, source: &SourceFile, discipline: &str, text: &str) {
         let namespace = first_namespace(source);
         for (module, block) in blocks(text) {
-            self.insert(format!("{namespace}::{module}"), discipline, block);
+            self.insert(
+                format!("{namespace}::{module}"),
+                discipline,
+                block,
+                Vec::new(),
+            );
         }
     }
 
@@ -174,19 +200,20 @@ impl Exports {
         visited: &[SourceFile],
     ) -> Result<(), ProjectError> {
         let assembled = assemble_for(config, source, visited)?;
-        let types = osprey_types::infer_program(&assembled.program);
+        let types = well_typed(source, &assembled)?;
         for (namespace, module, exports) in exported_functions(source) {
             let key = format!("{namespace}::{module}");
             let items = exports
                 .iter()
                 .filter_map(|name| item(&assembled, &types, &namespace, &module, name))
                 .collect::<Vec<_>>();
-            self.insert(key, HM, format!("signature {module}\n{}", items.join("")));
+            let signature = format!("signature {module}\n{}", items.join(""));
+            self.insert(key, HM, signature, omitted_of(source, &module));
         }
         Ok(())
     }
 
-    fn insert(&mut self, key: String, discipline: &str, signature: String) {
+    fn insert(&mut self, key: String, discipline: &str, signature: String, omitted: Vec<String>) {
         if !self.signatures.contains_key(&key) {
             self.order.push(key.clone());
         }
@@ -196,8 +223,32 @@ impl Exports {
                 name: key,
                 discipline: discipline.to_string(),
                 signature,
+                omitted,
             },
         );
+    }
+}
+
+/// The inferred types of a module that type-checks; the first type error
+/// of one that does not, so no checker ever receives the signature of an
+/// ill-typed import (`infer_program` alone answers through errors).
+fn well_typed(
+    source: &SourceFile,
+    assembled: &crate::AssembledProject,
+) -> Result<osprey_types::ProgramTypes, ProjectError> {
+    match osprey_types::check_program(&assembled.program).first() {
+        None => Ok(osprey_types::infer_program(&assembled.program)),
+        Some(error) => Err(ProjectError {
+            message: format!(
+                "{}: the export signature of `{}` could not be inferred for an importing checker: {}",
+                super::ERROR_PREFIX,
+                source.path.display(),
+                error.message
+            ),
+            path: Some(source.path.clone()),
+            line: None,
+            column: None,
+        }),
     }
 }
 
@@ -319,6 +370,37 @@ fn exported_functions(source: &SourceFile) -> Vec<(String, String, Vec<String>)>
         }
     }
     out
+}
+
+/// `kind name` for every exported item of module `module` in `source` that
+/// is not a function: what the rendered signature leaves out.
+fn omitted_of(source: &SourceFile, module: &str) -> Vec<String> {
+    source
+        .program
+        .statements
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::Namespace { body, .. } => Some(body),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|inner| match inner {
+            Stmt::Module { path, body, .. } if path.to_string() == module => Some(body),
+            _ => None,
+        })
+        .flatten()
+        .filter(|item| item.visibility == osprey_ast::Visibility::Exported)
+        .filter_map(|item| omitted_item(item.declaration.as_ref()))
+        .collect()
+}
+
+fn omitted_item(declaration: &Stmt) -> Option<String> {
+    match declaration {
+        Stmt::Function { .. } => None,
+        Stmt::Type { name, .. } => Some(format!("type {name}")),
+        Stmt::Let { name, .. } => Some(format!("value {name}")),
+        other => Some(format!("item {}", std::any::type_name_of_val(other))),
+    }
 }
 
 fn exports_of(body: &[osprey_ast::ModuleItem]) -> Vec<String> {

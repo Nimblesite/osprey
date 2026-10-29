@@ -1,12 +1,14 @@
 //! The checker protocol of [TYPES-DISCIPLINE-PROTOCOL] (spec 0050): one JSON
 //! request line on the checker's stdin, one JSON response line on its stdout.
+//! Version 2 added `imports[]` to the request and `omitted[]` to each import;
+//! a checker answering version 1 is refused rather than misread.
 
 use crate::{ProjectConfig, SourceFile};
 use serde::{Deserialize, Serialize};
 
 /// The protocol version this compiler speaks; a checker answering another is
 /// a `discipline-error`.
-pub const VERSION: u64 = 1;
+pub const VERSION: u64 = 2;
 
 /// The module handed to a checker.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +30,12 @@ pub struct Import {
     pub discipline: String,
     /// `signature Name ...` text.
     pub signature: String,
+    /// Exported items the signature leaves out, each as `kind name` (a
+    /// `type` or a `value` of an `hm` module, which the seam does not render
+    /// yet); a checker that needs one refuses the import instead of
+    /// trusting a signature that looks complete.
+    #[serde(default)]
+    pub omitted: Vec<String>,
 }
 
 /// Paths a checker may use for scratch and cache; it never reads sources itself.
@@ -37,6 +45,9 @@ pub struct Options {
     pub project_root: String,
     /// Directory the checker may cache into.
     pub cache_dir: String,
+    /// The compiler running the seam, so a checker that delegates to
+    /// `osprey --check` or `osprey --signature` uses the same build.
+    pub compiler: String,
 }
 
 /// One request: the module, the signatures of what it imports, and options.
@@ -117,6 +128,7 @@ impl Request {
                     .join(".osprey/cache/disciplines")
                     .to_string_lossy()
                     .into_owned(),
+                compiler: crate::compiler_binary().to_string_lossy().into_owned(),
             },
         }
     }

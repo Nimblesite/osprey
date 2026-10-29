@@ -40,7 +40,7 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [x] Review P0.2: universe parameters instantiated at every constant use and unfold; arity and scope checked; `Levels::equal` structural on normal forms
 - [x] Review P1.5/6: `examples/proof/kernel/tests` (45 cases) in `make _test_proof_kernel` under GC, ARC and wasm32; golden regenerated with the M2 lines
 
-### M1 — a Lean proof checks
+### M1 — a recorded Lean export checks (a `Prop`/`→` theorem; inductives wait on M3)
 - [x] `lean4export` reader for constants, levels and the M0 expression forms (`src/export.ospml`, four cases in `tests/export.ospml`)
 - [x] Every declaration of an export goes through `Infer::sort`/`Infer::check` before `Environment::add` (`exported` in `main.ospml`)
 - [x] `id_imp` from a Lean export checks; the wrong proof is rejected with the kernel's mismatch (last two lines of `expectedoutput`)
@@ -90,7 +90,7 @@ Checked against the tree on 2026-10-29.
 
 - `osprey_types::check_program(&Program) -> Vec<TypeError>` (`crates/osprey-types/src/check/driver.rs`) is the single checker entry; the seam goes in front of it. `Type` (`crates/osprey-types/src/ty.rs`) has `Var`, `Con`, `Fun`, `Record`, `Union` and nothing value-indexed, which is why the dependent theory stays outside it.
 - [FLAVOR-BOUNDARY] already forbids branching on flavor below the canonical AST; the discipline seam extends the same rule to typing.
-- `int` is a 64-bit `i64` and `Map<K, V>` is immutable; there is no arbitrary-precision integer, no mutable array and no structural-key hash map in the specs. The kernel cannot be written until [PROOF-STDLIB] lands.
+- `int` is a 64-bit `i64` and `Map<K, V>` is immutable; there is no arbitrary-precision integer, no mutable array and no structural-key hash map in the specs. The M0 to M2 kernel is written on built-in maps and lists; the full kernel of phase 2 (Mathlib-sized environments, structural-key term store) waits on [PROOF-STDLIB], pulled in by measured need.
 - The 2026 Lean kernel bugs ([PROOF-TRUST-LESSONS]): nested-inductive projection check plus a hash collision gave an axiom-free `0 = 1` (issue #14576, CVE-2026-72844, fixed in the 4.32 line); three more were found by AI adversarial testing before 4.34.0, one a reference-count overflow turned into use-after-free. `nanoda` accepted the Collatz "disproof" because an old version was run. The public proof of concept exists and becomes a pinned rejection test.
 - Independent checkers of Lean's theory exist (`lean4lean`, `nanoda`) and `lean4export` produces a text export; the import path is known work.
 
@@ -109,7 +109,7 @@ A plain Osprey program, ML flavor, under `examples/proof/kernel/`, run with `osp
 
 Answers: can a type checker with substitution, whnf and definitional equality be written comfortably in Osprey as it is today, and how fast does it run.
 
-### M1 — a Lean proof checks (the first real signal)
+### M1 — a recorded Lean export checks (the first real signal)
 
 The same kernel reads the `lean4export` text of a one-theorem Lean file (`theorem id_imp : ∀ p : Prop, p → p := fun p h => h`): the export parser for constants, levels and the expression forms of M0, nothing more. The program checks Lean's term and prints the same line. A second Lean file with a wrong proof is a rejection test.
 

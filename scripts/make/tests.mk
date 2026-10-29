@@ -326,8 +326,8 @@ _test_profiler:
 # checks `id_imp` and rejects the controls with the kernel's own reason,
 # byte-exact against its golden, and its assertion suite (adversarial
 # structural-equality and universe cases included) passes, under GC, ARC and
-# on wasm32 [PROOF-KERNEL]. A failing suite exits non-zero on GC and ARC; on
-# wasm32 the TAP summary is checked for zero failures.
+# on wasm32 [PROOF-KERNEL]. No pipe hides a status: each suite run is written
+# to a file and its TAP summary must say `failed=0` on all three backends.
 _test_proof_kernel:
 	@echo "==> [proof] M0 kernel: GC, ARC, wasm32 against expectedoutput..."
 	./$(BIN) examples/proof/kernel --run --memory=gc 2>/dev/null | diff - examples/proof/kernel/expectedoutput
@@ -336,8 +336,10 @@ _test_proof_kernel:
 	./$(BIN) examples/proof/kernel --target=wasm32 --compile -o target/proof/kernel.wasm >/dev/null 2>&1
 	node scripts/wasm-smoke.mjs target/proof/kernel.wasm examples/proof/kernel/expectedoutput
 	@echo "==> [proof] kernel suite (structural equality, universes, export reader): GC, ARC, wasm32..."
-	./$(BIN) examples/proof/kernel/tests --run --memory=gc 2>/dev/null | tail -1
-	./$(BIN) examples/proof/kernel/tests --run --memory=arc 2>/dev/null | tail -1
+	./$(BIN) examples/proof/kernel/tests --run --memory=gc 2>/dev/null > target/proof/kernel-tests.gc.txt; tail -1 target/proof/kernel-tests.gc.txt
+	grep -q "failed=0" target/proof/kernel-tests.gc.txt
+	./$(BIN) examples/proof/kernel/tests --run --memory=arc 2>/dev/null > target/proof/kernel-tests.arc.txt; tail -1 target/proof/kernel-tests.arc.txt
+	grep -q "failed=0" target/proof/kernel-tests.arc.txt
 	./$(BIN) examples/proof/kernel/tests --target=wasm32 --compile -o target/proof/kernel-tests.wasm >/dev/null 2>&1
 	node scripts/wasm-smoke.mjs target/proof/kernel-tests.wasm >/dev/null
 	grep -q "failed=0" target/proof/kernel-tests.wasm.stdout.txt

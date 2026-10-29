@@ -19,6 +19,9 @@ pub(super) fn run(cli: &Cli) -> ExitCode {
     if cli.mode == "--doctests" {
         return doctests::run(cli);
     }
+    if cli.mode == "--signature" {
+        return crate::signature::print(cli);
+    }
     let input = match load_input(cli) {
         Ok(input) => input,
         Err(code) => return code,

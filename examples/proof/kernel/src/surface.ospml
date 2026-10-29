@@ -3,7 +3,9 @@ namespace proof
 import proof::Levels
 import proof::Terms
 
-(** A parsed theorem of the M2 surface: `theorem name binders : type := term`. *)
+(** A parsed theorem of the M2 surface: `theorem name binders : type := term`.
+    The reader below is a whitespace-delimited demo tokenizer, not a lexer:
+    `p:=h`, `p→q` and `∀p` must be written with spaces around every token. *)
 type Surfaced =
     theoremName : string
     statement : Term
