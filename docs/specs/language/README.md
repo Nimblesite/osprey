@@ -27,3 +27,5 @@ Syntax, types, expressions, effects and module semantics.
 - [Structured Concurrency: Cancellation and Turn Isolation](0036-StructuredConcurrency.md)
 - [Arithmetic Effects](0037-ArithmeticEffects.md)
 - [Python Flavor Syntax](0041-PythonFlavorSyntax.md)
+- [Dependent Types, Proofs and the Mathlib Port](0048-DependentTypesAndProofs.md)
+- [Pluggable Type Disciplines](0049-TypeDisciplines.md)
