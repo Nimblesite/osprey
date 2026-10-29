@@ -10,19 +10,17 @@ import proof::Reduce
     binder was entered. Every failure is a message naming the term. *)
 module Infer
     (** The type of `term` in `env` under `context`. *)
-    export infer : (Env, List<Term>, Term) -> Result<Term, string>
-    infer (env, context, term) = match term
+    export infer (env, context, term) = match term
         Sort level => Success(value = Sort (Succ level))
         BVar index => variable (context, index)
-        Const name levels => constant (env, name)
+        Const name levels => constant (env, name, levels)
         App head arg => application (env, context, head, arg)
         Lam name domain body => lambda (env, context, name, domain, body)
         Pi name domain body => pi (env, context, domain, body)
         Let name ty value body => letIn (env, context, ty, value, body)
 
     (** Check that `term` has type `expected`. *)
-    export check : (Env, List<Term>, Term, Term) -> Result<Term, string>
-    check (env, context, term, expected) = match infer (env, context, term)
+    export check (env, context, term, expected) = match infer (env, context, term)
         Success found => matches (env, term, found, expected)
         Error message => Error(message = message)
 
@@ -34,8 +32,8 @@ module Infer
         Success ty => Success(value = Terms::shift (ty, 0, satAdd index 1))
         Error message => Error(message = "unbound variable #${toString index}")
 
-    constant (env, name) = match Environment::find (env, name)
-        Success decl => Success(value = decl.ty)
+    constant (env, name, levels) = match Environment::find (env, name)
+        Success decl => Environment::instantiated (decl, decl.ty, levels)
         Error message => Error(message = "unknown constant `${name}`")
 
     application (env, context, head, arg) = match infer (env, context, head)
@@ -71,8 +69,7 @@ module Infer
         Error message => Error(message = message)
 
     (** The universe level of a type, or an error when `term` is not a type. *)
-    export sort : (Env, List<Term>, Term) -> Result<Level, string>
-    sort (env, context, term) = match infer (env, context, term)
+    export sort (env, context, term) = match infer (env, context, term)
         Success ty => sortOf (term, Reduce::whnf (env, ty))
         Error message => Error(message = message)
 

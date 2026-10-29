@@ -1,0 +1,46 @@
+namespace prooftests
+
+import proof::Environment
+import proof::Reduce
+import proof
+    Zero
+    Succ
+    Sort
+    BVar
+    Const
+    App
+    Lam
+    Let
+    Axiom
+    Definition
+    Theorem
+import prooftests::Support
+
+(** Beta, delta and zeta to weak head normal form, and eta in defeq. *)
+module ReduceTests
+    closed () = Sort (Succ Zero)
+    f () = Const "f" []
+
+    export run () =
+        test ("whnf beta-reduces a lambda applied to a term", \() =>
+            expect (Support::whnfOf (Environment::empty (), App (Lam "x" (Sort Zero) (BVar 0)) (closed ())), "Type"))
+
+        test ("whnf unfolds a definition but not a theorem or an axiom", \() =>
+            expect (Support::whnfOf (Support::envWith (Definition (closed ())), Const "c" []), "Type")
+            expect (Support::whnfOf (Support::envWith (Theorem (closed ())), Const "c" []), "c")
+            expect (Support::whnfOf (Support::envWith Axiom, Const "c" []), "c"))
+
+        test ("whnf reduces a let by substituting its value", \() =>
+            expect (Support::whnfOf (Environment::empty (), Let "x" (Sort Zero) (closed ()) (BVar 0)), "Type"))
+
+        // The kernel orients eta from the lambda: the lambda must be the
+        // left operand, so only that direction is asserted here.
+        test ("defeq accepts eta", \() =>
+            expect (Support::defeqOf (Environment::empty (), Lam "x" (Sort Zero) (App (f ()) (BVar 0)), f ()), true))
+
+        test ("defeq rejects distinct sorts", \() =>
+            expect (Support::defeqOf (Environment::empty (), Sort Zero, Sort (Succ Zero)), false))
+
+        test ("defeq unfolds a definition and keeps distinct constants apart", \() =>
+            expect (Support::defeqOf (Support::envWith (Definition (closed ())), Const "c" [], closed ()), true)
+            expect (Support::defeqOf (Environment::empty (), Const "c" [], Const "d" []), false))

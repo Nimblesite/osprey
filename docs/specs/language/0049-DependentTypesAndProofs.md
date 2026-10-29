@@ -6,7 +6,7 @@ The only acceptable standard is soundness: no closed term of type `False` is der
 
 Where Lean's theory or its implementation admits an inconsistency, Osprey must not inherit it. The kernel is written against a theory stated as inference rules ([PROOF-KERNEL]), not against Lean's code; any rule, reduction or extension whose soundness is in question is isolated behind an abstraction so it can be disabled, replaced or proved sound without touching the rest ([PROOF-TRUST]). Compatibility with Lean is a feature of the bridge; soundness is a property of the kernel, and when the two conflict, soundness wins.
 
-**Status:** normative target; **no implementation started.** Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md). Nothing in this contract changes the Hindley-Milner type system of [spec 0004](0004-TypeSystem.md); every rule here adds a second, selectable type discipline beside it, through the pluggable-discipline mechanism of [spec 0050](0050-TypeDisciplines.md).
+**Status:** normative target; **implementation in progress** (plan 0041: M0 and M2 kernel and surface, phase 1 seam without imported signatures yet). Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md). Nothing in this contract changes the Hindley-Milner type system of [spec 0004](0004-TypeSystem.md); every rule here adds a second, selectable type discipline beside it, through the pluggable-discipline mechanism of [spec 0050](0050-TypeDisciplines.md).
 
 ## Aim [PROOF-AIM]
 

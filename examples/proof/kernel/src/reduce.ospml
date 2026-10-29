@@ -8,25 +8,23 @@ import proof::Environment
     to weak head normal form, and η in the comparison. *)
 module Reduce
     (** Weak head normal form under `env`. *)
-    export whnf : (Env, Term) -> Term
-    whnf (env, term) = match term
+    export whnf (env, term) = match term
         App head arg => whnfApp (env, whnf (env, head), arg)
         Let name ty value body => whnf (env, Terms::instantiate (body, value))
-        Const name levels => whnfConst (env, term, name)
+        Const name levels => whnfConst (env, term, name, levels)
         other => other
 
     whnfApp (env, head, arg) = match head
         Lam name domain body => whnf (env, Terms::instantiate (body, arg))
         other => App other arg
 
-    whnfConst (env, term, name) = match Environment::unfold (env, name)
+    whnfConst (env, term, name, levels) = match Environment::unfold (env, name, levels)
         Success value => whnf (env, value)
         Error message => term
 
     (** Definitional equality: both sides to weak head normal form, then
         structural comparison with η for lambdas. *)
-    export defeq : (Env, Term, Term) -> bool
-    defeq (env, left, right) = match Terms::equal (left, right)
+    export defeq (env, left, right) = match Terms::equal (left, right)
         true => true
         false => normal (env, whnf (env, left), whnf (env, right))
 
@@ -48,7 +46,7 @@ module Reduce
         other => false
 
     constEq (a, la, right) = match right
-        Const b lb => a == b && sameLevels (la, lb)
+        Const b lb => a == b && Terms::equalLevels (la, lb)
         other => false
 
     appEq (env, f, a, right) = match right
@@ -66,11 +64,3 @@ module Reduce
 
     (** η: `fun x => body` equals `other` when `body` equals `other x`. *)
     eta (env, body, other) = defeq (env, body, App (Terms::shift (other, 0, 1)) (BVar 0))
-
-    sameLevels (left, right) = match left
-        [] => isEmpty right
-        [a, ...la] => sameHead (a, la, right)
-
-    sameHead (a, la, right) = match right
-        [] => false
-        [b, ...lb] => Levels::equal a b && sameLevels (la, lb)

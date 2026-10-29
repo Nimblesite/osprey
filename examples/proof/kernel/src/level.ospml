@@ -1,0 +1,139 @@
+namespace proof
+
+(** A universe level of [PROOF-KERNEL-THEORY] (spec 0049). `Sort Zero` is
+    `Prop`; `Sort (Succ Zero)` is `Type`. M0 needs only those two; the other
+    forms are here so M1's export reader adds nothing to the theory. *)
+type Level = Zero | Succ Level | Max Level Level | IMax Level Level | Param string
+
+(** Normalisation, equality, instantiation and printing of levels. *)
+module Levels
+    (** Whether a level mentions no parameter. *)
+    export closed level = match level
+        Zero => true
+        Succ inner => closed inner
+        Max left right => closed left && closed right
+        IMax left right => closed left && closed right
+        Param name => false
+
+    (** Whether every parameter of `level` is one of `params`. *)
+    export declared (level, params) = match level
+        Zero => true
+        Succ inner => declared (inner, params)
+        Max left right => declared (left, params) && declared (right, params)
+        IMax left right => declared (left, params) && declared (right, params)
+        Param name => listContains (params, name)
+
+    (** `level` with each `Param` of `params` replaced by the argument at
+        the same position; a parameter not in `params` is left alone. *)
+    export instantiate (level, params, args) = match level
+        Zero => Zero
+        Succ inner => Succ (instantiate (inner, params, args))
+        Max left right => Max (instantiate (left, params, args)) (instantiate (right, params, args))
+        IMax left right => IMax (instantiate (left, params, args)) (instantiate (right, params, args))
+        Param name => argument (name, params, args, level)
+
+    argument (name, params, args, fallback) = match params
+        [] => fallback
+        [first, ...rest] => pick (name, first, rest, args, fallback)
+
+    pick (name, first, rest, args, fallback) = match args
+        [] => fallback
+        [arg, ...more] => chosen (name == first, arg, name, rest, more, fallback)
+
+    chosen (hit, arg, name, rest, more, fallback) = match hit
+        true => arg
+        false => argument (name, rest, more, fallback)
+
+    (** The height of a closed level; a parameter counts as zero. *)
+    export height level = match level
+        Zero => 0
+        Succ inner => satAdd (height inner) 1
+        Max left right => larger (height left) (height right)
+        IMax left right => imaxHeight (height left) (height right)
+        Param name => 0
+
+    larger left right = match left >= right
+        true => left
+        false => right
+
+    imaxHeight left right = match right == 0
+        true => 0
+        false => larger left right
+
+    (** Normal form: a closed level collapses to `Succ^n Zero`; an open level
+        keeps its parameters, with `max`/`imax` simplified where a side is
+        `0` or the sides agree. Equality on this form is sound: two levels
+        with the same normal form are equal under every assignment, and
+        incompleteness only rejects, never accepts. *)
+    export normal level = match closed level
+        true => ofHeight (height level)
+        false => normalOpen level
+
+    normalOpen level = match level
+        Max left right => normalMax (normal left, normal right)
+        IMax left right => normalIMax (normal left, normal right)
+        Succ inner => Succ (normal inner)
+        other => other
+
+    normalMax (left, right) = match equal left right
+        true => left
+        false => normalMaxSides (left, right)
+
+    normalMaxSides (left, right) = match left
+        Zero => right
+        other => normalMaxRight (other, right)
+
+    normalMaxRight (left, right) = match right
+        Zero => left
+        other => Max left other
+
+    normalIMax (left, right) = match right
+        Zero => Zero
+        Succ inner => normalMax (left, Succ inner)
+        other => IMax left other
+
+    ofHeight n = match n <= 0
+        true => Zero
+        false => Succ (ofHeight (satSub n 1))
+
+    (** Equality up to normalisation, compared structurally. *)
+    export equal left right = same (normal left) (normal right)
+
+    same left right = match left
+        Zero => isZero right
+        Succ inner => sameSucc (inner, right)
+        Max a b => sameMax (a, b, right)
+        IMax a b => sameIMax (a, b, right)
+        Param name => sameParam (name, right)
+
+    isZero level = match level
+        Zero => true
+        other => false
+
+    sameSucc (inner, right) = match right
+        Succ other => same inner other
+        other => false
+
+    sameMax (a, b, right) = match right
+        Max c d => same a c && same b d
+        other => false
+
+    sameIMax (a, b, right) = match right
+        IMax c d => same a c && same b d
+        other => false
+
+    sameParam (name, right) = match right
+        Param other => name == other
+        other => false
+
+    (** `0`, `1`, `max u v`, `imax u v`, `u`. *)
+    export show level = match closed level
+        true => toString (height level)
+        false => showOpen level
+
+    showOpen level = match level
+        Zero => "0"
+        Succ inner => "${show inner}+1"
+        Max left right => "max ${show left} ${show right}"
+        IMax left right => "imax ${show left} ${show right}"
+        Param name => name

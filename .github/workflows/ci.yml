@@ -519,6 +519,76 @@ jobs:
       - name: Corpus and goldens (ARC, leak oracle enabled)
         run: make _conformance-arc
 
+  # [PROOF-KERNEL] [PROOF-SPEED] The M0 proof kernel of plan 0041 and the Lean
+  # head-to-head speed gate of spec 0049. `make _test_proof_kernel` holds
+  # examples/proof/kernel to its byte-exact golden under GC, ARC and wasm32 —
+  # hence the same staging test-wasm does: wasm-ld + a WASI sysroot, and the
+  # wasm runtime archive rebuilt by `make _runtime_wasm`. Then
+  # benchmarks/proof/run.sh checks the same theorem with both kernels and is
+  # red unless Osprey's best wall time beats Lean's on the same runner. Lean
+  # comes from elan with the toolchain pinned to an exact release — `stable`
+  # floats, and a baseline that moves silently turns the comparison into
+  # noise. The script exits 2 without lean or the binary, 1 when Osprey is
+  # not faster, 0 when it is; every non-zero exit fails this job.
+  # examples/proof/** classifies as code and benchmarks/proof/** as
+  # benchmarks, so both gate this job the way the changes job gates its own
+  # benchmark steps. `build` still runs only for code changes, so a
+  # benchmarks-only PR stages no binary and this job is skipped with it.
+  test-proof:
+    name: "Tests: proof kernel and Lean speed gate"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' || needs.changes.outputs.benchmarks == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
+        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+
+      - name: Install lld (wasm-ld), wabt and a WASI sysroot
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y lld wabt
+          curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
+          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
+          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
+          test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
+          echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
+          wasm-ld --version
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+
+      - name: Build the wasm runtime archive
+        run: make _runtime_wasm
+
+      # The speed gate's baseline: installed once, pinned forever.
+      - name: Install Lean (elan, pinned toolchain)
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:v4.25.0
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: M0 proof kernel (GC, ARC and wasm32 goldens)
+        run: make _test_proof_kernel
+
+      - name: Proof speed gate vs Lean
+        run: zsh benchmarks/proof/run.sh
+
   test-c-runtime:
     name: "Tests: C runtime (coverage)"
     needs: [changes, build]

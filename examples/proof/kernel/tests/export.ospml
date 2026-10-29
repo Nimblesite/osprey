@@ -1,0 +1,51 @@
+namespace prooftests
+
+import proof::Export
+import proof::Terms
+import proof
+    Axiom
+    Definition
+    Theorem
+import prooftests::Support
+
+(** Reading `lean4export` 0.1.x files into kernel declarations
+    ([PROOF-EXPORT]): the M0 theorem survives the trip with its statement
+    and proof, the wrong proof of the same statement reads as itself, and a
+    file the reader must refuse names its line. *)
+module ExportTests
+    idFile () = "examples/proof/kernel/exports/id_imp.export"
+    badProofFile () = "examples/proof/kernel/exports/id_imp_bad.export"
+
+    export run () =
+        test ("an export reads as one theorem with its statement and proof", \() =>
+            expect (described (readExport (idFile ())), "id_imp | (∀ (p : Prop), (p → p)) | (fun (p : Prop) => (fun (h : p) => h))"))
+
+        test ("an unsupported item kind is refused with its tag", \() =>
+            expect (Support::messageOf (Export::read ("0.1.2\n1 #NS 0 x\n2 #IND 1\n")), "line 3: unsupported: #IND"))
+
+        test ("a dangling reference names its line", \() =>
+            expect (Support::messageOf (Export::read ("0.1.2\n1 #ES 4\n")), "line 2: unknown level #4"))
+
+        test ("the wrong proof of the same statement reads as itself", \() =>
+            expect (described (readExport (badProofFile ())), "id_imp | (∀ (p : Prop), (p → p)) | (fun (p : Prop) => (fun (h : p) => p))"))
+
+    readExport (path) = match readFile (path)
+        Success text => Export::read (text)
+        Error message => Error(message = "readFile ${path}: ${message}")
+
+    (** One declaration rendered as `name | statement | proof`; anything
+        else reads as its own failure, never as a pass. *)
+    described (outcome) = match outcome
+        Success decls => sole (decls)
+        Error message => "error: ${message}"
+
+    sole (decls) = match length decls == 1
+        true => match listGet (decls, 0)
+            Success decl => "${decl.name} | ${Terms::show (decl.ty, [])} | ${bodied (decl.body)}"
+            Error message => "error: ${message}"
+        false => "expected one declaration, found ${toString (length decls)}"
+
+    bodied (body) = match body
+        Theorem value => Terms::show (value, [])
+        Definition value => "definition ${Terms::show (value, [])}"
+        Axiom => "axiom"

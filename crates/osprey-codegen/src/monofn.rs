@@ -246,11 +246,18 @@ pub(crate) fn specialize_callback(
 }
 
 /// The instantiation's return slot, from the signature inference resolved for
-/// the function. A return type inference left open has no slot to emit, so the
-/// annotation diagnostic still stands for that case.
+/// the function. A hole anywhere the value representation travels has no slot to
+/// emit, so the annotation diagnostic still stands for that case.
+///
+/// A hole in a `Result`'s ERROR channel is not one of those places: the channel
+/// is phantom — the `Error` variant stores a string message and the slot is
+/// `i8*` whatever `E` is ([`crate::result`]) — so inference leaves it open and
+/// [`abi_shape_concrete`] skips it. Asking the whole type instead rejected
+/// `-> Result<Term, _>`, the hole [TYPE-RENDER-HOLES] calls the honest spelling,
+/// and told the author to annotate a signature that changes nothing emitted.
 fn return_slot(cg: &Codegen, name: &str) -> Result<(LType, Option<LType>, Option<String>)> {
     let ty = cg.prog.return_type(name).ok_or_else(|| unresolved(name))?;
-    if osprey_types::has_type_var(ty) {
+    if !crate::types::abi_shape_concrete(ty) {
         return Err(unresolved(name));
     }
     Ok((

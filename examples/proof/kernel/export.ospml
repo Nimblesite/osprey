@@ -1,0 +1,422 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+import proof::Environment
+
+(** The three tables of a `lean4export` file: dotted names, universe levels
+    and expressions, each numbered in its own space. Map keys are strings
+    because that is the one key the builtin maps take. *)
+type Tables =
+    names : Map<string, string>
+    levels : Map<string, Level>
+    exprs : Map<string, Term>
+
+(** The reader's state: the tables so far, the declarations in file order,
+    and the number of the line being read, `1` being the version line. *)
+type Reading =
+    tables : Tables
+    decls : List<Decl>
+    line : int
+
+(** Reader for the `lean4export` text format 0.1.x, the one code that parses
+    Lean's format ([PROOF-EXPORT]). Names, levels and expressions fill their
+    tables in increasing order, so an item only ever refers to lower indices
+    of its own table; name 0 is the anonymous root and level 0 is `Zero`.
+    The reader adds nothing to the theory: every declaration arrives as the
+    kernel's own `Decl`. *)
+module Export
+    (** Every declaration in the text, in file order. *)
+    export read source = unfolded (foldList (lines source, Success(value = started ()), \(reading, text) => stepped (reading, text)))
+
+    started () = Reading(tables = Tables(names = Map(), levels = Map(), exprs = Map()), decls = [], line = 1)
+
+    unfolded (reading) = match reading
+        Success final => Success(value = final.decls)
+        Error message => Error(message = message)
+
+    stepped (reading, text) = match reading
+        Error message => Error(message = message)
+        Success current => steppedAt (current, text)
+
+    (** The first line is the version string; it is ignored. *)
+    steppedAt (current, text) = match current.line
+        1 => Success(value = counted (current))
+        number => item (counted (current), number, words text)
+
+    counted (current) = Reading(tables = current.tables, decls = current.decls, line = satAdd current.line 1)
+
+    item (next, number, tokens) = match length tokens == 0
+        true => Success(value = next)
+        false => wrapped (number, routed (next, tokens, tagOf (tokens)))
+
+    (** A table item names its own index before its tag; a declaration line
+        begins with the tag. Either way the tag is the `#` token. *)
+    tagOf (tokens) = match startsWith (listGet (tokens, 1) ?: "", "#")
+        true => listGet (tokens, 1) ?: ""
+        false => listGet (tokens, 0) ?: ""
+
+    wrapped (number, outcome) = match outcome
+        Success reading => Success(value = reading)
+        Error reason => Error(message = "line ${toString number}: ${reason}")
+
+    (** Item kinds the kernel does not read: inductive specifications and
+        quotient initialisation arrive later in the port. *)
+    rejected (tag) = match listContains (["#IND", "#CTOR", "#REC", "#QUOT", "#EJ", "#EM", "#ELN", "#ELS"], tag)
+        true => Error(message = "unsupported: ${tag}")
+        false => Error(message = "unknown item ${tag}")
+
+    routed (reading, tokens, tag) = match tag
+        "#NS" => named (reading, tokens, 2, false)
+        "#NI" => named (reading, tokens, 2, true)
+        "#US" => succed (reading, tokens, 2)
+        "#UM" => leveled (reading, tokens, 2, false)
+        "#UIM" => leveled (reading, tokens, 2, true)
+        "#UP" => paramed (reading, tokens, 2)
+        other => exprRouted (reading, tokens, other)
+
+    exprRouted (reading, tokens, tag) = match tag
+        "#EV" => varred (reading, tokens, 2)
+        "#ES" => sorted (reading, tokens, 2)
+        "#EC" => consted (reading, tokens, 2)
+        "#EA" => applied (reading, tokens, 2)
+        other => boundRouted (reading, tokens, other)
+
+    boundRouted (reading, tokens, tag) = match tag
+        "#EL" => bound (reading, tokens, 2, true)
+        "#EP" => bound (reading, tokens, 2, false)
+        "#EZ" => letted (reading, tokens, 2)
+        other => declRouted (reading, tokens, other)
+
+    declRouted (reading, tokens, tag) = match tag
+        "#AX" => axiomed (reading, tokens, 1)
+        "#DEF" => defined (reading, tokens, 1)
+        "#THM" => theoremed (reading, tokens, 1)
+        other => rejected (other)
+
+    tokenAt (tokens, at) = match listGet (tokens, at)
+        Success token => Success(value = token)
+        Error _ => Error(message = "truncated line")
+
+    intAt (tokens, at) = match tokenAt (tokens, at)
+        Success token => intOf (token)
+        Error reason => Error(message = reason)
+
+    intOf (token) = match parseInt token
+        Success value => Success(value = value)
+        Error _ => Error(message = "not an integer: ${token}")
+
+    nameAt (tables, tokens, at) = match intAt (tokens, at)
+        Success index => nameOf (tables, index)
+        Error reason => Error(message = reason)
+
+    (** Name 0 is the anonymous root and prints as the empty prefix. *)
+    nameOf (tables, index) = match index == 0
+        true => Success(value = "")
+        false => namedEntry (tables, index)
+
+    namedEntry (tables, index) = match mapGet (tables.names, toString index)
+        Success name => Success(value = name)
+        Error _ => Error(message = "unknown name #${toString index}")
+
+    (** Level 0 is `Zero`. *)
+    levelOf (tables, index) = match index == 0
+        true => Success(value = Zero)
+        false => leveledEntry (tables, index)
+
+    leveledEntry (tables, index) = match mapGet (tables.levels, toString index)
+        Success level => Success(value = level)
+        Error _ => Error(message = "unknown level #${toString index}")
+
+    exprAt (tables, tokens, at) = match intAt (tokens, at)
+        Success index => exprOf (tables, index)
+        Error reason => Error(message = reason)
+
+    exprOf (tables, index) = match mapGet (tables.exprs, toString index)
+        Success term => Success(value = term)
+        Error _ => Error(message = "unknown expr #${toString index}")
+
+    setTables (reading, tables) = Reading(tables = tables, decls = reading.decls, line = reading.line)
+
+    setName (reading, index, name) = setTables (reading, Tables(names = mapSet (reading.tables.names, toString index, name), levels = reading.tables.levels, exprs = reading.tables.exprs))
+
+    setLevel (reading, index, level) = setTables (reading, Tables(names = reading.tables.names, levels = mapSet (reading.tables.levels, toString index, level), exprs = reading.tables.exprs))
+
+    setExpr (reading, index, term) = setTables (reading, Tables(names = reading.tables.names, levels = reading.tables.levels, exprs = mapSet (reading.tables.exprs, toString index, term)))
+
+    addDecl (reading, decl) = Reading(tables = reading.tables, decls = listAppend (reading.decls, decl), line = reading.line)
+
+    (** Names print as dotted with the anonymous root omitted. *)
+    dotted (prefix, leaf) = match prefix
+        "" => leaf
+        other => "${other}.${leaf}"
+
+    named (reading, tokens, from, numeric) = match intAt (tokens, 0)
+        Success index => namedParent (reading, tokens, from, numeric, index)
+        Error reason => Error(message = reason)
+
+    namedParent (reading, tokens, from, numeric, index) = match intAt (tokens, from)
+        Success parent => namedLeaf (reading, tokens, from, numeric, index, parent)
+        Error reason => Error(message = reason)
+
+    namedLeaf (reading, tokens, from, numeric, index, parent) = match tokenAt (tokens, satAdd from 1)
+        Success leaf => numericLeaf (reading, numeric, index, parent, leaf)
+        Error reason => Error(message = reason)
+
+    (** A `#NI` leaf is a number, parsed so the table keeps one spelling. *)
+    numericLeaf (reading, numeric, index, parent, leaf) = match numeric
+        true => match intOf (leaf)
+            Success number => nameDone (reading, index, parent, toString number)
+            Error reason => Error(message = reason)
+        false => nameDone (reading, index, parent, leaf)
+
+    nameDone (reading, index, parent, leaf) = match nameOf (reading.tables, parent)
+        Success prefix => Success(value = setName (reading, index, dotted (prefix, leaf)))
+        Error reason => Error(message = reason)
+
+    succed (reading, tokens, from) = match intAt (tokens, 0)
+        Success index => succRef (reading, tokens, from, index)
+        Error reason => Error(message = reason)
+
+    succRef (reading, tokens, from, index) = match intAt (tokens, from)
+        Success ref => succDone (reading, index, ref)
+        Error reason => Error(message = reason)
+
+    succDone (reading, index, ref) = match levelOf (reading.tables, ref)
+        Success level => Success(value = setLevel (reading, index, Succ level))
+        Error reason => Error(message = reason)
+
+    leveled (reading, tokens, from, imax) = match intAt (tokens, 0)
+        Success index => leveledIndex (reading, tokens, from, imax, index)
+        Error reason => Error(message = reason)
+
+    leveledIndex (reading, tokens, from, imax, index) = match intAt (tokens, from)
+        Success left => leveledLeft (reading, tokens, from, imax, index, left)
+        Error reason => Error(message = reason)
+
+    leveledLeft (reading, tokens, from, imax, index, left) = match intAt (tokens, satAdd from 1)
+        Success right => leveledDone (reading, imax, index, left, right)
+        Error reason => Error(message = reason)
+
+    leveledDone (reading, imax, index, left, right) = match levelOf (reading.tables, left)
+        Success first => leveledRight (reading, imax, index, right, first)
+        Error reason => Error(message = reason)
+
+    leveledRight (reading, imax, index, right, first) = match levelOf (reading.tables, right)
+        Success second => Success(value = setLevel (reading, index, combined (imax, first, second)))
+        Error reason => Error(message = reason)
+
+    combined (imax, first, second) = match imax
+        true => IMax first second
+        false => Max first second
+
+    paramed (reading, tokens, from) = match intAt (tokens, 0)
+        Success index => paramRef (reading, tokens, from, index)
+        Error reason => Error(message = reason)
+
+    paramRef (reading, tokens, from, index) = match intAt (tokens, from)
+        Success ref => paramDone (reading, index, ref)
+        Error reason => Error(message = reason)
+
+    paramDone (reading, index, ref) = match nameOf (reading.tables, ref)
+        Success name => Success(value = setLevel (reading, index, Param name))
+        Error reason => Error(message = reason)
+
+    varred (reading, tokens, from) = match intAt (tokens, 0)
+        Success index => varredIndex (reading, tokens, from, index)
+        Error reason => Error(message = reason)
+
+    varredIndex (reading, tokens, from, index) = match intAt (tokens, from)
+        Success n => Success(value = setExpr (reading, index, BVar n))
+        Error reason => Error(message = reason)
+
+    sorted (reading, tokens, from) = match intAt (tokens, 0)
+        Success index => sortedRef (reading, tokens, from, index)
+        Error reason => Error(message = reason)
+
+    sortedRef (reading, tokens, from, index) = match intAt (tokens, from)
+        Success ref => sortedDone (reading, index, ref)
+        Error reason => Error(message = reason)
+
+    sortedDone (reading, index, ref) = match levelOf (reading.tables, ref)
+        Success level => Success(value = setExpr (reading, index, Sort level))
+        Error reason => Error(message = reason)
+
+    consted (reading, tokens, from) = match intAt (tokens, 0)
+        Success index => constRef (reading, tokens, from, index)
+        Error reason => Error(message = reason)
+
+    constRef (reading, tokens, from, index) = match intAt (tokens, from)
+        Success ref => constName (reading, tokens, from, index, ref)
+        Error reason => Error(message = reason)
+
+    constName (reading, tokens, from, index, ref) = match nameOf (reading.tables, ref)
+        Success name => constLevels (reading, tokens, from, index, name)
+        Error reason => Error(message = reason)
+
+    (** Every token after the constant's name is a level index. *)
+    constLevels (reading, tokens, from, index, name) = match levelsOf (reading.tables, tokens, satAdd from 1)
+        Success levels => Success(value = setExpr (reading, index, Const name levels))
+        Error reason => Error(message = reason)
+
+    levelsOf (tables, tokens, at) = match tokenAt (tokens, at)
+        Success token => levelTail (tables, tokens, at, token)
+        Error _ => Success(value = [])
+
+    levelTail (tables, tokens, at, token) = match intOf (token)
+        Success ref => levelHead (tables, tokens, at, ref)
+        Error reason => Error(message = reason)
+
+    levelHead (tables, tokens, at, ref) = match levelOf (tables, ref)
+        Success level => levelRest (tables, tokens, at, level)
+        Error reason => Error(message = reason)
+
+    levelRest (tables, tokens, at, level) = match levelsOf (tables, tokens, satAdd at 1)
+        Success rest => Success(value = listPrepend (rest, level))
+        Error reason => Error(message = reason)
+
+    applied (reading, tokens, from) = match intAt (tokens, 0)
+        Success index => appliedHead (reading, tokens, from, index)
+        Error reason => Error(message = reason)
+
+    appliedHead (reading, tokens, from, index) = match intAt (tokens, from)
+        Success head => appliedThird (reading, tokens, from, index, head)
+        Error reason => Error(message = reason)
+
+    appliedThird (reading, tokens, from, index, head) = match intAt (tokens, satAdd from 1)
+        Success arg => appliedDone (reading, index, head, arg)
+        Error reason => Error(message = reason)
+
+    appliedDone (reading, index, head, arg) = match exprOf (reading.tables, head)
+        Success caller => appliedArg (reading, index, caller, arg)
+        Error reason => Error(message = reason)
+
+    appliedArg (reading, index, applied, arg) = match exprOf (reading.tables, arg)
+        Success value => Success(value = setExpr (reading, index, App applied value))
+        Error reason => Error(message = reason)
+
+    (** `#EL` and `#EP` differ only in the constructor; the binder-info token
+        is checked and dropped, keeping the name. *)
+    bound (reading, tokens, from, lambda) = match intAt (tokens, 0)
+        Success index => boundInfo (reading, tokens, from, lambda, index)
+        Error reason => Error(message = reason)
+
+    boundInfo (reading, tokens, from, lambda, index) = match tokenAt (tokens, from)
+        Success info => boundNamed (reading, tokens, from, lambda, index, info)
+        Error reason => Error(message = reason)
+
+    boundNamed (reading, tokens, from, lambda, index, info) = match listContains (["#BD", "#BI", "#BS", "#BC"], info)
+        true => boundRef (reading, tokens, from, lambda, index)
+        false => Error(message = "bad binder info ${info}")
+
+    boundRef (reading, tokens, from, lambda, index) = match nameAt (reading.tables, tokens, satAdd from 1)
+        Success name => boundType (reading, tokens, from, lambda, index, name)
+        Error reason => Error(message = reason)
+
+    boundType (reading, tokens, from, lambda, index, name) = match exprAt (reading.tables, tokens, satAdd from 2)
+        Success domain => boundBody (reading, tokens, from, lambda, index, name, domain)
+        Error reason => Error(message = reason)
+
+    boundBody (reading, tokens, from, lambda, index, name, domain) = match exprAt (reading.tables, tokens, satAdd from 3)
+        Success inner => Success(value = setExpr (reading, index, boundForm (lambda, name, domain, inner)))
+        Error reason => Error(message = reason)
+
+    boundForm (lambda, name, domain, inner) = match lambda
+        true => Lam name domain inner
+        false => Pi name domain inner
+
+    letted (reading, tokens, from) = match intAt (tokens, 0)
+        Success index => letName (reading, tokens, from, index)
+        Error reason => Error(message = reason)
+
+    letName (reading, tokens, from, index) = match nameAt (reading.tables, tokens, from)
+        Success name => letType (reading, tokens, from, index, name)
+        Error reason => Error(message = reason)
+
+    letType (reading, tokens, from, index, name) = match exprAt (reading.tables, tokens, satAdd from 1)
+        Success ty => letValue (reading, tokens, from, index, name, ty)
+        Error reason => Error(message = reason)
+
+    letValue (reading, tokens, from, index, name, ty) = match exprAt (reading.tables, tokens, satAdd from 2)
+        Success value => letBody (reading, tokens, from, index, name, ty, value)
+        Error reason => Error(message = reason)
+
+    letBody (reading, tokens, from, index, name, ty, value) = match exprAt (reading.tables, tokens, satAdd from 3)
+        Success inner => Success(value = setExpr (reading, index, Let name ty value inner))
+        Error reason => Error(message = reason)
+
+    (** The universe parameters of a declaration, in file order. *)
+    paramsOf (tables, tokens, at) = match intAt (tokens, at)
+        Success count => paramList (tables, tokens, satAdd at 1, count)
+        Error reason => Error(message = reason)
+
+    paramList (tables, tokens, at, count) = match count <= 0
+        true => Success(value = [])
+        false => paramOne (tables, tokens, at, count)
+
+    paramOne (tables, tokens, at, count) = match nameAt (tables, tokens, at)
+        Success name => paramRest (tables, tokens, at, count, name)
+        Error reason => Error(message = reason)
+
+    paramRest (tables, tokens, at, count, name) = match paramList (tables, tokens, satAdd at 1, satSub count 1)
+        Success rest => Success(value = listPrepend (rest, name))
+        Error reason => Error(message = reason)
+
+    axiomed (reading, tokens, from) = match nameAt (reading.tables, tokens, from)
+        Success name => axiomType (reading, tokens, from, name)
+        Error reason => Error(message = reason)
+
+    axiomType (reading, tokens, from, name) = match exprAt (reading.tables, tokens, satAdd from 1)
+        Success ty => axiomParams (reading, tokens, from, name, ty)
+        Error reason => Error(message = reason)
+
+    axiomParams (reading, tokens, from, name, ty) = match paramsOf (reading.tables, tokens, satAdd from 2)
+        Success params => Success(value = addDecl (reading, Decl(name = name, params = params, ty = ty, body = Axiom)))
+        Error reason => Error(message = reason)
+
+    theoremed (reading, tokens, from) = match nameAt (reading.tables, tokens, from)
+        Success name => theoremType (reading, tokens, from, name)
+        Error reason => Error(message = reason)
+
+    theoremType (reading, tokens, from, name) = match exprAt (reading.tables, tokens, satAdd from 1)
+        Success ty => theoremValue (reading, tokens, from, name, ty)
+        Error reason => Error(message = reason)
+
+    theoremValue (reading, tokens, from, name, ty) = match exprAt (reading.tables, tokens, satAdd from 2)
+        Success value => theoremParams (reading, tokens, from, name, ty, value)
+        Error reason => Error(message = reason)
+
+    theoremParams (reading, tokens, from, name, ty, value) = match paramsOf (reading.tables, tokens, satAdd from 3)
+        Success params => Success(value = addDecl (reading, Decl(name = name, params = params, ty = ty, body = Theorem value)))
+        Error reason => Error(message = reason)
+
+    defined (reading, tokens, from) = match nameAt (reading.tables, tokens, from)
+        Success name => defType (reading, tokens, from, name)
+        Error reason => Error(message = reason)
+
+    defType (reading, tokens, from, name) = match exprAt (reading.tables, tokens, satAdd from 1)
+        Success ty => defValue (reading, tokens, from, name, ty)
+        Error reason => Error(message = reason)
+
+    defValue (reading, tokens, from, name, ty) = match exprAt (reading.tables, tokens, satAdd from 2)
+        Success value => defHint (reading, tokens, from, name, ty, value)
+        Error reason => Error(message = reason)
+
+    (** The definition hint is `O`, `A` or `R [n]`; it is checked and skipped. *)
+    defHint (reading, tokens, from, name, ty, value) = match tokenAt (tokens, satAdd from 3)
+        Success hint => hinted (reading, tokens, from, name, ty, value, hint)
+        Error reason => Error(message = reason)
+
+    hinted (reading, tokens, from, name, ty, value, hint) = match hint
+        "O" => defParams (reading, tokens, satAdd from 4, name, ty, value)
+        "A" => defParams (reading, tokens, satAdd from 4, name, ty, value)
+        "R" => defReduction (reading, tokens, from, name, ty, value)
+        other => Error(message = "bad hint ${other}")
+
+    defReduction (reading, tokens, from, name, ty, value) = match intAt (tokens, satAdd from 4)
+        Success _ => defParams (reading, tokens, satAdd from 5, name, ty, value)
+        Error reason => Error(message = reason)
+
+    defParams (reading, tokens, from, name, ty, value) = match paramsOf (reading.tables, tokens, from)
+        Success params => Success(value = addDecl (reading, Decl(name = name, params = params, ty = ty, body = Definition value)))
+        Error reason => Error(message = reason)

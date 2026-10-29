@@ -1,0 +1,51 @@
+namespace prooftests
+
+import proof::Levels
+import proof
+    Zero
+    Succ
+    Max
+    IMax
+    Param
+import prooftests::Support
+
+(** Normalisation, equality and printing of universe levels. *)
+module LevelsTests
+    one () = Succ Zero
+    maxUV () = Max (Param "u") (Param "v")
+
+    export run () =
+        test ("normal collapses max 1 0 to 1", \() =>
+            expect (Levels::show (Levels::normal (Max (one ()) Zero)), "1"))
+
+        test ("imax u 0 is zero", \() =>
+            expect (Levels::show (Levels::normal (IMax (Param "u") Zero)), "0")
+            expect (Levels::height (IMax (Param "u") Zero), 0)
+            expect (Levels::equal (IMax (Param "u") Zero) Zero, true))
+
+        test ("show prints 0, 1 and an open max", \() =>
+            expect (Levels::show Zero, "0")
+            expect (Levels::show (one ()), "1")
+            expect (Levels::show (maxUV ()), "max u v"))
+
+        test ("closed rejects a parameter", \() =>
+            expect (Levels::closed (Param "u"), false)
+            expect (Levels::closed (Max (one ()) Zero), true))
+
+        test ("equal compares levels by normal form", \() =>
+            expect (Levels::equal (Max Zero Zero) Zero, true)
+            expect (Levels::equal (one ()) (Succ (Max Zero Zero)), true)
+            expect (Levels::equal (one ()) Zero, false))
+
+        test ("equal is structural on normal forms, not a comparison of prints", \() =>
+            expect (Levels::equal (Param "u") (Param "v"), false)
+            expect (Levels::equal (Max (Param "u") (Param "u")) (Param "u"), true)
+            expect (Levels::equal (IMax (Param "u") Zero) Zero, true)
+            expect (Levels::equal (IMax (Param "u") (one ())) (Max (Param "u") (one ())), true)
+            expect (Levels::equal (Max Zero (Param "u")) (Param "u"), true))
+
+        test ("instantiate replaces the named parameters by position", \() =>
+            expect (Levels::show (Levels::instantiate (Max (Param "u") (Param "v"), ["u", "v"], [one (), Zero])), "1")
+            expect (Levels::show (Levels::instantiate (Succ (Param "v"), ["u"], [Zero])), "v+1")
+            expect (Levels::declared (maxUV (), ["u"]), false)
+            expect (Levels::declared (maxUV (), ["v", "u"]), true))

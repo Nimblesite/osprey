@@ -1,0 +1,203 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+
+(** A parsed theorem of the M2 surface: `theorem name binders : type := term`. *)
+type Surfaced =
+    theoremName : string
+    statement : Term
+    proof : Term
+
+(** A term read up to a token position. *)
+type Parsed =
+    term : Term
+    next : int
+
+(** M2 of plan 0041: the ML proof surface of [PROOF-SURFACE-FLAVORS] for the
+    Pi fragment, elaborated directly to kernel terms with no metavariables.
+    Names bound by binders become de Bruijn indices; any other name is a
+    constant. `A → B` is the non-dependent `Pi`. Both the Unicode and the
+    ASCII spelling of every operator are read. *)
+module Surface
+    (** `theorem name (x : A) ... : type := term` as kernel terms. *)
+    export theorem text = match tokens text
+        ["theorem", name, ...rest] => declaration (name, rest)
+        other => Error(message = "expected `theorem <name>`")
+
+    declaration (name, rest) = match binders (rest, 0, [])
+        Success opened => statement (name, rest, opened)
+        Error message => Error(message = message)
+
+    statement (name, rest, opened) = match at (rest, opened.next) == ":"
+        false => Error(message = "expected `:` after the binders of `${name}`")
+        true => body (name, rest, opened)
+
+    body (name, rest, opened) = match expr (rest, satAdd opened.next 1, opened.names)
+        Success ty => proofOf (name, rest, opened, ty)
+        Error message => Error(message = message)
+
+    proofOf (name, rest, opened, ty) = match at (rest, ty.next) == ":="
+        false => Error(message = "expected `:=` after the statement of `${name}`")
+        true => finish (name, rest, opened, ty)
+
+    finish (name, rest, opened, ty) = match expr (rest, satAdd ty.next 1, opened.names)
+        Success value => closed (name, opened, ty.term, value.term)
+        Error message => Error(message = message)
+
+    closed (name, opened, ty, value) = Success(value = Surfaced(theoremName = name, statement = abstractAll (opened.binders, ty, false), proof = abstractAll (opened.binders, value, true)))
+
+    (** Wrap `term` in one `Pi` (or `Lam`) per leading binder, outermost first. *)
+    abstractAll (binders, term, lambda) = match binders
+        [] => term
+        [binder, ...outer] => abstractAll (outer, abstractOne (binder, term, lambda), lambda)
+
+    abstractOne (binder, term, lambda) = match lambda
+        true => Lam binder.name binder.ty term
+        false => Pi binder.name binder.ty term
+
+    (** Leading `(x y : A)` groups; `binders` are innermost first, `names`
+        the context they open. *)
+    binders (rest, position, names) = match at (rest, position) == "("
+        false => Success(value = Opened(binders = [], names = names, next = position))
+        true => group (rest, satAdd position 1, names)
+
+    group (rest, position, names) = match groupNames (rest, position, [])
+        Success found => groupType (rest, found, names)
+        Error message => Error(message = message)
+
+    groupNames (rest, position, found) = match at (rest, position)
+        ":" => Success(value = Names(found = found, next = satAdd position 1))
+        "" => Error(message = "unterminated binder group")
+        name => groupNames (rest, satAdd position 1, listAppend (found, name))
+
+    groupType (rest, found, names) = match expr (rest, found.next, names)
+        Success ty => groupClose (rest, found, ty, names)
+        Error message => Error(message = message)
+
+    groupClose (rest, found, ty, names) = match at (rest, ty.next) == ")"
+        false => Error(message = "expected `)` to close a binder group")
+        true => groupMore (rest, open (found.found, ty.term, names, 0), satAdd ty.next 1)
+
+    groupMore (rest, opened, position) = match binders (rest, position, opened.names)
+        Success more => Success(value = Opened(binders = listConcat more.binders opened.binders, names = more.names, next = more.next))
+        Error message => Error(message = message)
+
+    (** Open `found` over `ty`, each later name seeing the earlier ones. *)
+    open (found, ty, names, depth) = match found
+        [] => Opened(binders = [], names = names, next = 0)
+        [name, ...later] => openOne (name, later, Terms::shift (ty, 0, depth), names, depth)
+
+    openOne (name, later, ty, names, depth) =
+        inner = open (later, ty, listPrepend (names, name), satAdd depth 1)
+        Opened(binders = listAppend (inner.binders, Binder(name = name, ty = ty)), names = inner.names, next = 0)
+
+    (** `∀ binders, e` | `fun binders => e` | `a → b` | application. *)
+    expr (rest, position, names) = match at (rest, position)
+        "∀" => quantified (rest, satAdd position 1, names, false)
+        "forall" => quantified (rest, satAdd position 1, names, false)
+        "fun" => quantified (rest, satAdd position 1, names, true)
+        "λ" => quantified (rest, satAdd position 1, names, true)
+        other => arrow (rest, position, names)
+
+    quantified (rest, position, names, lambda) = match binders (rest, position, names)
+        Success opened => quantifiedBody (rest, opened, names, lambda)
+        Error message => Error(message = message)
+
+    quantifiedBody (rest, opened, names, lambda) = match at (rest, opened.next) == separator lambda
+        false => Error(message = "expected `${separator lambda}` after the binders")
+        true => quantifiedClose (rest, opened, lambda)
+
+    quantifiedClose (rest, opened, lambda) = match expr (rest, satAdd opened.next 1, opened.names)
+        Success inner => Success(value = Parsed(term = abstractAll (opened.binders, inner.term, lambda), next = inner.next))
+        Error message => Error(message = message)
+
+    separator lambda = match lambda
+        true => "=>"
+        false => ","
+
+    arrow (rest, position, names) = match application (rest, position, names)
+        Success head => arrowTail (rest, head, names)
+        Error message => Error(message = message)
+
+    arrowTail (rest, head, names) = match isArrow (at (rest, head.next))
+        false => Success(value = head)
+        true => arrowBody (rest, head, names)
+
+    arrowBody (rest, head, names) = match expr (rest, satAdd head.next 1, listPrepend (names, "_"))
+        Success tail => Success(value = Parsed(term = Pi "_" head.term tail.term, next = tail.next))
+        Error message => Error(message = message)
+
+    isArrow token = token == "→" || token == "->"
+
+    (** Juxtaposed atoms are left-nested application. *)
+    application (rest, position, names) = match atom (rest, position, names)
+        Success head => applied (rest, head, names)
+        Error message => Error(message = message)
+
+    applied (rest, head, names) = match startsAtom (at (rest, head.next))
+        false => Success(value = head)
+        true => appliedTo (rest, head, names)
+
+    appliedTo (rest, head, names) = match atom (rest, head.next, names)
+        Success arg => applied (rest, Parsed(term = App head.term arg.term, next = arg.next), names)
+        Error message => Error(message = message)
+
+    startsAtom token = match token
+        "" => false
+        ")" => false
+        "," => false
+        ":" => false
+        ":=" => false
+        "=>" => false
+        "→" => false
+        "->" => false
+        other => true
+
+    atom (rest, position, names) = match at (rest, position)
+        "(" => parenthesised (rest, satAdd position 1, names)
+        "Prop" => Success(value = Parsed(term = Sort Zero, next = satAdd position 1))
+        "Type" => Success(value = Parsed(term = Sort (Succ Zero), next = satAdd position 1))
+        "" => Error(message = "unexpected end of input")
+        name => Success(value = Parsed(term = variable (name, names, 0), next = satAdd position 1))
+
+    parenthesised (rest, position, names) = match expr (rest, position, names)
+        Success inner => parenthesisedClose (rest, inner)
+        Error message => Error(message = message)
+
+    parenthesisedClose (rest, inner) = match at (rest, inner.next) == ")"
+        false => Error(message = "expected `)`")
+        true => Success(value = Parsed(term = inner.term, next = satAdd inner.next 1))
+
+    (** A bound name is its de Bruijn index; anything else is a constant. *)
+    variable (name, names, index) = match names
+        [] => Const name []
+        [bound, ...outer] => match bound == name
+            true => BVar index
+            false => variable (name, outer, satAdd index 1)
+
+    at (rest, position) = listGet (rest, position) ?: ""
+
+    (** Whitespace-separated tokens with the punctuation split off. *)
+    export tokens text = filterList (split (spaced text, " ") ?: [], \token => token != "")
+
+    spaced text = padded (padded (padded (text, "("), ")"), ",")
+
+    padded (text, mark) = replace (text, mark, " ${mark} ") ?: text
+
+(** One binder of a group, with its type as seen from inside the group. *)
+type Binder =
+    name : string
+    ty : Term
+
+(** Binder groups read so far: innermost first, the names they open, and
+    the next token. *)
+type Opened =
+    binders : List<Binder>
+    names : List<string>
+    next : int
+
+(** The names of one `(x y : A)` group and the token after its colon. *)
+type Names =
+    found : List<string>
+    next : int

@@ -1,6 +1,6 @@
 [project]
 name = "proof-kernel"
-source_roots = ["."]
+source_roots = ["src"]
 default_namespace = "proof"
 entry = "main.ospml"
 

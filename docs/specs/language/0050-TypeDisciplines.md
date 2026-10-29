@@ -1,6 +1,6 @@
 # Pluggable type disciplines [TYPES-DISCIPLINE]
 
-**Status:** normative target; **no implementation started.** Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), phase 1. First consumer: the `lean4` discipline of [spec 0049](0049-DependentTypesAndProofs.md). This contract stands on its own: it is the mechanism by which any type system other than Hindley-Milner checks an Osprey module, and it is complete before any such system exists.
+**Status:** normative target; **implementation in progress** (plan 0041: M0 and M2 kernel and surface, phase 1 seam without imported signatures yet). Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), phase 1. First consumer: the `lean4` discipline of [spec 0049](0049-DependentTypesAndProofs.md). This contract stands on its own: it is the mechanism by which any type system other than Hindley-Milner checks an Osprey module, and it is complete before any such system exists.
 
 ## Aim [TYPES-DISCIPLINE-AIM]
 

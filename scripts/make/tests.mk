@@ -322,9 +322,12 @@ _test_profiler:
 # *.test.ospml suites. These inspect internal values rather than stdout goldens.
 # Some loopback integration twins intentionally use the same fixed port so their
 # Default and ML sources lower to identical IR; one worker prevents port races.
-# _test_proof_kernel: the M0 proof kernel of plan 0041 (examples/proof/kernel)
-# checks `id_imp` and rejects the two controls with the kernel's own reason,
-# byte-exact against its golden, under GC, ARC and on wasm32 [PROOF-KERNEL].
+# _test_proof_kernel: the proof kernel of plan 0041 (examples/proof/kernel)
+# checks `id_imp` and rejects the controls with the kernel's own reason,
+# byte-exact against its golden, and its assertion suite (adversarial
+# structural-equality and universe cases included) passes, under GC, ARC and
+# on wasm32 [PROOF-KERNEL]. A failing suite exits non-zero on GC and ARC; on
+# wasm32 the TAP summary is checked for zero failures.
 _test_proof_kernel:
 	@echo "==> [proof] M0 kernel: GC, ARC, wasm32 against expectedoutput..."
 	./$(BIN) examples/proof/kernel --run --memory=gc 2>/dev/null | diff - examples/proof/kernel/expectedoutput
@@ -332,6 +335,12 @@ _test_proof_kernel:
 	@$(MKDIR) target/proof
 	./$(BIN) examples/proof/kernel --target=wasm32 --compile -o target/proof/kernel.wasm >/dev/null 2>&1
 	node scripts/wasm-smoke.mjs target/proof/kernel.wasm examples/proof/kernel/expectedoutput
+	@echo "==> [proof] kernel suite (structural equality, universes, export reader): GC, ARC, wasm32..."
+	./$(BIN) examples/proof/kernel/tests --run --memory=gc 2>/dev/null | tail -1
+	./$(BIN) examples/proof/kernel/tests --run --memory=arc 2>/dev/null | tail -1
+	./$(BIN) examples/proof/kernel/tests --target=wasm32 --compile -o target/proof/kernel-tests.wasm >/dev/null 2>&1
+	node scripts/wasm-smoke.mjs target/proof/kernel-tests.wasm >/dev/null
+	grep -q "failed=0" target/proof/kernel-tests.wasm.stdout.txt
 
 _test_language_corpus:
 	@echo "==> [language] Default + ML assertion corpus..."
@@ -507,6 +516,7 @@ _lint: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	node --test scripts/test-package-licenses.mjs
 	python3 scripts/test-release-gate.py
 	python3 scripts/test-package-coverage.py
+	python3 scripts/test-package-coverage-projects.py
 	python3 scripts/test-python-app-ports-contracts.py
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings

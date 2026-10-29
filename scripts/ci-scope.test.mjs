@@ -53,6 +53,8 @@ const cases = [
   ['Python-flavor package regression', ['packages/faiss/tests/main.py'], true, false, false],
   ['symbolic execution regression', ['scripts/test-hunt-default-budget.py'], true, false, false],
   ['GPU regression in both flavors', ['tests/core/gpu/scalar_contracts.test.osp', 'tests/core/gpu/scalar_contracts.test.ospml'], true, false, false],
+  ['proof kernel sources are compiler code', ['examples/proof/kernel/main.ospml', 'examples/proof/kernel/expectedoutput'], true, false, false],
+  ['proof speed benchmark harness and cases', ['benchmarks/proof/run.sh', 'benchmarks/proof/m0_identity/id_imp.lean'], false, false, true],
 ]
 for (const [label, files, code, book, benchmarks] of cases) {
   test(label, () => assert.deepEqual(classify(files), { code, website: false, book, benchmarks }))
@@ -276,6 +278,23 @@ test('application ports have an independent complete backend gate', () => {
   assert.match(apps, /needs: \[changes, build\]/)
   assert.match(apps, /if:.*needs\.changes\.outputs\.code/)
   assert.match(apps, /run: make _test_python_app_ports/)
+})
+
+test('the proof kernel and the Lean speed gate run on the staged build', () => {
+  const proof = job('test-proof', '.github/workflows/ci.yml')
+  assert.match(proof, /needs: \[changes, build\]/)
+  // examples/proof/** classifies as code and benchmarks/proof/** as
+  // benchmarks; both outputs gate the job exactly as the changes job gates
+  // its own benchmark steps.
+  assert.match(proof, /needs\.changes\.outputs\.code == 'true' \|\| needs\.changes\.outputs\.benchmarks == 'true'/)
+  assert.match(proof, /run: make _test_proof_kernel/)
+  assert.match(proof, /run: zsh benchmarks\/proof\/run\.sh/)
+  // Lean is the speed gate's baseline, so the toolchain is pinned to an exact
+  // release (`stable` floats) and a non-zero exit is never softened.
+  assert.match(proof, /--default-toolchain leanprover\/lean4:v4\.25\.0/)
+  assert.doesNotMatch(proof, /--default-toolchain stable/)
+  assert.doesNotMatch(proof, /continue-on-error/)
+  assert.doesNotMatch(proof, /\|\| true/)
 })
 
 function assertRealUv(registry, memory) {

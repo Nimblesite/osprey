@@ -1,0 +1,89 @@
+namespace prooftests
+
+import proof::Environment
+import proof::Infer
+import proof
+    Zero
+    Succ
+    Param
+    Sort
+    BVar
+    Const
+    App
+    Lam
+    Pi
+    Let
+    Decl
+    Axiom
+    Definition
+import prooftests::Support
+
+(** Inference, checking and universe levels, including each refusal. *)
+module InferTests
+    mismatch = "type mismatch: `(fun (p : Prop) => (fun (h : p) => p))` has type `(∀ (p : Prop), (p → Prop))` but `(∀ (p : Prop), (p → p))` was expected"
+
+    (** `∀ (p q : Prop), q → q` with every binder named `x`. *)
+    shadowedType () = Pi "x" (Sort Zero) (Pi "x" (Sort Zero) (Pi "x" (BVar 0) (BVar 1)))
+
+    (** `fun (p q : Prop) (h : q) => h`, named `x` throughout: a proof of `shadowedType`. *)
+    shadowedProof () = Lam "x" (Sort Zero) (Lam "x" (Sort Zero) (Lam "x" (BVar 0) (BVar 0)))
+
+    (** `∀ (p q : Prop), q → p`, named `x` throughout, which `shadowedProof` does not prove. *)
+    shadowedWrong () = Pi "x" (Sort Zero) (Pi "x" (Sort Zero) (Pi "x" (BVar 0) (BVar 2)))
+
+    (** `F.{u} : Sort u → Sort u`, an axiom polymorphic in one universe. *)
+    polyEnv () = Support::envWithDecl (Decl(name = "F", params = ["u"], ty = Pi "a" (Sort (Param "u")) (Sort (Param "u")), body = Axiom))
+
+    (** `id.{u} : Sort u → Sort u := fun a => a`, which unfolds at any level. *)
+    polyDef () = Support::envWithDecl (Decl(name = "id", params = ["u"], ty = Pi "a" (Sort (Param "u")) (Sort (Param "u")), body = Definition (Lam "a" (Sort (Param "u")) (BVar 0))))
+
+    export run () =
+        test ("repeated binder names cannot smuggle a proof of q → p past q → q", \() =>
+            expect (Support::checked (Environment::empty (), shadowedProof (), shadowedType ()), "ok: (Prop → (∀ (x : Prop), (x → x)))")
+            expect (Support::checked (Environment::empty (), shadowedProof (), shadowedWrong ()), "error: type mismatch: `(fun (x : Prop) => (fun (x : Prop) => (fun (x : x) => x)))` has type `(Prop → (∀ (x : Prop), (x → x)))` but `(∀ (x : Prop), (∀ (x : Prop), (x → x)))` was expected"))
+
+        test ("a constant's type is instantiated at the universe it is used at", \() =>
+            expect (Support::inferred (polyEnv (), [], Const "F" [Succ Zero]), "(Type → Type)")
+            expect (Support::inferred (polyEnv (), [], Const "F" [Zero]), "(Prop → Prop)")
+            expect (Support::inferred (polyEnv (), [], App (Const "F" [Succ Zero]) (Sort Zero)), "Type")
+            expect (Support::inferred (polyEnv (), [], App (Const "F" [Zero]) (Sort Zero)), "error: type mismatch: `Prop` has type `Type` but `Prop` was expected"))
+
+        test ("a universe arity mismatch is rejected", \() =>
+            expect (Support::inferred (polyEnv (), [], Const "F" []), "error: `F` takes 1 universe arguments but 0 were given")
+            expect (Support::inferred (polyEnv (), [], Const "F" [Zero, Zero]), "error: `F` takes 1 universe arguments but 2 were given"))
+
+        test ("distinct universe instantiations of one constant are not equal", \() =>
+            expect (Support::defeqOf (polyEnv (), Const "F" [Zero], Const "F" [Succ Zero]), false)
+            expect (Support::defeqOf (polyEnv (), Const "F" [Succ Zero], Const "F" [Succ Zero]), true))
+
+        test ("a definition unfolds at the universe it is used at", \() =>
+            expect (Support::whnfOf (polyDef (), App (Const "id" [Succ Zero]) (Sort Zero)), "Prop")
+            expect (Support::inferred (polyDef (), [], App (Const "id" [Succ (Succ Zero)]) (Sort (Succ Zero))), "Sort 2")
+            expect (Support::defeqOf (polyDef (), Const "id" [Succ Zero], Lam "b" (Sort (Succ Zero)) (BVar 0)), true)
+            expect (Support::defeqOf (polyDef (), Const "id" [Zero], Lam "b" (Sort (Succ Zero)) (BVar 0)), false))
+
+        test ("a declaration may not use an undeclared universe parameter", \() =>
+            expect (Support::messageOf (Environment::add (Environment::empty (), Decl(name = "G", params = [], ty = Sort (Param "u"), body = Axiom))), "constant `G` uses a universe parameter it does not declare, or declares one twice")
+            expect (Support::messageOf (Environment::add (Environment::empty (), Decl(name = "G", params = ["u", "u"], ty = Sort (Param "u"), body = Axiom))), "constant `G` uses a universe parameter it does not declare, or declares one twice"))
+
+        test ("infer of Prop is Type", \() =>
+            expect (Support::inferred (Environment::empty (), [], Sort Zero), "Type")
+            expect (Support::sorted (Environment::empty (), [], Support::idType ()), "0"))
+
+        test ("the id proof checks against the id type", \() =>
+            expect (Support::checked (Environment::empty (), Support::idProof (), Support::idType ()), "ok: (∀ (p : Prop), (p → p))"))
+
+        test ("a proof of the wrong type is rejected", \() =>
+            expect (Support::checked (Environment::empty (), Support::badProof (), Support::idType ()), "error: ${mismatch}"))
+
+        test ("applying a non-function reports the head type", \() =>
+            expect (Support::inferred (Environment::empty (), [], App (Sort Zero) (Sort Zero)), "error: `Prop` is applied but has type `Type`, not a function type"))
+
+        test ("an unbound variable reports its index", \() =>
+            expect (Support::inferred (Environment::empty (), [], BVar 3), "error: unbound variable #3"))
+
+        test ("sort rejects a lambda", \() =>
+            expect (Support::sorted (Environment::empty (), [], Lam "x" (Sort Zero) (BVar 0)), "error: `(fun (x : Prop) => x)` is not a type; its type is `(Prop → Prop)`"))
+
+        test ("a let whose value has the wrong type is rejected", \() =>
+            expect (Support::inferred (Environment::empty (), [], Let "x" (Sort Zero) (Sort (Succ Zero)) (BVar 0)), "error: type mismatch: `Type` has type `Sort 2` but `Prop` was expected"))

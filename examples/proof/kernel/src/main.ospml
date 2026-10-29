@@ -4,6 +4,7 @@ import proof::Levels
 import proof::Terms
 import proof::Environment
 import proof::Infer
+import proof::Surface
 
 // M0 of plan 0041: the kernel checks `fun (p : Prop) (h : p) => h` against
 // `∀ (p : Prop), p → p` and prints `checked: id_imp`; a wrong proof of the
@@ -35,8 +36,21 @@ report (name, outcome) = match outcome
     Success env => print "checked: ${name}"
     Error message => print "rejected: ${name}: ${message}"
 
+(** M2: the same theorem typed on the proof surface, elaborated directly. *)
+typed (env, text) = match Surface::theorem text
+    Success parsed => theorem (env, parsed.theoremName, parsed.statement, parsed.proof)
+    Error message => Error(message = message)
+
+surfaceReport (env, text) = match Surface::theorem text
+    Success parsed => report (parsed.theoremName, typed (env, text))
+    Error message => print "rejected: ${message}"
+
 main () =
     env = Environment::empty ()
     report ("id_imp", theorem (env, "id_imp", idType (), idProof ()))
     report ("id_imp_bad", theorem (env, "id_imp_bad", idType (), badProof ()))
     report ("not_a_type", theorem (env, "not_a_type", idProof (), idProof ()))
+    surfaceReport (env, "theorem id_imp_typed (p : Prop) (h : p) : p := h")
+    surfaceReport (env, "theorem imp_trans (p q r : Prop) (f : p → q) (g : q → r) : p → r := fun (x : p) => g (f x)")
+    surfaceReport (env, "theorem forall_typed : ∀ (p : Prop), p → p := fun (p : Prop) (h : p) => h")
+    surfaceReport (env, "theorem wrong_typed (p q : Prop) (h : p) : q := h")

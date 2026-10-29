@@ -67,7 +67,7 @@ for dir in "$HERE"/*/; do
   (( osprey_ms < lean_ms )) || verdict=fail
   printf '{"case":"%s","osprey_ms":%s,"lean_ms":%s,"osprey_peak_kb":%s,"lean_peak_kb":%s,"lean":"%s","osprey_input":"%s","lean_input":"%s","verdict":"%s","at":"%s"}\n' \
     "$name" "$osprey_ms" "$lean_ms" "$osprey_kb" "$lean_kb" "$(lean --version | tr -d '\n')" \
-    "$(sha "$project/main.ospml")" "$(sha "$lean_file")" "$verdict" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT"
+    "$(sha "/src/main.ospml")" "$(sha "$lean_file")" "$verdict" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT"
   echo "$name: osprey ${osprey_ms}ms vs lean ${lean_ms}ms -> $verdict"
   [[ $verdict == pass ]] || status=1
   rm -f "$bin"

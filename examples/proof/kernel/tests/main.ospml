@@ -1,0 +1,16 @@
+namespace prooftests
+
+import prooftests::LevelsTests
+import prooftests::TermsTests
+import prooftests::EnvironmentTests
+import prooftests::ReduceTests
+import prooftests::InferTests
+import prooftests::ExportTests
+
+main () =
+    LevelsTests::run ()
+    TermsTests::run ()
+    EnvironmentTests::run ()
+    ReduceTests::run ()
+    InferTests::run ()
+    ExportTests::run ()
