@@ -106,8 +106,9 @@ def package_result(text, platform, archives, empty_archive=""):
         root = pathlib.Path(directory)
         for folder in ("target/release", "compiler/lib"):
             (root/folder).mkdir(parents=True)
-        for name in ("target/release/osprey", "target/osprey-pkg"):
+        for name in ("target/release/osprey", "target/osprey-pkg", "target/osprey-registry"):
             (root/name).write_text("binary")
+        (root/"target/local-registry").mkdir()
         for name in (*NATIVE_ARCHIVES, *archives):
             (root/"compiler/lib"/name).write_text("" if name == empty_archive else "archive")
         return subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,

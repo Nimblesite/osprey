@@ -6,19 +6,13 @@ name: WinUI host
 # capabilities and the folder walk, and guard coverage, no XAML and host neutrality. No test opens
 # a window. Then Osprey Storage runs in a real window on the runner's desktop, driven by its
 # self-test script, and the pictures of each step are kept as an artifact.
+#
+# Both jobs are required checks (scripts/verify-branch-protection.mjs). A PR that changes no code
+# skips the host at the job level, which reports as passing; an `on: paths:` filter would leave a
+# required check pending forever.
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "hosts/winui/**"
-      - "packages/native/**"
-      - "examples/storage/**"
-      - "crates/osprey-cli/src/desktop.rs"
-      - "crates/osprey-cli/src/ios_abi.rs"
-      - "crates/osprey-cli/src/windows_dll.rs"
-      - "crates/osprey-cli/src/windows_dll_tests.rs"
-      - "compiler/runtime/**"
-      - ".github/workflows/winui.yml"
   workflow_dispatch:
   # ci-windows.yml calls it on a manual run, because a workflow not yet on main cannot be dispatched.
   workflow_call:
@@ -29,8 +23,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed areas (WinUI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/detect-ci-scope
+        id: filter
+
   winui:
     name: WinUI host (windows-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:

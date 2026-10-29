@@ -6,19 +6,15 @@ name: GPUI host
 # runs of the probe and Flock. The smoke runs open no window, so no display is needed; on Windows,
 # Flock and Painting then open in real windows on the runner's desktop and are pictured. The
 # frame-rate bench stays on a Mac with a display; hosted runners have none to pace frames.
+#
+# Every job is a required check (scripts/verify-branch-protection.mjs), pinned by its literal name,
+# so each system is its own job rather than a matrix entry whose name interpolates; the Mac and
+# Linux jobs share their suites through .github/actions/gpui-host-suites. A PR that changes no code
+# skips the hosts at the job level, which reports as passing; an `on: paths:` filter would leave a
+# required check pending forever.
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "hosts/gpui/**"
-      - "packages/native/**"
-      - "examples/gpui/**"
-      - "examples/storage/**"
-      - "crates/osprey-cli/src/desktop.rs"
-      - "crates/osprey-project/**"
-      - "compiler/runtime/**"
-      - "scripts/window-picture.ps1"
-      - ".github/workflows/gpui.yml"
   workflow_dispatch:
   # ci-windows.yml calls it on a manual run, because a workflow not yet on main cannot be dispatched.
   workflow_call:
@@ -29,13 +25,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unix:
-    name: GPUI host (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+  changes:
+    name: Detect changed areas (GPUI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/detect-ci-scope
+        id: filter
+
+  macos:
+    name: GPUI host (macos-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Install typeDiagram
+        uses: ./.github/actions/typediagram
+
+      # Rust, clang/LLVM, the native C runtime archives and the release CLI.
+      - name: Setup Osprey Compiler
+        uses: ./.github/actions/setup-osprey-compiler
+
+      # The Mac slice is the `macos` app-library target, with the Metal adapter.
+      - name: Mac app-library runtime
+        run: make _runtime_macos
+
+      - uses: ./.github/actions/gpui-host-suites
+
+  ubuntu:
+    name: GPUI host (ubuntu-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -50,43 +79,18 @@ jobs:
         uses: ./.github/actions/setup-osprey-compiler
 
       # GPUI's Linux backends link X11, Wayland, Vulkan, fontconfig and ALSA.
-      - name: GPUI system libraries (Linux)
-        if: runner.os == 'Linux'
+      - name: GPUI system libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev \
             libx11-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev libfreetype-dev libasound2-dev libzstd-dev
 
-      # The Mac slice is the `macos` app-library target, with the Metal adapter.
-      - name: Mac app-library runtime
-        if: runner.os == 'macOS'
-        run: make _runtime_macos
-
-      - name: Native framework suite
-        run: ./target/release/osprey test packages/native/tests
-
-      - name: Example suites
-        run: |
-          ./target/release/osprey test examples/gpui/flock/test
-          ./target/release/osprey test examples/gpui/painting/test
-          ./target/release/osprey test examples/storage/test
-
-      - name: Host tests and clippy
-        working-directory: hosts/gpui
-        run: |
-          bash run.sh --smoke
-          cargo test --release
-          cargo clippy --release -- -D warnings
-        env:
-          OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
-
-      - name: Flock recorded-event smoke
-        run: bash examples/gpui/flock/run.sh --smoke
-        env:
-          OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
+      - uses: ./.github/actions/gpui-host-suites
 
   windows:
     name: GPUI host (windows-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
