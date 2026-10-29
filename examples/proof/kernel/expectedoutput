@@ -5,3 +5,5 @@ checked: id_imp_typed
 checked: imp_trans
 checked: forall_typed
 rejected: wrong_typed: type mismatch: `(fun (p : Prop) => (fun (q : Prop) => (fun (h : p) => h)))` has type `(∀ (p : Prop), (Prop → (p → p)))` but `(∀ (p : Prop), (∀ (q : Prop), (p → q)))` was expected
+checked: id_imp (export)
+rejected: id_imp_bad (export): type mismatch: `(fun (p : Prop) => (fun (h : p) => p))` has type `(∀ (p : Prop), (p → Prop))` but `(∀ (p : Prop), (p → p))` was expected

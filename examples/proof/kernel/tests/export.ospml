@@ -1,6 +1,7 @@
 namespace prooftests
 
 import proof::Export
+import proof::Fixtures
 import proof::Terms
 import proof
     Axiom
@@ -13,12 +14,11 @@ import prooftests::Support
     and proof, the wrong proof of the same statement reads as itself, and a
     file the reader must refuse names its line. *)
 module ExportTests
-    idFile () = "examples/proof/kernel/exports/id_imp.export"
-    badProofFile () = "examples/proof/kernel/exports/id_imp_bad.export"
 
+    (** Runs the export-reader cases; the testing built-ins report the TAP lines. *)
     export run () =
         test ("an export reads as one theorem with its statement and proof", \() =>
-            expect (described (readExport (idFile ())), "id_imp | (∀ (p : Prop), (p → p)) | (fun (p : Prop) => (fun (h : p) => h))"))
+            expect (described (Export::read (Fixtures::idImp ())), "id_imp | (∀ (p : Prop), (p → p)) | (fun (p : Prop) => (fun (h : p) => h))"))
 
         test ("an unsupported item kind is refused with its tag", \() =>
             expect (Support::messageOf (Export::read ("0.1.2\n1 #NS 0 x\n2 #IND 1\n")), "line 3: unsupported: #IND"))
@@ -27,11 +27,7 @@ module ExportTests
             expect (Support::messageOf (Export::read ("0.1.2\n1 #ES 4\n")), "line 2: unknown level #4"))
 
         test ("the wrong proof of the same statement reads as itself", \() =>
-            expect (described (readExport (badProofFile ())), "id_imp | (∀ (p : Prop), (p → p)) | (fun (p : Prop) => (fun (h : p) => p))"))
-
-    readExport (path) = match readFile (path)
-        Success text => Export::read (text)
-        Error message => Error(message = "readFile ${path}: ${message}")
+            expect (described (Export::read (Fixtures::idImpBad ())), "id_imp | (∀ (p : Prop), (p → p)) | (fun (p : Prop) => (fun (h : p) => p))"))
 
     (** One declaration rendered as `name | statement | proof`; anything
         else reads as its own failure, never as a pass. *)

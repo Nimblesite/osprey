@@ -1,0 +1,14 @@
+namespace proof
+
+(** The `lean4export` texts the kernel is checked against, held as strings
+    so the same cases run on wasm32, where a module has no files. The files
+    under `exports/` are the on-disk twins for the benchmark harness. *)
+module Fixtures
+    (** `theorem id_imp : ∀ (p : Prop), p → p := fun p h => h`, as
+        `lean4export` 0.1.2 writes it (names, then universes, then
+        expressions, then the declaration). *)
+    export idImp () = "0.1.2\n1 #NS 0 id_imp\n2 #NS 0 p\n3 #NS 0 h\n1 #ES 0\n2 #EV 0\n3 #EV 1\n4 #EP #BD 3 2 3\n5 #EP #BD 2 1 4\n6 #EL #BD 3 2 2\n7 #EL #BD 2 1 6\n#THM 1 5 7 0\n"
+
+    (** The same statement with the proof `fun p h => p`, which the kernel
+        must reject: expression 6 returns variable 1 instead of 0. *)
+    export idImpBad () = "0.1.2\n1 #NS 0 id_imp\n2 #NS 0 p\n3 #NS 0 h\n1 #ES 0\n2 #EV 0\n3 #EV 1\n4 #EP #BD 3 2 3\n5 #EP #BD 2 1 4\n6 #EL #BD 3 2 3\n7 #EL #BD 2 1 6\n#THM 1 5 7 0\n"

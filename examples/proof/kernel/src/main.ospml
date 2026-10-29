@@ -5,6 +5,8 @@ import proof::Terms
 import proof::Environment
 import proof::Infer
 import proof::Surface
+import proof::Export
+import proof::Fixtures
 
 // M0 of plan 0041: the kernel checks `fun (p : Prop) (h : p) => h` against
 // `∀ (p : Prop), p → p` and prints `checked: id_imp`; a wrong proof of the
@@ -45,6 +47,28 @@ surfaceReport (env, text) = match Surface::theorem text
     Success parsed => report (parsed.theoremName, typed (env, text))
     Error message => print "rejected: ${message}"
 
+(** M1: every declaration of a `lean4export` text goes through the kernel:
+    a theorem or definition is checked against its statement, an axiom's
+    statement must be a type. The first rejection stops the file. *)
+exported (env, text) = match Export::read text
+    Success decls => foldList (decls, Success(value = env), \(so_far, decl) => declared (so_far, decl))
+    Error message => Error(message = message)
+
+declared (so_far, decl) = match so_far
+    Success env => declare (env, decl)
+    Error message => Error(message = message)
+
+declare (env, decl) = match decl.body
+    Theorem value => theorem (env, decl.name, decl.ty, value)
+    Definition value => theorem (env, decl.name, decl.ty, value)
+    Axiom => axiom (env, decl)
+
+axiom (env, decl) = match Infer::sort (env, [], decl.ty)
+    Success level => Environment::add (env, decl)
+    Error message => Error(message = message)
+
+exportReport (env, name, text) = report ("${name} (export)", exported (env, text))
+
 main () =
     env = Environment::empty ()
     report ("id_imp", theorem (env, "id_imp", idType (), idProof ()))
@@ -54,3 +78,5 @@ main () =
     surfaceReport (env, "theorem imp_trans (p q r : Prop) (f : p → q) (g : q → r) : p → r := fun (x : p) => g (f x)")
     surfaceReport (env, "theorem forall_typed : ∀ (p : Prop), p → p := fun (p : Prop) (h : p) => h")
     surfaceReport (env, "theorem wrong_typed (p q : Prop) (h : p) : q := h")
+    exportReport (env, "id_imp", Fixtures::idImp ())
+    exportReport (env, "id_imp_bad", Fixtures::idImpBad ())
