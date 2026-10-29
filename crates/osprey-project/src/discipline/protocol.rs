@@ -98,11 +98,10 @@ pub struct Response {
 }
 
 impl Request {
-    /// The request for `source`. Imported signatures are not yet supplied:
-    /// the assembler does not expose per-module inferred signatures, so the
-    /// list is empty until it does, and a checker must not depend on it.
+    /// The request for `source`, carrying the export signatures of what it
+    /// imports, in dependency order.
     #[must_use]
-    pub fn new(source: &SourceFile, config: &ProjectConfig) -> Self {
+    pub fn new(source: &SourceFile, config: &ProjectConfig, imports: Vec<Import>) -> Self {
         Self {
             version: VERSION,
             module: Module {
@@ -110,7 +109,7 @@ impl Request {
                 flavor: source.flavor.to_string(),
                 source: source.source.clone(),
             },
-            imports: Vec::new(),
+            imports,
             options: Options {
                 project_root: config.directory.to_string_lossy().into_owned(),
                 cache_dir: config

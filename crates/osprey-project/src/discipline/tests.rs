@@ -20,11 +20,13 @@ use std::time::Duration;
 struct Scripted {
     answer: Result<String, String>,
     calls: Cell<usize>,
+    requests: std::cell::RefCell<Vec<String>>,
 }
 
 impl CheckerRunner for Scripted {
-    fn run(&self, _: &Discipline, _: &str) -> Result<String, String> {
+    fn run(&self, _: &Discipline, request: &str) -> Result<String, String> {
         self.calls.set(self.calls.get() + 1);
+        self.requests.borrow_mut().push(request.to_string());
         self.answer.clone()
     }
 }
@@ -33,6 +35,7 @@ fn scripted(answer: Result<&str, &str>) -> Scripted {
     Scripted {
         answer: answer.map(str::to_string).map_err(str::to_string),
         calls: Cell::new(0),
+        requests: std::cell::RefCell::new(Vec::new()),
     }
 }
 
@@ -177,15 +180,7 @@ fn apply_one(name: &str, answer: Result<&str, &str>) -> Result<Vec<SourceFile>, 
     let runner = scripted(answer);
     let registry = registry(&config.directory);
     let sources = vec![source(MARKED), source("namespace other\n\ny = 2\n")];
-    let (ok, errors): (Vec<_>, Vec<_>) = sources
-        .into_iter()
-        .map(|s| check_module(&config, &registry, &runner, s))
-        .partition(Result::is_ok);
-    if errors.is_empty() {
-        Ok(ok.into_iter().flatten().collect())
-    } else {
-        Err(errors.into_iter().filter_map(Result::err).collect())
-    }
+    apply_with(&config, sources, &runner, &registry)
 }
 
 #[test]
@@ -270,7 +265,7 @@ fn every_checker_fault_is_a_discipline_error() {
 #[test]
 fn request_carries_module_flavor_and_marker_and_protocol_version() {
     let config = temp_project("request");
-    let request = Request::new(&source(MARKED), &config);
+    let request = Request::new(&source(MARKED), &config, Vec::new());
     let line = request.to_line().expect("json");
     let parsed: serde_json::Value = serde_json::from_str(&line).expect("round trip");
     assert_eq!(parsed["version"], VERSION);
@@ -287,8 +282,110 @@ fn unchanged_request_is_answered_from_the_cache() {
     let runner = scripted(Ok(&accepted(SIGNATURE, ERASED)));
     let registry = registry(&config.directory);
     for _ in 0..2 {
-        let _erased = check_module(&config, &registry, &runner, source(MARKED)).expect("accepted");
+        let _erased =
+            apply_with(&config, vec![source(MARKED)], &runner, &registry).expect("accepted");
     }
     assert_eq!(runner.calls.get(), 1);
     assert!(Response::parse("{\"version\":1,\"result\":\"maybe\"}").is_err());
+}
+
+fn source_at(path: &str, text: &str) -> SourceFile {
+    let mut file = source(text);
+    file.path = PathBuf::from(path);
+    file
+}
+
+/// An `hm` module with a polymorphic and a monomorphic export, imported by
+/// a disciplined module; a disciplined module imported by another.
+const NAT_HM: &str =
+    "namespace proof\n\nmodule Nat\n    export label s = \"n${s}\"\n    export same x = x\n    hidden () = 0\n";
+const THM_MARKED: &str = "// osprey: types=bounded\nnamespace proof\n\nimport proof::Nat\n\nmodule Thm\n    export zero = Nat::label \"0\"\n";
+const THM_SIGNATURE: &str = "signature Thm\n    zero : string\n";
+const THM_ERASED: &str =
+    "namespace proof\n\nimport proof::Nat\n\nmodule Thm\n    export zero = Nat::label \"0\"\n";
+const USER_MARKED: &str = "// osprey: types=bounded\nnamespace proof\n\nimport proof::Thm\n\nmodule User\n    export one = Thm::zero\n";
+
+fn requests_of(runner: &Scripted) -> Vec<serde_json::Value> {
+    runner
+        .requests
+        .borrow()
+        .iter()
+        .map(|line| serde_json::from_str(line).expect("request json"))
+        .collect()
+}
+
+#[test]
+fn a_checker_receives_the_inferred_signature_of_each_hm_module_its_source_imports() {
+    let config = temp_project("imports-hm");
+    let runner = scripted(Ok(&accepted(THM_SIGNATURE, THM_ERASED)));
+    let registry = registry(&config.directory);
+    // The disciplined file is listed first: dependency order, not file order, decides.
+    let sources = vec![
+        source_at("src/Thm.ospml", THM_MARKED),
+        source_at("src/Nat.ospml", NAT_HM),
+    ];
+    let checked = apply_with(&config, sources, &runner, &registry).expect("accepted");
+    assert_eq!(checked.len(), 2);
+    let requests = requests_of(&runner);
+    let imports = requests[0]["imports"].as_array().expect("imports");
+    assert_eq!(imports.len(), 1, "{imports:?}");
+    assert_eq!(imports[0]["name"], "proof::Nat");
+    assert_eq!(imports[0]["discipline"], HM);
+    let signature = imports[0]["signature"].as_str().expect("signature");
+    assert_eq!(
+        signature,
+        "signature Nat\n    label<t0> : (t0) -> string\n    same<t0> : (t0) -> t0\n"
+    );
+    let parsed = osprey_syntax::parse_program_with_flavor(signature, Flavor::Ml);
+    assert!(
+        parsed.errors.is_empty(),
+        "the rendered signature parses: {:?}",
+        parsed.errors
+    );
+}
+
+#[test]
+fn a_checker_receives_the_signature_another_checker_wrote_for_an_imported_module() {
+    let config = temp_project("imports-checked");
+    let runner = scripted(Ok(&accepted(THM_SIGNATURE, THM_ERASED)));
+    let registry = registry(&config.directory);
+    let sources = vec![
+        source_at("src/User.ospml", USER_MARKED),
+        source_at("src/Nat.ospml", NAT_HM),
+        source_at("src/Thm.ospml", THM_MARKED),
+    ];
+    let _checked = apply_with(&config, sources, &runner, &registry).expect("accepted");
+    let requests = requests_of(&runner);
+    assert_eq!(requests.len(), 2);
+    let user = requests
+        .iter()
+        .find(|request| request["module"]["path"].as_str() == Some("src/User.ospml"))
+        .expect("the User request");
+    let imports = user["imports"].as_array().expect("imports");
+    assert_eq!(imports.len(), 1, "{imports:?}");
+    assert_eq!(imports[0]["name"], "proof::Thm");
+    assert_eq!(imports[0]["discipline"], "bounded");
+    assert_eq!(imports[0]["signature"], THM_SIGNATURE);
+}
+
+#[test]
+fn an_hm_module_nobody_disciplined_imports_is_never_inferred_on_its_own() {
+    let config = temp_project("imports-lazy");
+    let runner = scripted(Ok(&accepted(SIGNATURE, ERASED)));
+    let registry = registry(&config.directory);
+    // A broken `hm` file the disciplined module does not import: assembly of
+    // the whole project reports it later, the seam does not.
+    let sources = vec![
+        source_at("src/Proof.ospml", MARKED),
+        source_at(
+            "src/Other.ospml",
+            "namespace other\n\nmodule Other\n    export broken () = Missing::thing ()\n",
+        ),
+    ];
+    let checked = apply_with(&config, sources, &runner, &registry).expect("accepted");
+    assert_eq!(checked.len(), 2);
+    assert_eq!(
+        requests_of(&runner)[0]["imports"].as_array().map(Vec::len),
+        Some(0)
+    );
 }

@@ -60,7 +60,8 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 ### Phase 1 — pluggable disciplines
 - [x] `types=` marker and `[project].types`; `[discipline]` registry; `discipline-error`
 - [x] `check_module` seam in assembly, checker process, JSON protocol, time limit, result cache
-- [ ] Review P0.3: imported signatures supplied in dependency order (every request now sends `imports: []`); HM→discipline and discipline→HM programs
+- [x] Review P0.3: sources visited in dependency order; a request carries the inferred ML signature of every `hm` module it imports and the checker-written signature of every disciplined one (`discipline/imports.rs`; three seam tests)
+- [ ] Review P0.3, rest: exported types and values in an inferred `hm` signature (functions only today); HM→discipline and discipline→HM programs through a real checker package
 - [ ] Review P1.8: process start, request write and checker build inside the deadline; a checker that never reads stdin
 - [ ] Review P1.9: build and result caches keyed on every checker input and the binary; read failures propagated
 - [ ] Review P1.10: benchmark re-checks the same export on both sides; failed timings rejected; portable memory measurement

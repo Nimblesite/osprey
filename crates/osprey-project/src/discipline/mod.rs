@@ -9,6 +9,7 @@
 
 mod cache;
 mod erase;
+mod imports;
 pub mod protocol;
 mod registry;
 mod runner;
@@ -62,12 +63,15 @@ pub fn any_disciplined(config: &ProjectConfig, sources: &[SourceFile]) -> bool {
 
 /// Run every non-`hm` source through its discipline and return the sources
 /// the assembler sees: `hm` sources unchanged, the others replaced by their
-/// erased modules under the signatures their checkers wrote.
+/// erased modules under the signatures their checkers wrote. Sources are
+/// visited in dependency order so each request carries the export
+/// signatures of what it imports ([TYPES-DISCIPLINE-PROTOCOL]).
 ///
 /// # Errors
 /// Every `discipline-error` of [TYPES-DISCIPLINE-VERIFICATION]: unknown or
 /// duplicate name, checker build or crash, timeout, malformed response,
-/// unparsable erased module, module without a signature.
+/// unparsable erased module, module without a signature, or an imported
+/// `hm` module whose signature could not be inferred.
 pub fn apply(
     config: &ProjectConfig,
     sources: Vec<SourceFile>,
@@ -77,37 +81,91 @@ pub fn apply(
         return Ok(sources);
     }
     let registry = Registry::discover(config).map_err(|error| vec![error])?;
-    let (checked, errors): (Vec<_>, Vec<_>) = sources
-        .into_iter()
-        .map(|source| check_module(config, &registry, runner, source))
-        .partition(Result::is_ok);
+    apply_with(config, sources, runner, &registry)
+}
+
+/// [`apply`] against an already discovered registry.
+///
+/// # Errors
+/// As [`apply`].
+pub fn apply_with(
+    config: &ProjectConfig,
+    sources: Vec<SourceFile>,
+    runner: &dyn CheckerRunner,
+    registry: &Registry,
+) -> Result<Vec<SourceFile>, Vec<ProjectError>> {
+    let order = imports::order(&sources);
+    let needed = imports::needed(config, &sources);
+    let mut exports = imports::Exports::default();
+    let mut visited: Vec<SourceFile> = Vec::with_capacity(sources.len());
+    let mut errors = Vec::new();
+    let mut slots: Vec<Option<SourceFile>> = sources.into_iter().map(Some).collect();
+    for index in order {
+        let Some(source) = slots.get_mut(index).and_then(Option::take) else {
+            continue;
+        };
+        let seam = Seam {
+            exports: &mut exports,
+            visited: &visited,
+            wanted: needed.contains(&index),
+        };
+        match check_module(config, registry, runner, source, seam) {
+            Ok(checked) => visited.push(checked),
+            Err(error) => errors.push(error),
+        }
+    }
     if errors.is_empty() {
-        Ok(checked.into_iter().flatten().collect())
+        Ok(visited)
     } else {
-        Err(errors.into_iter().filter_map(Result::err).collect())
+        Err(errors)
     }
 }
 
+/// What one module's check sees of the modules before it.
+struct Seam<'a> {
+    /// Export signatures gathered so far.
+    exports: &'a mut imports::Exports,
+    /// Every source already visited, in dependency order.
+    visited: &'a [SourceFile],
+    /// Whether a disciplined module imports this one, so its `hm` signature
+    /// must be inferred.
+    wanted: bool,
+}
+
 /// The seam function of [TYPES-DISCIPLINE-SEAM], once per module. For `hm`
-/// the module is returned unchanged; for any other discipline the registered
-/// checker runs and its erased module is returned under its signature.
+/// the module is returned unchanged, its export signature inferred when a
+/// disciplined module imports it; for any other discipline the registered
+/// checker runs with the signatures of the module's imports and its erased
+/// module is returned under its signature.
 fn check_module(
     config: &ProjectConfig,
     registry: &Registry,
     runner: &dyn CheckerRunner,
     source: SourceFile,
+    seam: Seam<'_>,
 ) -> Result<SourceFile, ProjectError> {
+    let Seam {
+        exports,
+        visited,
+        wanted,
+    } = seam;
     let name = select(config, &source.source);
     if name == HM {
+        if wanted {
+            exports.record_hm(config, &source, visited)?;
+        }
         return Ok(source);
     }
     let discipline = registry
         .get(name)
         .ok_or_else(|| unknown(&source.path, name, &source.source))?;
-    let request = protocol::Request::new(&source, config);
+    let request = protocol::Request::new(&source, config, exports.for_source(&source));
     let response = cache::run_cached(config, discipline, runner, &request)
         .map_err(|message| failure(&source.path, discipline, &message))?;
-    erase::erased_source(&source, discipline, response)
+    let signature = response.signature.clone();
+    let erased = erase::erased_source(&source, discipline, response)?;
+    exports.record_checked(&erased, name, &signature);
+    Ok(erased)
 }
 
 fn unknown(path: &Path, name: &str, source: &str) -> ProjectError {
