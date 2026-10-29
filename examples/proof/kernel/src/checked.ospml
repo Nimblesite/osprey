@@ -1,0 +1,39 @@
+namespace proof
+
+import proof::Environment
+import proof::Infer
+import proof::Export
+
+(** Adding declarations to an environment through the kernel: a theorem or
+    definition is checked against its statement, an axiom's statement must
+    be a type. Shared by the example entry and the speed-gate entry so both
+    re-check an export by the same code ([PROOF-EXPORT], [PROOF-SPEED]). *)
+module Checked
+    (** Add `name : ty := value` as a theorem: the statement must be a type
+        and the proof must have it. *)
+    export theorem (env, name, ty, value) = match Infer::sort (env, [], ty)
+        Success level => proved (env, name, ty, value)
+        Error message => Error(message = message)
+
+    proved (env, name, ty, value) = match Infer::check (env, [], value, ty)
+        Success checked => Environment::add (env, Decl(name = name, params = [], ty = ty, body = Theorem value))
+        Error message => Error(message = message)
+
+    (** Every declaration of a `lean4export` text, in file order; the first
+        rejection stops the file. *)
+    export exported (env, text) = match Export::read text
+        Success decls => foldList (decls, Success(value = env), \(so_far, decl) => declared (so_far, decl))
+        Error message => Error(message = message)
+
+    declared (so_far, decl) = match so_far
+        Success env => declare (env, decl)
+        Error message => Error(message = message)
+
+    declare (env, decl) = match decl.body
+        Theorem value => theorem (env, decl.name, decl.ty, value)
+        Definition value => theorem (env, decl.name, decl.ty, value)
+        Axiom => axiom (env, decl)
+
+    axiom (env, decl) = match Infer::sort (env, [], decl.ty)
+        Success level => Environment::add (env, decl)
+        Error message => Error(message = message)

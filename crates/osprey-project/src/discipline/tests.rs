@@ -553,3 +553,82 @@ fn an_hm_import_that_does_not_type_check_is_an_error_and_never_a_signature() {
         errors[0].message
     );
 }
+
+/// A checker declared as a project directory: its own manifest names the
+/// entry, and the entry imports a sibling module.
+fn checker_project(name: &str) -> PathBuf {
+    let root = temp_project(name).directory;
+    let write = |relative: &str, text: &str| {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().unwrap_or(&root)).expect("dir");
+        std::fs::write(path, text).expect("write");
+    };
+    write(
+        "osprey.toml",
+        "[package]\nname = \"@osprey/bounded\"\n\n[discipline]\nname = \"bounded\"\nchecker = \"checker\"\n",
+    );
+    write(
+        "checker/osprey.toml",
+        "[project]\nname = \"checker\"\nsource_roots = [\"src\"]\nentry = \"src/main.ospml\"\n",
+    );
+    write(
+        "checker/src/main.ospml",
+        "namespace bounded\n\nimport bounded::Range\n\nmain () = Range::zero\n",
+    );
+    write(
+        "checker/src/range.ospml",
+        "namespace bounded\n\nmodule Range\n    export zero = 0\n",
+    );
+    root
+}
+
+#[test]
+fn a_checker_project_directory_is_digested_over_its_manifest_and_every_module() {
+    // Implements [TYPES-DISCIPLINE-REGISTRY]: a checker is an Osprey program
+    // built by the ordinary pipeline, so it may be a project of many modules;
+    // every module and the project manifest are build inputs.
+    let root = checker_project("checker-dir");
+    let discipline = Discipline {
+        checker: root.join("checker"),
+        ..bounded(&root)
+    };
+    let digest = inputs::build_digest(&discipline).expect("digest");
+    std::fs::write(
+        root.join("checker/src/range.ospml"),
+        "namespace bounded\n\nmodule Range\n    export zero = 1\n",
+    )
+    .expect("rewrite module");
+    let changed = inputs::build_digest(&discipline).expect("digest");
+    assert_ne!(
+        changed, digest,
+        "a module of the checker project is an input"
+    );
+    std::fs::write(
+        root.join("checker/osprey.toml"),
+        "[project]\nname = \"checker\"\nsource_roots = [\"src\"]\nentry = \"src/main.ospml\"\n\n[modules]\nallow_wildcard_imports = false\n",
+    )
+    .expect("rewrite manifest");
+    assert_ne!(
+        inputs::build_digest(&discipline).expect("digest"),
+        changed,
+        "the checker project's manifest is an input"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_checker_directory_without_a_manifest_is_an_error_naming_it() {
+    let root = checker_project("checker-dir-no-manifest");
+    std::fs::remove_file(root.join("checker/osprey.toml")).expect("remove manifest");
+    let discipline = Discipline {
+        checker: root.join("checker"),
+        ..bounded(&root)
+    };
+    let message = inputs::build_digest(&discipline).expect_err("no manifest");
+    assert!(
+        message.contains("checker/osprey.toml")
+            || message.contains("checker") && message.contains("osprey.toml"),
+        "{message}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

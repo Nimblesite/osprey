@@ -13,30 +13,61 @@ const MANIFEST: &str = "osprey.toml";
 /// The extensions the compiler reads out of a source root.
 const SOURCES: [&str; 3] = ["osp", "ospml", "py"];
 
-/// A digest over every file the checker build reads: the entry module, the
-/// package manifest and every source the build could import, each as its
-/// package-relative path, its length and its bytes.
+/// A digest over every file the checker build reads, each as its
+/// package-relative path, its length and its bytes. A checker is either one
+/// program file — the entry, the package manifest and every source beside it
+/// or under the package's source roots — or a project directory with its own
+/// `osprey.toml`, in which case that manifest and every source under the
+/// roots it names are the inputs.
 ///
 /// # Errors
 /// A file that cannot be read is named in the message instead of standing in
 /// as an empty digest, which would silently reuse a stale checker binary.
 pub(super) fn build_digest(discipline: &Discipline) -> Result<u64, String> {
+    let mut hasher = DefaultHasher::new();
+    if discipline.checker.is_dir() {
+        project_inputs(&mut hasher, &discipline.checker)?;
+    } else {
+        file_inputs(&mut hasher, discipline)?;
+    }
+    Ok(hasher.finish())
+}
+
+/// The inputs of a one-file checker.
+fn file_inputs(hasher: &mut DefaultHasher, discipline: &Discipline) -> Result<(), String> {
     let entry = std::fs::read(&discipline.checker).map_err(|error| {
         format!(
             "has no readable checker at {}: {error}",
             discipline.checker.display()
         )
     })?;
-    let mut hasher = DefaultHasher::new();
-    fold(&mut hasher, &discipline.root, &discipline.checker, &entry);
+    fold(hasher, &discipline.root, &discipline.checker, &entry);
     let manifest = discipline.root.join(MANIFEST);
     if manifest.is_file() {
-        fold_file(&mut hasher, &discipline.root, &manifest)?;
+        fold_file(hasher, &discipline.root, &manifest)?;
     }
-    for file in sources(discipline, &manifest)? {
-        fold_file(&mut hasher, &discipline.root, &file)?;
+    let beside = discipline.checker.parent().map(Path::to_path_buf);
+    for file in sources(&discipline.root, &manifest, beside)? {
+        fold_file(hasher, &discipline.root, &file)?;
     }
-    Ok(hasher.finish())
+    Ok(())
+}
+
+/// The inputs of a checker that is a project directory: its manifest, which
+/// must exist, and every source under the roots the manifest names.
+fn project_inputs(hasher: &mut DefaultHasher, root: &Path) -> Result<(), String> {
+    let manifest = root.join(MANIFEST);
+    if !manifest.is_file() {
+        return Err(format!(
+            "has a checker directory without a manifest: {} is missing",
+            manifest.display()
+        ));
+    }
+    fold_file(hasher, root, &manifest)?;
+    for file in sources(root, &manifest, None)? {
+        fold_file(hasher, root, &file)?;
+    }
+    Ok(())
 }
 
 /// A digest of the compiler a checker is built with, so a compiler upgrade
@@ -59,16 +90,17 @@ pub(super) fn compiler_digest(compiler: &Path) -> Result<u64, String> {
     Ok(super::cache::digest(&bytes))
 }
 
-/// Every source file the checker build can read: those under the package's
-/// source roots, plus those beside the entry module, which is where module
-/// resolution looks. Sorted and deduplicated, so the order is a function of
-/// the tree and one file is never counted twice.
-fn sources(discipline: &Discipline, manifest: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut roots = roots(discipline, manifest)?;
-    roots.extend(discipline.checker.parent().map(Path::to_path_buf));
+/// Every source file the checker build can read: those under the roots the
+/// manifest at `manifest` names (or the defaults when there is none), plus
+/// those under `extra` — beside a one-file checker's entry, which is where
+/// module resolution looks. Sorted and deduplicated, so the order is a
+/// function of the tree and one file is never counted twice.
+fn sources(root: &Path, manifest: &Path, extra: Option<PathBuf>) -> Result<Vec<PathBuf>, String> {
+    let mut roots = roots(root, manifest)?;
+    roots.extend(extra);
     let mut files = Vec::new();
-    for root in roots {
-        visit(&discipline.root.join(root), &mut files)?;
+    for found in roots {
+        visit(&root.join(found), &mut files)?;
     }
     files.sort();
     files.dedup();
@@ -76,9 +108,9 @@ fn sources(discipline: &Discipline, manifest: &Path) -> Result<Vec<PathBuf>, Str
 }
 
 /// The source roots the compiler would read the package from.
-fn roots(discipline: &Discipline, manifest: &Path) -> Result<Vec<PathBuf>, String> {
+fn roots(root: &Path, manifest: &Path) -> Result<Vec<PathBuf>, String> {
     if !manifest.is_file() {
-        return Ok(ProjectConfig::for_root(&discipline.root).source_roots);
+        return Ok(ProjectConfig::for_root(root).source_roots);
     }
     let text = std::fs::read_to_string(manifest)
         .map_err(|error| format!("cannot read {}: {error}", manifest.display()))?;

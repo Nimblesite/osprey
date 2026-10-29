@@ -59,7 +59,7 @@ module Export
 
     versionOk (next, version) = match version == "3.1.0"
         true => Success(value = next)
-        false => Error(message = "format version ${version}, not 3.1.0")
+        false => Error(message = "unsupported format version ${version}")
 
     itemLine (next, number, text) = match text == ""
         true => Success(value = next)

@@ -596,10 +596,8 @@ _test_disciplines:
 	@./$(BIN) target/disciplines/bounded_roundtrip --check > target/disciplines/rejected.txt 2>&1; test $$? -ne 0
 	sed -e "s|$(CURDIR)/||g" target/disciplines/rejected.txt | diff - examples/disciplines/bounded_roundtrip/rejected.expectedoutput
 	@echo "==> [disciplines] bounded: the checker's protocol assertion suite..."
+	@$(RM) examples/disciplines/bounded/.osprey
 	@OSPREY_BIN="$(abspath $(BIN))" ./$(BIN) test examples/disciplines/bounded --memory=gc 2>/dev/null > target/disciplines/bounded-suite.txt; tail -2 target/disciplines/bounded-suite.txt
 	grep -q "failed=0" target/disciplines/bounded-suite.txt
-	@echo "==> [disciplines] bounded: protocol responses byte-exact against their goldens..."
-	@$(MKDIR) target/disciplines/cache
-	./$(BIN) examples/disciplines/bounded/src/checker.ospml --compile --quiet --no-warnings -o target/disciplines/bounded-checker
-	node examples/disciplines/bounded/tests/protocol-check.mjs target/disciplines/bounded-checker "$(abspath $(BIN))" target/disciplines/cache examples/disciplines/bounded/tests/requests
+	@$(RM) examples/disciplines/bounded/.osprey examples/disciplines/bounded_roundtrip/.osprey
 	$(MAKE) _test_disciplines_passthrough

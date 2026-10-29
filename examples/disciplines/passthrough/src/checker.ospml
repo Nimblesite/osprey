@@ -1,61 +1,45 @@
 //! The `passthrough` reference type discipline of [TYPES-DISCIPLINE-REFERENCE]
 //! (spec 0050). It checks nothing of its own: it runs the compiler's ordinary
-//! rules on the module and hands back the module's inferred signature and the
+//! rules on the module and returns the module's inferred signature and the
 //! module itself as its erased form. Its value is the round trip — an `hm`
 //! module importing a `passthrough` one and the reverse, with output identical
 //! to the same program under `hm` alone.
 //!
-//! The compiler builds one file for a checker, `<compiler> <checker> --compile`,
-//! so the protocol, the rewrite, the diagnostic parser, the import stubs and
-//! this package's assertion suite all live in this file. The entry point is
-//! `main`: it answers the one request line the seam writes to standard input,
-//! and with no request line (how `osprey test` runs it) it runs the cases.
+//! The compiler builds one file per checker (`<compiler> <checker>
+//! --compile`), so the protocol, the rewrite, the diagnostic parser, the import
+//! stubs and this package's assertion suite share this file. `main` answers the
+//! one request line the seam writes to standard input, and with no request line
+//! (how `osprey test` runs it) it runs the cases.
 //!
-//! Imports are the one thing a single-file `--check` cannot resolve, so the
-//! checker appends what it can of them to the scratch copy as ML `extern`
-//! declarations ([FLAVOR-ML-EXTERN]) built from `imports[].signature`. An
-//! `extern` carries no type parameters and no record type, so a module that
-//! imports a polymorphic item, a zero-argument function, a record or union
-//! type, or anything an inferred signature omits is refused with
-//! `passthrough/imports` rather than checked against a weaker stub. Nothing is
-//! guessed: see `Signatures::unsupported`.
+//! A single-file `--check` cannot resolve imports, so the checker appends what
+//! it can of them to the scratch copy as ML `extern` declarations built from
+//! `imports[].signature`. An `extern` carries no type parameters, no record or
+//! union type and no zero-argument form, so a module importing any of those, or
+//! anything an inferred signature omits, is refused with `passthrough/imports`
+//! instead of checked against a weaker stub.
 
 namespace passthrough
 
 (** The marker spellings the seam scans for ([TYPES-DISCIPLINE-SELECT]). *)
 markerPrefixes = ["// osprey: types=", "//osprey: types=", "# osprey: types=", "#osprey: types="]
-
-(** What an accepted module is rewritten to: the identity discipline. *)
 hmMarker = "// osprey: types=hm"
-
-(** The same rewrite for a Python-flavor source, whose comments are `#`. *)
 hmMarkerPython = "# osprey: types=hm"
-
-(** The compiler's own rules rejected the module. The compiler prefixes this
-    with `passthrough/` before printing it ([TYPES-DISCIPLINE-PROTOCOL]). *)
+(** The compiler prefixes each of these with `passthrough/`. *)
 codeCheck = "check"
-
-(** An import the checker cannot stub faithfully. *)
 codeImports = "imports"
-
-(** The checker could not do its own work. *)
 codeInternal = "internal"
-
-(** The protocol version this checker answers. *)
 protocolVersion = 2
-
-(** The first word of one signature block. *)
 signaturePrefix = "signature "
-
 (** A stub for an imported module that exports nothing at all. *)
 emptyStub = "    extern __passthrough_imported (p0 : int) -> int\n"
-
-(** Type names an `extern` declaration can spell. Anything else is a type the
-    signature does not define, which no stub may invent. *)
+(** Type names an `extern` declaration can spell. A type outside this list is
+    one the signature does not define, which no stub may invent. *)
 knownTypes = ["int", "float", "string", "bool", "Unit", "List", "Map", "Result", "Json", "JsonMember", "Error", "any", "printable", "never"]
-
-(** Characters that continue an identifier in a type spelling. *)
 identifierChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+notFlat = "is not a flat `(parameters) -> result` type"
+
+(** The last element of `parts`; used for a bare file name and a module title. *)
+lastPart parts = foldList (parts, "", \(_, part) => part)
 
 (** One request line of the checker protocol, decoded. *)
 type Request =
@@ -65,101 +49,59 @@ type Request =
     cache : string
     compiler : string
     imports : List<Imported>
-
-(** The export signature of one imported module ([TYPES-DISCIPLINE-PROTOCOL]). *)
 type Imported =
     name : string
     text : string
     omitted : List<string>
-
-(** A decoded request, or why the line is not one. *)
-type Decoded = IsRequest Request | NotRequest string
-
-(** The erased module a response carries. *)
 type Erased =
     flavor : string
     source : string
-
-(** One diagnostic, with `-1` where the compiler gave no position. *)
 type Diagnostic =
     code : string
     line : int
     column : int
     message : string
-
-(** One answer of [TYPES-DISCIPLINE-PROTOCOL]. *)
-type Response = Accepted string Erased | Rejected List<Diagnostic>
-
-(** One `extern` declaration an import needs; `title` is the module name. *)
-type Stub =
-    space : string
-    title : string
-    body : string
-
-(** What one import's signature became, or why it cannot be stubbed. *)
-type Attempt = Held List<Stub> | Refused string
-
-(** Every import's stub, or the first refusal. *)
-type Stubbed = Ready string | Unstubbable string
-
-(** One signature item, or why it is not one this checker can stub. *)
-type Declaration = Declared string | Undeclared string
-
-(** A split function type, or why the type is not a flat one. *)
-type Arrow = Flat string string | Unflattenable string
-
-(** Blocks of signature text as they are accumulated. *)
-type Blocks =
-    done : List<string>
-    open : string
-
-(** A finished command: its status and both captured streams. *)
 type Ran =
     code : int
     out : string
     err : string
+type Decoded = IsRequest Request | NotRequest string
+type Response = Accepted string Erased | Rejected List<Diagnostic>
+(** What one import's stub became, or why it cannot be stubbed. *)
+type Attempt = Held string | Refused string
+type Stubbed = Ready string | Unstubbable string
+type Declaration = Declared string | Undeclared string
 
 (** Rewriting the discipline marker on the way into the compiler. *)
 module Marker
-    (** `source` with every discipline marker line rewritten to `hm`. The
-        marker is a comment, so rewriting it changes no layout and no code. *)
+    (** `source` with every marker line rewritten to `hm`; the marker is a
+        comment, so this changes no layout and no code. *)
     export rewrite source = join (mapList (split (source, "\n") ?: [source], rewritten), "\n")
 
     (** The file name after the last `/`, kept with its extension so the
         compiler resolves the same flavor for the scratch copy. *)
-    export basename path = afterLast (path, 0, 0)
+    export basename path = lastPart (split (path, "/") ?: [path])
 
-    rewritten text = match marker (trim text)
+    rewritten text = match marked (trim text)
         true => replacement text
         false => text
 
-    marker (text) = foldList (markerPrefixes, false, \(found, prefix) => found || startsWith (text, prefix))
+    marked (text) = foldList (markerPrefixes, false, \(found, prefix) => found || startsWith (text, prefix))
 
     replacement text = match startsWith (trim text) "#"
         true => hmMarkerPython
         false => hmMarker
 
-    afterLast (path, index, start) = match index >= length path
-        true => substring (path, start, length path) ?: "module"
-        false => stepped (path, index, start, substring (path, index, index + 1) ?: "")
-
-    stepped (path, index, start, char) = match char == "/"
-        true => afterLast (path, index + 1, index + 1)
-        false => afterLast (path, index + 1, start)
-
 (** Answering with one JSON line ([TYPES-DISCIPLINE-PROTOCOL]). *)
 module Replies
-    (** `accepted` with the signature the compiler inferred and the erased module. *)
+    (** `accepted` with the inferred signature and the erased module. *)
     export accepted (text, erased) = encoded (acceptedJson (text, erased))
 
-    (** `rejected` with the diagnostics, first one carrying the position. *)
     export rejected diagnostics = encoded (rejectedJson diagnostics)
-
     (** A rejection of the checker's own doing. *)
     export internal message = rejected ([Diagnostic(code = codeInternal, line = -1, column = -1, message = message)])
 
     encoded json = jsonEncode json ?: fallback
-
     acceptedJson (text, erased) = JsonObject [
         JsonMember("version", JsonInt protocolVersion),
         JsonMember("result", JsonString "accepted"),
@@ -195,35 +137,25 @@ module Replies
 module Checks
     (** One diagnostic per non-blank stderr line, `path:line:col:` parsed. *)
     export diagnostics (path, stderr) =
-        filterList (mapList (split (stderr, "\n") ?: [], read (path)), written)
-
-    written diagnostic = !isEmpty diagnostic.message
+        filterList (mapList (split (stderr, "\n") ?: [], read (path)), \one => !isEmpty one.message)
 
     read (path) line = match startsWith (line, path + ":")
-        true => positioned (path, line)
+        true => positioned (drop (line, length path + 1))
         false => whole line
 
-    positioned (path, line) = locate (drop (line, length path + 1))
-
-    locate rest = match indexOf (rest, ":")
+    positioned rest = match indexOf (rest, ":")
         Error _ => whole rest
         Success first => numbered (rest, first)
-
-    numbered (rest, first) = match indexOf (drop (rest, first + 1), ":")
-        Error _ => whole rest
-        Success second => measured (rest, first, second)
-
-    measured (rest, first, second) =
+    numbered (rest, first) =
         column = drop (rest, first + 1)
-        match parseInt (substring (rest, 0, first) ?: "")
+        match indexOf (column, ":")
             Error _ => whole rest
-            Success at => match parseInt (substring (column, 0, second) ?: "")
-                Error _ => whole rest
-                Success where => Diagnostic(
-                    code = codeCheck,
-                    line = at,
-                    column = where,
-                    message = trim (drop (column, second + 1)))
+            Success second => measured (rest, column, first, second)
+    measured (rest, column, first, second) = match parseInt (substring (rest, 0, first) ?: "")
+        Error _ => whole rest
+        Success at => match parseInt (substring (column, 0, second) ?: "")
+            Error _ => whole rest
+            Success where => Diagnostic(code = codeCheck, line = at, column = where, message = trim (drop (column, second + 1)))
 
     whole message = Diagnostic(code = codeCheck, line = -1, column = -1, message = trim message)
 
@@ -232,27 +164,26 @@ module Signatures
     (** The stub source to append to the scratch copy of the module. *)
     export stubs imports = gathered (imports, [])
 
-    (** The module names a stub stands in for, so their blocks are not returned
-        as part of the checked module's own signature. *)
+    (** The module names the stubs stand in for, so their signature blocks are
+        not returned as part of the checked module's own signature. *)
     export titles imports = mapList (imports, \imported => lastPart (split (imported.name, "::") ?: [imported.name]))
 
     gathered (imports, stubs) = match imports
-        [] => Ready (join (mapList (stubs, render), ""))
+        [] => Ready (join (stubs, ""))
         [first, ...rest] => appended (stub first, rest, stubs)
-
     appended (attempt, rest, stubs) = match attempt
-        Held more => gathered (rest, listConcat (stubs, more))
+        Held text => gathered (rest, listAppend (stubs, text))
         Refused why => Unstubbable why
 
     stub imported = match split (imported.name, "::")
-        Error _ => Refused (problem imported)
         Success parts => piece (parts, imported)
+        Error _ => notScoped imported
 
     piece (parts, imported) = match parts
         [space, title] => checked (space, title, imported)
-        _ => Refused (problem imported)
+        _ => notScoped imported
 
-    problem imported = "import `" + imported.name + "` is not a `namespace::Module` name"
+    notScoped imported = Refused ("import `" + imported.name + "` is not a `namespace::Module` name")
 
     checked (space, title, imported) = match imported.omitted
         [] => body (space, title, linesOf imported.text, [])
@@ -260,22 +191,16 @@ module Signatures
             + ", which an inferred signature names but does not describe, so the module cannot be checked on its own")
 
     body (space, title, lines, items) = match lines
-        [] => Held ([Stub(space = space, title = title, body = spelled items)])
-        [first, ...rest] => extended (space, title, first, rest, items)
-
-    extended (space, title, line, rest, items) = match declaration line
-        Declared text => body (space, title, rest, listAppend (items, text))
-        Undeclared why => Refused ("import `" + title + "` item `" + trim line + "` " + why)
+        [] => Held ("namespace " + space + "\nmodule " + title + "\n" + spelled items)
+        [first, ...rest] => match declaration first
+            Declared text => body (space, title, rest, listAppend (items, text))
+            Undeclared why => Refused ("import `" + title + "` item `" + trim first + "` " + why)
 
     spelled items = match items
         [] => emptyStub
         _ => join (items, "")
 
-    render stub = "namespace " + stub.space + "\nmodule " + stub.title + "\n" + stub.body
-
-    linesOf text = filterList (split (text, "\n") ?: [], \line => isItem line)
-
-    isItem line = !isEmpty (trim line) && !startsWith (trim line, signaturePrefix)
+    linesOf text = filterList (split (text, "\n") ?: [], \line => !isEmpty (trim line) && !startsWith (trim line, signaturePrefix))
 
     declaration line = match indexOf (line, ":")
         Error _ => Undeclared "is not a `name : type` signature item"
@@ -284,42 +209,36 @@ module Signatures
     named (name, ty) = match contains name "<"
         true => Undeclared "is polymorphic, which an `extern` declaration cannot spell"
         false => typed (name, ty)
+    typed (name, ty) = match startsWith (trim ty) "("
+        true => opened (name, trim ty, indexOf (trim ty, ")"))
+        false => Undeclared notFlat
 
-    typed (name, ty) = match arrow ty
-        Unflattenable why => Undeclared why
-        Flat params result => argumented (name, splitArguments params, result)
+    opened (name, ty, close) = match close
+        Error _ => Undeclared notFlat
+        Success at => flat (name, ty, at)
 
-    arrow ty = match startsWith (trim ty) "("
-        true => opened (trim ty, indexOf (trim ty, ")"))
-        false => Unflattenable "is not a flat `(parameters) -> result` type"
-
-    opened (ty, close) = match close
-        Error _ => Unflattenable "is not a flat `(parameters) -> result` type"
-        Success at => closed (ty, at)
-
-    closed (ty, at) =
+    flat (name, ty, at) =
         rest = trim (drop (ty, at + 1))
         match startsWith rest "->"
-            true => Flat (substring (ty, 1, at) ?: "", trim (drop (rest, 2)))
-            false => Unflattenable "is not a flat `(parameters) -> result` type"
+            true => argumented (name, splitArguments (substring (ty, 1, at) ?: ""), trim (drop (rest, 2)))
+            false => Undeclared notFlat
 
     argumented (name, arguments, result) = match arguments
         [] => Undeclared "takes no arguments, which an `extern` declaration cannot spell"
         _ => admitted (name, arguments, result)
 
     admitted (name, arguments, result) = match unsupported (arguments, result)
-        [] => Declared (declarationOf (name, arguments, result))
+        [] => Declared ("    export extern " + name + parameters (arguments, 0) + " -> " + result + "\n")
         reasons => Undeclared ("uses " + join (reasons, ", ") + ", which an `extern` declaration cannot express")
 
     (** Every reason `arguments` or `result` cannot be written in an `extern`. *)
     unsupported (arguments, result) =
-        resultReasons = reasons result
-        foldList (arguments, resultReasons, \(all, argument) => listConcat (all, reasons argument))
+        foldList (arguments, reasons result, \(all, argument) => listConcat (all, reasons argument))
 
-    reasons ty = onlyNames (ty, shapes ty)
+    reasons ty = matched (ty, shapes ty)
 
-    onlyNames (ty, found) = match found
-        [] => unnamed (filterList (identifiers ty, \(word) => !listContains (knownTypes, word)))
+    matched (ty, found) = match found
+        [] => unnamed (filterList (identifiers (ty, 0, "", []), \(word) => !listContains (knownTypes, word)))
         _ => found
 
     shapes ty = joined ([
@@ -336,23 +255,20 @@ module Signatures
 
     joined (groups) = foldList (groups, [], \(all, group) => listConcat (all, group))
 
-    declarationOf (name, arguments, result) =
-        "    export extern " + name + parameters (arguments, 0) + " -> " + result + "\n"
-
     parameters (arguments, at) = match arguments
         [] => ""
         [first, ...rest] => " (p" + toString at + " : " + first + ")" + parameters (rest, at + 1)
 
-    (** The arguments of a parameter list, split at commas outside brackets. *)
+    (** The parameters of a list type, split at commas outside brackets. *)
     splitArguments params = parts (params, 0, 0, 0, [])
 
     parts (text, at, depth, start, found) = match at >= length text
         true => listReverse (listAppend (found, trim (substring (text, start, length text) ?: "")))
         false => stepped (text, at, depth, start, found, substring (text, at, at + 1) ?: "")
 
-    stepped (text, at, depth, start, found, char) = match opener char
+    stepped (text, at, depth, start, found, char) = match contains ("([{<", char)
         true => parts (text, at + 1, depth + 1, start, found)
-        false => match closer char
+        false => match contains (")]}>", char)
             true => parts (text, at + 1, depth - 1, start, found)
             false => separated (text, at, depth, start, found, char)
 
@@ -360,45 +276,24 @@ module Signatures
         true => parts (text, at + 1, depth, at + 1, listAppend (found, trim (substring (text, start, at) ?: "")))
         false => parts (text, at + 1, depth, start, found)
 
-    opener char = char == "(" || char == "<" || char == "["
-
-    closer char = char == ")" || char == ">" || char == "]"
-
-    (** Every identifier a type spelling contains, in order. *)
-    identifiers ty = kept (ty, 0, "", [])
-
-    kept (ty, at, current, found) = match at >= length ty
+    (** Every identifier one type spelling contains. *)
+    identifiers (ty, at, current, found) = match at >= length ty
         true => ended (current, found)
-        false => next (ty, at, current, found, substring (ty, at, at + 1) ?: "")
+        false => scanning (ty, at, current, found, substring (ty, at, at + 1) ?: "")
+
+    scanning (ty, at, current, found, char) = match contains identifierChars char
+        true => identifiers (ty, at + 1, current + char, found)
+        false => identifiers (ty, at + 1, "", ended (current, found))
 
     ended (current, found) = match isEmpty current
         true => found
         false => listAppend (found, current)
 
-    next (ty, at, current, found, char) = match contains identifierChars char
-        true => kept (ty, at + 1, current + char, found)
-        false => stopped (ty, at, current, found)
-
-    stopped (ty, at, current, found) = match isEmpty current
-        true => kept (ty, at + 1, "", found)
-        false => kept (ty, at + 1, "", listAppend (found, current))
-
-    lastPart parts = foldList (parts, "", \(_, part) => part)
-
 (** Running the compiler the seam runs, with both streams captured to files. *)
 module Tool
-    (** Create `directory` and its parents; no directory builtin exists yet. *)
-    export ensure directory = started (spawnProcess ("mkdir -p " + quoted directory, quiet))
-
-    started result = match result
-        Success id => created (awaitProcess id)
-        Error message => Error(message = message)
-
-    created code = match code == 0
-        true => Success(value = 0)
-        false => Error(message = "mkdir failed with status " + toString code)
-
-    (** Run `command` through the shell, capturing stdout and stderr. *)
+    (** Run `command` through the shell, capturing stdout and stderr. The
+        runner creates the result cache before it spawns a checker, so the
+        directory the capture files land in already exists. *)
     export capture (directory, name, command) =
         out = directory + "/" + name + ".out"
         err = directory + "/" + name + ".err"
@@ -408,15 +303,11 @@ module Tool
     exited result = match result
         Success id => awaitProcess id
         Error _ => -1
-
     content result = match result
         Success text => text
         Error _ => ""
 
-    (** `text` as one shell word. *)
-    export quoted text = "'" + escaped text + "'"
-
-    escaped text = replace (text, "'", "'\\''") ?: text
+    export quoted text = "'" + (replace (text, "'", "'\\''") ?: text) + "'"
 
     quiet (id, kind, data) = cleanupProcess 0
 
@@ -430,25 +321,21 @@ module Checker
     decoded (line) = match jsonDecode line
         Error _ => NotRequest "the request line is not one JSON object of the checker protocol"
         Success document => requestOf document
-
     requestOf document =
         source = textAt (document, "module", "source")
         cache = textAt (document, "options", "cache_dir")
         compiler = textAt (document, "options", "compiler")
-        flavor = textAt (document, "module", "flavor")
-        path = textAt (document, "module", "path")
         match isEmpty source || isEmpty cache || isEmpty compiler
             true => NotRequest "the request names no module source, cache directory or compiler"
             false => IsRequest (Request(
-                path = path,
-                flavor = flavor,
+                path = textAt (document, "module", "path"),
+                flavor = textAt (document, "module", "flavor"),
                 source = source,
                 cache = cache,
                 compiler = compiler,
                 imports = importsOf document))
 
     textAt (document, section, key) = jsonText (field (field (document, section), key)) ?: ""
-
     field (json, name) = jsonField (json, name) ?: JsonNull
 
     importsOf document = match field (document, "imports")
@@ -468,35 +355,32 @@ module Checker
 
     inspect request = match Signatures::stubs request.imports
         Unstubbable why => Replies::rejected ([Diagnostic(code = codeImports, line = -1, column = -1, message = why)])
-        Ready stubs => scratched (request, directoryOf request, stubs)
+        Ready stubs => written (request, stubs)
 
-    directoryOf request = request.cache + "/passthrough"
-
-    scratched (request, directory, stubs) = match Tool::ensure directory
-        Error why => Replies::internal ("cannot create " + directory + ": " + why)
-        Success _ => written (request, directory, stubs)
-
-    written (request, directory, stubs) =
+    written (request, stubs) =
         erased = Marker::rewrite request.source
         name = Marker::basename request.path
+        directory = request.cache
         target = directory + "/" + name
         match writeFile (target, erased + stubs)
-            Error why => Replies::internal ("cannot write " + target + ": " + why)
+            Error why => Replies::internal ("cannot create " + directory + " or write " + target + ": " + why)
             Success _ => checked (request, directory, name, target, erased)
 
     checked (request, directory, name, target, erased) =
-        command = Tool::quoted request.compiler + " " + Tool::quoted target + " --check --no-warnings"
-        ran = Tool::capture (directory, name + ".check", command)
+        ran = Tool::capture (directory, name + ".check", checkCommand (request, target))
         match ran.code == 0
             true => signed (request, directory, name, target, erased)
             false => rejectedBy (target, erased, ran.err)
 
-    rejectedBy (target, erased, stderr) =
-        found = Checks::diagnostics (target, stderr)
-        match found
-            [] => Replies::rejected ([Diagnostic(code = codeCheck, line = -1, column = -1, message = "the compiler rejected the module without a diagnostic")])
-            _ => Replies::rejected (mapList (found, \one => marked (one, lineCount erased)))
+    checkCommand (request, target) =
+        Tool::quoted request.compiler + " " + Tool::quoted target + " --check --no-warnings"
 
+    rejectedBy (target, erased, stderr) = match Checks::diagnostics (target, stderr)
+        [] => Replies::rejected ([Diagnostic(code = codeCheck, line = -1, column = -1, message = "the compiler rejected the module without a diagnostic")])
+        found => Replies::rejected (mapList (found, \one => marked (one, lineCount erased)))
+
+    (** A diagnostic past the module's last line can only be about the stub the
+        checker appended, so it is the checker's fault, never the user's. *)
     marked (diagnostic, lines) = match diagnostic.line > lines
         true => Diagnostic(
             code = codeInternal,
@@ -518,74 +402,61 @@ module Checker
         true => Replies::internal ("the compiler inferred no signature for `" + request.path + "`")
         false => Replies::accepted (text, Erased(flavor = request.flavor, source = erased))
 
-    kept (text, titles) =
-        blocks = closed (grouped (split (text, "\n") ?: [], Blocks(done = [], open = "")))
-        join (filterList (blocks, \block => !listContains (titles, blockName block)), "")
+    (** The signature text without the blocks the imported stubs contributed.
+        The stubs are appended after the module, so the first stub block ends
+        the module's own text. *)
+    kept (text, titles) = ending (split (text, "\n") ?: [], titles, [])
 
-    blockName block = trim (drop (firstLine block, length signaturePrefix))
+    ending (lines, titles, kept) = match lines
+        [] => join (listReverse kept, "\n")
+        [first, ...rest] => match startsWith first signaturePrefix
+            true => boundary (first, rest, titles, kept)
+            false => ending (rest, titles, listPrepend (kept, first))
 
-    firstLine text = match indexOf (text, "\n")
-        Error _ => text
-        Success at => substring (text, 0, at) ?: text
-
-    grouped (lines, current) = match lines
-        [] => current
-        [first, ...rest] => step (first, rest, current)
-
-    step (line, rest, current) = match startsWith line signaturePrefix
-        true => grouped (rest, Blocks(done = closed current, open = line + "\n"))
-        false => grouped (rest, current(open = current.open + line + "\n"))
-
-    closed current = match isEmpty current.open
-        true => current.done
-        false => listAppend (current.done, current.open)
+    boundary (line, rest, titles, kept) = match listContains (titles, trim (drop (line, length signaturePrefix)))
+        true => join (listReverse kept, "\n")
+        false => ending (rest, titles, listPrepend (kept, line))
 
 (** Every case this package asserts about itself: the marker rewrite, the
     stderr parser and the exact response encoding the seam parses. *)
 module Tests
     export run () =
-        test ("marker rewriting replaces a Default marker", \() => defaultMarker ())
-        test ("marker rewriting replaces a Python marker in its own comment style", \() => pythonMarker ())
-        test ("marker rewriting leaves every other line alone", \() => otherLines ())
-        test ("a positioned stderr line becomes a positioned diagnostic", \() => positioned ())
-        test ("a stderr line with no position keeps its message and no position", \() => unpositioned ())
-        test ("a blank stderr line is not a diagnostic", \() => blank ())
+        test ("every marker spelling is rewritten and nothing else is touched", \() => markers ())
+        test ("stderr becomes positioned diagnostics and nothing else", \() => diagnostics ())
         test ("an accepted answer is the exact protocol JSON", \() => acceptedReply ())
-        test ("a rejected answer is the exact protocol JSON", \() => rejectedReply ())
-        test ("an unpositioned rejection writes null, not zero", \() => internalReply ())
-        test ("a monomorphic import is stubbed as an extern declaration", \() => monomorphic ())
-        test ("a polymorphic import is refused instead of stubbed wrongly", \() => polymorphic ())
-        test ("an import naming a record type is refused", \() => recorded ())
-        test ("an import that omits a type is refused rather than half-stubbed", \() => omitting ())
-        test ("an import with no exports is still declared so the import resolves", \() => emptyImport ())
+        test ("a rejected answer is the exact protocol JSON, and no position is null", \() => rejectedReplies ())
+        test ("a stubbable import becomes an extern; an empty one stays resolvable", \() => stubs ())
+        test ("an import an extern cannot express is refused with the reason", \() => refusals ())
 
-    defaultMarker () = expect (Marker::rewrite defaultSource, defaultRewritten)
+    markers () =
+        expect (Marker::rewrite "// osprey: types=passthrough\nnamespace Count\n", "// osprey: types=hm\nnamespace Count\n")
+        expect (Marker::rewrite "# osprey: types=passthrough\nx = 1\n", "# osprey: types=hm\nx = 1\n")
+        expect (Marker::rewrite "//osprey: types=passthrough\n", "// osprey: types=hm\n")
+        expect (Marker::rewrite unmarked, unmarked)
+    diagnostics () =
+        expect (described (first (Checks::diagnostics (scratch, scratchLine))), "check 5 25 type mismatch: cannot unify string with int")
+        expect (described (first (Checks::diagnostics (scratch, "error: the module is ill-formed\n"))), "check -1 -1 error: the module is ill-formed")
+        expect (listLength (Checks::diagnostics (scratch, "\n  \n")), 0)
+    acceptedReply () = expect (Replies::accepted (sampleSignature, Erased(flavor = "ml", source = "namespace a\n")), acceptedExpected)
 
-    pythonMarker () = expect (Marker::rewrite pythonSource, pythonRewritten)
+    rejectedReplies () =
+        expect (Replies::rejected ([Diagnostic(code = codeCheck, line = 5, column = 25, message = "bad")]), rejectedExpected)
+        expect (Replies::internal "boom", internalExpected)
 
-    otherLines () = expect (Marker::rewrite otherSource, otherSource)
+    stubs () =
+        expect (describedStubs ([Imported(name = "a::Numbers", text = "signature Numbers\n    twice : (int) -> int\n", omitted = [])]), "namespace a\nmodule Numbers\n    export extern twice (p0 : int) -> int\n")
+        expect (describedStubs ([Imported(name = "a::Empty", text = "signature Empty\n", omitted = [])]), "namespace a\nmodule Empty\n" + emptyStub)
 
-    positioned () = expect (described (first (Checks::diagnostics (scratch, scratchLine))), "check 5 25 type mismatch: cannot unify string with int")
+    refusals () =
+        expect (refusal ("signature Numbers\n    same<t0> : (t0) -> t0\n", []), "import `Numbers` item `same<t0> : (t0) -> t0` is polymorphic, which an `extern` declaration cannot spell")
+        expect (refusal ("signature Numbers\n    make : (string) -> { age: int }\n", []), "import `Numbers` item `make : (string) -> { age: int }` uses a record type, which an `extern` declaration cannot express")
+        expect (refusal ("signature Numbers\n    make : (string) -> int\n", ["type Person"]), "import `a::Numbers` exports type Person, which an inferred signature names but does not describe, so the module cannot be checked on its own")
 
-    unpositioned () = expect (described (first (Checks::diagnostics (scratch, "error: the module is ill-formed\n"))), "check -1 -1 error: the module is ill-formed")
+    refusal (text, omitted) = describedStubs ([Imported(name = "a::Numbers", text = text, omitted = omitted)])
 
-    blank () = expect (listLength (Checks::diagnostics (scratch, "\n  \n")), 0)
-
-    acceptedReply () = expect (Replies::accepted (sampleSignature, sampleErased), acceptedExpected)
-
-    rejectedReply () = expect (Replies::rejected ([Diagnostic(code = codeCheck, line = 5, column = 25, message = "bad")]), rejectedExpected)
-
-    internalReply () = expect (Replies::internal "boom", internalExpected)
-
-    monomorphic () = expect (stubbedOf [Imported(name = "a::Numbers", text = monomorphicSignature, omitted = [])], monomorphicStub)
-
-    polymorphic () = expect (refusalOf [Imported(name = "a::Numbers", text = polymorphicSignature, omitted = [])], polymorphicRefusal)
-
-    recorded () = expect (refusalOf [Imported(name = "a::Numbers", text = recordSignature, omitted = [])], recordRefusal)
-
-    omitting () = expect (refusalOf [Imported(name = "a::Numbers", text = monomorphicSignature, omitted = ["type Person"])], omittedRefusal)
-
-    emptyImport () = expect (stubbedOf [Imported(name = "a::Empty", text = "signature Empty\n", omitted = [])], emptyStubSource)
+    describedStubs imports = match Signatures::stubs imports
+        Unstubbable why => why
+        Ready text => text
 
     described diagnostic = diagnostic.code + " " + toString diagnostic.line + " " + toString diagnostic.column + " " + diagnostic.message
 
@@ -593,57 +464,17 @@ module Tests
         [only, ..._rest] => only
         [] => Diagnostic(code = "", line = 0, column = 0, message = "no diagnostic")
 
-    refusalOf imports = match Signatures::stubs imports
-        Unstubbable why => why
-        Ready text => "no refusal: " + text
-
-    stubbedOf imports = match Signatures::stubs imports
-        Ready text => text
-        Unstubbable why => "refused: " + why
-
-    defaultSource = "// osprey: types=passthrough\nnamespace a\n"
-
-    defaultRewritten = "// osprey: types=hm\nnamespace a\n"
-
-    pythonSource = "# osprey: types=passthrough\nx = 1\n"
-
-    pythonRewritten = "# osprey: types=hm\nx = 1\n"
-
-    otherSource = "// osprey: types=hm\nnamespace a\nmodule M\n"
-
+    unmarked = "namespace Count\n\nmodule Ops\n    export twice x = x\n"
     scratch = "/tmp/x.ospml"
-
     scratchLine = "/tmp/x.ospml:5:25: type mismatch: cannot unify string with int\n"
-
     sampleSignature = "signature M\n    twice : (int) -> int\n"
-
-    sampleErased = Erased(flavor = "ml", source = "namespace a\n")
-
     acceptedExpected = "{\"version\":2,\"result\":\"accepted\",\"signature\":\"signature M\\n    twice : (int) -> int\\n\",\"erased\":{\"flavor\":\"ml\",\"source\":\"namespace a\\n\"},\"diagnostics\":[]}"
-
     rejectedExpected = "{\"version\":2,\"result\":\"rejected\",\"signature\":\"\",\"erased\":null,\"diagnostics\":[{\"code\":\"check\",\"severity\":\"error\",\"line\":5,\"column\":25,\"message\":\"bad\"}]}"
-
     internalExpected = "{\"version\":2,\"result\":\"rejected\",\"signature\":\"\",\"erased\":null,\"diagnostics\":[{\"code\":\"internal\",\"severity\":\"error\",\"line\":null,\"column\":null,\"message\":\"boom\"}]}"
 
-    monomorphicSignature = "signature Numbers\n    twice : (int) -> int\n"
-
-    monomorphicStub = "namespace a\nmodule Numbers\n    export extern twice (p0 : int) -> int\n"
-
-    polymorphicSignature = "signature Numbers\n    same<t0> : (t0) -> t0\n"
-
-    polymorphicRefusal = "import `Numbers` item `same<t0> : (t0) -> t0` is polymorphic, which an `extern` declaration cannot spell"
-
-    recordSignature = "signature Numbers\n    make : (string) -> { age: int }\n"
-
-    recordRefusal = "import `Numbers` item `make : (string) -> { age: int }` uses a record type, which an `extern` declaration cannot express"
-
-    omittedRefusal = "import `a::Numbers` exports type Person, which an inferred signature names but does not describe, so the module cannot be checked on its own"
-
-    emptyStubSource = "namespace a\nmodule Empty\n    extern __passthrough_imported (p0 : int) -> int\n"
-
 (** The one thing this program needs from libc, and the reason: the testing
-    builtins named by this package's suite attach a TAP plan and summary to the
-    end of `main` in *every* build of this file, and the seam parses exactly one
+    builtins named by the suite attach a TAP plan and summary to the end of
+    `main` in *every* build of this file, and the seam parses exactly one
     response line. An answered request is therefore written straight to the
     process's standard output and leaves through `_Exit`, which skips the
     epilogue; the suite, run with no request line, returns from `main` so the
@@ -651,8 +482,7 @@ module Tests
 extern _Exit (code : int) -> Unit
 
 (** The entry point: answer the request line, or run the cases when the seam is
-    not the caller. The compiler writes one request line to standard input; with
-    none — how `osprey test` runs a suite — the same program asserts itself. *)
+    not the caller. *)
 main () =
     handle Arith
         overflow op lhs rhs wrapped => wrapped

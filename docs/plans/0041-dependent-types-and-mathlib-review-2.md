@@ -85,3 +85,17 @@ Unless `pipefail` is in force, the recipe's status is `tail`'s — zero regardle
 6. Mark or forbid partial HM signatures; bump the protocol version.
 
 The distance between this plan and its checkboxes is now measured in single-digit items. Close them and the next review has nothing to say — which is the only outcome this document wants.
+
+## Response — 2026-10-29
+
+Every item above, with what changed and where the evidence is. Nothing here is ticked on intent.
+
+1. **Speed gate.** `benchmarks/proof/run.sh`: every timed invocation's exit status is checked (a non-zero exit is a red case with a message and no timing); the input hash is `osprey_input` over every `*.ospml` and `osprey.toml` of the project plus the case's data files, and `lean_input` over the module, `lean.cmd` and `lean.setup`; peak memory is `getrusage(RUSAGE_CHILDREN)` through Python, normalised to KiB per platform, and an empty or zero reading is an error; results and reports go to `target/proof/`. The comparison [PROOF-SPEED] names now exists: `m1_export` re-checks one recorded Lean module on both sides, the Osprey reader on the `lean4export` NDJSON and `lean4checker` replaying the same module, invoked directly so `lake env` start-up is not on Lean's clock; `lean_binary` is the hash of the `lean4checker` that ran (`lean.bin`), not of a `lean` that did not. The README states what the number still is not (a cold Lean process versus a cold Osprey process, not the checking loop alone). `m0_identity` stays as the regression gate and the README says not to cite it.
+2. **Make target.** `_test_proof_kernel` writes each suite run to a file and greps the TAP summary for `failed=0` on GC, ARC and wasm32; the wasm example run is diffed against the golden.
+3. **Deadline.** One deadline taken at the top of `ProcessRunner::run` covers build, spawn, the request write on its own thread and the response; `discipline/runner_tests.rs` kills a real checker that never reads stdin.
+4. **Cache keys.** The checker binary is named by a digest of every source of the checker package, its manifest and the compiler; results are keyed on the request line and the built binary's bytes; an unreadable input is an error. The checker may now be a project directory (`checker = "src"`), so a discipline is not confined to the one file a single-file build resolves; its manifest and every module are inputs (`discipline/tests.rs`).
+5. **M1.** The fixture is the recorded export of `benchmarks/proof/tools/IdImp.lean` by `lean4export` v4.25.0, NDJSON 3.1.0, byte for byte; the bad fixture is one documented edit of it; the reader reads that format and refuses every item kind it does not check by name. The M1 title says what it is: a `Prop`/`→` theorem, inductives waiting on M3.
+6. **Partial signatures.** An inferred `hm` signature lists every exported type and value it leaves out in `omitted[]`; a checker that cannot stub an omitted item refuses the import (passthrough does).
+7. **Protocol version** is 2.
+8. **Surface.** The module comment names it a whitespace-delimited demo tokenizer.
+9. **Ledger.** The [PROOF-STDLIB] constraint is qualified to the full kernel; both specs' status lines say what is implemented and gated; the README states the pin is bumped by hand and the number re-recorded.

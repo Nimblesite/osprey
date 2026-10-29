@@ -2,7 +2,7 @@
 name = "proof-kernel-tests"
 # The kernel's five theory modules are listed individually: its `main.ospml`
 # has a namespace-level `main`, which is legal only in the selected entry.
-source_roots = [".", "../src/level.ospml", "../src/term.ospml", "../src/env.ospml", "../src/reduce.ospml", "../src/infer.ospml", "../src/surface.ospml", "../src/export.ospml", "../src/fixtures.ospml"]
+source_roots = [".", "../src/level.ospml", "../src/term.ospml", "../src/env.ospml", "../src/reduce.ospml", "../src/infer.ospml", "../src/surface.ospml", "../src/export.ospml", "../src/checked.ospml", "../src/fixtures.ospml"]
 default_namespace = "prooftests"
 entry = "main.ospml"
 

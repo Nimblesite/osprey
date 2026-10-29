@@ -3,9 +3,8 @@ namespace proof
 import proof::Levels
 import proof::Terms
 import proof::Environment
-import proof::Infer
 import proof::Surface
-import proof::Export
+import proof::Checked
 import proof::Fixtures
 
 // M0 of plan 0041: the kernel checks `fun (p : Prop) (h : p) => h` against
@@ -24,56 +23,26 @@ idProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 0))
 (** `fun (p : Prop) (h : p) => p`: a term of the wrong type. *)
 badProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 1))
 
-(** Add `name : ty := value` as a theorem: the statement must be a type and
-    the proof must have it. *)
-theorem (env, name, ty, value) = match Infer::sort (env, [], ty)
-    Success level => proved (env, name, ty, value)
-    Error message => Error(message = message)
-
-proved (env, name, ty, value) = match Infer::check (env, [], value, ty)
-    Success checked => Environment::add (env, Decl(name = name, params = [], ty = ty, body = Theorem value))
-    Error message => Error(message = message)
-
 report (name, outcome) = match outcome
     Success env => print "checked: ${name}"
     Error message => print "rejected: ${name}: ${message}"
 
-(** M2: the same theorem typed on the proof surface, elaborated directly. *)
+(** M1 and M2: an export and a surface theorem go through `Checked`. *)
 typed (env, text) = match Surface::theorem text
-    Success parsed => theorem (env, parsed.theoremName, parsed.statement, parsed.proof)
+    Success parsed => Checked::theorem (env, parsed.theoremName, parsed.statement, parsed.proof)
     Error message => Error(message = message)
 
 surfaceReport (env, text) = match Surface::theorem text
     Success parsed => report (parsed.theoremName, typed (env, text))
     Error message => print "rejected: ${message}"
 
-(** M1: every declaration of a `lean4export` text goes through the kernel:
-    a theorem or definition is checked against its statement, an axiom's
-    statement must be a type. The first rejection stops the file. *)
-exported (env, text) = match Export::read text
-    Success decls => foldList (decls, Success(value = env), \(so_far, decl) => declared (so_far, decl))
-    Error message => Error(message = message)
-
-declared (so_far, decl) = match so_far
-    Success env => declare (env, decl)
-    Error message => Error(message = message)
-
-declare (env, decl) = match decl.body
-    Theorem value => theorem (env, decl.name, decl.ty, value)
-    Definition value => theorem (env, decl.name, decl.ty, value)
-    Axiom => axiom (env, decl)
-
-axiom (env, decl) = match Infer::sort (env, [], decl.ty)
-    Success level => Environment::add (env, decl)
-    Error message => Error(message = message)
-
-exportReport (env, name, text) = report ("${name} (export)", exported (env, text))
+exportReport (env, name, text) = report ("${name} (export)", Checked::exported (env, text))
 
 main () =
     env = Environment::empty ()
-    report ("id_imp", theorem (env, "id_imp", idType (), idProof ()))
-    report ("id_imp_bad", theorem (env, "id_imp_bad", idType (), badProof ()))
-    report ("not_a_type", theorem (env, "not_a_type", idProof (), idProof ()))
+    report ("id_imp", Checked::theorem (env, "id_imp", idType (), idProof ()))
+    report ("id_imp_bad", Checked::theorem (env, "id_imp_bad", idType (), badProof ()))
+    report ("not_a_type", Checked::theorem (env, "not_a_type", idProof (), idProof ()))
     surfaceReport (env, "theorem id_imp_typed (p : Prop) (h : p) : p := h")
     surfaceReport (env, "theorem imp_trans (p q r : Prop) (f : p → q) (g : q → r) : p → r := fun (x : p) => g (f x)")
     surfaceReport (env, "theorem forall_typed : ∀ (p : Prop), p → p := fun (p : Prop) (h : p) => h")

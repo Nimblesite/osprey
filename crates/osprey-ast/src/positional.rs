@@ -91,9 +91,7 @@ fn spine_head(expression: &Expr) -> Option<(String, usize)> {
     }
     match function.as_ref() {
         Expr::Identifier(name) => Some((name.clone(), arguments.len())),
-        inner if arguments.len() == 1 => {
-            spine_head(inner).map(|(name, count)| (name, count + 1))
-        }
+        inner if arguments.len() == 1 => spine_head(inner).map(|(name, count)| (name, count + 1)),
         _ => None,
     }
 }
@@ -164,7 +162,10 @@ mod tests {
         assert_eq!(value.and_then(slots), Some(("Pair", vec!["0", "1"])));
         let over = Expr::Call {
             function: Box::new(call("Pair", vec![Expr::Identifier("a".to_owned())])),
-            arguments: vec![Expr::Identifier("b".to_owned()), Expr::Identifier("c".to_owned())],
+            arguments: vec![
+                Expr::Identifier("b".to_owned()),
+                Expr::Identifier("c".to_owned()),
+            ],
             named_arguments: Vec::new(),
         };
         let mut program = Program {
@@ -176,7 +177,12 @@ mod tests {
             doc: None,
         };
         fold_constructions(&mut program, &arities);
-        assert!(program.statements.first().and_then(folded).and_then(slots).is_none());
+        assert!(program
+            .statements
+            .first()
+            .and_then(folded)
+            .and_then(slots)
+            .is_none());
     }
 
     #[test]

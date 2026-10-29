@@ -4,9 +4,10 @@
 # the same machine in the same run, and the gate is red when Osprey's wall time
 # is not below Lean's. Both wall times and peak memory are appended to
 # target/proof/results.jsonl and to target/proof/reports/<date>.md, outside
-# the source tree, with the hashes of both inputs and both binaries. This is the regression gate of
-# the milestone; the measured comparison is the export re-check of [PROOF-EXPORT]
-# once that case exists — see benchmarks/proof/README.md.
+# the source tree, with the hashes of both inputs and both binaries. m0_identity
+# is the milestone's regression gate; m1_export is the comparison [PROOF-SPEED]
+# names, both kernels re-checking one recorded Lean module — see
+# benchmarks/proof/README.md.
 #
 # A case is a directory holding an Osprey project — `osprey.toml`, or a
 # `kernel` symlink to one — and its Lean module: `<case>.lean`, or the
@@ -15,11 +16,17 @@
 # an Osprey project (reports/, and tools/ whose lakefile.toml marks it as
 # tooling) are not cases and are skipped.
 #
-# Two optional files change a case's command lines:
-#   lean.cmd  a shell command line, run from the case directory, that replaces
-#             `lean --run <module>` as the Lean side (and removes the need for a
-#             module, so an export re-check needs no Lean file at all)
-#   args      arguments appended to the Osprey binary's command line
+# Three optional files change a case's command lines:
+#   lean.cmd    a shell command line, run from the case directory, that replaces
+#               `lean --run <module>` as the Lean side (and removes the need for
+#               a module, so an export re-check needs no Lean file at all)
+#   lean.setup  a shell command line run once from the case directory, untimed,
+#               before either side is preflighted (building the Lean tools);
+#               it must exit zero
+#   lean.bin    required with lean.cmd: the path, relative to the case
+#               directory, of the Lean-side executable lean.cmd times, so the
+#               recorded `lean_binary` hash is of what actually ran
+#   args        arguments appended to the Osprey binary's command line
 #
 # Lean is a hard requirement: without `lean` there is no baseline and the gate
 # cannot be green, so the script exits 2 rather than passing silently. It exits
@@ -73,15 +80,33 @@ if code or ms <= 0 or kb <= 0:
 print(ms, kb)
 '
 
-# TREE_SHA <project> — sha256 over every *.ospml under the project, sorted and
-# concatenated as path\0bytes. Paths are relative to the project root, so the
-# hash identifies the sources and not the checkout they sit in.
+# TREE_SHA <project> <case> — sha256 over everything the Osprey side reads:
+# every *.ospml and osprey.toml under the project (paths relative to the
+# project root, so the hash identifies the sources and not the checkout), and
+# every data file of the case directory — the recorded export, `args` — under
+# `case/`; the Lean side's files, dotfiles and directories are left out. Sorted
+# and concatenated as path\0bytes.
 TREE_SHA='
 import hashlib, pathlib, sys
 root = pathlib.Path(sys.argv[1]).resolve()
-blob = b""
-for path in sorted(root.rglob("*.ospml")):
-    blob += str(path.relative_to(root)).encode() + b"\0" + path.read_bytes()
+case = pathlib.Path(sys.argv[2]).resolve()
+files = {str(p.relative_to(root)): p for p in root.rglob("*") if p.suffix == ".ospml" or p.name == "osprey.toml"}
+lean_side = {"lean.cmd", "lean.setup"}
+for p in case.iterdir():
+    if p.is_file() and not p.name.startswith(".") and p.suffix != ".lean" and p.name not in lean_side:
+        files["case/" + p.name] = p
+blob = b"".join(name.encode() + b"\0" + files[name].read_bytes() for name in sorted(files))
+print(hashlib.sha256(blob).hexdigest())
+'
+
+# LEAN_SHA <case> — sha256 over everything that defines the Lean side: every
+# *.lean of the case directory (a symlink counts, by its target's bytes),
+# `lean.cmd` and `lean.setup`, sorted and concatenated as path\0bytes.
+LEAN_SHA='
+import hashlib, pathlib, sys
+case = pathlib.Path(sys.argv[1]).resolve()
+files = sorted(p for p in case.iterdir() if p.suffix == ".lean" or p.name in ("lean.cmd", "lean.setup"))
+blob = b"".join(p.name.encode() + b"\0" + p.read_bytes() for p in files)
 print(hashlib.sha256(blob).hexdigest())
 '
 
@@ -93,7 +118,8 @@ with open(sys.argv[1], "rb") as handle:
     print(hashlib.sha256(handle.read()).hexdigest())
 '
 
-tree_sha() { python3 -c "$TREE_SHA" "$1"; }
+tree_sha() { python3 -c "$TREE_SHA" "$1" "$2"; }
+lean_sha() { python3 -c "$LEAN_SHA" "$1"; }
 file_sha() { python3 -c "$FILE_SHA" "$1"; }
 
 # measure_one <cwd> <cmd...> — one successful timed run, "<ms> <KiB>".
@@ -159,9 +185,9 @@ project_of() {
   return 1
 }
 
-# lean_module <dir> <name> — the Lean module the case elaborates: `<case>.lean`
-# or, because a case's file may be named after its theorem, the directory's
-# single `*.lean`. Two candidates are ambiguous and named as such.
+# lean_module <dir> <name> — the Lean module `lean --run` elaborates:
+# `<case>.lean` or, because a case's file may be named after its theorem, the
+# directory's single `*.lean`. Two candidates are ambiguous and named as such.
 lean_module() {
   local dir=$1 name=$2 mods=($1/*.lean(N))
   [[ -f $dir/$name.lean ]] && { print -r -- $dir/$name.lean; return 0 }
@@ -170,12 +196,27 @@ lean_module() {
   return 1
 }
 
-# lean_input <dir> <module> — sha256 of the file that defines the Lean side:
-# `lean.cmd` when it replaces the module, else the module itself.
-lean_input() {
-  local file=$2
-  [[ -f $1/lean.cmd ]] && file=$1/lean.cmd
-  file_sha "$file"
+# lean_binary <name> <dir> — the executable the Lean side times: `lean` itself,
+# or with `lean.cmd` the file `lean.bin` names; a `lean.cmd` without a readable
+# `lean.bin` is a red case, so no row records a hash of a binary that did not run.
+lean_binary() {
+  local path
+  [[ -f $2/lean.cmd ]] || { print -r -- "$LEAN"; return 0 }
+  [[ -f $2/lean.bin ]] || { print -r -- "$1: lean.cmd needs lean.bin naming the executable it times" >&2; return 1 }
+  path=$2/$(<$2/lean.bin)
+  [[ -x $path ]] || { print -r -- "$1: lean.bin names no executable at $path" >&2; return 1 }
+  print -r -- "$path"
+}
+
+# setup <name> <dir> — run the case's `lean.setup` once, untimed, from the case
+# directory; a non-zero exit is a red case before anything is measured.
+setup() {
+  local out code
+  [[ -f $2/lean.setup ]] || return 0
+  out=$( cd "$2" && sh -c "$(<$2/lean.setup)" 2>&1 ); code=$?
+  (( code == 0 )) && return 0
+  print -r -- "$1: lean.setup exited $code: ${out[1,300]}" >&2
+  return 1
 }
 
 # build_case <name> <project> <bin> — compile the case's Osprey kernel.
@@ -208,7 +249,7 @@ report_header() {
   print -r -- "# Proof speed gate — $1"
   print -r -- ""
   print -r -- "- Lean measured: $LEAN_VERSION"
-  print -r -- "- Lean binary: \`$LEAN\` (sha256 $(file_sha "$LEAN"))"
+  print -r -- "- Lean toolchain binary: \`$LEAN\` (sha256 $(file_sha "$LEAN")); a row's \`lean bin\` is the executable that row timed."
   print -r -- "- Osprey compiler: \`$OSP\` (sha256 $(file_sha "$OSP"))"
   print -r -- "- Runs per kernel: $RUNS, minimum wall time; peak resident set in KiB."
   print -r -- "- Generated by \`benchmarks/proof/run.sh\`; see \`benchmarks/proof/README.md\`."
@@ -219,15 +260,15 @@ report_header() {
 
 # record <name> <dir> <verdict> <osprey ms KiB> <lean ms KiB> — append the
 # results line and the dated report row for one case. Reads `project` and
-# `lean_file` from the enclosing case.
+# `lean_exe` from the enclosing case.
 record() {
   local name=$1 dir=$2 verdict=$3 oms=${4%% *} okb=${4##* } lms=${5%% *} lkb=${5##* }
   local at input obin linput lbin lreport
   at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  input=$(tree_sha "$project")
+  input=$(tree_sha "$project" "$dir")
   obin=$(file_sha "$dir/.bench-osprey")
-  linput=$(lean_input "$dir" "$lean_file")
-  lbin=$(file_sha "$LEAN")
+  linput=$(lean_sha "$dir")
+  lbin=$(file_sha "$lean_exe")
   printf '{"case":"%s","osprey_ms":%s,"lean_ms":%s,"osprey_peak_kb":%s,"lean_peak_kb":%s,"lean":"%s","osprey_input":"%s","lean_input":"%s","osprey_binary":"%s","lean_binary":"%s","verdict":"%s","at":"%s"}\n' \
     "$name" "$oms" "$lms" "$okb" "$lkb" "$LEAN_VERSION" "$input" "$linput" \
     "$obin" "$lbin" "$verdict" "$at" >> "$OUT"
@@ -249,9 +290,12 @@ time_case() {
   [[ $verdict == pass ]]
 }
 
-# prepare <name> <dir> <project> — build the kernel and require both sides to
-# check the theorem once before anything is timed. Fills in the case's argv.
+# prepare <name> <dir> <project> — run the setup, build the kernel and require
+# both sides to check the theorem once before anything is timed. Fills in the
+# case's argv.
 prepare() {
+  setup "$1" "$2" || return 1
+  lean_exe=$(lean_binary "$1" "$2") || return 1
   build_case "$1" "$3" "$2/.bench-osprey" || return 1
   kernels "$1" "$2"
   preflight "$1" osprey "$2" "${osprey_argv[@]}" || return 1
@@ -260,7 +304,7 @@ prepare() {
 
 # run_case <dir> — build, preflight, time and record one case: 0 pass, 1 fail.
 run_case() {
-  local dir=$1 name=${1:t} project ok=1 osprey_argv lean_argv lean_file
+  local dir=$1 name=${1:t} project ok=1 osprey_argv lean_argv lean_file lean_exe
   has_lean "$dir" "$name" || return 0
   if ! project=$(project_of "$dir"); then
     [[ -f $dir/lakefile.toml ]] && return 0

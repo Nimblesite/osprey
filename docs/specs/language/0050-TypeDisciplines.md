@@ -36,7 +36,8 @@ name = "@osprey/lean4"
 
 [discipline]
 name = "lean4"                   # the word after `types=`
-checker = "src/checker.ospml"    # an Osprey program with `main`
+checker = "src"                  # an Osprey program: one source file, or a project directory
+                                 # with its own osprey.toml whose entry is the checker
 ```
 
 - The compiler holds no list of discipline names, no knowledge of any theory, and no code that runs only for one discipline. A CI test (`crates/osprey-project/tests/discipline_purity.rs`) scans the code under `crates/` for every registered discipline name in a string literal and for the words `tactic`, `theorem`, `refinement` and `lean4` anywhere, and fails on a hit outside comments and test modules. `kernel` is not searched because it is the keyword of the `kernel` handler region of spec 0035 and names the GPU pipeline throughout; the proof kernel lives under `examples/`, never under `crates/`.

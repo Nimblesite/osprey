@@ -87,7 +87,7 @@ Osprey checks faster than Lean. This is a requirement of the design, not a hope 
 
 ## Lean export bridge [PROOF-EXPORT]
 
-`osprey prove import <export-file>` reads the `lean4export` text format (declarations, levels, expressions, inductive specifications and quotient initialisation), adds each declaration to an Osprey environment through the kernel, and writes a checked environment file. The importer is the only code that parses Lean's format; it adds nothing to the theory.
+`osprey prove import <export-file>` reads the `lean4export` NDJSON format (version 3.1.0 as the pinned exporter writes it: names, levels, expressions, declarations, inductive specifications and quotient initialisation), adds each declaration to an Osprey environment through the kernel, and writes a checked environment file. The importer is the only code that parses Lean's format; it adds nothing to the theory.
 
 `[PROOF-EXPORT-SYNC]` A scheduled job imports the current Mathlib master on a fixed cadence, records the result as a trust report, and opens a pull request that updates the ported library of [PROOF-MATHLIB]. A failing import is a red report, never a silent skip.
 

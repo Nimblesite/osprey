@@ -4,12 +4,14 @@ Task: record a real Lean + lean4export run of `theorem id_imp` and make it the
 proof kernel's fixture, replacing the hand-written texts in
 `examples/proof/kernel/src/fixtures.ospml`.
 
-**Result: STOP at the verification gate. The lean4export rev that matches the
-pinned Lean v4.25.0 toolchain writes the NDJSON format 3.1.0, not the 0.1.2
-text format the kernel reader takes. Per the task rule — if the exporter does
-not write 0.1.2, stop, do not adapt the reader — the fixtures were **not**
-replaced and remain hand-written.** Everything around the recording (project,
-build, export run, checker run) was completed and is pinned below.
+**Result of the first pass: STOP at the verification gate. The lean4export rev
+that matches the pinned Lean v4.25.0 toolchain writes the NDJSON format 3.1.0,
+not the 0.1.2 text format the kernel reader took. Per the task rule — if the
+exporter does not write 0.1.2, stop, do not adapt the reader — the fixtures
+were not replaced on that pass.** Everything around the recording (project,
+build, export run, checker run) was completed and is pinned below. The second
+pass, at the end of this report, moved the reader to the recorded format and
+replaced the fixtures.
 
 ## Environment
 
@@ -88,3 +90,40 @@ Ways out (need a decision, not done unilaterally): pin Lean to a
 text-format-matching rev (v4.20.0-rc5 era breaks the CI toolchain pin), or
 teach the reader NDJSON as a new format alongside 0.1.2 (a reader change the
 task forbade).
+
+## Second pass: the reader reads what the exporter writes
+
+The 0.1.2 text reader was replaced by a reader of the NDJSON format 3.1.0 the
+pinned exporter writes (`examples/proof/kernel/src/export.ospml`). The reader
+checks the `meta` line's `format.version` and refuses any other version by
+name; it reads `str`/`num` names, `succ`/`max`/`imax`/`param` levels, the
+`sort`/`bvar`/`const`/`app`/`lam`/`forallE`/`letE` expression forms, and
+`thm`/`def`/`axiom` declarations; every other item kind (`inductive`, `quot`,
+`opaque`, `mdata`, `proj`, `natVal`, `strVal`, `fvar`, `mvar`) is refused as
+`unsupported: <kind>` or `unknown item: <kind>`, never skipped, so no file is
+accepted with a declaration the kernel did not check.
+
+- Fixture: `Fixtures::idImp ()` is the recorded export byte for byte, also
+  kept on disk as `examples/proof/kernel/exports/id_imp.ndjson`
+  (sha256 `2adb6bc5ff4e2fcaf9d804548fc2eaf0753902effbac3d70e1657d1b5998330d`,
+  24 lines).
+- Bad fixture: `Fixtures::idImpBad ()` is the same text with one edit on line
+  22, the inner lambda's `"body":1` (the bound variable `h`) changed to
+  `"body":2` (the bound variable `p` itself), so the term is
+  `fun (p : Prop) (h : p) => p`, which has type `∀ (p : Prop), p → Prop` and
+  is rejected by the kernel's mismatch (`expectedoutput`, last line). Binder
+  names in the recorded export are Lean's hygienic names
+  (`x._@.IdImp.4195544489._hygCtx._hyg.10`), which is why they appear in the
+  rejection message.
+- `scripts/proof-export.sh` now gates on the meta line carrying
+  `"format":{"version":"3.1.0"}` and its output diffs empty against the
+  recorded file; it is still a hard stop on any other version.
+- `benchmarks/proof/m1_export` is the [PROOF-SPEED] comparison: the Osprey
+  side reads `id_imp.ndjson` (a copy of the recorded export) through
+  `Checked::exported`; the Lean side runs the built `lean4checker` directly
+  on module `IdImp` (`lean.cmd`, with `LEAN_PATH` read from a file that
+  `lean.setup` wrote after `lake build`, so `lake env`'s ~0.3 s start-up is
+  not on Lean's clock). Measured on this machine, three runs, minimum wall:
+  Osprey 4 ms / 2.3 MiB peak, `lean4checker` 440 ms / 51 MiB peak. Lean's
+  figure is a cold process replaying one module; it is not the cost of its
+  type-checking loop alone, and the README of the benchmark says so.

@@ -1,8 +1,7 @@
 namespace proof
 
 import proof::Environment
-import proof::Infer
-import proof::Export
+import proof::Checked
 
 // M1 of plan 0041 ([PROOF-SPEED]): both kernels re-check the same recorded
 // export on the same machine in the same run. This program is the Osprey
@@ -13,40 +12,10 @@ import proof::Export
 // lean4checker replays every declaration of the same module through Lean's
 // kernel.
 
-(** Add `name : ty := value` as a theorem: the statement must be a type and
-    the proof must have it. *)
-theorem (env, name, ty, value) = match Infer::sort (env, [], ty)
-    Success level => proved (env, name, ty, value)
-    Error message => Error(message = message)
-
-proved (env, name, ty, value) = match Infer::check (env, [], value, ty)
-    Success checked => Environment::add (env, Decl(name = name, params = [], ty = ty, body = Theorem value))
-    Error message => Error(message = message)
-
-(** An axiom's statement must be a type; its parameters are kept. *)
-axiom (env, decl) = match Infer::sort (env, [], decl.ty)
-    Success level => Environment::add (env, decl)
-    Error message => Error(message = message)
-
-declare (env, decl) = match decl.body
-    Theorem value => theorem (env, decl.name, decl.ty, value)
-    Definition value => theorem (env, decl.name, decl.ty, value)
-    Axiom => axiom (env, decl)
-
-declared (so_far, decl) = match so_far
-    Success env => declare (env, decl)
-    Error message => Error(message = message)
-
-(** Every declaration of the export, in file order; the first rejection
-    stops the file. *)
-exported (env, text) = match Export::read text
-    Success decls => foldList (decls, Success(value = env), declared)
-    Error message => Error(message = message)
-
 report (outcome) = match outcome
     Success env => print "checked: id_imp (export)"
     Error message => print "rejected: id_imp (export): ${message}"
 
 main () = match readFile "id_imp.ndjson"
-    Success text => report (exported (Environment::empty (), text))
+    Success text => report (Checked::exported (Environment::empty (), text))
     Error message => print "rejected: id_imp (export): ${message}"

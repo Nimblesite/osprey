@@ -585,6 +585,16 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:v4.25.0
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
+      # The Lean side of m1_export: lean4export and lean4checker, built from
+      # source at the revs benchmarks/proof/tools/lake-manifest.json pins. The
+      # build tree is cached on the manifest and toolchain so a run without a
+      # tool change restores it; run.sh's lean.setup rebuilds whatever is stale.
+      - name: Cache the Lean proof tools
+        uses: actions/cache@v4
+        with:
+          path: benchmarks/proof/tools/.lake
+          key: proof-tools-${{ runner.os }}-${{ hashFiles('benchmarks/proof/tools/lake-manifest.json', 'benchmarks/proof/tools/lean-toolchain', 'benchmarks/proof/tools/lakefile.toml') }}
+
       - name: M0 proof kernel (GC, ARC and wasm32 goldens)
         run: make _test_proof_kernel
 
@@ -593,6 +603,9 @@ jobs:
       - name: Reference disciplines (passthrough, bounded)
         run: make _test_disciplines
 
+      # m0_identity is the regression gate; m1_export is the [PROOF-SPEED]
+      # comparison: the Osprey reader and lean4checker re-check the same
+      # recorded module. The script is red on any failed run.
       - name: Proof speed gate vs Lean
         run: zsh benchmarks/proof/run.sh
 

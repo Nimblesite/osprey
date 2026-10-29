@@ -6,7 +6,7 @@ name = "proof-m1-export"
 # embedding it, so the benchmark measures the same re-check `exported`
 # performs. main.ospml of the example project is left out: its namespace-level
 # `main` is legal only in the selected entry.
-source_roots = ["src", "../../../examples/proof/kernel/src/level.ospml", "../../../examples/proof/kernel/src/term.ospml", "../../../examples/proof/kernel/src/env.ospml", "../../../examples/proof/kernel/src/reduce.ospml", "../../../examples/proof/kernel/src/infer.ospml", "../../../examples/proof/kernel/src/surface.ospml", "../../../examples/proof/kernel/src/export.ospml", "../../../examples/proof/kernel/src/fixtures.ospml"]
+source_roots = ["src", "../../../../examples/proof/kernel/src/level.ospml", "../../../../examples/proof/kernel/src/term.ospml", "../../../../examples/proof/kernel/src/env.ospml", "../../../../examples/proof/kernel/src/reduce.ospml", "../../../../examples/proof/kernel/src/infer.ospml", "../../../../examples/proof/kernel/src/surface.ospml", "../../../../examples/proof/kernel/src/export.ospml", "../../../../examples/proof/kernel/src/checked.ospml", "../../../../examples/proof/kernel/src/fixtures.ospml"]
 default_namespace = "proof"
 entry = "main.ospml"
 

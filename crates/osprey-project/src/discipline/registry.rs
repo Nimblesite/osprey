@@ -21,7 +21,8 @@ pub struct Discipline {
     pub package: String,
     /// The package directory holding its manifest.
     pub root: PathBuf,
-    /// Absolute path of the checker program.
+    /// Absolute path of the checker program: one source file, or a project
+    /// directory with its own `osprey.toml` whose entry is the checker.
     pub checker: PathBuf,
     /// Per-module time limit for the checker process.
     pub timeout: Duration,

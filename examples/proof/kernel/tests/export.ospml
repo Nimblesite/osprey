@@ -18,7 +18,7 @@ module ExportTests
     (** Runs the export-reader cases; the testing built-ins report the TAP lines. *)
     export run () =
         test ("an export reads as one theorem with its statement and proof", \() =>
-            expect (described (Export::read (Fixtures::idImp ())), "id_imp | (∀ (p : Prop), (a._@._internal._hyg.0 → p)) | (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))"))
+            expect (described (Export::read (Fixtures::idImp ())), "id_imp | (∀ (p : Prop), (p → p)) | (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))"))
 
         test ("the embedded export is the recorded text: 24 lines, meta first, thm last", \() =>
             expect (shape (Fixtures::idImp ()), "24 | meta | thm"))
@@ -30,7 +30,7 @@ module ExportTests
             expect (Support::messageOf (Export::read (line ("{\"inductive\":{}}"))), "line 2: unsupported: inductive"))
 
         test ("an unknown declaration kind is refused with its kind", \() =>
-            expect (Support::messageOf (Export::read (line ("{\"ind\":{}}"))), "line 2: unknown item ind"))
+            expect (Support::messageOf (Export::read (line ("{\"ind\":{}}"))), "line 2: unknown item: ind"))
 
         test ("an unknown expression kind is refused with its kind", \() =>
             expect (Support::messageOf (Export::read (line ("{\"ie\":3,\"fvar\":0}"))), "line 2: unsupported: fvar"))
@@ -42,7 +42,7 @@ module ExportTests
             expect (described (Export::read (hygienic ())), "hygienic | (∀ (a._@._internal._hyg.0 : Prop), a._@._internal._hyg.0) | (fun (a._@._internal._hyg.0 : Prop) => a._@._internal._hyg.0)"))
 
         test ("the wrong proof of the same statement reads as itself", \() =>
-            expect (described (Export::read (Fixtures::idImpBad ())), "id_imp | (∀ (p : Prop), (a._@._internal._hyg.0 → p)) | (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => x._@.IdImp.4195544489._hygCtx._hyg.10))"))
+            expect (described (Export::read (Fixtures::idImpBad ())), "id_imp | (∀ (p : Prop), (p → p)) | (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => x._@.IdImp.4195544489._hygCtx._hyg.10))"))
 
     (** One declaration rendered as `name | statement | proof`; anything
         else reads as its own failure, never as a pass. *)
@@ -65,8 +65,10 @@ module ExportTests
         the one header the reader accepts. *)
     metaLine () = listGet (lines (Fixtures::idImp ()), 0) ?: ""
 
-    (** The recorded export with the format version renamed. *)
-    versioned (version) = replace (Fixtures::idImp (), "{\"format\":{\"version\":\"3.1.0\"}}", "{\"format\":{\"version\":\"${version}\"}}")
+    (** The recorded export with the format version renamed; the unused
+    binder of `p → p` prints as an arrow, so the hygienic name of the
+    implication's binder never shows in the statement. *)
+    versioned (version) = replace (Fixtures::idImp (), "\"format\":{\"version\":\"3.1.0\"}", "\"format\":{\"version\":\"${version}\"}")
 
     (** The meta line followed by one JSON line. *)
     line (text) = "${metaLine ()}\n${text}"

@@ -6,4 +6,4 @@ checked: imp_trans
 checked: forall_typed
 rejected: wrong_typed: type mismatch: `(fun (p : Prop) => (fun (q : Prop) => (fun (h : p) => h)))` has type `(∀ (p : Prop), (Prop → (p → p)))` but `(∀ (p : Prop), (∀ (q : Prop), (p → q)))` was expected
 checked: id_imp (export)
-rejected: id_imp_bad (export): type mismatch: `(fun (p : Prop) => (fun (h : p) => p))` has type `(∀ (p : Prop), (p → Prop))` but `(∀ (p : Prop), (p → p))` was expected
+rejected: id_imp_bad (export): type mismatch: `(fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => x._@.IdImp.4195544489._hygCtx._hyg.10))` has type `(∀ (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop), (x._@.IdImp.4195544489._hygCtx._hyg.10 → Prop))` but `(∀ (p : Prop), (p → p))` was expected
