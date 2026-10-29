@@ -1,0 +1,81 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+import proof::Environment
+import proof::Reduce
+
+(** Type inference and checking of [PROOF-KERNEL-THEORY]. The context is
+    the list of binder types, innermost first, each as it was when its
+    binder was entered. Every failure is a message naming the term. *)
+module Infer
+    (** The type of `term` in `env` under `context`. *)
+    export infer : (Env, List<Term>, Term) -> Result<Term, string>
+    infer (env, context, term) = match term
+        Sort level => Success(value = Sort (Succ level))
+        BVar index => variable (context, index)
+        Const name levels => constant (env, name)
+        App head arg => application (env, context, head, arg)
+        Lam name domain body => lambda (env, context, name, domain, body)
+        Pi name domain body => pi (env, context, domain, body)
+        Let name ty value body => letIn (env, context, ty, value, body)
+
+    (** Check that `term` has type `expected`. *)
+    export check : (Env, List<Term>, Term, Term) -> Result<Term, string>
+    check (env, context, term, expected) = match infer (env, context, term)
+        Success found => matches (env, term, found, expected)
+        Error message => Error(message = message)
+
+    matches (env, term, found, expected) = match Reduce::defeq (env, found, expected)
+        true => Success(value = expected)
+        false => Error(message = "type mismatch: `${Terms::show (term, [])}` has type `${Terms::show (found, [])}` but `${Terms::show (expected, [])}` was expected")
+
+    variable (context, index) = match listGet (context, index)
+        Success ty => Success(value = Terms::shift (ty, 0, satAdd index 1))
+        Error message => Error(message = "unbound variable #${toString index}")
+
+    constant (env, name) = match Environment::find (env, name)
+        Success decl => Success(value = decl.ty)
+        Error message => Error(message = "unknown constant `${name}`")
+
+    application (env, context, head, arg) = match infer (env, context, head)
+        Success headType => applyTo (env, context, Reduce::whnf (env, headType), head, arg)
+        Error message => Error(message = message)
+
+    applyTo (env, context, headType, head, arg) = match headType
+        Pi name domain body => applyArg (env, context, domain, body, arg)
+        other => Error(message = "`${Terms::show (head, [])}` is applied but has type `${Terms::show (other, [])}`, not a function type")
+
+    applyArg (env, context, domain, body, arg) = match check (env, context, arg, domain)
+        Success ty => Success(value = Terms::instantiate (body, arg))
+        Error message => Error(message = message)
+
+    lambda (env, context, name, domain, body) = match sort (env, context, domain)
+        Success level => lambdaBody (env, context, name, domain, body)
+        Error message => Error(message = message)
+
+    lambdaBody (env, context, name, domain, body) = match infer (env, listPrepend (context, domain), body)
+        Success bodyType => Success(value = Pi name domain bodyType)
+        Error message => Error(message = message)
+
+    pi (env, context, domain, body) = match sort (env, context, domain)
+        Success u => piBody (env, context, domain, body, u)
+        Error message => Error(message = message)
+
+    piBody (env, context, domain, body, u) = match sort (env, listPrepend (context, domain), body)
+        Success v => Success(value = Sort (IMax u v))
+        Error message => Error(message = message)
+
+    letIn (env, context, ty, value, body) = match check (env, context, value, ty)
+        Success checked => infer (env, context, Terms::instantiate (body, value))
+        Error message => Error(message = message)
+
+    (** The universe level of a type, or an error when `term` is not a type. *)
+    export sort : (Env, List<Term>, Term) -> Result<Level, string>
+    sort (env, context, term) = match infer (env, context, term)
+        Success ty => sortOf (term, Reduce::whnf (env, ty))
+        Error message => Error(message = message)
+
+    sortOf (term, ty) = match ty
+        Sort level => Success(value = level)
+        other => Error(message = "`${Terms::show (term, [])}` is not a type; its type is `${Terms::show (other, [])}`")

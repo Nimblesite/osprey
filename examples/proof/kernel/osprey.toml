@@ -1,0 +1,8 @@
+[project]
+name = "proof-kernel"
+source_roots = ["."]
+default_namespace = "proof"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

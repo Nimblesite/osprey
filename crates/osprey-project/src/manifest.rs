@@ -173,7 +173,9 @@ fn apply_key(
         }
         ("modules", "published_library") => parse_bool(value).map(|v| config.published_library = v),
         ("project", "types") => parse_string(value).map(|v| config.types = Some(v)),
-        ("dependencies", name) => parse_dependency(name, value).map(|d| config.dependencies.push(d)),
+        ("dependencies", name) => {
+            parse_dependency(name, value).map(|d| config.dependencies.push(d))
+        }
         ("discipline", key) => apply_discipline_key(key, value, config),
         _ => return,
     };
@@ -210,7 +212,7 @@ fn apply_discipline_key(key: &str, value: &str, config: &mut ProjectConfig) -> R
         "timeout_seconds" => value
             .parse::<u64>()
             .map(|v| decl.timeout_seconds = v)
-            .map_err(|_| "expected a whole number of seconds".to_string()),
+            .map_err(|error| format!("expected a whole number of seconds ({error})")),
         _ => Ok(()),
     }
 }
@@ -299,8 +301,14 @@ mod tests {
         assert_eq!(
             config.dependencies,
             vec![
-                Dependency { name: "@osprey/bounded".into(), path: Some("../bounded".into()) },
-                Dependency { name: "@osprey/testing".into(), path: None },
+                Dependency {
+                    name: "@osprey/bounded".into(),
+                    path: Some("../bounded".into())
+                },
+                Dependency {
+                    name: "@osprey/testing".into(),
+                    path: None
+                },
             ]
         );
         assert_eq!(
@@ -318,10 +326,18 @@ mod tests {
         let text = "[discipline]\nname = \"x\"\nchecker = \"c.ospml\"\n";
         let config = ProjectConfig::parse(text, Path::new("osprey.toml"));
         assert_eq!(
-            config.ok().and_then(|c| c.discipline).map(|d| d.timeout_seconds),
+            config
+                .ok()
+                .and_then(|c| c.discipline)
+                .map(|d| d.timeout_seconds),
             Some(DEFAULT_TIMEOUT_SECONDS)
         );
         let bad = "[discipline]\ntimeout_seconds = soon\n[dependencies]\n\"@o/p\" = 3\n";
-        assert_eq!(ProjectConfig::parse(bad, Path::new("osprey.toml")).err().map(|e| e.len()), Some(2));
+        assert_eq!(
+            ProjectConfig::parse(bad, Path::new("osprey.toml"))
+                .err()
+                .map(|e| e.len()),
+            Some(2)
+        );
     }
 }

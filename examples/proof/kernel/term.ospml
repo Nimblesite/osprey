@@ -1,0 +1,79 @@
+namespace proof
+
+import proof::Levels
+
+(** A term of the Pi fragment of [PROOF-KERNEL-THEORY] with de Bruijn
+    indices: `BVar 0` is the innermost binder. Binder names are kept for
+    printing only. *)
+type Term = Sort Level | BVar int | Const string (List<Level>) | App Term Term | Lam string Term Term | Pi string Term Term | Let string Term Term Term
+
+(** Shifting, substitution and printing of terms. *)
+module Terms
+    (** Add `by` to every bound variable at index `cutoff` or above. *)
+    export shift : (Term, int, int) -> Term
+    shift (term, cutoff, by) = match term
+        BVar index => shiftVar (index, cutoff, by)
+        App head arg => App (shift (head, cutoff, by)) (shift (arg, cutoff, by))
+        Lam name domain body => Lam name (shift (domain, cutoff, by)) (shift (body, satAdd cutoff 1, by))
+        Pi name domain body => Pi name (shift (domain, cutoff, by)) (shift (body, satAdd cutoff 1, by))
+        Let name ty value body => Let name (shift (ty, cutoff, by)) (shift (value, cutoff, by)) (shift (body, satAdd cutoff 1, by))
+        other => other
+
+    shiftVar (index, cutoff, by) = match index >= cutoff
+        true => BVar (satAdd index by)
+        false => BVar index
+
+    (** Replace `BVar depth` in `term` by `value` (lifted past `depth`
+        binders) and lower the free variables above it. *)
+    export substitute : (Term, int, Term) -> Term
+    substitute (term, depth, value) = match term
+        BVar index => substituteVar (index, depth, value)
+        App head arg => App (substitute (head, depth, value)) (substitute (arg, depth, value))
+        Lam name domain body => Lam name (substitute (domain, depth, value)) (substitute (body, satAdd depth 1, value))
+        Pi name domain body => Pi name (substitute (domain, depth, value)) (substitute (body, satAdd depth 1, value))
+        Let name ty inner body => Let name (substitute (ty, depth, value)) (substitute (inner, depth, value)) (substitute (body, satAdd depth 1, value))
+        other => other
+
+    substituteVar (index, depth, value) = match index == depth
+        true => shift (value, 0, depth)
+        false => lowered (index, depth)
+
+    lowered (index, depth) = match index > depth
+        true => BVar (satSub index 1)
+        false => BVar index
+
+    (** The body of a binder with its variable replaced by `value`. *)
+    export instantiate (body, value) = substitute (body, 0, value)
+
+    (** Whether `BVar index` occurs free in `term`. *)
+    export mentions : (Term, int) -> bool
+    mentions (term, index) = match term
+        BVar found => found == index
+        App head arg => mentions (head, index) || mentions (arg, index)
+        Lam name domain body => mentions (domain, index) || mentions (body, satAdd index 1)
+        Pi name domain body => mentions (domain, index) || mentions (body, satAdd index 1)
+        Let name ty value body => mentions (ty, index) || mentions (value, index) || mentions (body, satAdd index 1)
+        other => false
+
+    (** Print with the binder names in scope, innermost first. *)
+    export show : (Term, List<string>) -> string
+    show (term, names) = match term
+        Sort level => showSort level
+        BVar index => listGet (names, index) ?: "#${toString index}"
+        Const name levels => name
+        App head arg => "(${show (head, names)} ${show (arg, names)})"
+        Lam name domain body => "(fun (${name} : ${show (domain, names)}) => ${show (body, listPrepend (names, name))})"
+        Pi name domain body => showPi (name, domain, body, names)
+        Let name ty value body => "(let ${name} : ${show (ty, names)} := ${show (value, names)}; ${show (body, listPrepend (names, name))})"
+
+    showSort level = match Levels::show level
+        "0" => "Prop"
+        "1" => "Type"
+        other => "Sort ${other}"
+
+    showPi (name, domain, body, names) = match mentions (body, 0)
+        true => "(∀ (${name} : ${show (domain, names)}), ${show (body, listPrepend (names, name))})"
+        false => "(${show (domain, names)} → ${show (body, listPrepend (names, name))})"
+
+    (** Structural equality up to binder names. *)
+    export equal (left, right) = show (left, []) == show (right, [])

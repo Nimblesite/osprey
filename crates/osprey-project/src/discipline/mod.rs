@@ -47,9 +47,7 @@ pub fn marker(source: &str) -> Option<&str> {
 /// `[project].types`, then `hm`. Implements [TYPES-DISCIPLINE-SELECT].
 #[must_use]
 pub fn select<'a>(config: &'a ProjectConfig, source: &'a str) -> &'a str {
-    marker(source)
-        .or(config.types.as_deref())
-        .unwrap_or(HM)
+    marker(source).or(config.types.as_deref()).unwrap_or(HM)
 }
 
 /// Whether any source of the project needs a checker process at all. A

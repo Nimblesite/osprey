@@ -4,6 +4,36 @@ Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **s
 
 An agent picking this up reads spec 0051 and the [`@osprey/native` README](../../packages/native/README.md) first, then builds phase 1 exactly as laid out below. The phase order is the dependency order; nothing in a later phase is started before the earlier phase's exit holds.
 
+## Checklist
+
+Ticked as the work lands; a box is ticked only when its test exists in `apps/workbench/tests/`.
+
+### Phase 1 — the proof language
+- [ ] `apps/workbench/osprey.toml`, `tests/osprey.toml`, coverage threshold registered at 90%
+- [ ] `src/notation.ospml` with `Notation::expand` and `Notation::palette`, tested against the table
+- [ ] `src/formula.ospml`: `read`, `show`, `equal`; symbol and sentence forms; round-trip corpus
+- [ ] `src/statement.ospml` and `src/step.ospml`: headings, phrase table, `Unknown`; ten near-miss sentences
+- [ ] `src/goals.ospml`: `start`, `apply`, `Mismatch`; the 50-step timing case
+- [ ] `src/emit.ospml`: `tests/golden/and_swap.ospml` byte-identical; golden passes `--check` without the marker
+- [ ] Every function under 20 lines, every file under 500; suite at 90% line coverage
+
+### Phase 2 — the application
+- [ ] Framework additions with tests in `packages/native/tests/`: `Math` node, `Field` marks and cursor, `Board`, `Recognise`, `board` token; native README updated
+- [ ] `src/app.ospml`: slices, action union, `update`, six regions, theme; `src/verdict.ospml` with ticketed `Run`
+- [ ] `src/main.ospml`: `Runtime::start`, `Runtime::dispatch`, `Webview::respond`
+- [ ] Fixture tests: region refresh, stale ticket, rejection underline, stroke and lasso, contrast
+
+### Phase 3 — hosts
+- [ ] VS Code: WASI build, `Math`, marked `Field`, `Board` in the renderer; E2E test; `and_swap` screenshot
+- [ ] Browser: `hosts/web/`, wasm32 page, handwriting where present; headless smoke test
+- [ ] macOS and iPadOS: `hosts/apple/` SwiftUI host, PencilKit board and recognition; simulator smoke test
+
+### Phase 4 — verdicts, library, paper
+- [ ] Badges from `osprey prove check`; goal engine agrees with the kernel over every fixture step
+- [ ] Library slice from an imported environment; search, hover, `Apply <name>.`
+- [ ] Rendered page and HTML export with MathML
+- [ ] Road test recorded in `docs/reports/`
+
 ## Phase 1 — the proof language without a window [WORKBENCH-FORMULA] [WORKBENCH-STATEMENT] [WORKBENCH-STEPS] [WORKBENCH-GOALS] [WORKBENCH-EMIT]
 
 Pure modules, no host, no framework yet. Tests first for every table in the spec.

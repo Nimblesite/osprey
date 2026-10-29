@@ -1,5 +1,8 @@
 # Plan 0041 — Dependent types as a pluggable discipline, and Mathlib on Osprey
 
+Giant leaps - not baby steps
+Violent refactoring
+
 Contracts: [spec 0050](../specs/language/0050-TypeDisciplines.md) for the pluggable discipline seam and [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) for the `lean4` discipline and the Mathlib port. Status: **spec written; no implementation started.** The road test (M0 to M3) is the first work; it needs no compiler change. Stabilization mode holds for the phases after it: none begins without the owner's go.
 
 ## Summary
@@ -18,6 +21,58 @@ flowchart LR
     A --> C[codegen, unchanged]
     L[lean4export of Mathlib] --> K
 ```
+
+## Checklist
+
+Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when its test or output exists in the repo.
+
+### M0 — a proof checks
+- [x] `examples/proof/kernel/`: levels, terms (de Bruijn), environment, β/δ/ζ/η reduction, inference and checking as ML modules
+- [x] `osprey examples/proof/kernel --run` prints `checked: id_imp` and rejects `id_imp_bad` and `not_a_type` with the kernel's reason
+- [x] Compiler: a positional union constructor applied from another file folds to its construction (`constructor_resolve.rs`, `resolve.rs`)
+- [x] Resolver test: imported positional variant accepted, imported record still needs named fields
+- [x] `examples/proof/kernel/expectedoutput` and `make _test_proof_kernel` (in `make test`) running the kernel under GC, ARC and wasm32
+- [x] `benchmarks/proof/run.sh` and `m0_identity`: Osprey kernel against Lean's kernel on `id_imp`, red when Osprey is slower
+- [ ] Lean (elan) installed in CI and the proof benchmark run on every kernel change
+- [x] `docs/reports/proof-road-test-2026-10-29.md`: lines, hours, language gaps
+- [ ] Compiler: recursive functions no longer need a written signature for codegen (gap 2 of the road test)
+
+### M1 — a Lean proof checks
+- [ ] `lean4export` reader for constants, levels and the M0 expression forms
+- [ ] `id_imp` from a Lean export checks; a wrong Lean proof is rejected
+- [ ] `m1_export` benchmark input
+
+### M2 — a proof is typed
+- [ ] ML-layout proof parser for `theorem name (binders) : type := term`
+- [ ] Direct elaborator to M0 terms; `id_imp` typed in `.ospml` checks
+
+### M3 — inductives
+- [ ] Inductive declarations, constructors, recursors, ι-reduction
+- [ ] `And`, `Iff`, `Eq` as Lean declares them
+- [ ] `and_swap` checks from a Lean export and from the M2 surface
+- [ ] Road-test report and the decision point
+
+### Phase 1 — pluggable disciplines
+- [x] `types=` marker and `[project].types`; `[discipline]` registry; `discipline-error`
+- [x] `check_module` seam in assembly, checker process, JSON protocol, time limit, result cache
+- [x] Erased modules parsed by the ordinary frontend and checked against the written signature
+- [ ] `examples/disciplines/passthrough` with the round trip in the differential corpus (GC, ARC, wasm32)
+- [ ] `examples/disciplines/bounded`: a real theory erasing to `int`, diagnostics through the protocol
+- [ ] Failure tests of [TYPES-DISCIPLINE-VERIFICATION]; grep test over `crates/` for discipline names
+- [ ] Byte-identical output and diagnostics for every markerless program; no `hm` benchmark change
+
+### Phase 2 — kernel and trust
+- [ ] Kernel specification with every judgement as inference rules
+- [ ] Kernel under 5,000 lines in a separate process; `osprey prove import`
+- [ ] `tests/proof/adversarial/` seeded; collision and overflow tests
+- [ ] Cross-check against `lean4lean` and `nanoda`; core, `Std`, Mathlib gates with speed tests
+
+### Phases 3 to 7
+- [ ] Phase 3: proof AST, ML frontend, unifier, classes, `osprey prove check`, LSP goal view
+- [ ] Phase 4: tactics, `hammer`, `benchmarks/proof/` with miniF2F and PutnamBench
+- [ ] Phase 5: `osprey prove port`, sync job, re-proving, `@osprey/mathlib`, upstream bridge
+- [ ] Phase 6: erasure, mixed-discipline corpus program, refinement discipline
+- [ ] Phase 7: the workbench, tracked in [plan 0042](0042-proof-workbench.md)
 
 ## Verified constraints
 

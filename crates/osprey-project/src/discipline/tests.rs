@@ -2,6 +2,11 @@
 //! [TYPES-DISCIPLINE-VERIFICATION] and the erased-module round trip, all with
 //! scripted checkers so no process is spawned.
 
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: a missing element is a test failure, not a production panic"
+)]
+
 use super::protocol::{Request, Response, VERSION};
 use super::*;
 use crate::manifest::Dependency;
@@ -40,7 +45,11 @@ fn temp_project(name: &str) -> ProjectConfig {
 
 fn source(text: &str) -> SourceFile {
     let parsed = osprey_syntax::parse_program_with_flavor(text, Flavor::Ml);
-    assert!(parsed.errors.is_empty(), "fixture parses: {:?}", parsed.errors);
+    assert!(
+        parsed.errors.is_empty(),
+        "fixture parses: {:?}",
+        parsed.errors
+    );
     SourceFile {
         path: PathBuf::from("src/Proof.ospml"),
         flavor: Flavor::Ml,
@@ -75,7 +84,8 @@ fn accepted(signature: &str, erased: &str) -> String {
     .to_string()
 }
 
-const MARKED: &str = "// osprey: types=bounded\nnamespace proof\n\nmodule Nat\n    export zero = 0\n";
+const MARKED: &str =
+    "// osprey: types=bounded\nnamespace proof\n\nmodule Nat\n    export zero = 0\n";
 const SIGNATURE: &str = "signature Nat\n    zero : int\n";
 const ERASED: &str = "namespace proof\n\nmodule Nat\n    export zero = 0\n";
 
@@ -84,7 +94,10 @@ fn selection_is_marker_then_project_then_hm() {
     // Implements [TYPES-DISCIPLINE-SELECT].
     let mut config = temp_project("select");
     assert_eq!(select(&config, "namespace x\n"), HM);
-    assert_eq!(select(&config, "// osprey: types=lean4\nnamespace x\n"), "lean4");
+    assert_eq!(
+        select(&config, "// osprey: types=lean4\nnamespace x\n"),
+        "lean4"
+    );
     assert_eq!(select(&config, "# osprey: types=lean4\n"), "lean4");
     config.types = Some("bounded".into());
     assert_eq!(select(&config, "namespace x\n"), "bounded");
@@ -96,7 +109,10 @@ fn selection_is_marker_then_project_then_hm() {
 fn markerless_project_never_touches_the_registry_or_a_runner() {
     // Implements [TYPES-DISCIPLINE-NO-HARM] rule 4.
     let mut config = temp_project("noharm");
-    config.dependencies.push(Dependency { name: "@missing/pkg".into(), path: Some("nowhere".into()) });
+    config.dependencies.push(Dependency {
+        name: "@missing/pkg".into(),
+        path: Some("nowhere".into()),
+    });
     let runner = scripted(Err("must not run"));
     let sources = vec![source("namespace plain\n\nx = 1\n")];
     let out = apply(&config, sources, &runner).expect("untouched");
@@ -111,7 +127,11 @@ fn unknown_discipline_is_one_error_on_the_marker_line() {
     let runner = scripted(Err("must not run"));
     let errors = apply(&config, vec![source(MARKED)], &runner).expect_err("unknown name");
     assert_eq!(errors.len(), 1);
-    assert!(errors[0].message.starts_with(ERROR_PREFIX), "{}", errors[0].message);
+    assert!(
+        errors[0].message.starts_with(ERROR_PREFIX),
+        "{}",
+        errors[0].message
+    );
     assert!(errors[0].message.contains("`bounded`"));
     assert_eq!(errors[0].line, Some(1));
     assert_eq!(runner.calls.get(), 0);
@@ -137,8 +157,14 @@ fn registry_reads_discipline_tables_from_path_dependencies() {
         "[package]\nname = \"@osprey/bounded\"\n[discipline]\nname = \"bounded\"\nchecker = \"checker.ospml\"\ntimeout_seconds = 7\n",
     )
     .expect("manifest");
-    config.dependencies.push(Dependency { name: "@osprey/bounded".into(), path: Some("bounded".into()) });
-    config.dependencies.push(Dependency { name: "@osprey/testing".into(), path: None });
+    config.dependencies.push(Dependency {
+        name: "@osprey/bounded".into(),
+        path: Some("bounded".into()),
+    });
+    config.dependencies.push(Dependency {
+        name: "@osprey/testing".into(),
+        path: None,
+    });
     let registry = Registry::discover(&config).expect("registry");
     let found = registry.get("bounded").expect("registered");
     assert_eq!(found.checker, pkg.join("checker.ospml"));
@@ -169,9 +195,13 @@ fn accepted_module_is_replaced_by_its_erased_form_under_its_signature() {
     let erased = &out[0];
     assert_eq!(erased.discipline.as_deref(), Some("bounded"));
     assert_eq!(erased.source, ERASED);
-    assert!(matches!(erased.program.statements.first(), Some(Stmt::Signature { name, .. }) if name == "Nat"));
+    assert!(
+        matches!(erased.program.statements.first(), Some(Stmt::Signature { name, .. }) if name == "Nat")
+    );
     let ascribed = erased.program.statements.iter().any(|s| match s {
-        Stmt::Namespace { body, .. } => body.iter().any(|m| matches!(m, Stmt::Module { signature: Some(a), .. } if a.path.segments == ["Nat"])),
+        Stmt::Namespace { body, .. } => body.iter().any(
+            |m| matches!(m, Stmt::Module { signature: Some(a), .. } if a.path.segments == ["Nat"]),
+        ),
         _ => false,
     });
     assert!(ascribed, "module Nat is ascribed to signature Nat");
@@ -198,18 +228,42 @@ fn every_checker_fault_is_a_discipline_error() {
     let unparsable = accepted(SIGNATURE, "module Nat\n    export zero = = 0\n");
     let unsigned = accepted("", ERASED);
     let cases: Vec<(&str, Result<&str, &str>, &str)> = vec![
-        ("crash", Err("exited with an error with no response: boom"), "boom"),
-        ("timeout", Err("exceeded its time limit of 1 seconds"), "time limit"),
+        (
+            "crash",
+            Err("exited with an error with no response: boom"),
+            "boom",
+        ),
+        (
+            "timeout",
+            Err("exceeded its time limit of 1 seconds"),
+            "time limit",
+        ),
         ("malformed", Ok("{not json"), "malformed JSON"),
         ("version", Ok(&wrong_version), "protocol version 2"),
         ("unparsable", Ok(&unparsable), "cannot parse"),
-        ("unsigned", Ok(&unsigned), "wrote no signature for module `Nat`"),
-        ("noerased", Ok(r#"{"version":1,"result":"accepted","signature":"","diagnostics":[]}"#), "no erased module"),
+        (
+            "unsigned",
+            Ok(&unsigned),
+            "wrote no signature for module `Nat`",
+        ),
+        (
+            "noerased",
+            Ok(r#"{"version":1,"result":"accepted","signature":"","diagnostics":[]}"#),
+            "no erased module",
+        ),
     ];
     for (name, answer, expected) in cases {
         let errors = apply_one(name, answer).expect_err(name);
-        assert!(errors[0].message.starts_with(ERROR_PREFIX), "{name}: {}", errors[0].message);
-        assert!(errors[0].message.contains(expected), "{name}: {}", errors[0].message);
+        assert!(
+            errors[0].message.starts_with(ERROR_PREFIX),
+            "{name}: {}",
+            errors[0].message
+        );
+        assert!(
+            errors[0].message.contains(expected),
+            "{name}: {}",
+            errors[0].message
+        );
     }
 }
 
@@ -221,7 +275,9 @@ fn request_carries_module_flavor_and_marker_and_protocol_version() {
     let parsed: serde_json::Value = serde_json::from_str(&line).expect("round trip");
     assert_eq!(parsed["version"], VERSION);
     assert_eq!(parsed["module"]["flavor"], "ml");
-    assert!(parsed["module"]["source"].as_str().is_some_and(|s| s.starts_with("// osprey: types=bounded")));
+    assert!(parsed["module"]["source"]
+        .as_str()
+        .is_some_and(|s| s.starts_with("// osprey: types=bounded")));
     assert_eq!(parsed["imports"].as_array().map(Vec::len), Some(0));
 }
 

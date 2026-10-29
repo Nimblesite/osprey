@@ -44,15 +44,22 @@ impl ProcessRunner {
     /// The executable for `discipline`, compiled on first use and reused
     /// while the checker source is unchanged (content hash in the file name).
     fn executable(&self, discipline: &Discipline) -> Result<PathBuf, String> {
-        let source = std::fs::read(&discipline.checker)
-            .map_err(|error| format!("has no readable checker at {}: {error}", discipline.checker.display()))?;
-        let output = self
-            .build_dir
-            .join(format!("{}-{:016x}", discipline.name, super::cache::digest(&source)));
+        let source = std::fs::read(&discipline.checker).map_err(|error| {
+            format!(
+                "has no readable checker at {}: {error}",
+                discipline.checker.display()
+            )
+        })?;
+        let output = self.build_dir.join(format!(
+            "{}-{:016x}",
+            discipline.name,
+            super::cache::digest(&source)
+        ));
         if output.is_file() {
             return Ok(output);
         }
-        std::fs::create_dir_all(&self.build_dir).map_err(|error| format!("cannot create {}: {error}", self.build_dir.display()))?;
+        std::fs::create_dir_all(&self.build_dir)
+            .map_err(|error| format!("cannot create {}: {error}", self.build_dir.display()))?;
         build(&self.compiler, &discipline.checker, &output)?;
         Ok(output)
     }
@@ -116,23 +123,30 @@ fn wait(mut child: Child, timeout: Duration) -> Result<String, String> {
             Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(format!("exceeded its time limit of {} seconds", timeout.as_secs()));
+                return Err(format!(
+                    "exceeded its time limit of {} seconds",
+                    timeout.as_secs()
+                ));
             }
             Err(error) => return Err(format!("could not be waited for ({error})")),
         }
     };
-    finish(success, join(stdout), join(stderr))
+    finish(success, join(stdout), &join(stderr))
 }
 
-fn finish(success: bool, stdout: String, stderr: String) -> Result<String, String> {
+fn finish(success: bool, stdout: String, stderr: &str) -> Result<String, String> {
     if success && !stdout.trim().is_empty() {
         return Ok(stdout);
     }
     Err(format!(
         "exited {} with {}: {}",
         if success { "cleanly" } else { "with an error" },
-        if stdout.trim().is_empty() { "no response" } else { "a response" },
-        tail(&stderr)
+        if stdout.trim().is_empty() {
+            "no response"
+        } else {
+            "a response"
+        },
+        tail(stderr)
     ))
 }
 

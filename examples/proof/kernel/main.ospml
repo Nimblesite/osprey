@@ -1,0 +1,42 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+import proof::Environment
+import proof::Infer
+
+// M0 of plan 0041: the kernel checks `fun (p : Prop) (h : p) => h` against
+// `∀ (p : Prop), p → p` and prints `checked: id_imp`; a wrong proof of the
+// same statement, and a statement that is not a type, are rejected with
+// the kernel's reason.
+
+prop () = Sort Zero
+
+(** `∀ (p : Prop), p → p` *)
+idType () = Pi "p" (prop ()) (Pi "h" (BVar 0) (BVar 1))
+
+(** `fun (p : Prop) (h : p) => h` *)
+idProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 0))
+
+(** `fun (p : Prop) (h : p) => p`: a term of the wrong type. *)
+badProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 1))
+
+(** Add `name : ty := value` as a theorem: the statement must be a type and
+    the proof must have it. *)
+theorem (env, name, ty, value) = match Infer::sort (env, [], ty)
+    Success level => proved (env, name, ty, value)
+    Error message => Error(message = message)
+
+proved (env, name, ty, value) = match Infer::check (env, [], value, ty)
+    Success checked => Environment::add (env, Decl(name = name, params = [], ty = ty, body = Theorem value))
+    Error message => Error(message = message)
+
+report (name, outcome) = match outcome
+    Success env => print "checked: ${name}"
+    Error message => print "rejected: ${name}: ${message}"
+
+main () =
+    env = Environment::empty ()
+    report ("id_imp", theorem (env, "id_imp", idType (), idProof ()))
+    report ("id_imp_bad", theorem (env, "id_imp_bad", idType (), badProof ()))
+    report ("not_a_type", theorem (env, "not_a_type", idProof (), idProof ()))

@@ -1,4 +1,6 @@
 //! Imported constructors become record construction after identity resolution.
+//! A union variant applied to positional payloads stays an ordinary call: the
+//! checker types it against the variant's payload, as in its own source.
 //! Implements [FLAVOR-PYTHON-CLASS], [MODULES-RESOLUTION].
 use crate::model::{DeclKind, SymbolKey};
 use crate::resolve::{Context, Resolver};
@@ -6,7 +8,7 @@ use osprey_ast::{Expr, FieldAssignment, TypeExpr};
 
 impl Resolver<'_> {
     pub(crate) fn normalize_constructor_call(&mut self, expression: &mut Expr, context: &Context) {
-        let Some((name, type_args)) = self.constructor_call_head(expression) else {
+        let Some((name, type_args, kind)) = self.constructor_call_head(expression) else {
             return;
         };
         let Expr::Call {
@@ -17,19 +19,25 @@ impl Resolver<'_> {
         else {
             return;
         };
+        if kind == DeclKind::Constructor && !arguments.is_empty() {
+            return;
+        }
         if !self.record_arguments(arguments, context) {
             return;
         }
         *expression = construction(name, type_args, std::mem::take(named_arguments));
     }
 
-    fn constructor_call_head(&self, expression: &Expr) -> Option<(String, Vec<TypeExpr>)> {
+    fn constructor_call_head(
+        &self,
+        expression: &Expr,
+    ) -> Option<(String, Vec<TypeExpr>, DeclKind)> {
         let Expr::Call { function, .. } = expression else {
             return None;
         };
         let (name, type_args) = constructor_head(function)?;
-        self.declared_constructor(&name)
-            .then_some((name, type_args))
+        let kind = self.declared_constructor(&name)?;
+        Some((name, type_args, kind))
     }
 
     fn record_arguments(&mut self, arguments: &[Expr], context: &Context) -> bool {
@@ -44,19 +52,15 @@ impl Resolver<'_> {
         false
     }
 
-    fn declared_constructor(&self, name: &str) -> bool {
-        let Some(source) = self.source_names.get(name) else {
-            return false;
-        };
+    /// The declared kind of the constructor `name` links to: a record type or
+    /// a union variant.
+    fn declared_constructor(&self, name: &str) -> Option<DeclKind> {
+        let source = self.source_names.get(name)?;
         let segments = source.split("::").map(str::to_owned).collect::<Vec<_>>();
-        let Some((namespace, path)) = segments.split_first() else {
-            return false;
-        };
+        let (namespace, path) = segments.split_first()?;
         let key = SymbolKey::new(namespace, path.to_vec());
-        self.graph
-            .declarations
-            .get(&key)
-            .is_some_and(|info| matches!(info.kind, DeclKind::Type | DeclKind::Constructor))
+        let kind = self.graph.declarations.get(&key)?.kind;
+        matches!(kind, DeclKind::Type | DeclKind::Constructor).then_some(kind)
     }
 }
 

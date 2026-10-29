@@ -56,6 +56,7 @@ test: build
 # test` subcommand itself stays covered by bank-test and the CLI e2e suite.
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
+	$(MAKE) _test_proof_kernel
 	$(MAKE) _test_profiler
 	$(MAKE) _vsix_bundle
 	$(MAKE) _test_vscode_extension

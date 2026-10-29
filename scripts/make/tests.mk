@@ -322,6 +322,17 @@ _test_profiler:
 # *.test.ospml suites. These inspect internal values rather than stdout goldens.
 # Some loopback integration twins intentionally use the same fixed port so their
 # Default and ML sources lower to identical IR; one worker prevents port races.
+# _test_proof_kernel: the M0 proof kernel of plan 0041 (examples/proof/kernel)
+# checks `id_imp` and rejects the two controls with the kernel's own reason,
+# byte-exact against its golden, under GC, ARC and on wasm32 [PROOF-KERNEL].
+_test_proof_kernel:
+	@echo "==> [proof] M0 kernel: GC, ARC, wasm32 against expectedoutput..."
+	./$(BIN) examples/proof/kernel --run --memory=gc 2>/dev/null | diff - examples/proof/kernel/expectedoutput
+	./$(BIN) examples/proof/kernel --run --memory=arc 2>/dev/null | diff - examples/proof/kernel/expectedoutput
+	@$(MKDIR) target/proof
+	./$(BIN) examples/proof/kernel --target=wasm32 --compile -o target/proof/kernel.wasm >/dev/null 2>&1
+	node scripts/wasm-smoke.mjs target/proof/kernel.wasm examples/proof/kernel/expectedoutput
+
 _test_language_corpus:
 	@echo "==> [language] Default + ML assertion corpus..."
 	@OSPREY_TEST_JOBS=1 ./$(BIN) test tests

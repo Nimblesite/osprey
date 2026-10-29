@@ -1,0 +1,76 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+import proof::Environment
+
+(** Reduction and definitional equality of [PROOF-KERNEL-THEORY]: β, δ, ζ
+    to weak head normal form, and η in the comparison. *)
+module Reduce
+    (** Weak head normal form under `env`. *)
+    export whnf : (Env, Term) -> Term
+    whnf (env, term) = match term
+        App head arg => whnfApp (env, whnf (env, head), arg)
+        Let name ty value body => whnf (env, Terms::instantiate (body, value))
+        Const name levels => whnfConst (env, term, name)
+        other => other
+
+    whnfApp (env, head, arg) = match head
+        Lam name domain body => whnf (env, Terms::instantiate (body, arg))
+        other => App other arg
+
+    whnfConst (env, term, name) = match Environment::unfold (env, name)
+        Success value => whnf (env, value)
+        Error message => term
+
+    (** Definitional equality: both sides to weak head normal form, then
+        structural comparison with η for lambdas. *)
+    export defeq : (Env, Term, Term) -> bool
+    defeq (env, left, right) = match Terms::equal (left, right)
+        true => true
+        false => normal (env, whnf (env, left), whnf (env, right))
+
+    normal (env, left, right) = match left
+        Sort u => sortEq (u, right)
+        BVar i => varEq (i, right)
+        Const a la => constEq (a, la, right)
+        App f a => appEq (env, f, a, right)
+        Lam x a f => lamEq (env, a, f, right)
+        Pi x a f => piEq (env, a, f, right)
+        Let x t v b => false
+
+    sortEq (u, right) = match right
+        Sort v => Levels::equal u v
+        other => false
+
+    varEq (i, right) = match right
+        BVar j => i == j
+        other => false
+
+    constEq (a, la, right) = match right
+        Const b lb => a == b && sameLevels (la, lb)
+        other => false
+
+    appEq (env, f, a, right) = match right
+        App g b => defeq (env, f, g) && defeq (env, a, b)
+        Lam y b g => eta (env, g, App f a)
+        other => false
+
+    lamEq (env, a, f, right) = match right
+        Lam y b g => defeq (env, a, b) && defeq (env, f, g)
+        other => eta (env, f, other)
+
+    piEq (env, a, f, right) = match right
+        Pi y b g => defeq (env, a, b) && defeq (env, f, g)
+        other => false
+
+    (** η: `fun x => body` equals `other` when `body` equals `other x`. *)
+    eta (env, body, other) = defeq (env, body, App (Terms::shift (other, 0, 1)) (BVar 0))
+
+    sameLevels (left, right) = match left
+        [] => isEmpty right
+        [a, ...la] => sameHead (a, la, right)
+
+    sameHead (a, la, right) = match right
+        [] => false
+        [b, ...lb] => Levels::equal a b && sameLevels (la, lb)

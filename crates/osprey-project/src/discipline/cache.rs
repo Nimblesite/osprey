@@ -19,16 +19,14 @@ pub(super) fn run_cached(
     let line = request.to_line()?;
     let checker = std::fs::read(&discipline.checker).unwrap_or_default();
     let entry = entry_path(config, discipline, &line, &checker);
-    if let Some(hit) = entry.as_ref().and_then(|path| std::fs::read_to_string(path).ok()) {
+    if let Ok(hit) = std::fs::read_to_string(&entry) {
         if let Ok(response) = Response::parse(&hit) {
             return Ok(response);
         }
     }
     let answer = runner.run(discipline, &line)?;
     let response = Response::parse(&answer)?;
-    if let Some(path) = entry {
-        remember(&path, &answer);
-    }
+    remember(&entry, &answer);
     Ok(response)
 }
 
@@ -40,13 +38,18 @@ pub(super) fn digest(bytes: &[u8]) -> u64 {
     hasher.finish()
 }
 
-fn entry_path(config: &ProjectConfig, discipline: &Discipline, line: &str, checker: &[u8]) -> Option<PathBuf> {
+fn entry_path(
+    config: &ProjectConfig,
+    discipline: &Discipline,
+    line: &str,
+    checker: &[u8],
+) -> PathBuf {
     let dir = config.directory.join(".osprey/cache/disciplines");
     let mut hasher = DefaultHasher::new();
     line.hash(&mut hasher);
     checker.hash(&mut hasher);
     discipline.name.hash(&mut hasher);
-    Some(dir.join(format!("{:016x}.json", hasher.finish())))
+    dir.join(format!("{:016x}.json", hasher.finish()))
 }
 
 /// A cache write that fails leaves the compile correct, only slower.

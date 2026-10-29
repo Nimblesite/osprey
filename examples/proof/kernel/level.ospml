@@ -1,0 +1,66 @@
+namespace proof
+
+(** A universe level of [PROOF-KERNEL-THEORY] (spec 0049). `Sort Zero` is
+    `Prop`; `Sort (Succ Zero)` is `Type`. M0 needs only those two; the other
+    forms are here so M1's export reader adds nothing to the theory. *)
+type Level = Zero | Succ Level | Max Level Level | IMax Level Level | Param string
+
+(** Normalisation, equality and printing of levels. *)
+module Levels
+    (** Whether a level mentions no parameter. *)
+    export closed : Level -> bool
+    closed level = match level
+        Zero => true
+        Succ inner => closed inner
+        Max left right => closed left && closed right
+        IMax left right => closed left && closed right
+        Param name => false
+
+    (** The height of a closed level; a parameter counts as zero. *)
+    export height : Level -> int
+    height level = match level
+        Zero => 0
+        Succ inner => satAdd (height inner) 1
+        Max left right => larger (height left) (height right)
+        IMax left right => imaxHeight (height left) (height right)
+        Param name => 0
+
+    larger left right = match left >= right
+        true => left
+        false => right
+
+    imaxHeight left right = match right == 0
+        true => 0
+        false => larger left right
+
+    (** Normal form: a closed level collapses to `Succ^n Zero`; parameters stay. *)
+    export normal : Level -> Level
+    normal level = match closed level
+        true => ofHeight (height level)
+        false => normalOpen level
+
+    normalOpen level = match level
+        Max left right => Max (normal left) (normal right)
+        IMax left right => IMax (normal left) (normal right)
+        Succ inner => Succ (normal inner)
+        other => other
+
+    ofHeight n = match n <= 0
+        true => Zero
+        false => Succ (ofHeight (satSub n 1))
+
+    (** Equality up to normalisation. *)
+    export equal left right = show (normal left) == show (normal right)
+
+    (** `0`, `1`, `max u v`, `imax u v`, `u`. *)
+    export show : Level -> string
+    show level = match closed level
+        true => toString (height level)
+        false => showOpen level
+
+    showOpen level = match level
+        Zero => "0"
+        Succ inner => "${show inner}+1"
+        Max left right => "max ${show left} ${show right}"
+        IMax left right => "imax ${show left} ${show right}"
+        Param name => name
