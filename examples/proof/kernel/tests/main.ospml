@@ -7,6 +7,19 @@ import prooftests::ReduceTests
 import prooftests::InferTests
 import prooftests::ExportTests
 import prooftests::ExportMutationTests
+import prooftests::ExportInductiveTests
+import prooftests::ProjectionTests
+import prooftests::NaturalTests
+import prooftests::NaturalLiteralTests
+import prooftests::TelescopeTests
+import prooftests::InductiveAdversarialTests
+import prooftests::OpaqueTests
+import prooftests::QuotientTests
+import prooftests::ConversionTests
+import prooftests::StringTests
+import prooftests::TrustTests
+import prooftests::StructureEtaTests
+import prooftests::NumericTests
 
 main () =
     LevelsTests::run ()
@@ -16,3 +29,16 @@ main () =
     InferTests::run ()
     ExportTests::run ()
     ExportMutationTests::run ()
+    ExportInductiveTests::run ()
+    ProjectionTests::run ()
+    NaturalTests::run ()
+    NaturalLiteralTests::run ()
+    TelescopeTests::run ()
+    InductiveAdversarialTests::run ()
+    OpaqueTests::run ()
+    QuotientTests::run ()
+    ConversionTests::run ()
+    StringTests::run ()
+    TrustTests::run ()
+    StructureEtaTests::run ()
+    NumericTests::run ()

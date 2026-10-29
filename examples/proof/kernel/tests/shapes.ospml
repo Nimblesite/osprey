@@ -6,9 +6,12 @@ import proof::Export
 import proof::Environment
 import proof
     Binder
+    Pi
     Theorem
     Definition
     Axiom
+    Single
+    Group
 
 (** Structural views of an export, so a rejection is asserted on its kind and
     on the terms it is about, never on how those terms print: Lean's hygienic
@@ -47,14 +50,14 @@ module Shapes
     (** The type the kernel infers for the value of `name`, in an
         environment holding every other declaration of the export. *)
     export proofTypeOf (text, name) = match Export::read text
-        Success decls => valueTypeIn (others (decls, name), found (decls, name))
+        Success items => valueTypeIn (others (declarations (items), name), found (declarations (items), name))
         Error message => Error(message = message)
 
     (** The kind of the kernel's rejection of `name`'s statement as a type,
         or `a type` when it is one, in an environment holding every other
         declaration of the export. *)
     export statementKind (text, name) = match Export::read text
-        Success decls => statementKindIn (others (decls, name), found (decls, name))
+        Success items => statementKindIn (others (declarations (items), name), found (declarations (items), name))
         Error message => "error: ${message}"
 
     statementKindIn (env, decl) = match decl
@@ -65,15 +68,29 @@ module Shapes
         Success level => "a type"
         Error message => kindOf message
 
-    (** `shapeOf` the type of `term` under `context`, innermost binder first. *)
-    export typeUnder (context, term, expected) = shapeOf (Infer::infer (Environment::empty (), context, term), expected)
+    (** `shapeOf` the type of the body under every binder of `name`'s
+        statement, as read from the export: the binders are peeled off the
+        statement itself, outermost first, so the view changes with the
+        export rather than restating a hand-built context. *)
+    export bodyTypeOf (text, name, expected) = match statementOf (text, name)
+        Success ty => peeled (ty, [], expected)
+        Error message => "error: ${message}"
 
-    (** A binder of a hand-built context. *)
-    export binder (name, ty) = Binder(name = name, ty = ty)
+    peeled (term, context, expected) = match term
+        Pi binderName domain body => peeled (body, listPrepend (context, Binder(name = binderName, ty = domain)), expected)
+        other => shapeOf (Infer::infer (Environment::empty (), context, other), expected)
 
     declOf (text, name) = match Export::read text
-        Success decls => found (decls, name)
+        Success items => found (declarations (items), name)
         Error message => Error(message = message)
+
+    (** Every declaration an export carries, an inductive block's members
+        included, in file order. *)
+    export declarations (items) = foldList (items, [], \(all, item) => listConcat (all, members item))
+
+    members (item) = match item
+        Single decl => [decl]
+        Group block => listPrepend (listConcat (block.ctors, block.recursors), block.former)
 
     found (decls, name) = match decls
         [] => Error(message = "the export declares no `${name}`")
@@ -97,3 +114,4 @@ module Shapes
         Theorem value => Infer::infer (env, [], value)
         Definition value => Infer::infer (env, [], value)
         Axiom => Error(message = "an axiom has no value")
+        other => Error(message = "an inductive constant has no value")

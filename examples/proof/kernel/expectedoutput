@@ -7,3 +7,9 @@ checked: forall_typed
 rejected: wrong_typed: type mismatch: `(fun (p : Prop) => (fun (q : Prop) => (fun (h : p) => h)))` has type `(∀ (p : Prop), (Prop → (p → p)))` but `(∀ (p : Prop), (∀ (q : Prop), (p → q)))` was expected
 checked: id_imp (export)
 rejected: id_imp_bad (export): type mismatch: `(fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => x._@.IdImp.4195544489._hygCtx._hyg.10))` has type `(∀ (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop), (x._@.IdImp.4195544489._hygCtx._hyg.10 → Prop))` but `(∀ (p : Prop), (p → p))` was expected
+checked: and_swap (export)
+checked: eq_symm (export)
+checked: iff_refl (export)
+rejected: and_swap (export): type mismatch: `(∀ (p : Prop), (∀ (q : Prop), (((And p) q) → ((And q) p))))` has type `Prop` but `(∀ (p : Prop), (∀ (q : Prop), (((And p) q) → ((And q) p))))` was expected
+checked: Nat.add_comm (export)
+rejected: Nat.add_comm (export): type mismatch: `(∀ (n : Nat), (∀ (m : Nat), (((Eq.{1} Nat) ((((((HAdd.hAdd.{0, 0, 0} Nat) Nat) Nat) ((instHAdd.{0} Nat) instAddNat)) n) m)) ((((((HAdd.hAdd.{0, 0, 0} Nat) Nat) Nat) ((instHAdd.{0} Nat) instAddNat)) m) n))))` has type `Prop` but `(∀ (n : Nat), (∀ (m : Nat), (((Eq.{1} Nat) ((((((HAdd.hAdd.{0, 0, 0} Nat) Nat) Nat) ((instHAdd.{0} Nat) instAddNat)) n) m)) ((((((HAdd.hAdd.{0, 0, 0} Nat) Nat) Nat) ((instHAdd.{0} Nat) instAddNat)) m) n))))` was expected

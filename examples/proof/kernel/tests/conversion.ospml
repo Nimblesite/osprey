@@ -1,0 +1,89 @@
+namespace prooftests
+
+import proof::Environment
+import proof::Infer
+import proof
+    Zero
+    Succ
+    Sort
+    BVar
+    Const
+    App
+    Lam
+    Pi
+    Binder
+import prooftests::Support
+
+(** Typed definitional equality: proof arguments are interchangeable only
+    when their types are the *same* proposition, never when they are merely
+    both inhabitants of `Prop`, and never when they are data. Every case
+    goes through `Infer::check`, so the term is inferred before the types
+    are compared. Implements [PROOF-KERNEL-THEORY]. *)
+module ConversionTests
+    export run () =
+        sameProposition ()
+        distinctPropositions ()
+        distinctData ()
+        binderContext ()
+        malformedProofs ()
+
+    (** `P` is `Prop`, while `F h1` and `F h2` differ only in which proof of
+        `P` they take. *)
+    propositionContext () =
+        [ Binder(name = "v", ty = App (BVar 0) (BVar 2))
+        , Binder(name = "F", ty = Pi "x" (BVar 2) (Sort (Succ Zero)))
+        , Binder(name = "h2", ty = BVar 1)
+        , Binder(name = "h1", ty = BVar 0)
+        , Binder(name = "P", ty = Sort Zero) ]
+
+    (** `P` and `Q` are distinct propositions; `h1` proves `P`. *)
+    twoPropositionsContext () =
+        [ Binder(name = "h1", ty = BVar 1)
+        , Binder(name = "Q", ty = Sort Zero)
+        , Binder(name = "P", ty = Sort Zero) ]
+
+    (** `N` is a type, `a` and `b` are distinct data, and `G` is a type
+        family over `N`. *)
+    dataContext () =
+        [ Binder(name = "v", ty = App (BVar 0) (BVar 2))
+        , Binder(name = "G", ty = Pi "x" (BVar 2) (Sort (Succ Zero)))
+        , Binder(name = "b", ty = BVar 1)
+        , Binder(name = "a", ty = BVar 0)
+        , Binder(name = "N", ty = Sort (Succ Zero)) ]
+
+    (** `h` proves `P`. *)
+    proofContext () =
+        [ Binder(name = "h", ty = BVar 0)
+        , Binder(name = "P", ty = Sort Zero) ]
+
+    sameProposition () =
+        test ("proof arguments of the same proposition are interchangeable", \() =>
+            expect (outcome (propositionContext (), BVar 0, App (BVar 1) (BVar 2)), "accepted"))
+
+    distinctPropositions () =
+        test ("proofs of distinct propositions are not interchangeable", \() =>
+            expect (outcome (twoPropositionsContext (), BVar 0, BVar 1), "type mismatch: `h1` has type `P` but `Q` was expected"))
+
+        test ("propositions themselves are types, not interchangeable proofs", \() =>
+            expect (outcome ([Binder(name = "P", ty = Sort Zero), Binder(name = "Q", ty = Sort Zero)], BVar 0, BVar 1), "type mismatch: `P` has type `Prop` but `Q` was expected"))
+
+    distinctData () =
+        test ("data arguments of distinct values are not interchangeable", \() =>
+            expect (outcome (dataContext (), BVar 0, App (BVar 1) (BVar 2)), "type mismatch: `v` has type `(G a)` but `(G b)` was expected"))
+
+    binderContext () =
+        test ("proof irrelevance reaches under a Pi binder", \() =>
+            expect (outcome (propositionContext (), Lam "x" (BVar 4) (BVar 1), Pi "x" (BVar 4) (App (BVar 2) (BVar 3))), "accepted"))
+
+    malformedProofs () =
+        test ("an unknown proof reference still refuses proof irrelevance", \() =>
+            expect (outcome (proofContext (), BVar 0, Const "Q" []), "type mismatch: `h` has type `P` but `Q` was expected"))
+
+        test ("a malformed proof term is rejected before any expected Prop", \() =>
+            expect (outcome ([Binder(name = "P", ty = Sort Zero)], BVar 9, Sort Zero), "unbound variable #9"))
+
+    (** The kernel's verdict, with a success reduced to `accepted` so a
+        failure to render never reads as a pass. *)
+    outcome (context, term, expected) = match Infer::check (Environment::empty (), context, term, expected)
+        Success _ => "accepted"
+        Error message => message

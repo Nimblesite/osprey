@@ -1,0 +1,296 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+import proof::Environment
+import proof::Reduce
+import proof::Infer
+import proof::Telescope
+import proof::Recursors
+
+(** One field read: whether it is a proof, and how it mentions the family
+    (0: not at all, 1: as its type, 2: as the result of a function). *)
+type FieldRead =
+    fieldProof : bool
+    fieldOccurs : int
+
+(** A type former read: its parameter and index telescopes and its sort. *)
+type Former =
+    formerParams : List<Binder>
+    formerIndices : List<Binder>
+    formerSort : Level
+
+(** Checking an inductive declaration of [PROOF-KERNEL-THEORY]: one
+    family, not mutual and not nested, as Lean's kernel checks it. The
+    type former must be a well-typed telescope ending in a sort. Every
+    constructor must be a well-typed telescope that opens with the
+    family's parameters, whose fields mention the family only strictly
+    positively and live in a universe the family's sort bounds (any
+    universe for a `Prop` family), and that ends in the family applied to
+    exactly its parameters and to indices that do not mention it. The
+    recursor, its ι rules, its elimination universe and K are then derived
+    by `Recursors`, never read. *)
+module Inductive
+    upon (outcome, next) = match outcome
+        Success value => next value
+        Error message => Error(message = message)
+
+    (** Check the family `former` with `params` parameters and its
+        constructors `ctors`, and derive its recursor; `elimName` names the
+        recursor's extra universe parameter when the family eliminates into
+        every sort ("" picks `u`, or the first `u_n` the family does not
+        use). The constructors' bodies are ignored. *)
+    export derive (env, former, ctors, params, elimName) = upon (Infer::sort (env, [], former.ty), \level => upon (formerOf (env, former, params), \read => upon (Environment::add (env, Decl(name = former.name, params = former.params, ty = former.ty, body = Axiom)), \scratch => upon (shapesOf (scratch, former, read, ctors), \shapes => Success(value = specOf (former, read, shapes, elimName))))))
+
+    formerOf (env, former, params) = formerSplit (env, former, params, Telescope::peel (env, former.ty))
+
+    formerSplit (env, former, params, peeled) = match listLength peeled.peeledBinders >= params && params >= 0
+        true => formerSorted (former, params, peeled, Reduce::whnf (env, peeled.peeledRest))
+        false => Error(message = "`${former.name}` has fewer than ${toString params} parameters")
+
+    formerSorted (former, params, peeled, rest) = match rest
+        Sort level => Success(value = Former(formerParams = Telescope::outer (peeled.peeledBinders, params), formerIndices = Telescope::inner (peeled.peeledBinders, params), formerSort = level))
+        other => Error(message = "not a type former: `${former.name}` does not end in a sort")
+
+    levelsOf (former) = mapList (former.params, \name => Param name)
+
+    shapesOf (env, former, read, ctors) = foldList (ctors, Success(value = []), \(so_far, ctor) => upon (so_far, \done => upon (shapeOf (env, former, read, ctor), \shape => Success(value = listAppend (done, shape)))))
+
+    (** A constructor: same universe parameters as its family, a type,
+        the family's parameters first, then its fields, then the family. *)
+    shapeOf (env, former, read, ctor) = match sameNames (ctor.params, former.params)
+        true => upon (Infer::sort (env, [], ctor.ty), \level => shapePeeled (env, former, read, ctor, Telescope::peel (env, ctor.ty)))
+        false => Error(message = "constructor `${ctor.name}` must take the universe parameters of `${former.name}`")
+
+    shapePeeled (env, former, read, ctor, peeled) = match listLength peeled.peeledBinders >= listLength read.formerParams && paramsAgree (env, Telescope::outer (peeled.peeledBinders, listLength read.formerParams), read.formerParams)
+        true => shapeFields (env, former, read, ctor, peeled)
+        false => Error(message = "constructor `${ctor.name}` must open with the parameters of `${former.name}`")
+
+    paramsAgree (env, found, wanted) = match found
+        [] => true
+        [first, ...rest] => paramAgrees (env, first, rest, wanted)
+
+    paramAgrees (env, first, rest, wanted) = match wanted
+        [] => false
+        [want, ...more] => Reduce::defeq (env, first.ty, want.ty) && paramsAgree (env, rest, more)
+
+    shapeFields (env, former, read, ctor, peeled) = upon (fieldsFrom (env, former, read, ctor, Telescope::outer (peeled.peeledBinders, listLength read.formerParams), Telescope::inner (peeled.peeledBinders, listLength read.formerParams), []), \reads => shapeResult (former, read, ctor, peeled, reads))
+
+    shapeResult (former, read, ctor, peeled, reads) = match occurrence (former, read, listLength peeled.peeledBinders, peeled.peeledRest)
+        Success indices => Success(value = Shape(shapeName = ctor.name, shapeFields = Telescope::inner (peeled.peeledBinders, listLength read.formerParams), shapeIndices = indices, shapeProofs = mapList (reads, \field => field.fieldProof), shapeOccurs = mapList (reads, \field => field.fieldOccurs)))
+        Error message => Error(message = "constructor `${ctor.name}` must end in `${former.name}` applied to its parameters: ${message}")
+
+    (** Each field, under the binders before it: positive, and in a
+        universe the family's sort bounds. The result is, per field,
+        whether it is a proof. *)
+    fieldsFrom (env, former, read, ctor, before, fields, reads) = match fields
+        [] => Success(value = reads)
+        [first, ...rest] => upon (fieldChecked (env, former, read, ctor, before, first), \field => fieldsFrom (env, former, read, ctor, listAppend (before, first), rest, listAppend (reads, field)))
+
+    fieldChecked (env, former, read, ctor, before, field) = upon (Infer::sort (env, Telescope::context before, field.ty), \level => upon (fitting (former, read, ctor, field, level), \fits => upon (positive (env, former, read, ctor, listLength before, Reduce::whnf (env, field.ty)), \occurs => Success(value = FieldRead(fieldProof = Levels::isZero level, fieldOccurs = occurs)))))
+
+    fitting (former, read, ctor, field, level) = match Levels::isZero read.formerSort || Levels::geq read.formerSort level
+        true => Success(value = true)
+        false => Error(message = "field `${field.name}` of `${ctor.name}` lives in a universe above `${former.name}`'s")
+
+    (** Strict positivity: the family may occur only as the result of a
+        field, under binders that do not mention it. *)
+    positive (env, former, read, ctor, depth, ty) = match Terms::occurs (ty, former.name)
+        false => Success(value = 0)
+        true => positiveAt (env, former, read, ctor, depth, ty)
+
+    positiveAt (env, former, read, ctor, depth, ty) = match ty
+        Pi name domain body => positivePi (env, former, read, ctor, depth, domain, body)
+        other => positiveEnd (former, ctor, occurrence (former, read, depth, other))
+
+    positivePi (env, former, read, ctor, depth, domain, body) = match Terms::occurs (domain, former.name)
+        true => Error(message = "non-positive occurrence of `${former.name}` in constructor `${ctor.name}`")
+        false => upon (positive (env, former, read, ctor, satAdd depth 1, Reduce::whnf (env, body)), \inner => Success(value = 2))
+
+    positiveEnd (former, ctor, found) = match found
+        Success indices => Success(value = 1)
+        Error message => Error(message = "invalid occurrence of `${former.name}` in constructor `${ctor.name}`: ${message}")
+
+    (** `term`, under `depth` binders of which the outermost are the
+        parameters, is the family at its own universe parameters applied
+        to exactly those parameters and to indices that do not mention it;
+        the indices if so. *)
+    occurrence (former, read, depth, term) = occurrenceIn (former, read, depth, Terms::spine term)
+
+    occurrenceIn (former, read, depth, spine) = match spine.spineHead
+        Const name levels => occurrenceHead (former, read, depth, spine, name == former.name && Terms::equalLevels (levels, levelsOf former))
+        other => Error(message = "the head is not the family")
+
+    occurrenceHead (former, read, depth, spine, head) = match head && listLength spine.spineArgs == satAdd (listLength read.formerParams) (listLength read.formerIndices)
+        true => occurrenceArgs (former, read, depth, spine.spineArgs)
+        false => Error(message = "not the family at its universe parameters and full arity")
+
+    occurrenceArgs (former, read, depth, args) = match Terms::equalAll (Terms::prefix (args, listLength read.formerParams), Terms::vars (satSub depth (listLength read.formerParams), listLength read.formerParams))
+        true => occurrenceIndices (former, Terms::suffix (args, listLength read.formerParams))
+        false => Error(message = "the parameters are not passed through unchanged")
+
+    occurrenceIndices (former, indices) = match foldList (indices, false, \(seen, index) => seen || Terms::occurs (index, former.name))
+        true => Error(message = "an index mentions the family")
+        false => Success(value = indices)
+
+    (** The recursor's specification: it eliminates into every sort unless
+        the family may be a proposition that is not a syntactic
+        subsingleton, in which case only into `Prop`. *)
+    specOf (former, read, shapes, elimName) = specWith (former, read, shapes, large (read, shapes), pickName (former.params, elimName, 0))
+
+    specWith (former, read, shapes, everySort, name) = Spec(specFamily = former.name, specLevels = levelsOf former, specParams = read.formerParams, specIndices = read.formerIndices, specSort = read.formerSort, specElim = elimOf (everySort, name), specRec = "${former.name}.rec", specRecParams = listConcat (elimNames (everySort, name), former.params), specRecLevels = listConcat (elimLevels (everySort, name), levelsOf former), specShapes = shapes)
+
+    elimNames (everySort, name) = match everySort
+        true => [name]
+        false => []
+
+    elimOf (everySort, name) = match everySort
+        true => Param name
+        false => Zero
+
+    elimLevels (everySort, name) = match everySort
+        true => [Param name]
+        false => []
+
+    large (read, shapes) = Levels::isNotZero read.formerSort || isEmpty shapes || subsingleton shapes
+
+    (** One constructor whose every field is a proof or an index of the
+        value it builds. *)
+    subsingleton (shapes) = match shapes
+        [only] => fieldsDetermined (only, 0)
+        other => false
+
+    fieldsDetermined (shape, j) = match listGet (shape.shapeProofs, j)
+        Error _ => true
+        Success proof => (proof || indexed (shape.shapeIndices, BVar (satSub (satSub (listLength shape.shapeFields) 1) j))) && fieldsDetermined (shape, satAdd j 1)
+
+    indexed (indices, field) = foldList (indices, false, \(seen, index) => seen || Terms::equal (index, field))
+
+    (** Whether two name lists are equal position by position. *)
+    export sameNames (left, right) = match left
+        [] => isEmpty right
+        [first, ...rest] => sameNamesHead (first, rest, right)
+
+    sameNamesHead (first, rest, right) = match right
+        [] => false
+        [other, ...more] => first == other && sameNames (rest, more)
+
+    pickName (taken, wanted, n) = match wanted == "" || listContains (taken, wanted)
+        true => pickFresh (taken, n)
+        false => wanted
+
+    pickFresh (taken, n) = match n
+        0 => pickName (taken, "u", 1)
+        other => pickName (taken, "u_${toString other}", satAdd other 1)
+
+    (** K: a `Prop` family with one constructor and no fields. *)
+    export k (spec) = Levels::isZero spec.specSort && kShape spec.specShapes
+
+    kShape (shapes) = match shapes
+        [only] => isEmpty only.shapeFields
+        other => false
+
+    (** Check a family and its constructors, derive its recursor, and add
+        all of them: what a declaration written in Osprey goes through. *)
+    export declare (env, former, ctors, params) = upon (derive (env, former, ctors, params, ""), \spec => install (env, former, ctors, spec))
+
+    (** Add the checked family, its constructors and its recursor. *)
+    install (env, former, ctors, spec) = upon (Environment::add (env, Decl(name = former.name, params = former.params, ty = former.ty, body = TypeFormer (familyOf (ctors, spec)))), \withFamily => upon (ctorsAdded (withFamily, ctors, spec), \withCtors => Environment::add (withCtors, recursorDecl (withCtors, spec))))
+
+    familyOf (ctors, spec) = Family(familyParams = listLength spec.specParams, familyIndices = listLength spec.specIndices, familyCtors = mapList (ctors, \ctor => ctor.name), familyRecursive = occursAtLeast (spec, 1), familyReflexive = occursAtLeast (spec, 2))
+
+    occursAtLeast (spec, least) = foldList (spec.specShapes, false, \(seen, shape) => seen || foldList (shape.shapeOccurs, false, \(any, occurs) => any || occurs >= least))
+
+    ctorsAdded (env, ctors, spec) = ctorsFrom (Success(value = env), ctors, spec, 0)
+
+    ctorsFrom (so_far, ctors, spec, at) = match ctors
+        [] => so_far
+        [first, ...rest] => ctorsFrom (upon (so_far, \env => Environment::add (env, ctorDecl (first, spec, at))), rest, spec, satAdd at 1)
+
+    ctorDecl (ctor, spec, at) = Decl(name = ctor.name, params = ctor.params, ty = ctor.ty, body = Constructor (Ctor(ctorFamily = spec.specFamily, ctorIndex = at, ctorParams = listLength spec.specParams, ctorFields = fieldCount (spec, at))))
+
+    fieldCount (spec, at) = match listGet (spec.specShapes, at)
+        Success shape => listLength shape.shapeFields
+        Error _ => 0
+
+    recursorDecl (env, spec) = Decl(name = spec.specRec, params = spec.specRecParams, ty = Recursors::recursorType (env, spec), body = Recursor (Eliminator(elimFamily = spec.specFamily, elimParams = listLength spec.specParams, elimIndices = listLength spec.specIndices, elimMinors = listLength spec.specShapes, elimRules = Recursors::rules (env, spec), elimK = k spec)))
+
+    (** Check an exported inductive block: derive the family, constructors
+        and recursor from the type former and constructor types alone, add
+        those, and refuse the block unless every fact the export claims —
+        counts, constructor order, recursive and reflexive flags, the
+        recursor's universe parameters, type, rules and K — is the one
+        derived. *)
+    export add (env, block) = upon (claimedFamily block.former, \family => upon (soleRecursor block, \claimed => upon (derive (env, block.former, block.ctors, family.familyParams, claimedElim (block.former, claimed)), \spec => upon (install (env, block.former, block.ctors, spec), \installed => agreed (installed, block, family, claimed)))))
+
+    claimedFamily (former) = match former.body
+        TypeFormer family => Success(value = family)
+        other => Error(message = "`${former.name}` is not a type former")
+
+    soleRecursor (block) = match block.recursors
+        [only] => Success(value = only)
+        other => Error(message = "unsupported: ${toString (listLength block.recursors)} recursors in one block")
+
+    claimedElim (former, claimed) = match listLength claimed.params == satAdd (listLength former.params) 1
+        true => listGet (claimed.params, 0) ?: ""
+        false => ""
+
+    agreed (installed, block, family, claimed) = upon (familyAgrees (installed, block.former.name, family), \a => upon (ctorsAgree (installed, block.ctors), \b => upon (recursorAgrees (installed, claimed), \c => Success(value = installed))))
+
+    (** A claim and the derived fact, rendered alike; any difference refuses. *)
+    same (name, claimed, derived) = match claimed == derived
+        true => Success(value = true)
+        false => Error(message = "`${name}` as exported claims ${claimed}, the kernel derives ${derived}")
+
+    familyAgrees (env, name, family) = match Environment::find (env, name)
+        Success decl => same (name, showFamily family, showBody decl.body)
+        Error message => Error(message = message)
+
+    ctorsAgree (env, ctors) = foldList (ctors, Success(value = true), \(so_far, ctor) => upon (so_far, \ok => ctorAgrees (env, ctor)))
+
+    ctorAgrees (env, ctor) = match Environment::find (env, ctor.name)
+        Success decl => same (ctor.name, showBody ctor.body, showBody decl.body)
+        Error message => Error(message = message)
+
+    recursorAgrees (env, claimed) = match Environment::find (env, claimed.name)
+        Success decl => upon (same (claimed.name, "universe parameters [${joined claimed.params}]", "universe parameters [${joined decl.params}]"), \a => upon (typeAgrees (claimed, decl), \b => upon (same (claimed.name, showBody claimed.body, showBody decl.body), \c => rulesAgree (claimed, claimed.body, decl.body))))
+        Error message => Error(message = "`${claimed.name}` is not the recursor the kernel derives, `${message}`")
+
+    typeAgrees (claimed, decl) = match Terms::equal (claimed.ty, decl.ty)
+        true => Success(value = true)
+        false => Error(message = "`${claimed.name}` as exported has type `${Terms::show (claimed.ty, [])}`, the kernel derives `${Terms::show (decl.ty, [])}`")
+
+    rulesAgree (claimed, claimedBody, derivedBody) = match claimedBody
+        Recursor mine => rulesAgreeWith (claimed, mine.elimRules, derivedBody)
+        other => Error(message = "`${claimed.name}` is not a recursor")
+
+    rulesAgreeWith (claimed, rules, derivedBody) = match derivedBody
+        Recursor theirs => rulesPaired (claimed, rules, theirs.elimRules)
+        other => Error(message = "`${claimed.name}` is not a recursor")
+
+    rulesPaired (claimed, rules, derived) = match rules
+        [] => Success(value = true)
+        [first, ...rest] => rulePaired (claimed, first, rest, derived)
+
+    rulePaired (claimed, first, rest, derived) = match derived
+        [] => Error(message = "`${claimed.name}` has more rules than constructors")
+        [mine, ...more] => upon (ruleAgrees (claimed, first, mine), \ok => rulesPaired (claimed, rest, more))
+
+    ruleAgrees (claimed, rule, derived) = match Terms::equal (rule.ruleRhs, derived.ruleRhs)
+        true => Success(value = true)
+        false => Error(message = "`${claimed.name}`'s rule for `${rule.ruleCtor}` as exported is `${Terms::show (rule.ruleRhs, [])}`, the kernel derives `${Terms::show (derived.ruleRhs, [])}`")
+
+    (** Every fact of an inductive constant but its terms, as text. *)
+    export showBody (body) = match body
+        TypeFormer family => showFamily family
+        Constructor ctor => "constructor ${toString ctor.ctorIndex} of ${ctor.ctorFamily}, ${toString ctor.ctorParams} parameters, ${toString ctor.ctorFields} fields"
+        Recursor elim => "recursor of ${elim.elimFamily}, ${toString elim.elimParams} parameters, ${toString elim.elimIndices} indices, ${toString elim.elimMinors} minors, K ${toString elim.elimK}, rules [${joined (ruleNames elim.elimRules)}]"
+        other => "not an inductive constant"
+
+    ruleNames (rules) = mapList (rules, \rule => "${rule.ruleCtor}/${toString rule.ruleFields}")
+
+    showFamily (family) = "${toString family.familyParams} parameters, ${toString family.familyIndices} indices, constructors [${joined family.familyCtors}], recursive ${toString family.familyRecursive}, reflexive ${toString family.familyReflexive}"
+
+    joined (names) = match names
+        [] => ""
+        [first, ...rest] => foldList (rest, first, \(text, name) => "${text}, ${name}")

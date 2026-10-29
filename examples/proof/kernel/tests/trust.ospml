@@ -1,0 +1,239 @@
+namespace prooftests
+
+import proof::Terms
+import proof::Environment
+import proof::Checked
+import proof::Inductive
+import proof::Infer
+import proof::Trust
+import proof::Fixtures
+import proof::Naturals
+import proof
+    Zero
+    Succ
+    Sort
+    Const
+    App
+    Lam
+    Pi
+    BVar
+    Let
+    Proj
+    NatLit
+    Decl
+    Axiom
+    Definition
+    Theorem
+    Opaque
+
+(** Assumptions are reported per root ([PROOF-KERNEL-AXIOMS]): an axiom counts
+    only when that declaration reaches it. Every positive case starts from an
+    environment the kernel checked — an export through
+    `Checked::exportedDeclaring`, or a declaration through `Checked::declare`
+    and `Inductive::declare` — and a refused declaration fails the case before
+    it can read as a pass. *)
+module TrustTests
+    export run () =
+        reporting ()
+        closure ()
+        metadata ()
+        traversal ()
+        test ("a deep checked dependency chain keeps graph depth off the WASM stack", \() =>
+            expect (shown (deepEnv (), "root"), "ok: Ax"))
+
+    reporting () =
+        test ("an unused axiom in the checked file is not a dependency of the theorem", \() =>
+            expect (shown (idImpEnv (), "id_imp"), "ok: none")
+            expect (shown (idImpEnv (), "unusedAssumption"), "ok: unusedAssumption"))
+
+        test ("an axiom the proof genuinely uses is reported", \() =>
+            expect (shown (usesAxiomEnv (), "usesAx"), "ok: Ax"))
+
+        test ("two roots in one file report their own axioms", \() =>
+            expect (shown (twoRootsEnv (), "rootA"), "ok: Ax, AxProof")
+            expect (shown (twoRootsEnv (), "rootB"), "ok: Other, OtherProof")
+            expect (shown (twoRootsEnv (), "AxProof"), "ok: Ax, AxProof"))
+
+    closure () =
+        test ("a dependency reached through a definition and an opaque is reported", \() =>
+            expect (shown (transitiveEnv (), "viaDef"), "ok: Ax")
+            expect (shown (transitiveEnv (), "viaOpaque"), "ok: Ax"))
+
+        test ("an axiom only in a declaration's type is reported", \() =>
+            expect (shown (hiddenTypeEnv (), "hidden"), "ok: Ax")
+            expect (shown (hiddenTypeEnv (), "Constant"), "ok: none"))
+
+        test ("a dependency the environment cannot resolve is an explicit error", \() =>
+            expect (shown (unresolvedEnv (), "broken"), "error: unknown dependency `missing`")
+            expect (shown (unresolvedEnv (), "picks"), "error: unknown dependency `Absent`")
+            expect (shown (unresolvedEnv (), "two"), "error: unknown dependency `Nat`"))
+
+        test ("cyclic dependencies terminate, with and without an axiom", \() =>
+            expect (shown (cyclicEnv (), "selfLoop"), "ok: none")
+            expect (shown (cyclicEnv (), "loopA"), "ok: none")
+            expect (shown (cyclicEnv (), "loopy"), "ok: cycAxiom"))
+
+    metadata () =
+        test ("constructor and recursor metadata retain assumptions in a field type", \() =>
+            expect (shown (holderEnv (), "Holder"), "ok: Ax")
+            expect (shown (holderEnv (), "Holder.mk"), "ok: Ax")
+            expect (shown (holderEnv (), "Holder.rec"), "ok: Ax"))
+
+        test ("a checked inductive block carries no axioms of its own", \() =>
+            expect (shown (andEnv (), "And"), "ok: none")
+            expect (shown (andEnv (), "And.intro"), "ok: none")
+            expect (shown (andEnv (), "And.rec"), "ok: none")
+            expect (shown (andEnv (), "and_swap"), "ok: none"))
+
+        test ("a recorded arithmetic proof reaches projections and literals without axioms", \() =>
+            expect (shown (natEnv (), "Nat.add_comm"), "ok: none")
+            expect (shown (natEnv (), "OfNat.ofNat"), "ok: none"))
+
+    traversal () =
+        test ("constants reports every term variant's symbols in traversal order", \() =>
+            expect (listed (Terms::constants (Sort Zero)), "none")
+            expect (listed (Terms::constants (BVar 0)), "none")
+            expect (listed (Terms::constants (Const "c" [Zero])), "c")
+            expect (listed (Terms::constants (App (Const "f" []) (Const "a" []))), "f, a")
+            expect (listed (Terms::constants (Lam "x" (Const "d" []) (Const "b" []))), "d, b")
+            expect (listed (Terms::constants (Pi "x" (Const "d" []) (Const "b" []))), "d, b")
+            expect (listed (Terms::constants (Let "x" (Const "t" []) (Const "v" []) (Const "u" []))), "t, v, u")
+            expect (listed (Terms::constants (Proj "Family" 0 (Const "target" []))), "Family, target")
+            expect (listed (Terms::constants (NatLit (literal "2"))), "Nat, Nat.zero, Nat.succ")
+            expect (listed (Terms::constants (App (Const "c" []) (Const "c" []))), "c, c"))
+
+    (** The recorded `id_imp` export plus one axiom the theorem never touches:
+        the shape whose old report was `axioms: unusedAssumption`. *)
+    idImpEnv () = exported (unusedAxiomExport (), "id_imp")
+
+    unusedAxiomExport () = "${Fixtures::idImp ()}{\"in\":16,\"str\":{\"pre\":0,\"str\":\"unusedAssumption\"}}\n{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[],\"name\":16,\"type\":0}}\n"
+
+    usesAxiomEnv () = theorem (axiomAt (Environment::empty (), "Ax"), "usesAx", arrow "Ax", identity "Ax")
+
+    (** Two roots that share a file and share nothing else: `AxProof` rests on
+        `Ax` through its own statement, and `rootA` rests on `AxProof`. *)
+    twoRootsEnv () = otherRoot (axiomRoot ())
+
+    axiomRoot () = rootA (axiomProof (axiomAt (Environment::empty (), "Ax")))
+
+    axiomProof (env) = assumedAt (env, "AxProof", Const "Ax" [])
+
+    rootA (env) = theorem (env, "rootA", Const "Ax" [], Const "AxProof" [])
+
+    otherRoot (env) = rootB (otherProof (axiomAt (env, "Other")))
+
+    otherProof (env) = assumedAt (env, "OtherProof", Const "Other" [])
+
+    rootB (env) = theorem (env, "rootB", Const "Other" [], Const "OtherProof" [])
+
+    transitiveEnv () = opaqueBridge (definitionBridge (axiomAt (Environment::empty (), "Ax")))
+
+    definitionBridge (env) = definition (env, "bridge", arrow "Ax", identity "Ax")
+
+    opaqueBridge (env) = viaOpaque (opaqueAt (env, "bridgeOpaque", arrow "Ax", identity "Ax"))
+
+    viaOpaque (env) = definedVia (theorem (env, "viaOpaque", arrow "Ax", Const "bridgeOpaque" []))
+
+    definedVia (env) = theorem (env, "viaDef", arrow "Ax", Const "bridge" [])
+
+    (** `Triv` is a `Prop` family, `Constant` ignores its argument and returns
+        it, so `hidden : Constant Ax` is proved by `Triv.mk`: the axiom appears
+        in the root's statement and nowhere in its proof term. *)
+    hiddenTypeEnv () = hidden (constantAlias (trivial (axiomAt (Environment::empty (), "Ax"))))
+
+    trivial (env) = verified ("the trivial family checks", Inductive::declare (env, Decl(name = "Triv", params = [], ty = Sort Zero, body = Axiom), [Decl(name = "Triv.mk", params = [], ty = Const "Triv" [], body = Axiom)], 0))
+
+    constantAlias (env) = definition (env, "Constant", Pi "p" (Sort Zero) (Sort Zero), Lam "p" (Sort Zero) (Const "Triv" []))
+
+    holderEnv () = holder (axiomAt (Environment::empty (), "Ax"))
+
+    holder env = verified ("the field-bearing family checks", Inductive::declare (env, Decl(name = "Holder", params = [], ty = Sort (Succ Zero), body = Axiom), [Decl(name = "Holder.mk", params = [], ty = Pi "proof" (Const "Ax" []) (Const "Holder" []), body = Axiom)], 0))
+
+    hidden (env) = theorem (env, "hidden", App (Const "Constant" []) (Const "Ax" []), Const "Triv.mk" [])
+
+    deepEnv () = deepRoot (foldList (toList (range (0, 1200)), axiomAt (Environment::empty (), "Ax"), \(env, index) => definition (env, "link${index}", arrow "Ax", preceding index)))
+
+    preceding index = match index == 0
+        true => identity "Ax"
+        false => Const "link${satSub index 1}" []
+
+    deepRoot env = theorem (env, "root", arrow "Ax", Const "link1199" [])
+
+    (** Declarations the kernel would reject, added by `Environment::add` so
+        the traversal itself is observable: each case expects the explicit
+        unresolved-dependency error, never a pass. *)
+    unresolvedEnv () = literalRoot (familyRoot (attached (Environment::empty (), "broken", Theorem (Const "missing" []))))
+
+    familyRoot (env) = attached (env, "picks", Theorem (Proj "Absent" 0 (Const "x" [])))
+
+    literalRoot (env) = attached (env, "two", Theorem (NatLit (literal "2")))
+
+    cyclicEnv () = axiomLoop (pairLoop (selfLoop (Environment::empty ())))
+
+    selfLoop (env) = attached (env, "selfLoop", Definition (App (Const "selfLoop" []) (Const "selfLoop" [])))
+
+    pairLoop (env) = loopB (attached (env, "loopA", Definition (Const "loopB" [])))
+
+    loopB (env) = attached (env, "loopB", Definition (Const "loopA" []))
+
+    axiomLoop (env) = loopy (attached (env, "cycAxiom", Axiom))
+
+    loopy (env) = attached (env, "loopy", Definition (App (Const "loopA" []) (Const "cycAxiom" [])))
+
+    andEnv () = exported (Fixtures::andSwap (), "and_swap")
+
+    natEnv () = exported (Fixtures::natAddComm (), "Nat.add_comm")
+
+    exported (text, name) = verified ("the export checks", Checked::exportedDeclaring (Environment::empty (), text, name))
+
+    (** The declarations the kernel checks itself. A statement or value it
+        refuses fails the case through `refused`, never through a fallback. *)
+    theorem (env, name, ty, value) = verified ("`${name}` checks", Checked::theorem (env, name, ty, value))
+
+    definition (env, name, ty, value) = proved (env, name, ty, value, Definition value)
+
+    opaqueAt (env, name, ty, value) = proved (env, name, ty, value, Opaque value)
+
+    proved (env, name, ty, value, body) = match Infer::check (env, [], value, ty)
+        Success _ => stated (env, name, ty, body)
+        Error message => refused (name, message)
+
+    axiomAt (env, name) = assumedAt (env, name, Sort Zero)
+
+    assumedAt (env, name, ty) = stated (env, name, ty, Axiom)
+
+    stated (env, name, ty, body) = match Infer::sort (env, [], ty)
+        Success _ => verified ("`${name}` is declared", Checked::declare (env, Decl(name = name, params = [], ty = ty, body = body)))
+        Error message => refused (name, message)
+
+    refused (name, message) =
+        check "`${name}` checks" "success" message
+        Environment::empty ()
+
+    attached (env, name, body) = verified ("`${name}` is added", Environment::add (env, Decl(name = name, params = [], ty = Sort Zero, body = body)))
+
+    verified (label, outcome) = match outcome
+        Success env => env
+        Error message =>
+            check label "success" message
+            Environment::empty ()
+
+    arrow (name) = Pi "h" (Const name []) (Const name [])
+
+    identity (name) = Lam "h" (Const name []) (BVar 0)
+
+    literal (text) = match Naturals::parse text
+        Success value => value
+        Error message => failed (message)
+
+    failed (message) =
+        check "the literal reads" "success" message
+        Naturals::zero ()
+
+    shown (env, name) = match Trust::described (Trust::axioms (env, name))
+        Success text => "ok: ${text}"
+        Error message => "error: ${message}"
+
+    listed (names) = match Trust::described (Success(value = names))
+        Success text => text
+        Error message => "error: ${message}"

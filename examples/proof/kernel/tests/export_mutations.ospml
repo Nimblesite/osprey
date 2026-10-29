@@ -25,6 +25,12 @@ import proof
 module ExportMutationTests
 
     export run () =
+        test ("the real Nat.add_comm export with a corrupted proof is a type mismatch", \() =>
+            expect (Shapes::kindOf (named (Fixtures::natAddCommBad (), "Nat.add_comm")), "type mismatch"))
+
+        test ("the real and_swap export with a corrupted proof is a type mismatch", \() =>
+            expect (Shapes::kindOf (named (Fixtures::andSwapBad (), "and_swap")), "type mismatch"))
+
         test ("control: the recorded export checks", \() =>
             expect (verdict (Fixtures::idImp ()), "checked"))
 
@@ -94,6 +100,15 @@ module ExportMutationTests
         test ("a negative expression index is refused", \() =>
             expect (verdict (edit ("{\"ie\":0,\"sort\":0}", "{\"ie\":-1,\"sort\":0}")), "line 4: expr -1 is reserved"))
 
+        test ("an expression line carrying a second kind is refused, not read as the first", \() =>
+            expect (verdict (edit ("{\"ie\":0,\"sort\":0}", "{\"ie\":0,\"sort\":0,\"bvar\":0}")), "line 4: 3 members where one kind is expected"))
+
+        test ("a name line carrying an expression index is refused", \() =>
+            expect (verdict (edit ("{\"in\":2,\"str\":{\"pre\":0,\"str\":\"p\"}}", "{\"in\":2,\"ie\":9,\"str\":{\"pre\":0,\"str\":\"p\"}}")), "line 3: 3 members where one kind is expected"))
+
+        test ("a declaration line carrying a second declaration is refused", \() =>
+            expect (verdict (edit ("\"value\":6}}", "\"value\":6},\"axiom\":{\"levelParams\":[],\"name\":1,\"type\":4}}")), "line 24: 2 members where one kind is expected"))
+
         test ("a theorem whose statement needs a definition to unfold checks", \() =>
             expect (named (throughDefinition (1), "t"), "checked"))
 
@@ -128,8 +143,8 @@ module ExportMutationTests
 
     (** A statement whose body is a variable: the verdict's kind, the
         statement's own sort check, the statement as read, and the type of
-        the body under the statement's two binders, which is `p`. *)
-    notAType (text) = Shapes::views [Shapes::kindOf (verdict text), Shapes::statementKind (text, "id_imp"), Shapes::shapeOf (Shapes::statementOf (text, "id_imp"), Pi "p" (prop ()) (Pi "a" (BVar 0) (BVar 0))), Shapes::typeUnder ([Shapes::binder ("a", BVar 0), Shapes::binder ("p", prop ())], BVar 0, BVar 1)]
+        its body under its own two binders as read, which is `p`. *)
+    notAType (text) = Shapes::views [Shapes::kindOf (verdict text), Shapes::statementKind (text, "id_imp"), Shapes::shapeOf (Shapes::statementOf (text, "id_imp"), Pi "p" (prop ()) (Pi "a" (BVar 0) (BVar 0))), Shapes::bodyTypeOf (text, "id_imp", BVar 1)]
 
     (** `checked`, or the rejection, for `id_imp` through the gate's own path. *)
     verdict (text) = named (text, "id_imp")

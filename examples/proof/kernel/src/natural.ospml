@@ -23,6 +23,12 @@ module Naturals
     (** Whether `n` is zero. *)
     export isZero (n) = isEmpty n.naturalLimbs
 
+    (** Whether the limbs have the canonical literal spelling used by both
+        inference and numeric reduction. Implements [PROOF-KERNEL-THEORY]. *)
+    export canonical (value) = match parse (show value)
+        Success parsed => equal (value, parsed)
+        Error _ => false
+
     (** The decimal digits `lean4export` writes for a `natVal`: one or more
         ASCII digits with no sign, no space and no leading zero unless the
         text is "0". Any other text is refused with the text named. *)
@@ -137,6 +143,38 @@ module Naturals
     carried (limbs, carry) = match carry
         0 => limbs
         _ => sumLimbs (limbs, [carry], 0)
+
+    (** Grade-school multiplication in base 10^9. Canonical limbs are below
+        10^9, so every word product is below 10^18 and fits int exactly.
+        Decimal chunking splits that product without division effects.
+        Implements [PROOF-STDLIB] [PROOF-KERNEL-THEORY]. *)
+    export multiply (left, right) = match canonical left && canonical right
+        true => productLimbs (left.naturalLimbs, right.naturalLimbs)
+        false => Error(message = "invalid natural multiplication operand")
+
+    productLimbs (left, right) = match left
+        [] => Success(value = zero ())
+        [digit, ...rest] => sumProducts (productDigit (digit, right), shiftedProduct (productLimbs (rest, right)))
+
+    productDigit (digit, limbs) = match limbs
+        [] => Success(value = zero ())
+        [word, ...rest] => sumProducts (ofInt (satMul digit word), shiftedProduct (productDigit (digit, rest)))
+
+    shiftedProduct (outcome) = match outcome
+        Error message => Error(message = message)
+        Success value => Success(value = shiftedWord value)
+
+    shiftedWord (value) = match isZero value
+        true => value
+        false => Natural(naturalLimbs = listPrepend (value.naturalLimbs, 0))
+
+    sumProducts (left, right) = match left
+        Error message => Error(message = message)
+        Success first => sumProductRight (first, right)
+
+    sumProductRight (first, right) = match right
+        Error message => Error(message = message)
+        Success second => Success(value = add (first, second))
 
     (** Lean's `Nat.succ`. *)
     export succ (n) = add (n, one ())

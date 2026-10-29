@@ -1,0 +1,176 @@
+namespace prooftests
+import proof::Terms
+import proof::Environment
+import proof::Naturals
+import proof::Checked
+import proof::Numeric
+import proof::Infer
+import proof::Reduce
+import proof
+    Const App Lam BVar NatLit Natural NumericReduced NoNumericRule Decl Definition Constructor Ctor Recursor Rule Env Succ Zero
+
+import proof::Fixtures
+
+(** Exact numeric reductions and forged/malformed controls. Implements [PROOF-KERNEL-THEORY]. *)
+module NumericTests
+    export run () = match loaded "canonical-defs.ndjson"
+        Error message => check "canonical environment loads" "success" message
+        Success env =>
+            positives env
+            disabled env
+            forgeries env
+            products env
+            differentials env
+
+    loaded (file) = match file
+        "canonical-defs.ndjson" => Checked::exported (Environment::empty (), Fixtures::numericPrefix ())
+        "forged-ble-defs.ndjson" => match Fixtures::numericFalse ()
+            Error message => Error(message = message)
+            Success text => Checked::exported (Environment::empty (), text)
+        other => Error(message = "unknown numeric test fixture")
+
+    small (value) = match value == 0
+        true => NatLit (Natural(naturalLimbs = []))
+        false => NatLit (Natural(naturalLimbs = [value]))
+    word () = NatLit (Natural(naturalLimbs = [294967296, 4]))
+    ble (left, right) = App (App (Const "Nat.ble" []) left) right
+    outcome (env, term) = match Numeric::step (env, term)
+        NoNumericRule => "disabled"
+        NumericReduced value => "reduced:${Terms::show (value, [])}"
+    allowed (env, label, left, right, expected) = test (label, \() => expect (outcome (env, ble (left, right)), "reduced:Bool.${expected}"))
+    refused (env, label, term) = test (label, \() => expect (outcome (env, term), "disabled"))
+
+    positives (env) =
+        test ("canonical prefix structural guard", \() => expect (Numeric::pinned env, true))
+        allowed (env, "two below three", small 2, small 3, "true")
+        allowed (env, "three above two", small 3, small 2, "false")
+        allowed (env, "equal operands", small 2, small 2, "true")
+        allowed (env, "zero operands", small 0, small 0, "true")
+        allowed (env, "zero below one", small 0, small 1, "true")
+        allowed (env, "one above zero", small 1, small 0, "false")
+        allowed (env, "Unicode boundary below UInt32 size", small 55296, word (), "true")
+        allowed (env, "UInt32 size above Unicode boundary", word (), small 55296, "false")
+        allowed (env, "arbitrary precision beyond machine integer", NatLit (Natural(naturalLimbs = [1,2,3])), NatLit (Natural(naturalLimbs = [2,2,3])), "true")
+        allowed (env, "beta operand is three, exceeding one", beta (small 2), small 1, "false")
+        allowed (env, "successor of a beta-wrapped literal", successor (identity (small 2)), small 4, "true")
+        allowed (env, "successor of constructor zero", successor (Const "Nat.zero" []), small 1, "true")
+        allowed (env, "nested successors preserve a compact literal", successor (successor (small 2)), small 4, "true")
+        allowed (env, "successor exceeds its own predecessor", successor (small 2), small 2, "false")
+        allowed (env, "two successors exceed the intervening value", successor (successor (small 2)), small 3, "false")
+        allowed (env, "successor of zero exceeds zero", successor (small 0), small 0, "false")
+
+    beta (value) = App (Lam "n" (Const "Nat" []) (App (Const "Nat.succ" []) (BVar 0))) value
+    identity (value) = App (Lam "n" (Const "Nat" []) (BVar 0)) value
+    successor (value) = App (Const "Nat.succ" []) value
+    multiplied (left, right) = App (App (Const "Nat.mul" []) left) right
+
+    products (env) =
+        productCase (env, "checked multiplication two times three", small 2, small 3, "6")
+        productCase (env, "checked multiplication three times two", small 3, small 2, "6")
+        productCase (env, "checked multiplication zero times word", small 0, word (), "0")
+        productCase (env, "checked multiplication beyond the machine integer", word (), word (), "18446744073709551616")
+        refused (env, "symbolic multiplication stays on ordinary reduction", multiplied (BVar 0, small 3))
+        forgedProduct (mutated (env, "Nat.mul", Definition (zeroFunction ())), "forged multiplication body")
+        forgedProduct (mutated (env, "Nat.add", Definition (zeroFunction ())), "forged addition dependency")
+        forgedProduct (betaEnvironment (env, "Nat.add.match_1"), "changed addition matcher disables multiplication")
+        forgedProduct (betaEnvironment (env, "Nat.mul.match_1"), "changed multiplication matcher disables multiplication")
+        forgedProduct (betaEnvironment (env, "instOfNatNat"), "changed numeral instance disables multiplication")
+
+    productCase (env, label, left, right, text) = test (label, \() => productExpected (env, left, right, text))
+
+    productExpected (env, left, right, text) = match Naturals::parse text
+        Error message => check "expected product parses" "success" message
+        Success expected => match Numeric::step (env, multiplied (left, right))
+            NumericReduced actual => expect (Terms::equal (actual, NatLit expected), true)
+            NoNumericRule => expect ("disabled", "a checked numeric multiplication")
+
+    zeroFunction () = Lam "a" (Const "Nat" []) (Lam "b" (Const "Nat" []) (Const "Nat.zero" []))
+
+    forgedProduct (result, label) = match result
+        Error message => check label "success" message
+        Success env => refused (env, label, multiplied (small 2, small 3))
+
+    differentials (env) =
+        differential (env, "Nat.ble", small 2, small 3)
+        differential (env, "Nat.ble", small 3, small 2)
+        differential (env, "Nat.mul", small 2, small 3)
+        differential (env, "Nat.mul", small 3, small 2)
+
+    differential (env, name, left, right) = test ("${name} agrees with ordinary beta-wrapped reduction", \() => differentialResult (env, name, left, right, betaEnvironment (env, name)))
+
+    betaEnvironment (env, name) = match Environment::find (env, name)
+        Error message => Error(message = message)
+        Success decl => match decl.body
+            Definition value => checkedBeta (env, decl, App (Lam "f" decl.ty (BVar 0)) value)
+            other => Error(message = "the numeric reference is not a definition")
+
+    checkedBeta (env, decl, value) = match Infer::check (env, [], value, decl.ty)
+        Error message => Error(message = message)
+        Success _ => Success(value = replaced (env, decl(body = Definition value)))
+
+    differentialResult (env, name, left, right, wrapped) = match wrapped
+        Error message => check "the beta-equivalent reference type checks" "success" message
+        Success reference =>
+            term = App (App (Const name []) left) right
+            expect (outcome (reference, term), "disabled")
+            match Numeric::step (env, term)
+                NoNumericRule => expect ("disabled", "an accelerated result")
+                NumericReduced fast => expect (Reduce::conversion (reference, [], fast, Reduce::whnf (reference, term), false), true)
+
+    disabled (env) =
+        refused (env, "variable left", ble (BVar 0, small 3))
+        refused (env, "variable right", ble (small 3, BVar 0))
+        refused (env, "partial application", App (Const "Nat.ble" []) (small 2))
+        refused (env, "extra application", App (ble (small 2, small 3)) (small 0))
+        refused (env, "universe arguments", App (App (Const "Nat.ble" [Succ Zero]) (small 2)) (small 3))
+        refused (env, "malformed zero literal before normalization", ble (NatLit (Natural(naturalLimbs = [0])), small 3))
+        refused (env, "malformed high limb before normalization", ble (NatLit (Natural(naturalLimbs = [1000000000])), small 3))
+        refused (env, "negative literal limb", ble (NatLit (Natural(naturalLimbs = [-1])), small 3))
+        refused (env, "malformed top limb", ble (NatLit (Natural(naturalLimbs = [1,0])), small 3))
+        refused (env, "malformed literal through beta", ble (identity (NatLit (Natural(naturalLimbs = [0]))), small 3))
+        refused (env, "a successor of a variable is not a literal", ble (successor (BVar 0), small 3))
+        refused (env, "a malformed wrapped successor is refused", ble (successor (identity (NatLit (Natural(naturalLimbs = [0])))), small 3))
+
+    forgeries (env) =
+        refused (Environment::empty (), "missing canonical declarations", ble (small 0, small 1))
+        forged (mutated (env, "Nat.brecOn", Definition (Const "Nat.zero" [])), "forged helper body")
+        forged (mutated (env, "Nat.zero", Constructor (Ctor(ctorFamily = "Nat", ctorIndex = 1, ctorParams = 0, ctorFields = 0))), "forged constructor tag")
+        forged (changedDeclaration (env, "Nat.ble", true), "forged comparison type")
+        forged (changedDeclaration (env, "Nat.ble", false), "forged universe parameter")
+        forged (changedRecursor (env, "k"), "forged recursor K flag")
+        forged (changedRecursor (env, "rhs"), "forged recursor rule body")
+        forged (changedRecursor (env, "fields"), "forged recursor rule field count")
+        forged (mutated (env, "Bool.true", Constructor (Ctor(ctorFamily = "Bool", ctorIndex = 0, ctorParams = 0, ctorFields = 0))), "forged Bool constructor tag")
+        forged (mutated (env, "PProd.mk", Constructor (Ctor(ctorFamily = "PProd", ctorIndex = 0, ctorParams = 2, ctorFields = 1))), "forged pair constructor field count")
+        forged (changedRecursor (env, "minors"), "forged recursor minor count")
+        match loaded "forged-ble-defs.ndjson"
+            Error message => check "forged but well typed fixture loads" "success" message
+            Success fake =>
+                test ("forged Nat.ble body disables structural guard", \() => expect (Numeric::pinned fake, false))
+                refused (fake, "forged Nat.ble cannot gain canonical comparison", ble (small 2, small 3))
+
+    mutated (env, name, body) = match Environment::find (env, name)
+        Error message => Error(message = message)
+        Success decl => Success(value = replaced (env, decl(body = body)))
+    replaced (env, decl) = Env(decls = mapSet (env.decls, decl.name, decl), order = env.order)
+    changedDeclaration (env, name, changeType) = match Environment::find (env, name)
+        Error message => Error(message = message)
+        Success decl => match changeType
+            true => Success(value = replaced (env, decl(ty = Const "Nat" [])))
+            false => Success(value = replaced (env, decl(params = ["u"])))
+    changedRecursor (env, kind) = match Environment::find (env, "Nat.rec")
+        Error message => Error(message = message)
+        Success decl => match decl.body
+            Recursor elim => match kind
+                "k" => mutated (env, decl.name, Recursor (elim(elimK = true)))
+                "minors" => mutated (env, decl.name, Recursor (elim(elimMinors = 1)))
+                other => changedRule (env, decl.name, elim, kind, elim.elimRules)
+            other => Error(message = "missing recursor body")
+    changedRule (env, name, elim, kind, rules) = match rules
+        [] => Error(message = "missing recursor rule")
+        [first, ...rest] => match kind == "rhs"
+            true => mutated (env, name, Recursor (elim(elimRules = listPrepend (rest, first(ruleRhs = Const "Nat.zero" [])))))
+            false => mutated (env, name, Recursor (elim(elimRules = listPrepend (rest, first(ruleFields = 1)))))
+    forged (result, label) = match result
+        Error message => check label "success" message
+        Success env => refused (env, label, ble (small 0, small 1))

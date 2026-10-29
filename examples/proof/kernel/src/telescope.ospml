@@ -1,0 +1,91 @@
+namespace proof
+
+import proof::Terms
+import proof::Reduce
+import proof::Environment
+
+(** A Pi type taken apart: its binders, outermost first, each under the
+    ones before it, and the type under all of them. *)
+type Peeled =
+    peeledBinders : List<Binder>
+    peeledRest : Term
+
+(** Telescopes: the binder lists inductive declarations are read into and
+    the recursor is built from. *)
+module Telescope
+    (** Every leading Pi binder of `term`, reducing what is under each one
+        to weak head normal form, as Lean's kernel reads a constructor. *)
+    export peel (env, term) = peelInto (env, term, [])
+
+    peelInto (env, term, binders) = match term
+        Pi name domain body => peelInto (env, Reduce::whnf (env, body), listAppend (binders, Binder(name = name, ty = annotation (env, domain))))
+        other => Peeled(peeledBinders = binders, peeledRest = other)
+
+    (** Lean consumes type annotations when creating recursor binders.
+        Strip only a checked identity definition, never a same-named axiom.
+        Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
+    annotation (env, term) = annotationHead (env, term, Terms::spine term)
+
+    annotationHead (env, term, spine) = match spine.spineHead
+        Const name levels => annotationArity (env, term, spine.spineArgs, name, levels, annotationCount name)
+        other => term
+
+    annotationCount (name) = match name
+        "outParam" => 1
+        "semiOutParam" => 1
+        "optParam" => 2
+        "autoParam" => 2
+        other => 0
+
+    annotationArity (env, term, args, name, levels, count) = match count > 0 && listLength args == count
+        false => term
+        true => match Environment::unfold (env, name, levels)
+            Success value => annotationIdentity (env, term, args, value, count)
+            Error _ => term
+
+    annotationIdentity (env, term, args, value, count) = match identity (value, count, satSub count 1)
+        false => term
+        true => match listGet (args, 0)
+            Success ty => annotation (env, ty)
+            Error _ => term
+
+    identity (value, remaining, index) = match value
+        Lam name domain body => remaining > 0 && identity (body, satSub remaining 1, index)
+        BVar found => remaining == 0 && found == index
+        other => false
+
+    (** `body` under Pi binders `binders`, outermost first. *)
+    export piOver (binders, body) = foldList (listReverse binders, body, \(inner, binder) => Pi binder.name binder.ty inner)
+
+    (** `body` under lambda binders `binders`, outermost first. *)
+    export lamOver (binders, body) = foldList (listReverse binders, body, \(inner, binder) => Lam binder.name binder.ty inner)
+
+    (** `binders` with every variable at or above `cutoff` raised by `by`;
+        each binder sits under the ones before it, so its cutoff is one
+        more than the previous one's. *)
+    export shifted (binders, cutoff, by) = shiftedFrom (binders, cutoff, by, [])
+
+    shiftedFrom (binders, cutoff, by, done) = match binders
+        [] => done
+        [first, ...rest] => shiftedFrom (rest, satAdd cutoff 1, by, listAppend (done, Binder(name = first.name, ty = Terms::shift (first.ty, cutoff, by))))
+
+    (** The first `count` binders. *)
+    export outer (binders, count) = match binders
+        [] => []
+        [first, ...rest] => outerFrom (first, rest, count)
+
+    outerFrom (first, rest, count) = match count <= 0
+        true => []
+        false => listPrepend (outer (rest, satSub count 1), first)
+
+    (** The binders after the first `count`. *)
+    export inner (binders, count) = match count <= 0
+        true => binders
+        false => innerFrom (binders, count)
+
+    innerFrom (binders, count) = match binders
+        [] => []
+        [first, ...rest] => inner (rest, satSub count 1)
+
+    (** A telescope as the context `Infer` takes: innermost first. *)
+    export context (binders) = listReverse binders

@@ -1,0 +1,66 @@
+namespace proof
+
+import proof::Environment
+import proof::Checked
+import proof::Trust
+
+// Runtime batch checker ([PROOF-EXPORT]): one stdin line, `<path><TAB><name>`,
+// put through the same kernel the example entry uses —
+// `Checked::exportedDeclaring` from an empty environment. Presence alone is
+// not enough: the declaration is then matched against `Theorem`, so an
+// axiom, definition, type former, constructor or recursor sharing the name
+// is a rejection. Exactly one line is printed, `PASS <name>` or
+// `FAIL <name>: <reason>`; there is no exit-status builtin, so the FAIL line
+// is the failure signal the parent harness validates on stdout.
+
+main () = match split (input (), "\t")
+    Success parts => fields parts
+    Error message => fail "" "input: ${message}"
+
+fields parts = match parts
+    [path, name] => entered (path, name)
+    other => malformed other
+
+entered (path, name) = match path == "" || name == ""
+    true => fail name "path or name is empty"
+    false => run (path, name)
+
+malformed parts = fail (named parts) "malformed input, expected \"<path><TAB><name>\""
+
+named parts = match parts
+    [_, name] => name
+    other => ""
+
+run (path, name) = match readFile path
+    Success text => checked (name, text)
+    Error message => fail name "read: ${message}"
+
+checked (name, text) = match Checked::exportedDeclaring (Environment::empty (), text, name)
+    Success env => declared (env, name)
+    Error message => fail name "kernel: ${message}"
+
+declared (env, name) = match Environment::find (env, name)
+    Success decl => theoremish (env, name, decl.body)
+    Error message => fail name "missing: ${message}"
+
+theoremish (env, name, body) = match body
+    Theorem _ => assumptions (env, name)
+    other => fail name "declared ${bodyKind other}, not a theorem"
+
+bodyKind body = match body
+    Axiom => "an axiom"
+    Definition _ => "a definition"
+    Opaque _ => "an opaque declaration"
+    Quotient _ => "a quotient primitive"
+    TypeFormer _ => "a type former"
+    Constructor _ => "a constructor"
+    Recursor _ => "a recursor"
+    Theorem _ => "a theorem"
+
+fail name reason = print "FAIL ${name}: ${reason}"
+
+// The export's full assumption ledger is checked separately by the corpus
+// harness; this line reports only the requested theorem's dependencies.
+assumptions (env, name) = match Trust::described (Trust::axioms (env, name))
+    Success names => print "PASS ${name} | axioms: ${names}"
+    Error message => fail name "trust: ${message}"

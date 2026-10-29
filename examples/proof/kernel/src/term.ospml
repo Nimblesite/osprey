@@ -1,21 +1,97 @@
 namespace proof
 
 import proof::Levels
+import proof::Naturals
 
 (** A term of the Pi fragment of [PROOF-KERNEL-THEORY] with de Bruijn
     indices: `BVar 0` is the innermost binder. Binder names are kept for
     printing only. *)
-type Term = Sort Level | BVar int | Const string (List<Level>) | App Term Term | Lam string Term Term | Pi string Term Term | Let string Term Term Term
+type Term = Sort Level | BVar int | Const string (List<Level>) | App Term Term | Lam string Term Term | Pi string Term Term | Let string Term Term Term | Proj string int Term | NatLit Natural
+
+(** A term's head and its arguments, first argument first. *)
+type Spine =
+    spineHead : Term
+    spineArgs : List<Term>
 
 (** Shifting, substitution, universe instantiation, structural equality and
     printing of terms. *)
 module Terms
+    (** `head` applied to `args`, first argument first. *)
+    export apps (head, args) = foldList (args, head, \(applied, arg) => App applied arg)
+
+    (** The variables of `count` binders, outermost first, seen from under
+        `offset` further binders: `BVar (offset + count - 1)` down to
+        `BVar offset`. *)
+    export vars (offset, count) = match count <= 0
+        true => []
+        false => listPrepend (vars (offset, satSub count 1), BVar (satAdd offset (satSub count 1)))
+
+    (** `term` taken apart into its head and arguments. *)
+    export spine (term) = spineInto (term, [])
+
+    spineInto (term, args) = match term
+        App head arg => spineInto (head, listPrepend (args, arg))
+        other => Spine(spineHead = other, spineArgs = args)
+
+    (** Whether the constant `name` occurs anywhere in `term`. *)
+    export occurs (term, name) = match term
+        Const found levels => found == name
+        App head arg => occurs (head, name) || occurs (arg, name)
+        Lam x domain body => occurs (domain, name) || occurs (body, name)
+        Pi x domain body => occurs (domain, name) || occurs (body, name)
+        Proj family index target => family == name || occurs (target, name)
+        Let x ty value body => occurs (ty, name) || occurs (value, name) || occurs (body, name)
+        other => false
+
+    (** Every constant name `term` mentions, in traversal order and with
+        repetitions: a projection names its family, and a natural literal
+        names the checked `Nat` family and its two constructors. *)
+    export constants (term) = symbols (term, [])
+
+    symbols (term, found) = match term
+        Const name levels => listAppend (found, name)
+        App head arg => symbols (arg, symbols (head, found))
+        Lam x domain body => symbols (body, symbols (domain, found))
+        Pi x domain body => symbols (body, symbols (domain, found))
+        Proj family index target => symbols (target, listAppend (found, family))
+        Let x ty value body => symbols (body, symbols (value, symbols (ty, found)))
+        NatLit value => listConcat (found, ["Nat", "Nat.zero", "Nat.succ"])
+        other => found
+
+    (** The first `count` of `items`. *)
+    export prefix (items, count) = match items
+        [] => []
+        [first, ...rest] => prefixed (first, rest, count)
+
+    prefixed (first, rest, count) = match count <= 0
+        true => []
+        false => listPrepend (prefix (rest, satSub count 1), first)
+
+    (** `items` without its first `count`. *)
+    export suffix (items, count) = match count <= 0
+        true => items
+        false => suffixed (items, count)
+
+    suffixed (items, count) = match items
+        [] => []
+        [first, ...rest] => suffix (rest, satSub count 1)
+
+    (** Whether two term lists are equal position by position. *)
+    export equalAll (left, right) = match left
+        [] => isEmpty right
+        [a, ...la] => equalAllHead (a, la, right)
+
+    equalAllHead (a, la, right) = match right
+        [] => false
+        [b, ...lb] => equal (a, b) && equalAll (la, lb)
+
     (** Add `by` to every bound variable at index `cutoff` or above. *)
     export shift (term, cutoff, by) = match term
         BVar index => shiftVar (index, cutoff, by)
         App head arg => App (shift (head, cutoff, by)) (shift (arg, cutoff, by))
         Lam name domain body => Lam name (shift (domain, cutoff, by)) (shift (body, satAdd cutoff 1, by))
         Pi name domain body => Pi name (shift (domain, cutoff, by)) (shift (body, satAdd cutoff 1, by))
+        Proj family index target => Proj family index (shift (target, cutoff, by))
         Let name ty value body => Let name (shift (ty, cutoff, by)) (shift (value, cutoff, by)) (shift (body, satAdd cutoff 1, by))
         other => other
 
@@ -30,6 +106,7 @@ module Terms
         App head arg => App (substitute (head, depth, value)) (substitute (arg, depth, value))
         Lam name domain body => Lam name (substitute (domain, depth, value)) (substitute (body, satAdd depth 1, value))
         Pi name domain body => Pi name (substitute (domain, depth, value)) (substitute (body, satAdd depth 1, value))
+        Proj family index target => Proj family index (substitute (target, depth, value))
         Let name ty inner body => Let name (substitute (ty, depth, value)) (substitute (inner, depth, value)) (substitute (body, satAdd depth 1, value))
         other => other
 
@@ -52,6 +129,7 @@ module Terms
         App head arg => App (instantiateLevels (head, params, args)) (instantiateLevels (arg, params, args))
         Lam name domain body => Lam name (instantiateLevels (domain, params, args)) (instantiateLevels (body, params, args))
         Pi name domain body => Pi name (instantiateLevels (domain, params, args)) (instantiateLevels (body, params, args))
+        Proj family index target => Proj family index (instantiateLevels (target, params, args))
         Let name ty value body => Let name (instantiateLevels (ty, params, args)) (instantiateLevels (value, params, args)) (instantiateLevels (body, params, args))
         other => other
 
@@ -62,6 +140,7 @@ module Terms
         App head arg => declared (head, params) && declared (arg, params)
         Lam name domain body => declared (domain, params) && declared (body, params)
         Pi name domain body => declared (domain, params) && declared (body, params)
+        Proj family index target => declared (target, params)
         Let name ty value body => declared (ty, params) && declared (value, params) && declared (body, params)
         other => true
 
@@ -71,6 +150,7 @@ module Terms
         App head arg => mentions (head, index) || mentions (arg, index)
         Lam name domain body => mentions (domain, index) || mentions (body, satAdd index 1)
         Pi name domain body => mentions (domain, index) || mentions (body, satAdd index 1)
+        Proj family field target => mentions (target, index)
         Let name ty value body => mentions (ty, index) || mentions (value, index) || mentions (body, satAdd index 1)
         other => false
 
@@ -83,6 +163,8 @@ module Terms
         App head arg => "(${show (head, names)} ${show (arg, names)})"
         Lam name domain body => "(fun (${name} : ${show (domain, names)}) => ${show (body, listPrepend (names, name))})"
         Pi name domain body => showPi (name, domain, body, names)
+        Proj family index target => "(${family}.${toString index} ${show (target, names)})"
+        NatLit value => Naturals::show value
         Let name ty value body => "(let ${name} : ${show (ty, names)} := ${show (value, names)}; ${show (body, listPrepend (names, name))})"
 
     showSort level = match Levels::show level
@@ -108,6 +190,8 @@ module Terms
         App f a => equalApp (f, a, right)
         Lam x a f => equalLam (a, f, right)
         Pi x a f => equalPi (a, f, right)
+        Proj family index target => equalProj (family, index, target, right)
+        NatLit value => equalNatural (value, right)
         Let x t v b => equalLet (t, v, b, right)
 
     equalSort (u, right) = match right
@@ -146,3 +230,11 @@ module Terms
     equalHead (a, la, right) = match right
         [] => false
         [b, ...lb] => Levels::equal a b && equalLevels (la, lb)
+
+    equalProj (family, index, target, right) = match right
+        Proj other field value => family == other && index == field && equal (target, value)
+        other => false
+
+    equalNatural (value, right) = match right
+        NatLit other => Naturals::equal (value, other)
+        other => false

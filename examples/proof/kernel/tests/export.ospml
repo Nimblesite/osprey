@@ -5,10 +5,20 @@ import proof::Checked
 import proof::Environment
 import proof::Fixtures
 import proof::Terms
+import prooftests::Shapes
 import proof
     Axiom
     Definition
     Theorem
+    Single
+    Group
+    Pi
+    Sort
+    Zero
+    Const
+    App
+    BVar
+    Succ
 import prooftests::Support
 
 (** Reading `lean4export` NDJSON 3.1.0 files into kernel declarations
@@ -31,11 +41,36 @@ module ExportTests
         test ("the recorded export declares id_imp", \() =>
             expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::idImp (), "id_imp")), "declared"))
 
+        test ("the recorded inductive export checks and_swap eq_symm and iff_refl", \() =>
+            expect (foldList (["and_swap", "eq_symm", "iff_refl"], "", \(text, name) => "${text}${declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::andSwap (), name))};"), "declared;declared;declared;"))
+
+        test ("and_swap is the intended universally quantified conjunction swap", \() =>
+            expect (Shapes::shapeOf (Shapes::statementOf (Fixtures::andSwap (), "and_swap"), Pi "p" (Sort Zero) (Pi "q" (Sort Zero) (Pi "h" (Terms::apps (Const "And" [], [BVar 1, BVar 0])) (Terms::apps (Const "And" [], [BVar 1, BVar 2]))))), "equal"))
+
+        test ("the actual Lean Nat.add_comm export checks from an empty environment", \() =>
+            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::natAddComm (), "Nat.add_comm")), "declared"))
+
+        test ("the actual Lean HAdd recursor consumes identity type annotations", \() =>
+            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), haddExport (), "HAdd.rec")), "declared"))
+
+        test ("Nat.add_comm states addition commutativity over all natural numbers", \() =>
+            expect (Shapes::shapeOf (Shapes::statementOf (Fixtures::natAddComm (), "Nat.add_comm"), natCommutativity ()), "equal"))
+
+        test ("the false arithmetic statement n plus m equals m is rejected", \() =>
+            expect (Shapes::shapeOf (Shapes::statementOf (Fixtures::natAddCommWrong (), "Nat.add_comm"), natWrongStatement ()), "equal")
+            expect (Shapes::kindOf (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::natAddCommWrong (), "Nat.add_comm"))), "type mismatch"))
+
+        test ("the recorded Nat.add_comm dependency closure contains no axioms", \() =>
+            expect (axioms (Export::read (Fixtures::natAddComm ())), "0"))
+
         test ("a format version the kernel does not read is refused with its version", \() =>
             expect (Support::messageOf (Export::read (versioned ("2.0.0") ?: "")), "line 1: unsupported format version 2.0.0"))
 
-        test ("an unsupported declaration kind is refused with its kind", \() =>
-            expect (Support::messageOf (Export::read (line ("{\"inductive\":{}}"))), "line 2: unsupported: inductive"))
+        test ("a malformed quotient primitive is refused with its required fields", \() =>
+            expect (Support::messageOf (Export::read (line ("{\"quot\":{}}"))), "line 2: quotient declaration needs exactly kind, levelParams, name and type"))
+
+        test ("a malformed inductive declaration still refuses missing types", \() =>
+            expect (Support::messageOf (Export::read (line ("{\"inductive\":{}}"))), "line 2: no types"))
 
         test ("an unknown declaration kind is refused with its kind", \() =>
             expect (Support::messageOf (Export::read (line ("{\"ind\":{}}"))), "line 2: unknown item: ind"))
@@ -55,23 +90,46 @@ module ExportTests
     (** One declaration rendered as `name | statement | proof`; anything
         else reads as its own failure, never as a pass. *)
     described (outcome) = match outcome
-        Success decls => sole (decls)
+        Success items => sole (items)
         Error message => "error: ${message}"
 
-    sole (decls) = match length decls == 1
-        true => match listGet (decls, 0)
-            Success decl => "${decl.name} | ${Terms::show (decl.ty, [])} | ${bodied (decl.body)}"
+    sole (items) = match length items == 1
+        true => match listGet (items, 0)
+            Success item => itemised (item)
             Error message => "error: ${message}"
-        false => "expected one declaration, found ${toString (length decls)}"
+        false => "expected one declaration, found ${toString (length items)}"
+
+    itemised (item) = match item
+        Single decl => "${decl.name} | ${Terms::show (decl.ty, [])} | ${bodied (decl.body)}"
+        Group block => "block of ${block.former.name}"
 
     bodied (body) = match body
         Theorem value => Terms::show (value, [])
         Definition value => "definition ${Terms::show (value, [])}"
         Axiom => "axiom"
+        other => "inductive constant"
 
     (** The recorded export's `meta` line, reused so every case starts from
         the one header the reader accepts. *)
     metaLine () = listGet (lines (Fixtures::idImp ()), 0) ?: ""
+
+    natCommutativity () = Pi "n" (Const "Nat" []) (Pi "m" (Const "Nat" []) (Terms::apps (Const "Eq" [Succ Zero], [Const "Nat" [], natSum (BVar 1, BVar 0), natSum (BVar 0, BVar 1)])))
+
+    natWrongStatement () = Pi "n" (Const "Nat" []) (Pi "m" (Const "Nat" []) (Terms::apps (Const "Eq" [Succ Zero], [Const "Nat" [], natSum (BVar 1, BVar 0), BVar 0])))
+
+    haddExport () = match indexOf (Fixtures::natAddComm (), "{\"in\":33,\"str\":{\"pre\":24,\"str\":\"hAdd\"}}")
+        Success at => take (Fixtures::natAddComm (), at)
+        Error _ => "missing HAdd export boundary"
+
+    natSum (left, right) = Terms::apps (Const "HAdd.hAdd" [Zero, Zero, Zero], [Const "Nat" [], Const "Nat" [], Const "Nat" [], App (App (Const "instHAdd" [Zero]) (Const "Nat" [])) (Const "instAddNat" []), left, right])
+
+    axioms (outcome) = match outcome
+        Success items => toString (foldList (Shapes::declarations items, 0, \(count, decl) => satAdd count (axiomCount decl.body)))
+        Error message => message
+
+    axiomCount (body) = match body
+        Axiom => 1
+        other => 0
 
     declaredOutcome (outcome) = match outcome
         Success env => "declared"

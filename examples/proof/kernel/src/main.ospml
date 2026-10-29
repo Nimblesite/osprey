@@ -49,3 +49,7 @@ main () =
     surfaceReport (env, "theorem wrong_typed (p q : Prop) (h : p) : q := h")
     exportReport (env, "id_imp", Fixtures::idImp ())
     exportReport (env, "id_imp_bad", Fixtures::idImpBad ())
+    forEachList (["and_swap", "eq_symm", "iff_refl"], \name => exportReport (env, name, Fixtures::andSwap ()))
+    exportReport (env, "and_swap", Fixtures::andSwapBad ())
+    exportReport (env, "Nat.add_comm", Fixtures::natAddComm ())
+    exportReport (env, "Nat.add_comm", Fixtures::natAddCommBad ())

@@ -2,6 +2,10 @@ namespace prooftests
 
 import proof::Environment
 import proof::Reduce
+import proof::Terms
+import proof::Checked
+import proof::Fixtures
+import proof::Infer
 import proof
     Zero
     Succ
@@ -14,6 +18,9 @@ import proof
     Axiom
     Definition
     Theorem
+    Pi
+    Binder
+    Decl
 import prooftests::Support
 
 (** Beta, delta and zeta to weak head normal form, and eta in defeq. *)
@@ -22,6 +29,11 @@ module ReduceTests
     f () = Const "f" []
 
     export run () =
+        computations ()
+        equalities ()
+        kReduction ()
+
+    computations () =
         test ("whnf beta-reduces a lambda applied to a term", \() =>
             expect (Support::whnfOf (Environment::empty (), App (Lam "x" (Sort Zero) (BVar 0)) (closed ())), "Type"))
 
@@ -33,6 +45,7 @@ module ReduceTests
         test ("whnf reduces a let by substituting its value", \() =>
             expect (Support::whnfOf (Environment::empty (), Let "x" (Sort Zero) (closed ()) (BVar 0)), "Type"))
 
+    equalities () =
         // The kernel orients eta from the lambda: the lambda must be the
         // left operand, so only that direction is asserted here.
         test ("defeq accepts eta", \() =>
@@ -44,3 +57,29 @@ module ReduceTests
         test ("defeq unfolds a definition and keeps distinct constants apart", \() =>
             expect (Support::defeqOf (Support::envWith (Definition (closed ())), Const "c" [], closed ()), true)
             expect (Support::defeqOf (Environment::empty (), Const "c" [], Const "d" []), false))
+
+    kReduction () =
+        test ("K reduces an arbitrary equality proof at matching indices", \() =>
+            match Checked::exported (Environment::empty (), Fixtures::andSwap ())
+                Success env =>
+                    expect (Terms::equal (Reduce::whnf (env, equalityCase (BVar 1, BVar 1)), BVar 1), true)
+                    expect (isProposition (env, Infer::infer (env, selfContext (), equalityCase (BVar 1, BVar 1))), true)
+                Error message => expect (message, "valid Eq declarations"))
+
+        test ("K leaves equality proofs at different indices stuck", \() =>
+            match Checked::exported (Environment::empty (), Fixtures::andSwap ())
+                Success env => expect (Terms::equal (Reduce::whnf (env, equalityCase (BVar 2, BVar 1)), equalityCase (BVar 2, BVar 1)), true)
+                Error message => expect (message, "valid Eq declarations"))
+
+        test ("an axiom named Eq recursor cannot trigger K reduction", \() =>
+            expect (Terms::equal (Reduce::whnf (Support::envWithDecl (Decl(name = "Eq.rec", params = [], ty = Sort Zero, body = Axiom)), equalityCase (BVar 1, BVar 1)), equalityCase (BVar 1, BVar 1)), true))
+
+    equalityCase (left, right) = Terms::apps (Const "Eq.rec" [Succ Zero, Succ Zero], [Sort Zero, left, equalityMotive left, left, right, BVar 0])
+
+    equalityMotive left = Lam "q" (Sort Zero) (Lam "h" (Terms::apps (Const "Eq" [Succ Zero], [Sort Zero, Terms::shift (left, 0, 1), BVar 0])) (Sort Zero))
+
+    selfContext () = [Binder(name = "h", ty = Terms::apps (Const "Eq" [Succ Zero], [Sort Zero, BVar 0, BVar 0])), Binder(name = "p", ty = Sort Zero)]
+
+    isProposition (env, result) = match result
+        Success ty => Terms::equal (Reduce::whnf (env, ty), Sort Zero)
+        Error _ => false

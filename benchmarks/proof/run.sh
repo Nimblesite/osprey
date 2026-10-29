@@ -100,7 +100,8 @@ print(ms, kb, cpu)
 # their path relative to the project root, so the hash identifies the sources
 # and not the checkout; and every data file of the case directory (the
 # recorded export, `args`) under `case/`. The Lean side's files (`*.lean`,
-# `lean.cmd`, `lean.setup`, `lean.bin`), dotfiles and directories are left out.
+# `lean.cmd`, `lean.setup`, `lean.bin`, `lean.reads`), dotfiles and
+# directories are left out.
 # Sorted and concatenated as path\0bytes. A root that does not exist is an
 # error, so a hash never silently covers less than the build reads.
 TREE_SHA='
@@ -117,7 +118,7 @@ for entry in roots:
     found = [path] if path.is_file() else sorted(path.rglob("*.ospml"))
     for p in found:
         files[os.path.relpath(p, root)] = p
-lean_side = {"lean.cmd", "lean.setup", "lean.bin"}
+lean_side = {"lean.cmd", "lean.setup", "lean.bin", "lean.reads"}
 for p in case.iterdir():
     if p.is_file() and not p.name.startswith(".") and p.suffix != ".lean" and p.name not in lean_side:
         files["case/" + p.name] = p
@@ -312,9 +313,9 @@ record() {
   obin=$(file_sha "$bench_bin")
   linput=$(lean_sha "$dir") || return 1
   lbin=$(file_sha "$lean_exe")
-  printf '{"case":"%s","osprey_ms":%s,"lean_ms":%s,"osprey_cpu_ms":%s,"lean_cpu_ms":%s,"osprey_peak_kb":%s,"lean_peak_kb":%s,"lean":"%s","osprey_input":"%s","lean_input":"%s","osprey_binary":"%s","lean_binary":"%s","verdict":"%s","at":"%s"}\n' \
-    "$name" "$o[1]" "$l[1]" "$o[3]" "$l[3]" "$o[2]" "$l[2]" "$LEAN_VERSION" "$input" "$linput" \
-    "$obin" "$lbin" "$verdict" "$at" >> "$OUT"
+  printf '{"case":"%s","osprey_ms":%s,"lean_ms":%s,"osprey_cpu_ms":%s,"lean_cpu_ms":%s,"osprey_peak_kb":%s,"lean_peak_kb":%s,"runs":%s,"lean":"%s","osprey_input":"%s","lean_input":"%s","osprey_binary":"%s","osprey_compiler":"%s","lean_binary":"%s","verdict":"%s","at":"%s"}\n' \
+    "$name" "$o[1]" "$l[1]" "$o[3]" "$l[3]" "$o[2]" "$l[2]" "$RUNS" "$LEAN_VERSION" "$input" "$linput" \
+    "$obin" "$OSP_SHA" "$lbin" "$verdict" "$at" >> "$OUT"
   lreport=$REPORTS/${at[1,10]}.md
   [[ -f $lreport ]] || report_header "${at[1,10]}" > "$lreport"
   print -r -- "| $name | $o[1] | $l[1] | $o[3] | $l[3] | $o[2] | $l[2] | $verdict | $input | $obin | $linput | $lbin |" >> "$lreport"
@@ -372,6 +373,7 @@ have lean || die "lean is not installed (elan: https://github.com/leanprover/ela
 have python3 || die "python3 is required for wall-time and peak-memory measurement"
 [[ -x $OSP ]] || die "$OSP missing; run make build first"
 LEAN=$(lean_bin)
+OSP_SHA=$(file_sha "$OSP")
 LEAN_VERSION=$(lean --version | tr -d '\n')
 BINS=$ROOT/target/proof/bin
 mkdir -p "$REPORTS" "${OUT:h}" "$BINS"

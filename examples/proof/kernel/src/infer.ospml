@@ -4,6 +4,7 @@ import proof::Levels
 import proof::Terms
 import proof::Environment
 import proof::Reduce
+import proof::Naturals
 
 (** Type inference and checking of [PROOF-KERNEL-THEORY]. The context is
     the list of binders entered (`Binder`: name and type, the type as it was
@@ -22,15 +23,67 @@ module Infer
         Lam name domain body => lambda (env, context, name, domain, body)
         Pi name domain body => pi (env, context, name, domain, body)
         Let name ty value body => letIn (env, context, ty, value, body)
+        Proj family index target => projection (env, context, family, index, target)
+        NatLit value => natural (env, value)
+
+    (** Literal typing requires the checked Peano family and its exact
+        constructor types; a same-named axiom cannot introduce literals.
+        Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
+    natural (env, value) = match Naturals::canonical value && naturalFamily env && naturalCtor (env, "Nat.zero", Const "Nat" [], 0, 0) && naturalCtor (env, "Nat.succ", Pi "n" (Const "Nat" []) (Const "Nat" []), 1, 1)
+        true => Success(value = Const "Nat" [])
+        false => Error(message = "invalid natural literal or Nat declaration")
+
+    naturalFamily (env) = match Environment::find (env, "Nat")
+        Success decl => isEmpty decl.params && Terms::equal (decl.ty, Sort (Succ Zero)) && naturalFormer decl.body
+        Error _ => false
+
+    naturalFormer (body) = match body
+        TypeFormer info => info.familyParams == 0 && info.familyIndices == 0 && naturalNames info.familyCtors
+        other => false
+
+    naturalNames (names) = match names
+        ["Nat.zero", "Nat.succ"] => true
+        other => false
+
+    naturalCtor (env, name, ty, index, fields) = match Environment::find (env, name)
+        Success decl => isEmpty decl.params && Terms::equal (decl.ty, ty) && naturalConstructor (decl.body, index, fields)
+        Error _ => false
+
+    naturalConstructor (body, index, fields) = match body
+        Constructor info => info.ctorFamily == "Nat" && info.ctorIndex == index && info.ctorParams == 0 && info.ctorFields == fields
+        other => false
 
     (** Check that `term` has type `expected`. *)
     export check (env, context, term, expected) = match infer (env, context, term)
         Success found => matches (env, context, term, found, expected)
         Error message => Error(message = message)
 
-    matches (env, context, term, found, expected) = match Reduce::defeq (env, found, expected)
+    matches (env, context, term, found, expected) = match Reduce::conversion (env, context, found, expected, true)
         true => Success(value = expected)
         false => Error(message = "type mismatch: `${Terms::show (term, names context)}` has type `${Terms::show (found, names context)}` but `${Terms::show (expected, names context)}` was expected")
+
+    (** Proof irrelevance: both terms must have propositions as their types,
+        and those proposition types must themselves be definitionally equal.
+        A type such as `P` is not a proof, so it is never admitted here. *)
+    export proofEqual (env, context, left, right) = match infer (env, context, left)
+        Success leftType => proofRight (env, context, leftType, right)
+        Error message => false
+
+    proofRight (env, context, leftType, right) = match infer (env, context, right)
+        Success rightType => proofTypes (env, context, leftType, rightType)
+        Error message => false
+
+    proofTypes (env, context, leftType, rightType) = match isProposition (env, context, leftType) && isProposition (env, context, rightType)
+        true => Reduce::conversion (env, context, leftType, rightType, true)
+        false => false
+
+    isProposition (env, context, ty) = match infer (env, context, ty)
+        Success levelType => sortIsProp (Reduce::whnf (env, levelType))
+        Error message => false
+
+    sortIsProp (term) = match term
+        Sort level => Levels::isZero level
+        other => false
 
     (** The binder names in scope, innermost first, as `Terms::show` wants. *)
     names context = match context
@@ -85,3 +138,72 @@ module Infer
     sortOf (context, term, ty) = match ty
         Sort level => Success(value = level)
         other => Error(message = "not a type: `${Terms::show (term, names context)}` has type `${Terms::show (other, names context)}`")
+
+    (** Implements [PROOF-KERNEL-THEORY]: infer the selected constructor
+        field, substituting parameters and earlier dependent projections.
+        A proposition may project only proofs, never hidden data. *)
+    projection (env, context, family, index, target) = match infer (env, context, target)
+        Success ty => projectionHead (env, context, family, index, target, ty, Terms::spine (Reduce::whnf (env, ty)))
+        Error message => Error(message = message)
+
+    projectionHead (env, context, family, index, target, ty, spine) = match spine.spineHead
+        Const name levels => projectionNamed (env, context, family, index, target, ty, spine.spineArgs, levels, name == family && index >= 0)
+        other => invalidProjection (family, index)
+
+    projectionNamed (env, context, family, index, target, ty, args, levels, valid) = match valid
+        false => invalidProjection (family, index)
+        true => match Environment::find (env, family)
+            Success decl => projectionFormer (env, context, family, index, target, ty, args, levels, decl.body)
+            Error message => Error(message = message)
+
+    projectionFormer (env, context, family, index, target, ty, args, levels, body) = match body
+        TypeFormer info => projectionFamily (env, context, family, index, target, ty, args, levels, info)
+        other => invalidProjection (family, index)
+
+    projectionFamily (env, context, family, index, target, ty, args, levels, info) = match info.familyCtors
+        [ctor] => projectionArity (env, context, family, index, target, ty, args, levels, info.familyParams, ctor, listLength args == satAdd info.familyParams info.familyIndices)
+        other => invalidProjection (family, index)
+
+    projectionArity (env, context, family, index, target, ty, args, levels, params, ctor, valid) = match valid
+        false => invalidProjection (family, index)
+        true => match Environment::find (env, ctor)
+            Success decl => projectionSorted (env, context, family, index, target, args, levels, params, decl, sort (env, context, ty))
+            Error message => Error(message = message)
+
+    projectionSorted (env, context, family, index, target, args, levels, params, ctor, sorted) = match sorted
+        Success level => projectionInstantiated (env, context, family, index, target, args, params, Levels::isZero level, Environment::instantiated (ctor, ctor.ty, levels))
+        Error message => Error(message = message)
+
+    projectionInstantiated (env, context, family, index, target, args, params, prop, instantiated) = match instantiated
+        Success ty => projectionParams (env, context, family, index, target, args, params, prop, ty)
+        Error message => Error(message = message)
+
+    projectionParams (env, context, family, index, target, args, params, prop, ty) = match params == 0
+        true => projectionField (env, context, family, index, target, prop, ty, 0)
+        false => match Reduce::whnf (env, ty)
+            Pi name domain body => projectionArgument (env, context, family, index, target, args, params, prop, body)
+            other => invalidProjection (family, index)
+
+    projectionArgument (env, context, family, index, target, args, params, prop, body) = match args
+        [first, ...rest] => projectionParams (env, context, family, index, target, rest, satSub params 1, prop, Terms::instantiate (body, first))
+        [] => invalidProjection (family, index)
+
+    projectionField (env, context, family, index, target, prop, ty, at) = match Reduce::whnf (env, ty)
+        Pi name domain body => projectionNext (env, context, family, index, target, prop, body, at, projectionProof (env, context, family, index, domain, prop && (at == index || Terms::mentions (body, 0))))
+        other => invalidProjection (family, index)
+
+    projectionNext (env, context, family, index, target, prop, body, at, checked) = match checked
+        Success domain => match at == index
+            true => Success(value = domain)
+            false => projectionField (env, context, family, index, target, prop, Terms::instantiate (body, Proj family at target), satAdd at 1)
+        Error message => Error(message = message)
+
+    projectionProof (env, context, family, index, domain, required) = match required
+        false => Success(value = domain)
+        true => match sort (env, context, domain)
+            Success level => match Levels::isZero level
+                true => Success(value = domain)
+                false => invalidProjection (family, index)
+            Error message => Error(message = message)
+
+    invalidProjection (family, index) = Error(message = "invalid projection `${family}.${toString index}`")

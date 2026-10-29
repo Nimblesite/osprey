@@ -137,6 +137,8 @@ Tactics are Osprey programs over a goal state, written against a metaprogramming
 
 ## Mathlib port [PROOF-MATHLIB]
 
+`[PROOF-RUNNABLE-LIBRARY]` Delivery proceeds through runnable library theorems before broad source translation. Each selected theorem has a pinned Lean export containing its complete dependency closure, checked from an empty Osprey environment without skipping or assuming unsupported declarations. Acceptance requires the intended statement checked structurally, its actual proof checked by the Osprey kernel, its axiom dependencies reported, and corrupted-proof and changed-statement controls rejected. The exact command and output run under GC, ARC and wasm32. A successful common theorem is evidence for that theorem and its dependencies; larger targets such as Navier–Stokes retain their own unmet requirements.
+
 The port is the package `@osprey/mathlib`, Apache-2.0 with Mathlib's notices, built in three layers that each remain valid on their own:
 
 1. `[PROOF-MATHLIB-CHECKED]` the imported, kernel-checked environment of the pinned Mathlib commit. Every declaration is available to dependent modules by its Lean name from the first release;

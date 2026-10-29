@@ -40,6 +40,24 @@ module NaturalTests
         sums ()
         successors ()
         order ()
+        products ()
+
+    product (a, b) = shown (Naturals::multiply (nat a, nat b))
+
+    export products () =
+        test ("multiply handles zero, one and small exact products", \() =>
+            expect (product ("0", "18446744073709551616"), "0")
+            expect (product ("18446744073709551616", "0"), "0")
+            expect (product ("1", "18446744073709551616"), "18446744073709551616")
+            expect (product ("123", "456"), "56088")
+            expect (product ("456", "123"), "56088"))
+        test ("multiply carries exactly beyond the machine integer range", \() =>
+            expect (product ("999999999", "999999999"), "999999998000000001")
+            expect (product ("4294967296", "4294967296"), "18446744073709551616")
+            expect (product ("12345678901234567890", "98765432109876543210"), "1219326311370217952237463801111263526900"))
+        test ("multiply rejects malformed limbs before word multiplication", \() =>
+            expect (shown (Naturals::multiply (Natural(naturalLimbs = [0]), Naturals::one ())), "error: invalid natural multiplication operand")
+            expect (shown (Naturals::multiply (Naturals::one (), Natural(naturalLimbs = [1000000000]))), "error: invalid natural multiplication operand"))
 
     spellings () =
         test ("parse and show round-trip every spelling, across limb borders", \() =>

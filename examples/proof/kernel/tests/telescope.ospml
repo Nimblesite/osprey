@@ -1,0 +1,67 @@
+namespace prooftests
+
+import proof::Telescope
+import proof::Terms
+import proof::Environment
+import prooftests::Support
+import proof
+    Decl
+    Definition
+    Axiom
+    Pi
+    Lam
+    BVar
+    Const
+    App
+    Sort
+    Zero
+    Succ
+
+(** Annotation stripping matches Lean without trusting an annotation's name.
+    Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
+module TelescopeTests
+    export run () =
+        identities ()
+        refusals ()
+
+    identities () =
+        test ("recursor binders remove unary identity type annotations", \() =>
+            expect (stripped (unary ("outParam", Definition (Lam "A" (universe ()) (BVar 0))), annotated ("outParam")), "Prop")
+            expect (stripped (unary ("semiOutParam", Definition (Lam "A" (universe ()) (BVar 0))), annotated ("semiOutParam")), "Prop"))
+
+        test ("recursor binders remove default argument identity annotations", \() =>
+            expect (stripped (binary "optParam", defaulted "optParam"), "Prop")
+            expect (stripped (binary "autoParam", defaulted "autoParam"), "Prop"))
+
+        test ("recursor binders consume repeated identity annotations", \() =>
+            expect (stripped (unary ("outParam", Definition (Lam "A" (universe ()) (BVar 0))), App (Const "outParam" []) (annotated "outParam")), "Prop"))
+
+    refusals () =
+        test ("a same-named annotation axiom is never stripped", \() =>
+            expect (Terms::equal (domain (unary ("outParam", Axiom), annotated "outParam"), annotated "outParam"), true))
+
+        test ("a same-named nonidentity definition is never stripped", \() =>
+            expect (Terms::equal (domain (unary ("outParam", Definition (Lam "A" (universe ()) (Sort Zero))), annotated "outParam"), annotated "outParam"), true))
+
+        test ("an arbitrary identity alias is not a type annotation", \() =>
+            expect (Terms::equal (domain (unary ("Identity", Definition (Lam "A" (universe ()) (BVar 0))), annotated "Identity"), annotated "Identity"), true))
+
+    universe () = Sort (Succ Zero)
+
+    annotated (name) = App (Const name []) (Sort Zero)
+
+    defaulted (name) = Terms::apps (Const name [], [Sort Zero, Const "p" []])
+
+    unary (name, body) = Support::envWithDecl (Decl(name = name, params = [], ty = Pi "A" (universe ()) (universe ()), body = body))
+
+    binary (name) = Support::envWithDecl (Decl(name = name, params = [], ty = Pi "A" (universe ()) (Pi "default" (BVar 0) (universe ())), body = Definition (Lam "A" (universe ()) (Lam "default" (BVar 0) (BVar 1)))))
+
+    stripped (env, ty) = Terms::show (domain (env, ty), [])
+
+    domain (env, ty) = firstDomain (Telescope::peel (env, Pi "x" ty (Sort Zero)))
+
+    firstDomain (peeled) = match peeled.peeledBinders
+        [first, ...rest] => first.ty
+        [] =>
+            check "the telescope retains its binder" "one binder" "none"
+            Sort Zero

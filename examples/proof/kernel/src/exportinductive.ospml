@@ -1,0 +1,125 @@
+namespace proof
+
+import proof::Environment
+import proof::ExportJson
+
+(** Reading the `inductive` line of [PROOF-EXPORT]: one line carries a whole
+    group — its type former, its constructors and its recursor. The reader
+    records exactly what the line claims, through the same three tables
+    every other declaration uses, and checks nothing about the theory: the
+    block's claims are re-derived and compared by `Inductive::add`
+    ([PROOF-KERNEL-THEORY]). The shapes the kernel cannot hold yet are
+    refused with the line number every other reader error carries: a mutual
+    group, a nested family, an unsafe declaration, a recursor with other
+    than one motive, and any member the format does not define. *)
+module ExportInductive
+    (** The block the line states, or why it cannot be read. *)
+    export blocked (tables, json) = ExportJson::upon (ExportJson::fieldIn (json, "inductive"), \group => ExportJson::upon (strict (group, groupMembers (), "inductive"), \known => grouped (tables, group)))
+
+    grouped (tables, group) = ExportJson::upon (ExportJson::arrayIn (group, "types"), \types => ExportJson::upon (ExportJson::arrayIn (group, "ctors"), \ctors => ExportJson::upon (ExportJson::arrayIn (group, "recs"), \recs => ExportJson::upon (only (types, "type"), \formerJson => ExportJson::upon (only (recs, "recursor"), \recJson => built (tables, formerJson, ctors, recJson))))))
+
+    built (tables, formerJson, ctors, recJson) = ExportJson::upon (formerOf (tables, formerJson), \former => ExportJson::upon (constructorsOf (tables, ctors), \ctorDecls => ExportJson::upon (recursorOf (tables, recJson), \recursor => Success(value = Block(former = former, ctors = ctorDecls, recursors = [recursor])))))
+
+    (** Exactly one entry: a group of two is a mutual declaration, which is
+        the one shape the kernel does not hold yet. *)
+    only (items, what) = match items
+        [] => Error(message = "no ${what}")
+        [single] => Success(value = single)
+        many => Error(message = "unsupported: mutual inductive")
+
+    formerOf (tables, json) = ExportJson::upon (strict (json, typeMembers (), "type"), \known => ExportJson::upon (clean (json), \safe => ExportJson::upon (familyOf (tables, json), \family => ExportJson::upon (declared (tables, json, TypeFormer family), \decl => Success(value = decl)))))
+
+    familyOf (tables, json) = ExportJson::upon (ExportJson::intIn (json, "numParams"), \params => ExportJson::upon (ExportJson::intIn (json, "numIndices"), \indices => familyFlags (tables, json, params, indices)))
+
+    familyFlags (tables, json, params, indices) = ExportJson::upon (ExportJson::boolIn (json, "isRec"), \recursive => ExportJson::upon (ExportJson::boolIn (json, "isReflexive"), \reflexive => ExportJson::upon (nestedFree (json), \ok => ExportJson::upon (solo (tables, json, "type"), \family => ExportJson::upon (ctorNames (tables, json), \ctors => Success(value = Family(familyParams = params, familyIndices = indices, familyCtors = ctors, familyRecursive = recursive, familyReflexive = reflexive)))))))
+
+    ctorNames (tables, json) = ExportJson::upon (ExportJson::arrayIn (json, "ctors"), \items => ExportJson::nameList (tables, items, "constructor"))
+
+    constructorsOf (tables, items) = match items
+        [] => Success(value = [])
+        [first, ...rest] => ExportJson::upon (constructorOf (tables, first), \decl => ExportJson::upon (constructorsOf (tables, rest), \decls => Success(value = listPrepend (decls, decl))))
+
+    constructorOf (tables, json) = ExportJson::upon (strict (json, ctorMembers (), "constructor"), \known => ExportJson::upon (clean (json), \safe => ExportJson::upon (ctorOf (tables, json), \ctor => ExportJson::upon (declared (tables, json, Constructor ctor), \decl => Success(value = decl)))))
+
+    ctorOf (tables, json) = ExportJson::upon (ExportJson::intIn (json, "induct"), \family => ExportJson::upon (ExportJson::nameOf (tables, family), \familyName => ExportJson::upon (ExportJson::intIn (json, "cidx"), \index => ExportJson::upon (ExportJson::intIn (json, "numParams"), \params => ExportJson::upon (ExportJson::intIn (json, "numFields"), \fields => Success(value = Ctor(ctorFamily = familyName, ctorIndex = index, ctorParams = params, ctorFields = fields)))))))
+
+    recursorOf (tables, json) = ExportJson::upon (strict (json, recMembers (), "recursor"), \known => ExportJson::upon (clean (json), \safe => ExportJson::upon (ExportJson::intIn (json, "numMotives"), \motives => ExportJson::upon (motivesOk (motives), \one => ExportJson::upon (elimOf (tables, json), \elim => ExportJson::upon (declared (tables, json, Recursor elim), \decl => Success(value = decl)))))))
+
+    elimOf (tables, json) = ExportJson::upon (ExportJson::declName (tables, json), \name => ExportJson::upon (familyOnly (tables, json, name), \family => ExportJson::upon (ExportJson::intIn (json, "numParams"), \params => ExportJson::upon (ExportJson::intIn (json, "numIndices"), \indices => ExportJson::upon (ExportJson::intIn (json, "numMinors"), \minors => ExportJson::upon (rulesOf (tables, json), \rules => ExportJson::upon (ExportJson::boolIn (json, "k"), \k => Success(value = Eliminator(elimFamily = family, elimParams = params, elimIndices = indices, elimMinors = minors, elimRules = rules, elimK = k)))))))))
+
+    (** A recursor eliminates the one family its `all` names. *)
+    familyOnly (tables, json, name) = ExportJson::upon (ExportJson::arrayIn (json, "all"), \items => ExportJson::upon (ExportJson::nameList (tables, items, "group member"), \group => familyNamed (name, group)))
+
+    familyNamed (name, group) = match group
+        [only] => Success(value = only)
+        other => Error(message = "recursor `${name}` does not eliminate one family")
+
+    rulesOf (tables, json) = ExportJson::upon (ExportJson::arrayIn (json, "rules"), \items => eachRule (tables, items))
+
+    eachRule (tables, items) = match items
+        [] => Success(value = [])
+        [first, ...rest] => ExportJson::upon (ruleOf (tables, first), \rule => ExportJson::upon (eachRule (tables, rest), \rules => Success(value = listPrepend (rules, rule))))
+
+    ruleOf (tables, json) = ExportJson::upon (strict (json, ruleMembers (), "rule"), \known => ExportJson::upon (ExportJson::intIn (json, "ctor"), \ref => ExportJson::upon (ExportJson::nameOf (tables, ref), \name => ExportJson::upon (ExportJson::intIn (json, "nfields"), \fields => ExportJson::upon (ExportJson::intIn (json, "rhs"), \rhs => ExportJson::upon (ExportJson::exprOf (tables, rhs), \term => Success(value = Rule(ruleCtor = name, ruleFields = fields, ruleRhs = term))))))))
+
+    (** A block member's name, universe parameters and type, read exactly
+        like a theorem's. *)
+    declared (tables, json, body) = ExportJson::upon (ExportJson::declName (tables, json), \name => ExportJson::upon (ExportJson::paramsOf (tables, json), \params => ExportJson::upon (ExportJson::typedOf (tables, json), \ty => Success(value = Decl(name = name, params = params, ty = ty, body = body)))))
+
+    (** The `all` of a type or a recursor is that one declaration and
+        nothing else, so no block can hide a second family. *)
+    solo (tables, json, kind) = ExportJson::upon (ExportJson::declName (tables, json), \name => ExportJson::upon (ExportJson::arrayIn (json, "all"), \items => ExportJson::upon (ExportJson::nameList (tables, items, "group member"), \group => alone (name, group, kind))))
+
+    alone (name, group, kind) = match group
+        [only] => matched (name, only, kind)
+        other => Error(message = soloMessage (kind, name))
+
+    matched (name, only, kind) = match only == name
+        true => Success(value = name)
+        false => Error(message = soloMessage (kind, name))
+
+    soloMessage (kind, name) = "${kind} `${name}` is not its own `all`"
+
+    clean (json) = ExportJson::upon (ExportJson::boolIn (json, "isUnsafe"), \unsafe => unsafely (unsafe))
+
+    unsafely (unsafe) = match unsafe
+        true => Error(message = "unsupported: unsafe declaration")
+        false => Success(value = true)
+
+    nestedFree (json) = ExportJson::upon (ExportJson::intIn (json, "numNested"), \nested => nestedOk (nested))
+
+    nestedOk (nested) = match nested == 0
+        true => Success(value = true)
+        false => Error(message = "unsupported: nested inductive")
+
+    motivesOk (motives) = match motives == 1
+        true => Success(value = true)
+        false => Error(message = "numMotives ${toString motives} where 1 is expected")
+
+    (** `json` carries only the members `allowed`: one the format does not
+        define is refused, never dropped. *)
+    strict (json, allowed, kind) = match json
+        JsonObject members => scanned (members, allowed, kind)
+        other => Error(message = "not an object")
+
+    scanned (members, allowed, kind) = match members
+        [] => Success(value = true)
+        [first, ...rest] => ExportJson::upon (knownMember (first, allowed, kind), \ok => scanned (rest, allowed, kind))
+
+    knownMember (member, allowed, kind) = match member
+        JsonMember name value => matchedMember (name, allowed, kind)
+        other => Error(message = "not a member")
+
+    matchedMember (name, allowed, kind) = match listContains (allowed, name)
+        true => Success(value = true)
+        false => Error(message = "unknown ${kind} member `${name}`")
+
+    groupMembers () = ["ctors", "recs", "types"]
+
+    typeMembers () = ["all", "ctors", "isRec", "isReflexive", "isUnsafe", "levelParams", "name", "numIndices", "numNested", "numParams", "type"]
+
+    ctorMembers () = ["cidx", "induct", "isUnsafe", "levelParams", "name", "numFields", "numParams", "type"]
+
+    recMembers () = ["all", "isUnsafe", "k", "levelParams", "name", "numIndices", "numMinors", "numMotives", "numParams", "rules", "type"]
+
+    ruleMembers () = ["ctor", "nfields", "rhs"]

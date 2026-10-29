@@ -1,0 +1,33 @@
+{
+  "toolchain": "leanprover/lean4:v4.25.0",
+  "groups": [
+    {
+      "id": "nat-compatible",
+      "module": "NatCompatible",
+      "source_path": "benchmarks/proof/tools/NatCompatible.lean",
+      "source_sha256": "9e0cd9eb5769bfce576040b4a2da17aab6c5b1bd7d027e52f7a108eb773fda64",
+      "export_path": "examples/proof/lean-core/exports/nat-compatible.ndjson",
+      "export_sha256": "d50e2b317f2f0f5728ea824c7e68b8544aa0dddf666106cb2d872b29f290a3ef",
+      "theorems": [
+        "Nat.add_eq_left",
+        "Nat.add_eq_right",
+        "Nat.sub_sub_sub_cancel_right"
+      ],
+      "axioms": [
+        "propext"
+      ],
+      "theorem_axioms": {
+        "Nat.add_eq_left": [
+          "propext"
+        ],
+        "Nat.add_eq_right": [
+          "propext"
+        ],
+        "Nat.sub_sub_sub_cancel_right": []
+      },
+      "original_id": "nat-lemmas",
+      "prelude": true,
+      "kind": "exact original statements; compatible constructive proof bodies"
+    }
+  ]
+}

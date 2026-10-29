@@ -1,0 +1,96 @@
+namespace prooftests
+
+import proof::Checked
+import proof::Environment
+import proof::Fixtures
+import prooftests::Shapes
+import prooftests::ExportInductiveTests
+
+(** Adversarial claims against [PROOF-KERNEL-THEORY]: each case edits one
+    claim of the recorded `AndSwap` export and runs the whole file through
+    `Checked::exported`, so every refusal comes from `Inductive::add`
+    re-deriving the claim from the type former and the constructor types —
+    counts, K and the ι rules — never from the reader, which accepts any
+    well-formed member. A claim the kernel cannot confirm is refused
+    naming the constant it is about, never rejected generically. *)
+module InductiveAdversarialTests
+    (** Runs the theory-agreement cases; the testing built-ins report the TAP lines. *)
+    export run () =
+        countClaims ()
+        recursorClaims ()
+        termClaims ()
+        convertibleClaim ()
+
+    (** Claims about how the family and its
+        constructor count: the constructor's fields and the family's
+        indices, on two different blocks. *)
+    countClaims () =
+        test ("a constructor claiming one field over none is refused on its count", \() =>
+            expect (theory (ExportInductiveTests::eqCtor (), "\"numFields\":0", "\"numFields\":1"), "`Eq.refl` as exported claims constructor 0 of Eq, 2 parameters, 1 fields, the kernel derives constructor 0 of Eq, 2 parameters, 0 fields"))
+
+        test ("a family claiming one index over none is refused on its count", \() =>
+            expect (theory (ExportInductiveTests::iffType (), "\"numIndices\":0", "\"numIndices\":1"), "`Iff` as exported claims 2 parameters, 1 indices, constructors [Iff.intro], recursive false, reflexive false, the kernel derives 2 parameters, 0 indices, constructors [Iff.intro], recursive false, reflexive false"))
+
+    (** Claims about the derived recursor: a ι rule claiming another field
+        count, and K disclaimed over a family the kernel knows supports it. *)
+    recursorClaims () =
+        test ("a rule claiming one field over none is refused on the rule count", \() =>
+            expect (theory (ExportInductiveTests::eqRule (), "\"nfields\":0", "\"nfields\":1"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/1], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0]"))
+
+        test ("a recursor disclaiming K over a K family is refused on K", \() =>
+            expect (theory (ExportInductiveTests::eqRec (), "\"k\":true", "\"k\":false"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K false, rules [Eq.refl/0], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0]"))
+
+    (** Claims that substitute another term of the same file: the ι rule's
+        right-hand side and the recursor's statement. Both refusals print
+        the terms, so the cases pin the clause and the constant the refusal
+        is about, never the printed binder names, which change per export. *)
+    termClaims () =
+        test ("a rule whose right-hand side is another member's type names the rule", \() =>
+            expect (ruleView (theory (ExportInductiveTests::eqRule (), "\"rhs\":41", "\"rhs\":12")), "`Eq.rec`'s rule for `Eq.refl` as exported is | the kernel derives"))
+
+        test ("a recursor whose statement is another member's type names itself", \() =>
+            expect (typeView (theory (ExportInductiveTests::eqRec (), "\"type\":37", "\"type\":12")), "`Eq.rec` as exported has type | the kernel derives"))
+
+    (** The clause a refusal must carry, or the refusal itself when not. *)
+    held (message, part) = match indexOf (message, part)
+        Success _ => part
+        Error _ => "no `${part}` in `${message}`"
+
+    ruleView (message) = Shapes::views [held (message, "`Eq.rec`'s rule for `Eq.refl` as exported is"), held (message, "the kernel derives")]
+
+    typeView (message) = Shapes::views [held (message, "`Eq.rec` as exported has type"), held (message, "the kernel derives")]
+
+    convertibleClaim () =
+        test ("an untyped beta-redex cannot conceal a forged recursor statement", \() =>
+            expect (typeView (verdict (concealedType ())), "`Eq.rec` as exported has type | the kernel derives"))
+
+    concealedType () = changedRecursor (insertedExpressions ())
+
+    insertedExpressions () = replace (Fixtures::andSwap (), eqStart (), "${erasedExpressions ()}${eqStart ()}") ?: "fixture insertion failed"
+
+    changedRecursor (text) = replace (text, ExportInductiveTests::eqRec (), mutated (ExportInductiveTests::eqRec (), "\"type\":37", "\"type\":10002")) ?: "fixture recursor edit failed"
+
+    eqStart () = "{\"inductive\":{\"ctors\":[${ExportInductiveTests::eqCtor ()}]"
+
+    erasedExpressions () = "{\"ie\":10000,\"bvar\":999}\n{\"ie\":10001,\"lam\":{\"binderInfo\":\"default\",\"body\":37,\"name\":0,\"type\":0}}\n{\"ie\":10002,\"app\":{\"fn\":10001,\"arg\":10000}}\n"
+
+    (** The kernel's verdict on the recorded export with the `object`
+        holding one edit: `checked`, or the refusal, named to its constant.
+        An edit that changes nothing — a stale snippet, a typo in `from` —
+        reads as its own marker, so a missing mutation can never pass. *)
+    theory (object, from, to) = match replace (Fixtures::andSwap (), object, mutated (object, from, to))
+        Success text => changed text
+        Error message => "the fixture edit failed: ${message}"
+
+    mutated (object, from, to) = match replace (object, from, to)
+        Success text => text
+        Error _ => object
+
+    changed (text) = match text == Fixtures::andSwap ()
+        true => "the fixture edit changed nothing"
+        false => verdict text
+
+    verdict (text) = match Checked::exported (Environment::empty (), text)
+        Success _ => "checked"
+        Error message => message
+

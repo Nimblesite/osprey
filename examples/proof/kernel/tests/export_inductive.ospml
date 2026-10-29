@@ -1,0 +1,261 @@
+namespace prooftests
+
+import proof::Export
+import proof::Environment
+import proof::Fixtures
+import proof::Terms
+import proof
+    Single
+    Group
+    Decl
+    Block
+    Axiom
+    TypeFormer
+    Constructor
+    Recursor
+    Sort
+    Zero
+import prooftests::Support
+
+(** Reading the `inductive` line of `lean4export` NDJSON 3.1.0
+    ([PROOF-EXPORT]): the recorded `AndSwap` export reads as nine items in
+    file order, each inductive block's every claimed field is asserted
+    against the line it came from, and each shape the kernel cannot hold
+    yet is refused on its own line. The kernel's derivation of the claims
+    is `Inductive::add`'s business, so nothing here checks the theory. *)
+module ExportInductiveTests
+
+    (** Runs the inductive-block cases; the testing built-ins report the TAP lines. *)
+    export run () =
+        test ("the recorded export reads as nine items in file order", \() =>
+            expect (sequence (items ()), "group Eq | single Eq.recOn | single eq_symm | group Iff | single Iff.recOn | group And | single iff_refl | single and_swap | single And.recOn"))
+
+        test ("the And block states its family, constructor and recursor in full", \() =>
+            expect (blockShape (thirdBlock ()), "And [] (Prop → (Prop → Prop)) {params 2, indices 0, ctors [And.intro], recursive false, reflexive false} | And.intro [] (∀ (a : Prop), (∀ (b : Prop), (a → (b → ((And a) b))))) {family And, index 0, params 2, fields 2} | And.rec [u] (∀ (a : Prop), (∀ (b : Prop), (∀ (motive : (((And a) b) → Sort u)), ((∀ (left : a), (∀ (right : b), (motive ((((And.intro a) b) left) right)))) → (∀ (t : ((And a) b)), (motive t)))))) {family And, params 2, indices 0, minors 1, k false, rules [And.intro/2 => (fun (a : Prop) => (fun (b : Prop) => (fun (motive : (((And a) b) → Sort u)) => (fun (intro : (∀ (left : a), (∀ (right : b), (motive ((((And.intro a) b) left) right))))) => (fun (left : a) => (fun (right : b) => ((intro left) right)))))))]}"))
+
+        test ("the And block's constructor counts its fields without the parameters", \() =>
+            expect (ctorFacts (thirdBlock ()), "And.intro family And index 0 params 2 fields 2"))
+
+        test ("the Eq eliminator supports K over one index, at two universe parameters", \() =>
+            expect (elimFacts (firstBlock ()), "Eq [u_1, u] indices 1 minors 1 k true rules [Eq.refl/0]"))
+
+        test ("the Iff eliminator supports no K and one rule of two fields", \() =>
+            expect (elimFacts (secondBlock ()), "Iff [u] indices 0 minors 1 k false rules [Iff.intro/2]"))
+
+        test ("the Eq block's member names and statements are the line's", \() =>
+            expect (memberNames (firstBlock ()), "Eq [u] | Eq.refl [u] | Eq.rec [u_1, u]"))
+
+        test ("more than one type in a group is a mutual declaration", \() =>
+            expect (refused (swapped ("\"types\":[" + eqType (), "\"types\":[" + eqType () + "," + eqType ())), "line 60: unsupported: mutual inductive"))
+
+        test ("more than one recursor in a group is a mutual declaration", \() =>
+            expect (refused (swapped ("\"recs\":[" + eqRec (), "\"recs\":[" + eqRec () + "," + eqRec ())), "line 60: unsupported: mutual inductive"))
+
+        test ("a nested family is refused", \() =>
+            expect (refused (recased (eqType (), "\"numNested\":0", "\"numNested\":1")), "line 60: unsupported: nested inductive"))
+
+        test ("a nested family on a later line names that line", \() =>
+            expect (refused (recased (iffType (), "\"numNested\":0", "\"numNested\":1")), "line 173: unsupported: nested inductive"))
+
+        test ("an unsafe type former is refused", \() =>
+            expect (refused (recased (eqType (), "\"isUnsafe\":false", "\"isUnsafe\":true")), "line 60: unsupported: unsafe declaration"))
+
+        test ("an unsafe constructor is refused", \() =>
+            expect (refused (recased (eqCtor (), "\"isUnsafe\":false", "\"isUnsafe\":true")), "line 60: unsupported: unsafe declaration"))
+
+        test ("an unsafe recursor is refused", \() =>
+            expect (refused (recased (eqRec (), "\"isUnsafe\":false", "\"isUnsafe\":true")), "line 60: unsupported: unsafe declaration"))
+
+        test ("a type whose all is another type is refused", \() =>
+            expect (refused (recased (eqType (), "\"all\":[1]", "\"all\":[9]")), "line 60: type `Eq` is not its own `all`"))
+
+        test ("a type whose all is two types is refused", \() =>
+            expect (refused (recased (eqType (), "\"all\":[1]", "\"all\":[1,9]")), "line 60: type `Eq` is not its own `all`"))
+
+        test ("a recursor whose all is two types is refused", \() =>
+            expect (refused (recased (eqRec (), "\"all\":[1]", "\"all\":[1,9]")), "line 60: recursor `Eq.rec` does not eliminate one family"))
+
+        test ("a recursor with other than one motive is refused", \() =>
+            expect (refused (recased (eqRec (), "\"numMotives\":1", "\"numMotives\":2")), "line 60: numMotives 2 where 1 is expected"))
+
+        test ("a constructor without numParams names the missing member", \() =>
+            expect (refused (recased (eqCtor (), "\"numParams\":2,", "")), "line 60: no numParams"))
+
+        test ("a member of the wrong type names itself", \() =>
+            expect (refused (recased (eqCtor (), "\"numFields\":0", "\"numFields\":\"0\"")), "line 60: numFields is not an integer"))
+
+        test ("a boolean member of the wrong type names itself", \() =>
+            expect (refused (recased (eqType (), "\"isRec\":false", "\"isRec\":0")), "line 60: isRec is not a boolean"))
+
+        test ("the K flag of the wrong type names itself", \() =>
+            expect (refused (recased (eqRec (), "\"k\":true", "\"k\":1")), "line 60: k is not a boolean"))
+
+        test ("an unknown member on a type is refused, not dropped", \() =>
+            expect (refused (recased (eqType (), "\"type\":6}", "\"type\":6,\"extra\":1}")), "line 60: unknown type member `extra`"))
+
+        test ("an unknown member on a constructor is refused", \() =>
+            expect (refused (recased (eqCtor (), "\"cidx\":0,", "\"extra\":1,\"cidx\":0,")), "line 60: unknown constructor member `extra`"))
+
+        test ("an unknown member on the group is refused", \() =>
+            expect (refused (swapped ("{\"inductive\":{\"ctors\":[{\"cidx\":0,\"induct\":1", "{\"inductive\":{\"extra\":1,\"ctors\":[{\"cidx\":0,\"induct\":1")), "line 60: unknown inductive member `extra`"))
+
+        test ("an unknown member on a rule is refused", \() =>
+            expect (refused (recased (eqRule (), "\"rhs\":41", "\"rhs\":41,\"extra\":1")), "line 60: unknown rule member `extra`"))
+
+        test ("a rule right-hand side the file never defined names its line", \() =>
+            expect (refused (recased (eqRule (), "\"rhs\":41", "\"rhs\":999")), "line 60: unknown expr 999"))
+
+        test ("a constructor list naming an undefined name is refused", \() =>
+            expect (refused (recased (eqType (), "\"ctors\":[9]", "\"ctors\":[77]")), "line 60: unknown name 77"))
+
+        test ("a rule naming an undefined constructor is refused", \() =>
+            expect (refused (recased (eqRule (), "\"ctor\":9", "\"ctor\":78")), "line 60: unknown name 78"))
+
+        test ("a constructor naming an undefined family is refused", \() =>
+            expect (refused (recased (eqCtor (), "\"induct\":1", "\"induct\":79")), "line 60: unknown name 79"))
+
+        test ("a type's universe parameters must be names the file defined", \() =>
+            expect (refused (recased (eqType (), "\"levelParams\":[2]", "\"levelParams\":[99]")), "line 60: unknown name 99"))
+
+        test ("a group without types names the missing member", \() =>
+            expect (refused (swapped (",\"types\":[" + eqType () + "]", "")), "line 60: no types"))
+
+        test ("a group without recursors names the missing member", \() =>
+            expect (refused (swapped (",\"recs\":[" + eqRec () + "]", "")), "line 60: no recs"))
+
+        test ("a group with no type at all is refused", \() =>
+            expect (refused (swapped ("\"types\":[" + eqType () + "]", "\"types\":[]")), "line 60: no type"))
+
+        test ("an inductive line carrying a second kind is refused, not read as the first", \() =>
+            expect (refused (swapped ("{\"inductive\":{\"ctors\":[", "{\"inductive\":{},\"thm\":{\"ctors\":[")), "line 60: 2 members where one kind is expected"))
+
+    (** The export read, or the reader's rejection of it. *)
+    items () = match Export::read (Fixtures::andSwap ())
+        Success items => items
+        Error message =>
+            check "the recorded export reads" "no error" message
+            []
+
+    refused (text) = Support::messageOf (Export::read text)
+
+    firstBlock () = blockAt (0)
+
+    secondBlock () = blockAt (1)
+
+    thirdBlock () = blockAt (2)
+
+    (** The `at`th block of the recorded export, counting only blocks. *)
+    blockAt (at) = found (items (), at)
+
+    found (items, at) = match items
+        [] => missing ()
+        [first, ...rest] => foundOf (first, rest, at)
+
+    foundOf (item, rest, at) = match item
+        Group block => chosen (block, rest, at)
+        Single decl => found (rest, at)
+
+    chosen (block, rest, at) = match at == 0
+        true => block
+        false => found (rest, satSub at 1)
+
+    (** A failed lookup fails the enclosing case before falling back. *)
+    missing () =
+        check "the recorded export reads as three blocks" "3" "too few"
+        Block(former = blank (), ctors = [], recursors = [])
+
+    blank () = Decl(name = "", params = [], ty = Sort Zero, body = Axiom)
+
+    (** Every item's kind and name, in file order. *)
+    sequence (items) = foldList (items, "", \(acc, item) => "${acc}${gap acc}${itemKind item}")
+
+    itemKind (item) = match item
+        Single decl => "single ${decl.name}"
+        Group block => "group ${block.former.name}"
+
+    (** A block's type former, its constructors and its recursor, each with
+        the facts the line claims about it. *)
+    blockShape (block) = joined ([formerText block.former, ctorTexts block.ctors, recTexts block.recursors])
+
+    formerText (decl) = match decl.body
+        TypeFormer family => "${declaredText decl} {params ${toString family.familyParams}, indices ${toString family.familyIndices}, ctors ${listed family.familyCtors}, recursive ${toString family.familyRecursive}, reflexive ${toString family.familyReflexive}}"
+        other => "${declaredText decl} is not a type former"
+
+    ctorTexts (decls) = joined (mapList (decls, \decl => ctorText decl))
+
+    ctorText (decl) = match decl.body
+        Constructor ctor => "${declaredText decl} {family ${ctor.ctorFamily}, index ${toString ctor.ctorIndex}, params ${toString ctor.ctorParams}, fields ${toString ctor.ctorFields}}"
+        other => "${declaredText decl} is not a constructor"
+
+    recTexts (decls) = joined (mapList (decls, \decl => recText decl))
+
+    recText (decl) = match decl.body
+        Recursor elim => "${declaredText decl} {family ${elim.elimFamily}, params ${toString elim.elimParams}, indices ${toString elim.elimIndices}, minors ${toString elim.elimMinors}, k ${toString elim.elimK}, rules ${ruleTexts elim.elimRules}}"
+        other => "${declaredText decl} is not a recursor"
+
+    (** A constant as the line gives it: its name, its universe parameters
+        and its statement. *)
+    declaredText (decl) = "${decl.name} ${listed decl.params} ${Terms::show (decl.ty, [])}"
+
+    (** The one constructor's own counts, without the statement. *)
+    ctorFacts (block) = folded (block.ctors, ctorFact)
+
+    ctorFact (decl) = match decl.body
+        Constructor ctor => "${decl.name} family ${ctor.ctorFamily} index ${toString ctor.ctorIndex} params ${toString ctor.ctorParams} fields ${toString ctor.ctorFields}"
+        other => "${decl.name} is not a constructor"
+
+    (** The one recursor's family and counts, K flag and rule fields. *)
+    elimFacts (block) = folded (block.recursors, elimFact)
+
+    elimFact (decl) = match decl.body
+        Recursor elim => "${elim.elimFamily} ${listed decl.params} indices ${toString elim.elimIndices} minors ${toString elim.elimMinors} k ${toString elim.elimK} rules ${ruleNames elim.elimRules}"
+        other => "${decl.name} is not a recursor"
+
+    (** The name and universe parameters of the former and every member. *)
+    memberNames (block) = folded (listPrepend (listConcat (block.ctors, block.recursors), block.former), named)
+
+    named (decl) = "${decl.name} ${listed decl.params}"
+
+    ruleTexts (rules) = listed (mapList (rules, \rule => ruleText rule))
+
+    ruleText (rule) = "${rule.ruleCtor}/${toString rule.ruleFields} => ${Terms::show (rule.ruleRhs, [])}"
+
+    ruleNames (rules) = listed (mapList (rules, \rule => "${rule.ruleCtor}/${toString rule.ruleFields}"))
+
+    (** A rendering of one or more parts, or of the failure that stopped it. *)
+    folded (decls, part) = match decls
+        [] => "no declaration"
+        _ => joined (mapList (decls, part))
+
+    (** `a, b` inside brackets, and `[]` for none. *)
+    listed (names) = match names
+        [] => "[]"
+        [first, ...rest] => "[${foldList (rest, first, \(acc, name) => "${acc}, ${name}")}]"
+
+    joined (parts) = foldList (parts, "", \(acc, part) => "${acc}${gap acc}${part}")
+
+    gap (acc) = match acc == ""
+        true => ""
+        false => " | "
+
+    (** The recorded export with every occurrence of `from` replaced by `to`. *)
+    swapped (from, to) = replace (Fixtures::andSwap (), from, to) ?: ""
+
+    (** `object` with every occurrence of `from` replaced by `to`. *)
+    mutated (object, from, to) = replace (object, from, to) ?: object
+
+    (** The recorded export with the `Eq` object `object` replaced by the same
+        object holding one edit, so each refusal is about the block it names. *)
+    recased (object, from, to) = swapped (object, mutated (object, from, to))
+
+    (** Line 60, the `Eq` group's three objects and its one rule. *)
+    eqType () = "{\"all\":[1],\"ctors\":[9],\"isRec\":false,\"isReflexive\":false,\"isUnsafe\":false,\"levelParams\":[2],\"name\":1,\"numIndices\":1,\"numNested\":0,\"numParams\":2,\"type\":6}"
+
+    export eqCtor () = "{\"cidx\":0,\"induct\":1,\"isUnsafe\":false,\"levelParams\":[2],\"name\":9,\"numFields\":0,\"numParams\":2,\"type\":12}"
+
+    export eqRec () = "{\"all\":[1],\"isUnsafe\":false,\"k\":true,\"levelParams\":[11,2],\"name\":10,\"numIndices\":1,\"numMinors\":1,\"numMotives\":1,\"numParams\":2,\"rules\":[" + eqRule () + "],\"type\":37}"
+
+    export eqRule () = "{\"ctor\":9,\"nfields\":0,\"rhs\":41}"
+
+    (** Line 173, the `Iff` group's type former. *)
+    export iffType () = "{\"all\":[26],\"ctors\":[27],\"isRec\":false,\"isReflexive\":false,\"isUnsafe\":false,\"levelParams\":[],\"name\":26,\"numIndices\":0,\"numNested\":0,\"numParams\":2,\"type\":96}"

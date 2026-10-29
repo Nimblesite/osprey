@@ -1,0 +1,88 @@
+namespace proof
+
+import proof::Terms
+import proof::Environment
+
+(** Per-root trust reporting ([PROOF-KERNEL-AXIOMS]): the assumptions one
+    declaration actually rests on, not every axiom the checked file happens to
+    contain. The closure walks the declaration's statement and value, the
+    metadata an inductive family, constructor or recursor carries, projection
+    families and the checked `Nat` family a literal implies, so an assumption
+    is reported once and only when that root reaches it. No state is shared
+    between roots, so two proofs in one file report their own axioms. *)
+type TrustWalk =
+    trustSeen : Map<string, bool>
+    trustPending : List<string>
+    trustAxioms : Map<string, bool>
+
+module Trust
+    (** Enqueue each name once, then process at most the environment size
+        plus one item. A checked environment's declaration order contains
+        every name; the extra step diagnoses an unresolved dependency.
+        Explicit folds keep graph depth off the native/WASM call stack. *)
+    export axioms (env, name) = finished (env, step (env, foldList (env.order, Success(value = starting name), \(progress, _entry) => step (env, progress))))
+
+    starting name = TrustWalk(trustSeen = mapSet (Map(), name, true), trustPending = [name], trustAxioms = Map())
+
+    step (env, progress) = match progress
+        Error message => Error(message = message)
+        Success walk => match walk.trustPending
+            [] => Success(value = walk)
+            [next, ...rest] => expanded (env, walk(trustPending = rest), Environment::find (env, next), next)
+
+    expanded (env, walk, found, name) = match found
+        Error _ => Error(message = "unknown dependency `${name}`")
+        Success decl => Success(value = foldList (declarationRefs decl, marked (walk, decl), \(queued, ref) => enqueue (queued, ref)))
+
+    marked (walk, decl) = match decl.body
+        Axiom => walk(trustAxioms = mapSet (walk.trustAxioms, decl.name, true))
+        other => walk
+
+    enqueue (walk, name) = match mapContains (walk.trustSeen, name)
+        true => walk
+        false => walk(trustSeen = mapSet (walk.trustSeen, name, true), trustPending = listAppend (walk.trustPending, name))
+
+    finished (env, progress) = match progress
+        Error message => Error(message = message)
+        Success walk => match isEmpty walk.trustPending
+            true => Success(value = filterList (env.order, \name => mapContains (walk.trustAxioms, name)))
+            false => Error(message = "dependency traversal exceeds declaration inventory")
+
+    (** Every constant `decl` names: its statement first, then its body. An
+        axiom names itself, so the constants its statement names come with it. *)
+    declarationRefs (decl) = listConcat (Terms::constants decl.ty, bodyRefs (decl.name, decl.body))
+
+    bodyRefs (name, body) = match body
+        Axiom => [name]
+        Definition value => Terms::constants value
+        Theorem value => Terms::constants value
+        Opaque value => Terms::constants value
+        Quotient kind => quotientRefs kind
+        TypeFormer family => family.familyCtors
+        Constructor ctor => [ctor.ctorFamily]
+        Recursor elim => elimRefs elim
+
+    (** A quotient primitive stands on the equality it is derived from. *)
+    quotientRefs (kind) = listPrepend (["Eq", "Eq.refl"], primitive kind)
+
+    primitive (kind) = match kind
+        QuotType => "Quot"
+        QuotCtor => "Quot.mk"
+        QuotLift => "Quot.lift"
+        QuotInd => "Quot.ind"
+
+    (** A recursor names its family, and every rule its constructor and the
+        term that rule computes to — metadata no declaration term carries. *)
+    elimRefs (elim) = listPrepend (ruleRefs elim.elimRules, elim.elimFamily)
+
+    ruleRefs (rules) = foldList (rules, [], \(refs, rule) => listConcat (refs, listPrepend (Terms::constants rule.ruleRhs, rule.ruleCtor)))
+
+    (** The axioms as the batch entry prints them: `none`, or the names
+        separated by `, `. *)
+    export described (outcome) = match outcome
+        Success names => Success(value = listed names)
+        Error message => Error(message = message)
+
+    listed (names) = match names
+        [] => "none"
+        [first, ...rest] => foldList (rest, first, \(text, name) => "${text}, ${name}")
