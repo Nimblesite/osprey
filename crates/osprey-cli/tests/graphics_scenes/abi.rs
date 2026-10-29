@@ -89,10 +89,10 @@ fn d3d12_bridge() -> String {
         "ospgfx_d3d12_setup.c",
         "ospgfx_d3d12.c",
     ]
-        .iter()
-        .map(|file| read_required(&graphics().join(file)))
-        .collect::<Vec<_>>()
-        .join("\n")
+    .iter()
+    .map(|file| read_required(&graphics().join(file)))
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 /// Whether `source` declares the uniform block's four fields, with `res`

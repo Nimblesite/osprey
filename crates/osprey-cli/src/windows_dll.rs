@@ -1,5 +1,5 @@
 //! The Windows DLL form of a desktop app library, for a host that loads the application at run
-//! time, such as the WinUI host. [WINUI-HOST-DLL]
+//! time, such as the `WinUI` host. [WINUI-HOST-DLL]
 //!
 //! A DLL cannot leave a function for the executable that loads it to supply, so each `extern fn`
 //! the host answers becomes an import slot [WINUI-HOST-IMPORTS]: a pointer the host fills through
