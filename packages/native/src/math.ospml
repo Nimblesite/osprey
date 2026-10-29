@@ -1,0 +1,139 @@
+// Implements [UI-COMPONENTS-MATH]: typeset mathematics as a typed layout
+// tree the host draws with a mathematics face. Applications never write TeX,
+// MathML or HTML; the browser and VS Code hosts render the tree as MathML and
+// a native host lays it out itself ([WORKBENCH-MATH]).
+namespace ui
+
+// `Seq` is spec 0051's `Row`: `Row` already names the framework's selectable row.
+(** A mathematics layout tree: glyphs, sequences, scripts, fractions, radicals, binders, spaced operators, fences and big operators. *)
+type Math = Sym string | Num string | Seq (List<Math>) | Sup Math Math | Sub Math Math | Frac Math Math | Root Math | Binder string (List<Math>) Math | Op string Math Math | Paren Math | Big string Math Math Math
+
+(** Encodes and decodes a mathematics tree for the protocol ([UI-COMPONENTS-MATH], [LESSONS-FORMAT]). *)
+module Maths
+    str key value = Doc::str (key, value)
+
+    kind name members = JsonObject (listPrepend members (str "kind" name))
+
+    pair (name, first, firstKey, second, secondKey) = kind name [JsonMember firstKey (encode first), JsonMember secondKey (encode second)]
+
+    many items = JsonArray (mapList (items, \item => encode item))
+
+    (** The protocol form of `tree`: one object per node, named by `kind`, children nested in order. *)
+    export encode tree = match tree
+        Sym text => kind "sym" [str "text" text]
+        Num text => kind "num" [str "text" text]
+        Seq items => kind "seq" [JsonMember "items" (many items)]
+        Sup base script => pair ("sup", base, "base", script, "script")
+        Sub base script => pair ("sub", base, "base", script, "script")
+        Frac top bottom => pair ("frac", top, "top", bottom, "bottom")
+        Root body => kind "root" [JsonMember "body" (encode body)]
+        Binder symbol names body => kind "binder" [str "symbol" symbol, JsonMember "names" (many names), JsonMember "body" (encode body)]
+        Op symbol left right => kind "op" [str "symbol" symbol, JsonMember "left" (encode left), JsonMember "right" (encode right)]
+        Paren body => kind "paren" [JsonMember "body" (encode body)]
+        Big symbol lower upper body => kind "big" [str "symbol" symbol, JsonMember "lower" (encode lower), JsonMember "upper" (encode upper), JsonMember "body" (encode body)]
+
+    // The named member's text, refusing a missing member or a non-string value.
+    stringAt (name, doc, key) = match jsonField doc key
+        Error _ => Error(message = "a math node of kind `${name}` is missing its `${key}`")
+        Success value => match jsonText value
+            Error _ => Error(message = "a math node of kind `${name}` has a non-string `${key}`")
+            Success text => Success(value = text)
+
+    // The named member decoded as a child tree.
+    child (name, doc, key) = match jsonField doc key
+        Error _ => Error(message = "a math node of kind `${name}` is missing its child `${key}`")
+        Success value => decode value
+
+    // The named member as an array of child trees.
+    arrayAt (name, doc, key) = match jsonField doc key
+        Error _ => Error(message = "a math node of kind `${name}` is missing its `${key}`")
+        Success value => match value
+            JsonArray items => decodeAll items
+            _ => Error(message = "a math node of kind `${name}` has a non-array `${key}`")
+
+    // Decodes every element; the first error is the result.
+    decodeStep (trees, item) = match trees
+        Error problem => Error(message = problem)
+        Success kept => match decode item
+            Error problem => Error(message = problem)
+            Success tree => Success(value = listAppend kept tree)
+
+    decodeAll items = foldList (items, Success(value = []), decodeStep)
+
+    symOrNum name text = match name
+        "sym" => Sym text
+        _ => Num text
+
+    textLeaf (name, doc) = match stringAt (name, doc, "text")
+        Error problem => Error(message = problem)
+        Success text => Success(value = symOrNum name text)
+
+    pairTree name first second = match name
+        "sup" => Sup first second
+        "sub" => Sub first second
+        _ => Frac first second
+
+    pairNode (name, firstKey, secondKey, doc) = match child (name, doc, firstKey)
+        Error problem => Error(message = problem)
+        Success first => match child (name, doc, secondKey)
+            Error problem => Error(message = problem)
+            Success second => Success(value = pairTree name first second)
+
+    bodyTree name body = match name
+        "root" => Root body
+        _ => Paren body
+
+    bodyNode (name, doc) = match child (name, doc, "body")
+        Error problem => Error(message = problem)
+        Success body => Success(value = bodyTree name body)
+
+    seqNode doc = match arrayAt ("seq", doc, "items")
+        Error problem => Error(message = problem)
+        Success items => Success(value = Seq items)
+
+    binderNode doc = match stringAt ("binder", doc, "symbol")
+        Error problem => Error(message = problem)
+        Success symbol => match arrayAt ("binder", doc, "names")
+            Error problem => Error(message = problem)
+            Success names => match child ("binder", doc, "body")
+                Error problem => Error(message = problem)
+                Success body => Success(value = Binder symbol names body)
+
+    opNode doc = match stringAt ("op", doc, "symbol")
+        Error problem => Error(message = problem)
+        Success symbol => match child ("op", doc, "left")
+            Error problem => Error(message = problem)
+            Success left => match child ("op", doc, "right")
+                Error problem => Error(message = problem)
+                Success right => Success(value = Op symbol left right)
+
+    bigNode doc = match stringAt ("big", doc, "symbol")
+        Error problem => Error(message = problem)
+        Success symbol => match child ("big", doc, "lower")
+            Error problem => Error(message = problem)
+            Success lower => match child ("big", doc, "upper")
+                Error problem => Error(message = problem)
+                Success upper => match child ("big", doc, "body")
+                    Error problem => Error(message = problem)
+                    Success body => Success(value = Big symbol lower upper body)
+
+    (** The inverse of `encode`: the mathematics tree its protocol form names, or an error naming an unknown kind, a missing child, a non-object node or a non-string text or symbol ([UI-COMPONENTS-MATH], [LESSONS-FORMAT]). *)
+    export decode doc = match doc
+        JsonObject _ => match jsonField doc "kind"
+            Error _ => Error(message = "a math node is missing its kind")
+            Success value => match jsonText value
+                Error _ => Error(message = "a math node is missing its kind")
+                Success name => match name
+                    "sym" => textLeaf ("sym", doc)
+                    "num" => textLeaf ("num", doc)
+                    "seq" => seqNode doc
+                    "sup" => pairNode ("sup", "base", "script", doc)
+                    "sub" => pairNode ("sub", "base", "script", doc)
+                    "frac" => pairNode ("frac", "top", "bottom", doc)
+                    "root" => bodyNode ("root", doc)
+                    "binder" => binderNode doc
+                    "op" => opNode doc
+                    "paren" => bodyNode ("paren", doc)
+                    "big" => bigNode doc
+                    other => Error(message = "a math node has the unknown kind `${other}`")
+        _ => Error(message = "a math node must be an object")

@@ -1,0 +1,67 @@
+// [WORKBENCH-VERIFICATION] and [LESSONS-VERIFICATION] fixtures: the whole
+// application through `App::respond`, the VS Code boundary, with the shipped
+// lessons as the host's slices. Every event is a real host event document.
+namespace workbenchtests
+
+import workbench::App
+import ui::Doc
+
+(** Drives the workbench through start and dispatch, as a host does. *)
+module Drive
+    root () = "../lessons/"
+
+    read path = match readFile (root () + path)
+        Success text => text
+        Error _ => ""
+
+    file (path, text) = JsonObject [Doc::str ("path", path), Doc::str ("error", ""), Doc::str ("text", text)]
+
+    files items = JsonString (Doc::write (JsonObject [JsonMember "files" (JsonArray items)]))
+
+    slugs () = ["what-is-a-proof", "what-is-a-solution", "what-is-a-solver", "and-swap", "either-way", "not-and-contradiction", "navier-stokes"]
+
+    // The host's slices: the catalogue and lesson reads, saved progress, and one stroke.
+    held () = JsonObject [JsonMember "lessons:catalogue" (files [file ("lessons/catalogue.json", read "catalogue.json")]), JsonMember "lessons:texts" (files (mapList (slugs (), \slug => file ("lessons/" + slug + ".json", read (slug + ".json"))))), JsonMember "lessons:progress" (JsonString "{\"completed\":[\"and-swap/judge-wrong-order\"]}")]
+
+    (** The first envelope of a new session. *)
+    export started () = Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "start"), JsonMember "context" (Doc::parse "{\"now\":1,\"offset\":0,\"platform\":\"macos\"}"), JsonMember "slices" (held ())])))
+
+    (** The envelope after `event` reaches the session `envelope` left. *)
+    export post (envelope, event) = Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "dispatch"), Doc::str ("state", Doc::text (envelope, "state")), JsonMember "event" (Doc::parse event), JsonMember "slices" (held ())])))
+
+    (** The keys of the regions an envelope re-sent, in order. *)
+    export keys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key")), ",")
+
+    (** The revision region `key` was sent with in `envelope`, 0 when it was not sent. *)
+    export revision (envelope, key) = foldList (Doc::items (Doc::field (envelope, "patches")), 0, \(found, item) => sent (found, item, key))
+
+    sent (found, item, key) = match Doc::text (item, "key") == key
+        true => Doc::number (item, "revision")
+        false => found
+
+    (** The tickets of the requests in `envelope`. *)
+    export tickets envelope = join (mapList (Doc::items (Doc::field (envelope, "requests")), \item => Doc::text (item, "ticket")), ",")
+
+    (** The keys of the slices `envelope` wrote. *)
+    export written envelope = join (mapList (Doc::items (Doc::field (envelope, "slices")), \item => Doc::text (item, "key")), ",")
+
+    (** The store the session of `envelope` carries. *)
+    export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
+
+    (** A control event: `value` as JSON text, on control `ordinal` of `region` as drawn at `revision`. *)
+    export control (region, revision, ordinal, value) = "{\"kind\":\"ui\",\"region\":\"" + region + "\",\"revision\":${revision},\"ordinal\":${ordinal},\"value\":" + value + ",\"now\":5}"
+
+    (** A tap on control `ordinal` of region `region` as `envelope` drew it. *)
+    export tap (envelope, region, ordinal) = control (region, revision (envelope, region), ordinal, "null")
+
+    (** A completion of `ticket` with `result` as JSON text. *)
+    export done (ticket, result) = "{\"kind\":\"completed\",\"ticket\":\"" + ticket + "\",\"ok\":true,\"result\":" + result + ",\"now\":6}"
+
+    (** A failed completion of `ticket` with `error`. *)
+    export failed (ticket, error) = "{\"kind\":\"completed\",\"ticket\":\"" + ticket + "\",\"ok\":false,\"error\":\"" + error + "\",\"now\":6}"
+
+    (** `text` as a JSON string. *)
+    export quoted text = jsonQuote text ?: "\"\""
+
+    (** A session with the catalogue and every lesson loaded. *)
+    export loaded () = post (post (started (), done ("lessons:catalogue", "{}")), done ("lessons:texts", "{}"))

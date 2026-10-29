@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { Uri, ViewColumn, window, type WebviewPanel } from "vscode";
 import type { Browser, Frame } from "playwright-core";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
+import { SDK_COMPONENT_SOURCE } from "./sdk-renderer-source";
 import { renderWorkspace } from "../../client/src/osprey-ui/render";
 import { WEBVIEW_SCRIPT } from "../../client/src/osprey-ui/webview-client";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
@@ -162,85 +163,11 @@ suite("package workspace renderer", () => {
   });
 });
 
-const SDK_COMPONENT_SOURCE = String.raw`
-namespace sdk_renderer_probe
-import ui::Ui
-import ui::Encode
-import ui::Doc
-import ui::Runtime
-import ui::Keyed
-import ui::Messages
-import vscode::Webview
 
-type Act = Changed | Gone
 
-controls expanded = [
-    Ui::toggle ("SDK switch", true, Changed),
-    Ui::picker ("SDK choice", [Ui::choice ("a", "Alpha"), Ui::choice ("b", "Beta")], "a", Changed),
-    Ui::disclosure ("SDK details", expanded, Changed, [Ui::button ("Nested action", "plus", Changed)]),
-    ui::Field(label = "SDK notes", value = "one\ntwo", prompt = "Notes", secure = false, multiline = true, commit = ui::OnSubmit, bind = Changed),
-    ui::Field(label = "SDK secret", value = "private", prompt = "Password", secure = true, multiline = false, commit = ui::OnSubmit, bind = Changed),
-    ui::Button(label = "SDK disabled", symbol = "lock", role = ui::Destructive, enabled = false, action = Changed),
-    ui::Field(label = "SDK draft", value = "", prompt = "Draft", secure = false, multiline = false, commit = ui::OnEdit, bind = Changed),
-]
-
-proof () = [
-    Ui::evidence ("SDK evidence", "37 lines"),
-    Ui::label ("SDK label", "info"),
-    ui::Spacer,
-    ui::Divider,
-    ui::Segments(tones = [ui::Good, ui::Caution, ui::Danger], label = "SDK health"),
-    Ui::empty ("tray", "SDK empty", "No items exist"),
-    ui::Progress(label = "SDK progress", detail = "Compiling"),
-    ui::Swatch(name = "SDK palette", light = "#112233", dark = "#ddeeff"),
-    ui::Brand,
-]
-
-drawing expanded = Ui::screen ("SDK vocabulary", "Compiled from Osprey", [], [Ui::layer [Ui::section ("SDK proof", "SDK footer", listConcat (controls expanded) (proof ())) ]])
-
-variants () = Ui::aside (Ui::column [
-    Ui::section ("", "", []),
-    Ui::toggle ("SDK off", false, Changed),
-    ui::Swatch(name = "SDK invalid palette", light = "red", dark = "url(https://example.invalid)"),
-    ui::Progress(label = "SDK progress", detail = "Safe values"),
-    Ui::slot "root",
-], ui::Leading, Ui::rows ([Ui::item ("plain", Ui::text "<untrusted>")], "plain", Changed), 9999, Changed)
-
-tree mode = match mode
-    "variants" => variants ()
-    _ => drawing (mode == "expanded")
-
-(** A real SDK application that canonicalizes input and can withdraw its field. *)
-module Normalized
-    slice () = perform Signal<string>.read ()
-    drawing () =
-        value = perform Signal<string>.read ()
-        match value == "removed"
-            true => Ui::text "SDK removed"
-            false => Ui::column [Ui::field ("SDK normalized", value, "Normalized", Changed), Ui::button ("Hide field", "xmark", Gone)]
-    regions (before, value, frames, _) =
-        handle static Signal<string>
-            read => value
-        changed = signalChanges before value (\text => JsonString text) (signalDependencies slice)
-        [Keyed::region (frames, "root", changed, drawing)]
-    initial _ = Runtime::step ""
-    update (_, current, message) = Messages::route (message, \_ => Runtime::step "removed", \(_, _) => Runtime::step "CANONICAL", \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \_ => Runtime::step current)
-    save value = JsonString value
-    restore doc = jsonText doc ?: ""
-    palette = ui::Theme(tokens = [], spacing = [4], feedback = 160, settle = 220)
-    (** Start the field application through the framework. *)
-    export start context = Runtime::start (context, initial, regions, save, palette)
-    (** Deliver a typed event through the framework. *)
-    export dispatch (saved, event) = Runtime::dispatch (saved, event, update, regions, save, restore)
-
-main () =
-    source = input ()
-    match Doc::has (Doc::parse source, "operation")
-        true => print (Webview::respond (source, Normalized::start, Normalized::dispatch))
-        false => print (Doc::write (listGet (Encode::walk ([], tree source)).nodes 0 ?: JsonNull))
-`;
-
-type SdkMode = "expanded" | "collapsed" | "variants" | "normalized";
+type SdkMode = "expanded" | "collapsed" | "variants" | "normalized" | "board";
+const boardNode = { kind: "board", slice: "sdk-board", count: 0, lasso: false, event: 0, lassoEvent: 1 };
+const boardSlices = new Map([["sdk-board", JSON.stringify({ version: 1, strokes: [], notes: "", size: { width: 1536, height: 1024 }, view: { x: 0, y: 0, scale: 100 } })]]);
 
 async function compiledSdkTree(mode: SdkMode): Promise<unknown> {
   return compileSdkWasmJson(SDK_COMPONENT_SOURCE, mode, BUILD_MS);
@@ -254,7 +181,7 @@ function sdkDocument(panel: WebviewPanel): void {
 
 function showSdkTree(panel: WebviewPanel, node: unknown, events: unknown[]): void {
   const assetUri = sdkAsset(panel);
-  const html = renderWorkspace({ regions: regions(node), assetUri });
+  const html = renderWorkspace({ regions: regions(node), assetUri, slices: boardSlices });
   panel.webview.onDidReceiveMessage((raw: unknown) => {
     if (!record(raw)) return;
     if (raw.type === "ready") void panel.webview.postMessage({ type: "render", html, diagnostics: [] });
@@ -288,8 +215,27 @@ async function assertSdkFields(frame: Frame): Promise<void> {
   assert.strictEqual(await frame.getByRole("button", { name: "SDK disabled" }).isDisabled(), true);
 }
 
+async function verifySdkEditor(frame: Frame, events: unknown[], panel: WebviewPanel, node: unknown): Promise<void> {
+  const field = frame.getByRole("textbox", { name: "SDK argument", exact: true });
+  await field.focus();
+  await field.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(3, 3));
+  await waitFor(() => events.length, (count) => count === 1, 3000, "Unicode caret reaches Osprey as a byte offset");
+  assert.deepStrictEqual(events[0], { type: "event", region: "root", revision: 3, ordinal: 9, value: 5 });
+  await field.fill("p ∧ q\nFrom hq.");
+  await waitFor(() => events.length, (count) => count === 2, 3000, "editor text reaches its separate binding");
+  assert.ok(record(events[1]) && events[1].ordinal === 8 && events[1].value === "p ∧ q\nFrom hq.");
+  const next = new Map(regions(node));
+  next.set("root", { revision: 4, node });
+  await panel.webview.postMessage({ type: "render", html: renderWorkspace({ regions: next }), diagnostics: [] });
+  await frame.locator('textarea[data-native-editor][data-event-revision="4"]').waitFor();
+  assert.strictEqual(await field.inputValue(), "p ∧ q\nFrom hq.");
+  assert.strictEqual(await frame.locator(".osp-editor-mirror").textContent(), "p ∧ q\nFrom hq.");
+}
+
 async function assertSdkComponents(frame: Frame): Promise<void> {
   await assertSdkFields(frame);
+  assert.strictEqual(await frame.locator('math[aria-label="x squared over square root of y"] mfrac msup').count(), 1);
+  assert.strictEqual(await frame.locator('math mfrac msqrt').count(), 1);
   assert.strictEqual(await frame.getByRole("heading", { name: "SDK vocabulary", exact: true }).count(), 1);
   assert.strictEqual(await frame.getByRole("img", { name: "SDK health" }).locator("span").count(), 3);
   assert.strictEqual(await frame.locator(".osp-spacer").count(), 1);
@@ -342,7 +288,7 @@ async function closeSdkView(panel: WebviewPanel | undefined, browser: Browser, e
 type SdkBrowserCheck = (frame: Frame, events: unknown[], panel: WebviewPanel, node: unknown) => Promise<void>;
 
 async function withSdkView(mode: SdkMode, run: SdkBrowserCheck): Promise<void> {
-  const node = mode === "normalized" ? undefined : await compiledSdkTree(mode);
+  const node = mode === "normalized" ? undefined : mode === "board" ? boardNode : await compiledSdkTree(mode);
   const browser = await connectEditorBrowser();
   const events: unknown[] = [];
   let panel: WebviewPanel | undefined;
@@ -351,12 +297,47 @@ async function withSdkView(mode: SdkMode, run: SdkBrowserCheck): Promise<void> {
       { enableScripts: true, localResourceRoots: [Uri.file(extensionRoot)] });
     if (mode === "normalized") await showNormalizedSdk(panel, events);
     else showSdkTree(panel, node, events);
-    const frame = await editorWebviewFrame(browser, mode === "normalized" ? 'input[placeholder="Normalized"]' : '.osp-progress[aria-label="SDK progress"]');
+    const frame = await editorWebviewFrame(browser, mode === "normalized" ? 'input[placeholder="Normalized"]' : mode === "board" ? "canvas[data-board-slice]" : '.osp-progress[aria-label="SDK progress"]');
     await run(frame, events, panel, node);
   } finally {
     await closeSdkView(panel, browser, events, mode);
   }
 }
+
+async function verifyBoardPointer(frame: Frame, events: unknown[], panel: WebviewPanel): Promise<void> {
+  const canvas = frame.locator("canvas[data-board-slice]");
+  const box = await canvas.boundingBox();
+  assert.ok(box);
+  const mouse = frame.page().mouse;
+  await mouse.move(box.x + 120, box.y + 140);
+  await mouse.down();
+  await panel.webview.postMessage({ type: "render", html: renderWorkspace({ regions: new Map([["root", { revision: 4, node: boardNode }]]), slices: boardSlices }), diagnostics: [] });
+  await mouse.move(box.x + 360, box.y + 220, { steps: 12 });
+  await mouse.up();
+  await waitFor(() => events.length, (count) => count >= 1, 3000, "one finished stroke reaches the host");
+  assert.strictEqual(events.length, 1, "pointerup must not also dispatch a null canvas click");
+  const stroke = events[0];
+  assert.ok(record(stroke) && record(stroke.value));
+  assert.strictEqual(stroke.revision, 3, "a pending stroke retains its original provenance");
+  assert.ok(typeof stroke.edit === "number" && Array.isArray(stroke.value.points) && stroke.value.points.length > 2);
+  await verifyOrdinaryBoardStroke(frame, events, box);
+}
+
+async function verifyOrdinaryBoardStroke(frame: Frame, events: unknown[], box: { x: number; y: number }): Promise<void> {
+  const mouse = frame.page().mouse;
+  await mouse.move(box.x + 160, box.y + 180);
+  await mouse.down();
+  await mouse.move(box.x + 320, box.y + 240, { steps: 5 });
+  await mouse.up();
+  await frame.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  assert.strictEqual(events.length, 2, "ordinary pointerup must not dispatch a second null canvas action");
+}
+
+suite("native board browser", () => {
+  test("pointer drawing survives a background render and dispatches one complete stroke", async () => {
+    await withSdkView("board", verifyBoardPointer);
+  });
+});
 
 async function assertSdkVariants(frame: Frame, events: unknown[]): Promise<void> {
   const aside = frame.locator(".osp-aside");
@@ -464,6 +445,9 @@ async function assertSubmitOnce(frame: Frame, events: unknown[]): Promise<void> 
 }
 
 suite("compiled SDK renderer E2E", () => {
+  test("a marked Osprey editor retains Unicode caret provenance and pending working", async () => {
+    await withSdkView("expanded", verifySdkEditor);
+  });
   test("submitting a field with Enter commits once when it subsequently blurs", async () => {
     await withSdkView("expanded", assertSubmitOnce);
   });

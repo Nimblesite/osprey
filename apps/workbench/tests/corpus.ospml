@@ -20,7 +20,8 @@ module CorpusCases
 
     // Depth 2 wraps each depth-1 formula once and pairs it with an atom on either side, which
     // puts every connective under every other connective on both sides, the cases that need parentheses.
-    corpus () =
+    (** The 1,215 generated formulas shared by the writer and typesetting properties. *)
+    export corpus () =
         inner = shallow ()
         base = atoms ()
         wrapped = listConcat (mapList (inner, \formula => workbench::Not formula), mapList (inner, \formula => workbench::Forall ["p", "q"] formula))

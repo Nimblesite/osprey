@@ -1,7 +1,8 @@
 [project]
 name = "workbench"
-source_roots = ["src", "../../packages/native/src"]
+source_roots = ["src", "../../packages/native/src", "../../packages/vscode/src", "../../examples/proof/kernel/src/level.ospml", "../../examples/proof/kernel/src/term.ospml", "../../examples/proof/kernel/src/env.ospml", "../../examples/proof/kernel/src/reduce.ospml", "../../examples/proof/kernel/src/infer.ospml", "../../examples/proof/kernel/src/surface.ospml"]
 default_namespace = "workbench"
+entry = "src/main.ospml"
 
 [modules]
 allow_wildcard_imports = false

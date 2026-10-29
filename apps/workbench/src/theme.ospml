@@ -1,0 +1,63 @@
+// Implements [WORKBENCH-DESIGN-COLOUR]: the application-owned semantic token
+// table and the source-role colours, sent through `@osprey/native`; a host does
+// not substitute its own palette. The spacing scale and motion durations of
+// [WORKBENCH-DESIGN-MOTION] ride along on the same theme value.
+namespace workbench
+
+(** The paper and chalk themes, each the full semantic token table with its spacing scale and motion durations ([WORKBENCH-DESIGN-COLOUR]). *)
+module Palettes
+    (** The paper theme: ink on off-white. `tokenLight` holds the Paper column and `tokenDark` the Slate column, so the paper layout follows the system appearance ([WORKBENCH-DESIGN-COLOUR]). *)
+    export paper = ui::Theme(
+        tokens = [
+            ui::Token(tokenName = "canvas", tokenLight = "#FAFAF7", tokenDark = "#202723"),
+            ui::Token(tokenName = "inset", tokenLight = "#F0F2ED", tokenDark = "#191F1C"),
+            ui::Token(tokenName = "surface", tokenLight = "#FFFFFF", tokenDark = "#29322D"),
+            ui::Token(tokenName = "primary", tokenLight = "#242923", tokenDark = "#ECEDE5"),
+            ui::Token(tokenName = "secondary", tokenLight = "#56615B", tokenDark = "#B7C0B7"),
+            ui::Token(tokenName = "accent", tokenLight = "#36635C", tokenDark = "#A6C5BB"),
+            ui::Token(tokenName = "outline", tokenLight = "#727C74", tokenDark = "#7D8C80"),
+            ui::Token(tokenName = "divider", tokenLight = "#D7DDD5", tokenDark = "#465348"),
+            ui::Token(tokenName = "selection", tokenLight = "#E4ECE5", tokenDark = "#34473E"),
+            ui::Token(tokenName = "good", tokenLight = "#315D3B", tokenDark = "#B3CE94"),
+            ui::Token(tokenName = "caution", tokenLight = "#795719", tokenDark = "#E6C077"),
+            ui::Token(tokenName = "danger", tokenLight = "#9A3935", tokenDark = "#F0A69B"),
+            ui::Token(tokenName = "dangerSurface", tokenLight = "#F6E8E3", tokenDark = "#453330"),
+            ui::Token(tokenName = "board", tokenLight = "#202723", tokenDark = "#202723"),
+            ui::Token(tokenName = "chalk", tokenLight = "#ECEDE5", tokenDark = "#ECEDE5"),
+            ui::Token(tokenName = "sourceKeyword", tokenLight = "#794A64", tokenDark = "#D5B0C7"),
+            ui::Token(tokenName = "sourceType", tokenLight = "#426B6B", tokenDark = "#A6C5BB"),
+            ui::Token(tokenName = "sourceName", tokenLight = "#704F25", tokenDark = "#DEC28F"),
+            ui::Token(tokenName = "sourceComment", tokenLight = "#56615B", tokenDark = "#A6B5AA"),
+        ],
+        spacing = [4, 8, 12, 16, 24, 32],
+        feedback = 140,
+        settle = 240,
+    )
+
+    (** The chalk theme: the board-first layout, slate in both appearances. Every token's light and dark value is the Slate column, so the board never follows the system appearance ([WORKBENCH-DESIGN-COLOUR]). *)
+    export chalk = ui::Theme(
+        tokens = [
+            ui::Token(tokenName = "canvas", tokenLight = "#202723", tokenDark = "#202723"),
+            ui::Token(tokenName = "inset", tokenLight = "#191F1C", tokenDark = "#191F1C"),
+            ui::Token(tokenName = "surface", tokenLight = "#29322D", tokenDark = "#29322D"),
+            ui::Token(tokenName = "primary", tokenLight = "#ECEDE5", tokenDark = "#ECEDE5"),
+            ui::Token(tokenName = "secondary", tokenLight = "#B7C0B7", tokenDark = "#B7C0B7"),
+            ui::Token(tokenName = "accent", tokenLight = "#A6C5BB", tokenDark = "#A6C5BB"),
+            ui::Token(tokenName = "outline", tokenLight = "#7D8C80", tokenDark = "#7D8C80"),
+            ui::Token(tokenName = "divider", tokenLight = "#465348", tokenDark = "#465348"),
+            ui::Token(tokenName = "selection", tokenLight = "#34473E", tokenDark = "#34473E"),
+            ui::Token(tokenName = "good", tokenLight = "#B3CE94", tokenDark = "#B3CE94"),
+            ui::Token(tokenName = "caution", tokenLight = "#E6C077", tokenDark = "#E6C077"),
+            ui::Token(tokenName = "danger", tokenLight = "#F0A69B", tokenDark = "#F0A69B"),
+            ui::Token(tokenName = "dangerSurface", tokenLight = "#453330", tokenDark = "#453330"),
+            ui::Token(tokenName = "board", tokenLight = "#202723", tokenDark = "#202723"),
+            ui::Token(tokenName = "chalk", tokenLight = "#ECEDE5", tokenDark = "#ECEDE5"),
+            ui::Token(tokenName = "sourceKeyword", tokenLight = "#D5B0C7", tokenDark = "#D5B0C7"),
+            ui::Token(tokenName = "sourceType", tokenLight = "#A6C5BB", tokenDark = "#A6C5BB"),
+            ui::Token(tokenName = "sourceName", tokenLight = "#DEC28F", tokenDark = "#DEC28F"),
+            ui::Token(tokenName = "sourceComment", tokenLight = "#A6B5AA", tokenDark = "#A6B5AA"),
+        ],
+        spacing = [4, 8, 12, 16, 24, 32],
+        feedback = 140,
+        settle = 240,
+    )

@@ -194,8 +194,9 @@ export function registerPackageWorkspace(context: ExtensionContext): { dispose()
     panel.webview.html = panelHtml(context, panel);
     session = createWorkspaceSession({
       run: (frame) => runWasi(compiled, frame),
-      render: (regions, _diagnostics, theme) => renderWorkspace({
+      render: (regions, _diagnostics, theme, slices) => renderWorkspace({
         regions,
+        slices,
         theme,
         assetUri: panel?.webview.asWebviewUri(Uri.joinPath(context.extensionUri, "icon.png")).toString(),
       }),

@@ -144,6 +144,22 @@ module Encode
         menu = all (body.bindings, actions)
         one (menu.bindings, kind "context-menu" [JsonMember "body" (first body), JsonMember "items" (JsonArray menu.nodes)])
 
+    markJson item = JsonObject [num "line" item.markLine, bit "underlined" item.underlined, str "tone" (tone item.markTone), str "badge" item.markBadge, str "note" item.markNote]
+
+    // [UI-COMPONENTS-EDITOR] Two controls in one: the text binding takes the next ordinal, the cursor binding the one after.
+    editor<A> : (List<Binding<A>>, string, string, int, List<Mark>, A, A) -> Walked<A>
+    editor (bindings, label, value, cursor, marks, edit, place) =
+        texted = listAppend bindings (TextInput(action = edit))
+        members = [str "label" label, str "value" value, num "cursor" cursor, JsonMember "marks" (JsonArray (mapList (marks, \item => markJson item))), num "event" (length bindings), num "placeEvent" (length texted)]
+        one (listAppend texted (PlaceInput(action = place)), kind "editor" members)
+
+    // [UI-COMPONENTS-BOARD] The stroke binding takes the next ordinal, the lasso binding the one after.
+    board<A> : (List<Binding<A>>, string, int, bool, A, A) -> Walked<A>
+    board (bindings, slice, count, lassoing, stroke, lasso) =
+        stroked = listAppend bindings (StrokeInput(action = stroke))
+        members = [str "slice" slice, num "count" count, bit "lasso" lassoing, num "event" (length bindings), num "lassoEvent" (length stroked)]
+        one (listAppend stroked (LassoInput(action = lasso)), kind "board" members)
+
     leaf<A> : (List<Binding<A>>, string, List<JsonMember>) -> Walked<A>
     leaf (bindings, name, members) = one (bindings, kind name members)
 
@@ -180,3 +196,8 @@ module Encode
         Aside place column pane width action => aside (bindings, place, column, pane, width, action)
         Tabs entries selected action => tabs (bindings, entries, selected, action)
         Rows entries selected action => rows (bindings, entries, selected, action)
+        Typeset tree text => leaf (bindings, "math", [JsonMember "math" (Maths::encode tree), str "spoken" text])
+        Image source alt width height => leaf (bindings, "image", [str "source" source, str "alt" alt, num "width" width, num "height" height])
+        Video source poster captions alt seconds => leaf (bindings, "video", [str "source" source, str "poster" poster, str "captions" captions, str "alt" alt, num "seconds" seconds])
+        Editor label value cursor marks edit place => editor (bindings, label, value, cursor, marks, edit, place)
+        Board slice count lassoing stroke lasso => board (bindings, slice, count, lassoing, stroke, lasso)

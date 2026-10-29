@@ -21,7 +21,8 @@ Ticked as the work lands; a box is ticked only when its test exists in `apps/wor
 
 ### Phase 2 — the application
 - [ ] Framework additions with tests in `packages/native/tests/`: `Math` node, `Field` marks and cursor, `Board`, `Recognise`, `board` token; native README updated
-- [ ] `src/app.ospml`: slices, action union, `update`, six regions, theme; `src/verdict.ospml` with ticketed `Run`
+- [ ] `src/app.ospml`: slices, action union, `update`, six regions, theme
+- [ ] `src/kernel.ospml` and `src/verdict.ospml`: the in-process kernel verdict over a kernel-checked prelude (replaces the ticketed `Run`; see the deviation below)
 - [ ] `src/main.ospml`: `Runtime::start`, `Runtime::dispatch`, `Webview::respond`
 - [ ] Fixture tests: region refresh, stale ticket, rejection underline, stroke and lasso, contrast
 
@@ -54,12 +55,16 @@ Deviations from the spec's signatures, recorded in spec 0051: a `Result`'s error
 
 ## Phase 2 — the application over `@osprey/native` [WORKBENCH-STORE] [WORKBENCH-REGIONS] [WORKBENCH-VERDICT]
 
+**One Osprey application for every host.** `apps/workbench/src/` owns the store, updates, parsing, goals, source generation, verification state and typed `@osprey/native` component trees. Compile that same logic for the browser and native app. Browser and Apple hosts only render those trees, preserve native control state and execute capabilities. The React study under `docs/designs/` is a visual reference; it must not become a second application implementation.
+
 1. The framework additions, each with its own test in `packages/native/tests/`: the `Math` content node and its encoding; per-line marks and a cursor position on the multiline `Field`; the `Board` control and its stroke binding; the `Recognise` capability; the `board` theme token. Document each in the native README under [UI-COMPONENTS], [UI-EVENTS], [UI-EFFECTS] and [UI-THEME].
-2. `src/app.ospml`: the slices, the action union (one union, grouped by the value each binding delivers), `update`, the six regions, the default theme; `src/verdict.ospml` with the ticketed `Run` of `osprey prove check` and the `Unchecked (no checker on this host)` path.
+2. `src/app.ospml`: the slices, the action union (one union, grouped by the value each binding delivers), `update`, the six regions, the default theme; `src/kernel.ospml` and `src/verdict.ospml` with the in-process kernel verdict of [WORKBENCH-VERDICT].
 3. `src/main.ospml`: `Runtime::start` and `Runtime::dispatch` exports and the `Webview::respond` entry.
 4. Fixture tests through the real `start`/`dispatch`: the region refresh case, the stale ticket case, the rejection underline case, the stroke and lasso cases, the contrast cases.
 
 Exit: the suite drives the whole application with fixture messages; `osprey apps/workbench --check` reports every export documented; no host yet.
+
+Deviations, recorded in spec 0051: the verdict comes from the proof kernel of spec 0049 called in-process, not from a ticketed `Run` of `osprey prove check`, because the kernel is an Osprey library and the workbench is its interface; it works on every host, a tablet included, and needs nothing from plan 0041. The connectives are impredicative encodings over a prelude the kernel admits constant by constant. The multiline editor is a new `Editor` component rather than a change to `Field`; `Math`'s `Row` is `Seq`; the board keeps one host-held slice per stroke and `Recognise` names slices. Learn mode is [plan 0043](0043-workbench-lessons.md).
 
 ## Phase 3 — hosts [WORKBENCH-HOSTS] [WORKBENCH-MATH] [WORKBENCH-BOARD] [WORKBENCH-DESIGN]
 

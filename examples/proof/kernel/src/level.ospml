@@ -13,7 +13,7 @@ module Levels
         Succ inner => closed inner
         Max left right => closed left && closed right
         IMax left right => closed left && closed right
-        Param name => false
+        Param _name => false
 
     (** Whether every parameter of `level` is one of `params`. *)
     export declared (level, params) = match level
@@ -50,7 +50,7 @@ module Levels
         Succ inner => satAdd (height inner) 1
         Max left right => larger (height left) (height right)
         IMax left right => imaxHeight (height left) (height right)
-        Param name => 0
+        Param _name => 0
 
     larger left right = match left >= right
         true => left
@@ -108,23 +108,23 @@ module Levels
 
     isZero level = match level
         Zero => true
-        other => false
+        _other => false
 
     sameSucc (inner, right) = match right
         Succ other => same inner other
-        other => false
+        _other => false
 
     sameMax (a, b, right) = match right
         Max c d => same a c && same b d
-        other => false
+        _other => false
 
     sameIMax (a, b, right) = match right
         IMax c d => same a c && same b d
-        other => false
+        _other => false
 
     sameParam (name, right) = match right
         Param other => name == other
-        other => false
+        _other => false
 
     (** `0`, `1`, `max u v`, `imax u v`, `u`. *)
     export show level = match closed level

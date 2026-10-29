@@ -123,6 +123,21 @@ const settled = async (): Promise<void> => {
 };
 
 suite("package workspace session", () => {
+  test("the application theme survives a dispatch that omits a replacement", async () => {
+    const palette = { tokens: [{ name: "canvas", light: "#FAFAF7", dark: "#202723" }] };
+    const themes: unknown[] = [];
+    let runs = 0;
+    const session = createWorkspaceSession({
+      run: async () => ({ stdout: JSON.stringify({ ...JSON.parse(sessionEnvelope("s", ++runs)), theme: runs === 1 ? palette : null }), exitCode: 0 }),
+      render: (_regions, _diagnostics, theme) => { themes.push(theme); return "HTML"; },
+      send: () => undefined, execute: async () => undefined, now: () => 1, report: assert.fail,
+    });
+    await session.start({});
+    session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: null });
+    await settled();
+    assert.deepStrictEqual(themes.at(-1), palette);
+    session.dispose();
+  });
   test("a completion from a superseded session never reaches the runtime", async () => {
     let release: (value: unknown) => void = () => undefined;
     const gate = new Promise<unknown>((resolve) => { release = resolve; });

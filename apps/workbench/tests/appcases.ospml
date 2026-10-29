@@ -1,0 +1,107 @@
+// [WORKBENCH-VERIFICATION] and [LESSONS-VERIFICATION]: the application cases,
+// each a sequence of real host events through `App::respond`.
+namespace workbenchtests
+
+import workbenchtests::Drive
+import ui::Doc
+
+(** The application cases of [WORKBENCH-VERIFICATION] and [LESSONS-VERIFICATION]. *)
+module AppCases
+    swapped () = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hp.\nFrom hq."
+
+    typed (envelope, text) = Drive::post (envelope, Drive::control ("document", Drive::revision (envelope, "document"), 0, Drive::quoted text))
+
+    check envelope = match listGet (Doc::items (Doc::field (Drive::stored envelope, "checks"))) 0
+        Success found => Doc::text (found, "tone") + " at ${Doc::number (found, "line")}"
+        Error _ => "none"
+
+    (** [WORKBENCH-STORE] Start draws every fixed region, writes the board's metadata, and asks for the catalogue and the progress. *)
+    export start () =
+        first = Drive::started ()
+        expect (Drive::keys first, "root,document,goal,generated,board,library,catalogue,lesson")
+        expect (Drive::tickets first, "lessons:catalogue,lessons:progress")
+        expect (Drive::written first, "board")
+
+    (** [WORKBENCH-REGIONS] A keystroke in the document re-sends `document`, `goal` and `generated` and nothing else. *)
+    export keystroke () = expect (Drive::keys (typed (Drive::started (), "Theorem t. For all p, p → p.")), "document,goal,generated")
+
+    (** [WORKBENCH-VERDICT] The kernel refuses the swapped proof at its sixth row, where the refused step was written. *)
+    export underline () =
+        expect (check (typed (Drive::started (), swapped ())), "rejected at 5")
+        expect (check (typed (Drive::started (), "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp.")), "checked at -1")
+
+    stroke () = "{\"points\":[[1,2],[30,40]],\"width\":2,\"at\":5}"
+
+    stroked envelope = Drive::post (envelope, Drive::control ("board", Drive::revision (envelope, "board"), 0, stroke ()))
+
+    (** [WORKBENCH-BOARD] A finished stroke lands in its own host slice and re-sends only the board. *)
+    export strokes () =
+        after = stroked (Drive::started ())
+        expect (Drive::written after, "board:0")
+        expect (Drive::keys after, "board")
+        expect (Doc::number (Drive::stored after, "strokes"), 1)
+
+    lassoed first = Drive::post (stroked first, Drive::control ("board", Drive::revision (first, "board"), 1, "[0]"))
+
+    (** [UI-EFFECTS-RECOGNISE] A lasso asks for recognition of its strokes' slices; a host without it withdraws the lasso, and an old ticket is dropped. *)
+    export lasso () =
+        asked = lassoed (Drive::started ())
+        expect (Drive::tickets asked, "ink:1")
+        expect (Doc::flag (Drive::stored (Drive::post (asked, Drive::failed ("ink:1", "Unsupported"))), "lassoing"), false)
+        expect (Drive::keys (Drive::post (asked, Drive::done ("ink:0", "{\"text\":\"From hp.\"}"))), "")
+        expect (Doc::text (Drive::stored (Drive::post (asked, Drive::done ("ink:1", "{\"text\":\"Theorem t. For all p, p → p.\"}"))), "text"), "Theorem t. For all p, p → p.")
+
+    (** [LESSONS-FILES] [LESSONS-PROGRESS] The catalogue's lessons are read and listed; saved progress is restored. *)
+    export loading () =
+        listed = Drive::loaded ()
+        expect (length (Doc::items (Doc::field (Drive::stored listed, "entries"))), 7)
+        expect (Drive::keys listed, "root,catalogue,lesson")
+        restored = Drive::post (listed, Drive::done ("lessons:progress", "{}"))
+        expect (join (Doc::texts (Doc::field (Drive::stored restored, "tutor"), "completed"), ","), "and-swap/judge-wrong-order")
+
+    // Learn, then open the fourth lesson, `and-swap`.
+    opened () =
+        learning = Drive::post (Drive::loaded (), Drive::tap (Drive::started (), "root", 1))
+        Drive::post (learning, Drive::tap (Drive::loaded (), "catalogue", 3))
+
+    region id = "challenge:" + id
+
+    answered (envelope, id, text) = Drive::post (envelope, Drive::control (region id, Drive::revision (envelope, region id), 0, Drive::quoted text))
+
+    (** [LESSONS-MODE] Opening a lesson draws a region per challenge; typing an answer re-sends only that challenge. *)
+    export challenge () =
+        lesson = opened ()
+        expect (Doc::text (Drive::stored lesson, "lesson"), "and-swap")
+        expect (Drive::keys (answered (lesson, "state-swapped-goal", "q ∧ p")), region "state-swapped-goal")
+
+    marking envelope = match listGet (Doc::items (Doc::field (Doc::field (Drive::stored envelope, "tutor"), "tries"))) 0
+        Success found => Doc::text (Doc::field (found, "mark"), "kind")
+        Error _ => "none"
+
+    submitted (envelope, text) =
+        typed = answered (envelope, "state-swapped-goal", text)
+        Drive::post (typed, Drive::control (region "state-swapped-goal", Drive::revision (typed, region "state-swapped-goal"), 1, "null"))
+
+    (** [LESSONS-STATE] [LESSONS-PROGRESS] A right answer is marked by the kernel and saved as progress; a wrong one is marked wrong and saves nothing. *)
+    export submit () =
+        right = submitted (opened (), "q ∧ p")
+        expect (marking right, "correct")
+        expect (Drive::tickets right, "lessons:saved")
+        expect (Drive::written right, "lessons:progress")
+        wrong = submitted (opened (), "p ∧ q")
+        expect (marking wrong, "incorrect")
+        expect (Drive::tickets wrong, "")
+
+    (** [WORKBENCH-BOARD] In Learn, recognised handwriting goes into the answer that last had focus. *)
+    export inked () =
+        focused = answered (opened (), "state-swapped-goal", "q")
+        asked = Drive::post (stroked focused, Drive::control ("board", Drive::revision (focused, "board"), 1, "[0]"))
+        after = Drive::post (asked, Drive::done ("ink:1", "{\"text\":\"∧ p\"}"))
+        expect (Drive::keys after, region "state-swapped-goal")
+
+    (** [LESSONS-MODE] Open in the workbench appends the challenge as a declaration and shows Work. *)
+    export carry () =
+        lesson = opened ()
+        carried = Drive::post (lesson, Drive::control (region "prove-and-swap", Drive::revision (lesson, region "prove-and-swap"), 5, "null"))
+        expect (Doc::flag (Drive::stored carried, "learning"), false)
+        expect (startsWith (Doc::text (Drive::stored carried, "text"), "Theorem and_swap."), true)

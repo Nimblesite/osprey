@@ -1,0 +1,68 @@
+// [WORKBENCH-BOARD]: the same state transitions run in browser and native builds.
+namespace workbenchtests
+
+import workbench::Boards
+import ui::Doc
+
+(** Board state and persistence cases for [WORKBENCH-VERIFICATION]. *)
+module BoardCases
+    stroke () = ui::Stroke(strokePoints = [ui::Point(pointX = 12, pointY = 20), ui::Point(pointX = 18, pointY = 24)], strokeWidth = 3, strokeAt = 42)
+
+    working () = Boards::frame (Boards::notes (Boards::append (Boards::empty (), stroke ()), "Keep this calculation."), 40, -12, 150)
+
+    (** Clear requires an explicit confirmation, preserving the original working on cancel. *)
+    export clearing () =
+        original = working ()
+        expect (length (Boards::clear original).boardStrokes, 1)
+        armed = Boards::requestClear original
+        expect (armed.boardClearing, true)
+        expect (length (Boards::cancelClear armed).boardStrokes, 1)
+        cleared = Boards::clear armed
+        expect (length cleared.boardStrokes, 0)
+        expect (cleared.boardNotes, "Keep this calculation.")
+        expect (cleared.boardZoom, 150)
+        expect (cleared.boardClearing, false)
+
+    (** Undo removes only the last stroke and remains total when the board is empty. *)
+    export undoing () =
+        original = working ()
+        twice = Boards::append (original, stroke ())
+        undone = Boards::undo twice
+        expect (length undone.boardStrokes, 1)
+        expect (undone.boardNotes, original.boardNotes)
+        expect (undone.boardPanY, -12)
+        expect (length (Boards::undo (Boards::undo undone)).boardStrokes, 0)
+
+    restored source = match Boards::read source
+        Success board => Boards::write board
+        Error message => message
+
+    (** Reopening retains actual strokes, notes and framing; no destructive confirmation is restored. *)
+    export reopening () =
+        source = Boards::write (working ())
+        expect (restored source, source)
+        armed = Boards::requestClear (working ())
+        expect (restored (Boards::write armed), source)
+
+    refused source = match Boards::read source
+        Success _ => false
+        Error _ => true
+
+    (** Invalid saved boards are refused, including malformed strokes and framing. *)
+    export malformed () =
+        source = Boards::write (working ())
+        expect (refused "{}", true)
+        expect (refused "not JSON", true)
+        expect (refused (replace source "\"version\":1" "\"version\":2" ?: ""), true)
+        expect (refused (replace source "\"scale\":150" "\"scale\":0" ?: ""), true)
+        expect (refused (replace source "\"width\":3" "\"width\":0" ?: ""), true)
+
+    (** Runtime slices keep framing separate and store each stroke once under its stable index. *)
+    export slices () =
+        writes = Boards::sliceWrites ("board", Boards::append (working (), stroke ()))
+        expect (join (mapList (writes, \item => item.sliceKey), ","), "board,board:0,board:1")
+        first = listGet writes 0 ?: ui::SliceWrite(sliceKey = "", sliceText = "")
+        metadata = Doc::parse first.sliceText
+        expect (Doc::has (metadata, "strokes"), false)
+        expect (Doc::number (Doc::field (metadata, "view"), "scale"), 150)
+        expect (Doc::text (metadata, "notes"), "Keep this calculation.")

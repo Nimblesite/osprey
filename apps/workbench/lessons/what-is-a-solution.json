@@ -1,0 +1,91 @@
+{
+  "format": 1,
+  "slug": "what-is-a-solution",
+  "title": "What is a solution?",
+  "summary": "A solution meets every condition of a problem; a proof is the solution to the problem posed by a proposition.",
+  "stage": 1,
+  "minutes": 6,
+  "after": [
+    "what-is-a-proof"
+  ],
+  "blocks": [
+    {
+      "kind": "prose",
+      "text": "A problem asks for something and sets conditions that the answer must meet. A solution is a particular thing that meets all of those conditions. Meeting only some of them is not enough.\n\nFor example, the problem \"find a number x with x + 3 = 5\" has one condition. The number 2 is a solution, because 2 + 3 = 5. The number 7 is not, because 7 + 3 is 10."
+    },
+    {
+      "kind": "image",
+      "source": "media/what-is-a-solution/problem.jpg",
+      "alt": "On the left, the problem: find a number x with x + 3 = 5. On the right, the solution x = 2, checked by 2 + 3 = 5. Below both: a proposition is a problem, and a proof is its solution.",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "kind": "prose",
+      "text": "A proposition also poses a problem: find a proof of it. The proposition p ∧ q asks for evidence of p together with evidence of q. A proof containing both pieces of evidence is a solution.\n\nThis is why the workbench checks a proof against a stated proposition. The proof is the proposed solution, and the proposition gives the conditions it must meet."
+    },
+    {
+      "kind": "formula",
+      "formula": "p → q → p ∧ q"
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "state",
+        "id": "state-two-conditions",
+        "prompt": "Write the proposition that both p and q hold. Write p on the left and q on the right; the kernel requires this proposition, not an equivalent rearrangement.",
+        "variables": [
+          "p",
+          "q"
+        ],
+        "expected": "p ∧ q",
+        "hints": [
+          "Use ∧ for and.",
+          "The order is p first, then q."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "prove",
+        "id": "meet-both-conditions",
+        "prompt": "Prove that assumptions p and q together solve the problem p ∧ q. The first assumption is already given.",
+        "statement": "Theorem both. For all p q, p → q → p ∧ q.",
+        "given": [
+          "Assume hp : p."
+        ],
+        "solution": [
+          "Assume hq : q.",
+          "It suffices to show p and q.",
+          "From hp.",
+          "From hq."
+        ],
+        "hints": [
+          "Assume q, then split the conjunction into two goals.",
+          "Close the p goal with hp and the q goal with hq."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "judge",
+        "id": "judge-all-conditions",
+        "prompt": "Does this proof meet the conditions of its statement in the required order?",
+        "statement": "Theorem ordered. For all p q, p → q → q ∧ p.",
+        "steps": [
+          "Assume hp : p.",
+          "Assume hq : q.",
+          "We show both.",
+          "From hp.",
+          "From hq."
+        ],
+        "hints": [
+          "Splitting q ∧ p makes q the first goal.",
+          "Check which hypothesis the first From step uses."
+        ]
+      }
+    }
+  ]
+}

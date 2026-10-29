@@ -28,6 +28,25 @@ type Choice =
     choiceKey : string
     choiceLabel : string
 
+(** A per-line mark on an editor: the 1-based line, whether it is underlined and in which tone, a trailing badge and a note beside it; an empty badge or note draws none ([UI-COMPONENTS-EDITOR]). *)
+type Mark =
+    markLine : int
+    underlined : bool
+    markTone : Tone
+    markBadge : string
+    markNote : string
+
+(** One point of a stroke, in board points from the board's top-left corner. *)
+type Point =
+    pointX : int
+    pointY : int
+
+(** One finished stroke: its points in order, its width in points and the host clock in milliseconds when it ended ([UI-COMPONENTS-BOARD]). *)
+type Stroke =
+    strokePoints : List<Point>
+    strokeWidth : int
+    strokeAt : int
+
 (** A semantic component tree; `A` is the application's action union, so every control carries a typed action, never a callback ([UI-COMPONENTS]). *)
 type Node A =
     Text
@@ -134,6 +153,33 @@ type Node A =
         message : string
         visible : bool
         dismiss : A
+    Typeset
+        math : Math
+        spoken : string
+    Image
+        imageSource : string
+        imageAlt : string
+        imageWidth : int
+        imageHeight : int
+    Video
+        videoSource : string
+        videoPoster : string
+        videoCaptions : string
+        videoAlt : string
+        videoSeconds : int
+    Editor
+        editorLabel : string
+        editorValue : string
+        cursor : int
+        marks : List<Mark>
+        edit : A
+        place : A
+    Board
+        boardSlice : string
+        strokeCount : int
+        lassoEnabled : bool
+        stroke : A
+        lasso : A
 
 (** One tab: its key, label, symbol and page. *)
 type Tab A =
@@ -160,6 +206,12 @@ type Binding A =
     ChoiceInput
         action : A
     SizeInput
+        action : A
+    PlaceInput
+        action : A
+    StrokeInput
+        action : A
+    LassoInput
         action : A
 
 (** [UI-COMPONENTS-SPLITTER] The limits of an aside's splitter in points: a column starts `initial` wide and stays between `least` and `most`, and the host never narrows the pane beside it below `keep`. *)
@@ -297,3 +349,26 @@ module Ui
     (** [UI-COMPONENTS-CONTEXT-MENU] Secondary actions for content; the host exposes them by pointer and keyboard context-menu gestures. *)
     export contextMenu<A> : (Node<A>, List<Node<A>>) -> Node<A>
     contextMenu (content, actions) = ContextMenu(menuBody = content, menuActions = actions)
+
+    (** [UI-COMPONENTS-MATH] Typeset mathematics: the host lays out `math` with a mathematics face and exposes `spoken` to assistive technology. *)
+    export math<A> : (Math, string) -> Node<A>
+    math (tree, text) = Typeset(math = tree, spoken = text)
+
+    (** [LESSONS-FRAMEWORK] A still picture with required alternative text, scaled to fit its width and keeping its aspect ratio; it carries no binding. *)
+    export image<A> : (string, string, int, int) -> Node<A>
+    image (source, alt, width, height) = Image(imageSource = source, imageAlt = alt, imageWidth = width, imageHeight = height)
+
+    (** [LESSONS-FRAMEWORK] A film the person starts, showing its poster and a play control until then; captions are on by default and it never autoplays, and it carries no binding. *)
+    export video<A> : (string, string, string, string, int) -> Node<A>
+    video (source, poster, captions, alt, seconds) = Video(videoSource = source, videoPoster = poster, videoCaptions = captions, videoAlt = alt, videoSeconds = seconds)
+
+    (** [UI-COMPONENTS-EDITOR] A multiline text editor with per-line marks and a cursor: each edit delivers the whole text to `edit`, each caret move delivers its character offset to `place`. *)
+    export editor<A> : (string, string, int, List<Mark>, A, A) -> Node<A>
+    editor (label, value, cursor, marks, edit, place) = Editor(editorLabel = label, editorValue = value, cursor = cursor, marks = marks, edit = edit, place = place)
+
+    (** A mark on 1-based `line`: an underline in `tone` when `underlined`, with a trailing `badge` and a `note`; empty text draws none. *)
+    export mark (line, underlined, tone, badge, note) = Mark(markLine = line, underlined = underlined, markTone = tone, markBadge = badge, markNote = note)
+
+    (** [UI-COMPONENTS-BOARD] A writable board drawing the `count` strokes the host holds in the slices `slice:0` to `slice:<count - 1>`, each a stroke's JSON; each finished stroke is delivered once to `stroke`, and a lasso, offered only when `lassoing`, delivers the indices of the strokes it encloses to `lasso`. *)
+    export board<A> : (string, int, bool, A, A) -> Node<A>
+    board (slice, count, lassoing, stroke, lasso) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, stroke = stroke, lasso = lasso)

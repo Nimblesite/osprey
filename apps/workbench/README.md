@@ -2,7 +2,7 @@
 
 A blackboard that checks. Mathematicians and scientists write a theorem the way they would on a board, in symbols or in sentences, write the proof as the steps they would say, and watch each step checked as it is written. The proof is read back typeset, like a page of a paper, and a scratch board beside it takes chalk strokes that can become checked lines. Nobody writes code: the Osprey proof file is generated, shown on request, and saved.
 
-Contract: [spec 0051](../../docs/specs/applications/0051-ProofWorkbench.md). Delivery: [plan 0042](../../docs/plans/0042-proof-workbench.md). Status: **specified; no implementation started.** Verdicts come from the `lean4` discipline of [spec 0049](../../docs/specs/language/0049-DependentTypesAndProofs.md); until it ships every declaration shows as unchecked, and the workbench never fills a badge on its own.
+Contract: [spec 0051](../../docs/specs/applications/0051-ProofWorkbench.md). Delivery: [plan 0042](../../docs/plans/0042-proof-workbench.md). Status: **proof-language modules implemented; application and hosts in progress.** Verdicts come from the `lean4` discipline of [spec 0049](../../docs/specs/language/0049-DependentTypesAndProofs.md); until it ships every declaration shows as unchecked, and the workbench never fills a badge on its own.
 
 ```
 Theorem and_swap. For all p q, p ∧ q → q ∧ p.
@@ -26,6 +26,8 @@ theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by
     exact hq
     exact hp
 ```
+
+The browser and native app share the Osprey application built on `@osprey/native`: one store, one update function, one proof model and the same typed UI trees. Hosts render and execute platform capabilities. The React design study is a reference artifact, not application logic.
 
 ## Layout
 

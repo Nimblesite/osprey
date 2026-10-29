@@ -15,7 +15,8 @@ export interface WorkspaceDocument {
 function csp(document: WorkspaceDocument): string {
   return [
     "default-src 'none'",
-    `img-src ${document.cspSource} data:`,
+    `img-src ${document.cspSource} data: blob:`,
+    `media-src ${document.cspSource} data: blob:`,
     `style-src ${document.cspSource} 'unsafe-inline'`,
     `script-src 'nonce-${document.nonce}'`,
     "connect-src 'none'",

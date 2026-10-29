@@ -63,3 +63,11 @@ Verification sources are retained in `prototype/checks/`. They use Osprey’s ex
 - The mathematical audience has not participated in a usability study. Independent agent critiques help find defects but do not establish that mathematicians will love the product.
 - The video and screenshot set were refreshed after the latest review fixes.
 - Repository-wide CI and Deslop were not run. Deslop tools/CLI were unavailable in this session. Verification was scoped to design artifacts; production compiler and application source were not modified here.
+
+## Production integration checkpoint · 29 October 2026
+
+The subsequent application work uses `@osprey/native`; the React study remains a visual reference. Osprey owns proof logic, board transitions and persistence. The shared browser renderer now supports typed MathML, marked editors, separate Unicode caret bindings, application palette/motion tokens and a canvas board with textured chalk. Board runtime data uses a base framing/notes slice plus separately indexed stroke slices; the complete workspace save retains the whole board. Opening a generated-source pane must remain an explicit choice.
+
+Evidence at this checkpoint: 44 native-framework cases passed under ARC. Forty focused host checks passed, including real webview pointer drawing through a background render, one event per completed stroke, retained text-control provenance and palette retention after dispatch. Earlier compiled SDK browser checks verified actual Osprey-to-WASM MathML and Unicode editor/caret behavior. The shared board model passed its initial GC/ARC cases before the ongoing application modules were added. Verification scripts and logs are under `vscode-extension/test/suite/` and `target/workbench-*.log`; these are component checks, not application acceptance.
+
+Claude owns the application/store/checker/lesson integration; TMC carries the interface and design guidance. Full application entry points, host media/font packaging, complete screens, native-host execution and the phase exit gates remain unfinished. The latest application check is blocked by a `Checks` declaration collision in the actively edited store/tutor modules. No complete application sign-off is claimed by this checkpoint.

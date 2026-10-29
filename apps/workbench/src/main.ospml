@@ -1,0 +1,6 @@
+// The workbench's entry: one host frame on standard input, one envelope out ([VSCODE-SDK-WASM]).
+namespace workbench
+
+import workbench::App
+
+main () = print (App::respond (input ()))

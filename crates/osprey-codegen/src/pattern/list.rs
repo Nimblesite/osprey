@@ -98,7 +98,13 @@ fn bind_list_arm(
         );
         let tail_owner =
             crate::collections::list_owner(crate::collections::tagged_elem(list_val).as_deref());
-        let v = Value::handle(tail, tail_owner).with_payload_owner(list_val.payload_owner.clone());
+        let mut v =
+            Value::handle(tail, tail_owner).with_payload_owner(list_val.payload_owner.clone());
+        // The tail is a list of the same type. Without it a self-recursive
+        // `walk rest` keyed a second instantiation with no element type, and a
+        // field two records declare was quarantined on its elements
+        // ([`crate::monofn`], [TYPE-FIELD-ACCESS-NON-RECORD]).
+        v.inferred_type.clone_from(&list_val.inferred_type);
         // `osprey_list_drop` returns +1 on EVERY path (fresh view or retained
         // alias, plan 0011 M4a), so the arm owns it and must drop it at region
         // end — without this a `[head, ...tail]` recursion leaks one list

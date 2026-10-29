@@ -1,0 +1,83 @@
+// [LESSONS-INTEGRITY]: every shipped lesson reads, every solution checks,
+// every expected formula is a proposition, every judged proof is decided,
+// and every media file exists.
+namespace workbenchtests
+
+import workbench::Lessons
+import workbench::Blocks
+import workbench::Catalogues
+import workbench::Judge
+
+(** The integrity case of [LESSONS-INTEGRITY] over the files under `apps/workbench/lessons/`. *)
+module IntegrityCases
+    root () = "../lessons/"
+
+    catalogue () = match readFile (root () + "catalogue.json")
+        Error _ => Error(message = "catalogue.json cannot be read")
+        Success text => Catalogues::read text
+
+    right mark = match mark
+        workbench::Correct _ => true
+        _ => false
+
+    decided mark = match mark
+        workbench::Unfinished _ => false
+        _ => true
+
+    said mark = match mark
+        workbench::Correct text => text
+        workbench::Incorrect at text => "step ${at}: " + text
+        workbench::Unfinished text => text
+
+    // The problem with one challenge, or empty.
+    challenge (slug, item) = match item.challengeTask
+        workbench::ProveTask task => ruled (right (Judge::prove (task, join (task.provedSolution, "\n"))), slug, item, "its solution is not checked: " + said (Judge::prove (task, join (task.provedSolution, "\n"))))
+        workbench::StateTask task => ruled (right (Judge::written (task, task.statedExpected)), slug, item, "its expected formula is refused: " + said (Judge::written (task, task.statedExpected)))
+        workbench::JudgeTask task => ruled (decided (Judge::rule (task, true)), slug, item, "the kernel cannot decide its proof: " + said (Judge::rule (task, true)))
+
+    ruled (fine, slug, item, problem) = match fine
+        true => ""
+        false => slug + "/" + item.challengeId + ": " + problem
+
+    solved (slug, item) = match item.challengeTask
+        workbench::ProveTask task => match isEmpty task.provedSolution
+            true => slug + "/" + item.challengeId + ": a prove challenge needs a solution"
+            false => challenge (slug, item)
+        _ => challenge (slug, item)
+
+    media block = match block
+        workbench::Picture still => [still.stillSource]
+        workbench::Clip film => [film.filmSource, film.filmPoster, film.filmCaptions]
+        _ => []
+
+    missing (slug, path) = match readFile (root () + path)
+        Success _ => ""
+        Error _ => slug + ": " + path + " is missing"
+
+    afterProblem (slugs, slug, other) = match listContains (slugs, other)
+        true => ""
+        false => slug + ": `after` names `" + other + "`, which is not in the catalogue"
+
+    checked (slugs, lesson, slug) = match lesson.lessonSlug == slug
+        false => [slug + ": the file's slug is `" + lesson.lessonSlug + "`"]
+        true => listConcat (listConcat (mapList (lesson.lessonAfter, \other => afterProblem (slugs, slug, other)), mapList (Blocks::challenges lesson.lessonBlocks, \item => solved (slug, item))), mapList (foldList (lesson.lessonBlocks, [], \(paths, block) => listConcat (paths, media block)), \path => missing (slug, path)))
+
+    lessonProblems (slugs, slug) = match readFile (root () + slug + ".json")
+        Error _ => [slug + ".json cannot be read"]
+        Success text => match Lessons::read text
+            Error problem => [slug + ": " + problem]
+            Success lesson => checked (slugs, lesson, slug)
+
+    (** Every problem found in the shipped lessons, in catalogue order; the list is empty when they all hold. *)
+    export problems () = match catalogue ()
+        Error problem => ["catalogue: " + problem]
+        Success found => filterList (foldList (found.catalogueSlugs, [], \(all, slug) => listConcat (all, lessonProblems (found.catalogueSlugs, slug))), \problem => !isEmpty problem)
+
+    (** [LESSONS-INTEGRITY]: no shipped lesson breaks a rule, and the curriculum has its seven lessons. *)
+    export shipped () =
+        expect (join (problems (), "\n"), "")
+        expect (count (), 7)
+
+    count () = match catalogue ()
+        Success found => length found.catalogueSlugs
+        Error _ => 0

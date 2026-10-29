@@ -9,6 +9,10 @@ import workbenchtests::CorpusCases
 import workbenchtests::GoalCases
 import workbenchtests::EmitCases
 import workbenchtests::StatementCases
+import workbenchtests::BoardCases
+import workbenchtests::ThemeCases
+import workbenchtests::TypesetCases
+import workbenchtests::VerdictCases
 
 test ("every row of the notation table expands to its symbol", NotationCases::everyRow)
 test ("expanding every expanded row again changes nothing", NotationCases::idempotentRow)
@@ -22,11 +26,19 @@ test ("subscript digits chain into a run", NotationCases::subscripts)
 test ("text without an abbreviation is unchanged and expanding twice changes nothing", NotationCases::total)
 test ("the palette lists the rows that start with what was typed", NotationCases::palette)
 import workbenchtests::FormulaCases
+import workbenchtests::LessonCases
+import workbenchtests::IntegrityCases
 
 test ("every sentence form reads to the same formula as its symbols", FormulaCases::sentences)
 test ("precedence and grouping read as the formula table says", FormulaCases::precedence)
 test ("a malformed formula names the column and what was expected", FormulaCases::faults)
 test ("formula equality is structural", FormulaCases::equality)
+test ("formula layouts preserve grouping and binder scope", FormulaCases::typesetting)
+test ("clearing a board requires confirmation and preserves notes and framing", BoardCases::clearing)
+test ("undo removes only the last stroke and is total on an empty board", BoardCases::undoing)
+test ("saved boards retain strokes notes and framing without restoring confirmation", BoardCases::reopening)
+test ("invalid saved boards are refused without invented values", BoardCases::malformed)
+test ("board runtime slices retain framing and write each stroke separately", BoardCases::slices)
 
 test ("every written form of the step table reads to its step", StepCases::written)
 test ("the ten near-misses of the step table stay unknown", StepCases::nearMisses)
@@ -52,3 +64,33 @@ test ("and_swap emits byte-identical to its golden", EmitCases::andSwap)
 test ("an unknown step becomes a sorry with the text as a comment", EmitCases::holes)
 test ("leading assumptions become binders", EmitCases::binders)
 test ("two proofs share one header and are separated by a blank line", EmitCases::layout)
+test ("body text and source roles reach 4.5:1 on every surface in both appearances", ThemeCases::bodyText)
+test ("selection and diagnostic surfaces keep their foregrounds at 4.5:1", ThemeCases::states)
+test ("the control outline reaches 3.0:1 on every surface", ThemeCases::outlines)
+test ("chalk strokes reach 4.5:1 against the board", ThemeCases::chalkOnBoard)
+test ("every theme holds each colour token exactly once", ThemeCases::tokens)
+
+test ("every generated math tree flattens to its minimal Unicode formula", TypesetCases::corpus)
+test ("and_swap has the exact binder and operator math tree", TypesetCases::andSwap)
+test ("a negated conjunction has a math parenthesis", TypesetCases::negatedConjunction)
+test ("only the antecedent of a nested implication has a math parenthesis", TypesetCases::conditionalAntecedent)
+
+test ("the prelude is admitted by the kernel", VerdictCases::prelude)
+test ("and_swap is checked by the kernel", VerdictCases::andSwap)
+test ("swapping the last two steps is rejected at the step the engine refuses", VerdictCases::swapped)
+test ("one passing proof per row of the goal table is checked", VerdictCases::rows)
+test ("the goal engine and the kernel agree on every right and wrong proof", VerdictCases::agreement)
+test ("an unknown step is unchecked with its sentence quoted", VerdictCases::unknownStep)
+test ("a proof that stops with a goal open is unchecked", VerdictCases::openGoal)
+test ("a step after the proof is complete is unchecked", VerdictCases::surplus)
+test ("an undeclared atom is rejected on the statement", VerdictCases::undeclaredAtom)
+test ("a kernel-checked answer is right, a refused one is wrong at its line, an unknown sentence is unfinished", LessonCases::prove)
+test ("a stated formula is right when the kernel finds it the same proposition by definition", LessonCases::stated)
+test ("a judgement is right exactly when it agrees with the kernel's verdict", LessonCases::judge)
+test ("wrong submissions count attempts and reveal hints up to their number", LessonCases::attempts)
+test ("the solution is offered after three wrong attempts and counts only once submitted", LessonCases::reveal)
+test ("editing an answer clears its mark and an empty answer cannot be submitted", LessonCases::clearing)
+test ("progress saves only completed challenges and unreadable progress is none", LessonCases::progress)
+test ("a lesson with every block and challenge kind reads in order", LessonCases::everyBlock)
+test ("each broken lesson form is refused with its path and rule", LessonCases::refusals)
+test ("every shipped lesson reads, its solutions check, its questions are decided and its media exist", IntegrityCases::shipped)

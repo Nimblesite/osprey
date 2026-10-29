@@ -1,0 +1,16 @@
+WEBVTT
+
+00:00.350 --> 00:13.000
+These are the incompressible Navier-Stokes equations. They describe a fluid's velocity u, pressure p, viscosity, and an external force f. The second equation says the flow does not compress.
+
+00:13.400 --> 00:23.127
+Some things are proved. In nineteen thirty four, Leray showed that weak solutions exist for all time. In two dimensions, smooth solutions last for ever.
+
+00:23.527 --> 00:30.554
+In three dimensions, smooth solutions exist for a short time. They last for ever if the starting flow is small enough.
+
+00:30.954 --> 00:42.908
+The open question is whether every smooth starting flow in three dimensions stays smooth for ever, or whether some flow blows up in finite time. This is one of the Clay Millennium Prize problems.
+
+00:43.308 --> 00:46.777
+Nobody has proved it. The kernel will not pretend they have.

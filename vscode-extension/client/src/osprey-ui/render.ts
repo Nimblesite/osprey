@@ -6,12 +6,20 @@
 import { symbolIcon } from "./icons";
 import { record, type Regions, type RegionSnapshot } from "./protocol";
 import { themeStyle } from "./theme";
+import { escapeHtml } from "./html";
+import { renderMath } from "./math";
+import { renderEditor } from "./editor";
+import { renderBoard } from "./board";
+import { renderImage, renderVideo } from "./media";
+export { escapeHtml } from "./html";
 
 export interface RenderOptions {
   readonly regions: Regions;
   readonly assetUri?: string;
   readonly theme?: unknown;
   readonly maxNodes?: number;
+  readonly slices?: ReadonlyMap<string, string>;
+  readonly resolveAsset?: (source: string) => string;
 }
 
 interface Context extends RenderOptions {
@@ -43,11 +51,6 @@ function flag(node: Record<string, unknown>, key: string): boolean {
 
 function items(node: Record<string, unknown>, key: string): unknown[] {
   return Array.isArray(node[key]) ? node[key] : [];
-}
-
-/** Escape text and attribute values; the renderer never interpolates raw application strings. */
-export function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function oneOf(value: string, allowed: Set<string>, fallback: string): string {
@@ -83,6 +86,18 @@ function textNode(node: Record<string, unknown>): string {
   const role = oneOf(text(node, "role"), ROLES, "body");
   const tone = oneOf(text(node, "tone"), TONES, "primary");
   return `<p class="osp-text osp-role-${role} osp-tone-${tone}">${escapeHtml(text(node, "text"))}</p>`;
+}
+
+function math(node: Record<string, unknown>, ctx: Context): string {
+  return renderMath(node.math, node.spoken, (depth) => consume(ctx, ctx.depth + depth));
+}
+
+function editor(node: Record<string, unknown>, ctx: Context): string {
+  return renderEditor(node, control(ctx, node, "string", text(node, "value")), `editor-${ctx.region}-${number(node, "event")}-feedback`);
+}
+
+function board(node: Record<string, unknown>, ctx: Context): string {
+  return renderBoard(node, eventAttrs(ctx, node), ctx.slices);
 }
 
 function evidence(node: Record<string, unknown>): string {
@@ -285,6 +300,11 @@ function alert(node: Record<string, unknown>, ctx: Context): string {
 
 const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Context) => string>> = {
   text: textNode,
+  math,
+  editor,
+  board,
+  image: (node, ctx) => renderImage(node, ctx.resolveAsset),
+  video: (node, ctx) => renderVideo(node, ctx.resolveAsset),
   evidence,
   badge,
   label,
@@ -318,12 +338,16 @@ const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Co
 /** Render one protocol node; an unknown component is a protocol defect and throws. */
 export function renderNode(value: unknown, ctx: Context): string {
   if (!record(value) || typeof value.kind !== "string") throw new Error("Native component is not an object with a kind");
-  if (ctx.depth > MAX_DEPTH) throw new Error("Native component tree is too deep");
-  ctx.budget.nodes += 1;
-  if (ctx.budget.nodes > (ctx.maxNodes ?? DEFAULT_MAX_NODES)) throw new Error("Native component tree is too large");
+  consume(ctx, ctx.depth);
   const renderer = RENDERERS[value.kind];
   if (!renderer) throw new Error(`Unknown native component: ${value.kind}`);
   return renderer(value, ctx);
+}
+
+function consume(ctx: Context, depth: number): void {
+  if (depth > MAX_DEPTH) throw new Error("Native component tree is too deep");
+  ctx.budget.nodes += 1;
+  if (ctx.budget.nodes > (ctx.maxNodes ?? DEFAULT_MAX_NODES)) throw new Error("Native component tree is too large");
 }
 
 function rootContext(options: RenderOptions, root: RegionSnapshot): Context {

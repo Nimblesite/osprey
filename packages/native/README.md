@@ -24,6 +24,7 @@ flowchart LR
 | --- | --- |
 | `src/base.ospml` | `Pick::either` and `Lists`: a stable comparator sort, slices, flattening, distinctness, positions and `find`, `any`, `all` over Osprey's built-in list functions |
 | `src/doc.ospml` | `Doc`: total readers and member builders over the built-in `Json`, for the framework's own trusted state |
+| `src/math.ospml` | `Math` and `Maths::encode`/`Maths::decode`: typed mathematical layout trees and their protocol round trip ([UI-COMPONENTS-MATH]) |
 | `src/node.ospml` | `Node<A>`, `Tab<A>`, `Row<A>`, `Binding<A>`, the tone, role, side and axis unions, `Splitters` and the `Ui` constructors ([UI-COMPONENTS]) |
 | `src/encode.ospml` | `Encode::walk`: one depth-first walk that encodes a region and collects its bindings in ordinal order ([UI-PROTOCOL]) |
 | `src/message.ospml` | `Message<A>`, `Events::bind` and `Messages::route`: typed delivery of taps, text, flags, choices, sizes, completions and lifecycle ([UI-EVENTS]) |
@@ -78,9 +79,9 @@ Every stateful or reorderable node has a stable semantic key, unique within its 
 | Group | Components |
 | --- | --- |
 | Structure | `Split` (navigation columns), `Tabs`, `Screen` (title, subtitle, toolbar), `Section` (title, footer), `Aside` (a pane with a column on its leading or trailing side, divided by a splitter whose width lives in the store, [UI-COMPONENTS-SPLITTER]), `Stack`, `Layer` (children drawn over one another), `Slot`, `Spacer`, `Divider` |
-| Content | `Text` with a semantic text role and tone, `Label` (text and symbol), `Icon` (a large decorative symbol), `Link` (a labelled `https` page the host opens in the browser and refuses any other address), `Evidence` (label/value line), `Badge` (label, symbol, tone), `Segments` strip, `Empty` state, `Progress`, `Brand`, `Swatch` |
+| Content | `Text` with a semantic text role and tone, `Label` (text and symbol), `Icon` (a large decorative symbol), `Link` (a labelled `https` page the host opens in the browser and refuses any other address), `Evidence` (label/value line), `Badge` (label, symbol, tone), `Segments` strip, `Empty` state, `Progress`, `Brand`, `Swatch`, `Typeset` mathematics with spoken text ([UI-COMPONENTS-MATH]), `Image` and `Video` media ([LESSONS-FRAMEWORK]) |
 | Collections | `Rows` with stable row keys, selection and per-row content; a row may lead with a symbol and name a group, and consecutive rows of one group share its heading |
-| Controls | `Button` with role and enabled flag, `Field` (secure or multiline, committing on edit or submit), `Toggle`, `Picker`, `Disclosure` (title and revealed children; the expansion is a flag binding taken before the children's ordinals) |
+| Controls | `Button` with role and enabled flag, `Field` (secure or multiline, committing on edit or submit), `Toggle`, `Picker`, `Disclosure` (title and revealed children; the expansion is a flag binding taken before the children's ordinals), `Editor` with per-line marks and cursor placement ([UI-COMPONENTS-EDITOR]), `Board` with host-held strokes and an optional lasso ([UI-COMPONENTS-BOARD]) |
 | Presentation | `Alert` bound to a typed dismissal action |
 
 Components are semantic, so a host presents each one where it is placed:
@@ -98,9 +99,31 @@ An `Aside` carries its column's width in points and a size binding, so the width
 
 During a drag the host previews the width within the limits Osprey sent and the room the window leaves. When the drag ends it sends the width once, as a whole number of points, and Osprey's answer replaces the preview. A size binding accepts only an integer, and `Events::bind` clamps it to the limits before the application's `update` sees it, so an application never stores a width outside them. On a phone an aside stacks its column under its pane, so there is nothing to drag.
 
+### Typeset mathematics [UI-COMPONENTS-MATH]
+
+`Ui::math (tree, spoken)` produces a `Typeset` node carrying a structured `Math` tree and accessible Unicode text. Its protocol kind is `math`, with the tree in `math` and the accessible text in `spoken`; it consumes no event ordinal. `Math` supports symbols, numbers, sequences (`Seq`, since `Row` already names a selectable row), scripts, fractions, radicals, binders, operators, parentheses and big operators. A native host lays out the tree with a mathematics face, choosing STIX Two Math, then Latin Modern Math, then the system face. Web hosts render the same tree as MathML. Every host exposes `spoken` to assistive technology.
+
+`Maths::encode` turns a tree into its protocol form and `Maths::decode` is its exact inverse, so `decode (encode tree)` is the same tree and a lesson's `math` block is read back rather than trusted. An unknown `kind`, a missing child, a non-object node or a non-string `text`/`symbol` is refused with an error naming the fault.
+
+### Media [LESSONS-FRAMEWORK]
+
+`Ui::image (source, alt, width, height)` is a still picture with required alternative text, scaled to fit its width while keeping its aspect ratio; `alt` is what assistive technology reads. Its protocol kind is `image` with the fields `source`, `alt`, `width` and `height`, and it consumes no event ordinal. `Ui::video (source, poster, captions, alt, seconds)` is a film the person starts: it shows its poster and a play control until then, never autoplays, turns captions on by default and prints the length on the poster. Its protocol kind is `video` with `source`, `poster`, `captions` (WebVTT), `alt` and `seconds`. Neither component carries a binding: playing a video is the host's business and never reaches `update`, and the host may refuse a source outside the application's bundled files.
+
+### Editor [UI-COMPONENTS-EDITOR]
+
+`Ui::editor (label, value, cursor, marks, edit, place)` carries a multiline editor's label, whole text, cursor offset and per-line marks. Its text binding takes the next depth-first ordinal and its cursor binding takes the one immediately after. The host sends the whole text after each edit and sends cursor offsets in characters. A cursor value arrives as `Placed`; the framework clamps a negative offset to zero and refuses a non-integer value.
+
+Each `Ui::mark (line, underlined, tone, badge, note)` names a 1-based line. The host draws its underline in the given tone when `underlined` is true, a trailing `badge`, and its `note`; empty badge or note text draws nothing.
+
+### Board [UI-COMPONENTS-BOARD]
+
+`Ui::board (slice, count, lassoing, stroke, lasso)` carries the name of the host slice holding the board's strokes, the number to draw, whether the lasso is enabled, and the two bindings. The stroke binding takes the next ordinal and the lasso binding takes the one after it. The host draws strokes in `chalk` on the `board` token and sends each finished stroke once as `{"points":[[x,y],...],"width":w,"at":t}`. Points are ordered pairs of non-negative integer coordinates; the framework refuses empty points and malformed pairs.
+
+When `lassoing` is true, the host offers a lasso and sends the enclosed strokes as a JSON array of non-negative integer indices. These arrive as `Stroked` and `Lassoed` messages respectively. The host must not send an unfinished stroke more than once or invent stroke indices.
+
 ## Bindings and events [UI-EVENTS]
 
-A control's binding is a **typed action value**, not a callback or an event dictionary. `Button` carries an `A`; `Field`, `Toggle`, `Picker`, `Tabs` and `Rows` selection carry an `A` that names the binding, and the framework delivers `Entered`, `Switched`, `Chose` or `Act` messages with the bound action and a value of the matching type. An `Aside`'s splitter delivers `Resized` with a width in points. A text binding can only produce a text message, a toggle only a boolean and a splitter only an integer.
+A control's binding is a **typed action value**, not a callback or an event dictionary. `Button` carries an `A`; `Field`, `Toggle`, `Picker`, `Tabs` and `Rows` selection carry an `A` that names the binding, and the framework delivers `Entered`, `Switched`, `Chose` or `Act` messages with the bound action and a value of the matching type. An `Aside`'s splitter delivers `Resized` with a width in points. An `Editor` cursor delivers `Placed` with a character offset; a `Board` delivers `Stroked` with a finished stroke and `Lassoed` with the selected stroke indices. A text binding can only produce a text message, a toggle only a boolean and a splitter, cursor, stroke or lasso only its matching value kind.
 
 When encoding a region, the framework assigns each binding an opaque ID: region key, region revision and depth-first ordinal. The host returns only that ID and a bounded value. To resolve an event, the framework renders the named region from the current store, checks the revision, finds the binding by ordinal, checks the value kind and produces the typed message. Events for removed regions, stale revisions, unknown ordinals or mismatched value kinds are rejected with a visible diagnostic. The host cannot construct an arbitrary action, and a binding ID is never an authorization token.
 
@@ -114,11 +137,19 @@ When encoding a region, the framework assigns each binding an opaque ID: region 
 
 Updates request platform work by returning `Request` values in their `Step`: a `Capability` with an application-chosen ticket. The runtime encodes them into the envelope; the host completes each with a `completed` event carrying the ticket, and the application ignores completions whose ticket no longer matches, so stale, cancelled and superseded work never overwrites newer state. Bulk results land in host-held slices named by the request, so large outputs never travel back through an event.
 
-`Capability` is a typed union whose variants are mechanical primitives with explicit bounds chosen by Osprey: `Run` (shell-free executable, arguments, deadline, output limit, optional property-list conversion), `ListDirectories`, `ReadPropertyLists`, `ReadTexts`, `Fingerprint`, `StoreRead`, `StoreWrite`, `StoreList`, `StoreDelete` (app-private files), `Http` (method, URL, headers, body, response limit, deadline), `RunningApplications`, `ChooseFile`, `ChooseFolder`, `SaveFile`, `Reveal`, `OpenSettings` and `Cancel`. Adapters return typed results or typed errors; they make no application decision, choose no paths beyond what Osprey named and never retry automatically. Rendering never starts work: only an explicit action, lifecycle message or completion produces requests.
+`Capability` is a typed union whose variants are mechanical primitives with explicit bounds chosen by Osprey: `Run` (shell-free executable, arguments, deadline, output limit, optional property-list conversion), `ListDirectories`, `ReadPropertyLists`, `ReadTexts`, `Fingerprint`, `StoreRead`, `StoreWrite`, `StoreList`, `StoreDelete` (app-private files), `Http` (method, URL, headers, body, response limit, deadline), `RunningApplications`, `ChooseFile`, `ChooseFolder`, `SaveFile`, `Reveal`, `OpenSettings`, `Cancel` and `Recognise`. Adapters return typed results or typed errors; they make no application decision, choose no paths beyond what Osprey named and never retry automatically. Rendering never starts work: only an explicit action, lifecycle message or completion produces requests.
+
+### Recognition [UI-EFFECTS-RECOGNISE]
+
+`Recognise` names the host-held slices that hold the strokes to read and a result limit, so stroke points never travel through the opaque state. Its request has kind `recognise`, a `slices` array of slice keys (each holding one stroke in the board's stroke format, as `Boards::strokeWrite` writes it) and `limit`. The host performs handwriting recognition on those strokes and completes with `{"text": "..."}`, the text bounded by that limit. A host without handwriting support completes with an error whose message is exactly `Unsupported`; the application presents that state as a disabled board lasso.
 
 ## Theme and motion [UI-THEME]
 
 Semantic colour tokens, spacing, shapes and motion durations are Osprey values. The application's theme is sent once with the first envelope; the host resolves roles against the current appearance and never chooses raw colours itself. Contrast policy is computed and tested in Osprey (`Contrast::ratio`, WCAG 2 relative luminance). The system Reduce Motion preference always wins in the host.
+
+### Board tokens [UI-THEME-BOARD]
+
+`Themes::boardTokens` names the two board colours in order: `board` for the slate and `chalk` for the strokes. A theme without those tokens draws a board on `canvas` in `primary`.
 
 ## Protocol [UI-PROTOCOL]
 

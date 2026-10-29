@@ -11,11 +11,45 @@ import ui::Requests
 import ui::Signals
 import ui::Splitters
 import ui::Themes
+import ui::Maths
 import uitests::Probes
+import uitests::AdditionCases
 
 type Pair =
     name : string
     rank : int
+
+// [UI-COMPONENTS-MATH]: each layout variant preserves its semantic children.
+mathSamples () = [
+    { layout = ui::Sym "x", encoded = "{\"kind\":\"sym\",\"text\":\"x\"}" },
+    { layout = ui::Num "2", encoded = "{\"kind\":\"num\",\"text\":\"2\"}" },
+    { layout = ui::Seq [], encoded = "{\"kind\":\"seq\",\"items\":[]}" },
+    { layout = ui::Sup (ui::Sym "x") (ui::Num "2"), encoded = "{\"kind\":\"sup\",\"base\":{\"kind\":\"sym\",\"text\":\"x\"},\"script\":{\"kind\":\"num\",\"text\":\"2\"}}" },
+    { layout = ui::Sub (ui::Sym "x") (ui::Num "2"), encoded = "{\"kind\":\"sub\",\"base\":{\"kind\":\"sym\",\"text\":\"x\"},\"script\":{\"kind\":\"num\",\"text\":\"2\"}}" },
+    { layout = ui::Frac (ui::Num "2") (ui::Sym "x"), encoded = "{\"kind\":\"frac\",\"top\":{\"kind\":\"num\",\"text\":\"2\"},\"bottom\":{\"kind\":\"sym\",\"text\":\"x\"}}" },
+    { layout = ui::Root (ui::Sym "x"), encoded = "{\"kind\":\"root\",\"body\":{\"kind\":\"sym\",\"text\":\"x\"}}" },
+    { layout = ui::Binder "∀" [ui::Sym "x"] (ui::Sym "x"), encoded = "{\"kind\":\"binder\",\"symbol\":\"∀\",\"names\":[{\"kind\":\"sym\",\"text\":\"x\"}],\"body\":{\"kind\":\"sym\",\"text\":\"x\"}}" },
+    { layout = ui::Op "=" (ui::Sym "x") (ui::Num "2"), encoded = "{\"kind\":\"op\",\"symbol\":\"=\",\"left\":{\"kind\":\"sym\",\"text\":\"x\"},\"right\":{\"kind\":\"num\",\"text\":\"2\"}}" },
+    { layout = ui::Paren (ui::Sym "x"), encoded = "{\"kind\":\"paren\",\"body\":{\"kind\":\"sym\",\"text\":\"x\"}}" },
+    { layout = ui::Big "∑" (ui::Num "0") (ui::Sym "n") (ui::Sym "x"), encoded = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"0\"},\"upper\":{\"kind\":\"sym\",\"text\":\"n\"},\"body\":{\"kind\":\"sym\",\"text\":\"x\"}}" },
+]
+
+test ("mathematics encodes every layout variant without flattening", \() =>
+    forEachList (mathSamples (), \sample => expect (Doc::write (Maths::encode sample.layout), sample.encoded)))
+
+test ("mathematics keeps accessibility text and consumes no control ordinal", \() =>
+    built = Ui::column [Ui::button ("Before", "", Increment), Ui::math (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)]
+    walked = Encode::walk ([], built)
+    doc = listGet walked.nodes 0 ?: JsonNull
+    children = Doc::items (Doc::field (doc, "children"))
+    maths = listGet children 1 ?: JsonNull
+    expect (Doc::text (maths, "kind"), "math")
+    expect (Doc::text (maths, "spoken"), "α < 2 \"quoted\"\n")
+    expect (Doc::text (Doc::field (maths, "math"), "kind"), "seq")
+    expect (length (Doc::items (Doc::field (Doc::field (maths, "math"), "items"))), 3)
+    expect (Doc::has (maths, "event"), false)
+    expect (Doc::number (listGet children 2 ?: JsonNull, "event"), 1)
+    expect (length walked.bindings, 2))
 
 tree () = Ui::column [
     Ui::text "Title \"quoted\"\n",
@@ -77,7 +111,7 @@ test ("an aside's splitter carries the column width and its limits and binds aft
     expect (Doc::number (doc, "keep"), Splitters::keep)
     expect (Doc::number (doc, "event"), 2))
 
-resized value = Messages::route (Events::bind (ui::SizeInput(action = Typed), value) ?: ui::Act(act = Load), \_ => 0 - 1, \(_, _) => 0 - 2, \(_, _) => 0 - 3, \(_, points) => points, \(_, _) => 0 - 4, \_ => 0 - 5)
+resized value = Messages::route (Events::bind (ui::SizeInput(action = Typed), value) ?: ui::Act(act = Load), \_ => 0 - 1, \(_, _) => 0 - 2, \(_, _) => 0 - 3, \(_, points) => points, \(_, _) => 0 - 4, \_ => 0 - 5, \(_, _) => 0 - 6, \(_, _) => 0 - 7)
 
 // [UI-COMPONENTS-SPLITTER]: a dragged width reaches the application only within the splitter's limits, and only as a whole number of points.
 test ("a splitter delivers its dragged width clamped to its limits", \() =>
@@ -384,3 +418,27 @@ test ("context menus bind actions after their content controls", \() =>
     expect (Doc::number (Doc::field (doc, "body"), "event"), 0)
     expect (Doc::number (item, "event"), 1)
     expect (length walked.bindings, 2))
+
+test ("an editor binds text then cursor after earlier controls and preserves its marks", AdditionCases::editorEncoding)
+
+test ("a cursor binding delivers placed offsets, clamps negatives and refuses text", AdditionCases::cursorValues)
+
+test ("a board names its host slice and binds strokes before its lasso", AdditionCases::boardEncoding)
+
+test ("a board stroke decodes two ordered points with their width and time", AdditionCases::strokeDecoding)
+
+test ("empty negative and non-pair stroke points are refused with the exact diagnostic", AdditionCases::strokeRefusals)
+
+test ("a lasso delivers stroke indices and refuses strings and negative indices", AdditionCases::lassoValues)
+
+test ("a recognition request names its stroke slices and output limit", AdditionCases::recognitionEncoding)
+
+test ("message routing delivers placed stroked and lassoed values to their handlers", AdditionCases::messageRouting)
+
+test ("board themes name the board and chalk tokens", AdditionCases::boardTokens)
+
+test ("mathematics decodes back to the tree it encodes across every constructor", AdditionCases::mathRoundTrip)
+
+test ("mathematics decoding refuses unknown kinds missing children non-arrays and non-objects", AdditionCases::mathRefusals)
+
+test ("image and video encode as leaves with their media fields and no ordinal", AdditionCases::mediaEncoding)

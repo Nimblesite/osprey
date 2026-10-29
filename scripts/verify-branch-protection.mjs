@@ -57,6 +57,7 @@ const EXPECTED_CONTEXTS = [
   'Tests: language corpus (gc)',
   'Tests: language corpus (arc)',
   'Tests: C runtime (coverage)',
+  'Tests: proof kernel and Lean speed gate',
   'Tests: VS Code extension (coverage)',
   'Tests: WebAssembly target (wasm32-wasip1)',
   'Tests: Website E2E (Playwright)',

@@ -43,7 +43,7 @@ interface CommandResult {
 
 export interface SessionDeps {
   run(frame: string, slices: ReadonlyMap<string, string>): Promise<CommandResult>;
-  render(regions: Regions, diagnostics: readonly string[], theme: unknown): string;
+  render(regions: Regions, diagnostics: readonly string[], theme: unknown, slices: ReadonlyMap<string, string>): string;
   send(message: unknown): void;
   execute(request: NativeRequest): Promise<unknown>;
   now(): number;
@@ -85,7 +85,7 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
   const publish = (): void => {
     if (disposed) return;
     try {
-      deps.send({ type: "render", html: deps.render(regions, diagnostics, theme), diagnostics });
+      deps.send({ type: "render", html: deps.render(regions, diagnostics, theme, slices), diagnostics });
     } catch (error) {
       fail(error);
     }
@@ -99,7 +99,7 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
     regions = applyEnvelope(regions, envelope);
     for (const slice of envelope.slices) slices.set(slice.key, slice.text);
     diagnostics = envelope.diagnostics;
-    theme = envelope.theme;
+    if (envelope.theme !== null) theme = envelope.theme;
     rememberIssued(issued, { state, regions });
     if (edit !== undefined) deps.send(envelope.diagnostics.length === 0
       ? { type: "edit-result", edit, accepted: true }
@@ -147,10 +147,11 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
     if (typeof raw.edit !== "number" || !Number.isSafeInteger(raw.edit) || raw.edit < 1) return;
     const now = deps.now();
     const snapshot = parseUiEvent(raw, regions, now) ? { state, regions } : issued.get(issuedKey(raw.region, raw.revision));
-    const event = snapshot && typeof raw.value === "string" ? parseUiEvent(raw, snapshot.regions, now) : undefined;
+    const event = snapshot ? parseUiEvent(raw, snapshot.regions, now) : undefined;
     if (!event || !snapshot) {
       deps.send({ type: "edit-result", edit: raw.edit, accepted: false,
-        error: "The original text control is no longer available; the edit was not applied." });
+        error: typeof raw.value === "string" ? "The original text control is no longer available; the edit was not applied."
+          : "The original control is no longer available; the edit was not applied." });
       return;
     }
     void enqueueFrame(() => editFrame(state, snapshot.state, event), generation, raw.edit);

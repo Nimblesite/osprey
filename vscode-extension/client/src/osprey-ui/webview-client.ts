@@ -3,6 +3,9 @@
 // application state and sends no capability request; every value is attributed
 // to the region, revision and ordinal the Node renderer emitted.
 
+import { EDITOR_SCRIPT } from "./editor-client";
+import { BOARD_SCRIPT } from "./board-client";
+
 export const WEBVIEW_SCRIPT = `
 (function () {
   const vscode = acquireVsCodeApi();
@@ -110,6 +113,7 @@ export const WEBVIEW_SCRIPT = `
   }
 
   function acknowledgeEdit(message) {
+    if (acknowledgeBoardEdit(message)) return;
     const entry = Array.from(pendingEdits.entries()).find(function (entry) { return entry[1].id === message.edit; });
     if (!entry) return;
     const signature = entry[0];
@@ -218,7 +222,7 @@ export const WEBVIEW_SCRIPT = `
     closeMenus();
     const element = closest(event.target, "[data-event-region]");
     if (!element || element.hasAttribute("data-splitter")) return;
-    if (element.matches("input, textarea, select")) return;
+    if (element.matches("input, textarea, select, canvas")) return;
     postEvent(element);
   });
 
@@ -322,6 +326,7 @@ export const WEBVIEW_SCRIPT = `
   });
 
   function renderMessage(message) {
+    if (boardDrawing) { deferredBoardRender = message; return; }
     const pending = flushFields();
     saveFocus();
     const scroll = captureScroll();
@@ -329,6 +334,8 @@ export const WEBVIEW_SCRIPT = `
     if (root) root.innerHTML = message.html;
     restoreFocus();
     rebasePendingEdits(pending);
+    refreshEditors();
+    refreshBoards();
     restoreScroll(scroll);
     renderDiagnostics(message.diagnostics);
   }
@@ -346,6 +353,8 @@ export const WEBVIEW_SCRIPT = `
     }
   });
 
+${EDITOR_SCRIPT}
+${BOARD_SCRIPT}
   vscode.postMessage({ type: "ready" });
 })();
 `;

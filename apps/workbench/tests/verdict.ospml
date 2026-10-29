@@ -1,0 +1,156 @@
+// [WORKBENCH-VERDICT] cases: the kernel's verdict on real documents, the
+// agreement between the goal engine and the kernel, and the unchecked holes.
+namespace workbenchtests
+
+import workbench::Statements
+import workbench::Steps
+import workbench::Verdicts
+import workbench::Goals
+import workbench::Preludes
+
+(** The kernel-verdict cases of [WORKBENCH-VERIFICATION]. *)
+module VerdictCases
+    fresh () = workbench::Declaration(statement = workbench::Statement(name = "", named = false, variables = [], claim = workbench::Bot), proof = "", problems = [])
+
+    sole found = match listGet found 0
+        Success one => one
+        Error _ => fresh ()
+
+    declaration text = sole (workbench::Statements::document text)
+
+    steps declaration = mapList (workbench::Steps::sentences declaration.proof, \sentence => workbench::Steps::read sentence)
+
+    (** The verdict of the first declaration of a document. *)
+    judged text =
+        found = declaration text
+        workbench::Verdicts::decide (found.statement, steps found)
+
+    shown verdict = match verdict
+        workbench::Checked => "checked"
+        workbench::Rejected index message => "rejected " + toString index + ": " + message
+        workbench::Unchecked reason => "unchecked: " + reason
+
+    refusalIndex verdict = match verdict
+        workbench::Rejected at _ => at
+        _ => satSub 0 999
+
+    refusalText verdict = match verdict
+        workbench::Rejected _ text => text
+        _ => ""
+
+    (** [WORKBENCH-VERDICT]: the prelude is admitted by the kernel's own checks. *)
+    export prelude () =
+        admitted = match workbench::Preludes::build ()
+            workbench::Admitted _ => true
+            workbench::Refused _ => false
+        expect (admitted, true)
+
+    andSwapText = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as hp and hq.\n  It suffices to show q and p.\n  From hq.\n  From hp."
+
+    (** [WORKBENCH-VERDICT]: the spec's and_swap document is checked by the kernel. *)
+    export andSwap () =
+        expect (shown (judged andSwapText), "checked")
+
+    swappedText = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as hp and hq.\n  It suffices to show q and p.\n  From hp.\n  From hq."
+
+    (** [WORKBENCH-VERDICT]: swapping the last two steps is rejected at the step the goal engine refuses, with the kernel's mismatch. *)
+    export swapped () =
+        verdict = judged swappedText
+        expect (refusalIndex verdict, 3)
+        expect (startsWith (refusalText verdict, "type mismatch"), true)
+
+    // The goal table, one passing proof per row, plus the spec's and_swap.
+    table () = [
+        { name = "and-swap", text = andSwapText },
+        { name = "assume-implication", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h." },
+        { name = "assume-forall", text = "Theorem t. For all p, ∀ q, p → q → p.\nProof.\n  Assume q : true.\n  Assume h : p.\n  Assume k : q.\n  From h." },
+        { name = "cases-and", text = "Theorem t. For all p q, p ∧ q → p.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as a and b.\n  From a." },
+        { name = "cases-or", text = "Theorem t. For all p q, p ∨ q → q ∨ p.\nProof.\n  Assume h : p ∨ q.\n  By cases on h, as a and b.\n  Show the right side.\n  From a.\n  Show the left side.\n  From b." },
+        { name = "split-and", text = "Theorem t. For all p q, p → q → p ∧ q.\nProof.\n  Assume a : p.\n  Assume b : q.\n  It suffices to show p and q.\n  From a.\n  From b." },
+        { name = "split-iff", text = "Theorem t. For all p, p ↔ p.\nProof.\n  We show both.\n  Assume h : p.\n  From h.\n  Assume k : p.\n  From k." },
+        { name = "left", text = "Theorem t. For all p q, p → p ∨ q.\nProof.\n  Assume h : p.\n  Show the left side.\n  From h." },
+        { name = "right", text = "Theorem t. For all p q, q → p ∨ q.\nProof.\n  Assume h : q.\n  Show the right side.\n  From h." },
+        { name = "exact", text = "Theorem t. For all p q, p ∧ q → q.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as a and b.\n  By b." },
+        { name = "apply", text = "Theorem t. For all p q, (p → q) → p → q.\nProof.\n  Assume f : p → q.\n  Assume x : p.\n  Apply f.\n  From x." },
+        { name = "absurd", text = "Theorem t. For all p q, p → ¬p → q.\nProof.\n  Assume x : p.\n  Assume y : ¬p.\n  Contradiction from x and y." },
+        { name = "trailing-done", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h.\n  Done." },
+        { name = "trailing-qed", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h.\n  QED." },
+    ]
+
+    unchecked row = shown (judged row.text) != "checked"
+
+    (** [WORKBENCH-VERDICT]: one passing proof per row of the goal table is checked. *)
+    export rows () =
+        expect (join (mapList (filterList (table (), unchecked), \row => row.name), ", "), "")
+
+    // Wrong proofs whose goal engine refuses a step; the kernel must refuse the same step.
+    wrong () = [
+        { name = "swapped", text = swappedText },
+        { name = "no-hypothesis", text = "Theorem t. For all p, p.\nProof.\n  From h." },
+        { name = "split-atom", text = "Theorem t. For all p q, p.\nProof.\n  It suffices to show q and p." },
+        { name = "left-atom", text = "Theorem t. For all p q, p.\nProof.\n  Show the left side." },
+        { name = "right-atom", text = "Theorem t. For all p q, p.\nProof.\n  Show the right side." },
+        { name = "cases-atom", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  By cases on h, as a and b." },
+        { name = "exact-mismatch", text = "Theorem t. For all p q, p → q → p.\nProof.\n  Assume h : p.\n  Assume k : q.\n  By k." },
+        { name = "apply-mismatch", text = "Theorem t. For all p q, (p → q) → p → p.\nProof.\n  Assume f : p → q.\n  Assume x : p.\n  Apply f.\n  From x." },
+        { name = "absurd-mismatch", text = "Theorem t. For all p q r, p → q → r.\nProof.\n  Assume x : p.\n  Assume y : q.\n  Contradiction from x and y." },
+        { name = "apply-not-implication", text = "Theorem t. For all p q, p → q.\nProof.\n  Assume h : p.\n  Apply h." },
+    ]
+
+    walk0 statement = { outcome = workbench::Advanced (workbench::Goals::start statement), at = 0, stuck = satSub 0 1 }
+
+    moved (walk, step) = match walk.outcome
+        workbench::Stuck _ => walk
+        workbench::Advanced progress => refused (walk, workbench::Goals::apply (progress, step))
+
+    refused (walk, outcome) = match outcome
+        workbench::Stuck _ => { outcome = outcome, at = satAdd walk.at 1, stuck = walk.at }
+        workbench::Advanced _ => { outcome = outcome, at = satAdd walk.at 1, stuck = walk.stuck }
+
+    refusalAt (statement, stepList) = (foldList (stepList, walk0 statement, \(walk, step) => moved (walk, step))).stuck
+
+    // "" when the goal engine and the kernel agree on a document, its name otherwise.
+    disagrees row =
+        found = declaration row.text
+        stepList = steps found
+        verdict = workbench::Verdicts::decide (found.statement, stepList)
+        match workbench::Goals::run (found.statement, stepList)
+            workbench::Stuck _ => match verdict
+                workbench::Rejected at _ => match at == refusalAt (found.statement, stepList)
+                    true => ""
+                    false => row.name
+                _ => row.name
+            workbench::Advanced progress => match isEmpty progress.open
+                true => match verdict
+                    workbench::Checked => ""
+                    _ => row.name
+                false => row.name
+
+    (** [WORKBENCH-VERDICT] [WORKBENCH-GOALS]: the goal engine and the kernel agree on every right and wrong proof. *)
+    export agreement () =
+        bad = filterList (listConcat (table (), wrong ()), \row => disagrees row != "")
+        expect (join (mapList (bad, \row => row.name), ", "), "")
+
+    unknownText = "Theorem t. For all p, p → p.\nProof.\n  Hence the result follows."
+
+    (** [WORKBENCH-VERDICT]: an unknown step is unchecked, quoting the sentence and its 1-based position. *)
+    export unknownStep () =
+        expect (shown (judged unknownText), "unchecked: step 1: `Hence the result follows.` is not a step the workbench knows")
+
+    openText = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p."
+
+    (** [WORKBENCH-VERDICT]: a proof that stops with a goal open is unchecked, naming the open goal. *)
+    export openGoal () =
+        expect (shown (judged openText), "unchecked: step 2: the goal `p` is still open")
+
+    surplusText = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h.\n  From h."
+
+    (** [WORKBENCH-VERDICT]: a step after the proof is complete is unchecked. *)
+    export surplus () =
+        expect (shown (judged surplusText), "unchecked: step 3 comes after the proof is complete")
+
+    undeclaredText = "Theorem u. p → p.\nProof.\n  Assume h : p.\n  From h."
+
+    (** [WORKBENCH-VERDICT]: an undeclared atom is rejected on the statement with the kernel's unknown-constant message. *)
+    export undeclaredAtom () =
+        expect (shown (judged undeclaredText), "rejected -1: unknown constant `p`")

@@ -251,7 +251,9 @@ module Formulas
 
     // The text of `formula` where the context binds as tightly as `context`; `open` says nothing
     // follows it, and a `∀`, which reaches to the end of the text, is bare only there.
-    placed (formula, context, open) = match rank formula >= context || (rank formula == 0 && open)
+    bare (formula, context, open) = rank formula >= context || (rank formula == 0 && open)
+
+    placed (formula, context, open) = match bare (formula, context, open)
         true => written (formula, open)
         false => "(" + written (formula, true) + ")"
 
@@ -271,6 +273,28 @@ module Formulas
 
     (** The Unicode form with the fewest parentheses that read back to the same formula. *)
     export show formula = written (formula, true)
+
+    // Implements [WORKBENCH-MATH]: share the writer's precedence and scope;
+    // retain operators as layout nodes rather than passing prose to a host.
+    layoutAt (formula, context, open) = match bare (formula, context, open)
+        true => layout (formula, open)
+        false => ui::Paren (layout (formula, true))
+
+    layoutOp (left, symbol, right, sides, open) = ui::Op symbol (layoutAt (left, sides.left, false)) (layoutAt (right, sides.right, open))
+
+    layout (formula, open) = match formula
+        Var name => ui::Sym name
+        Top => ui::Sym "⊤"
+        Bot => ui::Sym "⊥"
+        Not inner => ui::Seq [ui::Sym "¬", layoutAt (inner, 5, open)]
+        And left right => layoutOp (left, "∧", right, { left = 4, right = 5 }, open)
+        Or left right => layoutOp (left, "∨", right, { left = 3, right = 4 }, open)
+        Imp left right => layoutOp (left, "→", right, { left = 3, right = 2 }, open)
+        Iff left right => layoutOp (left, "↔", right, { left = 1, right = 2 }, open)
+        Forall names inner => ui::Binder "∀" (mapList (names, \name => ui::Sym name)) (layout (inner, true))
+
+    (** A typed mathematics tree with the same grouping as `show`; pass `show formula` as its accessible text to `Ui::math`. *)
+    export typeset formula = layout (formula, true)
 
     (** Structural equality: `show` is injective because `read (show f) = f`, so equal texts are equal formulas. *)
     export equal (first, second) = show first == show second

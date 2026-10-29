@@ -160,11 +160,16 @@ module Goals
             true => closed (progress, goal, rest)
             false => stuck (goal.target, formula, "the goal is `" + Formulas::show goal.target + "`, but `" + name + "` proves `" + Formulas::show formula + "`")
 
+    // `Apply h` with `h : A` on goal `A` closes it, as Lean's `apply` does; otherwise `h` must be an implication.
     applied (progress, goal, rest, name) = match lookup (goal, name)
         Absent => unknown (goal, name)
-        Held formula => match formula
-            Imp premise conclusion => concluded (progress, goal, rest, { name = name, premise = premise, conclusion = conclusion })
-            _ => stuck (Imp (Var "A") goal.target, formula, "`" + name + "` is `" + Formulas::show formula + "`, not an implication")
+        Held formula => match holds (formula, goal.target)
+            true => closed (progress, goal, rest)
+            false => premised (progress, goal, rest, { name = name, formula = formula })
+
+    premised (progress, goal, rest, held) = match held.formula
+        Imp premise conclusion => concluded (progress, goal, rest, { name = held.name, premise = premise, conclusion = conclusion })
+        _ => stuck (Imp (Var "A") goal.target, held.formula, "`" + held.name + "` is `" + Formulas::show held.formula + "`, not an implication")
 
     concluded (progress, goal, rest, parts) = match holds (parts.conclusion, goal.target)
         true => replaced (progress, rest, [goal(target = parts.premise)])

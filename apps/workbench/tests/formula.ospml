@@ -2,6 +2,8 @@
 namespace workbenchtests
 
 import workbench::Formulas
+import ui::Maths
+import ui::Doc
 
 (** The formula cases of [WORKBENCH-VERIFICATION]. *)
 module FormulaCases
@@ -64,3 +66,22 @@ module FormulaCases
     export equality () =
         expect (equalTexts ("p ∧ q", "p and q"), true)
         expect (equalTexts ("p ∧ q", "q ∧ p"), false)
+
+    layout text = Maths::encode (Formulas::typeset (formula text))
+
+    (** [WORKBENCH-MATH]: connective trees preserve grouping and binder scope. *)
+    export typesetting () =
+        tree = layout "(p → q) ∧ (q ∨ p)"
+        expect (Doc::text (tree, "symbol"), "∧")
+        expect (Doc::text (Doc::field (tree, "left"), "kind"), "paren")
+        expect (Doc::text (Doc::field (tree, "right"), "kind"), "paren")
+        forall = layout "(∀ p, p) ∧ q"
+        expect (Doc::text (Doc::field (Doc::field (forall, "left"), "body"), "kind"), "binder")
+        trailing = Doc::field (layout "p → ∀ q, q", "right")
+        expect (Doc::text (trailing, "kind"), "binder")
+        expect (Doc::text (trailing, "symbol"), "∀")
+        expect (Doc::text (listGet (Doc::items (Doc::field (trailing, "names"))) 0 ?: JsonNull, "text"), "q")
+        expect (Doc::text (Doc::field (layout "p → q → p", "right"), "symbol"), "→")
+        expect (Doc::text (layout "⊤", "text"), "⊤")
+        expect (Doc::text (layout "⊥", "text"), "⊥")
+        expect (Doc::text (layout "α₁", "text"), "α₁")

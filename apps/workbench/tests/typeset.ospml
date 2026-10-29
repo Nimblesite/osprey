@@ -1,0 +1,81 @@
+// [WORKBENCH-MATH] cases: exact trees and agreement with the formula writer.
+namespace workbenchtests
+
+import workbench::Formulas
+import workbenchtests::CorpusCases
+
+(** The typesetting cases of [WORKBENCH-VERIFICATION]. *)
+module TypesetCases
+    // A textual projection used only by the corpus property, never by the tree assertions.
+    flat tree = match tree
+        ui::Sym text => text
+        ui::Num text => text
+        ui::Seq items => join (mapList (items, \item => flat item), "")
+        ui::Sup base script => flat base + "^{" + flat script + "}"
+        ui::Sub base script => flat base + "_{" + flat script + "}"
+        ui::Frac top bottom => "(" + flat top + ")/(" + flat bottom + ")"
+        ui::Root body => "√(" + flat body + ")"
+        ui::Binder symbol names body => symbol + " " + join (mapList (names, \name => flat name), " ") + ", " + flat body
+        ui::Op symbol left right => flat left + " " + symbol + " " + flat right
+        ui::Paren body => "(" + flat body + ")"
+        ui::Big symbol lower upper body => symbol + flat lower + flat upper + flat body
+
+    sameItemsAt (left, right, at) = match at >= length left
+        true => true
+        false => same (listGet left at ?: ui::Sym "", listGet right at ?: ui::Sym "") && sameItemsAt (left, right, satAdd at 1)
+
+    sameItems (left, right) = length left == length right && sameItemsAt (left, right, 0)
+
+    sameSym (text, other) = match other
+        ui::Sym found => text == found
+        _ => false
+
+    sameSeq (items, other) = match other
+        ui::Seq found => sameItems (items, found)
+        _ => false
+
+    sameOp (symbol, left, right, other) = match other
+        ui::Op foundSymbol foundLeft foundRight => symbol == foundSymbol && same (left, foundLeft) && same (right, foundRight)
+        _ => false
+
+    sameParen (body, other) = match other
+        ui::Paren found => same (body, found)
+        _ => false
+
+    sameBinder (symbol, names, body, other) = match other
+        ui::Binder foundSymbol foundNames foundBody => symbol == foundSymbol && sameItems (names, foundNames) && same (body, foundBody)
+        _ => false
+
+    // Structural equality for every constructor produced by `Formulas::typeset`.
+    same (first, second) = match first
+        ui::Sym text => sameSym (text, second)
+        ui::Seq items => sameSeq (items, second)
+        ui::Op symbol left right => sameOp (symbol, left, right, second)
+        ui::Paren body => sameParen (body, second)
+        ui::Binder symbol names body => sameBinder (symbol, names, body, second)
+        _ => false
+
+    differing formula = flat (Formulas::typeset formula) != Formulas::show formula
+
+    summary failures = "${length failures}: ${listGet failures 0 ?: ""}"
+
+    (** [WORKBENCH-MATH]: flattening every generated typesetting tree reproduces its minimal Unicode form. *)
+    export corpus () = expect (summary (mapList (filterList (CorpusCases::corpus (), \formula => differing formula), \formula => Formulas::show formula)), "0: ")
+
+    (** [WORKBENCH-MATH]: the and_swap claim has the exact binder and operator tree. *)
+    export andSwap () =
+        formula = workbench::Forall ["p", "q"] (workbench::Imp (workbench::And (workbench::Var "p") (workbench::Var "q")) (workbench::And (workbench::Var "q") (workbench::Var "p")))
+        expected = ui::Binder "∀" [ui::Sym "p", ui::Sym "q"] (ui::Op "→" (ui::Op "∧" (ui::Sym "p") (ui::Sym "q")) (ui::Op "∧" (ui::Sym "q") (ui::Sym "p")))
+        expect (same (Formulas::typeset formula, expected), true)
+
+    (** [WORKBENCH-MATH]: a negated conjunction keeps its required parentheses. *)
+    export negatedConjunction () =
+        formula = workbench::Not (workbench::And (workbench::Var "p") (workbench::Var "q"))
+        expected = ui::Seq [ui::Sym "¬", ui::Paren (ui::Op "∧" (ui::Sym "p") (ui::Sym "q"))]
+        expect (same (Formulas::typeset formula, expected), true)
+
+    (** [WORKBENCH-MATH]: a conditional antecedent alone is parenthesized in a nested implication. *)
+    export conditionalAntecedent () =
+        formula = workbench::Imp (workbench::Imp (workbench::Var "p") (workbench::Var "q")) (workbench::Var "r")
+        expected = ui::Op "→" (ui::Paren (ui::Op "→" (ui::Sym "p") (ui::Sym "q"))) (ui::Sym "r")
+        expect (same (Formulas::typeset formula, expected), true)

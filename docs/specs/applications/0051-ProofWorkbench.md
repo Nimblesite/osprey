@@ -1,6 +1,6 @@
 # Proof Workbench
 
-**Status:** specification written; no implementation started. Delivery: [plan 0042](../../plans/0042-proof-workbench.md). The workbench depends on the `lean4` discipline of [spec 0049](../language/0049-DependentTypesAndProofs.md) for its verdicts and on [`@osprey/native`](../../../packages/native/README.md) for everything it draws; it adds nothing to either that another editor could not use.
+**Status:** the proof language is implemented (plan 0042 phase 1); the application is in progress. Delivery: [plan 0042](../../plans/0042-proof-workbench.md); Learn mode: [spec 0052](0052-WorkbenchLessons.md). The workbench depends on the proof kernel of [spec 0049](../language/0049-DependentTypesAndProofs.md) for its verdicts and on [`@osprey/native`](../../../packages/native/README.md) for everything it draws; it adds nothing to either that another editor could not use.
 
 ## Aim [WORKBENCH-AIM]
 
@@ -22,7 +22,10 @@ The application lives at [`apps/workbench/`](../../../apps/workbench/README.md),
 | `src/step.ospml` | `Step` | A proof step as phrased by the writer ([WORKBENCH-STEPS]) |
 | `src/goals.ospml` | `Goals` | The goal engine: hypotheses and goal after each step, and why a step fails ([WORKBENCH-GOALS]) |
 | `src/emit.ospml` | `Emit` | The generated `.ospml` text ([WORKBENCH-EMIT]) |
-| `src/verdict.ospml` | `Verdict` | The checker run and its result ([WORKBENCH-VERDICT]) |
+| `src/kernel.ospml` | `Closing`, `Propositions`, `Preludes` | Named terms, formulas as kernel propositions and the kernel-checked prelude ([WORKBENCH-VERDICT]) |
+| `src/verdict.ospml` | `Elaborate`, `Verdicts` | Steps to one proof term and the kernel's verdict on it ([WORKBENCH-VERDICT]) |
+| `src/theme.ospml` | `Palettes` | The `chalk` and `paper` themes ([WORKBENCH-DESIGN-COLOUR]) |
+| `src/lesson.ospml`, `src/judge.ospml`, `src/tutor.ospml`, `lessons/` | `Lessons`, `Judge`, `Tutor` | Learn mode ([spec 0052](0052-WorkbenchLessons.md)) |
 | `src/board.ospml` | `Board` | Strokes, recognition and the chalk theme ([WORKBENCH-BOARD]) |
 | `src/library.ospml` | `Library` | Search over known theorems by name and shape ([WORKBENCH-LIBRARY]) |
 | `src/app.ospml` | `App` | The store, `update`, the regions and the theme ([WORKBENCH-STORE], [WORKBENCH-REGIONS]) |
@@ -131,6 +134,7 @@ type Progress = { done : List<Goal>, open : List<Goal> }
 | `Split` | target is `And (A, B)` or `Iff (A, B)` | two goals, `A` then `B` (`A → B` then `B → A` for `Iff`) |
 | `Left`, `Right` | target is `Or (A, B)` | target `A` or `B` |
 | `Exact h` | `h : A` and target is `A` | goal closed |
+| `Apply h` | `h : A` and target is `A` | goal closed (as Lean's `apply`) |
 | `Apply h` | `h : Imp (A, B)` and target is `B` | target `A` |
 | `Absurd (h, k)` | `h : A`, `k : Not A` | goal closed |
 | `Done` | no open goal | nothing |
@@ -158,15 +162,19 @@ Rules: a leading `Assume` on a `Forall` or `Imp` becomes a binder in the signatu
 
 ## Verdict [WORKBENCH-VERDICT]
 
-The verdict is the checker's and nobody else's. On every change to a declaration the workbench requests one `Run` capability: `osprey prove check <generated file>` with a ten-second deadline and a 64 KiB output limit, ticketed by declaration name and document revision; a completion whose ticket is stale is dropped. The result is one of:
+The verdict is the kernel's and nobody else's. The workbench is the interface to Osprey's proof kernel ([PROOF-KERNEL-THEORY](../language/0049-DependentTypesAndProofs.md)), and that kernel is an Osprey library, so the workbench calls it in-process on every change to a declaration. It needs no process, no `Run` capability and no ticket, and it answers the same way on every host, a tablet included:
 
-| Verdict | Shown |
-| --- | --- |
-| `Checked` | a filled badge beside the heading |
-| `Rejected (line, message)` | the step at that line underlined, the kernel's message beside it |
-| `Unchecked (reason)` | an outlined badge; reason `no checker on this host` until the discipline ships or on a host without `Run` |
+1. **Prelude.** The connectives are their impredicative encodings in `Prop` (`And p q := ∀ r, (p → q → r) → r`, `Or`, `False := ∀ r, r`, `True`, `Not p := p → False`, `Iff`), and their rules (`and_intro`, `and_cases`, `or_inl`, `or_inr`, `or_cases`, `iff_intro`, `absurd`) are theorems with explicit proof terms. Every prelude constant is admitted by the kernel's own `Infer::sort` and `Infer::check` before it enters the environment (`Preludes::build`); nothing is an axiom.
+2. **Elaboration.** `Elaborate::prove` turns the steps into one proof term, following the tactic semantics of [WORKBENCH-GOALS] (`Assume` is a λ, `By cases` applies `and_cases` or `or_cases`, `It suffices to show` applies `and_intro` or `iff_intro`, `Left`/`Right` apply `or_inl`/`or_inr`, `From h` is the variable, `Apply h` is an application, `Contradiction` applies `absurd`). A step that does not fit its goal still becomes a term, so that the kernel refuses it, not the workbench.
+3. **Check.** `Verdicts::decide` sort-checks the statement as `∀ (variables : Prop), claim` and type-checks the term against it with `Infer::check`.
 
-The badge is never filled by the goal engine. Before the `lean4` discipline exists, every declaration is `Unchecked`, and the road test of plan 0041 is what turns the badges on; the workbench ships against that reality rather than claiming a check it did not run.
+| Verdict | When | Shown |
+| --- | --- | --- |
+| `Checked` | the kernel accepts the term | a filled badge beside the heading |
+| `Rejected (step, message)` | the kernel refuses the term (`step` is `-1` for the statement) | the step underlined, the kernel's message and the goal engine's readable mismatch beside it |
+| `Unchecked (reason)` | an unknown step, an open goal or steps after the proof closes: no complete term exists to send | an outlined badge and the reason |
+
+The kernel's messages name de Bruijn indices, so the underline position comes from the goal engine: the step it first refuses. The badge is never filled by the goal engine. `osprey prove check` on the emitted file ([WORKBENCH-EMIT]) is the second, out-of-process check of the same declaration once the `lean4` discipline of plan 0041 parses it; until then the in-process kernel is the only checker, and the workbench says nothing it did not check.
 
 ## Typeset mathematics [WORKBENCH-MATH]
 
@@ -176,7 +184,7 @@ Mathematics is typeset, not monospaced. `@osprey/native` gains one content compo
 type Math =
     | Sym of string            // an identifier or operator glyph
     | Num of string
-    | Row of List<Math>
+    | Seq of List<Math>       // Row in the first draft; `Row` already names a framework row
     | Sup of Math * Math
     | Sub of Math * Math
     | Frac of Math * Math
@@ -200,7 +208,9 @@ type Board = { strokes : List<Stroke>, size : (int, int) }
 
 The host captures pointer, pencil and finger strokes at device resolution, sends each finished stroke once through the binding, and draws the strokes it is given: chalk on slate, a textured off-white line with pressure-independent grain, slight edge scatter, and a dust fade on erase; the slate is the theme's `board` token, near-black in both appearances. The board is a host-held slice ([UI-STORE]), so a long session never travels through an event. Undo removes the last stroke; clear is a two-step action.
 
-**Recognition.** A lasso over strokes sends them, as points, through a `Recognise` request: the host's handwriting service where it has one (Apple PencilKit, the browser's handwriting API where present), answered as text. The text enters the same `Statement::read` and `Step::read` as typed input, so a sketched `p ∧ q → q ∧ p` becomes a checked line. Recognition is a capability like any other: typed request, ticket, bounded result, and a host without it answers `Unsupported`, which the board shows as a disabled lasso.
+The board holds each stroke in its own host-held slice (`stroke:<n>`); the store holds only the count, so a stroke crosses the protocol once.
+
+**Recognition.** A lasso over strokes sends the names of their slices through a `Recognise` request, and the host reads the points it already holds: the host's handwriting service where it has one (Apple PencilKit, the browser's handwriting API where present), answered as text. The text enters the same `Statement::read` and `Step::read` as typed input, so a sketched `p ∧ q → q ∧ p` becomes a checked line. Recognition is a capability like any other: typed request, ticket, bounded result, and a host without it answers `Unsupported`, which the board shows as a disabled lasso.
 
 **Chalk theme.** The default theme is `chalk`, matching the board-first layout: the same tokens with the slate as canvas, the chalk off-white as text, a hand-set mathematics face and the stroke grain on rules and underlines. The `paper` theme (ink on off-white) goes with the paper layout. Both themes pass `Contrast::ratio` at 4.5:1 for body text.
 
@@ -240,7 +250,7 @@ Six keyed regions, so a keystroke re-sends only what it changed:
 | `board` | the `Board` control with undo, clear and lasso | `Board` |
 | `library` | the search field, hits as rows, hover statement | `Library` |
 
-The document editor is the framework's multiline `Field` with two additions the framework gains for this application and any other: per-line marks (an underline tone and a trailing badge) and a cursor position in the text binding, so that `Moved cursor` is a message like any other. A region that did not change is not sent, and the suite's "a keystroke in step three refreshes `document`, `goal` and `generated` and nothing else" case proves it.
+The document editor is the framework's `Editor` component, a multiline field with two things the plain `Field` lacks, gained for this application and any other: per-line marks (an underline, a tone, a trailing badge and a note) and a cursor position delivered through its own `place` binding, so that `Moved cursor` is a message like any other. `Field` is unchanged for its existing users. Learn mode adds the `catalogue`, `lesson` and `challenge:<id>` regions and the `Lessons` and `Tutor` slices of [spec 0052](0052-WorkbenchLessons.md#store-and-messages-lessons-store), switched by a Work/Learn segment in `root`. A region that did not change is not sent, and the suite's "a keystroke in step three refreshes `document`, `goal` and `generated` and nothing else" case proves it.
 
 ## Reads like a paper [WORKBENCH-PAPER]
 
@@ -357,10 +367,12 @@ Every service the workbench uses is a capability of the checker protocol of [spe
 - every row of the goal table applies, and every precondition failure yields a `Mismatch` naming both formulas;
 - the `and_swap` fixture emits the golden byte for byte; a document with an `Unknown` step emits `sorry` and still parses under the ML frontend;
 - a keystroke refreshes exactly `document`, `goal` and `generated`;
-- a stale verdict completion is dropped; a rejection underlines the right line;
+- a stale recognition completion is dropped; a rejection underlines the right line;
+- the kernel accepts every prelude constant, checks the `and_swap` fixture and rejects its swapped twin at the fourth step;
 - a stroke lands in the `Board` slice; lasso with `Unsupported` disables the lasso; a recognised line reads as a step;
 - the chalk and default themes pass contrast;
 - the goal engine's 50-step timing case under one millisecond;
-- once the discipline ships: `osprey prove check` passes on every golden, and agrees with the engine on every fixture step.
+- the goal engine and the kernel agree on every fixture step: a step the engine accepts in a complete proof, the kernel accepts;
+- once the discipline ships: `osprey prove check` passes on every golden.
 
 Each host adds a smoke test: the VS Code host through the extension's existing `compiled SDK renderer E2E`, the browser host through a headless page, the native host through the Apple simulator. The road test of plan 0041 is the acceptance: a mathematician or scientist new to Osprey writes and checks `and_swap` in the workbench in under ten minutes without documentation, recorded in `docs/reports/`.

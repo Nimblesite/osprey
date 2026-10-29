@@ -13,7 +13,7 @@ The **language** and **compiler** contracts are separate from runtime libraries,
 - [Platform integration](platforms/README.md): WASI/browser hosts, iOS and Android applications.
 - [Developer tooling](tooling/README.md): Language server, editor, documentation and test tools.
 - [Packages and automation](ecosystem/README.md): Package registry, evidence and GitHub automation.
-- [Application frameworks](applications/README.md): Reactive mobile applications, the proof workbench and host protocols.
+- [Application frameworks](applications/README.md): Reactive mobile applications, the proof workbench and its lessons, and host protocols.
 
 ## Contract and delivery
 

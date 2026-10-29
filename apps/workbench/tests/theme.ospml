@@ -1,0 +1,85 @@
+// [WORKBENCH-DESIGN-COLOUR] cases: the paper and chalk themes meet the spec's
+// minimum contrast in both appearances, and each theme holds every token of
+// the table exactly once.
+namespace workbenchtests
+
+import workbench::Palettes
+import ui::Contrast
+import ui::Themes
+
+(** The theme and contrast cases of [WORKBENCH-VERIFICATION]. *)
+module ThemeCases
+    // The token names of the colour table, in table order.
+    tokenNames = ["canvas", "inset", "surface", "primary", "secondary", "accent", "outline", "divider", "selection", "good", "caution", "danger", "dangerSurface", "board", "chalk", "sourceKeyword", "sourceType", "sourceName", "sourceComment"]
+
+    // One theme in one appearance: `light` reads tokenLight, otherwise tokenDark.
+    scene (name, theme, light) = { name = name, theme = theme, light = light }
+
+    // The four theme-appearance combinations both themes are tested in.
+    scenes () = [
+        scene ("paper", Palettes::paper, true),
+        scene ("paper", Palettes::paper, false),
+        scene ("chalk", Palettes::chalk, true),
+        scene ("chalk", Palettes::chalk, false),
+    ]
+
+    appearance light = match light
+        true => "light"
+        false => "dark"
+
+    // The hex value of `name` in one theme appearance.
+    colour (scene, name) = match Themes::named (scene.theme, name)
+        Success token => match scene.light
+            true => token.tokenLight
+            false => token.tokenDark
+        Error _ => "#000000"
+
+    // One requirement: `foreground` on `background` must reach at least `minimum`.
+    row (foreground, background, minimum) = { foreground = foreground, background = background, minimum = minimum }
+
+    // Every foreground-background pair at the given minimum.
+    pairs (foregrounds, backgrounds, minimum) = foldList (foregrounds, [], \(rows, fg) => listConcat rows (mapList (backgrounds, \bg => row (fg, bg, minimum))))
+
+    textRoles = ["primary", "secondary", "accent", "good", "caution", "danger", "sourceKeyword", "sourceType", "sourceName", "sourceComment"]
+    surfaces = ["canvas", "inset", "surface"]
+
+    // The measured contrast of one requirement in one appearance.
+    ratio (scene, requirement) = Contrast::ratio (colour (scene, requirement.foreground), colour (scene, requirement.background))
+
+    describe (scene, requirement) = scene.name + " " + appearance (scene.light) + ": " + requirement.foreground + " on " + requirement.background
+
+    // The failing rows across every theme and appearance, each naming where it failed.
+    failing requirements = join (foldList (scenes (), [], \(bad, look) => listConcat bad (mapList (filterList (requirements, \requirement => ratio (look, requirement) < requirement.minimum), \requirement => describe (look, requirement)))), "; ")
+
+    (** [WORKBENCH-DESIGN-COLOUR]: body text and the four source roles reach 4.5:1 on canvas, inset and surface in both appearances of both themes. *)
+    export bodyText () = expect (failing (pairs (textRoles, surfaces, 4.5)), "")
+
+    (** [WORKBENCH-DESIGN-COLOUR]: selection and diagnostic surfaces keep their foregrounds at 4.5:1. *)
+    export states () =
+        expect (failing (listConcat (pairs (["primary"], ["selection"], 4.5), pairs (["danger", "primary"], ["dangerSurface"], 4.5))), "")
+
+    (** [WORKBENCH-DESIGN-COLOUR]: the control outline reaches 3.0:1 on canvas, inset and surface. *)
+    export outlines () = expect (failing (pairs (["outline"], surfaces, 3.0)), "")
+
+    (** [WORKBENCH-DESIGN-COLOUR]: chalk strokes reach 4.5:1 against the board. *)
+    export chalkOnBoard () = expect (failing (pairs (["chalk"], ["board"], 4.5)), "")
+
+    // How many times `name` appears in `theme`.
+    count (theme, name) = length (filterList (theme.tokens, \token => token.tokenName == name))
+
+    // Appends `name` to the failures when it does not appear exactly once in `theme`.
+    present (themeName, name, theme, bad) = match count (theme, name) == 1
+        true => bad
+        false => listAppend (bad, themeName + ": " + name + " appears " + toString (count (theme, name)) + " times")
+
+    // The names in `theme` that do not appear exactly once, each naming its count.
+    presenceFailures (themeName, theme) = foldList (tokenNames, [], \(bad, name) => present (themeName, name, theme, bad))
+
+    (** [WORKBENCH-DESIGN-COLOUR]: every token name is present in each theme exactly once, and no theme has extra tokens. *)
+    export tokens () =
+        paper = Palettes::paper
+        chalk = Palettes::chalk
+        expect (join (presenceFailures ("paper", paper), "; "), "")
+        expect (join (presenceFailures ("chalk", chalk), "; "), "")
+        expect (length paper.tokens, length tokenNames)
+        expect (length chalk.tokens, length tokenNames)

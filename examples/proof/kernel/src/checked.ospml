@@ -39,10 +39,23 @@ module Checked
         Success env => declare (env, decl)
         Error message => Error(message = message)
 
+    (** A theorem or definition from an export is added as what it is, with
+        its universe parameters: its statement must be a type and its value
+        must have that type; `Environment::add` then holds the parameters to
+        the scoping rule. A definition stays a definition, so later
+        declarations unfold it. *)
     declare (env, decl) = match decl.body
-        Theorem value => theorem (env, decl.name, decl.ty, value)
-        Definition value => theorem (env, decl.name, decl.ty, value)
+        Theorem value => valued (env, decl, value)
+        Definition value => valued (env, decl, value)
         Axiom => axiom (env, decl)
+
+    valued (env, decl, value) = match Infer::sort (env, [], decl.ty)
+        Success level => proven (env, decl, value)
+        Error message => Error(message = message)
+
+    proven (env, decl, value) = match Infer::check (env, [], value, decl.ty)
+        Success checked => Environment::add (env, decl)
+        Error message => Error(message = message)
 
     axiom (env, decl) = match Infer::sort (env, [], decl.ty)
         Success level => Environment::add (env, decl)

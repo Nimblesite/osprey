@@ -1,0 +1,145 @@
+// Implements [LESSONS-STORE], [LESSONS-FEEDBACK] and [LESSONS-PROGRESS]: the
+// Learn-mode transitions and the host's completions. Judging stays in
+// `Tutors`, which asks the kernel; a right answer is saved as progress.
+namespace workbench
+
+import workbench::Lessons
+import workbench::Blocks
+import workbench::Tutors
+import workbench::Shelves
+import workbench::Drafts
+import workbench::Inks
+import ui::Runtime
+import ui::Doc
+import ui::Lists
+
+(** Learn-mode transitions over the open lesson ([LESSONS-STORE]). *)
+module Coach
+    (** Challenge `id` of the open lesson, or why there is none. *)
+    export challengeOf (bench, id) = match Lessons::read bench.shelf.openSource
+        Error problem => Error(message = problem)
+        Success lesson => Lists::find (Blocks::challenges lesson.lessonBlocks, \challenge => challenge.challengeId == id)
+
+    keyed (bench, id) = Tutors::keyOf (bench.shelf.openSlug, id)
+
+    focus (shelf, id) = shelf(focused = id)
+
+    (** The answer to challenge `id` replaced by `text`; that challenge takes the focus. *)
+    export answer (bench, id, text) = bench(tutor = Tutors::answer (bench.tutor, keyed (bench, id), text), shelf = focus (bench.shelf, id))
+
+    rulingOf name = match name
+        "checks" => Checks
+        "fails" => Fails
+        _ => Undecided
+
+    (** The learner's ruling on judge challenge `id`: `checks` or `fails`. *)
+    export pick (bench, id, choice) = bench(tutor = Tutors::pick (bench.tutor, keyed (bench, id), rulingOf choice), shelf = focus (bench.shelf, id))
+
+    (** Challenge `id` submitted to the kernel; a newly right answer writes progress ([LESSONS-PROGRESS]). *)
+    export submit (bench, id) = match challengeOf (bench, id)
+        Error _ => Runtime::step bench
+        Success challenge => submitted (bench, Tutors::submit (bench.tutor, keyed (bench, id), challenge))
+
+    submitted (bench, tutor) = match length tutor.tutorCompleted > length bench.tutor.tutorCompleted
+        false => Runtime::step (bench(tutor = tutor))
+        true => ui::Step(stepStore = bench(tutor = tutor), requests = [Shelves::store ()], writes = [Shelves::progressWrite tutor])
+
+    (** One more hint shown on challenge `id`. *)
+    export hint (bench, id) = match challengeOf (bench, id)
+        Error _ => bench
+        Success challenge => bench(tutor = Tutors::hint (bench.tutor, keyed (bench, id), challenge))
+
+    (** The solution of challenge `id` placed in its answer, when `Tutors::revealable` allows it. *)
+    export reveal (bench, id) = match challengeOf (bench, id)
+        Error _ => bench
+        Success challenge => bench(tutor = Tutors::reveal (bench.tutor, keyed (bench, id), challenge))
+
+    (** Challenge `id` and the learner's answer appended to the Work document as a declaration, and Work shown ([LESSONS-MODE]). *)
+    export carry (bench, id) = match challengeOf (bench, id)
+        Error _ => bench
+        Success challenge => carried (bench, declaration (challenge, (Tutors::attempt (bench.tutor, keyed (bench, id))).attemptAnswer))
+
+    carried (bench, text) =
+        shown = bench(layout = working bench.layout)
+        Drafts::edited (shown, Drafts::joined (bench.draft.draftText, "\n\n", text))
+
+    working layout = layout(mode = Working)
+
+    declaration (challenge, answer) = match challenge.challengeTask
+        ProveTask task => task.provedHeading + "\nProof.\n" + join (listAppend (task.provedGiven, answer), "\n")
+        JudgeTask task => task.judgedHeading + "\nProof.\n" + join (task.judgedSteps, "\n")
+        StateTask task => "Theorem stated. For all " + join (task.statedVariables, " ") + ", " + answer + ".\nProof.\n"
+
+    (** Lesson `slug` opened from the host's lesson slice; a lesson that does not read stays closed. *)
+    export open (bench, slug) = opened (bench, slug, Shelves::sourceOf (perform ui::Slices.fetch Shelves::textsKey, slug))
+
+    opened (bench, slug, source) = match Lessons::read source
+        Error _ => bench
+        Success _ => bench(shelf = shown (bench.shelf, slug, source))
+
+    shown (shelf, slug, source) = shelf(openSlug = slug, openSource = source, focused = "")
+
+    hidden shelf = shelf(openSlug = "", openSource = "", focused = "")
+
+    (** Back to the catalogue. *)
+    export close bench = bench(shelf = hidden bench.shelf)
+
+    (** Recognised handwriting: into the focused challenge's answer in Learn, onto the document's end in Work ([WORKBENCH-BOARD]). *)
+    export inked (bench, text) = match bench.layout.mode
+        Working => Drafts::edited (bench, Drafts::joined (bench.draft.draftText, "\n", text))
+        Learning => focused (bench, bench.shelf.focused, text)
+
+    focused (bench, id, text) = match isEmpty id
+        true => bench
+        false => answer (bench, id, Drafts::joined ((Tutors::attempt (bench.tutor, keyed (bench, id))).attemptAnswer, "\n", text))
+
+(** The host's completions: lessons, progress and recognition ([LESSONS-FILES], [UI-EFFECTS-RECOGNISE]). *)
+module Completions
+    problem (shelf, said) = shelf(shelfProblem = said)
+
+    listed (shelf, entries) = shelf(entries = entries, shelfProblem = "")
+
+    sketched (bench, sketch) = bench(sketch = sketch)
+
+    // A recognition answer for an older lasso is dropped: its ticket is not the current one.
+    failed (bench, ticket, said) = match ticket == Shelves::catalogueKey || ticket == Shelves::textsKey
+        true => Runtime::step (bench(shelf = problem (bench.shelf, "The lessons could not be loaded: " + said)))
+        false => match ticket == bench.sketch.inkTicket && said == "Unsupported"
+            true => Runtime::step (sketched (bench, Inks::unsupported bench.sketch))
+            false => unsaved (bench, ticket, said)
+
+    // A missing progress file is no progress; a progress write that failed is said, so work is never lost silently.
+    unsaved (bench, ticket, said) = match ticket == Shelves::savedKey
+        true => Runtime::step (bench(shelf = problem (bench.shelf, "Your progress was not saved: " + said)))
+        false => Runtime::step bench
+
+    catalogued bench = match Shelves::slugs (perform ui::Slices.fetch Shelves::catalogueKey)
+        Error said => Runtime::step (bench(shelf = problem (bench.shelf, said)))
+        Success slugs => Runtime::asking (bench, [Shelves::lessons slugs])
+
+    gathered bench = match Shelves::slugs (perform ui::Slices.fetch Shelves::catalogueKey)
+        Error said => Runtime::step (bench(shelf = problem (bench.shelf, said)))
+        Success slugs => Runtime::step (bench(shelf = listed (bench.shelf, Shelves::entries (slugs, perform ui::Slices.fetch Shelves::textsKey))))
+
+    progressed bench = Runtime::step (bench(tutor = merged (bench.tutor, Shelves::completed (perform ui::Slices.fetch Shelves::progressKey))))
+
+    merged (tutor, keys) = tutor(tutorCompleted = foldList (keys, tutor.tutorCompleted, \(done, key) => including (done, key)))
+
+    including (keys, key) = match listContains (keys, key)
+        true => keys
+        false => listAppend (keys, key)
+
+    succeeded (bench, ticket, result) = match ticket
+        "lessons:catalogue" => catalogued bench
+        "lessons:texts" => gathered bench
+        "lessons:progress" => progressed bench
+        _ => recognised (bench, ticket, result)
+
+    recognised (bench, ticket, result) = match ticket == bench.sketch.inkTicket && !isEmpty ticket
+        true => Runtime::step (Coach::inked (bench, Doc::text (result, "text")))
+        false => Runtime::step bench
+
+    (** The store after the host completed `ticket` with `outcome`. *)
+    export completed (bench, ticket, outcome) = match outcome
+        Error said => failed (bench, ticket, said)
+        Success result => succeeded (bench, ticket, result)

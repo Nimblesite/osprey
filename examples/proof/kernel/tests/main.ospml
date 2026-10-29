@@ -6,6 +6,7 @@ import prooftests::EnvironmentTests
 import prooftests::ReduceTests
 import prooftests::InferTests
 import prooftests::ExportTests
+import prooftests::ExportMutationTests
 
 main () =
     LevelsTests::run ()
@@ -14,3 +15,4 @@ main () =
     ReduceTests::run ()
     InferTests::run ()
     ExportTests::run ()
+    ExportMutationTests::run ()

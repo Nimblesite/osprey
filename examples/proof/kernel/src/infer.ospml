@@ -6,8 +6,9 @@ import proof::Environment
 import proof::Reduce
 
 (** Type inference and checking of [PROOF-KERNEL-THEORY]. The context is
-    the list of binder types, innermost first, each as it was when its
-    binder was entered. Every failure is a message naming the term. *)
+    the list of binders entered (`Binder`: name and type, the type as it was
+    when the binder was entered), innermost first. Every failure is a
+    message naming the term, printed with the binder names in scope. *)
 module Infer
     (** The type of `term` in `env` under `context`. *)
     export infer (env, context, term) = match term
@@ -16,20 +17,25 @@ module Infer
         Const name levels => constant (env, name, levels)
         App head arg => application (env, context, head, arg)
         Lam name domain body => lambda (env, context, name, domain, body)
-        Pi name domain body => pi (env, context, domain, body)
+        Pi name domain body => pi (env, context, name, domain, body)
         Let name ty value body => letIn (env, context, ty, value, body)
 
     (** Check that `term` has type `expected`. *)
     export check (env, context, term, expected) = match infer (env, context, term)
-        Success found => matches (env, term, found, expected)
+        Success found => matches (env, context, term, found, expected)
         Error message => Error(message = message)
 
-    matches (env, term, found, expected) = match Reduce::defeq (env, found, expected)
+    matches (env, context, term, found, expected) = match Reduce::defeq (env, found, expected)
         true => Success(value = expected)
-        false => Error(message = "type mismatch: `${Terms::show (term, [])}` has type `${Terms::show (found, [])}` but `${Terms::show (expected, [])}` was expected")
+        false => Error(message = "type mismatch: `${Terms::show (term, names context)}` has type `${Terms::show (found, names context)}` but `${Terms::show (expected, names context)}` was expected")
+
+    (** The binder names in scope, innermost first, as `Terms::show` wants. *)
+    names context = match context
+        [] => []
+        [first, ...rest] => listPrepend (names rest, first.name)
 
     variable (context, index) = match listGet (context, index)
-        Success ty => Success(value = Terms::shift (ty, 0, satAdd index 1))
+        Success binder => Success(value = Terms::shift (binder.ty, 0, satAdd index 1))
         Error message => Error(message = "unbound variable #${toString index}")
 
     constant (env, name, levels) = match Environment::find (env, name)
@@ -42,7 +48,7 @@ module Infer
 
     applyTo (env, context, headType, head, arg) = match headType
         Pi name domain body => applyArg (env, context, domain, body, arg)
-        other => Error(message = "`${Terms::show (head, [])}` is applied but has type `${Terms::show (other, [])}`, not a function type")
+        other => Error(message = "`${Terms::show (head, names context)}` is applied but has type `${Terms::show (other, names context)}`, not a function type")
 
     applyArg (env, context, domain, body, arg) = match check (env, context, arg, domain)
         Success ty => Success(value = Terms::instantiate (body, arg))
@@ -52,15 +58,15 @@ module Infer
         Success level => lambdaBody (env, context, name, domain, body)
         Error message => Error(message = message)
 
-    lambdaBody (env, context, name, domain, body) = match infer (env, listPrepend (context, domain), body)
+    lambdaBody (env, context, name, domain, body) = match infer (env, listPrepend (context, Binder(name = name, ty = domain)), body)
         Success bodyType => Success(value = Pi name domain bodyType)
         Error message => Error(message = message)
 
-    pi (env, context, domain, body) = match sort (env, context, domain)
-        Success u => piBody (env, context, domain, body, u)
+    pi (env, context, name, domain, body) = match sort (env, context, domain)
+        Success u => piBody (env, context, name, domain, body, u)
         Error message => Error(message = message)
 
-    piBody (env, context, domain, body, u) = match sort (env, listPrepend (context, domain), body)
+    piBody (env, context, name, domain, body, u) = match sort (env, listPrepend (context, Binder(name = name, ty = domain)), body)
         Success v => Success(value = Sort (IMax u v))
         Error message => Error(message = message)
 
@@ -70,9 +76,9 @@ module Infer
 
     (** The universe level of a type, or an error when `term` is not a type. *)
     export sort (env, context, term) = match infer (env, context, term)
-        Success ty => sortOf (term, Reduce::whnf (env, ty))
+        Success ty => sortOf (context, term, Reduce::whnf (env, ty))
         Error message => Error(message = message)
 
-    sortOf (term, ty) = match ty
+    sortOf (context, term, ty) = match ty
         Sort level => Success(value = level)
-        other => Error(message = "`${Terms::show (term, [])}` is not a type; its type is `${Terms::show (other, [])}`")
+        other => Error(message = "`${Terms::show (term, names context)}` is not a type; its type is `${Terms::show (other, names context)}`")

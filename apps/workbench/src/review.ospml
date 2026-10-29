@@ -1,0 +1,57 @@
+// Implements [WORKBENCH-VERDICT] for a whole document: the kernel's verdict
+// on each declaration, with the 0-based row to underline. The row of a
+// refused step comes from counting step sentences after the heading, so the
+// underline lands on the line the writer wrote the step on.
+namespace workbench
+
+import workbench::Statements
+import workbench::Steps
+import workbench::Verdicts
+import ui::Lists
+
+(** The kernel's verdicts on a document, line by line ([WORKBENCH-VERDICT]). *)
+module Reviews
+    heads () = ["Theorem", "Lemma", "Proposition", "Example"]
+
+    isHead row = Lists::any (heads (), \word => startsWith (trim row, word))
+
+    (** The 0-based rows of `rows` that open a declaration, in order. *)
+    export starts rows = (foldList (rows, { at = 0, found = [] }, \(walk, row) => { at = satAdd walk.at 1, found = headed (walk, row) })).found
+
+    headed (walk, row) = match isHead row
+        true => listAppend (walk.found, walk.at)
+        false => walk.found
+
+    (** One check per declaration of `text`, in document order. *)
+    export review text =
+        rows = lines text
+        opened = starts rows
+        (foldList (Statements::document text, { at = 0, done = [] }, \(walk, found) => { at = satAdd walk.at 1, done = listAppend (walk.done, checked (rows, listGet opened walk.at ?: 0, found)) })).done
+
+    checked (rows, head, found) = match listGet found.problems 0
+        Success problem => Check(checkHead = head, checkLine = satSub problem.line 1, checkTone = "unchecked", checkNote = problem.message)
+        Error _ => judged (rows, head, Verdicts::decide (found.statement, mapList (Steps::sentences found.proof, \sentence => Steps::read sentence)))
+
+    judged (rows, head, verdict) = match verdict
+        Checked => Check(checkHead = head, checkLine = 0 - 1, checkTone = "checked", checkNote = "Checked by the Osprey kernel")
+        Rejected at reason => Check(checkHead = head, checkLine = refusedRow (rows, head, at), checkTone = "rejected", checkNote = reason)
+        Unchecked reason => Check(checkHead = head, checkLine = 0 - 1, checkTone = "unchecked", checkNote = reason)
+
+    refusedRow (rows, head, at) = match at < 0
+        true => head
+        false => stepRow (rows, satAdd head 1, at)
+
+    // The row holding step `left` (0-based) counting from row `at`; a `Proof.` row holds no step.
+    stepRow (rows, at, left) = match listGet rows at
+        Error _ => 0 - 1
+        Success row => match left < counted row
+            true => at
+            false => stepRow (rows, satAdd at 1, satSub left (counted row))
+
+    (** The row of `text` holding its 0-based step `step`, `-1` when it has fewer. *)
+    export rowOf (text, step) = stepRow (lines text, 0, step)
+
+    (** How many proof steps `row` holds; a `Proof.` row holds none. *)
+    export counted row = match trim row == "Proof."
+        true => 0
+        false => length (Steps::sentences row)

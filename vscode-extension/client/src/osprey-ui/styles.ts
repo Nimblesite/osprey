@@ -32,6 +32,24 @@ body {
   overflow: hidden;
 }
 button, input, textarea, select { font: inherit; color: inherit; }
+.osp-math { font-family: "STIX Two Math", "Latin Modern Math", math; font-size: 1.25em; line-height: normal; max-width: 100%; }
+.osp-editor { min-width: 0; }
+.osp-editor-label { display: block; color: var(--osp-muted); margin-bottom: 12px; }
+.osp-editor-surface { position: relative; min-height: 320px; }
+.osp-editor-mirror, .osp-editor textarea { margin: 0; padding: 12px; width: 100%; min-height: 320px; font: 20px/1.7 "STIX Two Text", Georgia, serif; letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; border: 0; }
+.osp-editor-mirror { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.osp-editor-line { display: block; }
+.osp-editor-underlined { text-decoration: underline wavy; text-underline-offset: 5px; }
+.osp-editor textarea { display: block; position: relative; resize: vertical; background: transparent; color: transparent; caret-color: var(--osp-text); }
+.osp-editor textarea:focus-visible { outline-offset: -2px; }
+.osp-editor-feedback { margin: 8px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.osp-editor-feedback:empty { display: none; }
+.osp-editor-feedback li { margin-top: 8px; }
+.osp-board { position: relative; width: 100%; height: min(70vh, 900px); min-height: 320px; overflow: hidden; background: var(--osp-board, #202723); }
+.osp-board canvas { display: block; width: 100%; height: 100%; touch-action: none; color: var(--osp-chalk, #ECEDE5); cursor: crosshair; }
+.osp-media-image, .osp-media-video { display: block; width: 100%; max-width: 100%; height: auto; border-radius: 4px; }
+.osp-media-video { background: var(--osp-board, #202723); }
+@media (forced-colors: active) { .osp-editor-mirror { display: none; } .osp-editor textarea { color: CanvasText; } }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .48; }
 :focus-visible { outline: 2px solid var(--osp-accent); outline-offset: 2px; }

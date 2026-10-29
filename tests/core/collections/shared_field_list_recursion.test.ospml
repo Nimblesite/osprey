@@ -1,0 +1,71 @@
+(** Regression oracle for [TYPE-LIST-PATTERNS] and
+    [TYPE-FIELD-ACCESS-NON-RECORD]: a recursive generic function that reads a
+    field two records declare, off a `[first, ...rest]` element, resolves the
+    record from the list it walks, at every depth of the recursion. *)
+
+(** A binder: the first of two records declaring `name` and `ty`. *)
+type Binder =
+    name : string
+    ty : int
+
+(** A declaration: the second record declaring `name` and `ty`. *)
+type Decl =
+    name : string
+    ty : int
+    extra : int
+
+(** Every element's `name`, walked by self-recursion over the tail. *)
+names context = match context
+    [] => []
+    [first, ...rest] => listPrepend (names rest) first.name
+
+(** The sum of every element's `ty`, saturating. *)
+tySum context = match context
+    [] => 0
+    [first, ...rest] => satAdd (tySum rest) first.ty
+
+(** Two elements per step, so the tail is bound past a two-element prefix. *)
+pairNames context = match context
+    [] => ""
+    [only] => only.name
+    [first, second, ...rest] => first.name + second.name + pairNames rest
+
+(** Recursion through an accumulator parameter as well as the tail. *)
+joined (context, acc) = match context
+    [] => acc
+    [first, ...rest] => joined (rest, acc + first.name)
+
+(** No binders, typed so the walks below see a `List<Binder>`. *)
+noBinders : List<Binder>
+noBinders = []
+
+(** The same recursive functions over lists of both records, whose shared
+    fields sit at the same slots, and over the empty list. *)
+sharedFieldRecursionCase () =
+    binders = [Binder(name = "a", ty = 1), Binder(name = "b", ty = 2), Binder(name = "c", ty = 3)]
+    decls = [Decl(name = "x", ty = 10, extra = 7), Decl(name = "y", ty = 20, extra = 8)]
+    checkAll "binders" [
+        listLength (names binders) == 3,
+        (listGet (names binders) 0 ?: "") == "a",
+        (listGet (names binders) 2 ?: "") == "c",
+        tySum binders == 6,
+        pairNames binders == "abc",
+        joined (binders, ">") == ">abc"
+    ]
+    checkAll "declarations" [
+        listLength (names decls) == 2,
+        (listGet (names decls) 0 ?: "") == "x",
+        (listGet (names decls) 1 ?: "") == "y",
+        tySum decls == 30,
+        pairNames decls == "xy",
+        joined (decls, "") == "xy"
+    ]
+    checkAll "empty and single" [
+        listLength (names noBinders) == 0,
+        tySum noBinders == 0,
+        pairNames noBinders == "",
+        pairNames [Binder(name = "z", ty = 0)] == "z",
+        joined (noBinders, "-") == "-"
+    ]
+
+test "recursive functions read shared record fields off list pattern elements" sharedFieldRecursionCase

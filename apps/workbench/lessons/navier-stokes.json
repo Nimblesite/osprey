@@ -1,0 +1,237 @@
+{
+  "format": 1,
+  "slug": "navier-stokes",
+  "title": "Navier–Stokes: an open problem",
+  "summary": "Read the Navier–Stokes equations and separate what has been proved about their solutions from the three-dimensional question that remains open.",
+  "stage": 3,
+  "minutes": 9,
+  "after": [
+    "not-and-contradiction"
+  ],
+  "blocks": [
+    {
+      "kind": "prose",
+      "text": "The Navier–Stokes equations describe fluid motion. The unknowns are a velocity u and a pressure p. The symbol ν is the viscosity, and f is an external force.\n\nThe first equation records how the velocity changes. The second says the divergence of the velocity is zero: the fluid is incompressible, so no region of it gains or loses volume."
+    },
+    {
+      "kind": "math",
+      "math": {
+        "kind": "op",
+        "symbol": "=",
+        "left": {
+          "kind": "op",
+          "symbol": "+",
+          "left": {
+            "kind": "frac",
+            "top": {
+              "kind": "seq",
+              "items": [
+                {
+                  "kind": "sym",
+                  "text": "∂"
+                },
+                {
+                  "kind": "sym",
+                  "text": "u"
+                }
+              ]
+            },
+            "bottom": {
+              "kind": "seq",
+              "items": [
+                {
+                  "kind": "sym",
+                  "text": "∂"
+                },
+                {
+                  "kind": "sym",
+                  "text": "t"
+                }
+              ]
+            }
+          },
+          "right": {
+            "kind": "seq",
+            "items": [
+              {
+                "kind": "paren",
+                "body": {
+                  "kind": "op",
+                  "symbol": "·",
+                  "left": {
+                    "kind": "sym",
+                    "text": "u"
+                  },
+                  "right": {
+                    "kind": "sym",
+                    "text": "∇"
+                  }
+                }
+              },
+              {
+                "kind": "sym",
+                "text": "u"
+              }
+            ]
+          }
+        },
+        "right": {
+          "kind": "op",
+          "symbol": "+",
+          "left": {
+            "kind": "op",
+            "symbol": "+",
+            "left": {
+              "kind": "seq",
+              "items": [
+                {
+                  "kind": "sym",
+                  "text": "−"
+                },
+                {
+                  "kind": "sym",
+                  "text": "∇"
+                },
+                {
+                  "kind": "sym",
+                  "text": "p"
+                }
+              ]
+            },
+            "right": {
+              "kind": "seq",
+              "items": [
+                {
+                  "kind": "sym",
+                  "text": "ν"
+                },
+                {
+                  "kind": "sym",
+                  "text": "Δ"
+                },
+                {
+                  "kind": "sym",
+                  "text": "u"
+                }
+              ]
+            }
+          },
+          "right": {
+            "kind": "sym",
+            "text": "f"
+          }
+        }
+      },
+      "spoken": "The partial derivative of u with respect to t, plus u dot nabla applied to u, equals minus nabla p, plus nu times the Laplacian of u, plus f."
+    },
+    {
+      "kind": "math",
+      "math": {
+        "kind": "op",
+        "symbol": "=",
+        "left": {
+          "kind": "op",
+          "symbol": "·",
+          "left": {
+            "kind": "sym",
+            "text": "∇"
+          },
+          "right": {
+            "kind": "sym",
+            "text": "u"
+          }
+        },
+        "right": {
+          "kind": "num",
+          "text": "0"
+        }
+      },
+      "spoken": "Nabla dot u equals zero."
+    },
+    {
+      "kind": "image",
+      "source": "media/navier-stokes/equations.jpg",
+      "alt": "The two Navier–Stokes equations appear above a flowing velocity field; labels identify u as velocity, p as pressure, and nu as viscosity.",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "kind": "video",
+      "source": "media/navier-stokes/film.mp4",
+      "poster": "media/navier-stokes/poster.jpg",
+      "captions": "media/navier-stokes/film.en.vtt",
+      "alt": "A smooth velocity field flows around a channel while the two equations remain beside it; a later branch contrasts continued smooth motion with a developing blow-up, marked as an open question.",
+      "seconds": 55
+    },
+    {
+      "kind": "prose",
+      "text": "A solution must supply a velocity and a pressure that satisfy the equations at every point and time. They must start from the given initial flow and stay smooth.\n\nSome facts are proved. Leray's weak solutions, introduced in 1934, exist for all time. In two dimensions, smooth solutions exist for all time. In three dimensions, smooth solutions exist for a short time, or for all time when the initial flow is small enough."
+    },
+    {
+      "kind": "prose",
+      "text": "The three-dimensional global smoothness question remains open. Either every smooth initial flow keeps a smooth solution for ever, or some smooth initial flow blows up in finite time. No proof of either answer is known. This is one of the Clay Millennium Prize problems.\n\nWe will use smooth and blowup as names for propositions about those outcomes. The exercises concern their logical shape, not a solution of the equations. Written as a formula, the problem says that one of the two outcomes holds, and not both."
+    },
+    {
+      "kind": "formula",
+      "formula": "(smooth ∨ blowup) ∧ ¬(smooth ∧ blowup)"
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "prove",
+        "id": "prove-remaining-outcome",
+        "prompt": "Prove that if one of the two outcomes holds, and blowup leads to the impossible, then smooth holds.",
+        "statement": "Theorem remaining_outcome. For all smooth blowup, (smooth ∨ blowup) → (blowup → ⊥) → smooth.",
+        "given": [],
+        "solution": [
+          "Assume outcomes : smooth ∨ blowup.",
+          "Assume noBlowup : blowup → ⊥.",
+          "By cases on outcomes, as isSmooth and isBlowup.",
+          "From isSmooth.",
+          "Contradiction from isBlowup and noBlowup."
+        ],
+        "hints": [
+          "Assume both premises, then split the disjunction into two cases.",
+          "Use isSmooth in the first case and the contradiction in the blowup case."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "state",
+        "id": "state-outcomes-exclusive",
+        "prompt": "Write that smooth and blowup cannot both hold. Negate the conjunction, with smooth on the left and blowup on the right.",
+        "variables": [
+          "smooth",
+          "blowup"
+        ],
+        "expected": "¬(smooth ∧ blowup)",
+        "hints": [
+          "Form smooth ∧ blowup inside parentheses.",
+          "Negate the whole parenthesised conjunction."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "judge",
+        "id": "judge-unproved-smoothness",
+        "prompt": "This one-line proof asserts smooth without any hypothesis. Decide whether the kernel accepts it.",
+        "statement": "Theorem clay. For all smooth, smooth.",
+        "steps": [
+          "From smooth."
+        ],
+        "hints": [
+          "Look for a hypothesis named smooth in the proof.",
+          "For all smooth declares a proposition; it does not supply evidence that smooth holds."
+        ]
+      }
+    },
+    {
+      "kind": "prose",
+      "text": "Naming a proposition is not proving it. The workbench never accepts what nobody has proved, however it is worded, and the Navier–Stokes smoothness question is still open."
+    }
+  ]
+}

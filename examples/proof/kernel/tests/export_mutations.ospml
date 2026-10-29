@@ -1,0 +1,123 @@
+namespace prooftests
+
+import proof::Checked
+import proof::Environment
+import proof::Fixtures
+import prooftests::Support
+
+(** The export reader and the kernel against mutated exports
+    ([PROOF-EXPORT], [PROOF-KERNEL]): every single-edit corruption of the
+    recorded `id_imp` export is rejected with the kernel's own reason, the
+    one edit that keeps the theorem true still checks, and hand-written
+    exports exercise what the recorded one cannot: a definition that must
+    unfold, a universe-polymorphic theorem, and their broken twins. Each
+    case goes through `Checked::exportedDeclaring`, the same path the speed
+    gate and the example entry use, so nothing here is checked by a code
+    path the gate does not time. *)
+module ExportMutationTests
+
+    export run () =
+        test ("control: the recorded export checks", \() =>
+            expect (verdict (Fixtures::idImp ()), "checked"))
+
+        test ("control: the theorem over Type instead of Prop still checks", \() =>
+            expect (verdict (overType ()), "checked"))
+
+        test ("the proof returning the proposition instead of the hypothesis is a type mismatch", \() =>
+            expect (verdict (edit ("\"body\":1,\"name\":15", "\"body\":2,\"name\":15")), "type mismatch: `(fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => x._@.IdImp.4195544489._hygCtx._hyg.10))` has type `(∀ (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop), (x._@.IdImp.4195544489._hygCtx._hyg.10 → Prop))` but `(∀ (p : Prop), (p → p))` was expected"))
+
+        test ("the outer binder typed by an unbound variable is rejected", \() =>
+            expect (verdict (edit ("\"body\":5,\"name\":14,\"type\":0", "\"body\":5,\"name\":14,\"type\":1")), "unbound variable #0"))
+
+        test ("the statement replaced by Prop makes the proof a mismatch", \() =>
+            expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":0,\"value\":6")), "type mismatch: `(fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))` has type `(∀ (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop), (x._@.IdImp.4195544489._hygCtx._hyg.10 → x._@.IdImp.4195544489._hygCtx._hyg.10))` but `Prop` was expected"))
+
+        test ("an open statement is rejected before the proof is looked at", \() =>
+            expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":3,\"value\":6")), "unbound variable #0"))
+
+        test ("the inner lambda alone as the proof is open", \() =>
+            expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":4,\"value\":5")), "unbound variable #0"))
+
+        test ("the statement offered as its own proof is a mismatch", \() =>
+            expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":4,\"value\":4")), "type mismatch: `(∀ (p : Prop), (p → p))` has type `Prop` but `(∀ (p : Prop), (p → p))` was expected"))
+
+        test ("a weaker statement than the proof proves is a mismatch", \() =>
+            expect (verdict (edit ("\"body\":3,\"name\":2,\"type\":0", "\"body\":1,\"name\":2,\"type\":0")), "type mismatch: `(fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))` has type `(∀ (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop), (x._@.IdImp.4195544489._hygCtx._hyg.10 → x._@.IdImp.4195544489._hygCtx._hyg.10))` but `(∀ (p : Prop), p)` was expected"))
+
+        test ("a statement whose body is a proof, not a type, is rejected as not a type", \() =>
+            expect (verdict (edit ("\"body\":2,\"name\":7,\"type\":1", "\"body\":1,\"name\":7,\"type\":1")), "`#0` is not a type; its type is `#1`"))
+
+        test ("a variable index past the context is rejected", \() =>
+            expect (verdict (edit ("{\"bvar\":1,\"ie\":2}", "{\"bvar\":5,\"ie\":2}")), "unbound variable #5"))
+
+        test ("the proof applied to Prop is not a proof of the statement", \() =>
+            expect (verdict (edit ("{\"ie\":6,\"lam\":{\"binderInfo\":\"default\",\"body\":5,\"name\":14,\"type\":0}}", "{\"ie\":6,\"app\":{\"fn\":5,\"arg\":0}}")), "unbound variable #0"))
+
+        test ("a declaration of another name is not a check of id_imp", \() =>
+            expect (verdict (edit ("\"name\":1,\"type\":4", "\"name\":2,\"type\":4")), "the export declares no `id_imp`"))
+
+        test ("the same theorem declared twice is rejected", \() =>
+            expect (verdict (Fixtures::idImp () + lastLine () + "\n"), "constant `id_imp` is already declared"))
+
+        test ("an export cut before its declaration declares nothing", \() =>
+            expect (verdict (swapped (Fixtures::idImp (), lastLine () + "\n", "")), "the export declares no `id_imp`"))
+
+        test ("a proof reference to an expression the file never defined names its line", \() =>
+            expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":4,\"value\":9")), "line 24: unknown expr 9"))
+
+        test ("a binder annotation the reader does not know is refused on its line", \() =>
+            expect (verdict (edit ("{\"bvar\":0,\"ie\":1}\n{\"bvar\":1,\"ie\":2}\n{\"forallE\":{\"binderInfo\":\"default\"", "{\"bvar\":0,\"ie\":1}\n{\"bvar\":1,\"ie\":2}\n{\"forallE\":{\"binderInfo\":\"weird\"")), "line 12: bad binderInfo weird"))
+
+        test ("a theorem whose statement needs a definition to unfold checks", \() =>
+            expect (named (throughDefinition (1), "t"), "checked"))
+
+        test ("the same theorem with the wrong proof is rejected after the unfold", \() =>
+            expect (named (throughDefinition (6), "t"), "type mismatch: `(fun (p : Prop) => (fun (h : (idP p)) => p))` has type `(∀ (p : Prop), ((idP p) → Prop))` but `(∀ (p : Prop), ((idP p) → p))` was expected"))
+
+        test ("the same theorem without its definition names the missing constant", \() =>
+            expect (named (swapped (throughDefinition (1), definitionLine () + "\n", ""), "t"), "unknown constant `idP`"))
+
+        test ("a universe-polymorphic theorem checks with its parameter declared", \() =>
+            expect (named (polymorphic ("[2]"), "id_u"), "checked"))
+
+        test ("a universe-polymorphic theorem without its parameter is rejected", \() =>
+            expect (named (polymorphic ("[]"), "id_u"), "constant `id_u` uses a universe parameter it does not declare, or declares one twice"))
+
+        test ("a universe parameter declared twice is rejected", \() =>
+            expect (named (polymorphic ("[2,2]"), "id_u"), "constant `id_u` uses a universe parameter it does not declare, or declares one twice"))
+
+    (** `checked`, or the rejection, for `id_imp` through the gate's own path. *)
+    verdict (text) = named (text, "id_imp")
+
+    named (text, name) = match Checked::exportedDeclaring (Environment::empty (), text, name)
+        Success env => "checked"
+        Error message => message
+
+    (** The recorded export with one substring replaced; a substring that is
+        not there leaves the text unchanged, and the control case would then
+        read `checked` where a rejection is expected, so a typo in an edit
+        cannot pass. *)
+    edit (from, to) = swapped (Fixtures::idImp (), from, to)
+
+    (** `replace`, with a failed replacement reading as the empty text,
+        which every case rejects as declaring nothing. *)
+    swapped (text, from, to) = replace (text, from, to) ?: ""
+
+    lastLine () = "{\"thm\":{\"all\":[1],\"levelParams\":[],\"name\":1,\"type\":4,\"value\":6}}"
+
+    metaLine () = listGet (lines (Fixtures::idImp ()), 0) ?: ""
+
+    (** `Prop` replaced by `Type` in the one `sort` line, with the level
+        `succ 0` added for it: `∀ (p : Type), p → p` is still a theorem. *)
+    overType () = swapped (Fixtures::idImp (), "{\"ie\":0,\"sort\":0}", "{\"il\":1,\"succ\":0}\n{\"ie\":0,\"sort\":1}")
+
+    definitionLine () = "{\"def\":{\"all\":[1],\"levelParams\":[],\"name\":1,\"type\":2,\"value\":3}}"
+
+    (** `def idP : Prop → Prop := fun p => p` and
+        `theorem t : ∀ (p : Prop), idP p → p := fun p h => <body>`, where
+        the body is expression `body`: 1 is `h` (right), 6 is `p` (wrong). *)
+    throughDefinition (body) = "${metaLine ()}\n{\"in\":1,\"str\":{\"pre\":0,\"str\":\"idP\"}}\n{\"in\":2,\"str\":{\"pre\":0,\"str\":\"p\"}}\n{\"in\":3,\"str\":{\"pre\":0,\"str\":\"t\"}}\n{\"in\":4,\"str\":{\"pre\":0,\"str\":\"h\"}}\n{\"ie\":0,\"sort\":0}\n{\"ie\":1,\"bvar\":0}\n{\"ie\":2,\"forallE\":{\"binderInfo\":\"default\",\"body\":0,\"name\":2,\"type\":0}}\n{\"ie\":3,\"lam\":{\"binderInfo\":\"default\",\"body\":1,\"name\":2,\"type\":0}}\n${definitionLine ()}\n{\"ie\":4,\"const\":{\"name\":1,\"us\":[]}}\n{\"ie\":5,\"app\":{\"fn\":4,\"arg\":1}}\n{\"ie\":6,\"bvar\":1}\n{\"ie\":7,\"forallE\":{\"binderInfo\":\"default\",\"body\":6,\"name\":4,\"type\":5}}\n{\"ie\":8,\"forallE\":{\"binderInfo\":\"default\",\"body\":7,\"name\":2,\"type\":0}}\n{\"ie\":9,\"lam\":{\"binderInfo\":\"default\",\"body\":${toString body},\"name\":4,\"type\":5}}\n{\"ie\":10,\"lam\":{\"binderInfo\":\"default\",\"body\":9,\"name\":2,\"type\":0}}\n{\"thm\":{\"all\":[3],\"levelParams\":[],\"name\":3,\"type\":8,\"value\":10}}\n"
+
+    (** `theorem id_u.{u} : ∀ (α : Sort u), α → α := fun α x => x` with the
+        given `levelParams` array. *)
+    polymorphic (params) = "${metaLine ()}\n{\"in\":1,\"str\":{\"pre\":0,\"str\":\"id_u\"}}\n{\"in\":2,\"str\":{\"pre\":0,\"str\":\"u\"}}\n{\"in\":3,\"str\":{\"pre\":0,\"str\":\"α\"}}\n{\"in\":4,\"str\":{\"pre\":0,\"str\":\"x\"}}\n{\"il\":1,\"param\":2}\n{\"ie\":0,\"sort\":1}\n{\"ie\":1,\"bvar\":0}\n{\"ie\":2,\"bvar\":1}\n{\"ie\":3,\"forallE\":{\"binderInfo\":\"default\",\"body\":2,\"name\":4,\"type\":1}}\n{\"ie\":4,\"forallE\":{\"binderInfo\":\"default\",\"body\":3,\"name\":3,\"type\":0}}\n{\"ie\":5,\"lam\":{\"binderInfo\":\"default\",\"body\":1,\"name\":4,\"type\":1}}\n{\"ie\":6,\"lam\":{\"binderInfo\":\"default\",\"body\":5,\"name\":3,\"type\":0}}\n{\"thm\":{\"all\":[1],\"levelParams\":${params},\"name\":1,\"type\":4,\"value\":6}}\n"
