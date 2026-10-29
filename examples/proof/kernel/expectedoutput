@@ -1,6 +1,6 @@
 checked: id_imp
 rejected: id_imp_bad: type mismatch: `(fun (p : Prop) => (fun (h : p) => p))` has type `(∀ (p : Prop), (p → Prop))` but `(∀ (p : Prop), (p → p))` was expected
-rejected: not_a_type: `(fun (p : Prop) => (fun (h : p) => h))` is not a type; its type is `(∀ (p : Prop), (p → p))`
+rejected: not_a_type: not a type: `(fun (p : Prop) => (fun (h : p) => h))` has type `(∀ (p : Prop), (p → p))`
 checked: id_imp_typed
 checked: imp_trans
 checked: forall_typed

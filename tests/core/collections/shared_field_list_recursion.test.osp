@@ -34,6 +34,31 @@ fn joined(context, acc) = match context {
     [first, ...rest] => joined(rest, acc + first.name)
 }
 
+/// The element named `wanted`, found by two mutually recursive functions,
+/// so the `Result` payload crosses a specialised call and an inlined phi.
+fn found(context, wanted) = match context {
+    [] => Error { message: "no ${wanted}" }
+    [first, ...rest] => foundAt(first, rest, wanted)
+}
+
+/// One step of `found`: this element, or the search of the rest.
+fn foundAt(first, rest, wanted) = match first.name == wanted {
+    true => Success { value: first }
+    false => found(rest, wanted)
+}
+
+/// The `ty` of the element named `wanted`, or `-1`.
+fn tyOf(context, wanted) = match found(context, wanted) {
+    Success { value } => value.ty
+    Error { message } => -1
+}
+
+/// The `name` read back off the found element, or the error message.
+fn nameOf(context, wanted) = match found(context, wanted) {
+    Success { value } => value.name
+    Error { message } => message
+}
+
 /// No binders, typed so the walks below see a `List<Binder>`.
 let noBinders: List<Binder> = []
 
@@ -48,7 +73,12 @@ fn sharedFieldRecursionCase() = {
             (listGet(names(binders), 2) ?: "") == "c",
             tySum(binders) == 6,
             pairNames(binders) == "abc",
-            joined(binders, ">") == ">abc"
+            joined(binders, ">") == ">abc",
+            tyOf(binders, "a") == 1,
+            tyOf(binders, "c") == 3,
+            tyOf(binders, "q") == -1,
+            nameOf(binders, "b") == "b",
+            nameOf(binders, "q") == "no q"
     ])
     checkAll("declarations", [
             listLength(names(decls)) == 2,
@@ -63,8 +93,10 @@ fn sharedFieldRecursionCase() = {
             tySum(noBinders) == 0,
             pairNames(noBinders) == "",
             pairNames([Binder { name: "z", ty: 0 }]) == "z",
-            joined(noBinders, "-") == "-"
+            joined(noBinders, "-") == "-",
+            tyOf(noBinders, "a") == -1,
+            nameOf(noBinders, "a") == "no a"
     ])
 }
 
-test("recursive functions read shared record fields off list pattern elements", sharedFieldRecursionCase)
+test("recursive functions read shared record fields off list pattern elements and found results", sharedFieldRecursionCase)

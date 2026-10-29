@@ -25,11 +25,44 @@ pub(crate) fn try_inline(
     let Some((params, body, _)) = cg.fn_defs.get(name).cloned() else {
         return Ok(None);
     };
-    match (crate::monofn::calls_itself(name, &body), rest.is_empty()) {
+    let value = match (crate::monofn::calls_itself(name, &body), rest.is_empty()) {
         (true, true) => specialize_at(cg, name, &params, &body, args, named),
         (true, false) => Ok(None),
         (false, _) => expand_call(cg, name, &params, &body, args, named, rest),
+    }?;
+    Ok(value.map(|value| checked_return(cg, name, rest, value)))
+}
+
+/// A whole call's value carries the return type the checker resolved for
+/// `name` when that type is concrete and the lowered value has none of its
+/// own — concrete as the ABI sees it, so an open `Result` error channel,
+/// which is always a message, does not count ([`crate::types::abi_shape_concrete`]).
+/// An inlined body that ends in a phi over a constructed `Success` and a
+/// mutually recursive specialisation merges to a bare `Result` block, and a
+/// field read off its payload — a field two records declare — was then
+/// quarantined although the checker had named the record
+/// ([TYPE-FIELD-ACCESS-NON-RECORD], [TYPE-FN-GENERIC]). A partial
+/// application (`rest` non-empty) returns a function, not this type.
+fn checked_return(
+    cg: &Codegen,
+    name: &str,
+    rest: &[crate::curry::ArgGroup<'_>],
+    mut value: Value,
+) -> Value {
+    if !rest.is_empty() || value.inferred_type.is_some() {
+        return value;
     }
+    let Some(ty) = cg.prog.return_type(name) else {
+        return value;
+    };
+    if !crate::types::abi_shape_concrete(ty) {
+        return value;
+    }
+    if value.result_inner.is_some() && value.payload_owner.is_none() {
+        value.payload_owner = crate::types::result_payload_owner(&cg.prog, ty);
+    }
+    value.inferred_type = Some(ty.clone());
+    value
 }
 
 /// Mutual recursion closes on the symbol registered before its body is lowered.

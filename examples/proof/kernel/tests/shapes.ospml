@@ -1,0 +1,99 @@
+namespace prooftests
+
+import proof::Terms
+import proof::Infer
+import proof::Export
+import proof::Environment
+import proof
+    Binder
+    Theorem
+    Definition
+    Axiom
+
+(** Structural views of an export, so a rejection is asserted on its kind and
+    on the terms it is about, never on how those terms print: Lean's hygienic
+    binder names (`a._@._internal._hyg.0`) change with every re-export, and
+    `Terms::equal` ignores binder names ([PROOF-EXPORT], [PROOF-KERNEL]).
+    Every view is a string so one `expect` shows them all on failure. *)
+module Shapes
+    (** Views joined by ` | `, in order. *)
+    export views (parts) = foldList (parts, "", \(acc, part) => joinedTo (acc, part))
+
+    joinedTo (acc, part) = match acc == ""
+        true => part
+        false => "${acc} | ${part}"
+
+    (** The kind a kernel message opens with: the text before its first `: `. *)
+    export kindOf (message) = match indexOf (message, ": ")
+        Success at => substring (message, 0, at) ?: message
+        Error reason => message
+
+    (** `equal` when `actual` is `expected` up to binder names, else the
+        term that differs, printed with no names. *)
+    export shape (actual, expected) = match Terms::equal (actual, expected)
+        true => "equal"
+        false => "differs: ${Terms::show (actual, [])}"
+
+    (** `shape` of a computed term, or the error that stopped it. *)
+    export shapeOf (result, expected) = match result
+        Success term => shape (term, expected)
+        Error message => "error: ${message}"
+
+    (** The statement of declaration `name`, as the reader produced it. *)
+    export statementOf (text, name) = match declOf (text, name)
+        Success decl => Success(value = decl.ty)
+        Error message => Error(message = message)
+
+    (** The type the kernel infers for the value of `name`, in an
+        environment holding every other declaration of the export. *)
+    export proofTypeOf (text, name) = match Export::read text
+        Success decls => valueTypeIn (others (decls, name), found (decls, name))
+        Error message => Error(message = message)
+
+    (** The kind of the kernel's rejection of `name`'s statement as a type,
+        or `a type` when it is one, in an environment holding every other
+        declaration of the export. *)
+    export statementKind (text, name) = match Export::read text
+        Success decls => statementKindIn (others (decls, name), found (decls, name))
+        Error message => "error: ${message}"
+
+    statementKindIn (env, decl) = match decl
+        Success target => sortKind (Infer::sort (env, [], target.ty))
+        Error message => "error: ${message}"
+
+    sortKind (result) = match result
+        Success level => "a type"
+        Error message => kindOf message
+
+    (** `shapeOf` the type of `term` under `context`, innermost binder first. *)
+    export typeUnder (context, term, expected) = shapeOf (Infer::infer (Environment::empty (), context, term), expected)
+
+    (** A binder of a hand-built context. *)
+    export binder (name, ty) = Binder(name = name, ty = ty)
+
+    declOf (text, name) = match Export::read text
+        Success decls => found (decls, name)
+        Error message => Error(message = message)
+
+    found (decls, name) = match decls
+        [] => Error(message = "the export declares no `${name}`")
+        [first, ...rest] => foundAt (first, rest, name)
+
+    foundAt (first, rest, name) = match first.name == name
+        true => Success(value = first)
+        false => found (rest, name)
+
+    others (decls, name) = foldList (decls, Environment::empty (), \(env, decl) => addedUnless (env, decl, name))
+
+    addedUnless (env, decl, name) = match decl.name == name
+        true => env
+        false => Environment::add (env, decl) ?: env
+
+    valueTypeIn (env, decl) = match decl
+        Success target => valueType (env, target.body)
+        Error message => Error(message = message)
+
+    valueType (env, body) = match body
+        Theorem value => Infer::infer (env, [], value)
+        Definition value => Infer::infer (env, [], value)
+        Axiom => Error(message = "an axiom has no value")

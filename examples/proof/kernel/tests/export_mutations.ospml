@@ -4,6 +4,14 @@ import proof::Checked
 import proof::Environment
 import proof::Fixtures
 import prooftests::Support
+import prooftests::Shapes
+import proof
+    Sort
+    Zero
+    BVar
+    Const
+    App
+    Pi
 
 (** The export reader and the kernel against mutated exports
     ([PROOF-EXPORT], [PROOF-KERNEL]): every single-edit corruption of the
@@ -24,28 +32,28 @@ module ExportMutationTests
             expect (verdict (overType ()), "checked"))
 
         test ("the proof returning the proposition instead of the hypothesis is a type mismatch", \() =>
-            expect (verdict (edit ("\"body\":1,\"name\":15", "\"body\":2,\"name\":15")), "type mismatch: `(fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => x._@.IdImp.4195544489._hygCtx._hyg.10))` has type `(∀ (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop), (x._@.IdImp.4195544489._hygCtx._hyg.10 → Prop))` but `(∀ (p : Prop), (p → p))` was expected"))
+            expect (mismatch (edit ("\"body\":1,\"name\":15", "\"body\":2,\"name\":15"), "id_imp", idType (), Pi "p" (prop ()) (Pi "h" (BVar 0) (prop ()))), "type mismatch | a type | equal | equal"))
 
         test ("the outer binder typed by an unbound variable is rejected", \() =>
-            expect (verdict (edit ("\"body\":5,\"name\":14,\"type\":0", "\"body\":5,\"name\":14,\"type\":1")), "unbound variable #0"))
+            expect (Shapes::views [verdict (edit ("\"body\":5,\"name\":14,\"type\":0", "\"body\":5,\"name\":14,\"type\":1")), Shapes::statementKind (edit ("\"body\":5,\"name\":14,\"type\":0", "\"body\":5,\"name\":14,\"type\":1"), "id_imp")], "unbound variable #0 | a type"))
 
         test ("the statement replaced by Prop makes the proof a mismatch", \() =>
-            expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":0,\"value\":6")), "type mismatch: `(fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))` has type `(∀ (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop), (x._@.IdImp.4195544489._hygCtx._hyg.10 → x._@.IdImp.4195544489._hygCtx._hyg.10))` but `Prop` was expected"))
+            expect (mismatch (edit ("\"type\":4,\"value\":6", "\"type\":0,\"value\":6"), "id_imp", prop (), idType ()), "type mismatch | a type | equal | equal"))
 
         test ("an open statement is rejected before the proof is looked at", \() =>
-            expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":3,\"value\":6")), "unbound variable #0"))
+            expect (Shapes::views [verdict (edit ("\"type\":4,\"value\":6", "\"type\":3,\"value\":6")), Shapes::shapeOf (Shapes::statementOf (edit ("\"type\":4,\"value\":6", "\"type\":3,\"value\":6"), "id_imp"), Pi "a" (BVar 0) (BVar 1))], "unbound variable #0 | equal"))
 
         test ("the inner lambda alone as the proof is open", \() =>
             expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":4,\"value\":5")), "unbound variable #0"))
 
         test ("the statement offered as its own proof is a mismatch", \() =>
-            expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":4,\"value\":4")), "type mismatch: `(∀ (p : Prop), (p → p))` has type `Prop` but `(∀ (p : Prop), (p → p))` was expected"))
+            expect (mismatch (edit ("\"type\":4,\"value\":6", "\"type\":4,\"value\":4"), "id_imp", idType (), prop ()), "type mismatch | a type | equal | equal"))
 
         test ("a weaker statement than the proof proves is a mismatch", \() =>
-            expect (verdict (edit ("\"body\":3,\"name\":2,\"type\":0", "\"body\":1,\"name\":2,\"type\":0")), "type mismatch: `(fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))` has type `(∀ (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop), (x._@.IdImp.4195544489._hygCtx._hyg.10 → x._@.IdImp.4195544489._hygCtx._hyg.10))` but `(∀ (p : Prop), p)` was expected"))
+            expect (mismatch (edit ("\"body\":3,\"name\":2,\"type\":0", "\"body\":1,\"name\":2,\"type\":0"), "id_imp", Pi "p" (prop ()) (BVar 0), idType ()), "type mismatch | a type | equal | equal"))
 
         test ("a statement whose body is a proof, not a type, is rejected as not a type", \() =>
-            expect (verdict (edit ("\"body\":2,\"name\":7,\"type\":1", "\"body\":1,\"name\":7,\"type\":1")), "`#0` is not a type; its type is `#1`"))
+            expect (notAType (edit ("\"body\":2,\"name\":7,\"type\":1", "\"body\":1,\"name\":7,\"type\":1")), "not a type | not a type | equal | equal"))
 
         test ("a variable index past the context is rejected", \() =>
             expect (verdict (edit ("{\"bvar\":1,\"ie\":2}", "{\"bvar\":5,\"ie\":2}")), "unbound variable #5"))
@@ -72,7 +80,7 @@ module ExportMutationTests
             expect (named (throughDefinition (1), "t"), "checked"))
 
         test ("the same theorem with the wrong proof is rejected after the unfold", \() =>
-            expect (named (throughDefinition (6), "t"), "type mismatch: `(fun (p : Prop) => (fun (h : (idP p)) => p))` has type `(∀ (p : Prop), ((idP p) → Prop))` but `(∀ (p : Prop), ((idP p) → p))` was expected"))
+            expect (mismatch (throughDefinition (6), "t", Pi "p" (prop ()) (Pi "h" (idP ()) (BVar 1)), Pi "p" (prop ()) (Pi "h" (idP ()) (prop ()))), "type mismatch | a type | equal | equal"))
 
         test ("the same theorem without its definition names the missing constant", \() =>
             expect (named (swapped (throughDefinition (1), definitionLine () + "\n", ""), "t"), "unknown constant `idP`"))
@@ -85,6 +93,25 @@ module ExportMutationTests
 
         test ("a universe parameter declared twice is rejected", \() =>
             expect (named (polymorphic ("[2,2]"), "id_u"), "constant `id_u` uses a universe parameter it does not declare, or declares one twice"))
+
+    (** `Prop`, the recorded theorem's statement `∀ (p : Prop), p → p`, and
+        `idP p` under one binder, as terms the cases compare against. *)
+    prop () = Support::prop ()
+
+    idType () = Support::idType ()
+
+    idP () = App (Const "idP" []) (BVar 0)
+
+    (** A type-mismatch rejection of `name` in `text`, seen four ways: the
+        verdict's kind, the statement's own sort check (it is a type, so the
+        proof is what failed), the statement as read against `statement`,
+        and the type the kernel infers for the proof against `found`. *)
+    mismatch (text, name, statement, found) = Shapes::views [Shapes::kindOf (named (text, name)), Shapes::statementKind (text, name), Shapes::shapeOf (Shapes::statementOf (text, name), statement), Shapes::shapeOf (Shapes::proofTypeOf (text, name), found)]
+
+    (** A statement whose body is a variable: the verdict's kind, the
+        statement's own sort check, the statement as read, and the type of
+        the body under the statement's two binders, which is `p`. *)
+    notAType (text) = Shapes::views [Shapes::kindOf (verdict text), Shapes::statementKind (text, "id_imp"), Shapes::shapeOf (Shapes::statementOf (text, "id_imp"), Pi "p" (prop ()) (Pi "a" (BVar 0) (BVar 0))), Shapes::typeUnder ([Shapes::binder ("a", BVar 0), Shapes::binder ("p", prop ())], BVar 0, BVar 1)]
 
     (** `checked`, or the rejection, for `id_imp` through the gate's own path. *)
     verdict (text) = named (text, "id_imp")

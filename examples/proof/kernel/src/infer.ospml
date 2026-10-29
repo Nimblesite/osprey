@@ -8,7 +8,10 @@ import proof::Reduce
 (** Type inference and checking of [PROOF-KERNEL-THEORY]. The context is
     the list of binders entered (`Binder`: name and type, the type as it was
     when the binder was entered), innermost first. Every failure is a
-    message naming the term, printed with the binder names in scope. *)
+    message that opens with its kind (`type mismatch`, `not a type`,
+    `not a function`, `unbound variable`, `unknown constant`) and then names
+    the terms, printed with the binder names in scope; the kind is what a
+    caller may branch on, the rendering is for people. *)
 module Infer
     (** The type of `term` in `env` under `context`. *)
     export infer (env, context, term) = match term
@@ -48,7 +51,7 @@ module Infer
 
     applyTo (env, context, headType, head, arg) = match headType
         Pi name domain body => applyArg (env, context, domain, body, arg)
-        other => Error(message = "`${Terms::show (head, names context)}` is applied but has type `${Terms::show (other, names context)}`, not a function type")
+        other => Error(message = "not a function: `${Terms::show (head, names context)}` is applied but has type `${Terms::show (other, names context)}`")
 
     applyArg (env, context, domain, body, arg) = match check (env, context, arg, domain)
         Success ty => Success(value = Terms::instantiate (body, arg))
@@ -81,4 +84,4 @@ module Infer
 
     sortOf (context, term, ty) = match ty
         Sort level => Success(value = level)
-        other => Error(message = "`${Terms::show (term, names context)}` is not a type; its type is `${Terms::show (other, names context)}`")
+        other => Error(message = "not a type: `${Terms::show (term, names context)}` has type `${Terms::show (other, names context)}`")

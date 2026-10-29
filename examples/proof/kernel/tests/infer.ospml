@@ -77,13 +77,13 @@ module InferTests
             expect (Support::checked (Environment::empty (), Support::badProof (), Support::idType ()), "error: ${mismatch}"))
 
         test ("applying a non-function reports the head type", \() =>
-            expect (Support::inferred (Environment::empty (), [], App (Sort Zero) (Sort Zero)), "error: `Prop` is applied but has type `Type`, not a function type"))
+            expect (Support::inferred (Environment::empty (), [], App (Sort Zero) (Sort Zero)), "error: not a function: `Prop` is applied but has type `Type`"))
 
         test ("an unbound variable reports its index", \() =>
             expect (Support::inferred (Environment::empty (), [], BVar 3), "error: unbound variable #3"))
 
         test ("sort rejects a lambda", \() =>
-            expect (Support::sorted (Environment::empty (), [], Lam "x" (Sort Zero) (BVar 0)), "error: `(fun (x : Prop) => x)` is not a type; its type is `(Prop → Prop)`"))
+            expect (Support::sorted (Environment::empty (), [], Lam "x" (Sort Zero) (BVar 0)), "error: not a type: `(fun (x : Prop) => x)` has type `(Prop → Prop)`"))
 
         test ("a let whose value has the wrong type is rejected", \() =>
             expect (Support::inferred (Environment::empty (), [], Let "x" (Sort Zero) (Sort (Succ Zero)) (BVar 0)), "error: type mismatch: `Type` has type `Sort 2` but `Prop` was expected"))
