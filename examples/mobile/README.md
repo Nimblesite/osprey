@@ -70,7 +70,7 @@ Set `OSPREY_DEVICE_ID` to select a physical device, or `OSPREY_SIMULATOR_UDID` t
 
 ## Android
 
-The Android application lives in [`android/`](android), with Kotlin native rendering and a JNI adapter for the generated C interface. It requires JDK 17, Android SDK 34, an installed Android NDK, and an emulator/device running API 26 or later. Its launcher uses a local Gradle installation when available and downloads Gradle 8.7 otherwise. From the repository root:
+The Android application lives in [`android/`](android), with Kotlin native rendering and a JNI adapter for the generated C interface. It requires JDK 17, Android SDK 34, an installed Android NDK, and an emulator/device running API 26 or later. Its launcher uses a local Gradle installation when available and downloads Gradle 9.6.0 otherwise. From the repository root:
 
 ```sh
 make android

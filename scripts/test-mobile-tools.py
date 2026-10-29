@@ -121,8 +121,8 @@ class GradleSelection(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             unrelated = root / "bin/gradle"
-            pinned = root / "cache/osprey-distributions/gradle-8.7/bin/gradle"
-            for script, version in [(unrelated, "wrong-gradle-9"), (pinned, "Gradle 8.7")]:
+            pinned = root / "cache/osprey-distributions/gradle-9.6.0/bin/gradle"
+            for script, version in [(unrelated, "wrong-gradle-8"), (pinned, "Gradle 9.6.0")]:
                 script.parent.mkdir(parents=True)
                 script.write_text(f"#!/bin/sh\nprintf '%s\\n' '{version}'\n")
                 script.chmod(0o755)
@@ -133,7 +133,7 @@ class GradleSelection(unittest.TestCase):
                 ["bash", str(WRAPPER), "--version"], env=env,
                 capture_output=True, text=True, check=True,
             )
-            self.assertEqual(result.stdout.strip(), "Gradle 8.7")
+            self.assertEqual(result.stdout.strip(), "Gradle 9.6.0")
 
 
 def stub_android_tree(root):
