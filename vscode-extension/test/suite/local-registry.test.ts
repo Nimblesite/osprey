@@ -266,19 +266,19 @@ suite("local package registry server", () => {
     this.timeout(120_000);
     await extensions.getExtension("nimblesite.osprey")?.activate();
     const config = workspace.getConfiguration("osprey");
-    const before = config.inspect<string>("packages.registry")?.workspaceValue;
+    const before = config.inspect<string>("packages.registry")?.globalValue;
     const origin = `http://127.0.0.1:${await freePort()}`;
-    await config.update("packages.registry", origin, ConfigurationTarget.Workspace);
+    await config.update("packages.registry", origin, ConfigurationTarget.Global);
     try {
       assert.strictEqual(await commands.executeCommand(START_COMMAND), true);
       assert.strictEqual(await healthCheck(origin), true);
       await commands.executeCommand(STOP_COMMAND);
       await assertStopped(origin);
-      await config.update("packages.registry", "https://packages.example", ConfigurationTarget.Workspace);
+      await config.update("packages.registry", "https://packages.example", ConfigurationTarget.Global);
       assert.strictEqual(await commands.executeCommand(START_COMMAND), false);
     } finally {
       await commands.executeCommand(STOP_COMMAND);
-      await config.update("packages.registry", before, ConfigurationTarget.Workspace);
+      await config.update("packages.registry", before, ConfigurationTarget.Global);
     }
   });
 });
