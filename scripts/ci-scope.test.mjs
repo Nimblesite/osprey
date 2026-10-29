@@ -138,7 +138,7 @@ const stagedBundleFixture = (change) => runStagedBundleFixture(job('test-extensi
 test('staged bundle verification fails closed without recompiling a payload', () => {
   const complete = stagedBundleFixture()
   assert.equal(complete.status, 0, complete.stdout + complete.stderr)
-  for (const name of ['osprey', 'osprey-pkg', 'package-workspace.wasm', 'workbench.wasm', 'workbench/lessons/catalogue.json', 'workbench/osprey-logo.png', 'workbench/chalk-study.png', 'workbench/workbench.css', ...nativeArchives, ...proofAssets]) {
+  for (const name of ['osprey', 'osprey-pkg', 'package-workspace.wasm', 'workbench.wasm', 'workbench/lessons/catalogue.json', 'workbench/osprey-logo.png', 'workbench/chalk-study.png', 'workbench/workbench.css', 'workbench/symbols.json', 'workbench/icons/moon.svg', 'workbench/icons/LICENSE.txt', ...nativeArchives, ...proofAssets]) {
     const missing = stagedBundleFixture((root, platform) => rmSync(join(root, platform, name)))
     assert.notEqual(missing.status, 0, `${name}: missing payload accepted`)
     const stale = stagedBundleFixture((root, platform) => writeFileSync(join(root, platform, name), 'stale'))
@@ -338,6 +338,7 @@ const registrySuites = ['fixture-check', 'manifest/tests', 'cli/tests', 'tests',
 // from the inherited environment — and the contract is read from real child
 // processes rather than a source-text mirror.
 function registryFixture() {
+  mkdirSync(resolve('target'), { recursive: true })
   const root = mkdtempSync(resolve('target/registry-selection-'))
   const compiler = join(root, 'osprey')
   writeFileSync(compiler, `#!${process.execPath}

@@ -92,11 +92,22 @@ function writePresentationAssets(root, platform) {
   }
 }
 
+function writeSymbolAssets(root, platform) {
+  const payloads = { 'symbols.json': JSON.stringify({ moon: 'icons/moon.svg' }),
+    'icons/moon.svg': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 1h1v1H1z"/></svg>',
+    'icons/LICENSE.txt': 'fixture icon license\n' }
+  for (const directory of ['apps/workbench/assets', `${platform}/workbench`]) {
+    mkdirSync(join(root, directory, 'icons'), { recursive: true })
+    for (const [name, bytes] of Object.entries(payloads)) writeFileSync(join(root, directory, name), bytes)
+  }
+}
+
 function writeBundlePayloads(root, platform) {
   writeExecutablePayloads(root, platform)
   writeWorkbenchAssets(root, platform)
   writePresentationAssets(root, platform)
   writeProofAssets(root, platform)
+  writeSymbolAssets(root, platform)
 }
 
 export function runStagedBundleFixture(restoreJob, change = () => {}) {
