@@ -231,7 +231,11 @@ mod tests {
     /// The DLL is self-contained: the runtime and winpthreads link statically beside Winsock.
     #[test]
     fn the_dll_links_its_runtime_statically() {
-        let args = dll_args(Path::new("app.ll"), "libfiber_runtime_gc.a", Path::new("app.dll"));
+        let args = dll_args(
+            Path::new("app.ll"),
+            "libfiber_runtime_gc.a",
+            Path::new("app.dll"),
+        );
         let expected = [
             "-shared",
             "-O2",

@@ -214,17 +214,23 @@ fn desktop_slices_refuse_other_systems_runs_and_non_archives() -> std::io::Resul
     let fixture = desktop_fixture("desktop-refusals")?;
     let refused = desktop(&fixture, "windows-x64", "app.dll").output()?;
     fails(&refused, "--target=windows-x64 builds on Windows x86_64");
-    assert!(!fixture.0.join("tools.log").exists(), "a refused slice ran a tool");
+    assert!(
+        !fixture.0.join("tools.log").exists(),
+        "a refused slice ran a tool"
+    );
     let Some(target) = host_desktop_target() else {
         return Ok(());
     };
-    fails(&desktop(&fixture, target, "app.o").output()?, "must end in .a");
+    fails(
+        &desktop(&fixture, target, "app.o").output()?,
+        "must end in .a",
+    );
     let run = Command::new(env!("CARGO_BIN_EXE_osprey"))
         .current_dir(&fixture.0)
         .args(["app.osp", "--run"])
         .arg(format!("--target={target}"))
         .output()?;
-    fails(&run, "desktop app libraries must run inside a host");
+    fails(&run, "use --compile and call it from a desktop host");
     Ok(())
 }
 
