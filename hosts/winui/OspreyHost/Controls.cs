@@ -65,7 +65,7 @@ sealed partial class Renderer
         {
             box.Items.Add(new ComboBoxItem { Content = Text(choice, "label"), Tag = Text(choice, "key") });
         }
-        box.SelectedItem = box.Items.OfType<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == Text(node, "selected"));
+        box.SelectedItem = Tagged<ComboBoxItem>(box.Items, Text(node, "selected"));
         var emit = Emit(scope, node);
         box.SelectionChanged += (_, _) => emit((box.SelectedItem as ComboBoxItem)?.Tag as string ?? "");
         return box;
@@ -108,7 +108,7 @@ sealed partial class Renderer
             group = Grouped(list, group, Text(row, "group"));
             list.Items.Add(Row(scope, row));
         }
-        list.SelectedItem = list.Items.OfType<ListViewItem>().FirstOrDefault(item => (string)item.Tag == Text(node, "selected"));
+        list.SelectedItem = Tagged<ListViewItem>(list.Items, Text(node, "selected"));
         var emit = Emit(scope, node);
         Action<object> click = clicked => emit(Key(clicked));
         // The list carries the name its handler is kept under. Its managed wrapper is no key: nothing
@@ -142,16 +142,16 @@ sealed partial class Renderer
 
     ListViewItem Row(Scope scope, JsonElement row)
     {
-        var cell = new Grid { ColumnSpacing = Gap(2) };
-        cell.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        cell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var cell = new Grid { ColumnSpacing = Gap(2), Tag = Text(row, "key") };
         var content = Draw(scope, Member(row, "child"));
-        Grid.SetColumn((FrameworkElement)content, 1);
-        cell.Children.Add(Glyph(Text(row, "symbol")));
-        cell.Children.Add(content);
-        cell.Tag = Text(row, "key");
+        Place(cell, Glyph(Text(row, "symbol")), across: true, GridLength.Auto);
+        Place(cell, content, across: true, Rest);
         return new ListViewItem { Content = cell, Tag = Text(row, "key"), HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(Gap(1)) };
     }
+
+    // The item whose tag is `key`, if one is.
+    static object? Tagged<T>(ItemCollection items, string key) where T : FrameworkElement =>
+        items.OfType<T>().FirstOrDefault(item => (string)item.Tag == key);
 
     static string Key(object clicked) => clicked switch
     {

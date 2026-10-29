@@ -515,8 +515,8 @@ def json_text(v, indent):
         return json_pretty(v, indent, 0)
 
 
-def json_compact(v):
-    """Compact JSON with the default `', '` / `': '` separators."""
+def json_value(v, list_text, dict_text):
+    """JSON for a scalar; a list is written by `list_text` and anything else by `dict_text`."""
     match v.kind:
         case "none":
             return "null"
@@ -531,30 +531,21 @@ def json_compact(v):
         case "string":
             return json_quote(v.sval)
         case "list":
-            return "[" + join(toList(map(range(len(v.elems)), lambda i: json_compact(unwrap_or(listGet(v.elems, i), none())))), ", ") + "]"
+            return list_text(v)
         case _:
-            return "{" + join(toList(map(range(len(v.keys)), lambda i: json_quote(concat_text(unwrap_or(listGet(v.keys, i), none()))) + ": " + json_compact(unwrap_or(listGet(v.vals, i), none())))), ", ") + "}"
+            return dict_text(v)
+
+
+def json_compact(v):
+    """Compact JSON with the default `', '` / `': '` separators."""
+    return json_value(v,
+        lambda l: "[" + join(toList(map(range(len(l.elems)), lambda i: json_compact(unwrap_or(listGet(l.elems, i), none())))), ", ") + "]",
+        lambda d: "{" + join(toList(map(range(len(d.keys)), lambda i: json_quote(concat_text(unwrap_or(listGet(d.keys, i), none()))) + ": " + json_compact(unwrap_or(listGet(d.vals, i), none())))), ", ") + "}")
 
 
 def json_pretty(v, indent, level):
     """Indented JSON: `indent` spaces per level, non-empty containers split onto lines."""
-    match v.kind:
-        case "none":
-            return "null"
-        case "undefined":
-            return "null"
-        case "bool":
-            return "true" if v.bval else "false"
-        case "int":
-            return toString(v.ival)
-        case "float":
-            return toString(v.fval)
-        case "string":
-            return json_quote(v.sval)
-        case "list":
-            return json_pretty_list(v.elems, indent, level)
-        case _:
-            return json_pretty_dict(v, indent, level)
+    return json_value(v, lambda l: json_pretty_list(l.elems, indent, level), lambda d: json_pretty_dict(d, indent, level))
 
 
 def json_pretty_list(elems, indent, level):

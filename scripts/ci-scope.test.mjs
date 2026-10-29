@@ -130,6 +130,7 @@ function writeBundlePayloads(root, platform) {
     const bytes = name.endsWith('.wasm') ? Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]) : '#!/bin/sh\nexit 97\n'
     for (const file of [source, `${platform}/${name}`]) writeFileSync(join(root, file), bytes, { mode: 0o755 })
   }
+  mkdirSync(join(root, platform, 'registry/@osprey/testing'), { recursive: true })
 }
 
 function stagedBundleFixture(change = () => {}) {
@@ -154,6 +155,10 @@ test('staged bundle verification fails closed without recompiling a payload', ()
     assert.notEqual(missing.status, 0, `${name}: missing payload accepted`)
     const stale = stagedBundleFixture((root, platform) => writeFileSync(join(root, platform, name), 'stale'))
     assert.notEqual(stale.status, 0, `${name}: stale payload accepted`)
+  }
+  if (process.platform !== 'win32') {
+    const unregistered = stagedBundleFixture((root, platform) => rmSync(join(root, platform, 'registry'), { recursive: true }))
+    assert.notEqual(unregistered.status, 0, 'a bundle without its local registry packages accepted')
   }
   const invalid = stagedBundleFixture((root, platform) => {
     for (const file of ['target/package-workspace.wasm', `${platform}/package-workspace.wasm`]) writeFileSync(join(root, file), 'invalid WASM')

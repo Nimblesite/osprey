@@ -57,11 +57,8 @@ sealed class HostWindow : Window
     Grid Layout(Border root)
     {
         var grid = new Grid();
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(root, 1);
-        grid.Children.Add(problems);
-        grid.Children.Add(root);
+        Renderer.Place(grid, problems, across: false, GridLength.Auto);
+        Renderer.Place(grid, root, across: false, Renderer.Rest);
         return grid;
     }
 

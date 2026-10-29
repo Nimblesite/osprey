@@ -17,12 +17,8 @@ sealed partial class Renderer
     UIElement Pair(JsonElement node)
     {
         var grid = new Grid { ColumnSpacing = Gap(2) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var value = Words(Text(node, "value"));
-        Grid.SetColumn(value, 1);
-        grid.Children.Add(Words(Text(node, "label"), "body", "secondary"));
-        grid.Children.Add(value);
+        Place(grid, Words(Text(node, "label"), "body", "secondary"), across: true, Rest);
+        Place(grid, Words(Text(node, "value")), across: true, GridLength.Auto);
         return grid;
     }
 

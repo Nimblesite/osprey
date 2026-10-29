@@ -11,14 +11,20 @@ use crate::ffi;
 
 /// Writes immediate-child directory facts to the requested slice.
 pub fn list_directories(request: &Request) -> Result<Value, String> {
+    publish(request, "paths", listing)
+}
+
+/// Answers every requested path within the request's limit and writes the answers to the
+/// requested slice under `key`.
+fn publish(request: &Request, key: &str, answer: fn(&str, u64) -> Value) -> Result<Value, String> {
     let limit = number(request, "limit")?;
-    let paths = strings(request, "paths")?
+    let answers = strings(request, "paths")?
         .into_iter()
-        .map(|path| listing(path, limit))
+        .map(|path| answer(path, limit))
         .collect::<Vec<_>>();
     ffi::put_slice(
         field(request, "slice")?,
-        &json!({"paths": paths}).to_string(),
+        &json!({ key: answers }).to_string(),
     )?;
     Ok(Value::Null)
 }
@@ -82,16 +88,7 @@ fn platform_hidden(_: &Metadata) -> bool {
 
 /// Writes bounded UTF-8 file contents to the requested slice.
 pub fn read_texts(request: &Request) -> Result<Value, String> {
-    let limit = number(request, "limit")?;
-    let files = strings(request, "paths")?
-        .into_iter()
-        .map(|path| text_result(path, limit))
-        .collect::<Vec<_>>();
-    ffi::put_slice(
-        field(request, "slice")?,
-        &json!({"files": files}).to_string(),
-    )?;
-    Ok(Value::Null)
+    publish(request, "files", text_result)
 }
 
 /// Converts one text read to a path, error and text triple.
@@ -205,6 +202,35 @@ mod tests {
             .ok_or_else(|| io::Error::other("entries are not an array"))
     }
 
+    /// Lists `path` through the capability into the slice `key` and returns its listing.
+    fn list(path: &str, limit: u64, key: &str) -> io::Result<Value> {
+        assert_eq!(
+            answer(&request("list-directories", &[path], limit, key)),
+            Ok(Value::Null)
+        );
+        Ok(slice(key)?["paths"][0].clone())
+    }
+
+    /// Returns the listed entry called `name`, refusing a listing without it.
+    fn named<'a>(listing: &'a Value, name: &str) -> io::Result<&'a Value> {
+        entries(listing)?
+            .iter()
+            .find(|entry| entry["name"] == json!(name))
+            .ok_or_else(|| io::Error::other(format!("{name} entry is missing")))
+    }
+
+    /// Reads `paths` through the capability into the slice `key` and returns each file's answer.
+    fn read(paths: &[&str], limit: u64, key: &str) -> io::Result<Vec<Value>> {
+        assert_eq!(
+            answer(&request("read-texts", paths, limit, key)),
+            Ok(Value::Null)
+        );
+        slice(key)?["files"]
+            .as_array()
+            .cloned()
+            .ok_or_else(|| io::Error::other("files are not an array"))
+    }
+
     #[test]
     /// Lists immediate entries with flags and enforces the entry limit.
     fn list_directories_reports_entries_and_truncation() -> io::Result<()> {
@@ -212,12 +238,7 @@ mod tests {
         std::fs::write(dir.join("plain"), "text")?;
         std::fs::create_dir(dir.join("folder"))?;
         std::fs::write(dir.join(".hidden"), "")?;
-        let path = dir.root();
-        assert_eq!(
-            answer(&request("list-directories", &[&path], 10, "list-full-test")),
-            Ok(Value::Null)
-        );
-        let listed = slice("list-full-test")?["paths"][0].clone();
+        let listed = list(&dir.root(), 10, "list-full-test")?;
         let names: Vec<&str> = entries(&listed)?
             .iter()
             .map(|entry| entry["name"].as_str().unwrap_or_default())
@@ -226,30 +247,13 @@ mod tests {
         assert!(
             names.contains(&"plain") && names.contains(&"folder") && names.contains(&".hidden")
         );
-        let hidden = entries(&listed)?
-            .iter()
-            .find(|entry| entry["name"] == json!(".hidden"))
-            .ok_or_else(|| io::Error::other("hidden entry is missing"))?;
-        assert_eq!(hidden["hidden"], json!(true));
-        let folder = entries(&listed)?
-            .iter()
-            .find(|entry| entry["name"] == json!("folder"))
-            .ok_or_else(|| io::Error::other("folder entry is missing"))?;
-        assert_eq!(folder["directory"], json!(true));
+        assert_eq!(named(&listed, ".hidden")?["hidden"], json!(true));
+        assert_eq!(named(&listed, "folder")?["directory"], json!(true));
         assert_eq!(listed["missing"], json!(false));
         assert_eq!(listed["truncated"], json!(false));
-        assert_eq!(
-            answer(&request(
-                "list-directories",
-                &[&path],
-                1,
-                "list-limited-test"
-            )),
-            Ok(Value::Null)
-        );
-        let limited = slice("list-limited-test")?["paths"][0].clone();
+        let limited = list(&dir.root(), 1, "list-limited-test")?;
         assert_eq!(limited["truncated"], json!(true));
-        assert_eq!(limited["entries"].as_array().map(Vec::len), Some(1));
+        assert_eq!(entries(&limited)?.len(), 1);
         Ok(())
     }
 
@@ -257,20 +261,10 @@ mod tests {
     /// Distinguishes a missing directory from an inaccessible one.
     fn list_directories_reports_missing_paths() -> io::Result<()> {
         let dir = TestDir::new()?;
-        let missing = dir.text("absent");
-        assert_eq!(
-            answer(&request(
-                "list-directories",
-                &[&missing],
-                1,
-                "list-missing-test"
-            )),
-            Ok(Value::Null)
-        );
-        let listed = slice("list-missing-test")?["paths"][0].clone();
+        let listed = list(&dir.text("absent"), 1, "list-missing-test")?;
         assert_eq!(listed["missing"], json!(true));
         assert_eq!(listed["error"], json!(""));
-        assert_eq!(listed["entries"].as_array().map(Vec::len), Some(0));
+        assert_eq!(entries(&listed)?.len(), 0);
         Ok(())
     }
 
@@ -280,18 +274,8 @@ mod tests {
         let dir = TestDir::new()?;
         std::fs::write(dir.join("good"), "hello")?;
         std::fs::write(dir.join("binary"), [0xff])?;
-        let good = dir.text("good");
-        let binary = dir.text("binary");
-        let missing = dir.text("missing");
-        let request = request(
-            "read-texts",
-            &[&good, &binary, &missing],
-            100,
-            "read-texts-test",
-        );
-        assert_eq!(answer(&request), Ok(Value::Null));
-        let files = slice("read-texts-test")?["files"].as_array().cloned();
-        let files = files.ok_or_else(|| io::Error::other("files are not an array"))?;
+        let paths = [dir.text("good"), dir.text("binary"), dir.text("missing")];
+        let files = read(&[&paths[0], &paths[1], &paths[2]], 100, "read-texts-test")?;
         assert_eq!(files[0]["text"], json!("hello"));
         assert_eq!(files[0]["error"], json!(""));
         assert_eq!(files[1]["error"], json!("Not UTF-8 text"));
@@ -309,9 +293,7 @@ mod tests {
         let dir = TestDir::new()?;
         std::fs::write(dir.join("large"), "hello")?;
         let large = dir.text("large");
-        let request = request("read-texts", &[&large], 4, "read-limit-test");
-        assert_eq!(answer(&request), Ok(Value::Null));
-        let file = slice("read-limit-test")?["files"][0].clone();
+        let file = read(&[&large], 4, "read-limit-test")?[0].clone();
         assert_eq!(file["text"], json!(""));
         assert_eq!(
             file["error"].as_str(),
@@ -348,21 +330,8 @@ mod tests {
         let dir = TestDir::new()?;
         std::fs::write(dir.join("plain"), "text")?;
         std::os::unix::fs::symlink(Path::new("plain"), dir.join("link"))?;
-        let path = dir.root();
-        assert_eq!(
-            answer(&request(
-                "list-directories",
-                &[&path],
-                10,
-                "list-links-test"
-            )),
-            Ok(Value::Null)
-        );
-        let listed = slice("list-links-test")?["paths"][0].clone();
-        let link = entries(&listed)?
-            .iter()
-            .find(|entry| entry["name"] == json!("link"))
-            .ok_or_else(|| io::Error::other("link entry is missing"))?;
+        let listed = list(&dir.root(), 10, "list-links-test")?;
+        let link = named(&listed, "link")?;
         assert_eq!(link["link"], json!(true));
         assert_eq!(link["directory"], json!(false));
         Ok(())

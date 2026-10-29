@@ -12,7 +12,7 @@ sealed partial class Renderer
     // themselves out in the room they are given, and scenes, which scale to it.
     static readonly HashSet<string> Fillers = ["rows", "empty", "aside", "scene", "screen", "split"];
     const int Nesting = 32;
-    static readonly GridLength Rest = new(1, GridUnitType.Star);
+    internal static readonly GridLength Rest = new(1, GridUnitType.Star);
 
     /// <summary>
     /// Children in a row or column; a spacer takes the room left over, and in a column so does a
@@ -58,7 +58,7 @@ sealed partial class Renderer
     }
 
     /// <summary>Adds a column or row of <paramref name="room"/> to the grid for the element; returns the row, if it was one.</summary>
-    static RowDefinition? Place(Grid grid, UIElement element, bool across, GridLength room)
+    internal static RowDefinition? Place(Grid grid, UIElement element, bool across, GridLength room)
     {
         RowDefinition? row = null;
         if (across)
@@ -106,12 +106,9 @@ sealed partial class Renderer
     UIElement Screen(Scope scope, JsonElement node)
     {
         var page = new Grid { Padding = new Thickness(Gap(4), Gap(3), Gap(4), Gap(3)), RowSpacing = Gap(2) };
-        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         var body = Body(scope, Items(node, "children", child => child));
-        Grid.SetRow((FrameworkElement)body, 1);
-        page.Children.Add(Heading(scope, node));
-        page.Children.Add(body);
+        Place(page, Heading(scope, node), across: false, GridLength.Auto);
+        Place(page, body, across: false, Rest);
         return page;
     }
 

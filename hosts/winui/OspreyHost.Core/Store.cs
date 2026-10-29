@@ -36,32 +36,16 @@ public sealed class Store(string root)
         }
     }
 
-    Completion Read(string ticket, JsonElement request)
+    Completion Read(string ticket, JsonElement request) => Existing(ticket, request, (name, path) =>
     {
-        var name = Envelopes.Text(request, "name");
         var limit = Envelopes.Number(request, "limit");
-        if (Entry(name) is not { } path)
-        {
-            return Refused(ticket, name);
-        }
-        if (!File.Exists(path))
-        {
-            return Completion.Failed(ticket, $"no such store entry {name}");
-        }
-        if (new FileInfo(path).Length > limit)
-        {
-            return Completion.Failed(ticket, $"store entry {name} exceeds limit {limit}");
-        }
-        return Completion.Done(ticket, "null", new SliceWrite(Envelopes.Text(request, "slice"), Strict.GetString(File.ReadAllBytes(path))));
-    }
+        return new FileInfo(path).Length > limit
+            ? Completion.Failed(ticket, $"store entry {name} exceeds limit {limit}")
+            : Completion.Done(ticket, "null", new SliceWrite(Envelopes.Text(request, "slice"), Strict.GetString(File.ReadAllBytes(path))));
+    });
 
-    Completion Write(string ticket, JsonElement request)
+    Completion Write(string ticket, JsonElement request) => Named(ticket, request, (_, path) =>
     {
-        var name = Envelopes.Text(request, "name");
-        if (Entry(name) is not { } path)
-        {
-            return Refused(ticket, name);
-        }
         if (Slices.Get(Envelopes.Text(request, "slice")) is not { } text)
         {
             return Completion.Failed(ticket, "store-write slice is missing");
@@ -71,39 +55,28 @@ public sealed class Store(string root)
         File.WriteAllText(temporary, text, Strict);
         File.Move(temporary, path, overwrite: true);
         return Completion.Done(ticket, "null");
-    }
+    });
 
-    Completion List(string ticket, JsonElement request)
-    {
-        var name = Envelopes.Text(request, "name");
-        if (Entry(name, folder: true) is not { } folder)
-        {
-            return Refused(ticket, name);
-        }
-        if (!Directory.Exists(folder))
-        {
-            return Completion.Done(ticket, "[]");
-        }
-        var names = Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal);
-        return Completion.Done(ticket, Json.Array(names!));
-    }
+    Completion List(string ticket, JsonElement request) => Named(ticket, request, (_, folder) => Directory.Exists(folder)
+        ? Completion.Done(ticket, Json.Array(Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal)!))
+        : Completion.Done(ticket, "[]"), folder: true);
 
-    Completion Delete(string ticket, JsonElement request)
+    Completion Delete(string ticket, JsonElement request) => Existing(ticket, request, (_, path) =>
     {
-        var name = Envelopes.Text(request, "name");
-        if (Entry(name) is not { } path)
-        {
-            return Refused(ticket, name);
-        }
-        if (!File.Exists(path))
-        {
-            return Completion.Failed(ticket, $"no such store entry {name}");
-        }
         File.Delete(path);
         return Completion.Done(ticket, "null");
+    });
+
+    // Answers with `act` on the requested name and its path when the name stays inside the store.
+    Completion Named(string ticket, JsonElement request, Func<string, string, Completion> act, bool folder = false)
+    {
+        var name = Envelopes.Text(request, "name");
+        return Entry(name, folder) is { } path ? act(name, path) : Completion.Failed(ticket, $"invalid store entry {name}");
     }
 
-    static Completion Refused(string ticket, string name) => Completion.Failed(ticket, $"invalid store entry {name}");
+    // As Named, for an entry that must already be in the store.
+    Completion Existing(string ticket, JsonElement request, Func<string, string, Completion> act) => Named(ticket, request, (name, path) =>
+        File.Exists(path) ? act(name, path) : Completion.Failed(ticket, $"no such store entry {name}"));
 
     // A name inside the store: relative, with no drive, root or parent folder in it. Only a
     // listing may name the store itself, with the empty name.
