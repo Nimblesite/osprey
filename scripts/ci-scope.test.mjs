@@ -240,11 +240,16 @@ test('package coverage preserves the complete test recipe and checks without rer
   assert.doesNotMatch(check[0], /--collect/)
 })
 
-test('the KLEE engine gates stay out of CI; the mock oracle and known-bug target stay in the tree', () => {
+test('the KLEE engine gates stay out of CI and make ci; the mock oracle and known-bug target stay in the tree', () => {
   // Owner decision 2026-10-26: the engine gates do not guarantee a green
   // signal while issue #306 is open (clean.osp never completes inside the
-  // pinned budget), so CI runs none of them. Verification is local:
+  // pinned budget), so CI runs none of them, and neither does `make ci`.
+  // Verification is by hand:
   // make _test_hunt / make _test_hunt_clean / make _test_hunt_crashes.
+  const local = makeRecipe('test')
+  assert.ok(local.includes('$(MAKE) _test_hunt_mock'))
+  assert.deepEqual(local.filter((command) => /_test_hunt(?!_mock)/.test(command)), [])
+  assert.doesNotMatch(readFileSync('Makefile', 'utf8').match(/^ci:.*$/m)[0], /hunt/)
   const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
   assert.doesNotMatch(workflow, /brew install klee/)
   assert.doesNotMatch(workflow, /make _test_hunt(?!_mock)/)

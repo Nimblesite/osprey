@@ -1,7 +1,8 @@
 # Hunt tests
 
-Small programs with a known Hunt result, run by `make _test_hunt` (part of
-`make test` on a machine with KLEE installed). Each `<name>.osp` has a
+Small programs with a known Hunt result, run by hand with `make _test_hunt` on
+a machine with KLEE installed. Neither `make test` nor CI runs it while issues
+#306 and #307 are open. Each `<name>.osp` has a
 `<name>.expected` listing the findings Hunt must report, one `<class>
 <file>:<line>` per line, or `none`. The replay verdict is not part of the
 expectation; the findings are the same on every host [SYMEX-HOSTS].

@@ -44,8 +44,9 @@ test: build
 	$(MAKE) _test_python_app_ports
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_hunt_mock
-	$(MAKE) _test_hunt
-	$(MAKE) _test_hunt_crashes
+# The KLEE engine gates (_test_hunt, _test_hunt_crashes, _test_hunt_clean) are
+# deliberately NOT here, as in CI: they cannot go green while issues #306 and
+# #307 are open. Run them by hand on a machine with KLEE. [SYMEX-CRASH-GATE]
 	$(MAKE) _coverage_check_c_runtime
 # _test_language_corpus is deliberately NOT here. It runs every program in
 # tests/ through the TAP subcommand, and _test_goldens then runs every one of

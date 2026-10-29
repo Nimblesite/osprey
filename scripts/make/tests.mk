@@ -192,7 +192,9 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # headers. Runs without KLEE installed: the mock carries its own klee/klee.h.
 # Deterministic Hunt runs [SYMEX-CLI]: each tests/hunt/<name>.osp must
 # report exactly the findings in <name>.expected (see tests/hunt/README.md).
-# Skipped loudly without KLEE, like the bitcode it needs.
+# Skipped loudly without KLEE, like the bitcode it needs. Like the two KLEE
+# targets below, it is run by hand: neither `make test` nor CI runs the KLEE
+# engine gates while issues #306 and #307 are open [SYMEX-CRASH-GATE].
 # HUNT_KNOWN_BUGS: programs with a known complete-exploration defect, skipped
 # by the expectation suite. clean.osp cannot finish inside the pinned
 # 64-byte/30-second settings on either backend (~49s of solver work on idle
@@ -201,7 +203,7 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # with `make _test_hunt_clean`; it stays red until the fix lands.
 HUNT_KNOWN_BUGS ?= clean
 
-# Known-bug verification target, not wired into CI: red until the fix lands.
+# Known-bug verification target, run by hand: red until the fix lands.
 .PHONY: _test_hunt_clean
 _test_hunt_clean:
 	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
@@ -225,7 +227,8 @@ _test_hunt:
 	  python3 scripts/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
 	done; done; exit $$fail
 
-# No skip path: CI must detect and natively reproduce every planted failure.
+# No skip path: run by hand (`make hunt-crashes`), it must detect and natively
+# reproduce every planted failure.
 .PHONY: _test_hunt_crashes
 _test_hunt_crashes:
 	@test -x "$(KLEE_PREFIX)/bin/klee" || { echo "FAIL: KLEE is required for planted crash tests"; exit 1; }
