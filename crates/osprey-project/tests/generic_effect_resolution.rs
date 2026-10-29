@@ -23,6 +23,7 @@ fn source(path: &str, text: &str) -> SourceFile {
         flavor: Flavor::Default,
         source: text.into(),
         program: parsed.program,
+        discipline: None,
     }
 }
 

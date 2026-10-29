@@ -42,6 +42,7 @@ pub(crate) fn assembled_program(source: &str, root: &str, file: &str) -> osprey_
             flavor: Flavor::Default,
             source: source.to_string(),
             program: osprey_syntax::parse_program(source).program,
+            discipline: None,
         }],
     )
     .expect("assemble fixture")

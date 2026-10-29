@@ -211,6 +211,7 @@ fn standalone_diagnostics(
         flavor,
         source: source.to_string(),
         program: program.clone(),
+        discipline: None,
     };
     Some(assembly_diagnostics(
         osprey_project::assemble_one(source_file),

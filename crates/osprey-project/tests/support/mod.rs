@@ -22,6 +22,9 @@ pub(crate) fn config(entry: &str) -> ProjectConfig {
         flavor: None,
         allow_wildcard_imports: false,
         published_library: false,
+        types: None,
+        dependencies: Vec::new(),
+        discipline: None,
     }
 }
 
@@ -37,6 +40,7 @@ pub(crate) fn parsed(path: &str, flavor: Flavor, text: &str) -> SourceFile {
         flavor,
         source: text.to_string(),
         program: parsed.program,
+        discipline: None,
     }
 }
 
@@ -49,6 +53,7 @@ pub(crate) fn ast(path: &str, statements: Vec<Stmt>) -> SourceFile {
             statements,
             doc: None,
         },
+        discipline: None,
     }
 }
 

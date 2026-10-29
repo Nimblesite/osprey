@@ -108,6 +108,7 @@ fn parsed_source(source: &str, flavor: Flavor, label: &str) -> Result<SourceFile
         flavor,
         source: source.to_owned(),
         program: parsed.program,
+        discipline: None,
     })
 }
 

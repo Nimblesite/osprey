@@ -751,6 +751,8 @@ dependencies = [
  "osprey-ast",
  "osprey-syntax",
  "osprey-types",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

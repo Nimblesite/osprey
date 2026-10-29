@@ -52,6 +52,7 @@ fn project(flavor: Flavor, text: &str) -> Result<osprey_project::AssembledProjec
         flavor,
         source: text.to_string(),
         program: parsed.program,
+        discipline: None,
     };
     assemble(&config(name), &[source]).map_err(|errors| {
         errors

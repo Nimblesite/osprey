@@ -15,6 +15,7 @@ mod collect_support;
 mod constructor_resolve;
 mod contract;
 mod contribution;
+pub mod discipline;
 mod field_resolve;
 mod imports;
 mod manifest;
@@ -35,7 +36,7 @@ mod symbol_rewrite;
 mod type_rewrite;
 
 pub use advice::{ProjectWarning, StateBoundary};
-pub use manifest::ProjectConfig;
+pub use manifest::{Dependency, DisciplineDecl, ProjectConfig};
 use osprey_syntax::Flavor;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -51,6 +52,9 @@ pub struct SourceFile {
     pub source: String,
     /// Canonical parsed AST.
     pub program: osprey_ast::Program,
+    /// The type discipline whose checker wrote this source, when it is an
+    /// erased module rather than what the user wrote ([TYPES-DISCIPLINE-SEAM]).
+    pub discipline: Option<String>,
 }
 
 /// A project-level failure tied to a source or manifest location when known.
@@ -137,6 +141,9 @@ pub struct SourceMetadata {
     pub global_line_start: u32,
     /// Last one-based line assigned to this source in the flattened position space.
     pub global_line_end: u32,
+    /// Set when the source is a discipline's erased module, so a type error
+    /// in it is reported as that checker's fault, never as the user's.
+    pub discipline: Option<String>,
 }
 
 impl SourceMetadata {
@@ -241,7 +248,21 @@ impl AssembledProject {
 /// Returns discovery, I/O, flavor-selection, and syntax diagnostics.
 pub fn load(root: &Path) -> Result<(ProjectConfig, Vec<SourceFile>), Vec<ProjectError>> {
     let (config, paths) = discover(root)?;
-    parse_sources(paths, config.flavor).map(|sources| (config, sources))
+    let sources = parse_sources(paths, config.flavor)?;
+    let runner = discipline::ProcessRunner::new(
+        compiler_binary(),
+        root.join(".osprey/cache/disciplines/build"),
+    );
+    discipline::apply(&config, sources, &runner).map(|sources| (config, sources))
+}
+
+/// The compiler a checker package is built with: `OSPREY_BIN` when set (the
+/// corpus harness points it at another build), else this executable.
+fn compiler_binary() -> PathBuf {
+    std::env::var_os("OSPREY_BIN")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_exe().ok())
+        .unwrap_or_else(|| PathBuf::from("osprey"))
 }
 
 /// Discover the current manifest and source membership without parsing files.
@@ -391,5 +412,6 @@ pub fn parse_text(
         flavor,
         source,
         program: parsed.program,
+        discipline: None,
     })
 }
