@@ -31,7 +31,7 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
 .osp-frame-workbench .osp-role-callout { font: italic 14px var(--workbench-serif); }
 .osp-frame-workbench .osp-role-lead { font: 23px/1.5 var(--workbench-serif); }
 .osp-frame-workbench .osp-math { font-family: var(--workbench-math); }
-.osp-frame-workbench .osp-divider { height: 1px; flex: 0 0 1px; margin: 0; background: var(--osp-brand-divider); }
+.osp-frame-workbench .osp-divider { border: 0; height: 1px; flex: 0 0 1px; margin: 0; background: var(--osp-brand-divider); }
 .osp-frame-workbench .osp-button {
   border: 1px solid transparent; border-radius: 5px; padding: 9px 12px;
   background: transparent; color: inherit; font: inherit; gap: 8px;
