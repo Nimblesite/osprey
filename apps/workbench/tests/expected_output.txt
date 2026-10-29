@@ -1,0 +1,37 @@
+ok 1 - every row of the notation table expands to its symbol
+ok 2 - expanding every expanded row again changes nothing
+ok 3 - the table holds every abbreviation of the notation section
+ok 4 - an abbreviation followed by a space becomes its symbol
+ok 5 - an abbreviation at the end of the buffer is not yet replaced
+ok 6 - \to completes and \top stays as typed
+ok 7 - the longest complete abbreviation wins
+ok 8 - a punctuation abbreviation completes immediately
+ok 9 - subscript digits chain into a run
+ok 10 - text without an abbreviation is unchanged and expanding twice changes nothing
+ok 11 - the palette lists the rows that start with what was typed
+ok 12 - every sentence form reads to the same formula as its symbols
+ok 13 - precedence and grouping read as the formula table says
+ok 14 - a malformed formula names the column and what was expected
+ok 15 - formula equality is structural
+ok 16 - every written form of the step table reads to its step
+ok 17 - the ten near-misses of the step table stay unknown
+ok 18 - a proof body splits into its step sentences
+ok 19 - every step constructor becomes its tactic
+ok 20 - every generated formula survives its shown round trip
+ok 21 - the generated formula corpus has the exact derived count
+ok 22 - every generated parenthesis is needed to preserve the formula
+ok 23 - the spec's and_swap document reads to one declaration with its claim, variables and proof
+ok 24 - all four heading words open declarations and unnamed headings take t_<n>
+ok 25 - two declarations in one buffer split at the second heading
+ok 26 - an atom outside the bound variables reports the exact problem and fix
+ok 27 - a claim that is not a formula is Bot with the fault's column and expectation
+ok 28 - and_swap closes under the goal engine and every goal is shown
+ok 29 - every row of the tactic table advances the goal it names
+ok 30 - every failing step reports the exact mismatch
+ok 31 - a fifty-step proof closes
+ok 32 - and_swap emits byte-identical to its golden
+ok 33 - an unknown step becomes a sorry with the text as a comment
+ok 34 - leading assumptions become binders
+ok 35 - two proofs share one header and are separated by a blank line
+1..35
+# tests=35 passed=35 failed=0 skipped=0

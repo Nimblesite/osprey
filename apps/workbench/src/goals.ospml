@@ -1,0 +1,181 @@
+// Implements [WORKBENCH-GOALS]: the hypotheses and goals after each step, and
+// why a step fails, computed in process so the goal pane answers per keystroke.
+// A `Result`'s error channel stores only a message ([TYPE-SYSTEM] phantom `E`),
+// so a step's outcome is the `Advanced` or `Stuck` variant carrying typed values.
+namespace workbench
+
+import workbench::Formulas
+
+(** A named hypothesis in a goal's context. *)
+type Hypothesis =
+    name : string
+    formula : Formula
+
+(** One goal: what may be used and what must be proved. *)
+type Goal =
+    hypotheses : List<Hypothesis>
+    target : Formula
+
+(** The goals closed so far and the goals still open, the first of which the next step works on. *)
+type Progress =
+    done : List<Goal>
+    open : List<Goal>
+
+(** Why a step does not fit its goal: the formula the goal needs, the one the step offers, and the sentence that says so. *)
+type Mismatch =
+    expected : Formula
+    found : Formula
+    reason : string
+
+(** The progress after a step, or the mismatch that stopped it. *)
+type Outcome = Advanced Progress | Stuck Mismatch
+
+(** What a hypothesis name refers to in a goal. *)
+type Lookup = Held Formula | Absent
+
+(** List helpers the builtins lack: `take` and `drop` work on strings only. *)
+module Lists
+    (** Every item after the first; empty for an empty list. *)
+    export rest items = (foldList (items, { index = 0, kept = [] }, \(acc, item) => kept (acc, item))).kept
+
+    kept (acc, item) = match acc.index == 0
+        true => { index = 1, kept = acc.kept }
+        false => { index = 1, kept = listAppend (acc.kept, item) }
+
+    (** The first `count` items, or all of them when there are fewer. *)
+    export first (items, count) = (foldList (items, { index = 0, kept = [] }, \(acc, item) => taken (acc, item, count))).kept
+
+    taken (acc, item, count) = match acc.index < count
+        true => { index = satAdd acc.index 1, kept = listAppend (acc.kept, item) }
+        false => acc
+
+(** The goal engine of [WORKBENCH-GOALS]. *)
+module Goals
+    (** The single open goal of a statement: no hypotheses and the claim as target. *)
+    export start statement = Progress(done = [], open = [Goal(hypotheses = [], target = statement.claim)])
+
+    (** The progress after `step` on the first open goal, or why the step does not fit it. *)
+    export apply (progress, step) = match listGet progress.open 0
+        Error _ => finished (progress, step)
+        Success goal => advance (progress, goal, Lists::rest progress.open, step)
+
+    (** The progress after every step in order, stopping at the first mismatch. *)
+    export run (statement, steps) = foldList (steps, Advanced (start statement), \(outcome, step) => next (outcome, step))
+
+    next (outcome, step) = match outcome
+        Stuck problem => Stuck problem
+        Advanced progress => apply (progress, step)
+
+    finished (progress, step) = match step
+        Done => Advanced progress
+        _ => stuck (Top, Top, "there is nothing left to prove")
+
+    stuck (expected, found, reason) = Stuck (Mismatch(expected = expected, found = found, reason = reason))
+
+    // Replaces the first open goal by `goals`, keeping the rest after them.
+    replaced (progress, rest, goals) = Advanced (progress(open = listConcat (goals, rest)))
+
+    closed (progress, goal, rest) = Advanced (Progress(done = listAppend (progress.done, goal), open = rest))
+
+    advance (progress, goal, rest, step) = match step
+        Assume name formula => assumed (progress, goal, rest, Hypothesis(name = name, formula = formula))
+        Cases name names => split (progress, goal, rest, { name = name, names = names })
+        Split => both (progress, goal, rest)
+        Left => side (progress, goal, rest, true)
+        Right => side (progress, goal, rest, false)
+        Exact name => exact (progress, goal, rest, name)
+        Apply name => applied (progress, goal, rest, name)
+        Absurd name other => absurd (progress, goal, rest, { name = name, other = other })
+        Done => stuck (goal.target, Top, "the goal `" + Formulas::show goal.target + "` is still open")
+        Unknown text => stuck (goal.target, Top, "`" + text + "` is not a step the workbench knows")
+
+    lookup (goal, name) = foldList (goal.hypotheses, Absent, \(found, hypothesis) => matching (found, hypothesis, name))
+
+    matching (found, hypothesis, name) = match hypothesis.name == name
+        true => Held hypothesis.formula
+        false => found
+
+    unknown (goal, name) = stuck (goal.target, Top, "there is no hypothesis `" + name + "`")
+
+    holds (formula, target) = Formulas::equal (formula, target)
+
+    // `Assume h : A` on `A → B` adds `h : A`; on `∀ x ...` it introduces `x`, which must be the name.
+    assumed (progress, goal, rest, hypothesis) = match goal.target
+        Imp premise conclusion => introduced (progress, goal, rest, { hypothesis = hypothesis, premise = premise, conclusion = conclusion })
+        Forall names body => bound (progress, goal, rest, { name = hypothesis.name, names = names, body = body })
+        _ => stuck (goal.target, hypothesis.formula, "the goal `" + Formulas::show goal.target + "` is not an implication to assume")
+
+    introduced (progress, goal, rest, parts) = match holds (parts.hypothesis.formula, parts.premise)
+        true => replaced (progress, rest, [Goal(hypotheses = listAppend (goal.hypotheses, parts.hypothesis), target = parts.conclusion)])
+        false => stuck (parts.premise, parts.hypothesis.formula, "the goal assumes `" + Formulas::show parts.premise + "`, not `" + Formulas::show parts.hypothesis.formula + "`")
+
+    bound (progress, goal, rest, parts) = match listGet parts.names 0
+        Success first => named (progress, goal, rest, { parts = parts, first = first })
+        Error _ => replaced (progress, rest, [goal(target = parts.body)])
+
+    named (progress, goal, rest, binding) = match binding.first == binding.parts.name
+        true => replaced (progress, rest, [goal(target = remaining (binding.parts.names, binding.parts.body))])
+        false => stuck (goal.target, Var binding.parts.name, "the goal binds `" + binding.first + "` next, not `" + binding.parts.name + "`")
+
+    remaining (names, body) = match length names <= 1
+        true => body
+        false => Forall (Lists::rest names) body
+
+    without (goal, name) = filterList (goal.hypotheses, \hypothesis => hypothesis.name != name)
+
+    with (hypotheses, name, formula) = listAppend (hypotheses, Hypothesis(name = name, formula = formula))
+
+    // `By cases on h, as a and b.`: a conjunction becomes two hypotheses, a disjunction two goals.
+    split (progress, goal, rest, parts) = match lookup (goal, parts.name)
+        Absent => unknown (goal, parts.name)
+        Held formula => match length parts.names == 2
+            true => cases (progress, goal, rest, { parts = parts, formula = formula })
+            false => stuck (formula, formula, "cases on `" + parts.name + "` names exactly two parts")
+
+    cases (progress, goal, rest, split) =
+        first = listGet split.parts.names 0 ?: ""
+        second = listGet split.parts.names 1 ?: ""
+        kept = without (goal, split.parts.name)
+        match split.formula
+            And left right => replaced (progress, rest, [goal(hypotheses = with (with (kept, first, left), second, right))])
+            Or left right => replaced (progress, rest, [goal(hypotheses = with (kept, first, left)), goal(hypotheses = with (kept, second, right))])
+            _ => stuck (And (Var "A") (Var "B"), split.formula, "`" + split.parts.name + "` is `" + Formulas::show split.formula + "`, which has no cases")
+
+    both (progress, goal, rest) = match goal.target
+        And left right => replaced (progress, rest, [goal(target = left), goal(target = right)])
+        Iff left right => replaced (progress, rest, [goal(target = Imp left right), goal(target = Imp right left)])
+        _ => stuck (And (Var "A") (Var "B"), goal.target, "the goal `" + Formulas::show goal.target + "` is not a conjunction to split")
+
+    side (progress, goal, rest, left) = match goal.target
+        Or first second => replaced (progress, rest, [goal(target = chosen (left, first, second))])
+        _ => stuck (Or (Var "A") (Var "B"), goal.target, "the goal `" + Formulas::show goal.target + "` is not a disjunction")
+
+    chosen (left, first, second) = match left
+        true => first
+        false => second
+
+    exact (progress, goal, rest, name) = match lookup (goal, name)
+        Absent => unknown (goal, name)
+        Held formula => match holds (formula, goal.target)
+            true => closed (progress, goal, rest)
+            false => stuck (goal.target, formula, "the goal is `" + Formulas::show goal.target + "`, but `" + name + "` proves `" + Formulas::show formula + "`")
+
+    applied (progress, goal, rest, name) = match lookup (goal, name)
+        Absent => unknown (goal, name)
+        Held formula => match formula
+            Imp premise conclusion => concluded (progress, goal, rest, { name = name, premise = premise, conclusion = conclusion })
+            _ => stuck (Imp (Var "A") goal.target, formula, "`" + name + "` is `" + Formulas::show formula + "`, not an implication")
+
+    concluded (progress, goal, rest, parts) = match holds (parts.conclusion, goal.target)
+        true => replaced (progress, rest, [goal(target = parts.premise)])
+        false => stuck (goal.target, parts.conclusion, "the goal is `" + Formulas::show goal.target + "`, but `" + parts.name + "` concludes `" + Formulas::show parts.conclusion + "`")
+
+    absurd (progress, goal, rest, pair) = match lookup (goal, pair.name)
+        Absent => unknown (goal, pair.name)
+        Held formula => match lookup (goal, pair.other)
+            Absent => unknown (goal, pair.other)
+            Held other => contradicts (progress, goal, rest, { formula = formula, other = other })
+
+    contradicts (progress, goal, rest, pair) = match holds (Not pair.formula, pair.other)
+        true => closed (progress, goal, rest)
+        false => stuck (Not pair.formula, pair.other, "`" + Formulas::show pair.other + "` does not contradict `" + Formulas::show pair.formula + "`")

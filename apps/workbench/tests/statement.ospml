@@ -18,7 +18,7 @@ module StatementCases
     brokenText = "Theorem broken. p ∧.\nProof.\n  From h."
 
     // A declaration to stand in for a missing list entry; every field says so.
-    fresh () = Declaration(statement = Statement(name = "", named = false, variables = [], claim = Bot), proof = "", problems = [])
+    fresh () = workbench::Declaration(statement = workbench::Statement(name = "", named = false, variables = [], claim = workbench::Bot), proof = "", problems = [])
 
     sole found = match listGet found 0
         Success one => one
@@ -31,7 +31,7 @@ module StatementCases
     (** A problem to stand in for a missing entry; every field says so. *)
     problem problems at = match listGet problems at
         Success one => one
-        Error _ => Problem(line = 0, column = 0, message = "missing problem", fix = "missing fix")
+        Error _ => workbench::Problem(line = 0, column = 0, message = "missing problem", fix = "missing fix")
 
     (** [WORKBENCH-STATEMENT]: the spec's and_swap document reads to one named declaration with its variables, claim and raw proof. *)
     export andSwap () =
@@ -42,7 +42,7 @@ module StatementCases
         expect (one.statement.named, true)
         expect (join (one.statement.variables, " "), "p q")
         expect (Formulas::show one.statement.claim, "p ∧ q → q ∧ p")
-        expect (isEmpty one.statement.problems, true)
+        expect (isEmpty one.problems, true)
         expect (contains (one.proof, "Assume h : p ∧ q."), true)
         expect (contains (one.proof, "Proof."), false)
 
@@ -52,7 +52,7 @@ module StatementCases
         expect (join (mapList (found, \one => one.statement.name), " "), "t_1 t_2 t_3 t_4")
         expect (isEmpty (filterList (found, \one => one.statement.named)), true)
         expect (join (mapList (found, \one => Formulas::show one.statement.claim), " "), "⊤ ⊤ ⊤ ⊤")
-        expect (isEmpty (filterList (found, \one => length one.statement.problems > 0)), true)
+        expect (isEmpty (filterList (found, \one => length one.problems > 0)), true)
 
     (** [WORKBENCH-STATEMENT]: two declarations split at the second heading line, each keeping only its own proof, and `Proof.` stays optional. *)
     export split () =
@@ -64,21 +64,21 @@ module StatementCases
         expect (Formulas::show first.statement.claim, "p → p")
         expect (first.proof, "This is h.")
         expect (contains (first.proof, "Theorem"), false)
-        expect (isEmpty first.statement.problems, true)
+        expect (isEmpty first.problems, true)
         expect (second.statement.name, "right")
         expect (join (second.statement.variables, " "), "q")
         expect (Formulas::show second.statement.claim, "q ∧ ⊤")
         expect (second.proof, "From h.")
         expect (contains (second.proof, "Lemma"), false)
-        expect (isEmpty second.statement.problems, true)
+        expect (isEmpty second.problems, true)
 
     (** [WORKBENCH-STATEMENT]: an atom no binder declares is one problem per atom, naming it with its fix, at the claim's position. *)
     export undeclared () =
         found = Statements::document strayText
         one = sole found
-        expect (length one.statement.problems, 2)
-        first = problem one.statement.problems 0
-        second = problem one.statement.problems 1
+        expect (length one.problems, 2)
+        first = problem one.problems 0
+        second = problem one.problems 1
         expect (first.line, 1)
         expect (first.column, 16)
         expect (first.message, "`r` is not declared")
@@ -91,8 +91,8 @@ module StatementCases
     export malformed () =
         found = Statements::document brokenText
         one = sole found
-        expect (length one.statement.problems, 1)
-        fault = problem one.statement.problems 0
+        expect (length one.problems, 1)
+        fault = problem one.problems 0
         expect (fault.line, 1)
         expect (fault.column, 20)
         expect (fault.message, "a proposition after `∧`")

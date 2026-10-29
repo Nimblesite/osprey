@@ -9,8 +9,8 @@ import tempfile
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
+from package_coverage_projects import PACKAGES_DIR, gate_entries, report_name
 
-SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
 GENERATED_DIRS = frozenset({"target", "__pycache__", "node_modules"})
 COMMENT_OR_STRING = re.compile(r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|//[^\n]*|/\*|\(\*''')
 MATCH_ARM = re.compile(r"^\s+(?![/#])(?:[^=\\:\n]+|[A-Z]\w*\s*\([^\\\n]*\))\s*=>")
@@ -23,26 +23,6 @@ def unique_object(pairs):
             raise ValueError(f"duplicate JSON key: {key}")
         result[key] = value
     return result
-
-
-def executable_assignment(node):
-    if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
-        return False
-    try:
-        ast.literal_eval(node.value)
-        return False
-    except (ValueError, TypeError, SyntaxError):
-        return True
-
-
-def python_coverable(text):
-    try:
-        nodes = ast.walk(ast.parse(text))
-        return any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda,
-                                    ast.Call, ast.Await, ast.Raise, ast.Assert))
-                   or executable_assignment(node) for node in nodes)
-    except SyntaxError:
-        return True
 
 
 def concrete_function(node):
@@ -129,9 +109,9 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def source_inputs(root, name):
+def source_inputs(root, name, kind=PACKAGES_DIR):
     root = Path(root).resolve()
-    package = root / "packages" / name
+    package = root / kind / name
     suite = package / "tests"
     manifest = tomllib.loads((suite / "osprey.toml").read_text())
     roots = [package / "src", suite]
@@ -148,17 +128,18 @@ def evidence_path(report):
     return report.with_suffix(".evidence.json")
 
 
-def seal_evidence(root, name, report, before):
-    if source_inputs(root, name) != before:
+def seal_evidence(root, name, report, before, kind=PACKAGES_DIR):
+    if source_inputs(root, name, kind) != before:
         raise ValueError("source or suite changed during coverage collection")
-    evidence = {"package": name, "inputs": before, "report_sha256": digest(report)}
+    evidence = {"package": report_name(kind, name), "inputs": before, "report_sha256": digest(report)}
     evidence_path(report).write_text(json.dumps(evidence, sort_keys=True) + "\n")
 
 
-def evidence_problems(root, name, report):
+def evidence_problems(root, name, report, kind=PACKAGES_DIR):
     try:
         evidence = json.loads(evidence_path(report).read_text(), object_pairs_hook=unique_object)
-        valid = (evidence.get("package") == name and evidence.get("inputs") == source_inputs(root, name)
+        valid = (evidence.get("package") == report_name(kind, name)
+                 and evidence.get("inputs") == source_inputs(root, name, kind)
                  and evidence.get("report_sha256") == digest(report))
         return [] if valid else ["stale or altered coverage evidence; recollect this package"]
     except (OSError, ValueError, AttributeError):
@@ -169,12 +150,12 @@ def optional_digest(path):
     return digest(path) if path.is_file() else None
 
 
-def measurement_basis(root, reports, names):
-    return {name: {"inputs": source_inputs(root, name),
-                   "report": optional_digest(reports / f"{name}.json"),
-                   "evidence": optional_digest(evidence_path(reports / f"{name}.json")),
-                   "log": optional_digest(reports / f"{name}.log")}
-            for name in sorted(names)}
+def measurement_basis(root, reports, projects):
+    return {report_name(kind, name): {"inputs": source_inputs(root, name, kind),
+                                      "report": optional_digest(reports / f"{report_name(kind, name)}.json"),
+                                      "evidence": optional_digest(evidence_path(reports / f"{report_name(kind, name)}.json")),
+                                      "log": optional_digest(reports / f"{report_name(kind, name)}.log")}
+            for kind, name in sorted(projects)}
 
 
 def measurement_row(root, result):
@@ -225,11 +206,13 @@ def replace_measurements(path, config, snapshot, destination):
 
 def record_measurements(root, path, reports, config, gate):
     try:
-        entries = config["projects"]["packages"]
-        before = measurement_basis(root, reports, entries)
-        results = {name: gate(root, reports, name, entry) for name, entry in entries.items()}
+        entries = gate_entries(config)
+        projects = [(kind, name) for kind, group in entries.items() for name in group]
+        before = measurement_basis(root, reports, projects)
+        results = {report_name(kind, name): gate(root, reports, kind, name, entries[kind][name])
+                   for kind, name in projects}
         snapshot = measurement_snapshot(root, reports, before, results)
-        if measurement_basis(root, reports, entries) != before:
+        if measurement_basis(root, reports, projects) != before:
             raise ValueError("measurement inputs changed during validation; retry")
         reports.mkdir(parents=True, exist_ok=True)
         replace_measurements(path, config, snapshot, reports / "measurements.json")

@@ -44,7 +44,7 @@ module Steps
 
     sameWord (given, fixed) = given == fixed || lowerFirst given == lowerFirst fixed
 
-    spokes glyph = glyph == ":" || glyph == "," || glyph == "."
+    punctuation glyph = glyph == ":" || glyph == "," || glyph == "."
 
     spaced (text, at, done) = match at >= length text
         true => done
@@ -53,7 +53,7 @@ module Steps
     separated (text, at, done) =
         glyph = glyphAt (text, at)
         next = satAdd at (width (codeAt (text, at)))
-        match spokes glyph
+        match punctuation glyph
             true => spaced (text, next, done + " " + glyph + " ")
             false => spaced (text, next, done + glyph)
 
@@ -127,21 +127,28 @@ module Steps
         ]
         firstStep (tried, 0, kept)
 
-    closed (items, kept) = match exactly (items, ["done"]) || exactly (items, ["qed"]) || exactly (items, ["QED"])
-        true => Done
+    // A sentence that must be exactly `fixed`, and the step it becomes.
+    lit (items, kept, fixed, step) = match exactly (items, fixed)
+        true => step
         false => Unknown kept
 
-    sides (items, kept) = match exactly (items, ["left"]) || exactly (items, ["show", "the", "left", "side"])
-        true => Left
-        false => rightSide (items, kept)
+    closed (items, kept) = firstStep ([
+        lit (items, kept, ["done"], Done),
+        lit (items, kept, ["qed"], Done),
+        lit (items, kept, ["QED"], Done),
+    ], 0, kept)
 
-    rightSide (items, kept) = match exactly (items, ["right"]) || exactly (items, ["show", "the", "right", "side"])
-        true => Right
-        false => Unknown kept
+    sides (items, kept) = firstStep ([
+        lit (items, kept, ["left"], Left),
+        lit (items, kept, ["show", "the", "left", "side"], Left),
+        lit (items, kept, ["right"], Right),
+        lit (items, kept, ["show", "the", "right", "side"], Right),
+    ], 0, kept)
 
-    both (items, kept) = match exactly (items, ["we", "show", "both"])
-        true => Split
-        false => suffices (items, kept)
+    both (items, kept) = firstStep ([
+        lit (items, kept, ["we", "show", "both"], Split),
+        suffices (items, kept),
+    ], 0, kept)
 
     // The two formulas after `show` are ignored: [WORKBENCH-GOALS] decides whether they hold.
     suffices (items, kept) = match prefixed (items, ["it", "suffices", "to", "show"])
@@ -166,7 +173,8 @@ module Steps
         Read formula => Assume subject formula
         Faulted _ => Unknown kept
 
-    cased (items, kept) = match spelled (items, ["by"])
+    // `By cases` commits to the cases form, so a truncated one is Unknown rather than `exact cases`.
+    cased (items, kept) = match spelled (items, ["by", "cases"])
         true => byCases (items, kept)
         false => splitInto (items, kept)
 
@@ -189,10 +197,15 @@ module Steps
     exacted (items, kept) =
         tried = [
             single (items, kept, ["from"], \(subject) => Exact subject),
-            single (items, kept, ["by"], \(subject) => Exact subject),
+            byExact (items, kept),
             single (items, kept, ["this", "is"], \(subject) => Exact subject),
         ]
         firstStep (tried, 0, kept)
+
+    // `cases` belongs to the cases form, so `By cases.` is not `exact cases`.
+    byExact (items, kept) = match sameWord (token (items, 1), "cases")
+        true => Unknown kept
+        false => single (items, kept, ["by"], \(subject) => Exact subject)
 
     applied (items, kept) =
         tried = [

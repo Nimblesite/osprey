@@ -5,7 +5,9 @@ namespace workbenchtests
 
 import workbenchtests::NotationCases
 import workbenchtests::StepCases
-import workbenchtests::CorpusCases
+import workbench::CorpusCases
+import workbench::GoalCases
+import workbench::EmitCases
 import workbenchtests::StatementCases
 
 test ("every row of the notation table expands to its symbol", NotationCases::everyRow)
@@ -40,3 +42,13 @@ test ("all four heading words open declarations and unnamed headings take t_<n>"
 test ("two declarations in one buffer split at the second heading", StatementCases::split)
 test ("an atom outside the bound variables reports the exact problem and fix", StatementCases::undeclared)
 test ("a claim that is not a formula is Bot with the fault's column and expectation", StatementCases::malformed)
+
+test ("and_swap closes under the goal engine and every goal is shown", GoalCases::andSwap)
+test ("every row of the tactic table advances the goal it names", GoalCases::rows)
+test ("every failing step reports the exact mismatch", GoalCases::mismatches)
+test ("a fifty-step proof closes", GoalCases::fifty)
+
+test ("and_swap emits byte-identical to its golden", EmitCases::andSwap)
+test ("an unknown step becomes a sorry with the text as a comment", EmitCases::holes)
+test ("leading assumptions become binders", EmitCases::binders)
+test ("two proofs share one header and are separated by a blank line", EmitCases::layout)

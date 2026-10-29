@@ -16,6 +16,7 @@
     ],
     "packages": [
       "Each packages/<name>/osprey.toml requires its own entry and tests/osprey.toml suite. Minimum: 90%; only higher thresholds are explicit.",
+      "Shipped apps/<name> projects are gated the same way under projects.apps.",
       "Measure compiled E2E suites with osprey test --coverage-json and exact output goldens; unit-only results do not qualify. Gate only that package's src/ files, excluding tests and imported helpers.",
       "Missing, empty, malformed or incomplete source reports fail. Data-only files have no executable line counters.",
       "Reports and per-package totals: target/coverage/packages/. No averaging between packages.",
@@ -301,6 +302,11 @@
       "vscode": {
         "language": "osprey",
         "threshold": 100.0
+      }
+    },
+    "apps": {
+      "workbench": {
+        "language": "osprey"
       }
     }
   }

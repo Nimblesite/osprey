@@ -3,8 +3,11 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+import unittest
 from pathlib import Path
 from package_coverage_evidence import seal_evidence, source_inputs
+from package_coverage_projects import APPS_DIR, PACKAGES_DIR, report_name
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "package_coverage.py"
@@ -50,8 +53,8 @@ def file_report(path, covered, total):
     return {"files": {path: {"lines": lines}}}
 
 
-def own_report(name, covered, total, relative="src/lib.py"):
-    return file_report(f"packages/{name}/{relative}", covered, total)
+def own_report(name, covered, total, relative="src/lib.py", kind=PACKAGES_DIR):
+    return file_report(f"{kind}/{name}/{relative}", covered, total)
 
 
 def write_json(path, payload):
@@ -85,10 +88,10 @@ class Fixture:
             "--thresholds", str(self.root / "coverage-thresholds.json"), *extra,
         )
 
-    def write_report(self, name, report):
-        path = self.reports / f"{name}.json"
+    def write_report(self, name, report, kind=PACKAGES_DIR):
+        path = self.reports / f"{report_name(kind, name)}.json"
         write_json(path, report)
-        seal_evidence(self.root, name, path, source_inputs(self.root, name))
+        seal_evidence(self.root, name, path, source_inputs(self.root, name, kind), kind)
 
     def write_spec(self, spec):
         write_json(self.root / "spec.json", spec)
@@ -106,9 +109,12 @@ class Fixture:
         return next(entry for entry in self.summary()["packages"] if entry["name"] == name)
 
 
-def write_gates(root, entries):
+def write_gates(root, entries, apps=None):
     gates = {name: {"threshold": value, "language": "osprey"} for name, value in entries.items()}
-    write_json(root / "coverage-thresholds.json", {"projects": {"packages": gates}})
+    projects = {"packages": gates}
+    if apps is not None:
+        projects["apps"] = apps
+    write_json(root / "coverage-thresholds.json", {"projects": projects})
 
 
 def check_c_runtime(root, percentage, entry):
@@ -138,28 +144,93 @@ def bad_report_cases():
     }
 
 
-def add_package(root, name):
-    package = root / "packages" / name
-    (package / "tests").mkdir(parents=True, exist_ok=True)
-    (package / "osprey.toml").write_text(f'[project]\nname = "{name}"\n')
-    (package / "tests" / "osprey.toml").write_text(f'[project]\nname = "{name}-tests"\n')
+def add_package(root, name, kind=PACKAGES_DIR):
+    project = root / kind / name
+    (project / "tests").mkdir(parents=True, exist_ok=True)
+    (project / "osprey.toml").write_text(f'[project]\nname = "{name}"\n')
+    (project / "tests" / "osprey.toml").write_text(f'[project]\nname = "{name}-tests"\n')
 
 
-def add_sources(root, name, sources, expected=GOLDEN):
-    package = root / "packages" / name
-    (package / "tests" / "expected_output.txt").write_text(expected)
+def add_sources(root, name, sources, expected=GOLDEN, kind=PACKAGES_DIR):
+    project = root / kind / name
+    (project / "tests" / "expected_output.txt").write_text(expected)
     for relative, text in sources.items():
-        path = package / relative
+        path = project / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
 
 
-def make_fixture(base, packages, thresholds=None):
+def add_project_files(root, kind, name, spec):
+    add_package(root, name, kind)
+    add_sources(root, name, spec.get("sources", {}), spec.get("expected", GOLDEN), kind)
+
+
+class CoverageTestCase(unittest.TestCase):
+    """Temporary-checkout fixture and coverage assertions shared by both suites."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.base = Path(directory.name)
+
+    def fixture(self, packages, thresholds=None, apps=None):
+        return make_fixture(tempfile.mkdtemp(dir=self.base), packages, thresholds, apps)
+
+    def simple_fixture(self, name="demo", lines=4, expected=GOLDEN, source=None, relative="src/lib.py"):
+        return self.fixture({name: {"sources": {relative: py_source(lines) if source is None else source}, "expected": expected}})
+
+    def threshold_fixture(self, threshold, total):
+        return self.fixture({"demo": {"sources": {"src/lib.py": py_source(total)}}}, {"demo": threshold})
+
+    def assert_exit(self, result, code, context=""):
+        self.assertEqual(result.returncode, code, context + result.stdout + result.stderr)
+
+    def assert_problem(self, result, message, stderr=False):
+        self.assert_exit(result, 1)
+        self.assertIn(message, result.stderr if stderr else result.stdout)
+
+    def assert_coverage(self, fixture, covered, total, code):
+        fixture.write_report("demo", own_report("demo", covered, total))
+        result = fixture.check()
+        self.assert_exit(result, code)
+        return result
+
+    def assert_invalid(self, fixture, problem):
+        result = fixture.check()
+        self.assert_exit(result, 1)
+        self.assertIn(problem, result.stdout)
+        self.assertIsNone(fixture.result("demo")["percentage"])
+
+    def assert_measurement(self, fixture, name, counts):
+        row = fixture.measurements()["packages"][name]
+        self.assertEqual(tuple(row[key] for key in ("covered", "total", "percentage")), counts)
+        self.assertEqual(fixture.config()["projects"]["packages"][name]["threshold"], 90)
+
+    def assert_bad_report(self, fixture, label, report):
+        fixture.write_report("bad", report)
+        result = fixture.check()
+        self.assert_exit(result, 1, label)
+        self.assertFalse(fixture.result("bad")["pass"], label)
+        self.assertTrue(fixture.result("bad")["missing_evidence"], label)
+
+    def assert_gated_group(self, group, base):
+        for name, entry in group.items():
+            threshold = entry.get("threshold", 90)
+            self.assertGreaterEqual(threshold, 90, name)
+            self.assertIsInstance(threshold, (int, float), f"{name}: threshold must be numeric")
+            self.assertLessEqual(threshold, 100, name)
+            self.assertEqual(entry["language"], "osprey", name)
+            self.assertTrue((base / name / "tests" / "osprey.toml").is_file(), name)
+            self.assertTrue((base / name / "tests" / "expected_output.txt").is_file(), name)
+
+
+def make_fixture(base, packages, thresholds=None, apps=None):
     root = Path(base)
-    write_gates(root, thresholds if thresholds is not None else {name: 90 for name in packages})
-    for name, spec in packages.items():
-        add_package(root, name)
-        add_sources(root, name, spec.get("sources", {}), spec.get("expected", GOLDEN))
+    app_gates = None if apps is None else {name: {"language": "osprey"} for name in apps}
+    write_gates(root, thresholds if thresholds is not None else {name: 90 for name in packages}, app_gates)
+    for kind, group in ((PACKAGES_DIR, packages), (APPS_DIR, apps or {})):
+        for name, spec in group.items():
+            add_project_files(root, kind, name, spec)
     compiler = root / "fake-compiler.py"
     compiler.write_text(FAKE_COMPILER)
     compiler.chmod(0o755)

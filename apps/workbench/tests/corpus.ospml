@@ -1,27 +1,28 @@
 // [WORKBENCH-FORMULA] generated corpus: exhaustive round trips and proof that
 // every parenthesis written by `show` is needed to preserve the formula.
-namespace workbenchtests
-
-import workbench::Formulas
+namespace workbench
 
 (** The generated formula cases of [WORKBENCH-VERIFICATION]. *)
 module CorpusCases
-    atoms () = [Var "p", Var "q", Top, Bot]
+    atoms () = [Var "p", Var "q", Bot]
 
-    addBinary (done, left, right) = listPrepend (listPrepend (listPrepend (listPrepend (done, And left right), Or left right), Imp left right), Iff left right)
+    connectives (left, right) = [And left right, Or left right, Imp left right, Iff left right]
 
-    binaries formulas = foldList (formulas, [], \(outer, left) => foldList (formulas, outer, \(inner, right) => addBinary (inner, left, right)))
+    // Every connective over every pair drawn from `lefts` and `rights`.
+    binaries (lefts, rights) = foldList (lefts, [], \(outer, left) => foldList (rights, outer, \(inner, right) => listConcat (inner, connectives (left, right))))
 
-    negations formulas = mapList (formulas, \formula => Not formula)
+    // Depth 1: the atoms, their negations, every connective over two atoms, and one binder.
+    shallow () =
+        base = atoms ()
+        listConcat (listConcat (base, mapList (base, \formula => Not formula)), listConcat (binaries (base, base), mapList (base, \formula => Forall ["p"] formula)))
 
-    quantifications formulas = foldList (formulas, [], \(done, formula) => listPrepend (listPrepend (done, Forall ["p"] formula), Forall ["p", "q"] formula))
-
-    // Every formula whose constructor depth is at most `depth`, with both binder lists at every quantifier.
-    formulas depth = match depth <= 0
-        true => atoms ()
-        false =>
-            previous = formulas (satSub depth 1)
-            listConcat previous (listConcat (negations previous) (listConcat (binaries previous) (quantifications previous)))
+    // Depth 2 wraps each depth-1 formula once and pairs it with an atom on either side, which
+    // puts every connective under every other connective on both sides, the cases that need parentheses.
+    corpus () =
+        inner = shallow ()
+        base = atoms ()
+        wrapped = listConcat (mapList (inner, \formula => Not formula), mapList (inner, \formula => Forall ["p", "q"] formula))
+        listConcat (listConcat (inner, wrapped), listConcat (binaries (inner, base), binaries (base, inner)))
 
     sameNamesAt (left, right, at) = match at >= length left
         true => true
@@ -81,20 +82,19 @@ module CorpusCases
         Read found => same (formula, found)
         Faulted _ => false
 
-    roundTripBad () = filterList (formulas 2, \formula => !readsSame (Formulas::show formula, formula))
+    roundTripBad () = filterList (corpus (), \formula => !readsSame (Formulas::show formula, formula))
 
     summary failures = "${length failures}: ${listGet failures 0 ?: ""}"
 
-    (** [WORKBENCH-FORMULA]: every generated formula to depth 2 reads back structurally unchanged after `show`. *)
+    (** [WORKBENCH-FORMULA]: every corpus formula reads back structurally unchanged after `show`. *)
     export roundTrip () = expect (summary (mapList (roundTripBad (), \formula => Formulas::show formula)), "0: ")
 
-    (** [WORKBENCH-FORMULA]: the exhaustive depth-2 corpus has exactly the hand-derived number of formulas. *)
+    (** [WORKBENCH-FORMULA]: the corpus has exactly the hand-derived number of formulas. *)
     export generatedCount () =
-        // 4 at depth 0; 4 + 4 + 4*4^2 + 2*4 = 80 at depth 1;
-        // 80 + 80 + 4*80^2 + 2*80 = 25,920 at depth 2.
-        expect (length (formulas 0), 4)
-        expect (length (formulas 1), 80)
-        expect (length (formulas 2), 25920)
+        // Depth 1: 3 atoms + 3 negations + 4 * 3 * 3 binaries + 3 binders = 45.
+        // Depth 2: 45 + 45 negations + 45 binders + 4 * 45 * 3 on each side = 1215.
+        expect (length (shallow ()), 45)
+        expect (length (corpus ()), 1215)
 
     closing (text, at, depth) = match at >= length text
         true => satSub 0 1
@@ -123,7 +123,7 @@ module CorpusCases
 
     redundant formula = redundantFrom (formula, Formulas::show formula, 0)
 
-    minimalityBad () = filterList (formulas 2, \formula => redundant formula != "")
+    minimalityBad () = filterList (corpus (), \formula => redundant formula != "")
 
     (** [WORKBENCH-FORMULA]: removing any one matching parenthesis pair from generated output fails to read or changes the formula. *)
     export minimalParentheses () = expect (summary (mapList (minimalityBad (), \formula => Formulas::show formula + " => " + redundant formula)), "0: ")

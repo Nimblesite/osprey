@@ -35,10 +35,13 @@ type Run =
 (** How a binary connective groups with itself. *)
 type Grouping = Leftward | Rightward
 
-(** One precedence level of the climber: its spellings, its constructor and its grouping. *)
+(** The binary connective a precedence level builds. *)
+type Connective = Biconditional | Conditional | Disjunction | Conjunction
+
+(** One precedence level of the climber: its spellings, its connective and its grouping. *)
 type Level =
     spellings : List<List<string>>
-    build : (Formula, Formula) -> Formula
+    connective : Connective
     grouping : Grouping
 
 (** Splits text into the tokens of [WORKBENCH-FORMULA]; total, ending with an `End` token. *)
@@ -97,10 +100,10 @@ module Lexer
 module Formulas
     // Loosest first: `↔`, `→` (right associative), `∨`, `∧`; `¬` and the atoms are below the table.
     levels () = [
-        Level(spellings = [["↔"], ["iff"], ["if", "and", "only", "if"]], build = \(a, b) => Iff a b, grouping = Leftward),
-        Level(spellings = [["→"], ["implies"]], build = \(a, b) => Imp a b, grouping = Rightward),
-        Level(spellings = [["∨"], ["or"]], build = \(a, b) => Or a b, grouping = Leftward),
-        Level(spellings = [["∧"], ["and"]], build = \(a, b) => And a b, grouping = Leftward),
+        Level(spellings = [["↔"], ["iff"], ["if", "and", "only", "if"]], connective = Biconditional, grouping = Leftward),
+        Level(spellings = [["→"], ["implies"]], connective = Conditional, grouping = Rightward),
+        Level(spellings = [["∨"], ["or"]], connective = Disjunction, grouping = Leftward),
+        Level(spellings = [["∧"], ["and"]], connective = Conjunction, grouping = Leftward),
     ]
 
     negations = [["¬"], ["not"], ["it", "is", "not", "the", "case", "that"]]
@@ -121,7 +124,11 @@ module Formulas
         false => satSub 0 1
 
     (** How many tokens from `at` spell one of `phrases`, or 0 when none does. *)
-    export phrase (tokens, at, phrases) = foldList (phrases, 0, \(found, words) => max (found, spells (tokens, at, words)))
+    export phrase (tokens, at, phrases) = foldList (phrases, 0, \(found, words) => larger (found, spells (tokens, at, words)))
+
+    larger (first, second) = match first > second
+        true => first
+        false => second
 
     fault (tokens, at, expected) = Failed (Fault(column = (token (tokens, at)).column, expected = expected))
 
@@ -146,11 +153,17 @@ module Formulas
         Rightward => depth
         Leftward => satAdd depth 1
 
+    build (connective, left, right) = match connective
+        Biconditional => Iff left right
+        Conditional => Imp left right
+        Disjunction => Or left right
+        Conjunction => And left right
+
     joined (tokens, depth, level, left, right) = match right
         Failed problem => Failed problem
         Parsed formula next => match level.grouping
-            Rightward => Parsed (level.build (left, formula)) next
-            Leftward => further (tokens, depth, level, level.build (left, formula), next)
+            Rightward => Parsed (build (level.connective, left, formula)) next
+            Leftward => further (tokens, depth, level, build (level.connective, left, formula), next)
 
     unary (tokens, at) =
         width = phrase (tokens, at, negations)
@@ -219,6 +232,7 @@ module Formulas
         Failed problem => Faulted problem
         Parsed formula next => match (token (tokens, next)).kind
             End => Read formula
+            Stray => Faulted (Fault(column = (token (tokens, next)).column, expected = "a connective in place of `" + (token (tokens, next)).text + "`"))
             _ => Faulted (Fault(column = (token (tokens, next)).column, expected = "the end of the formula or a connective before `" + (token (tokens, next)).text + "`"))
 
     (** Reads a formula written in symbols, sentences or both; `p ∧ q → q ∧ p` and `if p and q then q and p` are the same value. *)
@@ -235,24 +249,28 @@ module Formulas
         Forall _ _ => 0
         _ => 6
 
-    // The text of `formula` placed where the context binds at least as tightly as `context`.
-    placed (formula, context) = match rank formula < context || (rank formula == 0 && context > 0)
-        true => "(" + show formula + ")"
-        false => show formula
+    // The text of `formula` where the context binds as tightly as `context`; `open` says nothing
+    // follows it, and a `∀`, which reaches to the end of the text, is bare only there.
+    placed (formula, context, open) = match rank formula >= context || (rank formula == 0 && open)
+        true => written (formula, open)
+        false => "(" + written (formula, true) + ")"
 
-    infix (left, symbol, right, sides) = placed (left, sides.left) + " " + symbol + " " + placed (right, sides.right)
+    // Only the right operand can be last, so only it inherits `open`.
+    infix (left, symbol, right, sides, open) = placed (left, sides.left, false) + " " + symbol + " " + placed (right, sides.right, open)
 
-    (** The Unicode form with the fewest parentheses that read back to the same formula. *)
-    export show formula = match formula
+    written (formula, open) = match formula
         Var name => name
         Top => "⊤"
         Bot => "⊥"
-        Not inner => "¬" + placed (inner, 5)
-        And left right => infix (left, "∧", right, { left = 4, right = 5 })
-        Or left right => infix (left, "∨", right, { left = 3, right = 4 })
-        Imp left right => infix (left, "→", right, { left = 3, right = 2 })
-        Iff left right => infix (left, "↔", right, { left = 1, right = 2 })
-        Forall names inner => "∀ " + join (names, " ") + ", " + show inner
+        Not inner => "¬" + placed (inner, 5, open)
+        And left right => infix (left, "∧", right, { left = 4, right = 5 }, open)
+        Or left right => infix (left, "∨", right, { left = 3, right = 4 }, open)
+        Imp left right => infix (left, "→", right, { left = 3, right = 2 }, open)
+        Iff left right => infix (left, "↔", right, { left = 1, right = 2 }, open)
+        Forall names inner => "∀ " + join (names, " ") + ", " + written (inner, true)
+
+    (** The Unicode form with the fewest parentheses that read back to the same formula. *)
+    export show formula = written (formula, true)
 
     (** Structural equality: `show` is injective because `read (show f) = f`, so equal texts are equal formulas. *)
     export equal (first, second) = show first == show second

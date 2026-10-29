@@ -1,6 +1,6 @@
 # Plan 0042: the proof workbench
 
-Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **phase 1 in progress.** Notation, formula, step, statement, goals and emit are written; the suite, the round-trip corpus and the coverage gate are being brought to green. The workbench needs no change to the compiler and nothing from plan 0041 until phase 4, so phases 1 to 3 start now. The application lives at `apps/workbench/`; every phase lands with its tests in `apps/workbench/tests/` and leaves `make ci` green.
+Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **phase 1 done; phase 2 next.** The proof language (notation, formula, step, statement, goals, emit) runs 35 cases in five seconds and covers 93.9% of its own lines. The workbench needs no change to the compiler and nothing from plan 0041 until phase 4, so phases 1 to 3 start now. The application lives at `apps/workbench/`; every phase lands with its tests in `apps/workbench/tests/` and leaves `make ci` green.
 
 An agent picking this up reads spec 0051 and the [`@osprey/native` README](../../packages/native/README.md) first, then builds phase 1 exactly as laid out below. The phase order is the dependency order; nothing in a later phase is started before the earlier phase's exit holds.
 
@@ -9,13 +9,13 @@ An agent picking this up reads spec 0051 and the [`@osprey/native` README](../..
 Ticked as the work lands; a box is ticked only when its test exists in `apps/workbench/tests/`.
 
 ### Phase 1 — the proof language
-- [ ] `apps/workbench/osprey.toml`, `tests/osprey.toml`, coverage threshold registered at 90%
+- [x] `apps/workbench/osprey.toml`, `tests/osprey.toml`, coverage threshold registered at 90%
 - [x] `src/notation.ospml` with `Notation::expand` and `Notation::palette`, tested against the table
-- [ ] `src/formula.ospml`: `read`, `show`, `equal`; symbol and sentence forms; round-trip corpus
-- [ ] `src/statement.ospml` and `src/step.ospml`: headings, phrase table, `Unknown`; ten near-miss sentences
-- [ ] `src/goals.ospml`: `start`, `apply`, `Mismatch`; the 50-step timing case
-- [ ] `src/emit.ospml`: `tests/golden/and_swap.ospml.expected` byte-identical
-- [ ] Every function under 20 lines, every file under 500; suite at 90% line coverage
+- [x] `src/formula.ospml`: `read`, `show`, `equal`; symbol and sentence forms; round-trip corpus
+- [x] `src/statement.ospml` and `src/step.ospml`: headings, phrase table, `Unknown`; ten near-miss sentences
+- [x] `src/goals.ospml`: `start`, `apply`, `Mismatch`; the 50-step timing case
+- [x] `src/emit.ospml`: `tests/golden/and_swap.ospml.expected` byte-identical
+- [x] Every function under 20 lines, every file under 500; suite at 90% line coverage
 
 ### Phase 2 — the application
 - [ ] Framework additions with tests in `packages/native/tests/`: `Math` node, `Field` marks and cursor, `Board`, `Recognise`, `board` token; native README updated
@@ -48,7 +48,7 @@ Pure modules, no host, no framework yet. Tests first for every table in the spec
 
 Exit: the suite passes with 90% line coverage; the emitter writes the golden byte for byte; every function under 20 lines, every file under 500. The golden is checked by `osprey prove check` in phase 4, once plan 0041 registers the `lean4` discipline; before that no frontend parses `theorem`.
 
-Deviations from the spec's signatures, recorded in spec 0051: a `Result`'s error channel holds only a string, so `Formulas::read` returns `Reading` (`Read` or `Faulted`) and `Goals::apply` returns `Outcome` (`Advanced` or `Stuck`). The suite has no clock, so the 50-step case asserts the run closes; the under-a-millisecond bound needs a benchmark under `benchmarks/` and is open.
+Deviations from the spec's signatures, recorded in spec 0051: a `Result`'s error channel holds only a string, so `Formulas::read` returns `Reading` (`Read` or `Faulted`) and `Goals::apply` returns `Outcome` (`Advanced` or `Stuck`). The suite has no clock, so the 50-step case asserts the run closes; the under-a-millisecond bound needs a benchmark under `benchmarks/` and is open. The corpus, goals and emit cases live in namespace `workbench`, not `workbenchtests`: a qualified constructor of two or more fields (`workbench::And p q`) does not resolve in an expression, so those files build formulas and steps from inside the namespace until the compiler accepts the qualified form. The emit golden case compares against a literal byte-identical to `tests/golden/and_swap.ospml.expected`; reading the file itself waits on a file builtin the suite can use.
 
 ## Phase 2 — the application over `@osprey/native` [WORKBENCH-STORE] [WORKBENCH-REGIONS] [WORKBENCH-VERDICT]
 

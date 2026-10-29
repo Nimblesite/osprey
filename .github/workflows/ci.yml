@@ -186,7 +186,9 @@ jobs:
           python3 scripts/test-release-gate.py
 
       - name: Package coverage wiring contracts
-        run: python3 scripts/test-package-coverage.py
+        run: |
+          python3 scripts/test-package-coverage.py
+          python3 scripts/test-package-coverage-projects.py
 
       - name: Python application runner contracts
         run: python3 scripts/test-python-app-ports-contracts.py

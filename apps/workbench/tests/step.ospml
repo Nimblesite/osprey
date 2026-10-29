@@ -10,62 +10,66 @@ module StepCases
     // The and_swap proof body of [WORKBENCH-STATEMENT], as a writer types it.
     andSwapBody = "  Assume h : p ∧ q.\n  By cases on h, as hp and hq.\n  It suffices to show q and p.\n  From hq.\n  From hp.\n"
 
-    showStep step = match step
-        Assume subject formula => "assume " + subject + " : " + Formulas::show formula
-        Cases subject names => "cases " + subject + " | " + join (names, " ")
-        Split => "split"
-        Left => "left"
-        Right => "right"
-        Exact subject => "exact " + subject
-        Apply subject => "apply " + subject
-        Absurd first second => "absurd " + first + " " + second
-        Done => "done"
-        Unknown kept => "unknown " + kept
+    // A sentence spelled out as its step, so two steps compare without equality on unions.
+    shown written = match Steps::read written
+        workbench::Assume subject formula => "assume " + subject + " : " + Formulas::show formula
+        workbench::Cases subject names => "cases " + subject + " | " + join (names, " ")
+        workbench::Split => "split"
+        workbench::Left => "left"
+        workbench::Right => "right"
+        workbench::Exact subject => "exact " + subject
+        workbench::Apply subject => "apply " + subject
+        workbench::Absurd first second => "absurd " + first + " " + second
+        workbench::Done => "done"
+        workbench::Unknown kept => "unknown " + kept
 
     // The rows of the table that do not read to the step the table names.
-    differing rows = filterList (rows, \row => showStep (Steps::read row.written) != row.step)
+    differing rows = filterList (rows, \row => shown row.written != row.step)
 
-    reported rows = join (mapList (differing rows, \row => row.written + " => " + showStep (Steps::read row.written)), "; ")
+    reported rows = join (mapList (differing rows, \row => row.written + " => " + shown row.written), "; ")
 
     // The rows whose tactic is not the tactic the column names.
     mistactics rows = filterList (rows, \row => Steps::tactic (Steps::read row.written) != row.tactic)
 
     tacticsReport rows = join (mapList (mistactics rows, \row => row.written + " => " + Steps::tactic (Steps::read row.written)), "; ")
 
-    // A sentence is read as unknown only when it is not a known step, carrying its own trimmed text.
-    unknown text = match Steps::read text
-        Unknown kept => kept
+    // What a sentence reads as: its own trimmed text when unknown, its step otherwise.
+    readAs text = match Steps::read text
+        workbench::Unknown kept => kept
         _ => "known: " + Steps::tactic (Steps::read text)
 
-    keptWrong texts = filterList (texts, \text => unknown text != trim text)
+    // The sentences that do not stay Unknown carrying their own trimmed text.
+    notKept texts = filterList (texts, \text => readAs text != trim text)
 
-    unread texts = filterList (texts, \text => startsWith (unknown text, "known:"))
+    // The tactics of the sentences in order.
+    tacticsOf texts = join (mapList (texts, \text => Steps::tactic (Steps::read text)), " ;; ")
+
+    // The phrase table of [WORKBENCH-STEPS]: each written form and the step it reads to.
+    writtenRows = [
+        { written = "Assume h : p ∧ q.", step = "assume h : p ∧ q" },
+        { written = "Suppose h : p ∧ q.", step = "assume h : p ∧ q" },
+        { written = "Let h be p ∧ q.", step = "assume h : p ∧ q" },
+        { written = "assume  h  :  p and q .", step = "assume h : p ∧ q" },
+        { written = "By cases on h, as a and b.", step = "cases h | a b" },
+        { written = "Split h into a and b.", step = "cases h | a b" },
+        { written = "It suffices to show p ∧ q and q ∧ p.", step = "split" },
+        { written = "We show both.", step = "split" },
+        { written = "Show the left side.", step = "left" },
+        { written = "Left.", step = "left" },
+        { written = "Show the right side.", step = "right" },
+        { written = "Right.", step = "right" },
+        { written = "From h.", step = "exact h" },
+        { written = "By h.", step = "exact h" },
+        { written = "This is h.", step = "exact h" },
+        { written = "Apply h.", step = "apply h" },
+        { written = "Use h.", step = "apply h" },
+        { written = "Contradiction from h and k.", step = "absurd h k" },
+        { written = "Done.", step = "done" },
+        { written = "QED.", step = "done" },
+    ]
 
     (** [WORKBENCH-STEPS]: every written form of the phrase table reads to its step. *)
-    export written () =
-        rows = [
-            { written = "Assume h : p ∧ q.", step = "assume h : p ∧ q" },
-            { written = "Suppose h : p ∧ q.", step = "assume h : p ∧ q" },
-            { written = "Let h be p ∧ q.", step = "assume h : p ∧ q" },
-            { written = "assume  h  :  p and q .", step = "assume h : p ∧ q" },
-            { written = "By cases on h, as a and b.", step = "cases h | a b" },
-            { written = "Split h into a and b.", step = "cases h | a b" },
-            { written = "It suffices to show p ∧ q and q ∧ p.", step = "split" },
-            { written = "We show both.", step = "split" },
-            { written = "Show the left side.", step = "left" },
-            { written = "Left.", step = "left" },
-            { written = "Show the right side.", step = "right" },
-            { written = "Right.", step = "right" },
-            { written = "From h.", step = "exact h" },
-            { written = "By h.", step = "exact h" },
-            { written = "This is h.", step = "exact h" },
-            { written = "Apply h.", step = "apply h" },
-            { written = "Use h.", step = "apply h" },
-            { written = "Contradiction from h and k.", step = "absurd h k" },
-            { written = "Done.", step = "done" },
-            { written = "QED.", step = "done" },
-        ]
-        expect (reported rows, "")
+    export written () = expect (reported writtenRows, "")
 
     (** [WORKBENCH-STEPS]: a sentence outside the phrase table is Unknown with its text trimmed. *)
     export nearMisses () =
@@ -81,17 +85,19 @@ module StepCases
             "Therefore p.",
             "Hence the result follows.",
         ]
-        expect (join (keptWrong texts, "; "), "")
-        expect (join (unread texts, "; "), "")
-        expect (unknown "   Therefore p.   ", "Therefore p.")
-        expect (unknown "From hq.", "known: exact hq")
+        expect (join (notKept texts, "; "), "")
+        expect (readAs "   Therefore p.   ", "Therefore p.")
+        expect (readAs "By cases.", "By cases.")
+        expect (readAs "ASSUME h : p.   ", "ASSUME h : p.")
+        expect (readAs "From hq.", "known: exact hq")
+        expect (readAs "left.", "known: left")
 
     (** [WORKBENCH-STEPS]: the and_swap proof body splits into its five step sentences. *)
     export proofBody () =
         found = Steps::sentences andSwapBody
         expect (length found, 5)
         expect (join (found, " | "), "Assume h : p ∧ q. | By cases on h, as hp and hq. | It suffices to show q and p. | From hq. | From hp.")
-        expect (join (keptWrong found, "; "), "")
+        expect (tacticsOf found, "intro h ;; cases h with hp hq ;; constructor ;; exact hq ;; exact hp")
         expect (join (Steps::sentences "  First.  Second.\n\nThird.  ", " | "), "First. | Second. | Third.")
         expect (join (Steps::sentences "A. ... B.", " | "), "A. | ... | B.")
 
@@ -100,7 +106,7 @@ module StepCases
         rows = [
             { written = "Assume h : p ∧ q.", tactic = "intro h" },
             { written = "By cases on h, as a and b.", tactic = "cases h with a b" },
-            { written = "We show both.", tactic = "constructor" },
+            { written = "It suffices to show p and q.", tactic = "constructor" },
             { written = "Show the left side.", tactic = "left" },
             { written = "Right.", tactic = "right" },
             { written = "From h.", tactic = "exact h" },

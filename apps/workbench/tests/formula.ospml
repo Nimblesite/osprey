@@ -6,12 +6,12 @@ import workbench::Formulas
 (** The formula cases of [WORKBENCH-VERIFICATION]. *)
 module FormulaCases
     shown text = match Formulas::read text
-        Read formula => Formulas::show formula
-        Faulted fault => "fault ${fault.column}: ${fault.expected}"
+        workbench::Read formula => Formulas::show formula
+        workbench::Faulted fault => "fault ${fault.column}: ${fault.expected}"
 
     formula text = match Formulas::read text
-        Read found => found
-        Faulted _ => Bot
+        workbench::Read found => found
+        workbench::Faulted _ => workbench::Bot
 
     equalTexts (first, second) = Formulas::equal (formula first, formula second)
 
@@ -58,7 +58,7 @@ module FormulaCases
         expect (shown "for all, p", "fault 8: a name to bind")
         expect (shown "∀ p q p", "fault 8: `,` after the bound names")
         expect (shown "p q", "fault 3: the end of the formula or a connective before `q`")
-        expect (shown "p $ q", "fault 3: a proposition after `p`")
+        expect (shown "p $ q", "fault 3: a connective in place of `$`")
 
     (** [WORKBENCH-FORMULA]: equality is structural. *)
     export equality () =

@@ -1,0 +1,76 @@
+// Implements [WORKBENCH-EMIT]: the only writer of code in the application. A
+// leading `Assume` on an implication becomes a binder in the shape, an
+// unknown step a visible `sorry` hole, so the generated module always parses.
+namespace workbench
+
+import workbench::Formulas
+import workbench::Steps
+import workbench::Lists
+
+(** One declaration as the writer phrased it: its statement and its steps in order. *)
+type Proof =
+    statement : Statement
+    steps : List<Step>
+
+(** A shape in progress: the binders taken from leading steps, the conclusion left and the steps not yet consumed. *)
+type Shape =
+    binders : List<string>
+    conclusion : Formula
+    steps : List<Step>
+
+(** Writes the ML proof module of [WORKBENCH-EMIT]. *)
+module Emit
+    header = "// osprey: types=lean4\nnamespace proofs\n"
+
+    (** The whole generated file: the marker and namespace lines, then each declaration after one blank line. *)
+    export document proofs = header + join (mapList (proofs, \proof => "\n" + declaration proof), "")
+
+    (** One `theorem` with its binders, conclusion and tactic block. *)
+    export declaration proof =
+        shape = binders (Shape(binders = variables proof.statement.variables, conclusion = proof.statement.claim, steps = proof.steps))
+        "theorem " + proof.statement.name + join (mapList (shape.binders, \binder => " " + binder), "") + " : " + Formulas::show shape.conclusion + " := by\n" + block shape.steps
+
+    variables names = match isEmpty names
+        true => []
+        false => ["(" + join (names, " ") + " : Prop)"]
+
+    // Leading assumptions that discharge the implication become `(h : A)` binders.
+    binders shape = match listGet shape.steps 0
+        Error _ => shape
+        Success step => bind (shape, step)
+
+    bind (shape, step) = match step
+        Assume name formula => premise (shape, name, formula)
+        _ => shape
+
+    premise (shape, name, formula) = match shape.conclusion
+        Imp assumed conclusion => discharged (shape, { name = name, formula = formula, assumed = assumed, conclusion = conclusion })
+        _ => shape
+
+    discharged (shape, parts) = match Formulas::equal (parts.formula, parts.assumed)
+        true => binders (Shape(binders = listAppend (shape.binders, "(" + parts.name + " : " + Formulas::show parts.assumed + ")"), conclusion = parts.conclusion, steps = Lists::rest shape.steps))
+        false => shape
+
+    // The tactic lines; after an unknown step the proof is a hole, so later steps stay as comments.
+    // An empty tactic block is a hole too: `by` with nothing after it does not parse.
+    block steps =
+        written = foldList (steps, { text = "", holed = false }, \(done, step) => line (done, step))
+        filled written.text
+
+    filled text = match isEmpty text
+        true => "    sorry\n"
+        false => text
+
+    line (written, step) = match written.holed
+        true => { text = written.text + commented step, holed = true }
+        false => tactic (written, step)
+
+    tactic (written, step) = match step
+        Unknown text => { text = written.text + "    -- " + text + "\n    sorry\n", holed = true }
+        Done => written
+        _ => { text = written.text + "    " + Steps::tactic step + "\n", holed = false }
+
+    commented step = match step
+        Unknown text => "    -- " + text + "\n"
+        Done => ""
+        _ => "    -- " + Steps::tactic step + "\n"
