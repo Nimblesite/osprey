@@ -1,9 +1,8 @@
 //! Real-process regressions for the checker deadline of
 //! [TYPES-DISCIPLINE-PROTOCOL]: the one deadline taken at the top of `run`
 //! covers build, spawn, request delivery and the response, proven with tiny
-//! //! `sh` checkers in temp directories instead of scripted answers.
+//! `sh` checkers in temp directories instead of scripted answers.
 
-#![cfg(unix)]
 #![cfg(unix)]
 
 use super::run_executable;

@@ -76,6 +76,24 @@ module ExportMutationTests
         test ("a binder annotation the reader does not know is refused on its line", \() =>
             expect (verdict (edit ("{\"bvar\":0,\"ie\":1}\n{\"bvar\":1,\"ie\":2}\n{\"forallE\":{\"binderInfo\":\"default\"", "{\"bvar\":0,\"ie\":1}\n{\"bvar\":1,\"ie\":2}\n{\"forallE\":{\"binderInfo\":\"weird\"")), "line 12: bad binderInfo weird"))
 
+        test ("an expression index defined twice is refused on its second line, not rebound", \() =>
+            expect (verdict (edit ("{\"bvar\":1,\"ie\":2}\n", "{\"bvar\":1,\"ie\":2}\n{\"bvar\":0,\"ie\":2}\n")), "line 12: expr 2 is already defined"))
+
+        test ("a name index defined twice is refused, so the theorem cannot be renamed under it", \() =>
+            expect (verdict (edit ("{\"in\":2,\"str\":{\"pre\":0,\"str\":\"p\"}}\n", "{\"in\":2,\"str\":{\"pre\":0,\"str\":\"p\"}}\n{\"in\":1,\"str\":{\"pre\":0,\"str\":\"q\"}}\n")), "line 4: name 1 is already defined"))
+
+        test ("name 0, the anonymous root, cannot be defined", \() =>
+            expect (verdict (swapped (Fixtures::idImp (), "{\"in\":1,", "{\"in\":0,\"str\":{\"pre\":0,\"str\":\"z\"}}\n{\"in\":1,")), "line 2: name 0 is reserved"))
+
+        test ("level 0, which is Zero, cannot be defined", \() =>
+            expect (verdict (swapped (overType (), "{\"il\":1,\"succ\":0}", "{\"il\":0,\"succ\":0}")), "line 4: level 0 is reserved"))
+
+        test ("a level index defined twice is refused on its second line", \() =>
+            expect (verdict (swapped (overType (), "{\"il\":1,\"succ\":0}", "{\"il\":1,\"succ\":0}\n{\"il\":1,\"succ\":0}")), "line 5: level 1 is already defined"))
+
+        test ("a negative expression index is refused", \() =>
+            expect (verdict (edit ("{\"ie\":0,\"sort\":0}", "{\"ie\":-1,\"sort\":0}")), "line 4: expr -1 is reserved"))
+
         test ("a theorem whose statement needs a definition to unfold checks", \() =>
             expect (named (throughDefinition (1), "t"), "checked"))
 

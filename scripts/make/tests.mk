@@ -379,6 +379,7 @@ _test_disciplines_passthrough:
 	  echo "FAIL: the module with a planted type error was accepted"; cat target/disciplines/broken.txt; exit 1; fi
 	@grep -q 'passthrough/check: type mismatch' target/disciplines/broken.txt
 	@cat target/disciplines/broken.txt
+	@$(RM) examples/disciplines/roundtrip/.osprey examples/disciplines/passthrough/.osprey
 
 _test_language_corpus:
 	@echo "==> [language] Default + ML assertion corpus..."

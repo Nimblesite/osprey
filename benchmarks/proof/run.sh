@@ -21,8 +21,10 @@
 #               `lean --run <module>` as the Lean side (and removes the need for
 #               a module, so an export re-check needs no Lean file at all)
 #   lean.setup  a shell command line run once from the case directory, untimed,
-#               before either side is preflighted (building the Lean tools);
-#               it must exit zero
+#               before either side is preflighted (building the Lean tools and,
+#               for m1_export, re-exporting the module and byte-comparing it
+#               with the case's id_imp.ndjson, so both sides provably read the
+#               same theorem); it must exit zero
 #   lean.bin    required with lean.cmd: the path, relative to the case
 #               directory, of the Lean-side executable lean.cmd times, so the
 #               recorded `lean_binary` hash is of what actually ran
@@ -81,17 +83,30 @@ print(ms, kb)
 '
 
 # TREE_SHA <project> <case> — sha256 over everything the Osprey side reads:
-# every *.ospml and osprey.toml under the project (paths relative to the
-# project root, so the hash identifies the sources and not the checkout), and
-# every data file of the case directory — the recorded export, `args` — under
-# `case/`; the Lean side's files, dotfiles and directories are left out. Sorted
-# and concatenated as path\0bytes.
+# the project's `osprey.toml` and every *.ospml its `source_roots` name — a
+# root may be a directory or one file and may sit outside the project, as the
+# kernel modules export_check shares with examples/proof/kernel do — keyed by
+# their path relative to the project root, so the hash identifies the sources
+# and not the checkout; and every data file of the case directory (the
+# recorded export, `args`) under `case/`. The Lean side's files (`*.lean`,
+# `lean.cmd`, `lean.setup`, `lean.bin`), dotfiles and directories are left out.
+# Sorted and concatenated as path\0bytes. A root that does not exist is an
+# error, so a hash never silently covers less than the build reads.
 TREE_SHA='
-import hashlib, pathlib, sys
+import hashlib, os, pathlib, sys, tomllib
 root = pathlib.Path(sys.argv[1]).resolve()
 case = pathlib.Path(sys.argv[2]).resolve()
-files = {str(p.relative_to(root)): p for p in root.rglob("*") if p.suffix == ".ospml" or p.name == "osprey.toml"}
-lean_side = {"lean.cmd", "lean.setup"}
+manifest = root / "osprey.toml"
+roots = tomllib.loads(manifest.read_text())["project"].get("source_roots", ["src"])
+files = {"osprey.toml": manifest}
+for entry in roots:
+    path = (root / entry).resolve()
+    if not path.exists():
+        sys.exit(f"source root {entry} does not exist")
+    found = [path] if path.is_file() else sorted(path.rglob("*.ospml"))
+    for p in found:
+        files[os.path.relpath(p, root)] = p
+lean_side = {"lean.cmd", "lean.setup", "lean.bin"}
 for p in case.iterdir():
     if p.is_file() and not p.name.startswith(".") and p.suffix != ".lean" and p.name not in lean_side:
         files["case/" + p.name] = p
@@ -101,11 +116,12 @@ print(hashlib.sha256(blob).hexdigest())
 
 # LEAN_SHA <case> — sha256 over everything that defines the Lean side: every
 # *.lean of the case directory (a symlink counts, by its target's bytes),
-# `lean.cmd` and `lean.setup`, sorted and concatenated as path\0bytes.
+# `lean.cmd`, `lean.setup` and `lean.bin`, sorted and concatenated as
+# path\0bytes.
 LEAN_SHA='
 import hashlib, pathlib, sys
 case = pathlib.Path(sys.argv[1]).resolve()
-files = sorted(p for p in case.iterdir() if p.suffix == ".lean" or p.name in ("lean.cmd", "lean.setup"))
+files = sorted(p for p in case.iterdir() if p.suffix == ".lean" or p.name in ("lean.cmd", "lean.setup", "lean.bin"))
 blob = b"".join(p.name.encode() + b"\0" + p.read_bytes() for p in files)
 print(hashlib.sha256(blob).hexdigest())
 '

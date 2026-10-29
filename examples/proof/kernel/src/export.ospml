@@ -23,7 +23,8 @@ type Reading =
     parses Lean's format ([PROOF-EXPORT]). Every line is one JSON object:
     the `meta` header, an `in` name, an `il` level, an `ie` expression or
     a declaration. Name 0 is the anonymous root and level 0 is `Zero`; an
-    item only ever refers to lower indices of its own table. The reader
+    item only ever refers to indices its table already defines, and each
+    index is defined once (`freshIn`). The reader
     adds nothing to the theory: every declaration arrives as the kernel's
     own `Decl`, and the kinds M3 will bring — inductives, constructors,
     recursors and quotients — are refused with the line kind named. *)
@@ -159,6 +160,18 @@ module Export
         Success term => Success(value = term)
         Error _ => Error(message = "unknown expr ${toString index}")
 
+    (** Every index is defined once: an index already in its table, or
+        below the table's first free index (name 0 is the anonymous root,
+        level 0 is `Zero`, no index is negative), is refused rather than
+        overwritten, so no later item can rebind what an earlier one used. *)
+    freshIn (table, index, first, kind) = match index < first
+        true => Error(message = "${kind} ${toString index} is reserved")
+        false => unusedIn (table, index, kind)
+
+    unusedIn (table, index, kind) = match mapContains (table, toString index)
+        true => Error(message = "${kind} ${toString index} is already defined")
+        false => Success(value = index)
+
     setTables (reading, tables) = Reading(tables = tables, decls = reading.decls, line = reading.line)
 
     setName (reading, index, name) = setTables (reading, Tables(names = mapSet (reading.tables.names, toString index, name), levels = reading.tables.levels, exprs = reading.tables.exprs))
@@ -175,7 +188,7 @@ module Export
         other => "${other}.${leaf}"
 
     (** A name is `str` or `num`; both name their dotted prefix by index. *)
-    nameLine (reading, json) = upon (intIn (json, "in"), \index => nameForm (reading, json, index))
+    nameLine (reading, json) = upon (intIn (json, "in"), \index => upon (freshIn (reading.tables.names, index, 1, "name"), \fresh => nameForm (reading, json, fresh)))
 
     nameForm (reading, json, index) = match hasField (json, "str")
         true => nameStr (reading, json, index)
@@ -189,7 +202,7 @@ module Export
     nameDone (reading, index, parent, leaf) = upon (nameOf (reading.tables, parent), \prefix => Success(value = setName (reading, index, dotted (prefix, leaf))))
 
     (** A level is `succ`, `max`, `imax` or `param`. *)
-    levelLine (reading, json) = upon (intIn (json, "il"), \index => levelForm (reading, json, index))
+    levelLine (reading, json) = upon (intIn (json, "il"), \index => upon (freshIn (reading.tables.levels, index, 1, "level"), \fresh => levelForm (reading, json, fresh)))
 
     levelForm (reading, json, index) = match hasField (json, "succ")
         true => levelSucc (reading, json, index)
@@ -228,7 +241,7 @@ module Export
     paramLevel (reading, json, index) = upon (intIn (json, "param"), \ref => upon (nameOf (reading.tables, ref), \name => Success(value = setLevel (reading, index, Param name))))
 
     (** An expression is one of the M0 forms; anything else is refused. *)
-    exprLine (reading, json) = upon (intIn (json, "ie"), \index => exprForm (reading, json, index))
+    exprLine (reading, json) = upon (intIn (json, "ie"), \index => upon (freshIn (reading.tables.exprs, index, 0, "expr"), \fresh => exprForm (reading, json, fresh)))
 
     exprForm (reading, json, index) = match hasField (json, "sort")
         true => sorted (reading, json, index)

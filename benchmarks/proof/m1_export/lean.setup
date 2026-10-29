@@ -1,1 +1,1 @@
-cd ../tools && lake build lean4checker lean4export IdImp >/dev/null && lake env printenv LEAN_PATH > .lake/lean_path
+cd ../tools && lake build lean4checker lean4export IdImp >/dev/null && lake env printenv LEAN_PATH > .lake/lean_path && lake exe lean4export IdImp > .lake/IdImp.ndjson && cmp .lake/IdImp.ndjson ../m1_export/id_imp.ndjson
