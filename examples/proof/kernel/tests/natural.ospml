@@ -33,7 +33,15 @@ module NaturalTests
 
     grid () = ["0", "1", "2", "999999999", "1000000000", "1000000001", "9223372036854775807", "18446744073709551616", "1000000000000000000000000000007", "1606938044258990275541962092341162602522202993782792835301376", "999999999999999999999999999", "123456789012345678901234567890123456789012345678901234567890"]
 
+    (** Every case, grouped so each group stays under twenty lines. *)
     export run () =
+        spellings ()
+        refusals ()
+        sums ()
+        successors ()
+        order ()
+
+    spellings () =
         test ("parse and show round-trip every spelling, across limb borders", \() =>
             expect (shown (Naturals::parse "0"), "0")
             expect (shown (Naturals::parse "1"), "1")
@@ -45,6 +53,7 @@ module NaturalTests
             expect (Naturals::isZero (nat "0"), true)
             expect (Naturals::isZero (nat "1000000000"), false))
 
+    refusals () =
         test ("parse refuses every spelling lean4export does not write", \() =>
             expect (shown (Naturals::parse ""), "error: not a natural literal: \"\"")
             expect (shown (Naturals::parse "-1"), "error: not a natural literal: \"-1\"")
@@ -58,6 +67,7 @@ module NaturalTests
             expect (shown (Naturals::parse "abc"), "error: not a natural literal: \"abc\"")
             expect (shown (Naturals::parse "１"), "error: not a natural literal: \"１\""))
 
+    sums () =
         test ("add carries across limbs exactly", \() =>
             expect (sum ("0", "0"), "0")
             expect (sum ("999999999", "1"), "1000000000")
@@ -76,6 +86,7 @@ module NaturalTests
             expect (difference ("5", "5"), "0")
             expect (difference ("0", "0"), "0"))
 
+    successors () =
         test ("succ and predecessor are inverse, and zero has no predecessor", \() =>
             expect (Naturals::show (Naturals::succ (nat "999999999999999999")), "1000000000000000000")
             expect (shown (Naturals::predecessor (nat "1000000000000000000")), "999999999999999999")
@@ -83,6 +94,16 @@ module NaturalTests
             expect (shown (Naturals::predecessor (nat "0")), "error: 0 is not a successor")
             expect (Naturals::isZero (Naturals::one ()), false))
 
+        test ("ofInt and toInt convert exactly where an int fits, and refuse elsewhere", \() =>
+            expect (shown (Naturals::ofInt 0), "0")
+            expect (shown (Naturals::ofInt 1000000000), "1000000000")
+            expect (shown (Naturals::ofInt 9223372036854775807), "9223372036854775807")
+            expect (shown (Naturals::ofInt (-1)), "error: -1 is negative")
+            expect (Naturals::toInt (nat "999999999999999999") ?: -1, 999999999999999999)
+            expect (Naturals::toInt (nat "0") ?: -1, 0)
+            expect (Naturals::toInt (nat "1000000000000000000") ?: -1, -1))
+
+    order () =
         test ("compare, equal and le order by value, not spelling length of a limb", \() =>
             expect (Naturals::compare (nat "999999999", nat "1000000000"), -1)
             expect (Naturals::compare (nat "1000000000", nat "999999999"), 1)
@@ -94,15 +115,6 @@ module NaturalTests
             expect (Naturals::le (nat "3", nat "3"), true)
             expect (Naturals::le (nat "4", nat "3"), false)
             expect (Naturals::le (nat "0", nat "123456789012345678901234567890"), true))
-
-        test ("ofInt and toInt convert exactly where an int fits, and refuse elsewhere", \() =>
-            expect (shown (Naturals::ofInt 0), "0")
-            expect (shown (Naturals::ofInt 1000000000), "1000000000")
-            expect (shown (Naturals::ofInt 9223372036854775807), "9223372036854775807")
-            expect (shown (Naturals::ofInt (-1)), "error: -1 is negative")
-            expect (Naturals::toInt (nat "999999999999999999") ?: -1, 999999999999999999)
-            expect (Naturals::toInt (nat "0") ?: -1, 0)
-            expect (Naturals::toInt (nat "1000000000000000000") ?: -1, -1))
 
         test ("add and sub laws hold over every ordered pair of a 12-value grid", \() =>
             expect (laws (grid ()), 144))

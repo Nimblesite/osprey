@@ -130,7 +130,7 @@ module Naturals
 
     carried (limbs, carry) = match carry
         0 => limbs
-        other => sumLimbs (limbs, [carry], 0)
+        _ => sumLimbs (limbs, [carry], 0)
 
     (** Lean's `Nat.succ`. *)
     export succ (n) = add (n, one ())
