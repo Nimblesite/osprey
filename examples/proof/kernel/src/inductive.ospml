@@ -3,6 +3,7 @@ namespace proof
 import proof::Levels
 import proof::Terms
 import proof::Environment
+import proof::DeclarationBodies
 import proof::Reduce
 import proof::Infer
 import proof::Telescope
@@ -166,14 +167,8 @@ module Inductive
 
     indexed (indices, field) = foldList (indices, false, \(seen, index) => seen || Terms::equal (index, field))
 
-    (** Whether two name lists are equal position by position. *)
-    export sameNames (left, right) = match left
-        [] => isEmpty right
-        [first, ...rest] => sameNamesHead (first, rest, right)
-
-    sameNamesHead (first, rest, right) = match right
-        [] => false
-        [other, ...more] => first == other && sameNames (rest, more)
+    (** Compatibility entry for ordered name comparison. *)
+    export sameNames (left, right) = DeclarationBodies::sameNames (left, right)
 
     pickName (taken, wanted, n) = match wanted == "" || listContains (taken, wanted)
         true => pickFresh (taken, n)
@@ -237,23 +232,27 @@ module Inductive
 
     agreed (installed, block, family, claimed) = upon (familyAgrees (installed, block.former.name, family), \a => upon (ctorsAgree (installed, block.ctors), \b => upon (recursorAgrees (installed, claimed), \c => Success(value = installed))))
 
-    (** A claim and the derived fact, rendered alike; any difference refuses. *)
-    same (name, claimed, derived) = match claimed == derived
+    (** Compare structured facts; text is only the refusal diagnostic. *)
+    same (name, agrees, claimed, derived) = match agrees
         true => Success(value = true)
-        false => Error(message = "`${name}` as exported claims ${claimed}, the kernel derives ${derived}")
+        false => Error(message = "`${name}` as exported claims ${claimed}, the kernel derives ${derived}${collisionNote (claimed, derived)}")
+
+    collisionNote (claimed, derived) = match claimed == derived
+        true => " (the underlying metadata differ despite identical printed descriptions)"
+        false => ""
 
     familyAgrees (env, name, family) = match Environment::find (env, name)
-        Success decl => same (name, showFamily family, showBody decl.body)
+        Success decl => same (name, DeclarationBodies::metadata (TypeFormer family, decl.body), showFamily family, showBody decl.body)
         Error message => Error(message = message)
 
     ctorsAgree (env, ctors) = foldList (ctors, Success(value = true), \(so_far, ctor) => upon (so_far, \ok => ctorAgrees (env, ctor)))
 
     ctorAgrees (env, ctor) = match Environment::find (env, ctor.name)
-        Success decl => same (ctor.name, showBody ctor.body, showBody decl.body)
+        Success decl => same (ctor.name, DeclarationBodies::metadata (ctor.body, decl.body), showBody ctor.body, showBody decl.body)
         Error message => Error(message = message)
 
     recursorAgrees (env, claimed) = match Environment::find (env, claimed.name)
-        Success decl => upon (same (claimed.name, "universe parameters [${joined claimed.params}]", "universe parameters [${joined decl.params}]"), \a => upon (typeAgrees (claimed, decl), \b => upon (same (claimed.name, showBody claimed.body, showBody decl.body), \c => rulesAgree (claimed, claimed.body, decl.body))))
+        Success decl => upon (same (claimed.name, sameNames (claimed.params, decl.params), "universe parameters [${joined claimed.params}]", "universe parameters [${joined decl.params}]"), \a => upon (typeAgrees (claimed, decl), \b => upon (same (claimed.name, DeclarationBodies::metadata (claimed.body, decl.body), showBody claimed.body, showBody decl.body), \c => rulesAgree (claimed, claimed.body, decl.body))))
         Error message => Error(message = "`${claimed.name}` is not the recursor the kernel derives, `${message}`")
 
     typeAgrees (claimed, decl) = match Terms::equal (claimed.ty, decl.ty)
@@ -269,7 +268,9 @@ module Inductive
         other => Error(message = "`${claimed.name}` is not a recursor")
 
     rulesPaired (claimed, rules, derived) = match rules
-        [] => Success(value = true)
+        [] => match isEmpty derived
+            true => Success(value = true)
+            false => Error(message = "`${claimed.name}` has fewer rules than constructors")
         [first, ...rest] => rulePaired (claimed, first, rest, derived)
 
     rulePaired (claimed, first, rest, derived) = match derived

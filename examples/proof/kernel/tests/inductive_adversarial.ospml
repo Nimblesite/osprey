@@ -1,6 +1,7 @@
 namespace prooftests
 
 import proof::Checked
+import proof::Export
 import proof::Environment
 import proof::Fixtures
 import prooftests::Shapes
@@ -17,9 +18,39 @@ module InductiveAdversarialTests
     (** Runs the theory-agreement cases; the testing built-ins report the TAP lines. *)
     export run () =
         countClaims ()
+        nameCollisions ()
         recursorClaims ()
         termClaims ()
         convertibleClaim ()
+
+    nameCollisions () =
+        test ("a genuine constructor name containing a comma is accepted literally", \() =>
+            expect (literalCommaName (), "checked"))
+
+        test ("comma-bearing constructor names cannot impersonate two constructors", \() =>
+            expect (collisionVerdict (forged (Fixtures::natAddComm (), "Nat.zero, Nat.succ", "\"ctors\":[2,3]", "\"ctors\":[999999984]")), "rejected"))
+
+        test ("comma-bearing universe names cannot impersonate two recursor parameters", \() =>
+            expect (collisionVerdict (forged (Fixtures::andSwap (), "u_1, u", "\"levelParams\":[11,2]", "\"levelParams\":[999999984]")), "rejected"))
+
+        test ("one comma-bearing rule cannot impersonate a complete recursor rule list", \() =>
+            expect (collisionVerdict (forged (Fixtures::natAddComm (), "Nat.zero/0, Nat.succ", "\"rules\":[{\"ctor\":2,\"nfields\":0,\"rhs\":24},{\"ctor\":3,\"nfields\":1,\"rhs\":35}]", "\"rules\":[{\"ctor\":999999984,\"nfields\":1,\"rhs\":24}]")), "rejected"))
+
+    literalCommaName () = match replace (Fixtures::andSwap (), "\"str\":\"refl\"", "\"str\":\"refl, literal\"")
+        Success source => verdict source
+        Error message => "fixture rename failed: ${message}"
+
+    forged (source, name, from, to) = match replace (source, from, to)
+        Error message => Error(message = "fixture mutation failed: ${message}")
+        Success changed => replace (changed, listGet (lines source, 0) ?: "missing fixture header", (listGet (lines source, 0) ?: "missing fixture header") + "\n{\"in\":999999984,\"str\":{\"pre\":0,\"str\":\"${name}\"}}")
+
+    collisionVerdict outcome = match outcome
+        Error message => message
+        Success source => match Export::read source
+            Error message => "fixture does not parse: ${message}"
+            Success _ => match Checked::exported (Environment::empty (), source)
+                Success _ => "checked"
+                Error _ => "rejected"
 
     (** Claims about how the family and its
         constructor count: the constructor's fields and the family's
@@ -93,4 +124,3 @@ module InductiveAdversarialTests
     verdict (text) = match Checked::exported (Environment::empty (), text)
         Success _ => "checked"
         Error message => message
-

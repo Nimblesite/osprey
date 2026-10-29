@@ -5,7 +5,7 @@ import proof::Environment
 import proof::Naturals
 import proof::Reduce
 import proof::NumericCanonical
-import proof::Inductive
+import proof::DeclarationBodies
 
 (** One numeric fast-path outcome: the checked term a candidate step reduces
     to, or no rule, leaving the ordinary reduction unchanged. Shared by the
@@ -119,33 +119,6 @@ module Numeric
         read from the environment being validated. *)
     canonical (env) = foldList (NumericCanonical::definitions (), true, \(ok, expected) => ok && declared (env, expected)) && foldList (NumericCanonical::inductives (), true, \(ok, expected) => ok && declared (env, expected))
 
-    declared (env, expected) = match Environment::find (env, expected.name)
+    export declared (env, expected) = match Environment::find (env, expected.name)
         Error _ => false
-        Success actual => actual.name == expected.name && Inductive::sameNames (actual.params, expected.params) && Terms::equal (actual.ty, expected.ty) && bodies (actual.body, expected.body)
-
-    bodies (left, right) = match right
-        Definition value => match left
-            Definition actual => Terms::equal (actual, value)
-            other => false
-        TypeFormer info => match left
-            TypeFormer actual => formers (actual, info)
-            other => false
-        Constructor info => match left
-            Constructor actual => ctors (actual, info)
-            other => false
-        Recursor elim => match left
-            Recursor actual => eliminators (actual, elim)
-            other => false
-        other => false
-
-    formers (left, right) = left.familyParams == right.familyParams && left.familyIndices == right.familyIndices && Inductive::sameNames (left.familyCtors, right.familyCtors) && left.familyRecursive == right.familyRecursive && left.familyReflexive == right.familyReflexive
-
-    ctors (left, right) = left.ctorFamily == right.ctorFamily && left.ctorIndex == right.ctorIndex && left.ctorParams == right.ctorParams && left.ctorFields == right.ctorFields
-
-    eliminators (left, right) = left.elimFamily == right.elimFamily && left.elimParams == right.elimParams && left.elimIndices == right.elimIndices && left.elimMinors == right.elimMinors && left.elimK == right.elimK && rules (left.elimRules, right.elimRules)
-
-    rules (left, right) = match left
-        [] => isEmpty right
-        [a, ...rest] => match right
-            [b, ...more] => a.ruleCtor == b.ruleCtor && a.ruleFields == b.ruleFields && Terms::equal (a.ruleRhs, b.ruleRhs) && rules (rest, more)
-            other => false
+        Success actual => actual.name == expected.name && DeclarationBodies::sameNames (actual.params, expected.params) && Terms::equal (actual.ty, expected.ty) && DeclarationBodies::equal (actual.body, expected.body)
