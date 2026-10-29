@@ -1,0 +1,8 @@
+# Ports of OpenAI math (openai/math 7ef5c0cc5ca4b0e072b7a050fca09ab24bc6fa3a,
+# lean/OAI/NumberTheory) to Lean 4.25 core, exported by the pinned lean4export
+# and checked by the shared Osprey kernel. Statements are kept exactly;
+# Mathlib imports are narrowed to core Lean where the closure allows it.
+name = "openai-number-theory"
+
+[[lean_lib]]
+name = "FiveColorOrientation"
