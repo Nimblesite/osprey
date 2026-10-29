@@ -115,9 +115,13 @@ accepted with a declaration the kernel did not check.
   names in the recorded export are Lean's hygienic names
   (`x._@.IdImp.4195544489._hygCtx._hyg.10`), which is why they appear in the
   rejection message.
-- `scripts/proof-export.sh` now gates on the meta line carrying
-  `"format":{"version":"3.1.0"}` and its output diffs empty against the
-  recorded file; it is still a hard stop on any other version.
+- `scripts/proof-export.sh` gates on the meta line carrying
+  `"format":{"version":"3.1.0"}` and is a hard stop on any other version;
+  `scripts/proof-export.sh --check` byte-compares a fresh export with the
+  recorded file and fails with the diff (exit 0 on this file; exit 1 with
+  the differing line after a one-byte edit of the fixture). CI runs it in
+  the proof job, and the speed gate's `m1_export/lean.setup` makes the same
+  comparison against the case's copy on every run.
 - `benchmarks/proof/m1_export` is the [PROOF-SPEED] comparison: the Osprey
   side reads `id_imp.ndjson` (a copy of the recorded export) through
   `Checked::exported`; the Lean side runs the built `lean4checker` directly

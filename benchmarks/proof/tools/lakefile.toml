@@ -4,9 +4,9 @@
 # for the test-proof job (leanprover/lean4:v4.25.0):
 #   lean4export  cfefafacc917b2d14c5f9bb092ed337f71317a4a (tag v4.25.0)
 #   lean4checker aa03950243dc18750c1546602ab054609ea8d57d (tag v4.25.0)
-# This rev of lean4export writes the NDJSON format 3.1.0, not the 0.1.2 text
-# format the kernel reads — see docs/reports/proof-export-fixture-2026-10-29.md
-# for the recorded evidence and the stop that follows from it.
+# This rev of lean4export writes the NDJSON format 3.1.0, which is the format
+# the kernel's reader (examples/proof/kernel/src/export.ospml) reads — see
+# docs/reports/proof-export-fixture-2026-10-29.md for the recording.
 name = "idimp-tools"
 
 [[require]]

@@ -19,7 +19,9 @@
 # Three optional files change a case's command lines:
 #   lean.cmd    a shell command line, run from the case directory, that replaces
 #               `lean --run <module>` as the Lean side (and removes the need for
-#               a module, so an export re-check needs no Lean file at all)
+#               a module, so an export re-check needs no Lean file at all); it
+#               must run `"$LEAN_BIN"`, which the harness sets to the resolved
+#               `lean.bin`, so the hashed executable is the one launched
 #   lean.setup  a shell command line run once from the case directory, untimed,
 #               before either side is preflighted (building the Lean tools and,
 #               for m1_export, re-exporting the module and byte-comparing it
@@ -28,11 +30,17 @@
 #   lean.bin    required with lean.cmd: the path, relative to the case
 #               directory, of the Lean-side executable lean.cmd times, so the
 #               recorded `lean_binary` hash is of what actually ran
-#   args        arguments appended to the Osprey binary's command line
+#   lean.reads  the artifacts, one path per line relative to the case
+#               directory, that the Lean side loads besides its sources (the
+#               `.olean` lean4checker replays); each is hashed into `lean_input`
+#               and a missing one is a red case
+#   args        arguments appended to the Osprey binary's command line, one
+#               per line
 #
 # Lean is a hard requirement: without `lean` there is no baseline and the gate
 # cannot be green, so the script exits 2 rather than passing silently. It exits
-# 1 when any case fails or any timed run fails, and 0 when every case passes.
+# 1 when any case fails, any timed run fails, a directory is a broken case, no
+# case ran, or a filter matched no case; and 0 when every case passes.
 #
 # Usage: run.sh [case-filter]
 #   PROOF_RUNS (default 10)  timed runs per kernel; the minimum wall time counts.
@@ -61,11 +69,13 @@ lean_bin() {
   [[ -x $real ]] && print -r -- $real || command -v lean
 }
 
-# MEASURE_PY <cwd> <cmd...> — time one run and report "<ms> <KiB>". `ru_maxrss`
-# is bytes on macOS and kilobytes on Linux, so it is normalised to KiB by
-# platform; wall time is ceiled to whole milliseconds so no successful run ever
-# reports zero. A non-zero exit, an empty measurement or a zero measurement is
-# an error: it prints why and exits non-zero, so it can never be a winning time.
+# MEASURE_PY <cwd> <cmd...> — time one run and report "<ms> <KiB> <cpu ms>".
+# `ru_maxrss` is bytes on macOS and kilobytes on Linux, so it is normalised to
+# KiB by platform; wall time is ceiled to whole milliseconds so no successful
+# run ever reports zero; cpu is the child's user plus system time, so a row
+# shows how much of the wall time was work rather than waiting. A non-zero
+# exit, an empty measurement or a zero measurement is an error: it prints why
+# and exits non-zero, so it can never be a winning time.
 MEASURE_PY='
 import math, resource, subprocess, sys, time
 cwd = sys.argv[1] or None
@@ -74,12 +84,13 @@ code = subprocess.call(
     sys.argv[2:], cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
 )
 ms = math.ceil((time.monotonic() - start) * 1000.0)
-rss = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
-kb = rss // 1024 if sys.platform == "darwin" else rss
+usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+kb = usage.ru_maxrss // 1024 if sys.platform == "darwin" else usage.ru_maxrss
+cpu = math.ceil((usage.ru_utime + usage.ru_stime) * 1000.0)
 if code or ms <= 0 or kb <= 0:
     sys.stderr.write(f"timed command failed: exit {code}, {ms}ms, {kb}KiB\n")
     sys.exit(code or 1)
-print(ms, kb)
+print(ms, kb, cpu)
 '
 
 # TREE_SHA <project> <case> — sha256 over everything the Osprey side reads:
@@ -116,13 +127,22 @@ print(hashlib.sha256(blob).hexdigest())
 
 # LEAN_SHA <case> — sha256 over everything that defines the Lean side: every
 # *.lean of the case directory (a symlink counts, by its target's bytes),
-# `lean.cmd`, `lean.setup` and `lean.bin`, sorted and concatenated as
-# path\0bytes.
+# `lean.cmd`, `lean.setup`, `lean.bin`, `lean.reads` and every artifact
+# `lean.reads` names (the `.olean` the checker replays), sorted and
+# concatenated as path\0bytes. A named artifact that does not exist is an
+# error.
 LEAN_SHA='
 import hashlib, pathlib, sys
 case = pathlib.Path(sys.argv[1]).resolve()
-files = sorted(p for p in case.iterdir() if p.suffix == ".lean" or p.name in ("lean.cmd", "lean.setup", "lean.bin"))
-blob = b"".join(p.name.encode() + b"\0" + p.read_bytes() for p in files)
+own = ("lean.cmd", "lean.setup", "lean.bin", "lean.reads")
+files = {p.name: p for p in case.iterdir() if p.suffix == ".lean" or p.name in own}
+reads = case / "lean.reads"
+for entry in (reads.read_text().split() if reads.exists() else []):
+    path = (case / entry).resolve()
+    if not path.is_file():
+        sys.exit(f"lean.reads names {entry}, which does not exist")
+    files["reads/" + entry] = path
+blob = b"".join(name.encode() + b"\0" + files[name].read_bytes() for name in sorted(files))
 print(hashlib.sha256(blob).hexdigest())
 '
 
@@ -146,18 +166,20 @@ measure_one() {
   print -r -- "$out"
 }
 
-# measure <cwd> <cmd...> — "<minimum ms> <peak KiB>" over RUNS successful runs.
-# Every run must succeed; one failure measures nothing and returns non-zero.
+# measure <cwd> <cmd...> — "<minimum ms> <peak KiB> <minimum cpu ms>" over
+# RUNS successful runs. Every run must succeed; one failure measures nothing
+# and returns non-zero.
 measure() {
-  local out m k i min=0 max=0
+  local out fields m k c i min=0 max=0 cpu=0
   for i in $(seq 1 "$RUNS"); do
     out=$(measure_one "$@") || return 1
-    m=${out%% *}
-    k=${out##* }
+    fields=(${=out})
+    m=$fields[1] k=$fields[2] c=$fields[3]
     (( min == 0 || m < min )) && min=$m
     (( k > max )) && max=$k
+    (( cpu == 0 || c < cpu )) && cpu=$c
   done
-  print -r -- "$min $max"
+  print -r -- "$min $max $cpu"
 }
 
 # timed_side <name> <label> <cwd> <cmd...> — the timed measurement of one kernel.
@@ -185,8 +207,7 @@ preflight() {
   fi
 }
 
-# has_lean <dir> <name> — a case has a Lean side: a `*.lean` module or
-# `lean.cmd`. A directory with neither (reports/) is not a case.
+# has_lean <dir> — a case has a Lean side: a `*.lean` module or `lean.cmd`.
 has_lean() {
   local mods=($1/*.lean(N))
   [[ -f $1/lean.cmd ]] || (( $#mods > 0 ))
@@ -213,15 +234,20 @@ lean_module() {
 }
 
 # lean_binary <name> <dir> — the executable the Lean side times: `lean` itself,
-# or with `lean.cmd` the file `lean.bin` names; a `lean.cmd` without a readable
-# `lean.bin` is a red case, so no row records a hash of a binary that did not run.
+# or with `lean.cmd` the file `lean.bin` names, which `lean.cmd` must launch as
+# `"$LEAN_BIN"`. A `lean.cmd` without a readable `lean.bin`, or one that never
+# names `"$LEAN_BIN"`, is a red case, so no row records a hash of a binary that
+# did not run.
 lean_binary() {
-  local path
+  local named exe
   [[ -f $2/lean.cmd ]] || { print -r -- "$LEAN"; return 0 }
   [[ -f $2/lean.bin ]] || { print -r -- "$1: lean.cmd needs lean.bin naming the executable it times" >&2; return 1 }
-  path=$2/$(<$2/lean.bin)
-  [[ -x $path ]] || { print -r -- "$1: lean.bin names no executable at $path" >&2; return 1 }
-  print -r -- "$path"
+  named=$(<$2/lean.bin)
+  [[ $named == /* ]] && exe=$named || exe=$2/$named
+  exe=${exe:A}
+  [[ -x $exe ]] || { print -r -- "$1: lean.bin names no executable at $exe" >&2; return 1 }
+  grep -qF '"$LEAN_BIN"' "$2/lean.cmd" || { print -r -- "$1: lean.cmd must launch \"\$LEAN_BIN\" (the lean.bin it is hashed as)" >&2; return 1 }
+  print -r -- "$exe"
 }
 
 # setup <name> <dir> — run the case's `lean.setup` once, untimed, from the case
@@ -245,15 +271,16 @@ build_case() {
 }
 
 # kernels <name> <dir> — set `osprey_argv` and `lean_argv`: the two command
-# lines that are timed. `args` is appended to the Osprey binary, split on
-# whitespace, and `lean.cmd` replaces `lean --run <module>` with its own command
-# line (run from the case directory, so it can create and check its own export).
+# lines that are timed. `args` is appended to the Osprey binary, one argument
+# per line, and `lean.cmd` replaces `lean --run <module>` with its own command
+# line (run from the case directory, with `LEAN_BIN` set to the executable
+# `lean.bin` names).
 kernels() {
   local dir=$2
-  osprey_argv=("$dir/.bench-osprey")
-  [[ -f $dir/args ]] && osprey_argv+=(${=$(<$dir/args)})
+  osprey_argv=("$bench_bin")
+  [[ -f $dir/args ]] && osprey_argv+=("${(@f)$(<$dir/args)}")
   if [[ -f $dir/lean.cmd ]]; then
-    lean_argv=(sh -c "$(<$dir/lean.cmd)")
+    lean_argv=(env "LEAN_BIN=$lean_exe" sh -c "$(<$dir/lean.cmd)")
   else
     lean_argv=(lean --run "$lean_file")
   fi
@@ -267,31 +294,31 @@ report_header() {
   print -r -- "- Lean measured: $LEAN_VERSION"
   print -r -- "- Lean toolchain binary: \`$LEAN\` (sha256 $(file_sha "$LEAN")); a row's \`lean bin\` is the executable that row timed."
   print -r -- "- Osprey compiler: \`$OSP\` (sha256 $(file_sha "$OSP"))"
-  print -r -- "- Runs per kernel: $RUNS, minimum wall time; peak resident set in KiB."
+  print -r -- "- Runs per kernel: $RUNS, minimum wall time and minimum user+system CPU time; peak resident set in KiB."
   print -r -- "- Generated by \`benchmarks/proof/run.sh\`; see \`benchmarks/proof/README.md\`."
   print -r -- ""
-  print -r -- "| case | osprey ms | lean ms | osprey peak KiB | lean peak KiB | verdict | osprey input | osprey bin | lean input | lean bin |"
-  print -r -- "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+  print -r -- "| case | osprey ms | lean ms | osprey cpu ms | lean cpu ms | osprey peak KiB | lean peak KiB | verdict | osprey input | osprey bin | lean input | lean bin |"
+  print -r -- "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
 }
 
-# record <name> <dir> <verdict> <osprey ms KiB> <lean ms KiB> — append the
-# results line and the dated report row for one case. Reads `project` and
-# `lean_exe` from the enclosing case.
+# record <name> <dir> <verdict> <osprey ms KiB cpu> <lean ms KiB cpu> — append
+# the results line and the dated report row for one case. Reads `project`,
+# `bench_bin` and `lean_exe` from the enclosing case.
 record() {
-  local name=$1 dir=$2 verdict=$3 oms=${4%% *} okb=${4##* } lms=${5%% *} lkb=${5##* }
+  local name=$1 dir=$2 verdict=$3 o=(${=4}) l=(${=5})
   local at input obin linput lbin lreport
   at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  input=$(tree_sha "$project" "$dir")
-  obin=$(file_sha "$dir/.bench-osprey")
-  linput=$(lean_sha "$dir")
+  input=$(tree_sha "$project" "$dir") || return 1
+  obin=$(file_sha "$bench_bin")
+  linput=$(lean_sha "$dir") || return 1
   lbin=$(file_sha "$lean_exe")
-  printf '{"case":"%s","osprey_ms":%s,"lean_ms":%s,"osprey_peak_kb":%s,"lean_peak_kb":%s,"lean":"%s","osprey_input":"%s","lean_input":"%s","osprey_binary":"%s","lean_binary":"%s","verdict":"%s","at":"%s"}\n' \
-    "$name" "$oms" "$lms" "$okb" "$lkb" "$LEAN_VERSION" "$input" "$linput" \
+  printf '{"case":"%s","osprey_ms":%s,"lean_ms":%s,"osprey_cpu_ms":%s,"lean_cpu_ms":%s,"osprey_peak_kb":%s,"lean_peak_kb":%s,"lean":"%s","osprey_input":"%s","lean_input":"%s","osprey_binary":"%s","lean_binary":"%s","verdict":"%s","at":"%s"}\n' \
+    "$name" "$o[1]" "$l[1]" "$o[3]" "$l[3]" "$o[2]" "$l[2]" "$LEAN_VERSION" "$input" "$linput" \
     "$obin" "$lbin" "$verdict" "$at" >> "$OUT"
   lreport=$REPORTS/${at[1,10]}.md
   [[ -f $lreport ]] || report_header "${at[1,10]}" > "$lreport"
-  print -r -- "| $name | $oms | $lms | $okb | $lkb | $verdict | $input | $obin | $linput | $lbin |" >> "$lreport"
-  print -r -- "$name: osprey ${oms}ms/${okb}KiB vs lean ${lms}ms/${lkb}KiB -> $verdict"
+  print -r -- "| $name | $o[1] | $l[1] | $o[3] | $l[3] | $o[2] | $l[2] | $verdict | $input | $obin | $linput | $lbin |" >> "$lreport"
+  print -r -- "$name: osprey ${o[1]}ms (cpu ${o[3]}ms)/${o[2]}KiB vs lean ${l[1]}ms (cpu ${l[3]}ms)/${l[2]}KiB -> $verdict"
 }
 
 # time_case <name> <dir> — time both kernels, record the result, return the
@@ -302,7 +329,7 @@ time_case() {
   lean_measure=$(timed_side "$name" lean "$dir" "${lean_argv[@]}") || return 1
   verdict=pass
   (( ${osprey_measure%% *} < ${lean_measure%% *} )) || verdict=fail
-  record "$name" "$dir" "$verdict" "$osprey_measure" "$lean_measure"
+  record "$name" "$dir" "$verdict" "$osprey_measure" "$lean_measure" || return 1
   [[ $verdict == pass ]]
 }
 
@@ -312,24 +339,32 @@ time_case() {
 prepare() {
   setup "$1" "$2" || return 1
   lean_exe=$(lean_binary "$1" "$2") || return 1
-  build_case "$1" "$3" "$2/.bench-osprey" || return 1
+  build_case "$1" "$3" "$bench_bin" || return 1
   kernels "$1" "$2"
   preflight "$1" osprey "$2" "${osprey_argv[@]}" || return 1
   preflight "$1" lean "$2" "${lean_argv[@]}"
 }
 
+# is_tooling <dir> — a Lake project (tools/) is the Lean side's tooling, not a
+# case.
+is_tooling() { [[ -f $1/lakefile.toml ]] }
+
 # run_case <dir> — build, preflight, time and record one case: 0 pass, 1 fail.
+# A directory with an Osprey project but no Lean side, or a Lean side but no
+# Osprey project, is a broken case and red: a deleted file never makes a case
+# quietly vanish. The Osprey binary is built under target/proof/, never into
+# the source tree.
 run_case() {
   local dir=$1 name=${1:t} project ok=1 osprey_argv lean_argv lean_file lean_exe
-  has_lean "$dir" "$name" || return 0
+  local bench_bin=$BINS/$name
   if ! project=$(project_of "$dir"); then
-    [[ -f $dir/lakefile.toml ]] && return 0
-    print -r -- "$name: Lean side but no Osprey project (osprey.toml or kernel/osprey.toml)" >&2
+    print -r -- "$name: no Osprey project (osprey.toml or kernel/osprey.toml)" >&2
     return 1
   fi
+  has_lean "$dir" || { print -r -- "$name: no Lean side (a *.lean module or lean.cmd)" >&2; return 1 }
   [[ -f $dir/lean.cmd ]] || lean_file=$(lean_module "$dir" "$name") || return 1
   prepare "$name" "$dir" "$project" && time_case "$name" "$dir"; ok=$?
-  rm -f "$dir/.bench-osprey"
+  rm -f "$bench_bin"
   return $ok
 }
 
@@ -338,11 +373,20 @@ have python3 || die "python3 is required for wall-time and peak-memory measureme
 [[ -x $OSP ]] || die "$OSP missing; run make build first"
 LEAN=$(lean_bin)
 LEAN_VERSION=$(lean --version | tr -d '\n')
-mkdir -p "$REPORTS" "${OUT:h}"
+BINS=$ROOT/target/proof/bin
+mkdir -p "$REPORTS" "${OUT:h}" "$BINS"
 
 failed=0
+ran=0
 for dir in "$HERE"/*/; do
+  dir=${dir%/}
+  is_tooling "$dir" && continue
   [[ -n $FILTER && ${dir:t} != *$FILTER* ]] && continue
+  ran=$(( ran + 1 ))
   run_case "$dir" || failed=1
 done
+if (( ran == 0 )); then
+  print -r -- "proof bench: no case ran${FILTER:+ (filter '$FILTER' matched none)}" >&2
+  exit 1
+fi
 exit $failed

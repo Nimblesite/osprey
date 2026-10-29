@@ -7,11 +7,13 @@ PATH=$HOME/.elan/bin:$PATH PROOF_RUNS=3 zsh benchmarks/proof/run.sh   # all case
 PATH=$HOME/.elan/bin:$PATH zsh benchmarks/proof/run.sh m0_identity   # cases whose name matches
 ```
 
-Exit codes: `0` every case passed, `1` a case failed (slower than Lean, or a timed run failed), `2` a prerequisite is missing (no `lean`, no `python3`, no `target/release/osprey`).
+Exit codes: `0` every case passed, `1` a case failed (slower than Lean, a timed run failed, or a directory is a broken case), no case ran, or a filter matched no case, `2` a prerequisite is missing (no `lean`, no `python3`, no `target/release/osprey`).
 
 ## What is measured, and what is not
 
-Each run records both sides' minimum wall time over `PROOF_RUNS` runs (default 10) and peak resident set, plus the sha256 of both inputs and both binaries, so a number can be traced to the exact sources and executables that produced it.
+Each run records both sides' minimum wall time and minimum user+system CPU time over `PROOF_RUNS` runs (default 10) and peak resident set, plus the sha256 of both inputs and both binaries, so a number can be traced to the exact sources and executables that produced it. The verdict is on wall time, as [PROOF-SPEED] states it.
+
+How much the verdict can see: on the recording machine `m1_export` is Osprey 3–6 ms against `lean4checker` 433–748 ms wall (680 ms of it CPU), and a reviewer measured the same Lean side at 440–2055 ms across runs, most of it mapping a 156 MB executable. The gate goes red only if Osprey's kernel becomes roughly a hundred times slower; it pins the ordering, it does not detect a modest kernel regression.
 
 Two cases exist, and they measure different things:
 
@@ -28,12 +30,13 @@ The citable record of either number is the dated trust report of [PROOF-TRUST-RE
 | --- | --- |
 | `osprey.toml`, or `kernel` symlink to a project that has one | the Osprey program whose run checks the theorem |
 | the case's single `*.lean` (named after the case by convention) | the Lean module `lean --run` elaborates |
-| `lean.cmd` (optional) | a shell command line, run from the case directory, that replaces `lean --run <module>` as the Lean side; a case with `lean.cmd` needs no `*.lean` for `lean --run` |
+| `lean.cmd` (optional) | a shell command line, run from the case directory, that replaces `lean --run <module>` as the Lean side; a case with `lean.cmd` needs no `*.lean` for `lean --run`. It must launch `"$LEAN_BIN"`, which the harness sets to the resolved `lean.bin`; a `lean.cmd` that never names it is a red case |
 | `lean.bin` (required with `lean.cmd`) | the path, relative to the case directory, of the executable `lean.cmd` times; its sha256 is the row's `lean_binary`. A `lean.cmd` without it is a red case |
+| `lean.reads` (optional) | artifacts the Lean side loads besides its sources, one path per line relative to the case directory (m1_export: the `IdImp.olean` `lean4checker` replays); each is hashed into `lean_input`, and a missing one is a red case |
 | `lean.setup` (optional) | a shell command line run once from the case directory, untimed, before either side is preflighted (m1_export builds the Lean tools with it); it must exit zero |
-| `args` (optional) | extra arguments appended to the Osprey binary's command line, split on whitespace |
+| `args` (optional) | extra arguments appended to the Osprey binary's command line, one per line |
 
-A directory with no Osprey project is not a case: `tools/` is a Lake project whose `lakefile.toml` marks it as tooling, so it is skipped. A directory with a Lean side but no Osprey project is a broken case and is named as one.
+`tools/` is a Lake project whose `lakefile.toml` marks it as tooling, so it is skipped. Every other directory is a case, and one without an Osprey project or without a Lean side is a broken case, red and named, so deleting a file never makes a case quietly vanish. The Osprey binary is compiled to `target/proof/bin/<case>`, never into the source tree.
 
 Before anything is timed, both sides are run once and must exit zero and print a line starting `checked: `. A case whose kernel never checks anything is red, not fast.
 
@@ -48,8 +51,8 @@ Peak memory is measured portably by an inline Python 3 helper (`MEASURE_PY` in `
 Every results line carries:
 
 - `osprey_input`: sha256 over everything the Osprey side reads: the project's `osprey.toml` and every `*.ospml` its `source_roots` name, a root being a directory or a single file and possibly outside the project (m1_export's project lists the nine kernel modules under `examples/proof/kernel/src`), keyed by path relative to the project root; plus every data file in the case directory (`id_imp.ndjson`, `args`) under `case/`. The Lean side's files (`*.lean`, `lean.cmd`, `lean.setup`, `lean.bin`), dotfiles and directories are left out, and a declared root that does not exist is an error. Files are sorted and concatenated as `path\0bytes`, so the kernel modules and the export that determine the result are all in the hash, not just the entry file;
-- `lean_input`: sha256 over everything that defines the Lean side: every `*.lean` in the case directory (m1_export links `IdImp.lean` to `tools/IdImp.lean`), `lean.cmd`, `lean.setup` and `lean.bin`;
-- `osprey_binary`: sha256 of the timed binary (`.bench-osprey`, compiled into the case directory and removed afterwards);
+- `lean_input`: sha256 over everything that defines the Lean side: every `*.lean` in the case directory (m1_export links `IdImp.lean` to `tools/IdImp.lean`), `lean.cmd`, `lean.setup`, `lean.bin`, `lean.reads` and the bytes of every artifact `lean.reads` names, so a rebuilt `.olean` is a different input;
+- `osprey_binary`: sha256 of the timed binary (`target/proof/bin/<case>`, removed afterwards);
 - `lean_binary`: sha256 of the executable actually timed: the file `lean.bin` names when `lean.cmd` is in use (m1_export: the built `lean4checker`), else the toolchain's own `lean`. `~/.elan/bin/lean` is elan's multiplexer, so the script resolves the real binary through `elan which lean` (falling back to `lean --print-prefix`) and hashes that.
 
 Hashing is done in Python rather than with `shasum`/`sha256sum`, whose names differ between macOS and Ubuntu.

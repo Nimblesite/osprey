@@ -290,11 +290,17 @@ test('the proof kernel and the Lean speed gate run on the staged build', () => {
   assert.match(proof, /run: make _test_proof_kernel/)
   assert.match(proof, /run: zsh benchmarks\/proof\/run\.sh/)
   // Lean is the speed gate's baseline, so the toolchain is pinned to an exact
-  // release (`stable` floats) and a non-zero exit is never softened.
-  assert.match(proof, /--default-toolchain leanprover\/lean4:v4\.25\.0/)
+  // release (`stable` floats) and a non-zero exit is never softened. The pin
+  // lives in the tools' lean-toolchain, which the job installs and the tools
+  // cache key hashes, so the two cannot disagree.
+  assert.match(proof, /--default-toolchain "\$\(cat benchmarks\/proof\/tools\/lean-toolchain\)"/)
+  assert.match(readFileSync('benchmarks/proof/tools/lean-toolchain', 'utf8'), /^leanprover\/lean4:v\d+\.\d+\.\d+\n$/)
+  assert.match(proof, /hashFiles\([^)]*benchmarks\/proof\/tools\/lean-toolchain/)
   assert.doesNotMatch(proof, /--default-toolchain stable/)
   assert.doesNotMatch(proof, /continue-on-error/)
   assert.doesNotMatch(proof, /\|\| true/)
+  // The recorded export is re-derived from the pinned exporter in CI.
+  assert.match(proof, /run: bash scripts\/proof-export\.sh --check/)
 })
 
 function assertRealUv(registry, memory) {

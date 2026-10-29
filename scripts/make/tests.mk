@@ -327,22 +327,27 @@ _test_profiler:
 # byte-exact against its golden, and its 81-case assertion suite (adversarial
 # structural-equality and universe cases, every single-edit corruption of the
 # recorded export asserted on term structure, never on rendering) passes,
-# under GC, ARC and on wasm32 [PROOF-KERNEL]. No pipe hides a status: each suite run is written
-# to a file and its TAP summary must say `failed=0` on all three backends.
+# under GC, ARC and on wasm32 [PROOF-KERNEL]. No pipe hides a status: every
+# run is written to a file and must exit zero; a golden run is then diffed,
+# and a suite run's TAP summary must say `failed=0` on all three backends.
 _test_proof_kernel:
 	@echo "==> [proof] M0 kernel: GC, ARC, wasm32 against expectedoutput..."
-	./$(BIN) examples/proof/kernel --run --memory=gc 2>/dev/null | diff - examples/proof/kernel/expectedoutput
-	./$(BIN) examples/proof/kernel --run --memory=arc 2>/dev/null | diff - examples/proof/kernel/expectedoutput
 	@$(MKDIR) target/proof
+	./$(BIN) examples/proof/kernel --run --memory=gc 2>/dev/null > target/proof/kernel.gc.txt
+	diff target/proof/kernel.gc.txt examples/proof/kernel/expectedoutput
+	./$(BIN) examples/proof/kernel --run --memory=arc 2>/dev/null > target/proof/kernel.arc.txt
+	diff target/proof/kernel.arc.txt examples/proof/kernel/expectedoutput
 	./$(BIN) examples/proof/kernel --target=wasm32 --compile -o target/proof/kernel.wasm >/dev/null 2>&1
 	node scripts/wasm-smoke.mjs target/proof/kernel.wasm examples/proof/kernel/expectedoutput
 	@echo "==> [proof] export re-check entry (the speed gate's Osprey side) reads the recorded export: GC, ARC..."
-	cd examples/proof/export_check && ../../../$(BIN) . --run --memory=gc 2>/dev/null | diff - expectedoutput
-	cd examples/proof/export_check && ../../../$(BIN) . --run --memory=arc 2>/dev/null | diff - expectedoutput
+	cd examples/proof/export_check && ../../../$(BIN) . --run --memory=gc 2>/dev/null > ../../../target/proof/export-check.gc.txt
+	diff target/proof/export-check.gc.txt examples/proof/export_check/expectedoutput
+	cd examples/proof/export_check && ../../../$(BIN) . --run --memory=arc 2>/dev/null > ../../../target/proof/export-check.arc.txt
+	diff target/proof/export-check.arc.txt examples/proof/export_check/expectedoutput
 	@echo "==> [proof] kernel suite (structural equality, universes, export reader): GC, ARC, wasm32..."
-	./$(BIN) examples/proof/kernel/tests --run --memory=gc 2>/dev/null > target/proof/kernel-tests.gc.txt; tail -1 target/proof/kernel-tests.gc.txt
+	./$(BIN) examples/proof/kernel/tests --run --memory=gc 2>/dev/null > target/proof/kernel-tests.gc.txt; status=$$?; tail -1 target/proof/kernel-tests.gc.txt; test $$status -eq 0
 	grep -q "failed=0" target/proof/kernel-tests.gc.txt
-	./$(BIN) examples/proof/kernel/tests --run --memory=arc 2>/dev/null > target/proof/kernel-tests.arc.txt; tail -1 target/proof/kernel-tests.arc.txt
+	./$(BIN) examples/proof/kernel/tests --run --memory=arc 2>/dev/null > target/proof/kernel-tests.arc.txt; status=$$?; tail -1 target/proof/kernel-tests.arc.txt; test $$status -eq 0
 	grep -q "failed=0" target/proof/kernel-tests.arc.txt
 	./$(BIN) examples/proof/kernel/tests --target=wasm32 --compile -o target/proof/kernel-tests.wasm >/dev/null 2>&1
 	node scripts/wasm-smoke.mjs target/proof/kernel-tests.wasm >/dev/null
