@@ -43,7 +43,7 @@ Parameters of the callee that carry no bound are not checked, so `scale (50, tot
 
 ## Erasure and the response
 
-The erased module is the source with the annotation lines removed and the marker rewritten to `// osprey: types=hm`. Its export signature is taken from the compiler itself — `options.compiler` runs `--signature` on the erased file — so a checker never carries a second inference. An accepted response is `{version, result:"accepted", signature, erased:{flavor, source}, diagnostics:[]}`; a rejected one is `{version, result:"rejected", diagnostics:[{code, severity, line, column, message}]}`. Codes are unprefixed: the compiler prints them as `bounded/<code>`.
+The erased module is the source with the annotation lines removed and the marker rewritten to `// osprey: types=hm`. Its export signature is taken from the compiler itself — `options.compiler` runs `--signature` on the erased file — so a checker never carries a second inference. A source that exports no `module` has no export signature: `--signature` prints nothing and the answer carries an empty `signature`, which the seam accepts. An accepted response is `{version, result:"accepted", signature, erased:{flavor, source}, diagnostics:[]}`; a rejected one is `{version, result:"rejected", diagnostics:[{code, severity, line, column, message}]}`. Codes are unprefixed: the compiler prints them as `bounded/<code>`.
 
 Any internal failure — an unreadable cache directory, a compiler that refuses the erased module, a request that is not one JSON object — is a rejection with one `bounded/internal` or `bounded/check` diagnostic, exit status 0 and never an empty standard output.
 
@@ -58,6 +58,7 @@ The scan is textual and the README is its contract. It does not:
 - track unary minus beyond a literal's own sign, or any operator other than `+`, `-` and `*`;
 - read an annotation whose interval is inverted (`100..0`) or whose endpoints are not integer literals: it is not an annotation;
 - evaluate arithmetic at run time: an argument that is a bounded parameter *plus* a bounded parameter is bounded, but the values it actually takes are not.
+- read a **curried** call to a function of more than one parameter: `f a b` is one argument text, so it is refused as `unknown` (pass the flat form, `f (a, b)`); a one-parameter function is read in both forms.
 
 Comments and string literals are not stripped before the scan, so a call spelled inside one is still read as a call.
 
@@ -66,12 +67,15 @@ Comments and string literals are not stripped before the scan, so a call spelled
 | Path | What it is |
 | --- | --- |
 | `osprey.toml` | the package, the `[discipline]` table, and this package's own suite project |
-| `src/checker.ospml` | the whole checker: the program the compiler builds, `main` included |
-| `tests/main.ospml`, `tests/checks.ospml` | the assertion suite, run by `osprey test examples/disciplines/bounded` |
+| `src/` | the checker project: one file per module, with `src/main.ospml` the entry |
+| `tests/main.ospml`, `tests/checks.ospml` | the suite entry and the seam assertions, run by `osprey test examples/disciplines/bounded` |
 | `tests/rate.ospml` | a module marked `// osprey: types=bounded` that the suite's own build checks |
-| `tests/requests/*.ospml`, `tests/requests/*.expected` | one protocol request per case and its golden response, driven by `tests/protocol-check.mjs` |
+| `tests/protocol.ospml` | the protocol cases: in-range, out-of-range, sum, product, unknown, annotation parsing, erasure and the exact JSON answers |
+| `tests/signature-stub.sh`, `tests/silent-stub.sh`, `tests/failing-stub.sh` | test doubles for the compiler's `--signature` step: a fixed signature, an empty one, and a compiler that refuses the erased module |
 
-The checker is one file because the compiler builds a checker with `<compiler> <checker> --compile`, and a single file cannot import. Its suite therefore reaches the discipline the same way a user does: `tests/rate.ospml` is checked by `src/checker.ospml` during the suite's own build, and `tests/protocol-check.mjs` drives the built checker over one request per case, holding each answer to a byte-exact golden. The compiler cannot run a suite inside the checker itself: naming `test` links the TAP reporter, which writes its plan after the response and would break the one-line protocol.
+The checker is a project directory because the compiler builds a checker with `<compiler> <checker-directory> --compile`, exactly like any other project: `src/main.ospml` is the entry and each module of the checker lives in its own file under `src/`. Its suite therefore reaches the discipline the same way a user does: `tests/rate.ospml` is checked by the `src/` project during the suite's own build, and `tests/protocol.ospml` drives the checker binary that same build produced, one request per case, holding each answer to a byte-exact golden. It looks for the package beside the working directory the suite was started in, so run the suite from the checkout root or from the package directory. The compiler cannot run a suite inside the checker itself: naming `test` links the TAP reporter, which writes its plan after the response and would break the one-line protocol.
+
+The checker's only use of the compiler is the `--signature` step, and the protocol cases answer it with `tests/signature-stub.sh` so their JSON stays deterministic; `tests/silent-stub.sh` pins the empty answer a module with no exported `module` gets, and `tests/failing-stub.sh` proves a refused erased module becomes one `bounded/check` diagnostic. The real `<compiler> --signature` path is proven end to end by `../bounded_roundtrip` in `_test_disciplines`.
 
 ## Running it
 

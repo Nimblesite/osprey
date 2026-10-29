@@ -1,0 +1,89 @@
+namespace bounded
+
+(** The vocabulary every module of the checker shares. *)
+module Words
+    (** An inclusive integer interval, the values a bounded argument may take. *)
+    export type Bound =
+        lo : int
+        hi : int
+
+    (** What interval arithmetic established about one argument, if anything. *)
+    export type Interval = Known Bound | Unknown
+
+    (** One `// @bound <param> in <lo>..<hi>` line, before its function is known. *)
+    export type Annotation =
+        param : string
+        bound : Bound
+
+    (** The name, indentation, column and parameters read off a declaration line. *)
+    export type Header =
+        name : string
+        indent : int
+        at : int
+        params : List<string>
+
+    (** A declaration line the scan could read. *)
+    export type MaybeHeader = IsHeader Header | NotHeader
+
+    (** A parsed function definition and the bounds its annotations gave it. *)
+    export type Definition =
+        header : Header
+        line : int
+        bounds : Map<string, Bound>
+
+    (** The definition a call line sits in, if the scan found one. *)
+    export type Found = Located Definition | NotFound
+
+    (** One line of the module, numbered from one, with its indentation. *)
+    export type Line =
+        number : int
+        indent : int
+        text : string
+
+    (** One rejected call site, before the compiler prefixes the discipline name. *)
+    export type Problem =
+        code : string
+        line : int
+        column : int
+        message : string
+
+    (** Everything one module's annotations said. *)
+    export type Readings =
+        definitions : List<Definition>
+        annotations : List<int>
+
+    (** The index of the operator a compound argument splits at. *)
+    export type Split = SplitAt int | NotSplit
+
+    (** The text inside a fully parenthesised argument. *)
+    export type Inner = Enclosed string | Bare
+
+    (** Where the operators of an argument were last seen at depth zero. *)
+    export type Scan =
+        plusMinus : int
+        star : int
+
+    (** The corner products of a multiplication that did not overflow. *)
+    export type Corners = Present List<int> | Missing
+
+    (** A parsed annotation line. *)
+    export type MaybeAnnotation = IsAnnotation Annotation | NotAnnotation
+
+    (** A call argument with its position in the argument list. *)
+    export type Indexed =
+        at : int
+        text : string
+
+    (** One request line of the checker protocol, decoded. *)
+    export type Request =
+        version : int
+        path : string
+        source : string
+        cache : string
+        compiler : string
+
+    (** A decoded request, or a line that is not one. *)
+    export type Decoded = Parsed Request | NotRequest
+
+    (** The compiler's answer, or its refusal, for the erased module. *)
+    export type Outcome = Signed string | Unsigned string

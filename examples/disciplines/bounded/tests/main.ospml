@@ -1,6 +1,8 @@
 namespace bounded
 
 import bounded::Checks
+import bounded::Protocol
 
 main () =
     Checks::run ()
+    Protocol::run ()

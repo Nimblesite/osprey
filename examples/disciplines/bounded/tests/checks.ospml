@@ -5,7 +5,9 @@ import bounded::Rate
 (** What the erased `Rate` does once the discipline has accepted it. The
     module reaches this suite as plain `int` code, so these assertions also
     pin the erasure: no annotation, marker or bound survives into the run. *)
+(** The suite's entry into the seam assertions. *)
 module Checks
+    (** Run every assertion once. *)
     export run () =
         handle Arith
             overflow _ _ _ wrapped => wrapped

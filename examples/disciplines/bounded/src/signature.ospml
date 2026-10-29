@@ -1,0 +1,53 @@
+namespace bounded
+
+import bounded::Chars
+import bounded::Words
+
+(** The export signature of the erased module, from the compiler that will
+check it: an erased module must satisfy the signature it was given. *)
+module Signature
+    (** The compiler's signature for `erased`, or the diagnostic it refused it with. *)
+    export of (request, erased) = match writeFile (modulePath request, erased)
+        Error message => Words::Unsigned ("writeFile: " + message)
+        Success _ => compiled request
+
+    modulePath (request) = request.cache + "/bounded-" + stem request.path
+
+    signaturePath (request) = modulePath request + ".signature"
+
+    stderrPath (request) = modulePath request + ".stderr"
+
+    compiled (request) = match spawnProcess (command request, ignoreEvent)
+        Error message => Words::Unsigned ("spawnProcess: " + message)
+        Success process => awaited (request, process)
+
+    command (request) = quote request.compiler + " " + quote (modulePath request) + " --signature > " + quote (signaturePath request) + " 2> " + quote (stderrPath request)
+
+    awaited (request, process) =
+        code = awaitProcess process
+        cleanupProcess process
+        verdict (code, readFile (signaturePath request) ?: "", readFile (stderrPath request) ?: "")
+
+    verdict (code, sig, reported) = match code == 0
+        true => Words::Signed sig
+        false => Words::Unsigned (reportedText reported)
+
+    reportedText (reported) = match isEmpty (trim reported)
+        true => "the compiler wrote no diagnostic"
+        false => trim reported
+
+    stem (path) = afterLast (path, 0, 0)
+
+    afterLast (path, index, start) = match index >= length path
+        true => substring (path, start, length path) ?: "module"
+        false => stepped (path, index, start, Chars::at (path, index))
+
+    stepped (path, index, start, char) = match char == "/"
+        true => afterLast (path, index + 1, index + 1)
+        false => afterLast (path, index + 1, start)
+
+    quote (text) = "'" + escaped text + "'"
+
+    escaped (text) = replace (text, "'", "'\\''") ?: text
+
+    ignoreEvent (_id, _kind, _data) = cleanupProcess 0

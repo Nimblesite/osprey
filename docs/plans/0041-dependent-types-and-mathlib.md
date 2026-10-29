@@ -71,7 +71,7 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [x] Erased modules parsed by the ordinary frontend and checked against the written signature
 - [x] `osprey <file> --signature` prints the ML export signature the seam renders (`crates/osprey-cli/src/signature.rs`); `options.compiler` in every request
 - [x] `examples/disciplines/passthrough` with the round trip under GC, ARC and wasm32 (`make _test_disciplines`; the round trip is a project of its own rather than a `tests/` corpus twin, so the differential harness does not run it — the target diffs it byte-for-byte against its golden on all three)
-- [ ] `examples/disciplines/bounded`: a real theory erasing to `int`, diagnostics through the protocol
+- [x] `examples/disciplines/bounded`: `// @bound n in lo..hi` checked at every call site by interval arithmetic, erased to `int`, diagnostics through the protocol; the checker is a project of twelve modules under `src/`, its twelve-case protocol suite and the `bounded_roundtrip` goldens under GC, ARC and wasm32 in `make _test_disciplines`
 - [x] Failure tests of [TYPES-DISCIPLINE-VERIFICATION] (`discipline/tests.rs`: unknown, duplicate, crash, timeout, malformed, unparsable erased, signature failure, version)
 - [x] Purity scan over `crates/` (`tests/discipline_purity.rs`: every registered name in a string literal, the theory words anywhere; green with both reference packages registered)
 - [ ] Byte-identical output and diagnostics for every markerless program; no `hm` benchmark change

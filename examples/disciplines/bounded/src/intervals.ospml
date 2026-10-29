@@ -1,0 +1,100 @@
+namespace bounded
+
+import bounded::Bounds
+import bounded::Chars
+import bounded::Words
+
+(** The interval of one call argument, read as the text it is written as. *)
+module Intervals
+    (** The interval of `text`, relative to the caller's parameter bounds. *)
+    export at (bounds, text) = intervalOf (bounds, trim text)
+
+    intervalOf (bounds, text) = match enclosed text
+        Words::Enclosed inner => intervalOf (bounds, trim inner)
+        Words::Bare => leaf (bounds, text)
+
+    leaf (bounds, text) = match parseInt text
+        Success number => Words::Known (Bounds::literal number)
+        Error _ => match mapGet (bounds, text)
+            Success bound => Words::Known bound
+            Error _ => compound (bounds, text)
+
+    compound (bounds, text) = match lastOperator text
+        Words::SplitAt index => combine (bounds, index, text)
+        Words::NotSplit => Words::Unknown
+
+    enclosed text = match startsWith text "(" && matching (text, 0, 0) == length text - 1
+        true => Words::Enclosed (substring (text, 1, length text - 1) ?: text)
+        false => Words::Bare
+
+    combine (bounds, index, text) =
+        left = at (bounds, substring (text, 0, index) ?: "")
+        right = at (bounds, substring (text, index + 1, length text) ?: "")
+        match Chars::at (text, index)
+            "+" => summed (left, right)
+            "-" => subtracted (left, right)
+            _ => multiplied (left, right)
+
+    summed (left, right) = paired (left, right, Bounds::add)
+
+    subtracted (left, right) = paired (left, right, Bounds::subtract)
+
+    multiplied (left, right) = paired (left, right, Bounds::multiply)
+
+    paired (left, right, operation) = match left
+        Words::Known first => match right
+            Words::Known second => operation (first, second)
+            Words::Unknown => Words::Unknown
+        Words::Unknown => Words::Unknown
+
+    (** The index closing the parenthesis opened at `index`, or `-1`. *)
+    export matching (text, index, depth) = match index >= length text
+        true => -1
+        false => match Chars::at (text, index)
+            "(" => matching (text, index + 1, depth + 1)
+            ")" => closed (text, index, depth)
+            _ => matching (text, index + 1, depth)
+
+    closed (text, index, depth) = match depth == 1
+        true => index
+        false => matching (text, index + 1, depth - 1)
+
+    lastOperator text = choose (scan (text, 0, 0, Words::Scan(plusMinus = -1, star = -1)))
+
+    choose (seen) = match seen.plusMinus >= 0
+        true => Words::SplitAt seen.plusMinus
+        false => match seen.star >= 0
+            true => Words::SplitAt seen.star
+            false => Words::NotSplit
+
+    scan (text, index, depth, seen) = match index >= length text
+        true => seen
+        false => read (text, index, depth, seen, Chars::at (text, index))
+
+    read (text, index, depth, seen, char) = match char
+        "(" => scan (text, index + 1, depth + 1, seen)
+        ")" => scan (text, index + 1, depth - 1, seen)
+        "+" => noticed (text, index, depth, seen, seen(plusMinus = index))
+        "-" => noticed (text, index, depth, seen, signed (text, index, seen))
+        "*" => noticed (text, index, depth, seen, seen(star = index))
+        _ => scan (text, index + 1, depth, seen)
+
+    noticed (text, index, depth, seen, updated) = match depth == 0
+        true => scan (text, index + 1, depth, updated)
+        false => scan (text, index + 1, depth, seen)
+
+    signed (text, index, seen) = match binary (text, index - 1)
+        true => seen(plusMinus = index)
+        false => seen
+
+    binary (text, index) = match index < 0
+        true => false
+        false => match Chars::at (text, index)
+            "," => false
+            "(" => false
+            "+" => false
+            "-" => false
+            "*" => false
+            char => match Chars::blank char
+                true => binary (text, index - 1)
+                false => true

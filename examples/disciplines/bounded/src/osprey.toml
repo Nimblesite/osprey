@@ -1,0 +1,8 @@
+[project]
+name = "bounded-checker"
+source_roots = ["."]
+default_namespace = "bounded"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

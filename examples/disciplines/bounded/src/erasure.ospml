@@ -1,0 +1,27 @@
+namespace bounded
+
+import bounded::Chars
+
+(** The erased module of [TYPES-DISCIPLINE-SEAM]: the source the HM pipeline
+receives in place of the disciplined module. *)
+module Erasure
+    (** The header comment a discipline marker is written with. *)
+    markerPrefix = "// osprey: types="
+
+    (** What an accepted module is rewritten to: the identity discipline. *)
+    hmMarker = "// osprey: types=hm"
+
+    (** `source` without its annotation lines, marked as the identity discipline. *)
+    export of (source, marks) = join (kept (lines source, marks, 1, []), "\n") + "\n"
+
+    kept (lines, marks, number, acc) = match lines
+        [] => acc
+        [text, ...rest] => match listContains (marks, number)
+            true => kept (rest, marks, number + 1, acc)
+            false => kept (rest, marks, number + 1, listAppend (acc, rewritten text))
+
+    rewritten (text) = match startsWith (trim text) markerPrefix
+        true => indented (Chars::indent text) + hmMarker
+        false => text
+
+    indented (count) = repeat (" ", count) ?: ""

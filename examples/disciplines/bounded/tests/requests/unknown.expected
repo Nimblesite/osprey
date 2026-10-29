@@ -1,1 +1,0 @@
-{"version":2,"result":"rejected","diagnostics":[{"code":"unknown","severity":"error","line":12,"column":25,"message":"argument `total` to `scale` has no bound"}]}

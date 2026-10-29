@@ -1,0 +1,143 @@
+namespace bounded
+
+import bounded::Arguments
+import bounded::Bounds
+import bounded::Chars
+import bounded::Intervals
+import bounded::Words
+
+(** Every call site of one module checked against the bounds it declares. *)
+module Calls
+    (** An argument the checker cannot bound. *)
+    codeUnknown = "unknown"
+
+    (** An argument whose interval leaves the parameter's declared bound. *)
+    codeRange = "out-of-range"
+
+    (** The call sites `definitions` cannot accept, in source order. *)
+    export violations (definitions, source) =
+        bounded = filterList (definitions, hasBound)
+        gathered (definitions, bounded, numbered (lines source, 1), [])
+
+    hasBound definition = !isEmpty definition.bounds
+
+    numbered (lines, number) = match lines
+        [] => []
+        [text, ...rest] => listPrepend (numbered (rest, number + 1), Words::Line(number = number, indent = Chars::indent text, text = text))
+
+    gathered (definitions, bounded, lines, found) = match lines
+        [] => found
+        [line, ...rest] => gathered (definitions, bounded, rest, listConcat (found, onLine (definitions, bounded, line)))
+
+    onLine (definitions, bounded, line) = foldList (bounded, [], \(found, called) => listConcat (found, ofCall (definitions, line, called)))
+
+    ofCall (definitions, line, called) =
+        caller = callerOf (definitions, line)
+        positions = occurrences (line.text, called.header.name, skipped (definitions, line, called))
+        foldList (positions, [], \(found, position) => listConcat (found, atPosition (line, position, called, caller)))
+
+    callerOf (definitions, line) = match onLineNumber (definitions, line.number)
+        Words::Located definition => definition
+        Words::NotFound => enclosing (definitions, line)
+
+    onLineNumber (definitions, number) = foldList (definitions, Words::NotFound, \(found, definition) => sameLine (found, definition, number))
+
+    sameLine (found, definition, number) = match definition.line == number
+        true => Words::Located definition
+        false => found
+
+    enclosing (definitions, line) = foldList (definitions, none (), \(best, definition) => deeper (best, definition, line))
+
+    deeper (best, candidate, line) = match candidate.line < line.number && candidate.header.indent < line.indent
+        true => candidate
+        false => best
+
+    none () = Words::Definition(header = Words::Header(name = "", indent = -1, at = 0, params = []), line = 0, bounds = [=>])
+
+    skipped (definitions, line, called) = match onLineNumber (definitions, line.number)
+        Words::Located definition => declarationName (definition.header, called.header.name)
+        Words::NotFound => 0
+
+    declarationName (header, name) = match header.name == name
+        true => header.at + length name
+        false => 0
+
+    occurrences (text, name, from) = match indexOf (drop (text, from), name)
+        Error _ => []
+        Success offset => visit (text, name, from + offset)
+
+    visit (text, name, position) = match wholeWord (text, name, position)
+        true => listPrepend (occurrences (text, name, position + length name), position)
+        false => occurrences (text, name, position + 1)
+
+    wholeWord (text, name, position) =
+        edgeBefore (text, position) && edgeAfter (text, position + length name)
+
+    edgeBefore (text, position) = match position <= 0
+        true => true
+        false => !Chars::identifier (Chars::at (text, position - 1))
+
+    edgeAfter (text, end) = match end >= length text
+        true => true
+        false => !Chars::identifier (Chars::at (text, end))
+
+    atPosition (line, position, called, caller) =
+        head = Chars::spaced (line.text, position + length called.header.name)
+        match Chars::at (line.text, head)
+            "(" => parenthesised (line, position, called, caller, head)
+            _ => juxtaposed (line, position, called, caller, head)
+
+    parenthesised (line, position, called, caller, open) =
+        closed (line, position, called, caller, open, Intervals::matching (line.text, open, 0))
+
+    closed (line, position, called, caller, open, close) = match close < 0
+        true => [arity (called, line, position, [])]
+        false => judged (line, position, called, caller, Arguments::at (substring (line.text, open + 1, close) ?: ""))
+
+    judged (line, position, called, caller, args) = match listLength args == listLength called.header.params
+        true => argumentChecks (line, position, called, caller, args)
+        false => [arity (called, line, position, args)]
+
+    argumentChecks (line, position, called, caller, args) =
+        indexed = index (args, 0)
+        foldList (indexed, [], \(found, one) => listConcat (found, checkArgument (line, position, called, caller, one)))
+
+    juxtaposed (line, position, called, caller, head) = match listLength called.header.params == 1
+        true => argumentChecks (line, position, called, caller, [atom (line.text, head)])
+        false => [arity (called, line, position, [atom (line.text, head)])]
+
+    atom (text, from) = match Chars::at (text, from) == "-"
+        true => "-" + token (text, from + 1, "")
+        false => token (text, from, "")
+
+    token (text, index, acc) = match Chars::identifier (Chars::at (text, index))
+        true => token (text, index + 1, acc + Chars::at (text, index))
+        false => acc
+
+    index (args, from) = match args
+        [] => []
+        [text, ...rest] => listPrepend (index (rest, from + 1), Words::Indexed(at = from, text = text))
+
+    checkArgument (line, position, called, caller, one) = match listGet (called.header.params, one.at)
+        Error _ => []
+        Success param => match mapGet (called.bounds, param)
+            Error _ => []
+            Success bound => compare (line, position, called, param, bound, Intervals::at (caller.bounds, one.text), one.text)
+
+    compare (line, position, called, param, bound, interval, one) = match interval
+        Words::Unknown => [unknownArgument (line, position, called, one)]
+        Words::Known actual => match Bounds::covers (bound, actual)
+            true => []
+            false => [rangeArgument (line, position, called, param, bound, actual)]
+
+    unknownArgument (line, position, called, text) =
+        Words::Problem(code = codeUnknown, line = line.number, column = position,
+            message = "argument `" + text + "` to `" + called.header.name + "` has no bound")
+
+    rangeArgument (line, position, called, param, bound, actual) =
+        Words::Problem(code = codeRange, line = line.number, column = position,
+            message = "argument `" + param + "` to `" + called.header.name + "` is in " + Bounds::written actual + ", outside " + Bounds::written bound)
+
+    arity (called, line, position, args) =
+        Words::Problem(code = codeUnknown, line = line.number, column = position,
+            message = "call to `" + called.header.name + "` passes " + toString (listLength args) + " arguments where it bounds " + toString (listLength called.header.params) + " parameters")

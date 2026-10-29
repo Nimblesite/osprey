@@ -1,1 +1,0 @@
-{"version":2,"result":"rejected","diagnostics":[{"code":"internal","severity":"error","message":"the request line is not one JSON object of the checker protocol"}]}
