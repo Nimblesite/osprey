@@ -1,32 +1,35 @@
 // [WORKBENCH-EMIT] cases: the and_swap golden, binders, holes and layout.
-namespace workbench
+namespace workbenchtests
+
+import workbench::Formulas
+import workbench::Emit
 
 (** The emitter cases of [WORKBENCH-VERIFICATION]. *)
 module EmitCases
     formula text = match Formulas::read text
-        Read found => found
-        Faulted _ => Bot
+        workbench::Read found => found
+        workbench::Faulted _ => workbench::Bot
 
     swap = "p ∧ q → q ∧ p"
 
-    proof (name, claim, steps) = Proof(statement = Statement(name = name, named = true, variables = ["p", "q"], claim = formula claim), steps = steps)
+    proof (name, claim, steps) = workbench::Proof(statement = workbench::Statement(name = name, named = true, variables = ["p", "q"], claim = formula claim), steps = steps)
 
-    swapSteps () = [Assume "h" (formula "p ∧ q"), Cases "h" ["hp", "hq"], Split, Exact "hq", Exact "hp"]
+    swapSteps () = [workbench::Assume "h" (formula "p ∧ q"), workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hq", workbench::Exact "hp"]
 
     (** [WORKBENCH-EMIT]: the spec's and_swap example is written exactly. *)
     export andSwap () = expect (Emit::document [proof ("and_swap", swap, swapSteps ())], "// osprey: types=lean4\nnamespace proofs\n\ntheorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by\n    cases h with hp hq\n    constructor\n    exact hq\n    exact hp\n")
 
     (** [WORKBENCH-EMIT]: an unknown step is a comment and a `sorry` hole; later steps stay as comments. *)
     export holes () =
-        expect (Emit::declaration (proof ("and_swap", swap, [Assume "h" (formula "p ∧ q"), Unknown "Hence the result follows."])), "theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by\n    -- Hence the result follows.\n    sorry\n")
-        expect (Emit::declaration (proof ("t", "p → p", [Unknown "Therefore p.", Exact "h", Done])), "theorem t (p q : Prop) : p → p := by\n    -- Therefore p.\n    sorry\n    -- exact h\n")
+        expect (Emit::declaration (proof ("and_swap", swap, [workbench::Assume "h" (formula "p ∧ q"), workbench::Unknown "Hence the result follows."])), "theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by\n    -- Hence the result follows.\n    sorry\n")
+        expect (Emit::declaration (proof ("t", "p → p", [workbench::Unknown "Therefore p.", workbench::Exact "h", workbench::Done])), "theorem t (p q : Prop) : p → p := by\n    -- Therefore p.\n    sorry\n    -- exact h\n")
         expect (Emit::declaration (proof ("and_swap", swap, [])), "theorem and_swap (p q : Prop) : p ∧ q → q ∧ p := by\n    sorry\n")
 
     (** [WORKBENCH-EMIT]: only a leading assumption that matches the premise becomes a binder. *)
     export binders () =
-        expect (Emit::declaration (proof ("k", "p → q → p", [Assume "a" (formula "p"), Assume "b" (formula "q"), Exact "a"])), "theorem k (p q : Prop) (a : p) (b : q) : p := by\n    exact a\n")
-        expect (Emit::declaration (proof ("k", "p → q → p", [Assume "a" (formula "q"), Exact "a"])), "theorem k (p q : Prop) : p → q → p := by\n    intro a\n    exact a\n")
-        expect (Emit::declaration (Proof(statement = Statement(name = "top", named = true, variables = [], claim = Top), steps = [Done])), "theorem top : ⊤ := by\n    sorry\n")
+        expect (Emit::declaration (proof ("k", "p → q → p", [workbench::Assume "a" (formula "p"), workbench::Assume "b" (formula "q"), workbench::Exact "a"])), "theorem k (p q : Prop) (a : p) (b : q) : p := by\n    exact a\n")
+        expect (Emit::declaration (proof ("k", "p → q → p", [workbench::Assume "a" (formula "q"), workbench::Exact "a"])), "theorem k (p q : Prop) : p → q → p := by\n    intro a\n    exact a\n")
+        expect (Emit::declaration (workbench::Proof(statement = workbench::Statement(name = "top", named = true, variables = [], claim = workbench::Top), steps = [workbench::Done])), "theorem top : ⊤ := by\n    sorry\n")
 
     (** [WORKBENCH-EMIT]: declarations are separated by one blank line under the fixed header. *)
-    export layout () = expect (Emit::document [proof ("a", "p → p", [Assume "h" (formula "p"), Exact "h"]), proof ("b", "q → q", [Assume "h" (formula "q"), Exact "h"])], "// osprey: types=lean4\nnamespace proofs\n\ntheorem a (p q : Prop) (h : p) : p := by\n    exact h\n\ntheorem b (p q : Prop) (h : q) : q := by\n    exact h\n")
+    export layout () = expect (Emit::document [proof ("a", "p → p", [workbench::Assume "h" (formula "p"), workbench::Exact "h"]), proof ("b", "q → q", [workbench::Assume "h" (formula "q"), workbench::Exact "h"])], "// osprey: types=lean4\nnamespace proofs\n\ntheorem a (p q : Prop) (h : p) : p := by\n    exact h\n\ntheorem b (p q : Prop) (h : q) : q := by\n    exact h\n")

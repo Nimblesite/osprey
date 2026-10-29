@@ -1,12 +1,14 @@
 // [WORKBENCH-FORMULA] generated corpus: exhaustive round trips and proof that
 // every parenthesis written by `show` is needed to preserve the formula.
-namespace workbench
+namespace workbenchtests
+
+import workbench::Formulas
 
 (** The generated formula cases of [WORKBENCH-VERIFICATION]. *)
 module CorpusCases
-    atoms () = [Var "p", Var "q", Bot]
+    atoms () = [workbench::Var "p", workbench::Var "q", workbench::Bot]
 
-    connectives (left, right) = [And left right, Or left right, Imp left right, Iff left right]
+    connectives (left, right) = [workbench::And left right, workbench::Or left right, workbench::Imp left right, workbench::Iff left right]
 
     // Every connective over every pair drawn from `lefts` and `rights`.
     binaries (lefts, rights) = foldList (lefts, [], \(outer, left) => foldList (rights, outer, \(inner, right) => listConcat (inner, connectives (left, right))))
@@ -14,14 +16,14 @@ module CorpusCases
     // Depth 1: the atoms, their negations, every connective over two atoms, and one binder.
     shallow () =
         base = atoms ()
-        listConcat (listConcat (base, mapList (base, \formula => Not formula)), listConcat (binaries (base, base), mapList (base, \formula => Forall ["p"] formula)))
+        listConcat (listConcat (base, mapList (base, \formula => workbench::Not formula)), listConcat (binaries (base, base), mapList (base, \formula => workbench::Forall ["p"] formula)))
 
     // Depth 2 wraps each depth-1 formula once and pairs it with an atom on either side, which
     // puts every connective under every other connective on both sides, the cases that need parentheses.
     corpus () =
         inner = shallow ()
         base = atoms ()
-        wrapped = listConcat (mapList (inner, \formula => Not formula), mapList (inner, \formula => Forall ["p", "q"] formula))
+        wrapped = listConcat (mapList (inner, \formula => workbench::Not formula), mapList (inner, \formula => workbench::Forall ["p", "q"] formula))
         listConcat (listConcat (inner, wrapped), listConcat (binaries (inner, base), binaries (base, inner)))
 
     sameNamesAt (left, right, at) = match at >= length left
@@ -31,56 +33,56 @@ module CorpusCases
     sameNames (left, right) = length left == length right && sameNamesAt (left, right, 0)
 
     sameVar (name, other) = match other
-        Var found => name == found
+        workbench::Var found => name == found
         _ => false
 
     sameTop other = match other
-        Top => true
+        workbench::Top => true
         _ => false
 
     sameBot other = match other
-        Bot => true
+        workbench::Bot => true
         _ => false
 
     sameNot (inner, other) = match other
-        Not found => same (inner, found)
+        workbench::Not found => same (inner, found)
         _ => false
 
     sameAnd (left, right, other) = match other
-        And foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
+        workbench::And foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
         _ => false
 
     sameOr (left, right, other) = match other
-        Or foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
+        workbench::Or foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
         _ => false
 
     sameImp (left, right, other) = match other
-        Imp foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
+        workbench::Imp foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
         _ => false
 
     sameIff (left, right, other) = match other
-        Iff foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
+        workbench::Iff foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
         _ => false
 
     sameForall (names, inner, other) = match other
-        Forall foundNames foundInner => sameNames (names, foundNames) && same (inner, foundInner)
+        workbench::Forall foundNames foundInner => sameNames (names, foundNames) && same (inner, foundInner)
         _ => false
 
     // Structural equality, deliberately independent of both `Formulas::equal` and `show`.
     same (a, b) = match a
-        Var name => sameVar (name, b)
-        Top => sameTop b
-        Bot => sameBot b
-        Not inner => sameNot (inner, b)
-        And left right => sameAnd (left, right, b)
-        Or left right => sameOr (left, right, b)
-        Imp left right => sameImp (left, right, b)
-        Iff left right => sameIff (left, right, b)
-        Forall names inner => sameForall (names, inner, b)
+        workbench::Var name => sameVar (name, b)
+        workbench::Top => sameTop b
+        workbench::Bot => sameBot b
+        workbench::Not inner => sameNot (inner, b)
+        workbench::And left right => sameAnd (left, right, b)
+        workbench::Or left right => sameOr (left, right, b)
+        workbench::Imp left right => sameImp (left, right, b)
+        workbench::Iff left right => sameIff (left, right, b)
+        workbench::Forall names inner => sameForall (names, inner, b)
 
     readsSame (text, formula) = match Formulas::read text
-        Read found => same (formula, found)
-        Faulted _ => false
+        workbench::Read found => same (formula, found)
+        workbench::Faulted _ => false
 
     roundTripBad () = filterList (corpus (), \formula => !readsSame (Formulas::show formula, formula))
 

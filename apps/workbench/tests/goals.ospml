@@ -1,14 +1,18 @@
 // [WORKBENCH-GOALS] cases: every row of the tactic table, its failures, and the
 // 50-step timing case.
-namespace workbench
+namespace workbenchtests
+
+import workbench::Formulas
+import workbench::Goals
+import workbench::Lists
 
 (** The goal-engine cases of [WORKBENCH-VERIFICATION]. *)
 module GoalCases
     formula text = match Formulas::read text
-        Read found => found
-        Faulted _ => Bot
+        workbench::Read found => found
+        workbench::Faulted _ => workbench::Bot
 
-    claim text = Statement(name = "t", named = true, variables = ["p", "q", "r"], claim = formula text)
+    claim text = workbench::Statement(name = "t", named = true, variables = ["p", "q", "r"], claim = formula text)
 
     hypothesis item = item.name + " : " + Formulas::show item.formula
 
@@ -16,63 +20,63 @@ module GoalCases
 
     // The open goals after `steps`, or the reason the first failing step gives.
     after (text, steps) = match Goals::run (claim text, steps)
-        Advanced progress => join (mapList (progress.open, goal), " | ")
-        Stuck problem => "stuck: " + problem.reason
+        workbench::Advanced progress => join (mapList (progress.open, goal), " | ")
+        workbench::Stuck problem => "stuck: " + problem.reason
 
     closedCount (text, steps) = match Goals::run (claim text, steps)
-        Advanced progress => length progress.done
-        Stuck _ => satSub 0 1
+        workbench::Advanced progress => length progress.done
+        workbench::Stuck _ => satSub 0 1
 
     (** [WORKBENCH-GOALS]: and_swap closes both goals, one step at a time. *)
     export andSwap () =
-        steps = [Assume "h" (formula "p ∧ q"), Cases "h" ["hp", "hq"], Split, Exact "hq", Exact "hp"]
+        steps = [workbench::Assume "h" (formula "p ∧ q"), workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hq", workbench::Exact "hp"]
         expect (after ("p ∧ q → q ∧ p", Lists::first (steps, 1)), "h : p ∧ q ⊢ q ∧ p")
         expect (after ("p ∧ q → q ∧ p", Lists::first (steps, 2)), "hp : p, hq : q ⊢ q ∧ p")
         expect (after ("p ∧ q → q ∧ p", Lists::first (steps, 3)), "hp : p, hq : q ⊢ q | hp : p, hq : q ⊢ p")
         expect (after ("p ∧ q → q ∧ p", steps), "")
         expect (closedCount ("p ∧ q → q ∧ p", steps), 2)
-        expect (after ("p ∧ q → q ∧ p", listAppend (steps, Done)), "")
+        expect (after ("p ∧ q → q ∧ p", listAppend (steps, workbench::Done)), "")
 
     (** [WORKBENCH-GOALS]: a disjunction splits into two goals, and left, right, apply and absurd each act on the first. *)
     export rows () =
-        expect (after ("p ∨ q → q ∨ p", [Assume "h" (formula "p ∨ q"), Cases "h" ["a", "b"]]), "a : p ⊢ q ∨ p | b : q ⊢ q ∨ p")
-        expect (after ("p ∨ q → q ∨ p", [Assume "h" (formula "p ∨ q"), Cases "h" ["a", "b"], Right, Exact "a", Left, Exact "b"]), "")
-        expect (after ("(p → q) → p → q", [Assume "f" (formula "p → q"), Assume "x" (formula "p"), Apply "f"]), "f : p → q, x : p ⊢ p")
-        expect (after ("p → ¬p → q", [Assume "x" (formula "p"), Assume "y" (formula "¬p"), Absurd "x" "y"]), "")
-        expect (after ("p ↔ p", [Split]), " ⊢ p → p |  ⊢ p → p")
-        expect (after ("∀ x y, x → x", [Assume "x" Top, Assume "y" Top]), " ⊢ x → x")
+        expect (after ("p ∨ q → q ∨ p", [workbench::Assume "h" (formula "p ∨ q"), workbench::Cases "h" ["a", "b"]]), "a : p ⊢ q ∨ p | b : q ⊢ q ∨ p")
+        expect (after ("p ∨ q → q ∨ p", [workbench::Assume "h" (formula "p ∨ q"), workbench::Cases "h" ["a", "b"], workbench::Right, workbench::Exact "a", workbench::Left, workbench::Exact "b"]), "")
+        expect (after ("(p → q) → p → q", [workbench::Assume "f" (formula "p → q"), workbench::Assume "x" (formula "p"), workbench::Apply "f"]), "f : p → q, x : p ⊢ p")
+        expect (after ("p → ¬p → q", [workbench::Assume "x" (formula "p"), workbench::Assume "y" (formula "¬p"), workbench::Absurd "x" "y"]), "")
+        expect (after ("p ↔ p", [workbench::Split]), " ⊢ p → p |  ⊢ p → p")
+        expect (after ("∀ x y, x → x", [workbench::Assume "x" workbench::Top, workbench::Assume "y" workbench::Top]), " ⊢ x → x")
 
     (** [WORKBENCH-GOALS]: a step that does not fit names the goal and what the step offers. *)
     export mismatches () =
-        expect (after ("p ∧ q → q ∧ p", [Assume "h" (formula "p ∧ q"), Cases "h" ["hp", "hq"], Split, Exact "hp"]), "stuck: the goal is `q`, but `hp` proves `p`")
-        expect (after ("p → q", [Assume "h" (formula "q")]), "stuck: the goal assumes `p`, not `q`")
-        expect (after ("p", [Assume "h" (formula "p")]), "stuck: the goal `p` is not an implication to assume")
-        expect (after ("p", [Exact "h"]), "stuck: there is no hypothesis `h`")
-        expect (after ("p", [Split]), "stuck: the goal `p` is not a conjunction to split")
-        expect (after ("p", [Left]), "stuck: the goal `p` is not a disjunction")
-        expect (after ("p", [Done]), "stuck: the goal `p` is still open")
-        expect (after ("p → p", [Assume "h" (formula "p"), Exact "h", Exact "h"]), "stuck: there is nothing left to prove")
-        expect (after ("p", [Unknown "Hence the result follows."]), "stuck: `Hence the result follows.` is not a step the workbench knows")
-        expect (after ("∀ x, x → x", [Assume "y" Top]), "stuck: the goal binds `x` next, not `y`")
-        expect (after ("p → q → p", [Assume "h" (formula "p"), Cases "h" ["a", "b"]]), "stuck: `h` is `p`, which has no cases")
+        expect (after ("p ∧ q → q ∧ p", [workbench::Assume "h" (formula "p ∧ q"), workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hp"]), "stuck: the goal is `q`, but `hp` proves `p`")
+        expect (after ("p → q", [workbench::Assume "h" (formula "q")]), "stuck: the goal assumes `p`, not `q`")
+        expect (after ("p", [workbench::Assume "h" (formula "p")]), "stuck: the goal `p` is not an implication to assume")
+        expect (after ("p", [workbench::Exact "h"]), "stuck: there is no hypothesis `h`")
+        expect (after ("p", [workbench::Split]), "stuck: the goal `p` is not a conjunction to split")
+        expect (after ("p", [workbench::Left]), "stuck: the goal `p` is not a disjunction")
+        expect (after ("p", [workbench::Done]), "stuck: the goal `p` is still open")
+        expect (after ("p → p", [workbench::Assume "h" (formula "p"), workbench::Exact "h", workbench::Exact "h"]), "stuck: there is nothing left to prove")
+        expect (after ("p", [workbench::Unknown "Hence the result follows."]), "stuck: `Hence the result follows.` is not a step the workbench knows")
+        expect (after ("∀ x, x → x", [workbench::Assume "y" workbench::Top]), "stuck: the goal binds `x` next, not `y`")
+        expect (after ("p → q → p", [workbench::Assume "h" (formula "p"), workbench::Cases "h" ["a", "b"]]), "stuck: `h` is `p`, which has no cases")
 
     // `count` premises `h0 … hn` of `p → … → p`, assumed in turn and closed by the first.
     names (count, done) = match length done >= count
         true => done
         false => names (count, listAppend (done, "h" + toString (length done)))
 
-    steps count = listAppend (mapList (names (count, []), \name => Assume name (Var "p")), Exact "h0")
+    steps count = listAppend (mapList (names (count, []), \name => workbench::Assume name (workbench::Var "p")), workbench::Exact "h0")
 
     premises (count, built) = match count <= 0
         true => built
-        false => premises (satSub count 1, Imp (Var "p") built)
+        false => premises (satSub count 1, workbench::Imp (workbench::Var "p") built)
 
     closedBy (statement, steps) = match Goals::run (statement, steps)
-        Advanced progress => length progress.done
-        Stuck _ => 0
+        workbench::Advanced progress => length progress.done
+        workbench::Stuck _ => 0
 
     (** [WORKBENCH-GOALS]: a 50-step declaration runs through the engine and closes; the time bound is the benchmark's. *)
     export fifty () =
-        statement = Statement(name = "t", named = true, variables = ["p"], claim = premises (49, Var "p"))
+        statement = workbench::Statement(name = "t", named = true, variables = ["p"], claim = premises (49, workbench::Var "p"))
         expect (length (steps 49), 50)
         expect (closedBy (statement, steps 49), 1)

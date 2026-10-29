@@ -5,9 +5,9 @@ namespace workbenchtests
 
 import workbenchtests::NotationCases
 import workbenchtests::StepCases
-import workbench::CorpusCases
-import workbench::GoalCases
-import workbench::EmitCases
+import workbenchtests::CorpusCases
+import workbenchtests::GoalCases
+import workbenchtests::EmitCases
 import workbenchtests::StatementCases
 
 test ("every row of the notation table expands to its symbol", NotationCases::everyRow)
