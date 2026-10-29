@@ -74,6 +74,7 @@ ok charset.single_octal.span
 ok api.optional_match
 ok api.groups_default
 ok api.numeric_template
+ok api.sub_invalid_pattern
 ok match abc / abc.start
 ok match abc / abc.end
 ok match abc / abc.lastindex
@@ -7134,4 +7135,4 @@ ok error \x4
 ok error a{3,2}
 ok error [\400]
 ok error [\777]
-6125 passed, 0 failed
+6126 passed, 0 failed

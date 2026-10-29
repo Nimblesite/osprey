@@ -4,15 +4,48 @@
 namespace workbenchtests
 
 import workbench::App
+import workbench::Formulas
+import ui::Lists
 import ui::Doc
+
+extern perror (message : string) -> Unit
+extern abort -> Unit
+
+(** The actual shipped fixtures, from either the repository or suite directory. *)
+module FixtureFiles
+    export root () = match readFile "apps/workbench/lessons/catalogue.json"
+        Success _ => "apps/workbench/lessons/"
+        Error repositoryProblem => match readFile "../lessons/catalogue.json"
+            Success _ => "../lessons/"
+            Error suiteProblem => failed ("No workbench fixtures: apps/workbench/lessons/catalogue.json: ${repositoryProblem}; ../lessons/catalogue.json: ${suiteProblem}")
+
+    export read path =
+        location = root () + path
+        match readFile location
+            Success text => text
+            Error problem => failed ("Workbench fixture ${location}: ${problem}")
+
+    // Empty fallback text hid broken fixtures as application failures. Abort
+    // instead; C's non-returning void call has no bottom type in Osprey.
+    export failed message =
+        _reported = perror message
+        _aborted = abort ()
+        message
+
+    (** A formula fixture that does not read is a broken test, never `⊥`:
+        report it with its own context and abort. C's non-returning abort has no
+        bottom type in Osprey, so the value after it is unreachable but typed. *)
+    export formula (context, text) = match Formulas::read text
+        workbench::Read found => found
+        workbench::Faulted fault => unread (context, text, fault)
+
+    unread (context, text, fault) =
+        _reported = failed ("${context} formula ${text}: fault ${toString fault.column}: ${fault.expected}")
+        workbench::Bot
 
 (** Drives the workbench through start and dispatch, as a host does. *)
 module Drive
-    root () = "../lessons/"
-
-    read path = match readFile (root () + path)
-        Success text => text
-        Error _ => ""
+    read path = FixtureFiles::read path
 
     file (path, text) = JsonObject [Doc::str ("path", path), Doc::str ("error", ""), Doc::str ("text", text)]
 
@@ -27,17 +60,35 @@ module Drive
     export started () = Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "start"), JsonMember "context" (Doc::parse "{\"now\":1,\"offset\":0,\"platform\":\"macos\"}"), JsonMember "slices" (held ())])))
 
     (** The envelope after `event` reaches the session `envelope` left. *)
-    export post (envelope, event) = Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "dispatch"), Doc::str ("state", Doc::text (envelope, "state")), JsonMember "event" (Doc::parse event), JsonMember "slices" (held ())])))
+    export post (envelope, event) = dispatchHeld (envelope, event, held ())
+
+    export postHeld (envelope, event, extras) = dispatchHeld (envelope, event, JsonObject (listConcat (Doc::members (held ()), Doc::members extras)))
+
+    dispatchHeld (envelope, event, slices) = Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "dispatch"), Doc::str ("state", Doc::text (envelope, "state")), JsonMember "event" (Doc::parse event), JsonMember "slices" slices])))
+
+    (** Dispatch an actual issued control at its retained current revision. *)
+    export labelled (envelope, issued, region, label, value) =
+        found = findLabel (label, node (issued, region))
+        expect (Doc::has (found, "event"), true)
+        control (region, revision (envelope, region), Doc::number (found, "event"), value)
+
+    export activate (envelope, issued, region, label) = post (envelope, labelled (envelope, issued, region, label, "null"))
+
+    memberKey member = match member
+        JsonMember key _ => key
+
+    writtenInto (held, item) =
+        key = Doc::text (item, "key")
+        JsonObject (listAppend (filterList (Doc::members held, \member => memberKey member != key)) (Doc::str (key, Doc::text (item, "text"))))
+
+    (** Retain real slice writes exactly as a host does, without reconstructing board data. *)
+    export hostSlices envelopes = foldList (envelopes, JsonObject [], \(held, envelope) => foldList (Doc::items (Doc::field (envelope, "slices")), held, writtenInto))
 
     (** The keys of the regions an envelope re-sent, in order. *)
     export keys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key")), ",")
 
-    (** The revision region `key` was sent with in `envelope`, 0 when it was not sent. *)
-    export revision (envelope, key) = foldList (Doc::items (Doc::field (envelope, "patches")), 0, \(found, item) => sent (found, item, key))
-
-    sent (found, item, key) = match Doc::text (item, "key") == key
-        true => Doc::number (item, "revision")
-        false => found
+    (** The host retains every region's revision even when the latest envelope has no patch for it. *)
+    export revision (envelope, key) = signalRevisionOf (signalFramesFromJson (Doc::field (Doc::parse (Doc::text (envelope, "state")), "frames"))) key
 
     (** The tickets of the requests in `envelope`. *)
     export tickets envelope = join (mapList (Doc::items (Doc::field (envelope, "requests")), \item => Doc::text (item, "ticket")), ",")
@@ -65,3 +116,54 @@ module Drive
 
     (** A session with the catalogue and every lesson loaded. *)
     export loaded () = post (post (started (), done ("lessons:catalogue", "{}")), done ("lessons:texts", "{}"))
+
+
+    (** The actual rendered region tree and its issued control ordinals. *)
+    export node (envelope, key) = foldList (Doc::items (Doc::field (envelope, "patches")), JsonNull, \(found, item) => pickNode (found, item, key))
+
+    pickNode (found, item, key) = match Doc::text (item, "key") == key
+        true => Doc::field (item, "node")
+        false => found
+
+    export findNode (kind, node) = matchingNode ("kind", kind, node)
+
+    export findTitle (title, node) = matchingNode ("title", title, node)
+
+    (** A rendered control found by its actual label, not a guessed ordinal. *)
+    export findLabel (label, node) = matchingNode ("label", label, node)
+
+    (** A frame found by its authored name, not by its position. *)
+    export findNamed (name, node) = matchingNode ("frameName", name, node)
+
+    matchingNode (field, value, node) = match Doc::text (node, "kind")
+        "" => JsonNull
+        _ => match nodeField (field, node) == value
+            true => node
+            false => foldList (childNodes node, JsonNull, \(found, child) => firstNode (found, field, value, child))
+
+    (** A node field by name; a frame's authored name lives in its `style` object ([UI-COMPONENTS]). *)
+    nodeField (field, node) = match field == "frameName"
+        true => Doc::text (Doc::field (node, "style"), "name")
+        false => Doc::text (node, field)
+
+    firstNode (found, field, value, child) = match found
+        JsonNull => matchingNode (field, value, child)
+        _ => found
+
+    (** The persisted dependency set of the actual keyed host region. *)
+    export dependencies (envelope, key) =
+        frames = Doc::items (Doc::field (Doc::parse (Doc::text (envelope, "state")), "frames"))
+        frame = Lists::find (frames, \item => Doc::text (item, "key") == key) ?: JsonNull
+        Doc::texts (frame, "dependencies")
+
+    childNodes node = listConcat ([Doc::field (node, "body"), Doc::field (node, "pane"), Doc::field (node, "aside")], Doc::items (Doc::field (node, "children")))
+
+    (** Read actual displayed prose independently of its token/run serialization. *)
+    export visibleText node = match Doc::text (node, "kind")
+        "" => ""
+        "text" => Doc::text (node, "text")
+        "rich-text" => join (mapList (Doc::items (Doc::field (node, "runs")), \run => Doc::text (run, "text")), "")
+        "math" => Doc::text (node, "spoken")
+        "badge" => Doc::text (node, "label")
+        "editor" => Doc::text (node, "value")
+        _ => join (mapList (childNodes node, visibleText), " ")

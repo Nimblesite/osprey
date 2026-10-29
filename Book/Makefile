@@ -55,7 +55,7 @@ check-examples:
 
 render-assets: assets/cover/cover.png $(DIAGRAM_PNGS)
 
-assets/cover/cover.png: assets/cover/cover.svg
+assets/cover/cover.png: assets/cover/cover.svg ../website/src/assets/images/logo.png Makefile
 	@$(RSVG_CONVERT) --width 1600 --height 2560 --output $@.base.png $<
 	@$(MAGICK) $@.base.png \( ../website/src/assets/images/logo.png -resize 184x184 \) -geometry +112+104 -composite $@
 	@rm -f $@.base.png
@@ -88,6 +88,7 @@ html: check render-assets
 		--from=gfm \
 		--to=html5 \
 		--standalone \
+		--include-before-body=assets/brand/header.html \
 		--embed-resources \
 		--resource-path=. \
 		--toc \

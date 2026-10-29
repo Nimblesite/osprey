@@ -5,7 +5,9 @@
   "summary": "A solver searches for an answer, while the workbench kernel checks a proposed answer and reports honestly when none is complete.",
   "stage": 1,
   "minutes": 6,
-  "after": ["what-is-a-solution"],
+  "after": [
+    "what-is-a-solution"
+  ],
   "blocks": [
     {
       "kind": "prose",
@@ -16,8 +18,8 @@
       "source": "media/what-is-a-solver/film.mp4",
       "poster": "media/what-is-a-solver/poster.jpg",
       "captions": "media/what-is-a-solver/film.en.vtt",
-      "alt": "Several candidate paths appear on the left under a search symbol; on the right, one written proof passes through a kernel-shaped checkpoint one step at a time.",
-      "seconds": 45
+      "alt": "A maze first shows many candidate routes, then one route being checked. The film then presents the conjunction proof with its last steps reversed: step four offers p while the goal is q, and the kernel rejects it.",
+      "seconds": 37
     },
     {
       "kind": "prose",
@@ -33,7 +35,10 @@
         "kind": "state",
         "id": "state-search-result",
         "prompt": "Write that having an implication from p to q, together with p, gives q. Keep the implication on the left of ∧ and p on its right.",
-        "variables": ["p", "q"],
+        "variables": [
+          "p",
+          "q"
+        ],
         "expected": "(p → q) ∧ p → q",
         "hints": [
           "Group p → q and p with ∧.",

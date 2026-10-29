@@ -1,8 +1,8 @@
 {
   "format": 1,
   "slug": "navier-stokes",
-  "title": "Navier–Stokes: an open problem",
-  "summary": "Read the Navier–Stokes equations and separate what has been proved about their solutions from the three-dimensional question that remains open.",
+  "title": "Navier–Stokes: equations and evidence",
+  "summary": "Read the fluid equations, distinguish calculations from proofs, and explore logical reasoning under explicit assumptions.",
   "stage": 3,
   "minutes": 9,
   "after": [
@@ -160,8 +160,8 @@
       "source": "media/navier-stokes/film.mp4",
       "poster": "media/navier-stokes/poster.jpg",
       "captions": "media/navier-stokes/film.en.vtt",
-      "alt": "A smooth velocity field flows around a channel while the two equations remain beside it; a later branch contrasts continued smooth motion with a developing blow-up, marked as an open question.",
-      "seconds": 55
+      "alt": "The Navier–Stokes equations appear beside summaries of weak solutions and smooth-flow results. A dated status card distinguishes an announced apparent resolution from continuing evaluation. The final card explains that the lesson checks logical deductions, not the fluid analysis.",
+      "seconds": 57
     },
     {
       "kind": "prose",
@@ -169,7 +169,7 @@
     },
     {
       "kind": "prose",
-      "text": "The three-dimensional global smoothness question remains open. Either every smooth initial flow keeps a smooth solution for ever, or some smooth initial flow blows up in finite time. No proof of either answer is known. This is one of the Clay Millennium Prize problems.\n\nWe will use smooth and blowup as names for propositions about those outcomes. The exercises concern their logical shape, not a solution of the equations. Written as a formula, the problem says that one of the two outcomes holds, and not both."
+      "text": "The three-dimensional existence and smoothness question is one of the Clay Millennium Prize problems. It asks whether smooth solutions persist or whether a smooth initial flow can develop a finite-time singularity, under the problem's precise conditions. On 11 September 2026, the Clay Mathematics Institute acknowledged an announced apparent resolution and said its evaluation process would continue. Its problem page remains marked Active. Sources checked on 29 October 2026: https://www.claymath.org/news/navier-stokes-announcement/ and https://www.claymath.org/millennium/navier-stokes-equation/.\n\nWe use smooth and blowup as names for propositions in a simplified logic exercise. The formula below is an assumed model for that exercise. It does not formalize the analytical problem or establish either outcome."
     },
     {
       "kind": "formula",
@@ -231,7 +231,7 @@
     },
     {
       "kind": "prose",
-      "text": "Naming a proposition is not proving it. The workbench never accepts what nobody has proved, however it is worded, and the Navier–Stokes smoothness question is still open."
+      "text": "Naming a proposition is not proving it. These exercises check logical deductions from their stated assumptions. They do not check the analysis of the Navier–Stokes equations or evaluate any announced solution of the Millennium Prize problem."
     }
   ]
 }

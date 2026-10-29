@@ -41,7 +41,19 @@ export const WEBVIEW_SCRIPT = `
       const raw = element.getAttribute("data-value");
       value = kind === "number" ? Number(raw) : kind === "bool" ? raw === "true" : kind === "string" ? raw : null;
     }
+    if (postAfterFields(control, value)) return;
     vscode.postMessage(Object.assign({ type: "event", value: value }, control));
+  }
+
+  function postAfterFields(control, value) {
+    if (pendingEdits.size === 0) return false;
+    const pending = flushFields();
+    pending.forEach(function (_edit, signature) { sendField(signature); });
+    const id = ++editSequence;
+    const signature = "action:" + id;
+    pendingEdits.set(signature, { id: id, value: value, control: control, sent: false });
+    sendField(signature);
+    return true;
   }
 
   // Presentation matching only preserves the draft's display. Osprey resolves
@@ -156,6 +168,19 @@ export const WEBVIEW_SCRIPT = `
     };
   }
 
+  let dialogReturnFocus = null;
+  function focusDialog() {
+    const dialog = document.querySelector("[data-native-dialog]");
+    if (dialog) {
+      if (dialogReturnFocus === null) dialogReturnFocus = document.activeElement?.getAttribute("data-focus") || "";
+      if (!dialog.contains(document.activeElement)) (dialog.querySelector("button, input, textarea, select, a[href]") || dialog).focus();
+    } else if (dialogReturnFocus !== null) {
+      const focus = Array.from(document.querySelectorAll("[data-focus]")).find(function (node) { return node.getAttribute("data-focus") === dialogReturnFocus; });
+      if (focus) focus.focus();
+      dialogReturnFocus = null;
+    }
+  }
+
   function restoreFocus() {
     const saved = savedFocus;
     savedFocus = null;
@@ -221,7 +246,7 @@ export const WEBVIEW_SCRIPT = `
     }
     closeMenus();
     const element = closest(event.target, "[data-event-region]");
-    if (!element || element.hasAttribute("data-splitter")) return;
+    if (!element || element.hasAttribute("data-splitter") || element.hasAttribute("data-native-dialog")) return;
     if (element.matches("input, textarea, select, canvas")) return;
     postEvent(element);
   });
@@ -252,7 +277,18 @@ export const WEBVIEW_SCRIPT = `
   });
 
   document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape") { closeMenus(); return; }
+    if (event.key === "Escape") {
+      const dialog = document.querySelector("[data-native-dialog]");
+      if (dialog) { event.preventDefault(); postEvent(dialog, null); }
+      closeMenus(); return;
+    }
+    const modal = document.querySelector("[data-native-dialog]");
+    if (modal && event.key === "Tab") {
+      const fields = Array.from(modal.querySelectorAll("button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href]"));
+      const index = fields.indexOf(document.activeElement);
+      const next = event.shiftKey ? (index <= 0 ? fields.length - 1 : index - 1) : (index + 1) % fields.length;
+      event.preventDefault(); (fields[next] || modal).focus(); return;
+    }
     const element = event.target;
     if (!element || !element.getAttribute) return;
     if (element.hasAttribute("data-splitter") && /^Arrow(Left|Right)$/.test(event.key)) {
@@ -333,6 +369,7 @@ export const WEBVIEW_SCRIPT = `
     const root = document.getElementById("osprey-root");
     if (root) root.innerHTML = message.html;
     restoreFocus();
+    focusDialog();
     rebasePendingEdits(pending);
     refreshEditors();
     refreshBoards();

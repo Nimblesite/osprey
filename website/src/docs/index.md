@@ -21,6 +21,12 @@ Osprey uses typed algebraic effects to separate application requests from their 
 - **[Video tutorials](/docs/tutorials/)** — narrated videos of real Osprey apps being built, with chapters, the commands to run each app, and a transcript.
 - **[Osprey and Swift interop on the Mac and iPhone](/docs/tutorials/swift-interop/)** — a three-minute video: Osprey exports in a generated C header, Swift `@_cdecl` imports, an effect handler at the boundary, and one Xcode target for every Apple SDK.
 
+## Proofs and mathematics
+
+- **[Proof video learning paths](/docs/proofs/)** - twelve short films, organised into six topics and two audience paths.
+- **[Use the Proof Workbench](/docs/proof-workbench/)** - write an argument, inspect hypotheses and goals, and work through guided lessons.
+- **[Mathlib port progress](/docs/mathlib-port/)** - real checked imports, reproducible commands and the remaining boundaries.
+
 ## Build applications
 
 - **[Build a Mac and iPhone app](/docs/mac-and-iphone-apps/)** — follow Osprey Storage across the boundary: Osprey exports in a generated C header, Swift `@_cdecl` imports, and an effect handler at the edge. Also a [video tutorial](/docs/tutorials/swift-interop/).

@@ -461,7 +461,7 @@ pub(crate) fn source_with_abi(
     crate::target_capabilities::validate(program, target)?;
     // Entry-only programs have no later host calls needing globals. [IOS-TARGET-ENTRY]
     let ir = if matches!(scope, ExportScope::EntryOnly) {
-        osprey_codegen::compile_program(program)
+        osprey_codegen::compile_host_program(program)
     } else {
         osprey_codegen::compile_library(program)
     }

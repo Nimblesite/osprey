@@ -109,7 +109,7 @@ fn slot_spelling(v: &Value) -> String {
     let inferred = v
         .inferred_type
         .as_ref()
-        .map_or_else(String::new, ToString::to_string);
+        .map_or_else(String::new, crate::types::abi_spelling);
     format!("{}:{owner}:{result}:{inferred}", v.ty.as_str())
 }
 
@@ -125,13 +125,13 @@ fn declared_spelling(cg: &Codegen, name: &str) -> String {
         .param_types(name)
         .unwrap_or(&[])
         .iter()
-        .map(ToString::to_string)
+        .map(crate::types::abi_spelling)
         .collect::<Vec<_>>()
         .join(",");
     let ret = cg
         .prog
         .return_type(name)
-        .map_or_else(String::new, ToString::to_string);
+        .map_or_else(String::new, crate::types::abi_spelling);
     format!("[{params}]->{ret}")
 }
 
@@ -313,26 +313,9 @@ fn call(cg: &mut Codegen, target: &Instantiation, args: Vec<Value>) -> Result<Va
 
 #[cfg(test)]
 mod tests {
-    fn fanout_helpers() -> String {
-        use std::fmt::Write;
-        (1..=8).fold(String::new(), |mut source, depth| {
-            let previous = if depth == 1 {
-                "leaf".into()
-            } else {
-                format!("l{}", depth - 1)
-            };
-            writeln!(
-                source,
-                "fn l{depth}(x) = \"${{{previous}(x)}}${{{previous}(x)}}\""
-            )
-            .expect("in-memory source");
-            source
-        })
-    }
-
     #[test]
     fn nested_generic_fanout_has_bounded_ir_growth() {
-        let helpers = fanout_helpers();
+        let helpers = crate::genfn::tests::fanout_helpers();
         let source = format!("fn leaf(x) = x\n{helpers}print(l8(\"z\"))\n");
         let parsed = osprey_syntax::parse_program_for_path("fanout.osp", &source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
@@ -346,7 +329,7 @@ mod tests {
 
     #[test]
     fn expansion_budget_preserves_stateful_handle_parameter_metadata() {
-        let helpers = fanout_helpers();
+        let helpers = crate::genfn::tests::fanout_helpers();
         let source = format!("fn leaf(x) = x\n{helpers}fn greet() = \"done\"\nfn waitIt(f) = await(f)\nfn takeIt(ch) = recv(ch)\nlet warm = l8(\"z\")\nlet ch = Channel(1)\nsend(ch, \"message\")\nprint(\"${{warm}}${{waitIt(spawn greet())}}${{takeIt(ch)}}\")\n");
         let parsed = osprey_syntax::parse_program_for_path("fiber-fanout.osp", &source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);

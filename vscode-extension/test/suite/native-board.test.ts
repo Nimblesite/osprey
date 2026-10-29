@@ -11,6 +11,16 @@ const slices = () => {
 const regions = new Map([["root", { revision: 3, node: { kind: "board", slice: "working-board", count: 1, lasso: true, event: 4, lassoEvent: 5 } }]]);
 
 suite("native board host", () => {
+  test("an approved decorative board backdrop renders without weakening standalone media labels", () => {
+    const node = { kind: "board", slice: "working-board", count: 1, lasso: true, event: 4, lassoEvent: 5, backdrop: "chalk-study.png" };
+    const html = renderWorkspace({ regions: new Map([["root", { revision: 3, node }]]), slices: slices(), resolveAsset: source => `https://assets.example.test/${source}` });
+    assert.ok(html.includes('src="https://assets.example.test/chalk-study.png"'));
+    assert.ok(html.includes('alt="" aria-hidden="true"'));
+    assert.ok(html.includes('role="img" aria-label="Drawing board"'));
+    assert.throws(() => renderWorkspace({ regions: new Map([["root", { revision: 1, node: {
+      kind: "image", source: "chalk-study.png", alt: "", width: 1536, height: 1024,
+    } }]]), resolveAsset: source => `https://assets.example.test/${source}` }), /alt/);
+  });
   test("the board draws from a host-held slice with both issued bindings", () => {
     const html = renderWorkspace({ regions, slices: slices() });
     assert.ok(html.includes("<canvas"));

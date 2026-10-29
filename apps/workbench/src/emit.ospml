@@ -74,3 +74,11 @@ module Emit
         Unknown text => "    -- " + text + "\n"
         Done => ""
         _ => "    -- " + Steps::tactic step + "\n"
+
+
+    (** Zero-based generated line corresponding to a selected sentence; discharged assumptions live on the theorem line. *)
+    export lineAt (proof, index) =
+        shape = binders (Shape(binders = variables proof.statement.variables, conclusion = proof.statement.claim, steps = proof.steps))
+        match index < satSub (length proof.steps) (length shape.steps)
+            true => 3
+            false => satSub (length (lines (document [proof(steps = Lists::first (proof.steps, satAdd index 1))]))) 1

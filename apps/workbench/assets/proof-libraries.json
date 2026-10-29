@@ -1,0 +1,56 @@
+{
+  "libraries": [
+    {
+      "title": "Natural arithmetic",
+      "path": "proof-libraries/nat-basic.ndjson"
+    },
+    {
+      "title": "Natural lemmas",
+      "path": "proof-libraries/nat-lemmas.ndjson"
+    },
+    {
+      "title": "Natural identities · compatible proofs",
+      "path": "proof-libraries/nat-compatible.ndjson"
+    },
+    {
+      "title": "Boolean logic",
+      "path": "proof-libraries/bool.ndjson"
+    },
+    {
+      "title": "Optional values",
+      "path": "proof-libraries/option-basic.ndjson"
+    },
+    {
+      "title": "Lists",
+      "path": "proof-libraries/list-basic.ndjson"
+    },
+    {
+      "title": "List lemmas",
+      "path": "proof-libraries/list-lemmas.ndjson"
+    },
+    {
+      "title": "Products",
+      "path": "proof-libraries/prod.ndjson"
+    },
+    {
+      "title": "OpenAI · infinite-stack lemmas",
+      "path": "proof-libraries/stacks.ndjson"
+    },
+    {
+      "title": "OpenAI · doubling-loop lemmas",
+      "path": "proof-libraries/word-seed.ndjson"
+    },
+    {
+      "title": "OpenAI · finite-index lemma",
+      "path": "proof-libraries/ambient-polar.ndjson"
+    },
+    {
+      "title": "Unicode constructor proofs",
+      "path": "proof-libraries/string_cases.ndjson"
+    },
+    {
+      "title": "OpenAI · five-colour orientation",
+      "path": "proof-libraries/five-color-orientation.ndjson"
+    }
+  ]
+}

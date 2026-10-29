@@ -10,17 +10,17 @@ A lesson is never only something to read or watch. Each one asks the learner to 
 
 ## Mode [LESSONS-MODE]
 
-The root region carries a two-way segment, **Work** and **Learn**, held in the `Layout` slice ([WORKBENCH-STORE](0051-ProofWorkbench.md#store-workbench-store)). Work is the workbench as spec 0051 describes it. Learn replaces the document and goal columns with two regions:
+The root navigation offers **Board**, **Proof**, and **Read** for the working document. **Examples** and **Play walkthrough** open the lesson catalogue, held as `Learning` in the `Layout` slice ([WORKBENCH-STORE](0051-ProofWorkbench.md#store-workbench-store)). The lesson surface replaces the document and goal columns with catalogue and lesson regions, plus one keyed region per challenge:
 
 | Region | Shows | Reads |
 | --- | --- | --- |
-| `catalogue` | every lesson in stage order: title, summary, minutes, a tick when every challenge in it is right, and a lock-free list (prerequisites are advice shown as "after …", never a gate) | `Lessons`, `Tutor` |
-| `lesson` | the open lesson as one scrolling page: its blocks in order, each challenge inline with its answer field, **Submit**, feedback and hints | `Lessons`, `Tutor` |
-| `challenge:<id>` | one challenge's answer, button and feedback, keyed so that typing in one answer re-sends only that challenge | `Tutor` |
+| `catalogue` | every lesson in stage order: title, summary, minutes, a tick when every challenge in it is right, and an unrestricted list (the reader validates prerequisites, but the catalogue does not display or enforce them) | `Shelf`, `Achieved` |
+| `lesson` | the open lesson as one scrolling page: its blocks in order and a slot for each inline challenge | `Shelf` |
+| `challenge:<id>` | one challenge's answer, button and feedback, keyed so that typing in one answer re-sends only that challenge | `ChallengeState`, containing that challenge and its own `Attempt` |
 
 The board stays available in Learn: a lasso's recognised text goes into the answer of the challenge that last had focus, through the same `Steps::read` and `Formulas::read` as typed text ([WORKBENCH-BOARD](0051-ProofWorkbench.md#the-board-workbench-board)). **Open in the workbench** on a challenge copies its statement and the learner's answer into the Work document as a new declaration, so a lesson leads into ordinary work.
 
-Switching between Work and Learn keeps both sides as they were: the document, the open lesson, the answers and the scroll position all survive.
+Switching between the working document and lessons preserves the document, the open lesson and the answers in application state. Scroll-position retention is a host acceptance requirement; the application does not serialize scroll offsets.
 
 ## Files [LESSONS-FILES]
 
@@ -32,7 +32,9 @@ Lessons ship with the application as data, not code:
 | `apps/workbench/lessons/<slug>.json` | one lesson |
 | `apps/workbench/lessons/media/<slug>/` | that lesson's images, videos, posters and captions |
 
-At start the application asks the host for `catalogue.json` and every lesson it names in one `ReadTexts` request ([UI-EFFECTS](../../../packages/native/README.md)) into host-held slices `lessons:catalogue` and `lesson:<slug>`, so lesson text never travels through an event. Each lesson is read when it is first opened and its parsed form is kept in the `Lessons` slice. A lesson that fails to read is listed with its fault and cannot be opened; the others are unaffected.
+At start the application asks the host for `lessons/catalogue.json` with `ReadTexts` ([UI-EFFECTS](../../../packages/native/README.md)) into host-held slice `lessons:catalogue`. Once the catalogue is read, a second request reads every lesson it names into `lessons:texts`. Each read stores a JSON object with a `files` array containing `path`, `text` and `error` for each file. A lesson that fails to read is listed with its fault and cannot be opened; the others are unaffected. The session retains catalogue summaries and only the open lesson's source, rather than every lesson's parsed content.
+
+The host supplies its current text slices as the `frame.slices` object on every start and dispatch frame. `App::respond` handles `ui::Slices.fetch` from that object; completions carry request results and never substitute for the host-held lesson text. Browser and native hosts invoke the same application boundary and execute its requests. They contain no lesson judgement or proof logic.
 
 Every lesson file is UTF-8 JSON. Media paths are relative to `apps/workbench/lessons/`, must start with `media/<slug>/`, and may not contain `..`, a backslash or a leading `/`. The reader refuses a lesson that breaks this rule, so a lesson can never point a host at a file outside its own folder.
 
@@ -115,7 +117,7 @@ The learner writes a formula. On **Submit** the workbench reads it with `Formula
   "steps": ["Assume h : p ∧ q.", "By cases on h, as hp and hq.", "It suffices to show q and p.", "From hp.", "From hq."] }
 ```
 
-The learner is shown a proof, typeset, and chooses **It checks** or **It does not check**. On **Submit** the workbench asks the kernel for the verdict of that proof, then and there; the learner is right when their choice matches it. The file holds no answer. The feedback then shows what the kernel said: for a rejected proof, the refused step underlined with the kernel's message and the goal engine's readable mismatch beside it.
+The learner is shown a proof, typeset, and chooses **It checks** or **It fails**. On **Submit** the workbench asks the kernel for the verdict of that proof, then and there; the learner is right when their choice matches it. The file holds no answer. The feedback then shows what the kernel said: for a rejected proof, the refused step underlined with the kernel's message and the goal engine's readable mismatch beside it.
 
 ### Submitting and feedback [LESSONS-FEEDBACK]
 
@@ -123,11 +125,11 @@ The learner is shown a proof, typeset, and chooses **It checks** or **It does no
 
 | Result | When | Shown |
 | --- | --- | --- |
-| `Right` | prove: `Checked`; state: same proposition; judge: choice matches the kernel | a filled badge and "Right. The Osprey kernel checked it." |
-| `Wrong (step, message)` | prove: `Rejected`; state: different proposition or not a proposition; judge: choice does not match | an outlined badge; for prove, the step underlined with the kernel's message and the goal engine's mismatch; for state, both formulas typeset side by side |
+| `Correct message` | prove: `Checked`; state: same proposition; judge: choice matches the kernel | a “Right” badge and the task-specific kernel explanation |
+| `Incorrect step message` | prove: `Rejected`; state: different proposition or not a proposition; judge: choice does not match | a “Not yet” badge; for prove, the step underlined with the kernel's message and the goal engine's mismatch; for state, both formulas typeset side by side |
 | `Unfinished reason` | prove: `Unchecked` (an unknown step, an open goal, steps after the end); state: the formula does not read | "Not finished yet:" and the reason; this does not count as an attempt |
 
-Every `Wrong` adds one attempt. Hint *n* is shown after *n* wrong attempts, or earlier on **Show a hint**. A prove challenge with a `solution` offers **Show a solution** after three wrong attempts; a shown solution fills the answer, and the challenge is marked *seen* rather than *right* until the learner submits it themselves. Editing the answer after `Right` clears the result, so the badge always describes the text on screen.
+Every `Incorrect` adds one attempt. Hint *n* is shown after *n* wrong attempts, or earlier on **Show a hint**. A prove challenge with a `solution` offers **Show a solution** after three wrong attempts; a shown solution fills the answer, and the challenge is marked *seen* rather than *right* until the learner submits it themselves. Editing the answer after `Correct` clears the result, so the badge always describes the text on screen.
 
 ### Every shipped lesson is checked [LESSONS-INTEGRITY]
 
@@ -143,7 +145,7 @@ A lesson author cannot ship a solution the kernel refuses or a question the kern
 
 ## Progress [LESSONS-PROGRESS]
 
-The `Tutor` slice holds, per challenge, the answer text, the choice, the attempts, the hints shown and the last result, and the set of challenges answered right. A lesson is complete when all its challenges are right. Progress is written with `StoreWrite` to `lessons/progress.json` after each `Right` and read with `StoreRead` at start; it holds challenge identifiers (`<slug>/<id>`) and nothing else. A missing or unreadable file means no progress, never an error dialog.
+The `Tutor` slice holds, per challenge, the answer text, the choice, the attempts, the hints shown and the last result, and the set of challenges answered right. A lesson is complete when all its challenges are right. Progress is written through host-held slice `lessons:progress` with `StoreWrite` to `lessons/progress.json` after each newly right answer and read into the same slice with `StoreRead` at start; it holds challenge identifiers (`<slug>/<id>`) and nothing else. A missing or unreadable file means no progress, never an error dialog. A failed write must report that progress was not saved.
 
 ## Framework additions [LESSONS-FRAMEWORK]
 
@@ -195,14 +197,17 @@ The source of each film (its page, script and narration) lives in that repositor
 
 ## Store and messages [LESSONS-STORE]
 
-Two slices join those of [WORKBENCH-STORE]:
+The lesson state joins that of [WORKBENCH-STORE]:
 
 | Slice | Held | Contents |
 | --- | --- | --- |
-| `Lessons` | host | the catalogue, each lesson's parse (`Ready Lesson` or `Broken fault`), the open lesson's slug |
+| `lessons:catalogue`, `lessons:texts` | host | bounded file-read results, outside the serialized application store |
+| `lessons:progress` | host | saved completed challenge identifiers |
+| `Shelf` | session | catalogue summaries and faults, the open lesson's slug and source, the focused challenge and loading or save errors |
 | `Tutor` | session | per-challenge attempt state and the completed set ([LESSONS-PROGRESS]) |
+| `Achieved` | derived signal | completed challenge keys, so typing an answer does not invalidate the catalogue |
 
-Messages: `Learned mode` (Work or Learn), `Opened slug`, `Answered (id, text)`, `Picked (id, choice)`, `Submitted id`, `Hinted id`, `Revealed id`, `Carried id` (open in the workbench), and the completions of the lesson and progress reads. `update` stays pure: judging is a function of the challenge and the answer text.
+The action union carries `ToLearn`, `ToWork`, `Open slug`, `Answer id`, `Pick id`, `Submit id`, `Hint id`, `Reveal id` and `Carry id` (open in the workbench). The framework delivers typed text, choice and completion messages to `Update::apply`. Judging is a pure function of the challenge and the learner’s input; file and progress operations are bounded host requests.
 
 ## Verification [LESSONS-VERIFICATION]
 
@@ -210,13 +215,13 @@ The cases live in `apps/workbench/tests/`, each a fixture through the real `star
 
 - the reader accepts every block and challenge kind and refuses each broken form: an unknown `kind`, a missing field, a bad slug, an unsafe media path, a formula that does not read, a `math` tree with an unknown node, `format` 2;
 - `Maths::decode (Maths::encode t) = t` over a corpus of trees, in `packages/native/tests/`;
-- prove: a correct answer is `Right`; the swapped `and_swap` answer is `Wrong` at the fourth step with the kernel's message; an unknown sentence is `Unfinished`;
-- state: an exact answer, an answer equal by definition (`¬p` for `p → ⊥`), a different but equivalent answer (`Wrong`), a stray atom and an unreadable formula;
+- prove: a correct answer is `Correct`; the swapped `and_swap` answer is `Incorrect` at the fourth step with the kernel's message; an unknown sentence is `Unfinished`;
+- state: an exact answer, an answer equal by definition (`¬p` for `p → ⊥`), a different but equivalent answer (`Incorrect`), a stray atom and an unreadable formula;
 - judge: both choices against a checked proof and a rejected one;
-- attempts, hints and the solution reveal follow [LESSONS-FEEDBACK]; editing after `Right` clears it;
+- attempts, hints and the solution reveal follow [LESSONS-FEEDBACK]; editing after `Correct` clears it;
 - a keystroke in one challenge's answer re-sends only that `challenge:<id>` region;
 - progress round-trips through `StoreWrite` and `StoreRead`, and a missing progress file is no progress;
 - every shipped lesson passes [LESSONS-INTEGRITY];
 - the `Image` and `Video` encodings, in `packages/native/tests/`.
 
-Each host's smoke test opens `what-is-a-proof`, plays nothing, answers its first challenge and sees the filled badge.
+Each host's smoke test opens `what-is-a-proof`, plays nothing, answers its first challenge and sees the “Right” badge.

@@ -61,3 +61,6 @@ module Palettes
         feedback = 140,
         settle = 240,
     )
+
+    (** The reference's initial Paper appearance, independent of the host's current appearance. *)
+    export initial () = paper(tokens = mapList (paper.tokens, \token => token(tokenDark = token.tokenLight)))

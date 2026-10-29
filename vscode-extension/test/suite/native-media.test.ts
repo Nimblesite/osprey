@@ -1,11 +1,28 @@
 import * as assert from "node:assert/strict";
 import { renderWorkspace } from "../../client/src/osprey-ui/render";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
+import { symbolIcon, codiconStyle } from "../../client/src/osprey-ui/icons";
 
 const image = { kind: "image", source: "media/claim.jpg", alt: "A claim and its assumptions", width: 1200, height: 800 };
 const video = { kind: "video", source: "media/proof.mp4", poster: "media/poster.jpg", captions: "media/proof.vtt", alt: "A proof develops one justified step at a time", seconds: 40 };
 const regions = (node: unknown) => new Map([["root", { revision: 1, node }]]);
 const resolveAsset = (source: string) => `https://assets.example.test/${source}`;
+
+suite("native semantic symbols", () => {
+  test("workbench symbols map to bundled official glyphs and absent symbols draw nothing", () => {
+    const expected = { "play.fill": "play", "circle.lefthalf.filled": "color-mode", "square.and.arrow.down": "save",
+      "rectangle.and.pencil.and.ellipsis": "preview", book: "book", textformat: "symbol-text", magnifyingglass: "search",
+      "chevron.left.forwardslash.chevron.right": "code", pencil: "pencil", "hand.draw": "move", "arrow.uturn.backward": "discard",
+      "square.and.pencil": "edit", "arrow.up.left.and.arrow.down.right": "screen-full", "square.and.arrow.up": "export",
+      "arrow.left": "arrow-left", "arrow.right": "arrow-right", minus: "remove", "chevron.left": "chevron-left" };
+    for (const [semantic, glyph] of Object.entries(expected)) {
+      assert.ok(symbolIcon(semantic).includes(`codicon-${glyph}\"`), semantic);
+      assert.ok(codiconStyle().includes(`.codicon-${glyph}:before`), glyph);
+    }
+    assert.strictEqual(symbolIcon(""), "");
+    assert.ok(symbolIcon("untrusted-unknown-symbol").includes("codicon-info"));
+  });
+});
 
 suite("native lesson media", () => {
   test("images retain alternative text and intrinsic proportions without creating an action", () => {

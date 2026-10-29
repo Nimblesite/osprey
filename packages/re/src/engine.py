@@ -51,57 +51,46 @@ def step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex) -> Res
     ins = code_at(prog.code, pc)
     op = ins.op
     if op == acc_op:
-        if endpos >= 0 and pos != endpos:
-            return backtrack(prog, cps, n, acc_op, endpos, frames)
-        else:
-            return Success(value=Hit(pos=pos, saves=saves, lastindex=lastindex))
+        return backtrack(prog, cps, n, acc_op, endpos, frames) if endpos >= 0 and pos != endpos else Success(value=Hit(pos=pos, saves=saves, lastindex=lastindex))
     elif op == "lit":
-        if pos < n and lit_hit(ins, Unicode.at(cps, pos)):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos + 1, saves, frames, lastindex)
-        else:
-            return backtrack(prog, cps, n, acc_op, endpos, frames)
+        return guarded_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, pos < n and lit_hit(ins, Unicode.at(cps, pos)), 1)
     elif op == "any":
-        if pos < n and any_hit(ins, Unicode.at(cps, pos)):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos + 1, saves, frames, lastindex)
-        else:
-            return backtrack(prog, cps, n, acc_op, endpos, frames)
+        return guarded_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, pos < n and any_hit(ins, Unicode.at(cps, pos)), 1)
     elif op == "class":
-        if pos < n and class_hit(ins, Unicode.at(cps, pos)):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos + 1, saves, frames, lastindex)
-        else:
-            return backtrack(prog, cps, n, acc_op, endpos, frames)
+        return guarded_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, pos < n and class_hit(ins, Unicode.at(cps, pos)), 1)
     elif op == "split":
         return step(prog, cps, n, acc_op, endpos, ins.a, pos, saves, listAppend(frames, Frame(pc=ins.b, pos=pos, saves=saves, lastindex=lastindex)), lastindex)
     elif op == "jmp":
         return step(prog, cps, n, acc_op, endpos, ins.a, pos, saves, frames, lastindex)
     elif op == "save":
         return step(prog, cps, n, acc_op, endpos, pc + 1, pos, set_slot(saves, ins.a, pos), frames, intDiv(ins.a, 2) if ins.a % 2 == 1 else lastindex)
-    elif op == "bol":
-        if bol_hit(ins, cps, pos):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
-        else:
-            return backtrack(prog, cps, n, acc_op, endpos, frames)
+    else:
+        return assertion_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, ins)
+
+
+def assertion_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, ins):
+    op = ins.op
+    if op == "bol":
+        return guarded_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, bol_hit(ins, cps, pos), 0)
     elif op == "eol":
-        if eol_hit(ins, cps, n, pos):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
-        else:
-            return backtrack(prog, cps, n, acc_op, endpos, frames)
+        return guarded_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, eol_hit(ins, cps, n, pos), 0)
     elif op == "a_start":
-        if pos == 0:
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
-        else:
-            return backtrack(prog, cps, n, acc_op, endpos, frames)
+        return guarded_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, pos == 0, 0)
     elif op == "wb":
-        if wb_hit(ins, cps, n, pos):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
-        else:
-            return backtrack(prog, cps, n, acc_op, endpos, frames)
+        return guarded_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, wb_hit(ins, cps, n, pos), 0)
     elif op == "backref":
         return backref_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins.a, lastindex)
     elif op == "lookahead":
         return lookahead_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, lastindex)
     elif op == "lookbehind" or op == "lookbehind_not":
         return lookbehind_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, lastindex)
+    else:
+        return backtrack(prog, cps, n, acc_op, endpos, frames)
+
+
+def guarded_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, matched, width):
+    if matched:
+        return step(prog, cps, n, acc_op, endpos, pc + 1, pos + width, saves, frames, lastindex)
     else:
         return backtrack(prog, cps, n, acc_op, endpos, frames)
 

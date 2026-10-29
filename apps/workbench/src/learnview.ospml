@@ -16,6 +16,9 @@ import workbench::Reviews
 type Achieved =
     doneKeys : List<string>
 
+(** Every input read by one challenge, without unrelated challenge attempts. *)
+type ChallengeState = MissingChallenge string | ReadyChallenge Challenge Attempt
+
 (** The Learn regions: the catalogue, the open lesson and each challenge ([LESSONS-MODE]). *)
 module LearnViews
     shelf () = perform Signal<Shelf>.read ()
@@ -23,7 +26,9 @@ module LearnViews
     (** [LESSONS-MODE] Every lesson in catalogue order, with its minutes, a tick when every challenge in it is right, and why it failed to load. *)
     export catalogue () =
         current = shelf ()
-        Ui::column (listConcat ([Ui::styled ("Lessons", ui::Title, ui::Primary), status current], mapList (current.entries, \entry => listed (entry, (perform Signal<Achieved>.read ()).doneKeys))))
+        Ui::column (listConcat ([Ui::styled ("Lessons", ui::Title, ui::Primary), status current], catalogueEntries current))
+
+    catalogueEntries current = listAppend (mapList (current.entries, \entry => listed (entry, (perform Signal<Achieved>.read ()).doneKeys))) (Ui::section ("Explore the workbench", "A sample sketch with a proof checked by the kernel.", [Ui::button ("Open conjunction example", "arrow.right", StartExample)]))
 
     status current = match isEmpty current.shelfProblem
         false => Ui::badge (current.shelfProblem, "exclamationmark.triangle", ui::Caution)
@@ -63,16 +68,16 @@ module LearnViews
         Success found => Lists::find (Blocks::challenges found.lessonBlocks, \item => item.challengeId == id)
 
     (** [LESSONS-CHALLENGES] Challenge `id`: its prompt, what is given, the answer, the kernel's mark, the hints shown and the controls. *)
-    export challenge id =
-        current = shelf ()
-        tutor = perform Signal<Tutor>.read ()
-        match find (current.openSource, id)
-            Error said => Ui::caption said
-            Success item => posed (item, tutor, Tutors::keyOf (current.openSlug, id))
+    export challenge () = match perform Signal<ChallengeState>.read ()
+        MissingChallenge said => Ui::caption said
+        ReadyChallenge item work => posed (item, work)
 
-    posed (item, tutor, key) =
-        work = Tutors::attempt (tutor, key)
-        Ui::section (titleOf item.challengeTask, "", listConcat (listConcat ([Ui::text item.challengePrompt], given item.challengeTask), listConcat ([answered (item, work)], listConcat (Feedback::marks (item, work), Feedback::controls (item, tutor, key)))))
+    (** The complete inputs for the challenge's named signal view. *)
+    export challengeState (bench, id) = match find (bench.shelf.openSource, id)
+        Error said => MissingChallenge said
+        Success item => ReadyChallenge item (Tutors::attempt (bench.tutor, Tutors::keyOf (bench.shelf.openSlug, id)))
+
+    posed (item, work) = Ui::section (titleOf item.challengeTask, "", listConcat (listConcat ([Ui::text item.challengePrompt], given item.challengeTask), listConcat ([answered (item, work)], listConcat (Feedback::marks work, Feedback::controls (item, work)))))
 
     titleOf task = match task
         ProveTask _ => "Prove it"
@@ -112,7 +117,7 @@ module Feedback
         false => [Ui::mark (satAdd row 1, true, ui::Danger, "Refused", said)]
 
     (** The badge and the kernel's words for the last submission, nothing since the last edit. *)
-    export marks (item, work) = listConcat (graded work.attemptMarking, revealed work)
+    export marks work = listConcat (graded work.attemptMarking, revealed work)
 
     graded marking = match marking
         Unmarked => []
@@ -128,7 +133,6 @@ module Feedback
         false => []
 
     (** The hints shown so far, then Submit, Hint, Show solution and Open in the workbench. *)
-    export controls (item, tutor, key) =
-        work = Tutors::attempt (tutor, key)
+    export controls (item, work) =
         hints = Lists::slice (item.challengeHints, 0, work.attemptHints)
-        listAppend (mapList (hints, \hint => Ui::label (hint, "lightbulb")), Ui::row [Ui::action ("Submit", "paperplane", ui::Prominent, Tutors::ready (tutor, key, item), Submit item.challengeId), Ui::action ("Hint", "lightbulb", ui::Plain, work.attemptHints < length item.challengeHints, Hint item.challengeId), Ui::action ("Show solution", "eye", ui::Plain, Tutors::revealable (tutor, key, item), Reveal item.challengeId), Ui::action ("Open in the workbench", "arrow.up.forward.square", ui::Plain, true, Carry item.challengeId)])
+        listAppend (mapList (hints, \hint => Ui::label (hint, "lightbulb")), Ui::row [Ui::action ("Submit", "paperplane", ui::Prominent, Tutors::readyAttempt (work, item), Submit item.challengeId), Ui::action ("Hint", "lightbulb", ui::Plain, work.attemptHints < length item.challengeHints, Hint item.challengeId), Ui::action ("Show solution", "eye", ui::Plain, Tutors::revealableAttempt (work, item), Reveal item.challengeId), Ui::action ("Open in the workbench", "arrow.up.forward.square", ui::Plain, true, Carry item.challengeId)])

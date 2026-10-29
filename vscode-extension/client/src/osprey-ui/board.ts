@@ -1,4 +1,5 @@
 // Mechanical rendering of the host-held board slice defined by Osprey.
+import { renderImage } from "./media";
 import { boardStroke } from "./board-value";
 import { escapeHtml } from "./html";
 import { naturalInteger, record } from "./wire";
@@ -28,8 +29,10 @@ function drawing(slices: ReadonlyMap<string, string> | undefined, base: string, 
 }
 
 /** Canvas receives retained strokes and framing; application code owns all board transitions. */
-export function renderBoard(node: Record<string, unknown>, control: string, slices?: ReadonlyMap<string, string>): string {
+export function renderBoard(node: Record<string, unknown>, control: string, slices?: ReadonlyMap<string, string>, resolveAsset?: (source: string) => string): string {
   if (typeof node.slice !== "string" || !naturalInteger(node.lassoEvent)) throw new Error("The drawing board has no issued slice or lasso binding");
+  if (node.panning === true && !naturalInteger(node.panEvent)) throw new Error("The drawing board camera has no issued binding");
   const state = drawing(slices, node.slice, node.count);
-  return `<div class="osp-board"><canvas tabindex="0" role="img" aria-label="Drawing board" data-board-slice="${escapeHtml(node.slice)}" data-board-state="${escapeHtml(state)}" data-lasso-enabled="${node.lasso === true}" data-lasso-ordinal="${node.lassoEvent}"${control}></canvas></div>`;
+  const backdrop = typeof node.backdrop === "string" && node.backdrop !== "" ? renderImage({ source: node.backdrop, width: 1536, height: 1024 }, resolveAsset, true) : "";
+  return `<div class="osp-board">${backdrop}<canvas tabindex="0" role="img" aria-label="Drawing board" data-board-slice="${escapeHtml(node.slice)}" data-board-state="${escapeHtml(state)}" data-pan-enabled="${node.panning === true}" data-pan-ordinal="${naturalInteger(node.panEvent) ? node.panEvent : ""}" data-lasso-enabled="${node.lasso === true}" data-lasso-ordinal="${node.lassoEvent}"${control}></canvas></div>`;
 }

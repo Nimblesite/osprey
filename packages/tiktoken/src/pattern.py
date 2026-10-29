@@ -96,11 +96,15 @@ def gpt2_piece(cps, i, stop):
 
 def gpt2_contraction(cps, i, stop):
     """'s|'t|'re|'ve|'m|'ll|'d: the case-sensitive contraction alternatives."""
+    return contraction(cps, i, stop, lambda cp: cp)
+
+
+def contraction(cps, i, stop, normalize):
     if Unicode.at(cps, i) != 39 or i + 1 >= stop:
         return 0
     else:
-        second = Unicode.at(cps, i + 1)
-        third = Unicode.at(cps, i + 2)
+        second = normalize(Unicode.at(cps, i + 1))
+        third = normalize(Unicode.at(cps, i + 2))
         if second == 115 or second == 116 or second == 109 or second == 100:
             return 2
         elif (second == 114 or second == 118) and third == 101:
@@ -166,19 +170,7 @@ def cl100k_piece(cps, i, stop):
 def cl_contraction(cps, i, stop):
     """(?i:'s|'t|'re|'ve|'m|'ll|'d): case-insensitive, with U+017F folding to
     s as simple case folding does."""
-    if Unicode.at(cps, i) != 39 or i + 1 >= stop:
-        return 0
-    else:
-        second = fold_cp(Unicode.at(cps, i + 1))
-        third = fold_cp(Unicode.at(cps, i + 2))
-        if second == 115 or second == 116 or second == 109 or second == 100:
-            return 2
-        elif (second == 114 or second == 118) and third == 101:
-            return 3
-        elif second == 108 and third == 108:
-            return 3
-        else:
-            return 0
+    return contraction(cps, i, stop, fold_cp)
 
 
 def fold_cp(cp):

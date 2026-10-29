@@ -376,11 +376,12 @@ impl Resolver<'_> {
                 *locals = saved;
             }
             Expr::Update { record, fields } => {
-                if !locals.values.contains(record) {
-                    self.rewrite_value_name(record, context, false);
-                }
+                let external = !locals.values.contains(record);
                 for field in fields {
                     self.rewrite_expr(&mut field.value, context, locals);
+                }
+                if external {
+                    self.rewrite_record_update(expression, context);
                 }
             }
             Expr::Yield(value) | Expr::Resume(value) => {

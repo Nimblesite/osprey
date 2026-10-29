@@ -5,12 +5,13 @@ namespace workbenchtests
 import workbench::Formulas
 import workbench::Goals
 import workbench::Lists
+import workbenchtests::FixtureFiles
 
 (** The goal-engine cases of [WORKBENCH-VERIFICATION]. *)
 module GoalCases
-    formula text = match Formulas::read text
-        workbench::Read found => found
-        workbench::Faulted _ => workbench::Bot
+    (** A goal formula that does not read is a broken fixture, never `⊥`; the
+        shared fixture helper reports it and aborts. *)
+    formula text = FixtureFiles::formula ("goal", text)
 
     claim text = workbench::Statement(name = "t", named = true, variables = ["p", "q", "r"], claim = formula text)
 
@@ -21,11 +22,74 @@ module GoalCases
     // The open goals after `steps`, or the reason the first failing step gives.
     after (text, steps) = match Goals::run (claim text, steps)
         workbench::Advanced progress => join (mapList (progress.open, goal), " | ")
-        workbench::Stuck problem => "stuck: " + problem.reason
+        workbench::Stuck problem => "stuck: " + reason problem
+        workbench::UnsupportedStep text _ => "unsupported: " + text
+
+    reason problem = match problem
+        workbench::Mismatch comparison => comparison.reason
+        workbench::Inapplicable text => text
 
     closedCount (text, steps) = match Goals::run (claim text, steps)
         workbench::Advanced progress => length progress.done
         workbench::Stuck _ => satSub 0 1
+        workbench::UnsupportedStep _ _ => satSub 0 1
+
+    mismatched outcome = match outcome
+        workbench::Stuck _ => true
+        _ => false
+
+    (** [WORKBENCH-GOALS] Unrecognised prose is unsupported input, never a mathematical mismatch with an invented proposition. *)
+    export unsupportedProse () =
+        expect (mismatched (Goals::run (claim "p", [workbench::Unknown "Hence the result follows."])), false)
+        expect (mismatched (Goals::run (claim "p → p", [workbench::Assume "h" (formula "p"), workbench::Unknown "Use symmetry here."])), false)
+
+    inventedTop outcome = match outcome
+        workbench::Stuck problem => inventedComparison problem
+        _ => false
+
+    inventedComparison problem = match problem
+        workbench::Mismatch comparison => Formulas::equal (comparison.found, workbench::Top)
+        _ => false
+
+    stopped outcome = match outcome
+        workbench::Stuck problem => inapplicable problem
+        _ => false
+
+    inapplicable problem = match problem
+        workbench::Inapplicable _ => true
+        _ => false
+
+    (** [WORKBENCH-GOALS] A missing premise and an unfinished proof supply no proposition; neither offers truth. *)
+    export noInventedTruth () =
+        expect (inventedTop (Goals::run (claim "p", [workbench::Exact "missing"])), false)
+        expect (inventedTop (Goals::run (claim "p", [workbench::Done])), false)
+        expect (stopped (Goals::run (claim "p", [workbench::Exact "missing"])), true)
+        expect (stopped (Goals::run (claim "p", [workbench::Done])), true)
+        expect (stopped (Goals::run (claim "∀ x, x → x", [workbench::Assume "wrong" workbench::Top])), true)
+        expect (stopped (Goals::run (claim "p", [workbench::Assume "h" (formula "p")])), true)
+        expect (stopped (Goals::run (claim "p", [workbench::Split])), true)
+        expect (stopped (Goals::run (claim "p", [workbench::Left])), true)
+        expect (stopped (Goals::run (claim "p ∧ q → p ∧ q", [workbench::Assume "h" (formula "p ∧ q"), workbench::Cases "h" ["only"]])), true)
+        expect (stopped (Goals::run (claim "p → q", [workbench::Assume "h" (formula "p"), workbench::Cases "h" ["a", "b"]])), true)
+        expect (stopped (Goals::run (claim "p → q", [workbench::Assume "h" (formula "p"), workbench::Apply "h"])), true)
+        expect (stopped (Goals::run (claim "p → p", [workbench::Assume "h" (formula "p"), workbench::Exact "h", workbench::Exact "h"])), true)
+
+    unsupported outcome = match outcome
+        workbench::UnsupportedStep text progress => text + " | " + join (mapList (progress.open, goal), " | ") + " | closed ${length progress.done}"
+        _ => "missing unsupported wording"
+
+    (** [WORKBENCH-GOALS] Unsupported text retains the last understood context and prevents later steps from closing its goal. *)
+    export unsupportedProgress () =
+        prefix = [workbench::Assume "h" (formula "p"), workbench::Unknown "Use symmetry here."]
+        expect (unsupported (Goals::run (claim "p → p", listAppend (prefix, workbench::Exact "h"))), "Use symmetry here. | h : p ⊢ p | closed 0")
+        expect (unsupported (Goals::run (claim "p → p", [workbench::Assume "h" (formula "p"), workbench::Exact "h", workbench::Unknown "Another observation."])), "Another observation. |  | closed 1")
+
+    (** [WORKBENCH-GOALS] A refused sentence neither closes a goal nor advances the visible step count. *)
+    export retainedGoal () =
+        walk = Goals::trace (claim "p ∧ q → q ∧ p", [workbench::Assume "h" (formula "p ∧ q"), workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hp", workbench::Exact "hq"])
+        expect (walk.traceAccepted, 3)
+        expect (join (mapList (walk.traceProgress.open, goal), " | "), "hp : p, hq : q ⊢ q | hp : p, hq : q ⊢ p")
+        expect (length walk.traceProgress.done, 0)
 
     (** [WORKBENCH-GOALS]: and_swap closes both goals, one step at a time. *)
     export andSwap () =
@@ -43,8 +107,19 @@ module GoalCases
         expect (after ("p ∨ q → q ∨ p", [workbench::Assume "h" (formula "p ∨ q"), workbench::Cases "h" ["a", "b"], workbench::Right, workbench::Exact "a", workbench::Left, workbench::Exact "b"]), "")
         expect (after ("(p → q) → p → q", [workbench::Assume "f" (formula "p → q"), workbench::Assume "x" (formula "p"), workbench::Apply "f"]), "f : p → q, x : p ⊢ p")
         expect (after ("p → ¬p → q", [workbench::Assume "x" (formula "p"), workbench::Assume "y" (formula "¬p"), workbench::Absurd "x" "y"]), "")
+        expect (after ("p → (p → ⊥) → q", [workbench::Assume "x" (formula "p"), workbench::Assume "f" (formula "p → ⊥"), workbench::Absurd "x" "f"]), "")
+        expect (after ("p → ¬p → ⊥", [workbench::Assume "x" (formula "p"), workbench::Assume "h" (formula "¬p"), workbench::Apply "h", workbench::Exact "x"]), "")
+        expect (after ("p → (p → ⊥) → ⊥", [workbench::Assume "x" (formula "p"), workbench::Assume "f" (formula "p → ⊥"), workbench::Apply "f", workbench::Exact "x"]), "")
+        expect (after ("¬p → ¬p", [workbench::Assume "h" (formula "¬p"), workbench::Assume "x" (formula "p"), workbench::Apply "h", workbench::Exact "x"]), "")
+        expect (after ("p → (p → q) → ⊥", [workbench::Assume "x" (formula "p"), workbench::Assume "f" (formula "p → q"), workbench::Apply "f"]), "stuck: the goal is `⊥`, but `f` concludes `q`")
+        expect (after ("(p → ⊥) → p → q", [workbench::Assume "f" (formula "p → ⊥"), workbench::Assume "x" (formula "p"), workbench::Absurd "f" "x"]), "stuck: `p` does not contradict `p → ⊥`")
+        expect (after ("(¬p ∧ q) → ((p → ⊥) ∧ q)", [workbench::Assume "h" (formula "¬p ∧ q"), workbench::Exact "h"]), "")
+        expect (startsWith (after ("(¬p ∧ q) → ((p → ⊥) ∧ r)", [workbench::Assume "h" (formula "¬p ∧ q"), workbench::Exact "h"]), "stuck:"), true)
         expect (after ("p ↔ p", [workbench::Split]), " ⊢ p → p |  ⊢ p → p")
         expect (after ("∀ x y, x → x", [workbench::Assume "x" workbench::Top, workbench::Assume "y" workbench::Top]), " ⊢ x → x")
+        expect (after ("(p ↔ ¬p) → (p ↔ (p → ⊥))", [workbench::Assume "h" (formula "p ↔ ¬p"), workbench::Exact "h"]), "")
+        expect (after ("(∀ p, ¬p) → (∀ p, p → ⊥)", [workbench::Assume "h" (formula "∀ p, ¬p"), workbench::Exact "h"]), "")
+        expect (startsWith (after ("(∀ p, ¬p) → (∀ p, q → ⊥)", [workbench::Assume "h" (formula "∀ p, ¬p"), workbench::Exact "h"]), "stuck:"), true)
 
     (** [WORKBENCH-GOALS]: a step that does not fit names the goal and what the step offers. *)
     export mismatches () =
@@ -56,7 +131,7 @@ module GoalCases
         expect (after ("p", [workbench::Left]), "stuck: the goal `p` is not a disjunction")
         expect (after ("p", [workbench::Done]), "stuck: the goal `p` is still open")
         expect (after ("p → p", [workbench::Assume "h" (formula "p"), workbench::Exact "h", workbench::Exact "h"]), "stuck: there is nothing left to prove")
-        expect (after ("p", [workbench::Unknown "Hence the result follows."]), "stuck: `Hence the result follows.` is not a step the workbench knows")
+        expect (after ("p", [workbench::Unknown "Hence the result follows."]), "unsupported: Hence the result follows.")
         expect (after ("∀ x, x → x", [workbench::Assume "y" workbench::Top]), "stuck: the goal binds `x` next, not `y`")
         expect (after ("p → q → p", [workbench::Assume "h" (formula "p"), workbench::Cases "h" ["a", "b"]]), "stuck: `h` is `p`, which has no cases")
 
@@ -74,6 +149,7 @@ module GoalCases
     closedBy (statement, steps) = match Goals::run (statement, steps)
         workbench::Advanced progress => length progress.done
         workbench::Stuck _ => 0
+        workbench::UnsupportedStep _ _ => 0
 
     (** [WORKBENCH-GOALS]: a 50-step declaration runs through the engine and closes; the time bound is the benchmark's. *)
     export fifty () =

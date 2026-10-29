@@ -1,6 +1,6 @@
 # Proof Workbench design QA
 
-**Final result: passed** for the standalone design artifact and demonstrated workflows. This is not production workbench acceptance or a proof-kernel qualification.
+**Final result: blocked** for production workbench acceptance. The standalone design artifact passed its historical review; that does not qualify the production application or proof kernel. The current production review below is authoritative for delivery.
 
 ## Evidence
 
@@ -70,4 +70,66 @@ The subsequent application work uses `@osprey/native`; the React study remains a
 
 Evidence at this checkpoint: 44 native-framework cases passed under ARC. Forty focused host checks passed, including real webview pointer drawing through a background render, one event per completed stroke, retained text-control provenance and palette retention after dispatch. Earlier compiled SDK browser checks verified actual Osprey-to-WASM MathML and Unicode editor/caret behavior. The shared board model passed its initial GC/ARC cases before the ongoing application modules were added. Verification scripts and logs are under `vscode-extension/test/suite/` and `target/workbench-*.log`; these are component checks, not application acceptance.
 
-Claude owns the application/store/checker/lesson integration; TMC carries the interface and design guidance. Full application entry points, host media/font packaging, complete screens, native-host execution and the phase exit gates remain unfinished. The latest application check is blocked by a `Checks` declaration collision in the actively edited store/tutor modules. No complete application sign-off is claimed by this checkpoint.
+At this earlier checkpoint, Claude owned the application/store/checker/lesson integration and TMC carried the interface and design guidance. Application entry points, host media/font packaging, complete screens and native execution were unfinished, and the then-current application check was blocked by a `Checks` declaration collision in the store/tutor modules. That compiler blocker has since been resolved: the current 108-case GC/ARC/WASM and coverage receipts appear in the production review below. This paragraph retains historical component evidence and is not a current blocker report or a complete application sign-off.
+
+
+## Production acceptance review · 30 October 2026
+
+Final result: blocked
+
+Reviewed 2026-10-30 Melbourne time. Visual truth is `docs/designs/proof-workbench/screens/`. The implementation uses the existing shared Osprey application and native framework. This is an iteration report, not a pixel-perfect signoff.
+
+## Evidence and normalization
+
+The first root review used browser-rendered captures from `target/workbench-vsix/` and combined each reference and implementation into a single comparison image under `target/workbench-vsix/design-qa/`. Reference is on the left. These are content captures without browser chrome at density 1; no resampling was applied. The initial review aligned image pixels but did not establish the source CSS viewport, so its geometry deltas are provisional until the corrected captures below.
+
+| State | Reference pixels | Initial implementation pixels | Combined comparison | Focused comparison |
+| --- | --- | --- | --- | --- |
+| Optional source | 1488 × 1058 | 1488 × 1058 | `target/workbench-vsix/design-qa/optional-source-comparison.png` | `target/workbench-vsix/design-qa/optional-source-focus.png` |
+| Slate board, completed example | 1488 × 1102 | 1488 × 1102 | `target/workbench-vsix/design-qa/slate-board-comparison.png` | `target/workbench-vsix/design-qa/slate-board-focus.png` |
+| Transcription preview | 1488 × 1098 | 1488 × 1102 | `target/workbench-vsix/design-qa/transcription-comparison.png` | `target/workbench-vsix/design-qa/transcription-focus.png` |
+
+Viewport correction: `docs/designs/proof-workbench/prototype/checks/capture.mjs:9` sets the desktop CSS viewport to **1488 × 1058**, and line 13 uses `fullPage: true`. Thus transcription's 1098-pixel image and slate's 1102-pixel image are scrollable content heights, not CSS viewport heights. Root's earlier instruction to use those image heights as the CSS viewport was incorrect and has been superseded. The host owner is measuring the reference DOM and will recapture at the actual source viewport with full-page content. The approximately 184-pixel visible transcription board deficit remains an observation of the initial images, not a normalized acceptance measurement. The remaining eleven reference states still need corresponding combined comparisons.
+
+Native renderer evidence is separately combined in `target/workbench-vsix/design-qa/optional-source-native-comparison.png` and `slate-board-native-comparison.png`, using `target/workbench-pixel/optional-source-native-current.png` (1488 × 1058) and `slate-board-native-current.png` (1488 × 1102). These match the reference image sizes, which alone does not establish matching viewport/scroll behavior. Actual native-window screenshots are approximately 2898 × 1868 physical pixels and represent a different viewport at density 2; they are interaction evidence, not an exact reference match.
+
+## Findings
+
+- **[P1] Transcription board and footer collapse upward.** The reference board reaches approximately y=990; the implementation reaches approximately y=806. Chalk content is consequently smaller and the page footer leaves a large blank region below it. Evidence: transcription full-view comparison. Restore the shared board's viewport-dependent height and recapture at 1488 × 1098. UI and VSIX owners are coordinating the fix.
+- **[P2] Transcription primary action loses its fill.** “Use this sample statement” is a green filled button in the reference and plain text in the implementation. Evidence: transcription focused comparison. Restore the existing shared primary-button styling and verify both hosts.
+- **[P2] Toolbar icon families differ.** Board navigation, pan, transcription and theme controls use different symbols from the reference. Evidence: slate focused comparison and transcription full view. Bundle the reference's existing icon family through the shared asset path; preserve native and browser accessibility labels. The VSIX owner owns the generic renderer change.
+- **[P2] Document completion rhythm drifts.** In optional-source, the restart action loses its green foreground; its divider and completion footer sit approximately 10–20 pixels lower and the divider is darker than the reference. Evidence: optional-source focused comparison. Correct the shared link style, spacing and divider token. The native/UI owner owns geometry.
+- **[P2] Close focus state and alignment differ.** The reference's apparent larger close border includes its focus ring around a 32-pixel button; the implementation capture has no corresponding ring. This does not justify enlarging the button. The browser transcription glyph is also left-aligned within its control. Evidence: both full views and transcription focus. Match the reference's keyboard focus state, retain correct 32-pixel bounds, and center the existing icon.
+- **[P2] Native goal boundary differs.** In the initial native slate comparison, the separator between completed proof and “AT THIS STEP” is absent and the goal content begins approximately 20 pixels above the reference. The native optional-source completion divider also spans the full document row. Evidence: both native combined comparisons. Restore the shared separator and padding without changing the result content. Native punctuation and caption-height fixes announced after these captures need new visual evidence.
+- **[P1, implementation fixed; visual acceptance open] Imported theorem statements were elaboration dumps.** The earlier bundled arithmetic capture renders `HAdd.hAdd` application details as the statement. Evidence: `target/workbench-vsix/bundled-arithmetic-proof.png`. The shared adapter now presents the verified term through the existing mathematics tree and retains the exact formal statement for inspection; the final 108-case GC, ARC and wasm32 suites prove that flow. Revised host captures still need comparison before this visual finding closes.
+
+## Required fidelity surfaces
+
+- **Fonts and typography:** the reviewed browser states use the reference's serif heading/body treatment and sans controls; mathematical glyphs and heading wrapping are close in the combined views. The imported-statement correction has passing application regressions; its revised host presentation still requires comparison. Native font metrics and all remaining states still require comparison.
+- **Spacing and layout:** slate board geometry is close in this capture. Transcription board height, completion spacing and close-control alignment remain actionable above. Phone/tablet and other reference states have not passed root review.
+- **Colors and tokens:** paper/slate backgrounds and selected proof-row fills agree visually. The transcription action, restart foreground and divider differ. No claim of exact color equivalence is made before these fixes and final sampling.
+- **Image quality and assets:** the actual chalk artwork is reused and appears sharp. Native paper and slate artwork are visible in the exact-size combined comparisons; the earlier opaque paper-compositing failure is absent there. Its browser transcription scale differs because of board geometry. Toolbar icons differ and are being replaced with the reference family.
+- **Copy and content:** truthful kernel results intentionally replace prototype claims such as “No checker on this host.” Retain actual theorem names, assumptions and refusal states. The prototype's simulated transcription remains explicitly identified as a sample. These accuracy changes are required; spacing must accommodate them.
+
+## Interaction evidence and remaining checks
+
+The sealed VSIX receipt `target/workbench-vsix/final-delivery-receipt.json` reports 41 focused browser cases, 806 full extension tests and 169 installed-extension tests, with no source drift for that receipt. The actual bundled Nat, OpenAI and large List flows check proof source and expose assumptions. This proves those interactions, not visual fidelity after subsequent fixes. Console errors and final screenshot provenance must be rechecked with the revised captures.
+
+Root also inspected the actual `/Applications/Visual Studio Code.app` through CUA. Its existing Osprey profile does not expose the canonical `Osprey: Open Workbench` command in the command palette yet. The installed-extension test fixture's receipt does not establish that the user's existing profile has been updated. The VSIX owner has been assigned final installation and an actual proof check in that profile after the next source seal. The palette was closed without changing the user's editor content.
+
+## Comparison history
+
+1. Initial root combined review: the transcription, icon, completion and close-control findings above remain open. Owners received exact evidence and viewport correction through TMC. No post-fix comparison has been accepted yet.
+2. Earlier offscreen imported-result bug: the shared compact theorem picker and result-first inspector made the verdict visible in the actual bundled-proof captures. Exact statement readability remains open; this is not full closure of the imported-proof presentation.
+3. Imported-mathematics correction: a regression scoped to `proof-library-result` failed with a missing math node and `null` instead of the exact `Nat.add_comm` tree. The shared adapter now retains the verified term, and `ProofTerms` uses the existing mathematics tree while preserving the raw view. Separate global-constant collisions (three failed assertions) and sort-label collisions (two failed assertions) were pinned before their fixes. The actual flow produces the required formula tree; its raw-view oracle compares the exact text field instead of a helper that adds separator spaces. All 108 application tests pass under GC, ARC and wasm32, with unchanged final source seals and 90.8% own-source coverage. Revised host receipts and post-fix screenshots remain pending, so the visual finding is not closed yet.
+4. Reference viewport correction: the source capture script establishes 1058 CSS pixels plus full-page output for the desktop states. Image height was previously conflated with viewport height. Revised captures must establish both dimensions before geometry findings can close. The filled-action and icon-family differences remain directly visible regardless of this normalization correction.
+
+## Implementation checklist
+
+1. Fix the recorded shared/native/browser geometry and styling regressions with their existing failing interaction or renderer tests.
+2. Recapture the same reference state at its exact viewport and density; retain before/after comparison evidence.
+3. Review the corrected mathematics presentation in fresh host captures, preserving exact formal source and actual assumptions.
+4. Compare every supplied reference state on its applicable host, including phone/tablet and error states; check focus, keyboard controls, overflow and console errors.
+5. Refresh relevant host tests and package receipts after the final source changes. Mark passed only after all actionable P0/P1/P2 findings close.
+
+No follow-up polish is being used to defer these acceptance blockers.

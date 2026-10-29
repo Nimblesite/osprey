@@ -50,6 +50,39 @@ main () = match climb ([3, 1, 4], 0, 0)
     Failed m => print m
 "#;
 
+const RECORD_DEFAULTS: &str = r"namespace ui
+type Frame =
+    width : int
+    height : int
+module Defaults
+    export plain = Frame(width = 1, height = 2)
+    export altered = plain(width = 430)
+    export resize width = plain(width = width)
+";
+const RECORD_UPDATES: &str = r#"namespace app
+import ui::Defaults
+    plain
+    altered
+    resize
+main () =
+    changed = plain(width = 10)
+    print "${changed.width}:${plain.height}:${altered.width}:${(resize 20).height}"
+"#;
+
+#[test]
+fn imported_record_constants_survive_updates_in_initializers_and_functions() {
+    let sources = [
+        parsed("src/defaults.ospml", Flavor::Ml, RECORD_DEFAULTS),
+        parsed("src/main.ospml", Flavor::Ml, RECORD_UPDATES),
+    ];
+    let project = assemble(&config("src/main.ospml"), &sources);
+    assert!(project.is_ok(), "{project:?}");
+    if let Ok(project) = project {
+        let errors = osprey_types::check_program(&project.program);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+}
+
 #[test]
 fn a_function_field_called_from_a_recursive_descent_checks_quickly() {
     let entry_path = "src/main.ospml";

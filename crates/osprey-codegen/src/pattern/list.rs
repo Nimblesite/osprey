@@ -82,11 +82,12 @@ fn bind_list_arm(
             // `[first, second]` arm over a `List<float>` binds floats
             // ([`crate::collections::LIST_TAG`]).
             let elem = crate::collections::elem_value(cg, list_val, &raw);
-            bind_value(
-                cg,
-                name.clone(),
-                elem.with_owner(list_val.payload_owner.clone()),
-            );
+            // Keep the record identity recovered from the element tag. [TYPE-FIELD-ACCESS-NON-RECORD]
+            let owner = elem
+                .osp_ty
+                .clone()
+                .or_else(|| list_val.payload_owner.clone());
+            bind_value(cg, name.clone(), elem.with_owner(owner));
         }
     }
     if let Some(name) = rest {
@@ -112,5 +113,24 @@ fn bind_list_arm(
         // step. [GC-ARC-PERCEUS]
         crate::arc::own(cg, &v);
         bind_value(cg, name.to_string(), v);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_pattern_preserves_the_elements_record_and_nested_list_owners() {
+        for owner in ["Binder", "List#i64"] {
+            let mut cg = Codegen::new();
+            cg.begin_function("pattern", None);
+            let rows = Value::handle("%rows", format!("List#{owner}"));
+            bind_list_arm(&mut cg, &rows, &[Pattern::Binding("head".into())], None, 1);
+            assert_eq!(
+                cg.lookup("head").and_then(|value| value.osp_ty),
+                Some(owner.to_string())
+            );
+        }
     }
 }

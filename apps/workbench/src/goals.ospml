@@ -1,7 +1,7 @@
 // Implements [WORKBENCH-GOALS]: the hypotheses and goals after each step, and
 // why a step fails, computed in process so the goal pane answers per keystroke.
 // A `Result`'s error channel stores only a message ([TYPE-SYSTEM] phantom `E`),
-// so a step's outcome is the `Advanced` or `Stuck` variant carrying typed values.
+// so each outcome carries typed progress, a mismatch, or unsupported wording.
 namespace workbench
 
 import workbench::Formulas
@@ -21,14 +21,23 @@ type Progress =
     done : List<Goal>
     open : List<Goal>
 
-(** Why a step does not fit its goal: the formula the goal needs, the one the step offers, and the sentence that says so. *)
-type Mismatch =
+(** Actual formulas compared when a step offers the wrong proposition. *)
+type Comparison =
     expected : Formula
     found : Formula
     reason : string
 
-(** The progress after a step, or the mismatch that stopped it. *)
-type Outcome = Advanced Progress | Stuck Mismatch
+(** A mathematical comparison, or an inapplicable operation with no supplied formula. *)
+type Failure = Mismatch Comparison | Inapplicable string
+
+(** Progress, a mathematical mismatch, or unsupported wording with the last understood progress. *)
+type Outcome = Advanced Progress | Stuck Failure | UnsupportedStep string Progress
+
+(** The last understood context and its step count, retained even when a later sentence is refused or unsupported. *)
+type GoalTrace =
+    traceProgress : Progress
+    traceOutcome : Outcome
+    traceAccepted : int
 
 (** What a hypothesis name refers to in a goal. *)
 type Lookup = Held Formula | Absent
@@ -60,17 +69,27 @@ module Goals
         Success goal => advance (progress, goal, Lists::rest progress.open, step)
 
     (** The progress after every step in order, stopping at the first mismatch. *)
-    export run (statement, steps) = foldList (steps, Advanced (start statement), \(outcome, step) => next (outcome, step))
+    export run (statement, steps) = (trace (statement, steps)).traceOutcome
 
-    next (outcome, step) = match outcome
-        Stuck problem => Stuck problem
-        Advanced progress => apply (progress, step)
+    (** The last understood goals and exact number of applied steps; a refused sentence never advances either. *)
+    export trace (statement, steps) = foldList (steps, GoalTrace(traceProgress = start statement, traceOutcome = Advanced (start statement), traceAccepted = 0), \(walk, step) => traced (walk, step))
+
+    traced (walk, step) = match walk.traceOutcome
+        Advanced progress => accepted (walk, apply (progress, step))
+        _ => walk
+
+    accepted (walk, outcome) = match outcome
+        Advanced progress => GoalTrace(traceProgress = progress, traceOutcome = outcome, traceAccepted = satAdd walk.traceAccepted 1)
+        _ => walk(traceOutcome = outcome)
 
     finished (progress, step) = match step
         Done => Advanced progress
-        _ => stuck (Top, Top, "there is nothing left to prove")
+        Unknown text => UnsupportedStep text progress
+        _ => stopped "there is nothing left to prove"
 
-    stuck (expected, found, reason) = Stuck (Mismatch(expected = expected, found = found, reason = reason))
+    stuck (expected, found, reason) = Stuck (Mismatch (Comparison(expected = expected, found = found, reason = reason)))
+
+    stopped reason = Stuck (Inapplicable reason)
 
     // Replaces the first open goal by `goals`, keeping the rest after them.
     replaced (progress, rest, goals) = Advanced (progress(open = listConcat (goals, rest)))
@@ -86,8 +105,8 @@ module Goals
         Exact name => exact (progress, goal, rest, name)
         Apply name => applied (progress, goal, rest, name)
         Absurd name other => absurd (progress, goal, rest, { name = name, other = other })
-        Done => stuck (goal.target, Top, "the goal `" + Formulas::show goal.target + "` is still open")
-        Unknown text => stuck (goal.target, Top, "`" + text + "` is not a step the workbench knows")
+        Done => stopped ("the goal `" + Formulas::show goal.target + "` is still open")
+        Unknown text => UnsupportedStep text progress
 
     lookup (goal, name) = foldList (goal.hypotheses, Absent, \(found, hypothesis) => matching (found, hypothesis, name))
 
@@ -95,15 +114,16 @@ module Goals
         true => Held hypothesis.formula
         false => found
 
-    unknown (goal, name) = stuck (goal.target, Top, "there is no hypothesis `" + name + "`")
+    unknown (goal, name) = stopped ("there is no hypothesis `" + name + "`")
 
-    holds (formula, target) = Formulas::equal (formula, target)
+    holds (formula, target) = Formulas::equivalent (formula, target)
 
     // `Assume h : A` on `A → B` adds `h : A`; on `∀ x ...` it introduces `x`, which must be the name.
-    assumed (progress, goal, rest, hypothesis) = match goal.target
+    // A negated head is read as the implication it is defined to be; the goal itself is never rewritten.
+    assumed (progress, goal, rest, hypothesis) = match Formulas::expandNot goal.target
         Imp premise conclusion => introduced (progress, goal, rest, { hypothesis = hypothesis, premise = premise, conclusion = conclusion })
         Forall names body => bound (progress, goal, rest, { name = hypothesis.name, names = names, body = body })
-        _ => stuck (goal.target, hypothesis.formula, "the goal `" + Formulas::show goal.target + "` is not an implication to assume")
+        _ => stopped ("the goal `" + Formulas::show goal.target + "` is not an implication to assume")
 
     introduced (progress, goal, rest, parts) = match holds (parts.hypothesis.formula, parts.premise)
         true => replaced (progress, rest, [Goal(hypotheses = listAppend (goal.hypotheses, parts.hypothesis), target = parts.conclusion)])
@@ -115,7 +135,7 @@ module Goals
 
     named (progress, goal, rest, binding) = match binding.first == binding.parts.name
         true => replaced (progress, rest, [goal(target = remaining (binding.parts.names, binding.parts.body))])
-        false => stuck (goal.target, Var binding.parts.name, "the goal binds `" + binding.first + "` next, not `" + binding.parts.name + "`")
+        false => stopped ("the goal binds `" + binding.first + "` next, not `" + binding.parts.name + "`")
 
     remaining (names, body) = match length names <= 1
         true => body
@@ -130,7 +150,7 @@ module Goals
         Absent => unknown (goal, parts.name)
         Held formula => match length parts.names == 2
             true => cases (progress, goal, rest, { parts = parts, formula = formula })
-            false => stuck (formula, formula, "cases on `" + parts.name + "` names exactly two parts")
+            false => stopped ("cases on `" + parts.name + "` names exactly two parts")
 
     cases (progress, goal, rest, split) =
         first = listGet split.parts.names 0 ?: ""
@@ -139,16 +159,16 @@ module Goals
         match split.formula
             And left right => replaced (progress, rest, [goal(hypotheses = with (with (kept, first, left), second, right))])
             Or left right => replaced (progress, rest, [goal(hypotheses = with (kept, first, left)), goal(hypotheses = with (kept, second, right))])
-            _ => stuck (And (Var "A") (Var "B"), split.formula, "`" + split.parts.name + "` is `" + Formulas::show split.formula + "`, which has no cases")
+            _ => stopped ("`" + split.parts.name + "` is `" + Formulas::show split.formula + "`, which has no cases")
 
     both (progress, goal, rest) = match goal.target
         And left right => replaced (progress, rest, [goal(target = left), goal(target = right)])
         Iff left right => replaced (progress, rest, [goal(target = Imp left right), goal(target = Imp right left)])
-        _ => stuck (And (Var "A") (Var "B"), goal.target, "the goal `" + Formulas::show goal.target + "` is not a conjunction to split")
+        _ => stopped ("the goal `" + Formulas::show goal.target + "` is not a conjunction to split")
 
     side (progress, goal, rest, left) = match goal.target
         Or first second => replaced (progress, rest, [goal(target = chosen (left, first, second))])
-        _ => stuck (Or (Var "A") (Var "B"), goal.target, "the goal `" + Formulas::show goal.target + "` is not a disjunction")
+        _ => stopped ("the goal `" + Formulas::show goal.target + "` is not a disjunction")
 
     chosen (left, first, second) = match left
         true => first
@@ -167,9 +187,9 @@ module Goals
             true => closed (progress, goal, rest)
             false => premised (progress, goal, rest, { name = name, formula = formula })
 
-    premised (progress, goal, rest, held) = match held.formula
+    premised (progress, goal, rest, held) = match Formulas::expandNot held.formula
         Imp premise conclusion => concluded (progress, goal, rest, { name = held.name, premise = premise, conclusion = conclusion })
-        _ => stuck (Imp (Var "A") goal.target, held.formula, "`" + held.name + "` is `" + Formulas::show held.formula + "`, not an implication")
+        _ => stopped ("`" + held.name + "` is `" + Formulas::show held.formula + "`, not an implication")
 
     concluded (progress, goal, rest, parts) = match holds (parts.conclusion, goal.target)
         true => replaced (progress, rest, [goal(target = parts.premise)])

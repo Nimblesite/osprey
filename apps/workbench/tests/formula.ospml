@@ -4,6 +4,7 @@ namespace workbenchtests
 import workbench::Formulas
 import ui::Maths
 import ui::Doc
+import workbenchtests::FixtureFiles
 
 (** The formula cases of [WORKBENCH-VERIFICATION]. *)
 module FormulaCases
@@ -11,9 +12,9 @@ module FormulaCases
         workbench::Read formula => Formulas::show formula
         workbench::Faulted fault => "fault ${fault.column}: ${fault.expected}"
 
-    formula text = match Formulas::read text
-        workbench::Read found => found
-        workbench::Faulted _ => workbench::Bot
+    (** A formula fixture that does not read is a broken test, never `⊥`; the
+        shared fixture helper reports it and aborts. *)
+    formula text = FixtureFiles::formula ("fixture", text)
 
     equalTexts (first, second) = Formulas::equal (formula first, formula second)
 
@@ -66,6 +67,16 @@ module FormulaCases
     export equality () =
         expect (equalTexts ("p ∧ q", "p and q"), true)
         expect (equalTexts ("p ∧ q", "q ∧ p"), false)
+        variable = workbench::Var "¬p"
+        negation = workbench::Not (workbench::Var "p")
+        expect (Formulas::equal (variable, negation), false)
+        expect (Formulas::equal (negation, negation), true)
+        expect (Formulas::equal (workbench::Var "p → q", workbench::Imp (workbench::Var "p", workbench::Var "q")), false)
+        expect (Formulas::equal (workbench::Var "⊤", workbench::Top), false)
+        expect (Formulas::equal (workbench::Forall (["a b"], workbench::Var "a"), workbench::Forall (["a", "b"], workbench::Var "a")), false)
+        expect (Formulas::equal (workbench::Forall (["x"], workbench::Var "x"), workbench::Forall (["x"], workbench::Var "x")), true)
+        expect (Formulas::equal (negation, workbench::Imp (workbench::Var "p", workbench::Bot)), false)
+        expect (Formulas::equivalent (negation, workbench::Imp (workbench::Var "p", workbench::Bot)), true)
 
     layout text = Maths::encode (Formulas::typeset (formula text))
 

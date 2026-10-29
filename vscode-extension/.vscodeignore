@@ -8,6 +8,8 @@ tsconfig.json
 .vscode/**
 .vscode-test/**
 .vscode-test.js
+**/.deslop/**
+**/.too_many_cooks/**
 .DS_Store
 .c8rc.json
 coverage/**

@@ -1,8 +1,8 @@
 # Osprey Proof Workbench
 
-A blackboard that checks. Mathematicians and scientists write a theorem the way they would on a board, in symbols or in sentences, write the proof as the steps they would say, and watch each step checked as it is written. The proof is read back typeset, like a page of a paper, and a scratch board beside it takes chalk strokes that can become checked lines. Nobody writes code: the Osprey proof file is generated, shown on request, and saved.
+Write a supported logical statement and its proof steps, inspect the changing hypotheses and goals, and see the Osprey kernel accept a complete proof or refuse an invalid one. The app typesets the mathematics beside a scratch board. Free-form writing and board strokes remain unverified; supported sentences must be recognised before they can contribute to a checked proof. Generated source is available on request.
 
-Contract: [spec 0051](../../docs/specs/applications/0051-ProofWorkbench.md). Delivery: [plan 0042](../../docs/plans/0042-proof-workbench.md). Status: **proof-language modules implemented; application and hosts in progress.** Verdicts come from the `lean4` discipline of [spec 0049](../../docs/specs/language/0049-DependentTypesAndProofs.md); until it ships every declaration shows as unchecked, and the workbench never fills a badge on its own.
+Contract: [spec 0051](../../docs/specs/applications/0051-ProofWorkbench.md). Delivery: [plan 0042](../../docs/plans/0042-proof-workbench.md). Status: **proof-language modules implemented; application and hosts in progress.** The app elaborates supported steps into terms and calls the shared Osprey kernel directly. A Checked badge requires the kernel to accept the statement and proof. The separate generated-text-to-Lean workflow is not the source of that verdict; incomplete generated proofs retain explicit holes. See [spec 0049](../../docs/specs/language/0049-DependentTypesAndProofs.md).
 
 ```
 Theorem and_swap. For all p q, p ∧ q → q ∧ p.
@@ -37,18 +37,21 @@ The browser and native app share the Osprey application built on `@osprey/native
 | `src/formula.ospml` | Propositional formulas read from symbols or sentences, shown, typeset |
 | `src/statement.ospml`, `src/step.ospml` | Theorem headings and the sentence forms of proof steps |
 | `src/goals.ospml` | Hypotheses and goal after each step; what a failing step expected and found |
-| `src/emit.ospml` | The generated `.ospml` |
-| `src/verdict.ospml` | Running `osprey prove check` and showing its answer |
+| `src/emit.ospml` | Read-only generated proof text, including holes for unfinished steps |
+| `src/verdict.ospml` | Elaborating supported steps and asking the shared kernel for a verdict |
 | `src/board.ospml` | Chalk strokes, lasso recognition, the chalk theme |
-| `src/library.ospml` | Search by name or statement shape |
+| `src/shelf.ospml`, `src/learnview.ospml` | Lesson catalogue and guided exercises |
 | `src/app.ospml`, `src/main.ospml` | The store, `update`, regions and host entry points over [`@osprey/native`](../../packages/native/README.md) |
 | `tests/` | Fixture-driven suite; `tests/golden/` holds the generated files |
 
 ## Running
 
+Run the suite from its test directory, where the lesson fixture paths resolve. From the repository root:
+
 ```sh
-osprey apps/workbench/tests --run --quiet          # the suite
-osprey apps/workbench --check                      # types, effects, documented exports
+(cd apps/workbench/tests && osprey . --run --quiet --memory=gc)
+(cd apps/workbench/tests && osprey . --run --quiet --memory=arc)
+osprey apps/workbench --check
 ```
 
 Hosts, in delivery order: VS Code through [`@osprey/vscode`](../../packages/vscode/README.md), the browser through `hosts/web/`, macOS and iPadOS through `hosts/apple/`. One application, the same `update` and regions on each; a host draws and completes capabilities and decides nothing.

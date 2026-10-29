@@ -28,7 +28,7 @@
   content: "";
   width: 30px;
   height: 30px;
-  background: url("/assets/images/logo.png") center / contain no-repeat;
+  background: url("/assets/images/logo.png?v=78c86be1f1f7") center / contain no-repeat;
   flex-shrink: 0;
 }
 

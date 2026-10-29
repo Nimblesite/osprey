@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.400 --> 00:18.417
+A proof kernel checks whether a formal proof term has the type representing its theorem. Osprey is a functional programming language with a kernel written in Osprey. We will follow a dependent function example through inference, reduction, and comparison, explaining each step as it appears.
+
+00:19.267 --> 00:33.291
+Terms are tagged values. A sort gives a type of types at a universe level. A variable refers to a binder, a named input. A function type records its input and result. Application supplies an argument.
+
+00:34.141 --> 00:52.103
+Inference computes a term's type. Reduction simplifies terms by computation. Two terms are definitionally equal when they reduce to the same normal form. The checker compares normal forms structurally, including every binder and universe argument. A difference is an error.
+
+00:52.953 --> 01:12.327
+The surface parser reads declarations like the identity theorem and a chained implication. An elaborator turns each into a kernel term. Identity and typed implication composition check. A declaration claiming q from only p is rejected. The elaborator invents no unknown terms.
+
+01:13.177 --> 01:27.655
+The run prints the accepted identity and the rejected variant. The kernel's reason names the terms that failed to match. Nothing is waved through because a theorem has a promising name. The rejection controls the acceptance.
+
+01:28.505 --> 01:52.390
+The implementation has moved beyond this introductory example. It checks inductive declarations, Lean's natural-number addition commutativity proof, and nine selected supporting lemmas from the OpenAI math release. Each of those nine also has a corrupted-proof control and a false-statement control. The library port is underway, with concrete results you can reproduce.

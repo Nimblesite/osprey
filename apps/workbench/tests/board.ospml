@@ -2,6 +2,8 @@
 namespace workbenchtests
 
 import workbench::Boards
+import workbench::Benches
+import workbench::Workspaces
 import ui::Doc
 
 (** Board state and persistence cases for [WORKBENCH-VERIFICATION]. *)
@@ -32,6 +34,16 @@ module BoardCases
         expect (undone.boardNotes, original.boardNotes)
         expect (undone.boardPanY, -12)
         expect (length (Boards::undo (Boards::undo undone)).boardStrokes, 0)
+        framing original
+
+    framing original =
+        bounded = Boards::frame (original, -1000001, 1000001, 24)
+        expect (bounded.boardPanX, -1000000)
+        expect (bounded.boardPanY, 1000000)
+        expect (bounded.boardZoom, 25)
+        expect ((Boards::frame (bounded, 0, 0, 401)).boardZoom, 400)
+        expect (length bounded.boardStrokes, 1)
+        expect (bounded.boardNotes, original.boardNotes)
 
     restored source = match Boards::read source
         Success board => Boards::write board
@@ -43,6 +55,7 @@ module BoardCases
         expect (restored source, source)
         armed = Boards::requestClear (working ())
         expect (restored (Boards::write armed), source)
+        workspaceRoundTrip ()
 
     refused source = match Boards::read source
         Success _ => false
@@ -56,6 +69,19 @@ module BoardCases
         expect (refused (replace source "\"version\":1" "\"version\":2" ?: ""), true)
         expect (refused (replace source "\"scale\":150" "\"scale\":0" ?: ""), true)
         expect (refused (replace source "\"width\":3" "\"width\":0" ?: ""), true)
+        metadataRefusals source
+
+    corrupted (source, before, after) =
+        changed = replace source before after ?: source
+        expect (changed == source, false)
+        changed
+
+    metadataRefusals source =
+        expect (refused (corrupted (source, "\"notes\":\"Keep this calculation.\"", "\"notes\":42")), true)
+        expect (refused (corrupted (source, "\"strokes\":[{\"points\":[[12,20],[18,24]],\"width\":3,\"at\":42}]", "\"strokes\":{}")), true)
+        expect (refused (corrupted (source, "\"width\":1536", "\"width\":16385")), true)
+        expect (refused (corrupted (source, "\"height\":1024", "\"height\":\"1024\"")), true)
+        expect (refused (corrupted (source, "\"points\":[[12,20]", "\"points\":[[16385,20]")), true)
 
     (** Runtime slices keep framing separate and store each stroke once under its stable index. *)
     export slices () =
@@ -66,3 +92,20 @@ module BoardCases
         expect (Doc::has (metadata, "strokes"), false)
         expect (Doc::number (Doc::field (metadata, "view"), "scale"), 150)
         expect (Doc::text (metadata, "notes"), "Keep this calculation.")
+
+
+    workspaceRoundTrip () = match Workspaces::encode (Benches::fresh (), working ())
+        Error problem => expect (problem, "A portable workspace must encode")
+        Success source => match Workspaces::decode source
+            Error problem => expect (problem, "The encoded workspace must reopen")
+            Success saved =>
+                expect (saved.title, "Untitled solution")
+                expect (saved.source, "")
+                expect (Boards::write saved.board, Boards::write (working ()))
+                expect (structuralEquals (Doc::field (Doc::parse source, "checks")) JsonNull, true)
+                expect (workspaceRefused (replace source "\"version\":1" "\"version\":2" ?: ""), true)
+                expect (workspaceRefused "{\"version\":1,\"title\":\"Wrong\",\"text\":42}", true)
+
+    workspaceRefused source = match Workspaces::decode source
+        Error _ => true
+        Success _ => false

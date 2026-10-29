@@ -174,6 +174,21 @@ _runtime_klee:
 	      -passes=osprey-gc-roots -verify-each $$runtime -o $$runtime; fi; \
 	  $(KLEE_LLVM_BIN)/opt -load-pass-plugin=bin/libosprey_gc_roots.so \
 	      -passes=osprey-runtime-prepared -verify-each $$runtime -o $$runtime; \
-	  open="$$($(KLEE_NM) --undefined-only $$runtime | awk '{print $$2}' | grep -Ev '$(KLEE_PROVIDED)' || true)"; \
-	  if [ -n "$$open" ]; then echo "ERROR: symbolic $$backend runtime is not closed:"; echo "$$open"; exit 1; fi; \
+	  $(MAKE) -C "$(CURDIR)" --no-print-directory -s _klee_closure \
+	    RUNTIME="$$(pwd)/$$runtime" KLEE_BACKEND=$$backend; \
 	done
+
+# [SYMEX-MOCK-CLOSED] A closed KLEE module needs no symbol KLEE does not
+# provide. RUNTIME is the linked bitcode; KLEE_BACKEND only labels the error.
+# Each stage reports its own failure: a broken nm or awk is an error even
+# though it prints no symbols, and only grep's exit 1 (no matches) means the
+# closure is empty. A swallowing `|| true` here would accept an empty result
+# from a tool that never ran.
+_klee_closure:
+	@set -e; status=0; symbols="$$("$(KLEE_NM)" --undefined-only "$(RUNTIME)")" \
+	  || { echo "ERROR: $(KLEE_NM) failed on $(RUNTIME)"; exit 1; }; \
+	  names="$$(printf '%s\n' "$$symbols" | awk '{print $$2}')" \
+	  || { echo "ERROR: cannot read symbol names from $(RUNTIME)"; exit 1; }; \
+	  open="$$(printf '%s\n' "$$names" | grep -Ev '$(KLEE_PROVIDED)')" || status=$$?; \
+	  if [ "$$status" -gt 1 ]; then echo "ERROR: cannot filter provided symbols from $(RUNTIME)"; exit 1; fi; \
+	  if [ -n "$$open" ]; then echo "ERROR: symbolic $(KLEE_BACKEND) runtime is not closed:"; echo "$$open"; exit 1; fi

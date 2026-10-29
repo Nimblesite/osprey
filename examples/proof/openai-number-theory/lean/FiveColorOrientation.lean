@@ -23,22 +23,58 @@ def forwardColorPair (D x y : Int) : Prop :=
 theorem short_shift_quotient_gap (D x y : Int) (hD : 0 < D)
     (hlow : D ≤ y - x) (hupp : y - x < 2 * D) :
     y / D - x / D = 1 ∨ y / D - x / D = 2 := by
-  have h1 := Int.ediv_le_ediv hD (show x + 1 * D ≤ y by omega)
-  have h2 := Int.ediv_le_ediv hD (show y ≤ x + 2 * D by omega)
+  have hxy1 : x + 1 * D ≤ y := by
+    rw [Int.one_mul]
+    exact Int.add_le_of_le_sub_left hlow
+  have hxy2 : y ≤ x + 2 * D := by
+    exact Int.le_of_lt (Int.lt_add_of_sub_left_lt hupp)
+  have h1 := Int.ediv_le_ediv hD hxy1
+  have h2 := Int.ediv_le_ediv hD hxy2
   rw [Int.add_mul_ediv_right _ _ (Int.ne_of_gt hD)] at h1 h2
-  omega
+  have hg1 : 1 ≤ y / D - x / D := Int.le_sub_left_of_add_le h1
+  have hg2 : y / D - x / D ≤ 2 := Int.sub_left_le_of_le_add h2
+  cases Int.lt_or_le (y / D - x / D) 2 with
+  | inl h => exact Or.inl (Int.le_antisymm ((Int.lt_add_one_iff).1 h) hg1)
+  | inr h => exact Or.inr (Int.le_antisymm hg2 h)
 
 theorem short_shift_forward_colors (D x y : Int) (hD : 0 < D)
     (hlow : D ≤ y - x) (hupp : y - x < 2 * D) : forwardColorPair D x y := by
   have hg := short_shift_quotient_gap D x y hD hlow hupp
   unfold forwardColorPair intervalColor
-  omega
+  cases hg with
+  | inl h =>
+      have hy : y / D = x / D + 1 := (Int.sub_eq_iff_eq_add').1 h
+      left
+      rw [hy, Int.sub_emod_emod, Int.emod_sub_emod, Int.add_comm (x / D) 1,
+        Int.add_sub_cancel]
+      decide
+  | inr h =>
+      have hy : y / D = x / D + 2 := (Int.sub_eq_iff_eq_add').1 h
+      right
+      rw [hy, Int.sub_emod_emod, Int.emod_sub_emod, Int.add_comm (x / D) 2,
+        Int.add_sub_cancel]
+      decide
 
 theorem short_shift_not_reverse_colors (D x y : Int) (hD : 0 < D)
     (hlow : D ≤ y - x) (hupp : y - x < 2 * D) : ¬forwardColorPair D y x := by
   have hg := short_shift_quotient_gap D x y hD hlow hupp
   unfold forwardColorPair intervalColor
-  omega
+  intro hc
+  cases hg with
+  | inl h =>
+      have hy : y / D = x / D + 1 := (Int.sub_eq_iff_eq_add').1 h
+      rw [hy, Int.sub_emod_emod, Int.emod_sub_emod, Int.sub_eq_add_neg,
+        Int.neg_add, Int.add_neg_cancel_left] at hc
+      cases hc with
+      | inl h => cases h
+      | inr h => cases h
+  | inr h =>
+      have hy : y / D = x / D + 2 := (Int.sub_eq_iff_eq_add').1 h
+      rw [hy, Int.sub_emod_emod, Int.emod_sub_emod, Int.sub_eq_add_neg,
+        Int.neg_add, Int.add_neg_cancel_left] at hc
+      cases hc with
+      | inl h => cases h
+      | inr h => cases h
 
 theorem intervalColor_bounds (D x : Int) : 0 ≤ intervalColor D x ∧ intervalColor D x < 5 := by
   exact ⟨Int.emod_nonneg _ (by decide), Int.emod_lt_of_pos _ (by decide)⟩

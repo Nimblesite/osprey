@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.400 --> 00:18.040
+Navier-Stokes equations describe fluid motion through velocity, pressure, and viscosity. We will inspect the model in Osprey’s workbench, evaluate a known two-dimensional solution using Osprey code, and then construct a small checked argument from explicit premises.
+
+00:18.890 --> 00:41.528
+In the workbench lesson, u is velocity, p is pressure, nu is viscosity, and f is an external force. The first equation balances acceleration against pressure, viscosity, and forcing. Zero divergence expresses incompressibility. Our computed example uses unit density, a periodic domain, and zero external force.
+
+00:42.378 --> 01:06.144
+Osprey evaluates separated spatial profiles and exponential time factors. Python reconstructs the field from that output and measures finite-difference residuals. Both momentum equations and divergence are checked. Using a four-times-finer spatial grid reduces the momentum residual by about fifteen times, consistent with second-order spatial convergence.
+
+01:06.994 --> 01:28.321
+The velocity amplitude decays exponentially at twice the viscosity parameter, and kinetic energy decays at four times that parameter. The changing energy readout follows this prediction. These numerical checks validate the evaluation of this particular exact periodic solution; they are not a proof term checked by Osprey’s kernel.
+
+01:29.171 --> 01:50.710
+The lesson also supplies a propositional proof exercise. Assume smooth or blowup, and assume not blowup. Derive smooth by cases, using contradiction for the excluded branch. Osprey checks that argument through its kernel. These propositions are placeholders for claims; no definition of fluid regularity is imported by naming them.
+
+02:06.804 --> 02:27.845
+Open the lesson and work through the remaining-outcome exercise. Inspect the hypotheses, the changing goal, and the final kernel verdict. The next mathematical task is to formalize the fluid definitions and connect them to a theorem. The current film gives you runnable calculations and a checked logical starting point.

@@ -5,21 +5,24 @@
 
 import { symbolIcon } from "./icons";
 import { record, type Regions, type RegionSnapshot } from "./protocol";
-import { themeStyle } from "./theme";
+import { themeStyle, themeDeclarations } from "./theme";
 import { escapeHtml } from "./html";
 import { renderMath } from "./math";
 import { renderEditor } from "./editor";
 import { renderBoard } from "./board";
 import { renderImage, renderVideo } from "./media";
+import { renderFrame } from "./frame";
 export { escapeHtml } from "./html";
 
 export interface RenderOptions {
   readonly regions: Regions;
   readonly assetUri?: string;
+  readonly symbols?: ReadonlyMap<string, string>;
   readonly theme?: unknown;
   readonly maxNodes?: number;
   readonly slices?: ReadonlyMap<string, string>;
   readonly resolveAsset?: (source: string) => string;
+  readonly loadingText?: string;
 }
 
 interface Context extends RenderOptions {
@@ -30,12 +33,16 @@ interface Context extends RenderOptions {
   readonly budget: { nodes: number };
 }
 
+function symbol(name: string, ctx: Context): string {
+  return symbolIcon(name, ctx.symbols?.get(name));
+}
+
 const MAX_DEPTH = 64;
 const DEFAULT_MAX_NODES = 6000;
 
 const ROLES = new Set(["display", "large", "title", "heading", "lead", "headline", "body", "callout", "caption", "eyebrow", "mono"]);
 const TONES = new Set(["primary", "secondary", "accent", "good", "caution", "danger"]);
-const BUTTON_ROLES = new Set(["prominent", "plain", "destructive"]);
+const BUTTON_ROLES = new Set(["prominent", "plain", "destructive", "filled"]);
 
 function text(node: Record<string, unknown>, key: string): string {
   return typeof node[key] === "string" ? node[key] : "";
@@ -88,6 +95,18 @@ function textNode(node: Record<string, unknown>): string {
   return `<p class="osp-text osp-role-${role} osp-tone-${tone}">${escapeHtml(text(node, "text"))}</p>`;
 }
 
+function richText(node: Record<string, unknown>): string {
+  const role = oneOf(text(node, "role"), ROLES, "body");
+  if (!Array.isArray(node.runs) || node.runs.length > 100000) throw new Error("Rich text requires a bounded run list");
+  const content = node.runs.map(run => {
+    if (!record(run) || typeof run.text !== "string" || typeof run.italic !== "boolean" || typeof run.ink !== "string") throw new Error("Rich text run is malformed");
+    if (run.ink !== "" && !/^[a-z][a-zA-Z0-9-]{0,31}$/.test(run.ink)) throw new Error("Rich text ink must name a theme token");
+    const ink = run.ink === "" ? "" : `color:var(--osp-brand-${run.ink});`;
+    return `<span style="${ink}font-style:${run.italic ? "italic" : "normal"}">${escapeHtml(run.text)}</span>`;
+  }).join("");
+  return `<p class="osp-text osp-rich-text osp-role-${role} osp-tone-primary">${content}</p>`;
+}
+
 function math(node: Record<string, unknown>, ctx: Context): string {
   return renderMath(node.math, node.spoken, (depth) => consume(ctx, ctx.depth + depth));
 }
@@ -97,31 +116,31 @@ function editor(node: Record<string, unknown>, ctx: Context): string {
 }
 
 function board(node: Record<string, unknown>, ctx: Context): string {
-  return renderBoard(node, eventAttrs(ctx, node), ctx.slices);
+  return renderBoard(node, eventAttrs(ctx, node), ctx.slices, ctx.resolveAsset);
 }
 
 function evidence(node: Record<string, unknown>): string {
   return `<div class="osp-evidence"><span class="osp-evidence-label">${escapeHtml(text(node, "label"))}</span><span class="osp-evidence-value">${escapeHtml(text(node, "value"))}</span></div>`;
 }
 
-function badge(node: Record<string, unknown>): string {
+function badge(node: Record<string, unknown>, ctx: Context): string {
   const tone = oneOf(text(node, "tone"), TONES, "primary");
-  return `<span class="osp-badge osp-tone-${tone}">${symbolIcon(text(node, "symbol"))}<span>${escapeHtml(text(node, "label"))}</span></span>`;
+  return `<span class="osp-badge osp-tone-${tone}">${symbol(text(node, "symbol"), ctx)}<span>${escapeHtml(text(node, "label"))}</span></span>`;
 }
 
-function label(node: Record<string, unknown>): string {
-  return `<span class="osp-label">${symbolIcon(text(node, "symbol"))}<span>${escapeHtml(text(node, "label"))}</span></span>`;
+function label(node: Record<string, unknown>, ctx: Context): string {
+  return `<span class="osp-label">${symbol(text(node, "symbol"), ctx)}<span>${escapeHtml(text(node, "label"))}</span></span>`;
 }
 
-function icon(node: Record<string, unknown>): string {
-  return `<span class="osp-icon">${symbolIcon(text(node, "symbol"))}</span>`;
+function icon(node: Record<string, unknown>, ctx: Context): string {
+  return `<span class="osp-icon">${symbol(text(node, "symbol"), ctx)}</span>`;
 }
 
-function link(node: Record<string, unknown>): string {
+function link(node: Record<string, unknown>, ctx: Context): string {
   const address = text(node, "url");
   // The host opens only HTTPS; an HTTP or credential-bearing link renders disabled.
   const safe = /^https:\/\/[^\s]+$/i.test(address) && !/^https:\/\/[^/]*@/i.test(address);
-  const body = `${symbolIcon("link")}<span>${escapeHtml(text(node, "label"))}</span>`;
+  const body = `${symbol("link", ctx)}<span>${escapeHtml(text(node, "label"))}</span>`;
   return safe
     ? `<a class="osp-link" href="${escapeHtml(address)}" rel="noreferrer noopener" data-external="true">${body}</a>`
     : `<span class="osp-link osp-link-disabled">${body}</span>`;
@@ -140,8 +159,8 @@ function segments(node: Record<string, unknown>): string {
   return `<span class="osp-segments" role="img" aria-label="${escapeHtml(text(node, "label"))}">${bars}</span>`;
 }
 
-function empty(node: Record<string, unknown>): string {
-  return `<div class="osp-empty"><span class="osp-empty-symbol">${symbolIcon(text(node, "symbol"))}</span><h2>${escapeHtml(text(node, "title"))}</h2><p>${escapeHtml(text(node, "detail"))}</p></div>`;
+function empty(node: Record<string, unknown>, ctx: Context): string {
+  return `<div class="osp-empty"><span class="osp-empty-symbol">${symbol(text(node, "symbol"), ctx)}</span><h2>${escapeHtml(text(node, "title"))}</h2><p>${escapeHtml(text(node, "detail"))}</p></div>`;
 }
 
 function progress(node: Record<string, unknown>): string {
@@ -194,8 +213,18 @@ function split(node: Record<string, unknown>, ctx: Context): string {
   return `<div class="osp-split">${items(node, "children").map((pane) => `<div class="osp-pane">${child(pane, ctx)}</div>`).join("")}</div>`;
 }
 
+function fillsLayer(node: unknown, depth = 0): boolean {
+  if (depth > MAX_DEPTH) throw new Error("Native layer exceeds the component depth limit");
+  if (!record(node)) return false;
+  if (node.kind === "aside") return true;
+  return node.kind === "themed" ? fillsLayer(node.body, depth + 1)
+    : node.kind === "framed" && record(node.style) && node.style.grow === true;
+}
+
 function layer(node: Record<string, unknown>, ctx: Context): string {
-  return `<div class="osp-layer">${children(node, ctx)}</div>`;
+  const content = items(node, "children");
+  const filling = fillsLayer(content[0]) ? " osp-layer-fill" : "";
+  return `<div class="osp-layer${filling}">${content.map(node => child(node, ctx)).join("")}</div>`;
 }
 
 function contextMenu(node: Record<string, unknown>, ctx: Context): string {
@@ -228,7 +257,7 @@ function tabBody(node: Record<string, unknown>, ctx: Context): string {
   const buttons = tabs.map((item) => {
     if (!record(item)) return "";
     const key = text(item, "key");
-    return `<button type="button" role="tab" class="osp-tab${key === selected ? " osp-selected" : ""}" aria-selected="${key === selected}"${control(ctx, node, "string", key)}>${symbolIcon(text(item, "symbol"))}<span>${escapeHtml(text(item, "label"))}</span></button>`;
+    return `<button type="button" role="tab" class="osp-tab${key === selected ? " osp-selected" : ""}" aria-selected="${key === selected}"${control(ctx, node, "string", key)}>${symbol(text(item, "symbol"), ctx)}<span>${escapeHtml(text(item, "label"))}</span></button>`;
   }).join("");
   const active = tabs.map((item) => record(item) && text(item, "key") === selected ? child(item.child, ctx) : "").join("");
   return `<div class="osp-tabs"><div class="osp-tablist" role="tablist">${buttons}</div><div class="osp-tabbody" role="tabpanel">${active}</div></div>`;
@@ -237,7 +266,7 @@ function tabBody(node: Record<string, unknown>, ctx: Context): string {
 function rowButton(item: Record<string, unknown>, ctx: Context, rowsNode: Record<string, unknown>): string {
   const key = text(item, "key");
   const selected = text(rowsNode, "selected") === key;
-  return `<button type="button" role="option" aria-selected="${selected}" class="osp-row${selected ? " osp-selected" : ""}" data-row-key="${escapeHtml(key)}"${control(ctx, rowsNode, "string", key)}>${text(item, "symbol") === "" ? "" : symbolIcon(text(item, "symbol"))}<span class="osp-row-cell">${child(item.child, ctx)}</span></button>`;
+  return `<button type="button" role="option" aria-selected="${selected}" class="osp-row${selected ? " osp-selected" : ""}" data-row-key="${escapeHtml(key)}"${control(ctx, rowsNode, "string", key)}>${text(item, "symbol") === "" ? "" : symbol(text(item, "symbol"), ctx)}<span class="osp-row-cell">${child(item.child, ctx)}</span></button>`;
 }
 
 function rows(node: Record<string, unknown>, ctx: Context): string {
@@ -258,16 +287,17 @@ function rows(node: Record<string, unknown>, ctx: Context): string {
 function button(node: Record<string, unknown>, ctx: Context): string {
   const role = oneOf(text(node, "role"), BUTTON_ROLES, "plain");
   const disabled = flag(node, "enabled") ? "" : " disabled";
-  return `<button type="button" class="osp-button osp-button-${role}"${disabled}${control(ctx, node, "null", null)}>${symbolIcon(text(node, "symbol"))}<span>${escapeHtml(text(node, "label"))}</span></button>`;
+  return `<button type="button" class="osp-button osp-button-${role}" aria-label="${escapeHtml(text(node, "label"))}" title="${escapeHtml(text(node, "label"))}"${disabled}${control(ctx, node, "null", null)}>${symbol(text(node, "symbol"), ctx)}<span>${escapeHtml(text(node, "label"))}</span></button>`;
 }
 
 function field(node: Record<string, unknown>, ctx: Context): string {
   const multiline = flag(node, "multiline");
   const commit = text(node, "commit") === "submit" ? "submit" : "edit";
+  const name = escapeHtml(text(node, "label"));
   const tag = multiline
-    ? `<textarea rows="4" placeholder="${escapeHtml(text(node, "prompt"))}" data-commit="${commit}"${control(ctx, node, "string", text(node, "value"))}>${escapeHtml(text(node, "value"))}</textarea>`
-    : `<input type="${flag(node, "secure") ? "password" : "text"}" value="${escapeHtml(text(node, "value"))}" placeholder="${escapeHtml(text(node, "prompt"))}" data-commit="${commit}"${control(ctx, node, "string", text(node, "value"))} />`;
-  return `<label class="osp-field"><span>${escapeHtml(text(node, "label"))}</span>${tag}</label>`;
+    ? `<textarea aria-label="${name}" rows="4" placeholder="${escapeHtml(text(node, "prompt"))}" data-commit="${commit}"${control(ctx, node, "string", text(node, "value"))}>${escapeHtml(text(node, "value"))}</textarea>`
+    : `<input aria-label="${name}" type="${flag(node, "secure") ? "password" : "text"}" value="${escapeHtml(text(node, "value"))}" placeholder="${escapeHtml(text(node, "prompt"))}" data-commit="${commit}"${control(ctx, node, "string", text(node, "value"))} />`;
+  return `<label class="osp-field"><span>${name}</span>${tag}</label>`;
 }
 
 function toggle(node: Record<string, unknown>, ctx: Context): string {
@@ -290,16 +320,25 @@ function picker(node: Record<string, unknown>, ctx: Context): string {
 
 function disclosure(node: Record<string, unknown>, ctx: Context): string {
   const expanded = flag(node, "expanded");
-  return `<div class="osp-disclosure"><button type="button" class="osp-disclosure-head" aria-expanded="${expanded}"${control(ctx, node, "bool", !expanded)}><span class="osp-disclosure-arrow${expanded ? " osp-open" : ""}">${symbolIcon("chevron.right")}</span><span>${escapeHtml(text(node, "title"))}</span></button><div class="osp-disclosure-body"${expanded ? "" : " hidden"}>${children(node, ctx)}</div></div>`;
+  return `<div class="osp-disclosure"><button type="button" class="osp-disclosure-head" aria-expanded="${expanded}"${control(ctx, node, "bool", !expanded)}><span class="osp-disclosure-arrow${expanded ? " osp-open" : ""}">${symbol("chevron.right", ctx)}</span><span>${escapeHtml(text(node, "title"))}</span></button><div class="osp-disclosure-body"${expanded ? "" : " hidden"}>${children(node, ctx)}</div></div>`;
 }
 
 function alert(node: Record<string, unknown>, ctx: Context): string {
   if (!flag(node, "visible")) return "";
-  return `<div class="osp-alert" role="alert"${control(ctx, node, "null", null)}><span class="osp-alert-icon">${symbolIcon("warning")}</span><div><strong>${escapeHtml(text(node, "title"))}</strong><p>${escapeHtml(text(node, "message"))}</p></div></div>`;
+  return `<div class="osp-alert" role="alert"${control(ctx, node, "null", null)}><span class="osp-alert-icon">${symbol("warning", ctx)}</span><div><strong>${escapeHtml(text(node, "title"))}</strong><p>${escapeHtml(text(node, "message"))}</p></div></div>`;
+}
+
+function dialog(node: Record<string, unknown>, ctx: Context): string {
+  return `<section class="osp-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(text(node, "title"))}" tabindex="-1" data-native-dialog="true"${control(ctx, node, "null", null)}>${child(node.body, ctx)}</section>`;
+}
+
+function themed(node: Record<string, unknown>, ctx: Context): string {
+  return `<div class="osp-themed" style="${escapeHtml(themeDeclarations(node.theme))}">${child(node.body, ctx)}</div>`;
 }
 
 const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Context) => string>> = {
   text: textNode,
+  "rich-text": richText,
   math,
   editor,
   board,
@@ -324,11 +363,14 @@ const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Co
   picker,
   disclosure,
   alert,
+  dialog,
+  themed,
   stack,
   section,
   screen,
   split,
   layer,
+  framed: (node, ctx) => renderFrame(node, body => child(body, ctx)),
   "context-menu": contextMenu,
   aside,
   tabs: tabBody,
@@ -357,7 +399,7 @@ function rootContext(options: RenderOptions, root: RegionSnapshot): Context {
 /** Render the current keyed regions, resolving slot placeholders against their retained regions. */
 export function renderWorkspace(options: RenderOptions): string {
   const root = options.regions.get("root");
-  const loading = '<div class="osp-loading"><span class="osp-spinner" aria-hidden="true"></span><p>Loading your packages…</p></div>';
+  const loading = `<div class="osp-loading"><span class="osp-spinner" aria-hidden="true"></span><p>${escapeHtml(options.loadingText ?? "Loading your packages…")}</p></div>`;
   return themeStyle(options.theme) + (root
     ? `<div class="osp-region osp-root" data-region-key="root" data-region-revision="${root.revision}">${renderNode(root.node, rootContext(options, root))}</div>`
     : loading);

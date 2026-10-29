@@ -1,0 +1,25 @@
+WEBVTT
+
+00:00.400 --> 00:20.361
+Mathlib is a library of mathematical definitions and proofs built for Lean, a proof assistant. Think of it as reusable mathematics with evidence attached. Osprey's library port is already underway. Its own checker already verifies imported Lean proofs. Let's see what is running in the repository.
+
+00:21.211 --> 00:38.761
+You should not have to rebuild all of mathematics before proving something useful. The bridge reads Lean's proof data and checks it in Osprey. Logical rules and natural-number arithmetic already work. The ongoing port builds on this working importer and kernel, theorem by theorem.
+
+00:39.611 --> 00:57.943
+Here is one of the recorded Lean export files. It contains declarations, names, and proof terms, plus the information needed to interpret them. The repository preserves the file and its origin. We can replay the data through Osprey instead of asking you to trust a screenshot.
+
+00:59.611 --> 01:17.215
+Now run the actual Osprey-built checker. It accepts three recorded Lean proofs: swapping the order of two facts, reversing an equality, and showing that a statement is equivalent to itself. Those result lines come from execution. They demonstrate these particular imported proofs.
+
+01:22.478 --> 01:40.579
+Here is a real arithmetic result. For every pair of natural numbers, adding them in either order gives the same answer. Osprey checks Lean's proof of that rule, including the definitions it uses. This checks evidence for every natural number, rather than testing a few chosen inputs.
+
+01:41.745 --> 02:03.936
+The port has ten running supporting proofs from the OpenAI math release. Six concern stacks; three describe a doubling loop and its work count. One proves an indexing function preserves distinct inputs. The checker now reports each theorem’s actual axiom dependencies: five use none, and five depend on propositional extensionality.
+
+02:06.911 --> 02:24.513
+The second result deliberately corrupts the arithmetic proof. Osprey rejects it with a type mismatch. Keeping that failure beside the accepted proof checks a useful boundary: changing the proof cannot simply leave a success badge behind. It does not prove the checker has no bugs.
+
+02:26.178 --> 02:43.779
+You can run these proofs today. The tests check all nine supporting lemmas on native builds and WebAssembly, and reject broken proofs and false statements. More of the library is being brought across. Start with a proof in the repository, read what it claims, and run the checker yourself.

@@ -1,0 +1,249 @@
+/* [WORKBENCH-VSIX] [WORKBENCH-DESIGN] Shared Paper & Slate presentation.
+   Geometry and semantic role names arrive in the Osprey component tree. */
+@import url("workbench-fonts.css");
+body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; overflow: auto; }
+#osprey-root:has(.osp-frame-workbench) { overflow: visible; }
+.osp-root:has(.osp-frame-workbench) { height: auto; min-height: 100dvh; }
+
+.osp-frame-workbench {
+  --workbench-serif: "STIX Two Text", Georgia, serif;
+  --workbench-math: "STIX Two Math", serif;
+  font: 13px "Geist", sans-serif;
+  font-synthesis: none;
+  color: var(--osp-brand-primary);
+  background: var(--osp-brand-canvas);
+  min-height: 100dvh;
+  width: 100%;
+}
+.osp-frame-workbench *, .osp-frame-workbench *::before, .osp-frame-workbench *::after { box-sizing: border-box; }
+.osp-frame-workbench .osp-framed { display: flex; flex-direction: column; }
+.osp-frame-workbench .osp-framed > .osp-stack { min-height: 0; }
+.osp-frame-workbench > .osp-stack { min-height: 100dvh; }
+.osp-frame-workbench .osp-stack { gap: var(--osp-stack-gap, 0px); }
+.osp-frame-workbench .osp-axis-horizontal { align-items: center; }
+.osp-frame-workbench .osp-text { margin: 0; }
+.osp-frame-workbench .osp-role-title, .osp-frame-workbench .osp-role-heading, .osp-frame-workbench .osp-role-display { font-family: var(--workbench-serif); font-weight: 400; }
+.osp-frame-workbench .osp-role-title { font-size: 29px; line-height: 1.12; letter-spacing: -.5px; }
+.osp-frame-workbench .osp-role-heading { font-size: 27px; line-height: 1.2; }
+.osp-frame-workbench .osp-role-display { font-size: 44px; line-height: 1.12; letter-spacing: -1px; }
+.osp-frame-workbench .osp-role-caption { font-size: 13px; line-height: 1.75; }
+.osp-frame-workbench .osp-role-eyebrow { font-size: 12px; line-height: 1.5; letter-spacing: 1.6px; font-weight: 500; text-transform: uppercase; }
+.osp-frame-workbench .osp-role-callout { font: italic 14px var(--workbench-serif); }
+.osp-frame-workbench .osp-role-lead { font: 23px/1.5 var(--workbench-serif); }
+.osp-frame-workbench .osp-math { font-family: var(--workbench-math); }
+.osp-frame-workbench .osp-divider { height: 1px; flex: 0 0 1px; margin: 0; background: var(--osp-brand-divider); }
+.osp-frame-workbench .osp-button {
+  border: 1px solid transparent; border-radius: 5px; padding: 9px 12px;
+  background: transparent; color: inherit; font: inherit; gap: 8px;
+  box-shadow: none; min-height: 0; transition: background 150ms, color 150ms, border-color 150ms;
+}
+.osp-frame-workbench .osp-button:hover { background: var(--osp-brand-inset); }
+.osp-frame-workbench .osp-button-prominent { color: var(--osp-brand-accent); background: var(--osp-brand-selection); }
+.osp-frame-workbench .osp-button-filled { color: var(--osp-brand-canvas); background: var(--osp-brand-accent); }
+.osp-frame-workbench .osp-button:disabled { opacity: .42; }
+.osp-frame-workbench .osp-button :is(.codicon, .osp-symbol) { font-size: 18px; }
+.osp-frame-workbench :is(button, a, input, textarea):focus-visible { outline: 2px solid var(--osp-brand-accent); outline-offset: 3px; }
+.osp-frame-workbench .osp-badge { border: 1px solid var(--osp-brand-outline); border-radius: 20px; padding: 4px 10px; font: 13px "Geist", sans-serif; background: transparent; color: var(--osp-brand-secondary); }
+.osp-frame-workbench .osp-aside { position: relative; flex: 1; min-height: 0; }
+.osp-frame-workbench .osp-aside-column { border-left: 1px solid var(--osp-brand-divider); }
+.osp-frame-workbench .osp-splitter { position: absolute; top: 0; bottom: 0; right: calc(var(--osp-aside-width) - 4px); width: 8px; z-index: 2; opacity: 0; }
+.osp-frame-workbench .osp-splitter:focus-visible { opacity: 1; }
+.osp-frame-app-header { flex-shrink: 0; }
+.osp-frame-app-header .osp-role-title { font-size: 27px; letter-spacing: -.6px; white-space: nowrap; }
+.osp-frame-document-name { flex: 0 0 auto; text-align: center; }
+.osp-frame-document-name .osp-axis-vertical { gap: 6px; }
+.osp-frame-app-header .osp-role-caption { line-height: normal; }
+.osp-frame-app-header .osp-axis-vertical .osp-role-caption + .osp-role-caption { font-size: 12px; letter-spacing: .4px; color: var(--osp-brand-secondary); }
+.osp-frame-workspace-nav { flex-shrink: 0; font-size: 12px; }
+.osp-frame-workspace-nav .osp-button { padding: 10px 17px; }
+.osp-frame-app-footer { border-top: 1px solid var(--osp-brand-divider); flex-shrink: 0; }
+.osp-frame-app-footer .osp-role-caption { font-size: 11px; line-height: normal; }
+.osp-frame-board-region { height: 100%; }
+.osp-frame-board-region > .osp-region { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.osp-frame-board-region > .osp-region > .osp-stack { flex: 1; min-height: 0; }
+.osp-frame-working-board { position: relative; overflow: hidden; color: var(--osp-brand-chalk); height: calc(100dvh - 270px); min-height: 440px; flex: 0 0 auto !important; }
+.osp-frame-working-board > .osp-layer { position: relative; flex: 1; min-height: 0; }
+.osp-frame-working-board .osp-board { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; border-radius: 0; }
+.osp-frame-board-viewport { position: absolute; inset: 0; }
+.osp-frame-board-viewport > .osp-board, .osp-frame-board-viewport > .osp-layer { position: relative; flex: 1; min-height: 0; }
+.osp-frame-working-board .osp-layer { width: 100%; height: 100%; }
+.osp-frame-working-board > .osp-layer > .osp-stack { position: absolute; inset: 0; pointer-events: none; }
+.osp-frame-working-board > .osp-layer > .osp-stack > .osp-spacer { flex: 1; }
+.osp-frame-board-toolbar, .osp-frame-board-footer { position: relative; z-index: 1; pointer-events: auto; flex-shrink: 0; }
+.osp-frame-board-toolbar { border-bottom: 1px solid #465348; }
+.osp-frame-board-toolbar .osp-role-caption, .osp-frame-board-footer .osp-role-caption { font-size: 12px; line-height: normal; }
+.osp-frame-working-board .osp-tone-primary { color: #ecede5; }
+.osp-frame-working-board .osp-tone-secondary { color: #b7c0b7; }
+.osp-frame-working-board .osp-button { color: #ecede5; }
+.osp-frame-working-board .osp-button:hover { background: #34473e; }
+.osp-frame-workbench .osp-frame-board-empty { position: absolute; top: 38%; left: 0; width: 100%; pointer-events: none; }
+.osp-frame-board-empty .osp-role-eyebrow { font-size: 11px; }
+.osp-frame-board-empty .osp-role-title { font-size: 32px; line-height: normal; letter-spacing: 0; }
+.osp-frame-board-empty .osp-role-caption { font-size: 14px; line-height: normal; }
+.osp-frame-solution-column { min-height: 100%; }
+.osp-frame-solution .osp-role-title { font-size: 29px; }
+.osp-frame-solution .osp-badge + .osp-role-caption { margin-left: 10px; }
+.osp-frame-solution-editor .osp-editor { height: 100%; display: flex; flex-direction: column; }
+.osp-frame-solution-editor .osp-editor > label { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.osp-frame-solution-editor .osp-editor-surface { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.osp-frame-solution-editor textarea { resize: vertical; width: 100%; flex: 1; min-height: 0; border: 0; border-bottom: 1px solid var(--osp-brand-divider); border-radius: 0; background: transparent; color: var(--osp-brand-primary); box-shadow: none; padding: 16px 0 0; font: 21px/1.75 var(--workbench-serif); }
+.osp-frame-solution-editor .osp-editor-mirror, .osp-frame-solution-editor .osp-editor-feedback:empty { display: none; }
+.osp-frame-paper-document > .osp-aside > .osp-aside-column { border-left: 1px solid var(--osp-brand-divider); }
+.osp-frame-proof-document .osp-role-title { font-size: 44px; letter-spacing: -1px; line-height: 1.12; }
+.osp-frame-claim { margin: 0; font-size: 44px; overflow-x: auto; }
+/* A claim typesets as one mathematics block 8% above the text around it, as the reference does. */
+.osp-frame-claim .osp-math { display: block; text-align: center; font-size: 1.08em; }
+.osp-frame-proof-heading { font: italic 28px var(--workbench-serif); margin: 0; }
+.osp-frame-proof-rows { font: 24px/1.5 var(--workbench-serif); }
+.osp-frame-proof-step .osp-button { width: 100%; justify-content: flex-start; text-align: left; font: inherit; border-radius: 3px; padding: 6px 8px; align-items: baseline; }
+.osp-frame-proof-step .osp-button-prominent { color: var(--osp-brand-primary); background: var(--osp-brand-selection); }
+.osp-frame-proof-step-editor input { border: 0; border-bottom: 1px solid var(--osp-brand-accent); border-radius: 3px; background: var(--osp-brand-selection); padding: 12px 0; font: 24px var(--workbench-serif); }
+.osp-frame-proof-step-editor .osp-editor-surface, .osp-frame-proof-step-editor textarea { min-height: 0; height: 56px; }
+.osp-frame-goal-margin .osp-role-title { font: 27px/1.2 var(--workbench-serif); }
+.osp-frame-goal-margin .osp-role-lead { font-size: 25px; }
+/* The margin's target is its largest text; the hypotheses beside it stay at reading size. */
+.osp-frame-goal-margin .osp-frame-claim { margin: 0; font-size: 42px; }
+.osp-frame-goal-margin .osp-math { font-size: 27px; }
+.osp-frame-goal-margin .osp-frame-claim .osp-math { font-size: 1.08em; }
+.osp-frame-goal-margin .osp-role-caption { font-size: 13px; }
+@media (prefers-reduced-motion: reduce) {
+  .osp-frame-workbench *, .osp-frame-workbench *::before, .osp-frame-workbench *::after { animation: none !important; transition: none !important; }
+}
+
+.osp-frame-solution-title label > span { display: none; }
+.osp-frame-solution-title input { width: 100%; min-width: 0; border: 0; border-radius: 0; background: transparent; padding: 0; color: var(--osp-brand-primary); font: 31px/1.12 var(--workbench-serif); letter-spacing: -.5px; box-shadow: none; }
+.osp-frame-solution-column .osp-role-display { font-size: 29px; letter-spacing: -.5px; }
+.osp-frame-solution-column .osp-role-lead { font-size: 18px; }
+.osp-frame-solution-column .osp-frame-claim { margin: 0; font-size: 27px; }
+.osp-frame-solution-column .osp-frame-proof-heading .osp-role-heading { font-size: 23px; font-style: italic; }
+.osp-frame-solution-column .osp-frame-proof-rows { font-size: 18px; }
+.osp-frame-solution-column .osp-frame-proof-step-editor textarea { font-size: 18px; }
+.osp-frame-goal-empty { color: var(--osp-brand-secondary); }
+.osp-frame-solution-column .osp-frame-goal-empty { margin-top: 30px; }
+.osp-frame-goal-empty .osp-divider { margin-bottom: 14px; }
+.osp-frame-goal-empty .osp-role-caption { line-height: 1.75; }
+.osp-frame-proof-step > .osp-axis-horizontal { align-items: baseline; }
+.osp-frame-proof-step .osp-role-caption { flex: 0 0 16px; font: 13px "Geist", sans-serif; color: var(--osp-brand-secondary); }
+/* A step follows its list's size: 24 on the page, 18 beside the board, 22 when reading. */
+.osp-frame-proof-step .osp-role-lead { font-size: inherit; }
+.osp-frame-proof-step-editor .osp-editor { flex: 1; min-width: 0; }
+.osp-frame-proof-step-editor .osp-editor-label, .osp-frame-proof-step-editor .osp-editor-mirror { display: none; }
+.osp-frame-proof-step-editor textarea { width: 100%; resize: none; padding: 12px 16px; border: 0; border-radius: 3px; background: transparent; color: var(--osp-brand-primary); font: 24px/1.35 var(--workbench-serif); box-shadow: none; }
+.osp-frame-unsupported-feedback { border-left: 2px solid var(--osp-brand-caution); background: var(--osp-brand-inset); }
+.osp-frame-unsupported-feedback .osp-badge { border: 0; padding: 0; font-weight: 500; }
+.osp-frame-unsupported-feedback .osp-role-body { font: 16px/1.5 var(--workbench-serif); }
+.osp-frame-source-layout { min-width: 0; }
+.osp-frame-source-layout > .osp-axis-horizontal { align-items: stretch; }
+.osp-frame-source-layout > .osp-axis-horizontal > .osp-framed:first-child { flex: 1; min-width: 0; }
+.osp-frame-source-panel { flex: 0 0 440px; align-self: flex-start; border-left: 1px solid var(--osp-brand-divider); }
+.osp-frame-source-panel .osp-role-heading { font-size: 24px; }
+.osp-frame-source-panel .osp-role-caption { font-size: 13px; }
+.osp-frame-source-code { overflow-x: auto; }
+.osp-frame-source-code .osp-role-mono { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.osp-frame-source-line > .osp-axis-horizontal { justify-content: flex-start; align-items: baseline; }
+.osp-frame-source-token { flex: 0 0 auto; }
+.osp-frame-reading-page { display: flex; align-items: center; padding-right: 24px; padding-left: 24px; }
+.osp-frame-reading-sheet { max-width: 900px; width: 100%; min-height: 700px; }
+.osp-frame-reading-sheet .osp-role-display { font-size: 40px; }
+.osp-frame-reading-sheet .osp-role-lead { font-size: 22px; }
+.osp-frame-reading-sheet .osp-frame-claim { font-size: 38px; }
+.osp-frame-reading-sheet .osp-frame-proof-rows { font-size: 22px; }
+.osp-frame-solution-reading .osp-role-lead { white-space: pre-wrap; min-height: 300px; line-height: 1.8; }
+@media (max-width: 1100px) {
+  .osp-frame-document-name { display: none !important; }
+  .osp-frame-source-layout > .osp-axis-horizontal { flex-direction: column; }
+  .osp-frame-source-panel { order: -1; flex-basis: auto; width: 100% !important; border-left: 0; border-bottom: 1px solid var(--osp-brand-divider); }
+}
+@media (max-width: 980px) {
+  .osp-frame-workbench .osp-aside { flex-direction: column; flex: 0 0 auto; }
+  .osp-frame-workbench .osp-aside-pane { flex: 0 0 auto; overflow: visible; }
+  .osp-frame-workbench .osp-aside-column { overflow: visible; }
+  .osp-frame-workbench .osp-aside-column { flex-basis: auto; width: 100%; border-left: 0; }
+  .osp-frame-workbench .osp-splitter { display: none; }
+  .osp-frame-solution-column { min-height: 0; }
+  .osp-frame-app-header { padding-left: 20px !important; padding-right: 20px !important; }
+  .osp-frame-app-header .osp-role-title { font-size: 24px; }
+  .osp-frame-workspace-nav { padding-left: 15px !important; padding-right: 15px !important; }
+  .osp-frame-workspace-nav .osp-button { padding-left: 9px; padding-right: 9px; }
+  .osp-frame-board-region { padding: 16px !important; height: 552px; }
+  .osp-frame-working-board { min-height: 520px; height: 520px; }
+  .osp-frame-solution-column { padding: 30px !important; border-top: 1px solid var(--osp-brand-divider); }
+  .osp-frame-paper-document { padding: 30px !important; }
+  .osp-frame-goal-margin { padding: 24px 0 0 !important; margin-top: 24px; border-top: 1px solid var(--osp-brand-divider); }
+  .osp-frame-reading-page { padding: 25px 15px !important; }
+  .osp-frame-reading-sheet { padding: 40px !important; }
+}
+@media (max-width: 540px) {
+  .osp-frame-app-header { padding-left: 14px !important; padding-right: 14px !important; }
+  .osp-frame-app-header .osp-role-title { font-size: 22px; }
+  .osp-frame-app-header .osp-button > span:not(.osp-symbol):not(.codicon) { display: none; }
+  .osp-frame-app-header .osp-framed:has(> button[aria-label="Save"]) { width: 38px !important; }
+  .osp-frame-app-header > .osp-axis-horizontal, .osp-frame-workspace-nav > .osp-axis-horizontal { flex-wrap: nowrap; gap: 4px; }
+  .osp-frame-workspace-nav button:is([aria-label="Notation"], [aria-label="Examples"], [aria-label="Source"]) > span:not(.osp-symbol):not(.codicon) { display: none; }
+  .osp-frame-workbench .osp-frame-workspace-nav .osp-button { font-size: 11px; padding-left: 7px; padding-right: 7px; gap: 5px; }
+  .osp-frame-board-region { height: 422px; }
+  .osp-frame-working-board { min-height: 390px; height: 390px; }
+  .osp-frame-board-empty { padding-left: 30px !important; padding-right: 24px !important; }
+  .osp-frame-board-empty .osp-role-title { font-size: 27px; }
+  .osp-frame-board-toolbar { padding-left: 12px !important; padding-right: 12px !important; }
+  .osp-frame-board-toolbar :is(.osp-role-callout, .osp-role-caption) { display: none; }
+  .osp-frame-board-toolbar > .osp-axis-horizontal, .osp-frame-board-footer > .osp-axis-horizontal { flex-wrap: nowrap; }
+  .osp-frame-board-footer { padding-left: 12px !important; padding-right: 12px !important; }
+  .osp-frame-board-footer .osp-role-caption:first-child { min-width: 0; flex: 1; }
+  .osp-frame-board-preview-strip > .osp-axis-horizontal > .osp-role-caption { display: none; }
+  .osp-frame-solution-column { padding: 28px 24px !important; }
+  .osp-frame-paper-document { padding: 30px 24px !important; }
+  .osp-frame-proof-document .osp-role-display { font-size: 32px; }
+  .osp-frame-claim { font-size: 30px; }
+  .osp-frame-reading-sheet .osp-frame-claim { font-size: 29px; }
+  .osp-frame-proof-step .osp-role-lead, .osp-frame-proof-step-editor textarea { font-size: 21px; }
+  .osp-frame-source-layout { padding: 20px 0 0 !important; }
+  .osp-frame-source-panel { padding: 0 !important; width: calc(100% - 32px) !important; margin: 0 16px; }
+  .osp-frame-reading-sheet { padding: 28px !important; }
+  .osp-frame-reading-sheet .osp-role-display { font-size: 30px; }
+  .osp-frame-app-footer { padding-left: 20px !important; padding-right: 20px !important; }
+  .osp-frame-app-footer .osp-link { display: none; }
+}
+
+.osp-frame-wordmark { flex: 0 0 auto; }
+.osp-frame-wordmark .osp-role-callout, .osp-frame-wordmark .osp-role-title { font-family: var(--workbench-serif); font-size: 27px; line-height: 1.12; letter-spacing: -.6px; }
+.osp-frame-wordmark .osp-role-callout { font-style: italic; }
+.osp-frame-source-token > .osp-text { color: inherit; }
+@media (max-width: 980px) {
+  .osp-frame-workbench .osp-frame-wordmark .osp-role-callout, .osp-frame-workbench .osp-frame-wordmark .osp-role-title { font-size: 24px !important; }
+}
+@media (max-width: 540px) {
+  .osp-frame-workbench .osp-frame-wordmark .osp-role-callout, .osp-frame-workbench .osp-frame-wordmark .osp-role-title { font-size: 22px !important; }
+}
+
+.osp-frame-mismatch-feedback { max-width: 620px; border-left: 2px solid var(--osp-brand-danger); margin-top: 14px; }
+.osp-frame-mismatch-feedback .osp-role-body { font: 500 15px "Geist", sans-serif; }
+.osp-frame-mismatch-feedback .osp-role-caption { font-size: 14px; line-height: 1.7; }
+/* Needed and given read as pairs 12 apart; the two pairs sit 32 apart. */
+.osp-frame-goal-comparison > .osp-axis-horizontal { gap: 12px; margin: 12px 0; }
+.osp-frame-goal-comparison > .osp-axis-horizontal > .osp-math + .osp-role-caption { margin-left: 20px; }
+.osp-frame-goal-comparison .osp-math { font-size: 30px; }
+.osp-frame-next-goal .osp-math { font-size: 26px; }
+
+.osp-frame-source-line .osp-rich-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.9; }
+.osp-frame-transcription-preview .osp-role-caption { line-height: 1.8; }
+.osp-frame-transcription-preview .osp-button-filled { align-self: flex-start; }
+.osp-frame-board-preview-strip { flex-shrink: 0; }
+.osp-frame-working-notes .osp-field textarea { min-height: 180px; }
+.osp-frame-workbench .osp-dialog > .osp-framed { flex: 0 0 auto; }
+.osp-frame-workbench .osp-dialog .osp-stack { flex: initial; }
+
+.osp-frame-proof-library-result .osp-framed:has(> math) { width: 100% !important; max-width: 100%; overflow-x: auto; }
+.osp-frame-proof-library-formal { max-width: 100%; overflow-x: auto; }
+.osp-frame-proof-library-formal .osp-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-region-key="library"] .osp-media-image[alt="Osprey"] { width: 64px; height: 64px; }
+[data-region-key="library"] .osp-section-body:has(> .osp-role-caption:nth-child(10)) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
+@media (max-width: 980px) {
+  .osp-frame-board-region { height: 618px; flex: 0 0 auto !important; }
+}
+@media (max-width: 540px) {
+  .osp-frame-board-region { height: 488px; }
+  .osp-frame-board-toolbar > .osp-axis-horizontal > .osp-spacer, .osp-frame-board-footer > .osp-axis-horizontal > .osp-spacer { display: none; }
+  .osp-frame-source-heading > .osp-axis-horizontal { flex-wrap: nowrap; }
+}

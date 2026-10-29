@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+fn ml_generic_slice_fold_specializes_its_callback() {
+    let ir = ml_module(
+        r#"kept<T> : (List<T>, List<T>, int) -> List<T>
+kept (out, items, index) = match listGet items index
+    Success item => listAppend out item
+    Error _ => out
+slice<T> : (List<T>, int, int) -> List<T>
+slice (items, start, stop) = range (start, stop) |> fold [] (\(out, index) => kept (out, items, index))
+main () = print "${slice ([1, 2, 3], 1, 3)} ${slice (["a", "b"], 0, 1)}"
+"#,
+    );
+    shows(&ir, &["list_append", "define"]);
+}
+
+#[test]
 fn string_cursor_and_parse_out_slots_are_entry_allocas() {
     let ir = module(
         r#"fn scan(s) = fold(range(0, 3), 0, fn(acc, i) => satAdd(acc, byteAt(s, i) ?: 0))

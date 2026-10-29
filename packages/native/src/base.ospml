@@ -17,6 +17,12 @@ module Lists
         Success item => listAppend out (f item)
         Error _ => out
 
+    // The item at `index` appended to `out`; a closure-free `collect`, because a generic identity closure does not compile.
+    kept<T> : (List<T>, List<T>, int) -> List<T>
+    kept (out, items, index) = match listGet items index
+        Success item => listAppend out item
+        Error _ => out
+
     (** The first item that `matches`, or an error when none does. *)
     export find<T> : (List<T>, (T) -> bool) -> Result<T, Error>
     find (items, matches) = listGet (filterList (items, matches)) 0
@@ -48,16 +54,16 @@ module Lists
 
     (** The items from index `start` up to but excluding `stop`; indexes past the end contribute nothing. *)
     export slice<T> : (List<T>, int, int) -> List<T>
-    slice (items, start, stop) = range (start, stop) |> fold [] (\(out, index) => collect (out, items, \item => item, index))
+    slice (items, start, stop) = range (start, stop) |> fold [] (\(out, index) => kept (out, items, index))
 
     (** True when no two keys repeat. *)
     export distinct keys = length (mapKeys (range (0, length keys) |> fold (Map ()) (\(seen, index) => mapSet seen (listGet keys index ?: "") true))) == length keys
 
     takeLeft<T> : (Merge<T>, List<T>) -> Merge<T>
-    takeLeft (merging, left) = Merge(mergeLeft = satAdd merging.mergeLeft 1, mergeRight = merging.mergeRight, merged = collect (merging.merged, left, \item => item, merging.mergeLeft))
+    takeLeft (merging, left) = Merge(mergeLeft = satAdd merging.mergeLeft 1, mergeRight = merging.mergeRight, merged = kept (merging.merged, left, merging.mergeLeft))
 
     takeRight<T> : (Merge<T>, List<T>) -> Merge<T>
-    takeRight (merging, right) = Merge(mergeLeft = merging.mergeLeft, mergeRight = satAdd merging.mergeRight 1, merged = collect (merging.merged, right, \item => item, merging.mergeRight))
+    takeRight (merging, right) = Merge(mergeLeft = merging.mergeLeft, mergeRight = satAdd merging.mergeRight 1, merged = kept (merging.merged, right, merging.mergeRight))
 
     // Stable: on a tie the left element goes first.
     leftFirst<T> : (Merge<T>, List<T>, List<T>, (T, T) -> bool) -> bool

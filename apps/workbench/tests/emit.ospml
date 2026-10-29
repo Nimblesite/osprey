@@ -3,12 +3,13 @@ namespace workbenchtests
 
 import workbench::Formulas
 import workbench::Emit
+import workbenchtests::FixtureFiles
 
 (** The emitter cases of [WORKBENCH-VERIFICATION]. *)
 module EmitCases
-    formula text = match Formulas::read text
-        workbench::Read found => found
-        workbench::Faulted _ => workbench::Bot
+    (** An emitted claim that does not read is a broken fixture, never `⊥`; the
+        shared fixture helper reports it and aborts. *)
+    formula text = FixtureFiles::formula ("emit", text)
 
     swap = "p ∧ q → q ∧ p"
 

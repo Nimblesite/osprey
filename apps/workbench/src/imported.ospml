@@ -1,0 +1,57 @@
+namespace proof
+
+import proof::Environment
+import proof::Checked
+import proof::Trust
+import proof::Terms
+
+(** A checked imported theorem and its actual assumptions, shared across
+    all hosts. Implements [WORKBENCH-VERDICT] [PROOF-RUNNABLE-LIBRARY]. *)
+type ImportedProof =
+    importedName : string
+    importedStatement : string
+    importedType : Term
+    importedAxioms : List<string>
+
+module ImportedProofs
+    export check (source, name) = match checked source
+        Success env => named (env, name)
+        Error message => Error(message = message)
+
+    export catalogue source = match checked source
+        Success env => populated (foldList (env.order, Success(value = []), \(entries, name) => listed (env, entries, name)))
+        Error message => Error(message = message)
+
+    checked source = match byteLength source > 8388608
+        true => Error(message = "the proof export exceeds 8 MiB")
+        false => Checked::exported (Environment::empty (), source)
+
+    named (env, name) = match Environment::find (env, name)
+        Success decl => theorem (env, decl, decl.body)
+        Error message => Error(message = "the export declares no `${name}`")
+
+    theorem (env, decl, body) = match body
+        Theorem _ => described (decl, Trust::axioms (env, decl.name))
+        other => Error(message = "`${decl.name}` is not a theorem")
+
+    described (decl, assumptions) = match assumptions
+        Success names => Success(value = ImportedProof(importedName = decl.name, importedStatement = Terms::show (decl.ty, []), importedType = decl.ty, importedAxioms = names))
+        Error message => Error(message = message)
+
+    listed (env, entries, name) = match entries
+        Error message => Error(message = message)
+        Success values => match Environment::find (env, name)
+            Success decl => listedBody (env, values, decl, decl.body)
+            Error message => Error(message = message)
+
+    listedBody (env, values, decl, body) = match body
+        Theorem _ => match described (decl, Trust::axioms (env, decl.name))
+            Success entry => Success(value = listAppend (values, entry))
+            Error message => Error(message = message)
+        other => Success(value = values)
+
+    populated entries = match entries
+        Error message => Error(message = message)
+        Success values => match isEmpty values
+            true => Error(message = "the export declares no theorems")
+            false => Success(value = values)

@@ -8,6 +8,10 @@ Osprey looks like logic in flight: a midnight canvas, luminous cyan, precise typ
 
 ## Color and depth
 
+The product mark is the shaded cyan banking osprey in `src/assets/images/logo.png`. Use that canonical image with its transparent background and original proportions. Website chrome, documentation, book covers and app bundles share this mark; an eagle emoji is not a substitute. Page titles and product headings use plain text. The animated homepage bird remains the atmospheric flight motif.
+
+Run `npm run brand-assets` in `website/` to regenerate the Open Graph and Twitter cards from the canonical mark. The renderer uses the installed Playwright Chromium browser. The book cover tracks the same image as a build dependency, and its HTML edition embeds it for offline reading.
+
 | Role | Token | Value | Use |
 | --- | --- | --- | --- |
 | Canvas | `--surface` | `#0c1325` | Full frame and page |

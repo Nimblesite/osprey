@@ -31,13 +31,23 @@ impl Codegen {
     /// result register `r`.
     pub(crate) fn call(&mut self, ret: &str, cname: &str, params: &str, args: &[&str]) -> String {
         let typed = declare_and_args(self, ret, cname, params, args);
-        let r = self.emit_reg(format!("call {ret} @{cname}({typed})"));
-        r
+        self.emit_call_result(ret, cname, &typed)
     }
 
     /// Declare `cname` and emit a `void` call (no result register).
     pub(crate) fn call_void(&mut self, cname: &str, params: &str, args: &[&str]) {
         let typed = declare_and_args(self, "void", cname, params, args);
-        self.emit(format!("call void @{cname}({typed})"));
+        let _ = self.emit_call_result("void", cname, &typed);
+    }
+
+    /// C `void` has no SSA result; its Osprey Unit value is the scalar zero.
+    pub(crate) fn emit_call_result(&mut self, ret: &str, name: &str, typed: &str) -> String {
+        let instruction = format!("call {ret} @{name}({typed})");
+        if ret == "void" {
+            self.emit(instruction);
+            String::from("0")
+        } else {
+            self.emit_reg(instruction)
+        }
     }
 }

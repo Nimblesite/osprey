@@ -11,6 +11,8 @@ import * as https from "https";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { record, type NativeRequest } from "./protocol";
+import { inside } from "./local-files";
+import { requiredString, boundedInteger, stringList } from "./wire";
 
 const DEFAULT_TIMEOUT = 120000;
 const DEFAULT_LIMIT = 16 * 1024 * 1024;
@@ -36,33 +38,6 @@ export interface CapabilityHost {
 
 export interface ExecutorOptions {
   readonly serialize?: <T>(key: string, task: () => Promise<T>) => Promise<T>;
-}
-
-function requiredString(value: unknown, name: string): string {
-  if (typeof value !== "string" || value === "") throw new Error(`Request field ${name} must be a non-empty string`);
-  return value;
-}
-
-function boundedInteger(value: unknown, name: string, most: number, fallback: number): number {
-  if (value === undefined) return fallback;
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > most) {
-    throw new Error(`Request field ${name} must be between 1 and ${most}`);
-  }
-  return value;
-}
-
-function stringList(value: unknown, name: string): string[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 64 || !value.every((item) => typeof item === "string" && item.length <= 8192)) {
-    throw new Error(`Request field ${name} must be a short array of strings`);
-  }
-  return value;
-}
-
-
-function inside(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function directoryFor(workspaceUri: string, host: CapabilityHost): string {

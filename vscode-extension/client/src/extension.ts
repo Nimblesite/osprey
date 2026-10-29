@@ -44,6 +44,7 @@ import {
   compileAndRunCurrentFile,
 } from "./compile-commands";
 import { registerPackageWorkspace } from "./package-workspace";
+import { registerWorkbench } from "./workbench";
 import { registerPackageCommands } from "./package-commands";
 import { huntCurrentFile } from "./hunt";
 export * from "./client-config";
@@ -103,6 +104,7 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
   );
   registerTestDocsCommand(context);
   registerPackageWorkspace(context);
+  registerWorkbench(context);
   registerPackageCommands(context);
   registerWarningFixes(context, (params) =>
     client.sendRequest(CodeActionRequest.type, params),

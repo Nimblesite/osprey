@@ -26,6 +26,7 @@ const TERMINAL_FNS: &[&str] = &[
     "termShowCursor",
 ];
 const WEB_IMPORTS: &[&str] = &["osprey_web_render", "osprey_web_command"];
+const WASI_LIBC_IMPORTS: &[&str] = &["perror", "abort"];
 
 pub(crate) fn validate(program: &Program, target: &str) -> Result<(), String> {
     if !matches!(target, "wasm32" | "python") && !crate::toolchain::host_archive_target(target) {
@@ -41,7 +42,7 @@ pub(crate) fn validate(program: &Program, target: &str) -> Result<(), String> {
     walk_program(program, &mut visitor);
     visitor.error.map_or(Ok(()), Err)?;
     if target == "wasm32" {
-        validate_browser_abi(program)?;
+        validate_wasm_abi(program)?;
     }
     Ok(())
 }
@@ -187,18 +188,18 @@ fn normalize_methods(expression: &mut Expr) {
     }
 }
 
-fn validate_browser_abi(program: &Program) -> Result<(), String> {
+fn validate_wasm_abi(program: &Program) -> Result<(), String> {
     let boundaries: Vec<_> = program
         .statements
         .iter()
-        .filter_map(browser_boundary)
+        .filter_map(wasm_boundary)
         .collect();
     if boundaries.is_empty() {
         return Ok(());
     }
     let types = osprey_types::infer_program(program);
     for (name, position) in boundaries {
-        validate_browser_signature(&types, name, position)?;
+        validate_wasm_signature(&types, name, position)?;
     }
     validate_dispatcher_effects(program)
 }
@@ -237,23 +238,56 @@ fn location(position: Option<Position>) -> String {
     })
 }
 
-fn validate_browser_signature(
+fn validate_wasm_signature(
     types: &osprey_types::ProgramTypes,
     name: &str,
     position: Option<Position>,
 ) -> Result<(), String> {
-    let scalar = |name: &str| osprey_types::Type::Con {
-        name: name.to_string(),
-        args: Vec::new(),
-    };
-    let expected = (vec![scalar("string")], scalar("int"));
+    let (params, result, abi, signature) = wasm_signature(name);
+    let expected = (
+        params.iter().map(|name| wasm_scalar(name)).collect(),
+        wasm_scalar(result),
+    );
     if types.functions.get(name) == Some(&expected) {
         return Ok(());
     }
-    let location = position.map_or_else(String::new, |p| {
-        format!(" near line {}:{}", p.line, p.column + 1)
-    });
-    Err(format!("target `wasm32` does not support browser ABI for `{name}`{location}: expected (string) -> int"))
+    Err(format!(
+        "target `wasm32` does not support {abi} ABI for `{name}`{}: expected {signature}",
+        location(position)
+    ))
+}
+
+// Implements [WASI-LIBC-ABI]: these libc calls need no additional host imports,
+// and their exact signatures prevent a source declaration from changing C ABI.
+fn wasm_scalar(name: &str) -> osprey_types::Type {
+    osprey_types::Type::Con {
+        name: name.to_string(),
+        args: Vec::new(),
+    }
+}
+
+fn wasm_signature(
+    name: &str,
+) -> (
+    &'static [&'static str],
+    &'static str,
+    &'static str,
+    &'static str,
+) {
+    match name {
+        "perror" => (&["string"], "Unit", "WASI libc", "(string) -> Unit"),
+        "abort" => (&[], "Unit", "WASI libc", "() -> Unit"),
+        _ => (&["string"], "int", "browser", "(string) -> int"),
+    }
+}
+
+fn wasm_boundary(statement: &Stmt) -> Option<(&str, Option<Position>)> {
+    match statement {
+        Stmt::Extern { name, position, .. } if WASI_LIBC_IMPORTS.contains(&name.as_str()) => {
+            Some((name, *position))
+        }
+        _ => browser_boundary(statement),
+    }
 }
 
 fn browser_boundary(statement: &Stmt) -> Option<(&str, Option<Position>)> {
@@ -295,7 +329,10 @@ impl AstVisitor for Capabilities<'_> {
     fn statement(&mut self, statement: &Stmt) {
         self.position = stmt_meta::statement_position(statement);
         if let Stmt::Extern { name, .. } = statement {
-            if self.target == "wasm32" && !WEB_IMPORTS.contains(&name.as_str()) {
+            if self.target == "wasm32"
+                && !WEB_IMPORTS.contains(&name.as_str())
+                && !WASI_LIBC_IMPORTS.contains(&name.as_str())
+            {
                 self.reject(&format!("foreign C import `{name}`"));
             }
         }

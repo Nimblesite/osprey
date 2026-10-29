@@ -40,11 +40,21 @@ PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/nativ
 target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
 	$(BIN) build packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
-_vsix_bundle: target/osprey-pkg target/package-workspace.wasm
+WORKBENCH_SOURCES := apps/workbench/osprey.toml $(shell find apps/workbench/src examples/proof/kernel/src packages/native/src packages/vscode/src -type f -name '*.ospml')
+target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
+	$(BIN) build apps/workbench --target=wasm32 --quiet --no-warnings -o $@
+
+_vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/workbench.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey"; \
 	cp target/osprey-pkg "$$DEST/osprey-pkg"; \
 	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
+	cp target/workbench.wasm "$$DEST/workbench.wasm"; \
+	$(RM) "$$DEST/workbench"; $(MKDIR) "$$DEST/workbench"; \
+	cp -R apps/workbench/lessons "$$DEST/workbench/"; \
+	cp -R apps/workbench/assets/. "$$DEST/workbench/"; \
+	python3 scripts/workbench-proof-assets.py "$$DEST/workbench"; \
+	cp website/src/assets/images/logo.png "$$DEST/workbench/osprey-logo.png"; \
 	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
 	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
 	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
@@ -56,11 +66,15 @@ _vsix_bundle: target/osprey-pkg target/package-workspace.wasm
 .PHONY: _vsix_verify
 _vsix_verify:
 	@test -n "$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES))"
-	@set -e; for INPUT in "$(BIN):osprey" "target/osprey-pkg:osprey-pkg" "target/package-workspace.wasm:package-workspace.wasm" \
+	@set -e; for INPUT in "$(BIN):osprey" "target/osprey-pkg:osprey-pkg" "target/package-workspace.wasm:package-workspace.wasm" "target/workbench.wasm:workbench.wasm" \
 	    $(foreach ARCHIVE,$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES)),"$(ARCHIVE):$(notdir $(ARCHIVE))"); do \
 	  cmp -s "$${INPUT%:*}" "$(EXT_DIR)/bin/$(EXT_PLATFORM)/$${INPUT#*:}" || \
 	    { echo "FAIL: missing or stale bundled $${INPUT#*:}; run make _vsix_bundle"; exit 1; }; \
 	done
+	diff -qr apps/workbench/lessons "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/lessons"
+	diff -qr -x lessons -x osprey-logo.png -x proof-libraries apps/workbench/assets "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench"
+	python3 scripts/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
+	cmp website/src/assets/images/logo.png "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/osprey-logo.png"
 	cd $(EXT_DIR) && node scripts/verify-package-client.mjs
 
 # Package, then prove the VSIX carries the bundled compiler: `vsce` ships
@@ -78,6 +92,10 @@ _vsix_package: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	  { echo "FAIL: $$VSIX carries no bundled package client"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/package-workspace.wasm" || \
 	  { echo "FAIL: $$VSIX carries no package workspace WASM"; exit 1; }; \
+	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/workbench.wasm" || \
+	  { echo "FAIL: $$VSIX carries no workbench WASM"; exit 1; }; \
+	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/workbench/lessons/catalogue.json" || \
+	  { echo "FAIL: $$VSIX carries no workbench lessons"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \
 	  { echo "FAIL: $$VSIX carries no compiled extension (out/client/src/extension.js)"; exit 1; }
 

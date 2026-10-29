@@ -16,6 +16,7 @@ import {
   type NativeRequest,
   type Regions,
 } from "./protocol";
+import { messageOf } from "./wire";
 
 interface IssuedSnapshot {
   readonly state: string;
@@ -45,7 +46,7 @@ export interface SessionDeps {
   run(frame: string, slices: ReadonlyMap<string, string>): Promise<CommandResult>;
   render(regions: Regions, diagnostics: readonly string[], theme: unknown, slices: ReadonlyMap<string, string>): string;
   send(message: unknown): void;
-  execute(request: NativeRequest): Promise<unknown>;
+  execute(request: NativeRequest, slices: ReadonlyMap<string, string>): Promise<unknown>;
   now(): number;
   report(error: Error): void;
 }
@@ -56,8 +57,16 @@ export interface WorkspaceSession {
   dispose(): void;
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/** An executor may answer with host-held slice deliveries beside its completion result. */
+function delivered(value: unknown): { result: unknown; writes: readonly { key: string; text: string }[] } {
+  if (!record(value) || !("result" in value) || !Array.isArray(value.slices)) return { result: value, writes: [] };
+  const shaped = value.slices.every((item) => record(item) && typeof item.key === "string" && item.key !== "" && typeof item.text === "string");
+  return shaped ? { result: value.result, writes: value.slices as { key: string; text: string }[] } : { result: value, writes: [] };
+}
+
+/** Host-held slices ride every command frame as `frame.slices`, where `App::respond` answers `ui::Slices` fetches. */
+function carrying(frame: string, slices: ReadonlyMap<string, string>): string {
+  return slices.size === 0 ? frame : JSON.stringify({ ...JSON.parse(frame), slices: Object.fromEntries(slices) });
 }
 
 /** Create the generic host loop around one Osprey workspace session. */
@@ -111,7 +120,7 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
   const enqueueFrame = (build: () => string, expected: number, edit?: number): Promise<void> => {
     const step = async (): Promise<void> => {
       if (!current(expected)) return;
-      const frame = build();
+      const frame = carrying(build(), slices);
       if (!current(expected)) return;
       apply(await deps.run(frame + "\n", slices), expected, edit);
     };
@@ -122,7 +131,10 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
   const complete = async (request: NativeRequest, expected: number): Promise<void> => {
     let outcome: CompletionOutcome;
     try {
-      outcome = { ok: true as const, result: await deps.execute(request) };
+      const answer = delivered(await deps.execute(request, slices));
+      if (!current(expected)) return;
+      for (const write of answer.writes) slices.set(write.key, write.text);
+      outcome = { ok: true as const, result: answer.result };
     } catch (error) {
       outcome = { ok: false as const, error: messageOf(error) };
     }

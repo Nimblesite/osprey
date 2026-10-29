@@ -36,7 +36,7 @@ Verified on 2026-10-29: the real `Nat.add_comm` export checks from an empty Ospr
 
 Navier–Stokes is the high-water mark for the solution checker. A successful arithmetic proof does not establish that its analysis library, PDE statements or full proof can be checked. Keep that larger objective and the full Mathlib gates below; pull prerequisites forward only when a selected proof demonstrates the need.
 
-Current kernel checkpoint (2026-10-30): all 325 tests pass under GC, ARC and wasm32 with all 57 recorded inputs unchanged. This includes the 56 guarded numeric regressions and exact natural multiplication cases. The separate actual Unicode fixture gate also passes on all three backends with fresh Lean replay and both mutations per root. The final shared UI, installed VSIX, application coverage and visual oracle gates remain open.
+Current kernel checkpoint (2026-10-30): all 325 tests pass under GC, ARC and wasm32 on compiler `6f5c55438f39162831fc9c2ccf3dcdb5d45dcc1a9a984deec4c73de768831dae`, sealed before and after the canonical kernel gate. The separate public proof matrix has 103 unchanged recorded inputs. This includes the 56 guarded numeric regressions and exact natural multiplication cases. The separate actual Unicode fixture gate also passes on all three backends with fresh Lean replay and both mutations per root. The final shared application suite passes 108 cases under GC, ARC and wasm32 with 90.8% own-source coverage. Revised host, installed VSIX and visual acceptance gates remain open.
 
 ## Current expansion — recent OpenAI proof ports
 

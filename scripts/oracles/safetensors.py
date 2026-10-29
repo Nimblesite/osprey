@@ -38,20 +38,19 @@ def decoded(tensors):
     """Decode every tensor of `tensors` through safe_open(pt) to flat plain
     lists. torch (unlike numpy) understands bfloat16; float dtypes widen exactly."""
     b = safetensors.torch.save(tensors)
-    f = tempfile.NamedTemporaryFile(suffix=".st", delete=False)
-    f.write(b)
-    f.close()
+    return open_numpy(b, lambda s: decoded_tensors(s, tensors), framework="pt")
+
+
+def decoded_tensors(s, tensors):
     out = {}
-    with safetensors.safe_open(f.name, framework="pt") as s:
-        for name in tensors:
-            arr = s.get_tensor(name).reshape(-1)
-            if arr.dtype == torch.bool:
-                out[name] = [int(x) for x in arr.tolist()]
-            elif arr.dtype.is_floating_point:
-                out[name] = arr.double().tolist()
-            else:
-                out[name] = arr.tolist()
-    os.unlink(f.name)
+    for name in tensors:
+        arr = s.get_tensor(name).reshape(-1)
+        if arr.dtype == torch.bool:
+            out[name] = [int(x) for x in arr.tolist()]
+        elif arr.dtype.is_floating_point:
+            out[name] = arr.double().tolist()
+        else:
+            out[name] = arr.tolist()
     return out
 
 
@@ -83,13 +82,13 @@ def hdr(obj, data=b""):
     return le64(len(h)) + h + data
 
 
-def open_numpy(buf, fn):
-    """Call `fn` with `safe_open(framework="numpy")` over a file holding `buf`."""
+def open_numpy(buf, fn, framework="numpy"):
+    """Call `fn` with `safe_open` over a file holding `buf`."""
     f = tempfile.NamedTemporaryFile(suffix=".st", delete=False)
     f.write(buf)
     f.close()
     try:
-        with safetensors.safe_open(f.name, framework="numpy") as s:
+        with safetensors.safe_open(f.name, framework=framework) as s:
             return fn(s)
     finally:
         os.unlink(f.name)
@@ -166,14 +165,7 @@ SPECIAL = torch.tensor([float("inf"), float("-inf"), float("nan"), -0.0, 1e-45],
 
 def slice_values():
     b = safetensors.torch.save(SLICE_TENSOR)
-    f = tempfile.NamedTemporaryFile(suffix=".st", delete=False)
-    f.write(b)
-    f.close()
-    with safetensors.safe_open(f.name, framework="numpy") as s:
-        row = s.get_slice("m")[1:3].reshape(-1).tolist()
-        whole = s.get_tensor("m").reshape(-1).tolist()
-    os.unlink(f.name)
-    return [row, whole]
+    return open_numpy(b, lambda s: [s.get_slice("m")[1:3].reshape(-1).tolist(), s.get_tensor("m").reshape(-1).tolist()])
 
 
 def main():
@@ -188,12 +180,7 @@ def main():
     constants["MULTI_BYTES"] = file_roundtrip(MULTI)
     constants["MULTI_KEYS"] = sorted(MULTI.keys())
     b = safetensors.torch.save(MULTI)
-    f = tempfile.NamedTemporaryFile(suffix=".st", delete=False)
-    f.write(b)
-    f.close()
-    with safetensors.safe_open(f.name, framework="numpy") as s:
-        constants["MULTI_OFFSET_KEYS"] = list(s.offset_keys())
-    os.unlink(f.name)
+    constants["MULTI_OFFSET_KEYS"] = open_numpy(b, lambda s: list(s.offset_keys()))
     mv = decoded(MULTI)
     constants["MULTI_A"] = mv["a"]
     constants["MULTI_B"] = mv["b"]
@@ -201,13 +188,9 @@ def main():
 
     meta_b = safetensors.torch.save(META, metadata={"format": "pt", "author": "osprey"})
     constants["META_BYTES"] = dump_bytes(meta_b)
-    f = tempfile.NamedTemporaryFile(suffix=".st", delete=False)
-    f.write(meta_b)
-    f.close()
-    with safetensors.safe_open(f.name, framework="numpy") as s:
-        constants["META_KEYS"] = sorted(s.metadata().keys())
-        constants["META_VALUES"] = [s.metadata()[k] for k in sorted(s.metadata().keys())]
-    os.unlink(f.name)
+    metadata = open_numpy(meta_b, lambda s: s.metadata())
+    constants["META_KEYS"] = sorted(metadata.keys())
+    constants["META_VALUES"] = [metadata[k] for k in sorted(metadata.keys())]
 
     sl = slice_values()
     constants["SLICE_BYTES"] = file_roundtrip(SLICE_TENSOR)
@@ -216,12 +199,7 @@ def main():
 
     special_b = safetensors.torch.save({"special": SPECIAL})
     constants["SPECIAL_BYTES"] = dump_bytes(special_b)
-    f = tempfile.NamedTemporaryFile(suffix=".st", delete=False)
-    f.write(special_b)
-    f.close()
-    with safetensors.safe_open(f.name, framework="numpy") as s:
-        constants["SPECIAL_VALUES"] = s.get_tensor("special").tolist()
-    os.unlink(f.name)
+    constants["SPECIAL_VALUES"] = open_numpy(special_b, lambda s: s.get_tensor("special").tolist())
 
     # --- errors --------------------------------------------------------------
     constants["ERR_EMPTY_BYTES"] = []

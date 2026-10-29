@@ -80,7 +80,7 @@ suite("package real editor host capabilities", () => {
     const resource = Uri.file(extensionRoot);
     const configuration = workspace.getConfiguration("osprey.packages", resource);
     assert.deepStrictEqual(await executeHost("configuration.read", { section: "osprey.packages", workspace: resource.toString() }), {
-      section: "osprey.packages", values: { registry: configuration.get("registry"), frontendPath: configuration.get("frontendPath") },
+      section: "osprey.packages", values: { registry: configuration.get("registry"), frontendPath: configuration.get("frontendPath"), appPath: configuration.get("appPath") },
     });
     assert.strictEqual(typeof workspace.getConfiguration("editor", resource).get("fontSize"), "number");
     assert.deepStrictEqual(await executeHost("configuration.read", { section: "editor", workspace: resource.toString() }), { section: "editor", values: {} });

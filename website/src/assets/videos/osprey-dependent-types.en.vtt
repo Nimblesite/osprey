@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.400 --> 00:17.137
+Dependent types let a type describe facts about a value, such as how many items a list contains. They connect programming with precise mathematical claims. Osprey is a functional language with proof tools written in Osprey itself. Here is what its checker already does.
+
+00:17.987 --> 00:34.229
+Think of a list whose type includes its length. A function that needs exactly three items can reject a list of four before it runs. That is the idea behind dependent types. This length example explains the idea; it is not an Osprey API.
+
+00:35.079 --> 00:49.269
+Take a claim called p. A proof of p is evidence that p is true. A function can accept that evidence and return it unchanged. The statement is: for every claim p, evidence for p produces evidence for p.
+
+00:50.119 --> 01:04.950
+This is the actual Osprey source for that identity proof. It says: given a proposition p and evidence h for p, return h. Osprey's kernel reads the claim and the proof term, then checks that the evidence matches the claim.
+
+01:05.800 --> 01:20.450
+Run the kernel and both cases appear. Identity is accepted because the proof has the required type. A deliberately wrong term is refused, with the reason printed. You are watching real output, not a scripted green tick.
+
+01:31.033 --> 01:47.398
+Today Osprey checks this identity and a proof that chains two implications. That does not automatically prove your application correct. You still state the claim and build the evidence. Osprey is actively evolving, and this small checked fragment is where to start.

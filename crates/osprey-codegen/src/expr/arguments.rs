@@ -164,7 +164,8 @@ pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -
         return Ok(v);
     }
     let ret = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
-    let reg = emit_user_call(cg, name, ret.as_str(), &coerced, &typed);
+    let spelling = cg.fn_ret_spelling(name);
+    let reg = emit_user_call(cg, name, &spelling, &coerced, &typed);
     let v = Value::new(reg, ret).with_owner(cg.fn_ret_owner(name));
     let v = match cg.fn_ret_fiber_sig(name) {
         Some(fiber) => fiber.restore(v),
@@ -188,7 +189,7 @@ fn emit_user_call(
         let sig = crate::llty::comma_join(coerced, Value::llvm_ty);
         cg.add_extern(format!("declare {rty} @{name}({sig})"));
     }
-    cg.emit_reg(format!("call {rty} @{name}({typed})"))
+    cg.emit_call_result(rty, name, typed)
 }
 
 fn ordered_args(

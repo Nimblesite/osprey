@@ -307,15 +307,15 @@ def slice_edge_cases():
         Check.close_all("slice.one_row", row.floats, Expected.SLICE_ONE_ROW, RTOL, ATOL),
         Check.close_all("slice.empty_rows", none.floats, Expected.SLICE_EMPTY_ROWS, RTOL, ATOL),
         Check.close_all("slice.vector", part.floats, Expected.VECTOR_SLICE, RTOL, ATOL),
-        slice_error_check("slice.scalar", SafeTensors.get_slice(s, "x", 0, 1), Expected.SCALAR_SLICE_ERROR),
+        rejection_check("slice.scalar", SafeTensors.get_slice(s, "x", 0, 1), Expected.SCALAR_SLICE_ERROR),
         Check.close_all("slice.scalar_whole", whole.floats, Expected.SCALAR_VALUE, RTOL, ATOL),
     ]
 
 
-def slice_error_check(tag, result, want):
+def rejection_check(tag, result, want):
     match result:
         case Success():
-            return Check.failed(tag, "get_slice succeeded instead of rejecting the scalar")
+            return Check.failed(tag, "operation succeeded instead of rejecting invalid input")
         case Error(message=message):
             return Check.equal(tag, message, want)
 
@@ -476,7 +476,10 @@ def json_reject(tag, text):
 
 def json_reject_cases():
     """Each malformed JSON text CPython rejects is an error here too."""
-    return toList(map(range(len(Expected.JSON_INVALID)), lambda i: json_reject("json.reject_" + toString(i), unwrap_or(listGet(Expected.JSON_INVALID, i), ""))))
+    return listConcat(toList(map(range(len(Expected.JSON_INVALID)), lambda i: json_reject("json.reject_" + toString(i), unwrap_or(listGet(Expected.JSON_INVALID, i), "")))), [
+        rejection_check('json.unterminated_escape', JsonParser.parse('"\\'), "invalid JSON: unterminated escape"),
+        rejection_check('json.unterminated_member_escape', JsonParser.parse('{"\\'), "invalid JSON: unterminated escape"),
+    ])
 
 
 def run_cases():

@@ -1,37 +1,52 @@
 WEBVTT
 
-00:00.000 --> 00:11.000
-Osprey Storage on the Mac and iPhone
+00:00.000 --> 00:10.661
+Osprey and Swift
 
-00:11.000 --> 00:24.000
-The app measures and ranks a folder
+00:10.661 --> 00:16.195
+The app
 
-00:24.000 --> 00:38.000
-What Osprey owns and what Swift owns
+00:16.195 --> 00:24.295
+The app
 
-00:38.000 --> 00:50.000
-Osprey exports start and dispatch
+00:24.295 --> 00:38.526
+Who does what
 
-00:50.000 --> 01:04.000
-The generated C header
+00:38.526 --> 00:50.068
+Osprey exports
 
-01:04.000 --> 01:18.000
-Swift calls Osprey through a bridging header
+00:50.068 --> 01:04.567
+The C header
 
-01:18.000 --> 01:50.000
-Osprey calls Swift: extern and @_cdecl
+01:04.567 --> 01:18.099
+Swift calls Osprey
 
-01:50.000 --> 02:01.000
-An effect handler at the boundary
+01:18.099 --> 01:28.538
+Osprey calls Swift
 
-02:01.000 --> 02:13.000
-Testing the Osprey side without Swift
+01:28.538 --> 01:39.486
+Osprey calls Swift
 
-02:13.000 --> 02:36.000
-Screens are native nodes drawn by SwiftUI
+01:39.486 --> 01:50.413
+Osprey calls Swift
 
-02:36.000 --> 02:58.000
-One Xcode target for the Mac, iPhone and simulator
+01:50.413 --> 02:00.917
+An effect at the boundary
 
-02:58.000 --> 03:14.537
-Run it yourself
+02:00.917 --> 02:13.224
+Test it without Swift
+
+02:13.224 --> 02:28.644
+Screens are data
+
+02:28.644 --> 02:36.711
+Screens are data
+
+02:36.711 --> 02:50.816
+One target, three SDKs
+
+02:50.816 --> 02:58.691
+One target, three SDKs
+
+02:58.691 --> 03:14.268
+Try it

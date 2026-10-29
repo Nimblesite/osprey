@@ -109,17 +109,6 @@ jobs:
           set -euo pipefail
           ./target/release/osprey.exe --version | grep -Fx "osprey 0.0.0-dev"
 
-      # release.yml compiles the package manager client on this same runner
-      # and ships it in the win32 tarball, so a Windows-only compile failure
-      # of packages/manager/cli must be caught here, not at tag time.
-      # --no-warnings skips the warning pass (see scripts/make/extension.mk).
-      - name: Compile package manager client
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          ./target/release/osprey.exe build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
-          test -s target/osprey-pkg.exe
-
       # osprey.exe is a NATIVE Windows process: when it shells out to link the
       # emitted IR it searches the Windows PATH, where the runner's system
       # (MSVC-target) clang shadows the MSYS2 one — that clang can't link the
@@ -132,6 +121,17 @@ jobs:
           CC_PATH="$(cygpath -m /ucrt64/bin/clang.exe)"
           "$CC_PATH" --version | head -1
           echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"
+
+      # release.yml compiles the package manager client on this same runner
+      # and ships it in the win32 tarball, so a Windows-only compile failure
+      # of packages/manager/cli must be caught here, not at tag time.
+      # --no-warnings skips the warning pass (see scripts/make/extension.mk).
+      - name: Compile package manager client
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          ./target/release/osprey.exe build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
+          test -s target/osprey-pkg.exe
 
       # fiber_showcase exercises spawn/await/yield/channels/select — i.e. the
       # winpthreads-backed fiber runtime. The feature omnibus covers lists/maps/

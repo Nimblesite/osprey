@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.400 --> 00:17.472
+A proof checker should accept valid evidence and refuse invalid evidence. Both results matter. Osprey is a functional programming language, and its proof checker is written in Osprey. We will run a valid example beside a deliberately wrong one and read the explanation.
+
+00:18.322 --> 00:34.400
+This function receives evidence for p and claims to produce evidence for q. Returning the same value does not turn one claim into the other. The mismatch is exactly what the checker should catch. A convincing theorem name cannot repair a bad proof term.
+
+00:35.250 --> 00:51.535
+The checker does not compare pretty printed words. It compares structured terms. Names can be reused in different places, so each name must point to the right input. Constants also carry information the checker needs. Structure keeps those differences visible.
+
+00:52.385 --> 01:07.356
+The same rule applies when reading another system's export. If the reader meets a form it does not support, it reports that form. It must not skip the declaration and still report success. Refusing is safer than pretending to check.
+
+01:08.206 --> 01:22.553
+A checked theorem still sits inside a trust boundary. You need the exact statement, its assumptions, the proof term, and the checker that accepted it. Tests strengthen the checker, but a passing suite is not proof that it has no bugs.
+
+01:23.403 --> 01:39.730
+Keep the valid and invalid cases together. Check that identity passes, then inspect the wrong term and its rejection. That habit makes proof tools easier to trust: state the claim, show the evidence, and show the limits too. Osprey is actively evolving.

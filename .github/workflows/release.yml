@@ -206,12 +206,22 @@ jobs:
           export OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot
           make target/package-workspace.wasm
           wasm-validate target/package-workspace.wasm
+          make target/workbench.wasm
+          wasm-validate target/workbench.wasm
       - name: Upload portable package workspace
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: package-workspace-wasm
           path: target/package-workspace.wasm
+          if-no-files-found: error
+
+      - name: Upload portable workbench
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: workbench-wasm
+          path: target/workbench.wasm
           if-no-files-found: error
 
       # ---- Verify version contract [SWR-VERSION-CLI-OUTPUT] ------------------
@@ -497,10 +507,11 @@ jobs:
         with:
           submodules: true
       # The extension icon is copied from this LFS-stored logo. Fetch only it;
-      # without it the VSIX carries an LFS pointer the Marketplace rejects.
+      # without it the VSIX carries an LFS pointer the Marketplace rejects. The
+      # workbench assets and lessons media are staged verbatim into the bundle.
       - name: Fetch the logo the extension icon is copied from
         shell: bash
-        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif"
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - uses: actions/download-artifact@v4
@@ -511,6 +522,10 @@ jobs:
         with:
           name: package-workspace-wasm
           path: dist/package-workspace
+      - uses: actions/download-artifact@v4
+        with:
+          name: workbench-wasm
+          path: dist/workbench
       - name: Stage bundled compiler + manifest
         shell: bash
         env:
@@ -522,6 +537,11 @@ jobs:
           mkdir -p "$dest"
           cp -r "dist/osprey-${VERSION}-${{ matrix.target }}/." "$dest/"
           cp dist/package-workspace/package-workspace.wasm "$dest/"
+          cp dist/workbench/workbench.wasm "$dest/"
+          mkdir -p "$dest/workbench"
+          cp -R apps/workbench/lessons "$dest/workbench/"
+          cp -R apps/workbench/assets/. "$dest/workbench/"
+          cp website/src/assets/images/logo.png "$dest/workbench/osprey-logo.png"
           # Stamp + bundle shipwright.json so the extension can version-check the
           # bundled binary at activation. [EDITOR-VERSIONING]
           node -e '
@@ -560,6 +580,8 @@ jobs:
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey${exe}"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-pkg${exe}"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/package-workspace.wasm"
+          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/workbench.wasm"
+          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/workbench/lessons/catalogue.json"
       # Packaging is per-platform (each VSIX bundles the matching native binary);
       # publishing is centralised in the publish-marketplace / publish-openvsx
       # jobs so the registry tokens live in one least-privilege place.

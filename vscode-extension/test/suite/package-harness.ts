@@ -196,9 +196,12 @@ main () = print (Runtime::start (input (), initial, regions, \value => JsonStrin
 
 let sdkHostModule: Promise<WebAssembly.Module> | undefined;
 
+export function compileSdkHost(): Promise<WebAssembly.Module> {
+  return sdkHostModule ??= compileSdkWasm(SDK_HOST_SOURCE, BUILD_MS);
+}
+
 export async function sdkHostRequests(arguments_: readonly string[]): Promise<readonly NativeRequest[]> {
-  sdkHostModule ??= compileSdkWasm(SDK_HOST_SOURCE, BUILD_MS);
-  const envelope = await runSdkWasmJson(await sdkHostModule, JSON.stringify({ platform: "vscode", arguments: arguments_ }));
+  const envelope = await runSdkWasmJson(await compileSdkHost(), JSON.stringify({ platform: "vscode", arguments: arguments_ }));
   const parsed = parseEnvelope(JSON.stringify(envelope));
   assert.deepStrictEqual(parsed.diagnostics, []);
   const state: unknown = JSON.parse(parsed.state);

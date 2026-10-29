@@ -109,23 +109,62 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def declared_roots(suite, project):
+    """The extra roots a suite manifest declares, type-checked before any traversal.
+
+    A mistyped shape would otherwise be iterated (a string is a sequence of
+    characters, one of them "/"), so the whole filesystem could be crawled
+    instead of the fixture. Nothing is skipped: a bad shape is a fault.
+    """
+    if project is None:
+        return []
+    if not isinstance(project, dict):
+        raise ValueError(f"{(suite / 'osprey.toml')} has no [project] table")
+    declared = project.get("source_roots", [])
+    if not isinstance(declared, list):
+        raise ValueError(f"{(suite / 'osprey.toml')} source_roots must be a list, not {type(declared).__name__}")
+    for root in declared:
+        if not isinstance(root, str) or "\x00" in root:
+            raise ValueError(f"{(suite / 'osprey.toml')} source_roots entry is not a path: {root!r}")
+    return [(suite / root).resolve() for root in declared]
+
+
 def source_inputs(root, name, kind=PACKAGES_DIR):
     root = Path(root).resolve()
     package = root / kind / name
     suite = package / "tests"
     manifest = tomllib.loads((suite / "osprey.toml").read_text())
-    roots = [package / "src", suite]
-    roots += [(suite / path).resolve() for path in manifest.get("project", {}).get("source_roots", [])]
+    roots = [package / "src", suite] + declared_roots(suite, manifest.get("project"))
     files = {package / "osprey.toml", suite / "osprey.toml", suite / "expected_output.txt"}
     for base in roots:
-        files.update(path.resolve() for path in base.rglob("*") if path.is_file()
-                     and not any(part.startswith(".") or part in GENERATED_DIRS
-                                 for part in path.relative_to(base).parts))
+        files.update(root_inputs(base))
     return {path.relative_to(root).as_posix(): digest(path) for path in sorted(files)}
+
+
+def root_inputs(base: Path) -> set[Path]:
+    """A declared root contributes itself when it is a file, its tree when a directory.
+
+    Manifests name single-file dependencies beside folder roots, and `rglob` on a
+    file yields nothing — so a kernel lemma could change without invalidating the
+    report sealed against it.
+    """
+    if base.is_file():
+        return {base.resolve()}
+    return {path.resolve() for path in base.rglob("*") if path.is_file()
+            and not any(part.startswith(".") or part in GENERATED_DIRS
+                        for part in path.relative_to(base).parts)}
 
 
 def evidence_path(report):
     return report.with_suffix(".evidence.json")
+
+
+def sealed_inputs(root, name, kind=PACKAGES_DIR):
+    """The inputs a collection must prove unchanged; a fault is reported, never skipped."""
+    try:
+        return source_inputs(root, name, kind), None
+    except (OSError, ValueError) as error:
+        return None, f"cannot verify collection: {error}"
 
 
 def seal_evidence(root, name, report, before, kind=PACKAGES_DIR):

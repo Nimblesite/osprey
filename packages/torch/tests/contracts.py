@@ -50,6 +50,7 @@ def tensor_layout_cases():
         Check.equal("tensor.src_offset", Tensor.src_offset(4, [2, 3], [1, 3]), 1),
         Check.ints_equal("tensor.bcast_shapes2", Tensor.bcast_shapes2([2, 1], [3]), [2, 3]),
         Check.equal("tensor.combine_op", Tensor.combine_op(1, 5.0, 2.0), 3.0),
+        Check.close_all("tensor.combine_variants", toList(map(range(6), lambda op: Tensor.combine_op(op, 5.0, 2.0))), [7.0, 3.0, 10.0, 2.5, 5.0, 2.0], 0.0, 0.0),
         vector("tensor.sum_axes", Tensor.sum_axes(a, [1]), [3.0, 7.0]),
         vector("tensor.sum_to_size", Tensor.sum_to_size(a, [2, 1]), [3.0, 7.0]),
     ]

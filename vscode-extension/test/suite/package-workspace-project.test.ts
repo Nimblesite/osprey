@@ -6,8 +6,8 @@ import type { Browser, Frame } from "playwright-core";
 import * as http from "http";
 import * as sinon from "sinon";
 import { commands, ConfigurationTarget, ExtensionContext, Uri, WebviewPanel, window, workspace, WorkspaceEdit, Range, Position, extensions } from "vscode";
-import { activateWithServer, connectEditorBrowser, editorWebviewFrame, waitFor, EXTENSION_ID } from "./profiler-kit";
-import { installRegistry, servedPackage, sdkHostRequests, sdkRequest } from "./package-harness";
+import { BUILD_MS, activateWithServer, connectEditorBrowser, editorWebviewFrame, waitFor, EXTENSION_ID } from "./profiler-kit";
+import { compileSdkHost, installRegistry, servedPackage, sdkHostRequests, sdkRequest } from "./package-harness";
 import { createRequestExecutor } from "../../client/src/osprey-ui/capabilities";
 import { record, type NativeRequest } from "../../client/src/osprey-ui/protocol";
 import { folderFor, hostBridge } from "../../client/src/package-workspace";
@@ -162,7 +162,8 @@ async function closeBrowserPanels(browser: Browser | undefined, panels: sinon.Si
 async function runBrowserFlow(frame: Frame, folder: Uri, run: (frame: Frame, folder: Uri) => Promise<void>): Promise<void> {
   try { await run(frame, folder); }
   catch (error) {
-    console.error("Package UI at failure:", await frame.locator("body").innerText());
+    const details = await frame.locator("body").innerText().catch(problem => `Unavailable: ${String(problem)}`);
+    console.error("Package UI at failure:", details);
     throw error;
   }
 }
@@ -437,6 +438,8 @@ async function verifySdkConfiguration(scenario: SdkScenario): Promise<void> {
 }
 
 async function verifySdkReveal(scenario: SdkScenario): Promise<void> {
+  const browser = scenario.frame.page().context().browser();
+  assert.ok(browser);
   const revealing = scenario.execute(sdkRequest(scenario.requests, "sdk/reveal"));
   const page = scenario.frame.page();
   const picker = page.getByPlaceholder("Package changes apply only to this project");
@@ -444,7 +447,10 @@ async function verifySdkReveal(scenario: SdkScenario): Promise<void> {
     await picker.fill("first");
     await page.getByRole("option").filter({ hasText: "first" }).first().click();
     assert.deepStrictEqual(await revealing, { revealed: true });
-    await scenario.frame.getByRole("button", { name: "Refresh", exact: true }).waitFor();
+    await waitFor(() => scenario.frame.isDetached(), Boolean, 1000, "the editor detaches the discarded application frame");
+    assert.ok(scenario.frame.isDetached(), "changed registry must discard the previous application session");
+    const current = await editorWebviewFrame(browser, 'button:has-text("Refresh")');
+    await current.getByRole("button", { name: "Refresh", exact: true }).waitFor();
   } finally { if (await picker.isVisible()) await picker.press("Escape"); }
 }
 
@@ -459,6 +465,7 @@ async function verifySdkRefusals(scenario: SdkScenario): Promise<void> {
 }
 
 suite("package workspace SDK host E2E", () => {
+  suiteSetup(async function () { this.timeout(BUILD_MS); await compileSdkHost(); });
   teardown(() => sinon.restore());
   test("real compiled SDK requests open documents, scope configuration and reveal the view", async () => {
     await withSdkScenario((scenario) => withScopedRegistries(async () => {

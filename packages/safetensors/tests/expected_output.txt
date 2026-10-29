@@ -170,5 +170,7 @@ ok json.reject_11
 ok json.reject_12
 ok json.reject_13
 ok json.reject_14
+ok json.unterminated_escape
+ok json.unterminated_member_escape
 ok tensor_info.byte_extent
-173 passed, 0 failed
+175 passed, 0 failed

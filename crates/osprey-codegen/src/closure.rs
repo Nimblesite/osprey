@@ -337,7 +337,7 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
         typed.push(format!("{} %{reg}", t.ty));
         params.push((t.ty, reg));
     }
-    let r = cg.emit_reg(format!("call {real_ret} @{name}({})", typed.join(", ")));
+    let r = cg.emit_call_result(&real_ret, name, &typed.join(", "));
     let rv = match real_inner {
         Some(inner) => Value::result(r, inner),
         None => Value::new(r, cg.fn_ret_ltype(name).unwrap_or(LType::I64)),

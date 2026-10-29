@@ -11,7 +11,7 @@ Isolated (punctuation, individual digits), Contiguous (digit runs) and
 MergedWithNext (Metaspace's `▁`).
 """
 from tokenizers.Unicode import is_numeric, is_punctuation, is_whitespace, is_word_char
-from tokenizers.Normalizers import Norm, prepend_cp, replace_space
+from tokenizers.Normalizers import Norm, append_norm, char_at, empty_norm, end_at, prepend_cp, replace_space, start_at
 
 __all__ = [
     "bert_pretokenize", "whitespace_pretokenize", "whitespace_split",
@@ -23,14 +23,6 @@ META_CP = 9601
 """The codepoint of `▁` (U+2581), the metaspace marker SentencePiece-style pre-tokenizers insert for spaces."""
 
 
-def empty_norm():
-    return Norm(chars=[], starts=[], ends=[])
-
-
-def append_norm(cur, cp, s, e):
-    return Norm(chars=listAppend(cur.chars, cp), starts=listAppend(cur.starts, s), ends=listAppend(cur.ends, e))
-
-
 def close(cur, acc):
     return listAppend(acc, cur) if len(cur.chars) > 0 else acc
 
@@ -40,9 +32,9 @@ def split_removed(n, is_delim, i, cur, acc):
     if i >= len(n.chars):
         return close(cur, acc)
     else:
-        cp = unwrap_or(listGet(n.chars, i), 0)
-        s = unwrap_or(listGet(n.starts, i), 0)
-        e = unwrap_or(listGet(n.ends, i), 0)
+        cp = char_at(n, i)
+        s = start_at(n, i)
+        e = end_at(n, i)
         if is_delim(cp):
             return split_removed(n, is_delim, i + 1, empty_norm(), close(cur, acc))
         else:
@@ -54,9 +46,9 @@ def split_isolated(n, is_delim, i, cur, acc):
     if i >= len(n.chars):
         return close(cur, acc)
     else:
-        cp = unwrap_or(listGet(n.chars, i), 0)
-        s = unwrap_or(listGet(n.starts, i), 0)
-        e = unwrap_or(listGet(n.ends, i), 0)
+        cp = char_at(n, i)
+        s = start_at(n, i)
+        e = end_at(n, i)
         if is_delim(cp):
             acc2 = listAppend(close(cur, acc), Norm(chars=[cp], starts=[s], ends=[e]))
             return split_isolated(n, is_delim, i + 1, empty_norm(), acc2)
@@ -69,9 +61,9 @@ def split_contiguous(n, is_delim, i, kind, cur, acc):
     if i >= len(n.chars):
         return close(cur, acc)
     else:
-        cp = unwrap_or(listGet(n.chars, i), 0)
-        s = unwrap_or(listGet(n.starts, i), 0)
-        e = unwrap_or(listGet(n.ends, i), 0)
+        cp = char_at(n, i)
+        s = start_at(n, i)
+        e = end_at(n, i)
         k = 1 if is_delim(cp) else 0
         if len(cur.chars) > 0 and k != kind:
             return split_contiguous(n, is_delim, i + 1, k, append_norm(empty_norm(), cp, s, e), listAppend(acc, cur))
@@ -84,9 +76,9 @@ def split_merged_next(n, is_delim, i, cur, acc):
     if i >= len(n.chars):
         return close(cur, acc)
     else:
-        cp = unwrap_or(listGet(n.chars, i), 0)
-        s = unwrap_or(listGet(n.starts, i), 0)
-        e = unwrap_or(listGet(n.ends, i), 0)
+        cp = char_at(n, i)
+        s = start_at(n, i)
+        e = end_at(n, i)
         if is_delim(cp):
             return split_merged_next(n, is_delim, i + 1, Norm(chars=[cp], starts=[s], ends=[e]), close(cur, acc))
         else:
@@ -108,9 +100,9 @@ def whitespace_scan(n, i, kind, cur, acc):
     if i >= len(n.chars):
         return close(cur, acc)
     else:
-        cp = unwrap_or(listGet(n.chars, i), 0)
-        s = unwrap_or(listGet(n.starts, i), 0)
-        e = unwrap_or(listGet(n.ends, i), 0)
+        cp = char_at(n, i)
+        s = start_at(n, i)
+        e = end_at(n, i)
         if is_whitespace(cp):
             return whitespace_scan(n, i + 1, -1, empty_norm(), close(cur, acc))
         else:

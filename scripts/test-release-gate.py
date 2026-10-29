@@ -170,9 +170,24 @@ def decision_failures(script, summary):
     return failures
 
 
+def windows_compiler_failures():
+    failures = []
+    for workflow in (WORKFLOW, pathlib.Path(".github/workflows/ci-windows.yml")):
+        text = workflow.read_text()
+        pin = re.search(r"^      - name: Pin the MinGW clang[^\n]*", text, re.MULTILINE)
+        build = re.search(r"^      - name: Compile package manager client(?: \(Windows\))?$", text, re.MULTILINE)
+        if pin is None or build is None or pin.start() >= build.start():
+            failures.append(f"{workflow}: pin MinGW clang before compiling the Windows package client")
+            continue
+        block = text[pin.end():].split("      - name:", 1)[0]
+        if 'echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"' not in block:
+            failures.append(f"{workflow}: export the pinned compiler as OSPREY_CC")
+    return failures
+
+
 def main():
     text = WORKFLOW.read_text()
-    failures = package_failures(text)
+    failures = package_failures(text) + windows_compiler_failures()
     with tempfile.NamedTemporaryFile(suffix=".md") as summary:
         failures.extend(decision_failures(gate_script(text), summary.name))
     if failures:
@@ -180,6 +195,7 @@ def main():
         for failure in failures:
             print(f"  - {failure}")
         return 1
+    print("Windows compiler selection: OK (CI and release)")
     print(f"release gate decision table: OK ({len(TABLE)} cases)")
     print(f"release packaging: OK ({2 * len(APPLE_ARCHIVES) + 2} cases)")
     return 0

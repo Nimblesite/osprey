@@ -113,6 +113,10 @@
     ],
     "commands": [
       {
+        "command": "osprey.workbench.open",
+        "title": "Osprey: Open Workbench"
+      },
+      {
         "command": "osprey.packages.open",
         "title": "Manage Packages",
         "category": "Osprey"
@@ -621,6 +625,12 @@
           "default": "",
           "scope": "machine",
           "description": "Absolute path to osprey-pkg. Defaults to the client bundled with this extension."
+        },
+        "osprey.packages.appPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Path to a compiled package workspace WASM application. Empty uses the bundled application."
         },
         "osprey.profiler.sampleRate": {
           "type": "number",

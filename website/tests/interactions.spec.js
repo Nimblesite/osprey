@@ -365,7 +365,7 @@ test.describe("desktop interactions", () => {
         contentType: "application/json",
         body: JSON.stringify({
           success: true,
-          programOutput: "🦅 OSPREY FEATURE TOUR\n",
+          programOutput: "OSPREY FEATURE TOUR\n",
         }),
       });
     });

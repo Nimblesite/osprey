@@ -432,6 +432,53 @@ fn initializer_and_type_alias_cycles_fail_before_codegen() {
     assert!(contains(&messages, "type alias cycle"), "{messages:?}");
 }
 
+#[test]
+fn namespaced_entry_with_main_and_a_statement_declares_two_entries() {
+    // Implements [MODULES-ENTRYPOINT]: a source declares ONE entry, so `main`
+    // beside a top-level executable statement is ill-formed whether or not the
+    // source is the selected entry. A file-scope `let` is a declaration and
+    // must stay accepted.
+    let conflict = parsed(
+        "main.osp",
+        Flavor::Default,
+        "namespace app;\nfn main() = 0\nprint(\"also\")\n",
+    );
+    let messages = error_messages(&config("main.osp"), &[conflict]);
+    assert!(
+        contains(&messages, osprey_ast::ENTRY_CONFLICT),
+        "{messages:?}"
+    );
+
+    let accepted = parsed(
+        "main.osp",
+        Flavor::Default,
+        "namespace app;\nlet seed = 1\nfn main() = seed\n",
+    );
+    let project = assemble(&config("main.osp"), &[accepted]);
+    assert!(project.is_ok(), "{project:?}");
+}
+
+#[test]
+fn exported_member_of_a_private_module_is_not_public_api() {
+    // [MODULES-EXPORTS] [MODULES-ABI]: private ancestors exclude their members from the API.
+    let library = parsed(
+        "lib.osp",
+        Flavor::Default,
+        "namespace lib;\nmodule Surface {\n    export fn add() = 1\n    module Shut { export fn add() = 2 }\n}\n",
+    );
+    let entry = parsed("main.osp", Flavor::Default, "fn main() = 0");
+    let project = assemble(&config("main.osp"), &[entry, library]).expect("modules assemble");
+    let mangled = |path: &[&str]| osprey_ast::symbol::mangle(path.iter().copied());
+    let assembled = |name: &str| project.source_name_by_mangled.values().any(|it| it == name);
+    assert!(
+        assembled("lib::Surface::Shut::add"),
+        "the private member was assembled"
+    );
+    assert!(project.exported_member(&mangled(&["lib", "Surface", "add"])));
+    assert!(!project.exported_member(&mangled(&["lib", "Surface", "Shut", "add"])));
+    assert!(!project.public_api.contains_key("lib::Surface::Shut::add"));
+}
+
 fn ascribed_module(signature: &str, body: Vec<ModuleItem>) -> Stmt {
     Stmt::Module {
         path: SymbolPath::single("Implementation"),

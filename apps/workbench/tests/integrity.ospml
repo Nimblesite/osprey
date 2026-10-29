@@ -3,6 +3,7 @@
 // and every media file exists.
 namespace workbenchtests
 
+import workbenchtests::FixtureFiles
 import workbench::Lessons
 import workbench::Blocks
 import workbench::Catalogues
@@ -10,10 +11,10 @@ import workbench::Judge
 
 (** The integrity case of [LESSONS-INTEGRITY] over the files under `apps/workbench/lessons/`. *)
 module IntegrityCases
-    root () = "../lessons/"
+    root () = FixtureFiles::root ()
 
     catalogue () = match readFile (root () + "catalogue.json")
-        Error _ => Error(message = "catalogue.json cannot be read")
+        Error problem => Error(message = root () + "catalogue.json: " + problem)
         Success text => Catalogues::read text
 
     right mark = match mark
@@ -52,7 +53,7 @@ module IntegrityCases
 
     missing (slug, path) = match readFile (root () + path)
         Success _ => ""
-        Error _ => slug + ": " + path + " is missing"
+        Error problem => slug + ": " + path + " cannot be read: " + problem
 
     afterProblem (slugs, slug, other) = match listContains (slugs, other)
         true => ""
@@ -63,7 +64,7 @@ module IntegrityCases
         true => listConcat (listConcat (mapList (lesson.lessonAfter, \other => afterProblem (slugs, slug, other)), mapList (Blocks::challenges lesson.lessonBlocks, \item => solved (slug, item))), mapList (foldList (lesson.lessonBlocks, [], \(paths, block) => listConcat (paths, media block)), \path => missing (slug, path)))
 
     lessonProblems (slugs, slug) = match readFile (root () + slug + ".json")
-        Error _ => [slug + ".json cannot be read"]
+        Error problem => [slug + ".json cannot be read: " + problem]
         Success text => match Lessons::read text
             Error problem => [slug + ": " + problem]
             Success lesson => checked (slugs, lesson, slug)

@@ -65,7 +65,7 @@ export const BOARD_SCRIPT = String.raw`
     boardTransform(context, scene);
     const pending = pendingBoards.get(scene.canvas.dataset.boardSlice) || [];
     pending.forEach(function (entry) { chalkStroke(context, entry.stroke, scene); });
-    if (boardDrawing && boardDrawing.scene === scene) {
+    if (boardDrawing && boardDrawing.scene === scene && !boardDrawing.pan) {
       if (boardDrawing.lasso) paintLasso(context, boardDrawing.points, scene);
       else chalkStroke(context, { points: boardDrawing.points, width: 3 }, scene);
     }
@@ -90,6 +90,8 @@ export const BOARD_SCRIPT = String.raw`
     scene.canvas.width = scene.base.width = Math.max(1, Math.round(scene.canvas.clientWidth * scene.ratio));
     scene.canvas.height = scene.base.height = Math.max(1, Math.round(scene.canvas.clientHeight * scene.ratio));
     scene.frame = boardFrame(scene.canvas, scene.state);
+    const backdrop = scene.canvas.parentElement.querySelector("img");
+    if (backdrop) Object.assign(backdrop.style, { width: scene.state.size.width * scene.frame.scale + "px", height: scene.state.size.height * scene.frame.scale + "px", left: scene.frame.x + "px", top: scene.frame.y + "px", objectFit: "fill" });
     const context = canvasContext(scene.base);
     boardTransform(context, scene);
     scene.state.strokes.forEach(function (stroke) { chalkStroke(context, stroke, scene); });
@@ -107,6 +109,7 @@ export const BOARD_SCRIPT = String.raw`
     event.preventDefault();
     scene.canvas.focus();
     boardDrawing = { scene: scene, pointer: event.pointerId, points: [boardPoint(event, scene)],
+      pan: scene.canvas.dataset.panEnabled === "true", origin: { x: scene.state.view.x, y: scene.state.view.y }, start: [event.clientX, event.clientY],
       lasso: event.shiftKey && scene.canvas.dataset.lassoEnabled === "true", control: controlOf(scene.canvas) };
     if (!boardDrawing.control) throw new Error("The drawing board has no issued provenance");
     scene.canvas.setPointerCapture(event.pointerId);
@@ -115,6 +118,7 @@ export const BOARD_SCRIPT = String.raw`
 
   function moveBoard(event, scene) {
     if (!boardDrawing || boardDrawing.scene !== scene || boardDrawing.pointer !== event.pointerId) return;
+    if (boardDrawing.pan) { moveBoardCamera(event, scene); return; }
     const point = boardPoint(event, scene);
     const points = boardDrawing.points;
     const last = points[points.length - 1];
@@ -122,6 +126,20 @@ export const BOARD_SCRIPT = String.raw`
     points.push(point);
     if (points.length >= 8192) boardDrawing.points = points.filter(function (_, index) { return index % 2 === 0 || index === points.length - 1; });
     requestAnimationFrame(function () { paintPending(scene); });
+  }
+
+  function moveBoardCamera(event, scene) {
+    const drag = boardDrawing;
+    scene.state.view.x = Math.round(drag.origin.x + (event.clientX - drag.start[0]) / scene.frame.scale);
+    scene.state.view.y = Math.round(drag.origin.y + (event.clientY - drag.start[1]) / scene.frame.scale);
+    resizeBoard(scene); paintPending(scene);
+  }
+
+  function finishBoardCamera(drawing, cancelled) {
+    const scene = drawing.scene;
+    if (cancelled) { Object.assign(scene.state.view, drawing.origin); resizeBoard(scene); return; }
+    const value = JSON.stringify({ x: scene.state.view.x, y: scene.state.view.y });
+    vscode.postMessage(Object.assign({}, drawing.control, { type: "event", ordinal: Number(scene.canvas.dataset.panOrdinal), value: value }));
   }
 
   function insideBoardPolygon(point, polygon) {
@@ -153,9 +171,10 @@ export const BOARD_SCRIPT = String.raw`
     if (!boardDrawing || boardDrawing.scene !== scene || boardDrawing.pointer !== event.pointerId) return;
     const drawing = boardDrawing;
     boardDrawing = null;
-    if (!cancelled && drawing.lasso) vscode.postMessage(Object.assign({}, drawing.control,
+    if (drawing.pan) finishBoardCamera(drawing, cancelled);
+    if (!drawing.pan && !cancelled && drawing.lasso) vscode.postMessage(Object.assign({}, drawing.control,
       { type: "event", ordinal: Number(scene.canvas.dataset.lassoOrdinal), value: selectedBoardStrokes(drawing) }));
-    if (!cancelled && !drawing.lasso) sendBoardStroke(drawing);
+    if (!drawing.pan && !cancelled && !drawing.lasso) sendBoardStroke(drawing);
     paintPending(scene);
     if (deferredBoardRender) {
       const message = deferredBoardRender;

@@ -6,6 +6,15 @@ use super::md;
 use crate::docs::html::render;
 
 #[test]
+fn empty_wikilinks_do_not_duplicate_following_events() {
+    // RUSTSEC-2026-0414: sixteen empty labels must yield only 65 events.
+    let source = "[[a|]] ".repeat(16);
+    let events =
+        pulldown_cmark::Parser::new_ext(&source, pulldown_cmark::Options::ENABLE_WIKILINKS).count();
+    assert_eq!(events, 65);
+}
+
+#[test]
 fn summaries_ignore_code_fences_and_read_the_entire_first_paragraph() {
     for fence in ["```", "~~~~"] {
         let markdown = format!("# Money\n\n{fence}osprey-ml\nmodule Money\n# Not prose\n{fence}\n\nThe **money** API\nuses `int` amounts.\n\nAnother paragraph.\n");

@@ -1,0 +1,271 @@
+namespace workbenchtests
+
+import workbenchtests::Drive
+import workbenchtests::AppCases
+import workbench::Benches
+import workbench::BundledLibraries
+import ui::Doc
+import ui::Maths
+import proof::ImportedProofs
+import proof::Fixtures
+import workbenchtests::ProofTermCases
+
+(** Current imported source is checked by the shared kernel, including
+    refusals and assumptions. Implements [WORKBENCH-VERDICT]. *)
+module ImportedCases
+    export run () =
+        test ("imported id_imp exposes its actual statement and no assumptions", valid)
+        test ("corrupting the current imported proof is refused", corrupted)
+        test ("a missing selected imported theorem is refused", missing)
+        test ("an imported axiom is never presented as a proved theorem", assumption)
+        test ("unused export assumptions do not contaminate the selected proof", unused)
+        test ("a checked catalogue includes each theorem's own assumptions", catalogue)
+        test ("an empty export is not an empty successful proof catalogue", empty)
+        test ("oversized proof exports are refused before parsing", oversized)
+
+    export valid () =
+        expect (described (ImportedProofs::check (Fixtures::idImp (), "id_imp")), "id_imp | (∀ (p : Prop), (p → p)) | none")
+        ProofTermCases::run ()
+
+    export corrupted () = expect (startsWith (described (ImportedProofs::check (Fixtures::idImpBad (), "id_imp")), "error: type mismatch:"), true)
+
+    export missing () = expect (described (ImportedProofs::check (Fixtures::idImp (), "missing")), "error: the export declares no `missing`")
+
+    export assumption () =
+        expect (described (ImportedProofs::check (withUnused (), "unusedAssumption")), "error: `unusedAssumption` is not a theorem")
+        definition = replace (Fixtures::idImp (), "\"thm\":", "\"def\":") ?: ""
+        expect (described (ImportedProofs::check (definition, "id_imp")), "error: `id_imp` is not a theorem")
+
+    export unused () = expect (described (ImportedProofs::check (withUnused (), "id_imp")), "id_imp | (∀ (p : Prop), (p → p)) | none")
+
+    export catalogue () = match ImportedProofs::catalogue (withUnused ())
+        Success entries =>
+            expect (length entries, 1)
+            expect (join (mapList (entries, \entry => entry.importedName), ","), "id_imp")
+        Error message => expect (message, "a checked theorem catalogue")
+
+    export empty () = expect (catalogueError (ImportedProofs::catalogue ""), "the export declares no theorems")
+
+    export oversized () = match repeat ("x", 8388609)
+        Error message => expect (message, "an allocated oversized input")
+        Success text =>
+            expect (byteLength text, 8388609)
+            expect (described (ImportedProofs::check (text, "id_imp")), "error: the proof export exceeds 8 MiB")
+            expect (catalogueError (ImportedProofs::catalogue text), "the proof export exceeds 8 MiB")
+
+    catalogueError outcome = match outcome
+        Success entries => "unexpected success"
+        Error message => message
+
+    described outcome = match outcome
+        Success entry => "${entry.importedName} | ${entry.importedStatement} | ${assumptions entry.importedAxioms}"
+        Error message => "error: ${message}"
+
+    assumptions names = match names
+        [] => "none"
+        [first, ...rest] => foldList (rest, first, \(text, name) => "${text}, ${name}")
+
+    export withUnused () = "${Fixtures::idImp ()}{\"in\":16,\"str\":{\"pre\":0,\"str\":\"unusedAssumption\"}}\n{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[],\"name\":16,\"type\":0}}\n"
+
+
+(** The real shared host flow checks current source, selection, and refusal states. *)
+module ImportedFlowCases
+    pane envelope = Drive::node (envelope, "library")
+
+    shown envelope = Drive::visibleText (pane envelope)
+
+    current envelope = Doc::field (Drive::stored envelope, "imports")
+
+    ask () =
+        first = Drive::started ()
+        visible = Drive::activate (first, first, "root", "Notation")
+        requested = Drive::activate (visible, first, "library", "Open proof library")
+        expect (Drive::tickets requested, "proof:opened")
+        requested
+
+    loaded (requested, source) = Drive::postHeld (requested, Drive::done ("proof:opened", "{\"path\":\"proof.ndjson\"}"), JsonObject [Doc::str ("proof:import", source)])
+
+    picked (before, name) =
+        rows = Drive::findLabel ("Theorem", pane before)
+        expect (Doc::has (rows, "event"), true)
+        Drive::post (before, Drive::control ("library", Drive::revision (before, "library"), Doc::number (rows, "event"), Drive::quoted name))
+
+    expanded before =
+        disclosure = Drive::findTitle ("Imported source", pane before)
+        Drive::post (before, Drive::control ("library", Drive::revision (before, "library"), Doc::number (disclosure, "event"), "true"))
+
+    edited (before, source) = Drive::post (before, Drive::labelled (before, before, "library", "Current proof export", Drive::quoted source))
+
+    export fileImport () =
+        source = Fixtures::idImp ()
+        after = loaded (ask (), source)
+        expect (Doc::text (current after, "source"), source)
+        expect (Doc::text (current after, "selected"), "id_imp")
+        expect (AppCases::has (shown after, "Checked theorem"), true)
+        expect (AppCases::has (shown after, "(∀ (p : Prop), (p → p))"), true)
+        expect (AppCases::has (shown after, "Axioms: none"), true)
+        expect (Doc::text (selectedMath after, "kind"), "math")
+        expect (Doc::text (Drive::stored after, "text"), "")
+        arithmetic ()
+        customEquality ()
+        bundled ()
+
+    customEquality () =
+        imported = loaded (ask (), counterfeitEquality ())
+        chosen = picked (imported, "claimed_equality")
+        expect (AppCases::has (shown chosen, "Checked theorem"), true)
+        expect (AppCases::has (Doc::text (selectedMath chosen, "spoken"), "Eq"), true)
+        expect (AppCases::has (Doc::write (Doc::field (selectedMath chosen, "math")), "\"symbol\":\"=\""), false)
+
+    arithmetic () =
+        imported = loaded (ask (), Fixtures::natAddComm ())
+        chosen = picked (imported, "Nat.add_comm")
+        typeset = selectedMath chosen
+        expect (Doc::write (Doc::field (typeset, "math")), Doc::write (Maths::encode (arithmeticTree ())))
+        expect (AppCases::has (Doc::text (typeset, "spoken"), "HAdd.hAdd"), true)
+        revealed = expanded chosen
+        formal = Drive::findNamed ("proof-library-formal", pane revealed)
+        expect (Doc::text (Drive::findNode ("text", formal), "text"), Doc::text (typeset, "spoken"))
+
+    selectedMath envelope = Drive::findNode ("math", Drive::findNamed ("proof-library-result", pane envelope))
+
+    arithmeticTree () = ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym "n") (ui::Sym "Nat"))] (ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym "m") (ui::Sym "Nat"))] (ui::Op "=" (ui::Op "+" (ui::Sym "n") (ui::Sym "m")) (ui::Op "+" (ui::Sym "m") (ui::Sym "n"))))
+
+    export selection () =
+        after = loaded (ask (), ImportedCases::withUnused ())
+        chosen = picked (after, "id_imp")
+        expect (AppCases::has (shown chosen, "Axioms: none"), true)
+        missing = picked (after, "not_present")
+        expect (AppCases::has (shown missing, "Import refused"), true)
+        expect (AppCases::has (shown missing, "Checked theorem"), false)
+        axiom = picked (after, "unusedAssumption")
+        expect (AppCases::has (shown axiom, "not a theorem"), true)
+        expect (AppCases::has (shown axiom, "Checked theorem"), false)
+        expect (Doc::text (Drive::stored axiom, "text"), "")
+
+    export currentSource () =
+        after = expanded (loaded (ask (), Fixtures::idImp ()))
+        broken = edited (after, Fixtures::idImpBad ())
+        expect (Doc::text (current broken, "source"), Fixtures::idImpBad ())
+        expect (AppCases::has (shown broken, "Import refused"), true)
+        expect (AppCases::has (shown broken, "Checked theorem"), false)
+        repaired = edited (broken, Fixtures::idImp ())
+        expect (AppCases::has (shown repaired, "Checked theorem"), true)
+        expect (Doc::text (current repaired, "selected"), "id_imp")
+        empty = edited (repaired, "")
+        expect (AppCases::has (shown empty, "Import refused"), true)
+        expect (AppCases::has (shown empty, "Checked theorem"), false)
+
+    export refusals () =
+        requested = ask ()
+        cancelled = Drive::post (requested, Drive::done ("proof:opened", "{\"cancelled\":true}"))
+        expect (Doc::text (current cancelled, "source"), "")
+        malformed = loaded (requested, "not NDJSON")
+        expect (AppCases::has (shown malformed, "Import refused"), true)
+        expect (AppCases::has (shown malformed, "Checked theorem"), false)
+        missing = Drive::post (requested, Drive::done ("proof:opened", "{}"))
+        expect (Doc::flag (Drive::stored missing, "noticeBad"), true)
+        failed = Drive::post (requested, Drive::failed ("proof:opened", "Permission denied"))
+        expect (AppCases::has (Doc::text (Drive::stored failed, "notice"), "Permission denied"), true)
+
+    withUsed () = "${Fixtures::idImp ()}{\"in\":16,\"str\":{\"pre\":0,\"str\":\"trusted_assumption\"}}\n{\"axiom\":{\"levelParams\":[],\"name\":16,\"type\":4}}\n{\"ie\":7,\"const\":{\"name\":16,\"us\":[]}}\n{\"in\":17,\"str\":{\"pre\":0,\"str\":\"uses_assumption\"}}\n{\"thm\":{\"levelParams\":[],\"name\":17,\"type\":4,\"value\":7}}\n"
+
+    export axioms () =
+        after = loaded (ask (), withUsed ())
+        clean = picked (after, "id_imp")
+        expect (AppCases::has (shown clean, "Axioms: none"), true)
+        assumed = picked (after, "uses_assumption")
+        expect (AppCases::has (shown assumed, "Checked theorem"), true)
+        expect (AppCases::has (shown assumed, "Axioms: trusted_assumption"), true)
+        expect (Doc::text (current assumed, "selected"), "uses_assumption")
+
+    export largeSource () = match repeat ("\n", 1048577)
+        Error problem => expect (problem, "allocated fixture padding")
+        Success padding =>
+            source = Fixtures::idImp () + padding
+            after = loaded (ask (), source)
+            expect (Doc::flag (current after, "large"), true)
+            expect (Doc::text (current after, "source"), "")
+            expect (AppCases::has (shown after, "Checked theorem"), true)
+            lost = picked (after, "id_imp")
+            expect (AppCases::has (shown lost, "Checked theorem"), false)
+            expect (AppCases::has (shown lost, "Import refused"), true)
+            expect (AppCases::has (shown lost, "The imported source is unavailable. Open the proof export again."), true)
+
+
+    bundled () =
+        first = Drive::started ()
+        requested = Drive::activate (first, first, "root", "Notation")
+        expect (Drive::tickets requested, "proof:catalogue")
+        manifest = "{\"libraries\":[{\"title\":\"Identity fixture\",\"path\":\"proof-libraries/identity.ndjson\"}]}"
+        listed = readCompleted (requested, "proof:catalogue", "proof-libraries.json", manifest)
+        expect (Doc::has (Drive::findLabel ("Identity fixture", pane listed), "event"), true)
+        expect (AppCases::has (shown listed, "Checked theorem"), false)
+        selected = Drive::activate (listed, listed, "library", "Identity fixture")
+        expect (Drive::tickets selected, "proof:bundled:2")
+        checked = readCompleted (selected, "proof:bundled:2", "proof-libraries/identity.ndjson", Fixtures::idImp ())
+        expect (AppCases::has (shown checked, "Checked theorem"), true)
+        expect (AppCases::has (shown checked, "Axioms: none"), true)
+        bundledRefused selected
+        bundledRaces selected
+        catalogueRefusals requested
+        restoredCatalogue ()
+
+    readCompleted (before, ticket, path, source) =
+        file = JsonObject [Doc::str ("path", path), Doc::str ("error", ""), Doc::str ("text", source)]
+        held = JsonObject [Doc::str (ticket, Doc::write (JsonObject [JsonMember "files" (JsonArray [file])]))]
+        Drive::postHeld (before, Drive::done (ticket, "{}"), held)
+
+    bundledRefused selected =
+        invalid = readCompleted (selected, "proof:bundled:2", "proof-libraries/identity.ndjson", Fixtures::idImpBad ())
+        expect (AppCases::has (shown invalid, "Import refused"), true)
+        expect (AppCases::has (shown invalid, "Checked theorem"), false)
+        missing = readCompleted (selected, "proof:bundled:2", "proof-libraries/identity.ndjson", "")
+        expect (AppCases::has (shown missing, "Import refused"), true)
+        expect (AppCases::has (shown missing, "Checked theorem"), false)
+
+
+    bundledRaces selected =
+        choice = Drive::findTitle ("Bundled proof libraries", pane selected)
+        reopened = Drive::post (selected, Drive::control ("library", Drive::revision (selected, "library"), Doc::number (choice, "event"), "true"))
+        newer = Drive::activate (reopened, reopened, "library", "Identity fixture")
+        expect (Drive::tickets newer, "proof:bundled:3")
+        stale = readCompleted (newer, "proof:bundled:2", "proof-libraries/identity.ndjson", Fixtures::idImpBad ())
+        expect (Drive::keys stale, "")
+        checked = readCompleted (stale, "proof:bundled:3", "proof-libraries/identity.ndjson", Fixtures::idImp ())
+        expect (AppCases::has (shown checked, "Checked theorem"), true)
+        manual = loaded (Drive::activate (selected, selected, "library", "Open proof library"), Fixtures::idImp ())
+        late = readCompleted (manual, "proof:bundled:2", "proof-libraries/identity.ndjson", Fixtures::idImpBad ())
+        expect (Drive::keys late, "")
+        expect (AppCases::has (shown manual, "Checked theorem"), true)
+        wrong = readCompleted (selected, "proof:bundled:2", "proof-libraries/wrong.ndjson", Fixtures::idImp ())
+        expect (AppCases::has (shown wrong, "Import refused"), true)
+        expect (AppCases::has (shown wrong, "Checked theorem"), false)
+        failed = Drive::post (selected, Drive::failed ("proof:bundled:2", "file unavailable"))
+        expect (AppCases::has (shown failed, "Import refused"), true)
+
+    catalogueRefusals requested =
+        sources = ["{", "{}", "{\"libraries\":[]}", "{\"libraries\":[{\"title\":\"Escape\",\"path\":\"proof-libraries/../secret.ndjson\"}]}"]
+        forEachList (sources, \source =>
+            refused = readCompleted (requested, "proof:catalogue", "proof-libraries.json", source)
+            expect (AppCases::has (shown refused, "Bundled libraries could not be loaded"), true)
+            expect (AppCases::has (shown refused, "Checked theorem"), false))
+        wrong = readCompleted (requested, "proof:catalogue", "wrong.json", "{}")
+        expect (AppCases::has (shown wrong, "different library catalogue"), true)
+        absent = Drive::postHeld (requested, Drive::done ("proof:catalogue", "{}"), JsonObject [])
+        expect (AppCases::has (shown absent, "library read result is invalid"), true)
+
+
+    restoredCatalogue () =
+        path = "proof-libraries/../../secrets.ndjson"
+        entry = JsonObject [Doc::str ("title", "Forged restored entry"), Doc::str ("path", path)]
+        catalogue = Doc::write (JsonObject [JsonMember "libraries" (JsonArray [entry])])
+        saved = JsonObject [JsonMember "imports" (JsonObject [Doc::str ("catalogue", catalogue)])]
+        restored = Benches::restore saved
+        asked = BundledLibraries::open (restored, path)
+        expect (length asked.requests, 0)
+        expect (isEmpty asked.stepStore.imports.exportProblem, false)
+
+    // A custom Eq with a constructor for every pair; checked but not standard equality.
+    // Implements [WORKBENCH-VERDICT].
+    counterfeitEquality () = "{\"meta\":{\"exporter\":{\"name\":\"lean4export\",\"version\":\"3.1.0\"},\"format\":{\"version\":\"3.1.0\"},\"lean\":{\"githash\":\"cdd38ac5115bdeec5f609e9126cce00f51ae88b3\",\"version\":\"4.25.0\"}}}\n{\"in\":1,\"str\":{\"pre\":0,\"str\":\"Eq\"}}\n{\"in\":2,\"str\":{\"pre\":0,\"str\":\"u\"}}\n{\"il\":1,\"param\":2}\n{\"in\":3,\"str\":{\"pre\":0,\"str\":\"α\"}}\n{\"ie\":0,\"sort\":1}\n{\"in\":4,\"str\":{\"pre\":0,\"str\":\"a\"}}\n{\"bvar\":0,\"ie\":1}\n{\"in\":5,\"str\":{\"pre\":4,\"str\":\"_@\"}}\n{\"in\":6,\"str\":{\"pre\":5,\"str\":\"_internal\"}}\n{\"in\":7,\"str\":{\"pre\":6,\"str\":\"_hyg\"}}\n{\"in\":8,\"num\":{\"i\":0,\"pre\":7}}\n{\"bvar\":1,\"ie\":2}\n{\"ie\":3,\"sort\":0}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":3,\"name\":8,\"type\":2},\"ie\":4}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":4,\"name\":4,\"type\":1},\"ie\":5}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":5,\"name\":3,\"type\":0},\"ie\":6}\n{\"in\":9,\"str\":{\"pre\":1,\"str\":\"fabricated\"}}\n{\"in\":10,\"str\":{\"pre\":0,\"str\":\"b\"}}\n{\"const\":{\"name\":1,\"us\":[1]},\"ie\":7}\n{\"bvar\":2,\"ie\":8}\n{\"app\":{\"arg\":8,\"fn\":7},\"ie\":9}\n{\"app\":{\"arg\":2,\"fn\":9},\"ie\":10}\n{\"app\":{\"arg\":1,\"fn\":10},\"ie\":11}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":11,\"name\":10,\"type\":2},\"ie\":12}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":12,\"name\":4,\"type\":1},\"ie\":13}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":13,\"name\":3,\"type\":0},\"ie\":14}\n{\"in\":11,\"str\":{\"pre\":1,\"str\":\"rec\"}}\n{\"in\":12,\"str\":{\"pre\":0,\"str\":\"u_1\"}}\n{\"il\":2,\"param\":12}\n{\"in\":13,\"str\":{\"pre\":0,\"str\":\"motive\"}}\n{\"in\":14,\"str\":{\"pre\":0,\"str\":\"t\"}}\n{\"ie\":15,\"sort\":2}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":15,\"name\":14,\"type\":11},\"ie\":16}\n{\"in\":15,\"str\":{\"pre\":0,\"str\":\"fabricated\"}}\n{\"const\":{\"name\":9,\"us\":[1]},\"ie\":17}\n{\"bvar\":3,\"ie\":18}\n{\"app\":{\"arg\":18,\"fn\":17},\"ie\":19}\n{\"app\":{\"arg\":8,\"fn\":19},\"ie\":20}\n{\"app\":{\"arg\":2,\"fn\":20},\"ie\":21}\n{\"app\":{\"arg\":21,\"fn\":1},\"ie\":22}\n{\"bvar\":4,\"ie\":23}\n{\"app\":{\"arg\":23,\"fn\":7},\"ie\":24}\n{\"app\":{\"arg\":18,\"fn\":24},\"ie\":25}\n{\"app\":{\"arg\":8,\"fn\":25},\"ie\":26}\n{\"app\":{\"arg\":1,\"fn\":8},\"ie\":27}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":27,\"name\":14,\"type\":26},\"ie\":28}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":28,\"name\":15,\"type\":22},\"ie\":29}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":29,\"name\":13,\"type\":16},\"ie\":30}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":30,\"name\":8,\"type\":2},\"ie\":31}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":31,\"name\":4,\"type\":1},\"ie\":32}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":32,\"name\":3,\"type\":0},\"ie\":33}\n{\"ie\":34,\"lam\":{\"binderInfo\":\"default\",\"body\":1,\"name\":15,\"type\":22}}\n{\"ie\":35,\"lam\":{\"binderInfo\":\"default\",\"body\":34,\"name\":13,\"type\":16}}\n{\"ie\":36,\"lam\":{\"binderInfo\":\"default\",\"body\":35,\"name\":8,\"type\":2}}\n{\"ie\":37,\"lam\":{\"binderInfo\":\"default\",\"body\":36,\"name\":4,\"type\":1}}\n{\"ie\":38,\"lam\":{\"binderInfo\":\"default\",\"body\":37,\"name\":3,\"type\":0}}\n{\"inductive\":{\"ctors\":[{\"cidx\":0,\"induct\":1,\"isUnsafe\":false,\"levelParams\":[2],\"name\":9,\"numFields\":0,\"numParams\":3,\"type\":14}],\"recs\":[{\"all\":[1],\"isUnsafe\":false,\"k\":true,\"levelParams\":[12,2],\"name\":11,\"numIndices\":0,\"numMinors\":1,\"numMotives\":1,\"numParams\":3,\"rules\":[{\"ctor\":9,\"nfields\":0,\"rhs\":38}],\"type\":33}],\"types\":[{\"all\":[1],\"ctors\":[9],\"isRec\":false,\"isReflexive\":false,\"isUnsafe\":false,\"levelParams\":[2],\"name\":1,\"numIndices\":0,\"numNested\":0,\"numParams\":3,\"type\":6}]}}\n{\"in\":16,\"str\":{\"pre\":0,\"str\":\"claimed_equality\"}}\n{\"in\":17,\"str\":{\"pre\":0,\"str\":\"p\"}}\n{\"in\":18,\"str\":{\"pre\":0,\"str\":\"q\"}}\n{\"il\":3,\"succ\":0}\n{\"const\":{\"name\":1,\"us\":[3]},\"ie\":39}\n{\"app\":{\"arg\":3,\"fn\":39},\"ie\":40}\n{\"app\":{\"arg\":2,\"fn\":40},\"ie\":41}\n{\"app\":{\"arg\":1,\"fn\":41},\"ie\":42}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":42,\"name\":18,\"type\":3},\"ie\":43}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":43,\"name\":17,\"type\":3},\"ie\":44}\n{\"const\":{\"name\":9,\"us\":[3]},\"ie\":45}\n{\"app\":{\"arg\":3,\"fn\":45},\"ie\":46}\n{\"app\":{\"arg\":2,\"fn\":46},\"ie\":47}\n{\"app\":{\"arg\":1,\"fn\":47},\"ie\":48}\n{\"ie\":49,\"lam\":{\"binderInfo\":\"default\",\"body\":48,\"name\":18,\"type\":3}}\n{\"ie\":50,\"lam\":{\"binderInfo\":\"default\",\"body\":49,\"name\":17,\"type\":3}}\n{\"thm\":{\"all\":[16],\"levelParams\":[],\"name\":16,\"type\":44,\"value\":50}}\n"

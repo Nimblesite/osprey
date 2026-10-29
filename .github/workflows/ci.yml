@@ -185,6 +185,18 @@ jobs:
           node scripts/verify-release-gates.mjs
           python3 scripts/test-release-gate.py
 
+      # `_lint` (scripts/make/tests.mk) also runs these three; the analysis job
+      # re-implements the rest of that recipe inline. Without them a licence
+      # bundle or dead-code regression cannot fail a merge.
+      - name: Dead-code gate intact
+        run: node scripts/verify-no-dead-code.mjs
+
+      - name: Package licence bundles intact
+        run: node scripts/verify-package-licenses.mjs
+
+      - name: Package licence guard regressions
+        run: node --test scripts/test-package-licenses.mjs
+
       - name: Package coverage wiring contracts
         run: |
           python3 scripts/test-package-coverage.py
@@ -249,6 +261,7 @@ jobs:
             target/release/osprey
             target/osprey-pkg
             target/package-workspace.wasm
+            target/workbench.wasm
             compiler/lib/
             compiler/bin/*.a
             examples/projects/modules/src/web/bundle.ospml
@@ -614,6 +627,27 @@ jobs:
       - name: Recorded Lean export reproduces byte for byte
         run: bash scripts/proof-export.sh --check
 
+      - name: Recorded conjunction export reproduces byte for byte
+        run: bash scripts/proof-export.sh --check --theorem and_swap
+
+      - name: Recorded arithmetic export reproduces byte for byte
+        run: bash scripts/proof-export.sh --check --theorem Nat.add_comm
+
+      - name: Proof export recorder regressions
+        run: node --test scripts/test-proof-export.mjs
+
+      - name: OpenAI proof corpus trust ledger regressions
+        run: python3 scripts/test-proof-openai.py
+
+      - name: Recent OpenAI proof ports (Lean cross-check, GC, ARC and wasm32)
+        run: python3 scripts/proof-openai.py --compiler target/release/osprey
+
+      - name: Lean core proof corpus (Lean cross-check, GC, ARC and wasm32)
+        run: python3 scripts/proof-openai.py --corpus lean-core --compiler target/release/osprey
+
+      - name: Recorded Unicode proofs (fresh Lean, GC, ARC and wasm32)
+        run: python3 scripts/test-proof-literals.py
+
       - name: M0 proof kernel (GC, ARC and wasm32 goldens)
         run: make _test_proof_kernel
 
@@ -679,9 +713,10 @@ jobs:
         with:
           submodules: true
       # `pretest` compiles the extension, which copies its icon from this
-      # LFS-stored logo; packaging also requires the README GIF. Refuse pointers.
-      - name: Fetch extension icon and README media
-        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif"
+      # LFS-stored logo; packaging also requires the README GIF and the workbench
+      # assets/lessons media it stages verbatim. Refuse pointers.
+      - name: Fetch extension icon, README media and workbench assets
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -1103,6 +1138,7 @@ jobs:
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
           submodules: true
+          lfs: true
 
       - name: Install jq
         run: command -v jq >/dev/null || brew install jq
@@ -1139,6 +1175,13 @@ jobs:
 
       - name: iOS and macOS builds, ABI, goldens and app persistence
         run: make ios-test macos-test mobile-ios-test bank-ios-test
+
+      - name: Native Workbench host and rendering regressions
+        env:
+          OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
+        run: |
+          bash apps/workbench/hosts/apple/run.sh --build
+          swift test --package-path apps/workbench/hosts/apple
 
       # [SYMEX-CRASH-GATE] The KLEE engine gates (hunt expectations, planted
       # crashes, default budget, safe sweep) are intentionally NOT run in CI:

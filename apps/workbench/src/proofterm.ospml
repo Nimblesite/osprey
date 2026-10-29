@@ -1,0 +1,86 @@
+namespace workbench
+
+import proof::Terms
+import proof::Naturals
+
+(** Presentation of a checked term through the shared mathematics tree.
+    Exact overloaded spines select notation; every other term retains its
+    explicit formal form. Implements [WORKBENCH-MATH] [WORKBENCH-VERDICT]. *)
+module ProofTerms
+    export typeset term = layout (term, { proofBoundNames = [], proofConstantNames = listConcat (["Prop", "Type", "Sort"], Terms::constants term) }, 0)
+
+    layout (term, names, context) = match term
+        proof::Pi name domain body => quantified (name, domain, body, names, context)
+        proof::App _ _ => applied (term, Terms::spine term, names, context)
+        proof::NatLit value => ui::Num (Naturals::show value)
+        _ => formal (term, names)
+
+    formal (term, names) = ui::Sym (Terms::show (renamed (term, names), names.proofBoundNames))
+
+    freeName (hint, names) = fresh (hint, listConcat (names.proofBoundNames, names.proofConstantNames), 0)
+
+    extended (names, name) = names(proofBoundNames = listPrepend (names.proofBoundNames, name))
+
+    grouped (context, priority, tree) = match context > priority
+        true => ui::Paren tree
+        false => tree
+
+    quantified (hint, domain, body, names, context) =
+        name = freeName (hint, names)
+        scope = extended (names, name)
+        match Terms::mentions (body, 0)
+            true => grouped (context, 0, ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym name) (layout (domain, names, 0)))] (layout (body, scope, 0)))
+            false => grouped (context, 1, ui::Op "→" (layout (domain, names, 2)) (layout (body, scope, 1)))
+
+    applied (term, spine, names, context) = match Terms::equal (spine.spineHead, proof::Const "Eq" [proof::Succ proof::Zero])
+        true => equality (term, spine.spineArgs, names, context)
+        false => match Terms::equal (spine.spineHead, proof::Const "HAdd.hAdd" [proof::Zero, proof::Zero, proof::Zero])
+            true => addition (term, spine.spineArgs, names, context)
+            false => formal (term, names)
+
+    equality (term, args, names, context) = match args
+        [_, left, right] => grouped (context, 2, ui::Op "=" (layout (left, names, 3)) (layout (right, names, 3)))
+        _ => formal (term, names)
+
+    addition (term, args, names, context) = match args
+        [first, second, result, dictionary, left, right] => match naturalAddition (first, second, result, dictionary)
+            true => grouped (context, 3, ui::Op "+" (layout (left, names, 3)) (layout (right, names, 4)))
+            false => formal (term, names)
+        _ => formal (term, names)
+
+    naturalAddition (first, second, result, dictionary) =
+        nat = proof::Const "Nat" []
+        expected = proof::App (proof::App (proof::Const "instHAdd" [proof::Zero]) nat) (proof::Const "instAddNat" [])
+        Terms::equalAll ([first, second, result, dictionary], [nat, nat, nat, expected])
+
+    fresh (hint, names, index) =
+        base = match isEmpty hint || hint == "_"
+            true => "x"
+            false => hint
+        candidate = match index == 0
+            true => base
+            false => "${base}_${index}"
+        match foldList (names, false, \(found, name) => found || name == candidate)
+            true => fresh (base, names, satAdd index 1)
+            false => candidate
+
+    // Freshen hints inside a formal fallback as well: a nested binder must
+    // not capture the displayed name of an outer de Bruijn variable.
+    renamed (term, names) = match term
+        proof::App head arg => proof::App (renamed (head, names)) (renamed (arg, names))
+        proof::Pi hint domain body => renamedBinder (hint, domain, body, names, true)
+        proof::Lam hint domain body => renamedBinder (hint, domain, body, names, false)
+        proof::Let hint ty value body => renamedLet (hint, ty, value, body, names)
+        proof::Proj family index target => proof::Proj family index (renamed (target, names))
+        other => other
+
+    renamedBinder (hint, domain, body, names, universal) =
+        name = freeName (hint, names)
+        scoped = renamed (body, extended (names, name))
+        match universal
+            true => proof::Pi name (renamed (domain, names)) scoped
+            false => proof::Lam name (renamed (domain, names)) scoped
+
+    renamedLet (hint, ty, value, body, names) =
+        name = freeName (hint, names)
+        proof::Let name (renamed (ty, names)) (renamed (value, names)) (renamed (body, extended (names, name)))

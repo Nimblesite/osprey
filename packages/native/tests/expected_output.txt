@@ -42,3 +42,8 @@ ok 41 - board themes name the board and chalk tokens
 ok 42 - mathematics decodes back to the tree it encodes across every constructor
 ok 43 - mathematics decoding refuses unknown kinds missing children non-arrays and non-objects
 ok 44 - image and video encode as leaves with their media fields and no ordinal
+ok 45 - presentation frames preserve exact dimensions and inner control provenance
+ok 46 - scoped themes and dialogs retain their inner controls and dismissal provenance
+ok 47 - inline text retains mathematical emphasis and semantic source colours without bindings
+1..47
+# tests=47 passed=47 failed=0 skipped=0

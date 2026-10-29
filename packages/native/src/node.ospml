@@ -13,7 +13,7 @@ type TextRole = Display | Large | Title | Heading | Lead | Headline | Body | Cal
 type Side = Leading | Trailing
 
 (** How strongly a button reads: the page's main action, a plain one or a destructive one. *)
-type ButtonRole = Prominent | Plain | Destructive
+type ButtonRole = Prominent | Plain | Destructive | Filled
 
 (** The direction a stack lays out its children. *)
 type Axis = Vertical | Horizontal
@@ -53,6 +53,9 @@ type Node A =
         content : string
         role : TextRole
         tone : Tone
+    RichText
+        textRuns : List<TextRun>
+        richRole : TextRole
     Stack
         axis : Axis
         children : List<Node<A>>
@@ -69,6 +72,16 @@ type Node A =
         panes : List<Node<A>>
     Layer
         children : List<Node<A>>
+    Framed
+        frameStyle : FrameStyle
+        frameContent : Node<A>
+    Themed
+        localTheme : Theme
+        themedContent : Node<A>
+    Dialog
+        dialogTitle : string
+        dialogBody : Node<A>
+        dialogDismiss : A
     ContextMenu
         menuBody : Node<A>
         menuActions : List<Node<A>>
@@ -77,6 +90,9 @@ type Node A =
         aside : Node<A>
         pane : Node<A>
         extent : int
+        asideLeast : int
+        asideMost : int
+        paneKeep : int
         resize : A
     Tabs
         tabs : List<Tab<A>>
@@ -170,6 +186,7 @@ type Node A =
     Editor
         editorLabel : string
         editorValue : string
+        editorInline : bool
         cursor : int
         marks : List<Mark>
         edit : A
@@ -178,6 +195,10 @@ type Node A =
         boardSlice : string
         strokeCount : int
         lassoEnabled : bool
+        boardBackdrop : string
+        boardPanning : bool
+        boardPanBinding : bool
+        boardPan : A
         stroke : A
         lasso : A
 
@@ -233,6 +254,26 @@ module Splitters
 
 (** Typed constructors for the component vocabulary; applications build trees with these and never write protocol JSON ([UI-COMPONENTS]). *)
 module Ui
+    (** Exact application-authored insets, dimensions and semantic surfaces around a component. *)
+    export framed<A> : (FrameStyle, Node<A>) -> Node<A>
+    framed (style, content) = Framed(frameStyle = style, frameContent = content)
+
+    (** Inline runs wrap as one text paragraph, preserving mathematical emphasis and source colours. *)
+    export rich<A> : (List<TextRun>, TextRole) -> Node<A>
+    rich (runs, role) = RichText(textRuns = runs, richRole = role)
+
+    (** A text run with a semantic ink token and explicit emphasis. *)
+    export run (text, ink, italic) = TextRun(runText = text, runInk = ink, runItalic = italic)
+
+    (** A scoped application-owned palette, inherited by the whole subtree. *)
+    export themed<A> : (Theme, Node<A>) -> Node<A>
+    themed (theme, content) = Themed(localTheme = theme, themedContent = content)
+
+    (** An accessible modal surface; content and dismissal are application-authored. *)
+    export dialog<A> : (string, Node<A>, A) -> Node<A>
+    dialog (title, content, dismiss) = Dialog(dialogTitle = title, dialogBody = content, dialogDismiss = dismiss)
+
+
     // Explicit generic signatures: an unannotated helper is instantiated once
     // for every caller in a later file (Nimblesite/osprey#277).
     (** Body text in the primary tone. *)
@@ -309,7 +350,7 @@ module Ui
 
     (** `pane` with an `aside` column `width` points wide on `side`, such as a list and its inspector, divided by a splitter ([UI-COMPONENTS-SPLITTER]). Dragging the splitter delivers the column's new width to `resize`, within `Splitters` limits. As a page's child the two fill the page and scroll on their own; elsewhere they take their natural height. *)
     export aside<A> : (Node<A>, Side, Node<A>, int, A) -> Node<A>
-    aside (pane, side, column, width, resize) = Aside(side = side, aside = column, pane = pane, extent = Splitters::clamp width, resize = resize)
+    aside (pane, side, column, width, resize) = boundedAside (pane, side, column, width, Splitters::least, Splitters::most, Splitters::keep, resize)
 
     (** A navigable page on the theme's canvas. Toolbar buttons join the window toolbar and a toolbar field searches the page. A page whose child is a list, an empty state, a region or an aside fits the window and lets that child fill it; any other page scrolls. In a split's first pane a screen is the navigation sidebar. *)
     export screen<A> : (string, string, List<Node<A>>, List<Node<A>>) -> Node<A>
@@ -364,11 +405,35 @@ module Ui
 
     (** [UI-COMPONENTS-EDITOR] A multiline text editor with per-line marks and a cursor: each edit delivers the whole text to `edit`, each caret move delivers its character offset to `place`. *)
     export editor<A> : (string, string, int, List<Mark>, A, A) -> Node<A>
-    editor (label, value, cursor, marks, edit, place) = Editor(editorLabel = label, editorValue = value, cursor = cursor, marks = marks, edit = edit, place = place)
+    editor (label, value, cursor, marks, edit, place) = Editor(editorLabel = label, editorValue = value, editorInline = false, cursor = cursor, marks = marks, edit = edit, place = place)
 
     (** A mark on 1-based `line`: an underline in `tone` when `underlined`, with a trailing `badge` and a `note`; empty text draws none. *)
     export mark (line, underlined, tone, badge, note) = Mark(markLine = line, underlined = underlined, markTone = tone, markBadge = badge, markNote = note)
 
     (** [UI-COMPONENTS-BOARD] A writable board drawing the `count` strokes the host holds in the slices `slice:0` to `slice:<count - 1>`, each a stroke's JSON; each finished stroke is delivered once to `stroke`, and a lasso, offered only when `lassoing`, delivers the indices of the strokes it encloses to `lasso`. *)
     export board<A> : (string, int, bool, A, A) -> Node<A>
-    board (slice, count, lassoing, stroke, lasso) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, stroke = stroke, lasso = lasso)
+    board (slice, count, lassoing, stroke, lasso) = illustratedBoard (slice, count, lassoing, "", stroke, lasso)
+
+
+    (** A drawing board with an explicitly supplied reference image behind the retained strokes. *)
+    export illustratedBoard<A> : (string, int, bool, string, A, A) -> Node<A>
+    illustratedBoard (slice, count, lassoing, backdrop, stroke, lasso) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, boardBackdrop = backdrop, boardPanning = false, boardPanBinding = false, boardPan = stroke, stroke = stroke, lasso = lasso)
+
+
+    (** A board camera drag reports its final absolute x/y offsets as bounded JSON text to `pan`. *)
+    export interactiveBoard<A> : (string, int, bool, string, bool, A, A, A) -> Node<A>
+    interactiveBoard (slice, count, lassoing, backdrop, panning, stroke, lasso, pan) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, boardBackdrop = backdrop, boardPanning = panning, boardPanBinding = true, boardPan = pan, stroke = stroke, lasso = lasso)
+
+    (** A multiline free-form field; editing reports the complete text. *)
+    export multiline<A> : (string, string, string, A) -> Node<A>
+    multiline (label, value, prompt, bind) = Field(label = label, value = value, prompt = prompt, secure = false, multiline = true, commit = OnEdit, bind = bind)
+
+
+    (** Application-owned splitter limits allow narrow goal margins without changing other applications. *)
+    export boundedAside<A> : (Node<A>, Side, Node<A>, int, int, int, int, A) -> Node<A>
+    boundedAside (pane, side, column, width, least, most, keep, resize) = Aside(side = side, aside = column, pane = pane, extent = width, asideLeast = least, asideMost = most, paneKeep = keep, resize = resize)
+
+
+    (** A compact mathematical step editor, with its accessible label used as the placeholder. *)
+    export inlineEditor<A> : (string, string, int, A, A) -> Node<A>
+    inlineEditor (label, value, cursor, edit, place) = Editor(editorLabel = label, editorValue = value, editorInline = true, cursor = cursor, marks = [], edit = edit, place = place)

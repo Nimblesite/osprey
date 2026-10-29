@@ -11,7 +11,9 @@ const SITE = path.resolve(__dirname, "../_site");
 const ORIGIN = "https://www.ospreylang.dev";
 const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
-const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/", "/docs/packages-in-vscode/"];
+const proofVideos = require("../src/_data/proofVideos.js");
+const proofWatch = (id) => `/docs/proofs/videos/${id}/`;
+const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/", "/docs/packages-in-vscode/", ...proofVideos.map(({ id }) => proofWatch(id))];
 const read = (file) => fs.readFileSync(path.join(SITE, file), "utf8");
 const jsonLd = (html) =>
   [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
@@ -166,4 +168,44 @@ for (const width of [390, 1440]) {
 test("homepage Python GPU excerpt includes the actual tensor operation", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator('#gpt2 code.language-python')).toContainText('return perform(Tensor.mat_mul(a, b, rows, inner, cols))');
+});
+
+
+test("proof learning paths pair all six topics and keep current port evidence separate", async ({ page }) => {
+  const topics = Object.keys(require("../src/_data/proofTopics.json"));
+  expect(topics).toHaveLength(6);
+  expect(proofVideos).toHaveLength(12);
+  await page.goto("/docs/proofs/");
+  for (const id of topics) {
+    await expect(page.locator(`h2[id="${id}"]`)).toBeVisible();
+    for (const suffix of ["", "-math"]) await expect(page.locator(`table a[href="${proofWatch(id + suffix)}"]`)).toHaveCount(1);
+  }
+  await expect(page.locator('.docs-nav-desktop a[href="/docs/mathlib-port/"]')).toBeVisible();
+  await page.goto("/docs/mathlib-port/");
+  await expect(page.locator("main")).toContainText("ten selected supporting lemmas");
+  await expect(page.locator("main")).toContainText("525 successful root checks");
+});
+
+for (const { id } of proofVideos) test(`proof film ${id} plays with real media, captions and chapters`, async ({ page }) => {
+  await page.goto(proofWatch(id));
+  const player = page.locator("figure.video video");
+  await player.scrollIntoViewIfNeeded();
+  await player.evaluate(video => video.play());
+  await expect.poll(() => player.evaluate(video => video.currentTime)).toBeGreaterThan(0.25);
+  expect(await player.evaluate(video => [video.videoWidth, video.videoHeight])).toEqual([1920, 1080]);
+  expect(await player.evaluate(video => video.muted)).toBe(false);
+  expect(await player.evaluate(video => video.duration)).toBeGreaterThanOrEqual(60);
+  expect(await player.evaluate(video => video.duration)).toBeLessThanOrEqual(180);
+  await expect.poll(() => player.evaluate(video => video.textTracks[0].cues?.length ?? 0)).toBeGreaterThan(0);
+  await expect(page.locator(".video-chapters a").first()).toBeVisible();
+  await expect(page.locator(".video-transcript li").first()).toBeVisible();
+});
+
+for (const width of [390, 1440]) test(`proof docs fit ${width}px and provide both audience routes`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  for (const url of ["/docs/proofs/", proofWatch("proof-workbench"), "/docs/mathlib-port/"]) {
+    await page.goto(url);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `../target/film-review/proof-docs-${width}-${url.split("/").filter(Boolean).at(-1)}.png`, fullPage: true });
+  }
 });

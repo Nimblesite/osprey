@@ -109,6 +109,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       "package-listing",
       "package-workspace",
       "warning-fixes",
+      "workbench",
     ]);
     for (const [name, hash] of Object.entries(clients)) {
       assert.strictEqual(

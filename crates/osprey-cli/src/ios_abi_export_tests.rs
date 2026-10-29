@@ -5,6 +5,33 @@ use super::tests::{abi_of, checked};
 use super::ExportScope;
 
 #[test]
+fn entry_only_unit_imports_keep_the_host_adapter() -> Result<(), String> {
+    let parsed =
+        osprey_syntax::parse_program("extern fn host_log(b: bool) -> Unit\nhost_log(true)\n");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let (ir, _) = super::source(
+        &parsed.program,
+        "entry.osp",
+        "macos",
+        true,
+        &ExportScope::EntryOnly,
+    )?;
+    assert_entry_unit_adapter(&ir);
+    Ok(())
+}
+
+fn assert_entry_unit_adapter(ir: &str) {
+    crate::testkit::contents(
+        ir,
+        &[
+            "declare void @host_log(i1 zeroext)",
+            "call void @host_log(i1 zeroext %p0)\n  ret i64 0",
+        ],
+        &["call i64 @host_log("],
+    );
+}
+
+#[test]
 fn a_scalar_function_codegen_did_not_define_is_refused_not_dropped() {
     // [IOS-HOST-ABI] The archive and header would silently lack `greet`.
     let (program, types, ir) =

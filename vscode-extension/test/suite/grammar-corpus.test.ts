@@ -63,6 +63,10 @@ const MAX_PROBLEMS = 20;
 function violation(token: Token): string | undefined {
   const text = token.text.trim();
   const scopes = token.scopes.join("|");
+  // ML permits an exported function named `string`; its declaration is not a
+  // type position. Keep primitive checks for type positions and other uses.
+  const mlExportDeclaration = scopes.includes("meta.export.binding.osprey-ml") &&
+    scopes.includes("entity.name.function.osprey-ml");
   const checks: [boolean, string][] = [
     // A `meta.*` scope groups tokens but no theme colours it.
     [
@@ -93,7 +97,7 @@ function violation(token: Token): string | undefined {
       "keyword read as an identifier",
     ],
     [
-      PRIMITIVE_TYPE.test(text) && !scopes.includes("support.type.primitive"),
+      PRIMITIVE_TYPE.test(text) && !scopes.includes("support.type.primitive") && !mlExportDeclaration,
       "primitive type read as a value",
     ],
     [

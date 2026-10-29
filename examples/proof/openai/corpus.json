@@ -90,6 +90,50 @@
           "propext"
         ]
       }
+    },
+    {
+      "id": "five-color-orientation",
+      "module": "FiveColorOrientation",
+      "lean_project": "examples/proof/openai-number-theory/lean",
+      "upstream": "lean/OAI/NumberTheory/TwoPoint/Walks/FiveColorOrientation.lean",
+      "source_path": "examples/proof/openai-number-theory/lean/FiveColorOrientation.lean",
+      "source_sha256": "b09e6f250fdb3dfee876edf96056a34dec0e4e2fa3cec866a7bf84edb8a4fb0f",
+      "export_path": "examples/proof/openai-number-theory/exports/five-color-orientation.ndjson",
+      "export_sha256": "23bbe06b52c7d70a395d0d0facf821735953a88a071888fff64ca4358c50b756",
+      "original": {
+        "source_path": "examples/proof/openai/upstream/FiveColorOrientation.lean",
+        "source_sha256": "94c58f50a04b192020fd60fe997003f4b42eed34cd6a6bbcd1ba2cecf7dcffd2",
+        "export_path": "examples/proof/openai-number-theory/exports/five-color-orientation-original.ndjson",
+        "export_sha256": "729bd45ead65764e3fba0a83c345fff84c461f325766d91fccfc76fa8fb912f5"
+      },
+      "theorems": [
+        "OAI.TwoPointCorrelations.short_shift_quotient_gap",
+        "OAI.TwoPointCorrelations.short_shift_forward_colors",
+        "OAI.TwoPointCorrelations.short_shift_not_reverse_colors",
+        "OAI.TwoPointCorrelations.intervalColor_bounds",
+        "OAI.TwoPointCorrelations.five_color_isolates_forward"
+      ],
+      "axioms": [
+        "propext"
+      ],
+      "kind": "supporting lemmas; exact statements, core integer proofs replacing omega",
+      "theorem_axioms": {
+        "OAI.TwoPointCorrelations.short_shift_quotient_gap": [
+          "propext"
+        ],
+        "OAI.TwoPointCorrelations.short_shift_forward_colors": [
+          "propext"
+        ],
+        "OAI.TwoPointCorrelations.short_shift_not_reverse_colors": [
+          "propext"
+        ],
+        "OAI.TwoPointCorrelations.intervalColor_bounds": [
+          "propext"
+        ],
+        "OAI.TwoPointCorrelations.five_color_isolates_forward": [
+          "propext"
+        ]
+      }
     }
   ]
 }

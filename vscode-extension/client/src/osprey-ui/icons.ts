@@ -3,6 +3,7 @@
 // information mark rather than injecting the name into markup.
 
 import { readFileSync } from "fs";
+import { escapeHtml } from "./html";
 
 const CSS_PATH = "@vscode/codicons/dist/codicon.css";
 const FONT_PATH = "@vscode/codicons/dist/codicon.ttf";
@@ -24,6 +25,24 @@ const NAMES: Readonly<Record<string, string>> = {
   document: "symbol-file",
   link: "link-external",
   play: "play",
+  "play.fill": "play",
+  "circle.lefthalf.filled": "color-mode",
+  "square.and.arrow.down": "save",
+  "rectangle.and.pencil.and.ellipsis": "preview",
+  book: "book",
+  textformat: "symbol-text",
+  magnifyingglass: "search",
+  "chevron.left.forwardslash.chevron.right": "code",
+  pencil: "pencil",
+  "hand.draw": "move",
+  "arrow.uturn.backward": "discard",
+  "square.and.pencil": "edit",
+  "arrow.up.left.and.arrow.down.right": "screen-full",
+  "square.and.arrow.up": "export",
+  "arrow.left": "arrow-left",
+  "arrow.right": "arrow-right",
+  minus: "remove",
+  "chevron.left": "chevron-left",
   gear: "gear",
   network: "type-hierarchy",
   cube: "package",
@@ -39,7 +58,9 @@ function codicon(name: string): string {
 }
 
 /** Official Codicon markup for `name`; never includes the raw symbol string. */
-export function symbolIcon(name: string): string {
+export function symbolIcon(name: string, asset?: string): string {
+  if (name === "") return "";
+  if (asset !== undefined) return `<span class="osp-symbol" aria-hidden="true" data-symbol="${escapeHtml(name)}" style="--osp-symbol-image:url(${escapeHtml(JSON.stringify(asset))})"></span>`;
   return `<span class="codicon codicon-${codicon(name)}" aria-hidden="true"></span>`;
 }
 
@@ -47,7 +68,7 @@ let stylesheet = "";
 
 function rule(css: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const found = new RegExp(`(?:^|\\n)(${escaped}[^{]*\\{[^}]*\\})`).exec(css);
+  const found = new RegExp(`(?:^|\\n)(${escaped}(?![\\w-])[^{]*\\{[^}]*\\})`).exec(css);
   if (!found) throw new Error(`The installed Codicon stylesheet has no ${selector} rule`);
   return found[1] ?? "";
 }

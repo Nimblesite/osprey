@@ -10,6 +10,8 @@ const filename = process.argv[2] ?? fileURLToPath(new URL(`../osprey-${version}.
 const archive = await promisify(yauzl.open)(path.resolve(filename), { lazyEntries: true });
 const files = new Map();
 for await (const entry of entries(archive)) {
+  assert.ok(!/(^|\/)(\.deslop|\.too_many_cooks)(\/|$)/.test(entry.fileName),
+    `Local development data must not ship in VSIX: ${entry.fileName}`);
   if (entry.fileName === "extension/readme.md" || /\.(png|gif)$/i.test(entry.fileName)) {
     const stream = await promisify(archive.openReadStream.bind(archive))(entry);
     const chunks = [];

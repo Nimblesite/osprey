@@ -1,0 +1,22 @@
+// Implements [WORKBENCH-STORE] and [UI-HOST] for the Apple host: the two
+// functions the SwiftUI host calls, exported as `osprey_app_start` and
+// `osprey_app_dispatch` (`--target=macos`). The host answers
+// `workbench_slice` with `@_cdecl`: a host-held slice as text, empty when
+// unknown. A string the import returns stays valid for the rest of the process.
+namespace app
+
+import workbench::App
+
+extern workbench_slice (key : string) -> string
+
+(** The first envelope for the host context JSON (`now`, `offset`, `platform`, `home`, `arguments`). *)
+start source =
+    handle ui::Slices
+        fetch key => workbench_slice key
+    App::start source
+
+(** The next envelope after one host event, given the `state` the last envelope returned. *)
+dispatch (saved, event) =
+    handle ui::Slices
+        fetch key => workbench_slice key
+    App::dispatch (saved, event)

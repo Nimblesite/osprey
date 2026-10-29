@@ -44,8 +44,13 @@ function duration(theme: unknown, key: string, property: string): string[] {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 10000 ? [`--osp-${property}:${value}ms;`] : [];
 }
 
+/** Sanitized theme declarations, usable at the document root or on a scoped component. */
+export function themeDeclarations(theme: unknown): string {
+  return [...tokens(theme).flatMap(tokenDeclarations), ...duration(theme, "feedback", "motion"), ...duration(theme, "settle", "settle")].join("");
+}
+
 /** Sanitized semantic and brand properties for the application's theme; empty when it supplies none. */
 export function themeStyle(theme: unknown): string {
-  const declarations = [...tokens(theme).flatMap(tokenDeclarations), ...duration(theme, "feedback", "motion"), ...duration(theme, "settle", "settle")];
-  return declarations.length === 0 ? "" : `<style>:root{${declarations.join("")}}</style>`;
+  const declarations = themeDeclarations(theme);
+  return declarations.length === 0 ? "" : `<style>:root{${declarations}}</style>`;
 }

@@ -296,7 +296,7 @@ test("reactive signals is in the Language section and its ML example is highligh
   expect(await paintedColours(code.locator(".token"))).toBeGreaterThan(1);
 });
 
-const DOC_SECTIONS = ["Start here", "Tutorials", "Build applications", "Packages", "Language", "Reference"];
+const DOC_SECTIONS = ["Start here", "Tutorials", "Proofs", "Build applications", "Packages", "Language", "Reference"];
 
 test.describe("documentation sub-page navigation", () => {
   test("groups subpages and identifies the current desktop page", async ({ page }) => {
@@ -383,3 +383,16 @@ test.describe("documentation sub-page navigation", () => {
     await expect(page.locator('.prose pre[data-flavor="ml"]')).toHaveCount(0);
   });
 });
+
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 320 }]) {
+  test(`seven-section proof menu keeps every link inside ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/docs/proofs/");
+    await page.locator("#mobile-menu-toggle").click();
+    await page.locator(".nav-group > summary").click();
+    await expect(page.locator(".nav-submenu a")).toHaveCount(7);
+    await expectNavigationFits(page.locator(".nav-submenu a"));
+    await expectNavigationFits(page.locator("#site-navigation > li > a, #site-navigation > li > details > summary"));
+  });
+}

@@ -994,6 +994,13 @@ ok norm.replace.3
 ok norm.prepend.0
 ok norm.prepend.1
 ok norm.prepend.2
+ok norm.align.text
+ok norm.align.char
+ok norm.align.start
+ok norm.align.end
+ok norm.align.empty.char
+ok norm.align.empty.start
+ok norm.align.empty.end
 ok proc.single.ids
 ok proc.single.tokens
 ok proc.single.offsets
@@ -1004,4 +1011,4 @@ ok proc.pair.offsets
 ok proc.pair.type_ids
 ok proc.empty.ids
 ok proc.concat
-1006 passed, 0 failed
+1013 passed, 0 failed

@@ -4,6 +4,22 @@ use super::{
     TypeEnv, TypeError, TypeExpr, TypeParam,
 };
 
+/// An extern's resolved parameter and return types. Its annotation language
+/// declares no type parameters, so every annotation converts against one empty
+/// binder environment — the same conversion `collect_extern` always performed.
+fn extern_signature(
+    parameters: &[ExternParameter],
+    return_type: Option<&TypeExpr>,
+) -> (Vec<Type>, Type) {
+    let empty = HashMap::new();
+    let params = parameters
+        .iter()
+        .map(|p| type_expr_to_type(&p.ty, &empty))
+        .collect();
+    let ret = return_type.map_or_else(Type::unit, |r| type_expr_to_type(r, &empty));
+    (params, ret)
+}
+
 impl Checker {
     pub(super) fn collect_extern(
         &mut self,
@@ -12,16 +28,27 @@ impl Checker {
         return_type: Option<&TypeExpr>,
         env: &mut TypeEnv,
     ) {
-        let empty = HashMap::new();
-        let params: Vec<Type> = parameters
-            .iter()
-            .map(|p| type_expr_to_type(&p.ty, &empty))
-            .collect();
-        let ret = return_type.map_or_else(Type::unit, |r| type_expr_to_type(r, &empty));
+        if self.rejects_redeclaration(name) {
+            return;
+        }
+        let (params, ret) = extern_signature(parameters, return_type);
         // Publishing the resolved signature is what lets the backend type FFI
         // calls with the declared parameter/return types (a `Ptr` as `i8*`, not
         // the `i64` default) — same as `collect_function`.
         self.publish_signature(name, parameters, params, ret, env);
+    }
+
+    /// One name is one declaration. A second signature — a function after an
+    /// extern, an extern after a function, or a repeated extern — would
+    /// silently republish a different ABI under the same symbol, so both
+    /// collectors reject it in either order through this one check.
+    pub(super) fn rejects_redeclaration(&mut self, name: &str) -> bool {
+        if self.fn_sigs.contains_key(name) {
+            self.errors
+                .push(TypeError::new(format!("duplicate definition `{name}`")));
+            return true;
+        }
+        false
     }
 
     /// Record a declaration's parameter names, publish its resolved signature
@@ -72,9 +99,7 @@ impl Checker {
             )));
             return;
         }
-        if self.fn_sigs.contains_key(name) {
-            self.errors
-                .push(TypeError::new(format!("duplicate definition `{name}`")));
+        if self.rejects_redeclaration(name) {
             return;
         }
         // Declared type parameters (`fn map<T, U>`) bind to fresh inference

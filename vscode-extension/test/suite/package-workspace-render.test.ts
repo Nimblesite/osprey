@@ -12,7 +12,7 @@ import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
 import { createWorkspaceSession } from "../../client/src/osprey-ui/session";
 import { record, type Regions } from "../../client/src/osprey-ui/protocol";
 import { BUILD_MS, connectEditorBrowser, editorWebviewFrame, waitFor } from "./profiler-kit";
-import { compileSdkWasm, compileSdkWasmJson, runSdkWasmJson, extensionRoot } from "./osprey-test-env";
+import { compileSdkWasm, runSdkWasmJson, extensionRoot } from "./osprey-test-env";
 
 function regions(root: unknown, packages?: unknown): Regions {
   const map = new Map<string, { revision: number; node: unknown }>();
@@ -132,7 +132,8 @@ suite("package workspace renderer", () => {
     const html = workspaceHtml({ nonce: "abc123", assetUri: "", cspSource: "vscode-resource:" });
     assert.ok(html.includes("script-src 'nonce-abc123'"), html);
     assert.ok(html.includes("connect-src 'none'"), html);
-    assert.ok(html.includes("font-src data:"), html);
+    assert.ok(html.includes("font-src vscode-resource: data:"), "only approved local resources and embedded fonts are allowed");
+    assert.ok(!html.includes("font-src *") && !html.includes("font-src https:"));
     assert.ok(html.includes('<script nonce="abc123">'), html);
     assert.ok(!html.includes("default-src *"), html);
   });
@@ -169,10 +170,6 @@ type SdkMode = "expanded" | "collapsed" | "variants" | "normalized" | "board";
 const boardNode = { kind: "board", slice: "sdk-board", count: 0, lasso: false, event: 0, lassoEvent: 1 };
 const boardSlices = new Map([["sdk-board", JSON.stringify({ version: 1, strokes: [], notes: "", size: { width: 1536, height: 1024 }, view: { x: 0, y: 0, scale: 100 } })]]);
 
-async function compiledSdkTree(mode: SdkMode): Promise<unknown> {
-  return compileSdkWasmJson(SDK_COMPONENT_SOURCE, mode, BUILD_MS);
-}
-
 const sdkAsset = (panel: WebviewPanel): string => panel.webview.asWebviewUri(Uri.file(path.join(extensionRoot, "icon.png"))).toString();
 
 function sdkDocument(panel: WebviewPanel): void {
@@ -190,8 +187,7 @@ function showSdkTree(panel: WebviewPanel, node: unknown, events: unknown[]): voi
   sdkDocument(panel);
 }
 
-async function showNormalizedSdk(panel: WebviewPanel, events: unknown[]): Promise<void> {
-  const module = await compileSdkWasm(SDK_COMPONENT_SOURCE, BUILD_MS);
+async function showNormalizedSdk(panel: WebviewPanel, events: unknown[], module: WebAssembly.Module): Promise<void> {
   const session = createWorkspaceSession({
     run: async (frame) => ({ exitCode: 0, stdout: JSON.stringify(await runSdkWasmJson(module, frame)) }),
     render: (regions, _diagnostics, theme) => renderWorkspace({ regions, theme, assetUri: sdkAsset(panel) }),
@@ -287,15 +283,15 @@ async function closeSdkView(panel: WebviewPanel | undefined, browser: Browser, e
 
 type SdkBrowserCheck = (frame: Frame, events: unknown[], panel: WebviewPanel, node: unknown) => Promise<void>;
 
-async function withSdkView(mode: SdkMode, run: SdkBrowserCheck): Promise<void> {
-  const node = mode === "normalized" ? undefined : mode === "board" ? boardNode : await compiledSdkTree(mode);
+async function withSdkView(mode: SdkMode, run: SdkBrowserCheck, module?: WebAssembly.Module): Promise<void> {
+  const node = mode === "normalized" ? undefined : mode === "board" ? boardNode : await runSdkWasmJson(module ?? assert.fail("the SDK fixture must be compiled"), mode);
   const browser = await connectEditorBrowser();
   const events: unknown[] = [];
   let panel: WebviewPanel | undefined;
   try {
     panel = window.createWebviewPanel("osprey.sdk.probe", "SDK vocabulary", ViewColumn.One,
       { enableScripts: true, localResourceRoots: [Uri.file(extensionRoot)] });
-    if (mode === "normalized") await showNormalizedSdk(panel, events);
+    if (mode === "normalized") { assert.ok(module); await showNormalizedSdk(panel, events, module); }
     else showSdkTree(panel, node, events);
     const frame = await editorWebviewFrame(browser, mode === "normalized" ? 'input[placeholder="Normalized"]' : mode === "board" ? "canvas[data-board-slice]" : '.osp-progress[aria-label="SDK progress"]');
     await run(frame, events, panel, node);
@@ -333,7 +329,28 @@ async function verifyOrdinaryBoardStroke(frame: Frame, events: unknown[], box: {
   assert.strictEqual(events.length, 2, "ordinary pointerup must not dispatch a second null canvas action");
 }
 
+async function assertLayerFill(frame: Frame, events: unknown[], panel: WebviewPanel): Promise<void> {
+  const style = { name: "layer-parent", width: 0, height: 600, top: 0, right: 0, bottom: 0, left: 0, radius: 0, gap: 0, fill: "", ink: "", line: "", grow: false };
+  for (const [grow, root] of [[true, false], [false, false], [true, true]]) {
+    const child = { kind: "framed", style: { ...style, name: `layer-child-${grow}-${root}`, height: 0, grow }, body: { kind: "text", text: "Board", role: "body", tone: "primary" } };
+    const overlay = { kind: "button", label: "Direct layer action", symbol: "", role: "plain", enabled: true, event: 0 };
+    const node = { kind: "themed", theme: {}, body: { kind: "framed", style: { ...style, height: root ? 0 : 600, grow: root }, body: { kind: "layer", children: [{ kind: "themed", theme: {}, body: child }, overlay] } } };
+    await panel.webview.postMessage({ type: "render", html: renderWorkspace({ regions: regions(node) }), diagnostics: [] });
+    const surface = frame.locator(`.osp-frame-layer-child-${grow}-${root}`);
+    await surface.waitFor();
+    const height = await surface.evaluate(element => element.getBoundingClientRect().height);
+    const expected = root ? await frame.evaluate(() => innerHeight) : 600;
+    assert.ok(grow ? height >= expected - 10 : height < 100, `grow=${grow},root=${root} gave ${height}px; expected ${expected}`);
+    const before = events.length;
+    await frame.getByRole("button", { name: "Direct layer action", exact: true }).click();
+    await waitFor(() => events.length, count => count === before + 1, 1000, "a direct overlay control remains clickable");
+  }
+}
+
 suite("native board browser", () => {
+  test("a layer propagates framed fill through a scoped theme without growing intrinsic content", async () => {
+    await withSdkView("board", assertLayerFill);
+  });
   test("pointer drawing survives a background render and dispatches one complete stroke", async () => {
     await withSdkView("board", verifyBoardPointer);
   });
@@ -444,30 +461,31 @@ async function assertSubmitOnce(frame: Frame, events: unknown[]): Promise<void> 
   assert.deepStrictEqual(events.filter(record).map((event) => event.value), ["submitted", false, "edited", false, "edited", "edited", false]);
 }
 
+async function assertPendingSubmitOrder(frame: Frame, events: unknown[], action: "Enter" | "select"): Promise<void> {
+  const submit = frame.getByLabel("SDK secret", { exact: true });
+  await frame.getByLabel("SDK draft", { exact: true }).fill("pending draft");
+  assert.strictEqual(events.length, 0, "the draft is pending before submission");
+  if (action === "Enter") await submit.press("Enter");
+  else await frame.getByRole("combobox", { name: "SDK choice", exact: true }).selectOption("b");
+  await waitFor(() => events.length, count => count === 2, 3000, "the pending edit and submission reach the host");
+  assert.deepStrictEqual(events.filter(record).map(event => event.value), ["pending draft", action === "Enter" ? "private" : "b"]);
+}
+
 suite("compiled SDK renderer E2E", () => {
-  test("a marked Osprey editor retains Unicode caret provenance and pending working", async () => {
-    await withSdkView("expanded", verifySdkEditor);
-  });
-  test("submitting a field with Enter commits once when it subsequently blurs", async () => {
-    await withSdkView("expanded", assertSubmitOnce);
-  });
-  test("an edit whose field disappears is reported, never silently dropped", async () => {
-    await withSdkView("normalized", verifyRemovedSdkField);
-  });
-  test("a real Osprey SDK handler can normalize an edit without a replay loop", async () => {
-    await withSdkView("normalized", verifyNormalizedSdk);
-  });
-  test("an in-flight SDK edit survives a render until its host receipt", async () => {
-    await withSdkView("expanded", assertInFlightEdit);
-  });
-  test("native SDK WASM components draw and deliver real webview events", async () => {
-    await withSdkView("expanded", verifySdkFrame);
-  });
-  test("native SDK leading layout sanitizes values and delivers keyboard resizing", async () => {
-    await withSdkView("variants", verifyWideSdkVariants);
-  });
+  let module: WebAssembly.Module;
+  suiteSetup(async function () { this.timeout(BUILD_MS); module = await compileSdkWasm(SDK_COMPONENT_SOURCE, BUILD_MS); });
+  const withCompiled = (mode: SdkMode, run: SdkBrowserCheck) => withSdkView(mode, run, module);
+  for (const action of ["Enter", "select"] as const)
+    test(`${action} submission delivers pending field edits first`, () => withCompiled("expanded", (frame, events) => assertPendingSubmitOrder(frame, events, action)));
+  test("a marked Osprey editor retains Unicode caret provenance and pending working", () => withCompiled("expanded", verifySdkEditor));
+  test("submitting a field with Enter commits once when it subsequently blurs", () => withCompiled("expanded", assertSubmitOnce));
+  test("an edit whose field disappears is reported, never silently dropped", () => withCompiled("normalized", verifyRemovedSdkField));
+  test("a real Osprey SDK handler can normalize an edit without a replay loop", () => withCompiled("normalized", verifyNormalizedSdk));
+  test("an in-flight SDK edit survives a render until its host receipt", () => withCompiled("expanded", assertInFlightEdit));
+  test("native SDK WASM components draw and deliver real webview events", () => withCompiled("expanded", verifySdkFrame));
+  test("native SDK leading layout sanitizes values and delivers keyboard resizing", () => withCompiled("variants", verifyWideSdkVariants));
   test("a collapsed native SDK disclosure hides its child controls", async () => {
-    await withSdkView("collapsed", async (frame, events) => {
+    await withCompiled("collapsed", async (frame, events) => {
       assert.strictEqual(await frame.getByRole("button", { name: "Nested action", includeHidden: true }).isVisible(), false,
         "a collapsed SDK disclosure must hide its child controls");
       assert.strictEqual(await frame.getByRole("button", { name: "Nested action" }).count(), 0,

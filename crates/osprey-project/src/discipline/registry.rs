@@ -53,11 +53,12 @@ impl Registry {
         Ok(registry)
     }
 
-    /// Build a registry from already-known disciplines (tests, editors).
+    /// Build a registry from test fixtures.
     ///
     /// # Errors
     /// Duplicate names are rejected exactly as from disk.
-    pub fn from_disciplines(disciplines: Vec<Discipline>) -> Result<Self, ProjectError> {
+    #[cfg(test)]
+    pub(super) fn from_disciplines(disciplines: Vec<Discipline>) -> Result<Self, ProjectError> {
         let mut registry = Self::default();
         for discipline in disciplines {
             registry.insert(discipline)?;

@@ -3,6 +3,9 @@ namespace workbenchtests
 
 import workbench::Formulas
 import workbenchtests::CorpusCases
+import workbench::ProofTerms
+import proof::Terms
+import proof::Naturals
 
 (** The typesetting cases of [WORKBENCH-VERIFICATION]. *)
 module TypesetCases
@@ -79,3 +82,71 @@ module TypesetCases
         formula = workbench::Imp (workbench::Imp (workbench::Var "p") (workbench::Var "q")) (workbench::Var "r")
         expected = ui::Op "→" (ui::Paren (ui::Op "→" (ui::Sym "p") (ui::Sym "q"))) (ui::Sym "r")
         expect (same (Formulas::typeset formula, expected), true)
+
+(** Imported terms keep their binding, grouping and exact overloaded
+    arguments. These are presentation tests, not certificate acceptance. *)
+module ProofTermCases
+    check (term, expected) = expect (structuralEquals (ProofTerms::typeset term, expected), true)
+
+    nat () = proof::Const "Nat" []
+
+    addHead () = proof::Const "HAdd.hAdd" [proof::Zero, proof::Zero, proof::Zero]
+
+    dictionary () = proof::App (proof::App (proof::Const "instHAdd" [proof::Zero]) (nat ())) (proof::Const "instAddNat" [])
+
+    add (left, right) = Terms::apps (addHead (), [nat (), nat (), nat (), dictionary (), left, right])
+
+    eq (left, right) = Terms::apps (proof::Const "Eq" [proof::Succ proof::Zero], [nat (), left, right])
+
+    binder (name, body) = ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym name) (ui::Sym "Nat"))] body
+
+    export run () =
+        operators ()
+        binders ()
+        constantCollisions ()
+        refusals ()
+        fallbacks ()
+
+    operators () =
+        a = proof::Const "a" []
+        b = proof::Const "b" []
+        c = proof::Const "c" []
+        check (eq (add (a, b), add (b, a)), ui::Op "=" (ui::Op "+" (ui::Sym "a") (ui::Sym "b")) (ui::Op "+" (ui::Sym "b") (ui::Sym "a")))
+        check (add (a, add (b, c)), ui::Op "+" (ui::Sym "a") (ui::Paren (ui::Op "+" (ui::Sym "b") (ui::Sym "c"))))
+        check (add (add (a, b), c), ui::Op "+" (ui::Op "+" (ui::Sym "a") (ui::Sym "b")) (ui::Sym "c"))
+        check (eq (eq (a, b), c), ui::Op "=" (ui::Paren (ui::Op "=" (ui::Sym "a") (ui::Sym "b"))) (ui::Sym "c"))
+
+    binders () =
+        check (proof::Pi "x" (nat ()) (proof::Pi "x" (nat ()) (eq (proof::BVar 1, proof::BVar 0))), binder ("x", binder ("x_1", ui::Op "=" (ui::Sym "x") (ui::Sym "x_1"))))
+        check (proof::Pi "x" (nat ()) (proof::Pi "unused" (nat ()) (eq (proof::BVar 1, proof::BVar 1))), binder ("x", ui::Op "→" (ui::Sym "Nat") (ui::Op "=" (ui::Sym "x") (ui::Sym "x"))))
+        check (proof::Pi "_" (nat ()) (proof::BVar 0), binder ("x", ui::Sym "x"))
+        check (proof::Pi "x" (nat ()) (proof::Pi "x" (nat ()) (proof::Pi "x" (nat ()) (proof::BVar 0))), ui::Op "→" (ui::Sym "Nat") (ui::Op "→" (ui::Sym "Nat") (ui::Paren (binder ("x_2", ui::Sym "x_2")))))
+        check (proof::Pi "" (nat ()) (proof::BVar 0), binder ("x", ui::Sym "x"))
+
+    refused term = check (term, ui::Sym (Terms::show (term, [])))
+
+    constantCollisions () =
+        check (proof::Pi "Prop" (proof::Sort proof::Zero) (proof::Pi "h" (proof::BVar 0) (proof::BVar 1)), ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym "Prop_1") (ui::Sym "Prop"))] (ui::Op "→" (ui::Sym "Prop_1") (ui::Sym "Prop_1")))
+        check (proof::Lam "Type" (proof::Sort (proof::Succ proof::Zero)) (proof::Sort (proof::Succ proof::Zero)), ui::Sym "(fun (Type_1 : Type) => Type)")
+        check (proof::Pi "Nat" (nat ()) (proof::Pi "m" (nat ()) (eq (proof::BVar 1, proof::BVar 0))), binder ("Nat_1", binder ("m", ui::Op "=" (ui::Sym "Nat_1") (ui::Sym "m"))))
+        check (proof::Lam "f" (nat ()) (proof::App (proof::Const "f" []) (proof::BVar 0)), ui::Sym "(fun (f_1 : Nat) => (f f_1))")
+        check (proof::Pi "x" (nat ()) (proof::App (proof::Const "f" []) (proof::Lam "Nat" (nat ()) (proof::App (nat ()) (proof::BVar 1)))), binder ("x", ui::Sym "(f (fun (Nat_1 : Nat) => (Nat x)))"))
+
+    refusals () =
+        value = proof::Const "a" []
+        args = [nat (), nat (), nat (), dictionary (), value, value]
+        wrong = proof::Const "different" []
+        rejected = [addHead (), Terms::apps (addHead (), [nat (), nat (), nat (), wrong, value, value]), Terms::apps (addHead (), [wrong, nat (), nat (), dictionary (), value, value]), Terms::apps (addHead (), [nat (), wrong, nat (), dictionary (), value, value]), Terms::apps (addHead (), [nat (), nat (), wrong, dictionary (), value, value]), Terms::apps (addHead (), [nat (), nat (), nat (), dictionary (), value]), Terms::apps (addHead (), listAppend args value), Terms::apps (proof::Const "HAdd.hAdd" [proof::Succ proof::Zero, proof::Zero, proof::Zero], args), proof::Const "Eq" [proof::Succ proof::Zero], Terms::apps (proof::Const "Eq" [proof::Succ proof::Zero], [nat (), value]), Terms::apps (proof::Const "Eq" [proof::Succ proof::Zero], [nat (), value, value, value]), Terms::apps (proof::Const "Eq" [proof::Zero], [nat (), value, value])]
+        _checked = mapList (rejected, \term => refused term)
+
+    fallbacks () =
+        check (proof::Sort proof::Zero, ui::Sym "Prop")
+        check (proof::Sort (proof::Succ proof::Zero), ui::Sym "Type")
+        check (proof::Lam "x" (nat ()) (proof::Lam "x" (nat ()) (proof::BVar 1)), ui::Sym "(fun (x : Nat) => (fun (x_1 : Nat) => x))")
+        check (proof::Let "x" (nat ()) (proof::Const "v" []) (proof::Lam "x" (nat ()) (proof::BVar 1)), ui::Sym "(let x : Nat := v; (fun (x_1 : Nat) => x))")
+        check (proof::Proj "Pair" 0 (proof::Lam "x" (nat ()) (proof::BVar 0)), ui::Sym "(Pair.0 (fun (x : Nat) => x))")
+        check (proof::App (proof::Const "f" [proof::Param "u"]) (proof::BVar 7), ui::Sym "(f.{u} #7)")
+        check (proof::Pi "x" (nat ()) (proof::App (proof::Const "f" []) (proof::Pi "x" (nat ()) (proof::BVar 1))), binder ("x", ui::Sym "(f (Nat → x))"))
+        match Naturals::ofInt 42
+            Success value => check (proof::NatLit value, ui::Num "42")
+            Error message => expect (message, "a valid natural")

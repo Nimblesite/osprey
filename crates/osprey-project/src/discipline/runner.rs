@@ -6,14 +6,18 @@ use super::Discipline;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 /// How long the compiler sleeps between polls of a running checker.
 const POLL: Duration = Duration::from_millis(20);
 /// What a checker — or its compile — hears when it outlives its deadline.
-const TIME_LIMIT: &str = "exceeded its time limit";
+pub(super) const TIME_LIMIT: &str = "exceeded its time limit";
 /// How much of a crashed checker's stderr is quoted in the diagnostic.
 const STDERR_TAIL: usize = 800;
+/// Serial number making every build's private artifact path unique.
+static NEXT_ARTIFACT: AtomicU64 = AtomicU64::new(0);
 
 /// Something that answers a request line with a response line. The process
 /// runner is the real one; tests substitute scripted answers.
@@ -60,12 +64,7 @@ impl ProcessRunner {
         discipline: &Discipline,
         deadline: Instant,
     ) -> Result<PathBuf, String> {
-        let output = self.build_dir.join(format!(
-            "{}-{:016x}-{:016x}",
-            discipline.name,
-            super::inputs::build_digest(discipline)?,
-            super::inputs::compiler_digest(&self.compiler)?
-        ));
+        let output = self.artifact(discipline)?;
         if output.is_file() {
             return Ok(output);
         }
@@ -74,11 +73,22 @@ impl ProcessRunner {
         build(&self.compiler, &discipline.checker, &output, deadline)?;
         Ok(output)
     }
+
+    /// The cache path of `discipline`'s checker: its name under the digests of
+    /// every build input and of the compiler itself.
+    fn artifact(&self, discipline: &Discipline) -> Result<PathBuf, String> {
+        Ok(self.build_dir.join(format!(
+            "{}-{:016x}-{:016x}",
+            discipline.name,
+            super::inputs::build_digest(discipline)?,
+            super::inputs::compiler_digest(&self.compiler)?
+        )))
+    }
 }
 
 impl CheckerRunner for ProcessRunner {
     fn run(&self, discipline: &Discipline, request: &str) -> Result<String, String> {
-        let deadline = Instant::now() + discipline.timeout;
+        let deadline = deadline_after(discipline.timeout)?;
         let executable = self.executable(discipline, deadline)?;
         run_executable(&executable, &discipline.root, request, deadline)
     }
@@ -86,7 +96,7 @@ impl CheckerRunner for ProcessRunner {
     /// The bytes of the built checker, so a request is never answered across a
     /// rebuild of the binary that would answer it.
     fn binary_digest(&self, discipline: &Discipline) -> Result<u64, String> {
-        let executable = self.executable(discipline, Instant::now() + discipline.timeout)?;
+        let executable = self.executable(discipline, deadline_after(discipline.timeout)?)?;
         let bytes = std::fs::read(&executable).map_err(|error| {
             format!(
                 "has no readable built checker at {}: {error}",
@@ -95,6 +105,20 @@ impl CheckerRunner for ProcessRunner {
         })?;
         Ok(super::cache::digest(&bytes))
     }
+}
+
+/// The one deadline a request runs under.
+///
+/// # Errors
+/// A limit the monotonic clock cannot reach: `Instant + Duration` panics, and
+/// `timeout_seconds` is an unbounded, user-controlled manifest value.
+fn deadline_after(timeout: Duration) -> Result<Instant, String> {
+    Instant::now().checked_add(timeout).ok_or_else(|| {
+        format!(
+            "the clock cannot reach a time limit of {}s",
+            timeout.as_secs()
+        )
+    })
 }
 
 /// Spawn the built `executable` in `root` and answer one request under
@@ -107,15 +131,40 @@ pub(super) fn run_executable(
     request: &str,
     deadline: Instant,
 ) -> Result<String, String> {
-    let mut child = Command::new(executable)
-        .current_dir(root)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("could not start ({error})"))?;
+    let mut command = Command::new(executable);
+    let mut child = spawn(
+        command
+            .current_dir(root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )
+    .map_err(|error| format!("could not start ({error})"))?;
     feed(&mut child, request);
     wait(child, deadline)
+}
+
+/// Isolate each Unix process tree so a timeout can stop inherited pipe holders.
+fn spawn(command: &mut Command) -> std::io::Result<Child> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let _ = command.process_group(0);
+    }
+    command.spawn()
+}
+
+/// Stop this runner's isolated process group, including descendants holding pipes.
+fn stop(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let _ = Command::new("/bin/kill")
+            .args(["-KILL", "--", &format!("-{}", child.id())])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
 }
 
 /// The compiler invocation that builds `checker` into `output`.
@@ -127,7 +176,10 @@ fn compiler_command(compiler: &Path, checker: &Path, output: &Path) -> Command {
         .arg("--quiet")
         .arg("--no-warnings")
         .arg("-o")
-        .arg(output);
+        .arg(output)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     command
 }
 
@@ -135,21 +187,62 @@ fn compiler_command(compiler: &Path, checker: &Path, output: &Path) -> Command {
 /// is killed at `deadline`, never blocking the compiler past the limit
 /// ([TYPES-DISCIPLINE-PROTOCOL]).
 fn build(compiler: &Path, checker: &Path, output: &Path, deadline: Instant) -> Result<(), String> {
-    let mut child = compiler_command(compiler, checker, output)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("could not be built: {error}"))?;
-    let stderr = drain(child.stderr.take());
-    let _ = drain(child.stdout.take());
-    let status = poll(&mut child, deadline).map_err(|error| format!("could not be built: {error}"));
-    let stderr = join(stderr);
-    match status? {
-        Some(status) if status.success() && output.is_file() => Ok(()),
-        Some(_) => Err(format!("failed to build: {}", tail(&stderr))),
-        None => Err(format!("could not be built: {TIME_LIMIT}")),
+    let artifact = private_artifact(output);
+    match compile(compiler, checker, &artifact, deadline) {
+        Ok(()) => publish(&artifact, output),
+        Err(error) => {
+            let _ = std::fs::remove_file(&artifact);
+            Err(error)
+        }
     }
+}
+
+/// Compile into `artifact`, leaving it only when the compiler exited
+/// successfully and wrote it.
+fn compile(
+    compiler: &Path,
+    checker: &Path,
+    artifact: &Path,
+    deadline: Instant,
+) -> Result<(), String> {
+    let mut child = spawn(&mut compiler_command(compiler, checker, artifact))
+        .map_err(|error| format!("could not be built: {error}"))?;
+    let pipes = Pipes::open(&mut child);
+    let status =
+        poll(&mut child, deadline).map_err(|error| format!("could not be built: {error}"))?;
+    let Some(status) = status else {
+        return Err(format!("could not be built: {TIME_LIMIT}"));
+    };
+    let text = collect(&pipes, deadline).ok_or_else(|| {
+        stop(&mut child);
+        format!("could not be built: {TIME_LIMIT}")
+    })?;
+    if status.success() && artifact.is_file() && text.stdout.is_ok() && text.stderr.is_ok() {
+        return Ok(());
+    }
+    Err(format!("failed to build: {}", text.evidence()))
+}
+
+/// A private build path beside `output`: two invocations sharing a cache
+/// directory never compile into, run, or overwrite each other's artifact.
+fn private_artifact(output: &Path) -> PathBuf {
+    let serial = NEXT_ARTIFACT.fetch_add(1, Ordering::Relaxed);
+    let name = output
+        .file_name()
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+    output.with_file_name(format!("{name}.{}.{serial}.tmp", std::process::id()))
+}
+
+/// Move the finished build into the cache path, so a checker never runs a
+/// partially written binary and a failed build leaves no artifact behind.
+fn publish(artifact: &Path, output: &Path) -> Result<(), String> {
+    std::fs::rename(artifact, output).map_err(|error| {
+        let _ = std::fs::remove_file(artifact);
+        format!(
+            "could not be built: cannot publish {}: {error}",
+            output.display()
+        )
+    })
 }
 
 /// Write the request to the checker's stdin on its own thread, as `drain`
@@ -171,15 +264,19 @@ fn feed(child: &mut Child, request: &str) {
 }
 
 /// Wait until `deadline` for the checker, then kill it and report the
-/// limit. Both pipes are drained on their own threads so a large erased
-/// module cannot block the checker on a full pipe while the compiler polls.
+/// limit. Both pipes are collected on their own threads and the deadline
+/// bounds that collection too, so a checker leaving a background child with
+/// the write ends open cannot hold the compiler past its limit.
 fn wait(mut child: Child, deadline: Instant) -> Result<String, String> {
-    let stdout = drain(child.stdout.take());
-    let stderr = drain(child.stderr.take());
-    match poll(&mut child, deadline)? {
-        Some(status) => finish(status.success(), join(stdout), &join(stderr)),
-        None => Err(TIME_LIMIT.to_string()),
-    }
+    let pipes = Pipes::open(&mut child);
+    let Some(status) = poll(&mut child, deadline)? else {
+        return Err(TIME_LIMIT.to_string());
+    };
+    let Some(text) = collect(&pipes, deadline) else {
+        stop(&mut child);
+        return Err(TIME_LIMIT.to_string());
+    };
+    finish(status.success(), text)
 }
 
 /// Poll `child` every `POLL` until it exits or `deadline` passes, killing it
@@ -190,7 +287,7 @@ fn poll(child: &mut Child, deadline: Instant) -> Result<Option<ExitStatus>, Stri
             Ok(Some(status)) => return Ok(Some(status)),
             Ok(None) if Instant::now() < deadline => std::thread::sleep(POLL),
             Ok(None) => {
-                let _ = child.kill();
+                stop(child);
                 let _ = child.wait();
                 return Ok(None);
             }
@@ -199,48 +296,138 @@ fn poll(child: &mut Child, deadline: Instant) -> Result<Option<ExitStatus>, Stri
     }
 }
 
-fn finish(success: bool, stdout: String, stderr: &str) -> Result<String, String> {
-    if success && !stdout.trim().is_empty() {
-        return Ok(stdout);
+fn finish(success: bool, text: Text) -> Result<String, String> {
+    match (success, text) {
+        (
+            true,
+            Text {
+                stdout: Ok(stdout),
+                stderr: Ok(_),
+            },
+        ) if !stdout.trim().is_empty() => Ok(stdout),
+        (_, text) => Err(verdict(success, &text)),
     }
-    Err(format!(
-        "exited {} with {}: {}",
-        if success { "cleanly" } else { "with an error" },
-        if stdout.trim().is_empty() {
-            "no response"
-        } else {
-            "a response"
-        },
-        tail(stderr)
-    ))
 }
 
-fn drain(stream: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<String> {
-    std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(mut stream) = stream {
-            let _ = stream.read_to_string(&mut text);
+fn verdict(success: bool, text: &Text) -> String {
+    let answered = match &text.stdout {
+        Ok(stdout) => !stdout.trim().is_empty(),
+        Err(_) => false,
+    };
+    format!(
+        "exited {} with {}: {}",
+        if success { "cleanly" } else { "with an error" },
+        if answered {
+            "a response"
+        } else {
+            "no response"
+        },
+        text.evidence()
+    )
+}
+
+/// The two pipes of one finished process, drained on their own threads and
+/// handed over channels: a reader can stop at a deadline instead of waiting
+/// for every holder of the write end to close.
+struct Pipes {
+    stdout: Receiver<Result<String, String>>,
+    stderr: Receiver<Result<String, String>>,
+}
+
+impl Pipes {
+    fn open(child: &mut Child) -> Self {
+        Self {
+            stdout: drain(child.stdout.take(), "stdout"),
+            stderr: drain(child.stderr.take(), "stderr"),
         }
-        text
+    }
+}
+
+/// What a finished process's pipes reported: decoded text, or why the bytes
+/// could not be decoded.
+struct Text {
+    stdout: Result<String, String>,
+    stderr: Result<String, String>,
+}
+
+impl Text {
+    /// The diagnostic: whichever pipe failed to decode, so a binary
+    /// diagnostic never reads as no output at all.
+    fn evidence(&self) -> String {
+        match (&self.stdout, &self.stderr) {
+            (_, Err(stderr)) | (Err(stderr), Ok(_)) => stderr.clone(),
+            (Ok(_), Ok(stderr)) => tail(stderr),
+        }
+    }
+}
+
+/// Both pipes' text, or `None` when a holder of a write end outlives
+/// `deadline`: the deadline bounds the drain as well as the process.
+fn collect(pipes: &Pipes, deadline: Instant) -> Option<Text> {
+    Some(Text {
+        stdout: receive(&pipes.stdout, deadline)?,
+        stderr: receive(&pipes.stderr, deadline)?,
     })
 }
 
-fn join(handle: std::thread::JoinHandle<String>) -> String {
-    handle.join().unwrap_or_default()
+fn receive(
+    pipe: &Receiver<Result<String, String>>,
+    deadline: Instant,
+) -> Option<Result<String, String>> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    pipe.recv_timeout(remaining).ok()
 }
 
+fn drain(
+    stream: Option<impl Read + Send + 'static>,
+    name: &'static str,
+) -> Receiver<Result<String, String>> {
+    let (sender, receiver) = mpsc::channel();
+    // Deliberately detached: a pipe a background child holds open past the
+    // deadline must not delay the compiler while its holder exits.
+    let _ = std::thread::spawn(move || {
+        let mut text = String::new();
+        let read = match stream {
+            Some(mut stream) => stream.read_to_string(&mut text).map(|_| text),
+            None => Ok(text),
+        };
+        let _ = sender.send(decoded(name, read));
+    });
+    receiver
+}
+
+/// The stream's text, or why its bytes are not UTF-8, which the caller must
+/// report: a process writing a binary diagnostic used to look like one that
+/// wrote nothing.
+fn decoded(name: &'static str, read: std::io::Result<String>) -> Result<String, String> {
+    read.map_err(|error| match error.kind() {
+        std::io::ErrorKind::InvalidData => format!("could not decode {name}: invalid UTF-8"),
+        _ => format!("could not read {name}: {error}"),
+    })
+}
+
+/// The last [`STDERR_TAIL`] bytes of `stderr` from a character boundary: a cut
+/// inside a three-byte scalar moves forward to the next scalar, so a slice
+/// never splits a character.
 fn tail(stderr: &str) -> String {
     let trimmed = stderr.trim();
     if trimmed.is_empty() {
         return "(no stderr)".to_string();
     }
     let start = trimmed.len().saturating_sub(STDERR_TAIL);
-    let start = trimmed
-        .char_indices()
+    match trimmed.get(start..) {
+        Some(bounded) => bounded.to_string(),
+        None => next_boundary(trimmed, start).to_string(),
+    }
+}
+
+/// `text` from the first character boundary after a mid-character `start`.
+fn next_boundary(text: &str, start: usize) -> &str {
+    text.char_indices()
         .map(|(index, _)| index)
-        .find(|index| *index >= start)
-        .unwrap_or(0);
-    trimmed[start..].to_string()
+        .find(|index| *index > start)
+        .and_then(|index| text.get(index..))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

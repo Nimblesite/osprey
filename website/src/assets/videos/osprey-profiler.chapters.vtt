@@ -1,22 +1,22 @@
 WEBVTT
 
-00:00.000 --> 00:09.000
-The Osprey profiler in VS Code
+00:00.000 --> 00:09.313
+Profiling Osprey
 
-00:09.000 --> 00:26.000
-Run & Profile CPU on the open file
+00:09.313 --> 00:26.163
+Run & Profile
 
-00:26.000 --> 00:45.000
-Read the flame graph and the heat map
+00:26.163 --> 00:44.763
+Read the results
 
-00:45.000 --> 01:08.000
+00:44.763 --> 01:07.830
 Attach to a running program
 
-01:08.000 --> 01:32.000
-Memory backends: default, GC and ARC
+01:07.830 --> 01:32.476
+Memory
 
-01:32.000 --> 01:50.000
-Check for leaks with ARC
+01:32.476 --> 01:50.576
+Check for leaks
 
-01:50.000 --> 02:00.000
-Try it yourself
+01:50.576 --> 02:00.137
+Try it

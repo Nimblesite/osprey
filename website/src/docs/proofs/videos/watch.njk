@@ -1,0 +1,34 @@
+---
+layout: page
+pagination:
+  data: proofVideos
+  size: 1
+  alias: film
+  addAllPagesToCollections: true
+permalink: "/docs/proofs/videos/{{ film.id }}/"
+eleventyComputed:
+  video: "{{ film.id }}"
+  title: "{{ film.name }}"
+  description: "{{ film.description }}"
+tags: [tutorials, video, proofs]
+---
+{% set topic = proofTopics[film.proofTopic] %}
+<p>{{ topic.intro }}</p>
+<p>For {{ film.audience }}. <a href="/docs/proofs/#{{ film.proofTopic }}">Choose the other audience version</a> or <a href="/docs/proofs/">browse the complete series</a>.</p>
+
+{% videoPlayer video %}
+
+<h2>What this demonstrates</h2>
+<p>{{ topic.detail }}</p>
+<p><a href="{{ topic.guide }}">Read the guide and try it yourself</a>. Osprey is actively evolving; the guide distinguishes the recorded demonstration from current corpus progress.</p>
+
+<h2>Actual source</h2>
+<ul>{% for source in topic.sources %}
+<li><a href="https://github.com/Nimblesite/osprey/tree/main/{{ source }}">{{ source }}</a></li>
+{% endfor %}</ul>
+
+<h2>Continue learning</h2>
+<p><a href="/docs/proof-workbench/">Use the Workbench</a> · <a href="/docs/mathlib-port/">Current Mathlib port evidence</a> · <a href="/docs/proofs/">All twelve films</a></p>
+
+<h2>Transcript</h2>
+{% videoTranscript video %}

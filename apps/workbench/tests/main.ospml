@@ -13,6 +13,19 @@ import workbenchtests::BoardCases
 import workbenchtests::ThemeCases
 import workbenchtests::TypesetCases
 import workbenchtests::VerdictCases
+import workbenchtests::AppCases
+import workbenchtests::WorkflowCases
+import workbenchtests::ImportedCases
+import workbenchtests::ImportedFlowCases
+
+test ("imported id_imp exposes its actual statement and no assumptions", ImportedCases::valid)
+test ("corrupting the current imported proof is refused", ImportedCases::corrupted)
+test ("a missing selected imported theorem is refused", ImportedCases::missing)
+test ("an imported axiom is never presented as a proved theorem", ImportedCases::assumption)
+test ("unused export assumptions do not contaminate the selected proof", ImportedCases::unused)
+test ("a checked catalogue includes each theorem's own assumptions", ImportedCases::catalogue)
+test ("an empty export is not an empty successful proof catalogue", ImportedCases::empty)
+test ("oversized proof exports are refused before parsing", ImportedCases::oversized)
 
 test ("every row of the notation table expands to its symbol", NotationCases::everyRow)
 test ("expanding every expanded row again changes nothing", NotationCases::idempotentRow)
@@ -58,6 +71,10 @@ test ("a claim that is not a formula is Bot with the fault's column and expectat
 test ("and_swap closes under the goal engine and every goal is shown", GoalCases::andSwap)
 test ("every row of the tactic table advances the goal it names", GoalCases::rows)
 test ("every failing step reports the exact mismatch", GoalCases::mismatches)
+test ("unrecognised prose is unsupported input rather than a mathematical mismatch", GoalCases::unsupportedProse)
+test ("unsupported prose preserves context and stops later goal evaluation", GoalCases::unsupportedProgress)
+test ("refused sentences retain the last understood goals and step count", GoalCases::retainedGoal)
+test ("missing premises and premature completion never supply an invented truth", GoalCases::noInventedTruth)
 test ("a fifty-step proof closes", GoalCases::fifty)
 
 test ("and_swap emits byte-identical to its golden", EmitCases::andSwap)
@@ -94,3 +111,32 @@ test ("progress saves only completed challenges and unreadable progress is none"
 test ("a lesson with every block and challenge kind reads in order", LessonCases::everyBlock)
 test ("each broken lesson form is refused with its path and rule", LessonCases::refusals)
 test ("every shipped lesson reads, its solutions check, its questions are decided and its media exist", IntegrityCases::shipped)
+test ("starting the app draws every region and requests lessons and progress", AppCases::start)
+test ("typing redraws only the document goal and source regions", AppCases::keystroke)
+test ("kernel verdicts mark the actual proof line", AppCases::underline)
+test ("drawing writes one stroke slice and redraws only the board", AppCases::strokes)
+test ("recognition handles unsupported hosts and refuses stale replies", AppCases::lasso)
+test ("catalogue loading restores saved learner progress", AppCases::loading)
+test ("editing a lesson answer redraws only its challenge", AppCases::challenge)
+test ("only a kernel checked lesson submission saves progress", AppCases::submit)
+test ("recognised ink goes to the focused lesson answer", AppCases::inked)
+test ("a lesson challenge opens in the workbench", AppCases::carry)
+test ("typeset row edits preserve the complete source and caret", AppCases::rowEditing)
+test ("unsupported wording stays neutral and unchecked through the app", AppCases::unsupportedFeedback)
+test ("naming and reading preserve free form working without an editor", AppCases::namedReading)
+test ("returning from a guided example restores the complete original working", AppCases::exampleRoundTrip)
+test ("lessons retain one natural scrolling page around all challenges", AppCases::lessonPageScroll)
+
+test ("real board tools preserve notes while framing and clearing strokes", WorkflowCases::boardTools)
+test ("Source Board and Read transitions preserve one mathematical document", WorkflowCases::sourceModes)
+test ("accepting a sample preserves working and opens its zero-step statement", WorkflowCases::sampleReview)
+test ("recognised ink waits for review and empty recognition reports feedback", WorkflowCases::inkReview)
+test ("workspace save open and source export preserve actual host slices", WorkflowCases::files)
+test ("workspace cancellations malformed files and host failures stay explicit", WorkflowCases::fileFailures)
+
+test ("proof library file import displays its actual checked statement", ImportedFlowCases::fileImport)
+test ("imported theorem selection refuses missing and axiom roots", ImportedFlowCases::selection)
+test ("current imported source corruption revokes checking until repaired", ImportedFlowCases::currentSource)
+test ("proof import cancellation malformed source and host errors stay explicit", ImportedFlowCases::refusals)
+test ("each selected imported theorem reports only its used axioms", ImportedFlowCases::axioms)
+test ("large imported sources require actual retained host data", ImportedFlowCases::largeSource)

@@ -6,6 +6,8 @@ import workbench::Lessons
 import workbench::Blocks
 import workbench::Judge
 import workbench::Tutors
+import workbench::Catalogues
+import workbench::Tries
 import ui::Doc
 
 (** The lesson reader, judge and tutor cases of [LESSONS-VERIFICATION]. *)
@@ -45,6 +47,24 @@ module LessonCases
         expect (head (Judge::rule (judgeTask ["From hq.", "From hp."], false)), "wrong -1: ")
         expect (head (Judge::rule (judgeTask ["From hp.", "From hq."], false)), "right: Rig")
         expect (head (Judge::rule (judgeTask ["From hp.", "From hq."], true)), "wrong 3: N")
+        judgementAttempts ()
+
+    judgement () = workbench::Challenge(challengeId = "judge", challengePrompt = "Does it check?", challengeHints = ["Look at the first target."], challengeTask = workbench::JudgeTask (judgeTask ["From hp.", "From hq."]))
+
+    judgementAttempts () =
+        blank = Tutors::empty ()
+        expect (Tutors::ready (blank, "l/judge", judgement ()), false)
+        expect (length (Tutors::submit (blank, "l/judge", judgement ())).tutorTries, 0)
+        picked = Tutors::pick (blank, "l/judge", workbench::Fails)
+        expect (Tutors::ready (picked, "l/judge", judgement ()), true)
+        right = Tutors::submit (picked, "l/judge", judgement ())
+        expect (join (right.tutorCompleted, ","), "l/judge")
+        rightAgain = Tutors::submit (Tutors::answer (roundTrip right, "l/judge", ""), "l/judge", judgement ())
+        expect (Doc::text (Doc::field (Tries::attemptJson (Tutors::attempt (rightAgain, "l/judge")), "mark"), "kind"), "correct")
+        wrong = Tutors::submit (Tutors::pick (blank, "l/judge", workbench::Checks), "l/judge", judgement ())
+        expect ((Tutors::attempt (roundTrip wrong, "l/judge")).attemptCount, 1)
+        expect ((Tutors::attempt (Tutors::submit (roundTrip wrong, "l/judge", judgement ()), "l/judge")).attemptCount, 2)
+        expect ((Tutors::attempt (Tutors::reveal (wrong, "l/judge", judgement ()), "l/judge")).attemptRevealed, false)
 
     challenge () = workbench::Challenge(challengeId = "swap", challengePrompt = "Prove it.", challengeHints = ["one", "two"], challengeTask = workbench::ProveTask (swapTask ()))
 
@@ -77,6 +97,18 @@ module LessonCases
         expect (markOf right, "right: Rig")
         expect (markOf (Tutors::answer (right, "l/swap", "From hq.")), "none")
         expect (Tutors::ready (Tutors::empty (), "l/swap", challenge ()), false)
+        attemptPersistence right
+
+    roundTrip tutor = Tries::restore (Doc::parse (Doc::write (Tries::save tutor)))
+
+    attemptPersistence right =
+        expect (markOf (roundTrip right), "right: Rig")
+        expect (length (Tutors::submit (right, "l/swap", challenge ())).tutorCompleted, 1)
+        unfinished = Tutors::submit (Tutors::answer (Tutors::empty (), "l/swap", "Wave hands."), "l/swap", challenge ())
+        expect (markOf unfinished, "unfinished")
+        expect (markOf (roundTrip unfinished), "unfinished")
+        expect ((Tutors::attempt (roundTrip unfinished, "l/swap")).attemptCount, 0)
+        expect (isEmpty (roundTrip unfinished).tutorCompleted, true)
 
     (** [LESSONS-PROGRESS]: progress saves only the completed keys and restores them; unreadable text is no progress. *)
     export progress () =
@@ -126,3 +158,43 @@ module LessonCases
         expect (refusal (lesson ("{\"kind\":\"image\",\"source\":\"/etc/x.jpg\",\"alt\":\"A.\",\"width\":4,\"height\":3}," + proveBlock ())), "blocks[0].source must be a path under media/demo/ with no `..`")
         expect (refusal (lesson "{\"kind\":\"prose\",\"text\":\"Only words.\"}"), "a lesson needs at least one challenge")
         expect (refusal (lesson (proveBlock () + "," + proveBlock ())), "the challenge id `one` is used twice")
+        headerRefusals ()
+        blockRefusals ()
+        taskRefusals ()
+        catalogueRefusals ()
+
+    headerRefusals () =
+        source = lesson (proveBlock ())
+        expect (refusal (replace source "\"title\":\"Demo\"" "\"title\":\"\"" ?: ""), "lesson.title must be non-empty text")
+        expect (refusal (replace source "\"summary\":\"A demo.\"" "\"summary\":\"\"" ?: ""), "lesson.summary must be non-empty text")
+        expect (refusal (replace source "\"stage\":1" "\"stage\":0" ?: ""), "stage must be 1, 2 or 3")
+        expect (refusal (replace source "\"minutes\":3" "\"minutes\":0" ?: ""), "lesson.minutes must be a positive whole number")
+        expect (refusal (replace source "\"after\":[]" "\"after\":[\"Bad Slug\"]" ?: ""), "after must list lesson slugs")
+
+    blockRefusals () =
+        expect (refusal (lesson ""), "blocks must not be empty")
+        expect (refusal (lesson ("{\"kind\":\"prose\",\"text\":\"\"}," + proveBlock ())), "blocks[0].text must be non-empty text")
+        expect (startsWith (refusal (lesson ("{\"kind\":\"math\",\"math\":{\"kind\":\"unknown\"},\"spoken\":\"u\"}," + proveBlock ())), "blocks[0].math: "), true)
+        expect (refusal (lesson ("{\"kind\":\"math\",\"math\":{\"kind\":\"sym\",\"text\":\"u\"}}," + proveBlock ())), "blocks[0].spoken must be non-empty text")
+        expect (refusal (replace (everyKind ()) "\"seconds\":9" "\"seconds\":0" ?: ""), "blocks[4].seconds must be a positive whole number")
+        expect (refusal (replace (everyKind ()) "\"width\":4" "\"width\":0" ?: ""), "blocks[3].width must be a positive whole number")
+
+    taskRefusals () =
+        expect (refusal (lesson (replace (proveBlock ()) "\"kind\":\"prove\"" "\"kind\":\"unknown\"" ?: "")), "blocks[0].challenge.kind `unknown` is not a challenge kind")
+        expect (refusal (lesson (replace (proveBlock ()) "\"id\":\"one\"" "\"id\":\"Bad id\"" ?: "")), "blocks[0].challenge.id must be lowercase letters, digits and hyphens")
+        expect (refusal (lesson (replace (proveBlock ()) "\"statement\":\"Theorem t. For all p, p → p.\"" "\"statement\":\"\"" ?: "")), "blocks[0].challenge.statement must be non-empty text")
+        expect (refusal (lesson (replace (stateBlock ()) "\"variables\":[\"p\"]" "\"variables\":[]" ?: "")), "blocks[0].challenge.variables must name at least one proposition")
+        expect (refusal (lesson (replace (stateBlock ()) "\"expected\":\"p → p\"" "\"expected\":\"\"" ?: "")), "blocks[0].challenge.expected must be non-empty text")
+        expect (refusal (lesson (replace (judgeBlock ()) "\"steps\":[\"Assume h : p.\",\"From h.\"]" "\"steps\":[]" ?: "")), "blocks[0].challenge.steps must list the proof to judge")
+
+    catalogueResult source = match Catalogues::read source
+        Error problem => problem
+        Success found => "read: " + join (found.catalogueSlugs, ",")
+
+    catalogueRefusals () =
+        source = "{\"format\":1,\"stages\":[{\"stage\":1,\"name\":\"Start\"}],\"lessons\":[\"demo\"]}"
+        expect (catalogueResult source, "read: demo")
+        expect (catalogueResult "{", "the catalogue is not JSON")
+        expect (catalogueResult (replace source "\"format\":1" "\"format\":2" ?: ""), "this catalogue needs a newer workbench (format must be 1)")
+        expect (catalogueResult (replace source "[\"demo\"]" "[\"demo\",\"demo\"]" ?: ""), "lessons must be distinct lesson slugs, at least one")
+        expect (catalogueResult (replace source "\"name\":\"Start\"" "\"name\":\"\"" ?: ""), "stages must each have a number and a name")

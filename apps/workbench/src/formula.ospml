@@ -296,5 +296,24 @@ module Formulas
     (** A typed mathematics tree with the same grouping as `show`; pass `show formula` as its accessible text to `Ui::math`. *)
     export typeset formula = layout (formula, true)
 
-    (** Structural equality: `show` is injective because `read (show f) = f`, so equal texts are equal formulas. *)
-    export equal (first, second) = show first == show second
+    (** Structural equality of the AST: constructor, payload and binder order, never the displayed
+        text and never logical equivalence ([BUILTIN-STRUCTURAL-EQUALS]). A variable named `¬p`
+        is therefore not the formula `¬p`. *)
+    export equal (first, second) = structuralEquals (first, second)
+
+    (** The implication a negated head is defined to be ([WORKBENCH-FORMULA]); nothing else changes. *)
+    export expandNot formula = match formula
+        Not inner => Imp (inner, Bot)
+        _ => formula
+
+    (** The proposition with every negation head written as the implication it already is. *)
+    comparable formula = match expandNot formula
+        Imp left right => Imp (comparable left, comparable right)
+        And left right => And (comparable left, comparable right)
+        Or left right => Or (comparable left, comparable right)
+        Iff left right => Iff (comparable left, comparable right)
+        Forall names inner => Forall names (comparable inner)
+        other => other
+
+    (** Whether two propositions are the same once negation heads are expanded; `equal` stays syntactic. *)
+    export equivalent (first, second) = equal (comparable first, comparable second)

@@ -63,5 +63,245 @@
       "dependencies",
       "package registry"
     ]
+  },
+  "dependent-types": {
+    "name": "What are dependent types?: for programmers",
+    "description": "Types can describe facts about values. Start with a list-length example, then watch Osprey check an actual identity proof. This version is for programmers.",
+    "content": "/assets/videos/osprey-dependent-types.mp4",
+    "poster": "/assets/videos/osprey-dependent-types-poster.jpg",
+    "posterAlt": "What are dependent types? with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-dependent-types.en.vtt",
+    "chapters": "/assets/videos/osprey-dependent-types.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-29T20:31:55+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "What are dependent types?",
+      "programmers"
+    ],
+    "proofTopic": "dependent-types",
+    "audience": "programmers"
+  },
+  "osprey-proof-kernel": {
+    "name": "How Osprey checks a proof: for programmers",
+    "description": "Follow a statement and its evidence through the proof kernel written in Osprey. This version is for programmers.",
+    "content": "/assets/videos/osprey-proof-kernel.mp4",
+    "poster": "/assets/videos/osprey-proof-kernel-poster.jpg",
+    "posterAlt": "How Osprey checks a proof with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-proof-kernel.en.vtt",
+    "chapters": "/assets/videos/osprey-proof-kernel.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-29T22:22:52+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "How Osprey checks a proof",
+      "programmers"
+    ],
+    "proofTopic": "osprey-proof-kernel",
+    "audience": "programmers"
+  },
+  "proof-workbench": {
+    "name": "Meet the proof workbench: for programmers",
+    "description": "Write a small argument, inspect hypotheses and goals, and complete a guided exercise in the real Workbench. This version is for programmers.",
+    "content": "/assets/videos/osprey-proof-workbench.mp4",
+    "poster": "/assets/videos/osprey-proof-workbench-poster.jpg",
+    "posterAlt": "Meet the proof workbench with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-proof-workbench.en.vtt",
+    "chapters": "/assets/videos/osprey-proof-workbench.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-30T01:33:09+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "Use the Proof Workbench",
+      "programmers"
+    ],
+    "proofTopic": "proof-workbench",
+    "audience": "programmers"
+  },
+  "mathlib-bridge": {
+    "name": "The Mathlib port is already underway: for programmers",
+    "description": "See actual imported mathematical proofs being checked by Osprey, with each theorem's assumptions made visible. This version is for programmers.",
+    "content": "/assets/videos/osprey-mathlib-bridge.mp4",
+    "poster": "/assets/videos/osprey-mathlib-bridge-poster.jpg",
+    "posterAlt": "The Mathlib port is already underway with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-mathlib-bridge.en.vtt",
+    "chapters": "/assets/videos/osprey-mathlib-bridge.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-30T00:41:29+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "The Mathlib port is underway",
+      "programmers"
+    ],
+    "proofTopic": "mathlib-bridge",
+    "audience": "programmers"
+  },
+  "proofs-that-say-no": {
+    "name": "A proof checker must say no: for programmers",
+    "description": "Compare a valid proof with deliberately corrupted evidence and a false replacement statement. This version is for programmers.",
+    "content": "/assets/videos/osprey-proofs-that-say-no.mp4",
+    "poster": "/assets/videos/osprey-proofs-that-say-no-poster.jpg",
+    "posterAlt": "A proof checker must say no with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-proofs-that-say-no.en.vtt",
+    "chapters": "/assets/videos/osprey-proofs-that-say-no.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-29T21:05:39+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "A proof checker must say no",
+      "programmers"
+    ],
+    "proofTopic": "proofs-that-say-no",
+    "audience": "programmers"
+  },
+  "navier-stokes-proof": {
+    "name": "Navier-Stokes: a flow is not a proof: for programmers",
+    "description": "Meet the fluid equations in words, see them in the Workbench, then compare a computed flow with a logical proof exercise. This version is for programmers.",
+    "content": "/assets/videos/osprey-navier-stokes-proof.mp4",
+    "poster": "/assets/videos/osprey-navier-stokes-proof-poster.jpg",
+    "posterAlt": "Navier-Stokes: a flow is not a proof with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-navier-stokes-proof.en.vtt",
+    "chapters": "/assets/videos/osprey-navier-stokes-proof.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-30T01:41:02+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "Navier-Stokes: computation and proof",
+      "programmers"
+    ],
+    "proofTopic": "navier-stokes-proof",
+    "audience": "programmers"
+  },
+  "dependent-types-math": {
+    "name": "What are dependent types?: for mathematicians",
+    "description": "Types can describe facts about values. Start with a list-length example, then watch Osprey check an actual identity proof. This version is for mathematicians.",
+    "content": "/assets/videos/osprey-dependent-types-math.mp4",
+    "poster": "/assets/videos/osprey-dependent-types-math-poster.jpg",
+    "posterAlt": "What are dependent types? with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-dependent-types-math.en.vtt",
+    "chapters": "/assets/videos/osprey-dependent-types-math.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-29T22:31:21+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "What are dependent types?",
+      "mathematicians"
+    ],
+    "proofTopic": "dependent-types",
+    "audience": "mathematicians"
+  },
+  "osprey-proof-kernel-math": {
+    "name": "Inside a small proof kernel: for mathematicians",
+    "description": "Follow a statement and its evidence through the proof kernel written in Osprey. This version is for mathematicians.",
+    "content": "/assets/videos/osprey-proof-kernel-math.mp4",
+    "poster": "/assets/videos/osprey-proof-kernel-math-poster.jpg",
+    "posterAlt": "Inside a small proof kernel with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-proof-kernel-math.en.vtt",
+    "chapters": "/assets/videos/osprey-proof-kernel-math.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-29T22:35:17+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "How Osprey checks a proof",
+      "mathematicians"
+    ],
+    "proofTopic": "osprey-proof-kernel",
+    "audience": "mathematicians"
+  },
+  "proof-workbench-math": {
+    "name": "The proof workbench: goals and evidence: for mathematicians",
+    "description": "Write a small argument, inspect hypotheses and goals, and complete a guided exercise in the real Workbench. This version is for mathematicians.",
+    "content": "/assets/videos/osprey-proof-workbench-math.mp4",
+    "poster": "/assets/videos/osprey-proof-workbench-math-poster.jpg",
+    "posterAlt": "The proof workbench: goals and evidence with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-proof-workbench-math.en.vtt",
+    "chapters": "/assets/videos/osprey-proof-workbench-math.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-30T01:32:39+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "Use the Proof Workbench",
+      "mathematicians"
+    ],
+    "proofTopic": "proof-workbench",
+    "audience": "mathematicians"
+  },
+  "mathlib-bridge-math": {
+    "name": "Osprey rechecks imported mathematical proofs: for mathematicians",
+    "description": "See actual imported mathematical proofs being checked by Osprey, with each theorem's assumptions made visible. This version is for mathematicians.",
+    "content": "/assets/videos/osprey-mathlib-bridge-math.mp4",
+    "poster": "/assets/videos/osprey-mathlib-bridge-math-poster.jpg",
+    "posterAlt": "Osprey rechecks imported mathematical proofs with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-mathlib-bridge-math.en.vtt",
+    "chapters": "/assets/videos/osprey-mathlib-bridge-math.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-30T00:42:21+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "The Mathlib port is underway",
+      "mathematicians"
+    ],
+    "proofTopic": "mathlib-bridge",
+    "audience": "mathematicians"
+  },
+  "proofs-that-say-no-math": {
+    "name": "Rejection is part of the proof: for mathematicians",
+    "description": "Compare a valid proof with deliberately corrupted evidence and a false replacement statement. This version is for mathematicians.",
+    "content": "/assets/videos/osprey-proofs-that-say-no-math.mp4",
+    "poster": "/assets/videos/osprey-proofs-that-say-no-math-poster.jpg",
+    "posterAlt": "Rejection is part of the proof with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-proofs-that-say-no-math.en.vtt",
+    "chapters": "/assets/videos/osprey-proofs-that-say-no-math.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-29T21:15:59+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "A proof checker must say no",
+      "mathematicians"
+    ],
+    "proofTopic": "proofs-that-say-no",
+    "audience": "mathematicians"
+  },
+  "navier-stokes-proof-math": {
+    "name": "Navier-Stokes: computation is not proof: for mathematicians",
+    "description": "Meet the fluid equations in words, see them in the Workbench, then compare a computed flow with a logical proof exercise. This version is for mathematicians.",
+    "content": "/assets/videos/osprey-navier-stokes-proof-math.mp4",
+    "poster": "/assets/videos/osprey-navier-stokes-proof-math-poster.jpg",
+    "posterAlt": "Navier-Stokes: computation is not proof with Osprey branding and real proof tools.",
+    "captions": "/assets/videos/osprey-navier-stokes-proof-math.en.vtt",
+    "chapters": "/assets/videos/osprey-navier-stokes-proof-math.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-30T02:23:38+11:00",
+    "tags": [
+      "Osprey",
+      "proofs",
+      "Navier-Stokes: computation and proof",
+      "mathematicians"
+    ],
+    "proofTopic": "navier-stokes-proof",
+    "audience": "mathematicians"
   }
 }

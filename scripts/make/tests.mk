@@ -324,7 +324,7 @@ _test_profiler:
 # Default and ML sources lower to identical IR; one worker prevents port races.
 # _test_proof_kernel: the proof kernel of plan 0041 (examples/proof/kernel)
 # checks `id_imp` and rejects the controls with the kernel's own reason,
-# byte-exact against its golden, and its 81-case assertion suite (adversarial
+# byte-exact against its golden, and its assertion suite (adversarial
 # structural-equality and universe cases, every single-edit corruption of the
 # recorded export asserted on term structure, never on rendering) passes,
 # under GC, ARC and on wasm32 [PROOF-KERNEL]. No pipe hides a status: every
@@ -365,8 +365,8 @@ _test_disciplines_passthrough:
 	@echo "==> [disciplines] passthrough checker suite..."
 	./$(BIN) test examples/disciplines/passthrough
 	@echo "==> [disciplines] passthrough round trip: GC, ARC, wasm32..."
-	./$(BIN) examples/disciplines/roundtrip --run --memory=gc 2>/dev/null | diff - examples/disciplines/roundtrip/expectedoutput
-	./$(BIN) examples/disciplines/roundtrip --run --memory=arc 2>/dev/null | diff - examples/disciplines/roundtrip/expectedoutput
+	set -o pipefail && ./$(BIN) examples/disciplines/roundtrip --run --memory=gc 2>/dev/null | diff - examples/disciplines/roundtrip/expectedoutput
+	set -o pipefail && ./$(BIN) examples/disciplines/roundtrip --run --memory=arc 2>/dev/null | diff - examples/disciplines/roundtrip/expectedoutput
 	@$(MKDIR) target/disciplines
 	./$(BIN) examples/disciplines/roundtrip --target=wasm32 --compile -o target/disciplines/roundtrip.wasm >/dev/null 2>&1
 	node scripts/wasm-smoke.mjs target/disciplines/roundtrip.wasm examples/disciplines/roundtrip/expectedoutput
@@ -375,7 +375,7 @@ _test_disciplines_passthrough:
 	@cp examples/disciplines/roundtrip/src/main.ospml examples/disciplines/roundtrip/src/numbers.ospml target/disciplines/roundtrip-hm/src/
 	@grep -v 'osprey: types=passthrough' examples/disciplines/roundtrip/src/count.ospml > target/disciplines/roundtrip-hm/src/count.ospml
 	@grep -v '@osprey/passthrough' examples/disciplines/roundtrip/osprey.toml > target/disciplines/roundtrip-hm/osprey.toml
-	./$(BIN) target/disciplines/roundtrip-hm --run --memory=gc 2>/dev/null | diff - examples/disciplines/roundtrip/expectedoutput
+	set -o pipefail && ./$(BIN) target/disciplines/roundtrip-hm --run --memory=gc 2>/dev/null | diff - examples/disciplines/roundtrip/expectedoutput
 	@echo "==> [disciplines] the checker is what rejected a broken module..."
 	@rm -rf target/disciplines/roundtrip-broken && $(MKDIR) target/disciplines/roundtrip-broken/src
 	@cp examples/disciplines/roundtrip/src/main.ospml examples/disciplines/roundtrip/src/numbers.ospml examples/disciplines/roundtrip/src/count.ospml target/disciplines/roundtrip-broken/src/
@@ -525,6 +525,8 @@ _bank_test:
 # consumer project against the fetched sources. Local tests and CI run all
 # suites under both managed backends; the TAP runner propagates failed checks.
 REGISTRY_MEMORY ?= gc
+_test_registry: export OSPREY_E2E_COMPILER = $(abspath $(BIN))
+_test_registry: export OSPREY_E2E_MEMORY = $(REGISTRY_MEMORY)
 _test_registry:
 	@case "$(REGISTRY_MEMORY)" in gc|arc) ;; *) echo "Registry tests require GC or ARC"; exit 1 ;; esac
 	@echo "==> Registry fixture and schema validation (fail-fast)..."
@@ -591,8 +593,8 @@ _deslop:
 # The checker's assertion suite drives the built binary through the protocol.
 _test_disciplines:
 	@echo "==> [disciplines] bounded: GC, ARC, wasm32 against expectedoutput..."
-	./$(BIN) examples/disciplines/bounded_roundtrip --run --memory=gc 2>/dev/null | diff - examples/disciplines/bounded_roundtrip/expectedoutput
-	./$(BIN) examples/disciplines/bounded_roundtrip --run --memory=arc 2>/dev/null | diff - examples/disciplines/bounded_roundtrip/expectedoutput
+	set -o pipefail && ./$(BIN) examples/disciplines/bounded_roundtrip --run --memory=gc 2>/dev/null | diff - examples/disciplines/bounded_roundtrip/expectedoutput
+	set -o pipefail && ./$(BIN) examples/disciplines/bounded_roundtrip --run --memory=arc 2>/dev/null | diff - examples/disciplines/bounded_roundtrip/expectedoutput
 	@$(MKDIR) target/disciplines
 	./$(BIN) examples/disciplines/bounded_roundtrip --target=wasm32 --compile -o target/disciplines/bounded.wasm >/dev/null 2>&1
 	node scripts/wasm-smoke.mjs target/disciplines/bounded.wasm examples/disciplines/bounded_roundtrip/expectedoutput
@@ -607,7 +609,7 @@ _test_disciplines:
 	sed -e "s|$(CURDIR)/||g" target/disciplines/rejected.txt | diff - examples/disciplines/bounded_roundtrip/rejected.expectedoutput
 	@echo "==> [disciplines] bounded: the checker's protocol assertion suite..."
 	@$(RM) examples/disciplines/bounded/.osprey
-	@OSPREY_BIN="$(abspath $(BIN))" ./$(BIN) test examples/disciplines/bounded --memory=gc 2>/dev/null > target/disciplines/bounded-suite.txt; tail -2 target/disciplines/bounded-suite.txt
+	@OSPREY_BIN="$(abspath $(BIN))" ./$(BIN) test examples/disciplines/bounded --memory=gc 2>/dev/null > target/disciplines/bounded-suite.txt; status=$$?; tail -2 target/disciplines/bounded-suite.txt; exit $$status
 	grep -q "failed=0" target/disciplines/bounded-suite.txt
 	@$(RM) examples/disciplines/bounded/.osprey examples/disciplines/bounded_roundtrip/.osprey
 	$(MAKE) _test_disciplines_passthrough

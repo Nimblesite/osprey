@@ -108,6 +108,12 @@ Before LLVM emission, the compiler checks the complete program for unsupported t
 
 Fibers/channels and their scheduling operations, process APIs, built-in HTTP/WebSocket operations, terminal APIs, and arbitrary host FFI are rejected at compile time. Effect constructs require the capabilities specified by [MULTI-WASM](../language/0017-AlgebraicEffects.md). Runtime-provided browser bridge imports remain supported. File, random, and input operations use their portable runtime implementations; access still depends on the WASI host. An unavailable capability must produce a compile error, never a link-time surprise. Removing a rejection requires a working runtime implementation and target tests.
 
+## Fatal Diagnostics [WASI-LIBC-ABI]
+
+The WASI target also accepts `extern fn perror(message: string) -> Unit` and `extern fn abort() -> Unit`. The compiler checks these exact signatures before LLVM emission. wasi-libc supplies both functions: `perror` writes a diagnostic to standard error, and `abort` terminates execution with a trap. Their `Unit` return types follow [FFI-UNIT-RETURN](0019-ForeignFunctionInterface.md#unit-returns-ffi-unit-return).
+
+This is a closed set of libc imports. Other libc symbols remain compile errors under [WASM-TARGET-CAPABILITIES].
+
 ## Effect Support [WASM-TARGET-EFFECTS]
 
 Effect meaning is target-independent. Validated static discharge, value dispatch and control continuations obey [STAGE-WASM and MULTI-WASM](../language/0017-AlgebraicEffects.md). The compiler checks the residual program against available backend capabilities. An unsupported continuation reports the operation and missing capability before linking; it does not acquire a different meaning on wasm32.

@@ -2,6 +2,10 @@
 namespace uitests
 
 import ui::Ui
+import ui::Frames
+    inset
+    bar
+    text
 import ui::Encode
 import ui::Doc
 import ui::Events
@@ -63,15 +67,17 @@ module AdditionCases
 
     (** [UI-COMPONENTS-BOARD]: the board names its host slice and binds strokes before the lasso. *)
     export boardEncoding () =
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::board ("proof/strokes", 2, true, Typed, Load)])
+        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::illustratedBoard ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)])
         doc = listGet (Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
         expect (Doc::text (doc, "kind"), "board")
         expect (Doc::text (doc, "slice"), "proof/strokes")
+        expect (Doc::text (doc, "backdrop"), "chalk-study.png")
         expect (Doc::number (doc, "count"), 2)
         expect (Doc::flag (doc, "lasso"), true)
         expect (Doc::number (doc, "event"), 1)
         expect (Doc::number (doc, "lassoEvent"), 2)
         expect (length walked.bindings, 3)
+        boardCamera ()
 
     (** [UI-COMPONENTS-BOARD]: a valid stroke retains both ordered points, its width and its completion time. *)
     export strokeDecoding () =
@@ -150,6 +156,28 @@ module AdditionCases
         expect (decodeError "7", "a math node must be an object")
         expect (decodeError "{\"kind\":\"sym\",\"text\":7}", "a math node of kind `sym` has a non-string `text`")
         expect (decodeError "{\"kind\":\"op\",\"symbol\":7,\"left\":{\"kind\":\"sym\",\"text\":\"x\"},\"right\":{\"kind\":\"num\",\"text\":\"2\"}}", "a math node of kind `op` has a non-string `symbol`")
+        mathShapeRefusals ()
+        mathChildRefusals ()
+
+    mathShapeRefusals () =
+        expect (decodeError "{}", "a math node is missing its kind")
+        expect (decodeError "{\"kind\":7}", "a math node is missing its kind")
+        expect (decodeError "{\"kind\":\"sym\"}", "a math node of kind `sym` is missing its `text`")
+        expect (decodeError "{\"kind\":\"seq\"}", "a math node of kind `seq` is missing its `items`")
+        expect (decodeError "{\"kind\":\"seq\",\"items\":[{},{}]}", "a math node is missing its kind")
+        expect (decodeError "{\"kind\":\"binder\"}", "a math node of kind `binder` is missing its `symbol`")
+        expect (decodeError "{\"kind\":\"binder\",\"symbol\":\"∀\"}", "a math node of kind `binder` is missing its `names`")
+        expect (decodeError "{\"kind\":\"binder\",\"symbol\":\"∀\",\"names\":[]}", "a math node of kind `binder` is missing its child `body`")
+
+    mathChildRefusals () =
+        expect (decodeError "{\"kind\":\"sup\"}", "a math node of kind `sup` is missing its child `base`")
+        expect (decodeError "{\"kind\":\"sup\",\"base\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `sup` is missing its child `script`")
+        expect (decodeError "{\"kind\":\"op\",\"symbol\":\"=\"}", "a math node of kind `op` is missing its child `left`")
+        expect (decodeError "{\"kind\":\"op\",\"symbol\":\"=\",\"left\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `op` is missing its child `right`")
+        expect (decodeError "{\"kind\":\"big\"}", "a math node of kind `big` is missing its `symbol`")
+        expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\"}", "a math node of kind `big` is missing its child `lower`")
+        expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `big` is missing its child `upper`")
+        expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"},\"upper\":{\"kind\":\"num\",\"text\":\"2\"}}", "a math node of kind `big` is missing its child `body`")
 
     (** [LESSONS-FRAMEWORK]: an image and a video encode as leaves with their media fields and take no control ordinal. *)
     export mediaEncoding () =
@@ -163,3 +191,71 @@ module AdditionCases
         expect (Doc::has (image, "event"), false)
         expect (Doc::has (video, "event"), false)
         expect (length walked.bindings, 1)
+
+
+    export frameTypography geometry =
+        expect (Doc::text (geometry, "font"), "serif")
+        expect (Doc::number (geometry, "textSize"), 27)
+        expect (Doc::flag (geometry, "italic"), true)
+        expect (Doc::flag (geometry, "hug"), true)
+        expect (Doc::text (geometry, "align"), "center")
+        expect (Doc::text (geometry, "cross"), "end")
+        expect (Doc::number (geometry, "controlHeight"), 40)
+        expect (Doc::number (geometry, "controlPadding"), 12)
+        expect (jsonFloat (Doc::field (geometry, "lineHeight")) ?: 0.0, 34.72)
+        expect (jsonFloat (Doc::field (geometry, "tracking")) ?: 0.0, -0.6)
+        expect (jsonFloat (Doc::field (geometry, "mathScale")) ?: 0.0, 1.08)
+        expect (Doc::flag (geometry, "quietControls"), true)
+        expect (Doc::flag (geometry, "fadeBackdrop"), true)
+        expect (Doc::flag (geometry, "trailingSymbols"), true)
+        expect (Doc::text (geometry, "shadow"), "floating")
+        filledButton ()
+        frameHelpers ()
+
+    frameHelpers () =
+        padded = inset (3, 5, 7, 11)
+        expect (padded.frameTop, 3)
+        expect (padded.frameRight, 5)
+        expect (padded.frameBottom, 7)
+        expect (padded.frameLeft, 11)
+        strip = bar 75
+        expect (strip.frameHeight, 75)
+        expect (strip.frameGrow, false)
+        typography = text ("serif", 29, true)
+        expect (typography.frameFont, "serif")
+        expect (typography.frameTextSize, 29)
+        expect (typography.frameItalic, true)
+        expect (typography.frameHug, true)
+
+    boardCamera () =
+        walked = Encode::walk ([], Ui::interactiveBoard ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load))
+        node = listGet walked.nodes 0 ?: JsonNull
+        expect (Doc::flag (node, "panning"), true)
+        expect (Doc::text (node, "backdrop"), "chalk-study.png")
+        expect (Doc::number (node, "event"), 0)
+        expect (Doc::number (node, "lassoEvent"), 1)
+        expect (Doc::number (node, "panEvent"), 2)
+        expect (length walked.bindings, 3)
+        expect (routed (Events::bind (listGet walked.bindings 2 ?: ui::Tap(action = Increment), JsonString "{x:12}") ?: ui::Act(act = Increment)), "text load:{x:12}")
+        narrowMargin ()
+
+    narrowMargin () =
+        node = listGet (Encode::walk ([], Ui::boundedAside (Ui::text "Proof", ui::Trailing, Ui::text "Goal", 184, 160, 320, 360, Load))).nodes 0 ?: JsonNull
+        expect (Doc::number (node, "width"), 184)
+        expect (Doc::number (node, "least"), 160)
+        expect (Doc::number (node, "most"), 320)
+        expect (Doc::number (node, "keep"), 360)
+
+
+    filledButton () =
+        node = listGet (Encode::walk ([], Ui::action ("Insert", "", ui::Filled, true, Increment))).nodes 0 ?: JsonNull
+        expect (Doc::text (node, "role"), "filled")
+        inlineEditor ()
+
+    inlineEditor () =
+        walked = Encode::walk ([], Ui::inlineEditor ("Next step", "From h.", 7, Typed, Load))
+        node = listGet walked.nodes 0 ?: JsonNull
+        expect (Doc::flag (node, "inline"), true)
+        expect (Doc::number (node, "event"), 0)
+        expect (Doc::number (node, "placeEvent"), 1)
+        expect (length walked.bindings, 2)

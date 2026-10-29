@@ -7,6 +7,36 @@ use std::process::{Command, Stdio};
 #[path = "common/effect_execution.rs"]
 mod effect_execution;
 
+#[path = "common/workbench_fixture.rs"]
+mod workbench_fixture;
+
+#[test]
+fn workbench_retains_record_identity_through_shared_proof_helpers() -> io::Result<()> {
+    compile_workbench("apps/workbench", "wasm32")
+}
+
+#[test]
+fn workbench_apple_host_includes_shared_proof_dependencies() -> io::Result<()> {
+    compile_workbench("apps/workbench/hosts/apple/app", "macos")
+}
+
+fn compile_workbench(project: &str, target: &str) -> io::Result<()> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .current_dir(root)
+        .arg(project)
+        .args(["--llvm", "--quiet", "--no-warnings"])
+        .arg(format!("--target={target}"))
+        .output()?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("define"));
+    Ok(())
+}
+
 const STATIC_FINALIZERS: &str = r#"
 static effect Config { number: fn() -> int }
 effect Log { note: fn(string) -> Unit }
@@ -229,17 +259,30 @@ fn write_port_identity_project(root: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn run_port_identities(root: &Path, memory: &str) -> io::Result<std::process::Output> {
+/// One run of `root` with the shared launcher flags. `extra` carries only the
+/// flags a caller genuinely needs, so every existing caller keeps its exact
+/// behaviour, warnings included.
+fn run_project(root: &Path, memory: &str, extra: &[&str]) -> io::Result<std::process::Output> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
-    let _ = command.current_dir(repo_root()).arg(root).args([
-        "--run",
-        "--quiet",
-        &format!("--memory={memory}"),
-    ]);
+    let _ = command
+        .current_dir(repo_root())
+        .arg(root)
+        .args(["--run", "--quiet", &format!("--memory={memory}")])
+        .args(extra);
     if memory == "arc" {
         let _ = command.env("OSPREY_ARC_DEBUG", "1");
     }
     command.output()
+}
+
+fn run_port_identities(root: &Path, memory: &str) -> io::Result<std::process::Output> {
+    run_project(root, memory, &[])
+}
+
+/// The staged fixture compiles the whole workbench root set; warnings are not
+/// what it asserts and the redundant-annotation oracle dominates that build.
+fn run_goal_fault(root: &Path, memory: &str) -> io::Result<std::process::Output> {
+    run_project(root, memory, &["--no-warnings"])
 }
 
 fn assert_port_identities(root: &Path, memory: &str, expected: &str) -> io::Result<()> {
@@ -311,5 +354,40 @@ print(toString(observed))
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "Success(42)\n");
+    Ok(())
+}
+
+fn phase(label: &str) {
+    eprintln!("phase {label} at {:?}", std::time::SystemTime::now());
+}
+
+/// [WORKBENCH-GOALS] A goal formula the reader refuses is a broken fixture,
+/// never `⊥`: the shared quarantine helper reports the fault and aborts. The
+/// valid formula in the same pipeline still prints itself. Both controls run
+/// under GC and ARC, and no exit path is skipped on either OS family.
+#[test]
+fn a_faulted_workbench_goal_formula_reports_and_aborts_instead_of_becoming_bot() -> io::Result<()> {
+    let root =
+        TempProject(std::env::temp_dir().join(format!("osprey_goal_fault_{}", std::process::id())));
+    workbench_fixture::stage(&root.0, &repo_root(), "p ∧")?;
+    for memory in ["gc", "arc"] {
+        phase(&format!("{memory} malformed"));
+        workbench_fixture::assert_faulted(&run_goal_fault(&root.0, memory)?, memory);
+    }
+    workbench_fixture::stage(&root.0, &repo_root(), "p ∧ q → q ∧ p")?;
+    for memory in ["gc", "arc"] {
+        phase(&format!("{memory} valid"));
+        let valid = run_goal_fault(&root.0, memory)?;
+        assert!(
+            valid.status.success(),
+            "{memory}: {}",
+            String::from_utf8_lossy(&valid.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&valid.stdout),
+            workbench_fixture::VALID_STDOUT,
+            "{memory} changed the goal pipeline's stdout"
+        );
+    }
     Ok(())
 }

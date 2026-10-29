@@ -27,8 +27,9 @@ function asset(node: Node, key: string, resolve: Resolve): string {
 }
 
 /** An accessible still picture, with intrinsic dimensions to reserve its layout before loading. */
-export function renderImage(node: Node, resolve: Resolve): string {
-  return `<img class="osp-media-image" src="${asset(node, "source", resolve)}" alt="${escapeHtml(text(node, "alt"))}" width="${positive(node, "width")}" height="${positive(node, "height")}" loading="lazy" decoding="async" />`;
+export function renderImage(node: Node, resolve: Resolve, decorative = false): string {
+  const label = decorative ? 'alt="" aria-hidden="true"' : `alt="${escapeHtml(text(node, "alt"))}"`;
+  return `<img class="osp-media-image" src="${asset(node, "source", resolve)}" ${label} width="${positive(node, "width")}" height="${positive(node, "height")}" loading="lazy" decoding="async" />`;
 }
 
 /** A user-started film with a poster and an enabled caption track. */

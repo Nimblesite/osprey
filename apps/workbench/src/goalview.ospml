@@ -1,0 +1,122 @@
+// Implements [WORKBENCH-GOALS]: goal geometry and notation are authored in the shared Osprey tree.
+namespace workbench
+
+import ui::Ui
+import ui::Frames
+    plain
+import workbench::WorkViews
+import workbench::Statements
+import workbench::Reviews
+import workbench::Goals
+import workbench::Formulas
+import workbench::Steps
+import workbench::Lists
+
+module GoalViews
+    caretRow text = satSub (length (lines (take text.draftText text.caret))) 1
+
+    // The declaration whose heading is the last one at or above the caret, and the steps written above the caret.
+    (** [WORKBENCH-GOALS] The hypotheses and target after the steps above the caret, or why a step does not fit. *)
+    export pane () = match isEmpty (Statements::document (WorkViews::draft ()).draftText)
+        true => Ui::framed (plain(frameName = "goal-empty", frameGap = 12), Ui::column [ui::Divider, caption "Your working is unverified.", caption "Open Examples to explore guided proof steps."])
+        false => Ui::framed (plain(frameName = "goal-content", frameGap = 0), Ui::column [Ui::framed (plain(frameFont = "sans", frameTextSize = 12, frameLineHeight = 18.0), Ui::styled ("AT THIS STEP", ui::Eyebrow, ui::Secondary)), Ui::framed (plain(frameTop = 15, frameLineHeight = headingLeading ()), WorkViews::letter ("serif", headingSize (), false, goalTitle (), ui::Heading, ui::Primary)), Ui::framed (plain(frameTop = contextTop ()), goalContent ())])
+
+    headingSize () = match (WorkViews::layout ()).generatedOpen
+        true => 23
+        false => WorkViews::documentSize (27, 21)
+
+    headingLeading () = match (WorkViews::layout ()).generatedOpen
+        true => 27.6
+        false => match (WorkViews::layout ()).paperFirst
+            true => 32.4
+            false => 25.2
+
+    contextTop () = WorkViews::documentSize (34, 18)
+
+    caption content = captionLine (22.75, content)
+
+    micro content = captionLine (16.0, content)
+
+    captionLine (leading, content) = Ui::framed (plain(frameFont = "sans", frameTextSize = 13, frameLineHeight = leading), Ui::caption content)
+
+    goalTitle () = match selectedTrace ()
+        Success walk => match WorkViews::complete walk.traceOutcome
+            true => completedTitle ()
+            false => "What remains to show"
+        Error _ => "What remains to show"
+
+    completedTitle () = match (WorkViews::layout ()).generatedOpen
+        true => "The draft is\ncomplete."
+        false => "The draft is complete."
+
+    emptyTitle () = match (WorkViews::layout ()).generatedOpen
+        true => "No open draft\ngoals"
+        false => "No open draft goals"
+
+    goalContent () = match selectedTrace ()
+        Error problem => Ui::caption problem
+        Success walk => tracedGoals walk
+
+    declarationIndex (rows, row) = satSub (length (filterList (Reviews::starts rows, \head => head <= row))) 1
+
+    selectedFound text = listGet (Statements::document text.draftText) (declarationIndex (lines text.draftText, caretRow text))
+
+    selectedTrace () =
+        text = WorkViews::draft ()
+        rows = lines text.draftText
+        index = declarationIndex (rows, caretRow text)
+        match selectedFound text
+            Error _ => Error(message = "Write a theorem to see its goal.")
+            Success found => declared (found, rows, listGet (Reviews::starts rows) index ?: 0, caretRow text, text.selectedStep)
+
+    declared (found, rows, head, row, selected) = match listGet found.problems 0
+        Success problem => Error(message = problem.message)
+        Error _ => Success(value = Goals::trace (found.statement, Lists::first (mapList (Steps::sentences found.proof, \sentence => Steps::read sentence), selectedCount (selected, rows, head, row))))
+
+    selectedCount (selected, rows, head, row) = match selected >= 0
+        true => satAdd selected 1
+        false => above (rows, head, row)
+
+    tracedGoals walk = Ui::framed (plain(frameGap = 0), Ui::column [progressed walk.traceProgress, Ui::framed (plain(frameTop = 16), caption (traceCaption walk))])
+
+    traceCaption walk = match WorkViews::complete walk.traceOutcome
+        true => "The kernel verdict is shown on the document."
+        false => "Draft goal after ${walk.traceAccepted} steps."
+
+    above (rows, head, row) = (foldList (rows, { at = 0, count = 0 }, \(walk, line) => { at = satAdd walk.at 1, count = satAdd walk.count (within (walk.at, head, row, line)) })).count
+
+    within (at, head, row, line) = match at > head && at <= row
+        true => Reviews::counted line
+        false => 0
+
+    progressed progress = match listGet progress.open 0
+        Error _ => completedGoals progress
+        Success open => Ui::framed (plain(frameGap = 0), Ui::column [hypotheses open.hypotheses, target open.target, following progress.open])
+
+    hypotheses values = match isEmpty values
+        true => propositions ()
+        false => Ui::framed (plain(frameGap = WorkViews::documentSize (12, 16)), Ui::column [micro "Hypotheses", hypothesisList values])
+
+    hypothesisList values = match (WorkViews::layout ()).paperFirst
+        true => Ui::column (mapList (values, hypothesis))
+        false => Ui::framed (plain(frameGap = 16, frameAlign = "baseline", frameHug = true), Ui::row (mapList (values, hypothesis)))
+
+    propositions () = match selectedFound (WorkViews::draft ())
+        Error _ => caption "No hypotheses."
+        Success found => match found.statement.variables
+            [] => caption "No hypotheses."
+            [first, ...rest] => Ui::framed (plain(frameGap = 12), Ui::column [micro "Propositions", Ui::framed (plain(frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Seq (foldList (rest, [ui::Sym first], \(nodes, name) => listConcat (nodes, [ui::Sym ",", ui::Sym name]))), join (found.statement.variables, ", ")))])
+
+    hypothesis held = Ui::framed (plain(frameCross = "center", frameHug = !(WorkViews::layout ()).paperFirst, frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Op (":", ui::Sym held.name, Formulas::typeset held.formula), held.name + ": " + Formulas::show held.formula))
+
+    target formula = Ui::framed (plain(frameTop = WorkViews::documentSize (32, 18), frameGap = 13), Ui::column [micro "To show", Ui::framed (plain(frameCross = "center", frameTextSize = WorkViews::documentSize (42, 25), frameMathScale = 1.08), WorkViews::shown formula)])
+
+    completedGoals progress = match listGet (listReverse progress.done) 0
+        Error _ => caption "No open draft goals."
+        Success last => Ui::framed (plain(frameGap = 0), Ui::column [hypotheses last.hypotheses, Ui::framed (plain(frameTop = WorkViews::documentSize (32, 18), frameGap = 14), Ui::column [micro "To show", WorkViews::letter ("serif", 22, false, emptyTitle (), ui::Heading, ui::Primary)])])
+
+    following goals = match (WorkViews::layout ()).paperFirst
+        false => Ui::column []
+        true => match listGet goals 1
+            Error _ => Ui::column []
+            Success next => Ui::framed (plain(frameName = "next-goal", frameGap = 20, frameTop = 32), Ui::column [ui::Divider, Ui::row [caption "Then", WorkViews::shown next.target]])

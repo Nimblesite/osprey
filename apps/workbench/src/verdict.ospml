@@ -62,7 +62,8 @@ module Elaborate
         Absurd name other => absurd (goal, at, name, other)
 
     // `Assume h : A`: a λ over `A` whose body proves the conclusion; on `∀ p ...` a λ over the next bound proposition.
-    assume (goal, steps, at, step) = match goal.target
+    // A negated head is read as the implication it is defined to be.
+    assume (goal, steps, at, step) = match Formulas::expandNot goal.target
         Imp _ conclusion => wrap (prove (Goal(hypotheses = listAppend (goal.hypotheses, Hypothesis(name = step.name, formula = step.formula)), target = conclusion), steps, satAdd at 1), \term => NLam step.name (of step.formula) term)
         Forall names body => bound (goal, steps, at, { names = names, body = body })
         _ => wrap (prove (goal, steps, satAdd at 1), \term => NLam step.name (of step.formula) term)
@@ -103,12 +104,13 @@ module Elaborate
 
     // `Apply h` with `h : A` on goal `A` is `h` itself, as in the goal engine.
     applied (goal, steps, at, name) = match held (goal, name)
-        Held formula => match Formulas::equal (formula, goal.target)
+        Held formula => match Formulas::equivalent (formula, goal.target)
             true => Proved (NVar name) (satAdd at 1)
             false => implication (goal, steps, at, { name = name, formula = formula })
         Absent => Proved (NVar name) (satAdd at 1)
 
-    implication (goal, steps, at, parts) = match parts.formula
+    // A negated head carries the implication it is defined to be, so `h : ¬p` applies as `h : p → ⊥`.
+    implication (goal, steps, at, parts) = match Formulas::expandNot parts.formula
         Imp premise _ => wrap (prove (goal(target = premise), steps, satAdd at 1), \term => NApp (NVar parts.name) term)
         _ => Proved (NVar parts.name) (satAdd at 1)
 
@@ -123,10 +125,12 @@ module Verdicts
 
     moved (walk, step) = match walk.outcome
         Stuck _ => walk
+        UnsupportedStep _ _ => walk
         Advanced progress => refused (walk, Goals::apply (progress, step))
 
     refused (walk, outcome) = match outcome
         Stuck _ => Refusal(outcome = outcome, at = satAdd walk.at 1, stuck = walk.at)
+        UnsupportedStep _ _ => walk(outcome = outcome, at = satAdd walk.at 1)
         Advanced _ => walk(outcome = outcome, at = satAdd walk.at 1)
 
     // Steps after the proof closes may only be `Done`.

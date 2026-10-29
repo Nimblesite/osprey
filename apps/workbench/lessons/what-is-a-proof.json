@@ -16,8 +16,8 @@
       "source": "media/what-is-a-proof/film.mp4",
       "poster": "media/what-is-a-proof/poster.jpg",
       "captions": "media/what-is-a-proof/film.en.vtt",
-      "alt": "A claim at the top of a page is connected by three checked steps to the same claim at the bottom; each step is labelled with the rule that permits it.",
-      "seconds": 40
+      "alt": "A proof of p ∧ q → q ∧ p appears one step at a time beside its current goal. Assuming h and splitting it into hp and hq leaves q and p to prove; From hq and From hp close those goals in order.",
+      "seconds": 45
     },
     {
       "kind": "prose",

@@ -73,6 +73,11 @@ module VerdictCases
         { name = "exact", text = "Theorem t. For all p q, p ∧ q → q.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as a and b.\n  By b." },
         { name = "apply", text = "Theorem t. For all p q, (p → q) → p → q.\nProof.\n  Assume f : p → q.\n  Assume x : p.\n  Apply f.\n  From x." },
         { name = "absurd", text = "Theorem t. For all p q, p → ¬p → q.\nProof.\n  Assume x : p.\n  Assume y : ¬p.\n  Contradiction from x and y." },
+        { name = "absurd-implication", text = "Theorem t. For all p q, p → (p → ⊥) → q.\nProof.\nAssume x : p.\nAssume f : p → ⊥.\nContradiction from x and f." },
+        { name = "apply-not-hypothesis", text = "Theorem t. For all p, p → ¬p → ⊥.\nProof.\nAssume x : p.\nAssume h : ¬p.\nApply h.\nBy x." },
+        { name = "apply-not-hypothesis-implication", text = "Theorem t. For all p, p → (p → ⊥) → ⊥.\nProof.\nAssume x : p.\nAssume f : p → ⊥.\nApply f.\nBy x." },
+        { name = "assume-not-target", text = "Theorem t. For all p, ¬p → ¬p.\nProof.\nAssume h : ¬p.\nAssume x : p.\nApply h.\nBy x." },
+        { name = "navier-remaining-outcome", text = "Theorem remaining_outcome. For all smooth blowup, (smooth ∨ blowup) → (blowup → ⊥) → smooth.\nProof.\nAssume outcomes : smooth ∨ blowup.\nAssume noBlowup : blowup → ⊥.\nBy cases on outcomes, as isSmooth and isBlowup.\nFrom isSmooth.\nContradiction from isBlowup and noBlowup." },
         { name = "trailing-done", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h.\n  Done." },
         { name = "trailing-qed", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  From h.\n  QED." },
     ]
@@ -93,6 +98,8 @@ module VerdictCases
         { name = "cases-atom", text = "Theorem t. For all p, p → p.\nProof.\n  Assume h : p.\n  By cases on h, as a and b." },
         { name = "exact-mismatch", text = "Theorem t. For all p q, p → q → p.\nProof.\n  Assume h : p.\n  Assume k : q.\n  By k." },
         { name = "apply-mismatch", text = "Theorem t. For all p q, (p → q) → p → p.\nProof.\n  Assume f : p → q.\n  Assume x : p.\n  Apply f.\n  From x." },
+        { name = "absurd-implication-reversed", text = "Theorem t. For all p q, (p → ⊥) → p → q.\nProof.\nAssume f : p → ⊥.\nAssume x : p.\nContradiction from f and x." },
+        { name = "absurd-other-implication", text = "Theorem t. For all p q r, p → (q → ⊥) → r.\nProof.\nAssume x : p.\nAssume f : q → ⊥.\nContradiction from x and f." },
         { name = "absurd-mismatch", text = "Theorem t. For all p q r, p → q → r.\nProof.\n  Assume x : p.\n  Assume y : q.\n  Contradiction from x and y." },
         { name = "apply-not-implication", text = "Theorem t. For all p q, p → q.\nProof.\n  Assume h : p.\n  Apply h." },
     ]
@@ -101,10 +108,12 @@ module VerdictCases
 
     moved (walk, step) = match walk.outcome
         workbench::Stuck _ => walk
+        workbench::UnsupportedStep _ _ => walk
         workbench::Advanced progress => refused (walk, workbench::Goals::apply (progress, step))
 
     refused (walk, outcome) = match outcome
         workbench::Stuck _ => { outcome = outcome, at = satAdd walk.at 1, stuck = walk.at }
+        workbench::UnsupportedStep _ _ => { outcome = outcome, at = satAdd walk.at 1, stuck = walk.stuck }
         workbench::Advanced _ => { outcome = outcome, at = satAdd walk.at 1, stuck = walk.stuck }
 
     refusalAt (statement, stepList) = (foldList (stepList, walk0 statement, \(walk, step) => moved (walk, step))).stuck
@@ -115,6 +124,9 @@ module VerdictCases
         stepList = steps found
         verdict = workbench::Verdicts::decide (found.statement, stepList)
         match workbench::Goals::run (found.statement, stepList)
+            workbench::UnsupportedStep _ _ => match verdict
+                workbench::Unchecked _ => ""
+                _ => row.name
             workbench::Stuck _ => match verdict
                 workbench::Rejected at _ => match at == refusalAt (found.statement, stepList)
                     true => ""

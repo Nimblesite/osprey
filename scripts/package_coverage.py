@@ -25,9 +25,10 @@ import sys
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from package_coverage_entry import collect_entry, receipt_paths
 from package_coverage_evidence import (
     evidence_path, evidence_problems, golden_problems,
-    definition_problems, record_measurements, seal_evidence, source_inputs, unique_object,
+    definition_problems, record_measurements, seal_evidence, sealed_inputs, unique_object,
 )
 from package_coverage_projects import (
     GATED_KINDS, PACKAGES_DIR, gate_entries, kind_map_problems, kind_noun, project_dirs,
@@ -304,47 +305,75 @@ def run_collector(root: Path, compiler: Path, report: Path, suite: Path, memory=
     command = [str(compiler), "test", str(suite), "--coverage-json", str(report), "--quiet", f"--memory={memory}"]
     try:
         completed = subprocess.run(command, capture_output=True, cwd=root, check=False)
-        completed.stdout = completed.stdout.decode("utf-8")
-        completed.stderr = completed.stderr.decode("utf-8")
-        return command, completed, None
     except OSError as error:
         return command, None, error
+    try:
+        completed.stdout = completed.stdout.decode("utf-8")
+        completed.stderr = completed.stderr.decode("utf-8")
+    except UnicodeDecodeError as error:
+        return command, completed, ValueError(f"collector output is not valid UTF-8: {error}")
+    return command, completed, None
 
 
-def collect_package(root: Path, compiler: Path, reports: Path, kind: str, name: str, configured: dict, memory="gc") -> dict:
-    label = project_label(kind, name)
-    report = (reports / f"{report_name(kind, name)}{REPORT_SUFFIX}").resolve()
-    log = reports / f"{report_name(kind, name)}{LOG_SUFFIX}"
-    suite = root / kind / name / "tests"
-    if not clear_stale(report, log):
-        return collection_failure(label, configured, [f"cannot remove stale evidence in {reports}"])
-    before = source_inputs(root, name, kind)
+def artifact(directory: Path, leaf: str) -> Path:
+    """`leaf` inside `directory`, with only the directory resolved.
+
+    Resolving the leaf would follow a symlink planted at that name, so cleanup
+    would delete the external target instead of the link itself.
+    """
+    return directory.resolve() / leaf
+
+
+def collection_paths(reports: Path, kind: str, name: str) -> tuple[Path, Path]:
+    stem = report_name(kind, name)
+    return artifact(reports, f"{stem}{REPORT_SUFFIX}"), artifact(reports, f"{stem}{LOG_SUFFIX}")
+
+
+def suite_run_problems(completed, suite: Path, report: Path, log: Path) -> list[str]:
+    """The suite's own contract, checked before any entry evidence is touched."""
+    if completed.returncode != 0:
+        return [f"collection failed with exit {completed.returncode}; log {log}"]
+    return [f"{problem}; log {log}"
+            for problem in compare_oracle(completed.stdout, suite / "expected_output.txt")]
+
+
+def run_suite(root: Path, compiler: Path, report: Path, log: Path, suite: Path, memory: str) -> list[str]:
     command, completed, error = run_collector(root, compiler, report, suite, memory)
     if error is not None:
         write_log(log, command, None, f"cannot run collector: {error}")
-        return collection_failure(label, configured, [f"cannot run collector: {error}"])
+        return [f"cannot run collector: {error}"]
     if not write_log(log, command, completed, None):
-        remove_if_exists(report)
-        return collection_failure(label, configured, [f"cannot write log {log}"])
-    return collected_evidence(root, reports, kind, name, configured, report, log, completed, suite, before)
+        return [f"cannot write log {log}"]
+    return suite_run_problems(completed, suite, report, log)
 
 
-def collected_evidence(root: Path, reports: Path, kind: str, name: str, configured: dict,
-                       report: Path, log: Path, completed, suite: Path, before: dict) -> dict:
-    label = project_label(kind, name)
-    if completed.returncode != 0:
-        remove_if_exists(report)
-        return collection_failure(label, configured, [f"collection failed with exit {completed.returncode}; log {log}"])
-    problems = compare_oracle(completed.stdout, suite / "expected_output.txt")
-    if problems:
-        remove_if_exists(report)
-        return collection_failure(label, configured, [f"{problem}; log {log}" for problem in problems])
+def seal_and_gate(root: Path, reports: Path, kind: str, name: str, configured: dict,
+                  report: Path, before: dict) -> dict:
     try:
         seal_evidence(root, name, report, before, kind)
     except (OSError, ValueError) as error:
         remove_if_exists(report)
-        return collection_failure(label, configured, [f"cannot verify collection: {error}"])
+        return collection_failure(project_label(kind, name), configured, [f"cannot verify collection: {error}"])
     return gate_package(root, reports, kind, name, configured)
+
+
+def collect_package(root: Path, compiler: Path, reports: Path, kind: str, name: str, configured: dict, memory="gc") -> dict:
+    label = project_label(kind, name)
+    report, log = collection_paths(reports, kind, name)
+    suite = root / kind / name / "tests"
+    receipts = receipt_paths(sys.modules[__name__], reports, kind, name)
+    if not clear_stale(report, log) or not all(remove_if_exists(path) for path in receipts):
+        return collection_failure(label, configured, [f"cannot remove stale evidence in {reports}"])
+    before, unsealed = sealed_inputs(root, name, kind)
+    if unsealed is not None:
+        return collection_failure(label, configured, [unsealed])
+    problems = run_suite(root, compiler, report, log, suite, memory)
+    if not problems:
+        problems = collect_entry(sys.modules[__name__], root, compiler, reports, kind, name, memory)
+    if problems:
+        remove_if_exists(report)
+        return collection_failure(label, configured, problems)
+    return seal_and_gate(root, reports, kind, name, configured, report, before)
 
 
 def print_result(result: dict) -> None:

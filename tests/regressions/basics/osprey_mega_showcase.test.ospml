@@ -93,7 +93,7 @@ badge t = match t
 
 (** ACT 1: the same [account] body runs against a real ledger and a dry run. *)
 showWorlds () =
-    print "🦅 OSPREY FEATURE TOUR\n══════════════════════════════════════\nACT 1 · algebraic effects — same code, two worlds"
+    print "OSPREY FEATURE TOUR\n══════════════════════════════════════\nACT 1 · algebraic effects — same code, two worlds"
     real = realWorld ()
     print "  ↳ realWorld() returned ${real}"
     mock = dryRun ()

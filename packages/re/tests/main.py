@@ -411,10 +411,18 @@ def group_default_checks(result):
     return [Check.equal("api.optional_match", result.kind, "some"), Check.equal("api.groups_default", join(Api.groups(result.match, "missing"), ","), "a,missing")]
 
 
+def invalid_sub_pattern():
+    match Api.sub("[", "", "abc", 0, 0):
+        case Error(message=message):
+            return [Check.equal("api.sub_invalid_pattern", message, "unterminated character set at position 0")]
+        case Success(value=value):
+            return [Check.failed("api.sub_invalid_pattern", "accepted invalid pattern")]
+
+
 def capture_api_cases():
     groups = success_checks("api.groups", Api.search("(a)(b)?", "a", 0), group_default_checks)
     replacement = success_checks("api.numeric_template", Api.sub("(a)", "[\\g<1>]", "a a", 0, 0), lambda value: [Check.equal("api.numeric_template", value, "[a] [a]")])
-    return listConcat(groups, replacement)
+    return listConcat(listConcat(groups, replacement), invalid_sub_pattern())
 
 
 def all_cases():

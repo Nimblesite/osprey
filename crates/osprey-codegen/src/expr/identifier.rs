@@ -27,7 +27,7 @@ fn file_binding(cg: &mut Codegen, name: &str) -> Result<Value> {
     if cg.is_ctor(name) {
         return crate::aggregate::gen_constructor(cg, name, &[]);
     }
-    if cg.fn_params.contains_key(name) {
+    if cg.fn_params.contains_key(name) || cg.extern_params.contains_key(name) {
         return crate::closure::named_fn_cell(cg, name);
     }
     lambda(cg, name)

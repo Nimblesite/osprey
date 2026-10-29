@@ -19,6 +19,7 @@ pub mod discipline;
 mod field_resolve;
 mod imports;
 mod manifest;
+mod manifest_codec;
 mod model;
 mod name_resolve;
 mod opaque;

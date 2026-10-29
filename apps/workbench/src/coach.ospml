@@ -9,6 +9,9 @@ import workbench::Tutors
 import workbench::Shelves
 import workbench::Drafts
 import workbench::Inks
+import workbench::ProofLibraries
+import workbench::BundledLibraries
+import workbench::Workspaces
 import ui::Runtime
 import ui::Doc
 import ui::Lists
@@ -87,6 +90,7 @@ module Coach
     (** Recognised handwriting: into the focused challenge's answer in Learn, onto the document's end in Work ([WORKBENCH-BOARD]). *)
     export inked (bench, text) = match bench.layout.mode
         Working => Drafts::edited (bench, Drafts::joined (bench.draft.draftText, "\n", text))
+        ReadingPage => Drafts::edited (bench(layout = working bench.layout), Drafts::joined (bench.draft.draftText, "\n", text))
         Learning => focused (bench, bench.shelf.focused, text)
 
     focused (bench, id, text) = match isEmpty id
@@ -102,11 +106,30 @@ module Completions
     sketched (bench, sketch) = bench(sketch = sketch)
 
     // A recognition answer for an older lasso is dropped: its ticket is not the current one.
-    failed (bench, ticket, said) = match ticket == Shelves::catalogueKey || ticket == Shelves::textsKey
+    failed (bench, ticket, said) = match startsWith ticket "workspace:"
+        true => Runtime::step (Workspaces::notice (bench, "The workspace operation failed: " + said, true))
+        false => match ticket == "proof:opened"
+            true => ProofLibraries::failed (bench, said)
+            false => match BundledLibraries::handles ticket
+                true => BundledLibraries::failed (bench, ticket, said)
+                false => failedLesson (bench, ticket, said)
+
+    failedLesson (bench, ticket, said) = match ticket == Shelves::catalogueKey || ticket == Shelves::textsKey
         true => Runtime::step (bench(shelf = problem (bench.shelf, "The lessons could not be loaded: " + said)))
-        false => match ticket == bench.sketch.inkTicket && said == "Unsupported"
-            true => Runtime::step (sketched (bench, Inks::unsupported bench.sketch))
+        false => match ticket == bench.sketch.inkTicket && !isEmpty ticket
+            true => recognitionFailed (bench, said)
             false => unsaved (bench, ticket, said)
+
+    consumed bench =
+        sketch = bench.sketch
+        bench(sketch = sketch(inkTicket = ""))
+
+    recognitionFailed (bench, problem) =
+        cleared = consumed bench
+        ready = match problem == "Unsupported"
+            true => sketched (cleared, Inks::unsupported cleared.sketch)
+            false => cleared
+        Runtime::step (Workspaces::notice (ready, "The strokes could not be read: " + problem, false))
 
     // A missing progress file is no progress; a progress write that failed is said, so work is never lost silently.
     unsaved (bench, ticket, said) = match ticket == Shelves::savedKey
@@ -129,15 +152,31 @@ module Completions
         true => keys
         false => listAppend (keys, key)
 
-    succeeded (bench, ticket, result) = match ticket
+    succeeded (bench, ticket, result) = match startsWith ticket "workspace:"
+        true => Workspaces::completed (bench, ticket, result)
+        false => match ticket == "proof:opened"
+            true => ProofLibraries::completed (bench, result)
+            false => match BundledLibraries::handles ticket
+                true => BundledLibraries::completed (bench, ticket)
+                false => succeededLesson (bench, ticket, result)
+
+    succeededLesson (bench, ticket, result) = match ticket
         "lessons:catalogue" => catalogued bench
         "lessons:texts" => gathered bench
         "lessons:progress" => progressed bench
         _ => recognised (bench, ticket, result)
 
     recognised (bench, ticket, result) = match ticket == bench.sketch.inkTicket && !isEmpty ticket
-        true => Runtime::step (Coach::inked (bench, Doc::text (result, "text")))
+        true => Runtime::step (recognitionPreview (consumed bench, Doc::text (result, "text")))
         false => Runtime::step bench
+
+    recognitionPreview (bench, content) = match isEmpty (trim content) || byteLength content > 4096
+        true => Workspaces::notice (bench, "No usable transcription was returned. Try another selection.", false)
+        false => match bench.layout.mode
+            Learning => Coach::inked (bench, content)
+            _ =>
+                current = bench.layout
+                bench(layout = current(previewText = content, previewSample = false))
 
     (** The store after the host completed `ticket` with `outcome`. *)
     export completed (bench, ticket, outcome) = match outcome

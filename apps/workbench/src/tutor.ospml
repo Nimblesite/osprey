@@ -55,9 +55,10 @@ module Tutors
         put (tutor, item(attemptRuling = choice, attemptMarking = Unmarked))
 
     (** Whether challenge `challenge` can be submitted: a non-empty answer, or a choice for a judge challenge. *)
-    export ready (tutor, key, challenge) = filled (attempt (tutor, key), challenge)
+    export ready (tutor, key, challenge) = readyAttempt (attempt (tutor, key), challenge)
 
-    filled (item, challenge) = match challenge.challengeTask
+    (** Readiness depends only on the displayed attempt and its challenge. *)
+    export readyAttempt (item, challenge) = match challenge.challengeTask
         JudgeTask _ => decided item.attemptRuling
         _ => !isEmpty (trim item.attemptAnswer)
 
@@ -101,8 +102,11 @@ module Tutors
         put (tutor, item(attemptHints = bounded (satAdd item.attemptHints 1, length challenge.challengeHints)))
 
     (** Whether the solution may be shown: a prove challenge with a solution, after three wrong attempts. *)
-    export revealable (tutor, key, challenge) = match challenge.challengeTask
-        ProveTask task => !isEmpty task.provedSolution && (attempt (tutor, key)).attemptCount >= 3
+    export revealable (tutor, key, challenge) = revealableAttempt (attempt (tutor, key), challenge)
+
+    (** The displayed attempt determines whether its solution may be revealed. *)
+    export revealableAttempt (item, challenge) = match challenge.challengeTask
+        ProveTask task => !isEmpty task.provedSolution && item.attemptCount >= 3
         _ => false
 
     (** The solution placed in the answer and the challenge marked seen; it counts as right only once submitted. *)

@@ -1,5 +1,8 @@
 namespace uitests
 
+import ui::Frames
+    plain
+
 import ui::Ui
 import ui::Encode
 import ui::Doc
@@ -442,3 +445,45 @@ test ("mathematics decodes back to the tree it encodes across every constructor"
 test ("mathematics decoding refuses unknown kinds missing children non-arrays and non-objects", AdditionCases::mathRefusals)
 
 test ("image and video encode as leaves with their media fields and no ordinal", AdditionCases::mediaEncoding)
+
+test ("presentation frames preserve exact dimensions and inner control provenance", \() =>
+    style = plain(frameName = "solution-column", frameWidth = 430, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameShadow = "floating")
+    walked = Encode::walk ([], Ui::framed (style, Ui::button ("Continue", "", Increment)))
+    encoded = listGet walked.nodes 0 ?: JsonNull
+    geometry = Doc::field (encoded, "style")
+    expect (Doc::text (encoded, "kind"), "framed")
+    expect (Doc::number (geometry, "width"), 430)
+    expect (Doc::number (geometry, "left"), 30)
+    expect (Doc::number (geometry, "gap"), 24)
+    expect (Doc::text (geometry, "fill"), "canvas")
+    AdditionCases::frameTypography geometry
+    expect (length walked.bindings, 1)
+    expect (Doc::number (Doc::field (encoded, "body"), "event"), 0))
+
+
+test ("scoped themes and dialogs retain their inner controls and dismissal provenance", \() =>
+    theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#202723", tokenDark = "#202723")], spacing = [8], feedback = 140, settle = 240)
+    walked = Encode::walk ([], Ui::themed (theme, Ui::dialog ("Review transcription", Ui::button ("Insert", "", Increment), Load)))
+    scoped = listGet walked.nodes 0 ?: JsonNull
+    dialog = Doc::field (scoped, "body")
+    expect (Doc::text (scoped, "kind"), "themed")
+    expect (Doc::text (dialog, "kind"), "dialog")
+    expect (Doc::text (dialog, "title"), "Review transcription")
+    expect (Doc::number (dialog, "event"), 0)
+    expect (Doc::number (Doc::field (dialog, "body"), "event"), 1)
+    expect (length walked.bindings, 2))
+
+
+richDocument : ui::Node<Act>
+richDocument = Ui::rich ([Ui::run ("For all ", "", false), Ui::run ("p", "sourceType", true)], ui::Lead)
+
+test ("inline text retains mathematical emphasis and semantic source colours without bindings", \() =>
+    walked = Encode::walk ([], richDocument)
+    node = listGet walked.nodes 0 ?: JsonNull
+    runs = Doc::items (Doc::field (node, "runs"))
+    variable = listGet runs 1 ?: JsonNull
+    expect (Doc::text (node, "kind"), "rich-text")
+    expect (Doc::text (variable, "text"), "p")
+    expect (Doc::text (variable, "ink"), "sourceType")
+    expect (Doc::flag (variable, "italic"), true)
+    expect (length walked.bindings, 0))

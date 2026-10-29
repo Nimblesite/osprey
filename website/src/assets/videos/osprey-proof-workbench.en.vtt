@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.400 --> 00:15.214
+A proof workbench helps you write an argument and see what remains to establish. Osprey is a functional programming language, and its workbench is an Osprey application. Let’s write a small proof, inspect its goals, and try a tutorial.
+
+00:16.064 --> 00:34.049
+Start with a small statement. If both p and q are true, then q and p are true. Assume the pair, then take it apart into the two facts. Ask for q first, then p. Watch the pane after each step: sometimes your available facts change, and sometimes the remaining goals do.
+
+00:34.899 --> 00:50.306
+The goal pane is the important part. It lists the facts you have assumed and the claim you still need to prove. A useful name is not enough: the fact it names must match the goal. If a step does not fit, read the goal before changing the argument.
+
+00:56.265 --> 01:15.265
+Open Examples to find short lessons and challenges. Read the explanation, try the exercise, then submit your answer for checking. A hint can unblock you. After three incorrect proof attempts, Show solution reveals a worked answer. Study it, then submit it to see the kernel check the proof.
+
+01:27.865 --> 01:45.099
+Open Source to see a text version of your argument. Unfinished parts appear as explicit holes. The verdict comes from Osprey's own kernel checking your steps directly. Sending this generated file to Lean, another proof assistant, is a separate path that is still being built.
+
+01:45.949 --> 02:02.230
+For a first session, try And, the other way around. Then swap its last two steps. The first asks for q, but you give it p. Watch the checker refuse that argument and read why. You can see what the rule requires. Osprey is actively evolving.

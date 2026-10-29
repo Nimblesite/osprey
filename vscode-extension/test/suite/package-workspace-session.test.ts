@@ -24,7 +24,42 @@ function recordedSession(initialRevision = 0, overrides: Partial<SessionDeps> = 
   return { session, frames, sent };
 }
 
+function pendingSliceSession() {
+  const frames: Record<string, unknown>[] = [], held: ReadonlyMap<string, string>[] = [];
+  const replies: ((value: unknown) => void)[] = [];
+  const { session } = recordedSession(0, {
+    run: async (raw) => {
+      frames.push(JSON.parse(raw));
+      const revision = frames.length;
+      const requests = revision <= 2 ? [{ ticket: `pick-${revision}`, kind: "choose-file", slice: "document", limit: 1024, types: ["ospml"] }] : [];
+      return { stdout: envelope(`s${revision}`, revision, requests), exitCode: 0 };
+    },
+    execute: (_request, slices) => { held.push(slices); return new Promise(resolve => replies.push(resolve)); },
+  });
+  const deliver = (text: string): void => {
+    const reply = replies.shift();
+    assert.ok(reply, "a file request must be pending");
+    reply({ result: { path: "/picked/proof.ospml" }, slices: [{ key: "document", text }] });
+  };
+  return { session, frames, held, deliver };
+}
+
 suite("package workspace session", () => {
+  test("retired file deliveries cannot enter a restarted session", async () => {
+    const { session, frames, held, deliver } = pendingSliceSession();
+    await session.start({ project: "old" });
+    await session.start({ project: "current" });
+    deliver("private retired proof");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(frames.length, 2, "a retired completion cannot dispatch");
+    assert.strictEqual(held[1].get("document"), undefined, "retired text leaked into the current session");
+    deliver("current proof");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(frames.length, 3);
+    assert.deepStrictEqual(frames[2].slices, { document: "current proof" });
+    session.dispose();
+  });
+
   test("failed runtime commands report their exit code and available diagnostic output", async () => {
     for (const stdout of ["", " runtime diagnostic "]) {
       const reported: string[] = [];
@@ -193,5 +228,55 @@ suite("package workspace session", () => {
     session.message({ type: "event", region: "root", revision: 4, ordinal: 0, value: "real" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.ok(frames.some((frame) => frame.includes('"state":"s1"') && frame.includes('"value":"real"')));
+  });
+
+  test("capability executions receive host-held slices and their deliveries ride the next frame", async () => {
+    const frames: Record<string, unknown>[] = [];
+    const received: { request: NativeRequest; slices: ReadonlyMap<string, string> }[] = [];
+    const request: NativeRequest = { ticket: "save", kind: "store-write", name: "lessons/progress.json", slice: "lessons:progress" };
+    const envelopeWithSlice = (state: string, revision: number, withRequest: boolean): string => JSON.stringify({
+      version: 1, state, diagnostics: [], theme: null, removed: [], patches: [{ key: "root", revision, node: { kind: "text", text: "Ready" } }],
+      requests: withRequest ? [request] : [],
+      slices: withRequest ? [{ key: "lessons:progress", text: "{\"completed\":[]}" }] : [],
+    });
+    const session = createWorkspaceSession({
+      run: async (frame) => {
+        frames.push(JSON.parse(frame));
+        const started = frames.length === 1;
+        return { stdout: envelopeWithSlice(started ? "s1" : "s2", frames.length, started), exitCode: 0 };
+      },
+      render: () => "HTML", send: () => undefined,
+      execute: async (executed, held) => {
+        received.push({ request: executed, slices: held });
+        return { result: { path: "lessons/progress.json" }, slices: [{ key: "host:facts", text: "written" }] };
+      },
+      now: () => 1, report: () => undefined,
+    });
+    await session.start({});
+    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.strictEqual(received.length, 1);
+    assert.strictEqual(received[0].slices.get("lessons:progress"), "{\"completed\":[]}");
+    assert.strictEqual(frames[0].slices, undefined);
+    const completion = frames.at(-1);
+    assert.deepStrictEqual((completion?.event as Record<string, unknown>)?.result, { path: "lessons/progress.json" });
+    assert.deepStrictEqual(completion?.slices, { "lessons:progress": "{\"completed\":[]}", "host:facts": "written" });
+    session.dispose();
+  });
+
+  test("a foreign executor result is delivered untouched even when it names a result member", async () => {
+    const frames: Record<string, unknown>[] = [];
+    const session = createWorkspaceSession({
+      run: async (frame) => {
+        frames.push(JSON.parse(frame));
+        return { stdout: envelope("s1", 1, frames.length === 1 ? [{ ticket: "facts", kind: "host-call" }] : []), exitCode: 0 };
+      },
+      render: () => "HTML", send: () => undefined,
+      execute: async () => ({ result: "inner", authority: "vscode" }),
+      now: () => 1, report: () => undefined,
+    });
+    await session.start({});
+    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual((frames.at(-1)?.event as Record<string, unknown>)?.result, { result: "inner", authority: "vscode" });
+    session.dispose();
   });
 });

@@ -204,35 +204,34 @@ def ascii_chunk(b, i):
 
 
 def decode_two(octets, i, errors):
-    if continuation_at(octets, i + 1):
-        cp = (at(octets, i) - 192) * 64 + at(octets, i + 1) - 128
-        return Success(value=Chunk(text=unwrap_or(fromCodePoint(cp), "?"), next=i + 2))
-    else:
-        return malformed(octets, i, i + 1, errors)
+    return decode_sequence(octets, i, errors, 2, 192)
 
 
 def decode_three(octets, i, errors):
-    b = at(octets, i)
-    if not bounded_at(octets, i + 1, second_lo(b), second_hi(b)):
-        return malformed(octets, i, i + 1, errors)
-    elif not continuation_at(octets, i + 2):
-        return malformed(octets, i, i + 2, errors)
-    else:
-        cp = ((b - 224) * 64 + at(octets, i + 1) - 128) * 64 + at(octets, i + 2) - 128
-        return Success(value=Chunk(text=unwrap_or(fromCodePoint(cp), "?"), next=i + 3))
+    return decode_sequence(octets, i, errors, 3, 224)
 
 
 def decode_four(octets, i, errors):
+    return decode_sequence(octets, i, errors, 4, 240)
+
+
+def decode_sequence(octets, i, errors, width, lead):
     b = at(octets, i)
-    if not bounded_at(octets, i + 1, second_lo(b), second_hi(b)):
+    lo = 128 if width == 2 else second_lo(b)
+    hi = 191 if width == 2 else second_hi(b)
+    if not bounded_at(octets, i + 1, lo, hi):
         return malformed(octets, i, i + 1, errors)
-    elif not continuation_at(octets, i + 2):
-        return malformed(octets, i, i + 2, errors)
-    elif not continuation_at(octets, i + 3):
-        return malformed(octets, i, i + 3, errors)
     else:
-        cp = (((b - 240) * 64 + at(octets, i + 1) - 128) * 64 + at(octets, i + 2) - 128) * 64 + at(octets, i + 3) - 128
-        return Success(value=Chunk(text=unwrap_or(fromCodePoint(cp), "?"), next=i + 4))
+        return decode_tail(octets, i, errors, width, 2, (b - lead) * 64 + at(octets, i + 1) - 128)
+
+
+def decode_tail(octets, i, errors, width, consumed, cp):
+    if consumed >= width:
+        return Success(value=Chunk(text=unwrap_or(fromCodePoint(cp), "?"), next=i + width))
+    elif not continuation_at(octets, i + consumed):
+        return malformed(octets, i, i + consumed, errors)
+    else:
+        return decode_tail(octets, i, errors, width, consumed + 1, cp * 64 + at(octets, i + consumed) - 128)
 
 
 def continuation_at(octets, i):

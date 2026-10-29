@@ -49,7 +49,7 @@ foundAt (first, rest, wanted) = match first.name == wanted
 (** The `ty` of the element named `wanted`, or `-1`. *)
 tyOf (context, wanted) = match found (context, wanted)
     Success element => element.ty
-    Error message => -1
+    Error _message => -1
 
 (** The `name` read back off the found element, or the error message. *)
 nameOf (context, wanted) = match found (context, wanted)
