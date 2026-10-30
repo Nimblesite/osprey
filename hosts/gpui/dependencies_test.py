@@ -15,6 +15,10 @@ from unittest.mock import patch
 
 import dependencies as source
 
+# Through PATH, as a shell would: on Windows a bare "bash" makes CreateProcess search System32
+# before PATH and start the WSL launcher instead of the MSYS2 or Git bash this suite runs under.
+BASH = shutil.which("bash")
+
 
 def archive(name="fixture-1.0/Cargo.toml", content=b'license = "MIT"\nold\n'):
     output = io.BytesIO()
@@ -313,7 +317,7 @@ class CompareScriptTests(unittest.TestCase):
                 if line.split()[0] in ("reference-launch", "port-launch")]
 
     def bash_kill(self, flag, pid):
-        command = ["bash", "-c", f'kill -{flag} "$1"', "_", str(pid)]
+        command = [BASH, "-c", f'kill -{flag} "$1"', "_", str(pid)]
         return subprocess.run(command, capture_output=True, stdin=subprocess.DEVNULL,
                               timeout=30).returncode == 0
 
@@ -322,10 +326,10 @@ class CompareScriptTests(unittest.TestCase):
             self.bash_kill("KILL", pid)
 
     def run_compare(self, *arguments, trace=False, **environment):
-        variables = {"PATH": f"{self.stubs}:{os.environ['PATH']}", "FIXTURE_BIN": str(self.stubs),
+        variables = {"PATH": f"{self.stubs}{os.pathsep}{os.environ['PATH']}", "FIXTURE_BIN": str(self.stubs),
                      "FIXTURE_EVENTS": str(self.log), "FIXTURE_HOST_CHILD": str(self.stubs / "host-child"),
                      "FIXTURE_REAL_SLEEP": shutil.which("sleep"), **environment}
-        command = ["bash", *(["-x"] if trace else []),
+        command = [BASH, *(["-x"] if trace else []),
                    str(self.root / "repo/examples/gpui/painting/reference/compare.sh"),
                    *arguments, str(self.root / "out")]
         # Files, not pipes: a leaked child must not hold the fixture's own output open.
@@ -341,8 +345,12 @@ class CompareScriptTests(unittest.TestCase):
                 return index
         self.fail(f"no {prefix!r} event in {self.events()}")
 
+    def output(self, name):
+        # As compare.sh spells it, "$out/<name>": on Windows a Path would join with a backslash.
+        return f"{self.root / 'out'}/{name}"
+
     def capture_line(self, window, name):
-        return f"capture -x -o -l {window} {self.root / 'out' / name}"
+        return f"capture -x -o -l {window} {self.output(name)}"
 
     def assert_order(self, earlier, later):
         self.assertLess(self.position(earlier), self.position(later),
@@ -386,7 +394,7 @@ class CompareScriptTests(unittest.TestCase):
         self.assertGreaterEqual(len(waits), 2)
         self.assertEqual(len(self.matching("probe ")), len(waits))
         diff = self.matching("diff ")[-1].split()
-        self.assertEqual(diff[4:], ["0", "56", "1000", "676", str(self.root / "out/diff.png")])
+        self.assertEqual(diff[4:], ["0", "56", "1000", "676", self.output("diff.png")])
         self.assertIn("px: 0 differing pixels", result.stdout)
 
     def test_painting_compare_requires_the_drawing_to_change_the_capture(self):
