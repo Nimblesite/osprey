@@ -1237,11 +1237,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Every job passed or skipped
+      # Names every job that failed or was cancelled, so the root check says
+      # what tanked it. A job skipped by its `if:` (no code changed) passes.
+      - name: Fail when any job failed or was cancelled
         env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
+          NEEDS: ${{ toJSON(needs) }}
         run: |
-          echo "$RESULTS"
-          for result in $RESULTS; do
-            [ "$result" = success ] || [ "$result" = skipped ] || exit 1
-          done
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key): \(.value.result)"' <<< "$NEEDS")
+          if [ -n "$failed" ]; then echo "$failed"; exit 1; fi
