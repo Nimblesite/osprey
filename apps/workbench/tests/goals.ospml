@@ -10,17 +10,22 @@ import workbenchtests::FixtureFiles
 (** The goal-engine cases of [WORKBENCH-VERIFICATION]. *)
 module GoalCases
     (** A goal formula that does not read is a broken fixture, never `⊥`; the
-        shared fixture helper reports it and aborts. *)
+        shared fixture helper returns a typed failure to the case boundary. *)
     formula text = FixtureFiles::formula ("goal", text)
 
-    claim text = workbench::Statement(name = "t", named = true, variables = ["p", "q", "r"], claim = formula text)
+    // Both cases must hold; the first typed fixture failure is returned unchanged.
+    both (first, second) = FixtureFiles::bind (first, \_ => second)
+
+    claim text =
+        FixtureFiles::bind (formula text, \read =>
+            FixtureFiles::ok (workbench::Statement(name = "t", named = true, variables = ["p", "q", "r"], claim = read)))
 
     hypothesis item = item.name + " : " + Formulas::show item.formula
 
     goal item = join (mapList (item.hypotheses, hypothesis), ", ") + " ⊢ " + Formulas::show item.target
 
     // The open goals after `steps`, or the reason the first failing step gives.
-    after (text, steps) = match Goals::run (claim text, steps)
+    after (statement, steps) = match Goals::run (statement, steps)
         workbench::Advanced progress => join (mapList (progress.open, goal), " | ")
         workbench::Stuck problem => "stuck: " + reason problem
         workbench::UnsupportedStep text _ => "unsupported: " + text
@@ -29,7 +34,7 @@ module GoalCases
         workbench::Mismatch comparison => comparison.reason
         workbench::Inapplicable text => text
 
-    closedCount (text, steps) = match Goals::run (claim text, steps)
+    closedCount (statement, steps) = match Goals::run (statement, steps)
         workbench::Advanced progress => length progress.done
         workbench::Stuck _ => satSub 0 1
         workbench::UnsupportedStep _ _ => satSub 0 1
@@ -40,8 +45,11 @@ module GoalCases
 
     (** [WORKBENCH-GOALS] Unrecognised prose is unsupported input, never a mathematical mismatch with an invented proposition. *)
     export unsupportedProse () =
-        expect (mismatched (Goals::run (claim "p", [workbench::Unknown "Hence the result follows."])), false)
-        expect (mismatched (Goals::run (claim "p → p", [workbench::Assume "h" (formula "p"), workbench::Unknown "Use symmetry here."])), false)
+        FixtureFiles::bind (claim "p", \plain =>
+        FixtureFiles::bind (claim "p → p", \reflexive =>
+        FixtureFiles::bind (formula "p", \premise =>
+            expect (mismatched (Goals::run (plain, [workbench::Unknown "Hence the result follows."])), false)
+            FixtureFiles::ok (expect (mismatched (Goals::run (reflexive, [workbench::Assume "h" premise, workbench::Unknown "Use symmetry here."])), false)))))
 
     inventedTop outcome = match outcome
         workbench::Stuck problem => inventedComparison problem
@@ -61,18 +69,25 @@ module GoalCases
 
     (** [WORKBENCH-GOALS] A missing premise and an unfinished proof supply no proposition; neither offers truth. *)
     export noInventedTruth () =
-        expect (inventedTop (Goals::run (claim "p", [workbench::Exact "missing"])), false)
-        expect (inventedTop (Goals::run (claim "p", [workbench::Done])), false)
-        expect (stopped (Goals::run (claim "p", [workbench::Exact "missing"])), true)
-        expect (stopped (Goals::run (claim "p", [workbench::Done])), true)
-        expect (stopped (Goals::run (claim "∀ x, x → x", [workbench::Assume "wrong" workbench::Top])), true)
-        expect (stopped (Goals::run (claim "p", [workbench::Assume "h" (formula "p")])), true)
-        expect (stopped (Goals::run (claim "p", [workbench::Split])), true)
-        expect (stopped (Goals::run (claim "p", [workbench::Left])), true)
-        expect (stopped (Goals::run (claim "p ∧ q → p ∧ q", [workbench::Assume "h" (formula "p ∧ q"), workbench::Cases "h" ["only"]])), true)
-        expect (stopped (Goals::run (claim "p → q", [workbench::Assume "h" (formula "p"), workbench::Cases "h" ["a", "b"]])), true)
-        expect (stopped (Goals::run (claim "p → q", [workbench::Assume "h" (formula "p"), workbench::Apply "h"])), true)
-        expect (stopped (Goals::run (claim "p → p", [workbench::Assume "h" (formula "p"), workbench::Exact "h", workbench::Exact "h"])), true)
+        FixtureFiles::bind (claim "p", \plain =>
+        FixtureFiles::bind (claim "∀ x, x → x", \universal =>
+        FixtureFiles::bind (claim "p ∧ q → p ∧ q", \conjunction =>
+        FixtureFiles::bind (claim "p → q", \implication =>
+        FixtureFiles::bind (claim "p → p", \reflexive =>
+        FixtureFiles::bind (formula "p", \premise =>
+        FixtureFiles::bind (formula "p ∧ q", \conjunctive =>
+            expect (inventedTop (Goals::run (plain, [workbench::Exact "missing"])), false)
+            expect (inventedTop (Goals::run (plain, [workbench::Done])), false)
+            expect (stopped (Goals::run (plain, [workbench::Exact "missing"])), true)
+            expect (stopped (Goals::run (plain, [workbench::Done])), true)
+            expect (stopped (Goals::run (universal, [workbench::Assume "wrong" workbench::Top])), true)
+            expect (stopped (Goals::run (plain, [workbench::Assume "h" premise])), true)
+            expect (stopped (Goals::run (plain, [workbench::Split])), true)
+            expect (stopped (Goals::run (plain, [workbench::Left])), true)
+            expect (stopped (Goals::run (conjunction, [workbench::Assume "h" conjunctive, workbench::Cases "h" ["only"]])), true)
+            expect (stopped (Goals::run (implication, [workbench::Assume "h" premise, workbench::Cases "h" ["a", "b"]])), true)
+            expect (stopped (Goals::run (implication, [workbench::Assume "h" premise, workbench::Apply "h"])), true)
+            FixtureFiles::ok (expect (stopped (Goals::run (reflexive, [workbench::Assume "h" premise, workbench::Exact "h", workbench::Exact "h"])), true)))))))))
 
     unsupported outcome = match outcome
         workbench::UnsupportedStep text progress => text + " | " + join (mapList (progress.open, goal), " | ") + " | closed ${length progress.done}"
@@ -80,60 +95,137 @@ module GoalCases
 
     (** [WORKBENCH-GOALS] Unsupported text retains the last understood context and prevents later steps from closing its goal. *)
     export unsupportedProgress () =
-        prefix = [workbench::Assume "h" (formula "p"), workbench::Unknown "Use symmetry here."]
-        expect (unsupported (Goals::run (claim "p → p", listAppend (prefix, workbench::Exact "h"))), "Use symmetry here. | h : p ⊢ p | closed 0")
-        expect (unsupported (Goals::run (claim "p → p", [workbench::Assume "h" (formula "p"), workbench::Exact "h", workbench::Unknown "Another observation."])), "Another observation. |  | closed 1")
+        FixtureFiles::bind (claim "p → p", \reflexive =>
+        FixtureFiles::bind (formula "p", \premise =>
+            prefix = [workbench::Assume "h" premise, workbench::Unknown "Use symmetry here."]
+            expect (unsupported (Goals::run (reflexive, listAppend (prefix, workbench::Exact "h"))), "Use symmetry here. | h : p ⊢ p | closed 0")
+            FixtureFiles::ok (expect (unsupported (Goals::run (reflexive, [workbench::Assume "h" premise, workbench::Exact "h", workbench::Unknown "Another observation."])), "Another observation. |  | closed 1"))))
 
     (** [WORKBENCH-GOALS] A refused sentence neither closes a goal nor advances the visible step count. *)
     export retainedGoal () =
-        walk = Goals::trace (claim "p ∧ q → q ∧ p", [workbench::Assume "h" (formula "p ∧ q"), workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hp", workbench::Exact "hq"])
-        expect (walk.traceAccepted, 3)
-        expect (join (mapList (walk.traceProgress.open, goal), " | "), "hp : p, hq : q ⊢ q | hp : p, hq : q ⊢ p")
-        expect (length walk.traceProgress.done, 0)
+        FixtureFiles::bind (claim "p ∧ q → q ∧ p", \theorem =>
+        FixtureFiles::bind (formula "p ∧ q", \premise =>
+            walk = Goals::trace (theorem, [workbench::Assume "h" premise, workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hp", workbench::Exact "hq"])
+            expect (walk.traceAccepted, 3)
+            expect (join (mapList (walk.traceProgress.open, goal), " | "), "hp : p, hq : q ⊢ q | hp : p, hq : q ⊢ p")
+            FixtureFiles::ok (expect (length walk.traceProgress.done, 0))))
 
     (** [WORKBENCH-GOALS]: and_swap closes both goals, one step at a time. *)
     export andSwap () =
-        steps = [workbench::Assume "h" (formula "p ∧ q"), workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hq", workbench::Exact "hp"]
-        expect (after ("p ∧ q → q ∧ p", Lists::first (steps, 1)), "h : p ∧ q ⊢ q ∧ p")
-        expect (after ("p ∧ q → q ∧ p", Lists::first (steps, 2)), "hp : p, hq : q ⊢ q ∧ p")
-        expect (after ("p ∧ q → q ∧ p", Lists::first (steps, 3)), "hp : p, hq : q ⊢ q | hp : p, hq : q ⊢ p")
-        expect (after ("p ∧ q → q ∧ p", steps), "")
-        expect (closedCount ("p ∧ q → q ∧ p", steps), 2)
-        expect (after ("p ∧ q → q ∧ p", listAppend (steps, workbench::Done)), "")
+        FixtureFiles::bind (claim "p ∧ q → q ∧ p", \theorem =>
+        FixtureFiles::bind (formula "p ∧ q", \premise =>
+            steps = [workbench::Assume "h" premise, workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hq", workbench::Exact "hp"]
+            expect (after (theorem, Lists::first (steps, 1)), "h : p ∧ q ⊢ q ∧ p")
+            expect (after (theorem, Lists::first (steps, 2)), "hp : p, hq : q ⊢ q ∧ p")
+            expect (after (theorem, Lists::first (steps, 3)), "hp : p, hq : q ⊢ q | hp : p, hq : q ⊢ p")
+            expect (after (theorem, steps), "")
+            expect (closedCount (theorem, steps), 2)
+            FixtureFiles::ok (expect (after (theorem, listAppend (steps, workbench::Done)), ""))))
+
+    // `p ∨ q → q ∨ p` splits into two goals; right, left and exact close them.
+    disjunctionRows () =
+        FixtureFiles::bind (claim "p ∨ q → q ∨ p", \theorem =>
+        FixtureFiles::bind (formula "p ∨ q", \premise =>
+            expect (after (theorem, [workbench::Assume "h" premise, workbench::Cases "h" ["a", "b"]]), "a : p ⊢ q ∨ p | b : q ⊢ q ∨ p")
+            FixtureFiles::ok (expect (after (theorem, [workbench::Assume "h" premise, workbench::Cases "h" ["a", "b"], workbench::Right, workbench::Exact "a", workbench::Left, workbench::Exact "b"]), ""))))
+
+    // An implication is applied to an assumed antecedent.
+    implicationRow () =
+        FixtureFiles::bind (claim "(p → q) → p → q", \theorem =>
+        FixtureFiles::bind (formula "p → q", \implication =>
+        FixtureFiles::bind (formula "p", \antecedent =>
+            FixtureFiles::ok (expect (after (theorem, [workbench::Assume "f" implication, workbench::Assume "x" antecedent, workbench::Apply "f"]), "f : p → q, x : p ⊢ p")))))
+
+    // Absurd closes the goal from contradictory hypotheses.
+    absurds () =
+        FixtureFiles::bind (claim "p → ¬p → q", \disjunctive =>
+        FixtureFiles::bind (claim "p → (p → ⊥) → q", \conjunctive =>
+        FixtureFiles::bind (formula "p", \positive =>
+        FixtureFiles::bind (formula "¬p", \negative =>
+        FixtureFiles::bind (formula "p → ⊥", \impossible =>
+            expect (after (disjunctive, [workbench::Assume "x" positive, workbench::Assume "y" negative, workbench::Absurd "x" "y"]), "")
+            FixtureFiles::ok (expect (after (conjunctive, [workbench::Assume "x" positive, workbench::Assume "f" impossible, workbench::Absurd "x" "f"]), "")))))))
+
+    // A negated antecedent is applied and then contradicted.
+    negatedRows () =
+        FixtureFiles::bind (claim "p → ¬p → ⊥", \negatively =>
+        FixtureFiles::bind (claim "p → (p → ⊥) → ⊥", \impossible =>
+        FixtureFiles::bind (claim "¬p → ¬p", \reflexive =>
+        FixtureFiles::bind (formula "p", \positive =>
+        FixtureFiles::bind (formula "¬p", \negative =>
+        FixtureFiles::bind (formula "p → ⊥", \bottom =>
+            expect (after (negatively, [workbench::Assume "x" positive, workbench::Assume "h" negative, workbench::Apply "h", workbench::Exact "x"]), "")
+            expect (after (impossible, [workbench::Assume "x" positive, workbench::Assume "f" bottom, workbench::Apply "f", workbench::Exact "x"]), "")
+            FixtureFiles::ok (expect (after (reflexive, [workbench::Assume "h" negative, workbench::Assume "x" positive, workbench::Apply "h", workbench::Exact "x"]), ""))))))))
+
+    // Incorrect application and contradiction steps retain their mismatch.
+    stuckRows () =
+        FixtureFiles::bind (claim "p → (p → q) → ⊥", \impossible =>
+        FixtureFiles::bind (claim "(p → ⊥) → p → q", \retro =>
+        FixtureFiles::bind (formula "p", \positive =>
+        FixtureFiles::bind (formula "p → q", \implication =>
+        FixtureFiles::bind (formula "p → ⊥", \bottom =>
+            expect (after (impossible, [workbench::Assume "x" positive, workbench::Assume "f" implication, workbench::Apply "f"]), "stuck: the goal is `⊥`, but `f` concludes `q`")
+            FixtureFiles::ok (expect (after (retro, [workbench::Assume "f" bottom, workbench::Assume "x" positive, workbench::Absurd "f" "x"]), "stuck: `p` does not contradict `p → ⊥`")))))))
+
+    // A conjunction is matched and mismatched by an exact step.
+    conjunctions () =
+        FixtureFiles::bind (claim "(¬p ∧ q) → ((p → ⊥) ∧ q)", \matching =>
+        FixtureFiles::bind (claim "(¬p ∧ q) → ((p → ⊥) ∧ r)", \mismatching =>
+        FixtureFiles::bind (formula "¬p ∧ q", \premise =>
+            expect (after (matching, [workbench::Assume "h" premise, workbench::Exact "h"]), "")
+            FixtureFiles::ok (expect (startsWith (after (mismatching, [workbench::Assume "h" premise, workbench::Exact "h"]), "stuck:"), true)))))
+
+    // A split biconditional and pure universal assumptions keep their goal text.
+    plainRows () =
+        FixtureFiles::bind (claim "p ↔ p", \biconditional =>
+        FixtureFiles::bind (claim "∀ x y, x → x", \universal =>
+            expect (after (biconditional, [workbench::Split]), " ⊢ p → p |  ⊢ p → p")
+            FixtureFiles::ok (expect (after (universal, [workbench::Assume "x" workbench::Top, workbench::Assume "y" workbench::Top]), " ⊢ x → x"))))
+
+    // Biconditional and universal hypotheses are exact-matched under binders.
+    equivalences () =
+        FixtureFiles::bind (claim "(p ↔ ¬p) → (p ↔ (p → ⊥))", \biconditional =>
+        FixtureFiles::bind (claim "(∀ p, ¬p) → (∀ p, p → ⊥)", \universal =>
+        FixtureFiles::bind (claim "(∀ p, ¬p) → (∀ p, q → ⊥)", \mismatching =>
+        FixtureFiles::bind (formula "p ↔ ¬p", \flip =>
+        FixtureFiles::bind (formula "∀ p, ¬p", \negated =>
+            expect (after (biconditional, [workbench::Assume "h" flip, workbench::Exact "h"]), "")
+            expect (after (universal, [workbench::Assume "h" negated, workbench::Exact "h"]), "")
+            FixtureFiles::ok (expect (startsWith (after (mismatching, [workbench::Assume "h" negated, workbench::Exact "h"]), "stuck:"), true)))))))
 
     (** [WORKBENCH-GOALS]: a disjunction splits into two goals, and left, right, apply and absurd each act on the first. *)
     export rows () =
-        expect (after ("p ∨ q → q ∨ p", [workbench::Assume "h" (formula "p ∨ q"), workbench::Cases "h" ["a", "b"]]), "a : p ⊢ q ∨ p | b : q ⊢ q ∨ p")
-        expect (after ("p ∨ q → q ∨ p", [workbench::Assume "h" (formula "p ∨ q"), workbench::Cases "h" ["a", "b"], workbench::Right, workbench::Exact "a", workbench::Left, workbench::Exact "b"]), "")
-        expect (after ("(p → q) → p → q", [workbench::Assume "f" (formula "p → q"), workbench::Assume "x" (formula "p"), workbench::Apply "f"]), "f : p → q, x : p ⊢ p")
-        expect (after ("p → ¬p → q", [workbench::Assume "x" (formula "p"), workbench::Assume "y" (formula "¬p"), workbench::Absurd "x" "y"]), "")
-        expect (after ("p → (p → ⊥) → q", [workbench::Assume "x" (formula "p"), workbench::Assume "f" (formula "p → ⊥"), workbench::Absurd "x" "f"]), "")
-        expect (after ("p → ¬p → ⊥", [workbench::Assume "x" (formula "p"), workbench::Assume "h" (formula "¬p"), workbench::Apply "h", workbench::Exact "x"]), "")
-        expect (after ("p → (p → ⊥) → ⊥", [workbench::Assume "x" (formula "p"), workbench::Assume "f" (formula "p → ⊥"), workbench::Apply "f", workbench::Exact "x"]), "")
-        expect (after ("¬p → ¬p", [workbench::Assume "h" (formula "¬p"), workbench::Assume "x" (formula "p"), workbench::Apply "h", workbench::Exact "x"]), "")
-        expect (after ("p → (p → q) → ⊥", [workbench::Assume "x" (formula "p"), workbench::Assume "f" (formula "p → q"), workbench::Apply "f"]), "stuck: the goal is `⊥`, but `f` concludes `q`")
-        expect (after ("(p → ⊥) → p → q", [workbench::Assume "f" (formula "p → ⊥"), workbench::Assume "x" (formula "p"), workbench::Absurd "f" "x"]), "stuck: `p` does not contradict `p → ⊥`")
-        expect (after ("(¬p ∧ q) → ((p → ⊥) ∧ q)", [workbench::Assume "h" (formula "¬p ∧ q"), workbench::Exact "h"]), "")
-        expect (startsWith (after ("(¬p ∧ q) → ((p → ⊥) ∧ r)", [workbench::Assume "h" (formula "¬p ∧ q"), workbench::Exact "h"]), "stuck:"), true)
-        expect (after ("p ↔ p", [workbench::Split]), " ⊢ p → p |  ⊢ p → p")
-        expect (after ("∀ x y, x → x", [workbench::Assume "x" workbench::Top, workbench::Assume "y" workbench::Top]), " ⊢ x → x")
-        expect (after ("(p ↔ ¬p) → (p ↔ (p → ⊥))", [workbench::Assume "h" (formula "p ↔ ¬p"), workbench::Exact "h"]), "")
-        expect (after ("(∀ p, ¬p) → (∀ p, p → ⊥)", [workbench::Assume "h" (formula "∀ p, ¬p"), workbench::Exact "h"]), "")
-        expect (startsWith (after ("(∀ p, ¬p) → (∀ p, q → ⊥)", [workbench::Assume "h" (formula "∀ p, ¬p"), workbench::Exact "h"]), "stuck:"), true)
+        both (disjunctionRows (),
+        both (implicationRow (),
+        both (absurds (),
+        both (negatedRows (),
+        both (stuckRows (),
+        both (conjunctions (),
+        both (plainRows (),
+            equivalences ())))))))
 
     (** [WORKBENCH-GOALS]: a step that does not fit names the goal and what the step offers. *)
     export mismatches () =
-        expect (after ("p ∧ q → q ∧ p", [workbench::Assume "h" (formula "p ∧ q"), workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hp"]), "stuck: the goal is `q`, but `hp` proves `p`")
-        expect (after ("p → q", [workbench::Assume "h" (formula "q")]), "stuck: the goal assumes `p`, not `q`")
-        expect (after ("p", [workbench::Assume "h" (formula "p")]), "stuck: the goal `p` is not an implication to assume")
-        expect (after ("p", [workbench::Exact "h"]), "stuck: there is no hypothesis `h`")
-        expect (after ("p", [workbench::Split]), "stuck: the goal `p` is not a conjunction to split")
-        expect (after ("p", [workbench::Left]), "stuck: the goal `p` is not a disjunction")
-        expect (after ("p", [workbench::Done]), "stuck: the goal `p` is still open")
-        expect (after ("p → p", [workbench::Assume "h" (formula "p"), workbench::Exact "h", workbench::Exact "h"]), "stuck: there is nothing left to prove")
-        expect (after ("p", [workbench::Unknown "Hence the result follows."]), "unsupported: Hence the result follows.")
-        expect (after ("∀ x, x → x", [workbench::Assume "y" workbench::Top]), "stuck: the goal binds `x` next, not `y`")
-        expect (after ("p → q → p", [workbench::Assume "h" (formula "p"), workbench::Cases "h" ["a", "b"]]), "stuck: `h` is `p`, which has no cases")
+        FixtureFiles::bind (claim "p", \plain =>
+        FixtureFiles::bind (claim "p → q", \implication =>
+        FixtureFiles::bind (claim "p → p", \reflexive =>
+        FixtureFiles::bind (claim "p ∧ q → q ∧ p", \conjunction =>
+        FixtureFiles::bind (claim "p → q → p", \nested =>
+        FixtureFiles::bind (claim "∀ x, x → x", \universal =>
+        FixtureFiles::bind (formula "q", \consequent =>
+        FixtureFiles::bind (formula "p ∧ q", \conjunctive =>
+            expect (after (conjunction, [workbench::Assume "h" conjunctive, workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hp"]), "stuck: the goal is `q`, but `hp` proves `p`")
+            expect (after (implication, [workbench::Assume "h" consequent]), "stuck: the goal assumes `p`, not `q`")
+            expect (after (plain, [workbench::Assume "h" plain.claim]), "stuck: the goal `p` is not an implication to assume")
+            expect (after (plain, [workbench::Exact "h"]), "stuck: there is no hypothesis `h`")
+            expect (after (plain, [workbench::Split]), "stuck: the goal `p` is not a conjunction to split")
+            expect (after (plain, [workbench::Left]), "stuck: the goal `p` is not a disjunction")
+            expect (after (plain, [workbench::Done]), "stuck: the goal `p` is still open")
+            expect (after (reflexive, [workbench::Assume "h" plain.claim, workbench::Exact "h", workbench::Exact "h"]), "stuck: there is nothing left to prove")
+            expect (after (plain, [workbench::Unknown "Hence the result follows."]), "unsupported: Hence the result follows.")
+            expect (after (universal, [workbench::Assume "y" workbench::Top]), "stuck: the goal binds `x` next, not `y`")
+            FixtureFiles::ok (expect (after (nested, [workbench::Assume "h" plain.claim, workbench::Cases "h" ["a", "b"]]), "stuck: `h` is `p`, which has no cases"))))))))))
 
     // `count` premises `h0 … hn` of `p → … → p`, assumed in turn and closed by the first.
     names (count, done) = match length done >= count

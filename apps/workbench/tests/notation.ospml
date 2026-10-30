@@ -32,10 +32,13 @@ module NotationCases
     (** [WORKBENCH-NOTATION]: the table holds every abbreviation of the spec section. *)
     export tableComplete () = expect (length Notation::table, 71)
 
-    (** [WORKBENCH-NOTATION]: a completed abbreviation becomes its symbol where it stands. *)
+    (** [WORKBENCH-NOTATION]: a completed abbreviation becomes its symbol where it stands, and the formula keys read their symbol from the one table. *)
     export completed () =
         expect (Notation::expand "p \\and q", "p ∧ q")
         expect (Notation::expand "f\\inv x", "f⁻¹ x")
+        expect (Notation::symbolOf "to", "→")
+        expect (Notation::symbolOf "notin", "∉")
+        expect (Notation::symbolOf "missing", "")
 
     (** [WORKBENCH-NOTATION]: an abbreviation still being typed stays as typed. *)
     export unfinished () =

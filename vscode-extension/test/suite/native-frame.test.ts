@@ -9,6 +9,28 @@ function frame(properties: Record<string, unknown> = style): string {
 }
 
 suite("native shared frame", () => {
+  test("vertical scroll frames cap natural height at the authored viewport bound", () => {
+    const html = frame({ ...style, height: 530, viewportHeightInset: 180, scrollY: true });
+    for (const declaration of ["max-height:max(530px, calc(100dvh - 180px))", "min-height:530px", "height:auto", "overflow-y:auto", "flex:0 0 auto"]) {
+      assert.ok(html.includes(declaration), `missing ${declaration}`);
+    }
+    assert.ok(!html.includes(";height:max("), "a short proof retains its natural height");
+    assert.ok(!frame().includes("overflow-y:auto"), "default frames retain their prior overflow behavior");
+    assert.ok(!frame({ ...style, scrollY: false }).includes("overflow-y:auto"));
+    assert.ok(frame({ ...style, height: 200, scrollY: true }).includes("height:200px"));
+    for (const scrollY of [null, "true", 1]) assert.throws(() => frame({ ...style, scrollY }), /scrollY/i);
+  });
+
+  test("viewport-relative height retains the shared minimum and validates its inset", () => {
+    const html = frame({ ...style, height: 440, grow: true, viewportHeightInset: 270 });
+    assert.ok(html.includes("height:max(440px, calc(100dvh - 270px))"));
+    assert.ok(html.includes("flex:0 0 auto"));
+    assert.ok(!html.includes("flex:1"), "viewport-sized frames keep their authored height instead of growing");
+    assert.ok(frame({ ...style, height: 440, viewportHeightInset: -1 }).includes("height:440px"));
+    assert.ok(!frame().includes("100dvh"), "absent viewport metrics preserve existing frame dimensions");
+    assert.ok(frame({ ...style, viewportHeightInset: 0 }).includes("height:max(0px, calc(100dvh - 0px))"));
+    for (const viewportHeightInset of [-2, 0.5, 32769, "270px", null]) assert.throws(() => frame({ ...style, viewportHeightInset }), /viewportHeightInset/i);
+  });
   test("symbol size follows the shared frame and rejects malformed metrics", () => {
     assert.ok(frame({ ...style, symbolSize: 13 }).includes("--osp-frame-symbol-size:13px"));
     assert.ok(!frame({ ...style, symbolSize: 0 }).includes("--osp-frame-symbol-size:"), "zero inherits the surrounding symbol size");

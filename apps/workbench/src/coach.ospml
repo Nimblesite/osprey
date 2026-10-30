@@ -8,12 +8,10 @@ import workbench::Blocks
 import workbench::Tutors
 import workbench::Shelves
 import workbench::Drafts
-import workbench::Inks
 import workbench::ProofLibraries
 import workbench::BundledLibraries
 import workbench::Workspaces
 import ui::Runtime
-import ui::Doc
 import ui::Lists
 
 (** Learn-mode transitions over the open lesson ([LESSONS-STORE]). *)
@@ -29,6 +27,12 @@ module Coach
 
     (** The answer to challenge `id` replaced by `text`; that challenge takes the focus. *)
     export answer (bench, id, text) = bench(tutor = Tutors::answer (bench.tutor, keyed (bench, id), text), shelf = focus (bench.shelf, id))
+
+    (** The caret of challenge `id` moved to `offset`, kept within its answer; that challenge takes the focus. *)
+    export moved (bench, id, offset) = bench(tutor = Tutors::moved (bench.tutor, keyed (bench, id), offset), shelf = focus (bench.shelf, id))
+
+    (** A formula key's `text` inserted at the answer's caret; the text around it stays and the caret follows the key. *)
+    export insert (bench, id, text) = bench(tutor = Tutors::insert (bench.tutor, keyed (bench, id), text), shelf = focus (bench.shelf, id))
 
     rulingOf name = match name
         "checks" => Checks
@@ -87,25 +91,13 @@ module Coach
     (** Back to the catalogue. *)
     export close bench = bench(shelf = hidden bench.shelf)
 
-    (** Recognised handwriting: into the focused challenge's answer in Learn, onto the document's end in Work ([WORKBENCH-BOARD]). *)
-    export inked (bench, text) = match bench.layout.mode
-        Working => Drafts::edited (bench, Drafts::joined (bench.draft.draftText, "\n", text))
-        ReadingPage => Drafts::edited (bench(layout = working bench.layout), Drafts::joined (bench.draft.draftText, "\n", text))
-        Learning => focused (bench, bench.shelf.focused, text)
-
-    focused (bench, id, text) = match isEmpty id
-        true => bench
-        false => answer (bench, id, Drafts::joined ((Tutors::attempt (bench.tutor, keyed (bench, id))).attemptAnswer, "\n", text))
-
-(** The host's completions: lessons, progress and recognition ([LESSONS-FILES], [UI-EFFECTS-RECOGNISE]). *)
+(** The host's completions: lessons, progress and a late legacy ink answer ([LESSONS-FILES], [UI-EFFECTS-RECOGNISE]). *)
 module Completions
     problem (shelf, said) = shelf(shelfProblem = said)
 
     listed (shelf, entries) = shelf(entries = entries, shelfProblem = "")
 
-    sketched (bench, sketch) = bench(sketch = sketch)
-
-    // A recognition answer for an older lasso is dropped: its ticket is not the current one.
+    // Only the current ink ticket is refused visibly; a completion for an older one changes nothing.
     failed (bench, ticket, said) = match startsWith ticket "workspace:"
         true => Runtime::step (Workspaces::notice (bench, "The workspace operation failed: " + said, true))
         false => match ticket == "proof:opened"
@@ -116,20 +108,18 @@ module Completions
 
     failedLesson (bench, ticket, said) = match ticket == Shelves::catalogueKey || ticket == Shelves::textsKey
         true => Runtime::step (bench(shelf = problem (bench.shelf, "The lessons could not be loaded: " + said)))
-        false => match ticket == bench.sketch.inkTicket && !isEmpty ticket
-            true => recognitionFailed (bench, said)
+        false => match pendingInk (bench, ticket)
+            true => retiredInk (bench, "The strokes could not be read: " + said)
             false => unsaved (bench, ticket, said)
+
+    pendingInk (bench, ticket) = ticket == bench.sketch.inkTicket && !isEmpty ticket
 
     consumed bench =
         sketch = bench.sketch
         bench(sketch = sketch(inkTicket = ""))
 
-    recognitionFailed (bench, problem) =
-        cleared = consumed bench
-        ready = match problem == "Unsupported"
-            true => sketched (cleared, Inks::unsupported cleared.sketch)
-            false => cleared
-        Runtime::step (Workspaces::notice (ready, "The strokes could not be read: " + problem, false))
+    // A late legacy ink answer clears its pending ticket and is reported; no draft or lesson answer is overwritten.
+    retiredInk (bench, said) = Runtime::step (Workspaces::notice (consumed bench, "Handwriting is no longer available. " + said, false))
 
     // A missing progress file is no progress; a progress write that failed is said, so work is never lost silently.
     unsaved (bench, ticket, said) = match ticket == Shelves::savedKey
@@ -164,19 +154,12 @@ module Completions
         "lessons:catalogue" => catalogued bench
         "lessons:texts" => gathered bench
         "lessons:progress" => progressed bench
-        _ => recognised (bench, ticket, result)
+        _ => unrecognised (bench, ticket, result)
 
-    recognised (bench, ticket, result) = match ticket == bench.sketch.inkTicket && !isEmpty ticket
-        true => Runtime::step (recognitionPreview (consumed bench, Doc::text (result, "text")))
+    (** A retired ink ticket is cleared and reported; an unrelated ticket changes nothing. *)
+    unrecognised (bench, ticket, _) = match pendingInk (bench, ticket)
+        true => retiredInk (bench, "The transcription was discarded.")
         false => Runtime::step bench
-
-    recognitionPreview (bench, content) = match isEmpty (trim content) || byteLength content > 4096
-        true => Workspaces::notice (bench, "No usable transcription was returned. Try another selection.", false)
-        false => match bench.layout.mode
-            Learning => Coach::inked (bench, content)
-            _ =>
-                current = bench.layout
-                bench(layout = current(previewText = content, previewSample = false))
 
     (** The store after the host completed `ticket` with `outcome`. *)
     export completed (bench, ticket, outcome) = match outcome

@@ -6,6 +6,8 @@ namespace workbench
 import ui::Runtime
 import ui::Keyed
 import ui::Doc
+import ui::Lists
+import proof::CachedImports
 import vscode::Webview
 import workbench::Benches
 import workbench::Update
@@ -24,8 +26,6 @@ module Changes
 
     checksSlice () = perform Signal<Reviewed>.read ()
 
-    sketchSlice () = perform Signal<Sketch>.read ()
-
     layoutSlice () = perform Signal<Layout>.read ()
 
     shelfSlice () = perform Signal<Shelf>.read ()
@@ -42,7 +42,6 @@ module Changes
 
     checksJson found = JsonArray (mapList (found.checks, \check => checkJson check))
 
-    sketchJson sketch = JsonArray [JsonInt sketch.strokeTotal, JsonBool sketch.lassoing, JsonBool sketch.clearing, JsonInt sketch.boardScale, JsonInt sketch.boardPanX, JsonInt sketch.boardPanY, JsonString sketch.boardNotes, JsonBool sketch.notesVisible, JsonBool sketch.panMode]
 
     learning mode = match mode
         Learning => true
@@ -66,7 +65,7 @@ module Changes
     pair (first, second) = listConcat (first, second)
 
     (** The identities whose slice differs between `before` and `after`; the tutor's are left to each challenge. *)
-    export slices (before, after) = pair (pair (pair (signalChanges before.draft after.draft draftJson (signalDependencies draftSlice), signalChanges before.verdicts after.verdicts checksJson (signalDependencies checksSlice)), pair (signalChanges before.sketch after.sketch sketchJson (signalDependencies sketchSlice), signalChanges before.layout after.layout layoutJson (signalDependencies layoutSlice))), pair (signalChanges before.shelf after.shelf shelfJson (signalDependencies shelfSlice), pair (signalChanges (done before) (done after) doneJson (signalDependencies doneSlice), signalChanges before.imports after.imports importedJson (signalDependencies importedSlice))))
+    export slices (before, after) = pair (pair (pair (signalChanges before.draft after.draft draftJson (signalDependencies draftSlice), signalChanges before.verdicts after.verdicts checksJson (signalDependencies checksSlice)), signalChanges before.layout after.layout layoutJson (signalDependencies layoutSlice)), pair (signalChanges before.shelf after.shelf shelfJson (signalDependencies shelfSlice), pair (signalChanges (done before) (done after) doneJson (signalDependencies doneSlice), signalChanges before.imports after.imports importedJson (signalDependencies importedSlice))))
 
     (** The challenge identifiers of the open lesson in `bench`, none when no lesson is open. *)
     export challenges bench = match Lessons::read bench.shelf.openSource
@@ -76,7 +75,10 @@ module Changes
 (** The workbench application: start, dispatch and the host boundary ([WORKBENCH-STORE]). *)
 module App
     // At start the board's metadata slice is written, and the catalogue and the learner's progress are asked for; the lessons follow the catalogue.
-    initial _ = ui::Step(stepStore = Benches::fresh (), requests = [Shelves::catalogue (), Shelves::progress ()], writes = [Boards::metadataWrite ("board", Boards::empty ())])
+    initial (slate, _) =
+        fresh = Benches::fresh ()
+        layout = fresh.layout
+        ui::Step(stepStore = fresh(layout = layout(slate = slate)), requests = [Shelves::catalogue (), Shelves::progress ()], writes = [Boards::metadataWrite ("board", Boards::empty ())])
 
     // [LESSONS-VERIFICATION]: named callbacks retain precise compiler-derived dependencies.
     challengeRegion (before, current, frames, id) =
@@ -86,15 +88,22 @@ module App
         changed = match structuralEquals (LearnViews::challengeState (before, id)) next
             true => []
             false => signalDependencies LearnViews::challenge
-        Keyed::region (frames, "challenge:" + id, changed, LearnViews::challenge)
+        Keyed::region (frames, LearnViews::regionKey (current.shelf.openSlug, id), changed, LearnViews::challenge)
 
-    regions (before, current, frames, _) =
+    regions (before, current, frames, writes) =
+        handle ui::Slices
+            fetch key => writtenSlice (writes, key)
+        regionViews (before, current, frames)
+
+    writtenSlice (writes, key) = match Lists::find (writes, \write => write.sliceKey == key)
+        Success write => write.sliceText
+        Error _ => perform ui::Slices.fetch key
+
+    regionViews (before, current, frames) =
         handle static Signal<Draft>
             read => current.draft
         handle static Signal<Reviewed>
             read => current.verdicts
-        handle static Signal<Sketch>
-            read => current.sketch
         handle static Signal<Layout>
             read => current.layout
         handle static Signal<Shelf>
@@ -104,13 +113,19 @@ module App
         handle static Signal<Achieved>
             read => Changes::done current
         changed = Changes::slices (before, current)
-        listConcat ([Keyed::region (frames, "root", changed, WorkViews::root), Keyed::region (frames, "heading", changed, WorkViews::header), Keyed::region (frames, "document", changed, WorkViews::document), Keyed::region (frames, "goal", changed, GoalViews::pane), Keyed::region (frames, "generated", changed, WorkViews::generated), Keyed::region (frames, "board", changed, WorkViews::board), Keyed::region (frames, "library", changed, WorkViews::library), Keyed::region (frames, "catalogue", changed, LearnViews::catalogue), Keyed::region (frames, "lesson", changed, LearnViews::lesson)], mapList (Changes::challenges current, \id => challengeRegion (before, current, frames, id)))
+        listConcat ([Keyed::region (frames, "root", changed, WorkViews::root), Keyed::region (frames, "heading", changed, WorkViews::header), Keyed::region (frames, "document", changed, WorkViews::document), Keyed::region (frames, "goal", changed, GoalViews::pane), Keyed::region (frames, "generated", changed, WorkViews::generated), Keyed::region (frames, "library", changed, WorkViews::library), Keyed::region (frames, "catalogue", changed, LearnViews::catalogue), Keyed::region (frames, "lesson", changed, LearnViews::lesson)], mapList (Changes::challenges current, \id => challengeRegion (before, current, frames, id)))
 
-    (** A new session: the empty store, the chalk theme, and the lesson and progress reads ([WORKBENCH-STORE]). *)
-    export start context = Runtime::start (context, initial, regions, Benches::save, Palettes::initial ())
+    initialPalette slate = match slate
+        true => Palettes::chalk
+        false => Palettes::initial ()
+
+    (** A new session uses the host's requested appearance, with Paper when none is supplied ([WORKBENCH-STORE]). *)
+    export start context =
+        slate = Doc::text (Doc::parse context, "theme") == "dark"
+        CachedImports::run (\() => Runtime::start (context, \host => initial (slate, host), regions, Benches::save, initialPalette slate))
 
     (** One host event through `update`, re-sending only the regions whose signals changed. *)
-    export dispatch (saved, event) = Runtime::dispatch (saved, event, Update::apply, regions, Benches::save, Benches::restore)
+    export dispatch (saved, event) = CachedImports::run (\() => Runtime::dispatch (saved, event, Update::apply, regions, Benches::save, Benches::restore))
 
     // The VS Code host keeps host-held slices and sends them in the frame's `slices` object; an unknown key reads as empty.
     (** The VS Code command boundary: one frame in, one envelope out, host-held slices read from the frame ([VSCODE-SDK-WASM]). *)

@@ -11,10 +11,8 @@ import workbench::Judge
 
 (** The integrity case of [LESSONS-INTEGRITY] over the files under `apps/workbench/lessons/`. *)
 module IntegrityCases
-    root () = FixtureFiles::root ()
-
-    catalogue () = match readFile (root () + "catalogue.json")
-        Error problem => Error(message = root () + "catalogue.json: " + problem)
+    catalogue () = match FixtureFiles::read "catalogue.json"
+        Error problem => Error(message = problem)
         Success text => Catalogues::read text
 
     right mark = match mark
@@ -51,7 +49,7 @@ module IntegrityCases
         workbench::Clip film => [film.filmSource, film.filmPoster, film.filmCaptions]
         _ => []
 
-    missing (slug, path) = match readFile (root () + path)
+    missing (slug, path) = match FixtureFiles::read path
         Success _ => ""
         Error problem => slug + ": " + path + " cannot be read: " + problem
 
@@ -63,7 +61,7 @@ module IntegrityCases
         false => [slug + ": the file's slug is `" + lesson.lessonSlug + "`"]
         true => listConcat (listConcat (mapList (lesson.lessonAfter, \other => afterProblem (slugs, slug, other)), mapList (Blocks::challenges lesson.lessonBlocks, \item => solved (slug, item))), mapList (foldList (lesson.lessonBlocks, [], \(paths, block) => listConcat (paths, media block)), \path => missing (slug, path)))
 
-    lessonProblems (slugs, slug) = match readFile (root () + slug + ".json")
+    lessonProblems (slugs, slug) = match FixtureFiles::read (slug + ".json")
         Error problem => [slug + ".json cannot be read: " + problem]
         Success text => match Lessons::read text
             Error problem => [slug + ": " + problem]
@@ -77,8 +75,6 @@ module IntegrityCases
     (** [LESSONS-INTEGRITY]: no shipped lesson breaks a rule, and the curriculum has its seven lessons. *)
     export shipped () =
         expect (join (problems (), "\n"), "")
-        expect (count (), 7)
-
-    count () = match catalogue ()
-        Success found => length found.catalogueSlugs
-        Error _ => 0
+        match catalogue ()
+            Success found => expect (length found.catalogueSlugs, 7)
+            Error problem => FixtureFiles::report problem

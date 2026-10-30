@@ -1,7 +1,8 @@
 // Implements [WORKBENCH-STORE]: portable working contains source and strokes, never a cached proof verdict.
 namespace workbench
 
-import proof::ImportedProofs
+import proof::CachedImports
+import proof::Trust
 import ui::Ui
 import ui::Frames
     plain
@@ -82,7 +83,6 @@ module Workspaces
             "workspace:saved" => Runtime::step (notice (bench, "Workspace saved.", false))
             _ => Runtime::step bench
 
-
 (** [WORKBENCH-VERDICT] Shared file import and current-source checking for every host. *)
 module ProofLibraries
     export fileKey = "proof:import"
@@ -98,21 +98,21 @@ module ProofLibraries
 
     selectionResult (current, name) = match missing current
         true => Error(message = unavailable)
-        false => ImportedProofs::check (source current, name)
+        false => CachedImports::check (source current, name)
 
     export open bench =
         current = bench.imports
         ready = bench(imports = current(libraryPending = "", libraryTicket = "proof:opened"))
         Runtime::asking (ready, [Requests::ask ("proof:opened", ui::ChooseFile(types = ["json", "ndjson", "jsonl"], chosenLimit = 8388608, chosenSlice = fileKey))])
 
-    export imported (bench, content) = Runtime::step (bench(imports = replaced (bench.imports, content)))
+    export imported (bench, content) = ui::Step(stepStore = bench(imports = replaced (bench.imports, content)), requests = [], writes = [ui::SliceWrite(sliceKey = fileKey, sliceText = content)])
 
     revised current = current(exportRevision = satAdd current.exportRevision 1)
 
     replaced (current, content) =
         changed = revised current
         next = changed(exportText = retained content, exportLarge = byteLength content > inlineLimit, exportProblem = "", libraryPending = "", libraryTicket = "", libraryExpanded = false)
-        match ImportedProofs::catalogue content
+        match CachedImports::catalogue content
             Error problem => next(exportProblem = problem)
             Success entries => selectedEntry (next, entries)
 
@@ -176,7 +176,7 @@ module ProofLibraries
         true => Ui::caption "Open a proof export to inspect its theorems and assumptions."
         false => match isEmpty current.exportProblem
             false => previousRefusal (current, current.exportProblem)
-            true => match ImportedProofs::catalogue (source current)
+            true => match CachedImports::catalogue (source current)
                 Error problem => previousRefusal (current, problem)
                 Success entries => checked (current, entries)
 
@@ -193,16 +193,15 @@ module ProofLibraries
 
     chosen (current, entries) = match Lists::find (entries, \entry => entry.importedName == current.exportSelected)
         Error _ => refused "Select a theorem in the current export."
-        Success entry => Ui::framed (plain(frameName = "proof-library-result", frameGap = 12), Ui::column [Ui::styled (entry.importedName, ui::Headline, ui::Primary), Ui::badge ("Checked theorem", "", ui::Good), Ui::caption ("Axioms: " + assumptions entry.importedAxioms), Ui::framed (text ("serif", 19, false), Ui::math (ProofTerms::typeset entry.importedType, entry.importedStatement)), formalStatement (current, entry)])
+        Success entry => Ui::framed (plain(frameName = "proof-library-result", frameGap = 12), Ui::column [Ui::styled (entry.importedName, ui::Headline, ui::Primary), Ui::badge ("Checked theorem", "", ui::Good), Ui::caption ("Axioms: " + assumptions entry.importedAxioms), Ui::framed (plain(frameFont = "serif", frameTextSize = 19), Ui::math (ProofTerms::typeset (entry.importedType, entry.importedNotation), entry.importedStatement)), formalStatement (current, entry)])
 
     formalStatement (current, entry) = match current.exportExpanded
         true => Ui::column [Ui::caption "Exact checked statement", Ui::framed (plain(frameName = "proof-library-formal", frameFont = "mono", frameTextSize = 12), Ui::text entry.importedStatement)]
         false => Ui::column []
 
-    assumptions names = match isEmpty names
-        true => "none"
-        false => join (names, ", ")
-
+    assumptions names = match Trust::described (Success(value = names))
+        Success text => text
+        Error message => "refused: ${message}"
 
 (** Bundled exports are discovered here; only ImportedProofs can award a verdict. *)
 module BundledLibraries

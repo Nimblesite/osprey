@@ -15,20 +15,14 @@ const ARGUMENT = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nA
 
 const WORKING = "Keep this working: p ∧ q.\nA second line — preserved exactly.";
 
-export async function draw(frame: Frame): Promise<void> {
-  const canvas = frame.locator("canvas[data-board-slice]");
-  const bounds = await canvas.boundingBox();
-  assert.ok(bounds && bounds.width > 100 && bounds.height > 100);
-  const cue = await frame.getByText("Start with an idea.", { exact: true }).boundingBox();
-  assert.ok(cue && cue.y > bounds.y + bounds.height / 3, "empty-board guidance must sit within the board rather than against its top toolbar");
-  const mouse = frame.page().mouse;
-  await mouse.move(bounds.x + 30, bounds.y + 30);
-  await mouse.down();
-  await mouse.move(bounds.x + 100, bounds.y + 85, { steps: 5 });
-  await mouse.up();
-  await frame.getByRole("button", { name: "Undo", exact: true }).waitFor({ state: "visible" });
-  await pollUntilResult({ fn: () => frame.getByRole("button", { name: "Undo", exact: true }).isEnabled(), until: Boolean, timeoutMs: 1000, description: "the Osprey stroke event enables Undo" });
-  assert.strictEqual(await frame.getByRole("button", { name: "Undo", exact: true }).isEnabled(), true);
+const FREEHAND_CONTROLS = ["Draw", "Pan", "Pan board", "Clear", "Undo", "Board", "Show working board", "Preview sample transcription"];
+
+export async function assertNoFreehandInk(frame: Frame): Promise<void> {
+  assert.strictEqual(await frame.locator("canvas[data-board-slice], .osp-board, [data-lasso-ordinal], [data-pan-ordinal], [data-stroke-ordinal]").count(), 0,
+    "no freehand board canvas, stroke slice or lasso binding may be rendered");
+  assert.strictEqual(await frame.getByRole("img", { name: "Drawing board", exact: true }).count(), 0, "the drawing-board role must be absent");
+  for (const name of FREEHAND_CONTROLS)
+    assert.strictEqual(await frame.getByRole("button", { name, exact: true }).count(), 0, `the removed freehand control "${name}" must not exist`);
 }
 
 export async function mathematics(frame: Frame): Promise<void> {
@@ -40,6 +34,22 @@ export async function mathematics(frame: Frame): Promise<void> {
   assert.ok((await frame.locator(".osp-frame-proof-rows").textContent())?.includes("From hq."), "shared Osprey proof preserves the entered reasoning");
   assert.ok((await frame.locator("math[aria-label]").first().getAttribute("aria-label"))?.trim());
   assert.strictEqual(await frame.locator("#osprey-diagnostics:not([hidden])").count(), 0);
+}
+
+export function phoneSourceGeometry() {
+  const guided = document.querySelector(".osp-frame-example-context")!;
+  const context = { height: guided.getBoundingClientRect().height,
+    color: getComputedStyle(guided.querySelector('button[aria-label="Return to working"]')!).color };
+  const node = document.querySelector(".osp-frame-goal-content")!;
+  const goal = node.getBoundingClientRect(), heading = node.querySelector(".osp-role-heading")!.getBoundingClientRect();
+  const target = Array.from(node.querySelectorAll(".osp-role-caption")).find(item => item.textContent === "To show")!.getBoundingClientRect();
+  const title = document.createRange(); title.selectNodeContents(document.querySelector(".osp-frame-source-heading .osp-role-heading")!);
+  const close = document.querySelector('button[aria-label="Close source"]')!.getBoundingClientRect();
+  const panel = document.querySelector(".osp-frame-source-panel")!.getBoundingClientRect();
+  const sourceHeading = document.querySelector(".osp-frame-source-heading")!.getBoundingClientRect();
+  const paper = getComputedStyle(document.querySelector(".osp-frame-paper-document")!);
+  return { context, spacing: { left: sourceHeading.left - panel.left, top: sourceHeading.top - panel.top, paperLeft: paper.paddingLeft, paperTop: paper.paddingTop }, layout: { middle: goal.left + goal.width / 2, targetLeft: target.left, targetTop: target.top, headingBottom: heading.bottom,
+    sourceTitleRight: title.getBoundingClientRect().right, closeLeft: close.left } };
 }
 
 export async function viewport(frame: Frame, size = { width: 1488, height: 1058 }): Promise<void> {
@@ -56,12 +66,12 @@ export async function viewport(frame: Frame, size = { width: 1488, height: 1058 
 
 export async function capture(frame: Frame, name: string): Promise<void> {
   await viewport(frame, name.startsWith("phone-") ? { width: 390, height: 844 } : name.startsWith("tablet-") ? { width: 834, height: 1194 } : { width: 1488, height: 1058 });
-  if (/^(phone|tablet)-board$/.test(name)) await responsiveBoardFits(frame);
   await commands.executeCommand("notifications.clearAll");
   await frame.evaluate(() => document.fonts.ready);
   const diagnostics = frame.locator("#osprey-diagnostics:not([hidden])");
   assert.strictEqual(await diagnostics.count(), 0, (await diagnostics.allTextContents()).join("\n"));
   if (name === "optional-source" || name === "phone-source") await sourceKeyboardFocus(frame);
+  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") !== "true", undefined, { timeout: 1000 });
   writeNativeSnapshot(name);
   await evidence(frame, name);
 }
@@ -76,20 +86,6 @@ async function sourceKeyboardFocus(frame: Frame): Promise<void> {
   const heading = await frame.locator(".osp-frame-source-heading .osp-role-heading").boundingBox();
   const button = await close.boundingBox();
   assert.ok(heading && button && heading.x + heading.width <= button.x - 5, `source heading must clear the focused close control: ${JSON.stringify({ heading, button })}`);
-}
-
-async function responsiveBoardFits(frame: Frame): Promise<void> {
-  const layout = await frame.locator(".osp-frame-working-board").evaluate(board => {
-    const box = board.getBoundingClientRect(), pane = board.closest(".osp-aside-pane")!.getBoundingClientRect();
-    return { boardHeight: box.height, paneHeight: pane.height, top: box.top, bottom: box.bottom, paneBottom: pane.bottom };
-  });
-  assert.ok(layout.paneHeight >= layout.boardHeight && layout.paneBottom >= layout.bottom, `the responsive board must retain visible layout space: ${JSON.stringify(layout)}`);
-  assert.strictEqual(await frame.locator(".osp-frame-document-name").isVisible(), false, "compact header must hide document metadata");
-  if (await frame.evaluate(() => innerWidth > 540)) {
-    const document = await frame.locator(".osp-frame-proof-document").boundingBox();
-    const goal = await frame.locator(".osp-frame-board-goals").boundingBox();
-    assert.ok(document && goal && goal.x >= document.x + document.width, "tablet proof and goal remain adjacent columns");
-  }
 }
 
 function writeNativeSnapshot(name: string): void {
@@ -139,7 +135,7 @@ async function runWithEvidence(frame: Frame, run: (frame: Frame, opened: () => n
 async function captureLayout(frame: Frame, evidence: string): Promise<void> {
   fs.writeFileSync(evidence.replace(/\.png$/, ".html"), await frame.content());
   fs.writeFileSync(evidence.replace(/\.png$/, ".layout.json"), JSON.stringify(await frame.evaluate(() =>
-    Array.from(document.querySelectorAll('.osp-framed, .osp-editor, .osp-editor-surface, textarea, .osp-rich-text, math, .osp-board, canvas, .osp-layer, .osp-themed')).map(node => {
+    Array.from(document.querySelectorAll('.osp-framed, .osp-editor, .osp-editor-surface, textarea, .osp-rich-text, math, .osp-layer, .osp-themed')).map(node => {
       const style = getComputedStyle(node), box = node.getBoundingClientRect();
       return { class: node.getAttribute("class"), x: box.x, y: box.y, width: box.width, height: box.height, display: style.display, position: style.position,
         font: style.fontFamily, size: style.fontSize, lineHeight: style.lineHeight, gap: style.gap, padding: style.padding, margin: style.margin, color: style.color, background: style.backgroundColor };
@@ -172,7 +168,7 @@ export async function withWorkbench(run: (frame: Frame, opened: () => number) =>
   const browser = await connectEditorBrowser();
   try {
     await commands.executeCommand(COMMAND);
-    const frame = await editorWebviewFrame(browser, "canvas[data-board-slice]");
+    const frame = await editorWebviewFrame(browser, ".osp-frame-workbench");
     await viewport(frame);
     await runWithEvidence(frame, run, () => panels.callCount, failure);
   } finally {
@@ -314,6 +310,12 @@ export async function selectImportedProof(frame: Frame, name: RegExp): Promise<v
   assert.ok(key, "the exported theorem must be selectable");
   await picker.selectOption(key);
   await pollUntilResult({ fn: () => picker.inputValue(), until: selected => selected === key, timeoutMs: 2000, description: "the shared application selects the requested imported theorem" });
+  const heading = frame.locator(".osp-frame-proof-library-result .osp-role-headline");
+  if (await heading.textContent() !== key) {
+    assert.strictEqual(await frame.locator("#osprey-root").getAttribute("aria-busy"), "true", "an old theorem must be explicitly marked as pending");
+    assert.strictEqual(await frame.locator("#osprey-runtime-status").textContent(), "Updating · previous results shown");
+  }
+  await pollUntilResult({ fn: () => heading.textContent(), until: text => text === key, timeoutMs: 3000, description: "the checked result belongs to the selected theorem" });
   await frame.getByText("Checked theorem", { exact: true }).waitFor();
   assert.strictEqual(await frame.locator("#osprey-diagnostics:not([hidden])").count(), 0);
 }
@@ -352,28 +354,48 @@ export async function rejectReimportedProof(frame: Frame, source: string, execut
   } finally { picker.restore(); fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
-export async function saveWorking(frame: Frame, file: string): Promise<void> {
-  await draw(frame);
-  await frame.getByRole("textbox", { name: "Solution title", exact: true }).fill("Saved experiment");
-  await frame.getByRole("textbox", { name: "Argument & calculations", exact: true }).fill(WORKING);
+async function writeWorkspace(frame: Frame, file: string, title: string, text: string) {
+  await frame.getByRole("textbox", { name: "Solution title", exact: true }).fill(title);
+  await frame.getByRole("textbox", { name: "Argument & calculations", exact: true }).fill(text);
   await frame.getByRole("button", { name: "Save", exact: true }).click();
   await waitFor(() => fs.existsSync(file), Boolean, 3000, "real Osprey SaveFile writes the chosen file");
-  const saved = JSON.parse(fs.readFileSync(file, "utf8"));
+  return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+export async function saveWorking(frame: Frame, file: string): Promise<void> {
+  const saved = await writeWorkspace(frame, file, "Saved experiment", WORKING);
   assert.deepStrictEqual(Object.keys(saved).sort(), ["board", "text", "title", "version"]);
   assert.strictEqual(saved.version, 1);
   assert.strictEqual(saved.title, "Saved experiment");
   assert.strictEqual(saved.text, WORKING);
-  assert.strictEqual(saved.board.strokes.length, 1);
+  assert.strictEqual(saved.board.strokes.length, 0, "a new typed save must not invent freehand strokes");
+}
+
+async function openWorkspaceTo(frame: Frame, title: string): Promise<void> {
+  await frame.getByRole("button", { name: "Open workspace", exact: true }).click();
+  const editor = frame.getByRole("textbox", { name: "Argument & calculations", exact: true });
+  await pollUntilResult({ fn: () => editor.inputValue(), until: text => text === WORKING, timeoutMs: 3000, description: "real Osprey ChooseFile restores written working" });
+  assert.strictEqual(await frame.getByRole("textbox", { name: "Solution title", exact: true }).inputValue(), title);
+  await assertNoFreehandInk(frame);
 }
 
 export async function reopenWorking(frame: Frame, file: string): Promise<void> {
   await frame.getByRole("textbox", { name: "Argument & calculations", exact: true }).fill("Changed since saving");
-  await frame.getByRole("button", { name: "Open workspace", exact: true }).click();
-  const editor = frame.getByRole("textbox", { name: "Argument & calculations", exact: true });
-  await pollUntilResult({ fn: () => editor.inputValue(), until: text => text === WORKING, timeoutMs: 3000, description: "real Osprey ChooseFile restores written working" });
-  assert.strictEqual(await frame.getByRole("textbox", { name: "Solution title", exact: true }).inputValue(), "Saved experiment");
-  assert.ok(await frame.getByRole("button", { name: "Undo", exact: true }).isEnabled());
+  await openWorkspaceTo(frame, "Saved experiment");
   assert.strictEqual(JSON.parse(fs.readFileSync(file, "utf8")).text, WORKING);
+}
+
+const LEGACY_BOARD = { version: 1, notes: "Legacy board notes", size: { width: 1536, height: 1024 }, view: { x: 0, y: 0, scale: 100 }, strokes: [{ points: [[10, 20], [80, 90]], width: 4, at: 1 }] };
+
+export function writeLegacyWorkspace(file: string): void {
+  fs.writeFileSync(file, JSON.stringify({ version: 1, title: "Legacy experiment", text: WORKING, board: LEGACY_BOARD }));
+}
+
+export async function preserveLegacyWorking(frame: Frame, saved: string): Promise<void> {
+  await openWorkspaceTo(frame, "Legacy experiment");
+  const reopened = await writeWorkspace(frame, saved, "Legacy experiment", WORKING);
+  assert.deepStrictEqual(reopened.board.strokes, LEGACY_BOARD.strokes, "opening a legacy workspace then saving must retain its existing board data");
+  assert.strictEqual(reopened.board.notes, "Legacy board notes");
 }
 
 export async function exportWorking(frame: Frame, file: string): Promise<void> {
@@ -385,14 +407,24 @@ export async function exportWorking(frame: Frame, file: string): Promise<void> {
   assert.strictEqual(fs.readFileSync(file, "utf8"), fs.readFileSync(golden, "utf8"));
 }
 
+const OBSOLETE_SCENES: Record<string, string> = {
+  "blank-board": "renamed to blank-document after the freehand board was removed",
+  "board-first": "the freehand board-first layout was removed; the paper document is the working surface",
+  "tablet-board": "the freehand tablet board state was removed",
+  "phone-board": "the freehand phone board state was removed",
+  transcription: "the unsupported sample-transcription preview was removed",
+};
+
 export async function comparisonState(frame: Frame, scene: string): Promise<void> {
-  if (scene === "blank-board") return;
+  const obsolete = OBSOLETE_SCENES[scene];
+  if (obsolete) throw new Error(`obsolete workbench design state "${scene}" requires owner and design-document reconciliation: ${obsolete}`);
+  if (scene === "blank-document") return;
   if (scene === "working-session") return workingSession(frame);
   await frame.getByRole("button", { name: "Examples", exact: true }).click();
   await frame.getByRole("button", { name: "Open conjunction example", exact: true }).click();
   await frame.waitForFunction(() => document.querySelector(".osp-frame-example-context, #osprey-diagnostics:not([hidden])") !== null);
   assert.strictEqual(await frame.locator("#osprey-diagnostics:not([hidden])").count(), 0);
-  const removed = scene === "paper-proof" ? 1 : /mismatch|unsupported/.test(scene) ? 2 : /board-first|tablet-board|phone-board|transcription/.test(scene) ? 5 : 0;
+  const removed = scene === "proof-start" ? 5 : scene === "paper-proof" ? 1 : /mismatch|unsupported/.test(scene) ? 2 : 0;
   if (removed) await clearProofTail(frame, removed);
   await referenceNavigation(frame, scene);
 }
@@ -403,15 +435,13 @@ async function workingSession(frame: Frame): Promise<void> {
 }
 
 async function referenceNavigation(frame: Frame, scene: string): Promise<void> {
-  if (/paper-proof|optional-source|phone-source|mismatch|unsupported/.test(scene)) await frame.getByRole("button", { name: "Proof", exact: true }).click();
-  if (/optional-source|phone-source/.test(scene)) await frame.getByRole("button", { name: "Source", exact: true }).click();
+  if (/paper-proof|proof-start|optional-source|phone-source|mismatch|unsupported/.test(scene)) await frame.getByRole("button", { name: "Proof", exact: true }).click();
+  if (/optional-source|phone-source/.test(scene)) {
+    await frame.getByRole("button", { name: "Source", exact: true }).click();
+    await frame.locator(".osp-frame-source-panel").waitFor();
+  }
   if (scene === "reading") await frame.getByRole("button", { name: "Read", exact: true }).click();
   if (scene === "slate-board") await frame.getByRole("button", { name: "Switch appearance", exact: true }).click();
-  if (/board-first|tablet-board|phone-board|transcription/.test(scene)) await frame.getByRole("button", { name: "Board", exact: true }).click();
-  if (scene === "transcription") {
-    await frame.getByRole("button", { name: "Preview sample transcription", exact: true }).click();
-    await frame.getByRole("button", { name: "Use this sample statement", exact: true }).waitFor();
-  }
   if (scene === "mismatch-live") await savedNotice(frame);
   if (/mismatch|unsupported/.test(scene)) {
     await frame.getByRole("textbox", { name: "Write the next step…", exact: true }).fill(scene === "unsupported-input" ? "Therefore q, since hq." : "From hp.");

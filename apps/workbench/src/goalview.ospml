@@ -19,7 +19,7 @@ module GoalViews
     (** [WORKBENCH-GOALS] The hypotheses and target after the steps above the caret, or why a step does not fit. *)
     export pane () = match isEmpty (Statements::document (WorkViews::draft ()).draftText)
         true => Ui::framed (plain(frameName = "goal-empty", frameGap = 12), Ui::column [ui::Divider, caption "Your working is unverified.", caption "Open Examples to explore guided proof steps."])
-        false => Ui::framed (plain(frameName = "goal-content", frameGap = 0), Ui::column [Ui::framed (plain(frameFont = "sans", frameTextSize = 12, frameLineHeight = 18.0), Ui::styled ("AT THIS STEP", ui::Eyebrow, ui::Secondary)), Ui::framed (plain(frameTop = 15, frameLineHeight = headingLeading ()), WorkViews::letter ("serif", headingSize (), false, goalTitle (), ui::Heading, ui::Primary)), Ui::framed (plain(frameTop = contextTop ()), goalContent ())])
+        false => Ui::framed (plain(frameName = "goal-content", frameGap = 0), Ui::column [Ui::framed (plain(frameName = "goal-step-label", frameFont = "sans", frameTextSize = 12, frameLineHeight = 18.0), Ui::styled ("AT THIS STEP", ui::Eyebrow, ui::Secondary)), Ui::framed (plain(frameName = "goal-title", frameTop = 15, frameLineHeight = headingLeading ()), WorkViews::letter ("serif", headingSize (), false, goalTitle (), ui::Heading, ui::Primary)), Ui::framed (plain(frameName = "goal-context", frameTop = contextTop ()), goalContent ())])
 
     headingSize () = match (WorkViews::layout ()).generatedOpen
         true => 23
@@ -77,7 +77,7 @@ module GoalViews
         true => satAdd selected 1
         false => above (rows, head, row)
 
-    tracedGoals walk = Ui::framed (plain(frameGap = 0), Ui::column [progressed walk.traceProgress, Ui::framed (plain(frameTop = 16), caption (traceCaption walk))])
+    tracedGoals walk = Ui::framed (plain(frameName = "goal-progress", frameGap = 0), Ui::column [progressed walk.traceProgress, Ui::framed (plain(frameName = "goal-footer", frameTop = 16), caption (traceCaption walk))])
 
     traceCaption walk = match WorkViews::complete walk.traceOutcome
         true => "The kernel verdict is shown on the document."
@@ -91,11 +91,11 @@ module GoalViews
 
     progressed progress = match listGet progress.open 0
         Error _ => completedGoals progress
-        Success open => Ui::framed (plain(frameGap = 0), Ui::column [hypotheses open.hypotheses, target open.target, following progress.open])
+        Success open => Ui::framed (plain(frameName = "goal-open", frameGap = 0), Ui::column [hypotheses open.hypotheses, target open.target, following progress.open])
 
     hypotheses values = match isEmpty values
         true => propositions ()
-        false => Ui::framed (plain(frameGap = WorkViews::documentSize (12, 16)), Ui::column [micro "Hypotheses", hypothesisList values])
+        false => Ui::framed (plain(frameName = "goal-hypotheses", frameGap = WorkViews::documentSize (12, 16)), Ui::column [micro "Hypotheses", hypothesisList values])
 
     hypothesisList values = match (WorkViews::layout ()).paperFirst
         true => Ui::column (mapList (values, hypothesis))
@@ -105,15 +105,15 @@ module GoalViews
         Error _ => caption "No hypotheses."
         Success found => match found.statement.variables
             [] => caption "No hypotheses."
-            [first, ...rest] => Ui::framed (plain(frameGap = 12), Ui::column [micro "Propositions", Ui::framed (plain(frameCross = "start", frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Seq (foldList (rest, [ui::Sym first], \(nodes, name) => listConcat (nodes, [ui::Sym ",", ui::Sym name]))), join (found.statement.variables, ", ")))])
+            [first, ...rest] => Ui::framed (plain(frameName = "goal-hypotheses", frameGap = 12), Ui::column [micro "Propositions", Ui::framed (plain(frameCross = "start", frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Seq (foldList (rest, [ui::Sym first], \(nodes, name) => listConcat (nodes, [ui::Sym ",", ui::Sym name]))), join (found.statement.variables, ", ")))])
 
     hypothesis held = Ui::framed (plain(frameCross = "center", frameHug = !(WorkViews::layout ()).paperFirst, frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Op (":", ui::Sym held.name, Formulas::typeset held.formula), held.name + ": " + Formulas::show held.formula))
 
-    target formula = Ui::framed (plain(frameTop = WorkViews::documentSize (32, 18), frameGap = 13), Ui::column [micro "To show", Ui::framed (plain(frameCross = "center", frameTextSize = WorkViews::documentSize (42, 25), frameMathScale = 1.08), WorkViews::shown formula)])
+    target formula = Ui::framed (plain(frameName = "goal-target", frameTop = WorkViews::documentSize (32, 18), frameGap = 13), Ui::column [micro "To show", Ui::framed (plain(frameCross = "center", frameTextSize = WorkViews::documentSize (42, 25), frameMathScale = 1.08), WorkViews::shown formula)])
 
     completedGoals progress = match listGet (listReverse progress.done) 0
         Error _ => caption "No open draft goals."
-        Success last => Ui::framed (plain(frameGap = 0), Ui::column [hypotheses last.hypotheses, Ui::framed (plain(frameTop = WorkViews::documentSize (32, 18), frameGap = 14), Ui::column [micro "To show", WorkViews::letter ("serif", 22, false, emptyTitle (), ui::Heading, ui::Primary)])])
+        Success last => Ui::framed (plain(frameName = "goal-open", frameGap = 0), Ui::column [hypotheses last.hypotheses, Ui::framed (plain(frameName = "goal-target", frameTop = WorkViews::documentSize (32, 18), frameGap = 14), Ui::column [micro "To show", WorkViews::letter ("serif", 22, false, emptyTitle (), ui::Heading, ui::Primary)])])
 
     following goals = match (WorkViews::layout ()).paperFirst
         false => Ui::column []

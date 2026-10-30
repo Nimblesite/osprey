@@ -6,11 +6,32 @@ import * as sinon from "sinon";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import { ColorThemeKind, commands, Uri, window } from "vscode";
 import * as Wasi from "../../client/src/osprey-ui/wasi";
-import { COMMAND, draw, mathematics, viewport, capture, lesson, withWorkbench, pendingWorkbenchUpdate, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, rejectReimportedProof, saveWorking, reopenWorking, exportWorking, comparisonState } from "./workbench-browser-kit";
-
+import { COMMAND, assertNoFreehandInk, mathematics, viewport, phoneSourceGeometry, capture, lesson, withWorkbench, pendingWorkbenchUpdate, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, rejectReimportedProof, saveWorking, reopenWorking, preserveLegacyWorking, writeLegacyWorkspace, exportWorking, comparisonState } from "./workbench-browser-kit";
 
 suite("workbench VSIX browser", () => {
   teardown(() => sinon.restore());
+  test("workbench removes freehand drawing while retaining typed mathematics", async () => {
+    await withWorkbench(async frame => {
+      await assertNoFreehandInk(frame);
+      const editor = frame.getByRole("textbox", { name: "Argument & calculations", exact: true });
+      await editor.waitFor({ state: "visible" });
+      const bounds = await editor.boundingBox();
+      assert.ok(bounds && bounds.height >= 250 && bounds.width > 300, `the typed editor must occupy a real writing surface: ${JSON.stringify(bounds)}`);
+      assert.strictEqual(await editor.inputValue(), "", "the mathematical document starts as an editable text surface, not ink");
+      await mathematics(frame);
+      await frame.getByText("Checked", { exact: true }).waitFor();
+      await frame.locator(".osp-frame-proof-document").waitFor();
+      await assertNoFreehandInk(frame);
+      await frame.getByRole("button", { name: "Source", exact: true }).click();
+      await frame.locator(".osp-frame-source-panel").waitFor();
+      assert.ok((await frame.locator(".osp-frame-source-code").innerText()).trim().length > 0, "generated source retains real checked text");
+      await assertNoFreehandInk(frame);
+      await frame.getByRole("button", { name: "Close source", exact: true }).click();
+      await frame.getByRole("button", { name: "Close source", exact: true }).waitFor({ state: "detached" });
+      await lesson(frame);
+      await assertNoFreehandInk(frame);
+    }, "failure-freehand-removed");
+  });
   test("a pending runtime update pauses actions while preserving the editable draft", async () => {
     await withWorkbench(pendingWorkbenchUpdate, "failure-pending-runtime");
   });
@@ -56,6 +77,19 @@ suite("workbench VSIX browser", () => {
         assert.strictEqual(await picker.inputValue(), selected);
       }
     }, "failure-field-appearance");
+  });
+  test("opening a conjunction example leaves imported proof inspection", async () => {
+    await withWorkbench(async frame => {
+      await frame.getByRole("button", { name: "Notation", exact: true }).click();
+      await frame.getByRole("button", { name: "Natural arithmetic", exact: true }).click();
+      await frame.getByText("Checked theorem", { exact: true }).waitFor();
+      await frame.getByRole("button", { name: "Examples", exact: true }).click();
+      await frame.getByRole("button", { name: "Open conjunction example", exact: true }).click();
+      await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: 1000 });
+      assert.strictEqual(await frame.locator(".osp-frame-proof-library-inspection").count(), 0, "starting the example must leave imported-library inspection");
+      await frame.locator(".osp-frame-proof-rows").waitFor();
+      assert.ok((await frame.locator(".osp-frame-proof-rows").textContent())?.includes("From hp."));
+    }, "failure-example-leaves-library");
   });
   test("source heading symbols use their shared frame's accent ink", async () => {
     await withWorkbench(async frame => {
@@ -154,7 +188,7 @@ suite("workbench VSIX browser", () => {
         assert.strictEqual(await frame.getByRole("link", { name, exact: true }).getAttribute("href"), href);
     }, "failure-branding");
   });
-  test("shared Osprey saves and reopens source and strokes and exports its generated proof", async () => {
+  test("shared Osprey saves and reopens typed source and exports its generated proof", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-workbench-documents-"));
     const saved = path.join(root, "working.json"), exported = path.join(root, "proof.ospml");
     sinon.stub(window, "showSaveDialog").onFirstCall().resolves(Uri.file(saved)).onSecondCall().resolves(Uri.file(exported));
@@ -163,14 +197,23 @@ suite("workbench VSIX browser", () => {
       await withWorkbench(async frame => { await saveWorking(frame, saved); await reopenWorking(frame, saved); await exportWorking(frame, exported); }, "failure-documents");
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
+  test("shared Osprey preserves legacy board data when a typed document is reopened and saved", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-workbench-legacy-"));
+    const legacy = path.join(root, "legacy.json"), saved = path.join(root, "preserved.json");
+    writeLegacyWorkspace(legacy);
+    sinon.stub(window, "showOpenDialog").resolves([Uri.file(legacy)]);
+    sinon.stub(window, "showSaveDialog").resolves(Uri.file(saved));
+    try {
+      await withWorkbench(async frame => preserveLegacyWorking(frame, saved), "failure-legacy-board-data");
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
 
-  test("real shared WASM opens without a project, reuses its panel, edits mathematics and draws", async () => {
+  test("real shared WASM opens without a project, reuses its panel and edits typed mathematics", async () => {
     await withWorkbench(async (frame, opened) => {
       await commands.executeCommand(COMMAND);
       assert.strictEqual(opened(), 1, "command reveals its existing session");
-      await capture(frame, "blank-board");
+      await capture(frame, "blank-document");
       assert.ok(await frame.getByRole("button", { name: "Switch appearance", exact: true }).locator(".osp-symbol").isVisible(), "icon-only controls must retain their visible symbol");
-      await draw(frame);
       await mathematics(frame);
       await frame.getByRole("button", { name: "Proof", exact: true }).click();
       const colours = await frame.evaluate(() => {
@@ -203,28 +246,33 @@ suite("workbench VSIX browser", () => {
 
 suite("workbench VSIX visual comparison", () => {
   teardown(() => sinon.restore());
-  test("transcription preserves the reference board height and filled primary action", async () => {
+  test("the retired transcription action is absent from the typed proof surface", async () => {
     await withWorkbench(async frame => {
-      await comparisonState(frame, "transcription");
+      await comparisonState(frame, "paper-proof");
+      await assertNoFreehandInk(frame);
+      assert.strictEqual(await frame.getByRole("button", { name: "Use this sample statement", exact: true }).count(), 0, "the removed sample-statement action cannot survive as an inert control");
+      assert.ok((await frame.getByRole("textbox", { name: "Write the next step…", exact: true }).boundingBox())?.height, "the typed proof entry remains the visible writing surface");
+    }, "failure-transcription-removed");
+  });
+  test("the typed proof document replaces the removed transcription reference surface", async () => {
+    await withWorkbench(async frame => {
+      await comparisonState(frame, "paper-proof");
       await viewport(frame, { width: 1488, height: 1058 });
       const layout = await frame.evaluate(() => {
-        const board = document.querySelector(".osp-frame-working-board")!.getBoundingClientRect();
-        const action = document.querySelector('button[aria-label="Use this sample statement"]')!;
-        return { bottom: board.bottom, fill: getComputedStyle(action).backgroundColor };
+        const proof = document.querySelector(".osp-frame-proof-document")!.getBoundingClientRect();
+        return { top: proof.top, bottom: proof.bottom, height: proof.height, viewport: innerHeight };
       });
-      assert.ok(Math.abs(layout.bottom - 990) <= 5, `reference board ends at y990: ${JSON.stringify(layout)}`);
-      assert.strictEqual(layout.fill, "rgb(54, 99, 92)", "the reference primary action retains its green fill");
-      const symbol = await frame.getByRole("button", { name: "Zoom out", exact: true }).locator(".osp-symbol").evaluate(node => ({ size: getComputedStyle(node).fontSize, width: node.getBoundingClientRect().width }));
-      assert.deepStrictEqual(symbol, { size: "13px", width: 13 }, "the board footer retains its authored compact symbols");
-      await capture(frame, "transcription");
+      assert.ok(layout.height > 0 && layout.top >= 0 && layout.bottom <= layout.viewport, `the typed proof must remain visible in the reference viewport: ${JSON.stringify(layout)}`);
+      await assertNoFreehandInk(frame);
+      await capture(frame, "paper-proof");
     }, "failure-transcription-reference");
   });
-  test("source manuscript keeps the board action outside the goal divider and authors its title break", async () => {
+  test("source manuscript keeps the typed title break and omits the removed board action", async () => {
     await withWorkbench(async frame => {
       await comparisonState(frame, "optional-source");
-      const outside = await frame.getByRole("button", { name: "Show working board", exact: true }).evaluate(element => element.closest(".osp-aside") === null);
       const title = await frame.locator(".osp-frame-goal-content .osp-role-heading").first().innerText();
-      assert.deepStrictEqual({ outside, title }, { outside: true, title: "The draft is\ncomplete." });
+      assert.deepStrictEqual({ title }, { title: "The draft is\ncomplete." });
+      await assertNoFreehandInk(frame);
     }, "failure-source-manuscript");
   });
   test("source geometry uses the measured reference panel and code baselines", async () => {
@@ -240,9 +288,9 @@ suite("workbench VSIX visual comparison", () => {
       assert.ok(micro && Math.abs(micro.height - 16) < 0.1);
     }, "failure-source-geometry");
   });
-  test("proposition glyphs align with their goal caption instead of centering", async () => {
+  test("initial proof proposition glyphs align with their goal caption instead of centering", async () => {
     await withWorkbench(async frame => {
-      await comparisonState(frame, "board-first");
+      await comparisonState(frame, "proof-start");
       await frame.getByText("Propositions", { exact: true }).waitFor();
       const bounds = await frame.evaluate(() => {
         const caption = Array.from(document.querySelectorAll(".osp-frame-goal-content .osp-role-caption")).find(node => node.textContent === "Propositions");
@@ -267,7 +315,7 @@ suite("workbench VSIX visual comparison", () => {
       assert.strictEqual(await heading.innerText(), "Commutativity\nof conjunction");
     }, "failure-heading-line-break");
   });
-  test("source actions preserve the reference outlines icon and route back to the board", async () => {
+  test("source actions preserve the reference outlines icon and close without a drawing surface", async () => {
     await withWorkbench(async frame => {
       await comparisonState(frame, "optional-source");
       for (const name of ["Export generated source", "Close source"]) {
@@ -280,9 +328,10 @@ suite("workbench VSIX visual comparison", () => {
       assert.strictEqual(await frame.locator(".osp-frame-source-heading .osp-icon").count(), 1);
       const close = await sourceCloseBounds(frame);
       assert.deepStrictEqual(close, { width: 32, height: 32, top: 12, right: 12 }, "source close control matches the reference inset and size");
-      await frame.getByRole("button", { name: "Show working board", exact: true }).click();
-      await frame.locator("canvas[data-board-slice]").waitFor();
-      assert.strictEqual(await frame.locator(".osp-frame-source-panel").count(), 0);
+      await frame.getByRole("button", { name: "Close source", exact: true }).click();
+      await frame.getByRole("button", { name: "Close source", exact: true }).waitFor({ state: "detached" });
+      await frame.locator(".osp-frame-proof-document").waitFor();
+      await assertNoFreehandInk(frame);
     }, "failure-source-actions");
   });
   test("editing a checked proof row reports kernel refusal and recovers when corrected", async () => {
@@ -333,16 +382,17 @@ suite("workbench VSIX visual comparison", () => {
       assert.ok(bounds.right - bounds.actionRight <= 12, `the reference Continue action belongs at the row edge: ${JSON.stringify(bounds)}`);
     });
   });
-  test("the board proof editor stays within its authored compact row", async () => {
+  test("the paper proof editor stays within its authored row and no board row survives", async () => {
     await withWorkbench(async frame => {
-      await comparisonState(frame, "board-first");
+      await comparisonState(frame, "paper-proof");
       await frame.getByRole("textbox", { name: "Write the next step…", exact: true }).waitFor({ state: "visible" });
       const bounds = await frame.locator(".osp-frame-proof-step-editor").evaluate(node => {
         const row = node.getBoundingClientRect(), editor = node.querySelector("textarea")!.getBoundingClientRect();
         return { height: row.height, top: editor.top - row.top, bottom: row.bottom - editor.bottom };
       });
-      assert.strictEqual(bounds.height, 49, "the board entry uses the shared 49px reference geometry");
+      assert.strictEqual(bounds.height, 56, "the paper entry uses the shared 56px reference geometry");
       assert.ok(bounds.top >= 0 && bounds.bottom >= 0, `the editor fits inside its authored row: ${JSON.stringify(bounds)}`);
+      await assertNoFreehandInk(frame);
     }, "failure-compact-entry");
   });
   test("document dividers use the shared palette without a host-theme border", async () => {
@@ -376,17 +426,19 @@ suite("workbench VSIX visual comparison", () => {
       assert.deepStrictEqual({ margins, contained, sized }, { margins: [["0px", "0px"], ["0px", "0px"]], contained: true, sized: true }, "shared frame metadata owns spacing and type size; context content stays within its frame");
     });
   });
-  test("Board navigation closes generated source and restores the working surface", async () => {
+  test("Board navigation is absent while the typed proof document remains the working surface", async () => {
     await withWorkbench(async frame => {
+      await comparisonState(frame, "paper-proof");
       await frame.getByRole("button", { name: "Source", exact: true }).click();
       await frame.locator(".osp-frame-source-panel").waitFor();
-      await frame.getByRole("button", { name: "Board", exact: true }).click();
-      await frame.locator("canvas[data-board-slice]").waitFor();
-      assert.strictEqual(await frame.locator(".osp-frame-source-panel").count(), 0, "Board navigation closes the source panel");
-      assert.ok((await frame.getByRole("button", { name: "Board", exact: true }).getAttribute("class"))?.includes("osp-button-prominent"));
+      assert.strictEqual(await frame.getByRole("button", { name: "Board", exact: true }).count(), 0, "the removed Board navigation cannot return");
+      assert.strictEqual(await frame.getByRole("button", { name: "Show working board", exact: true }).count(), 0);
+      await frame.getByRole("button", { name: "Close source", exact: true }).click();
+      await frame.locator(".osp-frame-proof-document").waitFor();
+      await assertNoFreehandInk(frame);
     }, "failure-board-navigation");
   });
-  for (const scene of ["blank-board", "working-session", "board-first", "paper-proof", "mismatch", "mismatch-live", "unsupported-input", "optional-source", "reading", "slate-board", "transcription", "tablet-board", "phone-board", "phone-source"]) {
+  for (const scene of ["blank-document", "working-session", "paper-proof", "mismatch", "mismatch-live", "unsupported-input", "optional-source", "reading", "slate-board", "phone-source"]) {
     test(`shared WASM reference state: ${scene}`, async () => {
       await withWorkbench(async frame => { await comparisonState(frame, scene); await capture(frame, scene); }, `failure-${scene}`);
     });
@@ -405,9 +457,10 @@ suite("workbench VSIX visual comparison", () => {
         return { header: navigation.getBoundingClientRect().top - header.top,
           navigation: navigation.getBoundingClientRect().height + navigation.nextElementSibling!.getBoundingClientRect().height,
           wordmark: getComputedStyle(document.querySelector(".osp-frame-wordmark .osp-role-title")!).fontSize, actions: getComputedStyle(document.querySelector(".osp-frame-header-actions > .osp-axis-horizontal")!).gap,
-          gap: getComputedStyle(navigation.firstElementChild!).gap, board: getComputedStyle(navigation.querySelector('button[aria-label="Board"]')!).paddingLeft, tools: getComputedStyle(navigation.querySelector('button[aria-label="Notation"]')!).paddingLeft };
+          gap: getComputedStyle(navigation.firstElementChild!).gap, tools: getComputedStyle(navigation.querySelector('button[aria-label="Notation"]')!).paddingLeft };
       });
-      assert.deepStrictEqual(geometry, { header: 70, navigation: 58, wordmark: "21px", actions: "2px", gap: "0px", board: "12px", tools: "9px" }, "the compact reference header retains its measured geometry");
+      assert.deepStrictEqual(geometry, { header: 70, navigation: 58, wordmark: "21px", actions: "2px", gap: "0px", tools: "9px" }, "the compact reference header retains its measured geometry");
+      assert.strictEqual(await frame.getByRole("button", { name: "Board", exact: true }).count(), 0, "the removed Board action leaves no compact navigation slot");
       const bounds = await frame.locator(".osp-frame-header-actions button").evaluateAll(nodes => nodes.map(node => {
         const box = node.getBoundingClientRect(); return { label: node.getAttribute("aria-label"), left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
       }));
@@ -415,22 +468,28 @@ suite("workbench VSIX visual comparison", () => {
       assert.ok(bounds.every(box => box.left >= 0 && box.right <= 390 && box.top >= 0 && box.bottom <= 70 && box.width === 40 && box.height === 44), `phone header actions fit the visible header: ${JSON.stringify(bounds)}`);
     }, "failure-phone-header");
   });
+  test("Slate keeps its completed typed proof within the reference viewport", async () => {
+    await withWorkbench(async frame => {
+      await comparisonState(frame, "slate-board");
+      await viewport(frame);
+      const bounds = await frame.evaluate(() => {
+        const proof = document.querySelector(".osp-frame-proof-document")!.getBoundingClientRect();
+        return { top: proof.top, bottom: proof.bottom, page: document.documentElement.scrollHeight };
+      });
+      assert.ok(bounds.top >= 0 && bounds.bottom <= bounds.page, `the completed typed proof must remain within the page: ${JSON.stringify(bounds)}`);
+      await assertNoFreehandInk(frame);
+    }, "failure-slate-sidebar-height");
+  });
   test("phone Source keeps the target beside the completed draft context", async () => {
     await withWorkbench(async frame => {
       await viewport(frame, { width: 390, height: 844 });
       await comparisonState(frame, "phone-source");
       await frame.locator(".osp-frame-source-panel").waitFor({ state: "visible" });
-      const { context, layout } = await frame.evaluate(() => {
-        const guided = document.querySelector(".osp-frame-example-context")!;
-        const context = { height: guided.getBoundingClientRect().height,
-          color: getComputedStyle(guided.querySelector('button[aria-label="Return to working"]')!).color };
-        const node = document.querySelector(".osp-frame-goal-content")!;
-        const goal = node.getBoundingClientRect(), heading = node.querySelector(".osp-role-heading")!.getBoundingClientRect();
-        const target = Array.from(node.querySelectorAll(".osp-role-caption")).find(item => item.textContent === "To show")!.getBoundingClientRect();
-        return { context, layout: { middle: goal.left + goal.width / 2, targetLeft: target.left, targetTop: target.top, headingBottom: heading.bottom } };
-      });
+      const { context, layout, spacing } = await frame.evaluate(phoneSourceGeometry);
       assert.deepStrictEqual(context, { height: 40, color: "rgb(54, 99, 92)" }, "the compact guided context matches the reference geometry and accent");
+      assert.deepStrictEqual(spacing, { left: 16, top: 16, paperLeft: "16px", paperTop: "22px" }, "phone Source uses the reference's compact insets");
       assert.ok(layout.targetLeft >= layout.middle && layout.targetTop < layout.headingBottom, `the reference phone Source goal uses two adjacent columns: ${JSON.stringify(layout)}`);
+      assert.ok(layout.sourceTitleRight <= layout.closeLeft - 4, `the source title must clear its close action: ${JSON.stringify(layout)}`);
     }, "failure-phone-source-columns");
   });
 });

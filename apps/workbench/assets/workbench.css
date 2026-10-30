@@ -40,6 +40,7 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
 .osp-frame-workbench .osp-button:hover { background: var(--osp-brand-inset); }
 .osp-frame-workbench .osp-button-prominent { color: var(--osp-brand-accent); background: var(--osp-brand-selection); }
 .osp-frame-workbench .osp-button-filled { color: var(--osp-brand-canvas); background: var(--osp-brand-accent); }
+.osp-frame-workbench .osp-button-filled:hover:not(:disabled) { background: var(--osp-brand-accent); }
 .osp-frame-workbench .osp-button:disabled { opacity: .42; }
 .osp-frame-workbench .osp-button :is(.codicon, .osp-symbol) { font-size: 18px; }
 .osp-frame-workbench :is(button, a, input, textarea):focus-visible { outline: 2px solid var(--osp-brand-accent); outline-offset: 3px; }
@@ -213,13 +214,14 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
   .osp-frame-board-footer .osp-role-caption:first-child { min-width: 0; flex: 1; }
   .osp-frame-board-preview-strip > .osp-axis-horizontal > .osp-role-caption { display: none; }
   .osp-frame-solution-column { padding: 28px 24px !important; }
-  .osp-frame-paper-document { padding: 30px 24px !important; }
+  .osp-frame-paper-document { padding: 22px 16px !important; }
   .osp-frame-proof-document .osp-role-display { font-size: 32px; }
   .osp-frame-claim { font-size: 30px; }
   .osp-frame-reading-sheet .osp-frame-claim { font-size: 29px; }
   .osp-frame-proof-step .osp-role-lead, .osp-frame-proof-step-editor textarea { font-size: 21px; }
   .osp-frame-source-layout { padding: 20px 0 0 !important; }
-  .osp-frame-source-panel { padding: 0 !important; width: calc(100% - 32px) !important; margin: 0 16px; }
+  .osp-frame-source-panel { padding: 0 !important; width: calc(100% - 32px) !important; margin: 0 16px; border-left: 0 !important; }
+  .osp-frame-source-panel > .osp-layer > .osp-framed:first-child { padding: 16px 8px 24px !important; }
   .osp-frame-reading-sheet { padding: 28px !important; }
   .osp-frame-reading-sheet .osp-role-display { font-size: 30px; }
   .osp-frame-app-footer { padding-left: 20px !important; padding-right: 20px !important; }

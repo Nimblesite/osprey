@@ -1,22 +1,19 @@
-// Implements [WORKBENCH-STORE], [WORKBENCH-BOARD] and [LESSONS-STORE]: the
-// one `update`. Every verdict comes from the kernel through `Reviews` and
-// `Tutors`; this module only routes messages to them and to the host.
+// Implements [WORKBENCH-STORE] and [LESSONS-STORE]: the one `update`. Every
+// verdict comes from the kernel through `Reviews` and `Tutors`; this module
+// only routes messages to them and to the host. A retired board control's
+// input is refused visibly and changes nothing ([WORKBENCH-BOARD]).
 namespace workbench
 
 import workbench::Benches
 import workbench::Reviews
-import workbench::Shelves
 import workbench::Coach
-import workbench::Boards
 import workbench::ProofLibraries
 import workbench::BundledLibraries
 import workbench::Workspaces
 import workbench::Statements
 import workbench::Steps
 import ui::Runtime
-import ui::Doc
 import ui::Messages
-import ui::Requests
 import ui::Splitters
 
 (** Edits to the document, each followed by the kernel's verdicts on it ([WORKBENCH-VERDICT]). *)
@@ -112,80 +109,15 @@ module Drafts
         true => text
         false => before + gap + text
 
-(** Board messages: strokes into host-held slices, lassos into recognition requests ([WORKBENCH-BOARD]). *)
-module Inks
-    undone sketch = sketch(strokeTotal = satSub sketch.strokeTotal 1, clearing = false)
-
-    asked sketch = sketch(clearing = true)
-
-    cleared sketch = sketch(strokeTotal = 0, clearing = false)
-
-    kept sketch = sketch(clearing = false)
-
-    (** The board after a tap on its undo, clear, confirm or keep control. *)
-    export tapped (sketch, action) = match action
-        ChooseDraw => sketch(panMode = false)
-        ChoosePan => sketch(panMode = true)
-        ToggleNotes => sketch(notesVisible = !sketch.notesVisible)
-        Undo => undone sketch
-        AskClear => asked sketch
-        ConfirmClear => cleared sketch
-        KeepBoard => kept sketch
-        _ => sketch
-
-    metadata sketch =
-        board = Boards::empty ()
-        board(boardNotes = sketch.boardNotes, boardPanX = sketch.boardPanX, boardPanY = sketch.boardPanY, boardZoom = sketch.boardScale)
-
-    framedSketch (sketch, board) = sketch(boardScale = board.boardZoom, boardPanX = board.boardPanX, boardPanY = board.boardPanY)
-
-    export framed (bench, x, y, scale) =
-        board = Boards::frame (metadata bench.sketch, x, y, scale)
-        ui::Step(stepStore = bench(sketch = framedSketch (bench.sketch, board)), requests = [], writes = [Boards::metadataWrite ("board", board)])
-
-    export zoomed (bench, amount) = framed (bench, bench.sketch.boardPanX, bench.sketch.boardPanY, satAdd bench.sketch.boardScale amount)
-
-    export noted (bench, content) =
-        sketch = bench.sketch
-        changed = sketch(boardNotes = content)
-        ui::Step(stepStore = bench(sketch = changed), requests = [], writes = [Boards::metadataWrite ("board", metadata changed)])
-
-    export panned (bench, source) = match jsonDecode source
-        Error _ => Runtime::step (Workspaces::notice (bench, "The board movement was malformed.", true))
-        Success doc => match jsonInt (Doc::field (doc, "x"))
-            Error _ => Runtime::step (Workspaces::notice (bench, "The board movement was malformed.", true))
-            Success x => match jsonInt (Doc::field (doc, "y"))
-                Success y => framed (bench, x, y, bench.sketch.boardScale)
-                Error _ => Runtime::step (Workspaces::notice (bench, "The board movement was malformed.", true))
-
-    (** A finished stroke written to slice `board:<n>` and counted ([WORKBENCH-BOARD]). *)
-    export stroked (bench, sketch, stroke) = ui::Step(stepStore = bench(sketch = sketch(strokeTotal = satAdd sketch.strokeTotal 1, clearing = false)), requests = [], writes = [Boards::strokeWrite ("board", sketch.strokeTotal, stroke)])
-
-    (** The lassoed strokes sent for recognition under a fresh ticket; nothing when the lasso is off or empty. *)
-    export lassoed (bench, sketch, indices) =
-        held = filterList (indices, \at => at < sketch.strokeTotal)
-        match sketch.lassoing && !isEmpty held
-            false => Runtime::step bench
-            true => recognising (bench, sketch(inkCount = satAdd sketch.inkCount 1, inkTicket = "ink:${satAdd sketch.inkCount 1}"), held)
-
-    recognising (bench, sketch, held) = Runtime::asking (bench(sketch = sketch), [Requests::ask (sketch.inkTicket, ui::Recognise(strokeSlices = mapList (held, \at => "board:${at}"), recogniseLimit = 4096))])
-
-    (** The board with the lasso withdrawn, after a host answered `Unsupported` ([UI-EFFECTS-RECOGNISE]). *)
-    export unsupported sketch = sketch(lassoing = false)
-
 (** Pane and mode taps ([WORKBENCH-STORE], [LESSONS-MODE]). *)
 module Layouts
     (** The layout after a tap on a mode, surface or pane control. *)
     export tapped (layout, action) = match action
-        FocusBoard => layout(boardFocused = !layout.boardFocused)
         DismissNotice => layout(noticeText = "", noticeBad = false)
         LeaveExample => layout(guided = false, previewText = "", previewSample = false)
         ToggleTheme => layout(slate = !layout.slate)
-        PreviewSample => layout(previewText = Drafts::exampleStatement (), previewSample = true)
-        DismissPreview => layout(previewText = "", previewSample = false)
         ToWork => layout(mode = Working)
         ToLearn => layout(mode = Learning)
-        ToBoard => layout(mode = Working, paperFirst = false, generatedOpen = false)
         ToPaper => layout(mode = Working, paperFirst = true)
         ToRead => layout(mode = ReadingPage)
         ToggleGoal => layout(goalOpen = !layout.goalOpen)
@@ -206,37 +138,27 @@ module Layouts
 (** The application's `update` ([WORKBENCH-STORE]). *)
 module Update
     tapped (bench, action) = match action
-        ChooseDraw => Runtime::step (bench(sketch = Inks::tapped (bench.sketch, action)))
-        ChoosePan => Runtime::step (bench(sketch = Inks::tapped (bench.sketch, action)))
-        ToggleNotes => Runtime::step (bench(sketch = Inks::tapped (bench.sketch, action)))
-        ZoomIn => Inks::zoomed (bench, 25)
-        ZoomOut => Inks::zoomed (bench, -25)
-        FitBoard => Inks::framed (bench, 0, 0, 100)
         SaveWorkspace => Workspaces::save bench
         OpenWorkspace => Workspaces::open bench
         OpenProofLibrary => ProofLibraries::open bench
         OpenBundledProof path => BundledLibraries::open (bench, path)
         ToggleLibrary => libraryToggled bench
         ExportSource => Workspaces::source bench
-        AcceptPreview => Runtime::step (previewAccepted bench)
         InsertExample => Runtime::step (Drafts::stepEdited (bench, Drafts::exampleAssumption ()))
         NextProofLine => Runtime::step (nextLine bench)
         StartExample => Runtime::step (exampleStarted bench)
         RestartExample => Runtime::step (Drafts::edited (bench(draft = Drafts::unselected bench.draft), Drafts::exampleStatement () + "\nProof.\n"))
         LeaveExample => Runtime::step (exampleLeft bench)
-        Undo => Runtime::step (bench(sketch = Inks::tapped (bench.sketch, action)))
-        AskClear => Runtime::step (bench(sketch = Inks::tapped (bench.sketch, action)))
-        ConfirmClear => Runtime::step (bench(sketch = Inks::tapped (bench.sketch, action)))
-        KeepBoard => Runtime::step (bench(sketch = Inks::tapped (bench.sketch, action)))
         Open slug => Runtime::step (Coach::open (bench, slug))
         Close => Runtime::step (Coach::close bench)
         Submit id => Coach::submit (bench, id)
         Hint id => Runtime::step (Coach::hint (bench, id))
         Reveal id => Runtime::step (Coach::reveal (bench, id))
         Carry id => Runtime::step (Coach::carry (bench, id))
+        Key id text => Runtime::step (Coach::insert (bench, id, text))
         _ => Runtime::step (bench(layout = Layouts::tapped (bench.layout, action)))
 
-    exampleLayout layout = layout(mode = Working, guided = true, paperFirst = false)
+    exampleLayout layout = layout(mode = Working, guided = true, paperFirst = false, libraryOpen = false)
 
     exampleBackup bench = match bench.layout.guided
         true => bench.exampleBackup
@@ -264,23 +186,10 @@ module Update
             true => BundledLibraries::load shown
             false => Runtime::step shown
 
-    previewAccepted bench = match bench.layout.previewSample
-        true => acceptedSample bench
-        false =>
-            accepted = Coach::inked (bench, bench.layout.previewText)
-            accepted(layout = Layouts::tapped (accepted.layout, DismissPreview))
-
-    acceptedSample bench =
-        current = bench.layout
-        prepared = bench(draft = Drafts::unselected bench.draft, layout = current(mode = Working, paperFirst = true, guided = true, previewText = "", previewSample = false), exampleBackup = exampleBackup bench)
-        Drafts::edited (prepared, bench.layout.previewText)
-
     typed (bench, action, text) = match action
         SelectProof => Runtime::step (ProofLibraries::selected (bench, text))
         EditProofSource => Runtime::step (ProofLibraries::edited (bench, text))
         SelectStep => Runtime::step (bench(draft = Drafts::selected (bench.draft, text)))
-        PanBoard => Inks::panned (bench, text)
-        EditNotes => Inks::noted (bench, text)
         Rename => Runtime::step (bench(draft = Drafts::renamed (bench.draft, text)))
         Edit => Runtime::step (Drafts::edited (bench(draft = Drafts::unselected bench.draft), text))
         StepEdit => Runtime::step (Drafts::stepEdited (bench, text))
@@ -291,16 +200,19 @@ module Update
     sized (bench, action, number) = match action
         Place => Runtime::step (bench(draft = Drafts::positioned (bench.draft, number)))
         StepPlace => Runtime::step (bench(draft = Drafts::positioned (bench.draft, satAdd (length (Drafts::editablePrefix bench.draft)) number)))
+        FormulaPlace id => Runtime::step (Coach::moved (bench, id, number))
         Widen => Runtime::step (bench(layout = Layouts::widened (bench.layout, number)))
         _ => Runtime::step bench
 
-    stroked (bench, action, stroke) = match action
-        Stroke => Inks::stroked (bench, bench.sketch, stroke)
-        _ => Runtime::step bench
+    (** What a retired board control reports ([WORKBENCH-BOARD]). *)
+    retiredInk = "Drawing is no longer available. Type the transcription into the document or the answer."
 
-    lassoed (bench, action, indices) = match action
-        Lasso => Inks::lassoed (bench, bench.sketch, indices)
-        _ => Runtime::step bench
+    (** A retired stroke or lasso: a visible note, no slice write, no recognition request, no math change. *)
+    refusedInk bench = Runtime::step (Workspaces::notice (bench, retiredInk, false))
+
+    stroked (bench, _, _) = refusedInk bench
+
+    lassoed (bench, _, _) = refusedInk bench
 
     switched (bench, action, open) = match action
         ToggleProofLibraries => Runtime::step (BundledLibraries::expanded (bench, open))

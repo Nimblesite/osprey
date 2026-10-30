@@ -119,3 +119,10 @@ module Notation
 
     (** The table rows whose abbreviation starts with `typed`, the text after a trailing backslash; every row when it is empty. *)
     export palette typed = filterList (table, \entry => startsWith (entry.abbreviation, typed))
+
+    (** The symbol the table spells `abbreviation` as, or empty text when no row does. *)
+    export symbolOf abbreviation = foldList (filterList (table, \entry => entry.abbreviation == abbreviation), "", \(found, entry) => kept (found, entry))
+
+    kept (found, entry) = match isEmpty found
+        true => entry.symbol
+        false => found

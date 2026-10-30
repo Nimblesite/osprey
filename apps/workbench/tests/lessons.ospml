@@ -8,7 +8,13 @@ import workbench::Judge
 import workbench::Tutors
 import workbench::Catalogues
 import workbench::Tries
+import workbenchtests::AppCases
+import workbenchtests::Drive
+import workbenchtests::FixtureFiles
+import workbench::FormulaKeys
 import ui::Doc
+import ui::Encode
+import ui::Ui
 
 (** The lesson reader, judge and tutor cases of [LESSONS-VERIFICATION]. *)
 module LessonCases
@@ -38,6 +44,120 @@ module LessonCases
         expect (head (Judge::written (stateTask "p ∧ q", "q ∧ p")), "wrong -1: ")
         expect (marked (Judge::written (stateTask "p ∧ q", "p ∧ r")), "wrong -1: `r` is not one of p, q")
         expect (head (Judge::written (stateTask "p ∧ q", "p ∧")), "unfinished")
+        keypadTyping ()
+        keypadState ()
+        keypadPersistence ()
+        keypadEvent ()
+        crossLessonFocus ()
+
+    stateChallenge expected =
+        workbench::Challenge(challengeId = "two", challengePrompt = "Write it.", challengeHints = [], challengeTask = workbench::StateTask (stateTask expected))
+
+    markKey (tutor, key) = match (Tutors::attempt (tutor, key)).attemptMarking
+        workbench::Unmarked => "none"
+        workbench::Marked mark => head mark
+
+    inserted (tutor, key, at, text) = Tutors::insert (Tutors::moved (tutor, key, at), key, text)
+
+    (** [LESSONS-STATE] [WORKBENCH-NOTATION]: a formula key inserts at the caret and advances it, preserving the text around it, at the start, in the middle and past the end. *)
+    keypadTyping () =
+        tutor = Tutors::answer (Tutors::empty (), "l/two", "pq")
+        atStart = inserted (tutor, "l/two", 0, "¬")
+        expect ((Tutors::attempt (atStart, "l/two")).attemptAnswer, "¬pq")
+        expect ((Tutors::attempt (atStart, "l/two")).attemptCursor, length "¬")
+        atMiddle = inserted (tutor, "l/two", 1, "∧")
+        expect ((Tutors::attempt (atMiddle, "l/two")).attemptAnswer, "p∧q")
+        expect ((Tutors::attempt (atMiddle, "l/two")).attemptCursor, length "p∧")
+        atEnd = inserted (tutor, "l/two", 999, "→")
+        expect ((Tutors::attempt (atEnd, "l/two")).attemptAnswer, "pq→")
+        expect ((Tutors::attempt (inserted (tutor, "l/two", -5, "¬"), "l/two")).attemptAnswer, "¬pq")
+        expect (Tutors::cursorOf (Tutors::attempt (Tutors::moved (tutor, "l/two", -5), "l/two")), 0)
+        expect (Tutors::cursorOf (Tutors::attempt (Tutors::moved (tutor, "l/two", 999), "l/two")), 2)
+
+    (** [LESSONS-STATE]: inserting a key clears a stale mark, never submits, and leaves the other challenge's attempt alone. *)
+    keypadState () =
+        right = Tutors::submit (Tutors::answer (Tutors::empty (), "l/two", "p → q"), "l/two", stateChallenge "p → q")
+        expect (markKey (right, "l/two"), "right: Rig")
+        edited = Tutors::insert (Tutors::moved (right, "l/two", length "p → q"), "l/two", "∧")
+        expect (markKey (edited, "l/two"), "none")
+        expect (length edited.tutorCompleted, 1)
+        expect ((Tutors::attempt (edited, "l/two")).attemptCount, 0)
+        other = Tutors::answer (edited, "l/three", "q")
+        both = Tutors::insert (other, "l/two", "∨")
+        expect ((Tutors::attempt (both, "l/three")).attemptAnswer, "q")
+        expect (startsWith ((Tutors::attempt (both, "l/two")).attemptAnswer, "p → q"), true)
+
+    (** [LESSONS-STATE]: the caret survives a saved session, and an attempt saved before carets decode with the caret at its end. *)
+    keypadPersistence () =
+        moved = Tutors::moved (Tutors::answer (Tutors::empty (), "l/two", "pq"), "l/two", 1)
+        restored = Tries::restore (Doc::parse (Doc::write (Tries::save moved)))
+        expect ((Tutors::attempt (restored, "l/two")).attemptCursor, 1)
+        expect ((Tutors::attempt (restored, "l/two")).attemptAnswer, "pq")
+        expect (Tutors::focusOf (Tutors::attempt (restored, "l/two")), 0)
+        legacy = Tries::restore (Doc::parse "{\"tries\":[{\"key\":\"l/two\",\"answer\":\"p → q\",\"ruling\":\"\",\"count\":0,\"hints\":0,\"mark\":null,\"revealed\":false}],\"completed\":[]}")
+        expect (Tutors::cursorOf (Tutors::attempt (legacy, "l/two")), length "p → q")
+        expect (Tutors::focusOf (Tutors::attempt (legacy, "l/two")), 0)
+
+    keypadEncoding () =
+        task = workbench::StateTask (stateTask "p → q")
+        walked = Encode::walk ([], Ui::row (FormulaKeys::buttons (task, "two")))
+        items = Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))
+        expect (join (mapList (items, \button => Doc::text (button, "label")), "|"), "p|q|→ implies|¬ not|∧ and|∨ or|↔ both ways|(|)")
+        expect (length (FormulaKeys::buttons (workbench::ProveTask (swapTask ()), "one")), 0)
+
+    keypadInsert () =
+        lesson = AppCases::opened ()
+        region = "challenge:and-swap/state-swapped-goal"
+        editor = Drive::findNode ("editor", Drive::node (lesson, region))
+        typed = Drive::post (lesson, Drive::control (region, Drive::revision (lesson, region), Doc::number (editor, "event"), Drive::quoted "pq"))
+        current = Drive::findNode ("editor", Drive::node (typed, region))
+        moved = Drive::post (typed, Drive::control (region, Drive::revision (typed, region), Doc::number (current, "placeEvent"), "1"))
+        Drive::activate (moved, moved, region, "→ implies")
+
+    (** [LESSONS-STATE]: a real issued key through App::respond inserts at the actual editor caret without submitting. *)
+    keypadEvent () =
+        keypadEncoding ()
+        next = keypadInsert ()
+        saved = Drive::stored next
+        tutor = Tries::restore (Doc::field (saved, "tutor"))
+        work = Tutors::attempt (tutor, "and-swap/state-swapped-goal")
+        expect (work.attemptAnswer, "p→q")
+        expect (work.attemptCursor, length "p→")
+        expect (work.attemptCount, 0)
+        expect (isEmpty tutor.tutorCompleted, true)
+        expect (Doc::text (saved, "focused"), "state-swapped-goal")
+        expect (Drive::keys next, "challenge:and-swap/state-swapped-goal")
+        editor = Drive::findNode ("editor", Drive::node (next, "challenge:and-swap/state-swapped-goal"))
+        expect (Doc::number (editor, "focusEpoch"), 1)
+        repeatedFocus next
+
+    repeatedFocus previous =
+        region = "challenge:and-swap/state-swapped-goal"
+        next = Drive::activate (previous, previous, region, "q")
+        editor = Drive::findNode ("editor", Drive::node (next, region))
+        expect (Doc::number (editor, "focusEpoch"), 2)
+        expect (Doc::text (editor, "value"), "p→qq")
+
+    (** Actual App regions separate equal challenge ids across lessons, including their focus epochs. *)
+    crossLessonFocus () =
+        region = "challenge:and-swap/state-swapped-goal"
+        lesson = AppCases::opened ()
+        first = foldList (toList (range (0, 8)), lesson, \(current, _) => Drive::activate (current, current, region, "p"))
+        expect (Doc::number (Drive::findNode ("editor", Drive::node (first, region)), "focusEpoch"), 8)
+        FixtureFiles::bind (Drive::postSharedChallenge (first, Drive::labelled (first, first, "lesson", "All lessons", "null")), \closed =>
+            expect (listContains (Doc::texts (closed, "removed"), region), true)
+            expect (Doc::text (Drive::node (closed, region), "kind"), "")
+            FixtureFiles::bind (Drive::postSharedChallenge (closed, Drive::tap (closed, "catalogue", 0)), \opened => secondLessonFocus (first, opened, region)))
+
+    secondLessonFocus (first, opened, previousRegion) =
+        region = "challenge:what-is-a-proof/state-swapped-goal"
+        expect (Doc::number (Drive::findNode ("editor", Drive::node (opened, region)), "focusEpoch"), 0)
+        expect (Doc::text (Drive::findNode ("editor", Drive::node (opened, region)), "kind"), "editor")
+        FixtureFiles::bind (Drive::postSharedChallenge (opened, Drive::labelled (opened, opened, region, "p", "null")), \next =>
+            editor = Drive::findNode ("editor", Drive::node (next, region))
+            expect (Doc::number (editor, "focusEpoch"), 1)
+            expect (Doc::text (editor, "value"), "p")
+            FixtureFiles::bind (Drive::postSharedChallenge (next, Drive::labelled (first, first, previousRegion, "p", "null")), \stale => FixtureFiles::ok (expect (Doc::write (Drive::stored stale), Doc::write (Drive::stored next)))))
 
     judgeTask steps = workbench::Judging(judgedHeading = swapHeading (), judgedSteps = listConcat (["Assume h : p ∧ q.", "By cases on h, as hp and hq.", "It suffices to show q and p."], steps))
 

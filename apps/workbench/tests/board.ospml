@@ -5,9 +5,36 @@ import workbench::Boards
 import workbench::Benches
 import workbench::Workspaces
 import ui::Doc
+import workbenchtests::Drive
 
 (** Board state and persistence cases for [WORKBENCH-VERIFICATION]. *)
 module BoardCases
+    (** The workbench exposes mathematical text entry, without an unsupported ink surface. *)
+    export mathematicalWorkspaceOnly () =
+        first = Drive::started ()
+        forEachList (["root", "board"], \key => withoutInk (Drive::node (first, key)))
+        expect (Doc::text (Drive::node (first, "board"), "kind"), "")
+        editor = Drive::findLabel ("Argument & calculations", Drive::node (first, "document"))
+        expect (Doc::has (editor, "event"), true)
+        typed = Drive::post (first, Drive::control ("document", Drive::revision (first, "document"), Doc::number (editor, "event"), Drive::quoted "p → p"))
+        expect (Doc::text (Drive::stored typed, "text"), "p → p")
+        staleDocumentControl (first, typed)
+        framed = Drive::post (typed, "{\"kind\":\"frame\",\"elapsed\":0.016}")
+        expect (Doc::text (Drive::stored framed, "notice"), Doc::text (Drive::stored typed, "notice"))
+        expect (Doc::text (Drive::stored framed, "text"), "p → p")
+        expect (Drive::tickets framed, "")
+
+    staleDocumentControl (issued, current) =
+        event = Drive::labelled (current, issued, "document", "Argument & calculations", Drive::quoted "p → q")
+        expect (Doc::number (Doc::parse event, "revision"), Drive::revision (issued, "document"))
+        refused = Drive::post (current, event)
+        expect (Doc::write (Drive::stored refused), Doc::write (Drive::stored current))
+        expect (length (Doc::texts (refused, "diagnostics")) > 0, true)
+
+    withoutInk node =
+        forEachList (["board", "canvas"], \kind => expect (Doc::text (Drive::findNode (kind, node), "kind"), ""))
+        forEachList (["Draw", "Pan board", "Undo", "Clear", "Preview sample transcription", "Transcribe selection"], \label => expect (Doc::has (Drive::findLabel (label, node), "event"), false))
+
     stroke () = ui::Stroke(strokePoints = [ui::Point(pointX = 12, pointY = 20), ui::Point(pointX = 18, pointY = 24)], strokeWidth = 3, strokeAt = 42)
 
     working () = Boards::frame (Boards::notes (Boards::append (Boards::empty (), stroke ()), "Keep this calculation."), 40, -12, 150)
@@ -109,3 +136,7 @@ module BoardCases
     workspaceRefused source = match Workspaces::decode source
         Error _ => true
         Success _ => false
+
+    legacyBoard () = Boards::frame (Boards::notes (Boards::append (Boards::empty (), ui::Stroke(strokePoints = [ui::Point(pointX = 12, pointY = 20), ui::Point(pointX = 18, pointY = 24)], strokeWidth = 3, strokeAt = 42)), "Check the order of the conjunction."), 40, -12, 150)
+
+    export legacySource envelope = Workspaces::encode (Benches::restore (Drive::stored envelope), legacyBoard ())

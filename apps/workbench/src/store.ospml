@@ -29,7 +29,7 @@ type Check =
 type Reviewed =
     checks : List<Check>
 
-(** The board as the store sees it: how many strokes the host holds, whether the lasso is offered, a pending clear, and the current recognition ticket ([WORKBENCH-BOARD]). *)
+(** The retired board as saved data keeps it: the stroke count, lasso and clear flags, the last recognition ticket, the frame and its notes. Kept so saved workspaces still open and re-save ([WORKBENCH-BOARD]). *)
 type Sketch =
     strokeTotal : int
     lassoing : bool
@@ -103,13 +103,13 @@ type Bench =
     imports : ImportedState
 
 // One action union per program until Nimblesite/osprey#278; grouped by the value each binding delivers.
-(** Every action a control can deliver: document and caret, board, panes and modes, lessons and challenges. *)
-type Act = Rename | Edit | Place | NextProofLine | InsertExample | SelectStep | StepEdit | StepPlace | Stroke | Lasso | Undo | AskClear | ConfirmClear | KeepBoard | ToWork | ToLearn | ToBoard | ToPaper | ToRead | ChooseDraw | ChoosePan | PanBoard | ZoomIn | ZoomOut | FitBoard | EditNotes | ToggleNotes | FocusBoard | SaveWorkspace | OpenWorkspace | ExportSource | OpenProofLibrary | OpenBundledProof string | SelectProof | EditProofSource | ToggleProofSource | ToggleProofLibraries | DismissNotice | StartExample | RestartExample | LeaveExample | ToggleTheme | PreviewSample | DismissPreview | AcceptPreview | ToggleGoal | ToggleGenerated | ToggleLibrary | Widen | Open string | Close | Answer string | Pick string | Submit string | Hint string | Reveal string | Carry string
+(** Every action a control can deliver: document and caret, panes and modes, lessons and challenges. *)
+type Act = Rename | Edit | Place | NextProofLine | InsertExample | SelectStep | StepEdit | StepPlace | ToWork | ToLearn | ToPaper | ToRead | SaveWorkspace | OpenWorkspace | ExportSource | OpenProofLibrary | OpenBundledProof string | SelectProof | EditProofSource | ToggleProofSource | ToggleProofLibraries | DismissNotice | StartExample | RestartExample | LeaveExample | ToggleTheme | ToggleGoal | ToggleGenerated | ToggleLibrary | Widen | Open string | Close | Answer string | FormulaPlace string | Key string string | Pick string | Submit string | Hint string | Reveal string | Carry string
 
 (** Creates, saves and restores the store. *)
 module Benches
-    (** An empty document, no verdicts, a blank board, the board-first layout and no lessons yet. *)
-    export fresh () = Bench(draft = Draft(draftTitle = "Untitled solution", draftText = "", caret = 0, selectedStep = -1), verdicts = Reviewed(checks = []), sketch = Sketch(strokeTotal = 0, lassoing = true, clearing = false, inkTicket = "", inkCount = 0, boardScale = 100, boardPanX = 0, boardPanY = 0, boardNotes = "", notesVisible = false, panMode = false), layout = Layout(mode = Working, paperFirst = false, goalOpen = true, generatedOpen = false, libraryOpen = false, sideWidth = 430, slate = false, guided = false, boardFocused = false, previewText = "", previewSample = false, noticeText = "", noticeBad = false), shelf = Shelf(entries = [], openSlug = "", openSource = "", focused = "", shelfProblem = ""), tutor = Tutors::empty (), exampleBackup = JsonNull, imports = emptyImports ())
+    (** An empty document, no verdicts, a legacy board record, the mathematical document layout and no lessons yet. *)
+    export fresh () = Bench(draft = Draft(draftTitle = "Untitled solution", draftText = "", caret = 0, selectedStep = -1), verdicts = Reviewed(checks = []), sketch = Sketch(strokeTotal = 0, lassoing = true, clearing = false, inkTicket = "", inkCount = 0, boardScale = 100, boardPanX = 0, boardPanY = 0, boardNotes = "", notesVisible = false, panMode = false), layout = Layout(mode = Working, paperFirst = true, goalOpen = true, generatedOpen = false, libraryOpen = false, sideWidth = 430, slate = false, guided = false, boardFocused = false, previewText = "", previewSample = false, noticeText = "", noticeBad = false), shelf = Shelf(entries = [], openSlug = "", openSource = "", focused = "", shelfProblem = ""), tutor = Tutors::empty (), exampleBackup = JsonNull, imports = emptyImports ())
 
     flag (key, value) = JsonMember key (JsonBool value)
 

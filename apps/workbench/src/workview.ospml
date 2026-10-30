@@ -23,8 +23,6 @@ import workbench::Palettes
 module WorkViews
     export draft () = perform Signal<Draft>.read ()
 
-    sketch () = perform Signal<Sketch>.read ()
-
     export layout () = perform Signal<Layout>.read ()
 
     shelf () = perform Signal<Shelf>.read ()
@@ -41,7 +39,7 @@ module WorkViews
     (** [WORKBENCH-REGIONS] [LESSONS-MODE] The Work and Learn segment over the surface the mode shows. *)
     export root () =
         current = layout ()
-        Ui::themed (palette current, Ui::framed (plain(frameName = "workbench", frameGrow = true, frameFill = "canvas"), Ui::column [Ui::framed (plain(frameHeight = 75), Ui::slot "heading"), ui::Divider, navigation current, ui::Divider, contextBar current, operationNotice current, presented current, footer ()]))
+        Ui::themed (palette current, Ui::framed (plain(frameName = "workbench", frameGrow = true, frameFill = "canvas"), Ui::column [Ui::framed (plain(frameHeight = 75), Ui::slot "heading"), ui::Divider, navigation current, ui::Divider, contextBar current, operationNotice current, surface current, footer ()]))
 
     palette current = match current.slate
         true => Palettes::chalk
@@ -87,11 +85,11 @@ module WorkViews
             true => "Every statement checked by the kernel"
             false => "Contains unchecked or refused statements"
 
-    navigation current = Ui::framed (plain(frameName = "workspace-nav", frameControlPadding = 17, frameAlign = "center", frameControlHeight = 40, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 59, frameLeft = 36, frameRight = 36, frameGap = 8), Ui::row [Ui::action ("Board", "rectangle.and.pencil.and.ellipsis", picked (working current.mode && !current.paperFirst), true, ToBoard), Ui::action ("Proof", "book", picked (working current.mode && current.paperFirst), true, ToPaper), Ui::action ("Read", "book", picked (reading current.mode), true, ToRead), ui::Spacer, Ui::button ("Notation", "textformat", ToggleLibrary), Ui::button ("Examples", "magnifyingglass", ToLearn), Ui::action ("Source", "chevron.left.forwardslash.chevron.right", picked current.generatedOpen, true, ToggleGenerated)])
+    navigation current = Ui::framed (plain(frameName = "workspace-nav", frameControlPadding = 17, frameAlign = "center", frameControlHeight = 40, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 59, frameLeft = 36, frameRight = 36, frameGap = 8), Ui::row [Ui::action ("Proof", "book", picked (working current.mode), true, ToPaper), Ui::action ("Read", "book", picked (reading current.mode), true, ToRead), ui::Spacer, Ui::button ("Notation", "textformat", ToggleLibrary), Ui::button ("Examples", "magnifyingglass", ToLearn), Ui::action ("Source", "chevron.left.forwardslash.chevron.right", picked current.generatedOpen, true, ToggleGenerated)])
 
     contextBar current = match current.guided
         false => Ui::column []
-        true => Ui::framed (plain(frameName = "example-context", frameControlPadding = 0, frameHeight = 45, frameLeft = 32, frameRight = 32, frameAlign = "center", frameGap = 18, frameFont = "sans", frameTextSize = 13, frameQuietControls = true, frameControlHeight = 38, frameLine = "divider", frameLineEdge = "bottom"), Ui::row [Ui::button ("Return to working", "arrow.left", LeaveExample), Ui::framed (plain(frameWidth = 1, frameHeight = 18, frameFill = "divider"), Ui::column []), Ui::caption "Guided example"])
+        true => Ui::framed (plain(frameName = "example-context", frameControlPadding = 0, frameHeight = 45, frameLeft = 32, frameRight = 32, frameAlign = "center", frameGap = 18, frameFont = "sans", frameTextSize = 13, frameQuietControls = true, frameControlHeight = 38, frameLine = "divider", frameLineEdge = "bottom"), Ui::row [Ui::framed (plain(frameInk = "accent", frameHug = true), Ui::button ("Return to working", "arrow.left", LeaveExample)), Ui::framed (plain(frameWidth = 1, frameHeight = 18, frameFill = "divider"), Ui::column []), Ui::caption "Guided example"])
 
     operationNotice current = match isEmpty current.noticeText
         true => Ui::column []
@@ -109,47 +107,33 @@ module WorkViews
 
     about () = Ui::section ("Built with Osprey", "Explore the language behind the workbench.", [Ui::image ("osprey-logo.png", "Osprey", 64, 64), Ui::link ("Osprey website", "https://ospreylang.dev/"), Ui::link ("Language documentation", "https://ospreylang.dev/docs/"), Ui::link ("Workbench source", "https://github.com/Nimblesite/osprey/tree/main/apps/workbench")])
 
-    surface current = match current.mode
-        Learning => Ui::aside (Ui::framed (plain(frameName = "lesson-page", frameTop = 32, frameRight = 32, frameBottom = 48, frameLeft = 32, frameGap = 24), learned ()), ui::Trailing, Ui::slot "board", current.sideWidth, Widen)
+    surface current = match inspectingLibrary current
+        true => librarySurface ()
+        false => ordinarySurface current
+
+    inspectingLibrary current =
+        imported = perform Signal<ImportedState>.read ()
+        working current.mode && current.libraryOpen && (!isEmpty imported.exportText || imported.exportLarge)
+
+    // Imported mathematics keeps its identity and readable size outside the narrow working margin.
+    librarySurface () = Ui::framed (plain(frameName = "proof-library-inspection", frameGrow = true, frameTop = 32, frameRight = 32, frameBottom = 40, frameLeft = 32, frameGap = 24), Ui::column [Ui::framed (plain(frameHug = true), Ui::button ("Close proof library", "arrow.left", ToggleLibrary)), Ui::slot "library"])
+
+    ordinarySurface current = match current.mode
+        Learning => Ui::framed (plain(frameName = "lesson-page", frameTop = 32, frameRight = 32, frameBottom = 48, frameLeft = 32, frameGap = 24), learned ())
         Working => worked current
         ReadingPage => Ui::framed (plain(frameName = "reading-page", frameCross = "center", frameFill = "inset", frameTop = 60, frameBottom = 80, frameGrow = true), Ui::framed (plain(frameName = "reading-sheet", frameWidth = 900, frameTop = 60, frameRight = 84, frameBottom = 60, frameLeft = 84, frameFill = "canvas", frameLine = "divider"), Ui::slot "document"))
 
-    presented current = match isEmpty current.previewText
-        true => surface current
-        false => Ui::layer [surface current, transcription current]
-
-    transcription current = Ui::dialog ("From a sketch to a statement.", Ui::framed (plain(frameTop = 20, frameRight = 24, frameHug = true), Ui::framed (plain(frameName = "transcription-preview", frameWidth = 530, frameShadow = "floating", frameFill = "surface", frameLine = "outline", frameRadius = 6), Ui::layer [transcriptionBody current, Ui::framed (plain(frameTop = 8, frameRight = 8, frameCross = "end", frameGrow = true), closePreview ())])), DismissPreview)
-
-    transcriptionBody current = Ui::framed (plain(frameTop = 32, frameRight = 32, frameBottom = 32, frameLeft = 32, frameGap = 0), Ui::column [Ui::framed (plain(frameTop = 6, frameLineHeight = 33.0), letter ("serif", 26, false, "From a sketch to a statement.", ui::Heading, ui::Primary)), previewFine (16, previewCaption current), Ui::framed (plain(frameTop = 25), Ui::framed (plain(frameFill = "inset", frameTop = 28, frameBottom = 28, frameLeft = 12, frameRight = 12, frameTextSize = 28, frameMathScale = 1.08, frameCross = "center"), previewFormula current.previewText)), Ui::framed (plain(frameTop = 25, frameLineHeight = 28.5), letter ("serif", 19, false, "Review the mathematics before adding it to your document.", ui::Body, ui::Primary)), Ui::framed (plain(frameTop = 20, frameHug = true, frameTrailingSymbols = true, frameControlHeight = 38, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameControlPadding = 12), Ui::action (previewAction current, "chevron.right", ui::Filled, true, AcceptPreview)), previewFine (16, "Your strokes remain on the board. Nothing becomes a proof or a checked result automatically.")])
-
     previewFine (inset, content) = Ui::framed (plain(frameTop = inset, frameFont = "sans", frameTextSize = 13, frameLineHeight = 22.75), Ui::caption content)
 
-    closePreview () = outlinedClose ("Close preview", DismissPreview)
-
-    outlinedClose (label, action) = outlinedIcon (label, action, 42, 9)
-
-    outlinedIcon (label, action, size, radius) = Ui::framed (plain(frameWidth = size, frameHeight = size, frameRadius = radius, frameLine = "accent", frameIconOnly = true, frameQuietControls = true, frameControlHeight = satSub size 2, frameFont = "sans", frameTextSize = 18), Ui::button (label, "xmark", action))
-
-    previewCaption current = match current.previewSample
-        true => "Sample transcription preview. This example does not recognise your strokes."
-        false => "Handwriting transcription preview. Check the wording before inserting it."
-
-    previewAction current = match current.previewSample
-        true => "Use this sample statement"
-        false => "Use this statement"
-
-    previewFormula source = match listGet (Statements::document source) 0
-        Success found => shown found.statement.claim
-        Error _ => Ui::text source
+    outlinedIcon (label, action, size, radius) = Ui::framed (plain(frameWidth = size, frameHeight = size, frameRadius = radius, frameLine = "accent", frameIconOnly = true, frameQuietControls = true, frameControlHeight = satSub size 2, frameFont = "sans", frameTextSize = 18, frameAlign = "center"), Ui::button (label, "xmark", action))
 
     learned () = match isEmpty (shelf ()).openSlug
         true => Ui::slot "catalogue"
         false => Ui::slot "lesson"
 
-    // Board first: the board fills the window with the columns trailing; paper puts the document first.
     worked current = match current.generatedOpen
-        false => workedSurface current
-        true => Ui::framed (plain(frameName = "source-layout", frameGrow = true, frameTop = 32, frameRight = 32, frameGap = 28), Ui::row [Ui::framed (plain(frameGrow = true), workedSurface current), sourcePanel ()])
+        false => paperSurface current
+        true => Ui::framed (plain(frameName = "source-layout", frameGrow = true, frameTop = 32, frameRight = 32, frameGap = 28), Ui::row [Ui::framed (plain(frameGrow = true), paperSurface current), sourcePanel ()])
 
     sourcePanel () = Ui::framed (plain(frameName = "source-panel", frameWidth = 440, frameLine = "divider", frameLineEdge = "left", frameFill = "inset"), Ui::layer [sourceBody (), Ui::framed (plain(frameTop = 12, frameRight = 12, frameCross = "end"), outlinedIcon ("Close source", ToggleGenerated, 32, 5))])
 
@@ -161,16 +145,6 @@ module WorkViews
 
     sourceExport () = Ui::framed (plain(frameName = "source-export", frameHug = true, frameHeight = 37, frameControlHeight = 35, frameControlPadding = 12, frameQuietControls = true, frameLine = "outline", frameRadius = 4, frameFont = "sans", frameTextSize = 13), Ui::button ("Export generated source", "", ExportSource))
 
-    workedSurface current = match current.boardFocused && !current.paperFirst
-        true => boardRegion ()
-        false => dividedSurface current
-
-    boardRegion () = Ui::framed (plain(frameTop = 24, frameRight = 24, frameLeft = 24, frameGrow = true, frameName = "board-region"), Ui::slot "board")
-
-    dividedSurface current = match current.paperFirst
-        false => Ui::aside (boardRegion (), ui::Trailing, Ui::framed (plain(frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameName = "solution-column", frameGap = 30), Ui::column (sidePanes current)), current.sideWidth, Widen)
-        true => paperSurface current
-
     paperSurface current = match current.generatedOpen
         false => Ui::framed (plain(frameTop = 40, frameRight = 84, frameBottom = 60, frameLeft = 84, frameName = "paper-document", frameGrow = true), Ui::aside (Ui::framed (plain(frameRight = 48), Ui::slot "document"), ui::Trailing, goalMargin (32, current), librarySideWidth (current, 270, 430), Widen))
         true => Ui::framed (plain(frameLeft = 32, frameBottom = 60, frameName = "paper-document", frameGrow = true), sourceManuscript current)
@@ -179,15 +153,9 @@ module WorkViews
         true => library
         false => ordinary
 
-    sourceManuscript current = Ui::column [Ui::framed (plain(frameName = "source-manuscript"), Ui::boundedAside (Ui::framed (plain(frameRight = 24), Ui::slot "document"), ui::Trailing, goalMargin (20, current), librarySideWidth (current, 180, 430), librarySideWidth (current, 160, 360), librarySideWidth (current, 320, 640), 360, Widen)), Ui::framed (plain(frameTop = 72, frameHug = true, frameInk = "accent", frameFont = "sans", frameTextSize = 13, frameQuietControls = true, frameControlHeight = 38, frameControlPadding = 0), Ui::button ("Show working board", "", ToBoard))]
+    sourceManuscript current = Ui::framed (plain(frameName = "source-manuscript"), Ui::boundedAside (Ui::framed (plain(frameRight = 24), Ui::slot "document"), ui::Trailing, goalMargin (20, current), librarySideWidth (current, 180, 430), librarySideWidth (current, 160, 360), librarySideWidth (current, 320, 640), 360, Widen))
 
     goalMargin (inset, current) = Ui::framed (plain(frameTop = 8, frameLeft = inset, frameName = "goal-margin", frameGap = 24), Ui::column (panes current))
-
-    sidePanes current = match current.libraryOpen
-        true => panes current
-        false => listPrepend (visible (current.goalOpen, boardGoals ())) (Ui::slot "document")
-
-    boardGoals () = Ui::framed (plain(frameName = "board-goals", frameTop = 26, frameLine = "divider", frameLineEdge = "top"), Ui::slot "goal")
 
     panes current = match current.libraryOpen
         true => [Ui::slot "library"]
@@ -229,7 +197,7 @@ module WorkViews
         false => solutionDocument text
         true => Ui::framed (plain(frameName = "solution-reading", frameGap = 24), Ui::column [Ui::styled ("YOUR SOLUTION", ui::Eyebrow, ui::Secondary), Ui::styled (text.draftTitle, ui::Display, ui::Primary), Ui::badge ("Unchecked", "", ui::Secondary), Ui::styled (text.draftText, ui::Lead, ui::Primary)])
 
-    solutionDocument text = Ui::framed (plain(frameName = "solution", frameGap = 24), Ui::column [Ui::styled ("YOUR SOLUTION", ui::Eyebrow, ui::Secondary), Ui::framed (plain(frameName = "solution-title"), Ui::field ("Solution title", text.draftTitle, "Untitled solution", Rename)), Ui::row [Ui::badge ("Unchecked", "", ui::Secondary), Ui::caption "Free-form working"], Ui::framed (plain(frameName = "solution-editor", frameHeight = 360, frameLine = "divider", frameRadius = 3), Ui::editor ("Argument & calculations", text.draftText, text.caret, mapList ((perform Signal<Reviewed>.read ()).checks, \check => marked check), Edit, Place)), Ui::caption "Your board and written working stay together."])
+    solutionDocument text = Ui::framed (plain(frameName = "solution", frameGap = 24), Ui::column [Ui::styled ("YOUR SOLUTION", ui::Eyebrow, ui::Secondary), Ui::framed (plain(frameName = "solution-title"), Ui::field ("Solution title", text.draftTitle, "Untitled solution", Rename)), Ui::row [Ui::badge ("Unchecked", "", ui::Secondary), Ui::caption "Free-form working"], Ui::framed (plain(frameName = "solution-editor", frameHeight = 360, frameLine = "divider", frameRadius = 3), Ui::editor ("Argument & calculations", text.draftText, text.caret, mapList ((perform Signal<Reviewed>.read ()).checks, \check => marked check), Edit, Place)), Ui::caption "Your written working stays as you left it."])
 
     proofTitle statement = match statement.name == "and_swap"
         true => "Commutativity of conjunction"
@@ -373,39 +341,6 @@ module WorkViews
     sourceStep (draft, proof) = match draft.selectedStep >= 0
         true => draft.selectedStep
         false => satSub (length proof.steps) 1
-
-    iconAction (label, symbol, role, enabled, action) = Ui::framed (plain(frameHug = true, frameWidth = 38, frameHeight = 38, frameIconOnly = true, frameQuietControls = true, frameControlHeight = 38, frameAlign = "center"), Ui::action (label, symbol, role, enabled, action))
-
-    controls current = match current.clearing
-        true => Ui::row [Ui::text "Clear every stroke?", Ui::action ("Clear", "trash", ui::Destructive, true, ConfirmClear), Ui::button ("Keep", "arrow.uturn.backward", KeepBoard)]
-        false => Ui::framed (plain(frameHug = true, frameGap = 2), Ui::row [iconAction ("Draw", "pencil", picked (!current.panMode), true, ChooseDraw), iconAction ("Pan board", "hand.draw", picked current.panMode, true, ChoosePan), Ui::framed (plain(frameLeft = 6, frameRight = 6, frameHug = true), Ui::framed (plain(frameWidth = 1, frameHeight = 20, frameFill = "divider"), Ui::column [])), iconAction ("Undo", "arrow.uturn.backward", ui::Plain, current.strokeTotal > 0, Undo), iconAction ("Working notes", "square.and.pencil", picked current.notesVisible, true, ToggleNotes), iconAction ("Clear", "trash", ui::Plain, current.strokeTotal > 0, AskClear), iconButton ("Focus working board", "arrow.up.left.and.arrow.down.right", FocusBoard)])
-
-    (** [WORKBENCH-BOARD] Retained strokes and application-owned camera, tools and notes. *)
-    export board () =
-        current = sketch ()
-        Ui::column [Ui::layer (listConcat [workingBoard current] (visible (current.notesVisible, notesOverlay current))), previewStrip ()]
-
-    workingBoard current = Ui::themed (Palettes::chalk, Ui::framed (plain(frameName = "working-board", frameFill = "board", frameInk = "chalk", frameRadius = 5, frameGrow = true), Ui::layer [Ui::framed (plain(frameName = "board-viewport", frameFadeBackdrop = true, frameTop = 56, frameBottom = 56, frameGrow = true), boardSurface current), Ui::column [boardHeader current, ui::Spacer, boardFooter current]]))
-
-    notesOverlay current = Ui::framed (plain(frameTop = 72, frameRight = 20, frameCross = "end"), Ui::framed (plain(frameName = "working-notes", frameWidth = 320, frameTop = 20, frameRight = 20, frameBottom = 20, frameLeft = 20, frameFill = "surface", frameInk = "primary", frameLine = "outline", frameRadius = 5, frameGap = 16), Ui::column [Ui::row [letter ("serif", 24, false, "Working notes", ui::Heading, ui::Primary), ui::Spacer, iconButton ("Close notes", "xmark", ToggleNotes)], Ui::multiline ("Notes · not checked", current.boardNotes, "Keep a thought for later…", EditNotes)]))
-
-    boardHeader current = Ui::framed (plain(frameLeft = 20, frameRight = 20, frameName = "board-toolbar", frameLine = "divider", frameLineEdge = "bottom", frameAlign = "center", frameControlHeight = 38, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 56, frameGap = 18), Ui::row [Ui::caption "Working board", letter ("serif", 14, true, "Think freely.", ui::Callout, ui::Secondary), ui::Spacer, controls current])
-
-    boardFooter current = Ui::framed (plain(frameLeft = 20, frameRight = 20, frameName = "board-footer", frameAlign = "center", frameControlHeight = 32, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 56, frameGap = 4), Ui::row [Ui::caption (boardCaption (layout ()).guided), ui::Spacer, Ui::button ("Fit", "", FitBoard), iconButton ("Zoom out", "minus", ZoomOut), Ui::caption "${current.boardScale}%", iconButton ("Zoom in", "plus", ZoomIn)])
-
-    boardCaption guided = match guided
-        true => "Example sketch · draw alongside it · not checked"
-        false => "Your working · not checked"
-
-    previewStrip () = Ui::framed (plain(frameName = "board-preview-strip", frameTrailingSymbols = true, frameHeight = 66, frameAlign = "center", frameFont = "sans", frameTextSize = 12, frameControlHeight = 38, frameQuietControls = true), Ui::row [Ui::caption "Example sketch · transcription preview", ui::Spacer, Ui::framed (plain(frameHug = true, frameInk = "accent"), Ui::button ("Preview sample transcription", "arrow.right", PreviewSample))])
-
-    boardSurface current = match (layout ()).guided
-        true => drawnBoard (current, "chalk-study.png")
-        false => match current.strokeTotal == 0
-            false => drawnBoard (current, "")
-            true => Ui::layer [drawnBoard (current, ""), Ui::framed (plain(frameLeft = 100, frameRight = 100, frameName = "board-empty", frameGap = 16, frameGrow = true, frameAlign = "center"), Ui::column [Ui::styled ("YOUR WORKING BOARD", ui::Eyebrow, ui::Secondary), letter ("serif", 32, false, "Start with an idea.", ui::Title, ui::Primary), Ui::caption "Draw here. Write your argument alongside."])]
-
-    drawnBoard (current, backdrop) = Ui::interactiveBoard ("board", current.strokeTotal, current.lassoing, backdrop, current.panMode, Stroke, Lasso, PanBoard)
 
     rules () = [{ ruleName = "and_intro", ruleSays = "p → q → p ∧ q" }, { ruleName = "and_cases", ruleSays = "p ∧ q → (p → q → r) → r" }, { ruleName = "or_inl", ruleSays = "p → p ∨ q" }, { ruleName = "or_inr", ruleSays = "q → p ∨ q" }, { ruleName = "or_cases", ruleSays = "p ∨ q → (p → r) → (q → r) → r" }, { ruleName = "iff_intro", ruleSays = "(p → q) → (q → p) → (p ↔ q)" }, { ruleName = "absurd", ruleSays = "p → ¬p → r" }]
 

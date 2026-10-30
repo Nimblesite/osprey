@@ -14,10 +14,12 @@ type Marking = Unmarked | Marked Grade
 (** The learner's choice on a judge challenge. *)
 type Ruling = Undecided | Checks | Fails
 
-(** One challenge's work: its key `<slug>/<id>`, the answer, the choice, wrong attempts, hints shown, the mark and whether the solution was shown ([LESSONS-FEEDBACK]). *)
+(** One challenge's work: its key `<slug>/<id>`, the answer, the caret's byte offset, the choice, wrong attempts, hints shown, the mark and whether the solution was shown ([LESSONS-FEEDBACK]). *)
 type Attempt =
     attemptKey : string
     attemptAnswer : string
+    attemptCursor : int
+    attemptFocusEpoch : int
     attemptRuling : Ruling
     attemptCount : int
     attemptHints : int
@@ -37,17 +39,43 @@ module Tutors
     (** The key of challenge `id` in lesson `slug`. *)
     export keyOf (slug, id) = slug + "/" + id
 
-    fresh key = Attempt(attemptKey = key, attemptAnswer = "", attemptRuling = Undecided, attemptCount = 0, attemptHints = 0, attemptMarking = Unmarked, attemptRevealed = false)
+    fresh key = Attempt(attemptKey = key, attemptAnswer = "", attemptCursor = 0, attemptFocusEpoch = 0, attemptRuling = Undecided, attemptCount = 0, attemptHints = 0, attemptMarking = Unmarked, attemptRevealed = false)
+
+    (** `offset` kept within `limit` bytes, so a stale caret can never address outside its answer. *)
+    export clamped (offset, limit) = match offset < 0
+        true => 0
+        false => match offset > limit
+            true => limit
+            false => offset
+
+    export focusEpoch value = clamped (value, 9007199254740991)
+
+    export focusOf item = focusEpoch item.attemptFocusEpoch
+
+    (** The attempt's caret, read within its current answer. *)
+    export cursorOf item = clamped (item.attemptCursor, length item.attemptAnswer)
+
+    (** The attempt's caret moved to `offset`, clamped to its answer. *)
+    export moved (tutor, key, offset) =
+        item = attempt (tutor, key)
+        put (tutor, item(attemptCursor = clamped (offset, length item.attemptAnswer)))
 
     (** The work on challenge `key`, blank when there is none yet. *)
     export attempt (tutor, key) = Lists::find (tutor.tutorTries, \item => item.attemptKey == key) ?: fresh key
 
     put (tutor, item) = tutor(tutorTries = listAppend (filterList (tutor.tutorTries, \other => other.attemptKey != item.attemptKey), item))
 
-    (** The answer text replaced; any mark is cleared, so a badge never describes text that is gone. *)
+    (** The answer text replaced; any mark is cleared, so a badge never describes text that is gone, and the caret stays within the new text. *)
     export answer (tutor, key, text) =
         item = attempt (tutor, key)
-        put (tutor, item(attemptAnswer = text, attemptMarking = Unmarked))
+        put (tutor, item(attemptAnswer = text, attemptCursor = clamped (item.attemptCursor, length text), attemptMarking = Unmarked))
+
+    (** `text` inserted at the caret; the caret advances past it, the surrounding answer stays, and any mark is cleared. *)
+    export insert (tutor, key, text) =
+        item = attempt (tutor, key)
+        at = cursorOf item
+        answer = take item.attemptAnswer at + text + drop item.attemptAnswer at
+        put (tutor, item(attemptAnswer = answer, attemptCursor = satAdd at (length text), attemptFocusEpoch = focusEpoch (satAdd (focusOf item) 1), attemptMarking = Unmarked))
 
     (** The judge choice replaced; any mark is cleared. *)
     export pick (tutor, key, choice) =
@@ -159,9 +187,16 @@ module Tries
         _ => Unmarked
 
     (** One attempt as the session carries it; also the signal encoding of one `challenge:<id>` region ([LESSONS-VERIFICATION]). *)
-    export attemptJson item = JsonObject [Doc::str ("key", item.attemptKey), Doc::str ("answer", item.attemptAnswer), Doc::str ("ruling", rulingName item.attemptRuling), Doc::num ("count", item.attemptCount), Doc::num ("hints", item.attemptHints), JsonMember "mark" (gradeJson item.attemptMarking), JsonMember "revealed" (JsonBool item.attemptRevealed)]
+    export attemptJson item = JsonObject [Doc::str ("key", item.attemptKey), Doc::str ("answer", item.attemptAnswer), Doc::num ("cursor", item.attemptCursor), Doc::num ("focusEpoch", Tutors::focusOf item), Doc::str ("ruling", rulingName item.attemptRuling), Doc::num ("count", item.attemptCount), Doc::num ("hints", item.attemptHints), JsonMember "mark" (gradeJson item.attemptMarking), JsonMember "revealed" (JsonBool item.attemptRevealed)]
 
-    attemptOf doc = Attempt(attemptKey = Doc::text (doc, "key"), attemptAnswer = Doc::text (doc, "answer"), attemptRuling = rulingOf (Doc::text (doc, "ruling")), attemptCount = Doc::number (doc, "count"), attemptHints = Doc::number (doc, "hints"), attemptMarking = markingOf (Doc::field (doc, "mark")), attemptRevealed = Doc::flag (doc, "revealed"))
+    // Attempts saved before carets decode with the caret at the end of their answer.
+    savedCursor doc = match Doc::has (doc, "cursor")
+        true => Doc::number (doc, "cursor")
+        false => length (Doc::text (doc, "answer"))
+
+    attemptOf doc =
+        answer = Doc::text (doc, "answer")
+        Attempt(attemptKey = Doc::text (doc, "key"), attemptAnswer = answer, attemptCursor = Tutors::clamped (savedCursor doc, length answer), attemptFocusEpoch = Tutors::focusEpoch (Doc::number (doc, "focusEpoch")), attemptRuling = rulingOf (Doc::text (doc, "ruling")), attemptCount = Doc::number (doc, "count"), attemptHints = Doc::number (doc, "hints"), attemptMarking = markingOf (Doc::field (doc, "mark")), attemptRevealed = Doc::flag (doc, "revealed"))
 
     (** Every attempt and the completed keys. *)
     export save tutor = JsonObject [JsonMember "tries" (JsonArray (mapList (tutor.tutorTries, \item => attemptJson item))), JsonMember "completed" (JsonArray (mapList (tutor.tutorCompleted, \key => JsonString key)))]

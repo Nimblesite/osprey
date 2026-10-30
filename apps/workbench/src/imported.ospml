@@ -4,6 +4,8 @@ import proof::Environment
 import proof::Checked
 import proof::Trust
 import proof::Terms
+import proof::Numeric
+import proof::NumericCanonical
 
 (** A checked imported theorem and its actual assumptions, shared across
     all hosts. Implements [WORKBENCH-VERDICT] [PROOF-RUNNABLE-LIBRARY]. *)
@@ -12,6 +14,7 @@ type ImportedProof =
     importedStatement : string
     importedType : Term
     importedAxioms : List<string>
+    importedNotation : List<string>
 
 module ImportedProofs
     export check (source, name) = match checked source
@@ -19,8 +22,14 @@ module ImportedProofs
         Error message => Error(message = message)
 
     export catalogue source = match checked source
-        Success env => populated (foldList (env.order, Success(value = []), \(entries, name) => listed (env, entries, name)))
+        Success env => batched (env, Trust::allAxioms env)
         Error message => Error(message = message)
+
+    batched (env, assumptions) = match assumptions
+        Error message => Error(message = message)
+        Success roots => catalogued (env, ProofNotation::permitted env, roots)
+
+    catalogued (env, notation, roots) = populated (foldList (env.order, Success(value = []), \(entries, name) => listed (env, notation, roots, entries, name)))
 
     checked source = match byteLength source > 8388608
         true => Error(message = "the proof export exceeds 8 MiB")
@@ -31,21 +40,21 @@ module ImportedProofs
         Error message => Error(message = "the export declares no `${name}`")
 
     theorem (env, decl, body) = match body
-        Theorem _ => described (decl, Trust::axioms (env, decl.name))
+        Theorem _ => described (decl, Trust::axioms (env, decl.name), ProofNotation::permitted env)
         other => Error(message = "`${decl.name}` is not a theorem")
 
-    described (decl, assumptions) = match assumptions
-        Success names => Success(value = ImportedProof(importedName = decl.name, importedStatement = Terms::show (decl.ty, []), importedType = decl.ty, importedAxioms = names))
+    described (decl, assumptions, notation) = match assumptions
+        Success names => Success(value = ImportedProof(importedName = decl.name, importedStatement = Terms::show (decl.ty, []), importedType = decl.ty, importedAxioms = names, importedNotation = notation))
         Error message => Error(message = message)
 
-    listed (env, entries, name) = match entries
+    listed (env, notation, roots, entries, name) = match entries
         Error message => Error(message = message)
         Success values => match Environment::find (env, name)
-            Success decl => listedBody (env, values, decl, decl.body)
+            Success decl => listedBody (env, notation, roots, values, decl, decl.body)
             Error message => Error(message = message)
 
-    listedBody (env, values, decl, body) = match body
-        Theorem _ => match described (decl, Trust::axioms (env, decl.name))
+    listedBody (env, notation, roots, values, decl, body) = match body
+        Theorem _ => match described (decl, mapGet (roots, decl.name), notation)
             Success entry => Success(value = listAppend (values, entry))
             Error message => Error(message = message)
         other => Success(value = values)
@@ -55,3 +64,108 @@ module ImportedProofs
         Success values => match isEmpty values
             true => Error(message = "the export declares no theorems")
             false => Success(value = values)
+
+(** Standard mathematical notation requires the actual checked declarations,
+    including definition bodies. Names alone do not establish semantics.
+    Implements [WORKBENCH-VERDICT] [WORKBENCH-MATH]. *)
+module ProofNotation
+    export permitted env = listConcat (listConcat (allowed (env, "Eq", ["Eq", "Eq.refl"], equality ()), permission (env, "HAdd.hAdd", additionNames ())), listConcat (permission (env, "HMul.hMul", multiplicationNames ()), listConcat (permission (env, "OfNat.ofNat", numeralNames ()), permission (env, "Prod.snd", ["Prod", "Prod.mk", "Prod.snd"]))))
+
+    permission (env, head, names) = allowed (env, head, names, selected names)
+
+    selected names = filterList (listConcat (listConcat (NumericCanonical::definitions (), NumericCanonical::inductives ()), listConcat (NumericCanonical::multiplication (), listConcat (extraAddition (), extraProducts ()))), \decl => listContains (names, decl.name))
+
+    multiplicationNames () = ["HMul", "HMul.hMul", "HMul.mk", "Mul", "Mul.mk", "Mul.mul", "Nat", "Nat.add", "Nat.add.match_1", "Nat.below", "Nat.brecOn", "Nat.brecOn.go", "Nat.casesOn", "Nat.mul", "Nat.mul.match_1", "Nat.rec", "Nat.succ", "Nat.zero", "OfNat", "OfNat.mk", "OfNat.ofNat", "PProd", "PProd.mk", "PUnit", "PUnit.unit", "instHMul", "instMulNat", "instOfNatNat", "outParam"]
+
+    numeralNames () = ["Nat", "Nat.succ", "Nat.zero", "OfNat", "OfNat.mk", "OfNat.ofNat", "instOfNatNat"]
+
+    allowed (env, head, names, expected) = match complete (names, expected) && foldList (expected, true, \(ok, decl) => ok && matches (env, decl))
+        true => [head]
+        false => []
+
+    complete (names, expected) = listLength names == listLength expected && foldList (names, true, \(ok, name) => ok && listContains (mapList (expected, \decl => decl.name), name))
+
+    matches (env, expected) = match Environment::find (env, expected.name)
+        Error _ => false
+        Success actual => listLength actual.params == listLength expected.params && Numeric::declared (env, renamed (expected, actual.params))
+
+    renamed (decl, names) = decl(params = names, ty = Terms::instantiateLevels (decl.ty, decl.params, mapList (names, \name => Param name)), body = body (decl.body, decl.params, mapList (names, \name => Param name)))
+
+    body (source, params, levels) = match source
+        Definition value => Definition (Terms::instantiateLevels (value, params, levels))
+        Recursor info => Recursor (info(elimRules = mapList (info.elimRules, \rule => rule(ruleRhs = Terms::instantiateLevels (rule.ruleRhs, params, levels)))))
+        other => other
+
+    additionNames () = ["Add", "Add.add", "Add.mk", "HAdd", "HAdd.hAdd", "HAdd.mk", "Nat", "Nat.add", "Nat.add.match_1", "Nat.below", "Nat.brecOn", "Nat.brecOn.go", "Nat.casesOn", "Nat.rec", "Nat.succ", "Nat.zero", "PProd", "PProd.mk", "PUnit", "PUnit.unit", "instAddNat", "instHAdd", "outParam"]
+
+    // Generated from the pinned nat_add_comm.ndjson declaration trees.
+    equality () = [Decl(name = "Eq", params = ["u_1"], ty = Pi "x" (Sort (Param "u_1")) (Pi "x" (BVar 0) (Pi "x" (BVar 1) (Sort (Zero)))), body = TypeFormer (Family(familyParams = 2, familyIndices = 1, familyCtors = ["Eq.refl"], familyRecursive = false, familyReflexive = false, familyAll = ["Eq"], familyNested = 0))), Decl(name = "Eq.refl", params = ["u_1"], ty = Pi "x" (Sort (Param "u_1")) (Pi "x" (BVar 0) (App (App (App (Const "Eq" [Param "u_1"]) (BVar 1)) (BVar 0)) (BVar 0))), body = Constructor (Ctor(ctorFamily = "Eq", ctorIndex = 0, ctorParams = 2, ctorFields = 0)))]
+
+    extraAddition () = [
+        Decl(name = "Add", params = ["u"], ty = Pi "x" (Sort (Succ (Param "u"))) (Sort (Succ (Param "u"))), body = TypeFormer (Family(familyParams = 1, familyIndices = 0, familyCtors = ["Add.mk"], familyRecursive = false, familyReflexive = false, familyAll = ["Add"], familyNested = 0))),
+        Decl(name = "Add.add", params = ["u"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (App (Const "Add" [Param "u"]) (BVar 0)) (Pi "x" (BVar 1) (Pi "x" (BVar 2) (BVar 3)))), body = Definition (Lam "x" (Sort (Succ (Param "u"))) (Lam "x" (App (Const "Add" [Param "u"]) (BVar 0)) (Proj "Add" 0 (BVar 0))))),
+        Decl(name = "Add.mk", params = ["u"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Pi "x" (BVar 0) (Pi "x" (BVar 1) (BVar 2))) (App (Const "Add" [Param "u"]) (BVar 1))), body = Constructor (Ctor(ctorFamily = "Add", ctorIndex = 0, ctorParams = 1, ctorFields = 1))),
+        Decl(name = "HAdd", params = ["u", "v", "w"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Sort (Max (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (Param "w")))))), body = TypeFormer (Family(familyParams = 3, familyIndices = 0, familyCtors = ["HAdd.mk"], familyRecursive = false, familyReflexive = false, familyAll = ["HAdd"], familyNested = 0))),
+        Decl(name = "HAdd.hAdd", params = ["u", "v", "w"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Pi "x" (App (App (App (Const "HAdd" [Param "u", Param "v", Param "w"]) (BVar 2)) (BVar 1)) (BVar 0)) (Pi "x" (BVar 3) (Pi "x" (BVar 3) (BVar 3)))))), body = Definition (Lam "x" (Sort (Succ (Param "u"))) (Lam "x" (Sort (Succ (Param "v"))) (Lam "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Lam "x" (App (App (App (Const "HAdd" [Param "u", Param "v", Param "w"]) (BVar 2)) (BVar 1)) (BVar 0)) (Proj "HAdd" 0 (BVar 0))))))),
+        Decl(name = "HAdd.mk", params = ["u", "v", "w"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Pi "x" (Pi "x" (BVar 2) (Pi "x" (BVar 2) (BVar 2))) (App (App (App (Const "HAdd" [Param "u", Param "v", Param "w"]) (BVar 3)) (BVar 2)) (BVar 1))))), body = Constructor (Ctor(ctorFamily = "HAdd", ctorIndex = 0, ctorParams = 3, ctorFields = 1))),
+        Decl(name = "instAddNat", params = [], ty = App (Const "Add" [Zero]) (Const "Nat" []), body = Definition (App (App (Const "Add.mk" [Zero]) (Const "Nat" [])) (Const "Nat.add" []))),
+        Decl(name = "instHAdd", params = ["u_1"], ty = Pi "x" (Sort (Succ (Param "u_1"))) (Pi "x" (App (Const "Add" [Param "u_1"]) (BVar 0)) (App (App (App (Const "HAdd" [Param "u_1", Param "u_1", Param "u_1"]) (BVar 1)) (BVar 1)) (BVar 1))), body = Definition (Lam "x" (Sort (Succ (Param "u_1"))) (Lam "x" (App (Const "Add" [Param "u_1"]) (BVar 0)) (App (App (App (App (Const "HAdd.mk" [Param "u_1", Param "u_1", Param "u_1"]) (BVar 1)) (BVar 1)) (BVar 1)) (Lam "x" (BVar 1) (Lam "x" (BVar 2) (App (App (App (App (Const "Add.add" [Param "u_1"]) (BVar 3)) (BVar 2)) (BVar 1)) (BVar 0)))))))),
+        Decl(name = "outParam", params = ["u"], ty = Pi "x" (Sort (Param "u")) (Sort (Param "u")), body = Definition (Lam "x" (Sort (Param "u")) (BVar 0)))
+    ]
+
+    // Declaration trees from pinned word-seed.ndjson, SHA-256
+    // 14b3950c6e2ea1e73ed3fa529baf236346cb397da4bfa5d695c0049511b81a33.
+    // Presentation identity only: these do not alter kernel reduction gates.
+    extraProducts () = [
+        Decl(name = "HMul", params = ["u", "v", "w"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Sort (Max (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (Param "w")))))), body = TypeFormer (Family(familyParams = 3, familyIndices = 0, familyCtors = ["HMul.mk"], familyRecursive = false, familyReflexive = false, familyAll = ["HMul"], familyNested = 0))),
+        Decl(name = "HMul.hMul", params = ["u", "v", "w"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Pi "x" (App (App (App (Const "HMul" [Param "u", Param "v", Param "w"]) (BVar 2)) (BVar 1)) (BVar 0)) (Pi "x" (BVar 3) (Pi "x" (BVar 3) (BVar 3)))))), body = Definition (Lam "x" (Sort (Succ (Param "u"))) (Lam "x" (Sort (Succ (Param "v"))) (Lam "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Lam "x" (App (App (App (Const "HMul" [Param "u", Param "v", Param "w"]) (BVar 2)) (BVar 1)) (BVar 0)) (Proj "HMul" 0 (BVar 0))))))),
+        Decl(name = "HMul.mk", params = ["u", "v", "w"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (Const "outParam" [Succ (Succ (Param "w"))]) (Sort (Succ (Param "w")))) (Pi "x" (Pi "x" (BVar 2) (Pi "x" (BVar 2) (BVar 2))) (App (App (App (Const "HMul" [Param "u", Param "v", Param "w"]) (BVar 3)) (BVar 2)) (BVar 1))))), body = Constructor (Ctor(ctorFamily = "HMul", ctorIndex = 0, ctorParams = 3, ctorFields = 1))),
+        Decl(name = "Mul", params = ["u"], ty = Pi "x" (Sort (Succ (Param "u"))) (Sort (Succ (Param "u"))), body = TypeFormer (Family(familyParams = 1, familyIndices = 0, familyCtors = ["Mul.mk"], familyRecursive = false, familyReflexive = false, familyAll = ["Mul"], familyNested = 0))),
+        Decl(name = "Mul.mk", params = ["u"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Pi "x" (BVar 0) (Pi "x" (BVar 1) (BVar 2))) (App (Const "Mul" [Param "u"]) (BVar 1))), body = Constructor (Ctor(ctorFamily = "Mul", ctorIndex = 0, ctorParams = 1, ctorFields = 1))),
+        Decl(name = "Mul.mul", params = ["u"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (App (Const "Mul" [Param "u"]) (BVar 0)) (Pi "x" (BVar 1) (Pi "x" (BVar 2) (BVar 3)))), body = Definition (Lam "x" (Sort (Succ (Param "u"))) (Lam "x" (App (Const "Mul" [Param "u"]) (BVar 0)) (Proj "Mul" 0 (BVar 0))))),
+        Decl(name = "Prod", params = ["u", "v"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Sort (Max (Succ (Param "u")) (Succ (Param "v"))))), body = TypeFormer (Family(familyParams = 2, familyIndices = 0, familyCtors = ["Prod.mk"], familyRecursive = false, familyReflexive = false, familyAll = ["Prod"], familyNested = 0))),
+        Decl(name = "Prod.mk", params = ["u", "v"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (BVar 1) (Pi "x" (BVar 1) (App (App (Const "Prod" [Param "u", Param "v"]) (BVar 3)) (BVar 2))))), body = Constructor (Ctor(ctorFamily = "Prod", ctorIndex = 0, ctorParams = 2, ctorFields = 2))),
+        Decl(name = "Prod.snd", params = ["u", "v"], ty = Pi "x" (Sort (Succ (Param "u"))) (Pi "x" (Sort (Succ (Param "v"))) (Pi "x" (App (App (Const "Prod" [Param "u", Param "v"]) (BVar 1)) (BVar 0)) (BVar 1))), body = Definition (Lam "x" (Sort (Succ (Param "u"))) (Lam "x" (Sort (Succ (Param "v"))) (Lam "x" (App (App (Const "Prod" [Param "u", Param "v"]) (BVar 1)) (BVar 0)) (Proj "Prod" 1 (BVar 0)))))),
+        Decl(name = "instHMul", params = ["u_1"], ty = Pi "x" (Sort (Succ (Param "u_1"))) (Pi "x" (App (Const "Mul" [Param "u_1"]) (BVar 0)) (App (App (App (Const "HMul" [Param "u_1", Param "u_1", Param "u_1"]) (BVar 1)) (BVar 1)) (BVar 1))), body = Definition (Lam "x" (Sort (Succ (Param "u_1"))) (Lam "x" (App (Const "Mul" [Param "u_1"]) (BVar 0)) (App (App (App (App (Const "HMul.mk" [Param "u_1", Param "u_1", Param "u_1"]) (BVar 1)) (BVar 1)) (BVar 1)) (Lam "x" (BVar 1) (Lam "x" (BVar 2) (App (App (App (App (Const "Mul.mul" [Param "u_1"]) (BVar 3)) (BVar 2)) (BVar 1)) (BVar 0)))))))),
+        Decl(name = "instMulNat", params = [], ty = App (Const "Mul" [Zero]) (Const "Nat" []), body = Definition (App (App (Const "Mul.mk" [Zero]) (Const "Nat" [])) (Const "Nat.mul" [])))]
+
+(** A frame-local query boundary. The pure checker remains independently
+    callable; session JSON never carries a checked catalogue. *)
+effect CatalogueQuery
+    catalogue : string => Result<List<ImportedProof>, string>
+
+type CatalogueMemo =
+    memoSource : string
+    memoOutcome : Result<List<ImportedProof>, string>
+
+module CachedImports
+    export catalogue source = perform CatalogueQuery.catalogue source
+
+    export check (source, name) = match catalogue source
+        Error message => Error(message = message)
+        Success entries => selected (source, name, entries)
+
+    selected (source, name, entries) = match entries
+        [] => ImportedProofs::check (source, name)
+        [entry, ...rest] => match entry.importedName == name
+            true => Success(value = entry)
+            false => selected (source, name, rest)
+
+    export run work = memoized (ImportedProofs::catalogue, work)
+
+    export memoized (compute, work) =
+        mut memos = []
+        handle CatalogueQuery
+            catalogue source => match found (source, memos)
+                [memo, ..._rest] => memo.memoOutcome
+                [] =>
+                    outcome = compute source
+                    memos := listAppend (memos, CatalogueMemo(memoSource = source, memoOutcome = outcome))
+                    outcome
+        work ()
+
+    found (source, memos) = match memos
+        [] => []
+        [memo, ...rest] => match memo.memoSource == source
+            true => [memo]
+            false => found (source, rest)

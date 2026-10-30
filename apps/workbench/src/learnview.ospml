@@ -10,6 +10,7 @@ import workbench::Lessons
 import workbench::Blocks
 import workbench::Tutors
 import workbench::Formulas
+import workbench::Notation
 import workbench::Reviews
 
 (** The completed challenge keys as their own signal, so typing an answer does not refresh the catalogue ([LESSONS-STORE]). *)
@@ -22,6 +23,9 @@ type ChallengeState = MissingChallenge string | ReadyChallenge Challenge Attempt
 (** The Learn regions: the catalogue, the open lesson and each challenge ([LESSONS-MODE]). *)
 module LearnViews
     shelf () = perform Signal<Shelf>.read ()
+
+    (** Challenge identifiers are scoped to their lesson, including their host region identity. *)
+    export regionKey (slug, id) = "challenge:" + Tutors::keyOf (slug, id)
 
     (** [LESSONS-MODE] Every lesson in catalogue order, with its minutes, a tick when every challenge in it is right, and why it failed to load. *)
     export catalogue () =
@@ -60,7 +64,7 @@ module LearnViews
         Mathematics tree spoken => Ui::math (tree, spoken)
         Picture still => Ui::image ("lessons/" + still.stillSource, still.stillAlt, still.stillWidth, still.stillHeight)
         Clip film => Ui::video ("lessons/" + film.filmSource, "lessons/" + film.filmPoster, "lessons/" + film.filmCaptions, film.filmAlt, film.filmSeconds)
-        Exercise item => Ui::slot ("challenge:" + item.challengeId)
+        Exercise item => Ui::slot (regionKey ((shelf ()).openSlug, item.challengeId))
 
     (** The challenge `id` of the open lesson, or why there is none. *)
     export find (source, id) = match Lessons::read source
@@ -77,7 +81,7 @@ module LearnViews
         Error said => MissingChallenge said
         Success item => ReadyChallenge item (Tutors::attempt (bench.tutor, Tutors::keyOf (bench.shelf.openSlug, id)))
 
-    posed (item, work) = Ui::section (titleOf item.challengeTask, "", listConcat (listConcat ([Ui::text item.challengePrompt], given item.challengeTask), listConcat ([answered (item, work)], listConcat (Feedback::marks work, Feedback::controls (item, work)))))
+    posed (item, work) = Ui::section (titleOf item.challengeTask, "", listConcat (listConcat ([Ui::text item.challengePrompt], given item.challengeTask), listConcat ([answered (item, work)], listConcat (FormulaKeys::pad (item.challengeTask, item.challengeId), listConcat (Feedback::marks work, Feedback::controls (item, work))))))
 
     titleOf task = match task
         ProveTask _ => "Prove it"
@@ -92,8 +96,42 @@ module LearnViews
     // A prove answer is an editor, so the kernel's refusal can underline the step it refused.
     answered (item, work) = match item.challengeTask
         ProveTask _ => Ui::editor ("Your steps", work.attemptAnswer, length work.attemptAnswer, Feedback::underline work, Answer item.challengeId, Answer item.challengeId)
-        StateTask _ => ui::Field(label = "Your formula", value = work.attemptAnswer, prompt = "p → q", secure = false, multiline = false, commit = ui::OnEdit, bind = Answer item.challengeId)
+        StateTask _ => Ui::column [Ui::caption "Your formula", Ui::focusedInlineEditor ("Your formula", work.attemptAnswer, Tutors::cursorOf work, Tutors::focusOf work, Answer item.challengeId, FormulaPlace item.challengeId)]
         JudgeTask _ => Ui::picker ("Does the kernel accept this proof?", [Ui::choice ("checks", "It checks"), Ui::choice ("fails", "It fails")], Feedback::chosen work.attemptRuling, Pick item.challengeId)
+
+(** [LESSONS-STATE] The formula keypad: the challenge's permitted variables and the parser's supported symbols, each inserted at the answer's caret. *)
+module FormulaKeys
+    // The parser's connectives, read from the one notation table; the names are the keyboard's own wording.
+    named () = [["to", "implies"], ["not", "not"], ["and", "and"], ["or", "or"], ["iff", "both ways"]]
+
+    keyButton (id, symbol, label) = Ui::button (label, "", Key id symbol)
+
+    symbolButton (id, pair) =
+        abbreviation = listGet pair 0 ?: ""
+        symbol = Notation::symbolOf abbreviation
+        keyButton (id, symbol, symbol + " " + (listGet pair 1 ?: ""))
+
+    variableButtons (task, id) = match task
+        StateTask stating => mapList (stating.statedVariables, \name => keyButton (id, name, name))
+        _ => []
+
+    symbolButtons id = listConcat (mapList (named (), \pair => symbolButton (id, pair)), [keyButton (id, "(", "("), keyButton (id, ")", ")")])
+
+    (** Every key of a state challenge in display order; the other tasks have no formula keys. *)
+    export buttons (task, id) = match task
+        StateTask _ => listConcat (variableButtons (task, id), symbolButtons id)
+        _ => []
+
+    paired keys = pairedFrom (keys, 0)
+
+    pairedFrom (keys, index) = match index >= length keys
+        true => []
+        false => listPrepend (pairedFrom (keys, satAdd index 2), Ui::row (Lists::slice (keys, index, satAdd index 2)))
+
+    (** The visible keypad follows the formula field; short key rows fit narrow lesson panes. *)
+    export pad (task, id) = match task
+        StateTask _ => [Ui::section ("Insert a symbol", "Click a key to insert at the caret.", listConcat (paired (variableButtons (task, id)), paired (symbolButtons id)))]
+        _ => []
 
 (** The kernel's mark, hints and controls of one challenge ([LESSONS-FEEDBACK]). *)
 module Feedback

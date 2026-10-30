@@ -69,10 +69,25 @@ function shadow(style: Record<string, unknown>): string[] {
   return value === "" ? [] : ["box-shadow:0 20px 50px color-mix(in srgb, var(--osp-brand-primary) 13.33%, transparent)"];
 }
 
+function dimensions(style: Record<string, unknown>): string[] {
+  const inset = style.viewportHeightInset === undefined ? -1 : style.viewportHeightInset;
+  if (typeof inset !== "number" || !Number.isSafeInteger(inset) || inset < -1 || inset > 32768) {
+    throw new Error("Frame viewportHeightInset must be a bounded integer of at least -1");
+  }
+  const width = metric(style, "width"), height = metric(style, "height");
+  const scrollY = style.scrollY === undefined ? false : style.scrollY;
+  if (typeof scrollY !== "boolean") throw new Error("Frame scrollY must be a boolean");
+  const bound = `max(${height}px, calc(100dvh - ${inset}px))`;
+  const viewport = scrollY ? [`max-height:${bound}`, `min-height:${height}px`, "height:auto"] : [`height:${bound}`];
+  return [...(width === 0 ? [] : [`width:${width}px`]),
+    ...(scrollY ? ["overflow-y:auto"] : []),
+    ...(inset >= 0 ? [...viewport, "flex:0 0 auto"] : height === 0 ? [] : [`height:${height}px`]),
+    ...(style.grow && inset === -1 ? ["flex:1", "min-height:0", "align-self:stretch"] : [])];
+}
+
 function declarations(style: Record<string, unknown>): string[] {
   if (typeof style.grow !== "boolean") throw new Error("Frame grow must be a boolean");
   const padding = ["top", "right", "bottom", "left"].map(key => `${metric(style, key)}px`).join(" ");
-  const sizes = ["width", "height"].flatMap(key => metric(style, key) === 0 ? [] : [`${key}:${metric(style, key)}px`]);
   const edge = style.lineEdge ?? "all";
   if (!["all", "top", "right", "bottom", "left"].includes(String(edge))) throw new Error("Frame lineEdge must name an edge");
   const border = edge === "all" ? "border" : `border-${edge}`;
@@ -80,8 +95,8 @@ function declarations(style: Record<string, unknown>): string[] {
     const colour = token(style, key);
     return colour === "" ? [] : [`${property}:${key === "line" ? "1px solid " : ""}${colour}`];
   });
-  return [...presentation(style), ...sizes, ...surfaces, `padding:${padding}`, `border-radius:${metric(style, "radius")}px`,
-    `--osp-stack-gap:${metric(style, "gap")}px`, ...(style.grow ? ["flex:1", "min-height:0", "align-self:stretch"] : [])];
+  return [...presentation(style), ...dimensions(style), ...surfaces, `padding:${padding}`, `border-radius:${metric(style, "radius")}px`,
+    `--osp-stack-gap:${metric(style, "gap")}px`];
 }
 
 /** Draw a shared frame with its application-authored geometry and content. */

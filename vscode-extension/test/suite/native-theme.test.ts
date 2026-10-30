@@ -5,6 +5,7 @@ import type { Frame } from "playwright-core";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import * as NativeRendering from "../../client/src/osprey-ui/render";
 import * as WebviewHtml from "../../client/src/osprey-ui/webview-html";
+import * as Wasi from "../../client/src/osprey-ui/wasi";
 import { withWorkbench } from "./workbench-browser-kit";
 import { themeStyle } from "../../client/src/osprey-ui/theme";
 
@@ -43,21 +44,46 @@ suite("native application theme", () => {
 });
 
 type GestureEnd = "commit" | "off" | "outside" | "unrelated" | "primary-touch" | "cancel" | "fatal";
+const gestureRuns: { started: number; title: boolean; finished?: number }[] = [];
+
+function observeGestureRuntime(): void {
+  gestureRuns.length = 0;
+  const actual = Wasi.runWasi;
+  sinon.stub(Wasi, "runWasi").callsFake(async (module, input, options) => {
+    const run = { started: Date.now(), title: input.includes("Keep held gesture"), finished: undefined as number | undefined };
+    gestureRuns.push(run);
+    try { return await actual(module, input, options); }
+    finally { run.finished = Date.now(); }
+  });
+}
 
 function observeGestureMessages(): void {
+  observeGestureRuntime();
   const actual = WebviewHtml.workspaceHtml;
   sinon.stub(WebviewHtml, "workspaceHtml").callsFake(options => {
     const html = actual(options), boundary = "const vscode = acquireVsCodeApi();";
     assert.ok(html.includes(boundary), "observe the real host API without replacing its event delivery");
     return html.replace(boundary, String.raw`const api = acquireVsCodeApi();
       window.ospreyGestureMessages = [];
-      const vscode = Object.assign({}, api, { postMessage: function (message) { window.ospreyGestureMessages.push(message); return api.postMessage(message); } });`);
+      const vscode = Object.assign({}, api, { postMessage: function (message) { window.ospreyGestureMessages.push(Object.assign({ recordedAt: Date.now() }, message)); return api.postMessage(message); } });`);
   });
 }
 
 async function heldTitleRender(frame: Frame): Promise<void> {
-  await pollUntilResult({ fn: () => (NativeRendering.renderWorkspace as sinon.SinonSpy).getCalls().some(call =>
-    JSON.stringify([...call.args[0].regions]).includes("Keep held gesture")), until: Boolean, timeoutMs: 1000, description: "the real title command renders while the appearance button is pressed" });
+  const awaitedAt = Date.now();
+  try {
+    await pollUntilResult({ fn: () => (NativeRendering.renderWorkspace as sinon.SinonSpy).getCalls().some(call =>
+      JSON.stringify([...call.args[0].regions]).includes("Keep held gesture")), until: Boolean, timeoutMs: 1000, description: "the real title command renders while the appearance button is pressed" });
+  } catch (error) {
+    const snapshot = await frame.evaluate(() => {
+      const title = document.querySelector<HTMLInputElement>('input[aria-label="Solution title"]');
+      return { messages: (document.defaultView as unknown as { ospreyGestureMessages: unknown[] }).ospreyGestureMessages,
+        visibility: document.visibilityState, focused: document.hasFocus(), busy: document.getElementById("osprey-root")?.getAttribute("aria-busy"),
+        draft: title?.value, committed: title?.getAttribute("data-value") };
+    });
+    console.error("Held title timing", JSON.stringify({ awaitedAt, observed: Date.now(), runs: gestureRuns, snapshot }));
+    throw error;
+  }
   await frame.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
 }
 
