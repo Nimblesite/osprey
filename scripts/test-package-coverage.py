@@ -17,11 +17,19 @@ from pathlib import Path
 from package_coverage_evidence import record_measurements, seal_evidence, source_inputs
 from package_coverage_test_support import (
     ROOT, FOOTER, GOLDEN, CoverageTestCase, add_package, bad_report_cases,
-    file_report, check_c_runtime, own_report, py_source, write_gates, write_json,
+    file_report, check_c_runtime, c_runtime_gate_cases, own_report, py_source, write_gates, write_json,
 )
 
 
 class PackageThresholdTests(CoverageTestCase):
+    def test_extracted_arc_headers_preserve_the_library_threshold(self):
+        gates = json.loads((ROOT / "coverage-thresholds.json").read_text())["projects"]["c_runtime"]
+        headers = list((ROOT / "compiler/runtime").glob("memory_arc_*.h"))
+        self.assertTrue(headers)
+        for header in headers:
+            self.assertIn(header.stem, gates)
+            self.assertGreaterEqual(gates[header.stem].get("threshold", 90), gates["memory_arc"]["threshold"])
+
     def test_threshold_configuration_has_no_measurements(self):
         config = json.loads((ROOT / "coverage-thresholds.json").read_text())
         self.assertNotIn("package_measurements", config)
@@ -109,9 +117,9 @@ class CheckerTests(CoverageTestCase):
                 self.assert_coverage(fixture, covered, 1375, code)
 
     def test_c_runtime_omitted_threshold_enforces_90_and_keeps_higher_overrides(self):
-        for percentage, entry, code in ((89, {}, 2), (90, {}, 0), (94, {"threshold": 95}, 2), (95, {"threshold": 95}, 0)):
+        for percentage, entry, code, suffix in c_runtime_gate_cases():
             with self.subTest(percentage=percentage, entry=entry):
-                result = check_c_runtime(Path(tempfile.mkdtemp(dir=self.base)), percentage, entry)
+                result = check_c_runtime(Path(tempfile.mkdtemp(dir=self.base)), percentage, entry, suffix)
                 self.assert_exit(result, code)
 
     def test_c_runtime_invalid_thresholds_fail_closed(self):
@@ -125,7 +133,9 @@ class CheckerTests(CoverageTestCase):
         fixture = self.simple_fixture()
         write_json(fixture.reports / "demo.json", own_report("demo", 4, 4))
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, "A raw report does not prove its suite passed: " + result.stdout)
+        self.assert_exit(result, 1, "A raw report does not prove its suite passed: ")
+        self.assertIn("coverage unavailable", result.stdout)
+        self.assertNotIn("own source lines", result.stdout)
 
     def test_recording_rejects_inputs_changed_by_the_gate(self):
         fixture = self.simple_fixture()

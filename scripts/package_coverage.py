@@ -377,10 +377,11 @@ def collect_package(root: Path, compiler: Path, reports: Path, kind: str, name: 
 
 
 def print_result(result: dict) -> None:
-    shown = "n/a" if result["percentage"] is None else f"{result['percentage']:.1f}%"
+    shown = ("coverage unavailable" if result["percentage"] is None else
+             f"{result['covered']}/{result['total']} own source lines, {result['percentage']:.1f}%")
     status = "OK  " if result["pass"] else "FAIL"
     override = f" (threshold {result['threshold']}%)" if result["threshold"] > MIN_THRESHOLD else ""
-    print(f"{status} {result['name']}: {result['covered']}/{result['total']} own source lines, {shown}{override}")
+    print(f"{status} {result['name']}: {shown}{override}")
     for problem in result["missing_evidence"]:
         print(f"     - {problem}")
 

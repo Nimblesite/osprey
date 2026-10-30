@@ -134,11 +134,20 @@ def write_gates(root, entries, apps=None):
     write_json(root / "coverage-thresholds.json", {"projects": projects})
 
 
-def check_c_runtime(root, percentage, entry):
+def c_runtime_gate_cases():
+    return [
+        (89, {}, 2, "c"), (90, {}, 0, "c"),
+        (94, {"threshold": 95}, 2, "c"), (95, {"threshold": 95}, 0, "c"),
+        (94, {"threshold": 95}, 2, "h"), (95, {"threshold": 95}, 0, "h"),
+        (None, {"threshold": 95}, 2, "h"),
+    ]
+
+
+def check_c_runtime(root, percentage, entry, suffix="c"):
     write_json(root / "coverage-thresholds.json", {"projects": {"c_runtime": {"probe": entry}}})
     summary = root / "compiler/bin/cov/probe/summary.txt"
     summary.parent.mkdir(parents=True)
-    summary.write_text(f"File '../../../runtime/probe.c'\nLines executed:{percentage}% of 100\n")
+    summary.write_text("" if percentage is None else f"File '../../../runtime/probe.{suffix}'\nLines executed:{percentage}% of 100\n")
     source = (ROOT / "scripts/make/tests.mk").read_text()
     recipe = source.split("_coverage_check_c_runtime:\n", 1)[1].split("\n\n", 1)[0]
     gate = recipe[recipe.index("\t@command -v jq"):]
