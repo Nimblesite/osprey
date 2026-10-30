@@ -33,6 +33,11 @@ const BUILTINS: &str = "fn listInt() -> List<int> = [1]\n\
     fn givesInt(v: int) = 1\n\
     fn givesRes(v: int) -> Result<int, string> = v\n";
 
+const ERASED_ROWS: &str = "type Row = { held: string }\n\
+    fn erasedRows() -> List<any> = [Row { held: \"x\" }]\n\
+    fn erasedResult() -> Result<List<any>, string> = [Row { held: \"x\" }]\n\
+    fn takesRows(rows: List<Row>) = true\n";
+
 // ---------------------------------------------------------------------------
 // The constructor entries: identical instantiations flow, coercions do not
 // ---------------------------------------------------------------------------
@@ -121,6 +126,20 @@ plain_cases! {
 
     /// Arity is checked before any of this.
     a_function_slot_rejects_an_arity_mismatch: blocked(BUILTINS, "(int, int) -> bool", "takesInt");
+}
+
+plain_cases! {
+    /// Erased elements cannot be recovered by adapting a callback's return.
+    a_function_slot_never_recovers_erased_list_elements:
+        blocked(ERASED_ROWS, "() -> List<Row>", "erasedRows"),
+        blocked(ERASED_ROWS, "() -> Result<List<Row>, string>", "erasedResult"),
+        blocked(ERASED_ROWS, "() -> Result<List<Row>, string>", "erasedRows"),
+        blocked(ERASED_ROWS, "List<Row>", "erasedRows()"),
+        blocked(ERASED_ROWS, "Result<List<Row>, string>", "erasedRows()");
+
+    /// A callback requiring concrete rows cannot consume arbitrary erased data.
+    a_function_slot_never_recovers_erased_argument_elements:
+        blocked(ERASED_ROWS, "(List<any>) -> bool", "takesRows");
 }
 
 /// The function rules and the constructor rules are the SAME relation applied
