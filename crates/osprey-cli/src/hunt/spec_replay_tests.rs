@@ -99,11 +99,116 @@ fn unmodelled_findings_are_skipped_even_when_nothing_else_is_replayed() {
 
 #[cfg(unix)]
 fn script(dir: &Dir, name: &str, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let path = dir.0.join(name);
-    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("script");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    write_executable_fixture(&path, format!("#!/bin/sh\n{body}\n").as_bytes()).expect("script");
     path
+}
+
+// A parent-held writable descriptor can reach a concurrent fork and cause ETXTBSY.
+#[cfg(unix)]
+pub(super) fn write_executable_fixture(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let child = std::process::Command::new("/usr/bin/tee")
+        .arg(path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .spawn()?;
+    finish_fixture_write(child, bytes)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+}
+
+#[cfg(unix)]
+fn finish_fixture_write(mut child: std::process::Child, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let written = child
+        .stdin
+        .take()
+        .ok_or_else(|| std::io::Error::other("fixture writer stdin missing"))
+        .and_then(|mut stdin| stdin.write_all(bytes));
+    let status = child.wait();
+    written?;
+    if status?.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other("fixture writer failed"))
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn fixture_writer_does_not_enter_the_parallel_parent_descriptor_table() -> std::io::Result<()> {
+    let dir = Dir::new("fixture-writer-descriptors");
+    let path = dir.0.join("held-writer");
+    assert!(std::process::Command::new("mkfifo")
+        .arg(&path)
+        .status()?
+        .success());
+    let inherited = observe_fixture_writer(&dir, &"x".repeat(2 * 1024 * 1024))?;
+    assert!(
+        inherited.is_empty(),
+        "a parallel fork could inherit fixture writers: {inherited:?}"
+    );
+    assert_one_shot_fixture(&dir)
+}
+
+#[cfg(target_os = "linux")]
+fn assert_one_shot_fixture(dir: &Dir) -> std::io::Result<()> {
+    let path = script(dir, "one-shot", "printf 'fixture-ok\\n'");
+    let output = std::process::Command::new(path).output()?;
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"fixture-ok\n");
+    assert!(output.stderr.is_empty());
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn observe_fixture_writer(dir: &Dir, body: &str) -> std::io::Result<Vec<PathBuf>> {
+    use std::io::Read;
+    let path = dir.0.join("held-writer");
+    std::thread::scope(|scope| {
+        let writer = scope.spawn(|| script(dir, "held-writer", body));
+        let mut reader = std::fs::File::open(&path)?;
+        let inherited = writable_fixture_descriptors(&path);
+        let mut received = Vec::new();
+        let read = reader.read_to_end(&mut received);
+        let joined = writer
+            .join()
+            .map_err(|_panic_payload| std::io::Error::other("fixture writer panicked"));
+        assert_eq!(read?, received.len());
+        assert_eq!(joined?, path);
+        assert_eq!(received, format!("#!/bin/sh\n{body}\n").as_bytes());
+        inherited
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn writable_fixture_descriptors(path: &Path) -> std::io::Result<Vec<PathBuf>> {
+    std::fs::read_dir("/proc/self/fd")?.try_fold(Vec::new(), |mut descriptors, entry| {
+        let entry = entry?;
+        if writable_fixture_descriptor(&entry, path)? {
+            descriptors.push(entry.path());
+        }
+        Ok(descriptors)
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn writable_fixture_descriptor(entry: &std::fs::DirEntry, path: &Path) -> std::io::Result<bool> {
+    let target = match std::fs::read_link(entry.path()) {
+        Ok(target) => target,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    if target != path {
+        return Ok(false);
+    }
+    let info = std::fs::read_to_string(Path::new("/proc/self/fdinfo").join(entry.file_name()))?;
+    let flags = info
+        .lines()
+        .find_map(|line| line.strip_prefix("flags:"))
+        .ok_or_else(|| std::io::Error::other("descriptor flags missing"))?;
+    let flags = u32::from_str_radix(flags.trim(), 8).map_err(std::io::Error::other)?;
+    Ok(flags & 0o3 != 0)
 }
 
 #[cfg(unix)]

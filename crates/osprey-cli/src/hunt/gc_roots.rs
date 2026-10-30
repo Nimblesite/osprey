@@ -53,8 +53,8 @@ fn transform(opt: &Path, plugin: &Path, module: &Path) -> Result<(), String> {
 
 #[cfg(all(test, unix))]
 mod tests {
+    use super::super::spec_replay_tests::write_executable_fixture;
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn failed_pass_preserves_original_module_and_reports_diagnostic() {
@@ -63,8 +63,8 @@ mod tests {
         let module = root.join("main.ll");
         let opt = root.join("opt");
         std::fs::write(&module, "original module").expect("module");
-        std::fs::write(&opt, "#!/bin/sh\necho unsupported-root >&2\nexit 1\n").expect("script");
-        std::fs::set_permissions(&opt, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        write_executable_fixture(&opt, b"#!/bin/sh\necho unsupported-root >&2\nexit 1\n")
+            .expect("script");
         let error = transform(&opt, &root.join("pass.so"), &module).expect_err("must stop");
         assert!(error.contains("unsupported-root"));
         assert_eq!(

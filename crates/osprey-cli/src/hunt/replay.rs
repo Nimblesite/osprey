@@ -193,9 +193,11 @@ pub(super) fn raw_status(exit_code: i32, signal: i32) -> ExitStatus {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
+    use super::super::spec_findings_tests::Dir;
+    #[cfg(unix)]
+    use super::super::spec_replay_tests::write_executable_fixture;
+    use super::*;
 
     fn finding(files: Vec<(String, Vec<u8>)>) -> Finding {
         Finding {
@@ -240,14 +242,18 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn replay_fixture() -> (Dir, PathBuf, PathBuf) {
+        let scratch = Dir::new("native-replay");
+        let script = scratch.0.join("probe");
+        let workdir = scratch.0.join("work");
+        (scratch, script, workdir)
+    }
+
+    #[cfg(unix)]
     #[test]
     fn stdin_and_files_reach_the_native_program() {
-        let workdir =
-            std::env::temp_dir().join(format!("osprey-hunt-replay-{}", std::process::id()));
-        let script =
-            std::env::temp_dir().join(format!("osprey-hunt-replay-{}.sh", std::process::id()));
-        std::fs::write(&script, "#!/bin/sh\nread n\n[ \"$n\" = 9 ] && [ \"$(cat data.txt)\" = payload ] && kill -SEGV $$\nexit 0\n").expect("script");
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let (_scratch, script, workdir) = replay_fixture();
+        write_executable_fixture(&script, b"#!/bin/sh\nread n\n[ \"$n\" = 9 ] && [ \"$(cat data.txt)\" = payload ] && kill -SEGV $$\nexit 0\n").expect("script");
         let crash = finding(vec![("data.txt".into(), b"payload".to_vec())]);
         assert_eq!(
             run_one(&script, &workdir, &crash).expect("replay"),
@@ -263,8 +269,6 @@ mod tests {
             matches!(run_one(&script, &workdir, &escape).expect("replay"), Replay::Skipped(reason) if reason.contains("outside"))
         );
         assert!(!workdir.join("../escape.txt").exists());
-        let _ = std::fs::remove_dir_all(&workdir);
-        let _ = std::fs::remove_file(&script);
     }
 
     #[test]

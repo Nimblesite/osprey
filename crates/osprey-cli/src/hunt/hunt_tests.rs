@@ -1,8 +1,4 @@
-//! End-to-end tests of `osprey hunt` against a stand-in `klee` executable
-//! [SYMEX-CLI] [SYMEX-FINDINGS] [SYMEX-REPLAY]. The stand-in copies a
-//! prepared KLEE output directory into `--output-dir`, so the whole pipeline
-//! (compile, link, run, scan, replay, report, exit code) runs without the
-//! engine, and the real engine is covered by `tests/hunt/` under `make`.
+//! End-to-end tests of `osprey hunt` against a stand-in `klee` executable [SYMEX-CLI] [SYMEX-FINDINGS] [SYMEX-REPLAY]. The stand-in copies a prepared KLEE output directory into `--output-dir`, so the whole pipeline (compile, link, run, scan, replay, report, exit code) runs without the engine, and the real engine is covered by `tests/hunt/` under `make`.
 
 #![expect(
     clippy::indexing_slicing,
@@ -10,6 +6,8 @@
 )]
 
 use super::spec_findings_tests::Dir;
+#[cfg(unix)]
+use super::spec_replay_tests::write_executable_fixture;
 use super::toolchain::{KLEE_ENV, RUNTIME_ENV};
 use super::*;
 #[cfg(unix)]
@@ -81,9 +79,7 @@ impl Scene {
         self.canned("info", b"Elapsed: 00:00:02\nKLEE: done: explored paths = 4\nKLEE: done: completed paths = 3\nKLEE: done: total instructions = 99\n");
     }
 
-    /// A `klee` that records its arguments in `args.txt` and the module it
-    /// was given in `module.ll`, copies the canned directory to
-    /// `--output-dir` and exits with `code`.
+    /// Records arguments in `args.txt` and the module in `module.ll`, copies canned output to `--output-dir`, then exits with `code`.
     #[cfg(unix)]
     fn fake_klee(&self, code: u8) -> PathBuf {
         self.fake_klee_saying(code, "engine-said-this")
@@ -92,7 +88,6 @@ impl Scene {
     /// [`Self::fake_klee`], with `stderr_line` as what the engine says.
     #[cfg(unix)]
     fn fake_klee_saying(&self, code: u8, stderr_line: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let script = self.root.join("klee");
         let body = format!(
             "#!/bin/sh\nroot='{root}'\nprintf '%s\\n' \"$@\" > \"$root/args.txt\"\n\
@@ -101,8 +96,7 @@ impl Scene {
              mkdir -p \"$out\" && cp \"$root\"/canned/* \"$out\"/ 2>/dev/null\necho '{stderr_line}' >&2\nexit {code}\n",
             root = self.root.display()
         );
-        std::fs::write(&script, body).expect("fake klee");
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        write_executable_fixture(&script, body.as_bytes()).expect("fake klee");
         script
     }
 
@@ -119,10 +113,8 @@ impl Scene {
     fn fake_optimizer(&self) -> PathBuf {
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
             let opt = self.root.join("opt");
-            std::fs::write(&opt, "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in *.gc.ll) out=\"$a\";; *.ll) input=\"$a\";; esac; done\ncp \"$input\" \"$out\"\n").expect("fake optimizer");
-            std::fs::set_permissions(opt, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+            write_executable_fixture(&opt, b"#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in *.gc.ll) out=\"$a\";; *.ll) input=\"$a\";; esac; done\ncp \"$input\" \"$out\"\n").expect("fake optimizer");
         }
         self.root.clone()
     }
@@ -179,9 +171,7 @@ fn a_finding_without_replay_fails_and_is_reported_as_json() {
     assert_eq!(value["incomplete"][0]["reason"], "max-time");
 }
 
-/// KLEE's own watchdog kills a run whose solver query outlives the budget and
-/// exits non-zero; the states it dumped are still read, and the report says
-/// the run was cut rather than failing as a tool error [SYMEX-KLEE-INVOCATION].
+/// KLEE's watchdog kills a solver query past its budget and exits non-zero; dumped states remain readable and the report records a cut run [SYMEX-KLEE-INVOCATION].
 #[cfg(unix)]
 #[test]
 fn a_watchdog_kill_at_the_budget_is_a_cut_run_not_a_tool_error() {
@@ -208,9 +198,7 @@ fn a_watchdog_kill_at_the_budget_is_a_cut_run_not_a_tool_error() {
     assert!(reasons.contains(&engine::HALTED_REASON), "{reasons:?}");
 }
 
-/// A project's modules share one flattened line numbering in the compiled
-/// module, so a finding at such a line is reported at the module file and the
-/// line it was written on, not at the entry file [SYMEX-FINDINGS].
+/// Flattened project line numbers resolve to the original module file and source line [SYMEX-FINDINGS].
 #[cfg(unix)]
 #[test]
 fn a_project_finding_is_reported_at_its_module_file() {
