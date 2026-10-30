@@ -85,8 +85,8 @@ function textNode(node: Record<string, unknown>): string {
   return `<p class="osp-text osp-role-${role} osp-tone-${tone}">${escapeHtml(text(node, "text"))}</p>`;
 }
 
-function evidence(node: Record<string, unknown>): string {
-  return `<div class="osp-evidence"><span class="osp-evidence-label">${escapeHtml(text(node, "label"))}</span><span class="osp-evidence-value">${escapeHtml(text(node, "value"))}</span></div>`;
+function pair(node: Record<string, unknown>): string {
+  return `<div class="osp-pair"><span class="osp-pair-label">${escapeHtml(text(node, "label"))}</span><span class="osp-pair-value">${escapeHtml(text(node, "value"))}</span></div>`;
 }
 
 function badge(node: Record<string, unknown>): string {
@@ -106,7 +106,7 @@ function link(node: Record<string, unknown>): string {
   const address = text(node, "url");
   // The host opens only HTTPS; an HTTP or credential-bearing link renders disabled.
   const safe = /^https:\/\/[^\s]+$/i.test(address) && !/^https:\/\/[^/]*@/i.test(address);
-  const body = `${symbolIcon("link")}<span>${escapeHtml(text(node, "label"))}</span>`;
+  const body = `${symbolIcon("external")}<span>${escapeHtml(text(node, "label"))}</span>`;
   return safe
     ? `<a class="osp-link" href="${escapeHtml(address)}" rel="noreferrer noopener" data-external="true">${body}</a>`
     : `<span class="osp-link osp-link-disabled">${body}</span>`;
@@ -131,6 +131,15 @@ function empty(node: Record<string, unknown>): string {
 
 function progress(node: Record<string, unknown>): string {
   return `<div class="osp-progress" role="progressbar" aria-label="${escapeHtml(text(node, "label"))}"><div class="osp-progress-track"><span></span></div><span class="osp-progress-label">${escapeHtml(text(node, "label"))}</span><span class="osp-progress-detail">${escapeHtml(text(node, "detail"))}</span></div>`;
+}
+
+// [UI-COMPONENTS-METER] A bar filled to value over total in its tone; the label reads it out.
+function meter(node: Record<string, unknown>): string {
+  const total = Math.max(1, number(node, "total"));
+  const value = Math.min(total, Math.max(0, number(node, "value")));
+  const tone = oneOf(text(node, "tone"), TONES, "accent");
+  const label = escapeHtml(text(node, "label"));
+  return `<div class="osp-meter osp-tone-${tone}" role="meter" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${value}" aria-label="${label}"><div class="osp-meter-track"><span style="width:${((value / total) * 100).toFixed(1)}%"></span></div><span class="osp-meter-label">${label}</span></div>`;
 }
 
 function swatch(node: Record<string, unknown>): string {
@@ -275,7 +284,7 @@ function picker(node: Record<string, unknown>, ctx: Context): string {
 
 function disclosure(node: Record<string, unknown>, ctx: Context): string {
   const expanded = flag(node, "expanded");
-  return `<div class="osp-disclosure"><button type="button" class="osp-disclosure-head" aria-expanded="${expanded}"${control(ctx, node, "bool", !expanded)}><span class="osp-disclosure-arrow${expanded ? " osp-open" : ""}">${symbolIcon("chevron.right")}</span><span>${escapeHtml(text(node, "title"))}</span></button><div class="osp-disclosure-body"${expanded ? "" : " hidden"}>${children(node, ctx)}</div></div>`;
+  return `<div class="osp-disclosure"><button type="button" class="osp-disclosure-head" aria-expanded="${expanded}"${control(ctx, node, "bool", !expanded)}><span class="osp-disclosure-arrow${expanded ? " osp-open" : ""}">${symbolIcon("chevron")}</span><span>${escapeHtml(text(node, "title"))}</span></button><div class="osp-disclosure-body"${expanded ? "" : " hidden"}>${children(node, ctx)}</div></div>`;
 }
 
 function alert(node: Record<string, unknown>, ctx: Context): string {
@@ -285,7 +294,7 @@ function alert(node: Record<string, unknown>, ctx: Context): string {
 
 const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Context) => string>> = {
   text: textNode,
-  evidence,
+  pair,
   badge,
   label,
   icon,
@@ -295,9 +304,9 @@ const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Co
   segments,
   empty,
   progress,
+  meter,
   swatch,
   slot,
-  brand: (_node, ctx) => brand(ctx),
   button,
   field,
   toggle,
@@ -314,6 +323,9 @@ const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Co
   tabs: tabBody,
   rows,
 };
+
+/** Every node kind this webview draws ([NATIVE-HOSTS-COVERAGE]); any other kind is refused as a protocol defect. */
+export const RENDERED_KINDS: readonly string[] = Object.keys(RENDERERS);
 
 /** Render one protocol node; an unknown component is a protocol defect and throws. */
 export function renderNode(value: unknown, ctx: Context): string {

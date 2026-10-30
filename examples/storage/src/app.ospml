@@ -1,0 +1,190 @@
+// Implements [NATIVE-APPS-ALL], [UI-STORE] and [UI-EFFECTS] for Osprey
+// Storage: one store of slices, one action union and a pure update. The host
+// walks folders and draws nodes; every decision is made here.
+namespace storage
+
+import ui::Doc
+import ui::Keyed
+import ui::Messages
+import ui::Pick
+import ui::Requests
+import ui::Runtime
+import ui::Symbols
+import storage::Disk
+import storage::Measured
+import storage::View
+
+(** Where the person is: the platform whose words and paths apply, their home folder, the open folder and the folders they chose. *)
+type Place =
+    osName : string
+    homeFolder : string
+    openFolder : string
+    chosenFolders : List<string>
+
+(** Whether hidden items count and show. *)
+type Options =
+    showHidden : bool
+
+(** The open folder's walk: the ticket only its completion carries, the number that made it, its stage (`measuring`, `ready` or `failed`) and why it failed. *)
+type Walk =
+    walkTicket : string
+    walkNumber : int
+    walkStage : string
+    walkProblem : string
+
+(** Osprey Storage's whole store. The walk's result is host-held under `measured`, so a large listing never enters the session ([UI-STORE]). *)
+type Store =
+    place : Place
+    options : Options
+    walk : Walk
+
+(** Every control's action ([UI-EVENTS]): taps for Up, Rescan, Choose Folder, a folder of the path and Show in the file manager; row choices for the sidebar and the listing; and the hidden-items switch. *)
+type StorageAction =
+    GoUp
+    Remeasure
+    PickFolder
+    OpenFolder
+        openedPath : string
+    ShowIn
+        shownPath : string
+    PickPlace
+    PickEntry
+    ShowHidden
+
+(** How Osprey Storage answers each message: walks, cancels, choices and the hidden-items switch. *)
+module Browse
+    // Enough for any real folder; a folder with more children reports `truncated` beyond it.
+    walkLimit () = 20000
+
+    // Two minutes, in milliseconds; a longer walk reports `truncated` with what it measured.
+    walkDeadline () = 120000
+
+    cancelling walk = match walk.walkStage == "measuring"
+        true => [Requests::ask ("cancel:${walk.walkNumber}", ui::Cancel(cancelled = walk.walkTicket))]
+        false => []
+
+    (** Opens `folder` and asks the host to measure it under a new ticket, cancelling a walk still running; only the new ticket's completion is accepted. *)
+    export measure (store, folder) =
+        number = satAdd store.walk.walkNumber 1
+        ticket = "walk:${number}"
+        place = store.place
+        asked = Requests::ask (ticket, ui::MeasureFolders(measureFolders = [folder], measureLimit = walkLimit (), measureDeadline = walkDeadline (), measureSlice = "measured"))
+        Runtime::asking (store(place = place(openFolder = folder), walk = Walk(walkTicket = ticket, walkNumber = number, walkStage = "measuring", walkProblem = "")), listAppend (cancelling store.walk) asked)
+
+    (** The store at launch on `system`, with `home` open, hidden items counted and no walk yet. *)
+    export launched (system, home) = Store(place = Place(osName = system, homeFolder = home, openFolder = home, chosenFolders = []), options = Options(showHidden = true), walk = Walk(walkTicket = "", walkNumber = 0, walkStage = "ready", walkProblem = ""))
+
+    finished (store, outcome) =
+        walk = store.walk
+        match outcome
+            Success _ => Runtime::step (store(walk = walk(walkStage = "ready")))
+            Error problem => Runtime::step (store(walk = walk(walkStage = "failed", walkProblem = problem)))
+
+    // A chosen folder joins the places once, and is measured.
+    chosen (store, result) =
+        path = Doc::text (result, "path")
+        place = store.place
+        match path == "" || Doc::flag (result, "cancelled")
+            true => Runtime::step store
+            false => measure (store(place = place(chosenFolders = Pick::either (listContains place.chosenFolders path, place.chosenFolders, listAppend place.chosenFolders path))), path)
+
+    (** Applies a completion: the open folder's walk or a chosen folder. A completion under any other ticket is stale or needs no answer, and changes nothing. *)
+    export completed (store, ticket, outcome) = match ticket == store.walk.walkTicket
+        true => finished (store, outcome)
+        false => match ticket == "choose"
+            false => Runtime::step store
+            true => match outcome
+                Success result => chosen (store, result)
+                Error _ => Runtime::step store
+
+    up store = match Disk::isRoot (store.place.osName, store.place.openFolder)
+        true => Runtime::step store
+        false => measure (store, Disk::parent (store.place.osName, store.place.openFolder))
+
+    (** Applies a tap: Up, Rescan, Choose Folder, a folder of the path, or Show in the file manager. *)
+    export tapped (store, action) = match action
+        GoUp => up store
+        Remeasure => measure (store, store.place.openFolder)
+        PickFolder => Runtime::asking (store, [Requests::ask ("choose", ui::ChooseFolder)])
+        OpenFolder path => measure (store, path)
+        ShowIn path => Runtime::asking (store, [Requests::ask ("reveal", ui::Reveal(revealPath = path))])
+        _ => Runtime::step store
+
+    // A listing row opens only a folder the walk could enter; a file, a link or an unreadable folder stays put.
+    entered (store, path) = match Measured::child (Measured::decode (perform ui::Slices.fetch "measured", store.place.openFolder), path)
+        Success item => match item.itemFolder && item.itemLink == false && item.itemGuarded == false
+            true => measure (store, path)
+            false => Runtime::step store
+        Error _ => Runtime::step store
+
+    (** Applies a row choice: a place in the sidebar, or a folder in the listing. *)
+    export chose (store, action, key) = match action
+        PickPlace => measure (store, key)
+        PickEntry => entered (store, key)
+        _ => Runtime::step store
+
+    (** Applies the hidden-items switch. *)
+    export toggled (store, action, on) = match action
+        ShowHidden => Runtime::step (store(options = Options(showHidden = on)))
+        _ => Runtime::step store
+
+(** Osprey Storage as the framework runs it: launch, update, regions, the session document and the theme ([UI-STORE], [UI-REGIONS]). *)
+module App
+    (** The store at launch, with a walk of the person's home folder asked for. *)
+    export initial context =
+        system = Symbols::platformText context.platform
+        home = Pick::either (context.home == "", Disk::fallback system, context.home)
+        Browse::measure (Browse::launched (system, home), opening (home, context.arguments))
+
+    // A folder named at launch opens first; otherwise the person's home does.
+    opening (home, arguments) = match listGet arguments 0
+        Success folder => Pick::either (folder == "", home, folder)
+        Error _ => home
+
+    (** Applies one message: a tap, a row choice, the hidden-items switch or a completion. *)
+    export update (_, store, message) = Messages::route (message, \action => Browse::tapped (store, action), \(action, key) => Browse::chose (store, action, key), \(action, on) => Browse::toggled (store, action, on), \(_, _) => Runtime::step store, \(ticket, outcome) => Browse::completed (store, ticket, outcome), \_ => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+
+    placeSlice () = perform Signal<Place>.read ()
+
+    optionsSlice () = perform Signal<Options>.read ()
+
+    walkSlice () = perform Signal<Walk>.read ()
+
+    placeJson value = JsonObject [Doc::str ("os", value.osName), Doc::str ("home", value.homeFolder), Doc::str ("open", value.openFolder), JsonMember "chosen" (Doc::strings value.chosenFolders)]
+
+    optionsJson value = JsonObject [Doc::bit ("hidden", value.showHidden)]
+
+    walkJson value = JsonObject [Doc::str ("ticket", value.walkTicket), Doc::num ("number", value.walkNumber), Doc::str ("stage", value.walkStage), Doc::str ("problem", value.walkProblem)]
+
+    // The host-held walk is read before the handler block, and only once a walk is ready: until then the listing shows none.
+    walked store = match store.walk.walkStage == "ready"
+        true => Measured::decode (perform ui::Slices.fetch "measured", store.place.openFolder)
+        false => Measured::nothing store.place.openFolder
+
+    (** The four regions: the window's split, the places sidebar, the open folder's page and its listing, each rebuilt only when a slice it read changed. The listing reads the host-held walk, which changes only with the walk slice. *)
+    export regions (before, store, frames, _) =
+        result = walked store
+        handle static Signal<Place>
+            read => store.place
+        handle static Signal<Options>
+            read => store.options
+        handle static Signal<Walk>
+            read => store.walk
+        handle static Signal<Walked>
+            read => result
+        changed = listConcat (signalChanges before.place store.place placeJson (signalDependencies placeSlice)) (listConcat (signalChanges before.options store.options optionsJson (signalDependencies optionsSlice)) (signalChanges before.walk store.walk walkJson (signalDependencies walkSlice)))
+        [Keyed::region (frames, "root", changed, View::root), Keyed::region (frames, "places", changed, View::places), Keyed::region (frames, "folder", changed, View::folder), Keyed::region (frames, "listing", changed, View::listing)]
+
+    (** The store as the opaque session document. *)
+    export save store = JsonObject [JsonMember "place" (placeJson store.place), JsonMember "options" (optionsJson store.options), JsonMember "walk" (walkJson store.walk)]
+
+    (** The store from a saved session document. *)
+    export restore doc =
+        saved = Doc::field (doc, "place")
+        walked = Doc::field (doc, "walk")
+        Store(place = Place(osName = Doc::text (saved, "os"), homeFolder = Doc::text (saved, "home"), openFolder = Doc::text (saved, "open"), chosenFolders = Doc::texts (saved, "chosen")), options = Options(showHidden = Doc::flag (Doc::field (doc, "options"), "hidden")), walk = Walk(walkTicket = Doc::text (walked, "ticket"), walkNumber = Doc::number (walked, "number"), walkStage = Doc::text (walked, "stage"), walkProblem = Doc::text (walked, "problem")))
+
+    token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
+
+    (** Osprey Storage's colours in light and dark appearance, its spacing scale and its motion durations ([UI-THEME]). *)
+    export theme () = ui::Theme(tokens = [token ("accent", "#0F6CBD", "#62ABF5"), token ("good", "#0E7A0D", "#6CCB5F"), token ("caution", "#9D5D00", "#FCE100"), token ("danger", "#C42B1C", "#FF99A4"), token ("canvas", "#FAFAFA", "#202020"), token ("inset", "#F3F3F3", "#272727"), token ("text", "#1A1A1A", "#FFFFFF")], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)

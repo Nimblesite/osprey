@@ -147,8 +147,15 @@ function panelHtml(context: ExtensionContext, panel: import("vscode").WebviewPan
   });
 }
 
-/** Register the singleton package workspace panel and its command. */
-export function registerPackageWorkspace(context: ExtensionContext): { dispose(): void } {
+/**
+ * Register the singleton package workspace panel and its command. `ready`
+ * runs before the panel opens and may refuse it, e.g. when the local registry
+ * is down and the user declines to start it ([PACKAGE-LOCAL-REGISTRY]).
+ */
+export function registerPackageWorkspace(
+  context: ExtensionContext,
+  ready: (folder: Uri) => Promise<boolean> = async () => true,
+): { dispose(): void } {
   let panel: import("vscode").WebviewPanel | undefined;
   let session: WorkspaceSession | undefined;
   let openedFolder = "";
@@ -165,6 +172,7 @@ export function registerPackageWorkspace(context: ExtensionContext): { dispose()
       if (!workspace.workspaceFolders?.length) void window.showErrorMessage("Open a workspace folder before managing Osprey packages.");
       return;
     }
+    if (!await ready(folder)) return;
     if (panel && openedFolder === folder.toString()) {
       panel.reveal(undefined, true);
       return;

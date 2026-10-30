@@ -45,6 +45,7 @@ import {
 } from "./compile-commands";
 import { registerPackageWorkspace } from "./package-workspace";
 import { registerPackageCommands } from "./package-commands";
+import { registerLocalRegistry } from "./local-registry";
 import { huntCurrentFile } from "./hunt";
 export * from "./client-config";
 export * from "./debug-config";
@@ -102,7 +103,10 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
     resolveServerCommand(context),
   );
   registerTestDocsCommand(context);
-  registerPackageWorkspace(context);
+  // The package manager asks to start the bundled local registry when the
+  // configured loopback registry does not answer ([PACKAGE-LOCAL-REGISTRY]).
+  const localRegistry = registerLocalRegistry(context);
+  registerPackageWorkspace(context, (folder) => localRegistry.ensureRunning(folder));
   registerPackageCommands(context);
   registerWarningFixes(context, (params) =>
     client.sendRequest(CodeActionRequest.type, params),

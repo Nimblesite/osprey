@@ -113,9 +113,9 @@ button:disabled { cursor: default; opacity: .48; }
 .codicon { flex: 0 0 auto; }
 .osp-icon { display: inline-flex; color: var(--osp-muted); }
 .osp-label { display: inline-flex; align-items: center; gap: 7px; }
-.osp-evidence { display: grid; grid-template-columns: minmax(90px, .5fr) 1fr; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--osp-border); }
-.osp-evidence-label { color: var(--osp-muted); }
-.osp-evidence-value { font-family: var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; }
+.osp-pair { display: grid; grid-template-columns: minmax(90px, .5fr) 1fr; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--osp-border); }
+.osp-pair-label { color: var(--osp-muted); }
+.osp-pair-value { font-family: var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; }
 .osp-badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 10%, transparent); }
 .osp-badge .codicon { font-size: 13px; }
 .osp-badge.osp-tone-primary { color: var(--osp-text); }
@@ -182,6 +182,10 @@ button:disabled { cursor: default; opacity: .48; }
 .osp-progress-track { grid-column: 1 / -1; height: 5px; border-radius: 999px; background: var(--osp-border); overflow: hidden; }
 .osp-progress-track span { display: block; width: 35%; height: 100%; background: var(--osp-accent); border-radius: inherit; animation: osp-pulse 1.4s ease-in-out infinite alternate; }
 .osp-progress-label { font-weight: 600; }
+.osp-meter { display: grid; gap: 4px; }
+.osp-meter-track { height: 6px; border-radius: 999px; background: var(--osp-border); overflow: hidden; }
+.osp-meter-track span { display: block; height: 100%; background: currentColor; border-radius: inherit; }
+.osp-meter-label { color: var(--osp-muted); font-size: 11px; }
 .osp-progress-detail { color: var(--osp-muted); font-size: 11px; }
 .osp-swatch { display: inline-flex; align-items: center; gap: 7px; }
 .osp-swatch > span:first-child { width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--osp-border); background: linear-gradient(135deg, var(--osp-swatch-light) 50%, var(--osp-swatch-dark) 50%); }

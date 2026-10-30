@@ -1,0 +1,8 @@
+[project]
+name = "flock"
+source_roots = ["main.ospml", "src", "../../../packages/native/src"]
+default_namespace = "app"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

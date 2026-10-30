@@ -16,6 +16,6 @@
     "parse-all": "node test/parse-all.js"
   },
   "devDependencies": {
-    "tree-sitter-cli": "^0.24.4"
+    "tree-sitter-cli": "^0.27.1"
   }
 }

@@ -6,7 +6,9 @@ const branchList = (block) => {
   return filter?.replace(/[\[\]"']/g, '').split(/,|\n/).map((value) => value.trim().replace(/^- /, '')).filter(Boolean)
 }
 
-export const targetsMainPullRequests = (text) => {
+export const targetsMainPullRequests = (source) => {
+  // A Windows checkout ends its lines with CRLF; the patterns above read LF.
+  const text = source.replace(/\r\n/g, '\n')
   const block = trigger(text.replace(/^\s*#.*$/gm, ''))
   if (block === undefined) return /^on:.*\bpull_request\b/m.test(text)
   const branches = branchList(block)

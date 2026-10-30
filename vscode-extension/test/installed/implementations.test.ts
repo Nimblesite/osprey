@@ -209,7 +209,7 @@ const metricsCases = (): Case[] => [
 // --- words that name no effect and no operation ------------------------------
 
 const NOTHING: Site[] = [
-  site(GPU, "fn orAbort(result)", "orAbort"),
+  site(GPU, "fn answered(result)", "answered"),
   site(BACKENDS, "export type Kernel", "Kernel"),
   site(CPU, "handle static Tensor<List<float>>", "List"),
   site(MODEL, "perform Backends::Tensor.get", "Backends"),

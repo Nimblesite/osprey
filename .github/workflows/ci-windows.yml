@@ -25,9 +25,21 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/detect-ci-scope
         id: filter
+
+  # The WinUI host and its examples in a real window (plan 0038), and the GPUI host on each desktop
+  # system (plan 0036). winui.yml and gpui.yml run by themselves on every pull request, as required
+  # checks; a manual run of this workflow also runs them, because a workflow not yet on main cannot
+  # be dispatched by itself.
+  winui:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    uses: ./.github/workflows/winui.yml
+
+  gpui:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    uses: ./.github/workflows/gpui.yml
 
   windows-core:
     # IMPORTANT: this name is a required status check on `main` (ruleset 6154907).
@@ -38,7 +50,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
@@ -52,7 +64,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry + target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index/

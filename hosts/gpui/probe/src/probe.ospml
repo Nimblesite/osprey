@@ -1,0 +1,79 @@
+// The probe application the GPUI host renders first: two slices, two
+// regions, a counter and a note ([GPUI-HOST-SEAM]). Only `App` is public;
+// the entry file exports `start` and `dispatch`.
+namespace probe
+
+import ui::Ui
+import ui::Doc
+import ui::Keyed
+import ui::Runtime
+import ui::Symbols
+import ui::Requests
+import ui::Messages
+
+type Tally =
+    tally : int
+
+type Memo =
+    memo : string
+
+type Store =
+    counter : Tally
+    note : Memo
+
+type Act = Increment | Typed | Load
+
+(** The probe application the GPUI host drives: a counter region, a note region and one store read, exported through `main.ospml`. *)
+module App
+    tallied () = (perform Signal<Tally>.read ()).tally
+
+    memoed () = (perform Signal<Memo>.read ()).memo
+
+    rootView () = Ui::column [Ui::text "Count ${tallied ()}", Ui::button ("Add", ui::Add, Increment), Ui::slot "note"]
+
+    noteView () = Ui::column [ui::Field(label = "Note", value = memoed (), prompt = "Type here", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", ui::Inbox, Load)]
+
+    tallySlice () = perform Signal<Tally>.read ()
+
+    memoSlice () = perform Signal<Memo>.read ()
+
+    (** The two keyed regions, refreshed when their slice changed. *)
+    export regions (before, store, frames, _) =
+        handle static Signal<Tally>
+            read => store.counter
+        handle static Signal<Memo>
+            read => store.note
+        changed = listConcat (signalChanges before.counter store.counter countJson (signalDependencies tallySlice)) (signalChanges before.note store.note memoJson (signalDependencies memoSlice))
+        [Keyed::region (frames, "root", changed, rootView), Keyed::region (frames, "note", changed, noteView)]
+
+    make count text = Store(counter = Tally(tally = count), note = Memo(memo = text))
+
+    (** The store at start: a zero count and the platform name as the note. *)
+    export initial context = Runtime::step (make 0 (Symbols::platformText context.platform))
+
+    loaded outcome = match outcome
+        Success result => jsonText result ?: "?"
+        Error problem => problem
+
+    typed (store, text) = ui::Step(stepStore = make store.counter.tally text, requests = [], writes = [Requests::write ("echo", text)])
+
+    tapped (store, action) = match action
+        Increment => Runtime::step (make (satAdd store.counter.tally 1) store.note.memo)
+        Load => Runtime::asking (store, [Requests::ask ("load:1", ui::StoreRead(readName = "memo.txt", readLimit = 100, readSlice = "memo"))])
+        Typed => Runtime::step store
+
+    (** Applies one message: a tap, typed text or a completed store read. *)
+    export update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(_, text) => typed (store, text), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, outcome) => Runtime::step (make store.counter.tally (loaded outcome)), \_ => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+
+    (** The store as the opaque session document. *)
+    export save store = JsonObject [Doc::num ("tally", store.counter.tally), Doc::str ("memo", store.note.memo)]
+
+    (** The store from a saved session document. *)
+    export restore doc = make (Doc::number (doc, "tally")) (Doc::text (doc, "memo"))
+
+    countJson value = JsonInt value.tally
+
+    memoJson value = JsonString value.memo
+
+    (** Three colour tokens, a spacing scale and motion durations. *)
+    export theme () = ui::Theme(tokens = [ui::Token(tokenName = "accent", tokenLight = "#2563EB", tokenDark = "#60A5FA"), ui::Token(tokenName = "background", tokenLight = "#FFFFFF", tokenDark = "#1E1E1E"), ui::Token(tokenName = "text", tokenLight = "#111111", tokenDark = "#EEEEEE")], spacing = [4, 8, 12, 20, 28, 36], feedback = 120, settle = 220)

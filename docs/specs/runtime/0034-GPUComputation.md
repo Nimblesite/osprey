@@ -466,6 +466,21 @@ Within the GPU-surface handler, `OSPREY_GPU=host|auto|metal|opencl` is the boots
 
 Implementation is staged in [plan 0023](../../plans/0023-gpu-computation.md), which carries the stage descriptions and the detailed TODO checklist. The normative invariant this spec imposes on every stage: stages ratchet — each keeps `make ci` green and the differential harness byte-exact, and a later stage must not change the meaning of any program accepted by an earlier stage.
 
+## GPU compute and GPUI rendering — [GPU-VS-GPUI]
+
+Osprey reaches the GPU in two unrelated ways, and neither depends on the other.
+
+| | GPU compute (this document) | GPUI rendering ([0046](../platforms/0046-GpuiDesktopHost.md)) |
+| --- | --- | --- |
+| What runs on the GPU | Osprey's own kernels: `gpuMap`, `gpuFold`, `gpuMatMul` and extracted kernels, compiled by Osprey to the device dialect | Zed's GPUI renderer, written in Rust: its shaders rasterize quads, paths, glyphs and sprites |
+| Who writes the GPU code | The Osprey compiler, from Osprey source the purity checker accepted | GPUI's authors; Osprey never emits a shader for drawing |
+| What Osprey hands over | Dense scalar buffers ([GPU-BUFFER]) and a kernel | A scene: a list of typed primitives (rect, disc, strip, sprite, glyphs, path) encoded as JSON by `@osprey/native` ([UI-SCENE]) |
+| Boundary | The device dispatch contract in `compiler/runtime/gpu_device.h`, inside the Osprey runtime | The C ABI `start`/`dispatch` of an Osprey static library, called by the Rust host |
+| Result | Numbers come back to the Osprey program (`fromGpu`, a scalar) | Pixels on screen; only input events come back |
+| Use it for | Numerical work: tensors, simulations, GPT-2 inference | Windows, controls, 2D scenes and animation |
+
+GPU compute is raw access: the program's own arithmetic runs on the device, with Osprey's arithmetic contract and purity proof carried to it. GPUI is a retained UI framework that happens to draw with the GPU; an Osprey application under the GPUI host is ordinary CPU code that returns a description of what to draw each frame, and the Rust host turns that description into GPUI elements and paths. The two compose: an application could compute a field with `gpuMap`, read it back, and draw it as a GPUI scene, but nothing in either path requires the other, and the GPUI host never shares a device buffer with Osprey's compute backends.
+
 ## References — [GPU-RESEARCH]
 
 *Non-normative:* a bibliography, not a requirement. It has no implementing code and no test.

@@ -407,8 +407,8 @@ impl<'a> Lowerer<'a> {
     /// index names because they have no source spelling
     /// ([TYPE-UNION-POSITIONAL]).
     fn lower_positional_payload(&self, node: Node<'_>) -> Vec<TypeField> {
-        (0..node.named_child_count())
-            .filter_map(|i| node.named_child(i))
+        let mut cursor = node.walk();
+        node.named_children(&mut cursor)
             .enumerate()
             .map(|(slot, ty)| TypeField {
                 name: osprey_ast::positional_field_name(slot),

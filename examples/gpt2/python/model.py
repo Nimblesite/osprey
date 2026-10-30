@@ -11,14 +11,14 @@ same order as examples/gpt2/reference.py. The forward pass keeps every block's
 activations, and the KV-cached step runs the newest position alone over each
 block's cached qkv rows ([STAGE-BACKEND], [GPU-DEVICE], [FLAVOR-PYTHON-GPU]).
 """
-from gpt2.Backends import Tensor
+from gpt2.Backends import Tensor, stop
 
 __all__ = [
     "WEIGHTS_DIR", "VOCAB_SIZE", "WIDTH", "HEADS", "HEAD_WIDTH", "QKV_WIDTH", "MLP_WIDTH",
     "LAYER_COUNT", "POSITIONS", "END_OF_TEXT", "EPSILON", "WIDTH_F", "SCORE_SCALE",
     "GELU_SCALE", "GELU_CUBIC", "Layer", "Weights", "Acts", "Attn", "Trace", "BlockStep",
     "Stepped", "at", "size", "empty", "device", "total", "plus", "add_f", "max_f", "gelu",
-    "gelus", "load_weights", "empty_layer", "layer", "transpose", "product", "sum_range",
+    "gelus", "loaded", "load_weights", "empty_layer", "layer", "transpose", "product", "sum_range",
     "squared_deviation", "row_means", "row_variances", "layer_norm", "linear", "q_at", "k_at",
     "v_at", "attention_from", "attention", "block", "embed", "forward", "block_step",
     "embed_one", "forward_step", "qkv_caches",
@@ -154,10 +154,27 @@ def gelus(f):
     return perform(Tensor.build(size(f), lambda i: gelu(at(f, i))))
 
 
+def or_stop(result, abandoned):
+    """A tensor operation's buffer, or a fault that stops the run with the reason
+    ([FAILURE-EXPLICIT]). The fault never resumes, so `abandoned` is never
+    called; it only gives the stopped arm the buffer type."""
+    match result:
+        case Success(value=value):
+            return value
+        case Error(message=message):
+            g = stop(message)
+            return abandoned()
+
+
+def loaded(path, name):
+    """The tensor `name` of the safetensors file at `path`; a missing or
+    mis-typed tensor stops the run rather than fabricate a runnable model."""
+    return or_stop(perform(Tensor.load(path, name)), empty)
+
+
 def tensor(name):
-    """One tensor of the checkpoint; the handler aborts on a missing or mis-typed
-    tensor rather than fabricate a runnable model."""
-    return perform(Tensor.load(WEIGHTS_DIR + "/model.safetensors", name))
+    """One tensor of the checkpoint."""
+    return loaded(WEIGHTS_DIR + "/model.safetensors", name)
 
 
 def layer_at(i):
@@ -197,8 +214,9 @@ def transpose(m, rows, cols):
 
 
 def product(a, b, rows, inner, cols):
-    """a [rows, inner] times b [inner, cols]; the handler aborts on failed work."""
-    return perform(Tensor.mat_mul(a, b, rows, inner, cols))
+    """a [rows, inner] times b [inner, cols]; operands that disagree with the
+    stated shape stop the run."""
+    return or_stop(perform(Tensor.mat_mul(a, b, rows, inner, cols)), lambda: a)
 
 
 def sum_range(x, start, n):

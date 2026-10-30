@@ -71,8 +71,8 @@ pub(crate) fn emit_mailbox_arrays(
 ) -> Result<(String, String)> {
     let arr_ty = format!("[{} x i64]", sig.params.len());
     let kinds_ty = format!("[{} x i8]", sig.params.len());
-    let arr = cg.emit_reg(format!("alloca {arr_ty}"));
-    let kinds = cg.emit_reg(format!("alloca {kinds_ty}"));
+    let arr = cg.hoist_slot(&arr_ty);
+    let kinds = cg.hoist_slot(&kinds_ty);
     for (i, param) in sig.params.iter().cloned().enumerate() {
         let managed = slot_is_managed(sig, resolved, i)?;
         let value = crate::cast::incoming_param(cg, format!("%__arg{i}"), param, None);

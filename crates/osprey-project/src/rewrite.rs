@@ -224,9 +224,12 @@ impl Resolver<'_> {
                 value,
                 position,
             } => {
-                if !locals.values.contains(name)
-                    && self.resolve_bare(name, context, *position).is_some()
-                {
+                let target = if locals.values.contains(name) {
+                    None
+                } else {
+                    self.resolve_bare(name, context, *position)
+                };
+                if target.is_some_and(|key| !self.entry_cell(&key, context)) {
                     self.error(
                         context.source,
                         *position,
@@ -238,6 +241,17 @@ impl Resolver<'_> {
             Stmt::Expr { value, .. } => self.rewrite_expr(value, context, locals),
             _ => {}
         }
+    }
+
+    /// Whether `key` is a file-scope cell of the entry source, assigned from
+    /// that source: its handler arms own it ([MODULES-FILE-SCOPE-BINDING]).
+    fn entry_cell(&self, key: &SymbolKey, context: &Context) -> bool {
+        context.source == self.entry_source
+            && self.graph.declarations.get(key).is_some_and(|declaration| {
+                declaration.state_owner
+                    && declaration.owner.is_empty()
+                    && declaration.source == self.entry_source
+            })
     }
 
     #[expect(

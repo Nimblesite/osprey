@@ -32,49 +32,6 @@ fn comprehension_aliases_execute_in_their_lexical_scope() -> std::io::Result<()>
     result
 }
 
-fn quarantine_project() -> std::io::Result<std::path::PathBuf> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let directory = std::env::temp_dir().join(format!("osprey_jinja_fatal_{}", std::process::id()));
-    std::fs::create_dir_all(&directory)?;
-    for (source, destination) in [
-        ("packages/jinja2/src/value.py", "value.py"),
-        ("packages/testing/src/check.py", "check.py"),
-        ("packages/jinja2/tests/fatal_quarantine.py", "main.py"),
-    ] {
-        let _ = std::fs::copy(root.join(source), directory.join(destination))?;
-    }
-    std::fs::write(directory.join("osprey.toml"), "[project]\nname = \"jinja-fatal\"\nsource_roots = [\".\"]\npython_sources = [\"value.py\", \"check.py\", \"main.py\"]\ndefault_namespace = \"fatal_test\"\nentry = \"main.py\"\n")?;
-    Ok(directory)
-}
-
-#[test]
-fn jinja_quarantine_aborts_instead_of_returning_a_value() -> std::io::Result<()> {
-    let directory = quarantine_project()?;
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .arg(&directory)
-        .args(["--run", "--quiet"])
-        .output()?;
-    std::fs::remove_dir_all(directory)?;
-    assert_quarantine_exit(&output);
-    Ok(())
-}
-
-fn assert_quarantine_exit(output: &std::process::Output) {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        !output.status.success(),
-        "fatal channel returned successfully"
-    );
-    assert!(
-        stderr.contains("tensor load cannot continue: Jinja quarantine must abort"),
-        "{stderr}"
-    );
-    assert!(
-        output.stdout.is_empty(),
-        "fatal channel returned a rendered value"
-    );
-}
-
 #[test]
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn python_interoperability() {

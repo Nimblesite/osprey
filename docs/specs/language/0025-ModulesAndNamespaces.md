@@ -313,9 +313,18 @@ then has module storage rather than a slot in the entry's frame, and every read
 observes the current value at that storage. A `mut` an effect handler owns is
 one shared cell ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)),
 so a function reads what the arms most recently wrote and not a copy taken at
-declaration time. This does not relax
-[MODULES-STATE-TOPLEVEL](#forbidden-top-level-state-modules-state-toplevel): a
-`mut` directly inside a namespace or plain module remains an error.
+declaration time.
+
+In a project the entry source is the selected one (`[project].entry`, the
+source with `main`, or the source with executable statements), and its file
+scope is the same: it may declare such a cell even though every project source
+belongs to a namespace, and only that source's handler arms may assign it. Its
+cells are declared ahead of every function, so an application library's
+exported functions keep state between host calls (Osprey Native's resident
+sessions use this). This does not relax
+[MODULES-STATE-TOPLEVEL](#forbidden-top-level-state-modules-state-toplevel)
+anywhere else: a `mut` in any other source's namespace scope, or directly in a
+plain module, remains an error.
 
 Three programs are rejected, because each would otherwise read storage that
 holds no bound value or the wrong one:

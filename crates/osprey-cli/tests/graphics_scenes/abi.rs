@@ -79,15 +79,20 @@ fn number_after(source: &str, needle: &str) -> Option<usize> {
     })
 }
 
-/// The Windows bridge is three files — the shared ABI header's D3D half, the
-/// one-time bring-up and the exported entry points — and it is the union of
-/// them that has to match the Swift host, so it is compared as one text.
+/// The Windows bridge is four files — the shared ABI header's D3D half, the
+/// window, the one-time bring-up and the exported entry points — and it is the
+/// union of them that has to match the Swift host, so it is compared as one text.
 fn d3d12_bridge() -> String {
-    ["ospgfx_d3d12.h", "ospgfx_d3d12_setup.c", "ospgfx_d3d12.c"]
-        .iter()
-        .map(|file| read_required(&graphics().join(file)))
-        .collect::<Vec<_>>()
-        .join("\n")
+    [
+        "ospgfx_d3d12.h",
+        "ospgfx_d3d12_window.c",
+        "ospgfx_d3d12_setup.c",
+        "ospgfx_d3d12.c",
+    ]
+    .iter()
+    .map(|file| read_required(&graphics().join(file)))
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 /// Whether `source` declares the uniform block's four fields, with `res`

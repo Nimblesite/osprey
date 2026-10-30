@@ -122,7 +122,7 @@ function restoreStagedBundle(root) {
 const nativeArchives = ['fiber_runtime', 'http_runtime'].flatMap(name => ['', '_gc', '_arc'].map(mode => `lib${name}${mode}.a`))
 
 function writeBundlePayloads(root, platform) {
-  const payloads = [['target/release/osprey', 'osprey'], ['target/osprey-pkg', 'osprey-pkg'],
+  const payloads = [['target/release/osprey', 'osprey'], ['target/osprey-pkg', 'osprey-pkg'], ['target/osprey-registry', 'osprey-registry'],
     ['target/package-workspace.wasm', 'package-workspace.wasm'], ...nativeArchives.map(name => [`compiler/bin/${name}`, name])]
   for (const dir of ['target/release', 'compiler/bin', platform, 'vscode-extension/scripts']) mkdirSync(join(root, dir), { recursive: true })
   writeFileSync(join(root, 'vscode-extension/scripts/verify-package-client.mjs'), readFileSync('vscode-extension/scripts/verify-package-client.mjs'))
@@ -130,6 +130,7 @@ function writeBundlePayloads(root, platform) {
     const bytes = name.endsWith('.wasm') ? Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]) : '#!/bin/sh\nexit 97\n'
     for (const file of [source, `${platform}/${name}`]) writeFileSync(join(root, file), bytes, { mode: 0o755 })
   }
+  mkdirSync(join(root, platform, 'registry/@osprey/testing'), { recursive: true })
 }
 
 function stagedBundleFixture(change = () => {}) {
@@ -149,11 +150,15 @@ function stagedBundleFixture(change = () => {}) {
 test('staged bundle verification fails closed without recompiling a payload', () => {
   const complete = stagedBundleFixture()
   assert.equal(complete.status, 0, complete.stdout + complete.stderr)
-  for (const name of ['osprey', 'osprey-pkg', 'package-workspace.wasm', ...nativeArchives]) {
+  for (const name of ['osprey', 'osprey-pkg', 'osprey-registry', 'package-workspace.wasm', ...nativeArchives]) {
     const missing = stagedBundleFixture((root, platform) => rmSync(join(root, platform, name)))
     assert.notEqual(missing.status, 0, `${name}: missing payload accepted`)
     const stale = stagedBundleFixture((root, platform) => writeFileSync(join(root, platform, name), 'stale'))
     assert.notEqual(stale.status, 0, `${name}: stale payload accepted`)
+  }
+  if (process.platform !== 'win32') {
+    const unregistered = stagedBundleFixture((root, platform) => rmSync(join(root, platform, 'registry'), { recursive: true }))
+    assert.notEqual(unregistered.status, 0, 'a bundle without its local registry packages accepted')
   }
   const invalid = stagedBundleFixture((root, platform) => {
     for (const file of ['target/package-workspace.wasm', `${platform}/package-workspace.wasm`]) writeFileSync(join(root, file), 'invalid WASM')
@@ -235,11 +240,16 @@ test('package coverage preserves the complete test recipe and checks without rer
   assert.doesNotMatch(check[0], /--collect/)
 })
 
-test('the KLEE engine gates stay out of CI; the mock oracle and known-bug target stay in the tree', () => {
+test('the KLEE engine gates stay out of CI and make ci; the mock oracle and known-bug target stay in the tree', () => {
   // Owner decision 2026-10-26: the engine gates do not guarantee a green
   // signal while issue #306 is open (clean.osp never completes inside the
-  // pinned budget), so CI runs none of them. Verification is local:
+  // pinned budget), so CI runs none of them, and neither does `make ci`.
+  // Verification is by hand:
   // make _test_hunt / make _test_hunt_clean / make _test_hunt_crashes.
+  const local = makeRecipe('test')
+  assert.ok(local.includes('$(MAKE) _test_hunt_mock'))
+  assert.deepEqual(local.filter((command) => /_test_hunt(?!_mock)/.test(command)), [])
+  assert.doesNotMatch(readFileSync('Makefile', 'utf8').match(/^ci:.*$/m)[0], /hunt/)
   const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
   assert.doesNotMatch(workflow, /brew install klee/)
   assert.doesNotMatch(workflow, /make _test_hunt(?!_mock)/)
@@ -349,4 +359,8 @@ test('branch protection distinguishes staging automation from main CI without ex
   assert.equal(targetsMainPullRequests('on:\n  pull_request:\n    branches:\n      - dependabot-upgrades\n'), false)
   assert.equal(targetsMainPullRequests('on:\n  pull_request:\n    branches: [dependabot-upgrades]\n'), false)
   assert.equal(targetsMainPullRequests('on:\n  workflow_call:\n'), false)
+  // A Windows checkout with core.autocrlf ends every line with CRLF.
+  assert.equal(targetsMainPullRequests('on:\r\n  pull_request:\r\n    branches:\r\n      - dependabot-upgrades\r\n'), false)
+  assert.equal(targetsMainPullRequests('on:\r\n  pull_request:\r\n    branches: [dependabot-upgrades]\r\n'), false)
+  assert.equal(targetsMainPullRequests('on:\r\n  pull_request:\r\n    branches:\r\n      - main\r\n'), true)
 })

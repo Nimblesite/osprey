@@ -14,7 +14,7 @@ from typing import Callable
 
 from gpt2 import Cpu, Gpu
 
-__all__ = ["Kernel", "Combine", "Tensor", "hit", "min_i", "strictly", "under"]
+__all__ = ["Kernel", "Combine", "Tensor", "hit", "min_i", "stop", "product_lengths", "strictly", "under"]
 
 
 # The kernels a model hands its handler: an index to its element, and two
@@ -29,16 +29,17 @@ class Tensor[B]:
     and measure one, combine two, reduce one, find the first index holding a
     value, multiply two matrices, lift a host list, load a tensor from a
     safetensors file, and say which interpretation is answering. `B` is the
-    representation the handler picks."""
+    representation the handler picks. A product or load that cannot be done
+    answers `Error` with the reason ([FAILURE-EXPLICIT])."""
     def build(size: int, kernel: Kernel) -> B: ...
     def get(buffer: B, index: int) -> float: ...
     def length(buffer: B) -> int: ...
     def zip_with(a: B, b: B, combine: Combine) -> B: ...
     def reduce(buffer: B, seed: float, combine: Combine) -> float: ...
     def index_of(buffer: B, value: float) -> int: ...
-    def mat_mul(a: B, b: B, rows: int, inner: int, cols: int) -> B: ...
+    def mat_mul(a: B, b: B, rows: int, inner: int, cols: int) -> Result[B, str]: ...
     def from_list(values: list[float]) -> B: ...
-    def load(path: str, name: str) -> B: ...
+    def load(path: str, name: str) -> Result[B, str]: ...
     def device() -> str: ...
 
 
@@ -56,7 +57,8 @@ def min_i(a, i):
 
 @effect
 class Fault:
-    """An arithmetic fault ends the run: its arm answers the whole region."""
+    """A fault ends the run: its arm answers the whole region. Arithmetic
+    faults, failed products and failed weight loads all stop here."""
     @control
     def halt(message: str) -> int: ...
 
@@ -77,6 +79,19 @@ class arithmetic:
 
     def remainderByZero(l):
         return perform(Fault.halt(f"remainder by zero: {l} % 0"))
+
+
+def stop(reason):
+    """Stops the run with `reason`: the surrounding `strictly` answers Error
+    naming it. The operation never resumes."""
+    return perform(Fault.halt(reason))
+
+
+def product_lengths(side, has, needs):
+    """The reason a product refuses operands whose element count disagrees with
+    the stated shape: the GPU runtime's own `gpuMatMul` text, so both
+    interpretations stop alike."""
+    return f"gpuMatMul: {side} operand: has {has} elements, the stated shape needs {needs}"
 
 
 def strictly(work) -> Result[None, str]:

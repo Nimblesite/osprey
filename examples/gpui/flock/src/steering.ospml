@@ -1,0 +1,112 @@
+// Flock's steering over the flock sorted by cell, as plain float lists. Each bird steers by its first
+// seven flockmates in sight, the topological rule real starlings follow (Ballerini et al., PNAS 2008),
+// so the work per bird is bounded however dense the flock gets. The walk carries its sums as float
+// arguments and allocates nothing until it returns, which is what lets 5,000 birds move inside a frame.
+namespace flock
+
+(** Seven flockmates' sums for one bird: separation, alignment and cohesion on each axis, and how many were seen. *)
+type Mates =
+    mateCount : float
+    mateSepX : float
+    mateSepY : float
+    mateAlignX : float
+    mateAlignY : float
+    mateCohereX : float
+    mateCohereY : float
+
+(** The flock in the order `Steering` reads it: sorted by cell, with each bird's cell and where each cell starts. *)
+type Sorted =
+    sortedX : List<float>
+    sortedY : List<float>
+    sortedVx : List<float>
+    sortedVy : List<float>
+    sortedCell : List<int>
+    cellStarts : List<int>
+
+(** Boids, homing, the dog, hawks and walls for a flock sorted by cell. *)
+module Steering
+    at (values, i) = listGet values i ?: 0.0
+
+    slot (values, i) = listGet values i ?: 0
+
+    squared (x, y) = x * x + y * y
+
+    // The neighbouring cell on the side of a sixteen-unit cell this coordinate is nearer to.
+    toward value = match value * 0.0625 - floor (value * 0.0625) < 0.5
+        true => 0 - 1
+        false => 1
+
+    // Separation acts only inside six units.
+    crowd (delta, distance) = match distance < 36.0
+        true => delta * (36.0 - distance) * 0.03
+        false => 0.0
+
+    done (count, sx, sy, ax, ay, cx, cy) = Mates(mateCount = count, mateSepX = sx, mateSepY = sy, mateAlignX = ax, mateAlignY = ay, mateCohereX = cx, mateCohereY = cy)
+
+    // Cell k's run of positions in the sorted flock, then a walk of it from its first position.
+    enter : (List<float>, List<float>, List<float>, List<float>, List<int>, List<int>, int, float, float, int, float, float, float, float, float, float, float) -> Mates
+    enter (xs, ys, vxs, vys, cells, starts, i, x, y, k, count, sx, sy, ax, ay, cx, cy) = match k >= 4
+        true => done (count, sx, sy, ax, ay, cx, cy)
+        false => walk (xs, ys, vxs, vys, cells, starts, i, x, y, k, slot (starts, corner (cells, i, x, y, k)), slot (starts, satAdd (corner (cells, i, x, y, k)) 1), count, sx, sy, ax, ay, cx, cy)
+
+    // Visits positions j to `last` of cell k, then the next cell, until seven flockmates are found.
+    walk : (List<float>, List<float>, List<float>, List<float>, List<int>, List<int>, int, float, float, int, int, int, float, float, float, float, float, float, float) -> Mates
+    walk (xs, ys, vxs, vys, cells, starts, i, x, y, k, j, last, count, sx, sy, ax, ay, cx, cy) = match count >= 7.0
+        true => done (count, sx, sy, ax, ay, cx, cy)
+        false => match j >= last
+            true => enter (xs, ys, vxs, vys, cells, starts, i, x, y, satAdd k 1, count, sx, sy, ax, ay, cx, cy)
+            false => visit (xs, ys, vxs, vys, cells, starts, i, x, y, k, j, last, count, sx, sy, ax, ay, cx, cy)
+
+    visit (xs, ys, vxs, vys, cells, starts, i, x, y, k, j, last, count, sx, sy, ax, ay, cx, cy) =
+        ox = at (xs, j)
+        oy = at (ys, j)
+        dx = x - ox
+        dy = y - oy
+        distance = squared (dx, dy)
+        match distance < 64.0 && i != j
+            true => walk (xs, ys, vxs, vys, cells, starts, i, x, y, k, satAdd j 1, last, count + 1.0, sx + crowd (dx, distance), sy + crowd (dy, distance), ax + at (vxs, j), ay + at (vys, j), cx + ox, cy + oy)
+            false => walk (xs, ys, vxs, vys, cells, starts, i, x, y, k, satAdd j 1, last, count, sx, sy, ax, ay, cx, cy)
+
+    // Cell k of a bird's 2 by 2 block: 0 its own, 1 beside it, 2 above or below, 3 diagonal. Rows are 23 cells.
+    corner : (List<int>, int, float, float, int) -> int
+    corner (cells, i, x, y, k) =
+        across = match k == 1 || k == 3
+            true => toward x
+            false => 0
+        down = match k >= 2
+            true => toward y
+            false => 0
+        satAdd (slot (cells, i)) (satAdd across (satMul down 23))
+
+    (** Bird i's first seven flockmates within eight units, searched through the 2 by 2 block of cells nearest it. *)
+    export mates : (Sorted, int) -> Mates
+    mates (flock, i) = enter (flock.sortedX, flock.sortedY, flock.sortedVx, flock.sortedVy, flock.sortedCell, flock.cellStarts, i, at (flock.sortedX, i), at (flock.sortedY, i), 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    // Walls push back across a twelve-unit margin, harder the closer a bird gets.
+    wall (value, high) = match value < 12.0
+        true => (12.0 - value) * 0.04
+        false => match value > high - 12.0
+            true => (high - 12.0 - value) * 0.04
+            false => 0.0
+
+    // The dog scatters birds within forty units.
+    herd (delta, distance) = match distance < 1600.0
+        true => delta * 0.08
+        false => 0.0
+
+    // A bird within twenty units of a hawk bolts away from it, harder the closer it is.
+    flee (delta, distance) = match distance < 400.0
+        true => delta * (400.0 - distance) * 0.0004
+        false => 0.0
+
+    panic (mine, other, hawkMine, hawkOther) = range (0, length hawkMine) |> fold 0.0 (\(sum, h) => sum + flee (mine - at (hawkMine, h), squared (mine - at (hawkMine, h), other - at (hawkOther, h))))
+
+    (** One axis of a bird's steered velocity before its speed is clamped: its flockmates' separation, mean alignment and mean cohesion on that axis, then homing toward `home` with `weight`, walls at `high`, the dog and hawk panic. *)
+    export axis : (float, float, float, float, float, float, float, float, float, List<float>, List<float>, float, float, float) -> float
+    axis (here, there, velocity, count, separation, alignment, cohesion, dogHere, dogThere, hawkHere, hawkThere, home, weight, high) =
+        handle Arith
+            divideByZero _ dividend => dividend
+        push = herd (here - dogHere, squared (here - dogHere, there - dogThere)) + (home - here) * weight + wall (here, high) + panic (here, there, hawkHere, hawkThere)
+        match count == 0.0
+            true => velocity + push
+            false => velocity + separation * 0.08 + (alignment / count - velocity) * 0.06 + (cohesion / count - here) * 0.003 + push

@@ -413,6 +413,7 @@ ok errors.tuple_text.host
 ok errors.fail.host
 ok errors.require.host
 ok errors.checked.host
+ok errors.product_lengths.host
 ok layout.broadcast_two
 ok layout.broadcast_strides
 ok layout.coords_of
@@ -882,6 +883,7 @@ ok errors.tuple_text.gpu
 ok errors.fail.gpu
 ok errors.require.gpu
 ok errors.checked.gpu
+ok errors.product_lengths.gpu
 ok layout.broadcast_two
 ok layout.broadcast_strides
 ok layout.coords_of
@@ -936,4 +938,4 @@ ok array.ones_like
 ok array.full_like
 ok array.identity
 ok array.eye_m
-938 passed, 0 failed
+940 passed, 0 failed

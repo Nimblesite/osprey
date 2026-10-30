@@ -13,19 +13,14 @@ from numpy import Storage
 __all__ = ["on_gpu"]
 
 
-@extern
-def osprey_gpu_panic(message: str) -> GpuBuffer[float]: ...
-
-
-def or_abort(result):
-    """Broken-code quarantine: a failed product used to become an empty
-    buffer and downstream code computed from fabricated zeros. It aborts
-    instead, through the GPU runtime's own panic channel."""
+def product_of(result):
+    """The GPU product as `Storage.Buffer.mat_mul` answers it: the buffer, or
+    the runtime's reason as text."""
     match result:
         case Success(value=value):
-            return value
+            return Success(value=value)
         case Error(message=message):
-            return osprey_gpu_panic(message)
+            return Error(message=toString(message))
 
 
 @static_handler(Storage.Buffer[GpuBuffer[float]])
@@ -47,7 +42,7 @@ class on_gpu:
         return gpuFold(b, seed, f)
 
     def mat_mul(a, b, rows, inner, cols):
-        return or_abort(gpuMatMul(a, b, rows, inner, cols))
+        return product_of(gpuMatMul(a, b, rows, inner, cols))
 
     def from_list(xs):
         return toGpu(xs)

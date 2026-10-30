@@ -10,9 +10,9 @@ effect Slices
 
 (** Keyed regions: each rebuilds only when a signal it read changed, and is otherwise retained with its revision ([UI-REGIONS]). *)
 module Keyed
-    (** Region `key`: rebuilt by `view` when a signal it read is in `changed`, else retained. A retained region's node is never re-sent, so `Brand` stands in for it. *)
+    (** Region `key`: rebuilt by `view` when a signal it read is in `changed`, else retained. A retained region's node is never re-sent, so a `Spacer` stands in for it. *)
     export region<A> : (List<SignalFrame>, string, List<string>, Unit -> Node<A>) -> KeyedSnapshot<Node<A>>
-    region (frames, key, changed, view) = signalRefreshKeyed frames key changed Brand view
+    region (frames, key, changed, view) = signalRefreshKeyed frames key changed Spacer view
 
 (** Signal identities for host-held slices, which change by being written rather than by comparison ([UI-SIGNALS]). *)
 module Signals

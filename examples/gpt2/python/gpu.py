@@ -10,19 +10,13 @@ from gpt2.Backends import Tensor, hit, min_i
 __all__ = ["on_gpu"]
 
 
-@extern
-def osprey_gpu_panic(message: str) -> GpuBuffer[float]: ...
-
-
-def or_abort(result):
-    """Broken-code quarantine: a failed load or product used to become an empty
-    tensor, and the model generated from fabricated zeros. It aborts instead,
-    through this handler's own runtime."""
+def answered(result):
+    """A GPU product or load, or the runtime's reason as text."""
     match result:
         case Success(value=value):
-            return value
+            return Success(value=value)
         case Error(message=message):
-            return osprey_gpu_panic(message)
+            return Error(message=toString(message))
 
 
 @static_handler(Tensor[GpuBuffer[float]])
@@ -48,13 +42,13 @@ class on_gpu:
         return gpuFold(gpuMap(gpuIota(gpuLength(b)), lambda i: hit(unwrap_or(gpuGet(b, i), 0.0), x, i, gpuLength(b))), gpuLength(b), min_i)
 
     def mat_mul(a, b, rows, inner, cols):
-        return or_abort(gpuMatMul(a, b, rows, inner, cols))
+        return answered(gpuMatMul(a, b, rows, inner, cols))
 
     def from_list(xs):
         return toGpu(xs)
 
     def load(path, name):
-        return or_abort(gpuLoadTensor(path, name))
+        return answered(gpuLoadTensor(path, name))
 
     def device():
         return gpuDevice()

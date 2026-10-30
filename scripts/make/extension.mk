@@ -40,10 +40,26 @@ PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/nativ
 target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
 	$(BIN) build packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
-_vsix_bundle: target/osprey-pkg target/package-workspace.wasm
+# The local package registry ([PACKAGE-LOCAL-REGISTRY]): the Osprey folder-
+# registry server, and the repository's own packages published into a folder
+# registry with `publish --folder`. `make registry-serve` serves that tree and
+# the extension bundles both, so anyone can grab packages before the hosted
+# registry exists. The stamp sits outside the tree, where a stray file would be
+# refused by the catalog walk.
+target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES)
+	$(BIN) build packages/manager/api --quiet --no-warnings -o $@
+
+LOCAL_REGISTRY_SOURCES := $(shell git ls-files packages | grep -v '^packages/manager/')
+target/local-registry.stamp: target/osprey-pkg scripts/stage-local-registry.sh $(LOCAL_REGISTRY_SOURCES)
+	scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
+	@touch $@
+
+_vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-registry target/local-registry.stamp
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey"; \
 	cp target/osprey-pkg "$$DEST/osprey-pkg"; \
+	cp target/osprey-registry "$$DEST/osprey-registry"; \
+	rm -rf "$$DEST/registry"; cp -R target/local-registry "$$DEST/registry"; \
 	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
 	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
 	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
@@ -56,7 +72,7 @@ _vsix_bundle: target/osprey-pkg target/package-workspace.wasm
 .PHONY: _vsix_verify
 _vsix_verify:
 	@test -n "$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES))"
-	@set -e; for INPUT in "$(BIN):osprey" "target/osprey-pkg:osprey-pkg" "target/package-workspace.wasm:package-workspace.wasm" \
+	@set -e; for INPUT in "$(BIN):osprey" "target/osprey-pkg:osprey-pkg" "target/osprey-registry:osprey-registry" "target/package-workspace.wasm:package-workspace.wasm" \
 	    $(foreach ARCHIVE,$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES)),"$(ARCHIVE):$(notdir $(ARCHIVE))"); do \
 	  cmp -s "$${INPUT%:*}" "$(EXT_DIR)/bin/$(EXT_PLATFORM)/$${INPUT#*:}" || \
 	    { echo "FAIL: missing or stale bundled $${INPUT#*:}; run make _vsix_bundle"; exit 1; }; \
@@ -78,6 +94,10 @@ _vsix_package: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	  { echo "FAIL: $$VSIX carries no bundled package client"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/package-workspace.wasm" || \
 	  { echo "FAIL: $$VSIX carries no package workspace WASM"; exit 1; }; \
+	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-registry" || \
+	  { echo "FAIL: $$VSIX carries no local registry server"; exit 1; }; \
+	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/registry/@osprey/" || \
+	  { echo "FAIL: $$VSIX carries no local registry packages"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \
 	  { echo "FAIL: $$VSIX carries no compiled extension (out/client/src/extension.js)"; exit 1; }
 

@@ -21,7 +21,7 @@ pub(crate) fn assemble(
     let (rebased, metadata, mut errors) = rebase(sources);
     let entry_source = choose_entry(config, &rebased, &metadata, &mut errors);
     let contributions = contribution::extract(config, &rebased);
-    let (graph, mut collection_errors) = collect::collect(&contributions, &metadata);
+    let (graph, mut collection_errors) = collect::collect(&contributions, &metadata, entry_source);
     errors.append(&mut collection_errors);
     let (scopes, mut import_errors) = imports::build(config, &contributions, &graph, &metadata);
     errors.append(&mut import_errors);
@@ -173,7 +173,13 @@ fn choose_entry(
     if !executable.is_empty() {
         return unique_entry(&executable, "top-level executable statements", errors);
     }
-    if sources.len() == 1 {
+    // Nothing has a `main` or anything to execute, but something is declared: a library, such
+    // as a package, runs nothing, so its first source stands as the nominal entry and the entry
+    // prologue stays empty. A project that declares nothing still has no entry to infer.
+    if sources
+        .iter()
+        .any(|source| declares(&source.program.statements))
+    {
         return Some(0);
     }
     errors.push(ProjectError {
@@ -183,6 +189,15 @@ fn choose_entry(
         column: None,
     });
     None
+}
+
+/// Whether a source declares anything beyond its namespaces and imports.
+fn declares(statements: &[Stmt]) -> bool {
+    statements.iter().any(|statement| match statement {
+        Stmt::Namespace { body, .. } => declares(body),
+        Stmt::Import(_) => false,
+        _ => true,
+    })
 }
 
 fn unique_entry(

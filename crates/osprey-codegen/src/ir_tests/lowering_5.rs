@@ -24,6 +24,29 @@ fn string_cursor_and_parse_out_slots_are_entry_allocas() {
     }
 }
 
+/// Map key and value iteration slots, and structural map equality's, are entry
+/// allocas: an alloca in a later block is dynamic to LLVM, and the GC root pass
+/// rejects any function holding one (`osprey hunt` failed on `Lists::distinct`).
+#[test]
+fn map_iteration_slots_are_entry_allocas() {
+    let ir = module(
+        r#"fn keys(n) = length(mapKeys(fold(range(0, n), Map(), fn(m, i) => mapSet(m, toString(i), true))))
+        fn same(n) = fold(range(0, n), Map(), fn(m, i) => mapSet(m, toString(i), i)) == fold(range(0, n), Map(), fn(m, i) => mapSet(m, toString(i), i))
+        print("${keys(3)} ${same(2)}")"#,
+    );
+    shows(&ir, &["osprey_map_iter_next"]);
+    for function in ir.split("define ").skip(1) {
+        let mut entry = true;
+        for line in function.lines() {
+            entry &= !line.ends_with(':') || line == "entry:";
+            assert!(
+                !line.contains(" = alloca ") || entry,
+                "slot outside the entry block: {line}"
+            );
+        }
+    }
+}
+
 #[test]
 fn higher_order_calls_through_computed_and_field_callees() {
     // A chained 3-deep application (the outer callee is itself a call

@@ -90,7 +90,7 @@ module Encode
     entryAt (walked, tabs, index) = match listGet tabs index
         Success tab =>
             inner = walk (walked.bindings, tab.page)
-            json = JsonObject [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" tab.tabSymbol, JsonMember "child" (first inner)]
+            json = JsonObject [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" (Symbols::name tab.tabSymbol), JsonMember "child" (first inner)]
             Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
         Error _ => walked
 
@@ -98,7 +98,7 @@ module Encode
     rowAt (walked, rows, index) = match listGet rows index
         Success item =>
             inner = walk (walked.bindings, item.cell)
-            json = JsonObject [str "key" item.rowKey, str "symbol" item.rowSymbol, str "group" item.rowGroup, JsonMember "child" (first inner)]
+            json = JsonObject [str "key" item.rowKey, str "symbol" (Symbols::name item.rowSymbol), str "group" item.rowGroup, JsonMember "child" (first inner)]
             Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
         Error _ => walked
 
@@ -144,28 +144,85 @@ module Encode
         menu = all (body.bindings, actions)
         one (menu.bindings, kind "context-menu" [JsonMember "body" (first body), JsonMember "items" (JsonArray menu.nodes)])
 
+    // [UI-COMPONENTS-METER] The amount is clamped into 0..total and the total is at least 1, so a host divides safely.
+    meter (label, amount, total, meterTone) =
+        whole = Pick::either (total < 1, 1, total)
+        [str "label" label, num "value" (Pick::either (amount < 0, 0, Pick::either (amount > whole, whole, amount))), num "total" whole, str "tone" (tone meterTone)]
+
     leaf<A> : (List<Binding<A>>, string, List<JsonMember>) -> Walked<A>
     leaf (bindings, name, members) = one (bindings, kind name members)
+
+    real value = JsonFloat value
+
+    // [UI-SCENE] Each primitive is one small array: a type code and a fixed count of values, so a
+    // painter reads it without a schema: rect 0 (x y w h angle colour depth), disc 1 (x y radius
+    // colour depth), strip 2 (pair count, the pairs, colour stroke depth), sprite 3 (atlas index, x y
+    // w h angle colour depth), glyphs 4 (text, x y size colour depth). One `mapList` builds the
+    // whole list; appending value by value costs a tail clone per value under ARC.
+    numbers primitive = match primitive
+        Rect x y w h angle color depth => [JsonInt 0, real x, real y, real w, real h, real angle, JsonInt color, JsonInt depth]
+        Disc x y radius color depth => [JsonInt 1, real x, real y, real radius, JsonInt color, JsonInt depth]
+        Strip points color stroke depth => listConcat [JsonInt 2, JsonInt (intDiv (length points) 2)] (listConcat (mapList (points, \point => real point)) [JsonInt color, real stroke, JsonInt depth])
+        Sprite index x y w h angle color depth => [JsonInt 3, JsonInt index, real x, real y, real w, real h, real angle, JsonInt color, JsonInt depth]
+        Glyphs text x y size color depth => [JsonInt 4, JsonString text, real x, real y, real size, JsonInt color, JsonInt depth]
+        Path steps outline paint moveX moveY scale depth => [JsonInt 5, JsonArray (mapList (steps, step)), JsonArray (stroke outline), JsonArray (painted paint), JsonArray (moved (moveX, moveY, scale)), JsonInt depth]
+
+    flag on = match on
+        true => JsonInt 1
+        false => JsonInt 0
+
+    reals values = mapList (values, \value => real value)
+
+    tinted tint = match tint
+        Rgb r g b a => JsonArray [JsonInt 0, real r, real g, real b, real a]
+        Hsl h s l a => JsonArray [JsonInt 1, real h, real s, real l, real a]
+
+    // Codes: 0 move, 1 line, 2 quadratic curve (end, control), 3 cubic (end, control a, control b), 4 arc, 5 polygon, 6 close.
+    step command = match command
+        MoveTo x y => JsonArray [JsonInt 0, real x, real y]
+        LineTo x y => JsonArray [JsonInt 1, real x, real y]
+        CurveTo x y cx cy => JsonArray [JsonInt 2, real x, real y, real cx, real cy]
+        CubicTo x y ax ay bx by => JsonArray [JsonInt 3, real x, real y, real ax, real ay, real bx, real by]
+        ArcTo rx ry rotation large sweep x y => JsonArray [JsonInt 4, real rx, real ry, real rotation, flag large, flag sweep, real x, real y]
+        Polygon corners closed => JsonArray (listConcat [JsonInt 5, flag closed] (reals corners))
+        Close => JsonArray [JsonInt 6]
+
+    stroke outline = match outline
+        Filled => [JsonInt 0]
+        Stroked width dashes bevel => listConcat [JsonInt 1, real width, flag bevel] (reals dashes)
+
+    painted paint = match paint
+        Solid tint => [JsonInt 0, tinted tint]
+        Linear angle from fromAt to toAt oklab => [JsonInt 1, real angle, tinted from, real fromAt, tinted to, real toAt, flag oklab]
+
+    // An identity transform is sent as an empty array so the host builds the path untransformed.
+    moved (moveX, moveY, scale) = match moveX == 0.0 && moveY == 0.0 && scale == 1.0
+        true => []
+        false => [real moveX, real moveY, real scale]
+
+    // `streamed` counts the rects, discs and sprites a resident session sent outside the envelope ([UI-SCENE-STREAM]).
+    scene<A> : (List<Binding<A>>, float, float, List<string>, List<Primitive>, A, int) -> Walked<A>
+    scene (bindings, width, height, atlas, primitives, action, sent) = bound (bindings, SceneInput(action = action), "scene", [JsonMember "width" (real width), JsonMember "height" (real height), JsonMember "atlas" (Doc::strings atlas), JsonMember "shapes" (JsonArray (mapList (primitives, \primitive => JsonArray (numbers primitive)))), num "streamed" sent])
 
     // Exhaustive: a new component cannot be encoded by accident as something else.
     (** Encodes `node` and collects its bindings after `bindings`, depth first, so each control's ordinal is the index of its binding. *)
     export walk<A> : (List<Binding<A>>, Node<A>) -> Walked<A>
     walk (bindings, node) = match node
         Text value textRole textTone => leaf (bindings, "text", [str "text" value, str "role" (role textRole), str "tone" (tone textTone)])
-        Evidence label value => leaf (bindings, "evidence", [str "label" label, str "value" value])
-        Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" symbol, str "tone" (tone badgeTone)])
-        Label label symbol => leaf (bindings, "label", [str "label" label, str "symbol" symbol])
-        Icon symbol => leaf (bindings, "icon", [str "symbol" symbol])
+        Pair label value => leaf (bindings, "pair", [str "label" label, str "value" value])
+        Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" (Symbols::name symbol), str "tone" (tone badgeTone)])
+        Label label symbol => leaf (bindings, "label", [str "label" label, str "symbol" (Symbols::name symbol)])
+        Icon symbol => leaf (bindings, "icon", [str "symbol" (Symbols::name symbol)])
         Link label address => leaf (bindings, "link", [str "label" label, str "url" address])
         Spacer => leaf (bindings, "spacer", [])
         Divider => leaf (bindings, "divider", [])
         Segments values label => leaf (bindings, "segments", [JsonMember "tones" (toneList values), str "label" label])
-        Empty symbol title detail => leaf (bindings, "empty", [str "symbol" symbol, str "title" title, str "detail" detail])
+        Empty symbol title detail => leaf (bindings, "empty", [str "symbol" (Symbols::name symbol), str "title" title, str "detail" detail])
         Progress label detail => leaf (bindings, "progress", [str "label" label, str "detail" detail])
+        Meter label amount total meterTone => leaf (bindings, "meter", meter (label, amount, total, meterTone))
         Swatch name light dark => leaf (bindings, "swatch", [str "name" name, str "light" light, str "dark" dark])
         Slot key => leaf (bindings, "slot", [str "key" key])
-        Brand => leaf (bindings, "brand", [])
-        Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" symbol, str "role" (buttonRole buttonKind), bit "enabled" enabled])
+        Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" (Symbols::name symbol), str "role" (buttonRole buttonKind), bit "enabled" enabled])
         Field label value prompt secure multiline policy action => bound (bindings, TextInput(action = action), "field", [str "label" label, str "value" value, str "prompt" prompt, bit "secure" secure, bit "multiline" multiline, str "commit" (commit policy)])
         Toggle label on action => bound (bindings, FlagInput(action = action), "toggle", [str "label" label, bit "on" on])
         Picker label items selected action => bound (bindings, ChoiceInput(action = action), "picker", [str "label" label, JsonMember "choices" (choices items), str "selected" selected])
@@ -180,3 +237,4 @@ module Encode
         Aside place column pane width action => aside (bindings, place, column, pane, width, action)
         Tabs entries selected action => tabs (bindings, entries, selected, action)
         Rows entries selected action => rows (bindings, entries, selected, action)
+        Scene width height atlas primitives action sent => scene (bindings, width, height, atlas, primitives, action, sent)

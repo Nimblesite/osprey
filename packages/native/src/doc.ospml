@@ -22,6 +22,9 @@ module Doc
     (** The integer member `key`, or 0 when it is absent or not an integer. *)
     export number (doc, key) = jsonInt (field (doc, key)) ?: 0
 
+    (** The float member `key`; an integer member reads as its float, and an absent or non-numeric one as 0. *)
+    export decimal (doc, key) = jsonFloat (field (doc, key)) ?: toFloat (jsonInt (field (doc, key)) ?: 0)
+
     (** The boolean member `key`, or false when it is absent or not a boolean. *)
     export flag (doc, key) = jsonBool (field (doc, key)) ?: false
 

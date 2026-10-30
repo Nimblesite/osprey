@@ -18,6 +18,11 @@ type Session S =
     sessionStore : S
     sessionFrames : List<SignalFrame>
 
+(** [UI-RESIDENT] One envelope and the session it leaves, for a host whose library keeps the session between calls. *)
+type Resident S =
+    residentSession : Session<S>
+    residentEnvelope : string
+
 (** Everything one envelope reports: the next session, the regions to patch, slice writes, requests, diagnostics and, at start, the theme. *)
 type Outgoing S A =
     nextSession : Session<S>
@@ -41,10 +46,10 @@ module Runtime
     export asking<S> : (S, List<Request>) -> Step<S>
     asking (store, requests) = Step(stepStore = store, requests = requests, writes = [])
 
-    contextJson context = JsonObject [Doc::num ("now", context.now), Doc::num ("offset", context.offset), Doc::str ("platform", context.platform), Doc::str ("home", context.home), JsonMember "arguments" (Doc::strings context.arguments)]
+    contextJson context = JsonObject [Doc::num ("now", context.now), Doc::num ("offset", context.offset), Doc::str ("platform", Symbols::platformText context.platform), Doc::str ("home", context.home), JsonMember "arguments" (Doc::strings context.arguments)]
 
     (** The host facts in a launch or event document; absent members read as empty. *)
-    export context doc = Context(now = Doc::number (doc, "now"), offset = Doc::number (doc, "offset"), platform = Doc::text (doc, "platform"), home = Doc::text (doc, "home"), arguments = Doc::texts (doc, "arguments"))
+    export context doc = Context(now = Doc::number (doc, "now"), offset = Doc::number (doc, "offset"), platform = Symbols::platform (Doc::text (doc, "platform")), home = Doc::text (doc, "home"), arguments = Doc::texts (doc, "arguments"))
 
     saveSession<S> : (Session<S>, (S) -> Json) -> string !e
     saveSession (session, save) = Doc::write (JsonObject [JsonMember "context" (contextJson session.sessionContext), JsonMember "store" (save session.sessionStore), JsonMember "frames" (signalFramesJson session.sessionFrames)])
@@ -75,9 +80,12 @@ module Runtime
     slice write = JsonObject [Doc::str ("key", write.sliceKey), Doc::str ("text", write.sliceText)]
 
     emit<S, A> : (Outgoing<S, A>, (S) -> Json) -> string !e
-    emit (out, save) = Doc::write (JsonObject [
+    emit (out, save) = encoded (out, saveSession (out.nextSession, save))
+
+    encoded<S, A> : (Outgoing<S, A>, string) -> string !e
+    encoded (out, sessionText) = Doc::write (JsonObject [
         Doc::num ("version", version),
-        Doc::str ("state", saveSession (out.nextSession, save)),
+        Doc::str ("state", sessionText),
         JsonMember "slices" (JsonArray (mapList (out.outWrites, \write => slice write))),
         JsonMember "patches" (JsonArray (patches (out.rendered, out.previousFrames))),
         JsonMember "removed" (Doc::strings (removed (out.rendered, out.previousFrames))),
@@ -157,6 +165,7 @@ module Runtime
         PreviousControl prior key revision ordinal value => resolveEdit (session, prior, key, revision, ordinal, value, render, restoreStore)
         Finished ticket result => Success(value = Completed(ticket = ticket, outcome = result))
         Lifecycle phase => Success(value = Phase(phase = phase))
+        Tick elapsed => Success(value = Frame(elapsed = elapsed))
 
     advance<S, A> : (Session<S>, Context, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json) -> string !e
     advance (session, now, delivered, update, render, save) =
@@ -172,6 +181,71 @@ module Runtime
         match message (session, event.eventBody, render, restoreStore)
             Error problem => refuse (session, problem, save, [])
             Success delivered => advance (session, now, delivered, update, render, save)
+
+    // [UI-RESIDENT] What a resident envelope carries as its state: a marker, never the store.
+    residentState = "resident"
+
+    // [UI-SCENE-STREAM] A resident envelope's changed regions stream their scenes' rects, discs and sprites.
+    streamedPatch<A> : KeyedSnapshot<Node<A>> -> Json ![SceneStream | e]
+    streamedPatch region = JsonObject [Doc::str ("key", region.snapshotKey), Doc::num ("revision", region.snapshotRevision), JsonMember "node" (tree (Streams::split region.snapshotValue))]
+
+    resident<S, A> : Outgoing<S, A> -> Resident<S> ![SceneStream | e]
+    resident out = Resident(residentSession = out.nextSession, residentEnvelope = Doc::write (JsonObject [
+        Doc::num ("version", version),
+        Doc::str ("state", residentState),
+        JsonMember "slices" (JsonArray (mapList (out.outWrites, \write => slice write))),
+        JsonMember "patches" (JsonArray (mapList (filterList (out.rendered, \region => region.snapshotRevision != signalRevisionOf out.previousFrames region.snapshotKey), \region => streamedPatch region))),
+        JsonMember "removed" (Doc::strings (removed (out.rendered, out.previousFrames))),
+        JsonMember "requests" (JsonArray (mapList (out.outRequests, \request => Requests::encode request))),
+        JsonMember "diagnostics" (Doc::strings out.diagnostics),
+        JsonMember "theme" out.themeJson,
+    ]))
+
+    (** [UI-RESIDENT] A session holding `store` before `begin` has run, for the cell an application keeps its live session in. *)
+    export idle<S> : S -> Session<S>
+    idle store = Session(sessionContext = context JsonNull, sessionStore = store, sessionFrames = [])
+
+    (** [UI-RESIDENT] `start` for a library that keeps the session itself: the first envelope, whose state is only a marker, and the session to keep. *)
+    export begin<S, A> : (string, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Theme) -> Resident<S> ![SceneStream | e]
+    begin (source, init, render, theme) =
+        host = context (Doc::parse source)
+        first = init host
+        regions = render (first.stepStore, first.stepStore, [], first.writes)
+        session = Session(sessionContext = host, sessionStore = first.stepStore, sessionFrames = frames regions)
+        resident (Outgoing(nextSession = session, previousFrames = [], rendered = regions, outWrites = first.writes, outRequests = first.requests, diagnostics = [], themeJson = Themes::encode theme))
+
+    // A resident session has no saved prior state, so an edit made against an older revision cannot be recovered.
+    residentMessage<S, A> : (Session<S>, Incoming, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<Message<A>, Error> !e
+    residentMessage (session, body, render) = match body
+        Control key revision ordinal value => resolve (session, key, revision, ordinal, value, render)
+        PreviousControl _ key _ _ _ => Error(message = "Stale control: region ${key} changed and a resident session keeps no prior state")
+        Finished ticket result => Success(value = Completed(ticket = ticket, outcome = result))
+        Lifecycle phase => Success(value = Phase(phase = phase))
+        Tick elapsed => Success(value = Frame(elapsed = elapsed))
+
+    residentRefusal<S, A> : (Session<S>, string, List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]
+    residentRefusal (session, problem, none) = resident (Outgoing(nextSession = session, previousFrames = [], rendered = none, outWrites = [], outRequests = [], diagnostics = [problem], themeJson = JsonNull))
+
+    residentStep<S, A> : (Session<S>, Event, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]
+    residentStep (session, event, update, render) =
+        host = session.sessionContext
+        now = host(now = event.eventNow)
+        match residentMessage (session, event.eventBody, render)
+            Error problem => residentRefusal (session, problem, [])
+            Success delivered => residentAdvance (session, now, delivered, update, render)
+
+    residentAdvance<S, A> : (Session<S>, Context, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]
+    residentAdvance (session, now, delivered, update, render) =
+        next = update (now, session.sessionStore, delivered)
+        regions = render (session.sessionStore, next.stepStore, session.sessionFrames, next.writes)
+        moved = Session(sessionContext = now, sessionStore = next.stepStore, sessionFrames = frames regions)
+        resident (Outgoing(nextSession = moved, previousFrames = session.sessionFrames, rendered = regions, outWrites = next.writes, outRequests = next.requests, diagnostics = [], themeJson = JsonNull))
+
+    (** [UI-RESIDENT] `dispatch` for a library that keeps the session itself: the envelope after one host event and the session to keep. The store is never serialized, so a frame costs only `update`, the changed regions and the envelope. *)
+    export proceed<S, A> : (Session<S>, string, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]
+    proceed (session, source, update, render) = match Events::decode source
+        Error problem => residentRefusal (session, problem, [])
+        Success event => residentStep (session, event, update, render)
 
     (** The next envelope after one host event, given the `state` the last envelope returned. *)
     export dispatch<S, A> : (string, string, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json, (Json) -> S) -> string !e

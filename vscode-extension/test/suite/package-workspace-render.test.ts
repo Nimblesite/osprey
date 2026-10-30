@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { Uri, ViewColumn, window, type WebviewPanel } from "vscode";
 import type { Browser, Frame } from "playwright-core";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
-import { renderWorkspace } from "../../client/src/osprey-ui/render";
+import { RENDERED_KINDS, renderWorkspace } from "../../client/src/osprey-ui/render";
 import { WEBVIEW_SCRIPT } from "../../client/src/osprey-ui/webview-client";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
 import { createWorkspaceSession } from "../../client/src/osprey-ui/session";
@@ -29,7 +29,7 @@ const rows = {
   kind: "section", title: "Packages", footer: "",
   children: [
     { kind: "field", label: "Search", value: "", prompt: "<script>alert(1)</script>", secure: false, multiline: false, commit: "edit", bind: "Search", event: 0 },
-    { kind: "rows", selected: "a", rows: [{ key: "a", symbol: "shippingbox", group: "Installed", child: { kind: "text", text: "<img src=x onerror=alert(1)>", role: "body", tone: "primary" } }], event: 1 },
+    { kind: "rows", selected: "a", rows: [{ key: "a", symbol: "package", group: "Installed", child: { kind: "text", text: "<img src=x onerror=alert(1)>", role: "body", tone: "primary" } }], event: 1 },
   ],
 };
 
@@ -73,6 +73,29 @@ suite("package workspace renderer", () => {
     assert.throws(() => renderWorkspace({ regions: regions({ kind: "mystery" }) }), /Unknown native component/);
   });
 
+  test("every framework node kind is drawn here except scenes, which the webview refuses", () => {
+    // Every `Node` constructor in packages/native/src/node.ospml, as the encoder names it ([NATIVE-HOSTS-COVERAGE]),
+    // so a component added to the framework fails here until the webview draws it or refuses it by name.
+    const source = fs.readFileSync(path.join(extensionRoot, "..", "packages", "native", "src", "node.ospml"), "utf8").replace(/\r/g, "");
+    const block = source.slice(source.indexOf("type Node A ="));
+    const body = block.slice(0, block.search(/\n\S/));
+    const kinds = [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) => match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase());
+    assert.ok(kinds.includes("meter") && kinds.includes("context-menu"), kinds.join(","));
+    assert.deepStrictEqual([...RENDERED_KINDS, "scene"].sort(), [...kinds].sort());
+    assert.throws(() => renderWorkspace({ regions: regions({ kind: "scene" }) }), /Unknown native component: scene/);
+  });
+
+  test("a meter fills its share of the total, clamped, in its tone", () => {
+    const html = renderWorkspace({ regions: regions({ kind: "stack", axis: "vertical", children: [
+      { kind: "meter", label: "30 of 120 used", value: 30, total: 120, tone: "caution" },
+      { kind: "meter", label: "<over>", value: 500, total: 120, tone: "nonsense" },
+    ] }) });
+    assert.ok(html.includes('class="osp-meter osp-tone-caution" role="meter" aria-valuemin="0" aria-valuemax="120" aria-valuenow="30" aria-label="30 of 120 used"'), html);
+    assert.ok(html.includes('style="width:25.0%"'), html);
+    assert.ok(html.includes('class="osp-meter osp-tone-accent" role="meter" aria-valuemin="0" aria-valuemax="120" aria-valuenow="120" aria-label="&lt;over&gt;"'), html);
+    assert.ok(html.includes('style="width:100.0%"'), html);
+  });
+
   test("malformed or excessive trees fail explicitly instead of rendering a partial screen", () => {
     for (const node of [null, [], {}, { kind: 1 }]) {
       assert.throws(() => renderWorkspace({ regions: regions(node) }), /not an object with a kind/);
@@ -97,7 +120,7 @@ suite("package workspace renderer", () => {
   });
 
   test("a context menu keeps its secondary actions out of the body until opened", () => {
-    const menu = { kind: "context-menu", body: { kind: "text", text: "Package", role: "body", tone: "primary" }, items: [{ kind: "button", label: "Add", symbol: "plus", role: "plain", enabled: true, event: 2 }] };
+    const menu = { kind: "context-menu", body: { kind: "text", text: "Package", role: "body", tone: "primary" }, items: [{ kind: "button", label: "Add", symbol: "add", role: "plain", enabled: true, event: 2 }] };
     const html = renderWorkspace({ regions: regions(menu) });
     assert.ok(html.includes('data-context-host'), html);
     assert.ok(html.includes('role="menu" hidden'), html);
@@ -106,13 +129,24 @@ suite("package workspace renderer", () => {
 
   test("symbols name official Codicons and never emit hand-drawn artwork", () => {
     const html = renderWorkspace({ regions: regions({ kind: "stack", axis: "vertical", children: [
-      { kind: "badge", label: "Installed", symbol: "shippingbox", tone: "good" },
+      { kind: "badge", label: "Installed", symbol: "package", tone: "good" },
       { kind: "icon", symbol: "not-a-symbol" },
     ] }) });
     assert.ok(html.includes('codicon codicon-package'), html);
     assert.ok(html.includes('codicon codicon-info'), html);
     assert.ok(!html.includes("osp-symbol"), html);
     assert.ok(!html.includes("not-a-symbol"), html);
+  });
+
+  test("every framework symbol draws its own Codicon and a pair shows its label and value", () => {
+    // Every `Symbols::name` in packages/native/src/symbol.ospml ([UI-COMPONENTS-SYMBOLS]).
+    const names = ["add", "delete", "dismiss", "check", "warning", "info", "question", "search", "settings", "star", "play", "pause", "stop", "refresh", "folder", "document", "package", "inbox", "globe", "external", "lock", "shield", "branch", "tag", "clock", "person", "cursor", "chevron"];
+    for (const name of names) {
+      const html = renderWorkspace({ regions: regions({ kind: "icon", symbol: name }) });
+      assert.ok(name === "info" || !html.includes("codicon-info\""), `${name} fell back to the info mark`);
+    }
+    const html = renderWorkspace({ regions: regions({ kind: "pair", label: "Digest", value: "<sha>" }) });
+    assert.ok(html.includes('<span class="osp-pair-label">Digest</span><span class="osp-pair-value">&lt;sha&gt;</span>'), html);
   });
 
   test("only HTTPS links are active and the rows label is application text", () => {
@@ -177,23 +211,22 @@ type Act = Changed | Gone
 controls expanded = [
     Ui::toggle ("SDK switch", true, Changed),
     Ui::picker ("SDK choice", [Ui::choice ("a", "Alpha"), Ui::choice ("b", "Beta")], "a", Changed),
-    Ui::disclosure ("SDK details", expanded, Changed, [Ui::button ("Nested action", "plus", Changed)]),
+    Ui::disclosure ("SDK details", expanded, Changed, [Ui::button ("Nested action", ui::Add, Changed)]),
     ui::Field(label = "SDK notes", value = "one\ntwo", prompt = "Notes", secure = false, multiline = true, commit = ui::OnSubmit, bind = Changed),
     ui::Field(label = "SDK secret", value = "private", prompt = "Password", secure = true, multiline = false, commit = ui::OnSubmit, bind = Changed),
-    ui::Button(label = "SDK disabled", symbol = "lock", role = ui::Destructive, enabled = false, action = Changed),
+    ui::Button(label = "SDK disabled", symbol = ui::Lock, role = ui::Destructive, enabled = false, action = Changed),
     ui::Field(label = "SDK draft", value = "", prompt = "Draft", secure = false, multiline = false, commit = ui::OnEdit, bind = Changed),
 ]
 
 proof () = [
-    Ui::evidence ("SDK evidence", "37 lines"),
-    Ui::label ("SDK label", "info"),
+    Ui::pair ("SDK pair", "37 lines"),
+    Ui::label ("SDK label", ui::Info),
     ui::Spacer,
     ui::Divider,
     ui::Segments(tones = [ui::Good, ui::Caution, ui::Danger], label = "SDK health"),
-    Ui::empty ("tray", "SDK empty", "No items exist"),
+    Ui::empty (ui::Inbox, "SDK empty", "No items exist"),
     ui::Progress(label = "SDK progress", detail = "Compiling"),
     ui::Swatch(name = "SDK palette", light = "#112233", dark = "#ddeeff"),
-    ui::Brand,
 ]
 
 drawing expanded = Ui::screen ("SDK vocabulary", "Compiled from Osprey", [], [Ui::layer [Ui::section ("SDK proof", "SDK footer", listConcat (controls expanded) (proof ())) ]])
@@ -217,14 +250,14 @@ module Normalized
         value = perform Signal<string>.read ()
         match value == "removed"
             true => Ui::text "SDK removed"
-            false => Ui::column [Ui::field ("SDK normalized", value, "Normalized", Changed), Ui::button ("Hide field", "xmark", Gone)]
+            false => Ui::column [Ui::field ("SDK normalized", value, "Normalized", Changed), Ui::button ("Hide field", ui::Dismiss, Gone)]
     regions (before, value, frames, _) =
         handle static Signal<string>
             read => value
         changed = signalChanges before value (\text => JsonString text) (signalDependencies slice)
         [Keyed::region (frames, "root", changed, drawing)]
     initial _ = Runtime::step ""
-    update (_, current, message) = Messages::route (message, \_ => Runtime::step "removed", \(_, _) => Runtime::step "CANONICAL", \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \_ => Runtime::step current)
+    update (_, current, message) = Messages::route (message, \_ => Runtime::step "removed", \(_, _) => Runtime::step "CANONICAL", \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \_ => Runtime::step current, \_ => Runtime::step current, \(_, _) => Runtime::step current)
     save value = JsonString value
     restore doc = jsonText doc ?: ""
     palette = ui::Theme(tokens = [], spacing = [4], feedback = 160, settle = 220)
@@ -297,8 +330,8 @@ async function assertSdkComponents(frame: Frame): Promise<void> {
   assert.strictEqual(await frame.getByRole("heading", { name: "SDK empty" }).count(), 1);
   assert.strictEqual(await frame.getByRole("progressbar", { name: "SDK progress" }).textContent(), "SDK progressCompiling");
   assert.strictEqual(await frame.locator(".osp-swatch").getAttribute("style"), "--osp-swatch-light:#112233;--osp-swatch-dark:#ddeeff");
-  assert.strictEqual(await frame.getByRole("img", { name: "Osprey", exact: true }).count(), 2);
-  assert.strictEqual(await frame.getByText("SDK evidence", { exact: true }).count(), 1);
+  assert.strictEqual(await frame.getByRole("img", { name: "Osprey", exact: true }).count(), 1);
+  assert.strictEqual(await frame.getByText("SDK pair", { exact: true }).count(), 1);
   assert.strictEqual(await frame.getByText("SDK label", { exact: true }).count(), 1);
   assert.strictEqual(await frame.getByText("SDK footer", { exact: true }).count(), 1);
   assert.strictEqual(await frame.getByRole("button", { name: "Nested action", includeHidden: true }).isVisible(), true,

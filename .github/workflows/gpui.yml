@@ -1,0 +1,187 @@
+name: GPUI host
+
+# Plan 0036 phase 4 ([GPUI-HOST-TARGETS], [GPUI-HOST-VERIFICATION]): on each desktop system, build
+# the CLI and its native runtime, compile the example applications for that system's desktop
+# target, build the GPUI host against them and run the host's tests and the recorded-event smoke
+# runs of the probe and Flock. The smoke runs open no window, so no display is needed; on Windows,
+# Flock and Painting then open in real windows on the runner's desktop and are pictured. The
+# frame-rate bench stays on a Mac with a display; hosted runners have none to pace frames.
+#
+# Every job is a required check (scripts/verify-branch-protection.mjs), pinned by its literal name,
+# so each system is its own job rather than a matrix entry whose name interpolates; the Mac and
+# Linux jobs share their suites through .github/actions/gpui-host-suites. A PR that changes no code
+# skips the hosts at the job level, which reports as passing; an `on: paths:` filter would leave a
+# required check pending forever.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  # ci-windows.yml calls it on a manual run, because a workflow not yet on main cannot be dispatched.
+  workflow_call:
+
+concurrency:
+  # Not github.workflow: a called workflow takes its caller's name, and sharing its group cancels it.
+  group: gpui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changed areas (GPUI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/detect-ci-scope
+        id: filter
+
+  macos:
+    name: GPUI host (macos-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Install typeDiagram
+        uses: ./.github/actions/typediagram
+
+      # Rust, clang/LLVM, the native C runtime archives and the release CLI.
+      - name: Setup Osprey Compiler
+        uses: ./.github/actions/setup-osprey-compiler
+
+      # The Mac slice is the `macos` app-library target, with the Metal adapter.
+      - name: Mac app-library runtime
+        run: make _runtime_macos
+
+      - uses: ./.github/actions/gpui-host-suites
+
+  ubuntu:
+    name: GPUI host (ubuntu-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Install typeDiagram
+        uses: ./.github/actions/typediagram
+
+      # Rust, clang/LLVM, the native C runtime archives and the release CLI.
+      - name: Setup Osprey Compiler
+        uses: ./.github/actions/setup-osprey-compiler
+
+      # GPUI's Linux backends link X11, Wayland, Vulkan, fontconfig and ALSA.
+      - name: GPUI system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev libfreetype-dev libasound2-dev libzstd-dev
+
+      - uses: ./.github/actions/gpui-host-suites
+
+  windows:
+    name: GPUI host (windows-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # The C runtime is built with MinGW (as in ci-windows.yml) and the host with MSYS2's UCRT64
+      # Rust, so its build scripts run as GNU programs and the host, GPUI and the Osprey runtime all
+      # link one UCRT. Rustup's Rust with the GNU target builds GPUI's resource script as an MSVC
+      # library and links msvcrt beside the runtime's UCRT. The UCRT64 clang and llvm-ar build the
+      # windows-x64 app archive.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          update: true
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-sqlite3
+            mingw-w64-ucrt-x86_64-rust
+
+      # The CLI builds with rustup's stable MSVC toolchain, as in ci-windows.yml.
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install typeDiagram
+        uses: ./.github/actions/typediagram
+
+      - name: Build C runtime archives (MinGW)
+        shell: msys2 {0}
+        run: make _runtime CC=gcc AR=ar
+
+      - name: Build osprey (release)
+        run: cargo build --release -p osprey-cli
+
+      - name: Pin the MinGW clang and llvm-ar
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          echo "OSPREY_CC=$(cygpath -m /ucrt64/bin/clang.exe)" >> "$GITHUB_ENV"
+          echo "OSPREY_AR=$(cygpath -m /ucrt64/bin/llvm-ar.exe)" >> "$GITHUB_ENV"
+
+      - name: Native framework suite
+        shell: msys2 {0}
+        run: ./target/release/osprey.exe test packages/native/tests
+
+      - name: Host tests and smoke runs
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          test "$(command -v cargo)" = /ucrt64/bin/cargo  # MSYS2's Rust, ahead of rustup's on PATH
+          cargo --version
+          export OSPREY_BIN="$PWD/target/release/osprey.exe"
+          bash hosts/gpui/run.sh --smoke
+          (cd hosts/gpui && cargo test --release)
+          bash examples/gpui/flock/run.sh --smoke
+
+      # Flock and Painting in real windows on the runner's desktop: each is linked into the host and
+      # pictured after it has drawn for a while. PowerShell starts the host from MSYS2's environment,
+      # so it finds the UCRT64 libraries it was linked with.
+      - name: Flock and Painting in a real window
+        if: ${{ !cancelled() }}
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          export OSPREY_BIN="$PWD/target/release/osprey.exe"
+          host=hosts/gpui/target/release/osprey-gpui.exe
+          shots="$RUNNER_TEMP/gpui"
+          bash examples/gpui/flock/run.sh --build
+          OSPREY_GPUI_APP_NAME=flock \
+            pwsh -NoProfile -File scripts/window-picture.ps1 -Exe "$host" -Picture "$shots/flock.png"
+          bash examples/gpui/painting/run.sh --build
+          OSPREY_GPUI_APP_NAME=painting OSPREY_GPUI_WINDOW=default \
+            pwsh -NoProfile -File scripts/window-picture.ps1 -Exe "$host" -Picture "$shots/painting.png"
+
+      # The host appends every panic to this log as well as stderr, so a window that died says why.
+      - name: The host's panic log
+        if: failure()
+        shell: pwsh
+        run: Get-Content "$env:LOCALAPPDATA\Osprey\Logs\gpui-panic.log" -ErrorAction SilentlyContinue
+
+      - name: Keep the windows' pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gpui-windows
+          path: ${{ runner.temp }}/gpui
+          if-no-files-found: warn

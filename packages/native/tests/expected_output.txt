@@ -28,5 +28,29 @@ ok 27 - desktop requests preserve picker export and cancellation payloads
 ok 28 - semantic text roles preserve every protocol spelling
 ok 29 - host capabilities preserve namespace operation arguments and bounds
 ok 30 - context menus bind actions after their content controls
-1..30
-# tests=30 passed=30 failed=0 skipped=0
+ok 31 - a scene encodes its primitives as flat typed arrays
+ok 32 - colours pack as RRGGBBAA
+ok 33 - a path encodes its steps, outline, paint and transform
+ok 34 - a scene binding delivers keys and pointer positions in scene units
+ok 35 - a frame event delivers its elapsed seconds and patches nothing when ignored
+ok 36 - an animate request carries its on flag
+ok 37 - every symbol encodes as a distinct host-neutral name
+ok 38 - labels, icons, badges, empty states, buttons, tabs and rows send their symbol names
+ok 39 - a pair encodes its label and value without a binding
+ok 40 - platforms decode to the union and encode back to their names
+ok 41 - a start context carries a linux or windows platform
+ok 42 - product-specific work is a host call with its namespace and arguments
+ok 43 - a split scene streams its fixed-size primitives in order and keeps the rest
+ok 44 - an enveloped scene reports nothing streamed
+ok 45 - streamed primitives read back every field a host import takes
+ok 46 - a resident session keeps its store out of the envelope
+ok 47 - a resident session refuses stale controls and prior-state edits without change
+ok 48 - a split streams scenes from every container in the encoder's order
+ok 49 - primitives that do not stream read back zero fields
+ok 50 - a resident session delivers completions, phases and frames and refuses malformed text
+ok 51 - an idle session holds only its store
+ok 52 - toggles and pickers deliver their own value kinds and refuse others
+ok 53 - progress, swatches, alerts, prominent buttons and leading asides encode
+ok 54 - a meter sends its amount clamped into a total of at least one
+1..54
+# tests=54 passed=54 failed=0 skipped=0

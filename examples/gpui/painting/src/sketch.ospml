@@ -1,0 +1,87 @@
+// The painting port's state and drawing rules: GPUI's examples/painting.rs ported to Osprey
+// ([UI-STORE], [UI-SCENE]).
+namespace painting
+
+import ui::Runtime
+import ui::Doc
+
+(** The freehand lines, each a flat `x0, y0, x1, y1, ...` list in window pixels, and the drag in progress. *)
+type Sketch =
+    lines : List<List<float>>
+    startX : float
+    startY : float
+    painting : bool
+
+(** Whether freehand lines are drawn dashed. *)
+type Style =
+    dashed : bool
+
+(** The whole application store. *)
+type Store =
+    sketch : Sketch
+    style : Style
+
+(** What the header buttons and the canvas send. *)
+type Act = ToggleDash | Clear | Draw
+
+(** Pointer handling, the dash toggle and the store's JSON. *)
+module Drawing
+    (** No lines, solid strokes. *)
+    export initialStore () = Store(sketch = Sketch(lines = [], startX = 0.0, startY = 0.0, painting = false), style = Style(dashed = false))
+
+    // As the original: with Shift held, a drag keeps the start point's y when it moved more across than down, else its x.
+    straight (sketch, x, y, shift) =
+        dx = x - sketch.startX
+        dy = y - sketch.startY
+        match shift == false
+            true => [x, y]
+            false => match abs dx > abs dy
+                true => [x, sketch.startY]
+                false => [sketch.startX, y]
+
+    abs value = match value < 0.0
+        true => 0.0 - value
+        false => value
+
+    grown (lines, point, last, i) = match i == last
+        true => listConcat (listGet lines i ?: []) point
+        false => listGet lines i ?: []
+
+    // The last line grows by one point; the others are kept as they are.
+    extended (lines, point) = range (0, length lines) |> fold [] (\(out, i) => listAppend out (grown (lines, point, satSub (length lines) 1, i)))
+
+    // A press starts a line at the pointer, a drag extends it, a release ends the drag.
+    pressed (sketch, x, y, down, shift) = match down
+        false => sketch(painting = false)
+        true => match sketch.painting
+            false => sketch(lines = listAppend sketch.lines [x, y], startX = x, startY = y, painting = true)
+            true => sketch(lines = extended (sketch.lines, straight (sketch, x, y, shift)))
+
+    (** Applies one canvas pointer event in window pixels. *)
+    export pointer (store, x, y, down, shift) = Runtime::step (store(sketch = pressed (store.sketch, x, y, down, shift)))
+
+    (** Swaps solid and dashed strokes for every line. *)
+    export toggleDash store = Runtime::step (store(style = Style(dashed = store.style.dashed == false)))
+
+    (** Removes every freehand line. *)
+    export clear store =
+        sketch = store.sketch
+        Runtime::step (store(sketch = sketch(lines = [])))
+
+    floats values = JsonArray (mapList (values, \value => JsonFloat value))
+
+    (** The sketch slice as JSON for change detection and the session. *)
+    export sketchJson sketch = JsonObject [JsonMember "lines" (JsonArray (mapList (sketch.lines, floats))), JsonMember "startX" (JsonFloat sketch.startX), JsonMember "startY" (JsonFloat sketch.startY), Doc::bit ("painting", sketch.painting)]
+
+    (** The style slice as JSON. *)
+    export styleJson style = JsonObject [Doc::bit ("dashed", style.dashed)]
+
+    (** The whole store as the opaque session's JSON. *)
+    export save store = JsonObject [JsonMember "sketch" (sketchJson store.sketch), JsonMember "style" (styleJson store.style)]
+
+    numbers item = mapList (Doc::items item, \value => jsonFloat value ?: 0.0)
+
+    (** Restores the store from a saved session. *)
+    export restore doc =
+        sketch = Doc::field (doc, "sketch")
+        Store(sketch = Sketch(lines = mapList (Doc::items (Doc::field (sketch, "lines")), numbers), startX = Doc::decimal (sketch, "startX"), startY = Doc::decimal (sketch, "startY"), painting = Doc::flag (sketch, "painting")), style = Style(dashed = Doc::flag (Doc::field (doc, "style"), "dashed")))

@@ -27,9 +27,12 @@ pub(crate) fn fail(msg: &str) -> ExitCode {
 }
 
 /// The app-library targets that publish a C ABI static archive: every Apple
-/// slice and Android ABI. [IOS-TARGET-TRIPLE] [ANDROID-TARGET-TRIPLE]
+/// slice, Android ABI and desktop slice. [IOS-TARGET-TRIPLE] [ANDROID-TARGET-TRIPLE]
+/// [GPUI-HOST-TARGETS]
 pub(crate) fn host_archive_target(target: &str) -> bool {
-    crate::ios::Target::parse(target).is_some() || crate::android::Target::parse(target).is_some()
+    crate::ios::Target::parse(target).is_some()
+        || crate::android::Target::parse(target).is_some()
+        || crate::desktop::Target::parse(target).is_some()
 }
 
 /// An app-library target publishes a static archive plus a matching C header,

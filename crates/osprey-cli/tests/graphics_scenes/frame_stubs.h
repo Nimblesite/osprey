@@ -10,6 +10,7 @@ typedef struct {
   void *queue, *fence, *fenceEvent, *commands, *swap, *allocator, *pipeline;
   uint64_t fenceValue;
   int closed;
+  long long frameLimit, frames;
 } OspGfxContext;
 #define OSP_GFX_API
 #define OSP_GFX_VSYNC_INTERVAL 1u

@@ -211,7 +211,7 @@ mod tests {
         while let Some(found) = matches.next() {
             captures.extend(
                 found
-                    .captures
+                    .captures()
                     .iter()
                     .map(|capture| capture_text(&query, capture, source)),
             );
@@ -263,7 +263,7 @@ mod tests {
         let mut captured = Vec::new();
         let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
         while let Some(found) = matches.next() {
-            captured.extend(found.captures.iter().map(|capture| capture.node.kind()));
+            captured.extend(found.captures().iter().map(|capture| capture.node.kind()));
         }
         for kind in ["line_comment", "doc_comment", "inner_doc_comment"] {
             assert!(

@@ -9,7 +9,8 @@ Clean up disk space routinely. If you put temporary files on the hard drive, you
 ## ⚠️ Invariants
 - **Subagents are illegal.**
 - **Linked worktrees are illegal.** Work only in the primary checkout; never create or recreate a linked worktree.
-- **External agents (pi) use only these models:** kimi-k3.1-pro-highspeed or kimi-k3.1-pro-highspeed (K3.1) (`moonshotai/kimi-k3`) -> GLM 5.3 (`zai/glm-5.3`, `zai/glm-5.3-flash`), DeepSeek V4.1-Flash-1017 and their flash variants. No other model, ever. If credit is out, ***tell the user*** but switch to a model that does have credit. No excuses about not enout credit.
+- **pi models: newest Kimi, DeepSeek or GLM only** (`pi --list-models`). Flash for easy bulk work; DeepSeek flash for grunt work.
+- 🛑 **Quota out? Tell the user, switch model. Never skip pi.**
 - ***You are responsible** for the work of the pi agents. You must review and fix all work that they create. Broken code created by pi is considered broken code created by you.
 - **Never ask the user questions.** Use your judgement, record assumptions, act autonomously.
 - **Answer punctually, not at length.** A few sentences or a short list; no essays, recaps or restating the question. Mark the one point the user must not miss with an emoji — nothing else gets one.
@@ -37,14 +38,20 @@ Clean up disk space routinely. If you put temporary files on the hard drive, you
 - Coverage thresholds live in `coverage-thresholds.json` and only go up.
 - Expand existing examples and tests instead of adding files; keep each concise, mixing many language constructs.
 
+## 🛑 Panics in Osprey are illegal
+- **Osprey has no panic, abort, exit or crash, and never will.** Every failure is a typed value: `Result<T, E>` or an effect discharged by a handler ([FAILURE-EXPLICIT]). This applies to the language, the standard library, `packages/`, examples, tests and generated code.
+- **Never add a panic builtin**, or any builtin, prelude function or runtime entry point that ends the program instead of returning an error.
+- **Never reach a panic through FFI.** No `extern`/`@extern` declaration may bind a C function that panics, aborts or exits (`osprey_*_panic`, `abort`, `exit`, ...). Never use one to dodge a `Result`.
+- **Never fake a value to avoid an error.** No zero, empty or placeholder value stands in for a failure; return the error.
+- Removing an existing Osprey panic is always in scope. Proposing one is a defect.
+
 ## Broken code
 On encountering code that fails silently:
 
-- Replace it with a panic and a comment explaining why the code is wrong.
+- In **Osprey**, make the failure a typed error (`Result` or an effect) that callers must handle, never a panic.
+- In **Rust or C** compiler and runtime code only, a panic with a comment explaining why the code is wrong is the quarantine; it never surfaces as an Osprey-level panic.
 - Write a test that fails because of the missing implementation.
-- Report the problem to the user. 
-
-A panic is found in seconds; a silent failure never is. This quarantine is the one place a panic is mandated.
+- Report the problem to the user.
 
 ## CI gates
 - **Protect the Dependabot auto-merge process.** `dependabot-upgrades` is permanent staging, never a disposable feature branch. Never delete it during merged-branch cleanup, rename it, protect it against the sweep bot, retarget routine updates to main, disable the sweep or consolidation PR, or add CI to staging. Preserve `.github/dependabot.yml` and `.github/workflows/dependabot-automerge.yml`; follow AgentPMO/Shipwright and the Deslop implementation. Updates accumulate automatically in staging and reach main through a fully tested consolidation PR. Any process change requires explicit user authorization.
@@ -93,7 +100,8 @@ A panic is found in seconds; a silent failure never is. This quarantine is the o
 - **Hunt — controls and limitations:** [`tests/hunt/clean.osp`](tests/hunt/clean.osp) and the fixed [`tests/hunt/record_update_list.osp`](tests/hunt/record_update_list.osp) expect no findings. [`tests/hunt/process.osp`](tests/hunt/process.osp) demonstrates an unsupported engine operation, not bug detection; never offer it as the bug-finding demo. Hunt needs KLEE and `compiler/bin/libosprey_runtime_klee.bc`; `make hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds prerequisites before running.
 - **Hunt — exhaustive qualification and crash proof:** `python3 scripts/hunt_sample.py --out target/my-hunt-sample` inventories runnable apps and hard-kills each invocation after ten seconds. Review `index.html` and `quick-corpus.txt`; only fully completed, finding-free runs qualify. `make hunt-crashes` asserts fifteen deliberately planted input cases through real KLEE and native replay; CI requires every expected class, source location, input and signal. Four explored paths with three normal exits and one detected crash is successful detection, not a missed test.
 - **Python application ports:** [`examples/python/ports/README.md`](examples/python/ports/README.md) documents the micrograd classifier, FAISS vector search and Google ROUGE text evaluation workflows. `make python-app-ports` builds and checks all three concurrently under GC and ARC memory; expect six `PASS` lines, exact goldens and zero live objects under ARC. Focused command: `python3 scripts/test-python-app-ports.py --app classifier --memory gc`.
-- **VSIX README media:** `npm run package --prefix vscode-extension` bundles the real package-manager GIF and logo, then runs `node vscode-extension/scripts/verify-readme.mjs vscode-extension/osprey-0.0.0-dev.vsix`; expect `VSIX README: bundled logo and editor GIF PASS`. The archive check rejects missing media, Git LFS pointers and image URLs that cannot be served to the Marketplace. `vscode-extension/media/package-tour.gif` is a 16-second excerpt of `website/src/assets/videos/osprey-package-manager.mp4` (18.247–34.325 seconds). README images use HTTPS; GitHub LFS media uses media.githubusercontent.com, never raw.githubusercontent.com.
+- **VSIX README media:** `npm run package --prefix vscode-extension` bundles the language-tour GIF and logo, then runs `node vscode-extension/scripts/verify-readme.mjs vscode-extension/osprey-0.0.0-dev.vsix`; expect `VSIX README: bundled logo and editor GIF PASS`. The archive check rejects missing media, Git LFS pointers and image URLs that cannot be served to the Marketplace. `vscode-extension/media/language-tour.gif` is the first 31.4 seconds of `website/src/assets/videos/osprey-overview.mp4` (effects, handlers, flavors, GPU; the end card is cut), at 10 fps and 1280 px wide. README images use HTTPS; GitHub LFS media uses media.githubusercontent.com, never raw.githubusercontent.com.
+- **Windows app DLLs and the WinUI host:** with MSYS2 UCRT64's `clang.exe` and `llvm-ar.exe` as `OSPREY_CC` and `OSPREY_AR`, `./target/release/osprey build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll` links an Osprey Native app into a DLL ([spec 0048](docs/specs/platforms/0048-WinUiHost.md)); `cargo test -p osprey-cli windows_dll` expects six passing boundary tests and `./target/release/osprey test examples/storage/test` expects 20. From PowerShell in `hosts/winui`, `dotnet test --project OspreyHost.Tests` expects 75 passing tests, including Storage's DLL driven end to end with no window; Git Bash enables the backup privilege and skips the denied-folder case. `dotnet publish OspreyHost -c Release` publishes the Native AOT host and needs the Visual Studio Installer folder on `PATH` for `vswhere`. The window opens only from a desktop session, never session 0.
 - **VSCode extension**: `cd vscode-extension && npm install && npm run compile`; test with `npm test`.
 - **VSCode package API:** `cd vscode-extension && OSPREY_TEST_GREP='package |direct dependency reports|serialized per-project mutation|command registration' npm test` runs the package command, real HTTP transport, picker and client protocol regressions in `vscode-extension/test/suite/package-*.test.ts` and `registry-editor-adapter.test.ts`; expect all selected tests to pass. `make _vsix_bundle _vsix_package` builds and bundles the native Osprey package client; packaging must fail if the client is absent. In the editor use `Osprey: Add Package` and `Osprey: Remove Package`; set `osprey.packages.registry` to the API origin (default loopback folder registry).
 - **Publication cache exclusion:** `python3 scripts/test-package-publication.py` drives the real native publisher and requires nested `.deslop`, `.osprey`, `.git`, and `__pycache__` directories to stay out of releases. Select the built client with `OSPREY_PACKAGE_CLIENT`. Canonical path controls are in `packages/manager/tests/src/paths_tests.osp`; `paths: sets and exclusions` preserves similarly named source directories.
