@@ -42,6 +42,28 @@ pub struct CtorLayout {
     pub fields: Vec<(String, Type)>,
 }
 
+impl CtorLayout {
+    /// Whether the field types retain every declared argument, including arguments in nested types.
+    #[must_use]
+    pub fn carries_all_parameters(&self) -> bool {
+        fields_carry_parameters(self.fields.iter().map(|(_, ty)| ty), self.type_params.len())
+    }
+}
+
+pub(crate) fn fields_carry_parameters<'a>(
+    fields: impl Iterator<Item = &'a Type>,
+    count: usize,
+) -> bool {
+    let mut used = std::collections::BTreeSet::new();
+    for ty in fields {
+        let _ = crate::ty::map_type_vars(ty, &mut |var| {
+            let _ = used.insert(var);
+            Type::Var(var)
+        });
+    }
+    used.len() == count
+}
+
 /// One effect operation's resolved signature.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OpType {

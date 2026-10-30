@@ -319,6 +319,33 @@ mod tests {
                            let b = boxed()\n";
 
     #[test]
+    fn inferred_record_views_preserve_phantom_effect_arguments() {
+        let source = "effect Read<T> { get: fn() -> T }\ntype Control<T> = { press: fn() -> int ![Read<T>] }\nfn makeInt() = Control<int> { press: fn() => 1 }\nfn makeStr() = Control<string> { press: fn() => 1 }\ntype Mixed<T, U> = { value: T }\nfn mixed() = Mixed<int, string> { value: 1 }\ntype Nested<T> = { values: List<T> }\nfn nested() = Nested { values: [1] }\n";
+        let program = crate::test_support::parsed(source);
+        assert_eq!(osprey_types::check_program(&program), []);
+        let symbols = crate::analysis::symbols_json(&program);
+        for (line, name, returned) in [
+            (2, "makeInt", "Control<int> { press: () -> int }"),
+            (3, "makeStr", "Control<string> { press: () -> int }"),
+            (5, "mixed", "Mixed<int, string> { value: int }"),
+            (7, "nested", "Nested { values: List<int> }"),
+        ] {
+            let signature = format!("fn {name}() -> {returned}");
+            assert_record_view(source, &symbols, line, &signature);
+        }
+    }
+
+    fn assert_record_view(source: &str, symbols: &str, line: u32, signature: &str) {
+        assert!(
+            symbols.contains(&format!("\"signature\":\"{signature}\"")),
+            "{symbols}"
+        );
+        let hover = crate::test_support::hover(source, "file:///phantom.osp", line, 4, U16)
+            .expect("constructor function hover");
+        assert_eq!(hover, format!("```osprey\n{signature}\n```"));
+    }
+
+    #[test]
     fn every_reader_view_shows_a_records_name_and_its_row_together() {
         // A declared record has TWO things worth saying, and each rendering
         // that picked one lost the other:

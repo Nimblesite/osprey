@@ -1,5 +1,5 @@
 //! Shared symbol signatures and inferred type rendering.
-use osprey_types::{ProgramTypes, Type};
+use osprey_types::{CtorLayout, ProgramTypes, Type};
 
 use super::{
     render_type, DocComment, EffectRef, ExternParameter, Parameter, Position, SymbolInfo,
@@ -204,9 +204,17 @@ fn record_view(ty: &Type, types: &ProgramTypes) -> Option<Type> {
         .map(|(field, _)| Some((field.clone(), types.field_type(ty, field)?)))
         .collect::<Option<_>>()?;
     Some(Type::Record {
-        name: name.clone(),
+        name: record_name(ty, layout, name),
         fields,
     })
+}
+
+fn record_name(ty: &Type, layout: &CtorLayout, name: &str) -> String {
+    if layout.carries_all_parameters() {
+        name.to_owned()
+    } else {
+        osprey_types::render_with_holes(ty)
+    }
 }
 
 /// Fill every slot the author left to inference — unannotated parameters and an

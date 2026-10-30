@@ -91,14 +91,7 @@ impl InferCtx {
         let Some(fields) = self.record_fields(name, &arguments) else {
             return false;
         };
-        let mut used = BTreeSet::new();
-        for ty in fields.values() {
-            let _ = crate::ty::map_type_vars(ty, &mut |var| {
-                let _ = used.insert(var);
-                Type::Var(var)
-            });
-        }
-        used.len() == parameters.len()
+        crate::info::fields_carry_parameters(fields.values(), parameters.len())
     }
 
     /// The one record that declares `field`, instantiated at fresh type
