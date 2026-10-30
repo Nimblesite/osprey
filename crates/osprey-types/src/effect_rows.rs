@@ -76,6 +76,8 @@ type HandlerCandidates = HashMap<(u32, u32), BTreeSet<Vec<String>>>;
 
 #[derive(Clone, Default)]
 pub(crate) struct Instances {
+    #[cfg(test)]
+    pub(crate) owner_substitutions: std::cell::Cell<usize>,
     pub(crate) signatures: HashMap<String, (Vec<crate::ty::Type>, crate::ty::Type)>,
     pub(crate) signal_queries: RefCell<HashMap<usize, crate::EffectRequirements>>,
     pub(crate) expression_types: RefCell<HashMap<usize, crate::ty::Type>>,
@@ -301,6 +303,8 @@ enum Callable {
 /// would make an effect escape possible.
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 struct Value {
+    #[cfg(test)]
+    clone_probe: provenance::CloneProbe,
     callable: Option<Callable>,
     field_owner: Option<field_rows::FieldInstance>,
     empty_case: Option<EmptyCase>,

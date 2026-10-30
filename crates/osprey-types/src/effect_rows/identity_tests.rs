@@ -92,7 +92,7 @@ fn callable_width(value: &Value) -> usize {
     }
 }
 
-fn with_empty_analyzer<T>(operation: impl FnOnce(Analyzer<'_>) -> T) -> T {
+pub(super) fn with_empty_analyzer<T>(operation: impl FnOnce(Analyzer<'_>) -> T) -> T {
     let index = Index::default();
     let instances = Instances::default();
     operation(Analyzer {
@@ -459,5 +459,23 @@ fn phantom_field_contract_instances_cannot_be_unified() {
     crate::effect_rows_tests::assert_rejected_with(
         "effect Read<T>{get:fn()->T}\ntype Control<T>={press:fn()->int ![Read<T>]}\nfn requireInt(control:Control<int>)=1\nlet answer=requireInt(Control<string> {press:fn()=>1})",
         &["type mismatch"],
+    );
+}
+
+#[test]
+fn owned_substitution_has_a_linear_value_clone_budget() {
+    let depth = 24;
+    let value = (0..depth).fold(Value::unknown_value(), |child, _| Value {
+        fields: [("child".to_owned(), child)].into_iter().collect(),
+        ..Value::default()
+    });
+    let expected = value.clone();
+    let (actual, clones) = provenance::measured_clones(|| {
+        with_empty_analyzer(|analyzer| analyzer.substitute_value_at(value, 0, &[]))
+    });
+    assert_eq!(actual, expected);
+    assert!(
+        clones <= depth * 2,
+        "{clones} value clones for {depth} owned nodes"
     );
 }

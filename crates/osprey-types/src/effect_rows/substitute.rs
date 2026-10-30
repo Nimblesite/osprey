@@ -84,7 +84,7 @@ impl Analyzer<'_> {
         // replace its parameter with itself indefinitely for nested records,
         // and can also attribute a callback to the wrong lexical binder.
         for nested in value.fields.values_mut() {
-            *nested = self.substitute_value_at(nested.clone(), target_level, arguments);
+            *nested = self.substitute_value_at(std::mem::take(nested), target_level, arguments);
         }
         self.substitute_payload_at(&mut value.element, target_level, arguments);
         self.substitute_payload_at(&mut value.result_payload, target_level, arguments);
@@ -92,7 +92,7 @@ impl Analyzer<'_> {
         value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
         if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
             map_projection_values(projection, |value| {
-                *value = self.substitute_value_at(value.clone(), target_level, arguments);
+                *value = self.substitute_value_at(std::mem::take(value), target_level, arguments);
             });
         }
         if let Some(callable) = value.callable.take() {

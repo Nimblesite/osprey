@@ -60,18 +60,41 @@ impl Analyzer<'_> {
         env: &CallableEnv,
     ) -> Option<Value> {
         let empty_case = self.empty_case(expression, env);
-        let mut value = osprey_ast::with_stack(|| self.raw_value(expression, scope, env))
+        let value = self
+            .scalar_lookup(expression, empty_case)
+            .or_else(|| osprey_ast::with_stack(|| self.raw_value(expression, scope, env)))
             .or_else(|| empty_case.map(|_| Value::default()))
             .or_else(|| self.scalar_shape(expression))
-            .or_else(|| {
-                (!matches!(expression, Expr::Identifier(_) | Expr::Path(_))
-                    && self
-                        .instances
-                        .expression_types
-                        .borrow()
-                        .contains_key(&expression_site(expression)))
-                .then(Value::unknown_value)
-            })?;
+            .or_else(|| self.typed_unknown(expression))?;
+        Some(self.typed_value(expression, value, empty_case))
+    }
+
+    fn scalar_lookup(&self, expression: &Expr, empty_case: Option<EmptyCase>) -> Option<Value> {
+        if empty_case.is_some() {
+            return None;
+        }
+        match expression {
+            Expr::Identifier(_) | Expr::Path(_) => self.scalar_shape(expression),
+            _ => None,
+        }
+    }
+
+    fn typed_unknown(&self, expression: &Expr) -> Option<Value> {
+        (!matches!(expression, Expr::Identifier(_) | Expr::Path(_))
+            && self
+                .instances
+                .expression_types
+                .borrow()
+                .contains_key(&expression_site(expression)))
+        .then(Value::unknown_value)
+    }
+
+    fn typed_value(
+        &self,
+        expression: &Expr,
+        mut value: Value,
+        empty_case: Option<EmptyCase>,
+    ) -> Value {
         if empty_case.is_some() {
             value.empty_case = empty_case;
         } else if let Some(scalar) = self.scalar_shape(expression) {
@@ -82,6 +105,10 @@ impl Analyzer<'_> {
             super::field_rows::FieldOwner::Anonymous => value.field_owner = None,
             super::field_rows::FieldOwner::Unknown => {}
         }
+        self.instantiated_value(expression, value)
+    }
+
+    fn instantiated_value(&self, expression: &Expr, mut value: Value) -> Value {
         if let Some(bindings) = self
             .instances
             .instantiations
@@ -89,7 +116,7 @@ impl Analyzer<'_> {
         {
             specialize_value(&mut value, bindings);
         }
-        Some(value)
+        value
     }
 
     fn scalar_shape(&self, expression: &Expr) -> Option<Value> {
@@ -433,4 +460,37 @@ fn scalar_type(ty: &crate::ty::Type) -> bool {
     use crate::ty::{names, Type};
     matches!(ty, Type::Con { name, args } if args.is_empty() && matches!(name.as_str(),
         names::INT | names::FLOAT | names::BOOL | names::STRING | names::UNIT | names::PTR))
+}
+
+#[cfg(test)]
+#[test]
+fn primitive_lookups_do_not_clone_erased_provenance() {
+    for expression in [
+        Expr::Identifier("candidate".to_owned()),
+        Expr::Path(osprey_ast::SymbolPath::new(["Scope", "candidate"])),
+    ] {
+        super::identity_tests::with_empty_analyzer(|analyzer| {
+            assert_primitive_lookup(&analyzer, &expression);
+        });
+    }
+}
+
+#[cfg(test)]
+fn assert_primitive_lookup(analyzer: &Analyzer<'_>, expression: &Expr) {
+    let _ = analyzer
+        .instances
+        .expression_types
+        .borrow_mut()
+        .insert(expression_site(expression), crate::ty::Type::bool());
+    let env = analyzer.scoped_env(&["candidate".to_owned()]);
+    let (actual, clones) =
+        super::provenance::measured_clones(|| analyzer.value(expression, &[], &env));
+    assert_eq!(
+        actual,
+        super::value_shapes::value_shape(&crate::ty::Type::bool())
+    );
+    assert_eq!(
+        clones, 0,
+        "primitive lookups must not clone discarded provenance"
+    );
 }

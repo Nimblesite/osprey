@@ -280,18 +280,38 @@ impl Analyzer<'_> {
         let Some(ty) = types.get(&super::expression_site(expression)) else {
             return std::collections::BTreeSet::default();
         };
-        std::iter::once(ty.clone())
+        let substitutes_owner = matches!(ty, crate::ty::Type::Var(_) | crate::ty::Type::Con { .. })
+            && crate::has_type_var(ty);
+        std::iter::once(self.owner_of_type(Some(ty)))
             .chain(
-                self.instances
-                    .instantiation_types
-                    .values()
-                    .map(|bindings| crate::env::subst_vars(ty, bindings)),
+                substitutes_owner
+                    .then_some(&self.instances.instantiation_types)
+                    .into_iter()
+                    .flat_map(HashMap::values)
+                    .map(|bindings| self.instantiated_owner(ty, bindings)),
             )
-            .filter_map(|ty| match self.owner_of_type(Some(&ty)) {
+            .filter_map(|owner| match owner {
                 FieldOwner::Named(name) => Some(name),
                 FieldOwner::Anonymous | FieldOwner::Unknown => None,
             })
             .collect()
+    }
+
+    fn instantiated_owner(
+        &self,
+        ty: &crate::ty::Type,
+        bindings: &HashMap<u32, crate::ty::Type>,
+    ) -> FieldOwner {
+        // Substitution returns a variable's replacement without recursively
+        // rewriting it. Inspect that borrowed type instead of copying its fields.
+        if let crate::ty::Type::Var(var) = ty {
+            return self.owner_of_type(bindings.get(var));
+        }
+        #[cfg(test)]
+        self.instances
+            .owner_substitutions
+            .set(self.instances.owner_substitutions.get().saturating_add(1));
+        self.owner_of_type(Some(&crate::env::subst_vars(ty, bindings)))
     }
 
     /// The declaration a field projection belongs to, from the receiver's
@@ -439,3 +459,7 @@ fn spelled(row: &[EffectRef]) -> String {
     let names: Vec<_> = row.iter().map(|effect| effect.name.as_str()).collect();
     format!("![{}]", names.join(", "))
 }
+
+#[cfg(test)]
+#[path = "field_owner_tests.rs"]
+mod tests;

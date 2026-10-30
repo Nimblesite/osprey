@@ -4,6 +4,12 @@ use super::{
     MAX_PROVENANCE_NODES,
 };
 
+#[cfg(test)]
+#[path = "sorted_join_tests.rs"]
+mod sorted_join_tests;
+#[cfg(test)]
+pub(super) use sorted_join_tests::{measured_clones, CloneProbe};
+
 pub(super) fn map_alternatives(choices: &mut Vec<Callable>, mut visit: impl FnMut(&mut Value)) {
     for choice in choices.iter_mut() {
         let mut branch = Value::from_callable(choice.clone());
@@ -289,23 +295,56 @@ pub(super) fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
         *slot = Some(merged);
         return;
     }
-    *slot = Some(joined_alternatives(&existing, &incoming));
+    *slot = Some(joined_alternatives(existing, incoming));
 }
 
-fn joined_alternatives(existing: &Callable, incoming: &Callable) -> Callable {
-    let mut alternatives = Vec::new();
-    for callable in [existing, incoming] {
-        match callable {
-            Callable::Alternatives(choices) => alternatives.extend(choices.iter().cloned()),
-            other => alternatives.push(other.clone()),
+fn joined_alternatives(existing: Callable, incoming: Callable) -> Callable {
+    let choices = match (existing, incoming) {
+        (Callable::Alternatives(left), Callable::Alternatives(right)) => {
+            merge_sorted_choices(left, right)
         }
+        (Callable::Alternatives(choices), choice) | (choice, Callable::Alternatives(choices)) => {
+            insert_sorted_choice(choices, choice)
+        }
+        (left, right) => return bounded_alternatives(vec![left, right]),
+    };
+    bound_canonical_choices(choices)
+}
+
+// Producers and in-place transforms canonicalize Alternatives. Preserve that
+// order without re-sorting every growing prefix; overflow still runs per join.
+fn insert_sorted_choice(mut choices: Vec<Callable>, incoming: Callable) -> Vec<Callable> {
+    if let Err(position) = choices.binary_search_by(|choice| compare_choices(choice, &incoming)) {
+        choices.insert(position, incoming);
     }
-    bounded_alternatives(alternatives)
+    choices
+}
+
+fn merge_sorted_choices(left: Vec<Callable>, right: Vec<Callable>) -> Vec<Callable> {
+    let mut left = left.into_iter().peekable();
+    let mut right = right.into_iter().peekable();
+    std::iter::from_fn(|| match (left.peek(), right.peek()) {
+        (Some(a), Some(b)) => match compare_choices(a, b) {
+            std::cmp::Ordering::Less => left.next(),
+            std::cmp::Ordering::Equal => {
+                let _ = right.next();
+                left.next()
+            }
+            std::cmp::Ordering::Greater => right.next(),
+        },
+        (Some(_), None) => left.next(),
+        (None, _) => right.next(),
+    })
+    .collect()
 }
 
 fn bounded_alternatives(mut choices: Vec<Callable>) -> Callable {
-    choices.sort();
+    choices.sort_by(compare_choices);
     choices.dedup();
+    bound_canonical_choices(choices)
+}
+
+fn bound_canonical_choices(choices: Vec<Callable>) -> Callable {
     if choices.len() <= MAX_PROVENANCE_NODES {
         return Callable::Alternatives(choices);
     }
@@ -413,4 +452,10 @@ fn common_deep_summary(left: &[Projection], prefix: usize) -> Vec<Projection> {
         .cloned()
         .chain([Projection::Deep])
         .collect()
+}
+
+fn compare_choices(left: &Callable, right: &Callable) -> std::cmp::Ordering {
+    #[cfg(test)]
+    sorted_join_tests::record_comparison();
+    left.cmp(right)
 }
