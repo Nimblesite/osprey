@@ -4,14 +4,71 @@ import proof::Environment
 import proof::Terms
 import proof::Levels
 import proof::Infer
+import proof::DeclarationBodies
+
+(** Authenticate the standard choice basis against its derived Nonempty
+    family and signature. Other assumptions retain their explicit names;
+    checking remains relative to those assumptions. Implements [PROOF-KERNEL-AXIOMS]. *)
+module Axioms
+    export reserved name = name == "Classical.choice"
+
+    export declare (env, decl) = match decl.body
+        Axiom => universal (env, decl)
+        other => Error(message = "`${decl.name}` is reserved for the standard choice axiom")
+
+    universal (env, decl) = match decl.params
+        [u] => claim (env, decl, Param u)
+        other => Error(message = "Classical.choice takes one universe parameter")
+
+    claim (env, decl, u) = match genuine env && Terms::equal (decl.ty, choiceSignature u)
+        false => Error(message = "`Classical.choice` does not have its derived choice signature over the genuine `Nonempty` family")
+        true => Success(value = decl)
+
+    choiceSignature u = Pi "α" (Sort u) (Pi "h" (App (Const "Nonempty" [u]) (BVar 0)) (BVar 1))
+
+    genuine env = match Environment::find (env, "Nonempty")
+        Success decl => former decl && introduced env
+        Error _ => false
+
+    former decl = match decl.params
+        [u] => match decl.body
+            TypeFormer info => Terms::equal (decl.ty, formerType (Param u)) && familyOk info
+            other => false
+        other => false
+
+    formerType u = Pi "α" (Sort u) (Sort Zero)
+
+    familyOk info = info.familyParams == 1 && info.familyIndices == 0 && DeclarationBodies::sameNames (info.familyCtors, ["Nonempty.intro"]) && !info.familyRecursive && !info.familyReflexive && DeclarationBodies::sameNames (info.familyAll, ["Nonempty"]) && info.familyNested == 0
+
+    introduced env = match Environment::find (env, "Nonempty.intro")
+        Success decl => constructor decl
+        Error _ => false
+
+    constructor decl = match decl.params
+        [u] => match decl.body
+            Constructor info => ctorOk info && Terms::equal (decl.ty, introType (Param u))
+            other => false
+        other => false
+
+    ctorOk info = info.ctorFamily == "Nonempty" && info.ctorIndex == 0 && info.ctorParams == 1 && info.ctorFields == 1
+
+    introType u = Pi "α" (Sort u) (Pi "val" (BVar 0) (App (Const "Nonempty" [u]) (BVar 1)))
 
 (** The four primitive quotient signatures, independently derived from
     Lean 4.25 kernel/quot.cpp. Exported claims never define their theory.
     Implements [PROOF-KERNEL-THEORY] [PROOF-KERNEL-AXIOMS]. *)
 module Quotients
-    export reserved name = listContains (["Quot", "Quot.mk", "Quot.lift", "Quot.ind", "Quot.sound"], name)
+    export reserved name = Axioms::reserved name || listContains (["Quot", "Quot.mk", "Quot.lift", "Quot.ind", "Quot.sound"], name)
 
-    export declare (env, decl) = match decl.body
+    export declare (env, decl) = match Axioms::reserved decl.name
+        true => choice (env, decl)
+        false => listed (env, decl)
+
+    choice (env, decl) = match Axioms::declare (env, decl)
+        Success checked => typed (env, checked)
+        Error message => Error(message = message)
+
+    listed (env, decl) = match decl.body
         Quotient kind => primitive (env, decl, kind)
         Axiom => sound (env, decl)
         other => Error(message = "`${decl.name}` is reserved for quotient theory")

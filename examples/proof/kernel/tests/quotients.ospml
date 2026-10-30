@@ -6,6 +6,7 @@ import proof::Fixtures
 import proof::Quotients
 import proof::Terms
 import proof::Infer
+import proof::Inductive
 import prooftests::Shapes
 import prooftests::Support
 import proof
@@ -44,6 +45,7 @@ module QuotientTests
         universes ()
         malformed ()
         reduction ()
+        choiceBasis ()
 
     recorded () =
         test ("actual Lean quotient lift induction and soundness exports check", \() =>
@@ -151,7 +153,9 @@ module QuotientTests
 
     (** What `exportedDeclaring` says about `name`: `declared`, or the
         kernel's own refusal text. *)
-    declared (text, name) = match Checked::exportedDeclaring (Environment::empty (), text, name)
+    declared (text, name) = declarationResult (Checked::exportedDeclaring (Environment::empty (), text, name))
+
+    declarationResult result = match result
         Success _ => "declared"
         Error message => message
 
@@ -273,3 +277,38 @@ module QuotientTests
     respects () = Lam "a" (Const "Nat" []) (Lam "b" (Const "Nat" []) (Lam "h" (App (App (Const "QuotientCases.related" []) (BVar 1)) (BVar 0)) (refl ())))
 
     refl () = App (App (Const "Eq.refl" [Succ Zero]) (arrow ())) (Lam "y" (Const "Nat" []) (Const "Nat.zero" []))
+
+    (** Implements [PROOF-KERNEL-AXIOMS]: names alone do not authenticate the standard choice basis. *)
+    export choiceBasis () =
+        test ("standard choice accepts the actual pinned Lean export", \() =>
+            expect (declared (Fixtures::choiceCases (), "Classical.choice"), "declared"))
+        test ("choice accepts the witness-bearing Nonempty family", \() =>
+            expect (choiceFrom (choiceFamily (witnessIntro ()), ["u"]), "declared"))
+        test ("standard choice refuses a Nonempty with a valueless constructor", \() =>
+            expect (choiceFrom (choiceFamily (emptyIntro ()), ["u"]), choiceMismatch ()))
+        test ("standard choice refuses a Nonempty containing only an identity function", \() =>
+            expect (choiceFrom (choiceFamily (functionIntro ()), ["u"]), choiceMismatch ()))
+        test ("standard choice refuses an axiom impersonating Nonempty", \() =>
+            expect (choiceFrom (Checked::declare (Environment::empty (), nonemptyFormer ()), ["u"]), choiceMismatch ()))
+        test ("standard choice refuses an additional unused universe", \() =>
+            expect (choiceFrom (choiceFamily (witnessIntro ()), ["u", "v"]), "Classical.choice takes one universe parameter"))
+
+    choiceMismatch () = "`Classical.choice` does not have its derived choice signature over the genuine `Nonempty` family"
+
+    choiceFrom (prepared, parameters) = match prepared
+        Success env => declarationResult (Checked::declare (env, Decl(name = "Classical.choice", params = parameters, ty = choiceType (), body = Axiom)))
+        Error message => "fixture must declare its datatype first: ${message}"
+
+    choiceFamily constructorType = Inductive::declare (Environment::empty (), nonemptyFormer (), [Decl(name = "Nonempty.intro", params = ["u"], ty = constructorType, body = Axiom)], 1)
+
+    nonemptyFormer () = Decl(name = "Nonempty", params = ["u"], ty = Pi "a" (Sort (Param "u")) (Sort Zero), body = Axiom)
+
+    nonemptyAt index = App (Const "Nonempty" [Param "u"]) (BVar index)
+
+    choiceType () = Pi "a" (Sort (Param "u")) (Pi "h" (nonemptyAt 0) (BVar 1))
+
+    witnessIntro () = Pi "a" (Sort (Param "u")) (Pi "value" (BVar 0) (nonemptyAt 1))
+
+    emptyIntro () = Pi "a" (Sort (Param "u")) (nonemptyAt 0)
+
+    functionIntro () = Pi "a" (Sort (Param "u")) (Pi "identity" (Pi "x" (BVar 0) (BVar 1)) (nonemptyAt 1))

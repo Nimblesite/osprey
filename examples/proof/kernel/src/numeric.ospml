@@ -41,7 +41,7 @@ module Numeric
     binaryConstant (env, name, levels, left, right) = match (name == "Nat.ble" || name == "Nat.mul") && isEmpty levels
         false => NoNumericRule
         true => match validLiterals left && validLiterals right
-            true => numerals (env, Reduce::whnf (env, left), Reduce::whnf (env, right), name)
+            true => numerals (env, left, right, name)
             false => NoNumericRule
 
     validLiterals (term) = match term

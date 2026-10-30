@@ -41,7 +41,7 @@ The [completion milestones](https://github.com/Nimblesite/osprey/blob/main/docs/
 
 Together these three published commands cover 194 selected statements: 582 successful root checks and 1,164 rejections, since every root is also run against a corrupted proof and a false statement on each backend.
 
-A recorded checker-suite checkpoint passed all 399 kernel cases on each of GC, ARC and wasm32, with no failed or skipped cases and unchanged input hashes. That snapshot predates a later numeric-check correction; it is historical evidence, not acceptance of the current source. The successor full-suite and public-corpus checks require fresh validation. Acceptance of the complete Euclid export below remains separate. The [plan ledger](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0041-dependent-types-and-mathlib.md) records the dated checkpoints and their receipts.
+The 30 October checker-suite checkpoint passes all 400 kernel cases on each of GC, ARC and wasm32, with no failed or skipped cases and unchanged input hashes. It includes the standard-choice guard and numeric short-circuit correction. Fresh public-corpus replay also passes all 582 root checks and their 1,164 proof/statement corruption controls across the 194 selected statements. Later source changes require fresh validation. Acceptance of the complete Euclid export below remains separate. The [plan ledger](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0041-dependent-types-and-mathlib.md) records the dated checkpoints and their receipts.
 
 The source/export checks reproduce pinned exports byte for byte, replay the compatible modules through Lean's fresh kernel, and compare each theorem's assumptions independently.
 

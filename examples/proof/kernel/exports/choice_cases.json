@@ -1,0 +1,13 @@
+{
+  "toolchain": "leanprover/lean4:v4.25.0",
+  "module": "Init.Classical",
+  "root": "Classical.choice",
+  "kind": "standard-basis axiom control; not a theorem port",
+  "export_path": "examples/proof/kernel/exports/choice_cases.ndjson",
+  "export_sha256": "b71d568cbf3a03ba300f95e9e01b7b69ee9e8fbca35cb7c108add89d18854b16",
+  "axioms": [
+    "Classical.choice"
+  ],
+  "source_path": "src/lean/Init/Prelude.lean",
+  "source_sha256": "ebe2f049728004f658ad494d24a20e19bd2dfd89857e0c99f348fefc8138a376"
+}

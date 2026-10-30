@@ -309,6 +309,19 @@ class ClassicalChoiceTests(unittest.TestCase):
     def check_basis(self):
         PROOF.check_axioms(self.rows, self.names, self.expected)
 
+    def test_actual_choice_oracle_and_embedded_twin_remain_pinned(self):
+        base = PROOF.ROOT / "examples/proof/kernel/exports/choice_cases"
+        manifest = json.loads(base.with_suffix(".json").read_text())
+        source = base.with_suffix(".ndjson").read_text()
+        self.assertEqual(PROOF.digest(source.encode()), manifest["export_sha256"])
+        fixtures = (PROOF.ROOT / "examples/proof/kernel/src/fixtures.ospml").read_text()
+        embedded = re.search(r"^    export choiceCases \(\) = (.+)$", fixtures, re.MULTILINE)
+        self.assertIsNotNone(embedded)
+        self.assertEqual(json.loads(embedded.group(1)), source)
+        rows = [json.loads(line) for line in source.splitlines()]
+        names, _ = PROOF.names_and_theorems(rows)
+        PROOF.check_axioms(rows, names, ["Classical.choice"])
+
     def test_pinned_classical_choice_has_its_exact_standard_basis(self):
         self.check_basis()
 

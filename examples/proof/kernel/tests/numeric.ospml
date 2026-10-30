@@ -21,6 +21,7 @@ module NumericTests
             forgeries env
             products env
             differentials env
+            shortCircuit ()
 
     loaded (file) = match file
         "canonical-defs.ndjson" => Checked::exported (Environment::empty (), Fixtures::numericPrefix ())
@@ -174,3 +175,20 @@ module NumericTests
     forged (result, label) = match result
         Error message => check label "success" message
         Success env => refused (env, label, ble (small 0, small 1))
+
+    (** A symbolic left operand disables the numeric shortcut regardless of
+        the right operand. The enclosing lambda independently checks its scope
+        and type. Implements [PROOF-KERNEL-THEORY]. *)
+    export shortCircuit () = test ("symbolic numeric shortcut leaves its discarded right operand alone", \() => shortCircuitLoaded (loaded "canonical-defs.ndjson"))
+
+    shortCircuitLoaded prepared = match prepared
+        Error message => check "canonical environment loads" "success" message
+        Success env => shortCircuitTyped (env, symbolicProduct 32)
+
+    shortCircuitTyped (env, term) = match Infer::infer (env, [], Lam "n" (Const "Nat" []) term)
+        Error message => check "symbolic product is well typed" "success" message
+        Success _ => expect (outcome (env, term), "disabled")
+
+    symbolicProduct depth = match depth == 0
+        true => BVar 0
+        false => multiplied (BVar 0, symbolicProduct (satSub depth 1))
