@@ -45,6 +45,7 @@ module AdditionCases
 
     (** [UI-COMPONENTS-EDITOR]: text and cursor bindings follow the preceding button, and marks retain every field. *)
     export editorEncoding () =
+        focusedEditorEncoding ()
         walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::editor ("Proof", "one\ntwo", 3, [Ui::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])
         doc = editorNode ()
         mark = listGet (Doc::items (Doc::field (doc, "marks"))) 0 ?: JsonNull
@@ -58,6 +59,18 @@ module AdditionCases
         expect (Doc::number (mark, "line"), 2)
         expect (Doc::flag (mark, "underlined"), true)
         expect ("${Doc::text (mark, "tone")}/${Doc::text (mark, "badge")}/${Doc::text (mark, "note")}", "danger/E/Expected a premise")
+
+    focusedEditorEncoding () =
+        node = Ui::focusedInlineEditor ("Formula", "p→q", length "p→", 3, Typed, Load)
+        doc = listGet (Encode::walk ([], node)).nodes 0 ?: JsonNull
+        expect (Doc::has (doc, "focusEpoch"), true)
+        expect (Doc::number (doc, "focusEpoch"), 3)
+        expect (Doc::flag (doc, "inline"), true)
+        expect (Doc::number (doc, "cursor"), length "p→")
+        expect (Doc::number (doc, "event"), 0)
+        expect (Doc::number (doc, "placeEvent"), 1)
+        expect (Doc::has (editorNode (), "focusEpoch"), true)
+        expect (Doc::number (editorNode (), "focusEpoch"), 0)
 
     placed value = Events::bind (ui::PlaceInput(action = Typed), value)
 

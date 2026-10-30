@@ -148,10 +148,10 @@ module Encode
     markJson item = JsonObject [num "line" item.markLine, bit "underlined" item.underlined, str "tone" (tone item.markTone), str "badge" item.markBadge, str "note" item.markNote]
 
     // [UI-COMPONENTS-EDITOR] Two controls in one: the text binding takes the next ordinal, the cursor binding the one after.
-    editor<A> : (List<Binding<A>>, string, string, bool, int, List<Mark>, A, A) -> Walked<A>
-    editor (bindings, label, value, inline, cursor, marks, edit, place) =
+    editor<A> : (List<Binding<A>>, string, string, bool, int, int, List<Mark>, A, A) -> Walked<A>
+    editor (bindings, label, value, inline, cursor, epoch, marks, edit, place) =
         texted = listAppend bindings (TextInput(action = edit))
-        members = [str "label" label, str "value" value, bit "inline" inline, num "cursor" cursor, JsonMember "marks" (JsonArray (mapList (marks, \item => markJson item))), num "event" (length bindings), num "placeEvent" (length texted)]
+        members = [str "label" label, str "value" value, bit "inline" inline, num "cursor" cursor, num "focusEpoch" epoch, JsonMember "marks" (JsonArray (mapList (marks, \item => markJson item))), num "event" (length bindings), num "placeEvent" (length texted)]
         one (listAppend texted (PlaceInput(action = place)), kind "editor" members)
 
     // [UI-COMPONENTS-BOARD] Camera binding follows the existing stroke and lasso ordinals.
@@ -174,7 +174,7 @@ module Encode
 
     runJson run = JsonObject [str "text" run.runText, str "ink" run.runInk, bit "italic" run.runItalic]
 
-    frameJson style = JsonObject [str "name" style.frameName, num "width" style.frameWidth, num "height" style.frameHeight, num "top" style.frameTop, num "right" style.frameRight, num "bottom" style.frameBottom, num "left" style.frameLeft, num "radius" style.frameRadius, num "gap" style.frameGap, str "fill" style.frameFill, str "ink" style.frameInk, str "line" style.frameLine, str "lineEdge" style.frameLineEdge, bit "grow" style.frameGrow, str "font" style.frameFont, num "textSize" style.frameTextSize, JsonMember "mathScale" (JsonFloat style.frameMathScale), JsonMember "lineHeight" (JsonFloat style.frameLineHeight), JsonMember "tracking" (JsonFloat style.frameTracking), bit "italic" style.frameItalic, bit "hug" style.frameHug, str "align" style.frameAlign, str "cross" style.frameCross, num "controlHeight" style.frameControlHeight, num "controlPadding" style.frameControlPadding, num "symbolSize" style.frameSymbolSize, bit "quietControls" style.frameQuietControls, bit "iconOnly" style.frameIconOnly, bit "fadeBackdrop" style.frameFadeBackdrop, bit "trailingSymbols" style.frameTrailingSymbols, bit "flatRows" style.frameFlatRows, str "shadow" style.frameShadow]
+    frameJson style = JsonObject [str "name" style.frameName, num "width" style.frameWidth, num "height" style.frameHeight, num "viewportHeightInset" style.frameViewportHeightInset, bit "scrollY" style.frameScrollY, num "top" style.frameTop, num "right" style.frameRight, num "bottom" style.frameBottom, num "left" style.frameLeft, num "radius" style.frameRadius, num "gap" style.frameGap, str "fill" style.frameFill, str "ink" style.frameInk, str "line" style.frameLine, str "lineEdge" style.frameLineEdge, bit "grow" style.frameGrow, str "font" style.frameFont, num "textSize" style.frameTextSize, JsonMember "mathScale" (JsonFloat style.frameMathScale), JsonMember "lineHeight" (JsonFloat style.frameLineHeight), JsonMember "tracking" (JsonFloat style.frameTracking), bit "italic" style.frameItalic, bit "hug" style.frameHug, str "align" style.frameAlign, str "cross" style.frameCross, num "controlHeight" style.frameControlHeight, num "controlPadding" style.frameControlPadding, num "symbolSize" style.frameSymbolSize, bit "quietControls" style.frameQuietControls, bit "iconOnly" style.frameIconOnly, bit "fadeBackdrop" style.frameFadeBackdrop, bit "trailingSymbols" style.frameTrailingSymbols, bit "flatRows" style.frameFlatRows, str "shadow" style.frameShadow]
 
     framed<A> : (List<Binding<A>>, FrameStyle, Node<A>) -> Walked<A>
     framed (bindings, style, content) =
@@ -284,6 +284,6 @@ module Encode
         Typeset tree text => leaf (bindings, "math", [JsonMember "math" (Maths::encode tree), str "spoken" text])
         Image source alt width height => leaf (bindings, "image", [str "source" source, str "alt" alt, num "width" width, num "height" height])
         Video source poster captions alt seconds => leaf (bindings, "video", [str "source" source, str "poster" poster, str "captions" captions, str "alt" alt, num "seconds" seconds])
-        Editor label value inline cursor marks edit place => editor (bindings, label, value, inline, cursor, marks, edit, place)
+        Editor label value inline cursor epoch marks edit place => editor (bindings, label, value, inline, cursor, epoch, marks, edit, place)
         Board slice count lassoing backdrop panning camera pan stroke lasso => board (bindings, slice, count, lassoing, backdrop, panning, camera, pan, stroke, lasso)
         Scene width height atlas primitives action sent => scene (bindings, width, height, atlas, primitives, action, sent)

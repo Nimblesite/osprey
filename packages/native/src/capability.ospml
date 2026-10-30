@@ -106,10 +106,7 @@ module Requests
 
     header item = JsonObject [str "name" item.headerName, str "value" item.headerValue]
 
-    run executable arguments timeout limit plist slice =
-        fields = [str "kind" "run", str "executable" executable, strings "arguments" arguments, num "timeout" timeout, num "limit" limit]
-        optional = Pick::either (plist, [Doc::bit ("plist", true)], [])
-        listConcat (listConcat fields optional) [str "slice" slice]
+    run executable arguments timeout limit plist slice = [str "kind" "run", str "executable" executable, strings "arguments" arguments, num "timeout" timeout, num "limit" limit, Doc::bit ("plist", plist), str "slice" slice]
 
     http method url headers body limit deadline slice = [str "kind" "http", str "method" method, str "url" url, JsonMember "headers" (JsonArray (mapList (headers, \item => header item))), str "body" body, num "limit" limit, num "timeout" deadline, str "slice" slice]
 

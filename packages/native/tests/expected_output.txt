@@ -66,8 +66,9 @@ ok 65 - board themes name the board and chalk tokens
 ok 66 - mathematics decodes back to the tree it encodes across every constructor
 ok 67 - mathematics decoding refuses unknown kinds missing children non-arrays and non-objects
 ok 68 - image and video encode as leaves with their media fields and no ordinal
-ok 69 - presentation frames preserve exact dimensions and inner control provenance
-ok 70 - scoped themes and dialogs retain their inner controls and dismissal provenance
-ok 71 - inline text retains mathematical emphasis and semantic source colours without bindings
-1..71
-# tests=71 passed=71 failed=0 skipped=0
+ok 69 - presentation frames explicitly disable viewport sizing by default
+ok 70 - presentation frames preserve exact dimensions and inner control provenance
+ok 71 - scoped themes and dialogs retain their inner controls and dismissal provenance
+ok 72 - inline text retains mathematical emphasis and semantic source colours without bindings
+1..72
+# tests=72 passed=72 failed=0 skipped=0
