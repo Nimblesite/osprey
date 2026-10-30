@@ -528,6 +528,7 @@ _bank_test:
 # consumer project against the fetched sources. Local tests and CI run all
 # suites under both managed backends; the TAP runner propagates failed checks.
 REGISTRY_MEMORY ?= gc
+REGISTRY_NATIVE_CLIENT = $(CURDIR)/target/$(if $(filter arc,$(REGISTRY_MEMORY)),registry-tests/osprey-pkg-arc,osprey-pkg)
 _test_registry: export OSPREY_E2E_COMPILER = $(abspath $(BIN))
 _test_registry: export OSPREY_E2E_MEMORY = $(REGISTRY_MEMORY)
 _test_registry:
@@ -543,8 +544,12 @@ _test_registry:
 	@echo "==> Registry end-to-end: server, fetch and consumer build..."
 	./$(BIN) test packages/manager/e2e --memory=$(REGISTRY_MEMORY)
 	@echo "==> Native publication and installed-source integrity regressions..."
-	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(CURDIR)/target/osprey-pkg}" python3 scripts/test-package-publication.py
-	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(CURDIR)/target/osprey-pkg}" python3 scripts/test-package-interruption.py
+	@if [ "$(REGISTRY_MEMORY)" = arc ] && [ -z "$$OSPREY_PACKAGE_CLIENT" ]; then \
+	  mkdir -p "$(CURDIR)/target/registry-tests" && \
+	  "$(abspath $(BIN))" build packages/manager/cli --memory=arc --quiet --no-warnings -o "$(REGISTRY_NATIVE_CLIENT)"; \
+	fi
+	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-publication.py
+	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-interruption.py
 
 # Blocked host capabilities, each asserted as the behavior the package system
 # needs. Red is the documented state until the capability lands in Osprey;

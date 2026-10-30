@@ -336,7 +336,7 @@ test('package manager security suites gate CI and local tests under GC and ARC',
     assert.ok(readFileSync('scripts/verify-branch-protection.mjs', 'utf8').includes(`'Tests: package manager (${memory})'`))
   }
   const commands = makeRecipe('_test_registry', 'scripts/make/tests.mk')
-  assert.match(commands.join('\n'), /OSPREY_PACKAGE_CLIENT=.*target\/osprey-pkg.*python3 scripts\/test-package-publication\.py/)
+  for (const script of ['publication', 'interruption']) assert.match(commands.join('\n'), new RegExp(`OSPREY_PACKAGE_CLIENT=.*REGISTRY_NATIVE_CLIENT.*python3 scripts/test-package-${script}\\.py`))
   for (const suite of ['fixture-check', 'manifest/tests', 'cli/tests', 'tests', 'e2e']) {
     assert.ok(commands.includes(`./$(BIN) test packages/manager/${suite} --memory=$(REGISTRY_MEMORY)`), suite)
   }
@@ -393,11 +393,12 @@ function registryCalls(path) {
 }
 
 function assertNativeRegistryCalls(native, fixture, memory) {
+  const selected = memory === 'arc' ? 'target/registry-tests/osprey-pkg-arc' : 'target/osprey-pkg'
   assert.deepEqual(native.map(call => call.script), ['scripts/test-package-publication.py', 'scripts/test-package-interruption.py'])
   for (const call of native) {
     assert.equal(call.compiler, fixture.compiler)
     assert.equal(call.memory, memory)
-    assert.equal(call.client, process.env.OSPREY_PACKAGE_CLIENT || resolve('target/osprey-pkg'))
+    assert.equal(call.client, process.env.OSPREY_PACKAGE_CLIENT || resolve(selected))
   }
 }
 
@@ -412,7 +413,12 @@ test('registry nested compiler invocations retain the selected compiler and memo
     assert.equal(result.status, 0, result.stdout + result.stderr)
     assertNativeRegistryCalls(native, fixture, 'arc')
     // Order proves the fail-fast fixture suite still runs first.
-    assert.deepEqual(invocations.map(seen => seen.argv[1]), registrySuites.map(suite => `packages/manager/${suite}`))
+    const expected = registrySuites.map(suite => ['test', `packages/manager/${suite}`])
+    if (!process.env.OSPREY_PACKAGE_CLIENT) expected.push(['build', 'packages/manager/cli'])
+    assert.deepEqual(invocations.map(seen => seen.argv.slice(0, 2)), expected)
+    const builds = invocations.filter(seen => seen.argv[0] === 'build')
+    assert.equal(builds.length, process.env.OSPREY_PACKAGE_CLIENT ? 0 : 1)
+    if (builds.length) assert.ok(['packages/manager/cli', '--memory=arc', '--no-warnings', resolve('target/registry-tests/osprey-pkg-arc')].every(arg => builds[0].argv.includes(arg)))
     for (const seen of invocations) {
       assert.equal(seen.OSPREY_E2E_COMPILER, fixture.compiler)
       assert.ok(isAbsolute(seen.OSPREY_E2E_COMPILER), 'selection must stay absolute')
