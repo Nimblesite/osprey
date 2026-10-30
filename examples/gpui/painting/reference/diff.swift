@@ -39,3 +39,6 @@ let out = CGContext(data: &mask, width: x1 - x0, height: y1 - y0, bitsPerCompone
                     space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
 let rep = NSBitmapImageRep(cgImage: out.makeImage()!)
 try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: a[7]))
+// The mask is written first, then any difference fails the comparison: an exit status of 0 must mean
+// the two windows are pixel-identical, so a caller cannot mistake a report for an acceptance.
+if differing > 0 { exit(1) }

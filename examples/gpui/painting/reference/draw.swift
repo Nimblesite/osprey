@@ -2,6 +2,13 @@
 // zigzag, then a Shift-held drag that the demo straightens. Usage: swift draw.swift <process>
 import AppKit
 
+// Posting synthetic events requires Accessibility permission; without it every event is dropped
+// silently, so the missing permission is reported before the window lookup and nothing is posted.
+// Nothing prompts for it: the caller grants it and retries.
+guard CGPreflightPostEventAccess() else {
+    FileHandle.standardError.write(Data("draw.swift: no Accessibility permission to post mouse events; grant it to the terminal or IDE running this comparison, then retry\n".utf8))
+    exit(2)
+}
 let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]]
 guard let window = list.first(where: { ($0["kCGWindowOwnerName"] as? String) == CommandLine.arguments[1] && ($0["kCGWindowLayer"] as? Int) == 0 }) else { exit(1) }
 let bounds = window["kCGWindowBounds"] as! [String: CGFloat]

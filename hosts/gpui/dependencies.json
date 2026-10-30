@@ -1,0 +1,123 @@
+{
+  "packages": [
+    {
+      "name": "metal",
+      "version": "0.33.0",
+      "archiveSha256": "c7047791b5bc903b8cd963014b355f71dc9864a9a0b727057676c1dcae5cbc15",
+      "edits": "patches/metal.json",
+      "treeSha256": "e56079c9868141d43e3fdec10aebe575caa4a47e458896b76a8cdb0aa7295ec9"
+    },
+    {
+      "name": "pulp",
+      "version": "0.22.3",
+      "archiveSha256": "046aa45b989642ec2e4717c8e72d677b13edd831a4d3b6cf37d9a3e54912496a",
+      "edits": "patches/pulp.json",
+      "treeSha256": "f2c09db4720a7c38e0d0c401d4c8aa74a753244963dbbfc7a6d1973b6cdccf71"
+    },
+    {
+      "name": "rav1e",
+      "version": "0.8.1",
+      "archiveSha256": "43b6dd56e85d9483277cde964fd1bdb0428de4fec5ebba7540995639a21cb32b",
+      "edits": "patches/rav1e.json",
+      "treeSha256": "5b5d8dbdec57d38d868517ef12c28c395dee3964d05621529630321539a1bab7"
+    },
+    {
+      "name": "atspi",
+      "version": "0.29.0",
+      "archiveSha256": "c77886257be21c9cd89a4ae7e64860c6f0eefca799bb79127913052bd0eefb3d",
+      "edits": "patches/atspi.json",
+      "treeSha256": "d4ae45abc25c2e5912a89cda53d772da3c49d449e97b8ee35e9e34abbc33f45a"
+    },
+    {
+      "name": "atspi-common",
+      "version": "0.13.0",
+      "archiveSha256": "20c5617155740c98003016429ad13fe43ce7a77b007479350a9f8bf95a29f63d",
+      "edits": "patches/atspi-common.json",
+      "treeSha256": "5b8856931e3a4884e24cf42b42d9339803aee9f169933d20ac24b46a85c5f1c1"
+    },
+    {
+      "name": "atspi-proxies",
+      "version": "0.13.0",
+      "archiveSha256": "2230e48787ed3eb4088996eab66a32ca20c0b67bbd4fd6cdfe79f04f1f04c9fc",
+      "edits": "patches/atspi-proxies.json",
+      "treeSha256": "9b0ad9cbf771a0974a9183625bf1b7aaf25ea2b429d55bd20eb55e21c6461954"
+    },
+    {
+      "name": "accesskit_unix",
+      "version": "0.22.1",
+      "archiveSha256": "03e156ed3802e35eefe894ef2671bc6c889303d8a7e110b5e1b48f504b91362f",
+      "edits": "patches/accesskit_unix.json",
+      "treeSha256": "9998532411739f14aae3c80b1a1bab5707f6cdfa60de74e5c99580e8f3063811"
+    },
+    {
+      "name": "accesskit_atspi_common",
+      "version": "0.19.1",
+      "archiveSha256": "023da0e5097f46df7092d5280b02efb9bbf8d93298daeced42652463e357d636",
+      "edits": "patches/accesskit_atspi_common.json",
+      "treeSha256": "24f66ea39e32a848f2554022a49664a3b66d475be6f8089c0ce4bd9cb9e97ca4"
+    },
+    {
+      "name": "gpui-base",
+      "version": "0.8.1",
+      "edits": "patches/gpui-base.json",
+      "archiveSha256": "d862bc8f2e27710039013d075ac4995892e9687ff207fa530f880cbcd513936f",
+      "treeSha256": "5eb24d083884ff11c897f56d3cd4cdfd1b2ae39e518318f509391e3228c6f000"
+    },
+    {
+      "name": "gpui-component",
+      "version": "0.8.1",
+      "archiveSha256": "46ce53430332e30f303364eaabfa10ed2aa23dfaf2a147e04370e0e9c423578b",
+      "edits": "patches/gpui-component.json",
+      "treeSha256": "e48b045440a195939ce58de83f569849d25cdbf14c5a26e37e88cd893940825c"
+    },
+    {
+      "name": "gpui-pre-reqwest",
+      "version": "0.12.15",
+      "edits": "patches/gpui-pre-reqwest.json",
+      "archiveSha256": "05be23908e707966824f8c51a609904b7f30739e8d915e120a53c1b995ba964c",
+      "treeSha256": "7d418ab05a25655af2e8c878b76672fa5376cab8f9b3e431f1d936b27b8bd5ec"
+    },
+    {
+      "name": "gpui-pre",
+      "version": "0.3.10",
+      "archiveSha256": "df4b5f8d0c278308df2f11e0bfe0212dd77d7848ce1bdc4b9d513334414396f6",
+      "edits": "patches/gpui-pre.json",
+      "treeSha256": "52d3cce7caea9949acadd0cb89e3aefcfe0033b0f0c7d4fd306db92e33d465e9"
+    },
+    {
+      "name": "cosmic-text",
+      "version": "0.19.0",
+      "archiveSha256": "be17b688510d934ce13f48a2beba700e11583e281e0fda99c22bb256a14eda73",
+      "edits": "patches/cosmic-text.json",
+      "treeSha256": "4ca0fa66b772636ff40ac0346f80c941f71b7399da606a0cdfa28825d63c2a26"
+    },
+    {
+      "name": "notify-rust",
+      "version": "4.18.2",
+      "archiveSha256": "4587364a9a0074333429b3df75a30a205340c56a536ca3eb6ca0e59b87bbf8af",
+      "treeSha256": "84299b6db9aa49f251c3b69b044b6db7354dae8796e8962ee543e7a6d0e33aaa",
+      "edits": "patches/notify-rust.json"
+    },
+    {
+      "name": "ashpd",
+      "version": "0.13.13",
+      "archiveSha256": "fb8421aaa9644a5faf26735f258b669b15f063313ef8f8e2bdb28912a1a6f111",
+      "treeSha256": "38a7f905cca653d87f96d7c69d4e5361d49c4197bbcfe04dcffdf61451716ca7",
+      "edits": "patches/ashpd.json"
+    },
+    {
+      "name": "gpui-pre-linux",
+      "version": "0.3.10",
+      "archiveSha256": "7c6ffd2dce7b75cce0bb3382994912f84c2a05389a4a236bb8bd72cb098fc083",
+      "treeSha256": "23ee33a6642205f331eb1094dd862154d1ce36a2b2a1f3407406e525d5ff54c4",
+      "edits": "patches/gpui-pre-linux.json"
+    },
+    {
+      "name": "oo7",
+      "version": "0.6.0",
+      "archiveSha256": "78f2bfed90f1618b4b48dcad9307f25e14ae894e2949642c87c351601d62cebd",
+      "treeSha256": "bf232d78f227c12f36e27b8420f959160d13233c37bb7c62e9f1774e30e1bb11",
+      "edits": "patches/oo7.json"
+    }
+  ]
+}
