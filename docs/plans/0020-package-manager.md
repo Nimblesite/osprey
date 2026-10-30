@@ -106,7 +106,23 @@ every item lands with tests.
       endpoint with the Osprey HTTP client, and assert the bodies byte for byte.
       `packages/manager/e2e` builds and starts the server on `127.0.0.1:18797` and
       compares status, ETag and body of every endpoint with the pure `Router`.
-- [x] `make registry-serve` starts the server over the sample registry.
+- [x] `make registry-serve-sample` starts the server over the sample registry.
+- [x] Local registry `[PACKAGE-LOCAL-REGISTRY]`: `make registry-serve` publishes the
+      repository's own `packages/*` into `target/local-registry` with
+      `publish --folder` and serves it on `127.0.0.1:8787`. All 19 packages
+      stage. The VS Code extension bundles the server and the staged
+      tree, starts and stops it from commands, the `osprey.toml` explorer menu
+      and the status bar, and offers to start it when the package manager opens
+      against a silent loopback registry (`test/suite/local-registry.test.ts`).
+- [x] Every package in `packages/` is served. `@osprey/jinja2`,
+      `@osprey/numpy` and `@osprey/safetensors` bound native panics, which
+      capability confinement refuses and [FAILURE-EXPLICIT] forbids: jinja2's
+      unused `quarantine` is gone (its `halt` already reports render errors),
+      safetensors' unused binding is gone, and numpy's GPU product now answers
+      a failed `mat_mul` as numpy's `ValueError`
+      (`errors.product_lengths` in its suite, under both storage handlers).
+      `crates/osprey-cli/tests/no_osprey_panics.rs` refuses any package or
+      example that binds a native panic, abort or exit.
 - [x] Harden the server to `[PACKAGE-HARDENING]` S1–S3: `405` carries
       `Allow: GET`; every response carries `nosniff`, `default-src 'none'` and
       `no-referrer`; digest-addressed responses are `immutable`, the rest

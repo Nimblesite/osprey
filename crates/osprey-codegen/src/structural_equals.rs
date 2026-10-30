@@ -203,7 +203,7 @@ fn arg(args: &[Type], i: usize) -> Result<&Type> {
 /// An `i1` result slot pre-set to `1`, the shape every comparator's early
 /// exits write `0` into.
 fn true_slot(cg: &mut Codegen) -> String {
-    let res = cg.emit_reg("alloca i1");
+    let res = cg.hoist_slot("i1");
     cg.emit(format!("store i1 1, i1* {res}"));
     res
 }

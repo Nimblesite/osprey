@@ -1,0 +1,41 @@
+// Implements [UI-EFFECTS-MEASURE] for Osprey Storage: the host writes each
+// measured folder into the host-held `measured` slice ([UI-STORE]), and this
+// module reads it back into records. Text it cannot read gives no walk.
+namespace storage
+
+import ui::Doc
+import ui::Lists
+
+(** One measured folder as the host wrote it: how its walk went, the volume it is on and its children ([UI-EFFECTS-MEASURE]). *)
+type Walked =
+    walkedPath : string
+    walkedError : string
+    walkedMissing : bool
+    walkedTruncated : bool
+    walkedUnreadable : int
+    driveName : string
+    driveTotal : int
+    driveFree : int
+    walkedItems : List<Item>
+
+(** Reads the `measured` slice the host writes for a `MeasureFolders` request ([UI-EFFECTS-MEASURE]). *)
+module Measured
+    item doc = Item(itemName = Doc::text (doc, "name"), itemPath = Doc::text (doc, "path"), itemBytes = Doc::number (doc, "bytes"), itemShown = Doc::number (doc, "visible"), itemCount = Doc::number (doc, "items"), itemHidden = Doc::flag (doc, "hidden"), itemFolder = Doc::flag (doc, "folder"), itemLink = Doc::flag (doc, "link"), itemGuarded = Doc::flag (doc, "guarded"))
+
+    folder doc =
+        volume = Doc::field (doc, "volume")
+        Walked(walkedPath = Doc::text (doc, "path"), walkedError = Doc::text (doc, "error"), walkedMissing = Doc::flag (doc, "missing"), walkedTruncated = Doc::flag (doc, "truncated"), walkedUnreadable = Doc::number (doc, "unreadable"), driveName = Doc::text (volume, "name"), driveTotal = Doc::number (volume, "total"), driveFree = Doc::number (volume, "available"), walkedItems = mapList (Doc::items (Doc::field (doc, "entries")), \child => item child))
+
+    (** An item with no name, path or size, standing in where a list has none. *)
+    export blank () = Item(itemName = "", itemPath = "", itemBytes = 0, itemShown = 0, itemCount = 0, itemHidden = false, itemFolder = false, itemLink = false, itemGuarded = false)
+
+    (** No walk of `path`: nothing measured, nothing missing and no volume. *)
+    export nothing path = Walked(walkedPath = path, walkedError = "", walkedMissing = false, walkedTruncated = false, walkedUnreadable = 0, driveName = "", driveTotal = 0, driveFree = 0, walkedItems = [])
+
+    (** The walk of `path` in the slice `text`, or `nothing` when the slice holds none, as before the first walk finishes. *)
+    export decode (text, path) = match Lists::find (Doc::items (Doc::field (Doc::parse text, "folders")), \doc => Doc::text (doc, "path") == path)
+        Success doc => folder doc
+        Error _ => nothing path
+
+    (** The child of the walk at `path`, or an error when it has none. *)
+    export child (walked, path) = Lists::find (walked.walkedItems, \candidate => candidate.itemPath == path)

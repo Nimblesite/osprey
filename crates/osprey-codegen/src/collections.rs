@@ -409,7 +409,7 @@ fn list_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     }
     let boxed = box_to_i64(cg, needle.clone());
 
-    let res = cg.emit_reg("alloca i1");
+    let res = cg.hoist_slot("i1");
     cg.emit(format!("store i1 0, i1* {res}"));
 
     let lp = open_list_loop(cg, &l.operand);

@@ -5,11 +5,15 @@ import * as os from "node:os";
 import * as sinon from "sinon";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import { ColorThemeKind, commands, Uri, window } from "vscode";
-import { COMMAND, draw, mathematics, viewport, capture, lesson, withWorkbench, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, saveWorking, reopenWorking, exportWorking, comparisonState } from "./workbench-browser-kit";
+import * as Wasi from "../../client/src/osprey-ui/wasi";
+import { COMMAND, draw, mathematics, viewport, capture, lesson, withWorkbench, pendingWorkbenchUpdate, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, rejectReimportedProof, saveWorking, reopenWorking, exportWorking, comparisonState } from "./workbench-browser-kit";
 
 
 suite("workbench VSIX browser", () => {
   teardown(() => sinon.restore());
+  test("a pending runtime update pauses actions while preserving the editable draft", async () => {
+    await withWorkbench(pendingWorkbenchUpdate, "failure-pending-runtime");
+  });
   for (const [kind, symbol, colour] of [[ColorThemeKind.Dark, "sun.max", "rgb(32, 39, 35)"],
     [ColorThemeKind.Light, "moon", "rgb(250, 250, 247)"]] as const) {
     test(`startup appearance follows editor theme ${kind} and manual toggle preserves work`, async () => {
@@ -60,6 +64,17 @@ suite("workbench VSIX browser", () => {
       assert.strictEqual(color, "rgb(54, 99, 92)");
     }, "failure-source-ink");
   });
+  test("standalone icon typography takes precedence over compact control symbols", async () => {
+    await withWorkbench(async frame => {
+      await comparisonState(frame, "optional-source");
+      await frame.locator(".osp-frame-source-heading").evaluate(node => (node as HTMLElement).style.setProperty("--osp-frame-symbol-size", "13px"));
+      const standalone = frame.locator(".osp-frame-source-heading .osp-icon :is(.osp-symbol,.codicon)");
+      assert.strictEqual(await standalone.evaluate(node => getComputedStyle(node).fontSize), "16px", "standalone icons retain their explicit shared typography");
+      await frame.locator(".osp-frame-header-actions").evaluate(node => (node as HTMLElement).style.setProperty("--osp-frame-symbol-size", "13px"));
+      const control = frame.getByRole("button", { name: "Switch appearance", exact: true }).locator(".osp-symbol");
+      assert.strictEqual(await control.evaluate(node => getComputedStyle(node).fontSize), "13px", "control symbols retain the compact shared size");
+    }, "failure-icon-typography-precedence");
+  });
   test("retained imported verdicts disappear when actual host source is lost or corrupted", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-retained-proof-"));
     const source = fs.readFileSync(path.resolve(__dirname, "../../../../examples/proof/kernel/exports/id_imp.ndjson"), "utf8");
@@ -105,6 +120,7 @@ suite("workbench VSIX browser", () => {
     ["OpenAI · five-colour orientation", "OAI.TwoPointCorrelations.five_color_isolates_forward", "propext", "five-colour"],
   ]) test(`bundled proof library ${name} checks the actual packaged export without a file picker`, async () => {
     const picker = sinon.spy(window, "showOpenDialog");
+    const executed = name === "five-colour" ? sinon.spy(Wasi, "runWasi") : undefined;
     await withWorkbench(async frame => {
       await frame.getByRole("button", { name: "Notation", exact: true }).click();
       await frame.getByRole("button", { name: library, exact: true }).click();
@@ -113,9 +129,10 @@ suite("workbench VSIX browser", () => {
       assert.strictEqual(picker.callCount, 0, "bundled discovery must read approved assets directly");
       await checkedProofFits(frame, theorem, `Axioms: ${axioms}`);
       if (name === "doubling-loop") await checkedRunWorkMathematics(frame);
-      if (name === "five-colour") {
+      if (executed) {
         const source = fs.readFileSync(path.resolve(__dirname, "../../../../examples/proof/openai-number-theory/exports/five-color-orientation.ndjson"), "utf8");
-        await rejectEditedImport(frame, source, text => text.replace('"name":4843,"type":36885,"value":36932', '"name":4843,"type":36885,"value":36885'));
+        picker.restore();
+        await rejectReimportedProof(frame, source, executed);
       } else { await checkedMathematicsFits(frame); await capture(frame, `bundled-${name}-proof`); }
     }, `failure-bundled-${name}`);
   });
@@ -402,14 +419,17 @@ suite("workbench VSIX visual comparison", () => {
     await withWorkbench(async frame => {
       await viewport(frame, { width: 390, height: 844 });
       await comparisonState(frame, "phone-source");
-      const context = await frame.locator(".osp-frame-example-context").evaluate(node => ({ height: node.getBoundingClientRect().height,
-        color: getComputedStyle(node.querySelector('button[aria-label="Return to working"]')!).color }));
-      assert.deepStrictEqual(context, { height: 40, color: "rgb(54, 99, 92)" }, "the compact guided context matches the reference geometry and accent");
-      const layout = await frame.locator(".osp-frame-goal-content").evaluate(node => {
+      await frame.locator(".osp-frame-source-panel").waitFor({ state: "visible" });
+      const { context, layout } = await frame.evaluate(() => {
+        const guided = document.querySelector(".osp-frame-example-context")!;
+        const context = { height: guided.getBoundingClientRect().height,
+          color: getComputedStyle(guided.querySelector('button[aria-label="Return to working"]')!).color };
+        const node = document.querySelector(".osp-frame-goal-content")!;
         const goal = node.getBoundingClientRect(), heading = node.querySelector(".osp-role-heading")!.getBoundingClientRect();
         const target = Array.from(node.querySelectorAll(".osp-role-caption")).find(item => item.textContent === "To show")!.getBoundingClientRect();
-        return { middle: goal.left + goal.width / 2, targetLeft: target.left, targetTop: target.top, headingBottom: heading.bottom };
+        return { context, layout: { middle: goal.left + goal.width / 2, targetLeft: target.left, targetTop: target.top, headingBottom: heading.bottom } };
       });
+      assert.deepStrictEqual(context, { height: 40, color: "rgb(54, 99, 92)" }, "the compact guided context matches the reference geometry and accent");
       assert.ok(layout.targetLeft >= layout.middle && layout.targetTop < layout.headingBottom, `the reference phone Source goal uses two adjacent columns: ${JSON.stringify(layout)}`);
     }, "failure-phone-source-columns");
   });

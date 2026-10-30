@@ -189,7 +189,7 @@ initial context =
     next (Editor::configuration ("sdk/config-two", "osprey.packages", listGet args 2 ?: ""), \second =>
         finish (args, opened, first, second))))
 
-regions (_before, _after, frames, _) = [Keyed::region (frames, "sdk-host", [], \() => Ui::button ("SDK host probe", "info", 0))]
+regions (_before, _after, frames, _) = [Keyed::region (frames, "sdk-host", [], \() => Ui::button ("SDK host probe", (ui::Symbols::name ui::Info), 0))]
 palette = ui::Theme(tokens = [], spacing = [4], feedback = 160, settle = 220)
 main () = print (Runtime::start (input (), initial, regions, \value => JsonString value, palette))
 `;

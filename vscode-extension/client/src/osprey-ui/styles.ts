@@ -3,6 +3,8 @@
 // lockup and accents so the page belongs in any VS Code colour theme.
 
 export const WORKSPACE_STYLES = `
+#osprey-runtime-status:not([hidden]) { position: fixed; bottom: 36px; left: 16px; z-index: 100; padding: 8px 12px; border: 1px solid var(--osp-border); border-radius: 4px; color: var(--osp-text); background: var(--osp-surface); }
+#osprey-root[aria-busy="true"] canvas { pointer-events: none; }
 :root {
   color-scheme: light dark;
   --osp-canvas: var(--vscode-editor-background, light-dark(#f6f8fb, #0c1325));
@@ -60,7 +62,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .osp-dialog > .osp-framed { max-width: 100%; }
 .osp-framed[style*="--osp-frame-icon-label:"] .osp-button > span:not(.codicon):not(.osp-symbol) { display: var(--osp-frame-icon-label); }
 .osp-symbol { display: inline-block; flex: 0 0 auto; width: 1em; height: 1em; vertical-align: middle; background: currentColor; mask-image: var(--osp-symbol-image); mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
-.osp-framed[style*="--osp-frame-symbol-size:"] :is(.osp-symbol, .osp-icon, .codicon) { font-size: var(--osp-frame-symbol-size) !important; }
+.osp-framed[style*="--osp-frame-symbol-size:"] :is(.osp-symbol, .codicon):not(.osp-icon *) { font-size: var(--osp-frame-symbol-size) !important; }
 .osp-framed[style*="--osp-frame-button-padding:"] .osp-button { padding: var(--osp-frame-button-padding); width: 100%; }
 .osp-axis-horizontal > .osp-framed[data-frame-width="fill"] { flex: 1; min-width: 0; }
 .osp-framed[style*="--osp-frame-row-padding:"] .osp-row { padding: var(--osp-frame-row-padding); border: var(--osp-frame-row-border); border-radius: var(--osp-frame-row-radius); background: transparent; box-shadow: none; }
@@ -170,12 +172,13 @@ button:disabled { cursor: default; opacity: .48; }
 .osp-tone-caution { color: var(--osp-caution); }
 .osp-tone-danger { color: var(--osp-danger); }
 .codicon { flex: 0 0 auto; }
-.osp-icon { display: inline-flex; color: var(--osp-muted); }
+.osp-icon { display: inline-flex; color: var(--osp-muted); font-size: var(--osp-frame-text-size, 32px); }
+.osp-icon > :is(.osp-symbol, .codicon) { font-size: inherit; }
 .osp-framed[style*="color:"] .osp-icon { color: inherit; }
 .osp-label { display: inline-flex; align-items: center; gap: 7px; }
-.osp-evidence { display: grid; grid-template-columns: minmax(90px, .5fr) 1fr; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--osp-border); }
-.osp-evidence-label { color: var(--osp-muted); }
-.osp-evidence-value { font-family: var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; }
+.osp-pair { display: grid; grid-template-columns: minmax(90px, .5fr) 1fr; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--osp-border); }
+.osp-pair-label { color: var(--osp-muted); }
+.osp-pair-value { font-family: var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; }
 .osp-badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 10%, transparent); }
 .osp-badge .codicon { font-size: 13px; }
 .osp-badge.osp-tone-primary { color: var(--osp-text); }
@@ -242,6 +245,10 @@ button:disabled { cursor: default; opacity: .48; }
 .osp-progress-track { grid-column: 1 / -1; height: 5px; border-radius: 999px; background: var(--osp-border); overflow: hidden; }
 .osp-progress-track span { display: block; width: 35%; height: 100%; background: var(--osp-accent); border-radius: inherit; animation: osp-pulse 1.4s ease-in-out infinite alternate; }
 .osp-progress-label { font-weight: 600; }
+.osp-meter { display: grid; gap: 4px; }
+.osp-meter-track { height: 6px; border-radius: 999px; background: var(--osp-border); overflow: hidden; }
+.osp-meter-track span { display: block; height: 100%; background: currentColor; border-radius: inherit; }
+.osp-meter-label { color: var(--osp-muted); font-size: 11px; }
 .osp-progress-detail { color: var(--osp-muted); font-size: 11px; }
 .osp-swatch { display: inline-flex; align-items: center; gap: 7px; }
 .osp-swatch > span:first-child { width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--osp-border); background: linear-gradient(135deg, var(--osp-swatch-light) 50%, var(--osp-swatch-dark) 50%); }

@@ -12,12 +12,7 @@ type Merge T =
 
 (** List helpers Osprey has no built-in for yet: finding, testing, flattening, slicing, positions, distinctness and a stable sort (Nimblesite/osprey#276). *)
 module Lists
-    collect<T, U> : (List<U>, List<T>, (T) -> U, int) -> List<U>
-    collect (out, items, f, index) = match listGet items index
-        Success item => listAppend out (f item)
-        Error _ => out
-
-    // The item at `index` appended to `out`; a closure-free `collect`, because a generic identity closure does not compile.
+    // Append the item at `index` when it exists.
     kept<T> : (List<T>, List<T>, int) -> List<T>
     kept (out, items, index) = match listGet items index
         Success item => listAppend out item

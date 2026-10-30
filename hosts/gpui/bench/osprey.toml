@@ -1,0 +1,8 @@
+[project]
+name = "gpui-bench"
+source_roots = [".", "../../../packages/native/src"]
+default_namespace = "bench"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

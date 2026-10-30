@@ -181,6 +181,24 @@ export async function withWorkbench(run: (frame: Frame, opened: () => number) =>
   }
 }
 
+export async function pendingWorkbenchUpdate(frame: Frame): Promise<void> {
+  const actual = Wasi.runWasi;
+  let release = (): void => undefined;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const run = sinon.stub(Wasi, "runWasi").callsFake(async (module, input, options) => { await held; return actual(module, input, options); });
+  try {
+    await frame.getByRole("button", { name: "Proof", exact: true }).click();
+    const pending = await frame.evaluate(() => ({ busy: document.getElementById("osprey-root")?.getAttribute("aria-busy"),
+      disabled: Array.from(document.querySelectorAll<HTMLButtonElement>("#osprey-root button")).every(button => button.disabled),
+      notice: document.getElementById("osprey-runtime-status")?.textContent }));
+    assert.deepStrictEqual(pending, { busy: "true", disabled: true, notice: "Updating · previous results shown" });
+    await frame.getByRole("textbox", { name: "Solution title", exact: true }).fill("Keep pending draft");
+  } finally { release(); run.restore(); }
+  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: 1000 });
+  assert.strictEqual(await frame.getByRole("textbox", { name: "Solution title", exact: true }).inputValue(), "Keep pending draft");
+  assert.strictEqual(await frame.getByRole("button", { name: "Source", exact: true }).isEnabled(), true);
+}
+
 export function frameSource(replacement: string): (frame: string) => string {
   return raw => {
     const frame = JSON.parse(raw);
@@ -310,6 +328,28 @@ export async function rejectEditedImport(frame: Frame, source: string, mutate = 
   await frame.getByText("Import refused", { exact: true }).waitFor();
   assert.strictEqual(await frame.getByText("Checked theorem", { exact: true }).count(), 0, "a refused current export cannot retain its old checked theorem");
   await editor.fill(source);
+}
+
+function checkedSource(execution: sinon.SinonSpy, source: string): void {
+  assert.ok(execution.getCalls().some(call => JSON.parse(call.args[1]).slices?.["proof:import"] === source),
+    "the actual current proof bytes must reach the shared WASI checker");
+}
+
+export async function rejectReimportedProof(frame: Frame, source: string, execution: sinon.SinonSpy): Promise<void> {
+  checkedSource(execution, source);
+  const corrupted = source.replace('"name":4843,"type":36885,"value":36932', '"name":4843,"type":36885,"value":36885');
+  assert.notStrictEqual(corrupted, source, "change only the selected proof term, preserving its statement");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-corrupted-proof-")), file = path.join(directory, "proof.ndjson");
+  fs.writeFileSync(file, corrupted);
+  const picker = sinon.stub(window, "showOpenDialog").resolves([Uri.file(file)]);
+  try {
+    await openProofLibrary(frame);
+    await frame.getByText("Import refused", { exact: true }).waitFor();
+    assert.ok((await frame.locator(".osp-frame-proof-library").innerText()).includes("type mismatch"), "the kernel must reject the proof term rather than file size or source availability");
+    assert.strictEqual(await frame.getByText("Checked theorem", { exact: true }).count(), 0);
+    assert.strictEqual(picker.callCount, 1, "the changed export goes through the real single-file import");
+    checkedSource(execution, corrupted);
+  } finally { picker.restore(); fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
 export async function saveWorking(frame: Frame, file: string): Promise<void> {

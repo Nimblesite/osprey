@@ -1,0 +1,95 @@
+// Runtime-driven regressions for the painting port: drawing, Shift straightening, dashes and
+// clearing through the real start and dispatch boundary ([UI-SCENE], [GPUI-HOST-SCENE]).
+namespace paintingtests
+
+import ui::Doc
+import ui::Runtime
+import painting::App
+
+started () = Doc::parse (Runtime::start ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", App::initial, App::regions, App::save, App::theme ()))
+
+post (envelope, event) = Doc::parse (Runtime::dispatch (Doc::text (envelope, "state"), event, App::update, App::regions, App::save, App::restore))
+
+latest (key, found, patch) = match Doc::text (patch, "key") == key
+    true => Doc::number (patch, "revision")
+    false => found
+
+// Each region re-renders when its slice changes, so an event names the region's latest revision.
+revision (envelope, key, fallback) = foldList (Doc::items (Doc::field (envelope, "patches")), fallback, \(found, patch) => latest (key, found, patch))
+
+pointer (envelope, rev, x, y, down, shift) = post (envelope, "{\"kind\":\"ui\",\"region\":\"canvas\",\"revision\":${rev},\"ordinal\":0,\"value\":{\"x\":${x},\"y\":${y},\"down\":${down},\"shift\":${shift}},\"now\":2}")
+
+nextPointer (envelope, rev, x, y, down, shift) = pointer (envelope, revision (envelope, "canvas", rev), x, y, down, shift)
+
+sketch envelope = Doc::field (Doc::field (Doc::parse (Doc::text (envelope, "state")), "store"), "sketch")
+
+lines envelope = Doc::items (Doc::field (sketch envelope, "lines"))
+
+lineText (envelope, index) = Doc::write (listGet (lines envelope) index ?: JsonNull)
+
+patched (envelope, key) = foldList (Doc::items (Doc::field (envelope, "patches")), JsonNull, \(found, patch) => nodeOf (key, found, patch))
+
+nodeOf (key, found, patch) = match Doc::text (patch, "key") == key
+    true => Doc::field (patch, "node")
+    false => found
+
+canvasShapes envelope = Doc::items (Doc::field (patched (envelope, "canvas"), "shapes"))
+
+header envelope = patched (envelope, "header")
+
+// Ordinals are read from the header as it was last patched (`shown`); the revision is the latest.
+tap (envelope, shown, label) = post (envelope, "{\"kind\":\"ui\",\"region\":\"header\",\"revision\":${revision (shown, "header", 1)},\"ordinal\":${ordinalOf (header shown, label)},\"value\":null,\"now\":2}")
+
+ordinalOf (node, label) = foldList (Doc::items (Doc::field (node, "children")), 0 - 1, \(found, child) => labelled (found, child, label))
+
+labelled (found, child, label) = match Doc::text (child, "label") == label
+    true => Doc::number (child, "event")
+    false => found
+
+// Strokes and dashes: the second path of a freehand line is its outline array.
+strokeOf envelope = Doc::write (jsonIndex (listGet (canvasShapes envelope) (satSub (length (canvasShapes envelope)) 1) ?: JsonNull) 2 ?: JsonNull)
+
+test ("start draws the five quads and sixteen paths of the original", \() =>
+    first = started ()
+    expect (length (canvasShapes first), 21))
+
+test ("a press, two drags and a release draw one three-point line", \() =>
+    first = started ()
+    pressed = pointer (first, 1, "100.0", "500.0", "true", "false")
+    dragged = nextPointer (nextPointer (pressed, 1, "120.0", "510.0", "true", "false"), 1, "140.0", "530.0", "true", "false")
+    released = nextPointer (dragged, 1, "140.0", "530.0", "false", "false")
+    expect (length (lines released), 1)
+    expect (lineText (released, 0), "[100.0,500.0,120.0,510.0,140.0,530.0]")
+    expect (Doc::flag (sketch released, "painting"), false)
+    expect (length (canvasShapes dragged), 22))
+
+test ("a single press draws nothing until the line has two points", \() =>
+    pressed = pointer (started (), 1, "10.0", "600.0", "true", "false")
+    expect (length (lines pressed), 1)
+    expect (length (canvasShapes pressed), 21))
+
+test ("Shift keeps the start's y when the drag moved more across than down", \() =>
+    pressed = pointer (started (), 1, "100.0", "500.0", "true", "true")
+    dragged = nextPointer (pressed, 1, "200.0", "520.0", "true", "true")
+    expect (lineText (dragged, 0), "[100.0,500.0,200.0,500.0]"))
+
+test ("Shift keeps the start's x when the drag moved more down than across", \() =>
+    pressed = pointer (started (), 1, "100.0", "500.0", "true", "true")
+    dragged = nextPointer (pressed, 1, "110.0", "600.0", "true", "true")
+    expect (lineText (dragged, 0), "[100.0,500.0,100.0,600.0]"))
+
+test ("Dashed restrokes every line four on two off and relabels itself Solid", \() =>
+    first = started ()
+    drawn = nextPointer (pointer (first, 1, "100.0", "500.0", "true", "false"), 1, "150.0", "550.0", "true", "false")
+    dashed = tap (drawn, first, "Dashed")
+    expect (strokeOf dashed, "[1,1.0,0,4.0,2.0]")
+    expect (ordinalOf (header dashed, "Solid") >= 0, true)
+    solid = tap (dashed, dashed, "Solid")
+    expect (strokeOf solid, "[1,1.0,0]"))
+
+test ("Clear removes every line and keeps the original drawing", \() =>
+    first = started ()
+    drawn = nextPointer (pointer (first, 1, "100.0", "500.0", "true", "false"), 1, "150.0", "550.0", "true", "false")
+    cleared = tap (drawn, first, "Clear")
+    expect (length (lines cleared), 0)
+    expect (length (canvasShapes cleared), 21))

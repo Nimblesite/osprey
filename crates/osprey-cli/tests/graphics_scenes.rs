@@ -362,9 +362,10 @@ fn the_hlsl_constant_buffer_cannot_quietly_unpack_itself() {
     );
 
     // That argument holds only for a whole number of float4 registers, and a
-    // shader compiler will not say so — the guard in the file has to.
+    // shader compiler will not say so — the guard in the file has to. fxc's
+    // preprocessor has no `%`, so the guard spells the remainder with division.
     assert!(
-        hlsl.contains("#if (OSP_GFX_SLOTS % 4) != 0") && hlsl.contains("#error"),
+        hlsl.contains("#if ((OSP_GFX_SLOTS / 4) * 4) != OSP_GFX_SLOTS") && hlsl.contains("#error"),
         "base.hlsl must refuse to compile if the slot count stops packing evenly"
     );
 }

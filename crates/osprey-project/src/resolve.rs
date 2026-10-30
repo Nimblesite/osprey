@@ -124,13 +124,24 @@ pub(crate) fn flatten(
 impl Resolver<'_> {
     fn finish(mut self) -> Resolution {
         let documentation_bindings = self.documentation_bindings();
+        // The entry's cells have module storage: they come before every declaration, so any
+        // function of the entry that reads one sees it declared above it, with or without a
+        // `main` ([MODULES-FILE-SCOPE-BINDING]). The rest of the prologue runs as before.
+        let (cells, statements): (Vec<Stmt>, Vec<Stmt>) = self
+            .entry_prologue
+            .iter()
+            .cloned()
+            .partition(|statement| matches!(statement, Stmt::Let { mutable: true, .. }));
+        let declarations = std::mem::take(&mut self.program);
+        self.program = cells;
+        self.program.extend(declarations);
         if self.entry_main_count == 0 {
-            self.program.extend(self.entry_prologue.clone());
+            self.program.extend(statements);
         } else if self.entry_main_count == 1 {
             for statement in &mut self.program {
                 if let Stmt::Function { name, body, .. } = statement {
                     if name == "main" {
-                        crate::state_support::inject(body, &self.entry_prologue);
+                        crate::state_support::inject(body, &statements);
                         break;
                     }
                 }

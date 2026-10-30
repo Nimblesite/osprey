@@ -18,7 +18,8 @@ module Backends {
     /// read and measure one, combine two, reduce one, find the first index
     /// holding a value, multiply two matrices, lift a host list, load a tensor
     /// from a safetensors file, and say which interpretation is answering. `B`
-    /// is the representation the handler picks.
+    /// is the representation the handler picks. A product or load that cannot
+    /// be done answers `Error` with the reason ([FAILURE-EXPLICIT]).
     export static effect Tensor<B> {
         build: fn(int, Kernel) -> B
         get: fn(B, int) -> float
@@ -26,9 +27,9 @@ module Backends {
         zipWith: fn(B, B, Combine) -> B
         reduce: fn(B, float, Combine) -> float
         indexOf: fn(B, float) -> int
-        matMul: fn(B, B, int, int, int) -> B
+        matMul: fn(B, B, int, int, int) -> Result<B, string>
         fromList: fn(List<float>) -> B
-        load: fn(string, string) -> B
+        load: fn(string, string) -> Result<B, string>
         device: fn() -> string
     }
 
@@ -38,10 +39,20 @@ module Backends {
     export fn hit(v, x, i, n) = match v == x { true => i  false => n }
     export fn minI(a, i) = match i < a { true => i  false => a }
 
-    /// An arithmetic fault ends the run: its arm answers the whole region.
+    /// A fault ends the run: its arm answers the whole region. Arithmetic
+    /// faults, failed products and failed weight loads all stop here.
     effect Fault {
         control halt: fn(string) -> int
     }
+
+    /// Stops the run with `reason`: the surrounding `strictly` answers Error
+    /// naming it. The operation never resumes.
+    export fn stop(reason) = perform Fault.halt(reason)
+
+    /// The reason a product refuses operands whose element count disagrees
+    /// with the stated shape: the GPU runtime's own `gpuMatMul` text, so both
+    /// interpretations stop alike.
+    export fn productLengths(side, has, needs) = "gpuMatMul: ${side} operand: has ${has} elements, the stated shape needs ${needs}"
 
     /// Runs `work` under GPT-2's arithmetic policy: Success with its value, or
     /// Error naming the first fault. A fault is a bug in the model, never a value

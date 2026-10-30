@@ -4,7 +4,7 @@
 
 # Osprey
 
-A functional language built around **algebraic effects**, inferred types and native compilation. Write your application logic once; handlers connect it to storage, platform services and deterministic tests.
+A functional language built on three pillars: **safety, elegance and performance**. It is algebraic with no panics, so failures are `Result` values you must handle; inferred types and **algebraic effects** express more program with less text; and it compiles through LLVM to native code. Write your application logic once; handlers connect it to storage, platform services and deterministic tests.
 
 Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. It compiles through LLVM to native binaries, WebAssembly and C ABI libraries for iOS, macOS and Android.
 

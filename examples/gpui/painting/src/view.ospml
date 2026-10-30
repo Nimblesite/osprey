@@ -1,0 +1,105 @@
+// The painting port's regions: the header and a window-pixel canvas holding the demo's shapes in
+// the original's order and values ([UI-SCENE], [UI-REGIONS]).
+namespace painting
+
+import ui::Ui
+import ui::Keyed
+import ui::Scenes
+import painting::Drawing
+import painting::Logo
+
+(** The header, the canvas and the theme of the painting port. *)
+module View
+    sketchSlice () = perform Signal<Sketch>.read ()
+
+    styleSlice () = perform Signal<Style>.read ()
+
+    // GPUI's colour constants, as hue, saturation and lightness.
+    black () = ui::Hsl(hue = 0.0, saturation = 0.0, lightness = 0.0, opacity = 1.0)
+
+    red () = ui::Hsl(hue = 0.0, saturation = 1.0, lightness = 0.5, opacity = 1.0)
+
+    blue () = ui::Hsl(hue = 0.6666666667, saturation = 1.0, lightness = 0.5, opacity = 1.0)
+
+    green () = ui::Hsl(hue = 0.3333333333, saturation = 1.0, lightness = 0.25, opacity = 1.0)
+
+    solid tint = ui::Solid(tint = tint)
+
+    fill steps paint = Scenes::path (steps, ui::Fill, paint, 1)
+
+    // Black squares beneath the transparent paths: bounds by origin and size, drawn by centre.
+    quad (x, y, side) = Scenes::rect (x + side * 0.5, y + side * 0.5, side, side, 0.0, Scenes::rgb (0, 0, 0), 0)
+
+    quads () = [quad (70.0, 70.0, 40.0), quad (170.0, 70.0, 40.0), quad (270.0, 70.0, 40.0), quad (370.0, 70.0, 40.0), quad (450.0, 50.0, 80.0)]
+
+    square (left, colour) = fill [ui::MoveTo(toX = left, toY = 50.0), ui::LineTo(toX = left + 80.0, toY = 50.0), ui::LineTo(toX = left + 80.0, toY = 130.0), ui::LineTo(toX = left, toY = 130.0), ui::Close] (solid (Scenes::hex (colour, 0.5)))
+
+    // A circle as two half arcs from its right-hand point, as the original builds it.
+    circle centre = fill [ui::MoveTo(toX = centre + 30.0, toY = 85.0), ui::ArcTo(radiusX = 30.0, radiusY = 30.0, rotation = 0.0, large = false, sweep = false, toX = centre - 30.0, toY = 85.0), ui::ArcTo(radiusX = 30.0, radiusY = 30.0, rotation = 0.0, large = false, sweep = false, toX = centre + 30.0, toY = 85.0), ui::Close] (solid (Scenes::hex (16711680, 0.5)))
+
+    logo () = Scenes::moved (Logo::steps (), ui::Fill, solid (black ()), 10.0, 200.0, 0.9, 1)
+
+    bolt () = fill [ui::Polygon(corners = [150.0, 300.0, 200.0, 225.0, 200.0, 275.0, 250.0, 200.0], closed = false)] (solid (Scenes::hex (1920728, 1.0)))
+
+    star () = fill [ui::MoveTo(toX = 350.0, toY = 200.0), ui::LineTo(toX = 370.0, toY = 260.0), ui::LineTo(toX = 430.0, toY = 260.0), ui::LineTo(toX = 380.0, toY = 300.0), ui::LineTo(toX = 400.0, toY = 360.0), ui::LineTo(toX = 350.0, toY = 320.0), ui::LineTo(toX = 300.0, toY = 360.0), ui::LineTo(toX = 320.0, toY = 300.0), ui::LineTo(toX = 270.0, toY = 260.0), ui::LineTo(toX = 330.0, toY = 260.0), ui::LineTo(toX = 350.0, toY = 200.0)] (ui::Linear(angle = 180.0, from = Scenes::hex (16436245, 1.0), fromAt = 0.7, to = Scenes::hex (13987084, 1.0), toAt = 1.0, oklab = true))
+
+    // The gradient banner inside the 200 by 80 bounds at 450, 200, its corners curved by the bounds' height.
+    banner () = fill [ui::MoveTo(toX = 450.0, toY = 280.0), ui::CurveTo(toX = 530.0, toY = 230.0, ctrlX = 450.0, ctrlY = 230.0), ui::LineTo(toX = 570.0, toY = 230.0), ui::CurveTo(toX = 650.0, toY = 280.0, ctrlX = 650.0, ctrlY = 230.0), ui::LineTo(toX = 450.0, toY = 280.0)] (ui::Linear(angle = 180.0, from = blue (), fromAt = 0.4, to = red (), toAt = 1.0, oklab = false))
+
+    // Pie segments: each arc uses the point 96, 96 as its radii, as the original passes `center` there.
+    segment (fromX, fromY, toX, toY, colour) = fill [ui::MoveTo(toX = fromX, toY = fromY), ui::ArcTo(radiusX = 96.0, radiusY = 96.0, rotation = 0.0, large = false, sweep = false, toX = toX, toY = toY), ui::LineTo(toX = 775.0, toY = 255.0), ui::Close] (solid (Scenes::hex (colour, 1.0)))
+
+    pie () = [segment (871.0, 255.0, 747.0, 163.0, 1275113), segment (747.0, 163.0, 679.0, 263.0, 14759207), segment (679.0, 263.0, 754.0, 349.0, 479694), segment (754.0, 349.0, 854.0, 310.0, 2135874), segment (854.0, 310.0, 871.0, 255.0, 16498954)]
+
+    wavePoint (out, i) =
+        x = toFloat i * 10.0
+        listAppend out (ui::LineTo(toX = 40.0 + x, toY = 420.0 + sin x * 40.0))
+
+    wave () = Scenes::path (range (1, 50) |> fold [ui::MoveTo(toX = 40.0, toY = 420.0)] wavePoint, ui::Line(width = 1.0, dashes = [], bevel = true), solid (green ()), 1)
+
+    // The fixed drawing, in the original's paint order: quads, then every path.
+    demo () = listConcat (quads ()) (listConcat [square (50.0, 16711680), square (150.0, 255), square (250.0, 65280), square (350.0, 0), circle 530.0, circle 570.0, logo (), bolt (), star (), banner ()] (listConcat (pie ()) [wave ()]))
+
+    lineStep (points, i) = match i == 0
+        true => ui::MoveTo(toX = listGet points 0 ?: 0.0, toY = listGet points 1 ?: 0.0)
+        false => ui::LineTo(toX = listGet points (satMul i 2) ?: 0.0, toY = listGet points (satAdd (satMul i 2) 1) ?: 0.0)
+
+    lineSteps points = range (0, intDiv (length points) 2) |> fold [] (\(out, i) => listAppend out (lineStep (points, i)))
+
+    dashes dashed = match dashed
+        true => [4.0, 2.0]
+        false => []
+
+    // A line of fewer than two points draws nothing, as in the original.
+    freehand (points, dashed) = match length points < 4
+        true => []
+        false => [Scenes::path (lineSteps points, ui::Line(width = 1.0, dashes = dashes dashed, bevel = false), solid (black ()), 2)]
+
+    drawn (sketch, style) = foldList (sketch.lines, [], \(out, points) => listConcat out (freehand (points, style.dashed)))
+
+    (** The canvas: the fixed drawing and every freehand line, in window pixels. *)
+    export canvas () = Ui::canvas (listConcat (demo ()) (drawn (sketchSlice (), styleSlice ())), Draw)
+
+    dashLabel dashed = match dashed
+        true => "Solid"
+        false => "Dashed"
+
+    (** The instruction and the two buttons. *)
+    export header () = Ui::row [Ui::text "Mouse down any point and drag to draw lines (Hold on shift key to draw straight lines)", ui::Spacer, Ui::button (dashLabel (styleSlice ()).dashed, (ui::Symbols::name ui::NoSymbol), ToggleDash), Ui::button ("Clear", (ui::Symbols::name ui::NoSymbol), Clear)]
+
+    (** The stable layout: header over canvas. *)
+    export root () = Ui::column [Ui::slot "header", Ui::slot "canvas"]
+
+    (** Rebuilds the canvas when lines or style change and the header when style changes. *)
+    export regions (before, store, frames, _) =
+        handle static Signal<Sketch>
+            read => store.sketch
+        handle static Signal<Style>
+            read => store.style
+        changed = listConcat (signalChanges before.sketch store.sketch Drawing::sketchJson (signalDependencies sketchSlice)) (signalChanges before.style store.style Drawing::styleJson (signalDependencies styleSlice))
+        [Keyed::region (frames, "canvas", changed, canvas), Keyed::region (frames, "header", changed, header), Keyed::region (frames, "root", changed, root)]
+
+    token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
+
+    (** White in both appearances with black text and flat black buttons, as the original paints its window. *)
+    export theme () = ui::Theme(tokens = [token ("background", "#FFFFFF", "#FFFFFF"), token ("text", "#000000", "#000000"), token ("button", "#000000", "#000000"), token ("buttonText", "#FFFFFF", "#FFFFFF")], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)

@@ -7,13 +7,10 @@ namespace gpt2;
 import gpt2::Backends::{Tensor, hit, minI}
 
 module Gpu {
-    extern fn osprey_gpu_panic(message: string) -> GpuBuffer<float>
-    /// Broken-code quarantine: a failed load or product used to become an
-    /// empty tensor, and the model generated from fabricated zeros. It aborts
-    /// instead, through this handler's own runtime.
-    fn orAbort(result) = match result {
-        Success { value } => value
-        Error { message } => osprey_gpu_panic(message)
+    /// A GPU product or load, or the runtime's reason as text.
+    fn answered(result) = match result {
+        Success { value } => Success { value: value }
+        Error { message } => Error { message: toString(message) }
     }
 
     /// GPU buffers, and `device` reports which backend executes them. Kernels
@@ -30,9 +27,9 @@ module Gpu {
             zipWith a b f => gpuZipWith(a, b, f)
             reduce b seed f => b |> gpuFold(seed, f)
             indexOf b x => gpuIota(gpuLength(b)) |> gpuMap(fn(i) => hit(gpuGet(b, i) ?: 0.0, x, i, gpuLength(b))) |> gpuFold(gpuLength(b), minI)
-            matMul a b rows inner cols => orAbort(gpuMatMul(a, b, rows, inner, cols))
+            matMul a b rows inner cols => answered(gpuMatMul(a, b, rows, inner, cols))
             fromList xs => toGpu(xs)
-            load path name => orAbort(gpuLoadTensor(path, name))
+            load path name => answered(gpuLoadTensor(path, name))
             device => gpuDevice()
         }
         work()

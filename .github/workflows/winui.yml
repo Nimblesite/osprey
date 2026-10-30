@@ -1,0 +1,219 @@
+name: WinUI host
+
+# Plan 0038 ([WINUI-HOST]): build the CLI and its MinGW runtime, run Osprey Storage's suite and
+# compile Storage to a windows-x64 DLL, then run the WinUI host's tests and publish the host with
+# Native AOT. The tests drive the real DLL boundary, the envelope, the region store, the
+# capabilities and the folder walk, and guard coverage, no XAML and host neutrality. No test opens
+# a window. Then Osprey Storage runs in a real window on the runner's desktop, driven by its
+# self-test script, and the pictures of each step are kept as an artifact.
+#
+# Both jobs are required checks (scripts/verify-branch-protection.mjs). A PR that changes no code
+# skips the host at the job level, which reports as passing; an `on: paths:` filter would leave a
+# required check pending forever.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  # ci-windows.yml calls it on a manual run, because a workflow not yet on main cannot be dispatched.
+  workflow_call:
+
+concurrency:
+  # Not github.workflow: a called workflow takes its caller's name, and sharing its group cancels it.
+  group: winui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changed areas (WinUI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/detect-ci-scope
+        id: filter
+
+  winui:
+    name: WinUI host (windows-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # The C runtime is built with MinGW (as in ci-windows.yml), and the UCRT64 clang links the
+      # application DLL against it.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          update: true
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-sqlite3
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install typeDiagram
+        uses: ./.github/actions/typediagram
+
+      - name: Build C runtime archives (MinGW)
+        shell: msys2 {0}
+        run: make _runtime CC=gcc AR=ar
+
+      # Restored here and saved straight after the build, so a later step's failure keeps it.
+      - name: Restore the cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: winui-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: winui-cargo-
+
+      - name: Build osprey (release)
+        run: cargo build --release -p osprey-cli
+
+      - name: Save the cargo cache
+        if: steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+      - name: Pin the MinGW clang and llvm-ar
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          echo "OSPREY_CC=$(cygpath -m /ucrt64/bin/clang.exe)" >> "$GITHUB_ENV"
+          echo "OSPREY_AR=$(cygpath -m /ucrt64/bin/llvm-ar.exe)" >> "$GITHUB_ENV"
+
+      - name: Example suites and DLLs
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          ./target/release/osprey.exe test examples/storage/test
+          mkdir -p examples/storage/build examples/gpui/flock/build examples/gpui/painting/build
+          ./target/release/osprey.exe build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll
+          ./target/release/osprey.exe build examples/gpui/flock --target=windows-x64 --no-warnings -o examples/gpui/flock/build/flock.dll
+          ./target/release/osprey.exe build examples/gpui/painting --target=windows-x64 --no-warnings -o examples/gpui/painting/build/painting.dll
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # PowerShell, not MSYS2: the MSYS2 runtime enables the backup privilege, which reads folders
+      # their ACLs deny and so would skip the walk's unreadable-folder case.
+      - name: Host tests
+        working-directory: hosts/winui
+        shell: pwsh
+        run: dotnet test --project OspreyHost.Tests
+
+      # Native AOT links with Visual Studio's C++ tools, which it finds through vswhere.
+      - name: Native AOT publish
+        working-directory: hosts/winui
+        shell: pwsh
+        run: |
+          $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          dotnet publish OspreyHost -c Release
+
+      # What a window can see here: the host needs a visible window station, and the graphics
+      # scenes need a desktop compositor for their swap chains.
+      - name: The runner's desktop
+        shell: pwsh
+        run: |
+          $uac = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System).EnableLUA
+          "session $((Get-Process -Id $PID).SessionId), user-interactive $([Environment]::UserInteractive), UAC $uac"
+          query user 2>&1 | Out-String
+          exit 0  # query user reports through its exit code even when it lists a session
+
+      - name: Graphics scenes on Direct3D 12
+        if: ${{ !cancelled() }}
+        shell: msys2 {0}
+        # The runner has no GPU, so Direct3D 12 draws with WARP on the CPU: a few frames per scene.
+        run: make _graphics-smoke CC=gcc BIN=target/release/osprey.exe GFX_SMOKE_FRAMES=10
+
+      - name: Pictures of the graphics scenes
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: examples/graphics/pictures.ps1 -Shots "${{ runner.temp }}/self-test/graphics"
+
+      # Windows Error Reporting keeps a full dump of a host that crashes, and the script prints the
+      # debugger's analysis of it; the dumps stay on the runner.
+      - name: Osprey Storage in a real window
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $dumps = "${{ runner.temp }}/dumps"
+          New-Item -ItemType Directory -Force $dumps | Out-Null
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\OspreyHost.exe'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -Value $dumps -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpType -Value 2 -PropertyType DWord -Force | Out-Null
+          examples/storage/self-test.ps1 `
+            -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe `
+            -Dll examples/storage/build/storage.dll `
+            -Shots "${{ runner.temp }}/self-test/storage" `
+            -Dumps $dumps
+
+      # The whole system drive, as a person would first measure it: the walk meets folders it may not
+      # read and may stop at its two-minute deadline, then Users opens from its row.
+      - name: Osprey Storage measures the C drive in a real window
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: >-
+          hosts/winui/self-test.ps1
+          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
+          -Dll examples/storage/build/storage.dll
+          -Script examples/storage/self-test-drive.json
+          -Shots "${{ runner.temp }}/self-test/storage-drive"
+          -Dumps "${{ runner.temp }}/dumps"
+          -Arguments 'C:\'
+          -Seconds 480
+
+      - name: Flock in a real window
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: >-
+          hosts/winui/self-test.ps1
+          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
+          -Dll examples/gpui/flock/build/flock.dll
+          -Script examples/gpui/flock/self-test.json
+          -Shots "${{ runner.temp }}/self-test/flock"
+          -Dumps "${{ runner.temp }}/dumps"
+
+      - name: Painting in a real window
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: >-
+          hosts/winui/self-test.ps1
+          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
+          -Dll examples/gpui/painting/build/painting.dll
+          -Script examples/gpui/painting/self-test.json
+          -Shots "${{ runner.temp }}/self-test/painting"
+          -Dumps "${{ runner.temp }}/dumps"
+
+      - name: Keep the window's pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: winui-self-test
+          path: ${{ runner.temp }}/self-test
+          if-no-files-found: warn

@@ -1,4 +1,4 @@
-plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
+plugins { id 'com.android.application' }
 android {
     useLibrary 'android.test.runner'
     useLibrary 'android.test.base'
@@ -16,7 +16,6 @@ android {
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = '17' }
     sourceSets.main.jniLibs.srcDirs = [rootProject.file('build/generated/jniLibs')]
     sourceSets.main.assets.srcDirs = [rootProject.file('../shared')]
 }

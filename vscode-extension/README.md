@@ -4,23 +4,96 @@
 
 # Osprey for VS Code
 
+**Safe, elegant, fast.** Osprey is a functional language built for safety, elegance and performance: algebraic effects and `Result` instead of panics, inferred types that say more with less text, and native LLVM compilation.
+
 <p align="center">
-  <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/vscode-extension/media/package-tour.gif" alt="Osprey in VS Code: review a package and its audit warnings, then add and verify a dependency" width="960" />
+  <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/vscode-extension/media/language-tour.gif" alt="Osprey tour: a function requests storage through an effect, a disk handler saves the draft, an offline handler simulates failure, the same code in Python flavor, and a GPT-2 port whose Tensor handler chooses CPU or GPU" width="960" />
 </p>
 
-Review a package's warnings, add it, and verify the installed dependency in VS Code. [Watch the full walkthrough with captions](https://ospreylang.dev/docs/packages-in-vscode/).
+One function requests storage. One handler writes the file; another simulates being offline. The function stays the same. [Try Osprey in your browser](https://ospreylang.dev/playground/) or read the [effects guide](https://ospreylang.dev/docs/algebraic-effects/).
 
-> **Preview.** Osprey is an actively evolving language and the extension follows the
-> compiler's current feature set.
+> **Actively evolving.** Osprey is being used to build real applications. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.
 
-Language support for [Osprey](https://ospreylang.dev) — a functional programming
-language built around algebraic effects, inferred types, fibers, and pattern matching. The [effects guide](https://ospreylang.dev/docs/algebraic-effects/) introduces callable handlers, block-scoped policies, and static selection.
+## The language
 
-The compiler accepts Default (`.osp`), ML (`.ospml`) and Python flavor (`.py` with `# osprey: flavor=python`). All three lower to the same AST. The extension currently registers Default and ML documents for its language server, commands, debugger and Test Explorer. Use the CLI for Python-flavor files while dedicated editor coverage remains unfinished; see [plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md).
+- **Safety: fewer bugs and failures.** No panics: expected failures are `Result` values the caller must handle. Data models list every case and matching is exhaustive. Integer arithmetic follows an explicit `Arith` policy instead of silently wrapping. Effects make outside work visible and replaceable. Calling C crosses the memory-safety boundary, and GPU device-kernel faults currently abort.
+- **Elegance: more program for less text.** Inferred types, effects instead of plumbing, and direct concurrent code without a separate async form. Fewer tokens for people to hold in their heads and for AI agents to read, write and review.
+- **Performance: native from the start.** LLVM native binaries with no VM or JIT warm-up, static handler selection that removes runtime effect dispatch, lightweight fibers, and a memory backend chosen per build.
 
-Select Default or ML per file using its extension or a leading `// osprey: flavor=ml` marker. Mixed-flavor project imports are supported. The Rust language server (`osprey lsp`, built on [lspkit](https://github.com/Nimblesite/lspkit)) runs the compiler frontend in-process.
+### Algebraic effects
 
-## Features
+Declare a need with `effect`, request it with `perform`, and choose its implementation with a callable `handler` or a block-scoped `handle`. Swap a disk handler for an offline one in tests; the function never changes.
+
+```osprey
+effect Drafts { save: fn(string, string) -> Result<int, Error> }
+fn saveDraft(path, text) = match perform Drafts.save(path, text) {
+    Success _ => "Saved"
+    Error { message } => "Retry: ${message}"
+}
+fn onSave() = saveDraft("draft.txt", "Ship it.")
+
+let disk = handler Drafts {
+    save path text => writeFile(path, text)
+}
+
+print(disk(onSave))
+```
+
+Output: `Saved`. A callable handler runs the zero-argument function passed to it, so the work waits until the handler is active.
+
+### Three syntax flavors. One language.
+
+A **syntax flavor** is a way to write Osprey: Default braces (`.osp`), ML indentation (`.ospml`) or Python-style syntax (`.py` starting with `# osprey: flavor=python`). Each keeps its idioms while sharing Osprey's types, effects and compiler. Choose per file and import across flavors in one project.
+
+```ocaml
+effect Drafts
+    save : (string, string) => Result<int, Error>
+saveDraft path text = match perform Drafts.save path text
+    Success _ => "Saved"
+    Error message => "Retry: ${message}"
+onSave () = saveDraft "draft.txt" "Ship it."
+
+disk = handler Drafts
+    save path text => writeFile path text
+
+print (disk onSave)
+```
+
+```python
+# osprey: flavor=python
+@effect
+class Drafts:
+    def save(path: str, text: str) -> Result[int, Error]: ...
+
+def saveDraft(path, text):
+    match perform(Drafts.save(path, text)):
+        case Success():
+            return "Saved"
+        case Error(message=message):
+            return f"Retry: {message}"
+
+def onSave():
+    return saveDraft("draft.txt", "Ship it.")
+
+@handler(Drafts)
+class disk:
+    def save(path, text):
+        return writeFile(path, text)
+
+def main():
+    print(disk(onSave))
+```
+
+### And more
+
+- **Types:** inference removes repeated annotations; exhaustive matching and `Result` keep cases and failures visible.
+- **Deployment:** LLVM native programs, WebAssembly, and C ABI libraries for native mobile hosts.
+- **Concurrency and memory:** isolated fibers, tracing GC by default, and reference counting (ARC) where supported.
+- **Python to GPU:** port computation to Python flavor and keep `def`, `lambda` and f-strings. The [GPT-2 port](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2) has one `Tensor` effect with CPU and GPU handlers; the handler decides where the arithmetic runs.
+
+## In the editor
+
+The extension registers Default (`.osp`) and ML (`.ospml`) documents for its language server, commands, debugger and Test Explorer. Use the CLI for Python-flavor files while dedicated editor coverage remains unfinished; see [plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md). Select a flavor per file using its extension or a leading `// osprey: flavor=ml` marker. The Rust language server (`osprey lsp`, built on [lspkit](https://github.com/Nimblesite/lspkit)) runs the compiler frontend in-process.
 
 - **Syntax highlighting** — keywords, types, string interpolation
   (`"Hello ${name}!"`), operators, and comments. Default (`.osp`) is fully
@@ -59,7 +132,9 @@ See the [screenshot walkthrough](https://www.ospreylang.dev/docs/packages-in-vsc
 
 Run **Osprey: Add Package** from the Command Palette, search the registry by the complete `@org/package` name, and confirm the selection. **Osprey: Remove Package** lists the project's direct dependencies and removes the selected dependency through the same bundled client. Both operations update the manifest and relock through Osprey; unsaved manifest or lock editors block changes. Multi-folder workspaces prompt for the project first.
 
-Set `osprey.packages.registry` to your registry API origin. HTTPS is required; loopback HTTP supports the local folder registry (`make registry-serve`, default `http://127.0.0.1:8787`). Folder-registry listings provide no audit evidence, so the picker labels releases unverified and requires confirmation. Hosted listings without security eligibility and advisory evidence cannot offer an installation bypass. Hosted authentication and public trust enforcement remain separate delivery work.
+**Local registry.** Until the hosted registry is live, packages come from a local registry the extension runs for you. It serves the Osprey packages in the repository's `packages/` folder (`@osprey/re`, `@osprey/torch` and the rest) on `http://127.0.0.1:8787`. Start it with **Osprey: Start Local Package Registry**, the **Registry** status-bar item, or the `osprey.toml` explorer menu, and stop it the same way. If you open the package manager while nothing answers on that address, the extension asks whether to start it. The VSIX bundles the server and a snapshot of those packages; server output goes to the **Osprey Package Registry** output channel. `osprey.packages.localRegistry.root` serves a different folder registry and `osprey.packages.localRegistry.serverPath` a different server build.
+
+Set `osprey.packages.registry` to your registry API origin. HTTPS is required; loopback HTTP supports the local folder registry (`make registry-serve` from a checkout, default `http://127.0.0.1:8787`). Folder-registry listings provide no audit evidence, so the picker labels releases unverified and requires confirmation. Hosted listings without security eligibility and advisory evidence cannot offer an installation bypass. Hosted authentication and public trust enforcement remain separate delivery work.
 
 The VSIX bundles `osprey-pkg` for its platform. `osprey.packages.frontendPath` is a machine setting for an explicit client executable; a configured missing executable fails visibly. Package commands work with the language server disabled and require a trusted workspace.
 

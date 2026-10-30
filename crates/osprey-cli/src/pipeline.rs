@@ -197,6 +197,9 @@ fn mobile_target_error(cli: &Cli, input: &CompilationInput) -> Option<ExitCode> 
     if let Some(target) = ios::Target::parse(&cli.target) {
         return app_target_error(&cli.mode, ios::validate(cli, target), source);
     }
+    if let Some(target) = crate::desktop::Target::parse(&cli.target) {
+        return app_target_error(&cli.mode, crate::desktop::validate(cli, target), source);
+    }
     None
 }
 
@@ -230,6 +233,9 @@ pub(super) fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, S
     }
     if let Some(target) = ios::Target::parse(&cli.target) {
         return ios::source(program, path, target, &scope).map(|(ir, _)| ir);
+    }
+    if let Some(target) = crate::desktop::Target::parse(&cli.target) {
+        return crate::desktop::source(program, path, target, &scope).map(|(ir, _)| ir);
     }
     if cli.target == "wasm32" {
         return wasm::program_ir(program).map_err(|error| error.to_string());
@@ -362,6 +368,9 @@ fn build_mobile(
         ios::validate(cli, target)?;
         return ios::build(path, program, out, target, &scope, &cli.memory);
     }
+    if let Some(target) = crate::desktop::Target::parse(&cli.target) {
+        return crate::desktop::build(cli, path, program, out, target, &scope);
+    }
     Err(toolchain::fail(&format!(
         "unknown mobile target: {}",
         cli.target
@@ -393,6 +402,9 @@ pub(super) fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
         "android-arm64" | "android-x64" => {
             toolchain::fail("Android libraries must run inside a host app; use --compile")
         }
+        "linux-x64" | "linux-arm64" | "windows-x64" => toolchain::fail(
+            "desktop app libraries must run inside a host such as hosts/gpui; use --compile",
+        ),
         name => match ios::Target::parse(name) {
             Some(target) => ios::validate(cli, target).map_or_else(
                 |code| code,

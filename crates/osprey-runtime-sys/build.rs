@@ -7,15 +7,16 @@
 //! FFI pointer cells). The concurrency/HTTP units (pthreads/OpenSSL) link the
 //! same way and are added as their crates come online.
 
-use std::path::PathBuf;
+use std::path::{absolute, Path};
 
 fn main() {
-    let runtime = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../compiler/runtime")
-        .canonicalize()
+    // `canonicalize` spells a Windows path in its `\\?\` form, which `cl.exe` cannot open; an
+    // absolute path names the same folder on every system.
+    let runtime = absolute(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../compiler/runtime"))
         .expect("locate compiler/runtime");
 
     let ffi = runtime.join("ffi_runtime.c");
+    assert!(ffi.is_file(), "the C runtime is missing: {}", ffi.display());
     println!("cargo:rerun-if-changed={}", ffi.display());
 
     let mut build = cc::Build::new();

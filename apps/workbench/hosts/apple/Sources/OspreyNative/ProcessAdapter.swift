@@ -13,8 +13,9 @@ public struct RunAdapter: CapabilityAdapter {
         #if os(macOS)
         let executable = try request.text("executable")
         guard executable.hasPrefix("/") else { throw CapabilityError.notAllowed("Executable must be an absolute path") }
+        let plist = try request.members["plist"].map { _ in try request.flag("plist") } ?? false
         let run = try await Launch(executable: executable, arguments: try request.texts("arguments"), timeout: try request.number("timeout"), limit: try request.number("limit")).run()
-        let output = try request.flag("plist") ? try RunAdapter.plistJSON(run.stdout) : try Bounded.text(run.stdout)
+        let output = plist ? try RunAdapter.plistJSON(run.stdout) : try Bounded.text(run.stdout)
         slices.write(try request.text("slice"), output)
         return .object(["status": .number(Double(run.status)), "stderr": .string(String(decoding: run.stderr.prefix(65536), as: UTF8.self))])
         #else
@@ -68,17 +69,18 @@ final class Launch: @unchecked Sendable {
             if process.isRunning { process.terminate() }
         }
         defer { deadline.cancel() }
-        let stdout = try await drain(out)
-        let stderr = try await drain(err)
+        async let stdout = drain(out)
+        async let stderr = drain(err)
+        let (output, errors) = try await (stdout, stderr)
         for await _ in exited {}
         if Task.isCancelled { throw CancellationError() }
         if expired { throw CapabilityError.timedOut(timeout) }
-        return Launched(status: process.terminationStatus, stdout: stdout, stderr: stderr)
+        return Launched(status: process.terminationStatus, stdout: output, stderr: errors)
     }
 
     private func drain(_ pipe: Pipe) async throws -> Data {
         var collected = Data()
-        for try await chunk in pipe.fileHandleForReading.bytes.chunks {
+        for try await chunk in pipe.chunks {
             collected.append(chunk)
             if collected.count > limit { process.terminate(); throw CapabilityError.tooLarge(collected.count, limit) }
             if Task.isCancelled { process.terminate(); throw CancellationError() }
@@ -87,22 +89,22 @@ final class Launch: @unchecked Sendable {
     }
 }
 
-extension FileHandle.AsyncBytes {
-    /// The handle's bytes in blocks, so a large output is not appended byte by byte.
+extension Pipe {
+    /// Each pipe owns its readiness callback; AsyncBytes can serialize reads across handles.
     var chunks: AsyncThrowingStream<Data, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                var block = Data()
+        let reader = fileHandleForReading
+        return AsyncThrowingStream { continuation in
+            reader.readabilityHandler = { handle in
                 do {
-                    for try await byte in self {
-                        block.append(byte)
-                        if block.count >= 65536 { continuation.yield(block); block = Data() }
-                    }
-                    if !block.isEmpty { continuation.yield(block) }
-                    continuation.finish()
-                } catch { continuation.finish(throwing: error) }
+                    let block = try handle.read(upToCount: 65536) ?? Data()
+                    if block.isEmpty { handle.readabilityHandler = nil; continuation.finish() }
+                    else { continuation.yield(block) }
+                } catch {
+                    handle.readabilityHandler = nil
+                    continuation.finish(throwing: error)
+                }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { _ in reader.readabilityHandler = nil }
         }
     }
 }

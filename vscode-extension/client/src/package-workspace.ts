@@ -113,12 +113,13 @@ export function hostBridge(context: Pick<ExtensionContext, "extensionPath">): Ca
   };
 }
 
-async function application(context: ExtensionContext, resource?: Uri): Promise<NativeApplication | undefined> {
+async function application(context: ExtensionContext, ready: (folder: Uri) => Promise<boolean>, resource?: Uri): Promise<NativeApplication | undefined> {
   const folder = await folderFor(resource);
   if (!folder) {
     if (!workspace.workspaceFolders?.length) void window.showErrorMessage("Open a workspace folder before managing Osprey packages.");
     return undefined;
   }
+  if (!await ready(folder)) return undefined;
   const registry = registryOrigin(folder);
   const artifact = applicationPath(context);
   const bridge = hostBridge(context);
@@ -127,7 +128,7 @@ async function application(context: ExtensionContext, resource?: Uri): Promise<N
 }
 
 /** Register the package app through the shared native panel host. */
-export function registerPackageWorkspace(context: ExtensionContext): { dispose(): void } {
+export function registerPackageWorkspace(context: ExtensionContext, ready: (folder: Uri) => Promise<boolean> = async () => true): { dispose(): void } {
   return registerNativePanel(context, { command: PACKAGE_WORKSPACE_COMMAND, view: VIEW_ID, title: PANEL_TITLE,
-    loading: "Loading your packages…", prepare: resource => application(context, resource) });
+    loading: "Loading your packages…", prepare: resource => application(context, ready, resource) });
 }

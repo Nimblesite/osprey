@@ -69,6 +69,13 @@ async function observeWorkspace(command: string, folder: Uri, panels: sinon.Sino
 async function catalogFixture(listing: unknown, sources: ReadonlyMap<string, unknown>, catalogStatus: () => number) {
   let reads = 0;
   const server = http.createServer((request, response) => {
+    // The registry's liveness probe, which opening the package manager checks
+    // first ([PACKAGE-LOCAL-REGISTRY]); it is not a catalog read.
+    if (request.url === "/v1/health") {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ status: "ok" }));
+      return;
+    }
     reads++;
     const body = request.url === "/v1/packages" ? listing : sources.get(request.url ?? "");
     response.writeHead(body === undefined ? 404 : request.url === "/v1/packages" ? catalogStatus() : 200, { "Content-Type": "application/json" });

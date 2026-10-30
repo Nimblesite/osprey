@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "wait": "Home" },
+    { "wait": "Videos" },
+    { "wait": ".cache" },
+    { "wait": "notes.txt" },
+    { "shot": "1-listing" },
+    { "toggle": "Hidden items" },
+    { "gone": ".cache" },
+    { "wait": "Videos" },
+    { "shot": "2-hidden-left-out" },
+    { "choose": "Videos" },
+    { "wait": "clip.bin" },
+    { "shot": "3-videos-opened" },
+    { "invoke": "Up" },
+    { "wait": "notes.txt" },
+    { "wait": "Videos" },
+    { "shot": "4-back-up" }
+  ]
+}

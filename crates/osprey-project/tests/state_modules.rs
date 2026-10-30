@@ -298,9 +298,14 @@ fn module_mutation_boundaries_preserve_ordinary_local_mut() {
         doc: None,
         position: None,
     };
+    // The selected entry source may hold file-scope cells ([MODULES-FILE-SCOPE-BINDING]); any
+    // other source of the project may not.
     let namespace_messages = error_messages(
-        &config("namespace.osp"),
-        &[ast("namespace.osp", vec![mutable("global")])],
+        &config("main.osp"),
+        &[
+            ast("main.osp", vec![function("answer", Expr::Integer(0))]),
+            ast("namespace.osp", vec![mutable("global")]),
+        ],
     );
     assert!(
         contains(&namespace_messages, "namespace-level `mut`"),

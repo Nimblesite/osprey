@@ -68,7 +68,7 @@ tapped (store, action) = match action
     Load => Runtime::asking (store, [Requests::ask ("load:1", ui::StoreRead(readName = "memo.txt", readLimit = 100, readSlice = "memo"))])
     Typed => Runtime::step store
 
-update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(_, text) => typed (store, text), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, outcome) => Runtime::step (probe store.counter.tally (loaded outcome)), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store)
+update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(_, text) => typed (store, text), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, outcome) => Runtime::step (probe store.counter.tally (loaded outcome)), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
 
 save store = JsonObject [Doc::num ("tally", store.counter.tally), Doc::str ("memo", store.note.memo)]
 

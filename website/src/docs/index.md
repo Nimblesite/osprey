@@ -4,7 +4,7 @@ title: Osprey documentation
 description: Start with algebraic effects and reusable handlers, then build native, web and mobile applications with Osprey.
 ---
 
-Osprey uses typed algebraic effects to separate application requests from their implementations. Start with a handler, then see the same approach in the banking and mobile applications.
+Osprey is built for **safety, elegance and performance**: algebraic effects and `Result` instead of panics, inferred types that say more with less text, and native LLVM compilation. Typed algebraic effects separate application requests from their implementations. Start with a handler, then see the same approach in the banking and mobile applications.
 
 ## Start here
 
@@ -31,6 +31,7 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 
 ## Build applications
 
+- **[Osprey Native](/docs/osprey-native/)** — the application framework: one store, signals, typed screens and capabilities; SwiftUI, VS Code and GPU hosts draw them.
 - **[Build a Mac and iPhone app](/docs/mac-and-iphone-apps/)** — follow Osprey Storage across the boundary: Osprey exports in a generated C header, Swift `@_cdecl` imports, and an effect handler at the edge. Also a [video tutorial](/docs/tutorials/swift-interop/).
 - **[Build an iOS and Android app](/docs/mobile-apps/)** — handle application requests as native commands for SQLite, GitHub and reactive controls.
 - **[Build a web app](/docs/web-apps/)** — follow Talon Bank from storage and audit handlers to shared web, Android and iOS clients.

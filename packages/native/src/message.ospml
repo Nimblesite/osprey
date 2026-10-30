@@ -3,7 +3,7 @@
 // construct an action.
 namespace ui
 
-(** Host facts for one dispatch: Unix seconds, the local UTC offset in seconds, `macos` or `ios`, the person's home folder and the launch arguments. *)
+(** Host facts for one dispatch: Unix seconds, the local UTC offset in seconds, the host's platform name (`macos` or `ios`, say), the person's home folder and the launch arguments. `Symbols::platform` reads a name as the typed `Platform` when a host-neutral decision is needed. *)
 type Context =
     now : int
     offset : int
@@ -11,7 +11,7 @@ type Context =
     home : string
     arguments : List<string>
 
-(** What reaches the application's `update`: a control's action and value, a capability's completion or a lifecycle phase. *)
+(** What reaches the application's `update`: a control's action and value, a capability's completion a lifecycle phase or a display frame. *)
 type Message A =
     Act
         act : A
@@ -41,8 +41,24 @@ type Message A =
         outcome : Result<Json, Error>
     Phase
         phase : string
+    Frame
+        elapsed : float
+    Controlled
+        control : A
+        input : Input
 
-(** A host event before it is resolved: a control's ordinal and value, a completion or a lifecycle phase. *)
+(** What a scene's input binding delivers: a key going down or up, or the pointer moving or pressing in scene units with Shift held or not ([UI-SCENE]). *)
+type Input =
+    Key
+        keyName : string
+        keyDown : bool
+    Pointer
+        pointerX : float
+        pointerY : float
+        pointerDown : bool
+        pointerShift : bool
+
+(** A host event before it is resolved: a control's ordinal and value, a completion, a lifecycle phase or a display frame. *)
 type Incoming =
     Control
         eventRegion : string
@@ -60,6 +76,8 @@ type Incoming =
         doneOutcome : Result<Json, Error>
     Lifecycle
         lifecyclePhase : string
+    Tick
+        tickElapsed : float
 
 (** A decoded host event and the host's clock when it happened. *)
 type Event =
@@ -72,15 +90,29 @@ module Events
         true => Success(value = Doc::field (doc, "result"))
         false => Error(message = Doc::text (doc, "error"))
 
+    numeric value = match value
+        JsonInt _ => true
+        JsonFloat _ => true
+        _ => false
+
+    boolean value = match jsonBool value
+        Success _ => true
+        Error _ => false
+
+    framed doc = match numeric (Doc::field (doc, "elapsed")) && Doc::decimal (doc, "elapsed") >= 0.0
+        true => Success(value = Tick(tickElapsed = Doc::decimal (doc, "elapsed")))
+        false => Error(message = "Invalid frame elapsed time")
+
     body (doc, kind) = match kind
         "ui" => Success(value = Control(eventRegion = Doc::text (doc, "region"), eventRevision = Doc::number (doc, "revision"), eventOrdinal = Doc::number (doc, "ordinal"), eventValue = Doc::field (doc, "value")))
         "ui-edit" => Success(value = PreviousControl(priorState = Doc::text (doc, "prior"), editRegion = Doc::text (doc, "region"), editRevision = Doc::number (doc, "revision"), editOrdinal = Doc::number (doc, "ordinal"), editValue = Doc::field (doc, "value")))
         "completed" => Success(value = Finished(doneTicket = Doc::text (doc, "ticket"), doneOutcome = outcome doc))
         "lifecycle" => Success(value = Lifecycle(lifecyclePhase = Doc::text (doc, "phase")))
+        "frame" => framed doc
         _ => Error(message = "Unknown event kind: ${kind}")
 
     // The host bounds event size before the call; malformed text is rejected, never guessed.
-    (** One host event from its JSON text: a control's value, a capability's completion or a lifecycle phase. Text that is not JSON or names an unknown kind is refused. *)
+    (** One host event from its JSON text: a control's value, a capability's completion, a lifecycle phase or a display frame with the seconds since the previous one. Text that is not JSON or names an unknown kind is refused. *)
     export decode source = match jsonDecode source
         Error _ => Error(message = "The host sent an event that is not JSON")
         Success doc => match body (doc, Doc::text (doc, "kind"))
@@ -88,6 +120,24 @@ module Events
             Success incoming => Success(value = Event(eventNow = Doc::number (doc, "now"), eventBody = incoming))
 
     mismatch kind = Error(message = "A ${kind} control sent a value of the wrong kind")
+
+    optionalShift value = match Doc::has (value, "shift")
+        true => boolean (Doc::field (value, "shift"))
+        false => true
+
+    positionOrKey value = match Doc::has (value, "key")
+        true => match jsonText (Doc::field (value, "key"))
+            Success _ => true
+            Error _ => false
+        false => numeric (Doc::field (value, "x")) && numeric (Doc::field (value, "y")) && optionalShift value
+
+    validScene value = boolean (Doc::field (value, "down")) && positionOrKey value
+
+    // Validate the shape first, so missing fields never invent a pointer at zero.
+    // A scene value names a key or a pointer position; `down` says pressed or released.
+    input value = match Doc::has (value, "key")
+        true => Key(keyName = Doc::text (value, "key"), keyDown = Doc::flag (value, "down"))
+        false => Pointer(pointerX = Doc::decimal (value, "x"), pointerY = Doc::decimal (value, "y"), pointerDown = Doc::flag (value, "down"), pointerShift = Doc::flag (value, "shift"))
 
     (** The typed message for a value delivered to `binding`; the value kind must match. *)
     export bind<A> : (Binding<A>, Json) -> Result<Message<A>, Error>
@@ -112,6 +162,9 @@ module Events
             _ => mismatch "cursor"
         StrokeInput action => Strokes::bind (action, value)
         LassoInput action => Strokes::lasso (action, value)
+        SceneInput action => match validScene value
+            true => Success(value = Controlled(control = action, input = input value))
+            false => mismatch "scene"
 
 (** Decodes the board's stroke and lasso values ([UI-COMPONENTS-BOARD]); a malformed stroke is refused, never guessed. *)
 module Strokes
@@ -152,9 +205,9 @@ module Strokes
 
 (** Takes a message apart for the application's `update`. Osprey cannot yet match a constructor declared in another namespace, so applications fold over messages here. *)
 module Messages
-    (** Calls the handler for `message`: a tap, a text or choice value, a toggle, a splitter's width or a cursor's offset, a completion, a lifecycle phase, a board stroke or a lasso. *)
-    export route<A, R> : (Message<A>, (A) -> R, (A, string) -> R, (A, bool) -> R, (A, int) -> R, (string, Result<Json, Error>) -> R, (string) -> R, (A, Stroke) -> R, (A, List<int>) -> R) -> R !e
-    route (message, tapped, typed, toggled, sized, completed, phased, stroked, lassoed) = match message
+    (** Calls the handler for `message`: a tap, a text or choice value, a toggle, a splitter's width or a cursor's offset, a completion, a lifecycle phase, a board stroke or lasso, a display frame's elapsed seconds or a scene's key or pointer input. *)
+    export route<A, R> : (Message<A>, (A) -> R, (A, string) -> R, (A, bool) -> R, (A, int) -> R, (string, Result<Json, Error>) -> R, (string) -> R, (A, Stroke) -> R, (A, List<int>) -> R, (float) -> R, (A, Input) -> R) -> R !e
+    route (message, tapped, typed, toggled, sized, completed, phased, stroked, lassoed, framed, controlled) = match message
         Act action => tapped action
         Entered action text => typed (action, text)
         Chose action key => typed (action, key)
@@ -165,3 +218,13 @@ module Messages
         Lassoed action indices => lassoed (action, indices)
         Completed ticket outcome => completed (ticket, outcome)
         Phase phase => phased phase
+        Frame elapsed => framed elapsed
+        Controlled action input => controlled (action, input)
+
+(** Takes a scene's input apart for the application's `update` ([UI-SCENE]). *)
+module Inputs
+    (** Calls `keyed` with a key's name and whether it went down, or `pointed` with the pointer's scene position, whether it is pressed and whether Shift is held. *)
+    export route<R> : (Input, (string, bool) -> R, (float, float, bool, bool) -> R) -> R !e
+    route (input, keyed, pointed) = match input
+        Key name down => keyed (name, down)
+        Pointer x y down shift => pointed (x, y, down, shift)

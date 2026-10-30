@@ -1,7 +1,7 @@
 {
   "name": "osprey",
   "displayName": "Osprey",
-  "description": "Syntax highlighting and language server for Osprey programming language",
+  "description": "Osprey: a safe, elegant, fast functional language with algebraic effects, inferred types and three syntax flavors. Language server, debugger, tests, profiler and bug hunting.",
   "version": "0.0.0-dev",
   "publisher": "nimblesite",
   "preview": true,
@@ -30,7 +30,12 @@
     "osprey",
     "functional",
     "programming",
-    "language"
+    "language",
+    "algebraic effects",
+    "effect handlers",
+    "type inference",
+    "llvm",
+    "webassembly"
   ],
   "main": "./out/client/src/extension.js",
   "activationEvents": [
@@ -174,6 +179,19 @@
         "title": "Remove Package",
         "category": "Osprey",
         "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "osprey.packages.startLocalRegistry",
+        "title": "Start Local Package Registry",
+        "category": "Osprey",
+        "icon": "$(server-process)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "osprey.packages.stopLocalRegistry",
+        "title": "Stop Local Package Registry",
+        "category": "Osprey",
+        "icon": "$(debug-stop)"
       },
       {
         "command": "osprey.profiler.profileStart",
@@ -433,6 +451,11 @@
           "command": "osprey.packages.open",
           "when": "resourceFilename == osprey.toml",
           "group": "osprey@1"
+        },
+        {
+          "command": "osprey.packages.startLocalRegistry",
+          "when": "resourceFilename == osprey.toml",
+          "group": "osprey@2"
         }
       ]
     },
@@ -620,6 +643,18 @@
           "scope": "resource",
           "description": "Package registry API origin. HTTPS is required except for loopback development."
         },
+        "osprey.packages.localRegistry.serverPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Absolute path to osprey-registry, the local package registry server. Defaults to the server bundled with this extension."
+        },
+        "osprey.packages.localRegistry.root": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Folder registry the local server serves (@scope/name/<epoch>.<ordinal>/ releases). Defaults to the bundled snapshot of the Osprey repository's packages."
+        },
         "osprey.packages.frontendPath": {
           "type": "string",
           "default": "",
@@ -731,16 +766,16 @@
   },
   "dependencies": {
     "@nimblesite/lsp-profiler-ui": "file:../lspkit/packages/lsp-profiler-ui",
-    "@nimblesite/shipwright-vscode": "^0.5.4",
+    "@nimblesite/shipwright-vscode": "^0.11.0",
     "@preact/signals-core": "^1.14.4",
     "@vscode/codicons": "^0.0.46-24",
     "vscode-languageclient": "^10.1.2"
   },
   "devDependencies": {
-    "@types/glob": "^8.1.0",
+    "@types/glob": "^9.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.17.50",
-    "@types/sinon": "^17.0.4",
+    "@types/sinon": "^22.0.1",
     "@types/vscode": "^1.96.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",

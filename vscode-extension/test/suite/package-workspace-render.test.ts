@@ -6,7 +6,7 @@ import { Uri, ViewColumn, window, type WebviewPanel } from "vscode";
 import type { Browser, Frame } from "playwright-core";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import { SDK_COMPONENT_SOURCE } from "./sdk-renderer-source";
-import { renderWorkspace } from "../../client/src/osprey-ui/render";
+import { RENDERED_KINDS, renderWorkspace } from "../../client/src/osprey-ui/render";
 import { WEBVIEW_SCRIPT } from "../../client/src/osprey-ui/webview-client";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
 import { createWorkspaceSession } from "../../client/src/osprey-ui/session";
@@ -30,7 +30,7 @@ const rows = {
   kind: "section", title: "Packages", footer: "",
   children: [
     { kind: "field", label: "Search", value: "", prompt: "<script>alert(1)</script>", secure: false, multiline: false, commit: "edit", bind: "Search", event: 0 },
-    { kind: "rows", selected: "a", rows: [{ key: "a", symbol: "shippingbox", group: "Installed", child: { kind: "text", text: "<img src=x onerror=alert(1)>", role: "body", tone: "primary" } }], event: 1 },
+    { kind: "rows", selected: "a", rows: [{ key: "a", symbol: "package", group: "Installed", child: { kind: "text", text: "<img src=x onerror=alert(1)>", role: "body", tone: "primary" } }], event: 1 },
   ],
 };
 
@@ -74,6 +74,36 @@ suite("package workspace renderer", () => {
     assert.throws(() => renderWorkspace({ regions: regions({ kind: "mystery" }) }), /Unknown native component/);
   });
 
+  test("the framework brand renders the approved local logo", () => {
+    const html = renderWorkspace({ regions: regions({ kind: "brand" }), assetUri: "vscode-resource://approved-logo.png" });
+    assert.ok(html.includes('src="vscode-resource://approved-logo.png" alt="Osprey"'), html);
+    assert.ok(renderWorkspace({ regions: regions({ kind: "brand" }) }).includes('class="osp-brand osp-brand-word">Osprey</span>'));
+  });
+
+  test("every framework node kind is drawn here except scenes, which the webview refuses", () => {
+    // Every `Node` constructor in packages/native/src/node.ospml, as the encoder names it ([NATIVE-HOSTS-COVERAGE]),
+    // so a component added to the framework fails here until the webview draws it or refuses it by name.
+    const source = fs.readFileSync(path.join(extensionRoot, "..", "packages", "native", "src", "node.ospml"), "utf8").replace(/\r/g, "");
+    const block = source.slice(source.indexOf("type Node A ="));
+    const body = block.slice(0, block.search(/\n\S/));
+    const kinds = [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) =>
+      match[1] === "Typeset" ? "math" : match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase());
+    assert.ok(kinds.includes("meter") && kinds.includes("context-menu"), kinds.join(","));
+    assert.deepStrictEqual([...RENDERED_KINDS, "scene"].sort(), [...kinds].sort());
+    assert.throws(() => renderWorkspace({ regions: regions({ kind: "scene" }) }), /Unknown native component: scene/);
+  });
+
+  test("a meter fills its share of the total, clamped, in its tone", () => {
+    const html = renderWorkspace({ regions: regions({ kind: "stack", axis: "vertical", children: [
+      { kind: "meter", label: "30 of 120 used", value: 30, total: 120, tone: "caution" },
+      { kind: "meter", label: "<over>", value: 500, total: 120, tone: "nonsense" },
+    ] }) });
+    assert.ok(html.includes('class="osp-meter osp-tone-caution" role="meter" aria-valuemin="0" aria-valuemax="120" aria-valuenow="30" aria-label="30 of 120 used"'), html);
+    assert.ok(html.includes('style="width:25.0%"'), html);
+    assert.ok(html.includes('class="osp-meter osp-tone-accent" role="meter" aria-valuemin="0" aria-valuemax="120" aria-valuenow="120" aria-label="&lt;over&gt;"'), html);
+    assert.ok(html.includes('style="width:100.0%"'), html);
+  });
+
   test("malformed or excessive trees fail explicitly instead of rendering a partial screen", () => {
     for (const node of [null, [], {}, { kind: 1 }]) {
       assert.throws(() => renderWorkspace({ regions: regions(node) }), /not an object with a kind/);
@@ -98,7 +128,7 @@ suite("package workspace renderer", () => {
   });
 
   test("a context menu keeps its secondary actions out of the body until opened", () => {
-    const menu = { kind: "context-menu", body: { kind: "text", text: "Package", role: "body", tone: "primary" }, items: [{ kind: "button", label: "Add", symbol: "plus", role: "plain", enabled: true, event: 2 }] };
+    const menu = { kind: "context-menu", body: { kind: "text", text: "Package", role: "body", tone: "primary" }, items: [{ kind: "button", label: "Add", symbol: "add", role: "plain", enabled: true, event: 2 }] };
     const html = renderWorkspace({ regions: regions(menu) });
     assert.ok(html.includes('data-context-host'), html);
     assert.ok(html.includes('role="menu" hidden'), html);
@@ -107,13 +137,24 @@ suite("package workspace renderer", () => {
 
   test("symbols name official Codicons and never emit hand-drawn artwork", () => {
     const html = renderWorkspace({ regions: regions({ kind: "stack", axis: "vertical", children: [
-      { kind: "badge", label: "Installed", symbol: "shippingbox", tone: "good" },
+      { kind: "badge", label: "Installed", symbol: "package", tone: "good" },
       { kind: "icon", symbol: "not-a-symbol" },
     ] }) });
     assert.ok(html.includes('codicon codicon-package'), html);
     assert.ok(html.includes('codicon codicon-info'), html);
     assert.ok(!html.includes("osp-symbol"), html);
     assert.ok(!html.includes("not-a-symbol"), html);
+  });
+
+  test("every framework symbol draws its own Codicon and a pair shows its label and value", () => {
+    // Every `Symbols::name` in packages/native/src/symbol.ospml ([UI-COMPONENTS-SYMBOLS]).
+    const names = ["add", "delete", "dismiss", "check", "warning", "info", "question", "search", "settings", "star", "play", "pause", "stop", "refresh", "folder", "document", "package", "inbox", "globe", "external", "lock", "shield", "branch", "tag", "clock", "person", "cursor", "chevron"];
+    for (const name of names) {
+      const html = renderWorkspace({ regions: regions({ kind: "icon", symbol: name }) });
+      assert.ok(name === "info" || !html.includes("codicon-info\""), `${name} fell back to the info mark`);
+    }
+    const html = renderWorkspace({ regions: regions({ kind: "pair", label: "Digest", value: "<sha>" }) });
+    assert.ok(html.includes('<span class="osp-pair-label">Digest</span><span class="osp-pair-value">&lt;sha&gt;</span>'), html);
   });
 
   test("only HTTPS links are active and the rows label is application text", () => {
@@ -240,6 +281,8 @@ async function assertSdkComponents(frame: Frame): Promise<void> {
   assert.strictEqual(await frame.getByRole("progressbar", { name: "SDK progress" }).textContent(), "SDK progressCompiling");
   assert.strictEqual(await frame.locator(".osp-swatch").getAttribute("style"), "--osp-swatch-light:#112233;--osp-swatch-dark:#ddeeff");
   assert.strictEqual(await frame.getByRole("img", { name: "Osprey", exact: true }).count(), 2);
+  assert.strictEqual(await frame.getByText("SDK pair", { exact: true }).count(), 1);
+  assert.strictEqual(await frame.getByText("42 nodes", { exact: true }).count(), 1);
   assert.strictEqual(await frame.getByText("SDK evidence", { exact: true }).count(), 1);
   assert.strictEqual(await frame.getByText("SDK label", { exact: true }).count(), 1);
   assert.strictEqual(await frame.getByText("SDK footer", { exact: true }).count(), 1);

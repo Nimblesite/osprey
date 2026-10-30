@@ -68,6 +68,14 @@ const EXPECTED_CONTEXTS = [
   // vanished the entire Windows gate rather than blocking on it.
   'Detect changed areas (Windows)',
   'Windows Core Build & Smoke Test',
+  // The desktop hosts (winui.yml, gpui.yml): each workflow's own change detection, required for
+  // the same reason, then each host on each system it ships for.
+  'Detect changed areas (WinUI)',
+  'WinUI host (windows-latest)',
+  'Detect changed areas (GPUI)',
+  'GPUI host (macos-latest)',
+  'GPUI host (ubuntu-latest)',
+  'GPUI host (windows-latest)',
 ]
 
 const argRepo = (argv) => {

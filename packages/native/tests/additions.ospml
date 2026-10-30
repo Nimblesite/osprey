@@ -37,7 +37,9 @@ module AdditionCases
         \(ticket, _) => "completed ${ticket}",
         \phase => "phase ${phase}",
         \(action, stroke) => "stroke ${actionName action}:${length stroke.strokePoints}/${stroke.strokeWidth}/${stroke.strokeAt}",
-        \(action, indices) => "lasso ${actionName action}:${join (mapList (indices, \index => "${index}")) ","}")
+        \(action, indices) => "lasso ${actionName action}:${join (mapList (indices, \index => "${index}")) ","}",
+        \_ => "frame",
+        \(_, _) => "controlled")
 
     editorNode () = listGet (Doc::items (Doc::field (listGet (Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::editor ("Proof", "one\ntwo", 3, [Ui::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])).nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
 
@@ -115,6 +117,10 @@ module AdditionCases
 
     (** [UI-EVENTS]: routing delivers placed offsets, strokes and lassos only to their matching handlers. *)
     export messageRouting () =
+        expect (routed (Events::bind (ui::StrokeInput(action = Typed), Doc::parse strokeSource) ?: ui::Act(act = Increment)), "stroke typed:2/2/9")
+        expect (refusal (Events::bind (ui::StrokeInput(action = Typed), JsonNull)), "A board control sent a malformed stroke")
+        expect (routed (Events::bind (ui::LassoInput(action = Load), JsonArray [JsonInt 0, JsonInt 2]) ?: ui::Act(act = Increment)), "lasso load:0,2")
+        expect (refusal (Events::bind (ui::LassoInput(action = Load), JsonBool false)), "A board control sent a lasso that is not a list of strokes")
         expect (routed (ui::Placed(placer = Typed, placed = 7)), "integer typed:7")
         expect (routed (ui::Stroked(stroker = Typed, stroked = sampleStroke ())), "stroke typed:2/2/9")
         expect (routed (ui::Lassoed(lassoer = Load, lassoed = [0, 2])), "lasso load:0,2")

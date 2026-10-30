@@ -1,0 +1,13 @@
+[package]
+name = "painting-reference"
+version = "0.1.0"
+edition = "2021"
+description = "GPUI's painting example, unchanged except for imports, built against the host's GPUI so the Osprey port can be diffed pixel for pixel"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+gpui-kit = "0.8.1"
+lyon = { version = "1.0", features = ["extra"] }
+
+[workspace]

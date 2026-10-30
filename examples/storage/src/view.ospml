@@ -1,0 +1,152 @@
+// Implements [NATIVE-APPS-ALL] and [UI-REGIONS] for Osprey Storage: every
+// screen is typed nodes worded for the platform, so no host holds Storage's
+// words, layout or rules ([NATIVE-HOSTS-NEUTRAL]).
+namespace storage
+
+import ui::Ui
+import ui::Pick
+import storage::Disk
+import storage::Measured
+
+(** The words that differ by platform ([UI-CONTEXT-PLATFORM]). *)
+module Words
+    (** The file manager's own words for showing an item in it. *)
+    export reveal system = match system
+        "windows" => "Show in File Explorer"
+        "macos" => "Show in Finder"
+        _ => "Show in Files"
+
+    (** Why some folders could not be read on `system`. *)
+    export unreadable system = match system
+        "windows" => "They belong to Windows or to another user."
+        "macos" => "They belong to the system or to another app."
+        _ => "Their permissions keep them private."
+
+(** The four regions of Osprey Storage: the window's split, the places sidebar, the open folder's page and its listing. *)
+module View
+    // Rows beyond the largest this many are summed into one row.
+    shown () = 120
+
+    placeNow () = perform Signal<Place>.read ()
+
+    optionsNow () = perform Signal<Options>.read ()
+
+    walkNow () = perform Signal<Walk>.read ()
+
+    walkedNow () = perform Signal<Walked>.read ()
+
+    (** The window: the places sidebar beside the open folder's page. *)
+    export root () = Ui::split [Ui::slot "places", Ui::slot "folder"]
+
+    placeRow (system, path) = Ui::entry (path, (ui::Symbols::name ui::Folder), "Chosen", Ui::text (Disk::name (system, path)))
+
+    drives (system, home) =
+        top = Disk::rootOf (system, home)
+        Pick::either (top == home, [], [Ui::entry (top, (ui::Symbols::name ui::Folder), "Places", Ui::text top)])
+
+    (** The sidebar: home, the top of its volume and every folder the person chose, with the open one selected. *)
+    export places () =
+        place = placeNow ()
+        home = Ui::entry (place.homeFolder, (ui::Symbols::name ui::Person), "Places", Ui::text "Home")
+        chosen = mapList (place.chosenFolders, \path => placeRow (place.osName, path))
+        Ui::screen ("Storage", "", [], [Ui::rows (listConcat (listPrepend (drives (place.osName, place.homeFolder)) home) chosen, place.openFolder, PickPlace)])
+
+    crumb (system, path) = Ui::button (Disk::name (system, path), (ui::Symbols::name ui::NoSymbol), OpenFolder(openedPath = path))
+
+    (** The open folder's page: Up, Rescan, Choose Folder and the hidden-items switch in its toolbar, the folders leading to it, and its listing. *)
+    export folder () =
+        place = placeNow ()
+        options = optionsNow ()
+        system = place.osName
+        tools = [
+            Ui::action ("Up", (ui::Symbols::name ui::Chevron), ui::Plain, Disk::isRoot (system, place.openFolder) == false, GoUp),
+            Ui::button ("Rescan", (ui::Symbols::name ui::Refresh), Remeasure),
+            Ui::button ("Choose Folder…", (ui::Symbols::name ui::Folder), PickFolder),
+            Ui::toggle ("Hidden items", options.showHidden, ShowHidden),
+        ]
+        crumbs = Ui::row (mapList (Disk::trail (system, place.openFolder), \path => crumb (system, path)))
+        Ui::screen (Disk::name (system, place.openFolder), place.openFolder, tools, [crumbs, Ui::slot "listing"])
+
+    plural (count, one, many) = match count == 1
+        true => "1 ${one}"
+        false => "${Disk::formatCount count} ${many}"
+
+    pressure share = match share >= 900
+        true => ui::Danger
+        false => Pick::either (share >= 750, ui::Caution, ui::Accent)
+
+    // The volume the folder is on, with the space used against its capacity.
+    volume (place, walked) =
+        system = place.osName
+        used = satSub walked.driveTotal walked.driveFree
+        title = Pick::either (walked.driveName == "", Disk::rootOf (system, place.openFolder), walked.driveName)
+        match walked.driveTotal > 0
+            false => Ui::caption "This folder's volume does not report its size."
+            true => Ui::section (title, "", [
+                Ui::meter ("${Disk::formatBytes (system, used)} of ${Disk::formatBytes (system, walked.driveTotal)} used", used, walked.driveTotal, pressure (Disk::permille (used, walked.driveTotal))),
+                Ui::pair ("Used", Disk::formatBytes (system, used)),
+                Ui::pair ("Available", Disk::formatBytes (system, walked.driveFree)),
+            ])
+
+    named (hidden, itemName) = Pick::either (hidden, Ui::styled (itemName, ui::Body, ui::Secondary), Ui::text itemName)
+
+    detail (system, item, bytes, whole) = match item.itemLink
+        true => "Link · its target is not counted"
+        false => "${Disk::formatBytes (system, bytes)} · ${Disk::shareText (bytes, whole)}"
+
+    // One listing row: the item's name and size, a bar of its share beside the largest, and Show in the file manager.
+    row (place, options, ranking, largest, item) =
+        bytes = Disk::size (options.showHidden, item)
+        cell = Ui::column [Ui::row [named (item.itemHidden, item.itemName), ui::Spacer, Ui::caption (detail (place.osName, item, bytes, ranking.rankBytes))], Ui::meter (Disk::shareText (bytes, ranking.rankBytes), bytes, largest, ui::Accent)]
+        Ui::entry (item.itemPath, Disk::look item, "", Ui::contextMenu (cell, [Ui::button (Words::reveal place.osName, (ui::Symbols::name ui::External), ShowIn(shownPath = item.itemPath))]))
+
+    sizes (hidden, items) = foldList (items, 0, \(total, item) => satAdd total (Disk::size (hidden, item)))
+
+    // Everything beyond the largest rows, summed into one row.
+    remainder (place, options, ranking, largest) =
+        count = satSub ranking.rankCount ranking.rankKept
+        bytes = satSub ranking.rankBytes (sizes (options.showHidden, ranking.rankTop))
+        cell = Ui::column [Ui::row [Ui::text (plural (count, "smaller item", "smaller items")), ui::Spacer, Ui::caption "${Disk::formatBytes (place.osName, bytes)} · ${Disk::shareText (bytes, ranking.rankBytes)}"], Ui::meter (Disk::shareText (bytes, ranking.rankBytes), bytes, largest, ui::Secondary)]
+        Pick::either (count > 0, [Ui::entry ("smaller", (ui::Symbols::name ui::NoSymbol), "", cell)], [])
+
+    // Folders the walk could not open are listed last, so the person sees which ones are not counted.
+    sealed (place, item) = Ui::entry (item.itemPath, (ui::Symbols::name ui::Lock), "", Ui::contextMenu (Ui::row [named (item.itemHidden, item.itemName), ui::Spacer, Ui::caption "Could not be read"], [Ui::button (Words::reveal place.osName, (ui::Symbols::name ui::External), ShowIn(shownPath = item.itemPath))]))
+
+    guarded (place, options, walked) = mapList (filterList (walked.walkedItems, \item => item.itemGuarded && Disk::inSight (options.showHidden, item)), \item => sealed (place, item))
+
+    notes (place, options, walked) =
+        unread = Pick::either (walked.walkedUnreadable > 0, ["${plural (walked.walkedUnreadable, "folder", "folders")} here could not be read and are not counted. ${Words::unreadable place.osName}"], [])
+        cut = Pick::either (walked.walkedTruncated, ["The walk stopped at its deadline or its item limit, so these totals are partial."], [])
+        scope = [Pick::either (options.showHidden, "Hidden items are counted.", "Hidden items are left out.")]
+        mapList (listConcat (listConcat unread cut) scope, \line => Ui::caption line)
+
+    emptied hidden = match hidden
+        true => Ui::empty ((ui::Symbols::name ui::Folder), "Nothing here", "This folder is empty.")
+        false => Ui::empty ((ui::Symbols::name ui::Info), "Everything here is hidden", "Turn on Hidden items to see what this folder holds.")
+
+    summary (place, ranking) = Ui::styled ("${Disk::formatBytes (place.osName, ranking.rankBytes)} in ${plural (ranking.rankCount, "item", "items")}", ui::Headline, ui::Primary)
+
+    ranked (place, options, walked, ranking) =
+        largest = Disk::size (options.showHidden, listGet ranking.rankTop 0 ?: Measured::blank ())
+        head = listConcat [volume (place, walked), summary (place, ranking)] (notes (place, options, walked))
+        rows = listConcat (listConcat (mapList (ranking.rankTop, \item => row (place, options, ranking, largest, item))) (remainder (place, options, ranking, largest))) (guarded (place, options, walked))
+        match ranking.rankCount > 0 || length rows > 0
+            true => Ui::column (listAppend head (Ui::rows (rows, "", PickEntry)))
+            false => Ui::column (listAppend head (emptied options.showHidden))
+
+    measured (place, options, walked) = match walked.walkedMissing
+        true => Ui::empty ((ui::Symbols::name ui::Question), "This folder is gone", "It was moved or deleted after it was opened. Choose another folder.")
+        false => match walked.walkedError == ""
+            false => Ui::empty ((ui::Symbols::name ui::Warning), "Cannot read this folder", walked.walkedError)
+            true => ranked (place, options, walked, Disk::rank (options.showHidden, shown (), walked.walkedItems))
+
+    measuring place = Ui::column [ui::Progress(label = "Measuring ${Disk::name (place.osName, place.openFolder)}…", detail = "Every file below it counts. A walk that runs past two minutes stops and shows what it measured.")]
+
+    (** What the open folder holds: the walk's progress, why it failed, or its volume and largest items. *)
+    export listing () =
+        place = placeNow ()
+        walk = walkNow ()
+        match walk.walkStage
+            "measuring" => measuring place
+            "failed" => Ui::empty ((ui::Symbols::name ui::Warning), "Cannot measure ${Disk::name (place.osName, place.openFolder)}", walk.walkProblem)
+            _ => measured (place, optionsNow (), walkedNow ())

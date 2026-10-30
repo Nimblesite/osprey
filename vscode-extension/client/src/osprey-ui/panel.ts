@@ -61,12 +61,12 @@ function receive(raw: unknown, active: ActivePanel, app: NativeApplication, titl
   active.session.message(raw);
 }
 
-function applicationSession(panel: WebviewPanel, app: NativeApplication, module: WebAssembly.Module, icon: string, loadingText: string): WorkspaceSession {
+function applicationSession(panel: WebviewPanel, app: NativeApplication, module: WebAssembly.Module, icon: string, loadingText: string, signal: AbortSignal): WorkspaceSession {
   const resolveAsset = app.assets ? createAssetResolver(app.assets, file => panel.webview.asWebviewUri(Uri.file(file)).toString()) : undefined;
   const symbols = app.assets && app.symbols && resolveAsset
     ? resolveSymbols(createAssetResolver(app.assets, file => fs.readFileSync(file, "utf8"))(app.symbols), resolveAsset) : undefined;
   return createWorkspaceSession({
-    run: frame => runWasi(module, frame),
+    run: frame => runWasi(module, frame, { signal }),
     render: (regions, _diagnostics, theme, slices) => renderWorkspace({ regions, slices, theme, assetUri: icon, resolveAsset, symbols, loadingText }),
     send: message => { void panel.webview.postMessage(message); },
     execute: app.execute,
@@ -93,8 +93,9 @@ function createPanel(context: ExtensionContext, app: NativeApplication, module: 
 function initializePanel(context: ExtensionContext, app: NativeApplication, module: WebAssembly.Module, options: NativePanelOptions, panel: WebviewPanel): ActivePanel {
   panel.iconPath = Uri.joinPath(context.extensionUri, "icon.png");
   const icon = panel.webview.asWebviewUri(panel.iconPath).toString();
-  const active = { key: app.key, panel, session: applicationSession(panel, app, module, icon, options.loading) };
-  panel.onDidDispose(() => active.session.dispose());
+  const cancellation = new AbortController();
+  const active = { key: app.key, panel, session: applicationSession(panel, app, module, icon, options.loading, cancellation.signal) };
+  panel.onDidDispose(() => { active.session.dispose(); cancellation.abort(); });
   panel.webview.onDidReceiveMessage(raw => receive(raw, active, app, options.title));
   panel.webview.html = document(context, panel, app, options);
   return active;

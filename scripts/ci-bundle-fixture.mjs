@@ -58,10 +58,12 @@ const wasiCommand = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0,
 
 function writeExecutablePayloads(root, platform) {
   const payloads = [['target/release/osprey', 'osprey'], ['target/osprey-pkg', 'osprey-pkg'],
+    ['target/osprey-registry', 'osprey-registry'],
     ['target/package-workspace.wasm', 'package-workspace.wasm'], ['target/workbench.wasm', 'workbench.wasm'],
     ...nativeArchives.map(name => [`compiler/bin/${name}`, name])]
-  for (const dir of ['target/release', 'compiler/bin', platform, 'vscode-extension/scripts']) mkdirSync(join(root, dir), { recursive: true })
+  for (const dir of ['target/release', 'compiler/bin', platform, 'vscode-extension/scripts', 'vscode-extension/out/client/src/osprey-ui']) mkdirSync(join(root, dir), { recursive: true })
   writeFileSync(join(root, 'vscode-extension/scripts/verify-package-client.mjs'), readFileSync('vscode-extension/scripts/verify-package-client.mjs'))
+  for (const name of ['wasi', 'wasi-runner', 'wasi-worker']) writeFileSync(join(root, `vscode-extension/out/client/src/osprey-ui/${name}.js`), 'export {};\n')
   for (const [source, name] of payloads) {
     const bytes = name.endsWith('.wasm') ? wasiCommand : '#!/bin/sh\nexit 97\n'
     for (const file of [source, `${platform}/${name}`]) writeFileSync(join(root, file), bytes, { mode: 0o755 })
@@ -102,8 +104,17 @@ function writeSymbolAssets(root, platform) {
   }
 }
 
+// The folder registry the extension serves [PACKAGE-LOCAL-REGISTRY]: a non-empty
+// package tree, which the client verifier refuses to ship empty on a POSIX host.
+function writeRegistryPayloads(root, platform) {
+  const packages = join(root, platform, 'registry/@osprey/testing')
+  mkdirSync(packages, { recursive: true })
+  writeFileSync(join(packages, 'osprey.toml'), 'name = "@osprey/testing"\n')
+}
+
 function writeBundlePayloads(root, platform) {
   writeExecutablePayloads(root, platform)
+  writeRegistryPayloads(root, platform)
   writeWorkbenchAssets(root, platform)
   writePresentationAssets(root, platform)
   writeProofAssets(root, platform)

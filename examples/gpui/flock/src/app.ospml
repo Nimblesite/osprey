@@ -1,0 +1,49 @@
+// Flock's application callbacks, capability requests and message routing ([UI-STORE], [GPUI-HOST-SCENE]).
+namespace flock
+
+import ui::Runtime
+import ui::Requests
+import ui::Messages
+import ui::Inputs
+import flock::Simulation
+import flock::View
+
+(** The application exported through Flock's two-function C boundary. *)
+module App
+    (** Starts round one, the frame clock and the bounded high-score read. *)
+    export initial context = Runtime::asking (Simulation::sizedStore (Simulation::launchSize context.arguments), [Requests::ask ("clock", ui::Animate(animated = true)), Requests::ask ("scores:read", ui::StoreRead(readName = "flock-scores.json", readLimit = 4096, readSlice = "scores"))])
+
+    tapped (store, action) = match action
+        TogglePause => Simulation::togglePause store
+        _ => Runtime::step store
+
+    typed (store, action, key) = match action
+        SizeChosen => Simulation::chooseSize (store, key)
+        _ => Runtime::step store
+
+    toggled (store, action, on) = match action
+        SoundToggled => Simulation::toggleSound (store, on)
+        _ => Runtime::step store
+
+    completed (store, ticket, _) = match ticket == "scores:read"
+        true => Simulation::loadedScores store
+        false => Runtime::step store
+
+    controlled (store, action, input) = match action
+        Play => Inputs::route (input, \(name, down) => Simulation::key (store, name, down), \(x, y, down, _) => Simulation::pointer (store, x, y, down))
+        _ => Runtime::step store
+
+    (** Routes every framework message without matching cross-namespace constructors. *)
+    export update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(action, key) => typed (store, action, key), \(action, on) => toggled (store, action, on), \(_, _) => Runtime::step store, \(ticket, outcome) => completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \elapsed => Simulation::frame (store, elapsed), \(action, input) => controlled (store, action, input))
+
+    (** Refreshes Flock's field, HUD, panel and stable root regions. *)
+    export regions (before, after, frames, writes) = View::regions (before, after, frames, writes)
+
+    (** Serializes the complete application store. *)
+    export save store = Simulation::save store
+
+    (** Restores the complete application store. *)
+    export restore doc = Simulation::restore doc
+
+    (** Supplies Flock's semantic theme to the host. *)
+    export theme () = View::theme ()

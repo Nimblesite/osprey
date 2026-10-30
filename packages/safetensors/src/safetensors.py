@@ -37,10 +37,6 @@ class DecodedTensor:
     ints: list[int]
 
 
-@extern
-def osprey_tensor_panic(message: str) -> DecodedTensor: ...
-
-
 def null_value():
     """A JSON null value, the fallback when a member or item is absent."""
     return JsonParser.JsonValue(kind="null", b=False, i=0, f=0.0, s="", items=[], members=[])

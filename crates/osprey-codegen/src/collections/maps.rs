@@ -99,8 +99,8 @@ pub(super) fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Re
     let managed = cg.call("i32", kind, "i8*", &[&m.operand]);
     let bld = list_builder_new_of(cg, &managed);
     let iter = cg.call("i8*", "osprey_map_iter_new", "i8*", &[&m.operand]);
-    let kp = cg.emit_reg("alloca i64");
-    let vp = cg.emit_reg("alloca i64");
+    let kp = cg.hoist_slot("i64");
+    let vp = cg.hoist_slot("i64");
 
     let cond = cg.fresh_label();
     let body = cg.fresh_label();

@@ -35,6 +35,16 @@ static int failed_close(int stage) {
   CHECK(osp_gfx_close(&ctx) == 1 && calls[DESTROY] == 1);
   return 1;
 }
+// OSPREY_GFX_FRAMES: the scene closes once it has drawn that many frames, as if its window had.
+static int limited_frames(void) {
+  OspGfxContext ctx = {0};
+  ctx.frameLimit = 2;
+  reset(NONE);
+  CHECK(osp_gfx_draw(&ctx) == 1 && osp_gfx_draw(&ctx) == 1 && ctx.frames == 2);
+  CHECK(osp_gfx_draw(&ctx) == 0 && ctx.closed == 1 && calls[PRESENT] == 2);
+  CHECK(osp_gfx_close(&ctx) == 1 && calls[DESTROY] == 1);
+  return 1;
+}
 static int exhausted_fence(void) {
   OspGfxContext ctx = {0};
   ctx.fenceValue = UINT64_MAX;
@@ -45,7 +55,7 @@ static int exhausted_fence(void) {
   return 1;
 }
 int main(void) {
-  int passed = successful_frame() & exhausted_fence();
+  int passed = successful_frame() & limited_frames() & exhausted_fence();
   for (int stage = ALLOCATOR; stage <= REMOVED; stage++) { passed &= failed_frame(stage); }
   for (int stage = SIGNAL; stage <= REMOVED; stage++) { passed &= failed_close(stage); }
   return passed ? 0 : 1;

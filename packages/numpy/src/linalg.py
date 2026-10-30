@@ -56,6 +56,18 @@ def batched_element(i, out_shape, a, b, batch_len, sa, sb, m, k, n):
     return fold(range(k), 0.0, lambda acc, t: acc + Storage.at(a.data, base_a + r * k + t) * Storage.at(b.data, base_b + t * n + col))
 
 
+def product_data(product, left):
+    """A storage product's buffer, or numpy's ValueError carrying its reason
+    ([FAILURE-EXPLICIT], [PORT-SCOPE]). `Errors.fail` abandons the computation,
+    so `left` is never returned on that path; it only types the abandoned arm."""
+    match product:
+        case Success(value=value):
+            return value
+        case Error(message=message):
+            g = Errors.fail(message)
+            return left
+
+
 def matmul_core(a, b):
     """The 2-D-or-higher matmul: 2-D goes through the GPU product, batched
     products broadcast their leading dimensions."""
@@ -68,7 +80,7 @@ def matmul_core(a, b):
     batch_b = drop_last_two(b.shape)
     out_batch = Layout.broadcast_shapes([batch_a, batch_b])
     if len(out_batch) == 0:
-        return Array.NDArray(shape=[m, n], data=perform(Storage.Buffer.mat_mul(a.data, b.data, m, k, n)))
+        return Array.NDArray(shape=[m, n], data=product_data(perform(Storage.Buffer.mat_mul(a.data, b.data, m, k, n)), a.data))
     else:
         out_shape = listConcat(out_batch, [m, n])
         sa = Layout.broadcast_strides(batch_a, out_batch)

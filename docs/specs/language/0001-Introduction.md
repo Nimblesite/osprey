@@ -19,6 +19,12 @@ either as `Result<T, E>` or as an algebraic effect that is discharged by a
 statically known handler. A language operation MUST NOT panic, silently wrap,
 substitute a zero value, or erase an error in order to produce a plain `T`.
 
+Osprey has no panic, abort or exit operation, and none may be added: no
+builtin, prelude function, runtime entry point or `extern` binding may end the
+program in place of returning an error. Source that binds a native function
+which panics, aborts or exits violates this rule wherever it appears,
+including published packages.
+
 There is no implicit conversion from `Result<T, E>` to `T`. In particular,
 bindings and assignments, function arguments (including concurrency
 operations), comparisons, interpolation, function-value calls, and declared

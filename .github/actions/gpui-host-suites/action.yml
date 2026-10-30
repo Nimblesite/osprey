@@ -1,0 +1,34 @@
+name: GPUI host suites
+description: >-
+  On a Mac or Linux runner whose compiler and runtime are built: the native framework suite, the
+  example suites, the GPUI host's tests, clippy and smoke run, and Flock's recorded-event smoke run.
+  Each GPUI job names its own system, so the checks are pinned by name; the suites they share live here.
+runs:
+  using: composite
+  steps:
+    - name: Native framework suite
+      shell: bash
+      run: ./target/release/osprey test packages/native/tests
+
+    - name: Example suites
+      shell: bash
+      run: |
+        ./target/release/osprey test examples/gpui/flock/test
+        ./target/release/osprey test examples/gpui/painting/test
+        ./target/release/osprey test examples/storage/test
+
+    - name: Host tests and clippy
+      shell: bash
+      working-directory: hosts/gpui
+      run: |
+        bash run.sh --smoke
+        cargo test --release
+        cargo clippy --release -- -D warnings
+      env:
+        OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
+
+    - name: Flock recorded-event smoke
+      shell: bash
+      run: bash examples/gpui/flock/run.sh --smoke
+      env:
+        OSPREY_BIN: ${{ github.workspace }}/target/release/osprey

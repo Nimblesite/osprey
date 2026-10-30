@@ -79,6 +79,7 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
   let chain: Promise<void> = Promise.resolve();
   let generation = 0;
   let disposed = false;
+  let queuedFrames = 0;
   const issued = new Map<string, IssuedSnapshot>();
 
   const current = (expected: number): boolean => !disposed && expected === generation;
@@ -118,13 +119,18 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
   };
 
   const enqueueFrame = (build: () => string, expected: number, edit?: number): Promise<void> => {
+    queuedFrames += 1;
+    if (queuedFrames === 1) deps.send({ type: "busy", active: true });
     const step = async (): Promise<void> => {
       if (!current(expected)) return;
       const frame = carrying(build(), slices);
       if (!current(expected)) return;
       apply(await deps.run(frame + "\n", slices), expected, edit);
     };
-    chain = chain.then(step, step).catch(fail);
+    chain = chain.then(step, step).catch(fail).finally(() => {
+      queuedFrames -= 1;
+      if (queuedFrames === 0 && !disposed) deps.send({ type: "busy", active: false });
+    });
     return chain;
   };
 

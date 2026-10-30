@@ -3,8 +3,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as sinon from "sinon";
-import { ColorThemeKind, commands, Uri, window, workspace, type ExtensionContext, type WebviewPanel, type WorkspaceConfiguration } from "vscode";
+import { ColorThemeKind, commands, EventEmitter, Uri, window, workspace, type ExtensionContext, type WebviewPanel, type WorkspaceConfiguration } from "vscode";
 import * as host from "../../client/src/osprey-ui/panel";
+import * as Wasi from "../../client/src/osprey-ui/wasi";
 import { registerPackageWorkspace } from "../../client/src/package-workspace";
 import { registerWorkbench } from "../../client/src/workbench";
 import { shipwrightPlatform } from "../../client/src/client-config";
@@ -36,6 +37,15 @@ function observePanels(): Map<WebviewPanel, sinon.SinonSpy> {
   return created;
 }
 
+function fixturePanel() {
+  const closed = new EventEmitter<void>(), messages = new EventEmitter<unknown>();
+  const panel = { dispose: () => closed.fire(), onDidDispose: closed.event,
+    webview: { asWebviewUri: (uri: Uri) => uri, cspSource: "https://fixture.example", html: "",
+      postMessage: async () => true, onDidReceiveMessage: messages.event } } as unknown as WebviewPanel;
+  sinon.stub(window, "createWebviewPanel").returns(panel);
+  return { panel, ready: () => messages.fire({ type: "ready" }), dispose: () => { closed.dispose(); messages.dispose(); } };
+}
+
 suite("native shared panel lifecycle", () => {
   let root: string;
   let artifact: string;
@@ -45,6 +55,27 @@ suite("native shared panel lifecycle", () => {
     fs.writeFileSync(artifact, Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
   });
   teardown(() => { sinon.restore(); fs.rmSync(root, { recursive: true, force: true }); });
+
+  test("closing a panel aborts its pending WASI command", async () => {
+    const fixture = fixturePanel();
+    const started = new Promise<AbortSignal | undefined>(resolve => {
+      sinon.stub(Wasi, "runWasi").callsFake((_module, _input, options) => {
+        resolve(options?.signal);
+        return new Promise((_resolve, reject) => options?.signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }));
+      });
+    });
+    const command = "osprey.test.native.cancel";
+    const registration = host.registerNativePanel(context(), options(command, async () => application(artifact)));
+    try {
+      await commands.executeCommand(command);
+      fixture.ready();
+      const signal = await started;
+      assert.ok(signal, "each panel must supply its own cancellation signal");
+      assert.strictEqual(signal.aborted, false);
+      fixture.panel.dispose();
+      assert.strictEqual(signal.aborted, true, "closing the panel must stop pending execution");
+    } finally { registration.dispose(); fixture.dispose(); }
+  });
 
   test("failed stylesheet construction closes its panel and reports the actual error", async () => {
     const panels = observePanels();

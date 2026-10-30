@@ -1,0 +1,107 @@
+// Implements [UI-SCENE-STREAM]: in a resident session the fixed-size primitives of a changed scene
+// (rects, discs and sprites) leave the envelope and go to the host one call at a time, so a frame of
+// thousands of shapes is neither built as JSON nor spelled as text nor parsed by the host. Strips,
+// glyphs and paths, whose sizes vary, stay in the envelope.
+namespace ui
+
+(** A changed scene's rects, discs and sprites, sent to the host in drawing order outside the envelope ([UI-SCENE-STREAM]). The resident runtime performs it; the application's boundary answers it with a host import, using the `Streams` accessors. *)
+effect SceneStream
+    shape : Primitive => Unit
+
+(** Splits a region's scenes into streamed and enveloped primitives, and reads a streamed primitive's fields for the host import ([UI-SCENE-STREAM]). *)
+module Streams
+    (** Whether `primitive` has a fixed size and so travels in the stream: a rect, a disc or a sprite. *)
+    export streamed : Primitive -> bool
+    streamed primitive = match primitive
+        Rect _ _ _ _ _ _ _ => true
+        Disc _ _ _ _ _ => true
+        Sprite _ _ _ _ _ _ _ _ => true
+        _ => false
+
+    shipped primitive =
+        perform SceneStream.shape primitive
+        true
+
+    dispatched primitive = match streamed primitive
+        true => shipped primitive
+        false => false
+
+    scene<A> : (float, float, List<string>, List<Primitive>, A) -> Node<A> ![SceneStream | e]
+    scene (width, height, atlas, primitives, play) =
+        sent = filterList (primitives, \primitive => dispatched primitive)
+        Scene(sceneWidth = width, sceneHeight = height, atlas = atlas, primitives = filterList (primitives, \primitive => streamed primitive == false), play = play, streamedCount = length sent)
+
+    many<A> : List<Node<A>> -> List<Node<A>> ![SceneStream | e]
+    many children = mapList (children, \child => split child)
+
+    page<A> : Tab<A> -> Tab<A> ![SceneStream | e]
+    page tab = tab(page = split tab.page)
+
+    cell<A> : Row<A> -> Row<A> ![SceneStream | e]
+    cell row = row(cell = split row.cell)
+
+    (** `node` with every scene's rects, discs and sprites streamed through `SceneStream`, depth first in the order the encoder walks it, and each scene left with its other primitives and the count it streamed. *)
+    export split<A> : Node<A> -> Node<A> ![SceneStream | e]
+    split node = match node
+        Scene width height atlas primitives play _ => scene (width, height, atlas, primitives, play)
+        Stack direction children => Stack(axis = direction, children = many children)
+        Section title footer children => Section(title = title, footer = footer, children = many children)
+        Screen title subtitle toolbar children => Screen(title = title, subtitle = subtitle, toolbar = many toolbar, children = many children)
+        Split panes => Split(panes = many panes)
+        Layer children => Layer(children = many children)
+        ContextMenu content actions => ContextMenu(menuBody = split content, menuActions = many actions)
+        Aside place column pane width least most keep action => asideSplit (place, column, pane, width, least, most, keep, action)
+        Tabs entries selected action => Tabs(tabs = mapList (entries, \tab => page tab), selected = selected, bind = action)
+        Rows entries selected action => Rows(rows = mapList (entries, \row => cell row), selected = selected, bind = action)
+        Disclosure title expanded action children => Disclosure(title = title, expanded = expanded, bind = action, children = many children)
+        _ => node
+
+    // The pane is walked before its column, as the encoder walks them, and the column keeps its own splitter limits.
+    asideSplit<A> : (Side, Node<A>, Node<A>, int, int, int, int, A) -> Node<A> ![SceneStream | e]
+    asideSplit (place, column, pane, width, least, most, keep, action) =
+        first = split pane
+        Aside(side = place, aside = split column, pane = first, extent = width, asideLeast = least, asideMost = most, paneKeep = keep, resize = action)
+
+    (** The stream code of a primitive: 0 rect, 1 disc, 3 sprite, the scene encoding's codes. *)
+    export code : Primitive -> int
+    code primitive = match primitive
+        Rect _ _ _ _ _ _ _ => 0
+        Disc _ _ _ _ _ => 1
+        _ => 3
+
+    (** A sprite's atlas index; 0 for a rect or a disc. *)
+    export index : Primitive -> int
+    index primitive = match primitive
+        Sprite sprite _ _ _ _ _ _ _ => sprite
+        _ => 0
+
+    (** The primitive's `n`th float, 0 to 4: a rect's or a sprite's x, y, w, h and angle; a disc's x, y and radius, then zeros. *)
+    export value : (Primitive, int) -> float
+    value (primitive, n) = match primitive
+        Rect x y w h angle _ _ => pick (n, x, y, w, h, angle)
+        Disc x y radius _ _ => pick (n, x, y, radius, 0.0, 0.0)
+        Sprite _ x y w h angle _ _ => pick (n, x, y, w, h, angle)
+        _ => 0.0
+
+    pick (n, a, b, c, d, e) = match n
+        0 => a
+        1 => b
+        2 => c
+        3 => d
+        _ => e
+
+    (** The primitive's packed `0xRRGGBBAA` colour. *)
+    export colour : Primitive -> int
+    colour primitive = match primitive
+        Rect _ _ _ _ _ color _ => color
+        Disc _ _ _ color _ => color
+        Sprite _ _ _ _ _ _ color _ => color
+        _ => 0
+
+    (** The primitive's depth. *)
+    export depth : Primitive -> int
+    depth primitive = match primitive
+        Rect _ _ _ _ _ _ layer => layer
+        Disc _ _ _ _ layer => layer
+        Sprite _ _ _ _ _ _ _ layer => layer
+        _ => 0

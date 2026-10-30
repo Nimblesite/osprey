@@ -68,12 +68,12 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # vscode-extension's lockfile links the shared profiler UI from the
         # lspkit submodule.
         with:
           submodules: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -121,7 +121,7 @@ jobs:
           - platform: win32-x64
             os: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
@@ -177,6 +177,16 @@ jobs:
         shell: bash
         # --no-warnings skips the warning pass (see scripts/make/extension.mk).
         run: target/release/osprey build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg
+      # The local package registry [PACKAGE-LOCAL-REGISTRY]: the folder-registry
+      # server and this repository's packages published into a folder registry.
+      # Not on Windows yet: the server's tree walk shells out to POSIX `find`.
+      - name: Build local package registry (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          target/release/osprey build packages/manager/api --quiet --no-warnings -o target/osprey-registry
+          scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
       # osprey.exe is a native Windows process, so it resolves clang on the
       # Windows PATH, where the runner's MSVC-target clang shadows the MSYS2 one
       # and `link.exe` cannot find ssl.lib. Pin the UCRT64 clang, as ci-windows.yml does.
@@ -210,7 +220,7 @@ jobs:
           wasm-validate target/workbench.wasm
       - name: Upload portable package workspace
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: package-workspace-wasm
           path: target/package-workspace.wasm
@@ -244,6 +254,10 @@ jobs:
           mkdir -p "dist/$staging"
           cp "target/release/osprey${exe}" "dist/$staging/"
           cp "target/osprey-pkg${exe}" "dist/$staging/"
+          if [ -z "$exe" ]; then
+            cp target/osprey-registry "dist/$staging/"
+            cp -R target/local-registry "dist/$staging/registry"
+          fi
           # The runtime archives used to be copied with `|| true`, so a build
           # that produced none still packaged, published and reached Homebrew —
           # a compiler that can link nothing, shipped green. Find the directory
@@ -282,7 +296,7 @@ jobs:
           sha256() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$@"; else sha256sum "$@"; fi; }
           ( cd dist && sha256 "$staging.tar.gz" | tee "$staging.tar.gz.sha256" )
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: osprey-${{ matrix.platform }}
           path: dist/*.tar.gz*
@@ -296,11 +310,11 @@ jobs:
     if: ${{ needs.scope.outputs.full == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.version.outputs.version }}
           files: dist/*.tar.gz
@@ -346,9 +360,9 @@ jobs:
     needs: [version, github-release, preflight, audit]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: dist, merge-multiple: true }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Nimblesite/homebrew-tap
           token: ${{ secrets.BREW_SCOOP_PAT }}
@@ -420,14 +434,14 @@ jobs:
     needs: [version, github-release, preflight, audit]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: dist, merge-multiple: true }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Nimblesite/scoop-bucket
           token: ${{ secrets.BREW_SCOOP_PAT }}
           path: bucket
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '20' }
       - name: Write manifest
         env:
@@ -502,23 +516,24 @@ jobs:
           - { os: ubuntu-latest, target: linux-x64,    artifact: linux-x64 }
           - { os: windows-latest, target: win32-x64,   artifact: win32-x64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # The extension links the shared profiler UI from the lspkit submodule.
         with:
           submodules: true
-      # The extension icon is copied from this LFS-stored logo. Fetch only it;
-      # without it the VSIX carries an LFS pointer the Marketplace rejects. The
-      # workbench assets and lessons media are staged verbatim into the bundle.
-      - name: Fetch the logo the extension icon is copied from
+      # The extension icon is copied from this LFS-stored logo; without it the
+      # VSIX carries an LFS pointer the Marketplace rejects. The workbench assets
+      # and lessons media are staged verbatim into the bundle, and both README
+      # editor GIFs must be real bytes for verify-readme.mjs.
+      - name: Fetch extension icon, README media and workbench assets
         shell: bash
-        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
-      - uses: actions/setup-node@v4
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,vscode-extension/media/language-tour.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
+      - uses: actions/setup-node@v7
         with: { node-version: '20' }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-${{ matrix.artifact }}
           path: dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: package-workspace-wasm
           path: dist/package-workspace
@@ -541,6 +556,10 @@ jobs:
           mkdir -p "$dest/workbench"
           cp -R apps/workbench/lessons "$dest/workbench/"
           cp -R apps/workbench/assets/. "$dest/workbench/"
+          # Same stager the Makefile bundle runs: the approved proof exports and
+          # their upstream licenses are pinned, so copying the asset tree alone
+          # would ship whatever bodies this checkout happens to hold.
+          python3 scripts/workbench-proof-assets.py "$dest/workbench"
           cp website/src/assets/images/logo.png "$dest/workbench/osprey-logo.png"
           # Stamp + bundle shipwright.json so the extension can version-check the
           # bundled binary at activation. [EDITOR-VERSIONING]
@@ -582,11 +601,15 @@ jobs:
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/package-workspace.wasm"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/workbench.wasm"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/workbench/lessons/catalogue.json"
+          if [ -z "$exe" ]; then
+            unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-registry"
+            unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/registry/@osprey/"
+          fi
       # Packaging is per-platform (each VSIX bundles the matching native binary);
       # publishing is centralised in the publish-marketplace / publish-openvsx
       # jobs so the registry tokens live in one least-privilege place.
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: osprey-vsix-${{ matrix.target }}
           path: vscode-extension/*.vsix
@@ -612,13 +635,13 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '20' }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: osprey-vsix-*
           path: artifacts
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -668,9 +691,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '20' }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: osprey-vsix-*
           path: artifacts

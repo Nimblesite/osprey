@@ -131,13 +131,13 @@ fn llvm(path: &Path) -> String {
 }
 
 /// One handler loads the fixture's `w`, squares it and names itself.
-const DEFAULT_SQUARE: &str = "import gpt2::Backends\nimport gpt2::@MODULE@\n\
-fn square() = {\n    let w = perform Backends::Tensor.load(\"@FIXTURE@\", \"w\")\n    let p = perform Backends::Tensor.matMul(w, w, 2, 2, 2)\n    \
+const DEFAULT_SQUARE: &str = "import gpt2::Backends\nimport gpt2::Model\nimport gpt2::@MODULE@\n\
+fn square() = {\n    let w = Model::loaded(\"@FIXTURE@\", \"w\")\n    let p = Model::product(w, w, 2, 2, 2)\n    \
 print(\"${perform Backends::Tensor.device()} ${perform Backends::Tensor.get(p, 0)} ${perform Backends::Tensor.get(p, 3)}\")\n}\n\
 fn main() = match Backends::strictly(fn() => @MODULE@::@HANDLER@(square)) {\n    Success { value } => value\n    Error { message } => print(message)\n}\n";
 
-const PYTHON_SQUARE: &str = "# osprey: flavor=python\nfrom gpt2 import Backends, @MODULE@\nfrom gpt2.Backends import Tensor\n\n\n\
-def square():\n    w = perform(Tensor.load(\"@FIXTURE@\", \"w\"))\n    p = perform(Tensor.mat_mul(w, w, 2, 2, 2))\n    device = perform(Tensor.device())\n    \
+const PYTHON_SQUARE: &str = "# osprey: flavor=python\nfrom gpt2 import Backends, Model, @MODULE@\nfrom gpt2.Backends import Tensor\n\n\n\
+def square():\n    w = Model.loaded(\"@FIXTURE@\", \"w\")\n    p = Model.product(w, w, 2, 2, 2)\n    device = perform(Tensor.device())\n    \
 first = perform(Tensor.get(p, 0))\n    last = perform(Tensor.get(p, 3))\n    return print(f\"{device} {first} {last}\")\n\n\n\
 def main():\n    match Backends.strictly(lambda: @MODULE@.@HANDLER@(square)):\n        case Success(value=value):\n            return value\n        \
 case Error(message=message):\n            return print(message)\n";
@@ -192,7 +192,7 @@ fn the_cpu_handler_never_touches_the_gpu_in_either_flavor() {
 }
 
 /// The GPU handler loads and multiplies through the GPU surface alone: its IR
-/// names neither the host loader nor the host abort.
+/// names the host loader nowhere.
 #[test]
 fn the_gpu_handler_never_touches_the_host_tensor_surface_in_either_flavor() {
     for (flavor, path) in square_projects("Gpu", ["onGpu", "on_gpu"]) {
@@ -203,10 +203,7 @@ fn the_gpu_handler_never_touches_the_host_tensor_surface_in_either_flavor() {
             ir.contains("@osprey_gpu_load_tensor(") && ir.contains("@osprey_gpu_matmul("),
             "{flavor}: {ir}"
         );
-        assert!(
-            !ir.contains("osprey_load_tensor") && !ir.contains("osprey_tensor_panic"),
-            "{flavor}: {ir}"
-        );
+        assert!(!ir.contains("osprey_load_tensor"), "{flavor}: {ir}");
         let (code, stdout, stderr) = run_with_gpu(&path, "host");
         assert_eq!(
             (code, stdout.as_str()),
@@ -237,15 +234,20 @@ fn every_gpt2_kernel_has_a_device_form() {
 
 #[test]
 fn gpt2_rejects_a_failed_gpu_dispatch_instead_of_generating_with_empty_matrices() {
-    let source = "import gpt2::Model\nimport gpt2::Gpu\nfn main() = Gpu::onGpu(fn() => print(gpuLength(Model::product(toGpu([1.0]), toGpu([1.0]), 1, 1, 1))))\n";
+    let source = "import gpt2::Backends\nimport gpt2::Model\nimport gpt2::Gpu\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(fn() => print(gpuLength(Model::product(toGpu([1.0]), toGpu([1.0]), 1, 1, 1))))) {\n    Success { value } => value\n    Error { message } => print(message)\n}\n";
     let path = gpt2_project("failure", source);
     assert!(path.is_some(), "GPU failure project could not be written");
     let (code, stdout, stderr) = path
         .as_deref()
         .map(|p| run_with_gpu(p, "invalid"))
         .unwrap_or_default();
-    assert_ne!(code, Some(0), "failed GPU dispatch continued: {stdout}");
-    assert!(stderr.contains("unknown backend"), "{stderr}");
+    // The failed product stops the run with the runtime's reason as an Error
+    // ([FAILURE-EXPLICIT]); no length of an empty matrix is ever printed.
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(
+        stdout.starts_with("gpu: device selection: unknown backend") && stdout.lines().count() == 1,
+        "failed GPU dispatch continued: {stdout}"
+    );
     if let Some(path) = path {
         let _ = std::fs::remove_dir_all(path);
     }

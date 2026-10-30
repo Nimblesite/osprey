@@ -9,3 +9,5 @@ WASI/browser hosts, iOS and Android applications.
 - [Android Application Target [ANDROID-TARGET]](0039-AndroidTarget.md)
 - [Python interoperability [PYTHON-HOST]](0042-PythonInterop.md)
 - [Python interoperability](0042-PythonInterop.md)
+- [GPUI Desktop Host [GPUI-HOST]](0046-GpuiDesktopHost.md)
+- [WinUI Host [WINUI-HOST]](0048-WinUiHost.md)

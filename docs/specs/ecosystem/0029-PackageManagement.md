@@ -548,6 +548,31 @@ bytes match what was requested, not who published them. The TUF metadata,
 transparency log, and provenance of `[PACKAGE-REGISTRY]` layer onto these same
 endpoints in Milestone B without changing the layout, the bundle, or the paths.
 
+### Local registry `[PACKAGE-LOCAL-REGISTRY]`
+
+Until the hosted registry exists, the local registry is how anyone gets
+packages. It is this folder registry, run on loopback over the repository's
+own packages:
+
+- **Staging.** Every `packages/<dir>/osprey.toml` that declares a `[package]`
+  name is placed into one registry root with `publish --folder`, so each release
+  passes the same source, capability and digest checks the server applies. A
+  package that fails them, such as one with a raw `extern` declaration under
+  `[PACKAGE-CAPABILITY-CONFINEMENT]`, is reported and not staged.
+  `scripts/stage-local-registry.sh` does this and `make registry-serve` serves
+  the result on `http://127.0.0.1:8787`, the client's default registry.
+- **Editor.** The VS Code extension bundles the server (`osprey-registry`) and
+  the staged root (`bin/<platform>/registry/`). Its *Start Local Package
+  Registry* and *Stop Local Package Registry* commands, the explorer action on
+  `osprey.toml` and the status-bar item start and stop it. The extension writes
+  the server's configuration file into its own storage, binds the address and
+  port of the configured loopback registry, and treats the registry as ready
+  only when `GET /v1/health` answers 200. It stops only a server it started.
+- **Prompt.** When the package manager opens against a loopback registry that
+  does not answer `GET /v1/health`, the extension asks whether to start the
+  local registry and opens the package manager only once it answers. A remote
+  registry is never started or probed this way.
+
 ## Names and ownership `[PACKAGE-NAMES]`
 
 A canonical name is `@scope/name`. Components contain only lowercase ASCII

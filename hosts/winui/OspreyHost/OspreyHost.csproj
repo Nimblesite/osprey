@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The WinUI host executable: a code-only WinUI 3 window, no XAML ([WINUI-HOST-NO-XAML]),
+       published as one self-contained Native AOT program ([WINUI-HOST-DEPLOY]). It draws
+       whatever Osprey Native application DLL it is given ([NATIVE-HOSTS-NEUTRAL]). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Osprey.Host.WinUI</RootNamespace>
+    <AssemblyName>OspreyHost</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <!-- Builds and publishes the resource index (OspreyHost.pri) that holds WinUI's theme dictionaries;
+         without it an unpackaged publish cannot load the controls' styles. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <PublishAot>true</PublishAot>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.4" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OspreyHost.Core\OspreyHost.Core.csproj" />
+  </ItemGroup>
+</Project>

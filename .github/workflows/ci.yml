@@ -73,7 +73,7 @@ jobs:
       book: ${{ steps.filter.outputs.book }}
       benchmarks: ${{ steps.filter.outputs.benchmarks }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/detect-ci-scope
         id: filter
 
@@ -108,14 +108,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # The site's images and videos are Git LFS files; the extension links
         # the shared profiler UI from the lspkit submodule.
         with:
           lfs: true
           submodules: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -250,7 +250,7 @@ jobs:
         run: make _vsix_package
 
       - name: Upload compiler artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: osprey-build
           # The archives only — compiler/bin also holds ~12M of object files
@@ -260,6 +260,7 @@ jobs:
           path: |
             target/release/osprey
             target/osprey-pkg
+            target/osprey-registry
             target/package-workspace.wasm
             target/workbench.wasm
             compiler/lib/
@@ -269,7 +270,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload extension artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: osprey-extension
           path: |
@@ -292,12 +293,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
           submodules: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -321,7 +322,7 @@ jobs:
           sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -340,7 +341,7 @@ jobs:
         run: make _test_rust
 
       - name: Upload Rust coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-rust
           path: target/coverage/lcov.info
@@ -348,7 +349,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload test log on failure
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-log-rust
@@ -365,14 +366,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
+        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
           submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
           build: "false"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -381,7 +384,7 @@ jobs:
         run: make _test_packages
       - name: Upload package coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-packages
           path: target/coverage/packages/
@@ -395,14 +398,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
           build: "false"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -427,14 +430,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
           build: "false"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -459,14 +462,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
           build: "false"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -493,7 +496,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
@@ -502,7 +505,7 @@ jobs:
         uses: ./.github/actions/setup-osprey-compiler
         with:
           build: "false"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -517,7 +520,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
@@ -526,7 +529,7 @@ jobs:
         uses: ./.github/actions/setup-osprey-compiler
         with:
           build: "false"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -669,7 +672,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
@@ -679,7 +682,7 @@ jobs:
       - name: Install jq
         run: sudo apt-get install -y jq
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -708,16 +711,16 @@ jobs:
     # hang — a stuck run still fails, just later.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # The extension links the shared profiler UI from the lspkit submodule.
         with:
           submodules: true
       # `pretest` compiles the extension, which copies its icon from this
-      # LFS-stored logo; packaging also requires the README GIF and the workbench
+      # LFS-stored logo; packaging also requires the README GIFs and the workbench
       # assets/lessons media it stages verbatim. Refuse pointers.
       - name: Fetch extension icon, README media and workbench assets
-        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
-      - uses: actions/setup-node@v4
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,vscode-extension/media/language-tour.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -755,12 +758,12 @@ jobs:
         run: npm ci
         working-directory: ./vscode-extension
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       # Stage 1 already compiled the extension; restoring out/ lets `tsc -b`
       # no-op instead of rebuilding what has been built once.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-extension
           path: vscode-extension/
@@ -775,13 +778,13 @@ jobs:
           mkdir -p vscode-extension/bin
           cp -R "$bundle_dir/extension/bin/." vscode-extension/bin/
       - name: Restore artifact permissions
-        run: chmod +x target/release/osprey target/osprey-pkg vscode-extension/bin/linux-x64/osprey vscode-extension/bin/linux-x64/osprey-pkg
+        run: chmod +x target/release/osprey target/osprey-pkg target/osprey-registry vscode-extension/bin/linux-x64/osprey vscode-extension/bin/linux-x64/osprey-pkg vscode-extension/bin/linux-x64/osprey-registry
 
       - name: Extension suite with V8 coverage
         run: xvfb-run -a make _test_vscode_extension
 
       - name: Upload extension coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-extension
           path: vscode-extension/coverage/
@@ -789,7 +792,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload extension test log on failure
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-log-extension
@@ -810,12 +813,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
           submodules: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -836,7 +839,7 @@ jobs:
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
           wasm-ld --version
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -883,7 +886,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # The site's images and videos are Git LFS files; the Book's examples
         # build the compiler, whose workspace resolves through lspkit.
         with:
@@ -891,7 +894,7 @@ jobs:
           submodules: true
       - uses: ./.github/actions/detect-ci-scope
         id: filter
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -906,7 +909,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry and target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index/
@@ -953,7 +956,7 @@ jobs:
 
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: website/playwright-report/
@@ -970,12 +973,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
           submodules: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -986,7 +989,7 @@ jobs:
         with:
           build: "false"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
@@ -1007,7 +1010,7 @@ jobs:
           target/release/osprey examples/projects/modules/mobile/app/test --run
 
       - name: Set up Java for Android
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -1062,7 +1065,7 @@ jobs:
 
       - name: Native bank Android results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bank-android-results
           path: |
@@ -1091,7 +1094,7 @@ jobs:
         run: node scripts/verify-docs-html.mjs target/release/osprey
 
       - name: Upload bank e2e results on failure
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: bank-e2e-results
@@ -1133,7 +1136,7 @@ jobs:
         run: |
           test "${{ needs.test-registry-gc.result }}" = "success"
           test "${{ needs.test-registry-arc.result }}" = "success"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
@@ -1151,15 +1154,15 @@ jobs:
       - name: Install typeDiagram
         uses: ./.github/actions/typediagram
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: coverage-rust
           path: target/coverage/
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: coverage-extension
           path: vscode-extension/coverage/
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: coverage-packages
           path: target/coverage/packages/
@@ -1192,14 +1195,14 @@ jobs:
 
       - name: Native bank simulator results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bank-ios-results
           path: examples/projects/modules/mobile/ios/build/**/*.xcresult
           if-no-files-found: ignore
 
       - name: Upload combined coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-report

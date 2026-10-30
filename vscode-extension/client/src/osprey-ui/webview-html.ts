@@ -44,6 +44,7 @@ ${stylesheet}
 <body>
 <div class="osp-shell">
 <div id="osprey-diagnostics" hidden></div>
+<div id="osprey-runtime-status" role="status" hidden>Updating · previous results shown</div>
 <div id="osprey-root"><div class="osp-loading"><span class="osp-spinner" aria-hidden="true"></span><p>${escapeHtml(document.loadingText ?? "Loading your packages…")}</p></div></div>
 </div>
 <script nonce="${document.nonce}">${WEBVIEW_SCRIPT}</script>

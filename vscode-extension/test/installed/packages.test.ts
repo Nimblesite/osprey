@@ -28,7 +28,7 @@ suite("installed VSIX packages", () => {
     assert.strictEqual(createHash("sha256").update(fs.readFileSync(client)).digest("hex"), process.env.OSPREY_VSIX_PACKAGE_CLIENT_SHA256);
     checkedWasm(path.join(path.dirname(client), "package-workspace.wasm"), process.env.OSPREY_VSIX_PACKAGE_WORKSPACE_SHA256);
     const commands = await vscode.commands.getCommands(true);
-    for (const command of ["osprey.packages.open", "osprey.packages.add", "osprey.packages.remove"]) assert.ok(commands.includes(command));
+    for (const command of ["osprey.packages.open", "osprey.packages.add", "osprey.packages.remove", "osprey.packages.startLocalRegistry", "osprey.packages.stopLocalRegistry"]) assert.ok(commands.includes(command));
   });
 
   test("ships the exact shared Workbench WASM and every asset and registers its command", async () => {

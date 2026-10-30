@@ -1,0 +1,11 @@
+{
+  "steps": [
+    { "sleep": "60" },
+    { "wait": "Program Files" },
+    { "shot": "1-drive-measured" },
+    { "choose": "Users" },
+    { "sleep": "45" },
+    { "wait": "Public" },
+    { "shot": "2-users-measured" }
+  ]
+}

@@ -6,11 +6,12 @@
 // name plus a table of numbers on both platforms, which is why the Osprey
 // sources under base/ are byte-identical across them.
 //
-// UNVERIFIED ON THE MACHINE THAT WROTE IT. Authored on macOS, which has no fxc,
-// no dxc and no Windows SDK, so this file has never been through a shader
-// compiler. `make _graphics-shader` on Windows compiles all four entry points
-// and is what turns careful transcription into a fact; README.md in this
-// directory lists the exact commands.
+// Authored on macOS, which has no shader compiler for it, and compiled on
+// Windows on 2026-10-28: the Windows SDK's fxc builds all four entry points
+// (`make _graphics-shader`), and every scene draws with it on Direct3D 12. No
+// frame has yet been compared with base.metal's at matched uniforms, which is
+// what would prove the cbuffer packing and the transposed rotation below;
+// README.md in this directory has the details.
 //
 // base.metal is the reference. It carries the rationale for every constant,
 // every helper and where the dividing line between Osprey and the GPU falls,
@@ -46,7 +47,8 @@
 // The packing argument above holds only if the slot count is a whole number of
 // float4 registers. Otherwise it is not an error, it is a quiet half-register
 // of padding that shifts `res`, `time` and every uniform after them.
-#if (OSP_GFX_SLOTS % 4) != 0
+// fxc's preprocessor has no `%`, so the remainder is spelled with division.
+#if ((OSP_GFX_SLOTS / 4) * 4) != OSP_GFX_SLOTS
 #error OSP_GFX_SLOTS must be a multiple of 4 for the float4 packing below
 #endif
 

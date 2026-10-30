@@ -8,7 +8,7 @@ type Header =
     headerName : string
     headerValue : string
 
-(** A bounded, mechanical operation only the host can perform: every one states its limits, and its result returns as a completion ([UI-EFFECTS]). `Recognise` sends the strokes the host holds under `strokeSlices` to its handwriting service, as points, and completes with their text, at most `recogniseLimit` bytes, or with an error naming `Unsupported` on a host without one ([UI-EFFECTS-RECOGNISE]). *)
+(** A bounded, mechanical operation only the host can perform: every one states its limits, and its result returns as a completion ([UI-EFFECTS]). `Recognise` sends the strokes the host holds under `strokeSlices` to its handwriting service, as points, and completes with their text, at most `recogniseLimit` bytes, or with an error naming `Unsupported` on a host without one ([UI-EFFECTS-RECOGNISE]). `MeasureFolders` measures each folder's children to the bottom within an entry limit and a deadline, by the same rules on every host ([UI-EFFECTS-MEASURE]). Work only one host or product can do, such as reading one operating system's settings, is a `HostCall` in a namespace that host answers. `Animate` turns the host's frame clock on or off: while it runs, every display refresh reaches `update` as a `Frame` ([UI-SCENE]). *)
 type Capability =
     Run
         executable : string
@@ -69,6 +69,11 @@ type Capability =
     SaveFile
         suggested : string
         exportSlice : string
+    MeasureFolders
+        measureFolders : List<string>
+        measureLimit : int
+        measureDeadline : int
+        measureSlice : string
     Reveal
         revealPath : string
     OpenSettings
@@ -78,6 +83,8 @@ type Capability =
     Recognise
         strokeSlices : List<string>
         recogniseLimit : int
+    Animate
+        animated : bool
 
 (** A capability with the ticket its completion will carry. Put a generation in the ticket to recognise stale completions. *)
 type Request =
@@ -99,7 +106,10 @@ module Requests
 
     header item = JsonObject [str "name" item.headerName, str "value" item.headerValue]
 
-    run executable arguments timeout limit plist slice = [str "kind" "run", str "executable" executable, strings "arguments" arguments, num "timeout" timeout, num "limit" limit, Doc::bit ("plist", plist), str "slice" slice]
+    run executable arguments timeout limit plist slice =
+        fields = [str "kind" "run", str "executable" executable, strings "arguments" arguments, num "timeout" timeout, num "limit" limit]
+        optional = Pick::either (plist, [Doc::bit ("plist", true)], [])
+        listConcat (listConcat fields optional) [str "slice" slice]
 
     http method url headers body limit deadline slice = [str "kind" "http", str "method" method, str "url" url, JsonMember "headers" (JsonArray (mapList (headers, \item => header item))), str "body" body, num "limit" limit, num "timeout" deadline, str "slice" slice]
 
@@ -119,10 +129,12 @@ module Requests
         ChooseFile types limit slice => [str "kind" "choose-file", strings "types" types, num "limit" limit, str "slice" slice]
         ChooseFolder => [str "kind" "choose-folder"]
         SaveFile name slice => [str "kind" "save-file", str "name" name, str "slice" slice]
+        MeasureFolders folders limit deadline slice => [str "kind" "measure-folders", strings "folders" folders, num "limit" limit, num "timeout" deadline, str "slice" slice]
         Reveal path => [str "kind" "reveal", str "path" path]
         OpenSettings pane => [str "kind" "open-settings", str "pane" pane]
         Cancel target => [str "kind" "cancel", str "target" target]
         Recognise slices limit => [str "kind" "recognise", strings "slices" slices, num "limit" limit]
+        Animate on => [str "kind" "animate", Doc::bit ("on", on)]
 
     (** The protocol form of `request`: its ticket beside the capability's kind and arguments. *)
     export encode request = JsonObject (listPrepend (members request.capability) (str "ticket" request.ticket))

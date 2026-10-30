@@ -22,12 +22,36 @@ Follow [Packages in VS Code](/docs/packages-in-vscode/) for the screenshots and 
 
 The folder registry and package client run today. The public package website, hosted publishing and trust services are planned; you do not need them to try packages locally or run a private registry.
 
-From the Osprey repository root, build the toolchain and the package client:
+### Run the local registry
+
+The local registry serves the packages in this repository's `packages/` folder (`@osprey/re`, `@osprey/torch`, `@osprey/native` and the rest) on `http://127.0.0.1:8787`, the address the client and the VS Code extension use by default.
+
+**In VS Code**, run **Osprey: Start Local Package Registry** from the Command Palette, click **Registry: off** in the status bar, or right-click an `osprey.toml` and choose it there. If you open **Osprey: Manage Packages** (or Add or Remove Package) while nothing is answering on the registry address, the extension asks whether to start the local registry first. The extension bundles the server and a snapshot of the packages, so you need no checkout. Its output is in the **Osprey Package Registry** output channel, and **Osprey: Stop Local Package Registry** or the status-bar item stops it.
+
+**From a checkout**, build the toolchain and serve:
+
+```sh
+make build
+make registry-serve
+```
+
+`make registry-serve` builds the package client and the server, publishes every package under `packages/` into `target/local-registry` with `publish --folder`, and serves it. Each package passes the same source, capability and digest checks the server applies. Add a package to your own project with the extension, or with the client directly:
+
+```sh
+echo "add @osprey/re --registry http://127.0.0.1:8787 --project $PWD/my-app" | ./target/osprey-pkg
+echo "fetch --project $PWD/my-app --registry http://127.0.0.1:8787" | ./target/osprey-pkg
+```
+
+The cloud registry will replace this for everyday use; the local registry stays available for private and offline work.
+
+### Try the sample registry
+
+`make registry-serve-sample` serves `packages/manager/sample-registry`, the small `@demo` packages the end-to-end consumer depends on:
 
 ```sh
 make build
 ./target/release/osprey build packages/manager/cli -o target/osprey-pkg
-make registry-serve
+make registry-serve-sample
 ```
 
 Leave the server running. In another terminal at the repository root, resolve and build the sample consumer, which already declares its dependency on `@demo/report`:
@@ -93,7 +117,7 @@ Epochs and release ordinals both start at 1.
 The Osprey server walks that root, validates every release against the canonical source rules, computes each release's `SourceDigest`, and serves the catalog over HTTP:
 
 ```sh
-make registry-serve          # serves packages/manager/sample-registry on http://127.0.0.1:8787
+make registry-serve-sample   # serves packages/manager/sample-registry on http://127.0.0.1:8787
 curl http://127.0.0.1:8787/v1/packages
 curl http://127.0.0.1:8787/v1/packages/demo/maths
 ```

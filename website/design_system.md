@@ -1,6 +1,6 @@
 # Osprey design system
 
-Osprey looks like logic in flight: a midnight canvas, luminous cyan, precise type, and room to think. This applies to the website, diagrams, video, captions, and posters. Start every brief with [the messaging guide](../docs/messaging.md): show a need, choose a handler, show the result.
+Osprey looks safe, elegant and fast: a midnight canvas, luminous cyan, precise type, and room to think. This applies to the website, diagrams, video, captions, and posters. Start every brief with [the messaging guide](../docs/messaging.md): show a need, choose a handler, show the result.
 
 ## Source of truth
 

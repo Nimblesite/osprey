@@ -106,6 +106,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       "osprey-ui/wasi",
       "osprey-ui/wasi-runner",
       "osprey-ui/wasi-worker",
+      "local-registry",
       "package-api",
       "package-commands",
       "package-frontend",

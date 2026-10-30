@@ -17,7 +17,7 @@
     },
     {
       "text": "Build applications",
-      "url": "/docs/web-apps/",
+      "url": "/docs/osprey-native/",
       "group": "Docs"
     },
     {
@@ -125,6 +125,10 @@
     {
       "title": "Build applications",
       "items": [
+        {
+          "text": "Osprey Native",
+          "url": "/docs/osprey-native/"
+        },
         {
           "text": "Web apps",
           "url": "/docs/web-apps/"

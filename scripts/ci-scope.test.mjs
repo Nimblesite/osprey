@@ -113,9 +113,11 @@ test('extension source fixtures have the WASI linker and sysroot before coverage
 // The bundle stages apps/workbench/assets/. and apps/workbench/lessons/media/.
 // Their *.png, *.gif and *.mp4 are LFS-stored, so a fetch that omits either path
 // stages a pointer and the packaged extension ships bytes the Marketplace (and
-// the client verifier) reject.
+// the client verifier) reject. The logo and both README editor GIFs are
+// LFS-stored too, so each job fetches exactly the paths its bundle stages.
 test('LFS fetches cover every workbench source asset the bundle stages', () => {
-  const required = ['apps/workbench/assets/**', 'apps/workbench/lessons/media/**']
+  const required = ['website/src/assets/images/logo.png', 'vscode-extension/media/package-tour.gif',
+    'vscode-extension/media/language-tour.gif', 'apps/workbench/assets/**', 'apps/workbench/lessons/media/**']
   for (const [name, file] of [['test-extension', '.github/workflows/ci.yml'], ['vsix', '.github/workflows/release.yml']]) {
     const include = job(name, file).match(/git lfs pull --include="([^"]+)"/)?.[1] ?? ''
     for (const path of required) assert.ok(include.split(',').includes(path), `${name}: LFS fetch omits ${path}`)
@@ -138,11 +140,15 @@ const stagedBundleFixture = (change) => runStagedBundleFixture(job('test-extensi
 test('staged bundle verification fails closed without recompiling a payload', () => {
   const complete = stagedBundleFixture()
   assert.equal(complete.status, 0, complete.stdout + complete.stderr)
-  for (const name of ['osprey', 'osprey-pkg', 'package-workspace.wasm', 'workbench.wasm', 'workbench/lessons/catalogue.json', 'workbench/osprey-logo.png', 'workbench/chalk-study.png', 'workbench/workbench.css', 'workbench/symbols.json', 'workbench/icons/moon.svg', 'workbench/icons/LICENSE.txt', ...nativeArchives, ...proofAssets]) {
+  for (const name of ['osprey', 'osprey-pkg', 'osprey-registry', 'package-workspace.wasm', 'workbench.wasm', 'workbench/lessons/catalogue.json', 'workbench/osprey-logo.png', 'workbench/chalk-study.png', 'workbench/workbench.css', 'workbench/symbols.json', 'workbench/icons/moon.svg', 'workbench/icons/LICENSE.txt', ...nativeArchives, ...proofAssets]) {
     const missing = stagedBundleFixture((root, platform) => rmSync(join(root, platform, name)))
     assert.notEqual(missing.status, 0, `${name}: missing payload accepted`)
     const stale = stagedBundleFixture((root, platform) => writeFileSync(join(root, platform, name), 'stale'))
     assert.notEqual(stale.status, 0, `${name}: stale payload accepted`)
+  }
+  if (process.platform !== 'win32') {
+    const unregistered = stagedBundleFixture((root, platform) => rmSync(join(root, platform, 'registry'), { recursive: true }))
+    assert.notEqual(unregistered.status, 0, 'a bundle without its local registry packages accepted')
   }
   const invalid = stagedBundleFixture((root, platform) => {
     for (const file of ['target/package-workspace.wasm', `${platform}/package-workspace.wasm`]) writeFileSync(join(root, file), 'invalid WASM')
@@ -224,11 +230,16 @@ test('package coverage preserves the complete test recipe and checks without rer
   assert.doesNotMatch(check[0], /--collect/)
 })
 
-test('the KLEE engine gates stay out of CI; the mock oracle and known-bug target stay in the tree', () => {
+test('the KLEE engine gates stay out of CI and make ci; the mock oracle and known-bug target stay in the tree', () => {
   // Owner decision 2026-10-26: the engine gates do not guarantee a green
   // signal while issue #306 is open (clean.osp never completes inside the
-  // pinned budget), so CI runs none of them. Verification is local:
+  // pinned budget), so CI runs none of them, and neither does `make ci`.
+  // Verification is by hand:
   // make _test_hunt / make _test_hunt_clean / make _test_hunt_crashes.
+  const local = makeRecipe('test')
+  assert.ok(local.includes('$(MAKE) _test_hunt_mock'))
+  assert.deepEqual(local.filter((command) => /_test_hunt(?!_mock)/.test(command)), [])
+  assert.doesNotMatch(readFileSync('Makefile', 'utf8').match(/^ci:.*$/m)[0], /hunt/)
   const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
   assert.doesNotMatch(workflow, /brew install klee/)
   assert.doesNotMatch(workflow, /make _test_hunt(?!_mock)/)
@@ -448,4 +459,8 @@ test('branch protection distinguishes staging automation from main CI without ex
   assert.equal(targetsMainPullRequests('on:\n  pull_request:\n    branches:\n      - dependabot-upgrades\n'), false)
   assert.equal(targetsMainPullRequests('on:\n  pull_request:\n    branches: [dependabot-upgrades]\n'), false)
   assert.equal(targetsMainPullRequests('on:\n  workflow_call:\n'), false)
+  // A Windows checkout with core.autocrlf ends every line with CRLF.
+  assert.equal(targetsMainPullRequests('on:\r\n  pull_request:\r\n    branches:\r\n      - dependabot-upgrades\r\n'), false)
+  assert.equal(targetsMainPullRequests('on:\r\n  pull_request:\r\n    branches: [dependabot-upgrades]\r\n'), false)
+  assert.equal(targetsMainPullRequests('on:\r\n  pull_request:\r\n    branches:\r\n      - main\r\n'), true)
 })

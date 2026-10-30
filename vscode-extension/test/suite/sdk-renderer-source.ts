@@ -25,6 +25,7 @@ proof () = [
     Ui::editor ("SDK argument", "p ∧ q\nFrom hp.", 0, [Ui::mark (2, true, ui::Danger, "Needs attention", "The goal is q; this step establishes p.")], Changed, Changed),
     Ui::math (ui::Frac (ui::Sup (ui::Sym "x") (ui::Num "2")) (ui::Root (ui::Sym "y")), "x squared over square root of y"),
     Ui::evidence ("SDK evidence", "37 lines"),
+    Ui::pair ("SDK pair", "42 nodes"),
     Ui::label ("SDK label", "info"),
     ui::Spacer,
     ui::Divider,
@@ -63,7 +64,7 @@ module Normalized
         changed = signalChanges before value (\text => JsonString text) (signalDependencies slice)
         [Keyed::region (frames, "root", changed, drawing)]
     initial _ = Runtime::step ""
-    update (_, current, message) = Messages::route (message, \_ => Runtime::step "removed", \(_, _) => Runtime::step "CANONICAL", \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \_ => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current)
+    update (_, current, message) = Messages::route (message, \_ => Runtime::step "removed", \(_, _) => Runtime::step "CANONICAL", \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \_ => Runtime::step current, \(_, _) => Runtime::step current, \(_, _) => Runtime::step current, \_ => Runtime::step current, \(_, _) => Runtime::step current)
     save value = JsonString value
     restore doc = jsonText doc ?: ""
     palette = ui::Theme(tokens = [], spacing = [4], feedback = 160, settle = 220)

@@ -30,20 +30,44 @@ ok 29 - desktop requests preserve picker export and cancellation payloads
 ok 30 - semantic text roles preserve every protocol spelling
 ok 31 - host capabilities preserve namespace operation arguments and bounds
 ok 32 - context menus bind actions after their content controls
-ok 33 - an editor binds text then cursor after earlier controls and preserves its marks
-ok 34 - a cursor binding delivers placed offsets, clamps negatives and refuses text
-ok 35 - a board names its host slice and binds strokes before its lasso
-ok 36 - a board stroke decodes two ordered points with their width and time
-ok 37 - empty negative and non-pair stroke points are refused with the exact diagnostic
-ok 38 - a lasso delivers stroke indices and refuses strings and negative indices
-ok 39 - a recognition request names its stroke slices and output limit
-ok 40 - message routing delivers placed stroked and lassoed values to their handlers
-ok 41 - board themes name the board and chalk tokens
-ok 42 - mathematics decodes back to the tree it encodes across every constructor
-ok 43 - mathematics decoding refuses unknown kinds missing children non-arrays and non-objects
-ok 44 - image and video encode as leaves with their media fields and no ordinal
-ok 45 - presentation frames preserve exact dimensions and inner control provenance
-ok 46 - scoped themes and dialogs retain their inner controls and dismissal provenance
-ok 47 - inline text retains mathematical emphasis and semantic source colours without bindings
-1..47
-# tests=47 passed=47 failed=0 skipped=0
+ok 33 - a scene encodes its primitives as flat typed arrays
+ok 34 - colours pack as RRGGBBAA
+ok 35 - a path encodes its steps, outline, paint and transform
+ok 36 - a scene binding delivers keys and pointer positions in scene units
+ok 37 - a frame event delivers its elapsed seconds and patches nothing when ignored
+ok 38 - an animate request carries its on flag
+ok 39 - every symbol encodes as a distinct host-neutral name
+ok 40 - labels, icons, badges, empty states, buttons, tabs and rows send their symbol names
+ok 41 - a pair encodes its label and value without a binding
+ok 42 - platforms decode to the union and encode back to their names
+ok 43 - a start context carries a linux or windows platform
+ok 44 - product-specific work is a host call with its namespace and arguments
+ok 45 - a split scene streams its fixed-size primitives in order and keeps the rest
+ok 46 - an enveloped scene reports nothing streamed
+ok 47 - streamed primitives read back every field a host import takes
+ok 48 - a resident session keeps its store out of the envelope
+ok 49 - a resident session refuses stale controls and prior-state edits without change
+ok 50 - a split streams scenes from every container in the encoder's order
+ok 51 - primitives that do not stream read back zero fields
+ok 52 - a resident session delivers completions, phases and frames and refuses malformed text
+ok 53 - an idle session holds only its store
+ok 54 - toggles and pickers deliver their own value kinds and refuse others
+ok 55 - progress, swatches, alerts, prominent buttons and leading asides encode
+ok 56 - a meter sends its amount clamped into a total of at least one
+ok 57 - an editor binds text then cursor after earlier controls and preserves its marks
+ok 58 - a cursor binding delivers placed offsets, clamps negatives and refuses text
+ok 59 - a board names its host slice and binds strokes before its lasso
+ok 60 - a board stroke decodes two ordered points with their width and time
+ok 61 - empty negative and non-pair stroke points are refused with the exact diagnostic
+ok 62 - a lasso delivers stroke indices and refuses strings and negative indices
+ok 63 - a recognition request names its stroke slices and output limit
+ok 64 - message routing delivers placed stroked and lassoed values to their handlers
+ok 65 - board themes name the board and chalk tokens
+ok 66 - mathematics decodes back to the tree it encodes across every constructor
+ok 67 - mathematics decoding refuses unknown kinds missing children non-arrays and non-objects
+ok 68 - image and video encode as leaves with their media fields and no ordinal
+ok 69 - presentation frames preserve exact dimensions and inner control provenance
+ok 70 - scoped themes and dialogs retain their inner controls and dismissal provenance
+ok 71 - inline text retains mathematical emphasis and semantic source colours without bindings
+1..71
+# tests=71 passed=71 failed=0 skipped=0

@@ -1,5 +1,5 @@
-// The semantic symbol vocabulary the native component tree names. Hosts map a
-// symbol to an official Codicon; an unknown symbol falls back to the neutral
+// The framework's semantic symbols ([UI-COMPONENTS-SYMBOLS]). Each maps to an
+// official Codicon; an unknown symbol falls back to the neutral
 // information mark rather than injecting the name into markup.
 
 import { readFileSync } from "fs";
@@ -9,22 +9,23 @@ const CSS_PATH = "@vscode/codicons/dist/codicon.css";
 const FONT_PATH = "@vscode/codicons/dist/codicon.ttf";
 
 const NAMES: Readonly<Record<string, string>> = {
-  shippingbox: "package",
-  plus: "add",
-  trash: "trash",
-  globe: "globe",
-  "arrow.clockwise": "refresh",
-  search: "search",
-  info: "info",
-  star: "star-full",
+  add: "add",
+  delete: "trash",
+  dismiss: "close",
   check: "check",
   warning: "warning",
-  xmark: "close",
-  "chevron.right": "chevron-right",
+  info: "info",
+  question: "question",
+  search: "search",
+  settings: "gear",
+  star: "star-full",
+  play: "play",
+  pause: "debug-pause",
+  stop: "debug-stop",
+  refresh: "refresh",
   folder: "folder",
   document: "symbol-file",
   link: "link-external",
-  play: "play",
   "play.fill": "play",
   "circle.lefthalf.filled": "color-mode",
   "square.and.arrow.down": "save",
@@ -47,8 +48,17 @@ const NAMES: Readonly<Record<string, string>> = {
   network: "type-hierarchy",
   cube: "package",
   package: "package",
+  inbox: "inbox",
+  globe: "globe",
+  external: "link-external",
+  lock: "lock",
+  shield: "shield",
+  branch: "type-hierarchy",
+  tag: "tag",
   clock: "history",
   person: "person",
+  cursor: "debug-step-into",
+  chevron: "chevron-right",
 };
 
 const FALLBACK = "info";

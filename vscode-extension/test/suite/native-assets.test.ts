@@ -69,6 +69,9 @@ suite("workbench bundle completeness", () => {
     fs.writeFileSync(path.join(assets, "proof-libraries.json"), JSON.stringify({ libraries: [{ title: "Fixture proof", path: "proof-libraries/fixture.ndjson" }] }));
     for (const name of ["fixture.ndjson", "LICENSE.lean4", "LICENSE.openai-math"]) fs.writeFileSync(path.join(assets, "proof-libraries", name), "fixture\n");
     fs.writeFileSync(path.join(bundle, process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg"), "fixture");
+    fs.writeFileSync(path.join(bundle, process.platform === "win32" ? "osprey-registry.exe" : "osprey-registry"), "fixture");
+    fs.mkdirSync(path.join(bundle, "registry", "@osprey", "testing"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "registry", "@osprey", "testing", "osprey.toml"), 'name = "@osprey/testing"\n');
     for (const name of ["workbench", "package-workspace"]) fs.copyFileSync(path.join(extension, "bin", `${process.platform}-${process.arch}`, `${name}.wasm`), path.join(bundle, `${name}.wasm`));
   });
   teardown(() => fs.rmSync(root, { recursive: true, force: true }));

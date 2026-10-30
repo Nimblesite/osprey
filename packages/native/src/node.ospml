@@ -103,6 +103,9 @@ type Node A =
     Evidence
         label : string
         value : string
+    Pair
+        label : string
+        value : string
     Badge
         label : string
         symbol : string
@@ -127,6 +130,11 @@ type Node A =
     Progress
         label : string
         detail : string
+    Meter
+        label : string
+        amount : int
+        total : int
+        tone : Tone
     Brand
     Swatch
         name : string
@@ -201,6 +209,13 @@ type Node A =
         boardPan : A
         stroke : A
         lasso : A
+    Scene
+        sceneWidth : float
+        sceneHeight : float
+        atlas : List<string>
+        primitives : List<Primitive>
+        play : A
+        streamedCount : int
 
 (** One tab: its key, label, symbol and page. *)
 type Tab A =
@@ -233,6 +248,8 @@ type Binding A =
     StrokeInput
         action : A
     LassoInput
+        action : A
+    SceneInput
         action : A
 
 (** [UI-COMPONENTS-SPLITTER] The limits of an aside's splitter in points: a column starts `initial` wide and stays between `least` and `most`, and the host never narrows the pane beside it below `keep`. *)
@@ -311,6 +328,14 @@ module Ui
     (** A label and its value on one line, such as an observed fact. *)
     export evidence<A> : (string, string) -> Node<A>
     evidence (label, value) = Evidence(label = label, value = value)
+
+    (** A label and its value on one line, such as a setting and its current value. *)
+    export pair<A> : (string, string) -> Node<A>
+    pair (label, value) = Pair(label = label, value = value)
+
+    (** [UI-COMPONENTS-METER] A bar filled to `amount` out of `total` in `tone`, read out with `label`, such as the space a folder takes on its disk. *)
+    export meter<A> : (string, int, int, Tone) -> Node<A>
+    meter (label, amount, total, tone) = Meter(label = label, amount = amount, total = total, tone = tone)
 
     (** A status badge; its label and symbol carry the meaning, so colour is never the only signal. *)
     export badge<A> : (string, string, Tone) -> Node<A>
@@ -437,3 +462,11 @@ module Ui
     (** A compact mathematical step editor, with its accessible label used as the placeholder. *)
     export inlineEditor<A> : (string, string, int, A, A) -> Node<A>
     inlineEditor (label, value, cursor, edit, place) = Editor(editorLabel = label, editorValue = value, editorInline = true, cursor = cursor, marks = [], edit = edit, place = place)
+
+    (** [UI-SCENE] A surface `width` by `height` units that the host scales to fit, drawn from `primitives` with sprites taken from `atlas` by index. Keys and pointer positions in scene units reach `play` as `Controlled` messages. *)
+    export scene<A> : (float, float, List<string>, List<Primitive>, A) -> Node<A>
+    scene (width, height, atlas, primitives, play) = Scene(sceneWidth = width, sceneHeight = height, atlas = atlas, primitives = primitives, play = play, streamedCount = 0)
+
+    (** [UI-SCENE] A scene in window pixels: no unit space, no letterbox, origin at the window's top left, as a canvas that paints in window coordinates. *)
+    export canvas<A> : (List<Primitive>, A) -> Node<A>
+    canvas (primitives, play) = Scene(sceneWidth = 0.0, sceneHeight = 0.0, atlas = [], primitives = primitives, play = play, streamedCount = 0)

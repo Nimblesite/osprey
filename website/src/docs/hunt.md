@@ -1,12 +1,25 @@
 ---
 layout: page
-title: Hunt for bugs
-description: Explore Osprey programs with symbolic inputs, inspect KLEE findings and replay them on a native build.
+title: "Hunt for bugs: automated bug finding with symbolic execution"
+description: "osprey hunt is a built-in automated bug finder. It uses KLEE symbolic execution, a smarter alternative to fuzz testing, to find the exact input that crashes your program, then reproduces the crash natively."
 permalink: /docs/hunt/
-tags: [testing, hunt, symbolic-execution]
+tags: [testing, hunt, symbolic-execution, fuzzing, klee]
 ---
 
-`osprey hunt` explores your program with symbolic inputs and reports inputs that reach a failure. It uses KLEE to follow branches through stdin, file reads, entropy and clock values, then replays findings on a native build. You get source locations and concrete inputs to investigate.
+## What is Osprey Hunt?
+
+`osprey hunt` is an **automated bug finder** built into the Osprey compiler. You point it at a program and it finds the **exact input that makes it crash** — no test cases to write.
+
+It works by **symbolic execution** with [KLEE](https://klee-se.org/). A **fuzzer** throws random input at a program and hopes to hit a bug. Hunt instead treats the input as unknown and solves for values that steer execution down as many branches as its time budget allows, including the edge case a random fuzzer rarely reaches. Each finding is then **replayed on a normal native build**, so you know the crash is real.
+
+## Why use it?
+
+- **Find crashes your unit tests miss.** Tests check the inputs you thought of. Hunt searches for the ones you didn't.
+- **Get a reproducible crash, not a guess.** Every finding comes with the source line, the concrete input bytes and a native replay verdict. Paste the input into a regression test and fix it.
+- **Harden input handling.** Parsers, CLI tools, file readers and anything reading stdin or untrusted data are where crashes and security bugs hide.
+- **Zero setup beyond the engine.** No harness, no fuzzing corpus, no annotations. One command and an HTML report.
+
+Hunt complements testing and static analysis; it does not replace them. A reproduced finding is a real crash, but an empty report is not a proof of correctness.
 
 The command is `osprey hunt`, with no leading dash. It accepts a Default, ML or Python-flavor source file, a project directory or an `osprey.toml` manifest. Python-flavor files carry `# osprey: flavor=python`.
 

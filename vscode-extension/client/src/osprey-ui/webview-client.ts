@@ -17,6 +17,24 @@ export const WEBVIEW_SCRIPT = `
   let pendingLoss = null;
   let editSequence = 0;
   let hostDiagnostics = [];
+  let runtimeBusy = false;
+  let runtimeTracked = false;
+  const pausedControls = new Map();
+
+  function updateBusy() {
+    const root = document.getElementById("osprey-root"), notice = document.getElementById("osprey-runtime-status");
+    const busy = runtimeBusy || pendingEdits.size > 0;
+    if (notice) notice.hidden = !busy;
+    if (!root) return;
+    root.setAttribute("aria-busy", String(busy));
+    root.querySelectorAll("button, select").forEach(function (control) {
+      if (runtimeBusy) {
+        if (!pausedControls.has(control)) pausedControls.set(control, control.disabled);
+        control.disabled = true;
+      } else if (pausedControls.has(control)) control.disabled = pausedControls.get(control);
+    });
+    if (!runtimeBusy) pausedControls.clear();
+  }
 
   function closest(target, selector) {
     return target && target.closest ? target.closest(selector) : null;
@@ -42,6 +60,7 @@ export const WEBVIEW_SCRIPT = `
       value = kind === "number" ? Number(raw) : kind === "bool" ? raw === "true" : kind === "string" ? raw : null;
     }
     if (postAfterFields(control, value)) return;
+    if (runtimeTracked) { runtimeBusy = true; updateBusy(); }
     vscode.postMessage(Object.assign({ type: "event", value: value }, control));
   }
 
@@ -52,6 +71,8 @@ export const WEBVIEW_SCRIPT = `
     const id = ++editSequence;
     const signature = "action:" + id;
     pendingEdits.set(signature, { id: id, value: value, control: control, sent: false });
+    if (runtimeTracked) runtimeBusy = true;
+    updateBusy();
     sendField(signature);
     return true;
   }
@@ -132,6 +153,7 @@ export const WEBVIEW_SCRIPT = `
     clearTimeout(fieldTimers.get(signature));
     fieldTimers.delete(signature);
     pendingEdits.delete(signature);
+    updateBusy();
     if (message.accepted === true) return;
     pendingLoss = message.error || "The text edit was refused; it was not applied.";
     fieldsBySignature(signature).forEach(function (element) { element.value = element.getAttribute("data-value") || ""; });
@@ -266,6 +288,7 @@ export const WEBVIEW_SCRIPT = `
       control: control,
       sent: false,
     });
+    updateBusy();
     armFieldTimer(signature);
   });
 
@@ -375,16 +398,20 @@ export const WEBVIEW_SCRIPT = `
     restoreScroll(scroll);
     refreshEditors();
     renderDiagnostics(message.diagnostics);
+    updateBusy();
   }
 
   window.addEventListener("message", function (event) {
     const message = event.data;
     if (!message || typeof message !== "object") return;
+    if (message.type === "busy") { runtimeTracked = true; runtimeBusy = message.active === true; updateBusy(); return; }
     if (message.type === "render") { renderMessage(message); return; }
     if (message.type === "edit-result") { acknowledgeEdit(message); return; }
     if (message.type === "fatal") {
       flushFields();
       pendingEdits.clear();
+      runtimeBusy = false;
+      updateBusy();
       pendingLoss = message.message;
       renderDiagnostics(hostDiagnostics);
     }

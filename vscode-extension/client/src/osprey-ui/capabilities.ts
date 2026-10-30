@@ -243,6 +243,9 @@ function revealView(request: NativeRequest, host: CapabilityHost): Promise<unkno
   return host.revealView(requiredString(args.view, "view"));
 }
 
+/** Capability kinds this webview answers ([NATIVE-HOSTS-COVERAGE]); any other kind fails as an unsupported native capability. */
+export const ANSWERED_CAPABILITIES: readonly string[] = ["http", "host-call"];
+
 /** Execute one bounded capability from a validated native envelope. */
 export function createRequestExecutor(host: CapabilityHost, options: ExecutorOptions = {}): (request: NativeRequest) => Promise<unknown> {
   const serialize = options.serialize ?? serializeProcesses;

@@ -2,12 +2,15 @@
 // swap chain, exposing the same flat C ABI the Swift host (macos/) defines on macOS
 // ([FFI-LINK-DIRECTIVES], [FFI-PTR] — docs/specs/compiler/0019-ForeignFunctionInterface.md).
 //
-// UNVERIFIED ON THE MACHINE THAT WROTE IT. This backend was authored on macOS,
-// which has no MSVC, no Windows SDK, no mingw-w64 and no fxc or dxc, so not one
-// line of it has been compiled, linked or run. It is careful transcription of
-// the Metal bridge against the Direct3D 12 documentation, and nothing more than that
-// until a Windows machine says otherwise. `make graphics` on Windows is what
-// turns it around; README.md in this directory lists the exact commands.
+// VERIFIED ON WINDOWS ON 2026-10-28, AS FAR AS THIS GOES. Authored on macOS
+// from the Metal bridge and the Direct3D 12 documentation, it now builds with
+// MSYS2 UCRT64's gcc and -Wall -Werror, and on GitHub's windows-latest runner the
+// unchanged scenes link against it and draw in real windows: 10 frames each of
+// Kali, Opal and Character, and a picture of each window after twenty seconds.
+// That runner has no GPU, so Direct3D 12 drew on the Microsoft Basic Render
+// Driver, in software, and no frame has been compared with the Mac's at matched
+// uniforms, the only check of the cbuffer packing and the matrix order. The first compile's three mistakes and their
+// fixes are in README.md under "Verification status", with the commands.
 //
 // macos/GraphicsBridge.swift is the reference. It carries the rationale — Osprey
 // as the host that owns the window, the clock and the scene state; the GPU as
@@ -28,11 +31,12 @@
 //     fence. `nextDrawable` did that throttling implicitly on macOS.
 //
 // THE SPLIT. Bringing up a D3D12 device is several times the code Metal needs
-// for the same picture, so the backend is two translation units either side of
-// this header rather than one file over the repository's length limit:
-// ospgfx_d3d12_setup.c builds everything once, and ospgfx_d3d12.c is the C ABI
-// and the per-frame path. Nothing here is part of the Osprey-facing contract —
-// only the six `OSP_GFX_API` functions in ospgfx_d3d12.c are.
+// for the same picture, so the backend is three translation units around this
+// header rather than one file over the repository's length limit:
+// ospgfx_d3d12_window.c makes the Win32 window, ospgfx_d3d12_setup.c builds
+// everything that draws into it once, and ospgfx_d3d12.c is the C ABI and the
+// per-frame path. Nothing here is part of the Osprey-facing contract — only the
+// six `OSP_GFX_API` functions in ospgfx_d3d12.c are.
 
 #ifndef OSPGFX_D3D12_H
 #define OSPGFX_D3D12_H
@@ -113,6 +117,9 @@ typedef struct OspGfxContext {
   int closed;
   double openedAt;
   OspGfxUniforms uniforms;
+  // OSPREY_GFX_FRAMES ends a scene after that many frames, as if its window closed; 0 never does.
+  long long frameLimit;
+  long long frames;
 } OspGfxContext;
 
 // Seconds from the performance counter, which is monotonic, so a paused or

@@ -88,3 +88,12 @@ for (const slug of catalogue.lessons) {
     if (block.kind === "video") for (const key of ["source", "poster", "captions"]) verifyAsset(block[key], slug);
   }
 }
+
+// The local package registry [PACKAGE-LOCAL-REGISTRY]: the server and the staged
+// packages it serves. Not bundled on Windows yet (its tree walk needs POSIX find).
+if (process.platform !== "win32") {
+  const server = path.join(path.dirname(client), "osprey-registry");
+  if (!fs.existsSync(server)) throw new Error(`Missing bundled local registry server: ${server}. Run make _vsix_bundle before packaging.`);
+  const packages = path.join(path.dirname(client), "registry", "@osprey");
+  if (!fs.existsSync(packages) || fs.readdirSync(packages).length === 0) throw new Error(`Missing bundled local registry packages: ${packages}. Run make _vsix_bundle before packaging.`);
+}

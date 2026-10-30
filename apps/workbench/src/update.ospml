@@ -308,4 +308,4 @@ module Update
         _ => Runtime::step (bench(layout = Layouts::switched (bench.layout, action, open)))
 
     (** The next store, requests and slice writes for `message` ([WORKBENCH-STORE]). *)
-    export apply (_, bench, message) = Messages::route (message, \action => tapped (bench, action), \(action, text) => typed (bench, action, text), \(action, open) => switched (bench, action, open), \(action, number) => sized (bench, action, number), \(ticket, outcome) => Completions::completed (bench, ticket, outcome), \_ => Runtime::step bench, \(action, stroke) => stroked (bench, action, stroke), \(action, indices) => lassoed (bench, action, indices))
+    export apply (_, bench, message) = Messages::route (message, \action => tapped (bench, action), \(action, text) => typed (bench, action, text), \(action, open) => switched (bench, action, open), \(action, number) => sized (bench, action, number), \(ticket, outcome) => Completions::completed (bench, ticket, outcome), \_ => Runtime::step bench, \(action, stroke) => stroked (bench, action, stroke), \(action, indices) => lassoed (bench, action, indices), \_ => Runtime::step bench, \(_, _) => Runtime::step bench)

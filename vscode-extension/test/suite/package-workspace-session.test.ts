@@ -45,6 +45,24 @@ function pendingSliceSession() {
 }
 
 suite("package workspace session", () => {
+  test("busy remains set until every queued runtime frame has finished", async () => {
+    let hold = false, release = (): void => undefined;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const { session, sent } = recordedSession(0, { run: async () => {
+      if (hold) await gate;
+      return { stdout: envelope("s", 1), exitCode: 0 };
+    } });
+    await session.start({});
+    sent.length = 0;
+    hold = true;
+    for (let ordinal = 0; ordinal < 2; ordinal++) session.message({ type: "event", region: "root", revision: 1, ordinal, value: null });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepStrictEqual(sent.filter(message => message.type === "busy"), [{ type: "busy", active: true }]);
+    release();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepStrictEqual(sent.filter(message => message.type === "busy"), [{ type: "busy", active: true }, { type: "busy", active: false }]);
+    session.dispose();
+  });
   test("retired file deliveries cannot enter a restarted session", async () => {
     const { session, frames, held, deliver } = pendingSliceSession();
     await session.start({ project: "old" });
@@ -69,7 +87,7 @@ suite("package workspace session", () => {
       await session.start({});
       const message = `The Osprey workspace exited with code 7${stdout ? ": runtime diagnostic" : ""}`;
       assert.deepStrictEqual(reported, [message]);
-      assert.deepStrictEqual(sent.at(-1), { type: "fatal", message });
+      assert.deepStrictEqual(sent.slice(-2), [{ type: "fatal", message }, { type: "busy", active: false }]);
       session.dispose();
     }
   });
@@ -78,12 +96,12 @@ suite("package workspace session", () => {
     for (const failure of ["wire refused", new Error("wire refused")]) {
       const { session, sent } = recordedSession(0, { run: async () => { throw failure; } });
       await session.start({});
-      assert.deepStrictEqual(sent.at(-1), { type: "fatal", message: "wire refused" });
+      assert.deepStrictEqual(sent.slice(-2), [{ type: "fatal", message: "wire refused" }, { type: "busy", active: false }]);
       session.dispose();
     }
     const { session, sent } = recordedSession(0, { render: () => { throw new Error("render refused"); } });
     await session.start({});
-    assert.deepStrictEqual(sent.at(-1), { type: "fatal", message: "render refused" });
+    assert.deepStrictEqual(sent.slice(-2), [{ type: "fatal", message: "render refused" }, { type: "busy", active: false }]);
     session.dispose();
     await assert.rejects(session.start({}), /session is disposed/);
   });
@@ -141,8 +159,8 @@ suite("package workspace session", () => {
     await session.start({});
     session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: "draft", edit: 1 });
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepStrictEqual(sent.slice(-2), [{ type: "edit-result", edit: 1, accepted: false, error: "binding refused" },
-      { type: "render", html: "HTML", diagnostics: ["binding refused"] }]);
+    assert.deepStrictEqual(sent.slice(-3), [{ type: "edit-result", edit: 1, accepted: false, error: "binding refused" },
+      { type: "render", html: "HTML", diagnostics: ["binding refused"] }, { type: "busy", active: false }]);
     session.dispose();
   });
 
@@ -173,8 +191,8 @@ suite("package workspace session", () => {
     assert.deepStrictEqual(frames[2], { operation: "dispatch", state: "s2", event: {
       kind: "ui-edit", prior: "s1", region: "root", revision: 1, ordinal: 0, value: " draft ", now: 1,
     } });
-    assert.deepStrictEqual(sent.slice(-2), [{ type: "edit-result", edit: 7, accepted: true },
-      { type: "render", html: "HTML", diagnostics: [] }]);
+    assert.deepStrictEqual(sent.slice(-3), [{ type: "edit-result", edit: 7, accepted: true },
+      { type: "render", html: "HTML", diagnostics: [] }, { type: "busy", active: false }]);
     session.dispose();
   });
 
