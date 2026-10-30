@@ -16,6 +16,9 @@
 use crate::builder::Codegen;
 use crate::llty::Value;
 
+mod phi;
+pub(crate) use phi::{borrowed_phi_arms, move_phi_owners, promote_phi_arm};
+
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
 const RELEASE_DECL: &str = "declare void @osp_release(i8*)";
 /// The proved-unique drop: `allockind("free")`/`allocptr` pair it with
@@ -222,62 +225,6 @@ fn conditional_floor(cg: &Codegen) -> usize {
         .rev()
         .find(|(d, _)| *d == depth)
         .map_or(0, |(_, mark)| *mark)
-}
-
-/// Perceus phi ownership merge (TR §2.3, join points): when EVERY arm of a
-/// `match` produced a fresh owner — an unnamed innermost-frame entry registered
-/// AFTER `mark` (i.e. inside its own arm) — the merged phi result *is* that
-/// single owner. Exactly one arm runs on any path, untaken arms never allocate
-/// their value, so exactly one of those +1s is live and the phi selects it.
-/// Drop the per-arm entries and re-own the phi: the value moves through the
-/// join with no dup and no per-arm release, so `fn make(d) = match d { …
-/// Node{…} }` returns by transfer instead of retain-then-release.
-///
-/// The `mark` gate is what makes this sound: an entry below it existed before
-/// the arms — the scrutinee, an outer temporary — and lives on EVERY path, so
-/// consuming it through the phi would leak it on the arms that yield something
-/// else. Borrows (parameters, field loads) were never registered and fail the
-/// gate, keeping the caller's dup/drop. Clear transferred slots so abandonment
-/// cannot release both an incoming owner and its phi. [GC-ARC-PERCEUS]
-pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value, mark: usize) {
-    if !managed(cg, out) || !incoming_owners_match(cg, incoming, mark, |_| true) {
-        return;
-    }
-    let all_pure = incoming_owners_match(cg, incoming, mark, |e| e.pure_scalar);
-    for slot in take_phi_slots(cg, incoming, mark) {
-        cg.emit(format!("store i8* null, i8** {slot}"));
-    }
-    own(cg, out);
-    if all_pure {
-        mark_pure_scalar(cg, out);
-    }
-}
-
-fn take_phi_slots(cg: &mut Codegen, incoming: &[String], mark: usize) -> Vec<String> {
-    let Some(frame) = cg.arc.frames.last_mut() else {
-        return Vec::new();
-    };
-    let (moved, kept): (Vec<_>, Vec<_>) = frame
-        .split_off(mark.min(frame.len()))
-        .into_iter()
-        .partition(|e| e.name.is_none() && incoming.contains(&e.operand));
-    frame.extend(kept);
-    moved.into_iter().map(|e| e.slot).collect()
-}
-
-fn incoming_owners_match(
-    cg: &Codegen,
-    incoming: &[String],
-    mark: usize,
-    accepts: impl Fn(&Entry) -> bool,
-) -> bool {
-    cg.arc.frames.last().is_some_and(|f| {
-        incoming.iter().all(|op| {
-            f.iter()
-                .skip(mark)
-                .any(|e| e.operand == *op && e.name.is_none() && accepts(e))
-        })
-    })
 }
 
 /// What a ledger frame delimits. A statement's owners die when the statement

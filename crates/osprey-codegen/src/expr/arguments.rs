@@ -78,7 +78,7 @@ pub(super) fn call_builtin_with_values(
     name: &str,
     args: &[Value],
 ) -> Option<Result<Value>> {
-    if !has_value_form(name) {
+    if !has_value_form(name) || crate::builtin_values::shadowed(cg, name) {
         return None;
     }
     let arg = || args.first().cloned().unwrap_or_else(Value::unit);
@@ -286,7 +286,7 @@ pub(super) fn eval_arg(
                 crate::closure::emit_closure(cg, parameters, body, sig, *position)
             }
         }
-        (Expr::Identifier(n), Some(sig)) if cg.lookup(n).is_none() => {
+        (Expr::Identifier(n), Some(sig)) if ffi || cg.lookup(n).is_none() => {
             // Resolve a call alias (`let g = identity`) to its real target.
             let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
             if let Some((params, body, position)) = cg.lambda_def(&target).cloned() {
@@ -297,6 +297,11 @@ pub(super) fn eval_arg(
                         crate::closure::emit_closure(cg, &params, &body, sig, position)
                     }
                 });
+            }
+            // [BLOCK-SCOPE]: a nearer closure is never a same-named global declaration.
+            if ffi && (cg.lookup(&target).is_some() || cg.fn_ptr_locals.contains_key(&target)) {
+                let value = gen_expr(cg, expr)?;
+                return value_arg(cg, value, Some(sig), ffi);
             }
             // A GENERIC named function flowing into a concrete function-typed
             // slot: specialise it to the slot's ABI — its (params, body) emit
@@ -334,17 +339,38 @@ pub(super) fn eval_arg(
                     })
                 });
             }
-            if ffi && cg.fn_params.contains_key(&target) {
-                return Ok(fn_pointer(cg, &target));
+            if ffi && (cg.fn_params.contains_key(&target) || cg.extern_params.contains_key(&target))
+            {
+                return Ok(ffi_pointer(cg, &target));
             }
             let v = gen_expr(cg, expr)?;
-            Ok(list_arg_as_handle(cg, v, ffi))
+            value_arg(cg, v, Some(sig), ffi)
         }
         _ => {
             let v = gen_expr(cg, expr)?;
-            Ok(list_arg_as_handle(cg, v, ffi))
+            value_arg(cg, v, sig, ffi)
         }
     }
+}
+
+fn ffi_pointer(cg: &mut Codegen, name: &str) -> Value {
+    if cg.extern_params.contains_key(name) {
+        let parameters = cg.fn_param_ltypes(name).unwrap_or_default();
+        let parameters = crate::llty::comma_join(&parameters, ToString::to_string);
+        let result = cg.fn_ret_spelling(name);
+        cg.add_extern(format!("declare {result} @{name}({parameters})"));
+    }
+    fn_pointer(cg, name)
+}
+
+fn value_arg(cg: &mut Codegen, value: Value, sig: Option<&FnSig>, ffi: bool) -> Result<Value> {
+    if ffi && sig.is_some() {
+        // Implements [FFI-CALLBACKS]: closure data is never a C code pointer.
+        return Err(CodegenError::unsupported(
+            "a dynamic closure as an FFI callback (C requires a statically known env-free function)",
+        ));
+    }
+    Ok(list_arg_as_handle(cg, value, ffi))
 }
 
 /// Normalise a flat list-literal argument into an `OspreyList` handle before it

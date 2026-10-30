@@ -190,6 +190,8 @@ pub(crate) struct Codegen {
     /// site's argument representations ([`crate::monofn`]): the one form of
     /// polymorphism resolved by emitting a definition rather than by inlining.
     pub(crate) monofns: HashMap<String, crate::monofn::Instantiation>,
+    /// Source/target semantic ABI pairs, registered before recursive conversion bodies.
+    pub(crate) nominal_adapters: HashMap<(String, String), String>,
     /// Monotonic id naming each emitted instantiation.
     monofn_count: usize,
     /// Function-typed locals in the current function (a higher-order parameter
@@ -367,6 +369,7 @@ impl Codegen {
             inlining: HashSet::new(),
             inline_expansions: 0,
             monofns: HashMap::new(),
+            nominal_adapters: HashMap::new(),
             monofn_count: 0,
             fn_ptr_locals: HashMap::new(),
             fn_value_types: HashMap::new(),

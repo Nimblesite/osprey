@@ -4,7 +4,7 @@
 //! never returns ([GPU-DEVICE-FAULT]). A kernel without a device form declines
 //! by name, which the host honours and a selected device rejects.
 
-use super::{install, DeviceBody, DeviceKernel, Shape, SOURCE_POINTER};
+use super::{install, DeviceBody, DeviceFailure, DeviceKernel, Shape, SOURCE_POINTER};
 use crate::builder::Codegen;
 use crate::iter::Callback;
 use crate::llty::{LType, Value};
@@ -20,7 +20,7 @@ fn twin(
     cg: &Codegen,
     kernel: &Callback,
     slots: &[LType],
-) -> Result<(DeviceBody, Vec<Value>), String> {
+) -> Result<(DeviceBody, Vec<Value>), DeviceFailure> {
     match kernel {
         Callback::Extracted(extracted) => extracted
             .device
@@ -32,12 +32,13 @@ fn twin(
             if cg.device.defs.contains_key(&target) && cg.lookup(&target).is_none() {
                 named(cg, &target, slots).map(|body| (body, Vec::new()))
             } else {
-                Err(local_reason(cg, name, &target))
+                Err(local_reason(cg, name, &target).into())
             }
         }
         Callback::Lambda(parameters, body, ..) | Callback::Closed(_, parameters, body, ..) => {
             Err(capture_reason(cg, parameters, body)
-                .unwrap_or_else(|| "the kernel keeps its inlined host lowering".into()))
+                .unwrap_or_else(|| "the kernel keeps its inlined host lowering".into())
+                .into())
         }
         Callback::Value(..) => Err("a computed closure value has no device form".into()),
     }
@@ -81,7 +82,10 @@ fn describe_value(value: &Value) -> String {
     }
 }
 
-fn named(cg: &Codegen, name: &str, slots: &[LType]) -> Result<DeviceBody, String> {
+fn named(cg: &Codegen, name: &str, slots: &[LType]) -> Result<DeviceBody, DeviceFailure> {
+    if cg.extern_params.contains_key(name) {
+        return Err(DeviceFailure::Foreign(name.to_owned()));
+    }
     let (parameters, body) = cg
         .device
         .defs
@@ -101,8 +105,8 @@ pub(crate) fn launch_map(
     inputs: &[&Value],
     out: &Value,
     len: &str,
-) -> String {
-    match twin(cg, kernel, slots) {
+) -> crate::error::Result<String> {
+    Ok(match twin(cg, kernel, slots) {
         Ok((body, uniforms)) => {
             let installed = install(
                 cg,
@@ -119,8 +123,8 @@ pub(crate) fn launch_map(
             };
             emit(cg, &installed, &uniforms, &site)
         }
-        Err(reason) => declined(cg, &format!("{what} kernel: {reason}")),
-    }
+        Err(failure) => declined(cg, &format!("{what} kernel: {}", failure.decline_reason()?)),
+    })
 }
 
 /// Launch `kernel` as one thread folding `src` into the accumulator slot.
@@ -131,8 +135,8 @@ pub(crate) fn launch_fold(
     src: &Value,
     acc: &str,
     len: &str,
-) -> String {
-    match twin(cg, kernel, slots) {
+) -> crate::error::Result<String> {
+    Ok(match twin(cg, kernel, slots) {
         Ok((body, uniforms)) => {
             let installed = install(cg, &body, Shape::Fold);
             let site = Site {
@@ -143,8 +147,11 @@ pub(crate) fn launch_fold(
             };
             emit(cg, &installed, &uniforms, &site)
         }
-        Err(reason) => declined(cg, &format!("gpuFold kernel: {reason}")),
-    }
+        Err(failure) => declined(
+            cg,
+            &format!("gpuFold kernel: {}", failure.decline_reason()?),
+        ),
+    })
 }
 
 /// Ask the runtime about a launch with no device form: 0 under the host,

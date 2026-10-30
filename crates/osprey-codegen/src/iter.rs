@@ -251,12 +251,13 @@ pub(crate) fn acc_step(
         Some(inner) => crate::result::make_ok(cg, new, inner)?,
         None => crate::cast::coerce_to(cg, new, tmpl.ty)?,
     };
-    // Loop-carried slot rebind for a pointer accumulator: dup the incoming
-    // value BEFORE dropping the outgoing one (a combine returning `acc`
-    // unchanged must never free it). Keyed on the static type — an integer
-    // accumulator's bits must never be released [GC-ARC-PERCEUS].
+    // Move a fresh callback result into the loop slot; otherwise retain the
+    // borrowed incoming value before releasing the old accumulator. Returning
+    // `acc` unchanged must keep it alive. [GC-ARC-PERCEUS]
     if new.ty.is_managed_ptr() {
-        crate::arc::escape_retain(cg, &new);
+        if !crate::arc::consume_into_store(cg, &new.operand) {
+            crate::arc::escape_retain(cg, &new);
+        }
         let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
         crate::arc::release_operand(cg, &old);
     }

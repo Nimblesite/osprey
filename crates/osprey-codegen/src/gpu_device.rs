@@ -14,6 +14,7 @@
 //! A kernel the dialect cannot express keeps its host lowering and its launch
 //! site declines by name: the runtime runs the host loop when the host is
 //! selected and aborts when a device is ([GPU-BACKEND-DEVICE]).
+//! Foreign calls are rejected during code generation before a launch is emitted.
 
 mod dialect;
 mod emit;
@@ -99,6 +100,35 @@ pub(crate) struct DeviceBody {
     result_ty: Ty,
     params: Vec<Ty>,
     uniforms: Vec<Uniform>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum DeviceFailure {
+    Unsupported(String),
+    Foreign(String),
+}
+
+impl From<String> for DeviceFailure {
+    fn from(reason: String) -> Self {
+        Self::Unsupported(reason)
+    }
+}
+
+impl From<&str> for DeviceFailure {
+    fn from(reason: &str) -> Self {
+        Self::Unsupported(reason.to_owned())
+    }
+}
+
+impl DeviceFailure {
+    pub(super) fn decline_reason(self) -> crate::error::Result<String> {
+        match self {
+            Self::Unsupported(reason) => Ok(reason),
+            Self::Foreign(name) => Err(crate::error::CodegenError::unsupported(format!(
+                "foreign function `{name}` has no device form"
+            ))),
+        }
+    }
 }
 
 /// An installed entry point: its name and its uniforms' kinds, which the
@@ -190,7 +220,7 @@ pub(crate) fn compile(
     body: &Expr,
     slots: &[LType],
     captures: &[crate::closure::Capture],
-) -> Result<DeviceBody, String> {
+) -> Result<DeviceBody, DeviceFailure> {
     let params = slots
         .iter()
         .map(|slot| Ty::of(*slot).ok_or_else(|| format!("a {slot} slot is not a device word")))

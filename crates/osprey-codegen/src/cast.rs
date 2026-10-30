@@ -110,6 +110,7 @@ pub(crate) fn erase_result(cg: &mut Codegen, semantic: Value) -> Value {
 /// Result as a typed block (there is no emitted ABI boundary to erase here).
 pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: &ParamSig) -> Result<Value> {
     let v = crate::closure::adapt_to(cg, v, want)?;
+    let v = crate::aggregate::erasure::adapt(cg, v, want)?;
     let v = erase_list_elements(cg, v, want)?;
     let value = match want.result_inner {
         Some(inner) => coerce_result(cg, v, want, inner)?,
@@ -143,18 +144,27 @@ fn erased_result_payload(cg: &Codegen, value: &Value, want: &ParamSig) -> Option
     let payload = ParamSig::of(&cg.prog, args.first()?);
     let target = payload.inferred_type.as_ref()?;
     let owner = semantic_owner(cg, &payload);
-    let already_erased = owner.is_some() && value.payload_owner == owner;
-    (crate::types::ltype_of(target) != LType::Any && erased_container(target) && !already_erased)
-        .then_some(payload)
+    let already_erased =
+        owner.is_some() && value.payload_owner == owner && same_semantics(value, want);
+    let source = value
+        .element_type(osprey_types::names::RESULT)
+        .or_else(|| value.result_payload_type.clone());
+    let changing = erased_container(target) || source.as_ref().is_some_and(erased_container);
+    (crate::types::ltype_of(target) != LType::Any && changing && !already_erased).then_some(payload)
 }
 
 fn erased_container(ty: &osprey_types::Type) -> bool {
-    let osprey_types::Type::Con { name, args } = ty else {
-        return false;
-    };
-    name == osprey_types::names::ANY
-        || ((name == osprey_types::names::LIST || name == osprey_types::names::RESULT)
-            && args.first().is_some_and(erased_container))
+    crate::aggregate::erasure::contains_any(ty)
+}
+
+fn same_semantics(value: &Value, want: &ParamSig) -> bool {
+    value
+        .inferred_type
+        .as_ref()
+        .zip(want.inferred_type.as_ref())
+        .is_some_and(|(source, target)| {
+            crate::types::abi_spelling(source) == crate::types::abi_spelling(target)
+        })
 }
 
 fn erased_list_element(cg: &Codegen, value: &Value, want: &ParamSig) -> Option<ParamSig> {
@@ -162,11 +172,15 @@ fn erased_list_element(cg: &Codegen, value: &Value, want: &ParamSig) -> Option<P
         return None;
     };
     let element = args.first()?;
-    if name != osprey_types::names::LIST || !erased_container(element) {
+    let source = value.element_type(osprey_types::names::LIST);
+    let changing = erased_container(element) || source.as_ref().is_some_and(erased_container);
+    if name != osprey_types::names::LIST || !changing {
         return None;
     }
     let target = crate::types::elem_tag(&cg.prog, Some(element));
-    let already_erased = target.is_some() && crate::collections::tagged_elem(value) == target;
+    let already_erased = target.is_some()
+        && crate::collections::tagged_elem(value) == target
+        && same_semantics(value, want);
     (!already_erased).then(|| ParamSig::of(&cg.prog, element))
 }
 

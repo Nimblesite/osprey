@@ -159,6 +159,32 @@ fn user_functions_shadow_testing_builtins() {
 }
 
 #[test]
+fn extern_declarations_keep_their_identity_when_named_like_intrinsics() {
+    for name in ["print", "toString", "length", "abs"] {
+        let ir = module(&format!(
+            "extern fn {name}(value: int) -> int\nlet answer = {name}(41)\n"
+        ));
+        shows(&ir, &[&format!("call i64 @{name}(i64 41)")]);
+    }
+}
+
+#[test]
+fn extern_callbacks_and_iterators_keep_their_declared_identity() {
+    for name in ["print", "toString", "length", "abs"] {
+        for body in [
+            "let values = mapList([41], foreign)\n",
+            "let retained = foreign\nlet values = mapList([41], retained)\n",
+        ] {
+            let ir = module(&format!(
+                "extern fn {name}(value: int) -> int\n{}",
+                body.replace("foreign", name)
+            ));
+            shows(&ir, &[&format!("call i64 @{name}(i64")]);
+        }
+    }
+}
+
+#[test]
 fn error_results_render_visibly_and_handles_are_rejected() {
     // [TESTING-EQUALITY] a Result operand branches on its discriminant:
     // Success renders bare, Error renders as Error(<message>). Overflow
@@ -340,6 +366,15 @@ fn fold_with_a_record_accumulator_lowers_and_recovers_the_pointer() {
     );
     shows(&ir, &["inttoptr i64"]);
     testkit::contents(&ir, &[], &["@bump"]);
+}
+
+#[test]
+fn fold_transfers_owned_callback_results_but_retains_borrowed_accumulators() {
+    let ir = module("type Box = { n: int }\nfn fresh() = fold(range(0, 3), Box { n: 7 }, fn(b, _) => Box { n: b.n })\nfn borrowed() = fold(range(0, 3), Box { n: 7 }, fn(b, _) => b)\n");
+    let fresh = function_body(&ir, "define internal i8* @fresh()");
+    let borrowed = function_body(&ir, "define internal i8* @borrowed()");
+    assert_eq!(fresh.matches("call void @osp_retain(").count(), 1, "only the seed needs a retain; a newly owned callback result transfers to the loop slot:\n{fresh}");
+    assert_eq!(borrowed.matches("call void @osp_retain(").count(), 2, "a borrowed callback result must be retained before the old accumulator is released:\n{borrowed}");
 }
 
 #[test]

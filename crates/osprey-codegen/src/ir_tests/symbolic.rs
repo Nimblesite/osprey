@@ -2,6 +2,25 @@
 
 use super::*;
 
+#[test]
+fn ffi_callbacks_never_substitute_a_shadowed_global_declaration() {
+    let known = module("extern fn sink(callback: fn(int) -> int) -> int\nfn callback(value) = 1\nfn forward() = {\nlet callback = fn(value) => bitXor(value, 0)\nsink(callback)\n}\nlet answer = forward()\n");
+    shows(&known, &["bitcast i64 (i64)* @__callback_"]);
+    for body in [
+        "let callback = fn() => 1\nfn forward(callback) = sink(callback)\nlet answer = forward(fn() => 41)\n",
+        "let callback = fn() => 1\nfn forward(flag) = {\nlet callback = if flag { fn() => 41 } else { fn() => 42 }\nsink(callback)\n}\nlet answer = forward(true)\n",
+        "fn callback() = 1\nfn forward(callback) = sink(callback)\nlet answer = forward(fn() => 41)\n",
+        "extern fn callback() -> int\nfn forward(callback) = sink(callback)\nlet answer = forward(fn() => 41)\n",
+        "fn callback() = 1\nfn forward(flag) = {\nlet callback = if flag { fn() => 41 } else { fn() => 42 }\nsink(callback)\n}\nlet answer = forward(true)\n",
+        "extern fn callback() -> int\nfn forward(flag) = {\nlet callback = if flag { fn() => 41 } else { fn() => 42 }\nsink(callback)\n}\nlet answer = forward(true)\n",
+    ] {
+        let source = format!("extern fn sink(callback: fn() -> int) -> int\n{body}");
+        assert!(compile_err(&source)
+            .to_string()
+            .contains("a dynamic closure as an FFI callback"));
+    }
+}
+
 const DYNAMIC_EFFECT: &str = "effect Wide { control op: fn(int, string) -> int }\n\
      fn body() -> int !Wide = perform Wide.op(1, \"x\")\n\
      fn main() -> int { let r = {\n\

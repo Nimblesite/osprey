@@ -82,7 +82,8 @@ pub(crate) struct Extracted {
     /// The element/accumulator slots only; `uniforms` are prepended at the call.
     sig: FnSig,
     /// The kernel's device form, or why it has none [GPU-BACKEND-DEVICE].
-    pub(crate) device: std::result::Result<crate::gpu_device::DeviceBody, String>,
+    pub(crate) device:
+        std::result::Result<crate::gpu_device::DeviceBody, crate::gpu_device::DeviceFailure>,
 }
 
 /// The `LType` of the kernel's element parameter at `slot`, when a concrete
@@ -129,9 +130,8 @@ pub(crate) fn kernel_elem(
 /// [`callback_of`] resolves a named top-level function, an inline lambda, a
 /// block-bodied lambda, a let-bound lambda, a capturing closure local and a
 /// computed function value alike, and each spelling has a lowering in
-/// [`crate::iter::invoke`]. Syntax shape is never a gate here — the only
-/// rejection is the effect checker's purity proof [GPU-KERNEL-PURE], which has
-/// already run by the time codegen sees the call.
+/// [`crate::iter::invoke`]. The effect checker proves purity [GPU-KERNEL-PURE]
+/// before codegen; foreign C calls also require an ABI the device cannot carry.
 pub(crate) fn kernel_of(
     cg: &mut Codegen,
     args: &[Expr],

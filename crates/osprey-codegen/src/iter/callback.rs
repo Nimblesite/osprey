@@ -120,10 +120,7 @@ fn named(cg: &Codegen, name: &str) -> Callback {
 /// a callback lowers it as `fn(a) => builtin(a)` would: an ordinary builtin
 /// call per element. `None` for every other name.
 fn eta_builtin(cg: &Codegen, name: &str) -> Option<Callback> {
-    if crate::builtin_values::shadowed(cg, name)
-        || cg.extern_params.contains_key(name)
-        || crate::expr::has_value_form(name)
-    {
+    if crate::builtin_values::shadowed(cg, name) || crate::expr::has_value_form(name) {
         return None;
     }
     let osprey_types::Type::Fun { params, .. } = osprey_types::builtin_function_type(name)? else {

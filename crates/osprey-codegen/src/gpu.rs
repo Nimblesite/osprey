@@ -226,11 +226,11 @@ fn map_into(
     len: &str,
     elem: Option<LType>,
     what: &str,
-    launch: impl FnOnce(&mut Codegen, &Value) -> String,
+    launch: impl FnOnce(&mut Codegen, &Value) -> Result<String>,
     mut apply: impl FnMut(&mut Codegen, Value, &str) -> Result<Value>,
 ) -> Result<Value> {
     let out = buffer_alloc(cg, len, GPU_OWNER.to_string());
-    let done = launch(cg, &out);
+    let done = launch(cg, &out)?;
     let join = host_fallback(cg, &done);
     let mut mapped_ty = LType::I64;
     kernel_loop(cg, src, len, elem, |cg, arg, i| {
@@ -367,7 +367,7 @@ fn gpu_fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         &r.src,
         &r.acc,
         &r.len,
-    );
+    )?;
     let join = host_fallback(cg, &done);
     kernel_loop(cg, &r.src, &r.len, r.elem, |cg, arg, _| step(cg, &r, arg))?;
     rejoin(cg, &join);
