@@ -19,7 +19,8 @@
 // Pointer slots at runtime also carry rodata literals, static C strings,
 // foreign malloc/strdup memory,
 // borrowed FFI pointers, and NULL. osp_retain/osp_release therefore probe an
-// open-addressing registry of live ARC allocations FIRST; a probe miss means
+// exact live-allocation registry FIRST; WASM uses a bitmap mirror for the hot
+// membership check. A miss means
 // "not ours" and is a safe no-op. No IR special-casing, no FFI annotations —
 // non-ARC pointers are unmanaged by construction.
 //
@@ -59,7 +60,8 @@ static OspArcHdr *arc_hdr(void *body) {
   return (OspArcHdr *)(void *)((char *)body - OSP_ARC_HDR);
 }
 
-// --- live-allocation registry (open addressing, tombstone deletion) -----------
+// --- live-allocation registry (open addressing, tombstone deletion)
+// -----------
 
 #ifdef OSP_SYMBOLIC
 #define OSP_ARC_INIT_CAP ((size_t)16)
@@ -101,13 +103,12 @@ static inline void arc_lock(void) {}
 static inline void arc_unlock(void) {}
 #endif
 
-static uintptr_t *g_tab = NULL; // body addresses; 0 = empty, 1 = tombstone
-static size_t g_cap = 0;
-static size_t g_used = 0;    // non-empty slots: live + pooled + tombstones (grow trigger)
-static size_t g_live = 0;    // live objects (leak stats)
-static size_t g_present = 0; // non-tombstone slots: live + pooled (table sizing)
+#include "memory_arc_registry.h"
+
+static size_t g_live = 0; // live objects (leak stats)
 static size_t g_live_bytes = 0;
-static size_t g_peak_bytes = 0; // high-water mark of g_live_bytes (spike goldens)
+static size_t g_peak_bytes =
+    0; // high-water mark of g_live_bytes (spike goldens)
 static int g_debug_armed = 0;
 
 // Live-object accounting for the leak report [GC-ARC-PERCEUS], armed only by
@@ -135,85 +136,6 @@ static inline void arc_live_dec(size_t bytes) {
   }
 }
 
-static size_t arc_hash(uintptr_t body, size_t cap) {
-  uint64_t h = (uint64_t)(body >> 3) * 0x9E3779B97F4A7C15ull;
-  return (size_t)(h >> 32) & (cap - 1);
-}
-
-// The slot holding `body`, or NULL. Callers hold g_lock.
-static uintptr_t *arc_find(uintptr_t body) {
-  if (g_cap == 0 || body <= OSP_ARC_TOMB) {
-    return NULL;
-  }
-  size_t i = arc_hash(body, g_cap);
-  while (g_tab[i] != 0) {
-    if (g_tab[i] == body) {
-      return &g_tab[i];
-    }
-    i = (i + 1) & (g_cap - 1);
-  }
-  return NULL;
-}
-
-static void arc_place(uintptr_t *tab, size_t cap, uintptr_t body) {
-  size_t i = arc_hash(body, cap);
-  while (tab[i] > OSP_ARC_TOMB) {
-    i = (i + 1) & (cap - 1);
-  }
-  tab[i] = body;
-}
-
-// The capacity the PRESENT set needs: the smallest power of two at or above the
-// floor that keeps the load factor under 1/4. Sizing off `g_present` (live +
-// pooled entries, i.e. every non-tombstone slot) rather than off the old
-// capacity is what makes churn-heavy programs (allocate, free, repeat) cheap:
-// their tombstones fill the table without growing the present set, so doubling
-// on every rebuild would track TOTAL allocations instead of resident ones —
-// 10M short-lived tree nodes cost a 128 MiB table instead of 256 KiB. Pooled
-// blocks keep their slots (recycling pool below), so they count toward present.
-static size_t arc_target_cap(void) {
-  size_t cap = OSP_ARC_INIT_CAP;
-  while (cap < g_present * 4 && cap < ((size_t)-1) / 2) {
-    cap *= 2;
-  }
-  return cap;
-}
-
-// Rebuild at the live-set capacity (also compacts tombstones away).
-static int arc_grow(void) {
-  size_t cap = arc_target_cap();
-  uintptr_t *tab = (uintptr_t *)calloc(cap, sizeof(uintptr_t));
-  if (!tab) {
-    return 0;
-  }
-  for (size_t i = 0; i < g_cap; i++) {
-    if (g_tab[i] > OSP_ARC_TOMB) {
-      arc_place(tab, cap, g_tab[i]);
-    }
-  }
-  free(g_tab);
-  g_tab = tab;
-  g_cap = cap;
-  g_used = g_present; // rebuild dropped every tombstone; only present slots remain
-  return 1;
-}
-
-static void arc_insert(uintptr_t body) {
-  if (g_cap == 0 || (g_used + 1) * 4 >= g_cap * 3) {
-    if (!arc_grow()) {
-      return; // out of table memory: object is untracked (leaks, never freed)
-    }
-  }
-  arc_place(g_tab, g_cap, body);
-  g_used++;
-  g_present++;
-}
-
-static void arc_remove(uintptr_t *slot) {
-  *slot = OSP_ARC_TOMB;
-  g_present--;
-}
-
 // --- size-classed recycling pool ---------------------------------------------
 // The free-list mechanics live in memory_pool.h (shared with the tracing GC).
 // ARC's specialisation: a parked body KEEPS its registry slot (never
@@ -225,7 +147,8 @@ static void arc_remove(uintptr_t *slot) {
 // back to the malloc/free + registry-remove path (rare, large objects).
 static OspPool g_arc_pool; // cap_bytes 0 → OSP_POOL_DEFAULT_CAP_BYTES
 
-// --- leak accounting (OSPREY_ARC_DEBUG=1) --------------------------------------
+// --- leak accounting (OSPREY_ARC_DEBUG=1)
+// --------------------------------------
 
 // Kinds RAW..MASK_DIRECT (memory_hooks.h) — one histogram bucket per kind.
 #define OSP_ARC_NKINDS 6
@@ -233,7 +156,8 @@ static OspPool g_arc_pool; // cap_bytes 0 → OSP_POOL_DEFAULT_CAP_BYTES
 // OSPREY_ARC_DEBUG=2 additionally dumps every survivor — kind, size, rc, and a
 // printable preview of its first bytes. That triple is what actually identifies
 // a leak: a 40-byte MASK is a list header, a 24-byte MASK a map header, a RAW
-// whose preview reads as text is a runtime-minted string. Triage tool, not a log.
+// whose preview reads as text is a runtime-minted string. Triage tool, not a
+// log.
 #define OSP_ARC_PREVIEW 24
 
 static void arc_dump_object(const void *body, const OspArcHdr *h) {
@@ -300,234 +224,18 @@ static void arc_arm_debug(void) {
   }
 }
 
-// --- allocation ----------------------------------------------------------------
+#include "memory_arc_alloc.h"
 
-// The header records `size` in a uint32_t, so that is the hard per-object
-// ceiling. Rejecting above it does double duty: it keeps h->size EXACT (a
-// truncated size would make the drop walk read the wrong number of words and
-// g_live_bytes drift), and it makes `OSP_ARC_HDR + size` unable to wrap —
-// without the check, size = SIZE_MAX gives malloc(15), which SUCCEEDS and
-// returns a body sitting entirely outside the block.
-#define OSP_ARC_MAX_BODY ((size_t)UINT32_MAX)
+#include "memory_arc_drop.h"
 
-// A body the drop walk will READ as pointers must start zeroed: a field the
-// producer never stores would otherwise be walked as a garbage address. RAW
-// bodies are never walked, so they keep malloc's speed — and a caller that
-// PROVES it stores every masked word before the block can drop (`zero == 0`,
-// e.g. a constructor) skips the pre-zero too: ~12% of binarytrees was memset
-// re-zeroing recycled Node bodies the constructor overwrites in full.
-static void arc_init_body(void *body, int64_t meta, size_t size, int zero) {
-  OspArcHdr *h = arc_hdr(body);
-  h->meta = meta;
-  h->rc = 1;
-  h->size = (uint32_t)size;
-  if (zero && OSP_ARC_KIND(meta) != OSP_MEM_RAW) {
-    memset(body, 0, size);
-  }
-  arc_live_inc(size);
-}
-
-// Header'd, registered allocation. Callers hold g_lock. Recycles a same-sized
-// pooled block when one is parked (no malloc, no registry insert); otherwise
-// mallocs the ROUNDED capacity so the block is reusable by any request in its
-// bucket, and registers it.
-static void *arc_alloc_locked(size_t size, int64_t meta, int zero) {
-  arc_arm_debug();
-  if (size > OSP_ARC_MAX_BODY) {
-    return NULL;
-  }
-  size_t cap = osp_pool_cap(size);
-  if (cap <= OSP_POOL_MAX_CAP) {
-    void *body = osp_pool_pop(&g_arc_pool, cap);
-    if (body) {
-      arc_init_body(body, meta, size, zero); // arc_live_inc: slot already present
-      return body;
-    }
-  }
-  OspArcHdr *h = (OspArcHdr *)malloc(OSP_ARC_HDR + cap);
-  if (!h) {
-    return NULL;
-  }
-  void *body = (char *)h + OSP_ARC_HDR;
-  arc_insert((uintptr_t)body);
-  arc_init_body(body, meta, size, zero);
-  return body;
-}
-
-// Reclaim a dead body: park it on the recycling pool (slot kept, O(1)) when it
-// fits, else remove it from the registry and hand the block back to libc. The
-// hot path (small nodes) never probes the registry — the worklist already holds
-// the body, and a pooled slot is left in place for the next same-sized alloc.
-static void arc_free_or_recycle(void *body) {
-  OspArcHdr *h = arc_hdr(body);
-  arc_live_dec(h->size);
-  h->rc = 0; // pooled sentinel (leak report skips it); harmless if freed below
-  if (osp_pool_push(&g_arc_pool, body, osp_pool_cap(h->size))) {
-    return; // slot stays present; recycled in place for the next same-size alloc
-  }
-  uintptr_t *slot = arc_find((uintptr_t)body);
-  if (slot) {
-    arc_remove(slot); // g_present-- (g_live already decremented above)
-  }
-  free(h);
-}
-
-// --- release: worklist drop over the kind/mask layout ---------------------------
-
-// Bounded push-down list of bodies whose rc reached zero (no C recursion, no
-// re-entrant locking). On OOM the remaining children simply leak — sound.
-static uintptr_t *g_wl = NULL;
-static size_t g_wl_cap = 0;
-static size_t g_wl_top = 0;
-
-static void arc_wl_push(uintptr_t body) {
-  if (g_wl_top == g_wl_cap) {
-    size_t cap = g_wl_cap ? g_wl_cap * 2 : 256;
-    uintptr_t *wl = (uintptr_t *)realloc(g_wl, cap * sizeof(uintptr_t));
-    if (!wl) {
-      return; // drop the child on the floor: it leaks, never corrupts
-    }
-    g_wl = wl;
-    g_wl_cap = cap;
-  }
-  g_wl[g_wl_top++] = body;
-}
-
-// Decrement a candidate child; queue it for freeing when it hits zero.
-// A probe miss (foreign/rodata/NULL) or an immortal (rc<0) is a no-op.
-static void arc_drop_child(void *child) {
-  uintptr_t *slot = arc_find((uintptr_t)child);
-  if (!slot) {
-    return;
-  }
-  OspArcHdr *h = arc_hdr((void *)*slot);
-  if (h->rc < 0) {
-    return;
-  }
-  if (--h->rc == 0) {
-    arc_wl_push(*slot);
-  }
-}
-
-// MASK_DIRECT child drop: codegen proved every masked word of the parent is
-// NULL or an ARC body (a declared-union value can only come from a
-// constructor, and constructor blocks always allocate through
-// osp_alloc_tagged), so the registry probe above — which dominated
-// deep-structure drops at ~52% of binarytrees' CPU — collapses to a direct
-// header read. NULL (a zeroed never-stored slot) and immortals stay no-ops.
-static void arc_drop_child_direct(void *child) {
-  if (!child) {
-    return;
-  }
-  OspArcHdr *h = arc_hdr(child);
-  if (h->rc < 0) {
-    return;
-  }
-  if (--h->rc == 0) {
-    arc_wl_push((uintptr_t)child);
-  }
-}
-
-// Bodies are 16-byte aligned (16-byte header + malloc's 16-byte guarantee), so
-// every 8-byte word is aligned and a pointer field is a direct load. memcpy of
-// 8 bytes is worse than it looks: -D_FORTIFY_SOURCE routes it through
-// __memcpy_chk, which never inlines and tails into _platform_memmove — ~7% of
-// binarytrees wall was spent copying one pointer at a time in the drop walk.
-//
-// Layout masks address exact pointer-sized slots on each target. Never scan
-// neighboring scalar bytes: an integer may equal an unrelated live address.
-#if UINTPTR_MAX == UINT32_MAX
-static inline void *arc_load_child(const char *at) {
-  uint32_t bits;
-  memcpy(&bits, at, sizeof bits);
-  return (void *)(uintptr_t)bits;
-}
-#else
-static inline void *arc_load_child(const char *at) {
-  return *(void *const *)(const void *)at;
-}
-#endif
-
-static void arc_drop_masked(char *body, uint32_t size, uint64_t mask, int direct) {
-  const size_t stride = sizeof(void *);
-  for (unsigned i = 0; mask != 0 && ((size_t)i + 1) * stride <= size; i++, mask >>= 1) {
-    if (mask & 1) {
-      void *child = arc_load_child(body + (size_t)i * stride);
-      if (direct) {
-        arc_drop_child_direct(child);
-      } else {
-        arc_drop_child(child);
-      }
-    }
-  }
-}
-
-// Finalizer of extern-backed list headers (registered by the list runtime).
-static void (*g_finalizer)(void *body);
-
-// { i64 len, i8* data }: run an EXTERN header's finalizer while its words are
-// intact, release elements (PTR kind only), then the array. The body is
-// `sizeof(i64) + sizeof(pointer)` bytes: 16 natively, 12 on wasm32.
-static void arc_drop_list_hdr(char *body, uint32_t size, int kind) {
-  if (size < sizeof(int64_t) + sizeof(void *)) {
-    return;
-  }
-  if (kind == OSP_MEM_LIST_HDR_EXTERN && g_finalizer) {
-    g_finalizer(body);
-  }
-  int64_t len;
-  memcpy(&len, body, sizeof(len));
-  char *data = (char *)arc_load_child(body + 8);
-  if (data && kind == OSP_MEM_LIST_HDR_PTR) {
-    for (int64_t j = 0; j < len; j++) {
-      arc_drop_child(arc_load_child(data + (size_t)j * sizeof(void *)));
-    }
-  }
-  arc_drop_child(data);
-}
-
-// A flat array of managed pointers whose length the header's `size` carries —
-// the out-of-line internals of the value containers (a HAMT node's `children`,
-// a trie node's slots). The mask cannot express these: it is 56 bits wide and a
-// collision array is unbounded. Zero words (allocation slack) probe-miss, and
-// the slots are `int64_t` holds (8 bytes on every target), so a wasm32 4-byte
-// load reads the low half — where an address always lands [MEM-BACKENDS].
-static void arc_drop_ptr_array(char *body, uint32_t size) {
-  for (size_t off = 0; off + 8 <= size; off += 8) {
-    arc_drop_child(arc_load_child(body + off));
-  }
-}
-
-// Free `start`'s object and everything transitively released by it. Holds
-// g_lock. Bodies enter the worklist already confirmed managed (the initial
-// caller found the slot; arc_drop_child pushes only a slot it just matched and
-// decremented to zero), so no per-node re-probe is needed — the drop walk reads
-// the header directly and reclaims via arc_free_or_recycle.
-static void arc_release_zero_locked(uintptr_t start) {
-  g_wl_top = 0;
-  arc_wl_push(start);
-  while (g_wl_top > 0) {
-    uintptr_t body = g_wl[--g_wl_top];
-    OspArcHdr *h = arc_hdr((void *)body);
-    int kind = OSP_ARC_KIND(h->meta);
-    if (kind == OSP_MEM_MASK || kind == OSP_MEM_MASK_DIRECT) {
-      arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta),
-                      kind == OSP_MEM_MASK_DIRECT);
-    } else if (kind == OSP_MEM_LIST_HDR_PTR || kind == OSP_MEM_LIST_HDR_SCALAR ||
-               kind == OSP_MEM_LIST_HDR_EXTERN) {
-      arc_drop_list_hdr((char *)body, h->size, kind);
-    } else if (kind == OSP_MEM_PTR_ARRAY) {
-      arc_drop_ptr_array((char *)body, h->size);
-    }
-    arc_free_or_recycle((void *)body);
-  }
-}
-
-// --- public ABI ------------------------------------------------------------------
-// Implements the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
+// --- public ABI
+// ------------------------------------------------------------------ Implements
+// the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
 
 // Finalizer registration (memory_hooks.h).
-void osp_mem_set_finalizer(void (*finalize)(void *body)) { g_finalizer = finalize; }
+void osp_mem_set_finalizer(void (*finalize)(void *body)) {
+  g_finalizer = finalize;
+}
 
 // Link anchor AND unconditional arming (memory_hooks.h): the leak sentinel
 // must print under OSPREY_ARC_DEBUG even when the program never allocates —
@@ -563,9 +271,8 @@ void osp_retain(void *o) {
     return;
   }
   arc_lock();
-  uintptr_t *slot = arc_find((uintptr_t)o);
-  if (slot) {
-    OspArcHdr *h = arc_hdr((void *)*slot);
+  OspArcHdr *h = arc_lookup_body((uintptr_t)o);
+  if (h) {
     if (h->rc >= 0) {
       h->rc++;
     }
@@ -579,11 +286,10 @@ void osp_release(void *o) {
     return;
   }
   arc_lock();
-  uintptr_t *slot = arc_find((uintptr_t)o);
-  if (slot) {
-    OspArcHdr *h = arc_hdr((void *)*slot);
+  OspArcHdr *h = arc_lookup_body((uintptr_t)o);
+  if (h) {
     if (h->rc > 0 && --h->rc == 0) {
-      arc_release_zero_locked(*slot);
+      arc_release_zero_locked((uintptr_t)o);
     }
   }
   arc_unlock();
@@ -681,11 +387,12 @@ void osp_arc_peak_reset(void) {
   arc_unlock();
 }
 
-// --- allocation shim for the C runtime units (osp_arc_shim.h) ---------------------
-// Value-producing units (list/map/string/json) are recompiled with their libc
-// allocation calls redirected here, so runtime-minted strings and container
-// nodes carry headers and live in the registry (kind RAW until milestone M4
-// teaches the container ops their own dup/drop).
+// --- allocation shim for the C runtime units (osp_arc_shim.h)
+// --------------------- Value-producing units (list/map/string/json) are
+// recompiled with their libc allocation calls redirected here, so
+// runtime-minted strings and container nodes carry headers and live in the
+// registry (kind RAW until milestone M4 teaches the container ops their own
+// dup/drop).
 
 void *osp_arc_malloc(size_t size) {
   arc_lock();

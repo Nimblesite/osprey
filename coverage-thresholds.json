@@ -82,6 +82,18 @@
         "threshold": 95,
         "language": "c"
       },
+      "memory_arc_alloc": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "memory_arc_drop": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "memory_arc_registry": {
+        "threshold": 95,
+        "language": "c"
+      },
       "memory_gc": {
         "language": "c"
       },
@@ -248,7 +260,7 @@
         "threshold": 97.5
       },
       "native": {
-        "threshold": 96.5,
+        "threshold": 97.5,
         "language": "osprey"
       },
       "numpy": {
@@ -269,7 +281,7 @@
       },
       "safetensors": {
         "language": "osprey",
-        "threshold": 97.9
+        "threshold": 98.2
       },
       "scipy": {
         "language": "osprey",
@@ -277,7 +289,7 @@
       },
       "sklearn": {
         "language": "osprey",
-        "threshold": 98.6
+        "threshold": 99.2
       },
       "testing": {
         "threshold": 98.6,
@@ -292,7 +304,7 @@
         "threshold": 97.9
       },
       "torch": {
-        "threshold": 98.6,
+        "threshold": 98.8,
         "language": "osprey"
       },
       "transformers": {
