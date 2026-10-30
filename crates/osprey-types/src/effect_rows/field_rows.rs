@@ -264,8 +264,27 @@ impl Analyzer<'_> {
     pub(super) fn project_owned_field(&self, value: Value, field: &str) -> Option<Value> {
         let owner = value.field_owner.clone();
         let projected = super::project_field(value, field);
+        self.project_field_owner(owner.as_ref(), field, projected)
+    }
+
+    pub(super) fn project_borrowed_field(&self, value: &Value, field: &str) -> Option<Value> {
+        let projected = super::value_shapes::project_field_value(
+            value.fields.get(field).cloned(),
+            value.unknown_structure,
+            value.callable.clone(),
+            field,
+        );
+        self.project_field_owner(value.field_owner.as_ref(), field, projected)
+    }
+
+    fn project_field_owner(
+        &self,
+        owner: Option<&FieldInstance>,
+        field: &str,
+        projected: Option<Value>,
+    ) -> Option<Value> {
         match owner {
-            Some(owner) => self.index.owned_field_value(&owner, field, projected),
+            Some(owner) => self.index.owned_field_value(owner, field, projected),
             None => projected,
         }
     }
@@ -361,10 +380,11 @@ impl Analyzer<'_> {
         field: &str,
         projected: Option<Value>,
     ) -> Option<Value> {
-        match owner {
-            FieldOwner::Named(owner) => self.index.owned_field_value(owner, field, projected),
-            FieldOwner::Anonymous | FieldOwner::Unknown => projected,
-        }
+        let owner = match owner {
+            FieldOwner::Named(owner) => Some(owner),
+            FieldOwner::Anonymous | FieldOwner::Unknown => None,
+        };
+        self.project_field_owner(owner, field, projected)
     }
 
     /// Hold each function stored in a row-declared field to that row.

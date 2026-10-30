@@ -2,7 +2,7 @@
 use super::*;
 use crate::effect_rows::{
     expression_site, identity_tests::with_empty_analyzer, provenance::measured_clones,
-    value_shapes::value_shape, Instances,
+    value_shapes::value_shape, Instances, Projection,
 };
 
 #[test]
@@ -144,5 +144,75 @@ fn bind_lookup_types(analyzer: &Analyzer<'_>, expression: &Expr) {
                 .collect(),
         };
         let _ = types.insert(expression_site(target), ty);
+    }
+}
+
+#[test]
+fn borrowed_named_projection_preserves_generic_declared_rows_and_stored_effects() {
+    let source = "effect Read<T>{get:fn()->T}\neffect Alarm{ring:fn()->int}\n\
+                  type Control<T>={press:fn()->int ![Read<T>]}\n\
+                  type Other<T>={press:fn()->int ![]}\n";
+    let parsed = osprey_syntax::parse_program(source);
+    assert_eq!(parsed.errors, []);
+    let index = Index::collect(&parsed.program);
+    let instances = Instances::default();
+    let analyzer = analyzer(&index, &instances);
+    for owner in ["Control", "Other"] {
+        for argument in ["int", "string"] {
+            for stored in [None, Some(false), Some(true)] {
+                assert_declared_projection(&analyzer, owner, argument, stored);
+            }
+        }
+    }
+}
+
+fn assert_declared_projection(a: &Analyzer<'_>, owner: &str, argument: &str, stored: Option<bool>) {
+    let value = declared_projection_value(owner, argument, stored);
+    let path = [Projection::Field("press".to_owned())];
+    let actual = a.project_borrowed_path(&value, &path);
+    assert_eq!(actual, a.project_path(value.clone(), &path));
+    let invoked = actual
+        .and_then(|value| value.callable)
+        .map(|callable| a.invoke_with_values(callable, &[]));
+    assert_eq!(
+        invoked,
+        Some(expected_projection_row(owner, argument, stored))
+    );
+}
+
+fn declared_projection_value(owner: &str, argument: &str, stored: Option<bool>) -> Value {
+    Value {
+        field_owner: Some(FieldInstance {
+            name: owner.to_owned(),
+            arguments: vec![argument.to_owned()],
+        }),
+        fields: stored
+            .into_iter()
+            .map(|known| {
+                (
+                    "press".to_owned(),
+                    stored_projection_callback(argument, known),
+                )
+            })
+            .collect(),
+        ..Value::default()
+    }
+}
+
+fn stored_projection_callback(argument: &str, known: bool) -> Value {
+    if known {
+        Index::known_value(expected_projection_row("Other", argument, Some(true)))
+    } else {
+        Value::unknown_value()
+    }
+}
+
+fn expected_projection_row(owner: &str, argument: &str, stored: Option<bool>) -> Summary {
+    let declared =
+        (owner == "Control").then(|| Requirement::new("Read", "get", vec![argument.to_owned()]));
+    let concrete = (stored == Some(true)).then(|| Requirement::new("Alarm", "ring", Vec::new()));
+    Summary {
+        required: declared.into_iter().chain(concrete).collect(),
+        ..Summary::default()
     }
 }

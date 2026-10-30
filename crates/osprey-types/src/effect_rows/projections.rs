@@ -49,11 +49,22 @@ impl Analyzer<'_> {
             match borrowed_structural_child(selected, projection) {
                 ProjectionChild::Borrowed(child) => selected = child,
                 ProjectionChild::Missing => return None,
-                ProjectionChild::Owned => return self.project_path(selected.clone(), remaining),
+                ProjectionChild::Owned => {
+                    return self.project_borrowed_fallback(selected, remaining);
+                }
             }
             remaining = rest;
         }
         Some(selected.clone())
+    }
+
+    fn project_borrowed_fallback(&self, value: &Value, path: &[Projection]) -> Option<Value> {
+        match path.split_first() {
+            Some((Projection::Field(field), remaining)) => self
+                .project_borrowed_field(value, field)
+                .and_then(|projected| self.project_path(projected, remaining)),
+            _ => self.project_path(value.clone(), path),
+        }
     }
 
     pub(super) fn project_path(&self, mut value: Value, path: &[Projection]) -> Option<Value> {
@@ -300,12 +311,10 @@ fn borrowed_structural_projection_clones_only_the_selected_subtree() {
                 .collect(),
             ..Value::default()
         };
-        let path = [Projection::Field("selected".to_owned())];
-        let expected = analyzer.project_path(value.clone(), &path);
-        let (actual, clones) =
-            super::provenance::measured_clones(|| analyzer.project_borrowed_path(&value, &path));
-        assert_eq!(actual, expected);
-        assert_eq!(clones, 1, "only selected subtree may be cloned");
+        let projection = Projection::Field("selected".to_owned());
+        for value in [value.clone(), projection_metadata(value, 10)] {
+            assert_projection_budget(&analyzer, &value, projection.clone(), 1);
+        }
     });
 }
 

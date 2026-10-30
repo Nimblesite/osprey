@@ -5,11 +5,24 @@ use super::{
 };
 
 pub(super) fn project_field(mut value: Value, field: &str) -> Option<Value> {
-    let mut projected = value.fields.remove(field);
-    project_unknown_structure(value.unknown_structure, &mut projected);
-    project_callable(
+    project_field_value(
+        value.fields.remove(field),
+        value.unknown_structure,
         value.callable,
-        Projection::Field(field.to_string()),
+        field,
+    )
+}
+
+pub(super) fn project_field_value(
+    mut projected: Option<Value>,
+    unknown: bool,
+    callable: Option<Callable>,
+    field: &str,
+) -> Option<Value> {
+    project_unknown_structure(unknown, &mut projected);
+    project_callable(
+        callable,
+        Projection::Field(field.to_owned()),
         &mut projected,
     );
     projected
