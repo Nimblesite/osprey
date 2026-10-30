@@ -3,6 +3,7 @@
 export const EDITOR_SCRIPT = String.raw`
   let lastCaret = "";
   let editorPositions = new Map();
+  let focusHighwater = new Map();
 
   function editorMirror(element) {
     return element.parentElement.querySelector(".osp-editor-mirror");
@@ -34,12 +35,18 @@ export const EDITOR_SCRIPT = String.raw`
   }
 
   function authoredCaret(element, previous) {
-    const current = { value: element.value, cursor: Number(element.dataset.cursorByte) };
-    editorPositions.set(fieldSignature(element), current);
-    if (pendingEdits.has(fieldSignature(element)) || document.activeElement === element) return;
+    const signature = fieldSignature(element);
+    const current = { value: element.value, cursor: Number(element.dataset.cursorByte), focusEpoch: Number(element.dataset.focusEpoch || 0) };
+    editorPositions.set(signature, current);
+    const highest = focusHighwater.get(signature);
+    const requested = highest !== undefined && current.focusEpoch > highest;
+    focusHighwater.set(signature, highest === undefined ? current.focusEpoch : Math.max(highest, current.focusEpoch));
+    if (pendingEdits.has(signature) || (document.activeElement === element && !requested)) return;
     const bytes = new TextEncoder().encode(current.value);
     if (current.cursor > bytes.length) throw new Error("The authored editor caret exceeds its source");
     const prefix = new TextDecoder("utf-8", { fatal: true }).decode(bytes.slice(0, current.cursor));
+    const dialog = document.querySelector("[data-native-dialog]");
+    if (requested && document.hasFocus() && (!dialog || dialog.contains(element))) element.focus();
     element.setSelectionRange(prefix.length, prefix.length);
     if (!previous || previous.value !== current.value || previous.cursor !== current.cursor) revealEditorCaret(element, prefix);
   }
@@ -79,6 +86,7 @@ export const EDITOR_SCRIPT = String.raw`
         mirror.scrollLeft = element.scrollLeft;
       });
     });
+    focusHighwater.forEach(function (_, signature) { if (!editorPositions.has(signature)) focusHighwater.delete(signature); });
     queueMicrotask(reportCaret);
   }
 

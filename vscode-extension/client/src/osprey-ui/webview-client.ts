@@ -5,6 +5,7 @@
 
 import { EDITOR_SCRIPT } from "./editor-client";
 import { BOARD_SCRIPT } from "./board-client";
+import { ACTION_SCRIPT } from "./action-client";
 
 export const WEBVIEW_SCRIPT = `
 (function () {
@@ -19,6 +20,10 @@ export const WEBVIEW_SCRIPT = `
   let hostDiagnostics = [];
   let runtimeBusy = false;
   let runtimeTracked = false;
+  let pressedAction = null;
+  let pressedPointerId = null;
+  let cancelledAction = null;
+  let pendingActionPatch = null;
   const pausedControls = new Map();
 
   function updateBusy() {
@@ -28,6 +33,7 @@ export const WEBVIEW_SCRIPT = `
     if (!root) return;
     root.setAttribute("aria-busy", String(busy));
     root.querySelectorAll("button, select").forEach(function (control) {
+      if (control === pressedAction) return;
       if (runtimeBusy) {
         if (!pausedControls.has(control)) pausedControls.set(control, control.disabled);
         control.disabled = true;
@@ -65,7 +71,7 @@ export const WEBVIEW_SCRIPT = `
   }
 
   function postAfterFields(control, value) {
-    if (pendingEdits.size === 0) return false;
+    if (pendingEdits.size === 0 && !pendingActionPatch) return false;
     const pending = flushFields();
     pending.forEach(function (_edit, signature) { sendField(signature); });
     const id = ++editSequence;
@@ -178,6 +184,8 @@ export const WEBVIEW_SCRIPT = `
   }
 
   function saveFocus() {
+    savedFocus = null;
+    if (!document.hasFocus()) return;
     const active = document.activeElement;
     if (!active || !active.getAttribute) return;
     const id = active.getAttribute("data-focus");
@@ -193,6 +201,7 @@ export const WEBVIEW_SCRIPT = `
   let dialogReturnFocus = null;
   function focusDialog() {
     const dialog = document.querySelector("[data-native-dialog]");
+    if (!document.hasFocus()) { if (!dialog) dialogReturnFocus = null; return; }
     if (dialog) {
       if (dialogReturnFocus === null) dialogReturnFocus = document.activeElement?.getAttribute("data-focus") || "";
       if (!dialog.contains(document.activeElement)) (dialog.querySelector("button, input, textarea, select, a[href]") || dialog).focus();
@@ -259,7 +268,10 @@ export const WEBVIEW_SCRIPT = `
     });
   }
 
+${ACTION_SCRIPT}
+
   document.addEventListener("click", function (event) {
+    if (event instanceof PointerEvent && event.detail !== 0 && pressedPointerId !== null && event.pointerId !== pressedPointerId) return;
     const external = closest(event.target, "a[data-external]");
     if (external) {
       event.preventDefault();
@@ -268,9 +280,11 @@ export const WEBVIEW_SCRIPT = `
     }
     closeMenus();
     const element = closest(event.target, "[data-event-region]");
+    if (element && element === cancelledAction && event.detail !== 0) { releaseAction(); return; }
     if (!element || element.hasAttribute("data-splitter") || element.hasAttribute("data-native-dialog")) return;
     if (element.matches("input, textarea, select, canvas")) return;
     postEvent(element);
+    releaseAction();
   });
 
   document.addEventListener("input", function (event) {
@@ -390,7 +404,10 @@ export const WEBVIEW_SCRIPT = `
     saveFocus();
     const scroll = captureScroll();
     const root = document.getElementById("osprey-root");
-    if (root) root.innerHTML = message.html;
+    if (root && (!pressedAction || !patchHeldAction(root, message.html))) {
+      if (pressedAction) releaseAction();
+      root.innerHTML = message.html;
+    }
     restoreFocus();
     focusDialog();
     rebasePendingEdits(pending);
@@ -408,6 +425,7 @@ export const WEBVIEW_SCRIPT = `
     if (message.type === "render") { renderMessage(message); return; }
     if (message.type === "edit-result") { acknowledgeEdit(message); return; }
     if (message.type === "fatal") {
+      cancelAction();
       flushFields();
       pendingEdits.clear();
       runtimeBusy = false;

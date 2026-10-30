@@ -57,6 +57,7 @@ export function renderEditor(node: Record<string, unknown>, control: string, id:
   const annotations = marks(node, lines.length);
   const mirror = lines.map((text, at) => line(text, at + 1, annotations)).join("");
   const inline = node.inline === true;
-  const textarea = `<textarea aria-label="${escapeHtml(text(node, "label"))}" placeholder="${inline ? escapeHtml(text(node, "label")) : ""}" spellcheck="false" data-native-editor="true" data-commit="edit" data-cursor-byte="${offset(node, "cursor")}" data-place-ordinal="${offset(node, "placeEvent")}" aria-describedby="${escapeHtml(id)}"${control}>${escapeHtml(value)}</textarea>`;
+  const focusEpoch = node.focusEpoch === undefined ? 0 : offset(node, "focusEpoch");
+  const textarea = `<textarea aria-label="${escapeHtml(text(node, "label"))}" placeholder="${inline ? escapeHtml(text(node, "label")) : ""}" spellcheck="false" data-native-editor="true" data-commit="edit" data-cursor-byte="${offset(node, "cursor")}" data-focus-epoch="${focusEpoch}" data-place-ordinal="${offset(node, "placeEvent")}" aria-describedby="${escapeHtml(id)}"${control}>${escapeHtml(value)}</textarea>`;
   return `<div class="osp-editor${inline ? " osp-editor-inline" : ""}"><label><span class="osp-editor-label">${escapeHtml(text(node, "label"))}</span><div class="osp-editor-surface"><pre class="osp-editor-mirror" aria-hidden="true">${mirror}</pre>${textarea}</div></label>${feedback(annotations, id)}</div>`;
 }
