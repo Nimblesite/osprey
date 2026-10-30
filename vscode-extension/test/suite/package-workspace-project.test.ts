@@ -55,9 +55,10 @@ function renderedHtml(messages: sinon.SinonSpy): string {
     .filter((message) => message.type === "render").at(-1)?.html ?? "";
 }
 
-async function observeWorkspace(command: string, folder: Uri, panels: sinon.SinonSpy): Promise<WebviewPanel> {
-  await commands.executeCommand(command, folder);
-  const panel = panels.lastCall.returnValue as WebviewPanel;
+async function observeWorkspace(command: string | (() => Promise<void>), folder: Uri, panels: sinon.SinonSpy): Promise<WebviewPanel> {
+  if (typeof command === "string") await commands.executeCommand(command, folder);
+  else await command();
+  const panel = await waitFor(() => panels.lastCall?.returnValue as WebviewPanel | undefined, Boolean, 8000, "sidebar command creates a panel");
   assert.ok(panel, "activated command creates a real webview panel");
   const messages = sinon.spy(panel.webview, "postMessage");
   await waitFor(() => renderedHtml(messages), (html) => html.includes("Installed counts unavailable") && html.includes("No lockfile is available."),
@@ -99,11 +100,25 @@ async function withCatalog(run: (reads: () => number) => Promise<void>, listing:
     await new Promise<void>((resolve) => fixture.server.close(() => resolve()));
   }
 }
+// Exercises [EDITOR-PACKAGE-ACTION] through the actual VS Code toolbar.
+async function openPackagesFromSidebar(folder: { name: string; uri: Uri }, panels: sinon.SinonSpy): Promise<WebviewPanel> {
+  const browser = await connectEditorBrowser();
+  try {
+    await commands.executeCommand("workbench.view.extension.ospreyDebug");
+    const selected = { label: folder.name, uri: folder.uri };
+    sinon.stub(window, "showQuickPick").resolves(selected);
+    const page = browser.contexts().flatMap(context => context.pages()).find(page => page.url().includes("workbench"));
+    assert.ok(page, "real VS Code workbench page");
+    return await observeWorkspace(async () => { await page.getByRole("button", { name: "Manage Packages", exact: true }).first().click(); }, folder.uri, panels);
+  } finally { await browser.close(); }
+}
 
 async function verifyPanelLifecycle(reads: () => number, panels: sinon.SinonSpy): Promise<void> {
   const folders = workspace.workspaceFolders ?? [];
   assert.strictEqual(folders.length, 2, "runner supplies two isolated real projects");
-  const first = await observeWorkspace("osprey.packages.add", folders[0].uri, panels);
+  const first = await openPackagesFromSidebar(folders[0], panels);
+  await commands.executeCommand("osprey.packages.add", folders[0].uri);
+  assert.strictEqual(panels.callCount, 1, "Add reuses the package manager opened from the sidebar");
   await waitFor(reads, (count) => count > 0, 8000, "real WASM capability fetches catalog");
   await commands.executeCommand("osprey.packages.remove", folders[0].uri);
   assert.strictEqual(panels.callCount, 1, "same project reuses its live panel");
@@ -117,15 +132,13 @@ async function verifyPanelLifecycle(reads: () => number, panels: sinon.SinonSpy)
 
 suite("package workspace real host lifecycle", () => {
   teardown(() => sinon.restore());
-  test("real WASM loads a project, reuses its panel and switches projects", async () => {
+  test("sidebar Manage Packages button opens real WASM, reuses its panel and switches projects", async () => {
     await activateWithServer();
     const panels = sinon.spy(window, "createWebviewPanel");
     try { await withCatalog((reads) => verifyPanelLifecycle(reads, panels)); }
     finally { for (const call of panels.getCalls()) (call.returnValue as WebviewPanel).dispose(); }
   });
 });
-
-
 
 const browserCatalog = { packages: [{ key: "@demo/greeting", releases: [
   { epoch: 1, ordinal: 1, digest: `sha256:${"a".repeat(64)}` },
@@ -212,7 +225,6 @@ suite("package workspace browser interaction", () => {
     });
   });
 });
-
 
 async function installFromBrowser(frame: Frame): Promise<void> {
   await frame.getByRole("tab", { name: "Browse registry" }).click();

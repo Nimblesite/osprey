@@ -4,6 +4,7 @@ Active plans track unfinished language, runtime, tooling and ecosystem work. Ret
 
 | # | Plan | Subsystem | Status today | Scope |
 |---|------|-----------|--------------|-------|
+| [Module explorer](module-explorer.md) | Compiler-backed module and dependency explorer | editor/compiler/packages | Planned; no implementation claimed. Reuses the existing Osprey sidebar and package manager. | Medium |
 | ~~0002~~ | Generic functions & lambdas as values | codegen | Retired. Generic functions and function values specialize at concrete call sites; tagged collection returns preserve their element types. A still-generic lambda without a concrete use remains rejected. Contract and evidence: [spec 0004](../specs/language/0004-TypeSystem.md#generics-and-variance). | — |
 | ~~0004~~ | Collection / map stdlib surface | stdlib/codegen | Retired. Prefixed collection/map operations and managed element types are implemented; the proposed bare-name API was withdrawn. The current surface is [spec 0012](../specs/runtime/0012-Built-InFunctions.md), enforced by builtin documentation and runtime tests. | — |
 | [0007](0007-fiber-select.md) | `select` over channels | syntax/runtime | Reserved syntax; type checking and direct-AST code generation reject it. Runtime channel multiplexing remains unimplemented. | Medium |

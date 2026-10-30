@@ -240,7 +240,7 @@
         "threshold": 100.0
       },
       "jinja2": {
-        "threshold": 97.1,
+        "threshold": 97.3,
         "language": "osprey"
       },
       "micrograd": {
@@ -253,10 +253,10 @@
       },
       "numpy": {
         "language": "osprey",
-        "threshold": 97.9
+        "threshold": 98.0
       },
       "re": {
-        "threshold": 90.2,
+        "threshold": 90.4,
         "language": "osprey"
       },
       "rouge_score": {
@@ -269,7 +269,7 @@
       },
       "safetensors": {
         "language": "osprey",
-        "threshold": 97.6
+        "threshold": 97.9
       },
       "scipy": {
         "language": "osprey",
@@ -285,14 +285,14 @@
       },
       "tiktoken": {
         "language": "osprey",
-        "threshold": 95.1
+        "threshold": 95.3
       },
       "tokenizers": {
         "language": "osprey",
         "threshold": 97.9
       },
       "torch": {
-        "threshold": 96.1,
+        "threshold": 98.6,
         "language": "osprey"
       },
       "transformers": {

@@ -124,7 +124,8 @@
       {
         "command": "osprey.packages.open",
         "title": "Manage Packages",
-        "category": "Osprey"
+        "category": "Osprey",
+        "icon": "$(package)"
       },
       {
         "command": "osprey.compile",
@@ -378,6 +379,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "osprey.packages.open",
+          "when": "view == ospreyDebugView || view == osprey.profiler.processes",
+          "group": "navigation@0"
+        },
         {
           "command": "osprey.profiler.profileCurrentFileCpu",
           "when": "view == osprey.profiler.processes && !osprey.profiler.cpuBusy",
