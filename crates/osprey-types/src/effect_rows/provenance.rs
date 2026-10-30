@@ -12,7 +12,7 @@ pub(super) use sorted_join_tests::{measured_clones, CloneProbe};
 
 pub(super) fn map_alternatives(choices: &mut Vec<Callable>, mut visit: impl FnMut(&mut Value)) {
     for choice in choices.iter_mut() {
-        let mut branch = Value::from_callable(choice.clone());
+        let mut branch = Value::from_callable(std::mem::replace(choice, Callable::Unknown));
         visit(&mut branch);
         *choice = branch.callable.unwrap_or(Callable::Unknown);
     }
@@ -165,7 +165,8 @@ pub(super) fn widen_callable(
             mut projection,
         } if level < MAX_PROVENANCE_DEPTH && projection.len() < MAX_PROVENANCE_DEPTH => {
             map_projection_values(&mut projection, |value| {
-                *value = widen_value_budget(value.clone(), depth + CALL_NESTING_STEP, budget);
+                *value =
+                    widen_value_budget(std::mem::take(value), depth + CALL_NESTING_STEP, budget);
             });
             Callable::Parameter {
                 level,
@@ -291,10 +292,8 @@ pub(super) fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
         *slot = Some(existing);
         return;
     }
-    if let Some(merged) = merged_projection(&existing, &incoming) {
-        *slot = Some(merged);
-        return;
-    }
+    // A common-prefix Deep loses concrete fields and includes unselected
+    // siblings. Keep each exact projection until the existing bounds apply.
     *slot = Some(joined_alternatives(existing, incoming));
 }
 
@@ -380,78 +379,6 @@ fn collect_known_effects(callable: &Callable, summary: &mut Summary) {
         }
         Callable::Parameter { .. } | Callable::Unknown => {}
     }
-}
-
-/// Both sides project the same parameter of the same scope: alternatives over
-/// one aggregate, not independent callables.
-fn same_parameter<'a>(
-    existing: &'a Callable,
-    incoming: &'a Callable,
-) -> Option<(usize, usize, &'a [Projection], &'a [Projection])> {
-    match (existing, incoming) {
-        (
-            Callable::Parameter {
-                level,
-                index,
-                projection,
-            },
-            Callable::Parameter {
-                level: other_level,
-                index: other_index,
-                projection: other,
-            },
-        ) if level == other_level && index == other_index => {
-            Some((*level, *index, projection, other))
-        }
-        _ => None,
-    }
-}
-
-/// Two projections of the SAME parameter are control-flow alternatives over
-/// one aggregate (a union's arms, a recursion's levels). Summarise them as
-/// their common prefix plus one `Deep` step: every callable either alternative
-/// could reach is stored below that prefix, so the merge stays sound and
-/// finite where tracking both paths would grow one level per fixed-point
-/// iteration. Implements [EFFECTS-PROVENANCE].
-fn merged_projection(existing: &Callable, incoming: &Callable) -> Option<Callable> {
-    let (level, index, left, right) = same_parameter(existing, incoming)?;
-    let prefix = common_prefix(left, right);
-    (tails_deep_summarizable(left, prefix) && tails_deep_summarizable(right, prefix)).then(|| {
-        Callable::Parameter {
-            level,
-            index,
-            projection: common_deep_summary(left, prefix),
-        }
-    })
-}
-
-/// A tail a `Deep` step can summarise: structural steps traverse stored data,
-/// and `Deep` itself is already the summary. A call-shaped step (`Method`,
-/// `Returned`, `Handled`) produces a callable no storage path reaches, so
-/// summarising across one would drop its provenance.
-fn tails_deep_summarizable(path: &[Projection], prefix: usize) -> bool {
-    path.iter()
-        .skip(prefix)
-        .all(|part| part.is_structural() || matches!(part, Projection::Deep))
-}
-
-/// The length of the common prefix of two paths.
-fn common_prefix(left: &[Projection], right: &[Projection]) -> usize {
-    left.iter()
-        .zip(right.iter())
-        .take_while(|(left, right)| left == right)
-        .count()
-}
-
-/// The common structural prefix of two paths followed by one `Deep` step: the
-/// finite summary of every callable stored below it. Implements
-/// [EFFECTS-PROVENANCE].
-fn common_deep_summary(left: &[Projection], prefix: usize) -> Vec<Projection> {
-    left.iter()
-        .take(prefix)
-        .cloned()
-        .chain([Projection::Deep])
-        .collect()
 }
 
 fn compare_choices(left: &Callable, right: &Callable) -> std::cmp::Ordering {

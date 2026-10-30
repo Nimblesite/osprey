@@ -57,11 +57,8 @@ pub(super) fn project_deep(value: &Value) -> Value {
 }
 
 fn collect_deep(value: &Value, merged: &mut Value) {
-    let mut leaf = value.clone();
-    leaf.fields = BTreeMap::new();
-    leaf.element = None;
-    leaf.result_payload = None;
-    leaf.fiber_payload = None;
+    let mut leaf = leaf_metadata(value);
+    deepen_symbolic(&mut leaf);
     merged.union(leaf);
     let nested = value
         .fields
@@ -71,6 +68,37 @@ fn collect_deep(value: &Value, merged: &mut Value) {
         .chain(value.fiber_payload.as_deref());
     for nested in nested {
         collect_deep(nested, merged);
+    }
+}
+
+fn deepen_symbolic(value: &mut Value) {
+    match &mut value.callable {
+        Some(Callable::Parameter { projection, .. }) => {
+            *projection = extend_projection(std::mem::take(projection), Projection::Deep);
+        }
+        Some(Callable::Alternatives(choices)) => {
+            super::provenance::map_alternatives(choices, deepen_symbolic);
+        }
+        _ => {}
+    }
+}
+
+fn leaf_metadata(value: &Value) -> Value {
+    Value {
+        #[cfg(test)]
+        clone_probe: super::provenance::CloneProbe,
+        callable: value.callable.clone(),
+        field_owner: value.field_owner.clone(),
+        empty_case: value.empty_case,
+        unknown_structure: value.unknown_structure,
+        performed: value.performed.clone(),
+        field_names: value.field_names.clone(),
+        fields: BTreeMap::new(),
+        element: None,
+        result_payload: None,
+        fiber_payload: None,
+        channel_sites: value.channel_sites.clone(),
+        deferred: value.deferred.clone(),
     }
 }
 
@@ -169,12 +197,18 @@ fn subsumed_by_deep(projection: &[Projection], next: &Projection) -> bool {
 /// every later step is structural too. `None` means no cycle: the path is
 /// already finite and stays verbatim.
 fn structural_cycle(projection: &[Projection]) -> Option<usize> {
-    (0..projection.len())
-        .filter(|&start| {
-            projection
-                .get(start..)
-                .is_some_and(|steps| steps.iter().all(Projection::is_structural))
-        })
+    structural_cycle_with(projection, Projection::is_structural)
+}
+
+fn structural_cycle_with(
+    projection: &[Projection],
+    is_structural: impl Fn(&Projection) -> bool,
+) -> Option<usize> {
+    let suffix = projection
+        .iter()
+        .rposition(|step| !is_structural(step))
+        .map_or(0, |last| last + 1);
+    (suffix..projection.len())
         .flat_map(|start| (1..=(projection.len() - start) / 2).map(move |len| (start, len)))
         .find(|&(start, len)| {
             projection.get(start..start + len) == projection.get(start + len..start + 2 * len)
@@ -360,4 +394,90 @@ pub(super) fn value_shape(ty: &crate::ty::Type) -> Option<Value> {
         }
         _ => None,
     }
+}
+
+#[cfg(test)]
+#[test]
+fn structural_cycle_checks_each_suffix_step_at_most_once() {
+    let projection = (0..super::MAX_PROVENANCE_DEPTH)
+        .map(|index| Projection::Field(index.to_string()))
+        .collect::<Vec<_>>();
+    let checks = std::cell::Cell::new(0);
+    let cycle = structural_cycle_with(&projection, |step| {
+        checks.set(checks.get() + 1);
+        step.is_structural()
+    });
+    assert_eq!(cycle, None);
+    let observed = checks.get();
+    let length = projection.len();
+    assert!(
+        observed <= length,
+        "{observed} suffix checks for {length} steps"
+    );
+}
+
+#[cfg(test)]
+#[test]
+fn structural_cycle_preserves_earliest_start_then_shortest_cycle() {
+    let field = |name: &str| Projection::Field(name.to_owned());
+    assert_eq!(structural_cycle(&[]), None);
+    assert_eq!(structural_cycle(&[field("a"), field("b")]), None);
+    assert_eq!(structural_cycle(&[field("a"), field("a")]), Some(1));
+    let steps = [field("a"), field("b"), field("b")];
+    assert_eq!(structural_cycle(&steps), Some(2));
+    let repeated = steps.iter().chain(&steps).cloned().collect::<Vec<_>>();
+    assert_eq!(structural_cycle(&repeated), Some(3));
+}
+
+#[cfg(test)]
+#[test]
+fn structural_cycle_keeps_call_shaped_suffix_barriers() {
+    for barrier in [
+        Projection::Returned(Box::default()),
+        Projection::Handled(BTreeMap::new()),
+        Projection::Deep,
+    ] {
+        let mut steps = vec![Projection::Element, Projection::Element, barrier];
+        assert_eq!(structural_cycle(&steps), None);
+        steps.extend([Projection::SuccessValue, Projection::SuccessValue]);
+        assert_eq!(structural_cycle(&steps), Some(4));
+    }
+}
+
+#[cfg(test)]
+fn leaf_test_metadata(owner: super::field_rows::FieldInstance) -> Value {
+    let required = Requirement::new("Audit", "write", Vec::new());
+    Value {
+        field_owner: Some(owner),
+        empty_case: Some(super::EmptyCase::Collection),
+        unknown_structure: true,
+        performed: BTreeSet::from([required.clone()]),
+        field_names: Some(BTreeSet::from(["child".to_owned()])),
+        channel_sites: BTreeSet::from([9]),
+        deferred: Summary {
+            required: BTreeSet::from([required]),
+            unresolved_dynamic_call: true,
+            ..Summary::default()
+        },
+        ..Value::parameter(1, 2)
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn deep_projection_leaf_retains_all_noncontainer_metadata() {
+    let owner = super::field_rows::FieldInstance {
+        name: "Box".to_owned(),
+        arguments: vec!["int".to_owned()],
+    };
+    let expected = leaf_test_metadata(owner);
+    let nested = || Some(Box::new(Value::channel(7)));
+    let input = Value {
+        fields: BTreeMap::from([("child".to_owned(), Value::channel(6))]),
+        element: nested(),
+        result_payload: nested(),
+        fiber_payload: nested(),
+        ..expected.clone()
+    };
+    assert_eq!(leaf_metadata(&input), expected);
 }

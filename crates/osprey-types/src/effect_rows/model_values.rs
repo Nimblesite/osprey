@@ -1,10 +1,36 @@
 //! Effect row model values.
 use super::{
-    merge_boxed_value, merge_callable, widen_value, BTreeMap, BTreeSet, Callable, Summary, Value,
+    merge_boxed_value, merge_callable, widen_value, BTreeMap, BTreeSet, Callable, EmptyCase,
+    Projection, Summary, Value,
 };
 use std::collections::btree_map::Entry;
 
 impl Value {
+    pub(super) fn proves_projection_absent(&self, projection: &Projection) -> bool {
+        !self.unknown_structure
+            && match projection {
+                Projection::Field(field) => {
+                    self.empty_case == Some(EmptyCase::Nullary)
+                        || self
+                            .field_names
+                            .as_ref()
+                            .is_some_and(|names| !names.contains(field))
+                }
+                Projection::Element => self.empty_case == Some(EmptyCase::Collection),
+                Projection::SuccessValue => self.empty_case == Some(EmptyCase::Error),
+                _ => false,
+            }
+    }
+
+    pub(super) fn union_replacement(&mut self, replacement: Self) {
+        if !self.carries_provenance() {
+            self.field_names.clone_from(&replacement.field_names);
+            self.field_owner.clone_from(&replacement.field_owner);
+            self.empty_case = replacement.empty_case;
+        }
+        self.union(replacement);
+    }
+
     /// Container payloads in field/list/result/fiber order; callable bodies and
     /// deferred summaries require their own scope-aware traversal.
     pub(super) fn container_children_mut(&mut self) -> impl Iterator<Item = &mut Self> {
@@ -131,15 +157,150 @@ impl Value {
 #[cfg(test)]
 #[test]
 fn owned_record_field_merges_move_subtrees_without_cloning() {
-    let record = || Value {
+    let mut actual = unknown_child_record();
+    let expected = unknown_child_record();
+    let ((), clones) = super::provenance::measured_clones(|| actual.union(unknown_child_record()));
+    assert_eq!(actual, expected);
+    assert_eq!(clones, 0, "owned fields must move into their merge");
+}
+
+#[cfg(test)]
+pub(super) fn unknown_child_record() -> Value {
+    Value {
         fields: [("child".to_owned(), Value::unknown_value())]
             .into_iter()
             .collect(),
         ..Value::default()
+    }
+}
+
+#[cfg(test)]
+pub(super) fn returning_unknown(index: usize) -> Callable {
+    Callable::Known(Box::new(super::KnownCallable {
+        parameters: vec![format!("argument{index}")],
+        summary: Summary::default(),
+        returned: Some(Box::new(Value::unknown_value())),
+    }))
+}
+
+#[cfg(test)]
+pub(super) fn test_summary_metadata() -> Summary {
+    Summary {
+        required: [super::Requirement::new("Read", "get", Vec::new())]
+            .into_iter()
+            .collect(),
+        runtime_builtins: ["list.map".to_owned()].into_iter().collect(),
+        ..Summary::default()
+    }
+}
+
+#[cfg(test)]
+fn known_stack() -> Value {
+    Value {
+        field_names: Some(["children".to_owned()].into_iter().collect()),
+        ..Value::default()
+    }
+}
+
+#[cfg(test)]
+fn known_absence(value: &Value, projection: Projection) -> bool {
+    super::identity_tests::with_empty_analyzer(|analyzer| {
+        analyzer.projection_absent(value, &[projection])
+    })
+}
+
+#[cfg(test)]
+#[test]
+fn known_absence_proves_a_missing_declared_field() {
+    assert!(known_absence(
+        &known_stack(),
+        Projection::Field("edit".to_owned())
+    ));
+}
+
+#[cfg(test)]
+#[test]
+fn known_absence_proves_an_empty_collection_element() {
+    let value = Value {
+        empty_case: Some(EmptyCase::Collection),
+        ..Value::default()
     };
-    let mut actual = record();
-    let expected = record();
-    let ((), clones) = super::provenance::measured_clones(|| actual.union(record()));
+    assert!(known_absence(&value, Projection::Element));
+}
+
+#[cfg(test)]
+#[test]
+fn known_absence_preserves_present_fields_without_tracked_payloads() {
+    assert!(!known_absence(
+        &known_stack(),
+        Projection::Field("children".to_owned())
+    ));
+}
+
+#[cfg(test)]
+#[test]
+fn known_absence_refuses_opaque_or_unknown_structure() {
+    for value in [
+        Value::default(),
+        Value {
+            unknown_structure: true,
+            ..known_stack()
+        },
+        Value::parameter(0, 0),
+    ] {
+        assert!(!known_absence(&value, Projection::Field("edit".to_owned())));
+    }
+}
+
+#[cfg(test)]
+fn substituted_field(value: Value) -> Value {
+    let symbolic = Value::from_callable(Callable::Parameter {
+        level: 0,
+        index: 0,
+        projection: vec![Projection::Field("edit".to_owned())],
+    });
+    super::identity_tests::with_empty_analyzer(|analyzer| {
+        analyzer.substitute_value_at(symbolic, 0, &[Some(value)])
+    })
+}
+
+#[cfg(test)]
+#[test]
+fn known_absence_substitution_does_not_invent_an_unknown_callback() {
+    assert_eq!(substituted_field(known_stack()), Value::default());
+}
+
+#[cfg(test)]
+#[test]
+fn known_absence_substitution_keeps_opaque_callbacks_closed() {
+    for (value, expected) in [
+        (Value::default(), Value::unknown_callable()),
+        (
+            Value {
+                unknown_structure: true,
+                ..known_stack()
+            },
+            Value::unknown_value(),
+        ),
+    ] {
+        assert_eq!(substituted_field(value), expected);
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn owned_handled_children_do_not_clone_their_payloads() {
+    let value = unknown_child_record();
+    let expected = value.clone();
+    let answers = [(
+        super::Requirement::new("Read", "get", Vec::new()),
+        Value::default(),
+    )]
+    .into_iter()
+    .collect();
+    let (actual, clones) = super::provenance::measured_clones(|| {
+        super::Analyzer::resolve_handled_value(value, &answers)
+    });
     assert_eq!(actual, expected);
-    assert_eq!(clones, 0, "owned fields must move into their merge");
+    assert_eq!(clones, 0, "owned handled child clones");
 }

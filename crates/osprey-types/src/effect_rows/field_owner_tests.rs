@@ -1,6 +1,9 @@
 //! Resource and semantic controls for record owner projection.
 use super::*;
-use crate::effect_rows::{expression_site, Instances};
+use crate::effect_rows::{
+    expression_site, identity_tests::with_empty_analyzer, provenance::measured_clones,
+    value_shapes::value_shape, Instances,
+};
 
 #[test]
 fn record_owners_do_not_substitute_irrelevant_fields() {
@@ -91,5 +94,55 @@ fn analyzer<'a>(index: &'a Index<'a>, instances: &'a Instances) -> Analyzer<'a> 
         rows: &[],
         returns: &[],
         file_scope: CallableEnv::default(),
+    }
+}
+
+#[test]
+fn primitive_lookups_do_not_clone_erased_provenance() {
+    for expression in lookup_expressions() {
+        with_empty_analyzer(|analyzer| assert_primitive_lookup(&analyzer, &expression));
+    }
+}
+
+#[test]
+fn primitive_field_lookups_do_not_clone_erased_provenance() {
+    for target in lookup_expressions() {
+        let expression = Expr::FieldAccess {
+            target: Box::new(target),
+            field: "enabled".to_owned(),
+        };
+        with_empty_analyzer(|analyzer| assert_primitive_lookup(&analyzer, &expression));
+    }
+}
+
+fn lookup_expressions() -> [Expr; 2] {
+    [
+        Expr::Identifier("candidate".to_owned()),
+        Expr::Path(osprey_ast::SymbolPath::new(["Scope", "candidate"])),
+    ]
+}
+
+fn assert_primitive_lookup(analyzer: &Analyzer<'_>, expression: &Expr) {
+    bind_lookup_types(analyzer, expression);
+    let env = analyzer.scoped_env(&["candidate".to_owned()]);
+    let (actual, clones) = measured_clones(|| analyzer.value(expression, &[], &env));
+    assert_eq!(actual, value_shape(&crate::ty::Type::bool()));
+    assert_eq!(
+        clones, 0,
+        "primitive lookups must not clone discarded provenance"
+    );
+}
+
+fn bind_lookup_types(analyzer: &Analyzer<'_>, expression: &Expr) {
+    let mut types = analyzer.instances.expression_types.borrow_mut();
+    let _ = types.insert(expression_site(expression), crate::ty::Type::bool());
+    if let Expr::FieldAccess { target, .. } = expression {
+        let ty = crate::ty::Type::Record {
+            name: "Control".to_owned(),
+            fields: [("enabled".to_owned(), crate::ty::Type::bool())]
+                .into_iter()
+                .collect(),
+        };
+        let _ = types.insert(expression_site(target), ty);
     }
 }

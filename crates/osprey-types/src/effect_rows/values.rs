@@ -73,10 +73,14 @@ impl Analyzer<'_> {
         if empty_case.is_some() {
             return None;
         }
-        match expression {
-            Expr::Identifier(_) | Expr::Path(_) => self.scalar_shape(expression),
-            _ => None,
-        }
+        let target = match expression {
+            Expr::Identifier(_) | Expr::Path(_) => expression,
+            Expr::FieldAccess { target, .. } => target.as_ref(),
+            _ => return None,
+        };
+        matches!(target, Expr::Identifier(_) | Expr::Path(_))
+            .then(|| self.scalar_shape(expression))
+            .flatten()
     }
 
     fn typed_unknown(&self, expression: &Expr) -> Option<Value> {
@@ -460,37 +464,4 @@ fn scalar_type(ty: &crate::ty::Type) -> bool {
     use crate::ty::{names, Type};
     matches!(ty, Type::Con { name, args } if args.is_empty() && matches!(name.as_str(),
         names::INT | names::FLOAT | names::BOOL | names::STRING | names::UNIT | names::PTR))
-}
-
-#[cfg(test)]
-#[test]
-fn primitive_lookups_do_not_clone_erased_provenance() {
-    for expression in [
-        Expr::Identifier("candidate".to_owned()),
-        Expr::Path(osprey_ast::SymbolPath::new(["Scope", "candidate"])),
-    ] {
-        super::identity_tests::with_empty_analyzer(|analyzer| {
-            assert_primitive_lookup(&analyzer, &expression);
-        });
-    }
-}
-
-#[cfg(test)]
-fn assert_primitive_lookup(analyzer: &Analyzer<'_>, expression: &Expr) {
-    let _ = analyzer
-        .instances
-        .expression_types
-        .borrow_mut()
-        .insert(expression_site(expression), crate::ty::Type::bool());
-    let env = analyzer.scoped_env(&["candidate".to_owned()]);
-    let (actual, clones) =
-        super::provenance::measured_clones(|| analyzer.value(expression, &[], &env));
-    assert_eq!(
-        actual,
-        super::value_shapes::value_shape(&crate::ty::Type::bool())
-    );
-    assert_eq!(
-        clones, 0,
-        "primitive lookups must not clone discarded provenance"
-    );
 }

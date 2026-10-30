@@ -227,7 +227,7 @@ impl Summary {
             .into_iter()
             .map(|mut use_| {
                 map_parameter_use_values(&mut use_, |value| {
-                    *value = widen_value_budget(value.clone(), depth + 1, budget);
+                    *value = widen_value_budget(std::mem::take(value), depth + 1, budget);
                 });
                 use_
             })
@@ -247,4 +247,92 @@ pub(super) fn bounded_parameter_use(use_: &ParameterUse, depth: usize) -> bool {
                         Projection::Method(_) | Projection::Returned(_) | Projection::Handled(_)
                     )
                 })))
+}
+
+#[cfg(test)]
+#[test]
+fn summary_widen_moves_owned_children_without_cloning() {
+    let mut actual = widening_fixture();
+    let expected = actual.clone();
+    let ((), clones) = super::provenance::measured_clones(|| actual.widen());
+    assert_eq!(actual, expected);
+    assert_eq!(
+        clones, 0,
+        "owned summary children must move through widening"
+    );
+}
+
+#[cfg(test)]
+fn widening_arguments() -> CallArguments {
+    CallArguments {
+        positional: vec![Some(widening_child()), None],
+        named: vec![
+            ("given".to_owned(), Some(widening_child())),
+            ("missing".to_owned(), None),
+        ],
+    }
+}
+
+#[cfg(test)]
+fn widening_projections() -> Vec<Projection> {
+    vec![
+        widening_method(),
+        Projection::Returned(Box::new(widening_arguments())),
+        Projection::Handled(
+            [(
+                Requirement::new("Read", "get", Vec::new()),
+                widening_child(),
+            )]
+            .into_iter()
+            .collect(),
+        ),
+    ]
+}
+
+#[cfg(test)]
+fn widening_fixture() -> Summary {
+    Summary {
+        parameter_uses: [ParameterUse {
+            level: 1,
+            index: 2,
+            projection: widening_projections(),
+            arguments: widening_arguments(),
+            scopes: Vec::new(),
+        }]
+        .into_iter()
+        .collect(),
+        unresolved_dynamic_call: false,
+        ..super::model_values::test_summary_metadata()
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn summary_widen_depth_limit_still_refuses_nested_invocations() {
+    let mut actual = widening_fixture();
+    let mut expected = actual.clone();
+    expected.parameter_uses.clear();
+    expected.unresolved_dynamic_call = true;
+    actual.widen_at(MAX_PROVENANCE_DEPTH);
+    assert_eq!(actual, expected);
+}
+
+#[cfg(test)]
+fn widening_child() -> super::Value {
+    let mut value = super::model_values::unknown_child_record();
+    if let Some(child) = value.fields.get_mut("child") {
+        child.deferred.unresolved_dynamic_call = true;
+    }
+    value
+}
+
+#[cfg(test)]
+fn widening_method() -> Projection {
+    let arguments = widening_arguments();
+    Projection::Method(Box::new(super::MethodProjection {
+        field: "callback".to_owned(),
+        arguments: arguments.positional,
+        named: arguments.named,
+        fallback: widening_child(),
+    }))
 }

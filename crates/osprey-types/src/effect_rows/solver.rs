@@ -1,7 +1,7 @@
 //! Effect row solver.
 use super::{
-    map_parameter_use_values, map_projection_values, Analyzer, Callable, CallableEnv, Expr,
-    Function, HashMap, Index, Instances, Stmt, Summary, Value,
+    map_parameter_use_values, map_projection_values, Analyzer, BTreeSet, Callable, CallableEnv,
+    Expr, Function, HashMap, Index, Instances, Stmt, Summary, Value,
 };
 
 /// Advance one function's inferred row and return provenance by a single
@@ -62,17 +62,18 @@ pub(super) struct ReturnHistory(HashMap<usize, Returns>);
 /// One function's returns so far, and whether they have cycled.
 #[derive(Default)]
 struct Returns {
-    seen: Vec<Value>,
+    seen: BTreeSet<Value>,
     joined: bool,
 }
 
 impl ReturnHistory {
     fn settle(&mut self, id: usize, before: Option<&Value>, computed: Value) -> Value {
         let returns = self.0.entry(id).or_default();
-        returns.joined |= before != Some(&computed) && returns.seen.contains(&computed);
+        let revisited = returns.seen.contains(&computed);
+        returns.joined |= before != Some(&computed) && revisited;
         if !returns.joined {
-            if returns.seen.last() != Some(&computed) {
-                returns.seen.push(computed.clone());
+            if !revisited {
+                let _ = returns.seen.insert(computed.clone());
             }
             return computed;
         }
@@ -285,6 +286,8 @@ mod tests {
 
     const FUNCTION: usize = 0;
     const STABLE_SWEEPS: usize = 512;
+    const HISTORY_WIDTH: usize = 512;
+    const HISTORY_COMPARISONS_PER_LEVEL: u32 = 16;
 
     #[test]
     fn stable_return_sweeps_do_not_retain_duplicate_provenance() {
@@ -337,5 +340,110 @@ mod tests {
         let joined = history.settle(FUNCTION, before.as_ref(), second.clone());
         expected.union(second);
         assert_eq!(joined, expected);
+    }
+
+    fn reference_settle(
+        history: &mut super::HashMap<usize, (Vec<Value>, bool)>,
+        id: usize,
+        before: Option<&Value>,
+        computed: Value,
+    ) -> Value {
+        let (seen, joined) = history.entry(id).or_default();
+        *joined |= before != Some(&computed) && seen.contains(&computed);
+        if !*joined {
+            if seen.last() != Some(&computed) {
+                seen.push(computed.clone());
+            }
+            return computed;
+        }
+        let mut value = before.cloned().unwrap_or_default();
+        value.union(computed);
+        value.widened().widened()
+    }
+
+    #[test]
+    fn history_matches_reference_for_seeded_and_interleaved_sequences() {
+        for sequence in 0..1024 {
+            for seed in [None, Some(Value::channel(7)), Some(Value::unknown_value())] {
+                for functions in [1, 2] {
+                    assert_history_sequence(sequence, seed.as_ref(), functions);
+                }
+            }
+        }
+    }
+
+    fn assert_history_sequence(sequence: usize, seed: Option<&Value>, functions: usize) {
+        let mut actual = ReturnHistory::default();
+        let mut reference = super::HashMap::new();
+        let mut before: super::HashMap<_, _> = (0..functions)
+            .filter_map(|id| seed.cloned().map(|value| (id, value)))
+            .collect();
+        for step in 0..5 {
+            let id = step % functions;
+            let computed = history_value((sequence >> (step * 2)) % 4);
+            let expected = reference_settle(&mut reference, id, before.get(&id), computed.clone());
+            let returned = actual.settle(id, before.get(&id), computed);
+            assert_eq!(returned, expected, "{sequence}, {step}, {functions}");
+            assert_eq!(
+                actual.0.get(&id).map(|row| row.joined),
+                reference.get(&id).map(|(_, joined)| *joined)
+            );
+            let _ = before.insert(id, returned);
+        }
+    }
+
+    fn history_value(which: usize) -> Value {
+        match which {
+            0 => Value::channel(7),
+            1 => Value::channel(9),
+            2 => Value::parameter(1, 2),
+            _ => Value::unknown_value(),
+        }
+    }
+
+    fn seed_search_history(history: &mut ReturnHistory) -> Option<Value> {
+        let mut before = None;
+        for channel in 0..HISTORY_WIDTH {
+            before = Some(history.settle(FUNCTION, before.as_ref(), Value::channel(channel)));
+        }
+        before
+    }
+
+    #[test]
+    fn history_search_work_grows_logarithmically() {
+        let mut history = ReturnHistory::default();
+        let before = seed_search_history(&mut history);
+        let computed = Value::channel(HISTORY_WIDTH);
+        let expected = computed.clone();
+        let (returned, comparisons) =
+            super::super::provenance::CloneProbe::measured_value_comparisons(|| {
+                history.settle(FUNCTION, before.as_ref(), computed)
+            });
+        assert_eq!(returned, expected);
+        assert!(
+            u32::try_from(comparisons)
+                .is_ok_and(|count| count <= HISTORY_COMPARISONS_PER_LEVEL * HISTORY_WIDTH.ilog2()),
+            "{comparisons} comparisons for {HISTORY_WIDTH} retained returns"
+        );
+    }
+
+    #[test]
+    fn history_seed_clones_once_and_stable_sweeps_clone_nothing() {
+        let mut history = ReturnHistory::default();
+        let expected = Value::channel(7);
+        let (returned, clones) = super::super::provenance::measured_clones(|| {
+            history.settle(FUNCTION, Some(&expected), Value::channel(7))
+        });
+        assert_eq!(returned, expected);
+        assert_eq!(clones, 1);
+        let ((), clones) = super::super::provenance::measured_clones(|| {
+            for _ in 0..STABLE_SWEEPS {
+                assert_eq!(
+                    history.settle(FUNCTION, Some(&expected), Value::channel(7)),
+                    expected
+                );
+            }
+        });
+        assert_eq!(clones, 0);
     }
 }

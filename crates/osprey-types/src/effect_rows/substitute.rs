@@ -20,7 +20,7 @@ impl Analyzer<'_> {
                 if arguments
                     .get(use_.index)
                     .and_then(Option::as_ref)
-                    .is_some_and(|value| self.projection_absent(value.clone(), &use_.projection))
+                    .is_some_and(|value| self.projection_absent(value, &use_.projection))
                 {
                     continue;
                 }
@@ -116,19 +116,20 @@ impl Analyzer<'_> {
                     index,
                     projection,
                 } if level == target_level => {
+                    if arguments
+                        .get(index)
+                        .and_then(Option::as_ref)
+                        .is_some_and(|argument| self.projection_absent(argument, &projection))
+                    {
+                        return value;
+                    }
                     if let Some(mut replacement) = arguments
                         .get(index)
                         .and_then(Option::as_ref)
-                        .cloned()
-                        .and_then(|argument| self.project_path(argument, &projection))
+                        .and_then(|argument| self.project_borrowed_path(argument, &projection))
                     {
                         shift_value_levels(&mut replacement, target_level, 0);
-                        if !value.carries_provenance() {
-                            value.field_names.clone_from(&replacement.field_names);
-                            value.field_owner.clone_from(&replacement.field_owner);
-                            value.empty_case = replacement.empty_case;
-                        }
-                        value.union(replacement);
+                        value.union_replacement(replacement);
                     } else if index >= arguments.len() {
                         // Only an absent argument keeps the original binder.
                         // A supplied opaque value or failed projection must
