@@ -50,6 +50,14 @@ fn nestedErased(items: List<any>) = match items {
     _ => "other"
 }
 
+fn nestedErasedResult(items: Result<List<any>, string>) = match items {
+    Success { value } => nestedErased(value)
+    Error { message } => message
+}
+
+fn erasedListReturn() -> List<any> = [NestedBox { held: "returned list", tag: 3 }]
+fn erasedResultReturn() -> Result<List<any>, string> = [NestedBox { held: "returned result", tag: 4 }]
+
 fn analyze(n) = match n {
     0  => "Zero"
     42 => "The answer to everything!"
@@ -156,6 +164,8 @@ print("bad toString = ${toString(badDiv)}")
 
 /// Replays every meaningful branch with value-level assertions.
 fn patternMatchingCase() = {
+    let erasedBinding: List<any> = [NestedBox { held: "bound list", tag: 5 }]
+    let erasedResultBinding: Result<List<any>, string> = [NestedBox { held: "bound result", tag: 6 }]
     let localAlice = PersonData { name: "Alice", age: 30 }
     let localCircle = Circle { radius: 5 }
     let localSquare = Square { x: 3, y: 7 }
@@ -171,6 +181,13 @@ fn patternMatchingCase() = {
     checkAll("literal, union, structural, and Result patterns", [
         analyze(0) == "Zero",
         toString(nestedErased([NestedBox { held: "boxed", tag: 1 }])) == "boxed",
+        toString(nestedErasedResult([NestedBox { held: "promoted", tag: 1 }])) == "promoted",
+        toString(nestedErasedResult(Success { value: [NestedBox { held: "success", tag: 2 }] })) == "success",
+        toString(nestedErasedResult(Error { message: "retained error" })) == "retained error",
+        toString(nestedErased(erasedListReturn())) == "returned list",
+        toString(nestedErasedResult(erasedResultReturn())) == "returned result",
+        toString(nestedErased(erasedBinding)) == "bound list",
+        toString(nestedErasedResult(erasedResultBinding)) == "bound result",
         toString(nestedErased([7])) == "other",
         nestedTuple([NestedPair(3, "q"), NestedPair(4, "r")]) == "3:q:1",
         nestedTuple([]) == "other",

@@ -170,7 +170,7 @@ fn generate_initializer(
 }
 
 /// Erase while the source still carries its concrete generic shape. [TYPE-ANY]
-fn infer_binding(cg: &mut Codegen, position: Option<Position>, mut bound: Value) -> Result<Value> {
+fn infer_binding(cg: &mut Codegen, position: Option<Position>, bound: Value) -> Result<Value> {
     let Some(ty) = cg
         .prog
         .let_type(cg.source_function.as_deref(), position)
@@ -179,11 +179,10 @@ fn infer_binding(cg: &mut Codegen, position: Option<Position>, mut bound: Value)
     else {
         return Ok(bound);
     };
-    if crate::types::ltype_of(&ty) == LType::Any {
-        bound = crate::cast::coerce_to(cg, bound, LType::Any)?;
-    }
-    bound.inferred_type = Some(ty);
-    Ok(bound)
+    let signature = crate::builder::ParamSig::of(&cg.prog, &ty);
+    let mut converted = crate::cast::coerce_semantic_param(cg, bound, &signature)?;
+    converted.inferred_type = Some(ty);
+    Ok(converted)
 }
 
 fn fit_result(cg: &mut Codegen, value: Value, inner: Option<LType>) -> Result<Value> {

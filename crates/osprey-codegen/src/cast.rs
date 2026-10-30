@@ -111,7 +111,7 @@ pub(crate) fn erase_result(cg: &mut Codegen, semantic: Value) -> Value {
 pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: &ParamSig) -> Result<Value> {
     let v = erase_list_elements(cg, v, want)?;
     let value = match want.result_inner {
-        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
+        Some(inner) => coerce_result(cg, v, want, inner)?,
         None => coerce_to(cg, v, want.ty)?,
     };
     Ok(match want.fiber.clone() {
@@ -120,8 +120,33 @@ pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: &ParamSig)
     })
 }
 
+/// Result payloads retain their semantic target even when both ABIs are pointers.
+fn coerce_result(cg: &mut Codegen, value: Value, want: &ParamSig, inner: LType) -> Result<Value> {
+    let Some(payload) = erased_result_payload(cg, &value, want) else {
+        return crate::result::fit_to_inner(cg, value, inner);
+    };
+    if value.result_inner.is_some() {
+        crate::result::map_payload(cg, &value, inner, |cg, loaded| {
+            erase_list_elements(cg, loaded, &payload)
+        })
+    } else {
+        let payload = erase_list_elements(cg, value, &payload)?;
+        crate::result::make_ok(cg, payload, inner)
+    }
+}
+
+fn erased_result_payload(cg: &Codegen, value: &Value, want: &ParamSig) -> Option<ParamSig> {
+    let osprey_types::Type::Con { args, .. } = want.inferred_type.as_ref()? else {
+        return None;
+    };
+    let payload = ParamSig::of(&cg.prog, args.first()?);
+    let erased_owner = crate::collections::list_owner(Some(crate::llty::ANY_TAG_SPELLING));
+    (erased_list_type(&payload) && value.payload_owner.as_deref() != Some(&erased_owner))
+        .then_some(payload)
+}
+
 /// Container erasure must box elements, rather than only retyping its pointer.
-fn erased_list_destination(value: &Value, want: &ParamSig) -> bool {
+fn erased_list_type(want: &ParamSig) -> bool {
     let Some(osprey_types::Type::Con { name, args }) = &want.inferred_type else {
         return false;
     };
@@ -129,6 +154,10 @@ fn erased_list_destination(value: &Value, want: &ParamSig) -> bool {
         && args
             .first()
             .is_some_and(|ty| crate::types::ltype_of(ty) == LType::Any)
+}
+
+fn erased_list_destination(value: &Value, want: &ParamSig) -> bool {
+    erased_list_type(want)
         && crate::collections::tagged_elem(value).as_deref() != Some(crate::llty::ANY_TAG_SPELLING)
 }
 

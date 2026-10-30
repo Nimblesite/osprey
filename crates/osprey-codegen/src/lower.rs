@@ -386,12 +386,9 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
     // A returned list literal leaves the only scope that knows it is the flat
     // layout — callers see `List<T>` [`crate::listlit::escaping`].
     let body = crate::listlit::escaping(cg, body);
-    if let Some(inner) = cg.fn_ret_result_inner(name) {
-        // An existing Result is re-laid to the *declared* success-slot type: a
-        // body like `Error { message }` types its slot from the message (`i8*`),
-        // which must agree with the `i64` the callers read or the block's
-        // disc/errmsg offsets shift on 32-bit targets. [WASM-TARGET-WIDTH]
-        return crate::result::fit_to_inner(cg, body, inner);
+    if let Some(ty) = cg.prog.return_type(name).cloned() {
+        let signature = ParamSig::of(&cg.prog, &ty);
+        return crate::cast::coerce_semantic_param(cg, body, &signature);
     }
     let ret_ty = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
     // This cast never RECOVERS anything: a body of type `any` returned through

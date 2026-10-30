@@ -265,13 +265,25 @@ pub(crate) fn repack_to_inner(cg: &mut Codegen, value: Value, inner: LType) -> R
     if value.result_inner == Some(inner) {
         return Ok(value);
     }
-    let disc = load_disc(cg, &value);
-    let errmsg = load_errmsg(cg, &value);
-    let (_, error, end) = open_result_branch(cg, &value);
-    let loaded = load_value(cg, &value);
-    let owner = loaded.osp_ty.clone();
-    let converted = convert_payload(cg, loaded, inner)?;
-    let payload = join_payload(cg, converted, &error, &end).with_owner(owner);
+    let owner = value.payload_owner.clone();
+    map_payload(cg, &value, inner, |cg, loaded| {
+        Ok(convert_payload(cg, loaded, inner)?.with_owner(owner))
+    })
+}
+
+/// Convert only Success; preserve the discriminant and original error message.
+pub(crate) fn map_payload(
+    cg: &mut Codegen,
+    value: &Value,
+    inner: LType,
+    convert: impl FnOnce(&mut Codegen, Value) -> Result<Value>,
+) -> Result<Value> {
+    let disc = load_disc(cg, value);
+    let errmsg = load_errmsg(cg, value);
+    let (_, error, end) = open_result_branch(cg, value);
+    let loaded = load_value(cg, value);
+    let converted = convert(cg, loaded)?;
+    let payload = join_payload(cg, converted, &error, &end);
     make_result(cg, payload, inner, &disc, &errmsg.operand)
 }
 
