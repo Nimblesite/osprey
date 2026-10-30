@@ -68,6 +68,12 @@ module ReduceTests
                 expect (Reduce::defeq (env, App (Const "F" []) (Const "A" []), App (Const "F" []) (Sort Zero)), true)
                 expect (Reduce::defeq (env, App (Const "F" []) (Const "A" []), App (Const "F" []) (Const "B" [])), false)
                 expect (Reduce::defeq (env, App (Const "F" []) (Const "A" []), App (Const "G" []) (Sort Zero)), false)
+                expect (Reduce::defeq (env, App (Const "identity" []) (Const "A" []), App (Const "identity" []) (Sort Zero)), true)
+                expect (Reduce::defeq (env, App (Const "identity" []) (Const "A" []), App (Const "identity" []) (Const "B" [])), false)
+                expect (Reduce::defeq (env, App (Const "erase" []) (Const "A" []), App (Const "erase" []) (Const "B" [])), true)
+                expect (Reduce::defeq (env, App (Const "identity" []) (Const "A" []), App (Const "identityAgain" []) (Sort Zero)), true)
+                expect (Reduce::defeq (env, Const "identity" [], App (Const "identity" []) (Const "A" [])), false)
+                expect (Terms::equal (Reduce::whnf (env, App (Const "partialH" []) (Const "A" [])), App (App (Const "H" []) (Sort Zero)) (Const "A" [])), true)
                 expect (Reduce::defeq (env, App (Lam "T" (closed ()) (BVar 0)) (Const "A" []), Sort Zero), true))
 
     comparisonEnvironment () = foldList (comparisonDeclarations (), Success(value = Environment::empty ()), comparisonDeclaration)
@@ -76,9 +82,13 @@ module ReduceTests
         Error message => Error(message = message)
         Success env => Checked::declare (env, decl)
 
-    comparisonDeclarations () = [Decl(name = "A", params = [], ty = closed (), body = Definition (Sort Zero)), Decl(name = "B", params = [], ty = closed (), body = Axiom), comparisonFunction "F", comparisonFunction "G"]
+    comparisonDeclarations () = [Decl(name = "A", params = [], ty = closed (), body = Definition (Sort Zero)), Decl(name = "B", params = [], ty = closed (), body = Axiom), comparisonFunction "F", comparisonFunction "G", comparisonDefinition ("identity", BVar 0), comparisonDefinition ("identityAgain", BVar 0), comparisonDefinition ("erase", Sort Zero), Decl(name = "H", params = [], ty = Pi "T" (closed ()) (Pi "U" (closed ()) (closed ())), body = Axiom), comparisonDefinitionValue ("partialH", App (Const "H" []) (Sort Zero))]
 
     comparisonFunction name = Decl(name = name, params = [], ty = Pi "T" (closed ()) (closed ()), body = Axiom)
+
+    comparisonDefinition (name, body) = comparisonDefinitionValue (name, Lam "T" (closed ()) body)
+
+    comparisonDefinitionValue (name, body) = Decl(name = name, params = [], ty = Pi "T" (closed ()) (closed ()), body = Definition body)
 
     batchBeta () =
         test ("multi-binder beta matches sequential substitution with free arguments", \() =>

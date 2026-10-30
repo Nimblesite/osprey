@@ -1,5 +1,7 @@
 # Adversarial review 3 — Plan 0041 dependent types and Mathlib
 
+Historical review; findings and responses retain their recorded scope. Current development follows the [Lean oracle and discipline-correction contract](../messaging.md#proof-development-and-the-lean-oracle); this record does not define a competitive objective or establish consistency.
+
 Third pass, against `feat/type-disciplines` as it stands. Review 2's findings were largely answered, and answered well. This pass found the two things review 2 could not: **the M0 gate is red on this checkout**, and **the one comparison [PROOF-SPEED] actually names has never produced a recorded result**.
 
 ## Verdict

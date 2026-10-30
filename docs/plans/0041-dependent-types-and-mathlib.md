@@ -143,9 +143,16 @@ Two Osprey implementation defects were reproduced in the checked import path: on
 
 The repair replaces printed-description equality with the shared `DeclarationBodies` structural comparison in `examples/proof/kernel/src/env.ospml`, reused by inductive import checks and numeric/notation identity guards. Lists retain exact element boundaries and order; constructor/rule fields remain separate. The existing rule-type and right-hand-side derivation checks stay in force. The focused repair checkpoint passed all ten adversarial controls under GC, ARC and wasm32, including both previously accepted collisions and the universe-name collision refusal. The source also includes a positive control for a genuine comma-bearing constructor name. Final current-source replay and the broader kernel, corpus, application and host gates remain pending. Historical ten-case results do not certify that later source or complete Milestone 1. Canonical regressions live in [inductive_adversarial.ospml](../../examples/proof/kernel/tests/inductive_adversarial.ospml).
 
-### 30 October final selected-corpus replay
+### 30 October selected-corpus replay checkpoint
 
 The standard-choice guard and numeric short-circuit repair pass the 400-case kernel suite on GC, ARC and wasm32. A separate post-import-cleanup replay retains all 400 cases on every backend, zero live ARC allocations and unchanged source/compiler hashes (`target/proof/mathlib-v4.25.0/final-clean-kernel-receipt.json`). All five published proof commands also pass: 40 Python guards, 51 OpenAI checks, 525 Lean-core checks, six Unicode checks and 18 recorder guards. Each of the 582 root checks rejects both a corrupted proof and a false statement, giving 1,164 refusals; byte-identical dependency exports and fresh Lean replay remain required (`target/proof/mathlib-v4.25.0/final-public/receipt.json`). The corpus remains 194 selected statements. The `Classical.choice` export is an explicitly axiom-bearing standard-basis control, not another theorem port. The original Euclid certificate still has no accepted Osprey verdict; no frontend, full-Mathlib or host-delivery milestone is completed by these checks.
+
+
+### Current proof-CI acceptance after stabilization changes
+
+The proof CI entry point is now `make -j3 _test_proof_ci`, defined in [proof.mk](../../scripts/make/proof.mk). Its bounded Make graph builds fresh GC, ARC and wasm32 batch checkers once per invocation, shares those binaries across the complete OpenAI, Lean-core and Unicode checks, and runs the existing kernel and discipline gates. The speed gate runs after those checks finish. The existing 45-minute job deadline, fresh Lean replay, exact statement and axiom checks, corruption refusals and speed requirements remain in force. Scheduling contracts are checked by `node --test scripts/ci-scope.test.mjs scripts/ci-proof-schedule.test.mjs scripts/test-proof-export.mjs`; those structural tests do not establish successful execution of the complete pipeline.
+
+- [ ] Freeze the repaired compiler and kernel, then complete the entire proof-CI graph from clean inputs. Record compiler, checker and source hashes, every required root check and mutation refusal, fresh independent Lean replay and the speed-gate result. The 400-case kernel and 582-root receipts above are historical checkpoints; they do not certify later compiler-conversion or reducer changes. Workbench import performance, full browser interactions and native/installed-extension acceptance remain separate open gates.
 
 ## Road test first: the first proof
 

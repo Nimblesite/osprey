@@ -2,7 +2,13 @@
 
 **Final result: blocked** for production workbench acceptance. The standalone design artifact passed its historical review; that does not qualify the production application or proof kernel. The current production review below is authoritative for delivery.
 
-## Evidence
+## Scope correction · 30 October 2026
+
+The user withdrew the Workbench freehand board and handwriting workflow. Board-first layouts, drawing, lasso, recognition previews and board-focus interactions described below are historical design evidence, not current delivery requirements or recognition capability claims. The supported workflow uses the mathematical document, typed formulas and proof steps, with optional source. Existing recorded films may show the older controls; their presence does not demonstrate mathematical handwriting recognition.
+
+Retiring these controls must preserve existing saved strokes, notes and framing and the generic native SDK drawing/recognition APIs. The application owner has sealed a no-ink source checkpoint; fresh native and installed-VSIX interactions and visual acceptance remain separate requirements. Keep typography, exact checked statements, assumptions, caret/focus, overflow and error-state findings actionable on the supported surfaces. Do not treat historical board acceptance as evidence that the revised application is accepted.
+
+## Historical design evidence
 
 - Original visual direction: `paper-reference.png` (1487 × 1058 image pixels).
 - Revised implementation: `screens/paper-proof.png` (1488 × 1058 CSS/image pixels, device scale 1), captured at the equivalent point before the fifth step.
@@ -115,7 +121,7 @@ Native renderer evidence is separately combined in `target/workbench-vsix/design
 
 The sealed VSIX receipt `target/workbench-vsix/final-delivery-receipt.json` reports 41 focused browser cases, 806 full extension tests and 169 installed-extension tests, with no source drift for that receipt. The actual bundled Nat, OpenAI and large List flows check proof source and expose assumptions. This proves those interactions, not visual fidelity after subsequent fixes. Console errors and final screenshot provenance must be rechecked with the revised captures.
 
-Root also inspected the actual `/Applications/Visual Studio Code.app` through CUA. Its existing Osprey profile does not expose the canonical `Osprey: Open Workbench` command in the command palette yet. The installed-extension test fixture's receipt does not establish that the user's existing profile has been updated. The VSIX owner has been assigned final installation and an actual proof check in that profile after the next source seal. The palette was closed without changing the user's editor content.
+An earlier root CUA inspection of `/Applications/Visual Studio Code.app` found that the existing Osprey profile did not yet expose `Osprey: Open Workbench`. The host owner subsequently installed and reloaded the extension and verified the command in that profile; the final revised source still needs its own profile check. The installed-extension test fixture's receipt does not establish that the user's existing profile has been updated. The VSIX owner has been assigned final installation and an actual proof check in that profile after the next source seal. The palette was closed without changing the user's editor content.
 
 ## Comparison history
 
@@ -123,6 +129,14 @@ Root also inspected the actual `/Applications/Visual Studio Code.app` through CU
 2. Earlier offscreen imported-result bug: the shared compact theorem picker and result-first inspector made the verdict visible in the actual bundled-proof captures. Exact statement readability remains open; this is not full closure of the imported-proof presentation.
 3. Imported-mathematics correction: a regression scoped to `proof-library-result` failed with a missing math node and `null` instead of the exact `Nat.add_comm` tree. The shared adapter now retains the verified term, and `ProofTerms` uses the existing mathematics tree while preserving the raw view. Separate global-constant collisions (three failed assertions) and sort-label collisions (two failed assertions) were pinned before their fixes. The actual flow produces the required formula tree; its raw-view oracle compares the exact text field instead of a helper that adds separator spaces. All 108 application tests pass under GC, ARC and wasm32, with unchanged final source seals and 90.8% own-source coverage. Revised host receipts and post-fix screenshots remain pending, so the visual finding is not closed yet.
 4. Reference viewport correction: the source capture script establishes 1058 CSS pixels plus full-page output for the desktop states. Image height was previously conflated with viewport height. Revised captures must establish both dimensions before geometry findings can close. The filled-action and icon-family differences remain directly visible regardless of this normalization correction.
+
+## Later production checkpoint — 30 October
+
+The `aa987026…` shared WASM passes fourteen actual browser gallery states and the `run_work` statement, verdict, assumption and complete mathematics bounds check. A subsequent settled-capture run adds the phone source heading/close-control clearance assertion and reports fifteen passing gallery cases; the apparent overlap did not reproduce geometrically. Full-page chunks are stitched for comparison. These interaction and bounds results do not by themselves certify pixel identity.
+
+The shared application checkpoint passes 113 cases on GC, ARC and wasm32 with zero skips and no input drift. See `target/proof/openai/notation-identity-review/memo-full-app-gc-receipt.json`, `memo-full-app-wasm-mounted-receipt.json` and `target/film-review/library-layout-final-full-arc.log`. This predates the next navigation and bounded-mathematics fixes. The native `c7abba4e…` archive is a fresh no-drift checkpoint after rebuilding the stale ARC runtime; its `run_work` capture exposes the complete statement. The initial scrollbar assertion at 821 pixels was a false alarm because this formula fits that pane. The corrected actual-window test at 430 pixels retains every scroll/end-visibility assertion and passes; no renderer workaround was introduced. Actual native and VSIX tests also fail when opening the conjunction example leaves library inspection over the proof.
+
+The shared fixes and their source hashes are sealed in `target/workbench-pixel/navigation-math-source-seal.json`; fresh host reruns are pending. The native picker contrast regression has a separate tested repair. Five-colour still misses the existing three-second theorem-option readiness deadline; panel cancellation now terminates its pending worker. No timeout, proof check or mutation assertion is relaxed. Final pixel review, installed-profile verification and refreshed proof footage remain open.
 
 ## Implementation checklist
 
@@ -133,3 +147,7 @@ Root also inspected the actual `/Applications/Visual Studio Code.app` through CU
 5. Refresh relevant host tests and package receipts after the final source changes. Mark passed only after all actionable P0/P1/P2 findings close.
 
 No follow-up polish is being used to defer these acceptance blockers.
+
+## Current visual review — 30 October
+
+The frozen `e61af037…` host snapshot passes 75 host/gallery/session cases, including fourteen stitched screen states; these results precede the latest shared viewport metric. Parent comparison still identified a pale transcription action on hover and excess phone source/article inset. The VSIX owner is repairing these against pinned hover and geometry regressions. The native generic viewport and keyboard suite reports 78 passing cases; actual current application captures and final keyboard acceptance remain required. Five-colour readiness still exceeds the unchanged three-second deadline. No final pixel-perfect acceptance is recorded.

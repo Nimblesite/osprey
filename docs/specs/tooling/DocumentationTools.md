@@ -34,7 +34,7 @@ the command exits unsuccessfully if any example fails or any examples section
 holds an orphaned `output` fence.
 
 Native examples default to `gc` and support `--memory=gc|arc|none`; ARC execution additionally
-requires exactly one zero-live-object exit sentinel. `wasm32` requires explicit `--memory=none` and uses the unmanaged allocator and `OSPREY_WASM_RUN` (default `wasmtime`) as its executable host.
+requires exactly one zero-live-object exit sentinel. `wasm32` defaults to ARC, rejects tracing GC, and uses `OSPREY_WASM_RUN` (default `wasmtime`) as its executable host.
 Each runnable example has a 30-second execution limit, configurable through a
 positive `OSPREY_DOCTEST_TIMEOUT_MS`. Compilation is outside this execution limit.
 

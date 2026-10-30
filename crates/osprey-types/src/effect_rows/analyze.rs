@@ -1,7 +1,7 @@
 //! Effect row analyze.
 use super::{
-    bind_pattern, site_arguments, Analyzer, Callable, CallableEnv, Expr, Function, HashMap,
-    HashSet, InterpolatedPart, Position, Requirement, Summary, Value,
+    bind_pattern, site_arguments, Analyzer, Callable, CallableEnv, Expr, ExprArgs, Function,
+    HashMap, HashSet, InterpolatedPart, Position, Requirement, Summary, Value,
 };
 
 impl Analyzer<'_> {
@@ -212,7 +212,7 @@ impl Analyzer<'_> {
                 named_arguments,
             } => match crate::methods::parts(expression) {
                 Some(parts) => self.method_call(expression, &parts, scope, env),
-                None => self.call(function, arguments, named_arguments, scope, env),
+                None => self.call(function, ExprArgs::new(arguments), named_arguments, scope, env),
             },
             Expr::MethodCall { .. } => crate::methods::parts(expression)
                 .map(|parts| self.method_call(expression, &parts, scope, env))

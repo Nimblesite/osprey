@@ -91,7 +91,7 @@ public indirect enum Node: Sendable, Equatable {
     case aside(pane: Node, side: Side, aside: Node, splitter: Splitter)
     case tabs([TabEntry], selected: String, event: Ordinal)
     case rows([RowEntry], selected: String, event: Ordinal)
-    case editor(label: String, value: String, inline: Bool, cursor: Int, marks: [Mark], event: Ordinal, placeEvent: Ordinal)
+    case editor(label: String, value: String, inline: Bool, cursor: Int, focusEpoch: Int = 0, marks: [Mark], event: Ordinal, placeEvent: Ordinal)
     case board(slice: String, count: Int, lasso: Bool, backdrop: String, panning: Bool, panEvent: Ordinal?, event: Ordinal, lassoEvent: Ordinal)
     case math(MathTree, spoken: String)
     case image(source: String, alt: String, width: Int, height: Int)
@@ -104,7 +104,7 @@ extension Node: Decodable {
         case kind, text, role, tone, label, value, symbol, tones, title, detail, name, light, dark, key, enabled, event
         case prompt, secure, multiline, commit, on, choices, selected, message, visible, axis, footer, children, subtitle, toolbar, tabs, rows, expanded
         case side, pane, aside, url, width, least, most, keep
-        case cursor, marks, placeEvent, slice, count, lasso, lassoEvent, math, spoken, source, alt, height, poster, captions, seconds, body, items, style, theme, backdrop, runs, panning, panEvent, inline
+        case cursor, focusEpoch, marks, placeEvent, slice, count, lasso, lassoEvent, math, spoken, source, alt, height, poster, captions, seconds, body, items, style, theme, backdrop, runs, panning, panEvent, inline
     }
 
     public init(from decoder: Decoder) throws {
@@ -158,10 +158,19 @@ extension Node: Decodable {
         Splitter(width: try box.decode(Int.self, forKey: .width), least: try box.decode(Int.self, forKey: .least), most: try box.decode(Int.self, forKey: .most), keep: try box.decode(Int.self, forKey: .keep), event: try box.decode(Int.self, forKey: .event))
     }
 
+    private static func editorFocusEpoch(_ box: KeyedDecodingContainer<Key>) throws -> Int {
+        guard box.contains(.focusEpoch) else { return 0 }
+        let value = try box.decode(Int.self, forKey: .focusEpoch)
+        guard (0...9_007_199_254_740_991).contains(value) else {
+            throw DecodingError.dataCorruptedError(forKey: .focusEpoch, in: box, debugDescription: "Editor focus epoch must be a nonnegative safe integer")
+        }
+        return value
+    }
+
     // [UI-COMPONENTS-EDITOR] [UI-COMPONENTS-BOARD] [UI-COMPONENTS-MATH] and the media components.
     private static func rich(_ kind: String, _ box: KeyedDecodingContainer<Key>) throws -> Node {
         switch kind {
-        case "editor": return .editor(label: try box.decode(String.self, forKey: .label), value: try box.decode(String.self, forKey: .value), inline: try box.decodeIfPresent(Bool.self, forKey: .inline) ?? false, cursor: try box.decode(Int.self, forKey: .cursor), marks: try box.decode([Mark].self, forKey: .marks), event: try box.decode(Int.self, forKey: .event), placeEvent: try box.decode(Int.self, forKey: .placeEvent))
+        case "editor": return .editor(label: try box.decode(String.self, forKey: .label), value: try box.decode(String.self, forKey: .value), inline: try box.decodeIfPresent(Bool.self, forKey: .inline) ?? false, cursor: try box.decode(Int.self, forKey: .cursor), focusEpoch: try editorFocusEpoch(box), marks: try box.decode([Mark].self, forKey: .marks), event: try box.decode(Int.self, forKey: .event), placeEvent: try box.decode(Int.self, forKey: .placeEvent))
         case "board": return .board(slice: try box.decode(String.self, forKey: .slice), count: try box.decode(Int.self, forKey: .count), lasso: try box.decode(Bool.self, forKey: .lasso), backdrop: try box.decodeIfPresent(String.self, forKey: .backdrop) ?? "", panning: try box.decodeIfPresent(Bool.self, forKey: .panning) ?? false, panEvent: try box.decodeIfPresent(Int.self, forKey: .panEvent), event: try box.decode(Int.self, forKey: .event), lassoEvent: try box.decode(Int.self, forKey: .lassoEvent))
         case "math": return .math(try box.decode(MathTree.self, forKey: .math), spoken: try box.decode(String.self, forKey: .spoken))
         case "image": return .image(source: try box.decode(String.self, forKey: .source), alt: try box.decode(String.self, forKey: .alt), width: try box.decode(Int.self, forKey: .width), height: try box.decode(Int.self, forKey: .height))

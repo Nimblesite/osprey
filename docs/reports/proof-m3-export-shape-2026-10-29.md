@@ -1,5 +1,7 @@
 # Proof kernel M3 export shape — recorded 2026-10-29
 
+Verification record for the inputs and revision named below. Current development follows the [Lean oracle and discipline-correction contract](../messaging.md#proof-development-and-the-lean-oracle); this record does not define a competitive objective or establish consistency.
+
 Task: record a real Lean + `lean4export` run that contains genuine `inductive`
 blocks (types, constructors, recursors) so the proof kernel's M3 inductive work
 has a measured target instead of a guess ([PROOF-EXPORT]).

@@ -2,7 +2,8 @@
 use super::{
     bind_pattern, builtin_callable_value, expression_name, expression_site, merge_optional_value,
     project_element, project_fiber_value, project_field, specialize_value, Analyzer, BTreeSet,
-    CallArguments, Callable, CallableEnv, EmptyCase, Expr, KnownCallable, Requirement, Value,
+    CallArguments, Callable, CallableEnv, EmptyCase, Expr, ExprArgs, KnownCallable, Requirement,
+    Value,
 };
 
 impl Analyzer<'_> {
@@ -333,7 +334,13 @@ impl Analyzer<'_> {
                 named_arguments,
             } => match crate::methods::parts(expression) {
                 Some(parts) => self.method_value(expression, &parts, scope, env),
-                None => self.call_value(function, arguments, named_arguments, scope, env),
+                None => self.call_value(
+                    function,
+                    ExprArgs::new(arguments),
+                    named_arguments,
+                    scope,
+                    env,
+                ),
             },
             Expr::MethodCall { .. } => crate::methods::parts(expression)
                 .and_then(|parts| self.method_value(expression, &parts, scope, env)),

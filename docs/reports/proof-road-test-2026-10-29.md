@@ -1,5 +1,7 @@
 # Proof road test, 2026-10-29: M0
 
+Verification record for the inputs and revision named below. Current development follows the [Lean oracle and discipline-correction contract](../messaging.md#proof-development-and-the-lean-oracle); this record does not define a competitive objective or establish consistency.
+
 The record plan 0041 asks for at each milestone: what was written, how long it took and every language or library gap that hurt.
 
 ## M0: a proof checks

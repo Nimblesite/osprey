@@ -7,6 +7,8 @@ public struct FrameStyle: Decodable, Sendable, Equatable {
     let name: String
     let width: Int
     let height: Int
+    @OptionalViewportField private(set) var viewportHeightInset: Int?
+    @OptionalViewportField private(set) var scrollY: Bool?
     let top: Int
     let right: Int
     let bottom: Int
@@ -29,12 +31,35 @@ public struct FrameStyle: Decodable, Sendable, Equatable {
     let cross: String?
     let controlHeight: Int?
     let controlPadding: Int?
+    let symbolSize: Int?
     let quietControls: Bool?
     let iconOnly: Bool?
     let fadeBackdrop: Bool?
     let trailingSymbols: Bool?
     let flatRows: Bool?
     let shadow: FrameShadow?
+}
+
+// Absence retains the legacy layout. Supplied viewport flags and metrics must
+// be non-null; integer metrics share the desktop host's protocol bounds.
+@propertyWrapper
+struct OptionalViewportField<Value: Decodable & Sendable & Equatable>: Decodable, Sendable, Equatable {
+    var wrappedValue: Value?
+    init() { wrappedValue = nil }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(Value.self)
+        if let inset = value as? Int, !(-1...32768).contains(inset) {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Viewport inset must be between -1 and 32768")
+        }
+        wrappedValue = value
+    }
+}
+
+extension KeyedDecodingContainer {
+    func decode<Value>(_ type: OptionalViewportField<Value>.Type, forKey key: Key) throws -> OptionalViewportField<Value> {
+        contains(key) ? try OptionalViewportField(from: superDecoder(forKey: key)) : OptionalViewportField()
+    }
 }
 
 enum FrameShadow: String, Decodable, Sendable { case none = "", floating }
@@ -49,6 +74,20 @@ struct FramedView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.ospreyInk) private var inheritedInk
     @Environment(\.ospreyTypography) private var typography
+    @Environment(\.ospreyViewportSize) private var viewport
+    @State private var scrollContentHeight: CGFloat?
+
+    private var viewportSized: Bool { (style.viewportHeightInset ?? -1) >= 0 }
+
+    private var resolvedHeight: CGFloat? {
+        if let inset = style.viewportHeightInset, inset >= 0 {
+            let minimum = CGFloat(max(style.height, 0)), bound = max(minimum, viewport.height - CGFloat(inset))
+            return style.scrollY == true ? min(bound, max(minimum, (scrollContentHeight ?? bound) + verticalInsets)) : bound
+        }
+        return style.height > 0 ? CGFloat(style.height) : nil
+    }
+
+    private var verticalInsets: CGFloat { CGFloat(style.top + style.bottom) + edgeInset("top") + edgeInset("bottom") }
 
     private var alignment: Alignment { Alignment(horizontal: horizontal, vertical: vertical) }
 
@@ -70,16 +109,21 @@ struct FramedView: View {
 
     var body: some View {
         presentedContent
-            .frame(width: style.width > 0 ? CGFloat(style.width) : nil, height: style.height > 0 ? CGFloat(style.height) : nil, alignment: alignment)
-            .frame(maxWidth: style.width == 0 && style.hug != true ? .infinity : nil, maxHeight: style.grow ? .infinity : nil, alignment: alignment)
-            .background { if !style.fill.isEmpty { theme.color(style.fill, dark: scheme == .dark) } }
-            .clipShape(RoundedRectangle(cornerRadius: CGFloat(style.radius)))
+            .frame(width: style.width > 0 ? CGFloat(style.width) : nil, height: resolvedHeight, alignment: alignment)
+            .frame(maxWidth: style.width == 0 && style.hug != true ? .infinity : nil, maxHeight: style.grow && !viewportSized ? .infinity : nil, alignment: alignment)
+            .background { if !style.fill.isEmpty { RoundedRectangle(cornerRadius: CGFloat(style.radius)).fill(theme.color(style.fill, dark: scheme == .dark)) } }
             .overlay { border.allowsHitTesting(false) }
-            .shadow(color: theme.tone(.primary, dark: scheme == .dark).opacity(style.shadow == .floating ? 2.0 / 15 : 0), radius: 25, x: 0, y: 20)
+            .modifier(FrameDropShadow(floating: style.shadow == .floating, color: theme.tone(.primary, dark: scheme == .dark)))
     }
 
     @ViewBuilder private var containedContent: some View {
-        if style.grow && placement == .pane && !content.fillsPane {
+        if style.scrollY == true {
+            ScrollView(.vertical) {
+                NodeView(node: content, drawing: drawing).environment(\.ospreyPlacement, .page)
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .topLeading)
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { scrollContentHeight = $0 }
+            }
+        } else if style.grow && placement == .pane && !content.fillsPane {
             ViewThatFits(in: .vertical) {
                 NodeView(node: content, drawing: drawing).environment(\.ospreyPlacement, .page)
                     .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
@@ -95,6 +139,7 @@ struct FramedView: View {
             .environment(\.ospreyPlacement, style.grow ? placement : .page)
             .padding(EdgeInsets(top: CGFloat(style.top) + edgeInset("top"), leading: CGFloat(style.left) + edgeInset("left"), bottom: CGFloat(style.bottom) + edgeInset("bottom"), trailing: CGFloat(style.right) + edgeInset("right")))
             .environment(\.ospreyTypography, typography.applying(style))
+            .environment(\.ospreyIntrinsicWidth, style.hug == true)
             .modifier(FrameControls(style: style, padding: inheritedControlPadding))
             .environment(\.ospreyStackAlignment, style.align ?? "start")
             .environment(\.ospreyGap, CGFloat(style.gap))
@@ -179,9 +224,13 @@ struct FrameTypography {
 
     var leadingGap: CGFloat {
         guard lineHeight > 0, size > 0 else { return 0 }
-        let face = NSFont(name: faceName, size: CGFloat(size)) ?? NSFont.systemFont(ofSize: CGFloat(size))
+        let face = nativeFont
         let lineBox = NSLayoutManager().defaultLineHeight(for: face) - face.leading.rounded()
         return CGFloat(lineHeight) - lineBox
+    }
+
+    var nativeFont: NSFont {
+        NSFont(name: faceName, size: CGFloat(max(size, 1))) ?? NSFont.systemFont(ofSize: CGFloat(max(size, 1)))
     }
 
     // Prevent Float paragraph spacing from rounding upward into an extra pixel over long documents.
@@ -237,17 +286,46 @@ struct DialogView: View {
     let content: Node
     let drawing: Drawing
     let dismiss: () -> Void
+    @FocusState private var focused: Bool
+    @State private var boundary = ModalFocusBoundary()
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
+            ModalFocusAnchor(boundary: boundary).frame(width: 0, height: 0)
             Color.clear.contentShape(Rectangle()).onTapGesture { }
             NodeView(node: content, drawing: drawing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .environment(\.ospreyModalFocusBoundary, boundary)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .accessibilityAddTraits(.isModal)
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled()
+        .onAppear { focused = true }
         .onExitCommand(perform: dismiss)
+    }
+}
+
+private struct ModalFocusAnchor: NSViewRepresentable {
+    let boundary: ModalFocusBoundary
+
+    func makeNSView(context: Context) -> ModalFocusAnchorView {
+        let view = ModalFocusAnchorView()
+        view.boundary = boundary
+        return view
+    }
+
+    func updateNSView(_ view: ModalFocusAnchorView, context: Context) { view.boundary = boundary }
+}
+
+private final class ModalFocusAnchorView: NSView {
+    var boundary: ModalFocusBoundary?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let window { boundary?.attach(to: window) } else { boundary?.detach() }
     }
 }
 
@@ -323,5 +401,16 @@ extension EnvironmentValues {
     var ospreyControlPadding: Int? {
         get { self[ControlPaddingKey.self] }
         set { self[ControlPaddingKey.self] = newValue }
+    }
+}
+
+
+private struct FrameDropShadow: ViewModifier {
+    let floating: Bool
+    let color: Color
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if floating { content.compositingGroup().shadow(color: color.opacity(2.0 / 15), radius: 25, x: 0, y: 20) }
+        else { content }
     }
 }

@@ -14,9 +14,10 @@ public struct RunAdapter: CapabilityAdapter {
         let executable = try request.text("executable")
         guard executable.hasPrefix("/") else { throw CapabilityError.notAllowed("Executable must be an absolute path") }
         let plist = try request.members["plist"].map { _ in try request.flag("plist") } ?? false
+        let slice = try request.text("slice")
         let run = try await Launch(executable: executable, arguments: try request.texts("arguments"), timeout: try request.number("timeout"), limit: try request.number("limit")).run()
         let output = plist ? try RunAdapter.plistJSON(run.stdout) : try Bounded.text(run.stdout)
-        slices.write(try request.text("slice"), output)
+        slices.write(slice, output)
         return .object(["status": .number(Double(run.status)), "stderr": .string(String(decoding: run.stderr.prefix(65536), as: UTF8.self))])
         #else
         throw CapabilityError.platform("Processes cannot be launched on this platform")

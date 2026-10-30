@@ -1,5 +1,7 @@
 # Adversarial review — Plan 0041 dependent types and Mathlib
 
+Historical review; findings and responses retain their recorded scope. Current development follows the [Lean oracle and discipline-correction contract](../messaging.md#proof-development-and-the-lean-oracle); this record does not define a competitive objective or establish consistency.
+
 ## Verdict
 
 **Do not call M0 a trustworthy kernel, M1 a Lean-proof check, or Phase 1 a working pluggable discipline.** The tree contains useful prototypes, but the evidence is being mistaken for the contract. The current M0 equality implementation can identify distinct terms; the export reader does not make the kernel check a Lean export; and the discipline protocol deliberately sends an empty import list. Those are architectural blockers, not polish.

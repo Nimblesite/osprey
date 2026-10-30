@@ -1,12 +1,14 @@
 # Adversarial review 2 — Plan 0041 dependent types and Mathlib
 
+Historical review; findings and responses retain their recorded scope. Current development follows the [Lean oracle and discipline-correction contract](../messaging.md#proof-development-and-the-lean-oracle); this record does not define a competitive objective or establish consistency.
+
 Reviewed against the tree on the day of writing. Every claim below was checked against source, tests, make targets and CI. Fixes from review 1 are credited where they actually landed; everything else gets the treatment it earned.
 
 ## Verdict
 
 The kernel equality hole is genuinely closed, universe instantiation is real, and the discipline seam now carries import signatures. Credit where due — those were the P0s and they are fixed with adversarial tests, not just edits.
 
-But the headline claims are still ahead of the evidence. The "Osprey beats Lean" gate is still a rigged comparison that also fails to hash its own input correctly. The M1 box says "a Lean proof checks" while every fixture was typed out by hand, and the export reader rejects every real Lean file on sight. The make target that promises "a failing suite exits non-zero on GC and ARC" pipes the suite through `tail`, which throws the exit code in the bin. The plan is now honest in its checkboxes and dishonest in its titles.
+But the headline claims are still ahead of the evidence. The comparative timing gate is still a rigged comparison that also fails to hash its own input correctly. The M1 box says "a Lean proof checks" while every fixture was typed out by hand, and the export reader rejects every real Lean file on sight. The make target that promises "a failing suite exits non-zero on GC and ARC" pipes the suite through `tail`, which throws the exit code in the bin. The plan is now honest in its checkboxes and dishonest in its titles.
 
 ## What actually got fixed (verified, not taken on faith)
 

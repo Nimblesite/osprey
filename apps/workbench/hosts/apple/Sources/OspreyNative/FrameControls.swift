@@ -8,6 +8,7 @@ struct FrameControls: ViewModifier {
     @Environment(\.ospreyControlHeight) private var height
     @Environment(\.ospreyQuietControls) private var quiet
     @Environment(\.ospreyTrailingSymbols) private var trailing
+    @Environment(\.ospreySymbolSize) private var symbolSize
 
     func body(content: Content) -> some View {
         content.environment(\.ospreyControlHeight, (style.controlHeight ?? 0) > 0 ? style.controlHeight ?? height : height)
@@ -17,13 +18,20 @@ struct FrameControls: ViewModifier {
             .environment(\.ospreyFlatRows, style.flatRows ?? false)
             .environment(\.ospreyFadeBackdrop, style.fadeBackdrop ?? false)
             .environment(\.ospreyTrailingSymbols, style.trailingSymbols == true || trailing)
+            .environment(\.ospreySymbolSize, (style.symbolSize ?? 0) > 0 ? CGFloat(style.symbolSize ?? 0) : symbolSize)
     }
 }
 
 private struct FadeBackdropKey: EnvironmentKey { static let defaultValue = false }
 private struct TrailingSymbolsKey: EnvironmentKey { static let defaultValue = false }
+private struct SymbolSizeKey: EnvironmentKey { static let defaultValue: CGFloat = 18 }
 
 extension EnvironmentValues {
+    var ospreySymbolSize: CGFloat {
+        get { self[SymbolSizeKey.self] }
+        set { self[SymbolSizeKey.self] = newValue }
+    }
+
     var ospreyFadeBackdrop: Bool {
         get { self[FadeBackdropKey.self] }
         set { self[FadeBackdropKey.self] = newValue }

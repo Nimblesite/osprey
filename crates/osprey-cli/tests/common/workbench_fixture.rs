@@ -5,17 +5,17 @@ use std::path::Path;
 use std::process::Output;
 
 /// `--quiet` keeps the printed formula, and the runner still prints its
-/// zero-test plan: the assertion keeps every byte rather than the first line.
-pub(crate) const VALID_STDOUT: &str =
-    "p ∧ q → q ∧ p\n1..0\n# tests=0 passed=0 failed=0 skipped=0\n";
+/// passing case and plan: the assertion keeps every byte rather than the first line.
+pub(crate) const VALID_FORMULA: &str = "p ∧ q → q ∧ p";
+pub(crate) const VALID_STDOUT: &str = "p ∧ q → q ∧ p\nok 1 - goal formula\np ∧ q → q ∧ p\nok 2 - later valid formula\n1..2\n# tests=2 passed=2 failed=0 skipped=0\n";
 
 /// Stage a driver for `formula` from the maintained sources, so the regression
 /// exercises the real helper rather than a reimplementation of it.
-pub(crate) fn stage(root: &Path, repo_root: &Path, formula: &str) -> std::io::Result<()> {
+pub(crate) fn stage(root: &Path, repo_root: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(root)?;
     copy_goal_case(root, repo_root)?;
     copy_fixture_host(root, repo_root)?;
-    std::fs::write(root.join("main.ospml"), driver(formula))?;
+    std::fs::write(root.join("main.ospml"), driver())?;
     std::fs::write(root.join("osprey.toml"), manifest(repo_root)?)
 }
 
@@ -33,14 +33,30 @@ fn copy_goal_case(root: &Path, repo_root: &Path) -> std::io::Result<()> {
     std::fs::write(root.join("goalcase.ospml"), exported)
 }
 
-/// The real `FixtureFiles` host, so no abort helper is copied.
+/// The real `FixtureFiles` host, including its typed test failure boundary.
 fn copy_fixture_host(root: &Path, repo_root: &Path) -> std::io::Result<()> {
     let host = repo_root.join("apps/workbench/tests/app.ospml");
     std::fs::write(root.join("fixtures.ospml"), std::fs::read_to_string(host)?)
 }
 
-fn driver(formula: &str) -> String {
-    format!("namespace goalfault\n\nimport workbench::Formulas\nimport workbenchtests::GoalCases\n\nmain () = print (Formulas::show (GoalCases::formula \"{formula}\"))\n")
+fn driver() -> String {
+    format!(
+        r#"namespace goalfault
+
+import workbench::Formulas
+import workbenchtests::GoalCases
+import workbenchtests::FixtureFiles
+
+render value = FixtureFiles::ok (print (Formulas::show value))
+parse text = FixtureFiles::bind (GoalCases::formula text, render)
+run () = match readFile "formula.txt"
+    Success text => parse text
+    Error problem => Error(message = "fixture formula.txt: ${{problem}}")
+later () = parse "{VALID_FORMULA}"
+test ("goal formula", FixtureFiles::checked run)
+test ("later valid formula", FixtureFiles::checked later)
+"#
+    )
 }
 
 /// `.` reaches the staged copies; listing them again would load them twice. The
@@ -65,49 +81,51 @@ fn manifest_text(roots: &[String]) -> std::io::Result<String> {
     ))
 }
 
-/// The refusal on every OS: a failed status and no `⊥` on the way out.
+const FAILED_CASE: &str = "not ok 1 - goal formula";
+const FAILED_SUMMARY: &str = "# tests=2 passed=1 failed=1 skipped=0";
+const FAILED_TAP: &str = "not ok 1 - goal formula\np ∧ q → q ∧ p\nok 2 - later valid formula\n1..2\n# tests=2 passed=1 failed=1 skipped=0\n";
+
+/// A fixture fault fails its active test normally, retaining the parser context.
 pub(crate) fn assert_faulted(output: &Output, memory: &str) {
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        !output.status.success(),
-        "{memory}: the faulted fixture still succeeded: stdout={stdout}"
-    );
-    assert!(
-        !stdout.contains('\u{22a5}'),
-        "{memory}: the faulted fixture still printed bottom: stdout={stdout}"
-    );
-    assert_context(&String::from_utf8_lossy(&output.stderr), memory);
-    assert_aborted(output, memory);
+    assert_failed_case(output, memory);
+    assert_context(&String::from_utf8_lossy(&output.stdout), memory);
 }
 
-/// The report names the fixture it could not read and the parser's own reason.
-fn assert_context(stderr: &str, memory: &str) {
+pub(crate) fn assert_missing(output: &Output, memory: &str) {
+    assert_failed_case(output, memory);
     assert!(
-        stderr.contains("goal formula p \u{2227}"),
-        "{memory}: the parse context is missing: stderr={stderr}"
-    );
-    assert!(
-        stderr.contains("a proposition after"),
-        "{memory}: the parser's reason is missing: stderr={stderr}"
+        String::from_utf8_lossy(&output.stdout)
+            .contains("fixture formula.txt: readFile: formula.txt:"),
+        "{memory}: {output:?}"
     );
 }
 
-/// On Unix the launcher re-exits with its aborted child's code, so SIGABRT
-/// arrives as 128 + 6 rather than as a signal on this status; the other OS
-/// families keep the non-success and stderr assertions above.
-fn assert_aborted(output: &Output, memory: &str) {
-    #[cfg(unix)]
-    {
-        const SIGABRT: i32 = 6;
-        assert_eq!(
-            output.status.code(),
-            Some(128 + SIGABRT),
-            "{memory}: the child was not aborted: {}",
-            output.status
-        );
-    }
-    #[cfg(not(unix))]
-    let _ = (output, memory);
+fn assert_failed_case(output: &Output, memory: &str) {
+    assert_eq!(output.status.code(), Some(1), "{memory}: {output:?}");
+    assert_failed_stdout(&String::from_utf8_lossy(&output.stdout), memory);
+}
+
+fn assert_failed_stdout(stdout: &str, memory: &str) {
+    assert!(!stdout.contains('\u{22a5}'), "{memory}: fabricated bottom");
+    assert!(stdout.contains(FAILED_CASE), "{memory}: {stdout}");
+    assert!(stdout.contains(FAILED_SUMMARY), "{memory}: {stdout}");
+    assert!(
+        stdout.contains("p ∧ q → q ∧ p\nok 2 - later valid formula"),
+        "{memory}: no later valid case: {stdout}"
+    );
+    assert_eq!(
+        stdout.split_once('\n').map(|(_, tap)| tap),
+        Some(FAILED_TAP),
+        "{memory}: changed failed fixture's TAP"
+    );
+}
+
+fn assert_context(stdout: &str, memory: &str) {
+    assert!(
+        stdout.contains("goal formula p \u{2227}"),
+        "{memory}: {stdout}"
+    );
+    assert!(stdout.contains("a proposition after"), "{memory}: {stdout}");
 }
 
 fn support_roots(repo_root: &Path) -> std::io::Result<Vec<String>> {
@@ -141,7 +159,24 @@ fn absolute_roots(tests: &Path, listed: &[&str]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::manifest_text;
+    use super::{assert_failed_stdout, manifest_text, FAILED_TAP};
+
+    #[test]
+    fn failed_fixture_keeps_exact_plan_and_later_valid_case() {
+        assert_failed_stdout(&format!("# check 'fixture formula.txt: readFile: formula.txt: No such file or directory' failed: expected true, got false\n{FAILED_TAP}"), "gc");
+    }
+
+    #[test]
+    #[should_panic(expected = "changed failed fixture's TAP")]
+    fn missing_tap_plan_is_rejected() {
+        assert_failed_stdout("# failure\nnot ok 1 - goal formula\np ∧ q → q ∧ p\nok 2 - later valid formula\n# tests=2 passed=1 failed=1 skipped=0\n", "gc");
+    }
+
+    #[test]
+    #[should_panic(expected = "changed failed fixture's TAP")]
+    fn extra_fabricated_formula_is_rejected() {
+        assert_failed_stdout("# failure\np ∧ q → q ∧ p\nnot ok 1 - goal formula\np ∧ q → q ∧ p\nok 2 - later valid formula\n1..2\n# tests=2 passed=1 failed=1 skipped=0\n", "arc");
+    }
 
     /// Roots a Windows checkout, or a quote-containing directory, actually produces.
     const HOSTILE: [&str; 4] = [

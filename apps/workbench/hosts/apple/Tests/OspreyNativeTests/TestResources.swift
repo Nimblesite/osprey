@@ -56,3 +56,9 @@ enum TestResources {
         (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews)
     }
 }
+
+// Window activation is an external input; text controls and first-responder changes remain AppKit's.
+final class FocusTestWindow: NSWindow {
+    var keyState = true
+    override var isKeyWindow: Bool { keyState }
+}

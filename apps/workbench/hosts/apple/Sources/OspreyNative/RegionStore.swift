@@ -51,6 +51,7 @@ public final class RegionStore: ObservableObject {
     @Published public private(set) var theme: Theme?
     @Published public private(set) var diagnostics: [String] = []
     @Published public private(set) var failure: String?
+    @Published public private(set) var usesViewportLayout = false
     private var state = ""
     private let library: Library
     private let context: HostContext
@@ -78,6 +79,14 @@ public final class RegionStore: ObservableObject {
     public func send(region: String, revision: Int, ordinal: Int, value: JSONValue) {
         Log.events.debug("Control \(ordinal) of \(region, privacy: .public)@\(revision) sent \(value.text, privacy: .private)")
         deliver(.object(["kind": "ui", "region": .string(region), "revision": .number(Double(revision)), "ordinal": .number(Double(ordinal)), "value": value, "now": .number(Double(context.now))]))
+    }
+
+    /// The shared runtime validates the original issued binding before uniquely matching an editor after a patch.
+    func editing(region: String, revision: Int) -> (Int, JSONValue) -> Void {
+        let prior = state
+        return { [weak self] ordinal, value in
+            self?.deliver(.object(["kind": .string("ui-edit"), "prior": .string(prior), "region": .string(region), "revision": .number(Double(revision)), "ordinal": .number(Double(ordinal)), "value": value, "now": .number(Double(self?.context.now ?? 0))]))
+        }
     }
 
     /// A capability completion for `ticket`.
@@ -122,6 +131,8 @@ public final class RegionStore: ObservableObject {
             if let cell = cells[patch.key] { cell.replace(revision: patch.revision, node: patch.node) } else { cells[patch.key] = RegionCell(key: patch.key, revision: patch.revision, node: patch.node) }
         }
         envelope.removed.forEach { cells.removeValue(forKey: $0) }
+        let viewport = cells.values.contains { $0.node.authorsViewport }
+        if viewport != usesViewportLayout { usesViewportLayout = viewport }
     }
 
     /// One line per envelope, and each of Osprey's diagnostics as an error.

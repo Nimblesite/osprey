@@ -17,8 +17,11 @@ extension EnvironmentValues {
 
 struct NativeSymbol: View {
     let name: String
-    var size: CGFloat = 18
+    var size: CGFloat? = nil
     @Environment(\.ospreySymbols) private var symbols
+    @Environment(\.ospreySymbolSize) private var inheritedSize
+
+    private var renderedSize: CGFloat { size ?? inheritedSize }
 
     @ViewBuilder var body: some View {
         switch symbols {
@@ -36,11 +39,11 @@ struct NativeSymbol: View {
 
     private func artwork(_ image: NSImage) -> some View {
         Image(nsImage: image).renderingMode(.template).resizable().scaledToFit()
-            .frame(width: size, height: size).accessibilityHidden(true)
+            .frame(width: renderedSize, height: renderedSize).accessibilityHidden(true)
     }
 
     private func failed(_ reason: String) -> some View {
-        Image(systemName: "exclamationmark.triangle").frame(width: size, height: size)
+        Image(systemName: "exclamationmark.triangle").frame(width: renderedSize, height: renderedSize)
             .accessibilityLabel("Icon unavailable: \(reason)").help(reason)
     }
 }

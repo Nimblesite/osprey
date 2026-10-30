@@ -7,13 +7,20 @@ import SwiftUI
 // lessons the working folder so the application's relative paths resolve, and
 // shows the root region. No application state, screen or policy lives here.
 
-/// Answers Osprey's `workbench_slice` import with the host-held slice `key`; the string stays valid for the process.
+/// Answers `workbench_slice` from the call's pinned snapshot; the ABI copies imported bytes.
 @_cdecl("workbench_slice")
 func workbenchSlice(_ key: UnsafePointer<CChar>?) -> UnsafePointer<CChar>? {
     SliceStore.shared.pointer(key.map { String(cString: $0) } ?? "")
 }
 
 @main
+enum WorkbenchMain {
+    @MainActor static func main() {
+        FontRegistration.configureTextRendering()
+        WorkbenchApp.main()
+    }
+}
+
 struct WorkbenchApp: App {
     @StateObject private var store = WorkbenchApp.makeStore()
 
@@ -29,9 +36,10 @@ struct WorkbenchApp: App {
         do { try FontRegistration.registerBundled() }
         catch { fatalError("The bundled mathematical fonts could not load: \(error)") }
         if let resources = Bundle.main.resourcePath { FileManager.default.changeCurrentDirectoryPath(resources) }
-        let entry = LibraryEntry(main: osprey_main, start: osprey_app_start, dispatch: osprey_app_dispatch)
+        let entry = LibraryEntry(main: osprey_main, start: osprey_app_start, dispatch: osprey_app_dispatch,
+            ownershipVersion: osprey_host_abi_version, releaseString: osprey_release_string)
         let bundle = Bundle.main.bundleIdentifier ?? "org.ospreylang.workbench"
-        let adapters = Adapters.standard(store: StoreAdapter.standard(bundle: bundle)) + [RecogniseAdapter()]
+        let adapters = Adapters.standard(store: StoreAdapter.standard(bundle: bundle))
         let runner = CapabilityRunner(adapters: adapters)
         return RegionStore(library: Library(entry: entry), context: HostContext(platform: "macos", home: NSHomeDirectory(), arguments: Array(CommandLine.arguments.dropFirst())), capabilities: runner)
     }

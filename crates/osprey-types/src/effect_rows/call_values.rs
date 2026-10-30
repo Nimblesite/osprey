@@ -2,14 +2,14 @@
 use super::{
     builtin_return_shape, expression_name, merge_optional_value, project_element,
     source_named_callee, stabilize_merged_callables, Analyzer, BTreeSet, CallArguments, Callable,
-    CallableEnv, Expr, NamedArgument, Summary, Value,
+    CallableEnv, Expr, ExprArgs, NamedArgument, Summary, Value,
 };
 
 impl Analyzer<'_> {
     pub(super) fn call_value(
         &self,
         function: &Expr,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named_arguments: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -85,7 +85,7 @@ impl Analyzer<'_> {
     pub(super) fn callsite_arguments(
         &self,
         function: &Expr,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -100,7 +100,7 @@ impl Analyzer<'_> {
 
     pub(super) fn call_arguments(
         &self,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -125,7 +125,7 @@ impl Analyzer<'_> {
     pub(super) fn builtin_call_value(
         &self,
         name: &str,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -211,7 +211,7 @@ impl Analyzer<'_> {
     /// recursive aggregate — flows into the fold result. The callback's own
     /// latent effects are invoked by `eager_callback_slots`. Implements
     /// [EFFECTS-PROVENANCE].
-    fn fold_value(&self, arguments: &[Expr], scope: &[String], env: &CallableEnv) -> Value {
+    fn fold_value(&self, arguments: ExprArgs<'_>, scope: &[String], env: &CallableEnv) -> Value {
         let mut acc = arguments
             .get(1)
             .and_then(|argument| self.value(argument, scope, env))
@@ -226,7 +226,7 @@ impl Analyzer<'_> {
     fn merge_fold_return(
         &self,
         acc: &mut Value,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         scope: &[String],
         env: &CallableEnv,
     ) {
@@ -249,7 +249,7 @@ impl Analyzer<'_> {
     fn fold_callback_arguments(
         &self,
         acc: &Value,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         scope: &[String],
         env: &CallableEnv,
     ) -> CallArguments {
@@ -274,11 +274,11 @@ impl Analyzer<'_> {
     pub(super) fn eager_callback_arguments(
         &self,
         name: &str,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         scope: &[String],
         env: &CallableEnv,
     ) -> Vec<Option<Value>> {
-        let element = |arguments: &[Expr]| {
+        let element = |arguments: ExprArgs<'_>| {
             arguments
                 .first()
                 .and_then(|argument| self.value(argument, scope, env))
@@ -305,7 +305,7 @@ impl Analyzer<'_> {
     fn signal_snapshot_value(
         &self,
         name: &str,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -349,7 +349,7 @@ impl Analyzer<'_> {
     pub(super) fn lazy_iterator_value(
         &self,
         name: &str,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         scope: &[String],
         env: &CallableEnv,
     ) -> Value {
@@ -393,29 +393,16 @@ impl Analyzer<'_> {
         }
     }
 
-    pub(super) fn receiver_first(&self, receiver: &Expr, arguments: &[Expr]) -> Vec<Expr> {
-        let originals: Vec<_> = std::iter::once(receiver).chain(arguments).collect();
-        let copies: Vec<_> = originals
-            .iter()
-            .map(|expression| (*expression).clone())
-            .collect();
-        for (source, copy) in originals.into_iter().zip(&copies) {
-            crate::arithmetic::transfer(
-                source,
-                copy,
-                &mut self.instances.expression_types.borrow_mut(),
-            );
-        }
-        copies
+    pub(super) fn receiver_first<'b>(receiver: &'b Expr, arguments: &'b [Expr]) -> ExprArgs<'b> {
+        ExprArgs::with_receiver(receiver, arguments)
     }
 
     /// `left |> right` answered by `apply` as the call it desugars to: the
     /// receiver leads a call's arguments, or is a bare callee's one argument.
-    fn piped<T>(
-        &self,
-        left: &Expr,
-        right: &Expr,
-        apply: impl FnOnce(&Expr, &[Expr], &[NamedArgument]) -> T,
+    fn piped<'b, T>(
+        left: &'b Expr,
+        right: &'b Expr,
+        apply: impl FnOnce(&Expr, ExprArgs<'b>, &[NamedArgument]) -> T,
     ) -> T {
         match right {
             Expr::Call {
@@ -424,10 +411,10 @@ impl Analyzer<'_> {
                 named_arguments,
             } => apply(
                 function,
-                &self.receiver_first(left, arguments),
+                Self::receiver_first(left, arguments),
                 named_arguments,
             ),
-            _ => apply(right, std::slice::from_ref(left), &[]),
+            _ => apply(right, ExprArgs::new(std::slice::from_ref(left)), &[]),
         }
     }
 
@@ -438,7 +425,7 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Summary {
-        self.piped(left, right, |function, arguments, named| {
+        Self::piped(left, right, |function, arguments, named| {
             self.call(function, arguments, named, scope, env)
         })
     }
@@ -450,7 +437,7 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<Value> {
-        self.piped(left, right, |function, arguments, named| {
+        Self::piped(left, right, |function, arguments, named| {
             self.call_value(function, arguments, named, scope, env)
         })
     }

@@ -18,7 +18,7 @@ mkdir -p "$library" Sources/OspreyApp/include
 "$compiler" app --compile --target=macos --no-warnings -o "$library/libOspreyApp.a"
 cp "$library/libOspreyApp.h" Sources/OspreyApp/include/libOspreyApp.h
 symbols="$(nm "$library/libOspreyApp.a")"
-for symbol in osprey_main osprey_app_start osprey_app_dispatch; do
+for symbol in osprey_main osprey_app_start osprey_app_dispatch osprey_host_abi_version osprey_release_string; do
     grep -q " T _$symbol\$" <<<"$symbols" || { echo "The Osprey library does not export $symbol" >&2; exit 1; }
 done
 swift build -c release
@@ -31,14 +31,7 @@ cp -R ../../lessons "$app/Contents/Resources/lessons"
 cp -R ../../assets/. "$app/Contents/Resources/"
 python3 "$repo/scripts/workbench-proof-assets.py" "$app/Contents/Resources"
 cp "$repo/website/src/assets/images/logo.png" "$app/Contents/Resources/osprey-logo.png"
-iconset="$PWD/.build/Osprey.iconset"
-mkdir -p "$iconset"
-for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" "$app/Contents/Resources/osprey-logo.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
-    sips -z "$((size * 2))" "$((size * 2))" "$app/Contents/Resources/osprey-logo.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
-done
-iconutil -c icns "$iconset" -o "$app/Contents/Resources/Osprey.icns"
-rm -rf "$iconset"
+bash icon.sh "$app/Contents/Resources/osprey-logo.png" "$app/Contents/Resources/Osprey.icns"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -49,7 +42,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleExecutable</key><string>Workbench</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleVersion</key><string>2</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

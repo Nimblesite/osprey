@@ -1,5 +1,7 @@
 # Recent OpenAI proof ports — updated 2026-10-30
 
+Verification record for the inputs and revision named below. Current development follows the [Lean oracle and discipline-correction contract](../messaging.md#proof-development-and-the-lean-oracle); this record does not define a competitive objective or establish consistency.
+
 Twelve selected supporting lemmas from the October 2026 OpenAI mathematics release now check in the shared Osprey kernel under GC, ARC and wasm32, including one finite-index injectivity proof added after repairing typed proof conversion. All twelve reject a corrupted proof and a false replacement statement on every target. The final compiler checkpoint passes all 36 checks and 72 mutation refusals in `target/logs/ci-prep/proof-openai-host-abi-current.log`, after the constructor-alias eta correction. The shared compiler hash is `6f5c55438f39162831fc9c2ccf3dcdb5d45dcc1a9a984deec4c73de768831dae`. The replacement statement is `∀ p : Prop, p`; the original proof is retained. Each corrupt-proof control retains the original statement and substitutes its type expression as the proof. Every rejection must be a kernel type mismatch, not a parser or missing-dependency error.
 
 These are the checked-export layer of [PROOF-RUNNABLE-LIBRARY]. They are not completed ports of the release's headline results, and a readable Osprey proof frontend is still separate work. The library proofs are checked by Osprey code; Lean produces the input certificate and independently cross-checks it. Browser, native and VSIX hosts reuse this same kernel.

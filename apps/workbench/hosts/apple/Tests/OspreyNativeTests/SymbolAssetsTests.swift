@@ -4,6 +4,37 @@ import XCTest
 @testable import OspreyNative
 
 final class SymbolAssetsTests: XCTestCase {
+    @MainActor
+    func testPackagedDockIconKeepsAnOpaqueDarkBackingAndVisibleBirdAtSmallSizes() throws {
+        for size in [16, 64] {
+            let bitmap = try dockBitmap(size)
+            let backing = try XCTUnwrap(bitmap.colorAt(x: size / 4, y: size / 4)?.usingColorSpace(.sRGB))
+            XCTAssertGreaterThan(backing.alphaComponent, 0.98, "The bird needs its own opaque backing instead of macOS's pale fallback")
+            XCTAssertLessThan(luminance(backing), 0.02, "The Dock tile must retain the brand's deep navy contrast")
+            let visible = (0..<size).flatMap { y in (0..<size).compactMap { x in bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) } }
+                .filter { $0.alphaComponent > 0.9 && (luminance($0) + 0.05) / (luminance(backing) + 0.05) >= 3 }
+            XCTAssertGreaterThan(Double(visible.count) / Double(size * size), 0.12, "The bird must remain recognizable at \(size) pixels")
+        }
+    }
+
+    @MainActor
+    private func dockBitmap(_ size: Int) throws -> NSBitmapImageRep {
+        let file = TestResources.apple.appendingPathComponent(".build/Osprey Workbench.app/Contents/Resources/Osprey.icns")
+        let image = try XCTUnwrap(NSImage(contentsOf: file))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
+        image.draw(in: CGRect(x: 0, y: 0, width: size, height: size), from: .zero, operation: .copy, fraction: 1)
+        return bitmap
+    }
+
+    private func luminance(_ color: NSColor) -> Double {
+        let linear: (Double) -> Double = { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
+        return 0.2126 * linear(color.redComponent) + 0.7152 * linear(color.greenComponent) + 0.0722 * linear(color.blueComponent)
+    }
+
     func testEveryShippedDesignSymbolDecodesAsTemplateArtwork() throws {
         let assets = try XCTUnwrap(SymbolAssets.load(root: TestResources.assets))
         for name in ["moon", "sun.max", "folder.open", "square.and.arrow.down", "chevron.left.forwardslash.chevron.right", "pencil", "hand.draw"] {
@@ -73,6 +104,16 @@ final class SymbolAssetsTests: XCTestCase {
             let artwork = root.appendingPathComponent("symbols/pencil.svg")
             try (Data(contentsOf: artwork) + Data(repeating: 32, count: 262145)).write(to: artwork)
             XCTAssertThrowsError(try SymbolAssets.load(root: root)) { XCTAssertTrue($0.localizedDescription.contains("size limit")) }
+        }
+    }
+
+    func testSymbolXmlRequiresTheSvgNamespaceAndRefusesDocumentEntities() throws {
+        try withResources { root in
+            _ = try registered(root)
+            for source in ["<html/>", "<svg width=\"24\" height=\"24\"><path d=\"M0 0H24V24H0Z\"/></svg>", "<!DOCTYPE svg [<!ENTITY ink 'black'>]><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\"><path fill=\"&ink;\" d=\"M0 0H24V24H0Z\"/></svg>"] {
+                try Data(source.utf8).write(to: root.appendingPathComponent("symbols/pencil.svg"))
+                XCTAssertThrowsError(try SymbolAssets.load(root: root))
+            }
         }
     }
 

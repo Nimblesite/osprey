@@ -238,6 +238,7 @@ def windows_compiler_failures():
 
 
 def main():
+    subprocess.run([sys.executable, "hosts/gpui/dependencies_test.py"], check=True)
     text = WORKFLOW.read_text()
     failures = package_failures(text) + windows_compiler_failures() + proof_staging_failures(text)
     with tempfile.NamedTemporaryFile(suffix=".md") as summary:

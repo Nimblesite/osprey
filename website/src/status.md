@@ -65,10 +65,10 @@ are compiled and compared with checked-in expected output.
 | --- | --- | --- |
 | `native` | Executable for the host platform | Native runtime, including resumable effects; GC by default, ARC, or explicit unmanaged `none` |
 | `python` | Shared library and C header on Linux/macOS | Loaded by CPython through `osprey-interop`; scalar ABI and opaque Python handles; no dynamic control continuations, fibers, HTTP/WebSocket or process spawning |
-| `wasm32` | WebAssembly module | WASI/browser host; explicit `--memory=none`; unsupported features rejected before code generation |
-| `ios`, `ios-sim` | ARM64 static archive and C header | Swift host, iOS 15 minimum; explicit `--memory=none`; no resumable effects |
-| `macos` | ARM64 static archive and C header | Swift host, macOS 12 minimum; same C ABI and unmanaged-memory restrictions as the iOS archive |
-| `android-arm64`, `android-x64` | ARM64 or x86-64 static archive and C header | Android host and JNI, API 26 minimum; explicit `--memory=none`; no resumable effects |
+| `wasm32` | WebAssembly module | WASI/browser host; ARC by default; tracing GC is rejected; unsupported features rejected before code generation |
+| `ios`, `ios-sim` | ARM64 static archive and C header | Swift host, iOS 15 minimum; ARC by default; tracing GC and resumable effects are rejected |
+| `macos` | ARM64 static archive and C header | Swift host, macOS 12 minimum; ARC by default; same C ABI restrictions as the iOS archive |
+| `android-arm64`, `android-x64` | ARM64 or x86-64 static archive and C header | Android host and JNI, API 26 minimum; ARC by default; tracing GC and resumable effects are rejected |
 
 The compiler rejects unsupported target operations during `--check`, `--llvm`, and compilation. The iOS, macOS and Android archive targets reject `resume` and unavailable built-in process, HTTP, and WebSocket operations. Their hosts provide platform networking through the C boundary. The `macos` archive target is separate from an ordinary native macOS executable; its [Swift host contract](/spec/0038-iostarget/#mac-host-ios-macos-host) applies. WebAssembly also rejects fibers, terminal control, and arbitrary C imports; approved browser imports and supported host filesystem operations remain available.
 
@@ -92,8 +92,8 @@ The current development build rejects these older forms:
 - Tail-call optimisation is not implemented.
 - The [package manager](/docs/package-manager/) runs a folder registry, dependency resolution, verified fetching, locked builds, local checkout overrides and folder publishing. Named ambient builtin surfaces are checked against root grants, but raw native `extern` declarations remain unclassified and accepted by folder publication; these checks do not establish complete confinement of untrusted packages. Python interop dependencies use uv. Crash-safe activation remains blocked on filesystem primitives. The hosted package website and public trust services remain planned. Working project/module examples do not imply every module-system feature is complete.
 - A project is assembled from source, so a signature item with no implementation is an error. A module constant of an opaque type reaches a client as a bare literal; export a function instead.
-- The strict static-memory mode described in the memory specification is not a current CLI option. Native builds default to `gc` and accept `gc`, `arc` and explicit `none`. Mobile and WebAssembly require explicit `--memory=none`; managed runtime archives are unavailable. The old `--memory=default` spelling is rejected.
-- The initial mobile runtime retains general allocations for process lifetime and has no public library teardown or returned-string release API.
+- The strict static-memory mode described in the memory specification is not a current CLI option. Native builds default to `gc`; WebAssembly and hosted libraries default to `arc` and reject tracing GC. Managed archive availability depends on the target runtime build. The old `--memory=default` spelling is rejected.
+- Hosted archives preserve application globals across calls and expose `osprey_release_string` for owned string results, without a public library-wide teardown API.
 - The mobile sample reads one public GitHub issue page. Authentication, pagination, background refresh, and posting changes to GitHub are not implemented.
 - GPU kernels run in software binary64 with no kernel fusion, so small kernels are launch-bound: GPT-2 trains about three times faster on an M4 Max GPU than on its CPU and generates no faster. `gpuScan` and `gpuFilter` have no device form; a selected device stops the run on them. Recorded hardware acceptance covers Apple GPUs. iOS, Android and WebAssembly support the CPU buffer backend; an explicit device selection fails because these targets carry no GPU adapter.
 - C integrations are outside Osprey's memory-safety guarantee.

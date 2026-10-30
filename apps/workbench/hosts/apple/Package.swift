@@ -1,7 +1,7 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
-// The Osprey Workbench for the Mac. `build.sh` compiles `app/` to
+// The Osprey Workbench for the Mac. `run.sh` compiles `app/` to
 // `.build/osprey/macos/libOspreyApp.a` and its generated header, which the
 // `OspreyApp` C target exposes; `swift build` alone cannot build the app.
 let package = Package(
@@ -10,7 +10,7 @@ let package = Package(
     products: [.executable(name: "Workbench", targets: ["WorkbenchApp"]), .executable(name: "SnapshotReview", targets: ["SnapshotReview"])],
     targets: [
         .target(name: "OspreyNative", linkerSettings: [.linkedFramework("AVKit")]),
-        .testTarget(name: "OspreyNativeTests", dependencies: ["OspreyNative"]),
+        .testTarget(name: "OspreyNativeTests", dependencies: ["OspreyNative", "OspreyApp"]),
         .executableTarget(name: "SnapshotReview", dependencies: ["OspreyNative"], path: "Tests/SnapshotReview"),
         .target(
             name: "OspreyApp",

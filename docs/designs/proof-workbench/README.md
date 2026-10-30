@@ -1,16 +1,18 @@
 # Proof Workbench — design handoff
 
-**Start with [the visual gallery](index.html), then [open the interactive demo](prototype/index.html). Both open directly from disk. No server, package installation or separate repository is needed.**
+**Historical prototype.** The user retired the freehand board and handwriting workflow. The current Workbench uses mathematical documents, typed formulas and proof steps, with optional source. Follow [the current implementation contract](../../specs/applications/0051-ProofWorkbench.md) and [production acceptance status](design-qa.md); the board workflows and acceptance references below record the earlier design study. Fresh native and installed-VSIX acceptance remains required for the revised application.
+
+Explore the historical [visual gallery](index.html) and [interactive demo](prototype/index.html). Both open directly from disk. No server, package installation or separate repository is needed.
 
 This is the Paper & Slate design direction, revised with the user and reviewed with Claude through TMC. It is a design artifact inside Osprey. It is not the production application or a proof checker.
 
-## What the product is
+## Historical product direction
 
 A place to do the whole mathematical solution: draw, calculate, write reasoning, organise the argument and read the finished page. The board is the primary surface. Nobody needs to know Osprey. Generated, syntax-highlighted source is available only when explicitly opened. Arbitrary working remains visible and unchecked; supported proof steps may gain precise feedback from the real checker when implemented.
 
 Inspired by Osprey’s precision and restraint; independent colour, typography and composition. The current screens use a typographic wordmark. The earlier symbol studies are exploration only, not an approved implementation asset.
 
-## Canonical implementation contract
+## Historical implementation handoff
 
 [Spec 0051, WORKBENCH-DESIGN](../../specs/applications/0051-ProofWorkbench.md#beautiful-or-not-shipped-workbench-design) defines the exact colour tokens, type scale, mathematical spacing, surfaces, feedback and motion. [Plan 0042](../../plans/0042-proof-workbench.md) defines delivery order. Implement production behaviour in the Osprey application and the existing native host framework, not by transplanting this JavaScript design study.
 

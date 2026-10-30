@@ -17,8 +17,10 @@ struct TextView: View {
 
     var body: some View {
         let text = styledText.tracking(typography.tracking != 0 ? typography.tracking : role == .eyebrow ? 1.6 : 0).textCase(role == .eyebrow ? .uppercase : nil)
-            .lineSpacing(typography.lineHeight > 0 ? typography.paragraphSpacing : role == .callout ? 4 : 0).padding(.vertical, typography.leadingGap / 2).foregroundStyle(ink.isEmpty ? theme.tone(tone, dark: scheme == .dark) : theme.color(ink, dark: scheme == .dark).opacity(tone == .secondary ? 0.78 : 1))
-        if !value.isEmpty {
+            .lineSpacing(typography.lineHeight > 0 ? typography.paragraphSpacing : role == .callout ? 4 : 0).padding(.vertical, typography.leadingGap / 2).foregroundStyle(resolvedColor)
+        if !value.isEmpty && role == .body && typography.family == "serif" && typography.size > 0 && typography.lineHeight > 0 {
+            ParagraphText(value: value, typography: typography, color: NSColor(resolvedColor))
+        } else if !value.isEmpty {
             if placement == .row {
                 text.lineLimit(role == .caption ? 2 : nil)
             } else {
@@ -29,6 +31,10 @@ struct TextView: View {
 
     private var styledText: Text {
         return Text(value).font(typography.font(fallback: ThemeResolver.font(role)))
+    }
+
+    private var resolvedColor: Color {
+        ink.isEmpty ? theme.tone(tone, dark: scheme == .dark) : theme.color(ink, dark: scheme == .dark).opacity(tone == .secondary ? 0.78 : 1)
     }
 }
 
@@ -179,14 +185,19 @@ struct ButtonView: View {
     @Environment(\.ospreyPlacement) private var placement
     @Environment(\.ospreyIconOnly) private var iconOnly
     @Environment(\.ospreyTrailingSymbols) private var trailingSymbols
+    @FocusState private var focused: Bool
 
     var body: some View {
+        control.focusable().focused($focused).focusEffectDisabled()
+    }
+
+    @ViewBuilder private var control: some View {
         if iconOnly {
-            Button(action: tap) { NativeSymbol(name: symbol) }.accessibilityLabel(label).help(label).buttonStyle(ThemedButtonStyle(role: role)).disabled(!enabled)
+            Button(action: tap) { NativeSymbol(name: symbol) }.accessibilityLabel(label).help(label).buttonStyle(ThemedButtonStyle(role: role, focused: focused)).disabled(!enabled)
         } else if placement == .toolbar && !trailingSymbols {
             Button(action: tap) { caption }.help(label).disabled(!enabled)
         } else {
-            Button(role: role == .destructive ? .destructive : nil, action: tap) { caption }.buttonStyle(ThemedButtonStyle(role: role)).disabled(!enabled)
+            Button(role: role == .destructive ? .destructive : nil, action: tap) { caption }.buttonStyle(ThemedButtonStyle(role: role, focused: focused)).disabled(!enabled)
         }
     }
 
@@ -202,6 +213,7 @@ struct ButtonView: View {
 /// [DESIGN-MOTION]: feedback acknowledges a press; Reduce Motion removes it.
 struct ThemedButtonStyle: ButtonStyle {
     let role: ButtonRole
+    var focused = false
     @Environment(\.ospreyTheme) private var theme
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var enabled
@@ -222,6 +234,8 @@ struct ThemedButtonStyle: ButtonStyle {
             .padding(.horizontal, iconOnly ? 0 : CGFloat(controlPadding ?? (compact ? 12 : 16))).frame(maxWidth: iconOnly ? .infinity : nil).frame(minHeight: controlHeight > 0 ? CGFloat(controlHeight) : 44)
             .foregroundStyle(role == .filled ? theme.color("canvas", dark: dark) : ink.isEmpty ? theme.tone(role == .prominent ? .accent : foreground, dark: dark) : theme.color(ink, dark: dark))
             .background(role == .filled ? theme.color("accent", dark: dark) : role == .prominent ? theme.color("selection", dark: dark) : compact ? .clear : theme.color("inset", dark: dark), in: RoundedRectangle(cornerRadius: role == .filled ? 5 : compact ? 4 : 6, style: .continuous))
+            .overlay { if focused { RoundedRectangle(cornerRadius: 8).stroke(theme.tone(.accent, dark: dark), lineWidth: 2).padding(-4).allowsHitTesting(false) } }
+            .focusEffectDisabled()
             .opacity(enabled ? (configuration.isPressed ? 0.72 : 1) : 0.45)
             .animation(theme.feedback(reduced: reduced), value: configuration.isPressed)
     }
@@ -283,10 +297,14 @@ struct PickerView: View {
     let choices: [Choice]
     let selected: String
     let choose: (String) -> Void
+    @Environment(\.ospreyTheme) private var theme
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Picker(label, selection: Binding.sending(selected) { choose($0) }) {
-            ForEach(choices, id: \.key) { choice in Text(choice.label).tag(choice.key) }
+            ForEach(choices, id: \.key) { choice in
+                Text(choice.label).foregroundColor(theme.named("primary", dark: scheme == .dark) ?? .primary).tag(choice.key)
+            }
         }
     }
 }

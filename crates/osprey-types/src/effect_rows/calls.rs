@@ -1,7 +1,7 @@
 //! Effect row calls.
 use super::{
     eager_callback_slots, expression_site, gpu_kernel_slot, iterator_consumer,
-    statically_named_callee, type_can_call, Analyzer, CallableEnv, Expr, NamedArgument,
+    statically_named_callee, type_can_call, Analyzer, CallableEnv, Expr, ExprArgs, NamedArgument,
     Requirement, Summary,
 };
 
@@ -9,13 +9,13 @@ impl Analyzer<'_> {
     pub(super) fn call(
         &self,
         function: &Expr,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named_arguments: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
     ) -> Summary {
         let mut out = self.expression(function, scope, env);
-        out.union(self.expressions(arguments, scope, env));
+        out.union(self.union_over(arguments.iter(), scope, env));
         out.union(self.named_expressions(named_arguments, scope, env));
         out.union(self.call_effects(function, arguments, named_arguments, scope, env));
         out
@@ -24,7 +24,7 @@ impl Analyzer<'_> {
     pub(super) fn call_effects(
         &self,
         function: &Expr,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named_arguments: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -120,7 +120,7 @@ impl Analyzer<'_> {
     fn foreign_argument_effects(
         &self,
         function: &Expr,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,

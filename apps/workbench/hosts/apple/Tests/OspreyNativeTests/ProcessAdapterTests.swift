@@ -45,15 +45,36 @@ final class ProcessAdapterTests: XCTestCase {
         XCTAssertGreaterThan(output.stderr.count, 65536, "Both pipes must drain concurrently before the process can exit")
     }
 
+    func testMissingOrMalformedOutputSliceCannotLaunchAProcess() async {
+        for value in [nil, JSONValue.null, .bool(false), .number(0), .array([]), .object([:])] {
+            await assertInvalidSliceCannotLaunch(value)
+        }
+    }
+
+    private func assertInvalidSliceCannotLaunch(_ value: JSONValue?) async {
+        let marker = FileManager.default.temporaryDirectory.appendingPathComponent("osprey-invalid-slice-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: marker) }
+        do {
+            _ = try await RunAdapter().perform(request(executable: "/usr/bin/touch", arguments: [marker.path], slice: value), slices: SliceStore())
+            XCTFail("An invalid output slice must fail explicitly")
+        } catch let error as ProtocolError {
+            XCTAssertEqual(error, .missingMember("string", "slice"))
+        } catch {
+            XCTFail("Slice validation must precede launch: \(error)")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "An invalid request must never execute its process")
+    }
+
     func testOtherRequestFlagsRemainRequired() {
         XCTAssertThrowsError(try request().flag("required")) { error in
             XCTAssertEqual(error as? ProtocolError, .missingMember("bool", "required"))
         }
     }
 
-    private func request(plist: JSONValue? = nil, executable: String = "/usr/bin/printf", arguments: [String] = ["proof output"]) -> Request {
+    private func request(plist: JSONValue? = nil, executable: String = "/usr/bin/printf", arguments: [String] = ["proof output"], slice: JSONValue? = .string("output")) -> Request {
         let members: [String: JSONValue] = ["executable": .string(executable), "arguments": .array(arguments.map(JSONValue.string)),
-            "timeout": .number(1000), "limit": .number(4096), "slice": .string("output")]
-        return Request(ticket: "run:test", kind: "run", members: members.merging(plist.map { ["plist": $0] } ?? [:]) { _, next in next })
+            "timeout": .number(1000), "limit": .number(4096)]
+        let optional = (plist.map { ["plist": $0] } ?? [:]).merging(slice.map { ["slice": $0] } ?? [:]) { _, next in next }
+        return Request(ticket: "run:test", kind: "run", members: members.merging(optional) { _, next in next })
     }
 }

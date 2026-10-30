@@ -1,5 +1,7 @@
 # Proof speed gate
 
+Lean is the pinned development oracle and timing reference for the compatible discipline. Benchmark results measure engineering costs; they do not define a competitive product goal or establish correctness. The existing thresholds, failure conditions and CI gates below remain intact. See the [oracle contract](../../docs/messaging.md#proof-development-and-the-lean-oracle).
+
 `run.sh` is the executable form of [PROOF-SPEED] ([spec 0049](../../docs/specs/language/0049-DependentTypesAndProofs.md)): for every case it times Osprey's kernel and Lean's on the same machine in the same run, and it is red unless Osprey's minimum wall time is below Lean's. It runs in CI as the `test-proof` job, which invokes it as `zsh benchmarks/proof/run.sh`.
 
 ```sh

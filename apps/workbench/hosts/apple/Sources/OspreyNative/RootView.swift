@@ -13,11 +13,24 @@ public struct RootView: View {
     }
 
     public var body: some View {
+        ViewportContent(active: store.usesViewportLayout) {
+            regionContent
+                .foregroundStyle(ThemeResolver(theme: store.theme).tone(.primary, dark: scheme == .dark))
+                .background(ThemeResolver(theme: store.theme).color("canvas", dark: scheme == .dark))
+                .modifier(OverflowLog())
+                .tint(ThemeResolver(theme: store.theme).tone(.accent, dark: scheme == .dark))
+                .environmentObject(store)
+                .environment(\.ospreyTheme, ThemeResolver(theme: store.theme))
+                .task { store.start() }
+        }
+    }
+
+    private var regionContent: some View {
         VStack(spacing: 0) {
             if let failure = store.failure {
                 ContentUnavailableView("The application could not start", systemImage: "exclamationmark.triangle", description: Text(failure))
             } else if let root = store.root {
-                CellView(cell: root, store: store).environment(\.ospreyPlacement, .pane)
+                CellView(cell: root, store: store).environment(\.ospreyPlacement, store.usesViewportLayout ? .page : .pane)
             } else {
                 ProgressView("Starting")
             }
@@ -25,13 +38,6 @@ public struct RootView: View {
                 Text(last).font(.caption).foregroundStyle(.secondary).padding(6).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
             }
         }
-        .foregroundStyle(ThemeResolver(theme: store.theme).tone(.primary, dark: scheme == .dark))
-        .background(ThemeResolver(theme: store.theme).color("canvas", dark: scheme == .dark))
-        .modifier(OverflowLog())
-        .tint(ThemeResolver(theme: store.theme).tone(.accent, dark: scheme == .dark))
-        .environmentObject(store)
-        .environment(\.ospreyTheme, ThemeResolver(theme: store.theme))
-        .task { store.start() }
     }
 }
 

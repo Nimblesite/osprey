@@ -4,7 +4,7 @@
 
 ## Host and compilation — [PYTHON-HOST]
 
-`osprey source-or-project --compile --target=python -o library.so --memory=none` builds a native shared library and matching `.h`; macOS output ends in `.dylib`. The default output uses the same extension. Linux and macOS are supported; Windows, WebAssembly and mobile hosts are outside this target. The target requires explicit `--memory=none` until managed runtime archives are available. Debug, profiling, `--entry-only`, and executable `--run` are rejected. `--check` validates the host ABI without linking or importing Python modules. `--llvm` emits the adapted native library IR. Ordinary frontend, type, capability and export-effect checks still apply.
+`osprey source-or-project --compile --target=python -o library.so --memory=arc` builds a native shared library and matching `.h`; macOS output ends in `.dylib`. The default output uses the same extension. Linux and macOS are supported; Windows, WebAssembly and mobile hosts are outside this target. The target defaults to ARC and rejects tracing GC; the matching managed runtime must be built before linking. Debug, profiling, `--entry-only`, and executable `--run` are rejected. `--check` validates the host ABI without linking or importing Python modules. `--llvm` emits the adapted native library IR. Ordinary frontend, type, capability and export-effect checks still apply.
 
 The synchronous host target rejects dynamic control continuations, fibers, HTTP/WebSocket and process-spawning operations. Value effects and static discharge remain available. Native fiber callbacks cannot safely enter a Python host whose loading thread retains the GIL; rejecting them is part of the host contract, not an optional runtime convention.
 

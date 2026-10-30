@@ -22,8 +22,8 @@ struct RichView: View {
 
     var body: some View {
         switch node {
-        case let .editor(label, value, inline, cursor, marks, event, placeEvent):
-            EditorView(label: label, value: value, step: inline, cursor: cursor, marks: marks, edit: { drawing.send(event, .string($0)) }, place: { drawing.send(placeEvent, .number(Double($0))) })
+        case let .editor(label, value, inline, cursor, focusEpoch, marks, event, placeEvent):
+            EditorView(label: label, value: value, step: inline, cursor: cursor, focusEpoch: focusEpoch, marks: marks, edit: { drawing.edit(event, .string($0)) }, place: { drawing.edit(placeEvent, .number(Double($0))) })
         case let .board(slice, count, lasso, backdrop, panning, panEvent, event, lassoEvent):
             BoardView(slice: slice, count: count, lassoing: lasso, backdrop: Bundled.image(backdrop), panning: panning, pan: { if let panEvent { drawing.send(panEvent, .string($0)) } }, stroke: { drawing.send(event, $0) }, lasso: { drawing.send(lassoEvent, .array($0.map { .number(Double($0)) })) })
         case let .math(tree, spoken): MathViewport(tree: tree, size: CGFloat(typography.size > 0 ? typography.size : 26) * typography.mathScale, spoken: spoken)
@@ -44,6 +44,7 @@ struct EditorView: View {
     let value: String
     let step: Bool
     let cursor: Int
+    let focusEpoch: Int
     let marks: [Mark]
     let edit: (String) -> Void
     let place: (Int) -> Void
@@ -59,7 +60,7 @@ struct EditorView: View {
         VStack(alignment: .leading, spacing: 6) {
             if !step { Text(label).font(.custom("Geist", size: 13)).foregroundStyle(theme.tone(.secondary, dark: scheme == .dark)) }
             #if os(macOS)
-            CodeText(value: value, cursor: cursor, underlines: underlines, textSize: typography.size > 0 ? CGFloat(typography.size) : 20, inline: step, ink: theme.tone(.primary, dark: scheme == .dark), edit: edit, place: place)
+            CodeText(value: value, cursor: cursor, focusEpoch: focusEpoch, underlines: underlines, textSize: typography.size > 0 ? CGFloat(typography.size) : 20, inline: step, ink: theme.tone(.primary, dark: scheme == .dark), edit: edit, place: place)
                 .accessibilityLabel(label)
                 .frame(minHeight: step ? 0 : 180, maxHeight: .infinity)
                 .overlay(alignment: .topLeading) { if value.isEmpty { Text(prompt).font(typography.font(fallback: .custom(FontRegistration.serifName, size: 20))).foregroundStyle(theme.tone(.secondary, dark: scheme == .dark)).padding(.top, step ? 12 : 18).padding(.leading, step ? 0 : 16).allowsHitTesting(false) } }
@@ -92,8 +93,10 @@ import AppKit
 
 /// A plain-text editor in a mathematics-friendly face. Typing reports the whole text; moving the caret reports its offset.
 struct CodeText: NSViewRepresentable {
+    @Environment(\.ospreyModalFocusBoundary) private var modalFocusBoundary
     let value: String
     let cursor: Int
+    var focusEpoch = 0
     let underlines: [(Int, Color)]
     let textSize: CGFloat
     let inline: Bool
@@ -116,8 +119,10 @@ struct CodeText: NSViewRepresentable {
         text.isAutomaticDashSubstitutionEnabled = false
         text.isAutomaticSpellingCorrectionEnabled = false
         text.textContainerInset = NSSize(width: inline ? 0 : 16, height: inline ? 12 : 18)
-        text.delegate = context.coordinator
         text.string = value
+        text.setSelectedRange(NSRange(location: TextOffsets.convert(value, offset: cursor, sourceUTF8: true), length: 0))
+        DispatchQueue.main.async { [weak text] in if let text { text.scrollRangeToVisible(text.selectedRange()) } }
+        text.delegate = context.coordinator
         return scroll
     }
 
@@ -126,14 +131,17 @@ struct CodeText: NSViewRepresentable {
         guard let text = scroll.documentView as? NSTextView else { return }
         text.textColor = NSColor(ink)
         text.font = NSFont(name: FontRegistration.serifName, size: textSize) ?? .systemFont(ofSize: textSize)
-        if text.string != value {
+        let requested = context.coordinator.requestsFocus(focusEpoch)
+        if text.string != value || requested {
             context.coordinator.applying = true
             text.string = value
-            let at = min(cursor, (value as NSString).length)
+            let at = TextOffsets.convert(value, offset: cursor, sourceUTF8: true)
             text.setSelectedRange(NSRange(location: at, length: 0))
+            text.scrollRangeToVisible(text.selectedRange())
             context.coordinator.applying = false
         }
         decorate(text)
+        if requested, let window = scroll.window, window.isKeyWindow, ModalFocusBoundary.permits(modalFocusBoundary, in: window) { window.makeFirstResponder(text) }
     }
 
     private func decorate(_ text: NSTextView) {
@@ -152,24 +160,62 @@ struct CodeText: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: CodeText
         var applying = false
+        var observedFocusEpoch: Int
+        var pendingEdit: (String, Int, (String) -> Void, (Int) -> Void)?
+        var selectionGeneration = 0
 
-        init(_ parent: CodeText) { self.parent = parent }
+        init(_ parent: CodeText) { self.parent = parent; observedFocusEpoch = parent.focusEpoch }
+
+        func requestsFocus(_ epoch: Int) -> Bool {
+            let requested = epoch > observedFocusEpoch
+            observedFocusEpoch = max(observedFocusEpoch, epoch)
+            return requested
+        }
 
         func textDidChange(_ notification: Notification) {
             guard !applying, let text = notification.object as? NSTextView else { return }
-            let value = text.string
-            DispatchQueue.main.async { self.parent.edit(value) }
+            let scheduled = pendingEdit != nil
+            selectionGeneration += 1
+            let at = TextOffsets.convert(text.string, offset: text.selectedRange().location, sourceUTF8: false)
+            pendingEdit = (text.string, at, parent.edit, parent.place)
+            if !scheduled { DispatchQueue.main.async { [weak self] in self?.flushEdit() } }
+        }
+
+        private func flushEdit() {
+            let pending = pendingEdit
+            pendingEdit = nil
+            if let (value, at, edit, place) = pending {
+                edit(value)
+                if at != value.utf8.count { place(at) }
+            }
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard !applying, let text = notification.object as? NSTextView else { return }
-            let at = text.selectedRange().location
+            // A text mutation also changes selection; its edit must arrive before any separate caret event.
+            guard text.string == parent.value else { return }
+            let at = TextOffsets.convert(text.string, offset: text.selectedRange().location, sourceUTF8: false)
             guard at != parent.cursor else { return }
-            DispatchQueue.main.async { self.parent.place(at) }
+            let place = parent.place
+            let generation = selectionGeneration
+            DispatchQueue.main.async { [weak self] in if self?.selectionGeneration == generation { place(at) } }
         }
     }
 }
 #endif
+
+enum TextOffsets {
+    static func convert(_ value: String, offset: Int, sourceUTF8: Bool) -> Int {
+        value.unicodeScalars.reduce((consumed: 0, converted: 0, finished: false)) { current, scalar in
+            let source = sourceUTF8 ? scalar.utf8.count : scalar.utf16.count
+            let destination = sourceUTF8 ? scalar.utf16.count : scalar.utf8.count
+            guard !current.finished && current.consumed + source <= offset else {
+                return (current.consumed, current.converted, true)
+            }
+            return (current.consumed + source, current.converted + destination, false)
+        }.converted
+    }
+}
 
 // MARK: Board
 
@@ -283,7 +329,7 @@ struct BoardView: View {
 
 // MARK: Mathematics
 
-/// Lays out Osprey's mathematics tree with a mathematics face: STIX Two Math, then Latin Modern Math, then the system serif.
+/// Lays out Osprey's mathematics tree with the registered STIX Two Math face.
 struct MathView: View {
     let tree: MathTree
     var size: CGFloat = 18

@@ -23,10 +23,10 @@ const char *osprey_app_dispatch(const char *_saved, const char *event);
 
 // Imports: functions the host must define with C linkage
 // (for example Swift `@_cdecl` or C/JNI). Osprey calls them through `extern fn`.
-// extern fn gpui_slice(key: string) -> string
-const char *gpui_slice(const char *key);
-// extern fn gpui_shape(code: int, index: int, a: float, b: float, c: float, d: float, e: float, tint: int, layer: int) -> int
-int64_t gpui_shape(int64_t code, int64_t index, double a, double b, double c, double d, double e, int64_t tint, int64_t layer);
+// extern fn native_slice(key: string) -> string
+const char *native_slice(const char *key);
+// extern fn native_shape(code: int, index: int, a: float, b: float, c: float, d: float, e: float, tint: int, layer: int) -> int
+int64_t native_shape(int64_t code, int64_t index, double a, double b, double c, double d, double e, int64_t tint, int64_t layer);
 
 #ifdef __cplusplus
 }

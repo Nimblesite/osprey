@@ -10,11 +10,13 @@ public struct Drawing {
     public let region: String
     public let revision: Int
     public let send: (Int, JSONValue) -> Void
+    public let edit: (Int, JSONValue) -> Void
 
-    public init(region: String, revision: Int, send: @escaping (Int, JSONValue) -> Void) {
+    public init(region: String, revision: Int, edit: ((Int, JSONValue) -> Void)? = nil, send: @escaping (Int, JSONValue) -> Void) {
         self.region = region
         self.revision = revision
         self.send = send
+        self.edit = edit ?? send
     }
 }
 
@@ -279,6 +281,6 @@ struct CellView: View {
     /// control SwiftUI keeps across a patch still sends the revision it was drawn with, never a later one.
     var drawing: Drawing {
         let region = cell.key, revision = cell.revision
-        return Drawing(region: region, revision: revision) { ordinal, value in store.send(region: region, revision: revision, ordinal: ordinal, value: value) }
+        return Drawing(region: region, revision: revision, edit: store.editing(region: region, revision: revision)) { ordinal, value in store.send(region: region, revision: revision, ordinal: ordinal, value: value) }
     }
 }

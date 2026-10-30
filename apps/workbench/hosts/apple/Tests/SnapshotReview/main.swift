@@ -22,6 +22,7 @@ private enum SnapshotReview {
         let args = CommandLine.arguments
         guard args.count == 4, let width = Int(args[1]), let height = Int(args[2]), width > 0, height > 0 else { throw ReviewError.arguments }
         guard ReviewInput.text != nil else { throw ReviewError.invalidInput }
+        FontRegistration.configureTextRendering()
         _ = NSApplication.shared
         try FontRegistration.registerBundled()
         let library = Library(entry: LibraryEntry(main: initialized, start: started, dispatch: dispatched))
@@ -39,11 +40,26 @@ private enum SnapshotReview {
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
         FileHandle.standardError.write(Data("Requested \(width)x\(height); native bounds \(host.bounds.size); fitting \(host.fittingSize)\n".utf8))
         guard store.failure == nil, store.diagnostics.isEmpty else { throw ReviewError.unexpectedEvent(store.failure ?? store.diagnostics.joined(separator: "; ")) }
+        let target = ProcessInfo.processInfo.environment["OSPREY_RENDER_REVIEW_FULL_PAGE"] == "1" && store.usesViewportLayout ? try fullPage(host) : host
+        try write(target, path: path)
+    }
+
+    @MainActor private static func write(_ target: NSView, path: String) throws {
+        let width = Int(ceil(target.bounds.width)), height = Int(ceil(target.bounds.height))
+        FileHandle.standardError.write(Data("Captured native content \(width)x\(height)\n".utf8))
         guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: width * 4, bitsPerPixel: 32) else { throw ReviewError.bitmap }
-        bitmap.size = NSSize(width: width, height: height)
-        host.cacheDisplay(in: host.bounds, to: bitmap)
+        bitmap.size = target.bounds.size
+        target.cacheDisplay(in: target.bounds, to: bitmap)
         guard let data = bitmap.representation(using: .png, properties: [:]) else { throw ReviewError.bitmap }
         try data.write(to: URL(fileURLWithPath: path))
+    }
+
+    @MainActor private static func fullPage(_ view: NSView) throws -> NSView {
+        if let scroll = view as? NSScrollView, let document = scroll.documentView { return document }
+        for child in view.subviews {
+            if let document = try? fullPage(child) { return document }
+        }
+        throw ReviewError.invalidInput
     }
 
     @MainActor private static func hosted(_ store: RegionStore, width: Int, height: Int) -> (NSHostingView<RootView>, NSWindow) {

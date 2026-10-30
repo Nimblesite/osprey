@@ -1,5 +1,7 @@
 # Proof export fixture recording — 2026-10-29
 
+Verification record for the inputs and revision named below. Current development follows the [Lean oracle and discipline-correction contract](../messaging.md#proof-development-and-the-lean-oracle); this record does not define a competitive objective or establish consistency.
+
 Task: record a real Lean + lean4export run of `theorem id_imp` and make it the
 proof kernel's fixture, replacing the hand-written texts in
 `examples/proof/kernel/src/fixtures.ospml`.

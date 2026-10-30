@@ -106,6 +106,10 @@ module TermsTests
     universes () =
         test ("instantiateLevels reaches sorts and constants under binders", \() =>
             expect (Support::render (Terms::instantiateLevels (Pi "x" (Sort (Param "u")) (App (Const "F" [Param "u"]) (BVar 0)), ["u"], [Succ Zero])), "(∀ (x : Type), (F.{1} x))")
+            expect (structuralEquals (Terms::instantiateLevels (Const "F" [Param "u", Param "v"], ["u", "v"], [Param "v", Param "u"]), Const "F" [Param "v", Param "u"]), true)
+            expect (structuralEquals (Terms::instantiateLevels (Const "F" [Param "u"], ["u", "u"], [Param "u", Succ Zero]), Const "F" [Param "u"]), true)
+            expect (structuralEquals (Terms::instantiateLevels (Const "F" [Param "u", Param "v"], ["u", "v"], [Succ Zero]), Const "F" [Succ Zero, Param "v"]), true)
+            expect (structuralEquals (Terms::instantiateLevels (deepUniverseTerm (Param "u"), ["u"], [Succ Zero]), deepUniverseTerm (Succ Zero)), true)
             expect (Terms::declared (Const "F" [Param "u"], ["u"]), true)
             expect (Terms::declared (Lam "x" (Sort (Param "v")) (BVar 0), ["u"]), false))
 
@@ -117,9 +121,15 @@ module TermsTests
         expect (structuralEquals (Terms::shift (term, 3, 0), term), true)
         expect (structuralEquals (Terms::instantiateLevels (term, [], []), term), true)
         expect (structuralEquals (Terms::instantiateLevels (term, [], [Succ Zero]), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, ["u"], [Param "u"]), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, ["u", "v"], [Param "u", Param "v"]), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, ["u"], []), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, ["u"], [Param "u", Succ Zero]), term), true)
         expect (Terms::equal (term, term), true)))
 
-    identityTerms () = [Sort (proof::Max Zero (proof::IMax (Param "u") (Succ Zero))), Const "F" [Param "u"], BVar 4, App (BVar 1) (BVar 0), Lam "x" (Sort Zero) (BVar 1), Pi "x" (Sort Zero) (BVar 0), proof::Proj "Holder" 0 (BVar 0), proof::Let "x" (Sort Zero) (Const "v" []) (BVar 1), proof::NatLit (proof::Natural(naturalLimbs = [1])), proof::NatLit (proof::Natural(naturalLimbs = [0])), proof::NatLit (proof::Natural(naturalLimbs = [-1])), proof::NatLit (proof::Natural(naturalLimbs = [1, 0]))]
+    identityTerms () = listAppend ([Sort (proof::Max Zero (proof::IMax (Param "u") (Succ Zero))), Const "F" [Param "u"], BVar 4, App (BVar 1) (BVar 0), Lam "x" (Sort Zero) (BVar 1), Pi "x" (Sort Zero) (BVar 0), proof::Proj "Holder" 0 (BVar 0), proof::Let "x" (Sort Zero) (Const "v" []) (BVar 1), proof::NatLit (proof::Natural(naturalLimbs = [1])), proof::NatLit (proof::Natural(naturalLimbs = [0])), proof::NatLit (proof::Natural(naturalLimbs = [-1])), proof::NatLit (proof::Natural(naturalLimbs = [1, 0]))], deepUniverseTerm (Param "u"))
+
+    deepUniverseTerm level = fold (range (0, 128), Const "F" [level], \(body, _) => Pi "x" (Sort level) body)
 
     export prefixes () = test ("prefix supports independent element types and exact counts", \() =>
         expect (join (Terms::prefix (["first", "second"], 1), ","), "first")

@@ -168,7 +168,7 @@ Tracing GC avoids updating reference counts each time a managed value gains or l
 
 Use `--memory=arc` when prompt reclamation or avoiding tracing pauses matters. Both modes manage memory automatically without ownership annotations. Measure your application's time and peak memory before choosing. Files and sockets still need their explicit cleanup APIs under either mode.
 
-The current GC supports Apple and glibc-Linux. On Windows, select ARC. GC also stops collecting after another allocator thread appears; use ARC when allocating fibers need continued reclamation. WebAssembly, mobile and Python-library targets currently require explicit `--memory=none` because managed runtime archives are unavailable. Unmanaged allocation retains general allocations; the compiler never selects it silently. See the [memory contract](/spec/0018-memorymanagement/#backend-selection-mem-backends) for details.
+The current GC supports Apple and glibc-Linux. On Windows, select ARC. GC also stops collecting after another allocator thread appears; use ARC when allocating fibers need continued reclamation. WebAssembly, mobile and Python-library targets default to ARC and reject tracing GC. Linking requires the managed runtime for the selected target; runtime archive availability depends on the build. See the [memory contract](/spec/0018-memorymanagement/#backend-selection-mem-backends) for details.
 
 ## Troubleshooting
 

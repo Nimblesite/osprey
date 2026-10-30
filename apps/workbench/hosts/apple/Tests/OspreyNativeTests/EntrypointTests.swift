@@ -2,6 +2,95 @@ import Foundation
 import XCTest
 @testable import OspreyNative
 
+private enum BorrowedImportWire {
+    static let key = "test:borrowed-import-ownership"
+    static var releases = 0
+    static let entry = LibraryEntry(main: { 0 }, start: { _ in copied() },
+        dispatch: { _, _ in copied() }, ownershipVersion: { 1 }, releaseString: { pointer in
+            if let pointer { free(UnsafeMutablePointer(mutating: pointer)) }
+            releases += 1
+        })
+
+    static func copied() -> UnsafePointer<CChar>? {
+        strdup(SliceStore.shared.pointer(key)).map { UnsafePointer($0) }
+    }
+}
+
+@MainActor
+final class BorrowedImportOwnershipTests: XCTestCase {
+    func testCopiedImportCapabilityRequiresExportReleaseEntryPoint() {
+        let entry = LibraryEntry(main: { 0 }, start: { $0 }, dispatch: { state, _ in state }, ownershipVersion: { 1 })
+        XCTAssertThrowsError(try Library(entry: entry).initialize()) {
+            XCTAssertEqual($0 as? LibraryError, .missingRelease)
+        }
+    }
+
+    func testTwentyThousandChangedDispatchBuffersRemainBounded() throws {
+        let slices = SliceStore.shared
+        let baseline = slices.retainedBytes
+        let releases = BorrowedImportWire.releases
+        let library = Library(entry: BorrowedImportWire.entry)
+        for revision in 0..<20_000 {
+            let prefix = "\(revision) → "
+            let text = prefix + String(repeating: "x", count: 8192 - prefix.utf8.count)
+            slices.write(BorrowedImportWire.key, text)
+            XCTAssertEqual(try library.dispatch(state: "", event: ""), text)
+        }
+        XCTAssertLessThanOrEqual(slices.retainedBytes - baseline, 8193)
+        XCTAssertEqual(BorrowedImportWire.releases - releases, 20_000)
+        XCTAssertEqual(slices.borrowedBytes, 0)
+    }
+
+    func testOutputsCopyWhileContextStateAndEventInputsAreBorrowed() throws {
+        let state = "state é→"
+        let event = "event 𝑝"
+        let stateLibrary = Library(entry: LibraryEntry(main: { 0 }, start: { $0 }, dispatch: { state, _ in state }))
+        let eventLibrary = Library(entry: LibraryEntry(main: { 0 }, start: { $0 }, dispatch: { _, event in event }))
+        XCTAssertTrue(try stateLibrary.start(context: state).utf8.elementsEqual(state.utf8))
+        XCTAssertTrue(try stateLibrary.dispatch(state: state, event: event).utf8.elementsEqual(state.utf8))
+        XCTAssertTrue(try eventLibrary.dispatch(state: state, event: event).utf8.elementsEqual(event.utf8))
+    }
+
+    func testCancelledSnapshotReleasesPinnedBuffers() async throws {
+        let slices = SliceStore()
+        slices.write("payload", String(repeating: "x", count: 8192))
+        let task = Task { () throws -> Void in
+            for _ in 0..<20_000 {
+                do {
+                    try slices.withSnapshot {
+                        XCTAssertEqual(strlen(slices.pointer("payload")), 8192)
+                        try Task.checkCancellation()
+                        XCTFail("Cancelled task must throw")
+                    }
+                } catch is CancellationError { }
+                XCTAssertEqual(slices.borrowedBytes, 0)
+            }
+        }
+        task.cancel()
+        try await task.value
+        XCTAssertEqual(slices.borrowedBytes, 0)
+        XCTAssertEqual(slices.retainedBytes, 0)
+    }
+
+    func testConcurrentWritesCannotInvalidatePinnedImportBuffers() throws {
+        let slices = SliceStore()
+        let original = "é→" + String(repeating: "x", count: 8192)
+        slices.write("payload", original)
+        try slices.withSnapshot {
+            let pointer = slices.pointer("payload")
+            DispatchQueue.concurrentPerform(iterations: 1_000) { revision in
+                slices.write("payload", "\(revision) → changed")
+            }
+            XCTAssertEqual(String(cString: pointer), original)
+            XCTAssertEqual(slices.pointer("payload"), pointer)
+        }
+        let latest = slices.text("payload")
+        try slices.withSnapshot { XCTAssertEqual(String(cString: slices.pointer("payload")), latest) }
+        XCTAssertEqual(slices.borrowedBytes, 0)
+        XCTAssertEqual(slices.retainedBytes, 0)
+    }
+}
+
 final class EntrypointTests: XCTestCase {
     func testNativeEntrypointIncludesEverySharedApplicationModule() throws {
         let apple = TestResources.apple

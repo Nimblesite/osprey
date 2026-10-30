@@ -10,6 +10,8 @@
 
 mod analyze;
 mod assignment_flow;
+mod expr_args;
+pub(crate) use expr_args::ExprArgs;
 mod call_values;
 mod calls;
 mod capabilities;
