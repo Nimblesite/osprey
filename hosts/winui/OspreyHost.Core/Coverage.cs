@@ -16,8 +16,15 @@ public static class Coverage
         "meter", "swatch", "rows", "button", "field", "toggle", "picker", "disclosure", "alert", "scene",
     ];
 
-    /// <summary>Node kinds this host refuses with a visible diagnostic: none.</summary>
-    public static IReadOnlyList<string> Refused { get; } = [];
+    /// <summary>
+    /// Node kinds the framework defines without a WinUI control here, so each is replaced by the
+    /// visible diagnostic <see cref="Refusal"/> and reported, never dropped or guessed.
+    /// </summary>
+    public static IReadOnlyList<string> Refused { get; } =
+    [
+        "rich-text", "framed", "themed", "dialog", "evidence", "brand", "math", "image", "video",
+        "editor", "board",
+    ];
 
     /// <summary>Capability kinds this host answers: the adapters', and the frame clock, which the window keeps.</summary>
     public static IReadOnlyList<string> Answered { get; } = [.. Capabilities.Answered, "animate"];
@@ -25,6 +32,10 @@ public static class Coverage
     /// <summary>Capability kinds this host refuses with an error completion, not yet answered (plan 0038 phase 4).</summary>
     public static IReadOnlyList<string> Unanswered { get; } =
     [
-        "run", "list-directories", "read-texts", "http", "host-call", "choose-file", "save-file",
+        "run", "list-directories", "read-plists", "read-texts", "fingerprint", "http", "host-call",
+        "running-applications", "choose-file", "save-file", "open-settings", "recognise",
     ];
+
+    /// <summary>The visible diagnostic shown in place of a node kind this host does not draw.</summary>
+    public static string Refusal(string kind) => $"This host does not draw {kind} nodes";
 }

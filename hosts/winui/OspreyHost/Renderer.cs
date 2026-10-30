@@ -187,7 +187,7 @@ sealed partial class Renderer
     UIElement Draw(Scope scope, JsonElement node) =>
         kinds.TryGetValue(Envelopes.Text(node, "kind"), out var draw)
             ? draw(scope, node)
-            : Refused($"This host does not draw {Envelopes.Text(node, "kind")} nodes");
+            : Refused(Coverage.Refusal(Envelopes.Text(node, "kind")));
 
     IEnumerable<UIElement> Children(Scope scope, JsonElement node, string member = "children") =>
         Envelopes.Items(node, member, child => Draw(scope, child));

@@ -63,7 +63,7 @@ init _ = Runtime::step (Store(flock = Flock(birds = range (0, count) |> fold [] 
 
 advanced (store, elapsed) = Runtime::step (Store(flock = Flock(birds = mapList (store.flock.birds, \b => move (b, elapsed)), frame = satAdd store.flock.frame 1)))
 
-update (_, store, message) = Messages::route (message, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \elapsed => advanced (store, elapsed), \(_, _) => Runtime::step store)
+update (_, store, message) = Messages::route (message, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \elapsed => advanced (store, elapsed), \(_, _) => Runtime::step store)
 
 birdJson b = JsonArray [JsonFloat b.bx, JsonFloat b.by, JsonFloat b.vx, JsonFloat b.vy]
 

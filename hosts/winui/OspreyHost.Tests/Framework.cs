@@ -15,10 +15,10 @@ static partial class Framework
     public static string Host => Path.Combine(Root, "hosts", "winui");
 
     /// <summary>Every node kind the framework encodes, as it travels on the wire.</summary>
-    public static IReadOnlyList<string> NodeKinds => [.. Variants(Source("node.ospml"), "type Node A =").Select(Kebab)];
+    public static IReadOnlyList<string> NodeKinds => [.. Variants(Source("node.ospml"), "type Node A =").Select(Wire)];
 
     /// <summary>Every capability kind the framework requests, as it travels on the wire.</summary>
-    public static IReadOnlyList<string> CapabilityKinds => [.. Variants(Source("capability.ospml"), "type Capability =").Select(Kebab)];
+    public static IReadOnlyList<string> CapabilityKinds => [.. Variants(Source("capability.ospml"), "type Capability =").Select(Wire)];
 
     /// <summary>Every symbol name the framework sends; <c>NoSymbol</c> travels as the empty string and draws nothing.</summary>
     public static IReadOnlyList<string> Symbols =>
@@ -61,6 +61,14 @@ static partial class Framework
 
     /// <summary>A constructor's wire name: <c>ContextMenu</c> travels as <c>context-menu</c>.</summary>
     public static string Kebab(string name) => Capital().Replace(name, "-$1").ToLowerInvariant();
+
+    // The encoder's aliases are shared by node and capability inventories.
+    static string Wire(string name) => name switch
+    {
+        "Typeset" => "math",
+        "ReadPropertyLists" => "read-plists",
+        _ => Kebab(name),
+    };
 
     [GeneratedRegex("(?<!^)([A-Z])")]
     private static partial Regex Capital();

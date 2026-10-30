@@ -23,6 +23,17 @@ const REFUSED: &[&str] = &[
     "swatch",
     "disclosure",
     "alert",
+    "rich-text",
+    "framed",
+    "themed",
+    "dialog",
+    "evidence",
+    "brand",
+    "math",
+    "image",
+    "video",
+    "editor",
+    "board",
 ];
 
 /// Capability kinds `host.rs` answers.
@@ -43,10 +54,20 @@ const ANSWERED: &[&str] = &[
 ];
 
 /// Capability kinds completed with an "unsupported capability" error until this host answers them.
-const UNANSWERED: &[&str] = &["http", "host-call", "measure-folders"];
+const UNANSWERED: &[&str] = &[
+    "http",
+    "host-call",
+    "measure-folders",
+    "read-plists",
+    "fingerprint",
+    "running-applications",
+    "open-settings",
+    "recognise",
+];
 
 const NODES: &str = include_str!("../../../packages/native/src/node.ospml");
 const CAPABILITIES: &str = include_str!("../../../packages/native/src/capability.ospml");
+const ENCODER: &str = include_str!("../../../packages/native/src/encode.ospml");
 const RENDER: &str = include_str!("render.rs");
 const HOST: &str = include_str!("host.rs");
 
@@ -61,10 +82,19 @@ fn kinds(source: &str, header: &str) -> Vec<String> {
         .filter(|name| {
             name.starts_with(char::is_uppercase) && name.chars().all(char::is_alphanumeric)
         })
-        .map(kebab)
+        .map(wire)
         .collect();
     found.sort();
     found
+}
+
+/// The encoder's wire name for a constructor, including the names that differ from the kebab spelling.
+fn wire(name: &str) -> String {
+    match name {
+        "Typeset" => "math".to_owned(),
+        "ReadPropertyLists" => "read-plists".to_owned(),
+        _ => kebab(name),
+    }
 }
 
 /// A constructor's wire name: `ContextMenu` travels as `context-menu`.
@@ -101,6 +131,18 @@ fn every_capability_kind_is_answered_or_refused_exactly_once() {
     let framework = kinds(CAPABILITIES, "type Capability =");
     assert!(framework.iter().any(|kind| kind == "measure-folders"));
     assert_eq!(framework, declared(&[ANSWERED, UNANSWERED]));
+}
+
+#[test]
+fn the_constructor_aliases_are_the_wire_names_the_encoder_writes() {
+    let nodes = kinds(NODES, "type Node A =");
+    let capabilities = kinds(CAPABILITIES, "type Capability =");
+    assert!(nodes.contains(&"math".to_owned()));
+    assert!(!nodes.contains(&"typeset".to_owned()));
+    assert!(capabilities.contains(&"read-plists".to_owned()));
+    assert!(!capabilities.contains(&"read-property-lists".to_owned()));
+    assert!(ENCODER.contains("\"math\""));
+    assert!(CAPABILITIES.contains("\"read-plists\""));
 }
 
 #[test]
