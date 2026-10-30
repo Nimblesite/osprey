@@ -333,7 +333,6 @@ test('package manager security suites gate CI and local tests under GC and ARC',
     assertRealUv(registry, memory)
     assert.ok(coverage.includes(`test-registry-${memory}`))
     assert.ok(coverage.includes('test "${{ needs.test-registry-' + memory + '.result }}" = "success"'))
-    assert.ok(readFileSync('scripts/verify-branch-protection.mjs', 'utf8').includes(`'Tests: package manager (${memory})'`))
   }
   const commands = makeRecipe('_test_registry', 'scripts/make/tests.mk')
   for (const script of ['publication', 'interruption']) assert.match(commands.join('\n'), new RegExp(`OSPREY_PACKAGE_CLIENT=.*REGISTRY_NATIVE_CLIENT.*python3 scripts/test-package-${script}\\.py`))
@@ -481,6 +480,18 @@ test('Dependabot stages updates and keeps a consolidation PR flowing to main', (
   assert.doesNotMatch(sweep, /pull_request_target:/)
   assert.match(sweep, /--head dependabot-upgrades --base main/)
   assert.match(sweep, /git diff -z --name-only/)
+})
+
+test('main requires one always-running gate that waits for every check, not a list of jobs', () => {
+  const gate = job('all-green', '.github/workflows/ci.yml')
+  assert.match(gate, /name: All checks green/)
+  assert.match(gate, /if: \$\{\{ always\(\) \}\}/)
+  assert.doesNotMatch(gate, /needs:/)
+  assert.match(gate, /actions: read/)
+  assert.match(gate, /run: node scripts\/all-checks-green\.mjs/)
+  const guard = readFileSync('scripts/verify-branch-protection.mjs', 'utf8')
+  assert.match(guard, /const REQUIRED_CHECK = 'All checks green'/)
+  assert.doesNotMatch(guard, /EXPECTED_CONTEXTS/)
 })
 
 test('branch protection distinguishes staging automation from main CI without exempting jobs', () => {

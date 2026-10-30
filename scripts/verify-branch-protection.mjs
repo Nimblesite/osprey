@@ -1,14 +1,24 @@
 #!/usr/bin/env node
 // Asserts that `main` is actually gated — that the branch rulesets are ENABLED,
-// that they require the checks listed here, and that each required check is one
-// a workflow can really report.
+// that they require exactly the one check named below, and that a workflow can
+// really report it.
 //
 // This exists because both rulesets were found `enforcement: "disabled"` with a
 // 212-file PR already merged past them. Nothing in the repo could have noticed:
 // branch protection lives in GitHub's settings, not in the tree, so it drifts
 // silently and by definition no test covers it. This is that test.
 //
-// Four traps are checked structurally, because each is a way the gates go quiet:
+// The ruleset requires one check, "All checks green" (scripts/all-checks-green.mjs).
+// It waits for every other workflow run and job on the pull request's head and
+// fails if any did not pass or skip, so every check on a branch gates its merge
+// and nothing here lists jobs. The ruleset once listed every job by name, and
+// this script held it equal to that list; then two pull requests that each added
+// a job could only merge after the other, each requiring a check that only the
+// other produced. A list also left two traps the gate closes by construction: a
+// job missing from it was advisory, and a job skipped because its unlisted
+// upstream failed reported as passing.
+//
+// The traps still checked here, because each is a way the gate goes quiet:
 //
 //   Phantom context — ruleset 7726557 required a check named "CI". No job
 //   reports that name (jobs report their `name:`, and the workflow's own name
@@ -18,19 +28,10 @@
 //
 //   Path-filtered required job — a job skipped by a workflow-level `on: paths:`
 //   / `paths-ignore:` filter never reports at all, and a required check that
-//   never reports blocks the merge forever. A job skipped by a job-level `if:`
-//   reports "skipped", which counts as PASSING. Required jobs must therefore
-//   skip via `if:`, never via path filtering.
+//   never reports blocks the merge forever.
 //
-//   Advisory tier — a job that runs on every PR but is absent from the ruleset
-//   burns runner minutes and blocks nothing. EXPECTED_CONTEXTS said "every job
-//   is here" while nothing compared the two, so the next job added would have
-//   been advisory by omission and this script would still have printed intact.
-//
-//   Unrequired upstream — a job gated on `needs.X.outputs` SKIPS when X fails,
-//   and a skipped check reports as PASSING. If X is not itself required, one
-//   failure in X silently vanishes every job downstream of it. That is exactly
-//   why "Detect changed areas (Windows)" is in the list below.
+//   A gate that does not always run — skipped reports as PASSING, so the gate
+//   job must run on every pull request whatever else fails: `if: always()`.
 //
 // Run: node scripts/verify-branch-protection.mjs [--repo owner/name]
 
@@ -41,42 +42,8 @@ import { targetsMainPullRequests } from './workflow-pr-target.mjs'
 const DEFAULT_REPO = 'Nimblesite/osprey'
 const WORKFLOW_DIR = '.github/workflows'
 
-// The gate list. Adding a required check means adding it here AND to the
-// ruleset; this script fails until the two agree, in either direction.
-// Every job in the four-stage pipeline is here, because every job blocks.
-// There is no advisory tier: a suite worth running is worth failing the merge,
-// and one marked "not required" has been deleted in all but name.
-const EXPECTED_CONTEXTS = [
-  'Detect changed areas',
-  'Build, Format & Analyse',
-  'Tests: Rust workspace (coverage)',
-  'Tests: package source coverage',
-  'Tests: package manager (gc)',
-  'Tests: package manager (arc)',
-  'Tests: Python application ports',
-  'Tests: language corpus (gc)',
-  'Tests: language corpus (arc)',
-  'Tests: C runtime (coverage)',
-  'Tests: proof kernel and Lean speed gate',
-  'Tests: VS Code extension (coverage)',
-  'Tests: WebAssembly target (wasm32-wasip1)',
-  'Tests: Website E2E (Playwright)',
-  'Tests: integration (bank, profiler, web compiler)',
-  'Coverage thresholds',
-  // Required because `windows-core` skips on its output, and a skipped check
-  // reports as PASSING. Left unrequired, a failure in this job silently
-  // vanished the entire Windows gate rather than blocking on it.
-  'Detect changed areas (Windows)',
-  'Windows Core Build & Smoke Test',
-  // The desktop hosts (winui.yml, gpui.yml): each workflow's own change detection, required for
-  // the same reason, then each host on each system it ships for.
-  'Detect changed areas (WinUI)',
-  'WinUI host (windows-latest)',
-  'Detect changed areas (GPUI)',
-  'GPUI host (macos-latest)',
-  'GPUI host (ubuntu-latest)',
-  'GPUI host (windows-latest)',
-]
+// The only required check: the job that runs scripts/all-checks-green.mjs.
+const REQUIRED_CHECK = 'All checks green'
 
 const argRepo = (argv) => {
   const i = argv.indexOf('--repo')
@@ -171,59 +138,27 @@ const requiredContexts = (onDefault, detail) =>
       .flatMap((rule) => rule.parameters.required_status_checks.map((c) => c.context)),
   )
 
-// Every job that reports on a PR must be required. A job that runs and cannot
-// fail the merge is the advisory tier this repo does not have.
-const checkNoAdvisoryTier = (workflows) =>
-  workflows
+// The ruleset names the gate and nothing else: any other name is a list again.
+const checkRequired = (actual) =>
+  actual.length === 1 && actual[0] === REQUIRED_CHECK
+    ? []
+    : [`ruleset must require exactly "${REQUIRED_CHECK}", not: ${actual.join(', ') || 'nothing'}`]
+
+// The gate is a real job that every pull request starts and that always runs.
+const checkGateJob = (workflows) => {
+  const gate = workflows
     .filter((w) => w.pullRequest)
-    .flatMap((w) => w.jobs.map((j) => ({ ...j, file: w.file })))
-    .filter((j) => j.name && !EXPECTED_CONTEXTS.includes(j.name))
-    .map(
-      (j) =>
-        `job "${j.name}" (${j.file}) runs on every PR but is absent from EXPECTED_CONTEXTS — ` +
-        'it burns runner minutes and blocks nothing; require it or delete the job',
-    )
-
-// A job gated on `needs.X.outputs` skips when X fails, and skipped counts as
-// PASSING — so X must block the merge too, or its failure vanishes downstream.
-const checkConditionalUpstreams = (workflows) =>
-  workflows
-    .filter((w) => w.pullRequest)
-    .flatMap((w) =>
-      w.jobs.flatMap((j) =>
-        [...j.ifText.matchAll(/needs\.([\w-]+)\.outputs/g)]
-          .map((m) => w.jobs.find((u) => u.key === m[1]))
-          .filter((up) => up && !EXPECTED_CONTEXTS.includes(up.name))
-          .map(
-            (up) =>
-              `job "${j.name}" (${w.file}) is gated on \`needs.${up.key}.outputs\`, but "${up.name}" ` +
-              'is not required — a failure there makes this job skip, and a skipped check reports as PASSING',
-          ),
-      ),
-    )
-
-const checkContexts = (actual, workflows) => {
-  const failures = []
-  const missing = EXPECTED_CONTEXTS.filter((c) => !actual.includes(c))
-  const extra = actual.filter((c) => !EXPECTED_CONTEXTS.includes(c))
-  if (missing.length) failures.push(`ruleset does not require: ${missing.join(', ')}`)
-  if (extra.length) failures.push(`ruleset requires checks absent from EXPECTED_CONTEXTS: ${extra.join(', ')}`)
-
-  const allJobs = workflows.filter((w) => w.pullRequest).flatMap((w) => w.jobs.map((j) => ({ ...j, file: w.file, pathFiltered: w.pathFiltered })))
-  for (const context of actual) {
-    const job = allJobs.find((j) => j.name === context)
-    if (!job) {
-      failures.push(`required check "${context}" matches no job name — it can never report, so every PR hangs pending`)
-      continue
-    }
-    if (job.pathFiltered) {
-      failures.push(
-        `required check "${context}" lives in ${job.file}, which path-filters at the \`on:\` level — ` +
-          'a filtered-out run never reports and blocks the merge forever; skip with a job-level `if:` instead',
-      )
-    }
-  }
-  return failures
+    .flatMap((w) => w.jobs.map((j) => ({ ...j, file: w.file, pathFiltered: w.pathFiltered })))
+    .find((j) => j.name === REQUIRED_CHECK)
+  if (!gate) return [`required check "${REQUIRED_CHECK}" matches no job name — it can never report, so every PR hangs pending`]
+  return [
+    ...(gate.pathFiltered
+      ? [`"${REQUIRED_CHECK}" lives in ${gate.file}, which path-filters at the \`on:\` level — a filtered-out run never reports`]
+      : []),
+    ...(/^(\$\{\{\s*)?always\(\)(\s*\}\})?$/.test(gate.ifText)
+      ? []
+      : [`"${REQUIRED_CHECK}" must run on every PR (\`if: always()\`), not \`if: ${gate.ifText}\``]),
+  ]
 }
 
 // --- main -------------------------------------------------------------------
@@ -240,9 +175,8 @@ const contexts = requiredContexts(onDefault, detail)
 const workflows = readWorkflows()
 const failures = [
   ...rulesetFailures,
-  ...checkContexts(contexts, workflows),
-  ...checkNoAdvisoryTier(workflows),
-  ...checkConditionalUpstreams(workflows),
+  ...checkRequired(contexts),
+  ...checkGateJob(workflows),
 ]
 
 if (failures.length > 0) {

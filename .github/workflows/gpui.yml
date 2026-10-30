@@ -7,11 +7,10 @@ name: GPUI host
 # Flock and Painting then open in real windows on the runner's desktop and are pictured. The
 # frame-rate bench stays on a Mac with a display; hosted runners have none to pace frames.
 #
-# Every job is a required check (scripts/verify-branch-protection.mjs), pinned by its literal name,
-# so each system is its own job rather than a matrix entry whose name interpolates; the Mac and
-# Linux jobs share their suites through .github/actions/gpui-host-suites. A PR that changes no code
-# skips the hosts at the job level, which reports as passing; an `on: paths:` filter would leave a
-# required check pending forever.
+# Every job gates the merge through ci.yml's "All checks green", which waits for this workflow.
+# Each system is its own job, reporting under its own name; the Mac and Linux jobs share their
+# suites through .github/actions/gpui-host-suites. A PR that changes no code skips the hosts at the
+# job level, which reports as passing.
 on:
   pull_request:
     branches: [main]

@@ -31,16 +31,16 @@ name: CI
 # instrumented, once.
 #
 # ─── Required-check note ────────────────────────────────────────────────────
-# Ruleset 6154907 pins the required checks by their DISPLAY NAME, and
-# scripts/verify-branch-protection.mjs asserts that same list from inside the
-# tree. The two must be changed together — the `changes` job fails until they
-# agree, which is deliberate: a gate that drifts silently is the failure that
-# script exists to catch.
+# Ruleset 6154907 requires one check, "All checks green" (the `all-green` job
+# at the end). It waits for every other job here and every other workflow on
+# the PR's head commit, and fails if any did not pass or skip, so every check
+# on a branch gates its merge and adding a job never touches the ruleset.
+# scripts/verify-branch-protection.mjs asserts that from inside the tree.
 #
 # Skipping a job via an `if:` condition reports its check as "skipped", which
-# branch protection treats as PASSING — so a website-only PR still merges. Do
-# NOT convert any of these to an `on: paths:` filter: a workflow skipped by
-# path filtering leaves the required check pending forever and blocks merges.
+# the gate treats as PASSING — so a website-only PR still merges. Do NOT give
+# ci.yml an `on: paths:` filter: a workflow skipped by path filtering never
+# runs the gate, leaving the required check pending forever.
 
 on:
   pull_request:
@@ -78,7 +78,7 @@ jobs:
         id: filter
 
       - name: Change detection contracts
-        run: node --test scripts/ci-scope.test.mjs
+        run: node --test scripts/ci-scope.test.mjs scripts/all-checks-green.test.mjs
 
       - name: Install benchmark harness shell
         if: steps.filter.outputs.benchmarks == 'true' || steps.filter.outputs.code == 'true'
@@ -170,9 +170,8 @@ jobs:
       # subproject's install stamp only fails on a machine that has never
       # installed it — never on a CI runner that installs everything up front,
       # and never on the author's machine. This asserts the prerequisite is
-      # there. It is a step in an already-required job, not a new required
-      # check, so the pinned context list in verify-branch-protection.mjs and
-      # the ruleset stay in agreement.
+      # there. It is a step in an existing job, which the all-green gate
+      # already waits for.
       - name: Make node dependency guard intact
         run: node scripts/verify-node-deps-guard.mjs
 
@@ -483,12 +482,8 @@ jobs:
   # [MEM-BACKENDS] [MEM-OPAQUE] oracle: swapping the allocator must not perturb
   # one byte of output.
   #
-  # These are two explicit jobs rather than one matrix ON PURPOSE. The gate
-  # is verified from inside the tree by scripts/verify-branch-protection.mjs,
-  # which matches each required context against a literal job `name:`. A matrix
-  # name interpolates (`(${{ matrix.memory }})`) and so matches nothing, which
-  # that script correctly reports as a check that can never report. A
-  # verifiable gate is worth more here than two saved stanzas.
+  # These are two explicit jobs rather than one matrix, so each backend reports
+  # under its own literal name.
   test-corpus-gc:
     name: "Tests: language corpus (gc)"
     needs: [changes, build]
@@ -1211,3 +1206,28 @@ jobs:
             target/coverage/packages/
             vscode-extension/coverage/
           retention-days: 7
+
+  # ═══ THE REQUIRED CHECK ═════════════════════════════════════════════════════
+  # The only check the `main` ruleset requires. It needs nothing and always
+  # runs, waits for every other job here and every other workflow run on the
+  # PR's head commit, and fails if any did not pass or skip
+  # (scripts/all-checks-green.mjs). A job or workflow added on a branch gates
+  # that branch's merge with no list to update anywhere.
+  all-green:
+    name: All checks green
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
+      - name: Every other check passed or skipped
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GATE_JOB: All checks green
+        run: node scripts/all-checks-green.mjs

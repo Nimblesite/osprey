@@ -13,9 +13,8 @@
 // check is the backstop for the backstop — it fails the PR that would let any
 // of it back in.
 //
-// Like verify-node-deps-guard.mjs this is a script inside an already-required
-// job, not a new required check, so the pinned context list in
-// verify-branch-protection.mjs and the ruleset stay in agreement.
+// Like verify-node-deps-guard.mjs this is a script inside an existing job,
+// which the all-green gate already waits for.
 import { readFileSync, readdirSync } from 'node:fs'
 
 const WORKFLOW_DIR = '.github/workflows'
