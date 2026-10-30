@@ -7,7 +7,6 @@ import { test } from 'node:test'
 import { classify } from './ci-scope.mjs'
 import { runStagedBundleFixture, nativeArchives, proofAssets } from './ci-bundle-fixture.mjs'
 import { targetsMainPullRequests } from './workflow-pr-target.mjs'
-import { gatedCalls, scanJobs, workflowChecks } from './workflow-checks.mjs'
 import { registerLintContracts } from './ci-lint-contract-tests.mjs'
 import { registerProofContracts } from './ci-proof-contract-tests.mjs'
 
@@ -428,36 +427,24 @@ test('Dependabot stages updates and keeps a consolidation PR flowing to main', (
   assert.match(sweep, /git diff -z --name-only/)
 })
 
-test('main requires every job by name, with no aggregate job to hide behind', () => {
+test('main requires one root job that needs every job, so the ruleset lists none', () => {
   const ci = '.github/workflows/ci.yml'
-  const jobs = scanJobs(readFileSync(ci, 'utf8'))
-  assert.equal(jobs.find((j) => j.key === 'ci' || j.name === 'CI'), undefined)
+  const gate = job('ci', ci)
+  assert.match(gate, /^ {4}name: CI\s*$/m)
+  assert.match(gate, /if: \$\{\{ always\(\) \}\}/)
+  const needs = [...gate.matchAll(/^ {6}- ([\w-]+)\s*$/gm)].map((m) => m[1])
+  const jobs = readFileSync(ci, 'utf8').split(/^jobs:\s*$/m)[1]
+  const others = [...jobs.matchAll(/^ {2}([\w-]+):\s*$/gm)].map((m) => m[1]).filter((key) => key !== 'ci')
+  assert.deepEqual([...needs].sort(), [...others].sort())
   for (const called of ['ci-windows.yml', 'gpui.yml', 'winui.yml']) {
     assert.ok(readFileSync(ci, 'utf8').includes(`uses: ./.github/workflows/${called}`), called)
   }
-  const checks = workflowChecks('ci.yml')
-  for (const name of ['Build, Format & Analyse', 'Coverage thresholds', 'GPUI host / GPUI host (macos-latest)']) {
-    assert.ok(checks.includes(name), name)
-  }
-  assert.deepEqual(checks.filter((name) => name.includes('${{')), [])
-  assert.deepEqual(gatedCalls('ci.yml'), [])
   const beside = readdirSync('.github/workflows').filter((f) => f !== 'ci.yml' && /\.ya?ml$/.test(f))
     .filter((f) => targetsMainPullRequests(readFileSync(`.github/workflows/${f}`, 'utf8')))
   assert.deepEqual(beside, [])
   const guard = readFileSync('scripts/verify-branch-protection.mjs', 'utf8')
-  assert.match(guard, /checkRequired\(contexts, workflowChecks\(ROOT_WORKFLOW\)\)/)
-})
-
-test('workflow checks name called jobs under their caller and a gated call by itself', () => {
-  const files = {
-    'root.yml': 'jobs:\n  build:\n    name: Build\n  host:\n    name: Host\n    uses: ./.github/workflows/host.yml\n'
-      + '  manual:\n    if: ${{ github.event_name == \'workflow_dispatch\' }}\n    uses: ./.github/workflows/host.yml\n'
-      + '  sometimes:\n    if: ${{ needs.changes.outputs.code == \'true\' }}\n    uses: ./.github/workflows/host.yml\n',
-    'host.yml': 'jobs:\n  mac:\n    name: Mac\n  plain:\n    runs-on: ubuntu-latest\n',
-  }
-  const read = (file) => files[file]
-  assert.deepEqual(workflowChecks('root.yml', read), ['Build', 'Host / Mac', 'Host / plain', 'manual', 'sometimes'])
-  assert.deepEqual(gatedCalls('root.yml', read), ['root.yml: sometimes'])
+  assert.match(guard, /const REQUIRED_CHECK = 'CI'/)
+  assert.doesNotMatch(guard, /EXPECTED_CONTEXTS/)
 })
 
 test('branch protection distinguishes staging automation from main CI without exempting jobs', () => {

@@ -15,8 +15,8 @@ concurrency:
 jobs:
   # Website-only PRs don't touch the compiler, so `windows-core` skips — but it
   # must skip at the JOB level, never via an `on: paths-ignore:` filter. A
-  # workflow that path-filtering skipped never reports, which leaves its required
-  # checks pending; a job skipped by `if:` reports as PASSING.
+  # workflow that path-filtering skipped never reports, which leaves ci.yml's
+  # root job waiting; a job skipped by `if:` reports as PASSING.
   changes:
     name: Detect changed areas (Windows)
     runs-on: ubuntu-latest

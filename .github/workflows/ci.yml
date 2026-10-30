@@ -31,16 +31,17 @@ name: CI
 # instrumented, once.
 #
 # ─── Required-check note ────────────────────────────────────────────────────
-# Ruleset 6154907 requires every check this workflow reports, by name: each
-# job here, and each job of the Windows, GPUI and WinUI workflows it calls.
-# There is no aggregate job. Any check that fails or is cancelled blocks the
-# merge on its own. A new or renamed job goes into the ruleset in the same PR;
-# scripts/verify-branch-protection.mjs fails while the two differ.
+# Ruleset 6154907 requires one check, "CI": the root `ci` job at the end. It `needs:` every other job in this workflow, and this workflow
+# calls the Windows, GPUI and WinUI workflows as jobs, so every check on a PR
+# sits under that one root job. It runs `if: always()` and fails when any job
+# it needs failed or was cancelled. A new job goes into its `needs:` list;
+# scripts/ci-scope.test.mjs fails if one is missing, and
+# scripts/verify-branch-protection.mjs checks the ruleset and the root job.
 #
-# Skipping a job via an `if:` condition reports it as "skipped", which GitHub
-# treats as PASSING — so a website-only PR still merges. Do NOT give
-# ci.yml an `on: paths:` filter: a workflow skipped by path filtering reports
-# nothing, leaving every required check pending forever.
+# Skipping a job via an `if:` condition reports it as "skipped", which the root
+# job treats as PASSING — so a website-only PR still merges. Do NOT give
+# ci.yml an `on: paths:` filter: a workflow skipped by path filtering never
+# runs the root job, leaving the required check pending forever.
 
 on:
   pull_request:
@@ -1193,7 +1194,7 @@ jobs:
           retention-days: 7
 
   # ─── The Windows, GPUI and WinUI workflows ─────────────────────────────────
-  # Called here rather than run by themselves, so the ruleset requires their checks too.
+  # Called here rather than run by themselves, so the root job below needs them.
   windows:
     name: CI (Windows)
     uses: ./.github/workflows/ci-windows.yml
@@ -1205,3 +1206,42 @@ jobs:
   winui:
     name: WinUI host
     uses: ./.github/workflows/winui.yml
+
+  # ═══ THE REQUIRED CHECK ═════════════════════════════════════════════════════
+  # The only check the `main` ruleset requires: the root job every other job
+  # sits under. `always()` makes it run when a job it needs fails, which would
+  # otherwise skip it, and a skipped required check reports as passing.
+  ci:
+    name: CI
+    if: ${{ always() }}
+    needs:
+      - changes
+      - build
+      - test-rust
+      - test-packages
+      - test-registry-gc
+      - test-registry-arc
+      - test-python-app-ports
+      - test-corpus-gc
+      - test-corpus-arc
+      - test-proof
+      - test-c-runtime
+      - test-extension
+      - test-wasm
+      - test-website
+      - test-integration
+      - coverage
+      - windows
+      - gpui
+      - winui
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || [ "$result" = skipped ] || exit 1
+          done
