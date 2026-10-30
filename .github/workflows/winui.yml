@@ -7,13 +7,13 @@ name: WinUI host
 # a window. Then Osprey Storage runs in a real window on the runner's desktop, driven by its
 # self-test script, and the pictures of each step are kept as an artifact.
 #
-# Both jobs gate the merge through ci.yml's "All checks green", which waits for this workflow. A PR
-# that changes no code skips the host at the job level, which reports as passing.
+# ci.yml calls this workflow on every pull request, and its root `ci` job, the required check,
+# needs both jobs here. A PR that changes no code skips the host at the job level, which reports
+# as passing.
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
-  # ci-windows.yml calls it on a manual run, because a workflow not yet on main cannot be dispatched.
+  # ci.yml calls it on every pull request, and ci-windows.yml on a manual run, because a workflow
+  # not yet on main cannot be dispatched.
   workflow_call:
 
 concurrency:

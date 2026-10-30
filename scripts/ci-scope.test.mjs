@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, relative, isAbsolute } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -482,15 +482,23 @@ test('Dependabot stages updates and keeps a consolidation PR flowing to main', (
   assert.match(sweep, /git diff -z --name-only/)
 })
 
-test('main requires one always-running gate that waits for every check, not a list of jobs', () => {
-  const gate = job('all-green', '.github/workflows/ci.yml')
-  assert.match(gate, /name: All checks green/)
+test('main requires one root job that needs every job, so the ruleset lists none', () => {
+  const ci = '.github/workflows/ci.yml'
+  const gate = job('ci', ci)
+  assert.match(gate, /^ {4}name: CI\s*$/m)
   assert.match(gate, /if: \$\{\{ always\(\) \}\}/)
-  assert.doesNotMatch(gate, /needs:/)
-  assert.match(gate, /actions: read/)
-  assert.match(gate, /run: node scripts\/all-checks-green\.mjs/)
+  const needs = [...gate.matchAll(/^ {6}- ([\w-]+)\s*$/gm)].map((m) => m[1])
+  const jobs = readFileSync(ci, 'utf8').split(/^jobs:\s*$/m)[1]
+  const others = [...jobs.matchAll(/^ {2}([\w-]+):\s*$/gm)].map((m) => m[1]).filter((key) => key !== 'ci')
+  assert.deepEqual([...needs].sort(), [...others].sort())
+  for (const called of ['ci-windows.yml', 'gpui.yml', 'winui.yml']) {
+    assert.ok(readFileSync(ci, 'utf8').includes(`uses: ./.github/workflows/${called}`), called)
+  }
+  const beside = readdirSync('.github/workflows').filter((f) => f !== 'ci.yml' && /\.ya?ml$/.test(f))
+    .filter((f) => targetsMainPullRequests(readFileSync(`.github/workflows/${f}`, 'utf8')))
+  assert.deepEqual(beside, [])
   const guard = readFileSync('scripts/verify-branch-protection.mjs', 'utf8')
-  assert.match(guard, /const REQUIRED_CHECK = 'All checks green'/)
+  assert.match(guard, /const REQUIRED_CHECK = 'CI'/)
   assert.doesNotMatch(guard, /EXPECTED_CONTEXTS/)
 })
 

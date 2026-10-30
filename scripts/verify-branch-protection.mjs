@@ -8,21 +8,20 @@
 // branch protection lives in GitHub's settings, not in the tree, so it drifts
 // silently and by definition no test covers it. This is that test.
 //
-// The ruleset requires one check, "All checks green" (scripts/all-checks-green.mjs).
-// It waits for every other workflow run and job on the pull request's head and
-// fails if any did not pass or skip, so every check on a branch gates its merge
-// and nothing here lists jobs. The ruleset once listed every job by name, and
-// this script held it equal to that list; then two pull requests that each added
-// a job could only merge after the other, each requiring a check that only the
-// other produced. A list also left two traps the gate closes by construction: a
-// job missing from it was advisory, and a job skipped because its unlisted
-// upstream failed reported as passing.
+// The ruleset requires one check, "CI": the root `ci` job at the end of
+// ci.yml. It `needs:` every other job in ci.yml, and ci.yml calls every other
+// workflow that runs on a pull request, so every check on a branch gates its
+// merge and the ruleset names no job but the root. The ruleset once listed every
+// job by name, and this script held it equal to that list; then two pull
+// requests that each added a job could only merge after the other, each
+// requiring a check that only the other produced. scripts/ci-scope.test.mjs
+// fails when the root job misses a job in ci.yml.
 //
-// The traps still checked here, because each is a way the gate goes quiet:
+// The traps still checked here, because each is a way the root job goes quiet:
 //
-//   Phantom context — ruleset 7726557 required a check named "CI". No job
-//   reports that name (jobs report their `name:`, and the workflow's own name
-//   is not a check run), so every PR would sit pending forever. A required
+//   Phantom context — ruleset 7726557 required a check named "CI" when no job
+//   had that `name:` (the workflow's own name is not a check run), so every PR
+//   would sit pending forever. A required
 //   check that can never report is indistinguishable from a broken repo, and
 //   the fix reached for under pressure is to switch the ruleset off.
 //
@@ -30,8 +29,11 @@
 //   / `paths-ignore:` filter never reports at all, and a required check that
 //   never reports blocks the merge forever.
 //
-//   A gate that does not always run — skipped reports as PASSING, so the gate
-//   job must run on every pull request whatever else fails: `if: always()`.
+//   A root job that does not always run — a job whose `needs:` failed is
+//   skipped, and skipped reports as PASSING, so it must be `if: always()`.
+//
+//   A workflow beside ci.yml — one that runs on a pull request by itself sits
+//   under no root job, so its checks gate nothing.
 //
 // Run: node scripts/verify-branch-protection.mjs [--repo owner/name]
 
@@ -42,8 +44,9 @@ import { targetsMainPullRequests } from './workflow-pr-target.mjs'
 const DEFAULT_REPO = 'Nimblesite/osprey'
 const WORKFLOW_DIR = '.github/workflows'
 
-// The only required check: the job that runs scripts/all-checks-green.mjs.
-const REQUIRED_CHECK = 'All checks green'
+// The only required check: the root job at the end of ci.yml.
+const REQUIRED_CHECK = 'CI'
+const ROOT_WORKFLOW = 'ci.yml'
 
 const argRepo = (argv) => {
   const i = argv.indexOf('--repo')
@@ -144,20 +147,20 @@ const checkRequired = (actual) =>
     ? []
     : [`ruleset must require exactly "${REQUIRED_CHECK}", not: ${actual.join(', ') || 'nothing'}`]
 
-// The gate is a real job that every pull request starts and that always runs.
+// The root job lives in ci.yml, always runs, and no other workflow runs on a pull
+// request by itself.
 const checkGateJob = (workflows) => {
-  const gate = workflows
-    .filter((w) => w.pullRequest)
-    .flatMap((w) => w.jobs.map((j) => ({ ...j, file: w.file, pathFiltered: w.pathFiltered })))
-    .find((j) => j.name === REQUIRED_CHECK)
-  if (!gate) return [`required check "${REQUIRED_CHECK}" matches no job name — it can never report, so every PR hangs pending`]
+  const gate = workflows.find((w) => w.file === ROOT_WORKFLOW)?.jobs.find((j) => j.name === REQUIRED_CHECK)
+  if (!gate) return [`required check "${REQUIRED_CHECK}" matches no job in ${ROOT_WORKFLOW} — it can never report, so every PR hangs pending`]
+  const beside = workflows.filter((w) => w.pullRequest && w.file !== ROOT_WORKFLOW).map((w) => w.file)
   return [
-    ...(gate.pathFiltered
-      ? [`"${REQUIRED_CHECK}" lives in ${gate.file}, which path-filters at the \`on:\` level — a filtered-out run never reports`]
+    ...(workflows.find((w) => w.file === ROOT_WORKFLOW).pathFiltered
+      ? [`${ROOT_WORKFLOW} path-filters at the \`on:\` level — a filtered-out run never reports`]
       : []),
     ...(/^(\$\{\{\s*)?always\(\)(\s*\}\})?$/.test(gate.ifText)
       ? []
       : [`"${REQUIRED_CHECK}" must run on every PR (\`if: always()\`), not \`if: ${gate.ifText}\``]),
+    ...beside.map((file) => `${file} runs on pull requests by itself — call it from ${ROOT_WORKFLOW} so "${REQUIRED_CHECK}" needs it`),
   ]
 }
 

@@ -14,7 +14,7 @@
 // of it back in.
 //
 // Like verify-node-deps-guard.mjs this is a script inside an existing job,
-// which the all-green gate already waits for.
+// which the root `ci` job already needs.
 import { readFileSync, readdirSync } from 'node:fs'
 
 const WORKFLOW_DIR = '.github/workflows'
