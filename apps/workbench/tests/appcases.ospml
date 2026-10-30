@@ -21,7 +21,7 @@ module AppCases
     (** [WORKBENCH-STORE] Start draws every fixed region of the mathematical workspace, still writes the saved working's legacy board metadata, and asks for the catalogue and the progress. *)
     export start () =
         first = Drive::started ()
-        expect (Drive::keys first, "root,heading,document,goal,generated,library,catalogue,lesson")
+        expect (Drive::keys first, "root,heading,document,goal,generated,library,library-actions,catalogue,lesson")
         expect (Drive::tickets first, "lessons:catalogue,lessons:progress")
         expect (Drive::written first, "board")
         hostTheme ("dark", true)
