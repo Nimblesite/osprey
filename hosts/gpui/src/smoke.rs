@@ -151,7 +151,7 @@ fn settle(
     expect: &Expect,
 ) -> Result<(), String> {
     check_envelope(&envelope, expect)?;
-    let requests = regions.apply(envelope);
+    let requests = regions.apply(envelope)?;
     check_regions(regions, expect)?;
     answer_all(regions, now, requests)
 }
@@ -168,7 +168,7 @@ fn answer_all(regions: &mut Regions, now: i64, requests: Vec<Request>) -> Result
 fn answer_one(regions: &mut Regions, now: i64, request: &Request) -> Result<(), String> {
     let completion = completion(now, request)?;
     let next = envelope::parse(&Library::dispatch(regions.state(), &completion)?)?;
-    let requests = regions.apply(next);
+    let requests = regions.apply(next)?;
     answer_all(regions, now, requests)
 }
 
@@ -375,7 +375,7 @@ fn drive() -> Result<(), String> {
 
 /// Applies one probe envelope, refusing capabilities and diagnostics.
 fn settled(regions: &mut Regions, envelope: Envelope) -> Result<(), String> {
-    if let Some(request) = regions.apply(envelope).first() {
+    if let Some(request) = regions.apply(envelope)?.first() {
         return Err(format!(
             "the application asked for {} under {}, and this smoke run answers no capability: {}",
             request.kind,
@@ -485,21 +485,5 @@ fn children(node: &Value) -> impl Iterator<Item = &Value> {
 
 /// Unit tests for recorded script syntax and source-line diagnostics.
 #[cfg(test)]
-mod tests {
-    use super::parse_script;
-
-    /// Blank lines and comments do not become replay steps.
-    #[test]
-    fn skips_blank_and_comment_lines() {
-        let steps = parse_script("\n// comment\n  // indented\n {\"send\":null,\"expect\":{}}\n");
-        assert_eq!(steps.as_ref().map(Vec::len), Ok(1));
-        assert!(steps.is_ok_and(|steps| steps[0].send.is_null()));
-    }
-
-    /// A malformed JSON line reports its original one-based line number.
-    #[test]
-    fn malformed_line_names_its_number() {
-        let problem = parse_script("\n// comment\n{not json}\n");
-        assert!(problem.is_err_and(|problem| problem.starts_with("step 3:")));
-    }
-}
+#[path = "smoke_tests.rs"]
+mod tests;

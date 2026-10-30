@@ -142,8 +142,8 @@ impl HostView {
 
     /// Applies a decoded result and discards stale editor bindings.
     fn settle(&mut self, next: Result<envelope::Envelope, String>) {
-        match next {
-            Ok(envelope) => self.pending.extend(self.regions.apply(envelope)),
+        match next.and_then(|envelope| self.regions.apply(envelope)) {
+            Ok(requests) => self.pending.extend(requests),
             Err(problem) => self.diagnose(problem),
         }
         self.retain_inputs();
@@ -243,7 +243,7 @@ fn start() -> Result<(Regions, Vec<Request>), String> {
     );
     let started = envelope::parse(&Library::start(&context)?)?;
     let mut regions = Regions::new();
-    let pending = regions.apply(started);
+    let pending = regions.apply(started)?;
     Ok((regions, pending))
 }
 
