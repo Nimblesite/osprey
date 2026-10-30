@@ -16,6 +16,20 @@ final class MathLayoutTests: XCTestCase {
     }
 
     @MainActor
+    func testThemedNativeControlsUseTheCanvasAppearanceInsteadOfTheSystemAppearance() throws {
+        for (canvas, system, expected) in [("#FAFAF7", ColorScheme.dark, NSAppearance.Name.aqua), ("#202723", .light, .darkAqua)] {
+            let theme = Theme(tokens: [ThemeToken(name: "canvas", light: canvas, dark: canvas)], spacing: [], feedback: 0, settle: 0)
+            let node = Node.themed(theme, .picker(label: "Theorem", choices: [Choice(key: "proof", label: "Checked theorem")], selected: "proof", event: 0))
+            let view = NodeView(node: node, drawing: Drawing(region: "test", revision: 1, send: { _, _ in }))
+                .environment(\.colorScheme, system).frame(width: 430, height: 60)
+            let (host, window) = TestResources.hosted(view, width: 430, height: 60)
+            defer { window.close() }
+            let popup = try XCTUnwrap(descendants(host).compactMap { $0 as? NSPopUpButton }.first)
+            XCTAssertEqual(popup.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]), expected, "Native arrows and menus must contrast with the application's canvas")
+        }
+    }
+
+    @MainActor
     func testLongFormalStatementRemainsInsideItsInspectablePane() {
         let source = String(repeating: "formal_term ", count: 40)
         let size = measured(.math(.sym(source), spoken: source))
@@ -77,6 +91,9 @@ final class MathLayoutTests: XCTestCase {
         XCTAssertGreaterThan(width, 0)
         XCTAssertLessThan(width, 300, "A formula must share the bounded row with its label")
     }
+
+    @MainActor
+    private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
 
     @MainActor
     private func measured(_ node: Node) -> CGSize {

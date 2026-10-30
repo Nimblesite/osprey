@@ -137,7 +137,9 @@ public struct NodeView: View {
         switch node {
         case let .stack(axis, children): StackView(axis: axis, children: children, drawing: drawing)
         case let .layer(children): LayerView(children: children, drawing: drawing)
-        case let .themed(theme, content): NodeView(node: content, drawing: drawing).environment(\.ospreyTheme, ThemeResolver(theme: theme))
+        case let .themed(theme, content): NodeView(node: content, drawing: drawing)
+            .environment(\.ospreyTheme, ThemeResolver(theme: theme))
+            .environment(\.colorScheme, ThemeResolver(theme: theme).appearance(system: scheme))
         case let .dialog(title, content, event): DialogView(title: title, content: content, drawing: drawing, dismiss: { drawing.send(event, .null) })
         case let .framed(style, content): FramedView(style: style, content: content, drawing: drawing)
         case let .aside(pane, side, aside, splitter): AsideView(pane: pane, side: side, aside: aside, splitter: splitter, drawing: drawing)
@@ -165,9 +167,10 @@ struct FillingStack: View {
     let children: [Node]
     let spacing: CGFloat
     let drawing: Drawing
+    @Environment(\.ospreyStackAlignment) private var alignment
 
     var body: some View {
-        VStack(alignment: .leading, spacing: spacing) {
+        VStack(alignment: stackHorizontalAlignment(alignment), spacing: spacing) {
             ForEach(Array(children.enumerated()), id: \.offset) { _, child in
                 if child.fillsPane {
                     NodeView(node: child, drawing: drawing).environment(\.ospreyPlacement, .pane).frame(idealHeight: Page.fill, maxHeight: .infinity)
@@ -232,10 +235,18 @@ struct StackView: View {
     var body: some View {
         switch axis {
         case .vertical where placement == .pane: FillingStack(children: children, spacing: gap ?? theme.spacing(2), drawing: drawing)
-        case .vertical where placement == .row: VStack(alignment: .leading, spacing: gap ?? 6) { Children(children: children, drawing: drawing) }
-        case .vertical: VStack(alignment: .leading, spacing: gap ?? theme.spacing(1)) { Children(children: children, drawing: drawing) }
+        case .vertical where placement == .row: VStack(alignment: stackHorizontalAlignment(alignment), spacing: gap ?? 6) { Children(children: children, drawing: drawing) }
+        case .vertical: VStack(alignment: stackHorizontalAlignment(alignment), spacing: gap ?? theme.spacing(1)) { Children(children: children, drawing: drawing) }
         case .horizontal: HStack(alignment: rowAlignment, spacing: gap ?? theme.spacing(1)) { Children(children: children, drawing: drawing) }
         }
+    }
+}
+
+private func stackHorizontalAlignment(_ alignment: String) -> HorizontalAlignment {
+    switch alignment {
+    case "center": return .center
+    case "end": return .trailing
+    default: return .leading
     }
 }
 
@@ -245,7 +256,7 @@ struct RegionView: View {
     @EnvironmentObject private var store: RegionStore
 
     var body: some View {
-        if let cell = store.cell(key) { CellView(cell: cell, store: store) } else { EmptyView() }
+        if let cell = store.cell(key) { CellView(cell: cell, store: store).id(key) } else { EmptyView() }
     }
 }
 
@@ -264,7 +275,10 @@ struct CellView: View {
         .animation(theme.settle(reduced: reduced), value: cell.revision)
     }
 
-    private var drawing: Drawing {
-        Drawing(region: cell.key, revision: cell.revision) { ordinal, value in store.send(region: cell.key, revision: cell.revision, ordinal: ordinal, value: value) }
+    /// The region and the revision this view was drawn with are fixed when the drawing is made; a
+    /// control SwiftUI keeps across a patch still sends the revision it was drawn with, never a later one.
+    var drawing: Drawing {
+        let region = cell.key, revision = cell.revision
+        return Drawing(region: region, revision: revision) { ordinal, value in store.send(region: region, revision: revision, ordinal: ordinal, value: value) }
     }
 }

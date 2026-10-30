@@ -10,6 +10,11 @@ public enum FontRegistration {
         case refused(String)
     }
 
+    // Register before AppKit initializes text rendering; retain explicit user preferences.
+    public static func configureTextRendering() {
+        UserDefaults.standard.register(defaults: ["AppleFontSmoothing": 0])
+    }
+
     public static func registerBundled() throws {
         for name in ["STIXTwoText.ttf", "STIXTwoText-Italic.ttf", "STIXTwoMath-Regular.ttf", "Geist.ttf"] {
             try register(name)

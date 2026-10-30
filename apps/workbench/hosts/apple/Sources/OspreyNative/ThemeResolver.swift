@@ -24,6 +24,18 @@ public struct ThemeResolver: Sendable, Equatable {
         return ThemeResolver.parse(dark ? token.dark : token.light)
     }
 
+    func appearance(system: ColorScheme) -> ColorScheme {
+        guard let canvas = named("canvas", dark: system == .dark) else { return system }
+        let color = canvas.resolve(in: EnvironmentValues())
+        let linear: (Float) -> Double = { channel in
+            let value = Double(channel)
+            return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        let luminance = 0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue)
+        let equalInkContrast = sqrt(0.05 * 1.05) - 0.05
+        return luminance > equalInkContrast ? .light : .dark
+    }
+
     /// `#RRGGBB` as a colour; anything else is unresolved.
     public static func parse(_ hex: String) -> Color? {
         guard hex.count == 7, hex.hasPrefix("#"), let value = UInt32(hex.dropFirst(), radix: 16) else { return nil }
