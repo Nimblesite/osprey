@@ -1,25 +1,25 @@
 WEBVTT
 
-00:00.400 --> 00:20.345
-Mathlib is Lean's community library of formalized mathematics: definitions, theorems, and proofs that later work can reuse. Osprey's library port is already underway. Its kernel is written in Osprey, and it already rechecks imported Lean proofs. Let's look at the code and the results in this repository.
+00:00.400 --> 00:18.926
+Mathlib is Lean's community library of formalized mathematics: definitions, theorems, and proofs that later work can reuse. Osprey's port is underway. Its kernel is written in Osprey, and it rechecks imported Lean proofs. An actual Mathlib module is now in the importer.
 
-00:21.196 --> 00:38.474
+00:19.776 --> 00:37.055
 Lean provides a reference for developing Osprey's compatible theory. Osprey checks the imported evidence itself. Known soundness bugs must be rejected. The discipline protocol keeps theories separate; safe versioned forks and fresh proof checks remain required milestones.
 
-00:39.324 --> 00:59.224
+00:37.905 --> 00:57.804
 The fixture records output from Lean and its exporter, with the toolchain identity. Names, universe levels, terms, and declarations are serialized as text. Osprey reconstructs that environment and checks the supported declarations. The exact fixture is preserved so the demonstration can be repeated.
 
-01:00.074 --> 01:20.902
+00:58.654 --> 01:19.483
 The executable accepts and_swap, eq_symm, and iff_refl from the recorded export. In familiar notation, these express conjunction commutativity, equality symmetry, and self-equivalence. The checker has processed the proof terms and their declarations. These acceptance results concern this recorded set of theorems.
 
-01:22.940 --> 01:44.457
+01:21.521 --> 01:43.037
 Here is Lean's actual Nat.add_comm proof, imported and checked by Osprey. It says that natural-number addition is commutative. The check uses natural-number definitions and dependent elimination rules. Its recorded dependency closure contains no axioms. This is a universal theorem, not a numerical spot check.
 
-01:45.307 --> 02:08.736
+01:43.887 --> 02:07.316
 This imported loop lemma states an exact counter invariant: for every natural-number width, the returned work count is three times the width, plus one. This is an abstract counter, not a timing measurement. The Workbench reports the checked statement and its transitive assumption, propositional extensionality. The manifest pins the original statement and dependency export.
 
-02:09.586 --> 02:28.517
+02:08.166 --> 02:27.097
 The second result substitutes a term that does not have the arithmetic theorem's required type. The same executable rejects that declaration. This controls one concrete failure path. It strengthens evidence about the importer and kernel without claiming that their implementation has been proved correct.
 
-02:29.367 --> 02:51.109
-Replay the public corpus under garbage collection, reference counting and WebAssembly. The harness must accept each selected proof and reject corrupted evidence and false statements. The library port continues from implemented checking and a growing corpus. Inspect a theorem's statement, dependencies and assumptions, then run its checks yourself.
+02:27.947 --> 02:49.266
+The selected corpus replays under all three backends. We are importing Euclid's theorem that there are infinitely many primes. Lean accepts the reference, and Osprey reads the exported proof. Long chains of definitions slowed the full check. A smaller dependency now checks under ARC. The guide records this progress and the remaining work.

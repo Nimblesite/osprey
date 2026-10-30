@@ -126,7 +126,7 @@
   },
   "mathlib-bridge": {
     "name": "The Mathlib port is already underway: for programmers",
-    "description": "See actual imported mathematical proofs being checked by Osprey, with each theorem's assumptions made visible. This version is for programmers.",
+    "description": "See selected imported proofs checked in Osprey and learn how the actual Mathlib Euclid import is progressing. This version is for programmers.",
     "content": "/assets/videos/osprey-mathlib-bridge.mp4",
     "poster": "/assets/videos/osprey-mathlib-bridge-poster.jpg",
     "posterAlt": "The Mathlib port is already underway with Osprey branding and real proof tools.",
@@ -134,7 +134,7 @@
     "chapters": "/assets/videos/osprey-mathlib-bridge.chapters.vtt",
     "width": 1920,
     "height": 1080,
-    "uploadDate": "2026-10-30T12:23:01+11:00",
+    "uploadDate": "2026-10-30T14:52:02+11:00",
     "tags": [
       "Osprey",
       "proofs",
@@ -165,16 +165,16 @@
     "audience": "programmers"
   },
   "navier-stokes-proof": {
-    "name": "Navier-Stokes: a flow is not a proof: for programmers",
-    "description": "Meet the fluid equations in words, see them in the Workbench, then compare a computed flow with a logical proof exercise. This version is for programmers.",
+    "name": "Navier-Stokes: OpenAI's published solution: for programmers",
+    "description": "Understand OpenAI's published Navier-Stokes solution and Lean formalization, then explore a real Osprey fluid calculation and checked Workbench exercise. This version is for programmers.",
     "content": "/assets/videos/osprey-navier-stokes-proof.mp4",
     "poster": "/assets/videos/osprey-navier-stokes-proof-poster.jpg",
-    "posterAlt": "Navier-Stokes: a flow is not a proof with Osprey branding and real proof tools.",
+    "posterAlt": "Navier-Stokes: OpenAI's published solution with Osprey branding and real proof tools.",
     "captions": "/assets/videos/osprey-navier-stokes-proof.en.vtt",
     "chapters": "/assets/videos/osprey-navier-stokes-proof.chapters.vtt",
     "width": 1920,
     "height": 1080,
-    "uploadDate": "2026-10-30T09:26:24+11:00",
+    "uploadDate": "2026-10-30T15:01:32+11:00",
     "tags": [
       "Osprey",
       "proofs",
@@ -246,7 +246,7 @@
   },
   "mathlib-bridge-math": {
     "name": "Osprey rechecks imported mathematical proofs: for mathematicians",
-    "description": "See actual imported mathematical proofs being checked by Osprey, with each theorem's assumptions made visible. This version is for mathematicians.",
+    "description": "See selected imported proofs checked in Osprey and learn how the actual Mathlib Euclid import is progressing. This version is for mathematicians.",
     "content": "/assets/videos/osprey-mathlib-bridge-math.mp4",
     "poster": "/assets/videos/osprey-mathlib-bridge-math-poster.jpg",
     "posterAlt": "Osprey rechecks imported mathematical proofs with Osprey branding and real proof tools.",
@@ -254,7 +254,7 @@
     "chapters": "/assets/videos/osprey-mathlib-bridge-math.chapters.vtt",
     "width": 1920,
     "height": 1080,
-    "uploadDate": "2026-10-30T12:21:01+11:00",
+    "uploadDate": "2026-10-30T15:08:15+11:00",
     "tags": [
       "Osprey",
       "proofs",
@@ -285,16 +285,16 @@
     "audience": "mathematicians"
   },
   "navier-stokes-proof-math": {
-    "name": "Navier-Stokes: computation is not proof: for mathematicians",
-    "description": "Meet the fluid equations in words, see them in the Workbench, then compare a computed flow with a logical proof exercise. This version is for mathematicians.",
+    "name": "Navier-Stokes: the published solution, then an exact flow: for mathematicians",
+    "description": "Understand OpenAI's published Navier-Stokes solution and Lean formalization, then explore a real Osprey fluid calculation and checked Workbench exercise. This version is for mathematicians.",
     "content": "/assets/videos/osprey-navier-stokes-proof-math.mp4",
     "poster": "/assets/videos/osprey-navier-stokes-proof-math-poster.jpg",
-    "posterAlt": "Navier-Stokes: computation is not proof with Osprey branding and real proof tools.",
+    "posterAlt": "Navier-Stokes: the published solution, then an exact flow with Osprey branding and real proof tools.",
     "captions": "/assets/videos/osprey-navier-stokes-proof-math.en.vtt",
     "chapters": "/assets/videos/osprey-navier-stokes-proof-math.chapters.vtt",
     "width": 1920,
     "height": 1080,
-    "uploadDate": "2026-10-30T09:30:42+11:00",
+    "uploadDate": "2026-10-30T15:11:05+11:00",
     "tags": [
       "Osprey",
       "proofs",

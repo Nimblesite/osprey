@@ -1,19 +1,19 @@
 WEBVTT
 
-00:00.400 --> 00:18.040
-Navier-Stokes equations describe fluid motion through velocity, pressure, and viscosity. We will inspect the model in Osprey’s workbench, evaluate a known two-dimensional solution using Osprey code, and then construct a small checked argument from explicit premises.
+00:00.400 --> 00:29.361
+Navier-Stokes equations model fluid motion. In September twenty twenty six, OpenAI published an analytical solution of the three-dimensional existence and smoothness problem, formalized in Lean. Smooth forcing drives an initially resting fluid to a finite-time singularity while energy stays finite. We will explain that result, then inspect the equations in Osprey, evaluate a separate two-dimensional solution, and construct a checked logical argument.
 
-00:18.890 --> 00:41.528
+00:30.211 --> 00:52.849
 In the workbench lesson, u is velocity, p is pressure, nu is viscosity, and f is an external force. The first equation balances acceleration against pressure, viscosity, and forcing. Zero divergence expresses incompressibility. Our computed example uses unit density, a periodic domain, and zero external force.
 
-00:42.378 --> 01:06.144
+00:53.699 --> 01:17.465
 Osprey evaluates separated spatial profiles and exponential time factors. Python reconstructs the field from that output and measures finite-difference residuals. Both momentum equations and divergence are checked. Using a four-times-finer spatial grid reduces the momentum residual by about fifteen times, consistent with second-order spatial convergence.
 
-01:06.994 --> 01:28.321
+01:18.315 --> 01:39.642
 The velocity amplitude decays exponentially at twice the viscosity parameter, and kinetic energy decays at four times that parameter. The changing energy readout follows this prediction. These numerical checks validate the evaluation of this particular exact periodic solution; they are not a proof term checked by Osprey’s kernel.
 
-01:29.171 --> 01:50.710
-The lesson also supplies a propositional proof exercise. Assume smooth or blowup, and assume not blowup. Derive smooth by cases, using contradiction for the excluded branch. Osprey checks that argument through its kernel. These propositions are placeholders for claims; no definition of fluid regularity is imported by naming them.
+01:40.492 --> 02:04.918
+The published proof is a much larger object than this lesson checks. The lesson supplies a propositional exercise: assume smooth or blowup, and assume not blowup. Derive smooth by cases, using contradiction for the excluded branch. Osprey checks that argument through its kernel. These propositions are placeholders for claims; no definition of fluid regularity is imported by naming them.
 
-01:51.560 --> 02:12.602
-Open the lesson and work through the remaining-outcome exercise. Inspect the hypotheses, the changing goal, and the final kernel verdict. The next mathematical task is to formalize the fluid definitions and connect them to a theorem. The current film gives you runnable calculations and a checked logical starting point.
+02:05.768 --> 02:22.995
+Osprey checks selected supporting lemmas from pinned OpenAI sources; the complete Navier-Stokes theorem remains to be ported. In the lesson, inspect the hypotheses and changing goal, then run the remaining-outcome exercise and examine the kernel's verdict.

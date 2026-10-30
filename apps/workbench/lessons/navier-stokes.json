@@ -2,7 +2,7 @@
   "format": 1,
   "slug": "navier-stokes",
   "title": "Navier–Stokes: equations and evidence",
-  "summary": "Read the fluid equations, distinguish calculations from proofs, and explore logical reasoning under explicit assumptions.",
+  "summary": "Read the fluid equations, the OpenAI solution published in September 2026, and explore logical reasoning under explicit assumptions.",
   "stage": 3,
   "minutes": 9,
   "after": [
@@ -160,16 +160,16 @@
       "source": "media/navier-stokes/film.mp4",
       "poster": "media/navier-stokes/poster.jpg",
       "captions": "media/navier-stokes/film.en.vtt",
-      "alt": "The Navier–Stokes equations appear beside summaries of weak solutions and smooth-flow results. A dated status card distinguishes an announced apparent resolution from continuing evaluation. The final card explains that the lesson checks logical deductions, not the fluid analysis.",
-      "seconds": 57
+      "alt": "The Navier–Stokes equations appear beside an account of OpenAI's published solution: a smooth fluid at rest under a smooth force develops a finite-time singularity while its energy stays finite, formalized in Lean. The final card explains that the lesson checks logical deductions, not the fluid analysis.",
+      "seconds": 55
     },
     {
       "kind": "prose",
-      "text": "A solution must supply a velocity and a pressure that satisfy the equations at every point and time. They must start from the given initial flow and stay smooth.\n\nSome facts are proved. Leray's weak solutions, introduced in 1934, exist for all time. In two dimensions, smooth solutions exist for all time. In three dimensions, smooth solutions exist for a short time, or for all time when the initial flow is small enough."
+      "text": "A smooth solution supplies velocity and pressure satisfying the equations throughout its time interval, starting from the given initial flow. A finite-time singularity prevents continuing that smooth solution through the blowup time.\n\nLeray's weak solutions, introduced in 1934, exist globally under the standard hypotheses; weak and smooth solutions are different claims. In two dimensions, the classical smooth-flow result is global. In three dimensions, smooth solutions exist locally in time. Standard unforced small-data theorems give global smooth solutions under their size and regularity hypotheses. The smooth forcing in OpenAI's result is a separate condition."
     },
     {
       "kind": "prose",
-      "text": "The three-dimensional existence and smoothness question is one of the Clay Millennium Prize problems. It asks whether smooth solutions persist or whether a smooth initial flow can develop a finite-time singularity, under the problem's precise conditions. On 11 September 2026, the Clay Mathematics Institute acknowledged an announced apparent resolution and said its evaluation process would continue. Its problem page remains marked Active. Sources checked on 29 October 2026: https://www.claymath.org/news/navier-stokes-announcement/ and https://www.claymath.org/millennium/navier-stokes-equation/.\n\nWe use smooth and blowup as names for propositions in a simplified logic exercise. The formula below is an assumed model for that exercise. It does not formalize the analytical problem or establish either outcome."
+      "text": "On 8 September 2026, OpenAI published a solution of the three-dimensional Navier–Stokes existence and smoothness problem. Its internal system produced an analytical proof, formalized in Lean, that a smooth fluid initially at rest under a smooth force develops a finite-time singularity while its energy remains finite. That is a forced flow breaking down in finite time; it is not a claim that every unforced flow blows up. Source: https://openai.com/index/navier-stokes-solution/.\n\nSeparately, Osprey checks seventeen selected lemmas about stacks, loop work, finite indices and number theory from the pinned openai/math release under GC, ARC and wasm32. It does not check the headline Navier–Stokes proof, and this lesson does not present that proof.\n\nWe use smooth and blowup as names for propositions in a simplified logic exercise. The formula below is an assumed model for that exercise. It does not formalize the analytical problem or establish either outcome."
     },
     {
       "kind": "formula",
@@ -231,7 +231,7 @@
     },
     {
       "kind": "prose",
-      "text": "Naming a proposition is not proving it. These exercises check logical deductions from their stated assumptions. They do not check the analysis of the Navier–Stokes equations or evaluate any announced solution of the Millennium Prize problem."
+      "text": "Naming a proposition is not proving it. These exercises check logical deductions from their stated assumptions. They do not check the fluid analysis behind the published solution or reproduce its Lean formalization."
     }
   ]
 }

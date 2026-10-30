@@ -8,8 +8,8 @@ pagination:
 permalink: "/docs/proofs/videos/{{ film.id }}/"
 eleventyComputed:
   video: "{{ film.id }}"
-  title: "{{ film.name }}"
-  description: "{{ film.description }}"
+  title: "{{ film.name | safe }}"
+  description: "{{ film.description | safe }}"
 tags: [tutorials, video, proofs]
 ---
 {% set topic = proofTopics[film.proofTopic] %}
@@ -17,6 +17,8 @@ tags: [tutorials, video, proofs]
 <p>For {{ film.audience }}. <a href="/docs/proofs/#{{ film.proofTopic }}">Choose the other audience version</a> or <a href="/docs/proofs/">browse the complete series</a>.</p>
 
 {% videoPlayer video %}
+
+<p>Lean is the <a href="/docs/proofs/#lean-as-an-oracle">development oracle</a> for compatible proofs; Osprey checks them independently. Known unsound reference behaviour must be refused, and changing a discipline requires fresh proof validation.</p>
 
 <h2>What this demonstrates</h2>
 <p>{{ topic.detail }}</p>

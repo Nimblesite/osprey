@@ -1,19 +1,19 @@
 WEBVTT
 
-00:00.400 --> 00:17.919
-Navier-Stokes equations describe how fluids move. Osprey can calculate a particular swirling flow, and its workbench explains the mathematics behind the model. We will start with what the symbols mean, watch the computed motion, and then try a small proof in the workbench.
+00:00.400 --> 00:26.840
+Navier-Stokes equations describe how fluids move. In September twenty twenty six, OpenAI published a solution of the three-dimensional existence and smoothness problem, with a Lean formalization. Smooth forcing can drive a fluid initially at rest to a finite-time singularity: its speed grows without bound while energy stays finite. Let's explain that result, then explore real Osprey code and its proof workbench.
 
-00:18.769 --> 00:37.574
+00:27.690 --> 00:46.495
 Open the Navier-Stokes lesson in Osprey. Velocity tells us how the fluid moves. Pressure pushes it around. Viscosity spreads out motion and removes energy from this flow. The lesson writes these relationships as equations, with a second equation requiring the fluid to stay incompressible.
 
-00:40.902 --> 00:58.882
+00:49.823 --> 01:07.803
 This is the actual Osprey program used for the picture. It calculates the flow’s spatial shape and how its strength falls over time. The renderer uses those numbers to draw the moving fluid. Separate numerical checks measure how closely the calculated field satisfies the equations.
 
-00:59.732 --> 01:20.170
+01:08.653 --> 01:29.091
 Watch the four rotating cells lose strength. No external force keeps them going. The energy readout falls as viscosity dissipates the motion. This is a known exact solution in two dimensions, with a domain that repeats at its edges. Osprey evaluates its formula, so we can compare the calculation with a known answer.
 
-01:21.020 --> 01:41.861
-Now try the lesson’s logical exercise. Assume there are two possibilities, and one has been ruled out. Show that the other must hold. Write the assumptions, consider each case, and watch Osprey check the proof. The words smooth and blowup name propositions here; the exercise teaches how a conclusion follows from assumptions.
+01:29.941 --> 01:55.367
+The published proof has a precise statement and a Lean formalization; the lesson also supplies a much smaller propositional exercise. Assume there are two possibilities, and one has been ruled out. Show that the other must hold. Write the assumptions, consider each case, and watch Osprey check the proof. The words smooth and blowup name propositions here; the exercise teaches how a conclusion follows from assumptions.
 
-01:42.711 --> 02:02.282
-Start with the Navier-Stokes lesson: read the symbols, explore the flow, and try the remaining-outcome exercise. You have seen Osprey compute a real fluid example and check a logical argument. A formal proof about the fluid itself would also need mathematical definitions connecting those two parts.
+01:56.217 --> 02:15.767
+Open the lesson to explore the symbols and try the remaining-outcome exercise. Osprey already checks selected supporting lemmas from the published OpenAI sources. The complete Navier-Stokes proof is a larger port still to do. You can run this fluid calculation and build your own small checked arguments today.

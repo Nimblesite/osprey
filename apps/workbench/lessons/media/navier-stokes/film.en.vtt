@@ -1,16 +1,16 @@
 WEBVTT
 
-00:00.350 --> 00:13.000
-These are the incompressible Navier-Stokes equations. They describe a fluid's velocity u, pressure p, viscosity, and an external force f. The second equation says the flow does not compress.
+00:00.350 --> 00:13.299
+Navier-Stokes equations describe moving fluids. The unknowns are velocity and pressure. Viscosity spreads motion; an external force can drive it. Zero divergence means incompressibility.
 
-00:13.400 --> 00:23.127
-Some things are proved. In nineteen thirty four, Leray showed that weak solutions exist for all time. In two dimensions, smooth solutions last for ever.
+00:13.699 --> 00:20.528
+Leray proved that weak solutions exist for all time. In two dimensions, smooth solutions also persist.
 
-00:23.527 --> 00:30.554
-In three dimensions, smooth solutions exist for a short time. They last for ever if the starting flow is small enough.
+00:20.928 --> 00:28.207
+Three-dimensional smooth solutions exist locally in time. Global results depend on the precise hypotheses.
 
-00:30.954 --> 00:46.133
-In September twenty twenty six, the Clay Mathematics Institute acknowledged an announced apparent resolution of the three-dimensional problem. Its evaluation process continues. The problem page remains marked Active as of October twenty ninth.
+00:28.607 --> 00:43.524
+In September twenty twenty six, OpenAI published a solution with a Lean formalization. Its internal system proved that smooth forcing can drive fluid initially at rest to a finite-time singularity, while energy stays finite.
 
-00:46.533 --> 00:54.324
-These exercises check deductions from stated assumptions. They do not verify any proposed solution of the fluid equations.
+00:43.924 --> 00:52.398
+Osprey checks selected supporting lemmas. These lesson exercises teach logical deductions; they do not check the complete fluid proof.

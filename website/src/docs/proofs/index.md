@@ -50,4 +50,4 @@ Each film runs about two to three minutes, with English captions, seekable chapt
 {{ topic.detail }}
 {% endfor %}
 
-The flow demonstration supplies numerical evidence; it does not claim a formal Navier-Stokes proof. The imported corpus is a working step toward Mathlib, not the whole library. Osprey is actively evolving.
+The flow demonstration supplies numerical evidence; it does not claim a formal Navier-Stokes proof. The published OpenAI solution is a separate result: an internal system's analytical proof, formalized in Lean, that a smooth fluid initially at rest under a smooth force develops a finite-time singularity while its energy stays finite ([source](https://openai.com/index/navier-stokes-solution/)). Separately, Osprey checks seventeen selected lemmas about stacks, loop work, finite indices and number theory from pinned `openai/math` sources, not the headline Navier–Stokes proof. The imported corpus is a working step toward Mathlib, not the whole library. Osprey is actively evolving.

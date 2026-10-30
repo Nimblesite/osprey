@@ -57,7 +57,7 @@ Change a required fact to one that does not match the goal and inspect the refus
 
 Open **Examples**, choose a lesson and select **Open**. Read its introduction before answering a challenge. Submit an answer and inspect the feedback. The lesson offers hints and reveals a worked answer after three unsuccessful proof submissions. The walkthrough shows a successful checked answer; revealing a solution is distinct from proving your own draft.
 
-The Navier-Stokes lesson introduces velocity, pressure and incompressibility before showing the equations. Its proof exercise concerns the logical consequences of explicit propositions. It does not formalize fluid analysis or establish the three-dimensional regularity theorem.
+The Navier-Stokes lesson introduces velocity, pressure and incompressibility before showing the equations, then credits OpenAI's published solution: on 8 September 2026 an internal system produced an analytical proof, formalized in Lean, that a smooth fluid initially at rest under a smooth force develops a finite-time singularity while its energy stays finite ([source](https://openai.com/index/navier-stokes-solution/)). That is a forced finite-time blowup, not a claim about every unforced flow. Separately, Osprey checks seventeen selected lemmas about stacks, loop work, finite indices and number theory from the pinned `openai/math` release, not the headline Navier–Stokes proof. The lesson's proof exercise concerns the logical consequences of explicit propositions and does not formalize the fluid analysis.
 
 ## Read an imported theorem
 

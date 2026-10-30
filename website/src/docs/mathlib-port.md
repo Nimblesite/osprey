@@ -1,11 +1,13 @@
 ---
 layout: page
 title: The Mathlib port is underway
-description: "Current evidence for Osprey's proof-library port: seventeen OpenAI supporting lemmas, 175 selected Lean-core statements, explicit assumptions and rejected corruptions."
+description: "Where Osprey's proof-library port actually stands: 194 selected Lean statements checked, an actual Mathlib module being imported, and the reductions that still fail."
 permalink: /docs/mathlib-port/
 ---
 
-Osprey already checks real imported mathematical proofs using a kernel written in Osprey. The library port is underway: pinned source files, dependency exports, exact statements, axiom reports and negative controls live in the repository. This page records the verified checkpoint of **30 October 2026**.
+Mathlib is the Lean community's library of formalized mathematics: definitions, lemmas and proofs that later work can reuse instead of rebuilding them. Think of it as reusable mathematics with evidence attached, before any notation or tooling matters.
+
+Osprey is a functional language built for safety, elegance and performance: algebraic effects and `Result` instead of panics, inferred types, and native LLVM compilation. It already checks real imported proofs with a kernel written in Osprey, and the library work is underway. This page keeps two things apart: what passed at the verified checkpoint of **30 October 2026**, and what the current Mathlib import work has and has not achieved.
 
 [Watch the programmer introduction](/docs/proofs/videos/mathlib-bridge/) or [the mathematics version](/docs/proofs/videos/mathlib-bridge-math/). The films show real imported proofs in the native and VS Code Workbench, including natural-number addition and the exact work counter of a doubling loop. The loop proof names its `propext` assumption. The dated corpus totals below describe the wider repository checkpoint; these demonstrations do not claim full Mathlib coverage.
 
@@ -37,11 +39,41 @@ The [completion milestones](https://github.com/Nimblesite/osprey/blob/main/docs/
 | Recent OpenAI mathematics developments | 17 supporting lemmas | 51 successful root checks; 102 rejected mutations |
 | Actual string-constructor proofs | 2 | 6 successful axiom-free checks; 12 rejected mutations |
 
-The last fully closed kernel checkpoint passed 325 cases on each of GC, ARC and wasm32. The source/export checks reproduce pinned exports byte for byte, replay the compatible modules through Lean's fresh kernel, and compare each theorem's assumptions independently.
+Together these three published commands cover 194 selected statements: 582 successful root checks and 1,164 rejections, since every root is also run against a corrupted proof and a false statement on each backend.
+
+The latest closed checker-suite checkpoint ran 393 kernel cases on each of GC, ARC and wasm32, with no failed or skipped cases and independently verified input hashes. This checks the selected kernel cases; acceptance of the complete Euclid export below remains separate. Later source changes require fresh validation. The [plan ledger](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0041-dependent-types-and-mathlib.md) records the dated checkpoints and their receipts.
+
+The source/export checks reproduce pinned exports byte for byte, replay the compatible modules through Lean's fresh kernel, and compare each theorem's assumptions independently.
 
 The core count includes 172 original exports and three compatible constructive proof bodies with the exact original statements. The three original certificates remain refused at a nested-inductive dependency. An alternative proof of the same statement does not imply the original certificate is supported.
 
-The OpenAI selection includes eight infinite-stack lemmas, three statements about a doubling loop's exact value and work cost, a finite-index injectivity lemma and five integer five-colour orientation statements. These are supporting results from the released research developments. Their headline research theorems have not been ported by this corpus.
+The OpenAI selection includes eight infinite-stack lemmas, three statements about a doubling loop's exact value and work cost, a finite-index injectivity lemma and five five-colour orientation statements from the existing NumberTheory project. For those five, the original statements are compared against the retained certificate and the three `omega` proof bodies are replaced with core integer lemmas; each reports `propext`. These are supporting results from the released research developments. Their headline research theorems have not been ported by this corpus.
+
+## Five things this page keeps apart
+
+- **Lean-core statements (175).** Lean's own definitions and proofs, checked from an empty Osprey environment on all three backends.
+- **Recent OpenAI supporting lemmas (17).** Supporting statements from released research developments, checked the same way; not their headline theorems.
+- **Actual Mathlib source exports (in progress).** One selected Mathlib theorem is being imported at library scale. It is not accepted yet; the section below says exactly where it stops.
+- **Readable source translation.** Imported-term checking and translation are separate. A small Osprey proof surface exists, but no Mathlib source file has a readable, checked Osprey translation yet; the figures on this page are imported certificates, not translations.
+- **Proofs written in Osprey.** Imported-term checking and source elaboration are separate. The kernel accepts small proofs written in Osprey's own ML proof surface (identity, implication transitivity, a universal statement) and refuses a deliberately wrong one. That is authored proof checking at exercise scale, not library coverage.
+
+## Where the actual Mathlib import stands
+
+Everything before this section is checked evidence. This section is current work, recorded so the gap is visible rather than implied.
+
+The pinned Mathlib commit is `1ccd71f89cbbd82ae7d097723ce1722ca7b01c33` on the Lean 4.25.0 toolchain. The selected theorem is `Nat.exists_infinite_primes`: for every natural number `n` there is a prime `p` with `n ≤ p` — Euclid's theorem that the primes never run out.
+
+What works today:
+
+- The export is pinned: 12,027,058 bytes with SHA-256 `97a2e930…`, produced by the pinned exporter from the pinned Mathlib commit. It holds 230,909 rows, 19,518 names and 1,551 theorems in the dependency closure, with `propext`, `Quot.sound` and `Classical.choice` declared.
+- Osprey's importer parses all 2,833 declarations in 11.1 seconds under GC.
+- Fresh Lean replay of the same module passes in 424 seconds.
+
+What does not work yet: Osprey's own check of that export does not finish. The original GC probe hit the 180-second limit and ARC exhausted the machine stack after 36.7 seconds. After the bounded-stack repair, a fresh ARC probe also reaches the 180-second limit without crashing (`euclid-fixed-arc-receipt.json`). The diagnostic trace reaches `Nat.sqrt.iter.eq_def` last, and the original crash frames were recursive weak-head reduction, not parsing. The importer works; completing the full check remains active work.
+
+The work has been narrowed. A focused export of `Nat.sqrt.iter.eq_def` alone — 440,178 bytes — now checks under ARC in 45.4 seconds, reporting `propext` and `Quot.sound`, with its own fresh Lean replay in 70 seconds. A bounded-stack reduction machine is in the tree and under validation. This establishes a focused ARC check. Acceptance of the full Euclid certificate and a closed three-backend matrix remain pending.
+
+Full-library coverage, readable source translation and the complete independent authoring workflow remain the milestones linked above. The receipts for these measurements are working-tree files under `target/proof/mathlib-v4.25.0/` (not committed), and their pins and status are recorded in the plan ledger.
 
 ## A concrete example: a loop's work counter
 
@@ -67,7 +99,7 @@ python3 scripts/proof-openai.py --corpus lean-core --compiler target/release/osp
 python3 scripts/test-proof-literals.py
 ```
 
-The first command expects 51 successful root checks, each accompanied by corrupted-proof and false-statement rejection. The second expects 525 successful root checks and 1,050 rejected mutations. Both perform source validation and fresh Lean replay; the pinned authoring toolchain is required. The Unicode command uses the three batch binaries produced by the preceding corpus checks.
+The first command expects 51 successful root checks, each accompanied by corrupted-proof and false-statement rejection. The second expects 525 successful root checks and 1,050 rejected mutations. Both perform source validation and fresh Lean replay; the pinned authoring toolchain is required. The Unicode command uses the three batch binaries produced by the preceding corpus checks and expects six successful root checks with twelve rejections.
 
 For a smaller visible example, build the compiler and run:
 
@@ -79,15 +111,17 @@ The output includes `checked: Nat.add_comm (export)` followed by `rejected: Nat.
 
 ## Keep assumptions visible
 
-Five of the selected OpenAI roots are axiom-free, ten use propositional extensionality (`propext`), and two use quotient soundness (`Quot.sound`). These counts concern each selected theorem's transitive dependencies, not every axiom declared elsewhere in the export. Neither a Checked badge nor an unused-axiom-free environment should obscure an assumption a theorem actually needs.
+Five of the selected OpenAI roots are axiom-free, ten use propositional extensionality (`propext`), and two use quotient soundness (`Quot.sound`). These counts concern each selected theorem's transitive dependencies, not every axiom declared elsewhere in the export. Neither a Checked badge nor an unused-axiom-free environment should obscure an assumption a theorem actually needs. The five five-colour orientation statements each report `propext` and are included in that count.
 
 The Workbench's bundled catalogue stages thirteen approved export groups with unchanged upstream licences. A group is not a theorem count. The app reads the current selected source and asks the shared kernel to check it; the catalogue does not store an acceptance flag.
 
 ## What remains
 
-The full pinned Mathlib library, its readable Osprey frontend translation, broader elaboration and tactics, and the remaining nested-inductive certificates are still delivery work. The five newly integrated number-theory statements preserve the exact upstream statements with compatible proof bodies and verified provenance. Original nested-inductive certificates retain their own unmet acceptance gates. Checking library exports does not automatically prove an arbitrary Osprey application correct.
+The actual Mathlib import described above must be checked rather than parsed and replayed, beginning with the reduction depth that stops `Nat.exists_infinite_primes`. Then come the full pinned library, a readable Osprey frontend translation, broader elaboration and tactics, and the three original nested-inductive certificates that remain refused even though compatible proofs of their statements check. Whole-library performance comparisons remain separate gates.
 
-The Navier-Stokes films show measured numerical flow and a propositional Workbench exercise. They do not claim a formal PDE proof, a completed analysis library or a research breakthrough. Whole-library performance comparisons also remain separate gates.
+Checking library exports does not automatically prove an arbitrary Osprey application correct, and an imported certificate is not a proof written in Osprey.
+
+The Navier-Stokes films show measured numerical flow, the OpenAI solution published on 8 September 2026 and a propositional Workbench exercise. OpenAI's internal system produced an analytical proof, formalized in Lean, that a smooth fluid initially at rest under a smooth force develops a finite-time singularity with finite energy ([source](https://openai.com/index/navier-stokes-solution/)); it is a forced result, not a general unforced blowup claim. Separately, Osprey checks seventeen selected lemmas about stacks, loop work, finite indices and number theory from pinned `openai/math` sources, not the headline Navier–Stokes proof or a complete analysis library.
 
 ## Inspect the evidence
 

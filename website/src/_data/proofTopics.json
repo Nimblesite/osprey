@@ -33,7 +33,7 @@
   "mathlib-bridge": {
     "title": "The Mathlib port is underway",
     "intro": "See actual imported mathematical proofs being checked by Osprey, with each theorem's assumptions made visible.",
-    "detail": "The films record ten selected supporting lemmas. The current public corpus has twelve; the progress guide records the newer checkpoint separately. These are checked exports from Lean developments, not a completed port of Mathlib or the headline research theorems.",
+    "detail": "The films record an earlier selection of supporting lemmas; the dated progress guide records the current public corpus separately. These are checked exports from Lean developments, not a completed port of Mathlib or the headline research theorems.",
     "guide": "/docs/mathlib-port/",
     "sources": [
       "examples/proof/openai/corpus.json",
@@ -52,9 +52,9 @@
     ]
   },
   "navier-stokes-proof": {
-    "title": "Navier-Stokes: computation and proof",
-    "intro": "Meet the fluid equations in words, see them in the Workbench, then compare a computed flow with a logical proof exercise.",
-    "detail": "The periodic two-dimensional Taylor-Green flow is a numerical example with measured residuals. The Workbench exercise proves a propositional implication under explicit premises. Neither establishes a formal proof of the Navier-Stokes equations or the three-dimensional regularity problem. The recorded computation and residual checker are production assets in the separate TikTok repository; the Osprey source link below is the Workbench lesson.",
+    "title": "Navier-Stokes: the solution and Osprey",
+    "intro": "Learn what OpenAI solved, inspect the fluid equations in the Workbench, and explore computation and checked reasoning in Osprey.",
+    "detail": "On 8 September 2026, OpenAI published a solution with a Lean formalization: smooth forcing produces a finite-time singularity from initially smooth fluid at rest while energy remains finite. The films explain that result before exploring Osprey. The periodic two-dimensional Taylor-Green flow is a separate numerical example with measured residuals; the Workbench exercise checks a propositional implication under explicit premises. Separately, Osprey checks selected computability, work-counter and number-theory exports from openai/math, while the complete headline theorem remains to be ported. The recorded computation and residual checker are production assets in the separate TikTok repository; the source link below opens the Workbench lesson.",
     "guide": "/docs/proof-workbench/",
     "sources": [
       "apps/workbench/lessons/navier-stokes.json"

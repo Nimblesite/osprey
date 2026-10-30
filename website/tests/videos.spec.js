@@ -27,14 +27,15 @@ test("the native chapter track loads its WebVTT file", async () => {
   expect(cues(source).length).toBeGreaterThan(3);
 });
 
-for (const watch of WATCH_PAGES) test(`${watch} describes its video with VideoObject and key moments`, () => {
+for (const watch of WATCH_PAGES) test(`${watch} describes its video with VideoObject and key moments`, async ({ page }) => {
   const html = read(`${watch.slice(1)}index.html`);
   const video = jsonLd(html).find((data) => data["@type"] === "VideoObject");
   expect(video, "VideoObject").toBeTruthy();
   for (const key of ["name", "description", "thumbnailUrl", "uploadDate", "duration", "contentUrl"]) expect(video[key], key).toBeTruthy();
   expect(video.uploadDate).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/);
   expect(video.duration).toMatch(/^PT(\d+H)?(\d+M)?(\d+S)?$/);
-  expect(video.name).toBe(html.match(/<title>(.*?)<\/title>/)[1]);
+  const title = await page.evaluate(source => new DOMParser().parseFromString(source, "text/html").title, html);
+  expect(video.name).toBe(title);
   expect(fs.existsSync(path.join(SITE, new URL(video.contentUrl).pathname))).toBe(true);
 
   const starts = video.hasPart.map((clip) => clip.startOffset);
@@ -228,4 +229,43 @@ for (const [route, ids] of [
     await expect.poll(() => player.evaluate(video => video.currentTime), { message: `Inline playback: ${id}` }).toBeGreaterThan(0.25);
     await player.evaluate(video => video.pause());
   }
+});
+
+function expectNavierSolution(text, label) {
+  expect(text, label).toMatch(/Open\s?AI/i);
+  expect(text, label).toMatch(/finite.time/i);
+  expect(text, label).toMatch(/smooth forc/i);
+  expect(text, label).toContain("Lean");
+}
+
+test("Navier tutorial and docs credit the published OpenAI solution with its forcing hypothesis", () => {
+  const lesson = require("../../apps/workbench/lessons/navier-stokes.json");
+  const lessonText = lesson.blocks.filter(block => block.kind === "prose").map(block => block.text).join(" ");
+  const classical = lesson.blocks.find(block => block.kind === "prose" && block.text.includes("Leray"));
+  expect(classical.text).toMatch(/unforced.*small|small.*unforced/is);
+  const guides = ["proof-workbench.md", "mathlib-port.md", "proofs/index.md"];
+  for (const [label, text] of [["Workbench lesson", lessonText], ...guides.map(file => [file, fs.readFileSync(path.resolve(__dirname, "../src/docs", file), "utf8")])]) {
+    expect(text, label).toContain("https://openai.com/index/navier-stokes-solution/");
+    expectNavierSolution(text, label);
+    expect(text, label).not.toMatch(/remains marked Active|evaluation process would continue/);
+  }
+});
+
+test("shipped Navier lesson and both audience films narrate the solution and smooth forcing", () => {
+  const captions = ["../../apps/workbench/lessons/media/navier-stokes/film.en.vtt", "../src/assets/videos/osprey-navier-stokes-proof.en.vtt", "../src/assets/videos/osprey-navier-stokes-proof-math.en.vtt"];
+  for (const file of captions) {
+    const text = fs.readFileSync(path.resolve(__dirname, file), "utf8");
+    expectNavierSolution(text, file);
+    expect(text, file).not.toMatch(/evaluation process continues|marked Active/);
+  }
+});
+
+test("proof watch titles and descriptions preserve punctuation once", async ({ page }) => {
+  const entry = require("../src/_data/videos.json")["navier-stokes-proof"];
+  await page.goto(proofWatch("navier-stokes-proof"));
+  await expect(page).toHaveTitle(entry.name);
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", entry.description);
+  const graph = jsonLd(await page.content()).find(item => item["@graph"])["@graph"];
+  const breadcrumb = graph.find(item => item["@type"] === "BreadcrumbList");
+  expect(breadcrumb.itemListElement.at(-1).name).toBe(entry.name);
 });
