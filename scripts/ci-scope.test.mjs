@@ -8,6 +8,7 @@ import { classify } from './ci-scope.mjs'
 import { runStagedBundleFixture, nativeArchives, proofAssets } from './ci-bundle-fixture.mjs'
 import { targetsMainPullRequests } from './workflow-pr-target.mjs'
 import { registerLintContracts } from './ci-lint-contract-tests.mjs'
+import { registerProofContracts } from './ci-proof-contract-tests.mjs'
 
 function deadCodeFixture(product, tests) {
   const root = mkdtempSync(join(tmpdir(), 'osprey-dead-code-'))
@@ -280,35 +281,7 @@ test('application ports have an independent complete backend gate', () => {
   assert.match(apps, /run: make _test_python_app_ports/)
 })
 
-test('the proof kernel and the Lean speed gate run on the staged build', () => {
-  const proof = job('test-proof', '.github/workflows/ci.yml')
-  assert.match(proof, /needs: \[changes, build\]/)
-  // examples/proof/** classifies as code and benchmarks/proof/** as
-  // benchmarks; both outputs gate the job exactly as the changes job gates
-  // its own benchmark steps.
-  assert.match(proof, /needs\.changes\.outputs\.code == 'true' \|\| needs\.changes\.outputs\.benchmarks == 'true'/)
-  assert.match(proof, /run: make _test_proof_kernel/)
-  assert.match(proof, /run: zsh benchmarks\/proof\/run\.sh/)
-  // Lean is the speed gate's baseline, so the toolchain is pinned to an exact
-  // release (`stable` floats) and a non-zero exit is never softened. The pin
-  // lives in the tools' lean-toolchain, which the job installs and the tools
-  // cache key hashes, so the two cannot disagree.
-  assert.match(proof, /--default-toolchain "\$\(cat benchmarks\/proof\/tools\/lean-toolchain\)"/)
-  assert.match(readFileSync('benchmarks/proof/tools/lean-toolchain', 'utf8'), /^leanprover\/lean4:v\d+\.\d+\.\d+\n$/)
-  assert.match(proof, /hashFiles\([^)]*benchmarks\/proof\/tools\/lean-toolchain/)
-  assert.doesNotMatch(proof, /--default-toolchain stable/)
-  assert.doesNotMatch(proof, /continue-on-error/)
-  assert.doesNotMatch(proof, /\|\| true/)
-  // The recorded export is re-derived from the pinned exporter in CI.
-  assert.match(proof, /run: bash scripts\/proof-export\.sh --check/)
-  assert.match(proof, /run: bash scripts\/proof-export\.sh --check --theorem and_swap/)
-  assert.match(proof, /run: bash scripts\/proof-export\.sh --check --theorem Nat\.add_comm/)
-  assert.match(proof, /run: node --test scripts\/test-proof-export\.mjs/)
-  assert.match(proof, /run: python3 scripts\/test-proof-openai\.py/)
-  assert.match(proof, /run: python3 scripts\/proof-openai\.py --compiler target\/release\/osprey/)
-  assert.match(proof, /run: python3 scripts\/proof-openai\.py --corpus lean-core --compiler target\/release\/osprey/)
-  assert.match(proof, /run: python3 scripts\/test-proof-literals\.py/)
-})
+registerProofContracts(job('test-proof', '.github/workflows/ci.yml'))
 
 function assertRealUv(registry, memory) {
   for (const requirement of [/uses: astral-sh\/setup-uv@[0-9a-f]{40}\b/,

@@ -242,14 +242,14 @@ test('rejects --theorem without a value', () => {
 // recipe line is replayed through a miniature Make target that includes the same
 // config.mk, with a fake compiler that prints what the line reads and exits with
 // a chosen status.
-const TESTS_MK = path.join(REPO, 'scripts/make/tests.mk');
+const PROOF_MK = path.join(REPO, 'scripts/make/proof.mk');
 const CONFIG_MK = path.join(REPO, 'scripts/make/config.mk');
 const GOLDEN_PIPE = /\| diff - (\S*examples\/disciplines\/\S+)$/;
 const CRASH_STATUS = 23;
 
 const goldenPipelines = () =>
   fs
-    .readFileSync(TESTS_MK, 'utf8')
+    .readFileSync(PROOF_MK, 'utf8')
     .split('\n')
     .filter((line) => line.includes('$(BIN)') && GOLDEN_PIPE.test(line.trim()))
     .map((line) => line.trim());
@@ -302,7 +302,7 @@ const SUITE_RUN = /\$\(BIN\) test .*bounded-suite\.txt/;
 const SUITE_SUMMARY = '# tests=1 passed=1 failed=0 skipped=0';
 
 const suiteRecipe = () => {
-  const lines = fs.readFileSync(TESTS_MK, 'utf8').split('\n').map((line) => line.trim());
+  const lines = fs.readFileSync(PROOF_MK, 'utf8').split('\n').map((line) => line.trim());
   const at = lines.findIndex((line) => SUITE_RUN.test(line));
   assert.notEqual(at, -1, 'the bounded checker suite recipe moved; re-point this guard');
   const pair = lines.slice(at, at + 2);

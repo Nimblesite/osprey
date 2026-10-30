@@ -638,28 +638,13 @@ jobs:
       - name: OpenAI proof corpus trust ledger regressions
         run: python3 scripts/test-proof-openai.py
 
-      - name: Recent OpenAI proof ports (Lean cross-check, GC, ARC and wasm32)
-        run: python3 scripts/proof-openai.py --compiler target/release/osprey
+      # One bounded Make graph builds fresh checkers once for both complete
+      # corpora and Unicode. The speed gate runs after all checks finish.
+      - name: Proof scheduling regressions
+        run: node --test scripts/ci-proof-schedule.test.mjs
 
-      - name: Lean core proof corpus (Lean cross-check, GC, ARC and wasm32)
-        run: python3 scripts/proof-openai.py --corpus lean-core --compiler target/release/osprey
-
-      - name: Recorded Unicode proofs (fresh Lean, GC, ARC and wasm32)
-        run: python3 scripts/test-proof-literals.py
-
-      - name: M0 proof kernel (GC, ARC and wasm32 goldens)
-        run: make _test_proof_kernel
-
-      # The reference disciplines of spec 0050: Osprey checker packages built
-      # by the compiler's own runner, round-tripped under GC, ARC and wasm32.
-      - name: Reference disciplines (passthrough, bounded)
-        run: make _test_disciplines
-
-      # m0_identity is the regression gate; m1_export is the [PROOF-SPEED]
-      # comparison: the Osprey reader and lean4checker re-check the same
-      # recorded module. The script is red on any failed run.
-      - name: Proof speed gate vs Lean
-        run: zsh benchmarks/proof/run.sh
+      - name: Full proof acceptance and Lean speed gate
+        run: make -j3 _test_proof_ci
 
   test-c-runtime:
     name: "Tests: C runtime (coverage)"

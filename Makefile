@@ -8,6 +8,7 @@
 include scripts/make/config.mk
 include scripts/make/runtime.mk
 include scripts/make/tests.mk
+include scripts/make/proof.mk
 include scripts/make/apps.mk
 include scripts/make/extension.mk
 
