@@ -102,7 +102,7 @@ jobs:
       # Rust, so its build scripts run as GNU programs and the host, GPUI and the Osprey runtime all
       # link one UCRT. Rustup's Rust with the GNU target builds GPUI's resource script as an MSVC
       # library and links msvcrt beside the runtime's UCRT. The UCRT64 clang and llvm-ar build the
-      # windows-x64 app archive.
+      # windows-x64 app archive. diffutils gives the compare.sh suite's stubs `cmp`.
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -110,6 +110,7 @@ jobs:
           update: true
           install: >-
             make
+            diffutils
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-clang
             mingw-w64-ucrt-x86_64-llvm
