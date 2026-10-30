@@ -158,9 +158,19 @@ module Terms
 
     (** `term` with the universe parameters `params` replaced by `args`
         in every sort and every constant instantiation. *)
-    export instantiateLevels (term, params, args) = match isEmpty params
+    export instantiateLevels (term, params, args) = match isEmpty params || identityLevels (params, args)
         true => term
         false => instantiatedLevels (term, params, args)
+
+    identityLevels (params, args) = match params
+        [] => isEmpty args
+        [name, ...rest] => match args
+            [] => false
+            [arg, ...more] => identityLevel (name, arg) && identityLevels (rest, more)
+
+    identityLevel (name, level) = match level
+        Param actual => name == actual
+        _ => false
 
     instantiatedLevels (term, params, args) = match term
         Sort level => Sort (Levels::instantiate (level, params, args))

@@ -25,7 +25,7 @@ type ReductionStep = Again Term | Whnf Term | Suspend Term PendingFrame
     keeps them on the heap: nesting a major premise inside a major premise
     costs list cells, never machine stack. Each is exactly one `whnf` call the
     theory's rules require. *)
-type PendingFrame = AwaitApply List<Term> | AwaitProject string int Term | AwaitIotaMajor Term Spine Decl Eliminator List<Level> int | AwaitQuotientMajor Term List<Term> int
+type PendingFrame = AwaitApply Term Spine | AwaitProject string int Term | AwaitIotaMajor Term Spine Decl Eliminator List<Level> int | AwaitQuotientMajor Term List<Term> int
 
 (** The reduction machine: the term to reduce next with its pending frames
     innermost first, or the answer. *)
@@ -72,7 +72,7 @@ module Reduce
         [frame, ...rest] => enter (env, continueFrame (env, frame, term), rest)
 
     continueFrame (env, frame, value) = match frame
-        AwaitApply args => appliedHead (env, value, args)
+        AwaitApply original spine => resumedApplication (env, original, spine, value)
         AwaitProject family index term => projection (env, term, family, index, Terms::spine value)
         AwaitIotaMajor term spine decl elim levels at => iotaCtor (env, term, spine, decl, elim, levels, at, Terms::spine value)
         AwaitQuotientMajor term args at => quotientHead (env, term, args, at, Terms::spine value)
@@ -94,7 +94,7 @@ module Reduce
 
     numericApp (env, term, reduced) = match reduced
         NumericReduced value => Again value
-        NoNumericRule => appliedSpine (env, Terms::spine term)
+        NoNumericRule => appliedSpine (env, term, Terms::spine term)
 
     (** A literal exposes just one constructor, keeping arbitrary values
         compact while allowing the ordinary checked Nat recursor to fire. *)
@@ -122,13 +122,23 @@ module Reduce
             Error _ => Whnf term
         false => Whnf term
 
-    appliedSpine (env, spine) = Suspend spine.spineHead (AwaitApply spine.spineArgs)
+    appliedSpine (env, original, spine) = Suspend spine.spineHead (AwaitApply original spine)
+
+    resumedApplication (env, original, spine, value) = match unchangedHead (spine.spineHead, value)
+        true => iotaSpine (env, original, spine)
+        false => appliedHead (env, value, spine.spineArgs)
+
+    unchangedHead (before, after) = match before
+        Const _ _ => structuralEquals (before, after)
+        BVar _ => structuralEquals (before, after)
+        _ => false
 
     appliedHead (env, head, args) = match args
         [] => Whnf head
         many => match head
             Lam _ _ _ => betaApplied (env, consumed (head, args, []))
-            other => iota (env, Terms::apps (head, args))
+            App _ _ => iota (env, Terms::apps (head, args))
+            other => iotaSpine (env, Terms::apps (head, args), Spine(spineHead = head, spineArgs = args))
 
     consumed (term, args, values) = match term
         Lam name domain body => match args
@@ -409,7 +419,22 @@ module Reduce
 
     ordinaryEqual (env, context, left, right, proofs) = match Terms::equal (left, right)
         true => true
-        false => normal (env, context, contextual (env, context, left), contextual (env, context, right), proofs)
+        false => sameHeadArgs (env, context, Terms::spine left, Terms::spine right, proofs) || normal (env, context, contextual (env, context, left), contextual (env, context, right), proofs)
+
+    (** Lazy δ: one constant applied at equal levels to convertible
+        arguments is equal without unfolding either side; congruence keeps
+        this sound, and a failed comparison falls back to weak heads. *)
+    sameHeadArgs (env, context, left, right, proofs) = match left.spineHead
+        Const a la => match right.spineHead
+            Const b lb => a == b && Terms::equalLevels (la, lb) && !isEmpty left.spineArgs && listLength left.spineArgs == listLength right.spineArgs && allConvert (env, context, left.spineArgs, right.spineArgs, proofs)
+            other => false
+        other => false
+
+    allConvert (env, context, lefts, rights, proofs) = match lefts
+        [] => true
+        [first, ...rest] => match rights
+            [] => false
+            [other, ...others] => conversion (env, context, first, other, proofs) && allConvert (env, context, rest, others, proofs)
 
     normal (env, context, left, right, proofs) = match left
         Sort u => sortEq (u, right)

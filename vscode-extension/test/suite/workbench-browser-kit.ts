@@ -229,9 +229,11 @@ async function currentImport(frame: Frame, valid: boolean): Promise<void> {
   }
 }
 
+/** Notation toggles the library, so it is pressed only when the library is closed. */
 export async function openProofLibrary(frame: Frame): Promise<void> {
-  await frame.getByRole("button", { name: "Notation", exact: true }).click();
-  await frame.getByRole("button", { name: "Open proof library", exact: true }).click();
+  const open = frame.getByRole("button", { name: "Open proof library", exact: true });
+  if (await open.count() === 0) await frame.getByRole("button", { name: "Notation", exact: true }).click();
+  await open.click();
 }
 
 export async function checkedProofFits(frame: Frame, theorem: string, assumptions: string): Promise<void> {
