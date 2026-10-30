@@ -157,7 +157,7 @@ fn assert_one_shot_fixture(dir: &Dir) -> std::io::Result<()> {
     let output = std::process::Command::new(path).output()?;
     assert!(output.status.success());
     assert_eq!(output.stdout, b"fixture-ok\n");
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, b"");
     Ok(())
 }
 
