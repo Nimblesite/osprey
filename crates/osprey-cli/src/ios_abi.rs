@@ -8,9 +8,13 @@
 use osprey_ast::{Program, Stmt};
 use osprey_types::{names, ProgramTypes, Type};
 use std::collections::BTreeSet;
+use std::fmt::Write;
 #[path = "ios_abi_header.rs"]
 mod c_header;
+#[path = "ios_abi_imports.rs"]
+mod import_adapters;
 pub(crate) use c_header::header_for_target;
+use import_adapters::{adapt_import, export_thunk};
 
 /// Prefix on every exported C symbol.
 const EXPORT_PREFIX: &str = "osprey_";
@@ -20,6 +24,9 @@ pub(crate) const ENTRY: &str = "osprey_main";
 const INIT_FUNCTION: &str = "__osprey_ios_initialize";
 const INIT_STATE: &str = "__osprey_ios_init_state";
 const INIT_STATUS: &str = "__osprey_ios_init_status";
+const HOST_STRING_COPY: &str = "osp_host_string_copy";
+const HOST_ABI_VERSION: &str = "osprey_host_abi_version";
+const RELEASE_STRING: &str = "osprey_release_string";
 /// Codegen's entry definition, exactly as `lower.rs` renders it.
 const CODEGEN_ENTRY_DEFINE: &str = "define i32 @main() ";
 /// The source-level entry, never exported as a function.
@@ -212,7 +219,15 @@ fn reject_clashes(abi: &HostAbi, program: &Program, ir: &str) -> Result<(), Stri
         Stmt::Extern { name, .. } => Some(name.clone()),
         _ => None,
     }));
-    for symbol in [ENTRY, INIT_FUNCTION, INIT_STATE, INIT_STATUS] {
+    for symbol in [
+        ENTRY,
+        INIT_FUNCTION,
+        INIT_STATE,
+        INIT_STATUS,
+        HOST_STRING_COPY,
+        HOST_ABI_VERSION,
+        RELEASE_STRING,
+    ] {
         reserve(&mut taken, symbol)?;
     }
     for e in &abi.exports {
@@ -303,14 +318,37 @@ pub(crate) fn with_host_abi_for_target(
         ));
     }
     let mut out = rename_symbol(ir, SOURCE_MAIN, INIT_FUNCTION);
+    if abi.imports.iter().any(|import| import.ret == CType::Str)
+        || abi
+            .exports
+            .iter()
+            .any(|export| export.params.iter().any(|(_, ty)| *ty == CType::Str))
+    {
+        writeln!(out, "\ndeclare i8* @{HOST_STRING_COPY}(i8*)")
+            .map_err(|error| error.to_string())?;
+    }
     for import in &abi.imports {
         out = adapt_import(&out, import, extend_bool);
     }
     for export in &abi.exports {
-        out.push_str(&thunk(export, extend_bool));
+        out.push_str(&export_thunk(export, extend_bool));
     }
+    if !out
+        .lines()
+        .any(|line| defined_symbol(line) == Some("osp_release"))
+    {
+        out.push_str("\ndeclare void @osp_release(i8*)\n");
+    }
+    out.push_str(&ownership_thunks());
     out.push_str(&initialization_thunk());
     Ok(out)
+}
+
+fn ownership_thunks() -> String {
+    format!(
+        "\ndefine i32 @{HOST_ABI_VERSION}() {{\n  ret i32 1\n}}\n\
+         define void @{RELEASE_STRING}(i8* %value) {{\n  call void @osp_release(i8* %value)\n  ret void\n}}\n"
+    )
 }
 
 fn initialization_thunk() -> String {
@@ -349,56 +387,6 @@ fn rename_symbol(ir: &str, from: &str, to: &str) -> String {
     out
 }
 
-fn adapt_import(ir: &str, import: &Import, extend_bool: bool) -> String {
-    let needle = format!("@{}(", import.symbol);
-    let Some(declaration) = ir
-        .lines()
-        .find(|line| line.starts_with("declare ") && line.contains(&needle))
-    else {
-        return ir.to_string();
-    };
-    let adapter = import_adapter_name(import);
-    let renamed = rename_symbol(&ir.replace(declaration, ""), &import.symbol, &adapter);
-    let params = import
-        .params
-        .iter()
-        .map(|(_, c)| {
-            format!("{} {}", c.llvm(), c.zeroext(extend_bool))
-                .trim_end()
-                .to_string()
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
-        "{renamed}\ndeclare {}{} @{}({params})\n{}",
-        import.ret.zeroext(extend_bool),
-        import.ret.llvm(),
-        import.symbol,
-        import_thunk(import, &adapter, extend_bool)
-    )
-}
-
-fn import_thunk(import: &Import, adapter: &str, extend_bool: bool) -> String {
-    let internal = llvm_params(&import.params, false);
-    let boundary = llvm_params(&import.params, extend_bool);
-    let ret = import.ret;
-    let call = format!(
-        "call {}{} @{}({boundary})",
-        ret.zeroext(extend_bool),
-        ret.llvm(),
-        import.symbol
-    );
-    let body = if ret == CType::Unit {
-        format!("  {call}\n  ret i64 0")
-    } else {
-        format!("  %r = {call}\n  ret {} %r", ret.llvm())
-    };
-    format!(
-        "\ndefine internal {} @{adapter}({internal}) {{\n{body}\n}}\n",
-        ret.llvm_internal()
-    )
-}
-
 fn llvm_params(params: &[(String, CType)], boundary: bool) -> String {
     params
         .iter()
@@ -406,28 +394,6 @@ fn llvm_params(params: &[(String, CType)], boundary: bool) -> String {
         .map(|(i, (_, c))| format!("{} {}%p{i}", c.llvm(), c.zeroext(boundary)))
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-fn thunk(export: &Export, extend_bool: bool) -> String {
-    let boundary = llvm_params(&export.params, extend_bool);
-    let forwarded = llvm_params(&export.params, false);
-    let ret = export.ret;
-    let call = format!(
-        "call {} @{}({forwarded})",
-        ret.llvm_internal(),
-        export.symbol
-    );
-    let body = if ret == CType::Unit {
-        format!("  {call}\n  ret void")
-    } else {
-        format!("  %r = {call}\n  ret {} %r", ret.llvm())
-    };
-    format!(
-        "\ndefine {}{} @{}({boundary}) {{\n{body}\n}}\n",
-        ret.zeroext(extend_bool),
-        ret.llvm(),
-        export.c_name
-    )
 }
 
 fn c_identifier(name: &str) -> bool {

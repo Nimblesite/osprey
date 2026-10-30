@@ -67,12 +67,17 @@ pub(crate) fn header_for_target(abi: &HostAbi, source: &str, target: &str) -> St
          // exit status. Call before any other export. Repeated calls return the\n\
          // cached status; reentrant initialization returns 1. Call all exports\n\
          // from one host thread. [{group}-TARGET-ENTRY]\n\
-         int32_t {ENTRY}(void);\n"
+         int32_t {ENTRY}(void);\n\n\
+         // Version 1 copies borrowed import strings before returning from the import.\n\
+         int32_t osprey_host_abi_version(void);\n\
+         // Returned strings remain valid until their Osprey reference is released once.\n\
+         // Never use libc free on that pointer. [IOS-HOST-ABI]\n\
+         void osprey_release_string(const char *value);\n"
     );
     if !abi.exports.is_empty() {
         h.push_str(
-            "\n// Exports: Osprey functions the host may call. A returned string belongs\n\
-             // to the Osprey runtime; copy it before the next call into the library.\n",
+            "\n// Exports copy borrowed string inputs before calling Osprey. The callee may\n\
+             // retain or return the owned copy; host input buffers may be reused on return.\n",
         );
     }
     for e in &abi.exports {

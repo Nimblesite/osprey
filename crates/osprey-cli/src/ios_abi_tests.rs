@@ -75,7 +75,7 @@ fn thunks_rename_the_entry_and_forward_with_the_c_bool_convention() {
         &["@main("],
     );
     assert!(out
-        .contains("define void @osprey_shout(i8* %p0) {\n  call i64 @shout(i8* %p0)\n  ret void"));
+        .contains("define void @osprey_shout(i8* %p0) {\n  %owned_p0 = call i8* @osp_host_string_copy(i8* %p0)\n  call i64 @shout(i8* %owned_p0)\n  call void @osp_release(i8* %owned_p0)\n  ret void"));
     shows(
         &out,
         &[
@@ -129,7 +129,10 @@ fn project_symbols_export_under_their_qualified_c_name() {
     );
     assert!(with_host_abi(&ir, &abi)
         .expect("thunked")
-        .contains(&format!("call i8* @{}(i8* %p0)", greet.symbol)));
+        .contains(&format!(
+            "call i8* @{}(i8* %owned_p0)\n  call void @osp_release(i8* %owned_p0)",
+            greet.symbol
+        )));
 }
 
 #[test]
@@ -299,11 +302,16 @@ fn unsupported_extern_signatures_report_the_c_boundary_restriction() {
 
 #[test]
 fn renaming_imports_preserves_strings_and_similarly_prefixed_symbols() {
-    let (abi, ir) = abi_of("extern fn host_flag(b: bool) -> bool\nfn host_flag_more(b) = host_flag(b)\nfn text() = \"@host_flag( @main(\"\n");
+    let (abi, ir) = abi_of("extern fn host_flag(b: bool) -> bool\nfn host_flag_more(b) = host_flag(b)\nfn text() = \"@host_flag( @main(\"\nfn declarationText() = \"declare i1 @host_flag(i1)\"\n");
+    shows(&ir, &["declare i1 @host_flag(i1)"]);
     let out = with_host_abi(&ir, &abi).expect("adapted");
     shows(
         &out,
-        &["c\"@host_flag( @main(\\00\"", "define i1 @host_flag_more("],
+        &[
+            "c\"@host_flag( @main(\\00\"",
+            "c\"declare i1 @host_flag(i1)\\00\"",
+            "define i1 @host_flag_more(",
+        ],
     );
 }
 
@@ -456,9 +464,12 @@ fn initialization_caches_status_and_rejects_reentrant_calls(
     )?;
     fs::write(directory.join("host.c"), "int osprey_main(void);\nstatic int attempts;\nint host_enter(void) { if (++attempts > 1) return 99; return osprey_main() == 1 ? 7 : 9; }\nint main(void) { int first = osprey_main(); int second = osprey_main(); return first == 7 && second == 7 && attempts == 1 ? 0 : 1; }\n")?;
     let executable = directory.join(format!("entry{}", std::env::consts::EXE_SUFFIX));
+    let runtime = crate::linking::find_runtime_lib("libfiber_runtime_arc.a")
+        .ok_or("ARC runtime required for the generated ownership API")?;
     let compiled = Command::new(crate::c_compiler())
         .arg(directory.join("entry.ll"))
         .arg(directory.join("host.c"))
+        .arg(runtime)
         .arg("-o")
         .arg(&executable)
         .output()?;

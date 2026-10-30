@@ -75,6 +75,7 @@ PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-st
 # (_coverage_check_c_runtime) iterate this same table, so adding one row wires
 # a suite into testing AND coverage measurement.
 C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
+  host_import_gc_tests host_import_arc_tests \
   memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
   list_tests map_tests string_runtime_tests float_spelling_portable_tests json_runtime_tests \
   effects_runtime_tests builtins_runtime_tests test_system_runtime \
@@ -88,6 +89,9 @@ C_LIBS_memory_gc_stack_root_tests = -pthread
 C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc.c
 C_LIBS_memory_arc_tests = -pthread
 C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc.c
+C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
+C_SRC_host_import_arc_tests = $(filter-out runtime/memory_gc.c,$(C_SRC_host_import_gc_tests)) runtime/memory_arc.c
+C_FLAGS_host_import_arc_tests = -DHOST_IMPORT_ARC
 C_LIBS_memory_gc_tests = -pthread
 C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
 C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_host.c runtime/tensor_file.c runtime/file_runtime.c

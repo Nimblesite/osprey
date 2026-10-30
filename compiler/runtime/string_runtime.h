@@ -18,6 +18,7 @@ typedef struct {
 
 /* internal helpers shared between TUs */
 char *osp_string_dup_internal(const char *s, size_t n);
+char *osp_host_string_copy(const char *s);
 char *osp_string_empty_internal(void);
 int osp_is_ws_internal(unsigned char c);
 

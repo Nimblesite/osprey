@@ -5,6 +5,33 @@ use super::tests::{abi_of, checked};
 use super::ExportScope;
 
 #[test]
+fn borrowed_string_import_references_use_the_owned_adapter() -> Result<(), String> {
+    let (abi, ir) = abi_of("extern fn hostText(index:int)->string\nfn relay(reader:(int)->string,index:int)=reader(index)\nlet result=relay(hostText,1)\nfn read(index:int)=relay(hostText,index)\n");
+    let adapted = super::with_host_abi(&ir, &abi)?;
+    assert_owned_adapter(&adapted);
+    assert_eq!(
+        adapted.matches("@hostText").count(),
+        2,
+        "only the raw declaration and adapter call may name the borrowed import"
+    );
+    Ok(())
+}
+
+fn assert_owned_adapter(adapted: &str) {
+    crate::testkit::contents(
+        adapted,
+        &[
+            "@__osprey_host_hostText",
+            "%owned = call i8* @osp_host_string_copy(i8* %r)",
+            "define i32 @osprey_host_abi_version()",
+            "define void @osprey_release_string(i8* %value)",
+            "call void @osp_release(i8* %value)",
+        ],
+        &[],
+    );
+}
+
+#[test]
 fn entry_only_unit_imports_keep_the_host_adapter() -> Result<(), String> {
     let parsed =
         osprey_syntax::parse_program("extern fn host_log(b: bool) -> Unit\nhost_log(true)\n");
@@ -75,4 +102,20 @@ fn only_the_entry_sources_functions_cross_the_boundary() {
     let abi = host_abi_selected(&program, &types, &inlined, &entry).expect("entry exports");
     let names: Vec<&str> = abi.exports.iter().map(|e| e.c_name.as_str()).collect();
     assert_eq!(names, ["osprey_start", "osprey_dispatch"]);
+}
+
+#[test]
+fn borrowed_export_strings_are_copied_and_released_around_the_call() -> Result<(), String> {
+    let (abi, ir) = abi_of(
+        "fn echo(text: string) = text\nfn combineHostInputs(left: string, right) = left + right\n",
+    );
+    let adapted = super::with_host_abi(&ir, &abi)?;
+    crate::testkit::contents(&adapted, &[
+        "declare i8* @osp_host_string_copy(i8*)",
+        "%owned_p0 = call i8* @osp_host_string_copy(i8* %p0)",
+        "%owned_p1 = call i8* @osp_host_string_copy(i8* %p1)",
+        "%r = call i8* @echo(i8* %owned_p0)\n  call void @osp_release(i8* %owned_p0)\n  ret i8* %r",
+        "%r = call i8* @combineHostInputs(i8* %owned_p0, i8* %owned_p1)\n  call void @osp_release(i8* %owned_p0)\n  call void @osp_release(i8* %owned_p1)\n  ret i8* %r",
+    ], &[]);
+    Ok(())
 }
