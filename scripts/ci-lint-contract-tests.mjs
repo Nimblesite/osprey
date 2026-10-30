@@ -105,6 +105,12 @@ test('a test-only field cannot hide a later product type reference', () => {
 })
 
 const deadCodeMaskControls = [
+  ['split function headers cannot expose where-clause test calls as product references',
+    'pub fn only_split_test() {}\n#[cfg(test)]\nfn\n\n witness<T>()\nwhere\n    T: Copy,\n{ only_split_test(); }\nfn main() {}',
+    /fn only_split_test/],
+  ['same-line test attributes cannot expose where-clause test calls as product references',
+    'pub fn only_inline_test() {}\n#[cfg(test)] fn witness<T>()\nwhere\n    T: Copy,\n{ only_inline_test(); }\nfn main() {}',
+    /fn only_inline_test/],
   ['test function where-clause commas cannot expose test calls as product references',
     'pub fn only_where_test() {}\n#[cfg(test)]\nfn witness<T>()\nwhere\n    T: Copy,\n{ only_where_test(); }\nfn main() {}',
     /fn only_where_test/],
@@ -122,3 +128,9 @@ for (const [name, product, missing] of deadCodeMaskControls) {
     assert.match(result.stderr, missing)
   })
 }
+
+test('test-only function-pointer tuple fields keep later product types visible', () => {
+  const product = 'pub type Live = usize;\nstruct Holder(\n    #[cfg(test)]\n    fn\n    (usize) -> usize,\n    Live,\n);\nfn main() {}'
+  const result = deadCodeFixture(product, '')
+  assert.equal(result.status, 0, result.stderr)
+})

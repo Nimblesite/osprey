@@ -105,10 +105,11 @@ const delimiterDepth = (line, initial) =>
 const blockSpan = (lines, start) => {
   let depth = 0;
   let sawBrace = false, item = false;
-  let delimiters = 0;
+  let delimiters = 0, prefix = "";
   for (let j = start - 1; j < lines.length; j += 1) {
     const line = lines[j];
-    item ||= ITEM_HEADER.test(line);
+    if (!item) prefix += ` ${line.replace(/^\s*(?:#\[[^\]]*\]\s*)+/, "").replace(/\/\/.*$/, "")}`;
+    item ||= ITEM_HEADER.test(prefix);
     delimiters = delimiterDepth(line.replace(/\/\/.*$/, ""), delimiters);
     depth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
     if (line.includes("{")) sawBrace = true;
