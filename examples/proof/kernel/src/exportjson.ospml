@@ -3,7 +3,7 @@ namespace proof
 import proof::Levels
 import proof::Terms
 
-(** The three tables of a `lean4export` NDJSON file: dotted names, universe
+(** The three tables of a `lean4export` NDJSON file: injective name spellings, universe
     levels and expressions, each numbered in its own space. Map keys are
     strings because that is the one key the builtin maps take. *)
 type Tables =
@@ -80,7 +80,26 @@ module ExportJson
         Error _ => Error(message = "unknown expr ${toString index}")
 
     (** A declaration's name, through the name table. *)
-    export declName (tables, json) = upon (intIn (json, "name"), \ref => nameOf (tables, ref))
+    export declName (tables, json) = upon (intIn (json, "name"), \ref => declarationName (tables, ref))
+
+    declarationName (tables, index) = match index == 0
+        true => Error(message = "name 0 is the anonymous root, not a declaration name")
+        false => nameOf (tables, index)
+
+    (** Legacy flagless declarations remain readable; any supplied safety metadata must be safe. *)
+    export safeField (json, key) = upon (fieldIn (json, key), \raw => upon (safeFlag raw, \safe => safeMode safe))
+
+    safeFlag raw = match hasField (raw, "isUnsafe")
+        true => upon (boolIn (raw, "isUnsafe"), \unsafe => safeDeclaration (raw, !unsafe))
+        false => Success(value = raw)
+
+    safeMode raw = match hasField (raw, "safety")
+        true => upon (textIn (raw, "safety"), \mode => safeDeclaration (raw, mode == "safe"))
+        false => Success(value = raw)
+
+    safeDeclaration (raw, safe) = match safe
+        true => Success(value = raw)
+        false => Error(message = "unsafe declarations are refused")
 
     (** A declaration's statement, through the expression table. *)
     export typedOf (tables, json) = upon (intIn (json, "type"), \ref => exprOf (tables, ref))

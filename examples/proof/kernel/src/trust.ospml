@@ -8,14 +8,53 @@ import proof::Environment
     contain. The closure walks the declaration's statement and value, the
     metadata an inductive family, constructor or recursor carries, projection
     families and the checked `Nat` family a literal implies, so an assumption
-    is reported once and only when that root reaches it. No state is shared
-    between roots, so two proofs in one file report their own axioms. *)
+    is reported once and only when that root reaches it. Shared dependency
+    analysis retains each proof's own axiom list. *)
 type TrustWalk =
     trustSeen : Map<string, bool>
     trustPending : List<string>
     trustAxioms : Map<string, bool>
 
 module Trust
+    (** Compute every root's assumptions in one validated reverse-dependency
+        inventory. Each axiom is propagated once, while `env.order` supplies
+        both root coverage and each result's axiom order. *)
+    export allAxioms env = upon (reverseDependents env, \dependents => foldList (env.order, Success(value = emptyRoots env), \(progress, name) => propagateRoot (env, dependents, name, progress)))
+
+    emptyRoots env = foldList (env.order, Map(), \(roots, name) => mapSet (roots, name, []))
+
+    reverseDependents env = foldList (env.order, Success(value = emptyRoots env), \(progress, name) => reverseDeclaration (env, name, progress))
+
+    reverseDeclaration (env, name, progress) = upon (progress, \graph => upon (Environment::find (env, name), \decl => foldList (declarationRefs decl, Success(value = graph), \(outcome, ref) => reverseReference (env, decl.name, ref, outcome))))
+
+    reverseReference (env, dependent, ref, progress) = upon (progress, \graph => reverseKnown (env, dependent, ref, graph))
+
+    reverseKnown (env, dependent, ref, graph) = match Environment::find (env, ref)
+        Error _ => Error(message = "unknown dependency `${ref}`")
+        Success _ => upon (mapGet (graph, ref), \roots => Success(value = mapSet (graph, ref, listAppend (roots, dependent))))
+
+    propagateRoot (env, graph, name, progress) = upon (progress, \roots => upon (Environment::find (env, name), \decl => propagateBody (env, graph, name, roots, decl.body)))
+
+    propagateBody (env, graph, name, roots, body) = match body
+        Axiom => propagateAxiom (env, graph, name, roots)
+        other => Success(value = roots)
+
+    propagateAxiom (env, graph, name, roots) = upon (reverseWalk (env, graph, name), \walk => foldList (env.order, Success(value = roots), \(progress, root) => addReached (progress, root, name, walk.trustSeen)))
+
+    reverseWalk (env, graph, name) = converged (foldList (env.order, Success(value = starting name), \(progress, _entry) => reverseStep (graph, progress)))
+
+    reverseStep (graph, progress) = advance (progress, \(walk, next) => upon (mapGet (graph, next), \refs => Success(value = foldList (refs, walk, enqueue))))
+
+    addReached (progress, root, axiom, seen) = upon (progress, \roots => upon (mapGet (roots, root), \names => Success(value = mapSet (roots, root, reached (names, seen, root, axiom)))))
+
+    reached (names, seen, root, axiom) = match mapContains (seen, root)
+        true => listAppend (names, axiom)
+        false => names
+
+    upon (outcome, next) = match outcome
+        Success value => next value
+        Error message => Error(message = message)
+
     (** Enqueue each name once, then process at most the environment size
         plus one item. A checked environment's declaration order contains
         every name; the extra step diagnoses an unresolved dependency.
@@ -24,11 +63,13 @@ module Trust
 
     starting name = TrustWalk(trustSeen = mapSet (Map(), name, true), trustPending = [name], trustAxioms = Map())
 
-    step (env, progress) = match progress
+    step (env, progress) = advance (progress, \(walk, next) => expanded (env, walk, Environment::find (env, next), next))
+
+    advance (progress, expand) = match progress
         Error message => Error(message = message)
         Success walk => match walk.trustPending
             [] => Success(value = walk)
-            [next, ...rest] => expanded (env, walk(trustPending = rest), Environment::find (env, next), next)
+            [next, ...rest] => expand (walk(trustPending = rest), next)
 
     expanded (env, walk, found, name) = match found
         Error _ => Error(message = "unknown dependency `${name}`")
@@ -42,10 +83,12 @@ module Trust
         true => walk
         false => walk(trustSeen = mapSet (walk.trustSeen, name, true), trustPending = listAppend (walk.trustPending, name))
 
-    finished (env, progress) = match progress
+    finished (env, progress) = upon (converged progress, \walk => Success(value = filterList (env.order, \name => mapContains (walk.trustAxioms, name))))
+
+    converged progress = match progress
         Error message => Error(message = message)
         Success walk => match isEmpty walk.trustPending
-            true => Success(value = filterList (env.order, \name => mapContains (walk.trustAxioms, name)))
+            true => Success(value = walk)
             false => Error(message = "dependency traversal exceeds declaration inventory")
 
     (** Every constant `decl` names: its statement first, then its body. An
@@ -77,12 +120,26 @@ module Trust
 
     ruleRefs (rules) = foldList (rules, [], \(refs, rule) => listConcat (refs, listPrepend (Terms::constants rule.ruleRhs, rule.ruleCtor)))
 
-    (** The axioms as the batch entry prints them: `none`, or the names
-        separated by `, `. *)
+    (** The axioms as the batch entry prints them: `none` for no assumptions;
+        ambiguous nonempty entries are JSON-quoted before joining with `, `. *)
     export described (outcome) = match outcome
-        Success names => Success(value = listed names)
+        Success names => listed names
         Error message => Error(message = message)
 
     listed (names) = match names
-        [] => "none"
-        [first, ...rest] => foldList (rest, first, \(text, name) => "${text}, ${name}")
+        [] => Success(value = "none")
+        [first, ...rest] => foldList (rest, ledgerName first, \(text, name) => joinedNames (text, ledgerName name))
+
+    ledgerName name = match name == "" || name == "none" || separates (name, ",") || separates (name, "\"")
+        true => jsonQuote name
+        false => Success(value = name)
+
+    separates (name, token) = match indexOf (name, token)
+        Success _ => true
+        Error _ => false
+
+    joinedNames (left, right) = match left
+        Error message => Error(message = message)
+        Success text => match right
+            Error message => Error(message = message)
+            Success name => Success(value = "${text}, ${name}")

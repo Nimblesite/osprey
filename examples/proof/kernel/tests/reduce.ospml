@@ -31,6 +31,9 @@ module ReduceTests
     export run () =
         computations ()
         equalities ()
+        congruence ()
+        batchBeta ()
+        stackDepth ()
         kReduction ()
 
     computations () =
@@ -58,6 +61,44 @@ module ReduceTests
             expect (Support::defeqOf (Support::envWith (Definition (closed ())), Const "c" [], closed ()), true)
             expect (Support::defeqOf (Environment::empty (), Const "c" [], Const "d" []), false))
 
+    congruence () = test ("application congruence preserves unfolding, beta fallback and distinct arguments or heads", \() =>
+        match comparisonEnvironment ()
+            Error message => expect (message, "the comparison declarations check")
+            Success env =>
+                expect (Reduce::defeq (env, App (Const "F" []) (Const "A" []), App (Const "F" []) (Sort Zero)), true)
+                expect (Reduce::defeq (env, App (Const "F" []) (Const "A" []), App (Const "F" []) (Const "B" [])), false)
+                expect (Reduce::defeq (env, App (Const "F" []) (Const "A" []), App (Const "G" []) (Sort Zero)), false)
+                expect (Reduce::defeq (env, App (Lam "T" (closed ()) (BVar 0)) (Const "A" []), Sort Zero), true))
+
+    comparisonEnvironment () = foldList (comparisonDeclarations (), Success(value = Environment::empty ()), comparisonDeclaration)
+
+    comparisonDeclaration (progress, decl) = match progress
+        Error message => Error(message = message)
+        Success env => Checked::declare (env, decl)
+
+    comparisonDeclarations () = [Decl(name = "A", params = [], ty = closed (), body = Definition (Sort Zero)), Decl(name = "B", params = [], ty = closed (), body = Axiom), comparisonFunction "F", comparisonFunction "G"]
+
+    comparisonFunction name = Decl(name = name, params = [], ty = Pi "T" (closed ()) (closed ()), body = Axiom)
+
+    batchBeta () =
+        test ("multi-binder beta matches sequential substitution with free arguments", \() =>
+            expect (sameBeta (threeBinders (), [BVar 4, BVar 7]), true)
+            expect (sameBeta (threeBinders (), [BVar 4, BVar 7, Const "last" []]), true))
+
+        test ("multi-binder beta substitutes into a remaining dependent domain", \() =>
+            expect (sameBeta (Lam "x" (closed ()) (Lam "y" (BVar 0) (BVar 1)), [Sort Zero]), true))
+
+        test ("multi-binder beta preserves let and projection scope", \() =>
+            expect (sameBeta (Lam "x" (Sort Zero) (Lam "y" (Sort Zero) (Let "z" (Sort Zero) (BVar 1) (proof::Proj "Box" 0 (App (BVar 1) (BVar 0))))), [Const "a" [], Const "b" []]), true))
+
+    threeBinders () = Lam "x" (Sort Zero) (Lam "y" (Sort Zero) (Lam "z" (Sort Zero) (App (BVar 2) (App (BVar 1) (BVar 0)))))
+
+    sameBeta (term, args) = structuralEquals (Reduce::whnf (Environment::empty (), Terms::apps (term, args)), Reduce::whnf (Environment::empty (), foldList (args, term, referenceBeta)))
+
+    referenceBeta (term, arg) = match term
+        Lam name domain body => Terms::instantiate (body, arg)
+        other => App other arg
+
     kReduction () =
         test ("K reduces an arbitrary equality proof at matching indices", \() =>
             match Checked::exported (Environment::empty (), Fixtures::andSwap ())
@@ -83,3 +124,20 @@ module ReduceTests
     isProposition (env, result) = match result
         Success ty => Terms::equal (Reduce::whnf (env, ty), Sort Zero)
         Error _ => false
+
+    (** Implements [PROOF-KERNEL-THEORY]: finite delta chains must not exhaust the machine stack. *)
+    export stackDepth () =
+        test ("a long checked delta chain normalizes without machine-stack overflow", \() =>
+            match deltaEnvironment (200000)
+                Success env => expect (Terms::equal (Reduce::whnf (env, Const "alias199999" []), Sort Zero), true)
+                Error message => expect (message, "every alias has its checked Sort 1 type"))
+
+    deltaEnvironment count = foldList (toList (range (0, count)), Success(value = Environment::empty ()), addDelta)
+
+    addDelta (prior, index) = match prior
+        Error message => prior
+        Success env => Checked::declare (env, Decl(name = "alias${index}", params = [], ty = Sort (Succ Zero), body = Definition (previousDelta index)))
+
+    previousDelta index = match index == 0
+        true => Sort Zero
+        false => Const "alias${satSub index 1}" []

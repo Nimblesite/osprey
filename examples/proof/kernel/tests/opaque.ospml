@@ -68,7 +68,7 @@ module OpaqueTests
 
     single (item) = match item
         Single decl => "${decl.name} | ${Terms::show (decl.ty, [])} | ${bodied decl.body}"
-        Group block => "block of ${block.former.name}"
+        Group block => "block of ${join (mapList (block.formers, \former => former.name), ", ")}"
 
     (** The one distinction the reader must keep: an opaque is never a
         theorem, and either prints its proof term. *)

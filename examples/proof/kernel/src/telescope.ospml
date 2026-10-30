@@ -60,6 +60,17 @@ module Telescope
     (** `body` under lambda binders `binders`, outermost first. *)
     export lamOver (binders, body) = foldList (listReverse binders, body, \(inner, binder) => Lam binder.name binder.ty inner)
 
+    (** `ty` with its first Pi binders instantiated by `args`, in order;
+        a type that runs out of Pi binders is refused explicitly, never
+        silently truncated. *)
+    export applied (ty, args) = match args
+        [] => Success(value = ty)
+        [first, ...rest] => appliedInto (ty, first, rest)
+
+    appliedInto (ty, first, rest) = match ty
+        Pi name domain body => applied (Terms::instantiate (body, first), rest)
+        other => Error(message = "not enough Pi binders to instantiate the type")
+
     (** `binders` with every variable at or above `cutoff` raised by `by`;
         each binder sits under the ones before it, so its cutoff is one
         more than the previous one's. *)
@@ -89,3 +100,12 @@ module Telescope
 
     (** A telescope as the context `Infer` takes: innermost first. *)
     export context (binders) = listReverse binders
+
+    (** Ordered binder domains, with the same de Bruijn scope and arity. *)
+    export sameDomains (env, left, right) = match left
+        [] => isEmpty right
+        [first, ...rest] => sameDomain (env, first, rest, right)
+
+    sameDomain (env, first, rest, right) = match right
+        [] => false
+        [other, ...more] => Reduce::defeq (env, first.ty, other.ty) && sameDomains (env, rest, more)

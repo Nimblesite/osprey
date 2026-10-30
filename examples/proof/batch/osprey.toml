@@ -5,7 +5,7 @@ name = "proof-batch"
 # minus the unused fixtures module; only the entry differs,
 # reading one `<path><TAB><name>` line from stdin instead of embedding an
 # export.
-source_roots = ["src", "../kernel/src/level.ospml", "../kernel/src/term.ospml", "../kernel/src/env.ospml", "../kernel/src/reduce.ospml", "../kernel/src/infer.ospml", "../kernel/src/export.ospml", "../kernel/src/exportjson.ospml", "../kernel/src/exportinductive.ospml", "../kernel/src/checked.ospml", "../kernel/src/quotient.ospml", "../kernel/src/literal.ospml", "../kernel/src/trust.ospml", "../kernel/src/telescope.ospml", "../kernel/src/recursor.ospml", "../kernel/src/inductive.ospml", "../kernel/src/natural.ospml", "../kernel/src/numeric.ospml", "../kernel/src/numeric-canonical.ospml", "../kernel/src/surface.ospml"]
+source_roots = ["src", "../kernel/src/level.ospml", "../kernel/src/term.ospml", "../kernel/src/env.ospml", "../kernel/src/reduce.ospml", "../kernel/src/infer.ospml", "../kernel/src/export.ospml", "../kernel/src/exportjson.ospml", "../kernel/src/nesting.ospml", "../kernel/src/exportinductive.ospml", "../kernel/src/checked.ospml", "../kernel/src/quotient.ospml", "../kernel/src/literal.ospml", "../kernel/src/trust.ospml", "../kernel/src/telescope.ospml", "../kernel/src/recursor.ospml", "../kernel/src/inductive.ospml", "../kernel/src/natural.ospml", "../kernel/src/numeric.ospml", "../kernel/src/numeric-canonical.ospml", "../kernel/src/surface.ospml"]
 default_namespace = "proof"
 entry = "main.ospml"
 

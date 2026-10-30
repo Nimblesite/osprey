@@ -55,17 +55,15 @@ module Terms
         Pi x domain body => symbols (body, symbols (domain, found))
         Proj family index target => symbols (target, listAppend (found, family))
         Let x ty value body => symbols (body, symbols (value, symbols (ty, found)))
-        NatLit value => listConcat (found, ["Nat", "Nat.zero", "Nat.succ"])
+        NatLit value => listAppend (listAppend (listAppend (found, "Nat"), "Nat.zero"), "Nat.succ")
         other => found
 
-    (** The first `count` of `items`. *)
-    export prefix (items, count) = match items
-        [] => []
-        [first, ...rest] => prefixed (first, rest, count)
-
-    prefixed (first, rest, count) = match count <= 0
+    (** The first `count` of `items`, polymorphic across term and family lists. *)
+    export prefix (items, count) = match count <= 0
         true => []
-        false => listPrepend (prefix (rest, satSub count 1), first)
+        false => match items
+            [] => []
+            [first, ...rest] => listPrepend (prefix (rest, satSub count 1), first)
 
     (** `items` without its first `count`. *)
     export suffix (items, count) = match count <= 0
@@ -86,13 +84,17 @@ module Terms
         [b, ...lb] => equal (a, b) && equalAll (la, lb)
 
     (** Add `by` to every bound variable at index `cutoff` or above. *)
-    export shift (term, cutoff, by) = match term
+    export shift (term, cutoff, by) = match by == 0 || !mentioned (term, cutoff, true)
+        true => term
+        false => shifted (term, cutoff, by)
+
+    shifted (term, cutoff, by) = match term
         BVar index => shiftVar (index, cutoff, by)
-        App head arg => App (shift (head, cutoff, by)) (shift (arg, cutoff, by))
-        Lam name domain body => Lam name (shift (domain, cutoff, by)) (shift (body, satAdd cutoff 1, by))
-        Pi name domain body => Pi name (shift (domain, cutoff, by)) (shift (body, satAdd cutoff 1, by))
-        Proj family index target => Proj family index (shift (target, cutoff, by))
-        Let name ty value body => Let name (shift (ty, cutoff, by)) (shift (value, cutoff, by)) (shift (body, satAdd cutoff 1, by))
+        App head arg => App (shifted (head, cutoff, by)) (shifted (arg, cutoff, by))
+        Lam name domain body => Lam name (shifted (domain, cutoff, by)) (shifted (body, satAdd cutoff 1, by))
+        Pi name domain body => Pi name (shifted (domain, cutoff, by)) (shifted (body, satAdd cutoff 1, by))
+        Proj family index target => Proj family index (shifted (target, cutoff, by))
+        Let name ty value body => Let name (shifted (ty, cutoff, by)) (shifted (value, cutoff, by)) (shifted (body, satAdd cutoff 1, by))
         other => other
 
     shiftVar (index, cutoff, by) = match index >= cutoff
@@ -101,13 +103,17 @@ module Terms
 
     (** Replace `BVar depth` in `term` by `value` (lifted past `depth`
         binders) and lower the free variables above it. *)
-    export substitute (term, depth, value) = match term
+    export substitute (term, depth, value) = match mentioned (term, depth, true)
+        true => substituted (term, depth, value)
+        false => term
+
+    substituted (term, depth, value) = match term
         BVar index => substituteVar (index, depth, value)
-        App head arg => App (substitute (head, depth, value)) (substitute (arg, depth, value))
-        Lam name domain body => Lam name (substitute (domain, depth, value)) (substitute (body, satAdd depth 1, value))
-        Pi name domain body => Pi name (substitute (domain, depth, value)) (substitute (body, satAdd depth 1, value))
-        Proj family index target => Proj family index (substitute (target, depth, value))
-        Let name ty inner body => Let name (substitute (ty, depth, value)) (substitute (inner, depth, value)) (substitute (body, satAdd depth 1, value))
+        App head arg => App (substituted (head, depth, value)) (substituted (arg, depth, value))
+        Lam name domain body => Lam name (substituted (domain, depth, value)) (substituted (body, satAdd depth 1, value))
+        Pi name domain body => Pi name (substituted (domain, depth, value)) (substituted (body, satAdd depth 1, value))
+        Proj family index target => Proj family index (substituted (target, depth, value))
+        Let name ty inner body => Let name (substituted (ty, depth, value)) (substituted (inner, depth, value)) (substituted (body, satAdd depth 1, value))
         other => other
 
     substituteVar (index, depth, value) = match index == depth
@@ -121,16 +127,49 @@ module Terms
     (** The body of a binder with its variable replaced by `value`. *)
     export instantiate (body, value) = substitute (body, 0, value)
 
+    (** Consume lambda arguments in one pass; values are innermost first.
+        This is the same capture-avoiding beta substitution as `instantiate`.
+        Implements [PROOF-KERNEL-THEORY]. *)
+    export instantiateMany (body, values) = match values
+        [] => body
+        [single] => instantiate (body, single)
+        many => match mentioned (body, 0, true)
+            true => substitutedMany (body, 0, values)
+            false => body
+
+    substitutedMany (term, depth, values) = match term
+        BVar index => manyVar (index, depth, values)
+        App head arg => App (substitutedMany (head, depth, values)) (substitutedMany (arg, depth, values))
+        Lam name domain body => Lam name (substitutedMany (domain, depth, values)) (substitutedMany (body, satAdd depth 1, values))
+        Pi name domain body => Pi name (substitutedMany (domain, depth, values)) (substitutedMany (body, satAdd depth 1, values))
+        Proj family index target => Proj family index (substitutedMany (target, depth, values))
+        Let name ty value body => Let name (substitutedMany (ty, depth, values)) (substitutedMany (value, depth, values)) (substitutedMany (body, satAdd depth 1, values))
+        other => other
+
+    manyVar (index, depth, values) = match index < depth
+        true => BVar index
+        false => manyFree (index, depth, values)
+
+    manyFree (index, depth, values) = match values
+        [] => BVar index
+        [value, ...rest] => match index == depth
+            true => shift (value, 0, depth)
+            false => manyFree (satSub index 1, depth, rest)
+
     (** `term` with the universe parameters `params` replaced by `args`
         in every sort and every constant instantiation. *)
-    export instantiateLevels (term, params, args) = match term
+    export instantiateLevels (term, params, args) = match isEmpty params
+        true => term
+        false => instantiatedLevels (term, params, args)
+
+    instantiatedLevels (term, params, args) = match term
         Sort level => Sort (Levels::instantiate (level, params, args))
         Const name levels => Const name (mapList (levels, \level => Levels::instantiate (level, params, args)))
-        App head arg => App (instantiateLevels (head, params, args)) (instantiateLevels (arg, params, args))
-        Lam name domain body => Lam name (instantiateLevels (domain, params, args)) (instantiateLevels (body, params, args))
-        Pi name domain body => Pi name (instantiateLevels (domain, params, args)) (instantiateLevels (body, params, args))
-        Proj family index target => Proj family index (instantiateLevels (target, params, args))
-        Let name ty value body => Let name (instantiateLevels (ty, params, args)) (instantiateLevels (value, params, args)) (instantiateLevels (body, params, args))
+        App head arg => App (instantiatedLevels (head, params, args)) (instantiatedLevels (arg, params, args))
+        Lam name domain body => Lam name (instantiatedLevels (domain, params, args)) (instantiatedLevels (body, params, args))
+        Pi name domain body => Pi name (instantiatedLevels (domain, params, args)) (instantiatedLevels (body, params, args))
+        Proj family index target => Proj family index (instantiatedLevels (target, params, args))
+        Let name ty value body => Let name (instantiatedLevels (ty, params, args)) (instantiatedLevels (value, params, args)) (instantiatedLevels (body, params, args))
         other => other
 
     (** Whether every universe parameter in `term` is one of `params`. *)
@@ -145,13 +184,15 @@ module Terms
         other => true
 
     (** Whether `BVar index` occurs free in `term`. *)
-    export mentions (term, index) = match term
-        BVar found => found == index
-        App head arg => mentions (head, index) || mentions (arg, index)
-        Lam name domain body => mentions (domain, index) || mentions (body, satAdd index 1)
-        Pi name domain body => mentions (domain, index) || mentions (body, satAdd index 1)
-        Proj family field target => mentions (target, index)
-        Let name ty value body => mentions (ty, index) || mentions (value, index) || mentions (body, satAdd index 1)
+    export mentions (term, index) = mentioned (term, index, false)
+
+    mentioned (term, index, above) = match term
+        BVar found => found == index || (above && found > index)
+        App head arg => mentioned (head, index, above) || mentioned (arg, index, above)
+        Lam name domain body => mentioned (domain, index, above) || mentioned (body, satAdd index 1, above)
+        Pi name domain body => mentioned (domain, index, above) || mentioned (body, satAdd index 1, above)
+        Proj family field target => mentioned (target, index, above)
+        Let name ty value body => mentioned (ty, index, above) || mentioned (value, index, above) || mentioned (body, satAdd index 1, above)
         other => false
 
     (** Print with the binder names in scope, innermost first. A constant

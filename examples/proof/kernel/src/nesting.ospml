@@ -1,0 +1,458 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+import proof::Environment
+import proof::Telescope
+
+(** One auxiliary family the lowering created for a nested occurrence
+    `container args indices` ([PROOF-KERNEL-THEORY]): the internal name
+    the group checker knows the family by, the container family with the
+    universe arguments and parameter arguments of the occurrence — the
+    arguments rebased to sit under only the declaration's shared
+    parameters — the restored recursor name its recursor takes, and its
+    constructors' internal and restored names. *)
+type Nest =
+    nestAux : string
+    nestContainer : string
+    nestLevels : List<Level>
+    nestArgs : List<Term>
+    nestRec : string
+    nestCtors : List<NestCtor>
+    nestParamCount : int
+
+(** One auxiliary constructor: its internal name and the container
+    constructor it restores to. *)
+type NestCtor =
+    nestCtorAux : string
+    nestCtorName : string
+
+(** One nested occurrence as found: the container family, its universe
+    arguments, its parameter arguments rebased to the shared parameters,
+    and its index arguments where it was found. *)
+type Occurrence =
+    occurHead : string
+    occurLevels : List<Level>
+    occurArgs : List<Term>
+    occurIndices : List<Term>
+
+(** The declaration as the lowering works on it: its shared parameter
+    telescope, its universe parameter names and its families' names. *)
+type Declared =
+    declaredParams : List<Binder>
+    declaredLevels : List<string>
+    declaredNames : List<string>
+
+(** One family of the internal group: its former and its constructors. *)
+type Members =
+    membersFormer : Decl
+    membersCtors : List<Decl>
+
+(** The lowering's lowering: the declaration's formers and rewritten
+    constructors, the auxiliary families copied so far — each with the
+    constructors still carrying their container references — the nests
+    created so far, and the next fresh name suffix. *)
+type Lowering =
+    lowerOriginal : List<Decl>
+    lowerCtors : List<Decl>
+    lowerAux : List<Members>
+    lowerNests : List<Nest>
+    lowerNext : int
+
+(** One constructor type beside the lowering that rewrote it. *)
+type Rewritten =
+    rewrittenLowering : Lowering
+    rewrittenTerm : Term
+
+(** One copied member: its family and constructors, and its nest. *)
+type Copied =
+    copiedMembers : Members
+    copiedNest : Nest
+
+(** The lowered declaration: its internal formers and constructors —
+    every nested occurrence replaced by an auxiliary family — and the
+    nests to restore them by. *)
+type Lowered =
+    loweredFormers : List<Decl>
+    loweredCtors : List<Decl>
+    loweredNests : List<Nest>
+
+(** Lowering nested inductive occurrences, as Lean's kernel does
+    ([PROOF-KERNEL-THEORY]): a constructor field may mention an already
+    checked family applied to the declaration's own families — `List
+    NestedTree`, `Array NestedArray`. The declaration is lowered to one
+    internal mutual group: every nested occurrence is replaced by an
+    auxiliary family copied from the container's whole mutual group,
+    instantiated at the occurrence's universe arguments and parameter
+    arguments and abstracted over the declaration's shared parameters;
+    the copied constructors join a growing queue, since copying one
+    container can expose another. The group is then checked as an
+    ordinary mutual declaration. Restoration maps every auxiliary
+    family, constructor and recursor back to the nested form it stands
+    for, so the derived recursors can be compared with what an export
+    claims. *)
+module Nesting
+    upon (outcome, next) = match outcome
+        Success value => next value
+        Error message => Error(message = message)
+
+    (** Lower the declaration `formers`/`ctors` with `params` shared
+        parameters: a declaration with no nested occurrence lowers to
+        itself with no nests. *)
+    export lower (env, formers, ctors, params) = upon (declared (env, formers, params), \known => upon (rewrittenCtors (started (formers, ctors), env, known, ctors, []), \lowering => upon (auxed (lowering, env, known, 0), \finished => Success(value = lowered finished))))
+
+    (** What the lowering needs to know about the declaration. *)
+    declared (env, formers, params) = match formers
+        [first, ...rest] => declaredWith (Telescope::peel (env, first.ty), formers, first, params)
+        [] => Error(message = "an inductive block with no family")
+
+    declaredWith (peeled, formers, first, params) = match listLength peeled.peeledBinders >= params && params >= 0
+        true => Success(value = Declared(declaredParams = Telescope::outer (peeled.peeledBinders, params), declaredLevels = first.params, declaredNames = mapList (formers, \former => former.name)))
+        false => Error(message = "`${first.name}` has fewer than ${toString params} parameters")
+
+    started (formers, ctors) = Lowering(lowerOriginal = formers, lowerCtors = [], lowerAux = [], lowerNests = [], lowerNext = 1)
+
+    (** The declaration's own constructors with every nested occurrence
+        replaced; the auxiliary families their discovery created wait in
+        `lowerAux`. *)
+    rewrittenCtors (lowering, env, known, remaining, done) = match remaining
+        [] => Success(value = withCtors (lowering, done))
+        [first, ...rest] => upon (rewrite (lowering, env, known, first.ty, 0), \next => rewrittenCtors (next.rewrittenLowering, env, known, rest, listAppend (done, Decl(name = first.name, params = first.params, ty = next.rewrittenTerm, body = first.body))))
+
+    withCtors (lowering, ctors) = Lowering(lowerOriginal = lowering.lowerOriginal, lowerCtors = ctors, lowerAux = lowering.lowerAux, lowerNests = lowering.lowerNests, lowerNext = lowering.lowerNext)
+
+    (** Every auxiliary family's constructors, in the order the copying
+        created the families; rewriting them can create more. *)
+    auxed (lowering, env, known, at) = match listGet (lowering.lowerAux, at)
+        Error _ => Success(value = lowering)
+        Success family => upon (auxRewritten (lowering, env, known, family, family.membersCtors, [], at), \next => auxed (next, env, known, satAdd at 1))
+
+    auxRewritten (lowering, env, known, family, remaining, done, at) = match remaining
+        [] => Success(value = withAux (lowering, at, Members(membersFormer = family.membersFormer, membersCtors = done)))
+        [first, ...rest] => upon (rewrite (lowering, env, known, first.ty, 0), \next => auxRewritten (next.rewrittenLowering, env, known, family, rest, listAppend (done, Decl(name = first.name, params = first.params, ty = next.rewrittenTerm, body = first.body)), at))
+
+    (** The lowering with auxiliary family `at`'s constructors rewritten. *)
+    withAux (lowering, at, family) = Lowering(lowerOriginal = lowering.lowerOriginal, lowerCtors = lowering.lowerCtors, lowerAux = replacedAt (lowering.lowerAux, at, family), lowerNests = lowering.lowerNests, lowerNext = lowering.lowerNext)
+
+    (** `items` with element `at` replaced by `value`. *)
+    replacedAt (items, at, value) = match items
+        [] => []
+        [first, ...rest] => match at == 0
+            true => listPrepend (rest, value)
+            false => listPrepend (replacedAt (rest, satSub at 1, value), first)
+
+    (** The lowered declaration: the original formers then the auxiliary
+        formers, and the constructors family-major — the originals in
+        file order, then each auxiliary family's. *)
+    lowered (lowering) = Lowered(loweredFormers = listConcat (lowering.lowerOriginal, mapList (lowering.lowerAux, \family => family.membersFormer)), loweredCtors = listConcat (lowering.lowerCtors, flattenedAux (lowering.lowerAux, [])), loweredNests = lowering.lowerNests)
+
+    flattenedAux (families, done) = match families
+        [] => done
+        [first, ...rest] => flattenedAux (rest, listConcat (done, first.membersCtors))
+
+    (** `term` with every nested occurrence replaced by its auxiliary
+        family, threading the lowering that grows with each new
+        auxiliary group; `depth` binders enclose the term, the outermost
+        being the declaration's shared parameters. *)
+    rewrite (lowering, env, known, term, depth) = match nested (env, known, term, depth)
+        Success found => rewrittenFound (lowering, env, known, term, found, depth)
+        Error message => Error(message = message)
+
+    rewrittenFound (lowering, env, known, term, found, depth) = match found
+        [] => rewriteInside (lowering, env, known, term, depth)
+        [one] => nestedReplaced (lowering, env, known, one, depth)
+        other => Error(message = "internal: nested occurrence")
+
+    rewriteInside (lowering, env, known, term, depth) = match term
+        App head arg => upon (rewrite (lowering, env, known, head, depth), \first => upon (rewrite (first.rewrittenLowering, env, known, arg, depth), \second => Success(value = Rewritten(rewrittenLowering = second.rewrittenLowering, rewrittenTerm = App first.rewrittenTerm second.rewrittenTerm))))
+        Lam name domain body => rewriteBound (lowering, env, known, term, name, domain, body, depth, true)
+        Pi name domain body => rewriteBound (lowering, env, known, term, name, domain, body, depth, false)
+        Proj family index target => upon (rewrite (lowering, env, known, target, depth), \first => Success(value = Rewritten(rewrittenLowering = first.rewrittenLowering, rewrittenTerm = Proj family index first.rewrittenTerm)))
+        Let name ty value body => rewriteLet (lowering, env, known, name, ty, value, body, depth)
+        other => Success(value = Rewritten(rewrittenLowering = lowering, rewrittenTerm = term))
+
+    rewriteLet (lowering, env, known, name, ty, value, body, depth) = upon (rewrite (lowering, env, known, ty, depth), \first => upon (rewrite (first.rewrittenLowering, env, known, value, depth), \second => upon (rewrite (second.rewrittenLowering, env, known, body, satAdd depth 1), \third => Success(value = Rewritten(rewrittenLowering = third.rewrittenLowering, rewrittenTerm = Let name first.rewrittenTerm second.rewrittenTerm third.rewrittenTerm)))))
+
+    rewriteBound (lowering, env, known, term, name, domain, body, depth, lambda) = upon (rewrite (lowering, env, known, domain, depth), \first => upon (rewrite (first.rewrittenLowering, env, known, body, satAdd depth 1), \second => Success(value = Rewritten(rewrittenLowering = second.rewrittenLowering, rewrittenTerm = boundForm (lambda, name, first.rewrittenTerm, second.rewrittenTerm)))))
+
+    boundForm (lambda, name, domain, body) = match lambda
+        true => Lam name domain body
+        false => Pi name domain body
+
+    (** The occurrence replaced: the auxiliary family for it — the one
+        already created for the same container, universe arguments and
+        rebased parameter arguments, or a fresh copy of the container's
+        whole mutual group — applied to the shared parameters in scope
+        and the occurrence's indices. *)
+    nestedReplaced (lowering, env, known, occurrence, depth) = match nestFor (lowering, occurrence)
+        Success nest => Success(value = Rewritten(rewrittenLowering = lowering, rewrittenTerm = auxApplied (nest, known, depth, occurrence.occurIndices)))
+        Error _ => copied (lowering, env, known, occurrence, depth)
+
+    nestFor (lowering, occurrence) = nestFrom (lowering.lowerNests, occurrence)
+
+    (** The nest for a container occurrence, by structural equality of
+        the container, its universe arguments and its whole rebased
+        parameter spine. *)
+    nestFrom (nests, occurrence) = match nests
+        [] => Error(message = "no auxiliary family yet")
+        [first, ...rest] => match first.nestContainer == occurrence.occurHead && Terms::equalLevels (first.nestLevels, occurrence.occurLevels) && Terms::equalAll (first.nestArgs, occurrence.occurArgs)
+            true => Success(value = first)
+            false => nestFrom (rest, occurrence)
+
+    auxApplied (nest, known, depth, indices) = Terms::apps (Const nest.nestAux (mapList (known.declaredLevels, \name => Param name)), listConcat (Terms::vars (satSub depth (listLength known.declaredParams), listLength known.declaredParams), indices))
+
+    (** A fresh copy of the container's whole mutual group, appended to
+        the internal group; the occurrence's replacement is the copy of
+        the container itself. *)
+    copied (lowering, env, known, occurrence, depth) = upon (containerGroup (env, occurrence.occurHead), \group => upon (copiedGroup (lowering, env, known, occurrence, group, mainName (known)), \copiedState => copyDone (copiedState, known, occurrence, depth)))
+
+    copyDone (lowering, known, occurrence, depth) = match nestFor (lowering, occurrence)
+        Success nest => Success(value = Rewritten(rewrittenLowering = lowering, rewrittenTerm = auxApplied (nest, known, depth, occurrence.occurIndices)))
+        Error _ => Error(message = "internal: auxiliary family not created")
+
+    (** The whole mutual group of the container `name`, in declaration
+        order. *)
+    containerGroup (env, name) = match Environment::find (env, name)
+        Success decl => containerMembers (env, name, decl.body)
+        Error message => Error(message = message)
+
+    containerMembers (env, name, body) = match body
+        TypeFormer family => memberDecls (env, family.familyAll, [])
+        other => Error(message = "`${name}` is not an inductive family")
+
+    memberDecls (env, names, done) = match names
+        [] => Success(value = done)
+        [first, ...rest] => upon (Environment::find (env, first), \decl => memberDecls (env, rest, listAppend (done, decl)))
+
+    (** Every member of the container's group copied, one auxiliary
+        family each; the nest's recursor takes the restored name
+        `main.rec_n` by the auxiliary family's place in the internal
+        group, which installation uses too. *)
+    copiedGroup (lowering, env, known, occurrence, group, main) = match group
+        [] => Success(value = lowering)
+        [first, ...rest] => upon (memberCopied (env, known, occurrence, first, lowering.lowerNext), \copy => copiedGroup (appended (lowering, copy, main), env, known, occurrence, rest, main))
+
+    (** The lowering with one copied member's family, constructors and
+        nest added. *)
+    appended (lowering, copy, main) = Lowering(lowerOriginal = lowering.lowerOriginal, lowerCtors = lowering.lowerCtors, lowerAux = listAppend (lowering.lowerAux, copy.copiedMembers), lowerNests = listAppend (lowering.lowerNests, renested (copy.copiedNest, main, satAdd (listLength lowering.lowerAux) 1)), lowerNext = satAdd lowering.lowerNext 1)
+
+    renested (nest, main, position) = Nest(nestAux = nest.nestAux, nestContainer = nest.nestContainer, nestLevels = nest.nestLevels, nestArgs = nest.nestArgs, nestRec = "${main}.rec_${toString position}", nestCtors = nest.nestCtors, nestParamCount = nest.nestParamCount)
+
+    (** The declaration's first family, whose name the auxiliary recursors take. *)
+    mainName (known) = match listGet (known.declaredNames, 0)
+        Success name => name
+        Error _ => "?"
+
+    (** One member of the container's group copied as an auxiliary family:
+        its type and every constructor instantiated at the occurrence and
+        abstracted over the declaration's shared parameters. *)
+    memberCopied (env, known, occurrence, former, next) = upon (memberFamily (former), \family => memberBuilt (env, known, occurrence, former, family, auxName (env, former.name, next)))
+
+    memberFamily (former) = match former.body
+        TypeFormer family => Success(value = family)
+        other => Error(message = "`${former.name}` is not an inductive family")
+
+    memberBuilt (env, known, occurrence, former, family, aux) = upon (memberCtors (env, known, occurrence, family, aux, 0, []), \ctors => upon (memberType (known, occurrence, former), \ty => Success(value = Copied(copiedMembers = Members(membersFormer = Decl(name = aux, params = known.declaredLevels, ty = ty, body = Axiom), membersCtors = ctors), copiedNest = Nest(nestAux = aux, nestContainer = former.name, nestLevels = occurrence.occurLevels, nestArgs = occurrence.occurArgs, nestRec = "", nestCtors = mapped (family.familyCtors, aux, 0, []), nestParamCount = listLength known.declaredParams)))))
+
+    memberType (known, occurrence, former) = upon (Telescope::applied (Terms::instantiateLevels (former.ty, former.params, occurrence.occurLevels), occurrence.occurArgs), \ty => Success(value = Telescope::piOver (known.declaredParams, ty)))
+
+    memberCtors (env, known, occurrence, family, aux, at, done) = match listGet (family.familyCtors, at)
+        Error _ => Success(value = done)
+        Success name => upon (Environment::find (env, name), \decl => upon (memberCtorType (known, occurrence, decl), \ty => memberCtors (env, known, occurrence, family, aux, satAdd at 1, listAppend (done, Decl(name = "${aux}.${toString at}", params = known.declaredLevels, ty = ty, body = Axiom)))))
+
+    memberCtorType (known, occurrence, decl) = upon (Telescope::applied (Terms::instantiateLevels (decl.ty, decl.params, occurrence.occurLevels), occurrence.occurArgs), \ty => Success(value = Telescope::piOver (known.declaredParams, ty)))
+
+    (** The auxiliary constructors of one family, paired with the
+        container constructors they restore to. *)
+    mapped (names, aux, at, done) = match names
+        [] => done
+        [first, ...rest] => mapped (rest, aux, satAdd at 1, listAppend (done, NestCtor(nestCtorAux = "${aux}.${toString at}", nestCtorName = first)))
+
+    (** A name no constant of the environment and no earlier auxiliary
+        family has taken. *)
+    auxName (env, name, n) = match Environment::find (env, "${name}._nest.${toString n}")
+        Error _ => "${name}._nest.${toString n}"
+        Success decl => auxName (env, name, satAdd n 1)
+
+    (** Whether `term` at `depth` binders is a nested occurrence: an
+        already checked family that is not one of the declared families,
+        applied to at least its own parameters, one of which mentions a
+        declared family; the occurrence, with its parameter arguments
+        rebased to the shared parameters, or a refusal when a container
+        parameter mentions a local variable. *)
+    nested (env, known, term, depth) = nestedSpine (env, known, Terms::spine term, depth)
+
+    nestedSpine (env, known, spine, depth) = match spine.spineHead
+        Const name levels => nestedHead (env, known, name, levels, spine.spineArgs, depth)
+        other => Success(value = [])
+
+    nestedHead (env, known, name, levels, args, depth) = match listContains (known.declaredNames, name)
+        true => Success(value = [])
+        false => nestedChecked (env, known, name, levels, args, depth)
+
+    nestedChecked (env, known, name, levels, args, depth) = match Environment::find (env, name)
+        Success decl => nestedFamily (known, name, levels, args, depth, decl.params, decl.body)
+        Error _ => Success(value = [])
+
+    nestedFamily (known, name, levels, args, depth, declParams, body) = match body
+        TypeFormer family => match listLength levels == listLength declParams && listLength args >= family.familyParams
+            true => nestedArgs (known, name, levels, args, depth, family.familyParams)
+            false => Success(value = [])
+        other => Success(value = [])
+
+    nestedArgs (known, name, levels, args, depth, params) = nestedMentions (known, name, levels, args, depth, params, Terms::prefix (args, params))
+
+    nestedMentions (known, name, levels, args, depth, params, paramArgs) = match mentionsDeclared (known, paramArgs)
+        true => nestedRebased (known, name, levels, args, depth, params, paramArgs, [])
+        false => Success(value = [])
+
+    (** Whether any of `terms` mentions any family of the declaration. *)
+    mentionsDeclared (known, terms) = foldList (terms, false, \(seen, term) => seen || foldList (known.declaredNames, false, \(any, name) => any || Terms::occurs (term, name)))
+
+    nestedRebased (known, name, levels, args, depth, params, paramArgs, done) = match paramArgs
+        [] => Success(value = [Occurrence(occurHead = name, occurLevels = levels, occurArgs = done, occurIndices = Terms::suffix (args, params))])
+        [first, ...rest] => match rebased (first, 0, depth, listLength known.declaredParams)
+            Success value => nestedRebased (known, name, levels, args, depth, params, rest, listAppend (done, value))
+            Error message => Error(message = "invalid nested inductive datatype `${name}`, ${message}")
+
+    (** `term`, found at `depth` binders whose outermost `params` are the
+        declaration's shared parameters, rewritten to sit under only
+        those parameters; a bound variable of any inner binder is a
+        refusal, as it is in Lean's kernel. *)
+    rebased (term, inner, depth, params) = match term
+        BVar index => rebasedVar (index, inner, depth, params)
+        App head arg => upon (rebased (head, inner, depth, params), \left => upon (rebased (arg, inner, depth, params), \right => Success(value = App left right)))
+        Lam name domain body => upon (rebased (domain, inner, depth, params), \dom => upon (rebased (body, satAdd inner 1, depth, params), \bod => Success(value = Lam name dom bod)))
+        Pi name domain body => upon (rebased (domain, inner, depth, params), \dom => upon (rebased (body, satAdd inner 1, depth, params), \bod => Success(value = Pi name dom bod)))
+        Proj family index target => upon (rebased (target, inner, depth, params), \one => Success(value = Proj family index one))
+        Let name ty value body => upon (rebased (ty, inner, depth, params), \first => upon (rebased (value, inner, depth, params), \second => upon (rebased (body, satAdd inner 1, depth, params), \third => Success(value = Let name first second third))))
+        other => Success(value = term)
+
+    rebasedVar (index, inner, depth, params) = match index < inner
+        true => Success(value = BVar index)
+        false => rebasedLoose (index, inner, depth, params)
+
+    (** A variable outside the argument's own binders must name one of the
+        declaration's shared parameters. The inner binders are kept by the
+        rewritten term, so a shared parameter at absolute `index` becomes
+        `inner + (index - inner) - (depth - params)`. Any other index -- a
+        local of the declaration, a loose variable, or an occurrence under
+        fewer binders than the parameters -- is refused, never clamped. *)
+    rebasedLoose (index, inner, depth, params) = match params <= depth && index >= satAdd inner (satSub depth params) && index < satAdd inner depth
+        true => Success(value = BVar (satAdd inner (satSub (satSub index inner) (satSub depth params))))
+        false => Error(message = "nested inductive datatype parameters cannot contain local variables")
+
+    (** `term` — a derived recursor type or ι-rule right-hand side — with
+        every auxiliary family, constructor and recursor constant
+        restored to the nested form it stands for: the container applied
+        to the recorded parameter arguments, its constructors, and the
+        restored auxiliary recursor names. *)
+    export restore (nests, term) = restoredChecked (nests, restored (nests, term, 0))
+
+    (** A derived term that still names an auxiliary constant is refused:
+        an incomplete restoration never installs a dangling recursor. *)
+    restoredChecked (nests, value) = match mentionsAux (nests, value)
+        true => Error(message = "a derived declaration still mentions an auxiliary constant")
+        false => Success(value = value)
+
+    mentionsAux (nests, term) = foldList (nests, false, \(seen, nest) => seen || mentionsNest (nest, term))
+
+    mentionsNest (nest, term) = Terms::occurs (term, nest.nestAux) || Terms::occurs (term, "${nest.nestAux}.rec") || foldList (nest.nestCtors, false, \(seen, ctor) => seen || Terms::occurs (term, ctor.nestCtorAux))
+
+    restored (nests, term, depth) = match term
+        App head arg => restoredSpine (nests, term, depth, Terms::spine term)
+        Const name levels => restoredSpine (nests, term, depth, Spine(spineHead = term, spineArgs = []))
+        Lam name domain body => Lam name (restored (nests, domain, depth)) (restored (nests, body, satAdd depth 1))
+        Pi name domain body => Pi name (restored (nests, domain, depth)) (restored (nests, body, satAdd depth 1))
+        Let name ty value body => restoredLet (nests, term, name, ty, value, body, depth)
+        Proj family index target => Proj family index (restored (nests, target, depth))
+        other => term
+
+    restoredLet (nests, term, name, ty, value, body, depth) = Let name (restored (nests, ty, depth)) (restored (nests, value, depth)) (restored (nests, body, satAdd depth 1))
+
+    restoredSpine (nests, term, depth, spine) = match spine.spineHead
+        Const name levels => restoredNamed (nests, term, depth, spine, name, levels)
+        other => restoredArgs (nests, term, depth, spine)
+
+    restoredNamed (nests, term, depth, spine, name, levels) = match restoredApplication (nests, depth, spine, name, levels)
+        Success value => value
+        Error _ => restoredArgs (nests, term, depth, spine)
+
+    (** Recurse into an application's arguments, keeping a constant head
+        as it is: `restored` on a `Const` head would re-enter this same
+        case forever. *)
+    restoredArgs (nests, term, depth, spine) = Terms::apps (restoredHead (nests, spine.spineHead, depth), mapList (spine.spineArgs, \arg => restored (nests, arg, depth)))
+
+    restoredHead (nests, head, depth) = match head
+        Const name levels => head
+        other => restored (nests, other, depth)
+
+    (** The restored form of an auxiliary-headed application: the
+        container family at the occurrence's parameter arguments, its
+        constructors likewise, or the renamed auxiliary recursor. *)
+    restoredApplication (nests, depth, spine, name, levels) = match nestAuxNamed (nests, name)
+        Success nest => containerApplied (nests, nest, depth, spine.spineArgs)
+        Error _ => restoredRecCtor (nests, depth, spine, name, levels)
+
+    restoredRecCtor (nests, depth, spine, name, levels) = match nestRecNamed (nests, name)
+        Success nest => Success(value = Terms::apps (Const nest.nestRec levels, mapList (spine.spineArgs, \arg => restored (nests, arg, depth))))
+        Error _ => restoredCtorApp (nests, depth, spine, name, levels)
+
+    restoredCtorApp (nests, depth, spine, name, levels) = match nestCtorNamed (nests, name)
+        Success nest => Success(value = Terms::apps (Const (originalCtor (nest, name)) nest.nestLevels, listConcat (shiftedArgs (nest, depth), mapList (Terms::suffix (spine.spineArgs, nest.nestParamCount), \arg => restored (nests, arg, depth)))))
+        Error _ => Error(message = "not auxiliary")
+
+    (** The container applied to the recorded parameter arguments and the
+        application's own remaining arguments. *)
+    containerApplied (nests, nest, depth, args) = match Terms::equalAll (Terms::prefix (args, nest.nestParamCount), Terms::vars (satSub depth nest.nestParamCount, nest.nestParamCount))
+        true => Success(value = Terms::apps (Const nest.nestContainer nest.nestLevels, listConcat (shiftedArgs (nest, depth), mapList (Terms::suffix (args, nest.nestParamCount), \arg => restored (nests, arg, depth)))))
+        false => Error(message = "auxiliary family not at its parameters")
+
+    (** The recorded parameter arguments, raised from the shared
+        parameters to the `depth` binders of the restoration site. *)
+    shiftedArgs (nest, depth) = mapList (nest.nestArgs, \arg => Terms::shift (arg, 0, satSub depth nest.nestParamCount))
+
+    (** The container constructor an auxiliary constructor name restores
+        to, or the name itself when it is not auxiliary. *)
+    originalCtor (nest, name) = foldList (nest.nestCtors, name, \(found, ctor) => originalNamed (found, ctor, name))
+
+    originalNamed (found, ctor, name) = match ctor.nestCtorAux == name
+        true => ctor.nestCtorName
+        false => found
+
+    nestAuxNamed (nests, name) = findNest (nests, name, \nest => nest.nestAux)
+
+    nestRecNamed (nests, name) = findNest (nests, name, \nest => "${nest.nestAux}.rec")
+
+    (** The nest one of whose constructors is named `name`. *)
+    nestCtorNamed (nests, name) = match nests
+        [] => Error(message = "no nest")
+        [first, ...rest] => match hasCtor (first.nestCtors, name)
+            true => Success(value = first)
+            false => nestCtorNamed (rest, name)
+
+    hasCtor (ctors, name) = foldList (ctors, false, \(found, ctor) => found || ctor.nestCtorAux == name)
+
+    findNest (nests, name, key) = match nests
+        [] => Error(message = "no nest")
+        [first, ...rest] => match key first == name
+            true => Success(value = first)
+            false => findNest (rest, name, key)
+
+    (** The derived rules of an auxiliary recursor with their constructor
+        names restored; an original family's rules keep theirs. *)
+    export restoreRules (nests, rules) = restoredRules (nests, rules, [])
+
+    restoredRules (nests, rules, done) = match rules
+        [] => Success(value = done)
+        [first, ...rest] => upon (restoreRule (nests, first), \rule => restoredRules (nests, rest, listAppend (done, rule)))
+
+    restoreRule (nests, rule) = upon (restore (nests, rule.ruleRhs), \rhs => restoredRule (nests, rule, rhs, restoredCtorName (nests, rule.ruleCtor)))
+
+    restoredRule (nests, rule, rhs, name) = match auxCtor (nests, name)
+        true => Error(message = "a derived rule still names an auxiliary constructor")
+        false => Success(value = Rule(ruleCtor = name, ruleFields = rule.ruleFields, ruleRhs = rhs))
+
+    auxCtor (nests, name) = foldList (nests, false, \(seen, nest) => seen || hasCtor (nest.nestCtors, name))
+
+    restoredCtorName (nests, name) = foldList (nests, name, \(found, nest) => originalCtor (nest, found))

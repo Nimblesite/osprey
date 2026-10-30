@@ -4,8 +4,17 @@ import proof::Checked
 import proof::Export
 import proof::Environment
 import proof::Fixtures
+import proof::Inductive
+import proof::Telescope
+import proof
+    FormerSpec
+    Shape
+    Sort
+    Spec
+    Zero
 import prooftests::Shapes
 import prooftests::ExportInductiveTests
+import prooftests::ExportTests
 
 (** Adversarial claims against [PROOF-KERNEL-THEORY]: each case edits one
     claim of the recorded `AndSwap` export and runs the whole file through
@@ -20,6 +29,8 @@ module InductiveAdversarialTests
         countClaims ()
         nameCollisions ()
         recursorClaims ()
+        groupClaims ()
+        repairClaims ()
         termClaims ()
         convertibleClaim ()
 
@@ -60,16 +71,147 @@ module InductiveAdversarialTests
             expect (theory (ExportInductiveTests::eqCtor (), "\"numFields\":0", "\"numFields\":1"), "`Eq.refl` as exported claims constructor 0 of Eq, 2 parameters, 1 fields, the kernel derives constructor 0 of Eq, 2 parameters, 0 fields"))
 
         test ("a family claiming one index over none is refused on its count", \() =>
-            expect (theory (ExportInductiveTests::iffType (), "\"numIndices\":0", "\"numIndices\":1"), "`Iff` as exported claims 2 parameters, 1 indices, constructors [Iff.intro], recursive false, reflexive false, the kernel derives 2 parameters, 0 indices, constructors [Iff.intro], recursive false, reflexive false"))
+            expect (theory (ExportInductiveTests::iffType (), "\"numIndices\":0", "\"numIndices\":1"), "`Iff` as exported claims 2 parameters, 1 indices, constructors [Iff.intro], recursive false, reflexive false, all [Iff], nested 0, the kernel derives 2 parameters, 0 indices, constructors [Iff.intro], recursive false, reflexive false, all [Iff], nested 0"))
 
     (** Claims about the derived recursor: a ι rule claiming another field
         count, and K disclaimed over a family the kernel knows supports it. *)
     recursorClaims () =
         test ("a rule claiming one field over none is refused on the rule count", \() =>
-            expect (theory (ExportInductiveTests::eqRule (), "\"nfields\":0", "\"nfields\":1"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/1], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0]"))
+            expect (theory (ExportInductiveTests::eqRule (), "\"nfields\":0", "\"nfields\":1"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/1], motives 1, all [Eq], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0], motives 1, all [Eq]"))
 
         test ("a recursor disclaiming K over a K family is refused on K", \() =>
-            expect (theory (ExportInductiveTests::eqRec (), "\"k\":true", "\"k\":false"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K false, rules [Eq.refl/0], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0]"))
+            expect (theory (ExportInductiveTests::eqRec (), "\"k\":true", "\"k\":false"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K false, rules [Eq.refl/0], motives 1, all [Eq], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0], motives 1, all [Eq]"))
+
+    (** Claims about a whole group, mutual or nested: the motive count,
+        motive order, index count and group inventory a block states, the
+        container a nested field names, a forged auxiliary rule, a family
+        named twice, and the one negative occurrence — against what the
+        kernel re-derives from the declarations alone. The genuine Lean
+        4.25 mutual and nested fixtures supply the groups. *)
+    groupClaims () =
+        test ("a recursor claiming two motives over one is refused naming both counts", \() =>
+            expect (fragments (theory (ExportInductiveTests::eqRec (), "\"numMotives\":1", "\"numMotives\":2"), ["`Eq.rec` as exported claims", "motives 2", "motives 1", "the kernel derives"]), "`Eq.rec` as exported claims | motives 2 | motives 1 | the kernel derives"))
+
+        test ("a type claiming another family in its group inventory is refused on the inventory", \() =>
+            expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[1,9]"), ["`Eq` as exported claims", "all [Eq, Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
+
+        test ("a recursor claiming another family in its group inventory is refused on the inventory", \() =>
+            expect (fragments (theory (ExportInductiveTests::eqRec (), "\"all\":[1]", "\"all\":[1,9]"), ["`Eq.rec` as exported claims", "all [Eq, Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq.rec` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
+
+        test ("a type whose inventory names another family only is refused on the inventory", \() =>
+            expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[9]"), ["`Eq` as exported claims", "all [Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq` as exported claims | all [Eq.refl] | all [Eq] | the kernel derives"))
+
+        test ("a type claiming one nested family over none is refused on the count", \() =>
+            expect (fragments (theory (ExportInductiveTests::eqType (), "\"numNested\":0", "\"numNested\":1"), ["`Eq` as exported claims", "nested 1", "nested 0", "the kernel derives"]), "`Eq` as exported claims | nested 1 | nested 0 | the kernel derives"))
+
+        test ("a block naming one family twice is refused on the name", \() =>
+            expect (verdict (duplicatedType ()), "constant `Eq` is already declared"))
+
+        test ("a block claiming one recursor twice is refused on the count", \() =>
+            expect (duplicatedRecursor (), "the block claims 2 recursors where the kernel derives 1"))
+
+        test ("a genuine mutual recursor claiming three motives over two is refused naming both counts", \() =>
+            expect (fragments (mutualTheory ("\"numMotives\":2", "\"numMotives\":3"), ["`Tree.rec` as exported claims", "motives 3", "motives 2", "the kernel derives"]), "`Tree.rec` as exported claims | motives 3 | motives 2 | the kernel derives"))
+
+        test ("a genuine mutual recursor claiming no indices over one is refused on the count", \() =>
+            expect (fragments (mutualTheory ("\"numIndices\":1,\"numMinors\":6", "\"numIndices\":0,\"numMinors\":6"), ["`IndexedTree.rec` as exported claims", "0 indices", "1 indices", "the kernel derives"]), "`IndexedTree.rec` as exported claims | 0 indices | 1 indices | the kernel derives"))
+
+        test ("a genuine mutual type claiming a constructor in its group inventory is refused on the inventory", \() =>
+            expect (fragments (mutualTheory ("\"all\":[23,24]", "\"all\":[23,24,25]"), ["`Tree` as exported claims", "all [Tree, Forest, Tree.leaf]", "all [Tree, Forest]", "the kernel derives"]), "`Tree` as exported claims | all [Tree, Forest, Tree.leaf] | all [Tree, Forest] | the kernel derives"))
+
+        test ("a genuine nested field naming another container lowers another group and is refused on its size", \() =>
+            expect (mutualTheory (arrayNest (), listNest ()), "the block claims 3 recursors where the kernel derives 2"))
+
+        test ("a genuine nested recursor's motive order is refused when swapped", \() =>
+            expect (fragments (nestedTheory ("\"body\":124,\"name\":28,\"type\":97", "\"body\":124,\"name\":28,\"type\":98"), ["`NestedTree.rec` as exported has type", "the kernel derives"]), "`NestedTree.rec` as exported has type | the kernel derives"))
+
+        test ("a forged auxiliary rule field count is refused naming both rules", \() =>
+            expect (fragments (nestedTheory ("\"ctor\":17,\"nfields\":2,\"rhs\":173", "\"ctor\":17,\"nfields\":3,\"rhs\":173"), ["`NestedTree.rec_1` as exported claims", "List.cons/3", "List.cons/2", "the kernel derives"]), "`NestedTree.rec_1` as exported claims | List.cons/3 | List.cons/2 | the kernel derives"))
+
+        test ("a constructor taking the family as a function's domain is refused as non-positive", \() =>
+            expect (verdict (negative ()), "non-positive occurrence of `Bad` in constructor `Bad.mk`"))
+
+    (** Repairs exercised directly: K counts the constructor, a nested
+        parameter spine holding a local variable is refused, and a Pi
+        instantiation that runs out of binders is refused, never truncated. *)
+    repairClaims () =
+        test ("K refuses an empty Prop family", \() =>
+            expect (kValue ([]), "false"))
+
+        test ("K accepts exactly one fieldless constructor", \() =>
+            expect (kValue ([fieldless ()]), "true"))
+
+        test ("K refuses two constructors", \() =>
+            expect (kValue ([fieldless (), fieldless ()]), "false"))
+
+        test ("a nested container parameter containing a local variable is refused", \() =>
+            expect (looseNest (), "invalid nested inductive datatype `List`, nested inductive datatype parameters cannot contain local variables"))
+
+        test ("an applied type with too few Pi binders is refused, never truncated", \() =>
+            expect (appliedOutcome (), "not enough Pi binders to instantiate the type"))
+
+    kValue (shapes) = toString (Inductive::k (propSpec (shapes)))
+
+    propSpec (shapes) = Spec(specFormers = [FormerSpec(formerName = "P", formerIndices = [], formerRec = "P.rec", formerShapes = shapes)], specLevels = [], specParams = [], specSort = Zero, specElim = Zero, specRecParams = [], specRecLevels = [])
+
+    fieldless () = Shape(shapeName = "P.mk", shapeFields = [], shapeIndices = [], shapeProofs = [], shapeOccurs = [])
+
+    appliedOutcome () = match Telescope::applied (Sort Zero, [Sort Zero])
+        Error message => message
+        Success _ => "accepted"
+
+    fragments (message, parts) = Shapes::views (mapList (parts, \part => held (message, part)))
+
+    mutualTheory (from, to) = fixtureTheory (ExportTests::recursorCases (), from, to)
+
+    nestedTheory (from, to) = fixtureTheory (ExportTests::nestedTree (), from, to)
+
+    (** The kernel's verdict on a genuine fixture holding one edit, with
+        the same stale-edit guard `theory` has. *)
+    fixtureTheory (source, from, to) = match replace (source, from, to)
+        Success text => fixtureChanged (source, text)
+        Error message => "the fixture edit failed: ${message}"
+
+    fixtureChanged (source, text) = match text == source
+        true => "the fixture edit changed nothing"
+        false => verdict text
+
+    (** The `Array` container of the genuine `NestedArray` field, and the
+        `List` container it is swapped to. *)
+    arrayNest () = "{\"const\":{\"name\":160,\"us\":[0]}"
+
+    listNest () = "{\"const\":{\"name\":156,\"us\":[0]}"
+
+    (** The recorded export with the `Eq` type duplicated into a second
+        family of its group. *)
+    duplicatedType () = match replace (Fixtures::andSwap (), "\"types\":[" + ExportInductiveTests::eqType (), "\"types\":[" + ExportInductiveTests::eqType () + "," + ExportInductiveTests::eqType ())
+        Success text => text
+        Error message => "fixture duplication failed: ${message}"
+
+    (** The recorded export with the `Eq` recursor duplicated in its group. *)
+    duplicatedRecursor () = copiedFixture ("\"recs\":[" + ExportInductiveTests::eqRec (), "\"recs\":[" + ExportInductiveTests::eqRec () + "," + ExportInductiveTests::eqRec ())
+
+    copiedFixture (from, to) = match replace (Fixtures::andSwap (), from, to)
+        Success text => verdict text
+        Error message => "the fixture edit failed: ${message}"
+
+    (** A well-typed constructor telescope binds a local type A, then
+        children : List (NestedTree → A). The nested parameter mentions
+        that constructor local, outside the declaration's shared parameters. *)
+    looseNest () = nestedTheory (looseFieldStart (), looseField ())
+
+    looseFieldStart () = "{\"forallE\":{\"binderInfo\":\"default\",\"body\":94,\"name\":26,\"type\":95},\"ie\":96}"
+
+    looseField () = "{\"bvar\":1,\"ie\":10001}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":10001,\"name\":0,\"type\":94},\"ie\":10002}\n{\"app\":{\"arg\":10002,\"fn\":93},\"ie\":10003}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":94,\"name\":26,\"type\":10003},\"ie\":10004}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":10004,\"name\":0,\"type\":92},\"ie\":96}"
+
+    (** A one-family export whose only constructor takes the family as a
+        function's domain: the negative occurrence the kernel must
+        refuse, stated exactly as an exporter writes it. *)
+    negative () = meta () + "\n" + "{\"in\":1,\"str\":{\"pre\":0,\"str\":\"Bad\"}}\n{\"in\":2,\"str\":{\"pre\":1,\"str\":\"mk\"}}\n{\"in\":3,\"str\":{\"pre\":1,\"str\":\"rec\"}}\n{\"in\":4,\"str\":{\"pre\":0,\"str\":\"u\"}}\n{\"ie\":0,\"sort\":0}\n{\"ie\":1,\"const\":{\"name\":1,\"us\":[]}}\n{\"ie\":2,\"forallE\":{\"binderInfo\":\"default\",\"body\":1,\"name\":0,\"type\":1}}\n{\"ie\":3,\"forallE\":{\"binderInfo\":\"default\",\"body\":1,\"name\":2,\"type\":2}}\n{\"il\":1,\"param\":4}\n" + block ()
+
+    meta () = "{\"meta\":{\"exporter\":{\"name\":\"lean4export\",\"version\":\"3.1.0\"},\"format\":{\"version\":\"3.1.0\"},\"lean\":{\"githash\":\"cdd38ac5115bdeec5f609e9126cce00f51ae88b3\",\"version\":\"4.25.0\"}}}"
+
+    block () = "{\"inductive\":{\"ctors\":[{\"cidx\":0,\"induct\":1,\"isUnsafe\":false,\"levelParams\":[],\"name\":2,\"numFields\":1,\"numParams\":0,\"type\":3}],\"recs\":[{\"all\":[1],\"isUnsafe\":false,\"k\":false,\"levelParams\":[4],\"name\":3,\"numIndices\":0,\"numMinors\":1,\"numMotives\":1,\"numParams\":0,\"rules\":[],\"type\":3}],\"types\":[{\"all\":[1],\"ctors\":[2],\"isRec\":true,\"isReflexive\":true,\"isUnsafe\":false,\"levelParams\":[],\"name\":1,\"numIndices\":0,\"numNested\":0,\"numParams\":0,\"type\":0}]}}\n"
 
     (** Claims that substitute another term of the same file: the ι rule's
         right-hand side and the recursor's statement. Both refusals print

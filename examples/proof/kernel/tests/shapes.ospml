@@ -90,7 +90,7 @@ module Shapes
 
     members (item) = match item
         Single decl => [decl]
-        Group block => listPrepend (listConcat (block.ctors, block.recursors), block.former)
+        Group block => listConcat (block.formers, listConcat (block.ctors, block.recursors))
 
     found (decls, name) = match decls
         [] => Error(message = "the export declares no `${name}`")

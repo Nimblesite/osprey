@@ -79,7 +79,7 @@ module QuotientTests
             expect (verdict (edited (typeLine (), claimed ("ctor", "[6]", 23, 74))), "invalid quotient primitive `Quot` or initialization order"))
 
         test ("Quot.mk declared under Quot.lift's name is refused", \() =>
-            expect (verdict (edited (ctorLine (), freshName (99998, "Quot.lift") + claimed ("ctor", "[6]", 99998, 80))), "invalid quotient primitive `Quot.lift` or initialization order"))
+            expect (verdict (edited (ctorLine (), "{\"in\":99998,\"str\":{\"pre\":23,\"str\":\"lift\"}}\n" + claimed ("ctor", "[6]", 99998, 80))), "invalid quotient primitive `Quot.lift` or initialization order"))
 
         test ("Quot.mk declared before Quot is an initialization-order refusal", \() =>
             expect (Support::messageOf (Quotients::declare (without ("Quot"), declOf ("Quot.mk"))), "invalid quotient primitive `Quot.mk` or initialization order"))

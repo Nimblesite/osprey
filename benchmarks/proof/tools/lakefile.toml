@@ -45,3 +45,18 @@ name = "StringCases"
 
 [[lean_lib]]
 name = "NatCompatible"
+
+[[lean_lib]]
+name = "CounterfeitEquality"
+
+[[lean_lib]]
+name = "CounterfeitEqualityRenamed"
+
+[[lean_lib]]
+name = "CounterfeitAddition"
+
+[[lean_lib]]
+name = "NestedTree"
+
+[[lean_lib]]
+name = "RecursorCases"

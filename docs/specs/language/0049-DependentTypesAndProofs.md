@@ -97,6 +97,10 @@ Proof-checking cost is measured against the pinned executable reference from the
 
 ## Lean export bridge [PROOF-EXPORT]
 
+`[PROOF-EXPORT-NAMES]` The current reader preserves each name's component boundaries and distinguishes string components from numeric components. It joins components with dots, omits the anonymous prefix and JSON-quotes ambiguous string components, including dotted, empty and decimal strings. Thus namespace `A.B`, single-component `«A.B»`, numeric `5` and string `"5"` stay distinct. The anonymous root is permitted as a prefix or binder name, never as a declaration name. The current JSON decoder bounds numeric name components to 0 through 9,223,372,036,854,775,807 and refuses NUL in strings. Larger numeric components are an explicit unsupported input; the independent corpus validator applies the same limits.
+
+`[PROOF-EXPORT-SAFETY]` The reader refuses an explicit unsafe declaration flag or a definition safety mode other than `safe`. Universe `max` and `imax` arrays require exactly two operands; additional operands are errors. Assumption receipts use `none` only for an empty list. Nonempty entries that are empty, named `none`, or contain commas or quotes are JSON-quoted, so one identifier cannot impersonate an empty list or several assumptions. Ordinary assumption names retain their existing receipt spelling.
+
 `osprey prove import <export-file>` reads the `lean4export` NDJSON format (version 3.1.0 as the pinned exporter writes it: names, levels, expressions, declarations, inductive specifications and quotient initialisation), adds each declaration to an Osprey environment through the kernel, and writes a checked environment file. The importer is the only code that parses Lean's format; it adds nothing to the theory.
 
 `[PROOF-EXPORT-SYNC]` A scheduled job imports the current Mathlib master on a fixed cadence, records the result as a trust report, and opens a pull request that updates the ported library of [PROOF-MATHLIB]. A failing import is a red report, never a silent skip.

@@ -5,10 +5,11 @@ import proof::Reduce
 import proof::Telescope
 
 (** A constructor as the kernel checked it: its fields in order, each
-    under the family's parameters and the fields before it; the indices
+    under the group's parameters and the fields before it; the indices
     of the family value it builds, under all of them; and, per field,
-    whether the field is a proof and how it mentions the family (0: not
-    at all, 1: as its type, 2: as the result of a function). *)
+    whether the field is a proof and how it mentions a family of the
+    group (0: not at all, 1: as its type, 2: as the result of a
+    function). *)
 type Shape =
     shapeName : string
     shapeFields : List<Binder>
@@ -16,123 +17,204 @@ type Shape =
     shapeProofs : List<bool>
     shapeOccurs : List<int>
 
-(** A checked family and the recursor the kernel gives it: the family's
-    universe parameters as levels, its parameter and index telescopes, its
-    sort, the sort its motive eliminates into, the recursor's name,
-    universe parameters and universe arguments, and its constructors in
-    order. *)
+(** One family of a checked inductive group: its name, its index
+    telescope, its recursor's name and its constructors in order. *)
+type FormerSpec =
+    formerName : string
+    formerIndices : List<Binder>
+    formerRec : string
+    formerShapes : List<Shape>
+
+(** A checked inductive group and the recursors the kernel gives its
+    families ([PROOF-KERNEL-THEORY]): the group's universe parameters as
+    levels, its shared parameter telescope, its one shared result sort,
+    the sort every motive eliminates into, and the universe parameters
+    and universe arguments every recursor of the group shares. Every
+    family-varying fact lives in `specFormers`, in family order; a
+    declaration of one family is the same derivation with one former. *)
 type Spec =
-    specFamily : string
+    specFormers : List<FormerSpec>
     specLevels : List<Level>
     specParams : List<Binder>
-    specIndices : List<Binder>
     specSort : Level
     specElim : Level
-    specRec : string
     specRecParams : List<string>
     specRecLevels : List<Level>
-    specShapes : List<Shape>
 
-(** A recursive field seen from where its hypothesis is built: the
-    binders it takes first (none unless the family is reflexive) and the
-    family indices of its result under them. *)
+(** A recursive field seen from where its hypothesis is built: the family
+    of the group the field descends into, the binders it takes first
+    (none unless that family is reflexive) and that family's indices of
+    its result under them. *)
 type Recursion =
+    recursionFamily : int
     recursionBinders : List<Binder>
     recursionIndices : List<Term>
 
-(** The recursor of an inductive family and its ι rules, derived from the
-    checked declaration alone, never taken from an export: an exported
-    recursor is compared with these ([PROOF-KERNEL-THEORY]). De Bruijn
-    positions are counted from the innermost binder: under parameters `p`,
-    the motive, minor premises `k`, indices `n` and the major premise, the
-    motive is `BVar (n + 1 + k)`. *)
+(** The recursors of a checked inductive group and their ι rules, derived
+    from the checked declaration alone, never taken from an export: an
+    exported recursor is compared with these. De Bruijn positions are
+    counted from the innermost binder. Under the shared parameters,
+    every family's motive in family order, every constructor's minor
+    premise — family-major, so the constructors of family 0 first — the
+    target family's indices and the major premise, the motive of family
+    `e` under `l` minor premises in scope and `x` binders after them is
+    `BVar (x + l + d - 1 - e)` for `d` the number of families. *)
 module Recursors
-    (** `∀ params (motive : ∀ indices, family params indices → Sort elim)
-        minors indices (t : family params indices), motive indices t` *)
-    export recursorType (env, spec) = Telescope::piOver (spec.specParams, Pi "motive" (motiveType spec) (Telescope::piOver (minors (env, spec), majorPart spec)))
+    (** `∀ params motives minors indices (t : family params indices),
+        motive indices t` for the family at index `d` of the group. *)
+    export recursorType (env, spec, d) = Telescope::piOver (spec.specParams, Telescope::piOver (motiveTelescope (spec), Telescope::piOver (minors (env, spec), majorPart (spec, d))))
 
-    paramCount (spec) = listLength spec.specParams
+    export familyCount (spec) = listLength spec.specFormers
 
-    indexCount (spec) = listLength spec.specIndices
+    export paramCount (spec) = listLength spec.specParams
 
-    ctorCount (spec) = listLength spec.specShapes
+    (** Every minor premise of the group: one per constructor, family-major. *)
+    export minorCount (spec) = foldList (spec.specFormers, 0, \(total, former) => satAdd total (listLength former.formerShapes))
 
-    (** The family applied to its parameters, seen from `offset` binders
-        past them, and to the innermost indices. *)
-    familyAt (spec, offset) = Terms::apps (Const spec.specFamily spec.specLevels, listConcat (Terms::vars (offset, paramCount spec), Terms::vars (0, indexCount spec)))
+    (** The index count of the family at `d`. *)
+    export indexCount (spec, d) = listLength (formerIndices (spec, d))
 
-    motiveType (spec) = Telescope::piOver (spec.specIndices, Pi "t" (familyAt (spec, indexCount spec)) (Sort spec.specElim))
+    (** The name, index telescope, recursor name and constructors of the
+        family at `d`. *)
+    formerName (spec, d) = match listGet (spec.specFormers, d)
+        Success former => former.formerName
+        Error _ => "?"
 
-    majorPart (spec) = Telescope::piOver (Telescope::shifted (spec.specIndices, 0, satAdd 1 (ctorCount spec)), Pi "t" (familyAt (spec, satAdd (indexCount spec) (satAdd 1 (ctorCount spec)))) (motiveResult spec))
+    formerIndices (spec, d) = match listGet (spec.specFormers, d)
+        Success former => former.formerIndices
+        Error _ => []
 
-    motiveResult (spec) = Terms::apps (BVar (satAdd (indexCount spec) (satAdd 1 (ctorCount spec))), listAppend (Terms::vars (1, indexCount spec), BVar 0))
+    formerRec (spec, d) = match listGet (spec.specFormers, d)
+        Success former => former.formerRec
+        Error _ => "?"
 
-    (** One minor premise per constructor, each under the ones before it. *)
-    minors (env, spec) = minorsFrom (env, spec, spec.specShapes, 0, [])
+    formerShapes (spec, d) = match listGet (spec.specFormers, d)
+        Success former => former.formerShapes
+        Error _ => []
 
-    minorsFrom (env, spec, shapes, at, done) = match shapes
+    (** The family at `e` applied to the shared parameters, seen from
+        `offset` binders past them, and to its innermost indices. *)
+    familyAt (spec, e, offset) = Terms::apps (Const (formerName (spec, e)) spec.specLevels, listConcat (Terms::vars (offset, paramCount spec), Terms::vars (0, indexCount (spec, e))))
+
+    (** `∀ indices, family params indices → Sort elim` for family `e`. *)
+    motiveType (spec, e) = Telescope::piOver (formerIndices (spec, e), Pi "t" (familyAt (spec, e, indexCount (spec, e))) (Sort spec.specElim))
+
+    (** Every motive of the group in family order, each under the
+        motives before it. *)
+    motiveTelescope (spec) = motivesFrom (spec, 0, [])
+
+    motivesFrom (spec, e, done) = match e < familyCount spec
+        true => motivesFrom (spec, satAdd e 1, listAppend (done, Binder(name = motiveName (spec, e), ty = Terms::shift (motiveType (spec, e), 0, e))))
+        false => done
+
+    (** The single-motive name is the original one; a mutual group's
+        motives are numbered in family order. *)
+    motiveName (spec, e) = match familyCount spec
+        1 => "motive"
+        other => "motive_${toString (satAdd e 1)}"
+
+    (** The target family's indices and major premise, under the shared
+        parameters, every motive and every minor. *)
+    majorPart (spec, d) = Telescope::piOver (Telescope::shifted (formerIndices (spec, d), 0, satAdd (familyCount spec) (minorCount spec)), Pi "t" (familyAt (spec, d, satAdd (indexCount (spec, d)) (satAdd (familyCount spec) (minorCount spec)))) (motiveResult (spec, d)))
+
+    motiveResult (spec, d) = Terms::apps (motiveVar (spec, d, minorCount spec, satAdd (indexCount (spec, d)) 1), listAppend (Terms::vars (1, indexCount (spec, d)), BVar 0))
+
+    (** Motive `e` under `l` minor premises in scope and `x` binders
+        after them. *)
+    motiveVar (spec, e, l, x) = BVar (satAdd (satAdd x l) (satSub (familyCount spec) (satAdd e 1)))
+
+    (** One minor premise per constructor of the group, family-major,
+        each under the ones before it. *)
+    minors (env, spec) = minorsOf (env, spec, spec.specFormers, 0, [])
+
+    minorsOf (env, spec, formers, e, done) = match formers
         [] => done
-        [first, ...rest] => minorsFrom (env, spec, rest, satAdd at 1, listAppend (done, Binder(name = shortName (spec, first), ty = minorType (env, spec, first, at))))
+        [first, ...rest] => minorsOf (env, spec, rest, satAdd e 1, minorsFrom (env, spec, first.formerShapes, e, done))
 
-    shortName (spec, shape) = replace (shape.shapeName, "${spec.specFamily}.", "") ?: shape.shapeName
+    minorsFrom (env, spec, shapes, e, done) = match shapes
+        [] => done
+        [first, ...rest] => minorsFrom (env, spec, rest, e, listAppend (done, Binder(name = shortName (spec, e, first), ty = minorType (env, spec, e, first, listLength done))))
+
+    shortName (spec, e, shape) = replace (shape.shapeName, "${formerName (spec, e)}.", "") ?: shape.shapeName
 
     (** `∀ fields hypotheses, motive indices (ctor params fields)` for the
-        constructor at position `at`, under the parameters, the motive and
-        the `at` minor premises before it. *)
-    minorType (env, spec, shape, at) = minorOver (env, spec, shape, at, Telescope::shifted (shape.shapeFields, 0, satAdd at 1))
+        constructor at global minor `k` of family `e`, under the shared
+        parameters, every motive and the `k` minor premises before it. *)
+    minorType (env, spec, e, shape, k) = minorOver (env, spec, e, shape, k, Telescope::shifted (shape.shapeFields, 0, satAdd (familyCount spec) k))
 
-    minorOver (env, spec, shape, at, fields) = minorWith (spec, shape, at, fields, minorHyps (env, spec, at, fields, 0, 0, []))
+    minorOver (env, spec, e, shape, k, fields) = minorWith (spec, e, shape, k, fields, minorHyps (env, spec, k, fields, 0, 0, []))
 
-    minorWith (spec, shape, at, fields, hyps) = Telescope::piOver (fields, Telescope::piOver (hyps, minorBody (spec, shape, at, listLength fields, listLength hyps)))
+    minorWith (spec, e, shape, k, fields, hyps) = Telescope::piOver (fields, Telescope::piOver (hyps, minorBody (spec, e, shape, k, listLength fields, listLength hyps)))
 
-    minorBody (spec, shape, at, m, r) = Terms::apps (BVar (satAdd r (satAdd m at)), listAppend (mapList (shape.shapeIndices, \index => Terms::shift (Terms::shift (index, m, satAdd at 1), 0, r)), built (spec, shape, satAdd r (satAdd m (satAdd at 1)), r, m)))
+    minorBody (spec, e, shape, k, m, r) = Terms::apps (motiveVar (spec, e, k, satAdd m r), listAppend (mapList (shape.shapeIndices, \index => Terms::shift (Terms::shift (index, m, satAdd (familyCount spec) k), 0, r)), built (spec, shape, satAdd r (satAdd m (satAdd (familyCount spec) k)), r, m)))
 
-    (** The constructor applied to the parameters, seen from `offset`
-        binders past them, and to its fields, the innermost `m` from `at`. *)
+    (** The constructor applied to the shared parameters, seen from
+        `offset` binders past them, and to its fields, the innermost `m`
+        from `at`. *)
     built (spec, shape, offset, at, m) = Terms::apps (Const shape.shapeName spec.specLevels, listConcat (Terms::vars (offset, paramCount spec), Terms::vars (at, m)))
 
     (** The hypothesis of each recursive field, each under the fields and
-        the hypotheses before it: `∀ xs, motive indices (field xs)`. *)
-    minorHyps (env, spec, at, fields, j, q, done) = match listGet (fields, j)
+        the hypotheses before it: `∀ xs, motive indices (field xs)` with
+        the motive of the family the field descends into. *)
+    minorHyps (env, spec, k, fields, j, q, done) = match listGet (fields, j)
         Error _ => done
-        Success field => minorHyp (env, spec, at, fields, j, q, done, recursion (env, spec, Terms::shift (field.ty, 0, satAdd (satSub (listLength fields) j) q)))
+        Success field => minorHyp (env, spec, k, fields, j, q, done, recursion (env, spec, Terms::shift (field.ty, 0, satAdd (satSub (listLength fields) j) q)))
 
-    minorHyp (env, spec, at, fields, j, q, done, found) = match found
-        Success rec => minorHyps (env, spec, at, fields, satAdd j 1, satAdd q 1, listAppend (done, Binder(name = "ih", ty = minorHypType (at, listLength fields, j, q, rec))))
-        Error _ => minorHyps (env, spec, at, fields, satAdd j 1, q, done)
+    minorHyp (env, spec, k, fields, j, q, done, found) = match found
+        Success rec => minorHyps (env, spec, k, fields, satAdd j 1, satAdd q 1, listAppend (done, Binder(name = "ih", ty = minorHypType (spec, k, listLength fields, j, q, rec))))
+        Error _ => minorHyps (env, spec, k, fields, satAdd j 1, q, done)
 
-    minorHypType (at, m, j, q, rec) = minorHypOver (at, m, j, q, rec, listLength rec.recursionBinders)
+    minorHypType (spec, k, m, j, q, rec) = minorHypOver (spec, k, m, j, q, rec, listLength rec.recursionBinders)
 
-    minorHypOver (at, m, j, q, rec, s) = Telescope::piOver (rec.recursionBinders, Terms::apps (BVar (satAdd s (satAdd q (satAdd m at))), listAppend (rec.recursionIndices, Terms::apps (BVar (satAdd s (satAdd q (satSub (satSub m 1) j))), Terms::vars (0, s)))))
+    minorHypOver (spec, k, m, j, q, rec, s) = Telescope::piOver (rec.recursionBinders, Terms::apps (motiveVar (spec, rec.recursionFamily, k, satAdd s (satAdd q m)), listAppend (rec.recursionIndices, Terms::apps (BVar (satAdd s (satAdd q (satSub (satSub m 1) j))), Terms::vars (0, s)))))
 
-    (** Whether a field's type, to weak head normal form under each of its
-        own binders, ends in the family; its binders and indices if so. *)
+    (** Whether a field's type, to weak head normal form under each of
+        its own binders, ends in a family of the group; that family's
+        index, the binders it takes first and the indices of its result
+        under them if so. *)
     recursion (env, spec, ty) = recursionOf (spec, Telescope::peel (env, Reduce::whnf (env, ty)))
 
     recursionOf (spec, peeled) = recursionHead (spec, peeled, Terms::spine peeled.peeledRest)
 
     recursionHead (spec, peeled, spine) = match spine.spineHead
-        Const name levels => recursionNamed (spec, peeled, spine, name == spec.specFamily)
+        Const name levels => recursionNamed (spec, peeled, spine, familyOf (spec, name, levels))
         other => Error(message = "not recursive")
 
-    recursionNamed (spec, peeled, spine, family) = match family
-        true => Success(value = Recursion(recursionBinders = peeled.peeledBinders, recursionIndices = Terms::suffix (spine.spineArgs, paramCount spec)))
-        false => Error(message = "not recursive")
+    (** The index of the group family `name` at exactly the group's
+        universe arguments. *)
+    familyOf (spec, name, levels) = familyFrom (spec, spec.specFormers, name, levels, 0)
 
-    (** One ι rule per constructor: `fun params motive minors fields =>
-        minor fields hypotheses`, each hypothesis the recursor applied to
-        a recursive field. *)
-    export rules (env, spec) = rulesFrom (env, spec, spec.specShapes, 0, [])
+    familyFrom (spec, formers, name, levels, e) = match formers
+        [] => Error(message = "not recursive")
+        [first, ...rest] => match first.formerName == name && Terms::equalLevels (levels, spec.specLevels)
+            true => Success(value = e)
+            false => familyFrom (spec, rest, name, levels, satAdd e 1)
 
-    rulesFrom (env, spec, shapes, at, done) = match shapes
+    recursionNamed (spec, peeled, spine, found) = match found
+        Success e => Success(value = Recursion(recursionFamily = e, recursionBinders = peeled.peeledBinders, recursionIndices = Terms::suffix (spine.spineArgs, paramCount spec)))
+        Error _ => Error(message = "not recursive")
+
+    (** One ι rule per constructor of family `d`, in order; each
+        right-hand side closes over the shared parameters, every motive
+        and every minor of the group. *)
+    export rules (env, spec, d) = rulesFrom (env, spec, formerShapes (spec, d), globalBase (spec, d), [])
+
+    (** The number of minor premises before family `d`'s first
+        constructor. *)
+    globalBase (spec, d) = foldList (Terms::prefix (spec.specFormers, d), 0, \(total, former) => satAdd total (listLength former.formerShapes))
+
+    rulesFrom (env, spec, shapes, k, done) = match shapes
         [] => done
-        [first, ...rest] => rulesFrom (env, spec, rest, satAdd at 1, listAppend (done, Rule(ruleCtor = first.shapeName, ruleFields = listLength first.shapeFields, ruleRhs = ruleRhs (env, spec, first, at))))
+        [first, ...rest] => rulesFrom (env, spec, rest, satAdd k 1, listAppend (done, Rule(ruleCtor = first.shapeName, ruleFields = listLength first.shapeFields, ruleRhs = ruleRhs (env, spec, first, k))))
 
-    ruleRhs (env, spec, shape, at) = ruleOver (env, spec, at, Telescope::shifted (shape.shapeFields, 0, satAdd 1 (ctorCount spec)))
+    (** `fun params motives minors fields => minor fields hypotheses`,
+        each hypothesis the recursor of the family the field descends
+        into, applied to the parameters, every motive and every minor. *)
+    ruleRhs (env, spec, shape, k) = ruleOver (env, spec, k, Telescope::shifted (shape.shapeFields, 0, satAdd (familyCount spec) (minorCount spec)))
 
-    ruleOver (env, spec, at, fields) = Telescope::lamOver (spec.specParams, Lam "motive" (motiveType spec) (Telescope::lamOver (minors (env, spec), Telescope::lamOver (fields, ruleBody (env, spec, at, fields, listLength fields)))))
+    ruleOver (env, spec, k, fields) = Telescope::lamOver (spec.specParams, Telescope::lamOver (motiveTelescope (spec), Telescope::lamOver (minors (env, spec), Telescope::lamOver (fields, ruleBody (env, spec, k, fields)))))
 
-    ruleBody (env, spec, at, fields, m) = Terms::apps (BVar (satSub (satAdd m (ctorCount spec)) (satAdd at 1)), listConcat (Terms::vars (0, m), ruleHyps (env, spec, fields, 0, [])))
+    ruleBody (env, spec, k, fields) = Terms::apps (BVar (satSub (satAdd (listLength fields) (minorCount spec)) (satAdd k 1)), listConcat (Terms::vars (0, listLength fields), ruleHyps (env, spec, fields, 0, [])))
 
     ruleHyps (env, spec, fields, j, done) = match listGet (fields, j)
         Error _ => done
@@ -142,6 +224,16 @@ module Recursors
         Success rec => ruleHyps (env, spec, fields, satAdd j 1, listAppend (done, ruleHypTerm (spec, listLength fields, j, rec, listLength rec.recursionBinders)))
         Error _ => ruleHyps (env, spec, fields, satAdd j 1, done)
 
-    (** `fun xs => rec params motive minors indices (field xs)`, under the
-        parameters, motive, minors and the `m` fields. *)
-    ruleHypTerm (spec, m, j, rec, s) = Telescope::lamOver (rec.recursionBinders, Terms::apps (Const spec.specRec spec.specRecLevels, listConcat (listConcat (Terms::vars (satAdd s (satAdd m (satAdd (ctorCount spec) 1)), paramCount spec), listPrepend (Terms::vars (satAdd s m, ctorCount spec), BVar (satAdd s (satAdd m (ctorCount spec))))), listAppend (rec.recursionIndices, Terms::apps (BVar (satAdd s (satSub (satSub m 1) j)), Terms::vars (0, s))))))
+    (** `fun xs => rec_e params motives minors indices (field xs)`, under
+        the parameters, every motive, every minor and the `m` fields. *)
+    ruleHypTerm (spec, m, j, rec, s) = Telescope::lamOver (rec.recursionBinders, Terms::apps (Const (formerRec (spec, rec.recursionFamily)) spec.specRecLevels, listConcat (listConcat (listConcat (Terms::vars (satAdd s (satAdd m (satAdd (minorCount spec) (familyCount spec))), paramCount spec), Terms::vars (satAdd s (satAdd m (minorCount spec)), familyCount spec)), Terms::vars (satAdd s m, minorCount spec)), listAppend (rec.recursionIndices, Terms::apps (BVar (satAdd s (satSub (satSub m 1) j)), Terms::vars (0, s))))))
+
+    export freshElim (taken, wanted) = pickName (taken, wanted, 0)
+
+    pickName (taken, wanted, n) = match wanted == "" || listContains (taken, wanted)
+        true => pickFresh (taken, n)
+        false => wanted
+
+    pickFresh (taken, n) = match n
+        0 => pickName (taken, "u", 1)
+        other => pickName (taken, "u_${toString other}", satAdd other 1)

@@ -156,10 +156,30 @@ module Export
         true => nameStr (reading, json, index)
         false => nameNum (reading, json, index)
 
-    nameStr (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "str"), \str => ExportJson::upon (ExportJson::intIn (str, "pre"), \parent => ExportJson::upon (ExportJson::textIn (str, "str"), \leaf => nameDone (reading, index, parent, leaf))))
+    nameStr (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "str"), \str => ExportJson::upon (ExportJson::intIn (str, "pre"), \parent => ExportJson::upon (ExportJson::textIn (str, "str"), \leaf => ExportJson::upon (stringName leaf, \name => nameDone (reading, index, parent, name)))))
+
+    (** Implements [PROOF-EXPORT]: JSON-quoted ambiguous string components
+        preserve Lean Name identity; numeric components keep decimal spelling. *)
+    stringName leaf = ExportJson::upon (jsonQuote leaf, \quoted => escapedName (leaf, quoted))
+
+    escapedName (leaf, quoted) = match leaf == "" || quoted != "\"${leaf}\"" || dottedLeaf leaf || numericLeaf leaf
+        true => Success(value = quoted)
+        false => Success(value = leaf)
+
+    dottedLeaf leaf = match indexOf (leaf, ".")
+        Success _ => true
+        Error _ => false
+
+    numericLeaf leaf = match parseInt leaf
+        Success number => leaf == toString number
+        Error _ => false
 
     (** A `num` leaf is rendered in the table's one spelling. *)
-    nameNum (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "num"), \num => ExportJson::upon (ExportJson::intIn (num, "pre"), \parent => ExportJson::upon (ExportJson::intIn (num, "i"), \value => nameDone (reading, index, parent, toString value))))
+    nameNum (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "num"), \num => ExportJson::upon (ExportJson::intIn (num, "pre"), \parent => ExportJson::upon (ExportJson::intIn (num, "i"), \value => numericName (reading, index, parent, value))))
+
+    numericName (reading, index, parent, value) = match value >= 0
+        true => nameDone (reading, index, parent, toString value)
+        false => Error(message = "numeric name components must be nonnegative")
 
     nameDone (reading, index, parent, leaf) = ExportJson::upon (ExportJson::nameOf (reading.tables, parent), \prefix => Success(value = setName (reading, index, dotted (prefix, leaf))))
 
@@ -181,7 +201,11 @@ module Export
         false => levelParam (reading, json, index)
 
     (** `max` and `imax` carry their two sides as one two-element array. *)
-    paired (reading, json, index, key, imax) = ExportJson::upon (ExportJson::arrayIn (json, key), \sides => ExportJson::upon (sideOf (sides, key, 0), \left => ExportJson::upon (sideOf (sides, key, 1), \right => pairedDone (reading, index, imax, left, right))))
+    paired (reading, json, index, key, imax) = ExportJson::upon (ExportJson::arrayIn (json, key), \sides => pairSides (reading, sides, index, key, imax))
+
+    pairSides (reading, sides, index, key, imax) = match listLength sides == 2
+        false => Error(message = "${key} needs two sides")
+        true => ExportJson::upon (sideOf (sides, key, 0), \left => ExportJson::upon (sideOf (sides, key, 1), \right => pairedDone (reading, index, imax, left, right)))
 
     sideOf (sides, key, at) = ExportJson::upon (sideAt (sides, at, key), \value => ExportJson::intAs (value, "${key} side"))
 
@@ -352,15 +376,15 @@ module Export
         true => Error(message = "unsafe opaque declarations are refused")
         false => valuedDeclaration (reading, opq, \value => Opaque value)
 
-    theoremed (reading, json) = ExportJson::upon (ExportJson::fieldIn (json, "thm"), \raw => valuedDeclaration (reading, raw, \value => Theorem value))
+    theoremed (reading, json) = ExportJson::upon (ExportJson::safeField (json, "thm"), \raw => valuedDeclaration (reading, raw, \value => Theorem value))
 
-    defined (reading, json) = ExportJson::upon (ExportJson::fieldIn (json, "def"), \raw => valuedDeclaration (reading, raw, \value => Definition value))
+    defined (reading, json) = ExportJson::upon (ExportJson::safeField (json, "def"), \raw => valuedDeclaration (reading, raw, \value => Definition value))
 
     (** Theorem, definition and opaque bodies share the same checked table
         reads; only their reduction and reporting semantics differ. *)
     valuedDeclaration (reading, raw, body) = ExportJson::upon (ExportJson::declName (reading.tables, raw), \name => ExportJson::upon (ExportJson::paramsOf (reading.tables, raw), \params => ExportJson::upon (ExportJson::typedOf (reading.tables, raw), \ty => ExportJson::upon (ExportJson::intIn (raw, "value"), \vref => ExportJson::upon (ExportJson::exprOf (reading.tables, vref), \value => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = body value)))))))))
 
-    axiomed (reading, json) = ExportJson::upon (ExportJson::fieldIn (json, "axiom"), \ax => ExportJson::upon (ExportJson::declName (reading.tables, ax), \name => ExportJson::upon (ExportJson::paramsOf (reading.tables, ax), \params => ExportJson::upon (ExportJson::typedOf (reading.tables, ax), \ty => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Axiom))))))))
+    axiomed (reading, json) = ExportJson::upon (ExportJson::safeField (json, "axiom"), \ax => ExportJson::upon (ExportJson::declName (reading.tables, ax), \name => ExportJson::upon (ExportJson::paramsOf (reading.tables, ax), \params => ExportJson::upon (ExportJson::typedOf (reading.tables, ax), \ty => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Axiom))))))))
 
     (** One inductive line is one block: the type former, its constructors
         and its recursor, each read exactly like a theorem's name,

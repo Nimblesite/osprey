@@ -34,12 +34,26 @@ import proof
     it can read as a pass. *)
 module TrustTests
     export run () =
+        adversarial ()
         reporting ()
         closure ()
         metadata ()
         traversal ()
+        batch ()
         test ("a deep checked dependency chain keeps graph depth off the WASM stack", \() =>
             expect (shown (deepEnv (), "root"), "ok: Ax"))
+
+    export adversarial () =
+        test ("an assumption named none cannot forge the empty ledger", \() =>
+            expect (shown (namedAssumption "none", "root"), "ok: \"none\""))
+        test ("one comma-bearing assumption cannot forge two ledger entries", \() =>
+            expect (shown (namedAssumption "Ax, Other", "root"), "ok: \"Ax, Other\""))
+        test ("ledger quotes are escaped and ordinary receipt controls stay unchanged", \() =>
+            expect (shown (namedAssumption "\"quoted\"", "root"), "ok: \"\\\"quoted\\\"\"")
+            expect (listed [], "none")
+            expect (listed ["Ax", "Other"], "Ax, Other"))
+
+    namedAssumption name = theorem (axiomAt (Environment::empty (), name), "root", arrow name, identity name)
 
     reporting () =
         test ("an unused axiom in the checked file is not a dependency of the theorem", \() =>
@@ -88,6 +102,59 @@ module TrustTests
         test ("a recorded arithmetic proof reaches projections and literals without axioms", \() =>
             expect (shown (natEnv (), "Nat.add_comm"), "ok: none")
             expect (shown (natEnv (), "OfNat.ofNat"), "ok: none"))
+
+    batch () =
+        batchRepresentatives ()
+        batchBoundaries ()
+        batchCycles ()
+        batchMetadata ()
+
+    batchRepresentatives () =
+        test ("the all-root query agrees with the single-root oracle throughout representative inventories", \() =>
+            expect (agrees (idImpEnv ()), "ok")
+            expect (agrees (usesAxiomEnv ()), "ok")
+            expect (agrees (twoRootsEnv ()), "ok")
+            expect (agrees (transitiveEnv ()), "ok")
+            expect (agrees (hiddenTypeEnv ()), "ok")
+            expect (agrees (holderEnv ()), "ok")
+            expect (agrees (cyclicEnv ()), "ok"))
+
+    batchBoundaries () =
+        test ("empty and axiom-free inventories have an entry for every declaration and no invented assumptions", \() =>
+            expect (batchCount (Environment::empty ()), "ok: 0")
+            expect (agrees (Environment::empty ()), "ok")
+            expect (agrees (andEnv ()), "ok")
+            expect (batchAt (andEnv (), "and_swap"), "ok: none"))
+
+        test ("the all-root query does not leak an unused axiom into another root", \() =>
+            expect (batchAt (idImpEnv (), "id_imp"), "ok: none")
+            expect (batchAt (idImpEnv (), "unusedAssumption"), "ok: unusedAssumption"))
+
+    batchCycles () =
+        test ("two cyclic groups each converge on their own complete axiom union", \() =>
+            expect (agrees (cyclicGroupsEnv ()), "ok")
+            expect (batchAt (cyclicGroupsEnv (), "cycleA1"), "ok: AxA")
+            expect (batchAt (cyclicGroupsEnv (), "cycleA2"), "ok: AxA")
+            expect (batchAt (cyclicGroupsEnv (), "cycleB1"), "ok: AxB")
+            expect (batchAt (cyclicGroupsEnv (), "cycleB2"), "ok: AxB"))
+
+        test ("both members of one cycle retain distinct axioms introduced on either side", \() =>
+            expect (agrees (dualCycleEnv ()), "ok")
+            expect (batchAt (dualCycleEnv (), "cycleA1"), "ok: AxA, AxB")
+            expect (batchAt (dualCycleEnv (), "cycleA2"), "ok: AxA, AxB"))
+
+        test ("the all-root query rejects every unresolved reference explicitly", \() =>
+            expect (batchError (unresolvedEnv ()), "unknown dependency `missing`"))
+
+    batchMetadata () =
+        test ("self-recursors, projections, literals and quotients follow the oracle's references", \() =>
+            expect (agrees (natEnv ()), "ok")
+            expect (agrees (quotientEnv ()), "ok")
+            expect (batchAt (quotientEnv (), "QuotientCases.sound"), "ok: Quot.sound"))
+
+        test ("the all-root query keeps deep dependency traversal iterative", \() =>
+            expect (agrees (deepEnv ()), "ok")
+            expect (batchAt (deepEnv (), "root"), "ok: Ax"))
 
     traversal () =
         test ("constants reports every term variant's symbols in traversal order", \() =>
@@ -168,6 +235,21 @@ module TrustTests
 
     literalRoot (env) = attached (env, "two", Theorem (NatLit (literal "2")))
 
+    // Synthetic reference graphs test traversal, not proof acceptance.
+    dualCycleEnv () = attached (cycleA1 (twoCycleAxioms ()), "cycleA2", Definition (App (Const "cycleA1" []) (Const "AxB" [])))
+
+    cyclicGroupsEnv () = cycleB2 (cycleB1 (cycleA2 (cycleA1 (twoCycleAxioms ()))))
+
+    twoCycleAxioms () = axiomAt (axiomAt (Environment::empty (), "AxA"), "AxB")
+
+    cycleA1 (env) = attached (env, "cycleA1", Definition (App (Const "cycleA2" []) (Const "AxA" [])))
+
+    cycleA2 (env) = attached (env, "cycleA2", Definition (Const "cycleA1" []))
+
+    cycleB1 (env) = attached (env, "cycleB1", Definition (App (Const "cycleB2" []) (Const "AxB" [])))
+
+    cycleB2 (env) = attached (env, "cycleB2", Definition (Const "cycleB1" []))
+
     cyclicEnv () = axiomLoop (pairLoop (selfLoop (Environment::empty ())))
 
     selfLoop (env) = attached (env, "selfLoop", Definition (App (Const "selfLoop" []) (Const "selfLoop" [])))
@@ -183,6 +265,8 @@ module TrustTests
     andEnv () = exported (Fixtures::andSwap (), "and_swap")
 
     natEnv () = exported (Fixtures::natAddComm (), "Nat.add_comm")
+
+    quotientEnv () = exported (Fixtures::quotients (), "QuotientCases.sound")
 
     exported (text, name) = verified ("the export checks", Checked::exportedDeclaring (Environment::empty (), text, name))
 
@@ -229,6 +313,34 @@ module TrustTests
     failed (message) =
         check "the literal reads" "success" message
         Naturals::zero ()
+
+    agrees (env) = match Trust::allAxioms env
+        Error message => "error: ${message}"
+        Success all => match foldList (env.order, "", \(differences, name) => difference (env, all, name, differences))
+            "" => "ok"
+            differences => differences
+
+    difference (env, all, name, differences) = match mapGet (all, name)
+        Error message => "${differences}${name}: ${message};"
+        Success actual => match Trust::axioms (env, name)
+            Error message => "${differences}${name}: ${message};"
+            Success expected => match structuralEquals (expected, actual)
+                true => differences
+                false => "${differences}${name}: ${listed expected} != ${listed actual};"
+
+    batchCount (env) = match Trust::allAxioms env
+        Success all => "ok: ${toString (listLength (mapValues all))}"
+        Error message => "error: ${message}"
+
+    batchAt (env, name) = match Trust::allAxioms env
+        Error message => "error: ${message}"
+        Success all => match mapGet (all, name)
+            Success names => "ok: ${listed names}"
+            Error message => "error: ${message}"
+
+    batchError (env) = match Trust::allAxioms env
+        Success _ => "unexpected success"
+        Error message => message
 
     shown (env, name) = match Trust::described (Trust::axioms (env, name))
         Success text => "ok: ${text}"

@@ -23,6 +23,7 @@ binary's `axioms:` line reports only the checked proof's dependencies. These
 are distinct ledgers and are never compared as equal.
 """
 import hashlib
+import importlib.util
 import json
 import re
 import shutil
@@ -32,6 +33,9 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[4]
+PROOF_SPEC = importlib.util.spec_from_file_location("proof_openai", REPO / "scripts/proof-openai.py")
+PROOF = importlib.util.module_from_spec(PROOF_SPEC)
+PROOF_SPEC.loader.exec_module(PROOF)
 TOOLCHAIN = Path.home() / ".elan/toolchains/leanprover--lean4---v4.25.0"
 TOOLCHAIN_LABEL = "~/.elan/toolchains/leanprover--lean4---v4.25.0"
 EXPORTER_LABEL = "lean4export cfefafacc917b2d14c5f9bb092ed337f71317a4a (tag v4.25.0)"
@@ -148,18 +152,8 @@ def export_stats(export_path):
 
 
 def build_name_table(lines):
-    table = {}
-    for line in lines:
-        obj = json.loads(line)
-        if "in" in obj and "str" in obj:
-            pre = obj["str"]["pre"]
-            parent = table.get(pre, "") if pre else ""
-            table[obj["in"]] = f"{parent}.{obj['str']['str']}" if parent else obj["str"]["str"]
-        elif "in" in obj and "num" in obj:
-            pre = obj["num"].get("pre", 0)
-            parent = table.get(pre, "") if pre else ""
-            table[obj["in"]] = f"{parent}.{obj['num']['i']}" if parent else str(obj["num"]["i"])
-    return table
+    names, _ = PROOF.names_and_theorems(map(json.loads, lines))
+    return {index: name for index, name in names.items() if index}
 
 
 def axiom_names(lines, table):

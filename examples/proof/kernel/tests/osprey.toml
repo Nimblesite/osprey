@@ -2,7 +2,7 @@
 name = "proof-kernel-tests"
 # The kernel's five theory modules are listed individually: its `main.ospml`
 # has a namespace-level `main`, which is legal only in the selected entry.
-source_roots = [".", "../src/level.ospml", "../src/term.ospml", "../src/env.ospml", "../src/reduce.ospml", "../src/infer.ospml", "../src/surface.ospml", "../src/export.ospml", "../src/exportjson.ospml", "../src/exportinductive.ospml", "../src/telescope.ospml", "../src/recursor.ospml", "../src/inductive.ospml", "../src/checked.ospml", "../src/quotient.ospml", "../src/literal.ospml", "../src/trust.ospml", "../src/fixtures.ospml", "../src/natural.ospml", "../src/numeric.ospml", "../src/numeric-canonical.ospml"]
+source_roots = [".", "../src/level.ospml", "../src/term.ospml", "../src/env.ospml", "../src/reduce.ospml", "../src/infer.ospml", "../src/surface.ospml", "../src/export.ospml", "../src/exportjson.ospml", "../src/exportinductive.ospml", "../src/telescope.ospml", "../src/recursor.ospml", "../src/inductive.ospml", "../src/nesting.ospml", "../src/checked.ospml", "../src/quotient.ospml", "../src/literal.ospml", "../src/trust.ospml", "../src/fixtures.ospml", "../src/natural.ospml", "../src/numeric.ospml", "../src/numeric-canonical.ospml"]
 default_namespace = "prooftests"
 entry = "main.ospml"
 

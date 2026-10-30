@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -98,13 +99,29 @@ def run(command, **kwargs):
     return result.stdout
 
 
+def name_component(value):
+    """Injective spelling of Lean Name components [PROOF-EXPORT]."""
+    if "str" not in value:
+        number = value["i"]
+        if type(number) is not int or not 0 <= number < 2 ** 63:
+            raise ValueError("numeric name component exceeds the supported nonnegative 64-bit range")
+        return str(number)
+    leaf = value["str"]
+    if "\0" in leaf:
+        raise ValueError("name component contains unsupported NUL")
+    quoted = json.dumps(leaf, ensure_ascii=False, separators=(",", ":"))
+    numeric = len(leaf) <= 20 and re.fullmatch(r"0|-?[1-9][0-9]*", leaf) is not None and -(2 ** 63) <= int(leaf) < 2 ** 63
+    return quoted if not leaf or "." in leaf or quoted != '"' + leaf + '"' or numeric else leaf
+
+
 def names_and_theorems(rows):
     names, theorems = {0: ""}, {}
     for row in rows:
         if "in" in row:
             value = row.get("str", row.get("num"))
             prefix = names[value["pre"]]
-            names[row["in"]] = prefix + ("." if prefix else "") + str(value.get("str", value.get("i")))
+            leaf = name_component(value)
+            names[row["in"]] = prefix + ("." if prefix else "") + leaf
         if "thm" in row:
             theorems[names[row["thm"]["name"]]] = row["thm"]
     return names, theorems
@@ -195,6 +212,12 @@ def quot_sound_shape(universe):
             ["forallE", variable(1), ["forallE", variable(2), ["forallE", hypothesis, equality]]]]]
 
 
+def classical_choice_shape(universe):
+    # Implements [PROOF-KERNEL-AXIOMS]: choice requires Nonempty at the same sort.
+    nonempty = ["app", ["const", "Nonempty", [universe]], ["bvar", 0]]
+    return ["forallE", ["sort", universe], ["forallE", nonempty, ["bvar", 1]]]
+
+
 def approved_axiom(axiom, names, levels):
     name, parameters = names[axiom["name"]], axiom["levelParams"]
     if name == "propext" and not parameters:
@@ -205,6 +228,10 @@ def approved_axiom(axiom, names, levels):
         universe = next((i for i, row in levels.items() if row == {"il": i, "param": parameters[0]}), None)
         if universe is not None:
             return quot_sound_shape(universe)
+    if name == "Classical.choice" and len(parameters) == 1:
+        universe = next((i for i, row in levels.items() if row == {"il": i, "param": parameters[0]}), None)
+        if universe is not None:
+            return classical_choice_shape(universe)
     raise ValueError("unapproved axiom or universe")
 
 
@@ -337,10 +364,15 @@ def rejected(command, rows, target, name, proof):
         raise AssertionError(f"mutation must be rejected for a type mismatch, got {output}")
 
 
+def axiom_receipt(names):
+    return ", ".join(json.dumps(name, ensure_ascii=False) if name in ("", "none") or "," in name or '"' in name
+                     else name for name in names) or "none"
+
+
 def verify_group(command, group, memory):
     rows, _, theorems = check_files(group)
     for name in group["theorems"]:
-        expected = f"PASS {name} | axioms: {', '.join(expected_axioms(group, name)) or 'none'}"
+        expected = f"PASS {name} | axioms: {axiom_receipt(expected_axioms(group, name))}"
         output = check(command, export_path(group), name)
         if output != expected:
             raise AssertionError(f"{memory}: expected {expected}, got {output}")

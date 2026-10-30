@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -20,6 +21,22 @@ BUILDER = load_script("core_builder", PROOF.CORE / "tools/build_corpus.py")
 
 
 class CorpusTests(unittest.TestCase):
+    def test_name_reference_refuses_values_the_kernel_json_cannot_represent(self):
+        for value in ({"i": -1}, {"i": 2 ** 63}, {"str": "a\0b"}):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                PROOF.name_component(value)
+
+    def test_group_receipts_keep_ambiguous_axiom_names_distinct(self):
+        group = {"theorems": ["t"]}
+        for names, receipt in ((["none"], '"none"'), (["Ax, Other"], '"Ax, Other"'),
+                               (['"quoted"'], json.dumps('"quoted"'))):
+            with self.subTest(names=names), mock.patch.object(PROOF, "check_files", return_value=([], {}, {"t": {}})), \
+                    mock.patch.object(PROOF, "expected_axioms", return_value=names), \
+                    mock.patch.object(PROOF, "export_path", return_value=Path("unused")), \
+                    mock.patch.object(PROOF, "check", return_value=f"PASS t | axioms: {receipt}"), \
+                    mock.patch.object(PROOF, "rejected"), mock.patch("builtins.print"):
+                PROOF.verify_group([], group, "gc")
+
     def setUp(self):
         self.groups = json.loads((PROOF.CORPUS / "corpus.json").read_text())["groups"]
         self.rows, self.names, self.theorems = PROOF.check_files(self.groups[0])
@@ -34,6 +51,22 @@ class CorpusTests(unittest.TestCase):
         with self.assertRaises((ValueError, KeyError)):
             PROOF.check_axioms(rows, self.names, self.groups[0]["axioms"])
 
+    def test_export_name_identity_preserves_components_and_leaf_kinds(self):
+        rows = [{"in": 1, "str": {"pre": 0, "str": "A"}},
+                {"in": 2, "str": {"pre": 1, "str": "B"}},
+                {"in": 3, "str": {"pre": 0, "str": "A.B"}},
+                {"in": 4, "num": {"pre": 0, "i": 5}},
+                {"in": 5, "str": {"pre": 0, "str": "5"}},
+                {"in": 6, "str": {"pre": 0, "str": ""}},
+                {"in": 7, "str": {"pre": 0, "str": '"A.B"'}},
+                {"in": 8, "str": {"pre": 3, "str": "C"}}]
+        names, _ = PROOF.names_and_theorems(rows)
+        self.assertEqual(names, {0: "", 1: "A", 2: "A.B", 3: '"A.B"', 4: "5",
+                                 5: '"5"', 6: '""', 7: json.dumps('"A.B"'), 8: '"A.B".C'})
+        self.assertEqual(len(set(names.values())), len(names))
+        self.assertEqual(BUILDER.build_name_table([json.dumps(row) for row in rows]),
+                         {key: value for key, value in names.items() if key})
+
     def test_actual_pinned_sources_exports_and_axiom_statements(self):
         self.assert_exports(self.groups)
 
@@ -42,6 +75,25 @@ class CorpusTests(unittest.TestCase):
             rows, _, theorems = PROOF.check_files(group)
             self.assertGreater(len(rows), 100)
             self.assertTrue(set(group["theorems"]) <= theorems.keys())
+
+    def test_workbench_custom_operator_fixtures_match_pinned_lean_sources(self):
+        path = PROOF.ROOT / "examples/proof/kernel/exports/notation_cases.json"
+        controls = json.loads(path.read_text())
+        self.assertEqual(controls["toolchain"], "leanprover/lean4:v4.25.0")
+        tests = (PROOF.ROOT / "apps/workbench/tests/imported.ospml").read_text()
+        for group in controls["groups"]:
+            PROOF.check_files(group)
+            found = re.search(r"^    (?:export )?" + re.escape(group["embedded"]) + r" \(\) = (.+)$", tests, re.MULTILINE)
+            self.assertIsNotNone(found, group["id"])
+            self.assertEqual(json.loads(found.group(1)), PROOF.export_path(group).read_text())
+
+    def test_kernel_export_fixture_twin_is_byte_identical_to_the_pinned_export(self):
+        group = json.loads((PROOF.ROOT / "examples/proof/kernel/exports/recursor_cases.json").read_text())
+        PROOF.check_files(group)
+        tests = (PROOF.ROOT / "examples/proof/kernel/tests/export.ospml").read_text()
+        found = re.search(r"^    (?:export )?" + re.escape(group["embedded"]) + r" \(\) = (.+)$", tests, re.MULTILINE)
+        self.assertIsNotNone(found, group["id"])
+        self.assertEqual(json.loads(found.group(1)), PROOF.export_path(group).read_text())
 
     def test_number_theory_port_preserves_five_original_statements(self):
         groups = {group["id"]: group for group in self.groups}
@@ -241,6 +293,57 @@ class CorpusTests(unittest.TestCase):
             with mock.patch.object(Path, "home", return_value=destination / "absent-home"):
                 assets.stage(destination)
                 assets.stage(destination, check=True)
+
+
+class ClassicalChoiceTests(unittest.TestCase):
+    """Trust policy only: these original Nat certificates remain unpromoted."""
+    def setUp(self):
+        path = PROOF.CORE / "exports/nat-lemmas.ndjson"
+        self.assertEqual(PROOF.digest(path.read_bytes()), "20511ce02417e4be5e97b3c3ba688d94c841891409f4914cdfb3c0d699bc4b02")
+        self.rows = [json.loads(line) for line in path.read_text().splitlines()]
+        self.names, _ = PROOF.names_and_theorems(self.rows)
+        self.expected = ["propext", "Classical.choice", "Quot.sound"]
+        self.expressions = {row["ie"]: row for row in self.rows if "ie" in row}
+        self.axiom = next(row["axiom"] for row in self.rows if "axiom" in row and self.names[row["axiom"]["name"]] == "Classical.choice")
+
+    def check_basis(self):
+        PROOF.check_axioms(self.rows, self.names, self.expected)
+
+    def test_pinned_classical_choice_has_its_exact_standard_basis(self):
+        self.check_basis()
+
+    def test_choice_cannot_drop_its_nonempty_hypothesis(self):
+        root = self.expressions[self.axiom["type"]]
+        root["forallE"]["body"] = next(row["ie"] for row in self.rows if row.get("bvar") == 0)
+        with self.assertRaisesRegex(ValueError, "axiom"):
+            self.check_basis()
+
+    def test_choice_cannot_change_its_universe_parameters(self):
+        self.axiom["levelParams"] = []
+        with self.assertRaisesRegex(ValueError, "axiom"):
+            self.check_basis()
+
+    def test_choice_cannot_be_unsafe(self):
+        self.axiom["isUnsafe"] = True
+        with self.assertRaisesRegex(ValueError, "axiom"):
+            self.check_basis()
+
+    def test_choice_nonempty_uses_the_same_universe(self):
+        root = self.expressions[self.axiom["type"]]
+        hypothesis = self.expressions[self.expressions[root["forallE"]["body"]]["forallE"]["type"]]
+        self.expressions[hypothesis["app"]["fn"]]["const"]["us"] = []
+        with self.assertRaisesRegex(ValueError, "axiom"):
+            self.check_basis()
+
+    def test_choice_nonempty_cannot_use_a_different_predicate(self):
+        self.names[next(index for index, name in self.names.items() if name == "Nonempty")] = "False"
+        with self.assertRaisesRegex(ValueError, "axiom"):
+            self.check_basis()
+
+    def test_choice_cannot_be_omitted_from_the_declared_ledger(self):
+        self.expected.remove("Classical.choice")
+        with self.assertRaisesRegex(ValueError, "ledger"):
+            self.check_basis()
 
 
 if __name__ == "__main__":

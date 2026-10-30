@@ -1,6 +1,8 @@
 namespace prooftests
 
 import proof::Telescope
+import proof::Inductive
+import proof::Nesting
 import proof::Terms
 import proof::Environment
 import prooftests::Support
@@ -23,6 +25,8 @@ module TelescopeTests
     export run () =
         identities ()
         refusals ()
+        formerTypes ()
+        lowering ()
 
     identities () =
         test ("recursor binders remove unary identity type annotations", \() =>
@@ -65,3 +69,62 @@ module TelescopeTests
         [] =>
             check "the telescope retains its binder" "one binder" "none"
             Sort Zero
+
+    (** Type-former telescopes must be checked before their families enter
+        the scratch environment. Implements [PROOF-KERNEL-THEORY]. *)
+    formerTypes () =
+        test ("an inductive former with an unknown binder domain is refused", \() =>
+            expect (formerOutcome (Pi "index" (Const "Missing" []) (universe ())), "unknown constant `Missing`"))
+
+        test ("an inductive former with a loose binder domain is refused", \() =>
+            expect (formerOutcome (Pi "index" (BVar 0) (universe ())), "unbound variable #0"))
+
+    formerOutcome (ty) = match Inductive::declare (Environment::empty (), Decl(name = "InvalidFormer", params = [], ty = ty, body = Axiom), [], 0)
+        Success _ => "accepted"
+        Error message => message
+
+    (** The public lowering: a two-parameter family nested in a checked
+        container keeps both arguments, lifts a variable under an inner
+        binder, and refuses a loose argument. Implements
+        [PROOF-KERNEL-THEORY]. *)
+    lowering () =
+        test ("nested lowering preserves a two-parameter family argument", \() =>
+            expect (nestMatches (childBox (pair (BVar 1, BVar 0)), pair (BVar 1, BVar 0)), true))
+
+        test ("nested lowering lifts a variable under an inner binder", \() =>
+            expect (nestMatches (childBox (Pi "p" (Sort Zero) (pair (BVar 2, BVar 1))), Pi "p" (Sort Zero) (pair (BVar 2, BVar 1))), true))
+
+        test ("nested lowering refuses a loose family argument", \() =>
+            expect (nestVerdict (childBox (pair (BVar 2, BVar 0))), "invalid nested inductive datatype `Box`, nested inductive datatype parameters cannot contain local variables"))
+
+    childBox (arg) = App (Const "Box" []) arg
+
+    pair (left, right) = Terms::apps (Const "Nest" [], [left, right])
+
+    nestMatches (child, expected) = match Nesting::lower (boxEnv (), [nestFormer ()], [nestCtor (child)], 2)
+        Success lowered => matchingNest (lowered.loweredNests, expected)
+        Error message =>
+            check "nested lowering succeeds" "no error" message
+            false
+
+    matchingNest (nests, expected) = match nests
+        [only] => structuralEquals (only.nestArgs, [expected])
+        other => false
+
+    nestVerdict (child) = match Nesting::lower (boxEnv (), [nestFormer ()], [nestCtor (child)], 2)
+        Success _ => "accepted"
+        Error message => message
+
+    boxEnv () = match Inductive::declare (Environment::empty (), boxFormer (), [boxCtor ()], 1)
+        Success env => env
+        Error message =>
+            check "the Box family declares" "no error" message
+            Environment::empty ()
+
+    boxFormer () = Decl(name = "Box", params = [], ty = Pi "A" (universe ()) (universe ()), body = Axiom)
+
+    boxCtor () = Decl(name = "Box.mk", params = [], ty = Pi "A" (universe ()) (Pi "value" (BVar 0) (App (Const "Box" []) (BVar 1))), body = Axiom)
+
+    nestFormer () = Decl(name = "Nest", params = [], ty = Pi "A" (universe ()) (Pi "B" (universe ()) (universe ())), body = Axiom)
+
+    nestCtor (child) = Decl(name = "Nest.mk", params = [], ty = Pi "A" (universe ()) (Pi "B" (universe ()) (Pi "child" child (pair (BVar 2, BVar 1)))), body = Axiom)

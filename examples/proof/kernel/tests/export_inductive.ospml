@@ -13,6 +13,8 @@ import proof
     TypeFormer
     Constructor
     Recursor
+    Family
+    Eliminator
     Sort
     Zero
 import prooftests::Support
@@ -20,9 +22,13 @@ import prooftests::Support
 (** Reading the `inductive` line of `lean4export` NDJSON 3.1.0
     ([PROOF-EXPORT]): the recorded `AndSwap` export reads as nine items in
     file order, each inductive block's every claimed field is asserted
-    against the line it came from, and each shape the kernel cannot hold
-    yet is refused on its own line. The kernel's derivation of the claims
-    is `Inductive::add`'s business, so nothing here checks the theory. *)
+    against the line it came from, and a whole mutual or nested group
+    reads as one block carrying every family, recursor, motive count and
+    inventory it declares. The kernel's derivation and comparison of
+    those claims is `Inductive::add`'s business, so nothing here checks
+    the theory; the reader itself refuses an unsafe declaration, a group
+    with no family or no recursor, and any member the format does not
+    define. *)
 module ExportInductiveTests
 
     (** Runs the inductive-block cases; the testing built-ins report the TAP lines. *)
@@ -31,31 +37,37 @@ module ExportInductiveTests
             expect (sequence (items ()), "group Eq | single Eq.recOn | single eq_symm | group Iff | single Iff.recOn | group And | single iff_refl | single and_swap | single And.recOn"))
 
         test ("the And block states its family, constructor and recursor in full", \() =>
-            expect (blockShape (thirdBlock ()), "And [] (Prop → (Prop → Prop)) {params 2, indices 0, ctors [And.intro], recursive false, reflexive false} | And.intro [] (∀ (a : Prop), (∀ (b : Prop), (a → (b → ((And a) b))))) {family And, index 0, params 2, fields 2} | And.rec [u] (∀ (a : Prop), (∀ (b : Prop), (∀ (motive : (((And a) b) → Sort u)), ((∀ (left : a), (∀ (right : b), (motive ((((And.intro a) b) left) right)))) → (∀ (t : ((And a) b)), (motive t)))))) {family And, params 2, indices 0, minors 1, k false, rules [And.intro/2 => (fun (a : Prop) => (fun (b : Prop) => (fun (motive : (((And a) b) → Sort u)) => (fun (intro : (∀ (left : a), (∀ (right : b), (motive ((((And.intro a) b) left) right))))) => (fun (left : a) => (fun (right : b) => ((intro left) right)))))))]}"))
+            expect (blockShape (thirdBlock ()), "And [] (Prop → (Prop → Prop)) {params 2, indices 0, ctors [And.intro], recursive false, reflexive false, all [And], nested 0} | And.intro [] (∀ (a : Prop), (∀ (b : Prop), (a → (b → ((And a) b))))) {family And, index 0, params 2, fields 2} | And.rec [u] (∀ (a : Prop), (∀ (b : Prop), (∀ (motive : (((And a) b) → Sort u)), ((∀ (left : a), (∀ (right : b), (motive ((((And.intro a) b) left) right)))) → (∀ (t : ((And a) b)), (motive t)))))) {family And, params 2, indices 0, minors 1, k false, rules [And.intro/2 => (fun (a : Prop) => (fun (b : Prop) => (fun (motive : (((And a) b) → Sort u)) => (fun (intro : (∀ (left : a), (∀ (right : b), (motive ((((And.intro a) b) left) right))))) => (fun (left : a) => (fun (right : b) => ((intro left) right)))))))], motives 1, all [And]}"))
 
         test ("the And block's constructor counts its fields without the parameters", \() =>
             expect (ctorFacts (thirdBlock ()), "And.intro family And index 0 params 2 fields 2"))
 
         test ("the Eq eliminator supports K over one index, at two universe parameters", \() =>
-            expect (elimFacts (firstBlock ()), "Eq [u_1, u] indices 1 minors 1 k true rules [Eq.refl/0]"))
+            expect (elimFacts (firstBlock ()), "Eq [u_1, u] indices 1 minors 1 k true rules [Eq.refl/0] motives 1 all [Eq]"))
 
         test ("the Iff eliminator supports no K and one rule of two fields", \() =>
-            expect (elimFacts (secondBlock ()), "Iff [u] indices 0 minors 1 k false rules [Iff.intro/2]"))
+            expect (elimFacts (secondBlock ()), "Iff [u] indices 0 minors 1 k false rules [Iff.intro/2] motives 1 all [Iff]"))
 
         test ("the Eq block's member names and statements are the line's", \() =>
             expect (memberNames (firstBlock ()), "Eq [u] | Eq.refl [u] | Eq.rec [u_1, u]"))
 
-        test ("more than one type in a group is a mutual declaration", \() =>
-            expect (refused (swapped ("\"types\":[" + eqType (), "\"types\":[" + eqType () + "," + eqType ())), "line 60: unsupported: mutual inductive"))
+        test ("a mutual group's line reads as one block of every family it declares", \() =>
+            expect (groupShape (swapped ("\"types\":[" + eqType (), "\"types\":[" + eqType () + "," + eqType ())), "families 2, recursors 1"))
 
-        test ("more than one recursor in a group is a mutual declaration", \() =>
-            expect (refused (swapped ("\"recs\":[" + eqRec (), "\"recs\":[" + eqRec () + "," + eqRec ())), "line 60: unsupported: mutual inductive"))
+        test ("a group's every recursor reads into the same block", \() =>
+            expect (groupShape (swapped ("\"recs\":[" + eqRec (), "\"recs\":[" + eqRec () + "," + eqRec ())), "families 1, recursors 2"))
 
-        test ("a nested family is refused", \() =>
-            expect (refused (recased (eqType (), "\"numNested\":0", "\"numNested\":1")), "line 60: unsupported: nested inductive"))
+        test ("a nested family's count is a claim the block carries", \() =>
+            expect (nestedClaim (recased (eqType (), "\"numNested\":0", "\"numNested\":1")), "nested 1"))
 
-        test ("a nested family on a later line names that line", \() =>
-            expect (refused (recased (iffType (), "\"numNested\":0", "\"numNested\":1")), "line 173: unsupported: nested inductive"))
+        test ("a type's all is the inventory it claims", \() =>
+            expect (familyAllClaim (recased (eqType (), "\"all\":[1]", "\"all\":[1,9]")), "all [Eq, Eq.refl]"))
+
+        test ("a recursor's all is the inventory it claims", \() =>
+            expect (recAllClaim (recased (eqRec (), "\"all\":[1]", "\"all\":[1,9]")), "all [Eq, Eq.refl]"))
+
+        test ("a recursor's motive count is a claim the block carries", \() =>
+            expect (motivesClaim (recased (eqRec (), "\"numMotives\":1", "\"numMotives\":2")), "motives 2"))
 
         test ("an unsafe type former is refused", \() =>
             expect (refused (recased (eqType (), "\"isUnsafe\":false", "\"isUnsafe\":true")), "line 60: unsupported: unsafe declaration"))
@@ -65,18 +77,6 @@ module ExportInductiveTests
 
         test ("an unsafe recursor is refused", \() =>
             expect (refused (recased (eqRec (), "\"isUnsafe\":false", "\"isUnsafe\":true")), "line 60: unsupported: unsafe declaration"))
-
-        test ("a type whose all is another type is refused", \() =>
-            expect (refused (recased (eqType (), "\"all\":[1]", "\"all\":[9]")), "line 60: type `Eq` is not its own `all`"))
-
-        test ("a type whose all is two types is refused", \() =>
-            expect (refused (recased (eqType (), "\"all\":[1]", "\"all\":[1,9]")), "line 60: type `Eq` is not its own `all`"))
-
-        test ("a recursor whose all is two types is refused", \() =>
-            expect (refused (recased (eqRec (), "\"all\":[1]", "\"all\":[1,9]")), "line 60: recursor `Eq.rec` does not eliminate one family"))
-
-        test ("a recursor with other than one motive is refused", \() =>
-            expect (refused (recased (eqRec (), "\"numMotives\":1", "\"numMotives\":2")), "line 60: numMotives 2 where 1 is expected"))
 
         test ("a constructor without numParams names the missing member", \() =>
             expect (refused (recased (eqCtor (), "\"numParams\":2,", "")), "line 60: no numParams"))
@@ -126,6 +126,9 @@ module ExportInductiveTests
         test ("a group with no type at all is refused", \() =>
             expect (refused (swapped ("\"types\":[" + eqType () + "]", "\"types\":[]")), "line 60: no type"))
 
+        test ("a group with no recursor at all is refused", \() =>
+            expect (refused (swapped ("\"recs\":[" + eqRec () + "]", "\"recs\":[]")), "line 60: no recursor"))
+
         test ("an inductive line carrying a second kind is refused, not read as the first", \() =>
             expect (refused (swapped ("{\"inductive\":{\"ctors\":[", "{\"inductive\":{},\"thm\":{\"ctors\":[")), "line 60: 2 members where one kind is expected"))
 
@@ -162,23 +165,95 @@ module ExportInductiveTests
     (** A failed lookup fails the enclosing case before falling back. *)
     missing () =
         check "the recorded export reads as three blocks" "3" "too few"
-        Block(former = blank (), ctors = [], recursors = [])
+        Block(formers = [blank ()], ctors = [], recursors = [])
 
     blank () = Decl(name = "", params = [], ty = Sort Zero, body = Axiom)
+
+    blankFamily () = Family(familyParams = 0, familyIndices = 0, familyCtors = [], familyRecursive = false, familyReflexive = false, familyAll = [], familyNested = 0)
+
+    blankElim () = Eliminator(elimFamily = "", elimAll = [], elimMotives = 0, elimParams = 0, elimIndices = 0, elimMinors = 0, elimRules = [], elimK = false)
 
     (** Every item's kind and name, in file order. *)
     sequence (items) = foldList (items, "", \(acc, item) => "${acc}${gap acc}${itemKind item}")
 
     itemKind (item) = match item
         Single decl => "single ${decl.name}"
-        Group block => "group ${block.former.name}"
+        Group block => "group ${blockName block.formers}"
 
-    (** A block's type former, its constructors and its recursor, each with
-        the facts the line claims about it. *)
-    blockShape (block) = joined ([formerText block.former, ctorTexts block.ctors, recTexts block.recursors])
+    blockName (formers) = match formers
+        [first, ...rest] => first.name
+        [] => "?"
+
+    (** How many families and recursors the first block of a readable
+        export declares. *)
+    groupShape (text) = match Export::read text
+        Error message => message
+        Success items => shaped (items)
+
+    shaped (items) = match items
+        [] => "no items"
+        [first, ...rest] => match first
+            Single decl => shaped (rest)
+            Group block => "families ${toString (listLength block.formers)}, recursors ${toString (listLength block.recursors)}"
+
+    (** The first block's claimed family, blank when there is none. *)
+    claimedFamily (text) = match Export::read text
+        Error message => blankFamily ()
+        Success items => familyClaimed (items)
+
+    familyClaimed (items) = match items
+        [] => blankFamily ()
+        [first, ...rest] => match first
+            Single decl => familyClaimed (rest)
+            Group block => familyOfBlock (block.formers)
+
+    familyOfBlock (formers) = match formers
+        [first, ...rest] => match first.body
+            TypeFormer family => family
+            other => blankFamily ()
+        [] => blankFamily ()
+
+    nestedClaim (text) = familyNestedText (claimedFamily text)
+
+    familyNestedText (family) = "nested ${toString family.familyNested}"
+
+    familyAllClaim (text) = familyAllText (claimedFamily text)
+
+    familyAllText (family) = "all ${listed family.familyAll}"
+
+    (** The first block's claimed recursor, blank when there is none. *)
+    claimedEliminator (text) = match Export::read text
+        Error message => blankElim ()
+        Success items => eliminatorClaimed (items)
+
+    eliminatorClaimed (items) = match items
+        [] => blankElim ()
+        [first, ...rest] => match first
+            Single decl => eliminatorClaimed (rest)
+            Group block => eliminatorOfBlock (block.recursors)
+
+    eliminatorOfBlock (recs) = match recs
+        [first, ...rest] => match first.body
+            Recursor elim => elim
+            other => blankElim ()
+        [] => blankElim ()
+
+    recAllClaim (text) = elimAllText (claimedEliminator text)
+
+    elimAllText (elim) = "all ${listed elim.elimAll}"
+
+    motivesClaim (text) = elimMotivesText (claimedEliminator text)
+
+    elimMotivesText (elim) = "motives ${toString elim.elimMotives}"
+
+    (** A block's type formers, its constructors and its recursors, each
+        with the facts the line claims about it. *)
+    blockShape (block) = joined ([formersText block.formers, ctorTexts block.ctors, recTexts block.recursors])
+
+    formersText (decls) = joined (mapList (decls, \decl => formerText decl))
 
     formerText (decl) = match decl.body
-        TypeFormer family => "${declaredText decl} {params ${toString family.familyParams}, indices ${toString family.familyIndices}, ctors ${listed family.familyCtors}, recursive ${toString family.familyRecursive}, reflexive ${toString family.familyReflexive}}"
+        TypeFormer family => "${declaredText decl} {params ${toString family.familyParams}, indices ${toString family.familyIndices}, ctors ${listed family.familyCtors}, recursive ${toString family.familyRecursive}, reflexive ${toString family.familyReflexive}, all ${listed family.familyAll}, nested ${toString family.familyNested}}"
         other => "${declaredText decl} is not a type former"
 
     ctorTexts (decls) = joined (mapList (decls, \decl => ctorText decl))
@@ -190,7 +265,7 @@ module ExportInductiveTests
     recTexts (decls) = joined (mapList (decls, \decl => recText decl))
 
     recText (decl) = match decl.body
-        Recursor elim => "${declaredText decl} {family ${elim.elimFamily}, params ${toString elim.elimParams}, indices ${toString elim.elimIndices}, minors ${toString elim.elimMinors}, k ${toString elim.elimK}, rules ${ruleTexts elim.elimRules}}"
+        Recursor elim => "${declaredText decl} {family ${elim.elimFamily}, params ${toString elim.elimParams}, indices ${toString elim.elimIndices}, minors ${toString elim.elimMinors}, k ${toString elim.elimK}, rules ${ruleTexts elim.elimRules}, motives ${toString elim.elimMotives}, all ${listed elim.elimAll}}"
         other => "${declaredText decl} is not a recursor"
 
     (** A constant as the line gives it: its name, its universe parameters
@@ -208,11 +283,11 @@ module ExportInductiveTests
     elimFacts (block) = folded (block.recursors, elimFact)
 
     elimFact (decl) = match decl.body
-        Recursor elim => "${elim.elimFamily} ${listed decl.params} indices ${toString elim.elimIndices} minors ${toString elim.elimMinors} k ${toString elim.elimK} rules ${ruleNames elim.elimRules}"
+        Recursor elim => "${elim.elimFamily} ${listed decl.params} indices ${toString elim.elimIndices} minors ${toString elim.elimMinors} k ${toString elim.elimK} rules ${ruleNames elim.elimRules} motives ${toString elim.elimMotives} all ${listed elim.elimAll}"
         other => "${decl.name} is not a recursor"
 
-    (** The name and universe parameters of the former and every member. *)
-    memberNames (block) = folded (listPrepend (listConcat (block.ctors, block.recursors), block.former), named)
+    (** The name and universe parameters of every former and member. *)
+    memberNames (block) = folded (listConcat (listConcat (block.formers, block.ctors), block.recursors), named)
 
     named (decl) = "${decl.name} ${listed decl.params}"
 
@@ -249,7 +324,7 @@ module ExportInductiveTests
     recased (object, from, to) = swapped (object, mutated (object, from, to))
 
     (** Line 60, the `Eq` group's three objects and its one rule. *)
-    eqType () = "{\"all\":[1],\"ctors\":[9],\"isRec\":false,\"isReflexive\":false,\"isUnsafe\":false,\"levelParams\":[2],\"name\":1,\"numIndices\":1,\"numNested\":0,\"numParams\":2,\"type\":6}"
+    export eqType () = "{\"all\":[1],\"ctors\":[9],\"isRec\":false,\"isReflexive\":false,\"isUnsafe\":false,\"levelParams\":[2],\"name\":1,\"numIndices\":1,\"numNested\":0,\"numParams\":2,\"type\":6}"
 
     export eqCtor () = "{\"cidx\":0,\"induct\":1,\"isUnsafe\":false,\"levelParams\":[2],\"name\":9,\"numFields\":0,\"numParams\":2,\"type\":12}"
 

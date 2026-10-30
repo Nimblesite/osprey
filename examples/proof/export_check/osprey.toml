@@ -7,7 +7,7 @@ name = "proof-export-check"
 # links here, so the speed gate times this same program. main.ospml of the
 # example project is left out: its namespace-level `main` is legal only in the
 # selected entry.
-source_roots = ["src", "../kernel/src/level.ospml", "../kernel/src/term.ospml", "../kernel/src/env.ospml", "../kernel/src/reduce.ospml", "../kernel/src/infer.ospml", "../kernel/src/surface.ospml", "../kernel/src/export.ospml", "../kernel/src/exportjson.ospml", "../kernel/src/exportinductive.ospml", "../kernel/src/checked.ospml", "../kernel/src/quotient.ospml", "../kernel/src/literal.ospml", "../kernel/src/telescope.ospml", "../kernel/src/recursor.ospml", "../kernel/src/inductive.ospml", "../kernel/src/fixtures.ospml", "../kernel/src/natural.ospml", "../kernel/src/numeric.ospml", "../kernel/src/numeric-canonical.ospml"]
+source_roots = ["src", "../kernel/src/level.ospml", "../kernel/src/term.ospml", "../kernel/src/env.ospml", "../kernel/src/reduce.ospml", "../kernel/src/infer.ospml", "../kernel/src/surface.ospml", "../kernel/src/export.ospml", "../kernel/src/exportjson.ospml", "../kernel/src/nesting.ospml", "../kernel/src/exportinductive.ospml", "../kernel/src/checked.ospml", "../kernel/src/quotient.ospml", "../kernel/src/literal.ospml", "../kernel/src/telescope.ospml", "../kernel/src/recursor.ospml", "../kernel/src/inductive.ospml", "../kernel/src/fixtures.ospml", "../kernel/src/natural.ospml", "../kernel/src/numeric.ospml", "../kernel/src/numeric-canonical.ospml"]
 default_namespace = "proof"
 entry = "main.ospml"
 
