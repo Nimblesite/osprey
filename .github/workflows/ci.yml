@@ -31,16 +31,17 @@ name: CI
 # instrumented, once.
 #
 # ─── Required-check note ────────────────────────────────────────────────────
-# Ruleset 6154907 pins the required checks by their DISPLAY NAME, and
-# scripts/verify-branch-protection.mjs asserts that same list from inside the
-# tree. The two must be changed together — the `changes` job fails until they
-# agree, which is deliberate: a gate that drifts silently is the failure that
-# script exists to catch.
+# Ruleset 6154907 requires one check, "CI": the root `ci` job at the end. It `needs:` every other job in this workflow, and this workflow
+# calls the Windows, GPUI and WinUI workflows as jobs, so every check on a PR
+# sits under that one root job. It runs `if: always()` and fails when any job
+# it needs failed or was cancelled. A new job goes into its `needs:` list;
+# scripts/ci-scope.test.mjs fails if one is missing, and
+# scripts/verify-branch-protection.mjs checks the ruleset and the root job.
 #
-# Skipping a job via an `if:` condition reports its check as "skipped", which
-# branch protection treats as PASSING — so a website-only PR still merges. Do
-# NOT convert any of these to an `on: paths:` filter: a workflow skipped by
-# path filtering leaves the required check pending forever and blocks merges.
+# Skipping a job via an `if:` condition reports it as "skipped", which the root
+# job treats as PASSING — so a website-only PR still merges. Do NOT give
+# ci.yml an `on: paths:` filter: a workflow skipped by path filtering never
+# runs the root job, leaving the required check pending forever.
 
 on:
   pull_request:
@@ -170,9 +171,8 @@ jobs:
       # subproject's install stamp only fails on a machine that has never
       # installed it — never on a CI runner that installs everything up front,
       # and never on the author's machine. This asserts the prerequisite is
-      # there. It is a step in an already-required job, not a new required
-      # check, so the pinned context list in verify-branch-protection.mjs and
-      # the ruleset stay in agreement.
+      # there. It is a step in an existing job, which the root `ci` job
+      # already needs.
       - name: Make node dependency guard intact
         run: node scripts/verify-node-deps-guard.mjs
 
@@ -483,12 +483,8 @@ jobs:
   # [MEM-BACKENDS] [MEM-OPAQUE] oracle: swapping the allocator must not perturb
   # one byte of output.
   #
-  # These are two explicit jobs rather than one matrix ON PURPOSE. The gate
-  # is verified from inside the tree by scripts/verify-branch-protection.mjs,
-  # which matches each required context against a literal job `name:`. A matrix
-  # name interpolates (`(${{ matrix.memory }})`) and so matches nothing, which
-  # that script correctly reports as a check that can never report. A
-  # verifiable gate is worth more here than two saved stanzas.
+  # These are two explicit jobs rather than one matrix, so each backend reports
+  # under its own literal name.
   test-corpus-gc:
     name: "Tests: language corpus (gc)"
     needs: [changes, build]
@@ -1211,3 +1207,56 @@ jobs:
             target/coverage/packages/
             vscode-extension/coverage/
           retention-days: 7
+
+  # ─── The Windows, GPUI and WinUI workflows ─────────────────────────────────
+  # Called here rather than run by themselves, so the root job below needs them.
+  windows:
+    name: CI (Windows)
+    uses: ./.github/workflows/ci-windows.yml
+
+  gpui:
+    name: GPUI host
+    uses: ./.github/workflows/gpui.yml
+
+  winui:
+    name: WinUI host
+    uses: ./.github/workflows/winui.yml
+
+  # ═══ THE REQUIRED CHECK ═════════════════════════════════════════════════════
+  # The only check the `main` ruleset requires: the root job every other job
+  # sits under. `always()` makes it run when a job it needs fails, which would
+  # otherwise skip it, and a skipped required check reports as passing.
+  ci:
+    name: CI
+    if: ${{ always() }}
+    needs:
+      - changes
+      - build
+      - test-rust
+      - test-packages
+      - test-registry-gc
+      - test-registry-arc
+      - test-python-app-ports
+      - test-corpus-gc
+      - test-corpus-arc
+      - test-proof
+      - test-c-runtime
+      - test-extension
+      - test-wasm
+      - test-website
+      - test-integration
+      - coverage
+      - windows
+      - gpui
+      - winui
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || [ "$result" = skipped ] || exit 1
+          done

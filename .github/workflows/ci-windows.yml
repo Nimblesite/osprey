@@ -1,23 +1,22 @@
 name: CI (Windows)
 
-# Windows build + smoke test for the Osprey compiler (Rust). Like ci.yml, this
-# runs ONLY on PRs to main — merging to main triggers nothing.
+# Windows build + smoke test for the Osprey compiler (Rust). ci.yml calls it on
+# every PR to main, under its root `ci` job; merging to main
+# triggers nothing.
 on:
-  pull_request:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Not github.workflow: a called workflow takes its caller's name, and sharing its group cancels it.
+  group: ci-windows-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   # Website-only PRs don't touch the compiler, so `windows-core` skips — but it
   # must skip at the JOB level, never via an `on: paths-ignore:` filter. A
-  # required check belonging to a workflow that path-filtering skipped stays
-  # pending forever and blocks the merge; a job skipped by `if:` reports as
-  # PASSING. `windows-core` IS a required status check on `main` (ruleset
-  # 6154907), which is why the filter that used to live here is now this job.
+  # workflow that path-filtering skipped never reports, which leaves ci.yml's
+  # root job waiting; a job skipped by `if:` reports as PASSING.
   changes:
     name: Detect changed areas (Windows)
     runs-on: ubuntu-latest
@@ -30,9 +29,8 @@ jobs:
         id: filter
 
   # The WinUI host and its examples in a real window (plan 0038), and the GPUI host on each desktop
-  # system (plan 0036). winui.yml and gpui.yml run by themselves on every pull request, as required
-  # checks; a manual run of this workflow also runs them, because a workflow not yet on main cannot
-  # be dispatched by itself.
+  # system (plan 0036). ci.yml calls winui.yml and gpui.yml on every pull request; a manual run of
+  # this workflow also runs them, because a workflow not yet on main cannot be dispatched by itself.
   winui:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/winui.yml
@@ -42,8 +40,6 @@ jobs:
     uses: ./.github/workflows/gpui.yml
 
   windows-core:
-    # IMPORTANT: this name is a required status check on `main` (ruleset 6154907).
-    # Renaming it will break branch protection — coordinate with the ruleset update.
     name: Windows Core Build & Smoke Test
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
