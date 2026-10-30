@@ -349,6 +349,9 @@ module WorkViews
         Faulted _ => Ui::row [Ui::styled (item.ruleName, ui::Mono, ui::Accent), Ui::text item.ruleSays]
 
     (** [WORKBENCH-REGIONS] The prelude's rules, which the kernel itself checked, and the symbol abbreviations, read only. *)
+    (** [WORKBENCH-REGIONS] The proof library's bundled libraries and file action. *)
+    export libraryActions () = ProofLibraries::actions (perform Signal<ImportedState>.read ())
+
     export library () = Ui::column [ProofLibraries::pane (perform Signal<ImportedState>.read ()), Ui::section ("Rules", "Checked by the kernel when the workbench starts.", mapList (rules (), \item => ruled item)), Ui::section ("Typing symbols", "Type a backslash and the name.", mapList (Notation::table, \entry => Ui::caption ("\\" + entry.abbreviation + "  " + entry.symbol))), about ()]
 
 (** Read-only source colours are chosen beside the mathematical document, identically on every host. *)

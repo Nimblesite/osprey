@@ -102,7 +102,7 @@ module ProofLibraries
 
     export open bench =
         current = bench.imports
-        ready = bench(imports = current(libraryPending = "", libraryTicket = "proof:opened"))
+        ready = bench(imports = current(libraryPending = fileKey, libraryTicket = "proof:opened"))
         Runtime::asking (ready, [Requests::ask ("proof:opened", ui::ChooseFile(types = ["json", "ndjson", "jsonl"], chosenLimit = 8388608, chosenSlice = fileKey))])
 
     export imported (bench, content) = ui::Step(stepStore = bench(imports = replaced (bench.imports, content)), requests = [], writes = [ui::SliceWrite(sliceKey = fileKey, sliceText = content)])
@@ -131,12 +131,16 @@ module ProofLibraries
         true => receivedFile (bench, result)
 
     receivedFile (bench, result) = match Doc::flag (result, "cancelled")
-        true => Runtime::step bench
+        true => Runtime::step (settled bench)
         false => match isEmpty (Doc::text (result, "path"))
             true => failed (bench, "The host returned no file receipt.")
             false => Runtime::step (bench(imports = replaced (bench.imports, perform ui::Slices.fetch fileKey)))
 
-    export failed (bench, problem) = Runtime::step (Workspaces::notice (bench, "The proof library could not be opened: " + problem, true))
+    settled bench =
+        current = bench.imports
+        bench(imports = current(libraryPending = "", libraryTicket = ""))
+
+    export failed (bench, problem) = Runtime::step (Workspaces::notice (settled bench, "The proof library could not be opened: " + problem, true))
 
     export edited (bench, content) = match byteLength content > inlineLimit
         true =>
@@ -156,7 +160,11 @@ module ProofLibraries
         bench(imports = current(exportExpanded = open))
 
     (** Results are derived from the current source, never restored from saved acceptance flags. *)
-    export pane current = Ui::framed (plain(frameName = "proof-library", frameGap = 16), Ui::column [BundledLibraries::pane current, Ui::section ("Proof library", "Inspect exported theorems checked by the kernel.", [Ui::button ("Open proof library", "folder", OpenProofLibrary)]), content current, Ui::disclosure ("Imported source", current.exportExpanded, ToggleProofSource, sourceFields current)])
+    export pane current = Ui::framed (plain(frameName = "proof-library", frameGap = 16), Ui::column [Ui::slot "library-actions", content current, Ui::disclosure ("Imported source", current.exportExpanded, ToggleProofSource, sourceFields current)])
+
+    (** The library's actions are their own region: resolving a press re-renders
+        only this region, never re-checking the current export. *)
+    export actions current = Ui::framed (plain(frameName = "proof-library-actions", frameGap = 16), Ui::column [BundledLibraries::pane current, Ui::section ("Proof library", "Inspect exported theorems checked by the kernel.", [Ui::button ("Open proof library", "folder", OpenProofLibrary)])])
 
     sourceFields current = match current.exportExpanded
         false => []

@@ -18,7 +18,7 @@ assert.equal(result.exitCode, 0, result.stderr);
 assert.ok(result.stdout.trim(), `${name} silently returned no startup envelope`);
 const envelope = parseEnvelope(result.stdout);
 assert.deepEqual(envelope.patches.map((patch) => patch.key).sort(), workbench
-  ? ["catalogue", "document", "generated", "goal", "heading", "lesson", "library", "root"]
+  ? ["catalogue", "document", "generated", "goal", "heading", "lesson", "library", "library-actions", "root"]
   : ["details", "packages", "root"]);
 assert.equal(envelope.requests.length, 2, "Startup must request its two initial capabilities");
 if (workbench) assert.deepEqual(envelope.requests.map(request => request.kind), ["read-texts", "store-read"]);

@@ -113,7 +113,7 @@ module App
         handle static Signal<Achieved>
             read => Changes::done current
         changed = Changes::slices (before, current)
-        listConcat ([Keyed::region (frames, "root", changed, WorkViews::root), Keyed::region (frames, "heading", changed, WorkViews::header), Keyed::region (frames, "document", changed, WorkViews::document), Keyed::region (frames, "goal", changed, GoalViews::pane), Keyed::region (frames, "generated", changed, WorkViews::generated), Keyed::region (frames, "library", changed, WorkViews::library), Keyed::region (frames, "catalogue", changed, LearnViews::catalogue), Keyed::region (frames, "lesson", changed, LearnViews::lesson)], mapList (Changes::challenges current, \id => challengeRegion (before, current, frames, id)))
+        listConcat ([Keyed::region (frames, "root", changed, WorkViews::root), Keyed::region (frames, "heading", changed, WorkViews::header), Keyed::region (frames, "document", changed, WorkViews::document), Keyed::region (frames, "goal", changed, GoalViews::pane), Keyed::region (frames, "generated", changed, WorkViews::generated), Keyed::region (frames, "library", changed, WorkViews::library), Keyed::region (frames, "library-actions", changed, WorkViews::libraryActions), Keyed::region (frames, "catalogue", changed, LearnViews::catalogue), Keyed::region (frames, "lesson", changed, LearnViews::lesson)], mapList (Changes::challenges current, \id => challengeRegion (before, current, frames, id)))
 
     initialPalette slate = match slate
         true => Palettes::chalk
