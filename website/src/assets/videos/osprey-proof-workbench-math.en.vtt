@@ -9,11 +9,11 @@ Statement: if p and q both hold, then q and p both hold. Assume the pair. By cas
 00:36.911 --> 00:53.310
 The goal pane shows a context and a conclusion. The context lists hypotheses you have assumed. The conclusion is what remains to prove. A hypothesis named p is not a proof of every claim about p. Read both sides before choosing a step.
 
-00:58.278 --> 01:16.094
+00:54.678 --> 01:12.494
 Open Examples to find lessons and challenges. Read the explanation, attempt the exercise, and submit your answer. Hints are available. After three incorrect proof submissions, Show solution reveals a worked proof. Study and submit it to the kernel, then inspect the feedback.
 
-01:29.878 --> 01:47.187
+01:13.344 --> 01:30.653
 Source shows the theorem text generated from your argument, with explicit holes for unfinished steps. This text did not produce the displayed verdict: Osprey's own kernel checked your steps directly. Passing the generated file to Lean is a separate path that is still being built.
 
-01:48.037 --> 02:04.479
+01:31.503 --> 01:47.945
 For a first session, complete And, the other way around. Then swap its last two steps and read the kernel's reason for refusing it. A proof of p cannot discharge the goal q. The changing proof state explains the result. Osprey is actively evolving.

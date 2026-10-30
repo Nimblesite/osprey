@@ -7,7 +7,7 @@ permalink: /docs/mathlib-port/
 
 Osprey already checks real imported mathematical proofs using a kernel written in Osprey. The library port is underway: pinned source files, dependency exports, exact statements, axiom reports and negative controls live in the repository. This page records the verified checkpoint of **30 October 2026**.
 
-[Watch the programmer introduction](/docs/proofs/videos/mathlib-bridge/) or [the mathematics version](/docs/proofs/videos/mathlib-bridge-math/). The films show ten selected supporting lemmas; the public corpus has since grown to seventeen. The newer totals below describe the repository checkpoint, not additional footage hidden in those recordings.
+[Watch the programmer introduction](/docs/proofs/videos/mathlib-bridge/) or [the mathematics version](/docs/proofs/videos/mathlib-bridge-math/). The films show real imported proofs in the native and VS Code Workbench, including natural-number addition and the exact work counter of a doubling loop. The loop proof names its `propext` assumption. The dated corpus totals below describe the wider repository checkpoint; these demonstrations do not claim full Mathlib coverage.
 
 ## Watch: for programmers
 

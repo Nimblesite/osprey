@@ -3,23 +3,23 @@ WEBVTT
 00:00.400 --> 00:20.345
 Mathlib is Lean's community library of formalized mathematics: definitions, theorems, and proofs that later work can reuse. Osprey's library port is already underway. Its kernel is written in Osprey, and it already rechecks imported Lean proofs. Let's look at the code and the results in this repository.
 
-00:21.196 --> 00:41.155
-The bridge reconstructs Lean declarations and checks the proof terms in an Osprey environment. Conjunction, equality, logical equivalence, and natural-number addition already have working imported proofs. The dependencies are checked too. This is the foundation the ongoing Mathlib port is building on.
+00:21.196 --> 00:38.474
+Lean provides a reference for developing Osprey's compatible theory. Osprey checks the imported evidence itself. Known soundness bugs must be rejected. The discipline protocol keeps theories separate; safe versioned forks and fresh proof checks remain required milestones.
 
-00:42.005 --> 01:01.905
+00:39.324 --> 00:59.224
 The fixture records output from Lean and its exporter, with the toolchain identity. Names, universe levels, terms, and declarations are serialized as text. Osprey reconstructs that environment and checks the supported declarations. The exact fixture is preserved so the demonstration can be repeated.
 
-01:02.754 --> 01:23.583
+01:00.074 --> 01:20.902
 The executable accepts and_swap, eq_symm, and iff_refl from the recorded export. In familiar notation, these express conjunction commutativity, equality symmetry, and self-equivalence. The checker has processed the proof terms and their declarations. These acceptance results concern this recorded set of theorems.
 
-01:25.621 --> 01:47.138
+01:22.940 --> 01:44.457
 Here is Lean's actual Nat.add_comm proof, imported and checked by Osprey. It says that natural-number addition is commutative. The check uses natural-number definitions and dependent elimination rules. Its recorded dependency closure contains no axioms. This is a universal theorem, not a numerical spot check.
 
-01:47.988 --> 02:09.308
-The repository includes ten supporting lemmas from the OpenAI math release: six on stacks, three on a doubling loop, and one proving an index map injective. The loop returns two to the width, using three times the width plus one steps. Five lemmas are axiom-free; five depend on propositional extensionality.
+01:45.307 --> 02:08.736
+This imported loop lemma states an exact counter invariant: for every natural-number width, the returned work count is three times the width, plus one. This is an abstract counter, not a timing measurement. The Workbench reports the checked statement and its transitive assumption, propositional extensionality. The manifest pins the original statement and dependency export.
 
-02:13.154 --> 02:32.085
+02:09.586 --> 02:28.517
 The second result substitutes a term that does not have the arithmetic theorem's required type. The same executable rejects that declaration. This controls one concrete failure path. It strengthens evidence about the importer and kernel without claiming that their implementation has been proved correct.
 
-02:32.935 --> 02:54.283
-These proofs run under garbage collection, reference counting, and WebAssembly. For each of the nine supporting lemmas, the harness also rejects an altered proof and a false statement. The broader Mathlib port continues from implemented checking and an expanding corpus. Open the repository, inspect a theorem, and replay the evidence.
+02:29.367 --> 02:51.109
+Replay the public corpus under garbage collection, reference counting and WebAssembly. The harness must accept each selected proof and reject corrupted evidence and false statements. The library port continues from implemented checking and a growing corpus. Inspect a theorem's statement, dependencies and assumptions, then run its checks yourself.

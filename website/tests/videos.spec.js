@@ -182,7 +182,9 @@ test("proof learning paths pair all six topics and keep current port evidence se
   }
   await expect(page.locator('.docs-nav-desktop a[href="/docs/mathlib-port/"]')).toBeVisible();
   await page.goto("/docs/mathlib-port/");
-  await expect(page.locator("main")).toContainText("ten selected supporting lemmas");
+  await expect(page.locator("main")).toContainText("real imported proofs in the native and VS Code Workbench");
+  await expect(page.locator("main")).toContainText("The dated corpus totals below describe the wider repository checkpoint");
+  await expect(page.locator("main")).not.toContainText("The films show ten selected supporting lemmas");
   await expect(page.locator("main")).toContainText("525 successful root checks");
 });
 

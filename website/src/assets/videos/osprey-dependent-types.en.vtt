@@ -15,5 +15,5 @@ This is the actual Osprey source for that identity proof. It says: given a propo
 01:05.800 --> 01:20.450
 Run the kernel and both cases appear. Identity is accepted because the proof has the required type. A deliberately wrong term is refused, with the reason printed. You are watching real output, not a scripted green tick.
 
-01:31.033 --> 01:47.398
+01:21.300 --> 01:37.664
 Today Osprey checks this identity and a proof that chains two implications. That does not automatically prove your application correct. You still state the claim and build the evidence. Osprey is actively evolving, and this small checked fragment is where to start.

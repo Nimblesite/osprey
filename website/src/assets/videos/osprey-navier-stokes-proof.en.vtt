@@ -15,5 +15,5 @@ Watch the four rotating cells lose strength. No external force keeps them going.
 01:21.020 --> 01:41.861
 Now try the lesson’s logical exercise. Assume there are two possibilities, and one has been ruled out. Show that the other must hold. Write the assumptions, consider each case, and watch Osprey check the proof. The words smooth and blowup name propositions here; the exercise teaches how a conclusion follows from assumptions.
 
-01:58.654 --> 02:18.224
+01:42.711 --> 02:02.282
 Start with the Navier-Stokes lesson: read the symbols, explore the flow, and try the remaining-outcome exercise. You have seen Osprey compute a real fluid example and check a logical argument. A formal proof about the fluid itself would also need mathematical definitions connecting those two parts.

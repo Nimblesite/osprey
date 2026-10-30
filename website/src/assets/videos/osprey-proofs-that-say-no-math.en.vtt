@@ -15,5 +15,5 @@ An import reader follows the same rule. If an expression form is unsupported, th
 01:08.260 --> 01:23.274
 A checked theorem depends on: the exact statement, its assumptions, the proof term, and the kernel that accepted it. Testing can find bugs, but a green suite is not a theorem that the kernel is correct. State the boundary with the claim.
 
-01:24.124 --> 01:39.792
+01:27.060 --> 01:42.727
 Keep the valid and invalid cases together. Confirm identity passes, then inspect the rejected term and reason. A proof tool becomes easier to assess when its limits are as visible as its successes. Osprey is actively evolving.

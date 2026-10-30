@@ -9,11 +9,11 @@ Start with a small statement. If both p and q are true, then q and p are true. A
 00:34.899 --> 00:50.306
 The goal pane is the important part. It lists the facts you have assumed and the claim you still need to prove. A useful name is not enough: the fact it names must match the goal. If a step does not fit, read the goal before changing the argument.
 
-00:56.265 --> 01:15.265
+00:52.665 --> 01:11.665
 Open Examples to find short lessons and challenges. Read the explanation, try the exercise, then submit your answer for checking. A hint can unblock you. After three incorrect proof attempts, Show solution reveals a worked answer. Study it, then submit it to see the kernel check the proof.
 
-01:27.865 --> 01:45.099
+01:12.515 --> 01:29.749
 Open Source to see a text version of your argument. Unfinished parts appear as explicit holes. The verdict comes from Osprey's own kernel checking your steps directly. Sending this generated file to Lean, another proof assistant, is a separate path that is still being built.
 
-01:45.949 --> 02:02.230
+01:30.599 --> 01:46.880
 For a first session, try And, the other way around. Then swap its last two steps. The first asks for q, but you give it p. Watch the checker refuse that argument and read why. You can see what the rule requires. Osprey is actively evolving.

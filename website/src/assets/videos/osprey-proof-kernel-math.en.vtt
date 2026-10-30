@@ -15,5 +15,5 @@ The surface parser reads declarations like the identity theorem and a chained im
 01:13.177 --> 01:27.655
 The run prints the accepted identity and the rejected variant. The kernel's reason names the terms that failed to match. Nothing is waved through because a theorem has a promising name. The rejection controls the acceptance.
 
-01:28.505 --> 01:52.390
-The implementation has moved beyond this introductory example. It checks inductive declarations, Lean's natural-number addition commutativity proof, and nine selected supporting lemmas from the OpenAI math release. Each of those nine also has a corrupted-proof control and a false-statement control. The library port is underway, with concrete results you can reproduce.
+01:28.505 --> 01:56.611
+Ordinary Osprey retains Hindley-Milner inference. A generic compile-time protocol delegates additional disciplines to packages; the existing interval-bound checker demonstrates another discipline. The dependent-proof kernel also lives outside the compiler. Here it accepts universal addition commutativity. Versioned theory forks, explicit axiom policies and invalidation of dependent proof receipts remain completion milestones. Changing a discipline must never preserve incompatible proof authority.

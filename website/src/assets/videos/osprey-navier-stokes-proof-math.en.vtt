@@ -15,5 +15,5 @@ The velocity amplitude decays exponentially at twice the viscosity parameter, an
 01:29.171 --> 01:50.710
 The lesson also supplies a propositional proof exercise. Assume smooth or blowup, and assume not blowup. Derive smooth by cases, using contradiction for the excluded branch. Osprey checks that argument through its kernel. These propositions are placeholders for claims; no definition of fluid regularity is imported by naming them.
 
-02:06.804 --> 02:27.845
+01:51.560 --> 02:12.602
 Open the lesson and work through the remaining-outcome exercise. Inspect the hypotheses, the changing goal, and the final kernel verdict. The next mathematical task is to formalize the fluid definitions and connect them to a theorem. The current film gives you runnable calculations and a checked logical starting point.

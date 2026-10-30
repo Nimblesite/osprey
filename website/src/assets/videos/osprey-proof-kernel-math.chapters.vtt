@@ -15,5 +15,5 @@ A surface theorem becomes a term.
 01:12.927 --> 01:28.255
 A closed check has no gaps.
 
-01:28.255 --> 01:55.190
-Inductives and imported theorems already run.
+01:28.255 --> 01:59.411
+Proof rules live outside the compiler.
