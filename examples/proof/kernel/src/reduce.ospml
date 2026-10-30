@@ -43,7 +43,7 @@ module Reduce
         stack grows with the logarithm of the step count, the way a balanced
         scan bounds `JsonScan`'s call depth rather than relying on tail calls.
         Implements [PROOF-KERNEL-THEORY]. *)
-    export whnf (env, term) = run (env, Pending term [])
+    export whnf (env, term) = settled (env, focus (env, term))
 
     run (env, progress) = drive (env, progress, 1)
 
@@ -88,7 +88,9 @@ module Reduce
 
     (** A call site that needs an ordinary term runs the machine on the step,
         so the guards of the reduction it names are the same ones. *)
-    settled (env, step) = run (env, enter (env, step, []))
+    settled (env, step) = match step
+        Whnf term => term
+        other => run (env, enter (env, other, []))
 
     numericApp (env, term, reduced) = match reduced
         NumericReduced value => Again value
