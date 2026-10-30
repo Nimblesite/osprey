@@ -11,7 +11,7 @@ use osprey_ast::{MatchArm, Pattern};
 /// `sub_patterns` by column and `fields` by name for every variant alike, so
 /// codegen must agree or a well-typed arm reads the wrong slot.
 #[derive(Clone, Copy)]
-enum BindMode {
+pub(super) enum BindMode {
     /// `Ctor { a, b }` — each binder names the slot it takes, so a reordered
     /// destructure (`PersonData { age, name }`) still binds correctly.
     ByName,
@@ -126,7 +126,12 @@ fn declared_positionally(view: &CtorView) -> bool {
 
 /// The payload slot a binder column resolves to, or `None` when a named
 /// destructure mentions a field this variant does not declare.
-fn slot_of(view: &CtorView, column: usize, bind_name: &str, mode: BindMode) -> Option<usize> {
+pub(super) fn slot_of(
+    view: &CtorView,
+    column: usize,
+    bind_name: &str,
+    mode: BindMode,
+) -> Option<usize> {
     let by_slot = (column < view.fields.len()).then_some(column);
     match mode {
         BindMode::BySlot => by_slot,
@@ -176,24 +181,35 @@ fn bind_variant_fields(
         let Some(idx) = slot_of(&view, column, bind_name, mode) else {
             continue;
         };
-        let Some((declared, fty)) = view.fields.get(idx) else {
+        let Some(value) = field(cg, disc, variant, &struct_ty, &src, &view, idx) else {
             continue;
         };
-        let fty = *fty;
-        let loaded = crate::aggregate::load_record_field(cg, variant, &struct_ty, &src, idx, fty);
-        let inferred = crate::aggregate::field_type(cg, disc, variant, declared);
-        let value = crate::aggregate::restore_field(
-            cg,
-            Value::new(loaded, fty),
-            variant,
-            declared,
-            inferred.as_ref(),
-        );
         bind_value(cg, bind_name.clone(), value);
     }
 }
 
-fn discriminant(cg: &mut Codegen, value: &Value, owner: &str) -> String {
+pub(super) fn field(
+    cg: &mut Codegen,
+    disc: &Value,
+    variant: &str,
+    struct_ty: &str,
+    src: &str,
+    view: &CtorView,
+    idx: usize,
+) -> Option<Value> {
+    let (declared, fty) = view.fields.get(idx)?;
+    let loaded = crate::aggregate::load_record_field(cg, variant, struct_ty, src, idx, *fty);
+    let inferred = crate::aggregate::field_type(cg, disc, variant, declared);
+    Some(crate::aggregate::restore_field(
+        cg,
+        Value::new(loaded, *fty),
+        variant,
+        declared,
+        inferred.as_ref(),
+    ))
+}
+
+pub(super) fn discriminant(cg: &mut Codegen, value: &Value, owner: &str) -> String {
     if !crate::aggregate::record_has_tag(owner) {
         return "0".to_string();
     }

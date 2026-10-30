@@ -307,7 +307,7 @@ pub(crate) fn list_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Valu
 /// `List<float>` printed IEEE-754 bits before that distinction existed
 /// ([`crate::collections::LIST_TAG`]) — plus the loop itself, for a combinator
 /// that needs the raw word.
-fn each_list_elem(
+pub(crate) fn each_list_elem(
     cg: &mut Codegen,
     l: &Value,
     body: impl FnOnce(&mut Codegen, &ListLoop, Value) -> Result<()>,
@@ -370,7 +370,12 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
 /// Store a freshly produced element in the list under construction. Answers
 /// its element type, which tags the built list
 /// ([`crate::collections::LIST_TAG`]).
-fn push_built(cg: &mut Codegen, bld: &str, elem: Value, builtin: &str) -> Result<Option<String>> {
+pub(crate) fn push_built(
+    cg: &mut Codegen,
+    bld: &str,
+    elem: Value,
+    builtin: &str,
+) -> Result<Option<String>> {
     if elem.result_inner.is_some() {
         return Err(CodegenError::unsupported(format!(
             "{builtin} cannot store an unhandled Result element; handle it in the callback"

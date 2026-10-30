@@ -50,14 +50,18 @@ pub(super) fn gen_structural_match(
 
 /// Whether a structural arm selects this concrete layout: an open pattern
 /// needs its named fields present, a closed one the exact row ([TYPE-ROW]).
-fn row_selects(fields: &[(String, String)], open: bool, layout: &[(String, LType)]) -> bool {
+pub(super) fn row_selects(
+    fields: &[(String, String)],
+    open: bool,
+    layout: &[(String, LType)],
+) -> bool {
     let present = |f: &str| layout.iter().any(|(n, _)| n == f);
     fields.iter().all(|(f, _)| present(f)) && (open || fields.len() == layout.len())
 }
 
 /// Bind a structural arm's fields straight off a concrete record block — the
 /// binder takes the DECLARED slot type, exactly as the checker typed it.
-fn bind_row_statically(
+pub(super) fn bind_row_statically(
     cg: &mut Codegen,
     disc: &Value,
     owner: &str,
@@ -124,7 +128,7 @@ fn gen_any_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Va
             _ => {
                 return Err(CodegenError::unsupported(
                     "non-structural arm over an erased `any`",
-                ))
+                ));
             }
         }
     }

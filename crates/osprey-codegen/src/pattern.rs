@@ -14,6 +14,7 @@ use osprey_ast::{Expr, MatchArm, Pattern};
 
 mod list;
 mod literal;
+mod nested;
 mod result;
 mod structural;
 mod union;
@@ -109,6 +110,18 @@ fn emit_arm(
     phi_in: &mut Vec<(Value, String)>,
     bind: impl FnOnce(&mut Codegen),
 ) -> Result<()> {
+    try_emit_arm(cg, arm, phi_in, |cg| {
+        bind(cg);
+        Ok(())
+    })
+}
+
+fn try_emit_arm(
+    cg: &mut Codegen,
+    arm: &MatchArm,
+    phi_in: &mut Vec<(Value, String)>,
+    bind: impl FnOnce(&mut Codegen) -> Result<()>,
+) -> Result<()> {
     let position = match &arm.body {
         Expr::Block { statements, .. } => statements.first().and_then(crate::stmt::stmt_position),
         _ => None,
@@ -116,7 +129,7 @@ fn emit_arm(
     .or_else(|| crate::stmt::tail_position(&arm.body));
     cg.with_debug_scope(position, |cg| {
         cg.with_local_scope(|cg| {
-            bind(cg);
+            bind(cg)?;
             push_arm(cg, &arm.body, phi_in)
         })
     })
@@ -137,7 +150,21 @@ fn finish_guarded_arm(
     is_last: bool,
     bind: impl FnOnce(&mut Codegen),
 ) -> Result<()> {
-    emit_arm(cg, arm, phi_in, bind)?;
+    finish_checked_arm(cg, arm, phi_in, next, is_last, |cg| {
+        bind(cg);
+        Ok(())
+    })
+}
+
+fn finish_checked_arm(
+    cg: &mut Codegen,
+    arm: &MatchArm,
+    phi_in: &mut Vec<(Value, String)>,
+    next: &str,
+    is_last: bool,
+    bind: impl FnOnce(&mut Codegen) -> Result<()>,
+) -> Result<()> {
+    try_emit_arm(cg, arm, phi_in, bind)?;
     cg.start_block(next);
     if is_last {
         cg.emit("unreachable");
@@ -193,7 +220,12 @@ fn finish_phi(
             for (v, blk) in &incoming_values {
                 eprintln!(
                     "DBG arm blk {blk}: llvm {:?} ty {:?} osp_ty {:?} result_inner {:?} inferred {:?} operand {}",
-                    v.llvm_ty(), v.ty, v.osp_ty, v.result_inner, v.inferred_type, v.operand
+                    v.llvm_ty(),
+                    v.ty,
+                    v.osp_ty,
+                    v.result_inner,
+                    v.inferred_type,
+                    v.operand
                 );
             }
             eprintln!(

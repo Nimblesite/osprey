@@ -385,7 +385,10 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
     // wildcard element, trailing catch-all (pattern.rs gen_list_match,
     // bind_list_arm).
     let ir = module(
-        "fn classify(xs) = match xs {\n\
+        "type Level = Zero | Param { value: string }\n\
+             fn nested(xs) = match xs { [Param { value }, ...rest] => value\n\
+               _ => \"none\" }\n\
+             fn classify(xs) = match xs {\n\
                []                  => \"empty\"\n\
                [only]              => \"one(${only})\"\n\
                [_, second, ...rest] => \"rest=${listLength(rest)}\"\n\
@@ -393,7 +396,7 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
              }\n\
              fn main() -> Unit = {\n\
                let xs = listAppend(listAppend(List(), 1), 2)\n\
-               print(classify(xs))\n\
+               print(\"${classify(xs)}:${nested([Param { value: \"u\" }, Zero])}\")\n\
              }\n",
     );
     shows(
@@ -405,6 +408,11 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
             "icmp sge i64",
         ],
     );
+    let corpus = module(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp"
+    )));
+    shows(&corpus, &["osprey_list_get", "icmp eq i64"]);
 }
 
 #[test]

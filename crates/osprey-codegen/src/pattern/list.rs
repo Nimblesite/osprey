@@ -1,6 +1,6 @@
 //! List pattern lowering.
 use super::{
-    bind_value, finish_guarded_arm, finish_phi, match_state, open_guarded_arm, take_catch_all,
+    bind_value, finish_checked_arm, finish_phi, match_state, open_guarded_arm, take_catch_all,
 };
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
@@ -26,8 +26,7 @@ use osprey_ast::{MatchArm, Pattern};
 /// element-owner information the guarded arms could have used.
 pub(super) fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
     let original = crate::cast::coerce_to(cg, disc.clone(), LType::Ptr)?;
-    let rebuilt = crate::listlit::to_runtime_list(cg, disc.clone());
-    let list_val = crate::cast::coerce_to(cg, rebuilt, LType::Ptr)?;
+    let list_val = runtime(cg, disc.clone())?;
     let len = cg.call("i64", "osprey_list_length", "i8*", &[&list_val.operand]);
     let (end, mut phi_in, last, mark) = match_state(cg, arms);
 
@@ -38,8 +37,11 @@ pub(super) fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) 
                 let op = if rest.is_some() { "sge" } else { "eq" };
                 let cond = cg.emit_reg(format!("icmp {op} i64 {len}, {n}"));
                 let next_lbl = open_guarded_arm(cg, &cond);
-                finish_guarded_arm(cg, arm, &mut phi_in, &next_lbl, i == last, |cg| {
-                    bind_list_arm(cg, &list_val, elements, rest.as_deref(), n);
+                let captured = super::nested::elements(cg, &list_val, elements, &next_lbl)?;
+                finish_checked_arm(cg, arm, &mut phi_in, &next_lbl, i == last, |cg| {
+                    super::nested::bind(cg, captured)?;
+                    bind_list_arm(cg, &list_val, &[], rest.as_deref(), n);
+                    Ok(())
                 })?;
             }
             Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
@@ -63,7 +65,7 @@ pub(super) fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) 
 /// ever registering it as an owner — so nothing dups it and nothing drops it,
 /// and it stays valid exactly as long as the scrutinee does. The `...rest`
 /// view below is the opposite: a real +1 the arm owns. [GC-ARC-PERCEUS]
-fn bind_list_arm(
+pub(super) fn bind_list_arm(
     cg: &mut Codegen,
     list_val: &Value,
     elements: &[Pattern],
@@ -72,22 +74,8 @@ fn bind_list_arm(
 ) {
     for (idx, el) in elements.iter().enumerate() {
         if let Pattern::Binding(name) = el {
-            let raw = cg.call(
-                "i64",
-                "osprey_list_get",
-                "i8*, i64",
-                &[&list_val.operand, &idx.to_string()],
-            );
-            // A destructured element is bound at the list's element type, so a
-            // `[first, second]` arm over a `List<float>` binds floats
-            // ([`crate::collections::LIST_TAG`]).
-            let elem = crate::collections::elem_value(cg, list_val, &raw);
-            // Keep the record identity recovered from the element tag. [TYPE-FIELD-ACCESS-NON-RECORD]
-            let owner = elem
-                .osp_ty
-                .clone()
-                .or_else(|| list_val.payload_owner.clone());
-            bind_value(cg, name.clone(), elem.with_owner(owner));
+            let elem = element(cg, list_val, idx);
+            bind_value(cg, name.clone(), elem);
         }
     }
     if let Some(name) = rest {
@@ -114,6 +102,23 @@ fn bind_list_arm(
         crate::arc::own(cg, &v);
         bind_value(cg, name.to_string(), v);
     }
+}
+
+pub(super) fn runtime(cg: &mut Codegen, value: Value) -> Result<Value> {
+    let rebuilt = crate::listlit::to_runtime_list(cg, value);
+    crate::cast::coerce_to(cg, rebuilt, LType::Ptr)
+}
+
+pub(super) fn element(cg: &mut Codegen, list: &Value, index: usize) -> Value {
+    let raw = cg.call(
+        "i64",
+        "osprey_list_get",
+        "i8*, i64",
+        &[&list.operand, &index.to_string()],
+    );
+    let value = crate::collections::elem_value(cg, list, &raw);
+    let owner = value.osp_ty.clone().or_else(|| list.payload_owner.clone());
+    value.with_owner(owner)
 }
 
 #[cfg(test)]

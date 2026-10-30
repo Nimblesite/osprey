@@ -34,7 +34,7 @@ pub(super) fn gen_literal_match(
 
 /// Equality test between the discriminant and a literal pattern → the `i1`
 /// operand.
-fn gen_eq(cg: &mut Codegen, disc: &Value, lit: &Expr) -> Result<String> {
+pub(super) fn gen_eq(cg: &mut Codegen, disc: &Value, lit: &Expr) -> Result<String> {
     let pat = gen_expr(cg, lit)?;
     Ok(crate::expr::gen_comparison(cg, "==", disc.clone(), pat)?.operand)
 }

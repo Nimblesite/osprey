@@ -109,6 +109,7 @@ pub(crate) fn erase_result(cg: &mut Codegen, semantic: Value) -> Value {
 /// Adapt an inline argument to the semantic parameter shape while keeping a
 /// Result as a typed block (there is no emitted ABI boundary to erase here).
 pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: &ParamSig) -> Result<Value> {
+    let v = erase_list_elements(cg, v, want)?;
     let value = match want.result_inner {
         Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
         None => coerce_to(cg, v, want.ty)?,
@@ -117,6 +118,36 @@ pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: &ParamSig)
         Some(fiber) => fiber.restore(value),
         None => value,
     })
+}
+
+/// Container erasure must box elements, rather than only retyping its pointer.
+fn erased_list_destination(value: &Value, want: &ParamSig) -> bool {
+    let Some(osprey_types::Type::Con { name, args }) = &want.inferred_type else {
+        return false;
+    };
+    name == osprey_types::names::LIST
+        && args
+            .first()
+            .is_some_and(|ty| crate::types::ltype_of(ty) == LType::Any)
+        && crate::collections::tagged_elem(value).as_deref() != Some(crate::llty::ANY_TAG_SPELLING)
+}
+
+fn erase_list_elements(cg: &mut Codegen, value: Value, want: &ParamSig) -> Result<Value> {
+    if !erased_list_destination(&value, want) {
+        return Ok(value);
+    }
+    let source = crate::listlit::escaping(cg, value);
+    let builder = crate::collections::list_builder_new_of(cg, "1");
+    crate::iter::each_list_elem(cg, &source, |cg, _, element| {
+        let boxed = coerce_to(cg, element, LType::Any)?;
+        let _ = crate::iter::push_built(cg, &builder, boxed, "list erasure")?;
+        Ok(())
+    })?;
+    let mut output = crate::collections::list_builder_seal(cg, &builder).with_owner(Some(
+        crate::collections::list_owner(Some(crate::llty::ANY_TAG_SPELLING)),
+    ));
+    output.inferred_type.clone_from(&want.inferred_type);
+    Ok(output)
 }
 
 /// Reconstruct an incoming parameter value from its emitted ABI register.
