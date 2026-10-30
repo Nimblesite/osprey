@@ -6,10 +6,13 @@ import * as sinon from "sinon";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import { ColorThemeKind, commands, Uri, window } from "vscode";
 import * as Wasi from "../../client/src/osprey-ui/wasi";
-import { COMMAND, assertNoFreehandInk, mathematics, viewport, phoneSourceGeometry, capture, lesson, withWorkbench, pendingWorkbenchUpdate, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, rejectReimportedProof, saveWorking, reopenWorking, preserveLegacyWorking, writeLegacyWorkspace, exportWorking, comparisonState } from "./workbench-browser-kit";
+import { COMMAND, assertNoFreehandInk, mathematics, viewport, phoneSourceGeometry, capture, lesson, withWorkbench, staleWorkbenchAction, pendingWorkbenchUpdate, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, rejectReimportedProof, saveWorking, reopenWorking, preserveLegacyWorking, writeLegacyWorkspace, exportWorking, comparisonState } from "./workbench-browser-kit";
 
 suite("workbench VSIX browser", () => {
   teardown(() => sinon.restore());
+  test("a refused stale action does not leave the workbench busy", async () => {
+    await withWorkbench(staleWorkbenchAction, "failure-stale-action");
+  });
   test("workbench removes freehand drawing while retaining typed mathematics", async () => {
     await withWorkbench(async frame => {
       await assertNoFreehandInk(frame);

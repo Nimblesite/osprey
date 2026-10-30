@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { createWorkspaceSession, type SessionDeps } from "../../client/src/osprey-ui/session";
+import { createWorkspaceSession, type SessionDeps, type WorkspaceSession } from "../../client/src/osprey-ui/session";
 import type { NativeRequest } from "../../client/src/osprey-ui/protocol";
 
 function envelope(state: string, revision: number, requests: NativeRequest[] = []): string {
@@ -24,6 +24,12 @@ function recordedSession(initialRevision = 0, overrides: Partial<SessionDeps> = 
   return { session, frames, sent };
 }
 
+function refuseStaleAction(session: WorkspaceSession, sent: Record<string, unknown>[], active: boolean): void {
+  const before = sent.length;
+  session.message({ type: "event", region: "root", revision: 2, ordinal: 0, value: null });
+  assert.deepStrictEqual(sent.slice(before), [{ type: "busy", active }]);
+}
+
 function pendingSliceSession() {
   const frames: Record<string, unknown>[] = [], held: ReadonlyMap<string, string>[] = [];
   const replies: ((value: unknown) => void)[] = [];
@@ -45,6 +51,24 @@ function pendingSliceSession() {
 }
 
 suite("package workspace session", () => {
+  test("a refused action preserves the actual queued busy state without executing", async () => {
+    let hold = false, release = (): void => undefined, calls = 0;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const { session, sent } = recordedSession(0, { run: async () => {
+      calls += 1;
+      if (hold) await gate;
+      return { stdout: envelope("s", 1), exitCode: 0 };
+    } });
+    await session.start({});
+    for (const active of [false, true]) {
+      hold = active;
+      if (active) session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: null });
+      refuseStaleAction(session, sent, active);
+    }
+    release(); await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(calls, 2, "only start and the valid action may execute");
+    session.dispose();
+  });
   test("busy remains set until every queued runtime frame has finished", async () => {
     let hold = false, release = (): void => undefined;
     const gate = new Promise<void>(resolve => { release = resolve; });

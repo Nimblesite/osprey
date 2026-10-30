@@ -179,7 +179,7 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
     if (disposed || !record(raw) || raw.type !== "event") return;
     if ("edit" in raw) { edited(raw); return; }
     const event = parseUiEvent(raw, regions, deps.now());
-    if (!event) return;
+    if (!event) { deps.send({ type: "busy", active: queuedFrames > 0 }); return; }
     void enqueueFrame(() => dispatchFrame(state, event), generation);
   };
 

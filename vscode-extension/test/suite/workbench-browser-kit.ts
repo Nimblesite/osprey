@@ -177,6 +177,20 @@ export async function withWorkbench(run: (frame: Frame, opened: () => number) =>
   }
 }
 
+export async function staleWorkbenchAction(frame: Frame): Promise<void> {
+  await frame.getByRole("button", { name: "Examples", exact: true }).click();
+  const lesson = frame.locator(".osp-section").filter({ hasText: "And, the other way around" });
+  await lesson.getByRole("button", { name: "Open", exact: true }).waitFor();
+  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: 1000 });
+  const runtime = sinon.spy(Wasi, "runWasi");
+  const proof = frame.getByRole("button", { name: "Proof", exact: true });
+  await proof.evaluate(button => { button.setAttribute("data-event-revision", String(Number.MAX_SAFE_INTEGER)); (button as HTMLButtonElement).click(); });
+  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: 1000 });
+  assert.strictEqual(runtime.callCount, 0, "a stale binding must never reach the runtime");
+  assert.strictEqual(await lesson.getByRole("button", { name: "Open", exact: true }).isVisible(), true, "the refused action must not navigate");
+  assert.strictEqual(await proof.isEnabled(), true, "an ignored action must not leave controls paused");
+}
+
 export async function pendingWorkbenchUpdate(frame: Frame): Promise<void> {
   const actual = Wasi.runWasi;
   let release = (): void => undefined;
