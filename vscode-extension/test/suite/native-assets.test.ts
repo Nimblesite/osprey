@@ -81,6 +81,24 @@ suite("workbench bundle completeness", () => {
   });
   teardown(() => fs.rmSync(root, { recursive: true, force: true }));
 
+  test("prepublish compiles WASI modules before verifying a clean output directory", function () {
+    this.timeout(60_000);
+    const { scripts } = JSON.parse(fs.readFileSync(path.join(extension, "package.json"), "utf8"));
+    for (const name of ["client", "test", "node_modules"]) fs.symlinkSync(path.join(extension, name), path.join(root, name), "junction");
+    fs.copyFileSync(path.join(extension, "tsconfig.json"), path.join(root, "tsconfig.json"));
+    fs.copyFileSync(path.join(extension, "scripts/verify-package-workspace.mjs"), path.join(root, "scripts/verify-package-workspace.mjs"));
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ scripts: {
+      "vscode:prepublish": scripts["vscode:prepublish"], "sync-icon": "node --eval 0", "compile": scripts.compile,
+    } }));
+    fs.rmSync(path.join(root, "out"), { recursive: true });
+    assert.ok(!fs.existsSync(path.join(root, "out")), "regression must start without compiled output");
+    const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "vscode:prepublish"],
+      { cwd: root, encoding: "utf8", shell: process.platform === "win32", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.ok(result.stdout.includes("Package workspace WASM startup: PASS"), result.stdout);
+    for (const name of ["wasi", "wasi-runner", "wasi-worker"]) assert.ok(fs.statSync(path.join(root, "out/client/src/osprey-ui", `${name}.js`)).size > 0);
+  });
+
   test("packaging enforces the host's local-registry server and package inventory", () => {
     const bundle = path.dirname(assets), server = path.join(bundle, process.platform === "win32" ? "osprey-registry.exe" : "osprey-registry");
     fs.rmSync(server);

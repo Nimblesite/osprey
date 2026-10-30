@@ -793,7 +793,7 @@
   },
   "scripts": {
     "sync-icon": "node scripts/sync-icon.mjs",
-    "vscode:prepublish": "node scripts/verify-package-client.mjs && npm run sync-icon && npm run compile && node scripts/verify-package-workspace.mjs",
+    "vscode:prepublish": "npm run sync-icon && npm run compile && node scripts/verify-package-client.mjs && node scripts/verify-package-workspace.mjs",
     "precompile": "npm run sync-icon && node scripts/sync-profiler-contributions.mjs --check",
     "sync-profiler": "node scripts/sync-profiler-contributions.mjs",
     "compile": "tsc -b",
