@@ -110,6 +110,9 @@ pub(in crate::ml) fn positional_construction(head: &MlExpr, args: &[MlExpr]) -> 
     let MlExpr::Ident(name) = head else {
         return None;
     };
+    if !crate::positional::accepts_arity(name, args.len()) {
+        return None;
+    }
     crate::positional::construct(
         name,
         args.iter().cloned().map(lower_expr).collect::<Vec<_>>(),
@@ -153,4 +156,21 @@ pub(in crate::ml) fn take_inner_doc(items: &mut Vec<MlItem>) -> Option<DocCommen
         return None;
     };
     Some(crate::docparse::parse_doc(&text, DocScope::Inner))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn ordinary_call_arguments_are_lowered_once() {
+        for source in [
+            "value = f (f (f \"hello\"))\n",
+            "value = f (g (\"hello\"))\n",
+            "type Pair = Pair(string, string)\nvalue = Pair \"hello\"\n",
+        ] {
+            let parsed = crate::parse_program_with_flavor(source, crate::Flavor::Ml);
+            assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+            let literals = crate::ml::binding_ranges::literals(source);
+            assert_eq!(literals.len(), 1, "argument lowered repeatedly: {source}");
+        }
+    }
 }
