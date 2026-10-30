@@ -10,34 +10,6 @@ import { targetsMainPullRequests } from './workflow-pr-target.mjs'
 import { registerLintContracts } from './ci-lint-contract-tests.mjs'
 import { registerProofContracts } from './ci-proof-contract-tests.mjs'
 
-function deadCodeFixture(product, tests) {
-  const root = mkdtempSync(join(tmpdir(), 'osprey-dead-code-'))
-  try {
-    mkdirSync(join(root, 'scripts'))
-    mkdirSync(join(root, 'crates/fixture/src'), { recursive: true })
-    writeFileSync(join(root, 'scripts/check.mjs'), readFileSync('scripts/verify-no-dead-code.mjs'))
-    writeFileSync(join(root, 'crates/fixture/src/main.rs'), product)
-    writeFileSync(join(root, 'crates/fixture/src/tests.rs'), tests)
-    return spawnSync(process.execPath, [join(root, 'scripts/check.mjs')], { encoding: 'utf8' })
-  } finally { rmSync(root, { recursive: true, force: true }) }
-}
-
-test('dead-code gate distinguishes test module helpers from unused product code', () => {
-  const helper = deadCodeFixture('#[cfg(test)]\nmod tests;\nfn main() {}',
-    'pub(crate) fn assembled_program() {}')
-  assert.equal(helper.status, 0, helper.stderr)
-  const dead = deadCodeFixture('pub fn orphan() {}\n#[cfg(test)]\nmod tests;\nfn main() {}',
-    '#[test]\nfn regression() { crate::orphan(); }')
-  assert.equal(dead.status, 1)
-  assert.match(dead.stderr, /crates\/fixture\/src\/main.rs:1  fn orphan/)
-  const productModule = deadCodeFixture('mod tests;\nfn main() {}', 'pub fn unused_product() {}')
-  assert.equal(productModule.status, 1)
-  assert.match(productModule.stderr, /fn unused_product/)
-  const comment = deadCodeFixture('// #[cfg(test)]\nmod tests;\nfn main() {}', 'pub fn unused_product() {}')
-  assert.equal(comment.status, 1)
-  const live = deadCodeFixture('pub fn active() {}\nfn main() { active(); }', '')
-  assert.equal(live.status, 0, live.stderr)
-})
 
 const cases = [
   ['book chapter and runnable example', ['Book/manuscript/04.md', 'Book/examples/chapter-04/main.osp'], false, true, false],

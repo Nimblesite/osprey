@@ -6,6 +6,10 @@
 // so this file needs no workflow parser of its own.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { readFileSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 
 const LINT_COMMANDS = ['node scripts/verify-no-dead-code.mjs',
   'node scripts/verify-package-licenses.mjs', 'node --test scripts/test-package-licenses.mjs']
@@ -60,4 +64,61 @@ const assertGuardRejectsEvasions = () => {
 export const registerLintContracts = (build) => {
   test('the build job runs the lint commands no other workflow covers', () => assertBuildRunsLint(build))
   test('the run-line guard rejects a commented, gated, suppressed or missing lint command', assertGuardRejectsEvasions)
+}
+
+function deadCodeFixture(product, tests) {
+  const root = mkdtempSync(join(tmpdir(), 'osprey-dead-code-'))
+  try {
+    mkdirSync(join(root, 'scripts'))
+    mkdirSync(join(root, 'crates/fixture/src'), { recursive: true })
+    writeFileSync(join(root, 'scripts/check.mjs'), readFileSync('scripts/verify-no-dead-code.mjs'))
+    writeFileSync(join(root, 'crates/fixture/src/main.rs'), product)
+    writeFileSync(join(root, 'crates/fixture/src/tests.rs'), tests)
+    return spawnSync(process.execPath, [join(root, 'scripts/check.mjs')], { encoding: 'utf8' })
+  } finally { rmSync(root, { recursive: true, force: true }) }
+}
+
+test('dead-code gate distinguishes test module helpers from unused product code', () => {
+  const helper = deadCodeFixture('#[cfg(test)]\nmod tests;\nfn main() {}',
+    'pub(crate) fn assembled_program() {}')
+  assert.equal(helper.status, 0, helper.stderr)
+  const dead = deadCodeFixture('pub fn orphan() {}\n#[cfg(test)]\nmod tests;\nfn main() {}',
+    '#[test]\nfn regression() { crate::orphan(); }')
+  assert.equal(dead.status, 1)
+  assert.match(dead.stderr, /crates\/fixture\/src\/main.rs:1  fn orphan/)
+  const productModule = deadCodeFixture('mod tests;\nfn main() {}', 'pub fn unused_product() {}')
+  assert.equal(productModule.status, 1)
+  assert.match(productModule.stderr, /fn unused_product/)
+  const comment = deadCodeFixture('// #[cfg(test)]\nmod tests;\nfn main() {}', 'pub fn unused_product() {}')
+  assert.equal(comment.status, 1)
+  const live = deadCodeFixture('pub fn active() {}\nfn main() { active(); }', '')
+  assert.equal(live.status, 0, live.stderr)
+})
+
+
+test('a test-only field cannot hide a later product type reference', () => {
+  for (const probe of ['probe: bool,', 'probe: std::collections::HashMap<String,\n        Vec<(usize, usize)>>, // only tests']) {
+    const product = `pub type Live = usize;\nstruct Holder {\n    #[cfg(test)]\n    ${probe}\n    payload: Live,\n}\nfn main() {}`
+    const result = deadCodeFixture(product, '')
+    assert.equal(result.status, 0, result.stderr)
+  }
+})
+
+const deadCodeMaskControls = [
+  ['test function where-clause commas cannot expose test calls as product references',
+    'pub fn only_where_test() {}\n#[cfg(test)]\nfn witness<T>()\nwhere\n    T: Copy,\n{ only_where_test(); }\nfn main() {}',
+    /fn only_where_test/],
+  ['a test-only field cannot hide a later unused product declaration',
+    'struct Holder {\n    #[cfg(test)]\n    probe: bool,\n}\npub fn orphan_after_test_field() {}\nfn main() {}',
+    /fn orphan_after_test_field/],
+  ['multiline test functions still cannot keep unused product code alive',
+    'pub fn only_test() {}\n#[cfg(test)]\nfn witness(\n    callback: fn(usize, usize) -> usize,\n) { only_test(); }\nfn main() {}',
+    /fn only_test/],
+]
+for (const [name, product, missing] of deadCodeMaskControls) {
+  test(name, () => {
+    const result = deadCodeFixture(product, '')
+    assert.equal(result.status, 1, result.stdout)
+    assert.match(result.stderr, missing)
+  })
 }
