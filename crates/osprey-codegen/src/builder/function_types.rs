@@ -162,6 +162,7 @@ impl Codegen {
                 FiberSig::of(prog, ret),
                 crate::types::result_payload_owner(prog, ret)
                     .or_else(|| crate::types::owner_name(prog, ret)),
+                Some((**ret).clone()),
             )),
             _ => None,
         }

@@ -158,7 +158,7 @@ fn emit(
 /// ([BUILTIN-LIST-GET]).
 type Abi<'a> = (
     &'a [ParamSig],
-    (LType, Option<LType>, Option<String>),
+    (LType, Option<LType>, Option<String>, osprey_types::Type),
     &'a [Option<String>],
 );
 
@@ -176,7 +176,14 @@ fn emit_at(
     let (params, ret, owners) = slots;
     let target = Instantiation {
         symbol: format!("{name}{MONO_INFIX}{}", cg.next_monofn_id()),
-        sig: (params.to_vec(), ret.0, ret.1, None, ret.2.clone()),
+        sig: (
+            params.to_vec(),
+            ret.0,
+            ret.1,
+            None,
+            ret.2.clone(),
+            Some(ret.3.clone()),
+        ),
     };
     let _ = cg.monofns.insert(key, target.clone());
     let saved = cg.enter_nested_fn();
@@ -240,6 +247,7 @@ pub(crate) fn specialize_callback(
         crate::types::ltype_of(ret_type),
         crate::types::result_inner(ret_type),
         return_owner(cg, ret_type),
+        ret_type.clone(),
     );
     let target = emit_at(cg, name, key, &parameters, &body, (&params, ret, &owners))?;
     Ok(Some(target.symbol))
@@ -255,7 +263,10 @@ pub(crate) fn specialize_callback(
 /// [`abi_shape_concrete`] skips it. Asking the whole type instead rejected
 /// `-> Result<Term, _>`, the hole [TYPE-RENDER-HOLES] calls the honest spelling,
 /// and told the author to annotate a signature that changes nothing emitted.
-fn return_slot(cg: &Codegen, name: &str) -> Result<(LType, Option<LType>, Option<String>)> {
+fn return_slot(
+    cg: &Codegen,
+    name: &str,
+) -> Result<(LType, Option<LType>, Option<String>, osprey_types::Type)> {
     let ty = cg.prog.return_type(name).ok_or_else(|| unresolved(name))?;
     if !crate::types::abi_shape_concrete(ty) {
         return Err(unresolved(name));
@@ -264,6 +275,7 @@ fn return_slot(cg: &Codegen, name: &str) -> Result<(LType, Option<LType>, Option
         crate::types::ltype_of(ty),
         crate::types::result_inner(ty),
         return_owner(cg, ty),
+        ty.clone(),
     ))
 }
 

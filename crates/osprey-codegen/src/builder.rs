@@ -274,8 +274,7 @@ pub(crate) struct ResumeCodegenContext {
     /// Concrete operation-result shape at this handler site. A plain resume
     /// value may be promoted to Success for a Result slot; the inverse is
     /// forbidden and rejected by codegen as well as by the checker.
-    pub op_ret_ty: LType,
-    pub op_ret_result_inner: Option<LType>,
+    pub op_return: ParamSig,
 }
 
 /// One slot of a registered heap-block layout: field name, its LLVM type, and

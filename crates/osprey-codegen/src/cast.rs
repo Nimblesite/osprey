@@ -109,6 +109,7 @@ pub(crate) fn erase_result(cg: &mut Codegen, semantic: Value) -> Value {
 /// Adapt an inline argument to the semantic parameter shape while keeping a
 /// Result as a typed block (there is no emitted ABI boundary to erase here).
 pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: &ParamSig) -> Result<Value> {
+    let v = crate::closure::adapt_to(cg, v, want)?;
     let v = erase_list_elements(cg, v, want)?;
     let value = match want.result_inner {
         Some(inner) => coerce_result(cg, v, want, inner)?,

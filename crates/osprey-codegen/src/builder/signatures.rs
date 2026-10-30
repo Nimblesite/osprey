@@ -98,11 +98,14 @@ impl ParamSig {
 /// through a function value has only this signature to go on, so a lambda
 /// returning `List<float>` handed back an untagged `i8*` and `listGet` on it
 /// met an `i64` payload against a `double` default. Implements
-/// [BUILTIN-LIST-GET], [TYPE-GENERICS-FN].
+/// [BUILTIN-LIST-GET], [TYPE-GENERICS-FN]. The sixth slot retains the semantic
+/// return type when inference provides one; pointer ABIs alone cannot express
+/// the required `List<T>` to `List<any>` element conversion [TYPE-ANY].
 pub(crate) type FnSig = (
     Vec<ParamSig>,
     LType,
     Option<LType>,
     Option<FiberSig>,
     Option<String>,
+    Option<Type>,
 );

@@ -245,7 +245,7 @@ fn relaid_placeholder(
 /// One inlined-call argument, already lowered in the caller's scope: either the
 /// callee a bare name stands for (so the parameter stays callable) or a value
 /// paired with the function type to register for it.
-enum InlineArg {
+pub(crate) enum InlineArg {
     Alias(String),
     Value(Box<Value>, Option<osprey_types::Type>),
 }
@@ -280,6 +280,9 @@ fn lower_inline_arg(
     a: &Expr,
     declared: Option<&osprey_types::Type>,
 ) -> Result<InlineArg> {
+    if let Some(value) = crate::closure::adapted_argument(cg, a, declared)? {
+        return Ok(value);
+    }
     if let Some(callee) = alias_target(cg, a) {
         return Ok(InlineArg::Alias(callee));
     }

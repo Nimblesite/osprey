@@ -106,7 +106,7 @@ fn kernel_elem_ltype(
             Callback::Local(_, sig) | Callback::Value(_, sig) => Some(sig.clone()),
             Callback::Named(_) | Callback::Extracted(_) => None,
         });
-    sig.and_then(|(params, _, _, _, _)| params.get(slot).map(|param| param.ty))
+    sig.and_then(|(params, ..)| params.get(slot).map(|param| param.ty))
 }
 
 /// The element `LType` a kernel's parameter at `slot` receives from `src`: the
@@ -349,6 +349,9 @@ fn emit(cg: &mut Codegen, k: &Lifting<'_>, params: Vec<ParamSig>) -> Result<Call
         value.result_inner,
         k.own.and_then(|s| s.3.clone()),
         value.osp_ty.clone(),
+        k.own
+            .and_then(|s| s.5.clone())
+            .or(value.inferred_type.clone()),
     );
     Ok(Callback::Extracted(Extracted {
         symbol,

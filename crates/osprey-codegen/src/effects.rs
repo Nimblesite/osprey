@@ -367,41 +367,24 @@ fn emit_handler_fn(
     reload_env(cg, caps, env_ty);
     bind_arm_params(cg, arm, sig, resolved, &mut params)?;
     let body = crate::expr::gen_body(cg, &arm.body)?;
-    let ret = if sig.ret_erased {
-        // Adapt before retaining: a plain body can become a freshly allocated
-        // Success block, and that actual return value must survive the epilogue.
-        let adapted = crate::effect_generics::adapt_erased(cg, body, &resolved.ret)?;
-        crate::arc::escape_retain(cg, &adapted);
-        // The perform site unboxes it to its resolved type. Implements
-        // [EFFECTS-GENERIC-RUNTIME] [GC-ARC-PERCEUS].
-        crate::effect_generics::box_raw_value(cg, adapted)
-    } else if let Some(inner) = sig.ret_result_inner {
-        if body.result_inner.is_some() {
-            crate::result::repack_to_inner(cg, body, inner)?
-        } else {
-            crate::result::make_ok(cg, body, inner)?
-        }
-    } else {
-        coerce_to(cg, body, sig.ret)?
-    };
+    let ret = fit_handler_return(cg, body, sig, &resolved.ret)?;
     ret_and_exit(cg, saved, sig, name, &params, &ret);
     Ok(())
 }
 
-/// Coerce a value into an operation's RESULT slot: what `resume(v)` supplies,
-/// and what a substituting arm's value becomes. Preserves a complete Result,
-/// safely promotes a plain value to `Success` when that is the declared slot,
-/// and rejects the forbidden `Result -> plain` direction.
-fn coerce_to_op_result(
+/// Adapt the semantic payload before retaining an erased operation's return.
+fn fit_handler_return(
     cg: &mut Codegen,
-    value: Value,
-    ret_ty: LType,
-    result_inner: Option<LType>,
+    body: Value,
+    sig: &OpSig,
+    resolved: &osprey_types::Type,
 ) -> Result<Value> {
-    match result_inner {
-        Some(inner) => promote_to_result(cg, value, inner),
-        None => coerce_to(cg, value, ret_ty),
+    if !sig.ret_erased {
+        let signature = ParamSig::of(&cg.prog, resolved);
+        return crate::cast::coerce_semantic_param(cg, body, &signature);
     }
+    let adapted = crate::effect_generics::adapt_erased(cg, body, resolved)?;
+    Ok(box_codegen_value(cg, adapted))
 }
 
 /// Carry `value` into a `Result<inner, _>` answer slot: repack one that is

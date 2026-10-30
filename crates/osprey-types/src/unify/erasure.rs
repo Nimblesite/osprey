@@ -83,22 +83,21 @@ fn constructors(
     expected: &[Type],
     actual: &[Type],
 ) -> Result<(), TypeError> {
-    let variances = ctx
-        .variance_of(name)
-        .map(<[Variance]>::to_vec)
-        .unwrap_or_default();
+    let variances = declared_variances(ctx, name);
     for (index, (e, a)) in expected.iter().zip(actual).enumerate() {
         // Result's error type is phantom: no value has this representation.
         if name != names::RESULT || index == 0 {
-            variant(
-                ctx,
-                e,
-                a,
-                variances.get(index).copied().unwrap_or(Variance::Invariant),
-            )?;
+            let variance = variances.get(index).copied().unwrap_or(Variance::Invariant);
+            variant(ctx, e, a, variance)?;
         }
     }
     Ok(())
+}
+
+fn declared_variances(ctx: &InferCtx, name: &str) -> Vec<Variance> {
+    ctx.variance_of(name)
+        .map(<[Variance]>::to_vec)
+        .unwrap_or_default()
 }
 
 fn variant(
