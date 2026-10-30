@@ -72,6 +72,28 @@ impl Analyzer<'_> {
         self.returned_value(function.body, &function.scope, &mut env)
     }
 
+    /// After the complete effect walk, a known ordinary call has already modeled
+    /// every argument; its proven primitive result contains no callable payload.
+    pub(super) fn known_scalar_call_value(
+        &self,
+        expression: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Option<Value> {
+        let function = match expression {
+            Expr::Call { function, .. } => function.as_ref(),
+            _ => return None,
+        };
+        match function {
+            Expr::Identifier(_) | Expr::Path(_) | Expr::Lambda { .. } => {}
+            _ => return None,
+        }
+        let value = self.scalar_shape(expression)?;
+        let callee = self.callable(function, scope, env);
+        matches!(callee, Some(Callable::Known(_)))
+            .then(|| self.typed_value(expression, value, None))
+    }
+
     pub(super) fn returned_value(
         &self,
         expression: &Expr,

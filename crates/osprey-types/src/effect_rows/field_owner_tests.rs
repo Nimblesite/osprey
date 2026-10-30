@@ -2,7 +2,7 @@
 use super::*;
 use crate::effect_rows::{
     expression_site, identity_tests::with_empty_analyzer, provenance::measured_clones,
-    value_shapes::value_shape, Instances, Projection,
+    value_shapes::value_shape, BTreeSet, Instances, Projection,
 };
 
 #[test]
@@ -87,7 +87,10 @@ fn receiver() -> (Expr, Index<'static>) {
     )
 }
 
-fn analyzer<'a>(index: &'a Index<'a>, instances: &'a Instances) -> Analyzer<'a> {
+pub(in crate::effect_rows) fn analyzer<'a>(
+    index: &'a Index<'a>,
+    instances: &'a Instances,
+) -> Analyzer<'a> {
     Analyzer {
         index,
         instances,
@@ -247,4 +250,145 @@ fn twenty_acyclic_pure_callback_relays_remain_accepted() {
 
 fn relay_definitions(depth: usize, body: impl Fn(usize) -> String) -> String {
     (0..depth).map(body).collect::<Vec<_>>().join("\n")
+}
+
+std::thread_local! {
+    static VALUE_VISITS: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    static VISITED_SITE: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+pub(in crate::effect_rows) fn record_value_visit(expression: &Expr) {
+    VISITED_SITE.with(|slot| {
+        if slot.get() == Some(expression_site(expression)) {
+            crate::effect_rows::provenance::record_counter(&VALUE_VISITS);
+        }
+    });
+}
+
+fn measured_value_visits<T>(expression: &Expr, run: impl FnOnce() -> T) -> (T, usize) {
+    VISITED_SITE.with(|slot| slot.set(Some(expression_site(expression))));
+    let measured = crate::effect_rows::provenance::measured_counter(&VALUE_VISITS, run);
+    VISITED_SITE.with(|slot| slot.set(None));
+    measured
+}
+
+#[test]
+fn nested_callback_values_do_not_revisit_the_same_leaf_exponentially() {
+    let samples = [2, 4, 6, 8].map(nested_callback_sample);
+    for (depth, visits) in samples {
+        assert!(
+            visits <= depth + 1,
+            "depth {depth} revisited one leaf {visits} times"
+        );
+    }
+}
+
+fn nested_callback_body(depth: usize, leaf: &str) -> String {
+    (0..depth).fold(leaf.to_owned(), |inner, _| {
+        format!("(fn(work)=>work())(fn()=>{inner})")
+    })
+}
+
+fn nested_callback_sample(depth: usize) -> (usize, usize) {
+    let body = nested_callback_body(depth, "leaf");
+    let source = format!("let leaf=7\nfn main()={body}\nlet answer=main()\n");
+    crate::effect_rows_tests::assert_accepted(&source);
+    let visits = fixture_function_values(&source, |_, body| pure_callback_visits(body))
+        .into_iter()
+        .sum();
+    eprintln!("nested callback depth {depth}: leaf visits={visits}");
+    (depth, visits)
+}
+
+fn pure_callback_visits(body: &Expr) -> usize {
+    let leaf = nested_callback_leaf(body);
+    assert!(matches!(leaf, Expr::Identifier(name) if name == "leaf"));
+    with_scalar_callback_analyzer(body, |analyzer| {
+        let expected = Value {
+            field_names: Some(BTreeSet::new()),
+            ..Value::default()
+        };
+        let mut env = CallableEnv::default();
+        let _ = env.values.insert("leaf".to_owned(), expected.clone());
+        let (actual, visits) = measured_value_visits(leaf, || analyzer.value(body, &[], &env));
+        assert_eq!(actual, Some(expected));
+        assert_eq!(analyzer.expression(body, &[], &env), Summary::default());
+        visits
+    })
+}
+
+fn with_scalar_callback_analyzer<T>(body: &Expr, run: impl FnOnce(Analyzer<'_>) -> T) -> T {
+    let index = Index::default();
+    let instances = Instances::default();
+    seed_callback_scalar_types(body, &instances);
+    run(analyzer(&index, &instances))
+}
+
+fn seed_callback_scalar_types(expression: &Expr, instances: &Instances) {
+    match expression {
+        Expr::Call {
+            function,
+            arguments,
+            ..
+        } => {
+            record_callback_scalar_type(expression, instances);
+            seed_callback_arguments(function, arguments, instances);
+        }
+        Expr::Lambda { body, .. } => seed_callback_scalar_types(body, instances),
+        Expr::Identifier(name) if name == "leaf" => {
+            record_callback_scalar_type(expression, instances);
+        }
+        _ => {}
+    }
+}
+
+fn seed_callback_arguments(function: &Expr, arguments: &[Expr], instances: &Instances) {
+    for expression in std::iter::once(function).chain(arguments) {
+        seed_callback_scalar_types(expression, instances);
+    }
+}
+
+fn record_callback_scalar_type(expression: &Expr, instances: &Instances) {
+    let _ = instances
+        .expression_types
+        .borrow_mut()
+        .insert(expression_site(expression), crate::ty::Type::int());
+}
+
+fn nested_callback_leaf(expression: &Expr) -> &Expr {
+    match expression {
+        Expr::Call { arguments, .. } => arguments.first().map_or(expression, nested_callback_leaf),
+        Expr::Lambda { body, .. } => nested_callback_leaf(body),
+        _ => expression,
+    }
+}
+
+#[test]
+fn nested_callbacks_preserve_effectful_leaf_requirements() {
+    for depth in [2, 4, 6, 8] {
+        let body = nested_callback_body(depth, "perform Alarm.ring()");
+        let declaration = "effect Alarm { ring: fn()->int }\n";
+        crate::effect_rows_tests::assert_rejected_with(
+            &format!("{declaration}fn main() ![] = {body}\n"),
+            &["outside its declared row", "Alarm.ring"],
+        );
+        crate::effect_rows_tests::assert_accepted(&format!(
+            "{declaration}fn main() ![] = {{\nlet h=handler Alarm {{ring=>7}}\nh(fn()=>{body})\n}}\n"
+        ));
+    }
+}
+
+pub(in crate::effect_rows) fn fixture_function_values<T>(
+    source: &str,
+    run: impl Fn(&Index<'_>, &Expr) -> T,
+) -> Vec<T> {
+    let parsed = osprey_syntax::parse_program(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let index = Index::collect(&parsed.program);
+    assert_eq!(index.functions.len(), 1);
+    index
+        .functions
+        .iter()
+        .map(|function| run(&index, function.body))
+        .collect()
 }

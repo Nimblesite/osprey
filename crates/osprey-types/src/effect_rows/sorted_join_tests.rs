@@ -49,7 +49,7 @@ impl CloneProbe {
     }
 }
 
-fn record(counter: &'static LocalKey<Cell<Option<usize>>>) {
+pub(in crate::effect_rows) fn record(counter: &'static LocalKey<Cell<Option<usize>>>) {
     counter.with(|slot| {
         if let Some(count) = slot.get() {
             slot.set(Some(count.saturating_add(1)));
@@ -61,7 +61,7 @@ pub(super) fn record_comparison() {
     record(&COMPARISONS);
 }
 
-fn measured<T>(
+pub(in crate::effect_rows) fn measured<T>(
     counter: &'static LocalKey<Cell<Option<usize>>>,
     run: impl FnOnce() -> T,
 ) -> (T, usize) {

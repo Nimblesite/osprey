@@ -8,6 +8,8 @@ use super::{
 #[path = "sorted_join_tests.rs"]
 mod sorted_join_tests;
 #[cfg(test)]
+pub(super) use sorted_join_tests::{measured as measured_counter, record as record_counter};
+#[cfg(test)]
 pub(super) use sorted_join_tests::{measured_clones, CloneProbe};
 
 pub(super) fn map_alternatives(choices: &mut Vec<Callable>, mut visit: impl FnMut(&mut Value)) {

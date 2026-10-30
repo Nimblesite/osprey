@@ -3,6 +3,11 @@ use super::super::model_values::{
     measure_snapshot_step, snapshot_function, snapshot_row, snapshot_value, with_snapshot_analyzer,
 };
 use super::{ReturnHistory, Value};
+use crate::effect_rows::field_rows::tests::{analyzer, fixture_function_values};
+use crate::effect_rows::{
+    expression_site, Analyzer, Callable, CallableEnv, Expr, Index, Instances, KnownCallable,
+    Summary,
+};
 
 const FUNCTION: usize = 0;
 const STABLE_SWEEPS: usize = 512;
@@ -170,10 +175,10 @@ fn history_seed_clones_once_and_stable_sweeps_clone_nothing() {
 #[test]
 fn snapshot_return_preserves_output_history_and_change_without_copying_before() {
     with_snapshot_analyzer(
-        super::Summary::default(),
+        Summary::default(),
         Some(snapshot_value()),
         |analyzer, mut state| {
-            let body = super::Expr::Bool(false);
+            let body = Expr::Bool(false);
             let mut history = ReturnHistory::default();
             let expected = analyzer.function_return(&snapshot_function(&body));
             let step = measure_snapshot_step(&analyzer, &body, &mut state, &mut history);
@@ -187,7 +192,7 @@ fn snapshot_return_preserves_output_history_and_change_without_copying_before() 
 #[test]
 fn snapshot_row_preserves_fresh_verdict_and_other_metadata_without_copying_before() {
     with_snapshot_analyzer(snapshot_row(), None, |analyzer, mut state| {
-        let body = super::Expr::Block {
+        let body = Expr::Block {
             statements: Vec::new(),
             value: None,
             position: None,
@@ -201,4 +206,277 @@ fn snapshot_row_preserves_fresh_verdict_and_other_metadata_without_copying_befor
         assert!(history.0.is_empty());
         assert_eq!(step, (true, 0), "old row snapshot must be borrowed");
     });
+}
+
+#[test]
+fn returned_projection_preserves_named_and_positional_argument_payloads() {
+    let mut payload = super::super::model_values::unknown_child_record();
+    let _ = payload
+        .performed
+        .insert(super::super::Requirement::new("Alarm", "ring", Vec::new()));
+    for named in [false, true] {
+        assert_returned_payload(&payload, named);
+    }
+}
+
+fn assert_returned_payload(payload: &Value, named: bool) {
+    super::super::identity_tests::with_empty_analyzer(|analyzer| {
+        let mut callable = super::super::model_values::returning_unknown(0);
+        if let Callable::Known(known) = &mut callable {
+            known.returned = Some(Box::new(Value::parameter(0, 0)));
+        }
+        let mut value = super::super::model_values::unknown_child_record();
+        value.callable = Some(callable);
+        let arguments = returned_arguments(payload, named);
+        let path = [super::super::Projection::Returned(Box::new(arguments))];
+        let expected = analyzer.project_path(value.clone(), &path);
+        assert_eq!(expected, Some(payload.clone()));
+        assert_eq!(analyzer.project_borrowed_path(&value, &path), expected);
+    });
+}
+
+fn returned_arguments(payload: &Value, named: bool) -> super::super::CallArguments {
+    if named {
+        super::super::CallArguments {
+            positional: Vec::new(),
+            named: vec![("argument0".to_owned(), Some(payload.clone()))],
+        }
+    } else {
+        super::super::CallArguments {
+            positional: vec![Some(payload.clone())],
+            named: Vec::new(),
+        }
+    }
+}
+
+#[test]
+fn scalar_lambda_calls_keep_the_complete_original_callable() {
+    for ty in ["int", "float", "bool", "string", "Unit", "Ptr"] {
+        for callee in oracle_callees() {
+            for body in oracle_callback_bodies(ty) {
+                let _ = fixture_function_values(
+                    &format!("fn fixture()=fn(argument)=>{body}\n"),
+                    |_, expression| assert_original_lambda_value(expression, ty, &callee),
+                );
+            }
+        }
+    }
+}
+
+fn assert_original_lambda_value(expression: &Expr, ty: &str, callee: &Callable) {
+    let before = scalar_lambda_instances(expression, ty);
+    let index = Index::default();
+    let env = oracle_callback_env(callee.clone());
+    let _ = compare_lambda_model(&index, expression, &env, &before);
+}
+
+fn compare_lambda_model(
+    index: &Index<'_>,
+    expression: &Expr,
+    env: &CallableEnv,
+    before: &Instances,
+) -> Instances {
+    let after = before.clone();
+    let expected = original_lambda_value(&analyzer(index, before), expression, env);
+    assert!(
+        expected.is_some(),
+        "the original path must produce a callable"
+    );
+    assert_eq!(
+        analyzer(index, &after).value(expression, &[], env),
+        expected
+    );
+    assert_lambda_metadata(before, &after);
+    after
+}
+
+fn scalar_lambda_instances(expression: &Expr, ty: &str) -> Instances {
+    let mut instances = Instances::default();
+    if let Expr::Lambda { body, .. } = expression {
+        seed_oracle_metadata(&mut instances, expression_site(body));
+        let _ = instances
+            .expression_types
+            .get_mut()
+            .insert(expression_site(body), crate::ty::Type::con(ty, Vec::new()));
+        if crate::methods::parts(body).is_some() {
+            let _ = instances.methods.insert(
+                expression_site(body),
+                crate::methods::Target::Field("source".to_owned()),
+            );
+        }
+    }
+    instances
+}
+
+fn seed_oracle_metadata(instances: &mut Instances, site: usize) {
+    let requirements = crate::EffectRequirements {
+        operations: vec!["Alarm.ring".to_owned()],
+        ..crate::EffectRequirements::default()
+    };
+    let _ = instances
+        .signal_queries
+        .get_mut()
+        .insert(site, requirements);
+    let _ = instances
+        .handler_inference
+        .get_mut()
+        .insert((0, 0), [vec!["Alarm".to_owned()]].into_iter().collect());
+}
+
+fn assert_lambda_metadata(before: &Instances, after: &Instances) {
+    assert_eq!(before.expression_types, after.expression_types);
+    assert_eq!(before.signal_queries, after.signal_queries);
+    assert_eq!(before.handler_inference, after.handler_inference);
+    assert_eq!(before.field_row_violations, after.field_row_violations);
+    assert_eq!(before.methods, after.methods);
+}
+
+fn original_lambda_value(
+    analyzer: &Analyzer<'_>,
+    expression: &Expr,
+    env: &CallableEnv,
+) -> Option<Value> {
+    match expression {
+        Expr::Lambda {
+            parameters, body, ..
+        } => {
+            let names: Vec<String> = parameters.iter().map(|p| p.name.clone()).collect();
+            let local = env.enter_lambda(&names);
+            Some(original_lambda_model(analyzer, body, local, names))
+        }
+        _ => None,
+    }
+}
+
+fn original_lambda_model(
+    analyzer: &Analyzer<'_>,
+    body: &Expr,
+    mut env: CallableEnv,
+    names: Vec<String>,
+) -> Value {
+    let summary = analyzer.expression(body, &[], &env);
+    let returned = analyzer.returned_value(body, &[], &mut env).map(Box::new);
+    assert_original_lambda_body(body, &summary, returned.as_deref());
+    Value::from_callable(Callable::Known(Box::new(KnownCallable {
+        parameters: names,
+        summary,
+        returned,
+    })))
+}
+
+fn assert_original_lambda_body(body: &Expr, summary: &Summary, returned: Option<&Value>) {
+    assert!(
+        !summary.required.is_empty()
+            || !summary.parameter_uses.is_empty()
+            || summary.unresolved_dynamic_call,
+        "the effectful callback must remain effectful"
+    );
+    if matches!(body, Expr::Block { value: None, .. }) {
+        assert_eq!(
+            returned, None,
+            "a block without a tail has no returned provenance"
+        );
+    }
+}
+
+fn oracle_known_callable() -> Callable {
+    let mut callee = crate::effect_rows::model_values::returning_unknown(0);
+    if let Callable::Known(known) = &mut callee {
+        known.parameters.clear();
+        let _ = known
+            .summary
+            .required
+            .insert(super::super::Requirement::new("Alarm", "ring", Vec::new()));
+    }
+    callee
+}
+
+fn oracle_callees() -> [Callable; 4] {
+    let known = oracle_known_callable();
+    let parameter = Callable::Parameter {
+        level: 0,
+        index: 0,
+        projection: Vec::new(),
+    };
+    [
+        known.clone(),
+        Callable::Unknown,
+        parameter,
+        Callable::Alternatives(vec![known, Callable::Unknown]),
+    ]
+}
+
+fn oracle_callback_bodies(ty: &str) -> impl Iterator<Item = &'static str> {
+    [
+        "source()",
+        "run(fn()=>source())",
+        "(if true {source}else{source})()",
+        "subject.source()",
+    ]
+    .into_iter()
+    .chain((ty == "Unit").then_some("{let ignored=source()\n}"))
+}
+
+fn oracle_callback_env(callee: Callable) -> CallableEnv {
+    let source = Value::from_callable(callee);
+    let mut subject = Value::default();
+    let _ = subject.fields.insert("source".to_owned(), source.clone());
+    let mut env = CallableEnv::default();
+    env.values.extend([
+        ("source".to_owned(), source),
+        ("subject".to_owned(), subject),
+    ]);
+    install_oracle_run(&mut env);
+    env
+}
+
+fn install_oracle_run(env: &mut CallableEnv) {
+    let values = fixture_function_values("fn fixture()=fn(work)=>work()\n", |_, expression| {
+        super::super::identity_tests::with_empty_analyzer(|analyzer| {
+            analyzer.value(expression, &[], env)
+        })
+    });
+    assert!(values.iter().all(Option::is_some));
+    env.values.extend(
+        values
+            .into_iter()
+            .flatten()
+            .map(|value| ("run".to_owned(), value)),
+    );
+}
+
+#[test]
+fn scalar_callback_oracle_checks_actual_metadata_writes() {
+    let source = "effect Alarm {ring:fn()->int}\ntype Control={press:fn()->int![]}\nfn fixture()=fn()=>source({\nlet deps=signalDependencies(fn()=>perform Alarm.ring())\nlet bad=Control{press:fn()=>perform Alarm.ring()}\nhandle Alarm {ring=>7}\nperform Alarm.ring()\n})\n";
+    let _ = fixture_function_values(source, assert_actual_metadata_writes);
+}
+
+fn assert_actual_metadata_writes(index: &Index<'_>, expression: &Expr) {
+    let mut before = scalar_lambda_instances(expression, "int");
+    before.signal_queries.get_mut().clear();
+    before.handler_inference.get_mut().clear();
+    let _ = before.argument_types.insert(Vec::new(), Vec::new());
+    let env = oracle_callback_env(oracle_known_callable());
+    let after = compare_lambda_model(index, expression, &env, &before);
+    assert_metadata_written(&before);
+    assert_metadata_written(&after);
+}
+
+fn assert_metadata_written(after: &Instances) {
+    assert!(
+        !after.signal_queries.borrow().is_empty(),
+        "the real query must be recorded"
+    );
+    assert!(
+        after
+            .handler_inference
+            .borrow()
+            .values()
+            .any(|values| !values.is_empty()),
+        "the actual handler must infer an instance"
+    );
+    assert!(
+        !after.field_row_violations.borrow().is_empty(),
+        "the actual bad field must be refused"
+    );
 }

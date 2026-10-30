@@ -482,4 +482,4 @@ fn spelled(row: &[EffectRef]) -> String {
 
 #[cfg(test)]
 #[path = "field_owner_tests.rs"]
-mod tests;
+pub(super) mod tests;
