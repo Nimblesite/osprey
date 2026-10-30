@@ -105,10 +105,10 @@ fn known_lambda(
 /// Implements [BUILTIN-ITER-CALLBACK], [TYPE-GENERICS-FN].
 fn named(cg: &Codegen, name: &str) -> Callback {
     match cg.fn_defs.get(name) {
-        Some((params, body, _)) => Callback::Closed(
+        Some((params, body, position)) => Callback::Closed(
             crate::closure::Environment::default(),
             params.clone(),
-            body.clone(),
+            cg.cov_inline_body(body.clone(), *position),
             None,
             None,
         ),
