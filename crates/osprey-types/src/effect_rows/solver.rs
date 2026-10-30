@@ -50,71 +50,34 @@ fn advance_return(
 /// each pass keeps it precise, but nothing makes that sequence monotone: a
 /// walk that hands its whole node to a helper falling back to the walk
 /// flipped between two returns forever. Widening bounds the values, so a
-/// sequence that never settles must revisit one it already left; from then
-/// on that function's return is joined with its previous one, which only
-/// grows and so converges. Implements [EFFECTS-PROVENANCE].
-///
-/// Waiting for an exact revisit is not enough on its own: mutually recursive
-/// descents (the proof kernel's `infer`/`reduce` family) produce a fresh return
-/// on every sweep, and widening's per-child budget is not monotone under
-/// union, so even a joined return can shrink and regrow. So the history also
-/// counts sweeps: past [`SWEEPS_BEFORE_JOIN`], every return that still moves
-/// is joined, and a joined return that moves [`JOINED_MOVES_BEFORE_CUT`] more
-/// times is cut to its terminal shape — the same over-approximation the depth
-/// limit already applies — which bounds the fixed point.
+/// sequence that revisits a value is joined with its predecessor and widened.
+/// Sweep counts cannot distinguish recursion from finite dependency propagation:
+/// cutting after a fixed number of sweeps rejects valid acyclic callback chains.
+/// Implements [EFFECTS-PROVENANCE].
 #[derive(Default)]
-pub(super) struct ReturnHistory(HashMap<usize, Returns>, usize);
+pub(super) struct ReturnHistory(HashMap<usize, Returns>);
 
-/// Sweeps a fixed point may spend recomputing returns precisely before every
-/// return still moving is joined with its predecessor.
-const SWEEPS_BEFORE_JOIN: usize = 8;
-
-/// Moves a joined return may still make before it is cut to terminal shape.
-const JOINED_MOVES_BEFORE_CUT: usize = 4;
-
-/// One function's returns so far, whether they have cycled, and how often the
-/// joined return has moved since.
+/// One function's returns so far and whether they have cycled.
 #[derive(Default)]
 struct Returns {
     seen: BTreeSet<Value>,
     joined: bool,
-    joined_moves: usize,
 }
 
 impl ReturnHistory {
-    /// Record that the enclosing fixed point has begun another sweep.
-    fn sweep(&mut self) {
-        self.1 = self.1.saturating_add(1);
-    }
-
     fn settle(&mut self, id: usize, before: Option<&Value>, computed: Value) -> Value {
-        let overran = self.1 > SWEEPS_BEFORE_JOIN;
         let returns = self.0.entry(id).or_default();
         let revisited = returns.seen.contains(&computed);
-        returns.joined |= before != Some(&computed) && (revisited || overran);
+        returns.joined |= before != Some(&computed) && revisited;
         if !returns.joined {
             if !revisited {
                 let _ = returns.seen.insert(computed.clone());
             }
             return computed;
         }
-        returns.join(before, computed)
-    }
-}
-
-impl Returns {
-    fn join(&mut self, before: Option<&Value>, computed: Value) -> Value {
         let mut joined = before.cloned().unwrap_or_default();
         joined.union(computed);
-        let joined = joined.widened().widened();
-        if before == Some(&joined) {
-            return joined;
-        }
-        self.joined_moves = self.joined_moves.saturating_add(1);
-        if self.joined_moves > JOINED_MOVES_BEFORE_CUT {
-            return super::provenance::terminal_value(joined);
-        }
-        joined
+        joined.widened().widened()
     }
 }
 
@@ -155,7 +118,6 @@ pub(super) fn converge(
 ) {
     let mut history = ReturnHistory::default();
     loop {
-        history.sweep();
         let analyzer = Analyzer {
             index,
             rows,

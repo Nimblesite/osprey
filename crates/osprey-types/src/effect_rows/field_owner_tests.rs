@@ -216,3 +216,35 @@ fn expected_projection_row(owner: &str, argument: &str, stored: Option<bool>) ->
         ..Summary::default()
     }
 }
+
+#[test]
+fn acyclic_holder_callback_relays_keep_their_precise_return() {
+    let relays = relay_definitions(16, |index| {
+        format!(
+            "fn relay{index}()=Holder{{callback:relay{}().callback}}",
+            index + 1
+        )
+    });
+    let source = format!(
+        "type Holder={{callback:fn()->int}}\n{relays}\n\
+        fn relay16()=Holder{{callback:fn()=>7}}\n\
+        let holder=relay0()\nlet answer=holder.callback()\n"
+    );
+    crate::effect_rows_tests::assert_accepted(&source);
+}
+
+#[test]
+fn twenty_acyclic_pure_callback_relays_remain_accepted() {
+    let relays = relay_definitions(20, |index| {
+        format!("fn relay{index}()=relay{}()", index + 1)
+    });
+    let source = format!(
+        "{relays}\nfn relay20()=fn()=>7\n\
+        let callback=relay0()\nlet answer=callback()\n"
+    );
+    crate::effect_rows_tests::assert_accepted(&source);
+}
+
+fn relay_definitions(depth: usize, body: impl Fn(usize) -> String) -> String {
+    (0..depth).map(body).collect::<Vec<_>>().join("\n")
+}
