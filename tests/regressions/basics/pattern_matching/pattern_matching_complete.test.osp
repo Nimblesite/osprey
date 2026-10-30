@@ -48,7 +48,7 @@ type NestedBox = { held: string, tag: int }
 type NestedLoader = { load: fn() -> List<any> }
 type NestedResultLoader = { load: fn() -> Result<List<any>, string> }
 fn nestedErased(items: List<any>) = match items {
-    [{ held, .. }, ...tail] => held
+    [{ held, .. }, ..._tail] => held
     _ => "other"
 }
 
@@ -58,7 +58,7 @@ fn nestedErasedResult(items: Result<List<any>, string>) = match items {
 }
 
 fn deeplyErased(items: List<List<any>>) = match items {
-    [first, ...rest] => nestedErased(first)
+    [first, ..._rest] => nestedErased(first)
     _ => "other"
 }
 
@@ -68,12 +68,12 @@ fn deeplyErasedResult(items: Result<List<List<any>>, string>) = match items {
 }
 
 fn threeLevelsErased(items: List<List<List<any>>>) = match items {
-    [first, ...rest] => deeplyErased(first)
+    [first, ..._rest] => deeplyErased(first)
     _ => "other"
 }
 
 fn erasedResultRows(items: List<Result<List<any>, string>>) = match items {
-    [first, ...rest] => nestedErasedResult(first)
+    [first, ..._rest] => nestedErasedResult(first)
     _ => "other"
 }
 
