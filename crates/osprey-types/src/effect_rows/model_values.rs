@@ -304,3 +304,172 @@ fn owned_handled_children_do_not_clone_their_payloads() {
     assert_eq!(actual, expected);
     assert_eq!(clones, 0, "owned handled child clones");
 }
+
+#[cfg(test)]
+fn summary_owned_arguments(level: usize) -> super::CallArguments {
+    super::CallArguments {
+        positional: vec![Some(Value::parameter(level, 2))],
+        named: vec![("named".to_owned(), Some(Value::parameter(level, 3)))],
+    }
+}
+
+#[cfg(test)]
+fn summary_owned_use(level: usize, child_level: usize) -> super::ParameterUse {
+    super::ParameterUse {
+        level,
+        index: 1,
+        projection: vec![Projection::Returned(Box::new(summary_owned_arguments(
+            child_level,
+        )))],
+        arguments: summary_owned_arguments(child_level),
+        scopes: vec![super::Scope::Masked {
+            effect: "Audit".to_owned(),
+            arguments: vec!["key".to_owned()],
+        }],
+    }
+}
+
+#[cfg(test)]
+fn summary_owned_base() -> Summary {
+    Summary {
+        required: [super::Requirement::new(
+            "Audit",
+            "write",
+            vec!["key".to_owned()],
+        )]
+        .into_iter()
+        .collect(),
+        runtime_builtins: ["toString".to_owned()].into_iter().collect(),
+        unresolved_dynamic_call: true,
+        ..Summary::default()
+    }
+}
+
+#[cfg(test)]
+fn summary_owned_fixture(level: usize, child_level: usize) -> Summary {
+    Summary {
+        parameter_uses: [summary_owned_use(level, child_level)]
+            .into_iter()
+            .collect(),
+        ..summary_owned_base()
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn summary_owned_clone_probe_observes_an_explicit_copy() {
+    let input = summary_owned_fixture(2, 2);
+    let (copied, clones) = super::provenance::measured_clones(|| input.clone());
+    assert_eq!(copied, input);
+    assert!(
+        clones > 0,
+        "the summary clone probe must observe payload copies"
+    );
+}
+
+#[cfg(test)]
+#[test]
+fn summary_owned_mapping_preserves_captured_and_partial_levels_without_clones() {
+    for (level, expected_level) in [(2, 1), (0, 0)] {
+        let input = summary_owned_fixture(level, 2);
+        let expected = summary_owned_fixture(expected_level, 1);
+        let (actual, clones) = super::provenance::measured_clones(|| {
+            super::identity_tests::with_empty_analyzer(|analyzer| {
+                analyzer.substitute_summary_at(input, 0, &[])
+            })
+        });
+        assert_eq!(actual, expected);
+        assert_eq!(
+            clones, 0,
+            "owned summary substitution copied {clones} payloads"
+        );
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn summary_owned_mapping_preserves_absence_and_other_requirements_without_clones() {
+    let use_ = super::ParameterUse {
+        projection: vec![Projection::Field("edit".to_owned())],
+        ..summary_owned_use(0, 2)
+    };
+    let input = Summary {
+        parameter_uses: [use_].into_iter().collect(),
+        ..summary_owned_base()
+    };
+    let arguments = [None, Some(known_stack())];
+    let (actual, clones) = super::provenance::measured_clones(|| {
+        super::identity_tests::with_empty_analyzer(|analyzer| {
+            analyzer.substitute_summary_at(input, 0, &arguments)
+        })
+    });
+    assert_eq!(actual, summary_owned_base());
+    assert_eq!(clones, 0, "absent summary use copied {clones} payloads");
+}
+
+#[cfg(test)]
+pub(super) type SnapshotState = ([Summary; 1], [Option<Value>; 1]);
+
+#[cfg(test)]
+pub(super) fn with_snapshot_analyzer<T>(
+    row: Summary,
+    returned: Option<Value>,
+    run: impl FnOnce(super::Analyzer<'_>, SnapshotState) -> T,
+) -> T {
+    super::identity_tests::with_empty_analyzer(|base| {
+        let rows = [row];
+        let returns = [returned];
+        let state = (rows.clone(), returns.clone());
+        run(
+            super::Analyzer {
+                rows: &rows,
+                returns: &returns,
+                ..base
+            },
+            state,
+        )
+    })
+}
+
+#[cfg(test)]
+pub(super) fn snapshot_function(body: &super::Expr) -> super::Function<'_> {
+    super::Function {
+        name: "snapshot".to_owned(),
+        qualified: "snapshot".to_owned(),
+        scope: Vec::new(),
+        parameters: Vec::new(),
+        declared_effects: Vec::new(),
+        effect_tail: None,
+        effect_row_present: false,
+        body,
+        position: None,
+    }
+}
+
+#[cfg(test)]
+pub(super) fn measure_snapshot_step(
+    analyzer: &super::Analyzer<'_>,
+    body: &super::Expr,
+    state: &mut SnapshotState,
+    history: &mut super::solver::ReturnHistory,
+) -> (bool, usize) {
+    let function = snapshot_function(body);
+    super::provenance::measured_clones(|| {
+        super::solver::advance_function(analyzer, 0, &function, &mut state.0, &mut state.1, history)
+    })
+}
+
+#[cfg(test)]
+pub(super) fn snapshot_value() -> Value {
+    Value {
+        fields: (0..64)
+            .map(|site| (format!("child{site}"), Value::channel(site)))
+            .collect(),
+        ..Value::default()
+    }
+}
+
+#[cfg(test)]
+pub(super) fn snapshot_row() -> Summary {
+    summary_owned_fixture(2, 2)
+}

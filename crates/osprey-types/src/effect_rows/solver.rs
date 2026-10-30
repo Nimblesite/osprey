@@ -14,38 +14,35 @@ pub(super) fn advance_function(
     returns: &mut [Option<Value>],
     history: &mut ReturnHistory,
 ) -> bool {
-    let mut changed = false;
-    let mut actual = analyzer.function_body(function);
-    actual.widen();
-    if let Some(row) = rows.get_mut(id) {
-        let before = row.clone();
-        // Requirements and parameter uses only grow toward the least fixed
-        // point, so unioning them is what makes this converge. The provenance
-        // verdict is not of that kind — see `check` — so take the freshly
-        // computed one. `widen` still re-raises it when it drops a use.
-        let resolved = actual.unresolved_dynamic_call;
-        row.union(actual);
-        row.unresolved_dynamic_call = resolved;
-        row.widen();
-        changed |= *row != before;
-    }
-    if let Some(returned) = analyzer.function_return(function) {
-        if let Some(slot) = returns.get_mut(id) {
-            let before = slot.clone();
-            // Recompute rather than merge with the previous iteration.
-            // `function_return` already merges every return path of the body,
-            // so each pass yields a COMPLETE answer for the rows it was given;
-            // unioning across passes only preserves superseded ones. The one
-            // feedback a pass cannot complete on its own — `fold`'s accumulator
-            // carrying its callback's return — is cut in `fold_value`, which
-            // stabilises that contribution instead of unrolling it. A return
-            // that cycles instead of settling is joined; see `ReturnHistory`.
-            let computed = returned.widened().widened();
-            *slot = Some(history.settle(id, before.as_ref(), computed));
-            changed |= *slot != before;
-        }
+    let actual = normalized_body(analyzer, function);
+    let mut changed = rows
+        .get_mut(id)
+        .is_some_and(|row| row.merge_inferred_row(actual, analyzer.rows.get(id)));
+    if let (Some(returned), Some(slot)) = (analyzer.function_return(function), returns.get_mut(id))
+    {
+        changed |= advance_return(slot, returned, id, history);
     }
     changed
+}
+
+fn normalized_body(analyzer: &Analyzer<'_>, function: &Function<'_>) -> Summary {
+    let mut actual = analyzer.function_body(function);
+    actual.widen();
+    actual
+}
+
+// Recompute the complete current answer. Fold cuts within-pass feedback;
+// ReturnHistory joins only actual cycles. Never union superseded returns.
+fn advance_return(
+    slot: &mut Option<Value>,
+    returned: Value,
+    id: usize,
+    history: &mut ReturnHistory,
+) -> bool {
+    let before = slot.take();
+    let computed = returned.widened().widened();
+    *slot = Some(history.settle(id, before.as_ref(), computed));
+    *slot != before
 }
 
 /// Every return value each function has had during one fixed point, and
@@ -282,6 +279,10 @@ pub(super) fn clear_value_verdicts(value: &mut Value) {
 
 #[cfg(test)]
 mod tests {
+    use super::super::model_values::{
+        measure_snapshot_step, snapshot_function, snapshot_row, snapshot_value,
+        with_snapshot_analyzer,
+    };
     use super::{ReturnHistory, Value};
 
     const FUNCTION: usize = 0;
@@ -445,5 +446,41 @@ mod tests {
             }
         });
         assert_eq!(clones, 0);
+    }
+
+    #[test]
+    fn snapshot_return_preserves_output_history_and_change_without_copying_before() {
+        with_snapshot_analyzer(
+            super::Summary::default(),
+            Some(snapshot_value()),
+            |analyzer, mut state| {
+                let body = super::Expr::Bool(false);
+                let mut history = ReturnHistory::default();
+                let expected = analyzer.function_return(&snapshot_function(&body));
+                let step = measure_snapshot_step(&analyzer, &body, &mut state, &mut history);
+                assert_eq!(state.1, [expected]);
+                assert_eq!(history.0.get(&0).map(|row| row.joined), Some(false));
+                assert_eq!(step, (true, 1), "old return snapshot must move");
+            },
+        );
+    }
+
+    #[test]
+    fn snapshot_row_preserves_fresh_verdict_and_other_metadata_without_copying_before() {
+        with_snapshot_analyzer(snapshot_row(), None, |analyzer, mut state| {
+            let body = super::Expr::Block {
+                statements: Vec::new(),
+                value: None,
+                position: None,
+            };
+            let mut history = ReturnHistory::default();
+            let mut expected = snapshot_row();
+            expected.unresolved_dynamic_call = false;
+            let step = measure_snapshot_step(&analyzer, &body, &mut state, &mut history);
+            assert_eq!(state.0, [expected]);
+            assert_eq!(state.1.as_slice(), analyzer.returns);
+            assert!(history.0.is_empty());
+            assert_eq!(step, (true, 0), "old row snapshot must be borrowed");
+        });
     }
 }

@@ -14,7 +14,7 @@ impl Analyzer<'_> {
         let uses = std::mem::take(&mut summary.parameter_uses);
         for mut use_ in uses {
             map_parameter_use_values(&mut use_, |value| {
-                *value = self.substitute_value_at(value.clone(), target_level, arguments);
+                *value = self.substitute_value_at(std::mem::take(value), target_level, arguments);
             });
             if use_.level == target_level {
                 if arguments
