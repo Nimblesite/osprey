@@ -9,6 +9,8 @@ The Proof Workbench lets you build an argument and see what each step establishe
 
 [Watch the programmer walkthrough](/docs/proofs/videos/proof-workbench/) or [the mathematics walkthrough](/docs/proofs/videos/proof-workbench-math/). Both start with the problem before introducing symbols.
 
+The films show the layout recorded during production, including some freehand board controls. The supported proof workflow uses typed formulas and proof steps; these videos do not demonstrate mathematical handwriting recognition.
+
 Lean is the [development oracle](/docs/proofs/#lean-as-an-oracle) for compatible proof behaviour; Osprey's own kernel makes the Workbench's decisions. A known unsound certificate must be refused. Changing a discipline or its assumptions requires fresh checking, so a saved Checked verdict cannot transfer automatically to a different theory.
 
 ## Watch: for programmers
@@ -61,7 +63,7 @@ The Navier-Stokes lesson introduces velocity, pressure and incompressibility bef
 
 ## Read an imported theorem
 
-From **Board** or **Proof**, open **Notation** and choose a bundled proof library, then select a theorem. The app checks its current export through the shared kernel and displays the actual mathematical statement and the assumptions used by that theorem. For example, `Nat.add_comm` states universal natural-number addition commutativity and has no axioms in its recorded dependency closure.
+From **Proof**, open **Notation** and choose a bundled proof library, then select a theorem. The app checks its current export through the shared kernel and displays the actual mathematical statement and the assumptions used by that theorem. For example, `Nat.add_comm` states universal natural-number addition commutativity and has no axioms in its recorded dependency closure.
 
 The [Mathlib progress guide](/docs/mathlib-port/) explains the corpus, provenance and rejection checks. An imported proof and a newly authored Workbench proof are different workflows.
 

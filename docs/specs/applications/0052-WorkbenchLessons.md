@@ -10,15 +10,15 @@ A lesson is never only something to read or watch. Each one asks the learner to 
 
 ## Mode [LESSONS-MODE]
 
-The root navigation offers **Board**, **Proof**, and **Read** for the working document. **Examples** and **Play walkthrough** open the lesson catalogue, held as `Learning` in the `Layout` slice ([WORKBENCH-STORE](0051-ProofWorkbench.md#store-workbench-store)). The lesson surface replaces the document and goal columns with catalogue and lesson regions, plus one keyed region per challenge:
+The supported working-document workflow uses **Proof** and **Read**. The freehand board, drawing tools and transcription preview are being removed from the Workbench; they are not part of the lesson contract. The shared native SDK drawing APIs remain independent of this application change. **Examples** and **Play walkthrough** open the lesson catalogue, held as `Learning` in the `Layout` slice ([WORKBENCH-STORE](0051-ProofWorkbench.md#store-workbench-store)). The lesson surface replaces the document and goal columns with catalogue and lesson regions, plus one keyed region per challenge:
 
 | Region | Shows | Reads |
 | --- | --- | --- |
 | `catalogue` | every lesson in stage order: title, summary, minutes, a tick when every challenge in it is right, and an unrestricted list (the reader validates prerequisites, but the catalogue does not display or enforce them) | `Shelf`, `Achieved` |
 | `lesson` | the open lesson as one scrolling page: its blocks in order and a slot for each inline challenge | `Shelf` |
-| `challenge:<id>` | one challenge's answer, button and feedback, keyed so that typing in one answer re-sends only that challenge | `ChallengeState`, containing that challenge and its own `Attempt` |
+| `challenge:<lesson>/<id>` | one challenge's answer, button and feedback, keyed so that typing in one answer re-sends only that challenge | `ChallengeState`, containing that challenge and its own `Attempt` |
 
-The board stays available in Learn: a lasso's recognised text goes into the answer of the challenge that last had focus, through the same `Steps::read` and `Formulas::read` as typed text ([WORKBENCH-BOARD](0051-ProofWorkbench.md#the-board-workbench-board)). **Open in the workbench** on a challenge copies its statement and the learner's answer into the Work document as a new declaration, so a lesson leads into ordinary work.
+**Open in the workbench** on a challenge copies its statement and the learner's answer into the Work document as a new declaration, so a lesson leads into ordinary work.
 
 Switching between the working document and lessons preserves the document, the open lesson and the answers in application state. Scroll-position retention is a host acceptance requirement; the application does not serialize scroll offsets.
 
@@ -79,7 +79,7 @@ Blocks:
 | `math` | `math`: a `ui::Math` tree in its protocol form ([UI-COMPONENTS-MATH]); `spoken`: the text assistive technology reads | display mathematics, for anything beyond the workbench's formulas (equations of physics, sums, integrals) |
 | `image` | `source`, `alt` (non-empty), `width`, `height` | the `Image` component |
 | `video` | `source`, `poster`, `captions` (WebVTT), `alt`, `seconds` | the `Video` component; never autoplays |
-| `challenge` | `challenge`: one of [LESSONS-CHALLENGES] | the `challenge:<id>` region |
+| `challenge` | `challenge`: one of [LESSONS-CHALLENGES] | the `challenge:<lesson>/<id>` region |
 
 The `math` tree is decoded by `Maths::decode`, the inverse of `Maths::encode`: `decode (encode t) = t` for every tree, and an unknown `kind` or a missing child refuses the lesson. A lesson never contains TeX, HTML or MathML.
 
@@ -108,6 +108,14 @@ The learner writes proof steps, one sentence per line, in the step language of [
 ```
 
 The learner writes a formula. On **Submit** the workbench reads it with `Formulas::read`; a fault is shown as one, and an atom outside `variables` is refused with the variables listed. Otherwise both formulas become kernel propositions over `variables` ([WORKBENCH-VERDICT]); the kernel checks that the answer is a proposition (`Infer::sort`) and then decides whether the answer and `expected` are **the same proposition by definition** (`Reduce::defeq` in the prelude environment). So `¬rain` and `rain → ⊥` are both accepted where either is expected, because the kernel unfolds `Not`; `wet ∧ rain` is not accepted for `rain ∧ wet`, because the two are different propositions that happen to be equivalent, and the feedback says so and points to the prove challenge that shows it.
+
+Every state challenge shows a formula keypad below Your formula and before feedback or submission controls. It offers the challenge's declared variables, logical connectives and parentheses, with plain-language names including Implies for →. Spellings come from the shared notation table. Short paired rows fit narrow lesson panes; ordinary text entry remains available. The shared Osprey application owns the keypad, answer and caret state for native and VSIX.
+
+Activating a key inserts at the attempt's bounded UTF-8 byte caret, preserves surrounding text, advances the caret and clears stale marking without submitting or incrementing attempts. Carets are independent per challenge. Saved attempts without a cursor restore at the end of their answer. Insertion alone never produces a kernel verdict. The typed place event carries a caret, not a selection span. Selection replacement and the complete lesson interaction still require actual native/VSIX acceptance; the static formula-keypad design handoff is a proposal, not runtime acceptance.
+
+A keypad insertion authors a per-attempt `focusEpoch` advance. A retained editor returns focus only for an epoch greater than every epoch it has already observed; an ordinary text patch, a repeated value, a decrease or replay of an earlier high value must not steal focus. Thus 8 → 6 → 8 cannot refocus the same editor. A newly created editor establishes its own baseline without claiming focus immediately.
+
+Editor identity includes the lesson as well as the challenge: entering another lesson must create a distinct retained identity or reset the host editor's baseline, even if the challenge identifiers coincide. A high epoch from lesson A cannot suppress a later advance from lesson B. Native Paragraph tests cover the retained high-water sequence and actual RegionStore transitions A8 → B0 → B1; they do not alone establish the full application transition or VSIX acceptance.
 
 ### Judge [LESSONS-JUDGE]
 
@@ -168,22 +176,22 @@ The first release ships seven lessons in three stages. Each has at least two cha
 | 2 | `and-swap` | The first full proof: assume, take apart, build, finish | image |
 | 2 | `either-way` | Proof by cases on "or" | none |
 | 2 | `not-and-contradiction` | Negation as "leads to the impossible", and contradiction | none |
-| 3 | `navier-stokes` | The Navier–Stokes equations of fluid motion, what a solution of them is, what has been proved, and the open question | film, image |
+| 3 | `navier-stokes` | The Navier–Stokes equations of fluid motion, what a solution of them is, classical results, and the OpenAI solution with Lean formalization | film, image |
 
-**The Navier–Stokes lesson** is honest about the state of mathematics. Nobody has proved whether smooth solutions of the three-dimensional equations exist for all time. This is one of the Clay Millennium Prize problems, and no proof of either answer is known. The lesson therefore teaches:
+**The Navier–Stokes lesson** teaches the [solution published by OpenAI on 8 September 2026](https://openai.com/index/navier-stokes-solution/), with an analytical proof and Lean formalization. Smooth forcing can produce a finite-time singularity from initially smooth fluid at rest while energy remains finite, establishing statements C and D of the Millennium Prize formulation. The lesson teaches:
 
 - the equations, with the velocity *u*, the pressure *p* and the viscosity *ν*, typeset with `math` blocks;
-- what a solution must be: a velocity and a pressure that satisfy the equations at every point and time, start from the given initial flow and stay smooth;
-- what is proved: Leray's weak solutions (1934) exist for all time; in two dimensions smooth solutions exist for all time; in three dimensions smooth solutions exist for a short time, or for all time when the initial flow is small enough;
-- the open question itself: either every smooth initial flow keeps a smooth solution for ever, or some smooth initial flow blows up in finite time.
+- what a smooth solution supplies: velocity and pressure satisfying the equations throughout its time interval and starting from the prescribed initial flow;
+- what is proved: Leray's weak solutions (1934) exist for all time; in two dimensions smooth solutions exist for all time; in three dimensions smooth solutions exist locally in time; global unforced small-data results require their size and regularity hypotheses;
+- the published result and its hypotheses, including smooth external forcing; distinguish it from the separate unforced two-dimensional demonstration.
 
 Its challenges work on the logical shape of the problem with propositions named `smooth` and `blowup`:
 
 - prove that "smooth or blowup" together with "not blowup" gives "smooth";
 - state that the two outcomes cannot both hold;
-- judge a "proof" of `smooth` from no hypotheses at all. The kernel refuses it, and the lesson says why: the workbench will not accept a claim nobody has proved, however it is worded.
+- judge a "proof" of `smooth` from no hypotheses at all. The kernel refuses it, and the lesson says why: the workbench requires a proof term matching the explicit assumptions and conclusion; a proposition named `smooth` supplies no fluid analysis.
 
-The lesson never says or implies that the problem is solved.
+Credit the published solution explicitly. The lesson exercises propositional reasoning; Osprey checks selected supporting exports from `openai/math`, and does not yet check the complete Navier–Stokes theorem. Keep these three levels distinct.
 
 ## Films and images [LESSONS-MEDIA]
 
@@ -193,7 +201,7 @@ The films are made with the content factory of the Nimblesite TikTok repository 
 - narrated, with English WebVTT captions generated from the same narration text;
 - accompanied by a JPEG poster taken from a frame that shows the subject.
 
-The source of each film (its page, script and narration) lives in that repository under `projects/osprey/videos/lesson-<slug>/`. Only the published files are copied into `apps/workbench/lessons/media/<slug>/`. Images are stills of the same films or factory slides, exported at their true size as JPEG, at most 400 KB each. Every film's narration says only what its lesson says, and the Navier–Stokes film keeps to [LESSONS-CURRICULUM]'s account of what is proved and what is open.
+The source of each film (its page, script and narration) lives in that repository under `projects/osprey/videos/lesson-<slug>/`. Only the published files are copied into `apps/workbench/lessons/media/<slug>/`. Images are stills of the same films or factory slides, exported at their true size as JPEG, at most 400 KB each. Every film's narration says only what its lesson says, and the Navier–Stokes film keeps to [LESSONS-CURRICULUM]'s account of the published solution and the scope of Osprey's exercises.
 
 ## Store and messages [LESSONS-STORE]
 
@@ -204,10 +212,10 @@ The lesson state joins that of [WORKBENCH-STORE]:
 | `lessons:catalogue`, `lessons:texts` | host | bounded file-read results, outside the serialized application store |
 | `lessons:progress` | host | saved completed challenge identifiers |
 | `Shelf` | session | catalogue summaries and faults, the open lesson's slug and source, the focused challenge and loading or save errors |
-| `Tutor` | session | per-challenge attempt state and the completed set ([LESSONS-PROGRESS]) |
+| `Tutor` | session | per-challenge attempt state including its answer cursor and authored focus epoch, and the completed set ([LESSONS-PROGRESS]) |
 | `Achieved` | derived signal | completed challenge keys, so typing an answer does not invalidate the catalogue |
 
-The action union carries `ToLearn`, `ToWork`, `Open slug`, `Answer id`, `Pick id`, `Submit id`, `Hint id`, `Reveal id` and `Carry id` (open in the workbench). The framework delivers typed text, choice and completion messages to `Update::apply`. Judging is a pure function of the challenge and the learner’s input; file and progress operations are bounded host requests.
+The action union carries `ToLearn`, `ToWork`, `Open slug`, `Answer id`, `FormulaPlace id`, `Key id text`, `Pick id`, `Submit id`, `Hint id`, `Reveal id` and `Carry id` (open in the workbench). The framework delivers typed text, choice and completion messages to `Update::apply`. Judging is a pure function of the challenge and the learner’s input; file and progress operations are bounded host requests.
 
 ## Verification [LESSONS-VERIFICATION]
 
@@ -217,9 +225,10 @@ The cases live in `apps/workbench/tests/`, each a fixture through the real `star
 - `Maths::decode (Maths::encode t) = t` over a corpus of trees, in `packages/native/tests/`;
 - prove: a correct answer is `Correct`; the swapped `and_swap` answer is `Incorrect` at the fourth step with the kernel's message; an unknown sentence is `Unfinished`;
 - state: an exact answer, an answer equal by definition (`¬p` for `p → ⊥`), a different but equivalent answer (`Incorrect`), a stray atom and an unreadable formula;
+- formula keypad: issued key events through real Update/App routing; start/middle/end and clamped caret insertion, multi-byte arrow offsets, independent attempts, marking invalidation without submission, saved-caret and legacy restoration, retained-editor focus high-water and lesson-qualified identity reset; host acceptance additionally covers the discoverable Implies key, keyboard activation, focus return and narrow layout. A copied private test router is not application integration evidence;
 - judge: both choices against a checked proof and a rejected one;
 - attempts, hints and the solution reveal follow [LESSONS-FEEDBACK]; editing after `Correct` clears it;
-- a keystroke in one challenge's answer re-sends only that `challenge:<id>` region;
+- a keystroke in one challenge's answer re-sends only that `challenge:<lesson>/<id>` region;
 - progress round-trips through `StoreWrite` and `StoreRead`, and a missing progress file is no progress;
 - every shipped lesson passes [LESSONS-INTEGRITY];
 - the `Image` and `Video` encodings, in `packages/native/tests/`.

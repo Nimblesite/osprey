@@ -22,7 +22,7 @@
   "proof-workbench": {
     "title": "Use the Proof Workbench",
     "intro": "Write a small argument, inspect hypotheses and goals, and complete a guided exercise in the real Workbench.",
-    "detail": "A Checked verdict comes from the shared Osprey kernel. A draft can still contain open goals, and unsupported or mismatched steps must be refused. The optional generated source is a separate view; its presence alone does not establish a proof.",
+    "detail": "A Checked verdict comes from the shared Osprey kernel. A draft can still contain open goals, and unsupported or mismatched steps must be refused. The optional generated source is a separate view; its presence alone does not establish a proof. The films show the layout recorded during production, including some freehand board controls. The supported proof workflow uses typed formulas and proof steps; these videos do not demonstrate mathematical handwriting recognition.",
     "guide": "/docs/proof-workbench/",
     "sources": [
       "apps/workbench/src/verdict.ospml",
