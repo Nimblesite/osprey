@@ -138,6 +138,37 @@ wrappedBoxResume = handler ErasedBoxResultAsk
 errorBoxResume = handler ErasedBoxResultAsk
     value => resume (Error(message = join ["resume", "error"] " "))
 
+effect NestedBoxAsk
+    control value : Unit => List<List<any>>
+effect NestedBoxResultAsk
+    control value : Unit => Result<List<List<any>>, string>
+
+nestedResumeValues () = [resumeBoxValues ()]
+nestedResumeText values = match values
+    [items] => resumeBoxText items
+    _ => "other"
+nestedResumeWork () = nestedResumeText (perform NestedBoxAsk.value ())
+nestedResultResumeWork () = match perform NestedBoxResultAsk.value ()
+    Success value => nestedResumeText value
+    Error message => message
+
+plainNestedResume = handler NestedBoxAsk
+    value => resume (nestedResumeValues ())
+promotedNestedResume = handler NestedBoxResultAsk
+    value => resume (nestedResumeValues ())
+wrappedNestedResume = handler NestedBoxResultAsk
+    value => resume (Success(value = nestedResumeValues ()))
+errorNestedResume = handler NestedBoxResultAsk
+    value => resume (Error(message = join ["nested", "error"] " "))
+
+nestedResumeChecks () = checkAll "nested lists preserve erased resume payloads" [
+    nestedResumeText (nestedResumeValues ()) == "boxed",
+    plainNestedResume nestedResumeWork == "boxed",
+    promotedNestedResume nestedResultResumeWork == "boxed",
+    wrappedNestedResume nestedResultResumeWork == "boxed",
+    errorNestedResume nestedResultResumeWork == "nested error"
+]
+
 (** A resumed branch answer is already transformed; an abandoned one never is. *)
 controlAnswerCase () =
     opened = gate true
@@ -153,6 +184,7 @@ controlAnswerCase () =
         wrappedBoxResume resumeResultBoxWork == "boxed",
         errorBoxResume resumeResultBoxWork == "resume error"
     ]
+    nestedResumeChecks ()
 
 (** Repeated applications share a factory's cells; separate factories do not. *)
 factoryStateCase () =

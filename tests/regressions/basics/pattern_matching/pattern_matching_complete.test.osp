@@ -57,6 +57,26 @@ fn nestedErasedResult(items: Result<List<any>, string>) = match items {
     Error { message } => message
 }
 
+fn deeplyErased(items: List<List<any>>) = match items {
+    [first, ...rest] => nestedErased(first)
+    _ => "other"
+}
+
+fn deeplyErasedResult(items: Result<List<List<any>>, string>) = match items {
+    Success { value } => deeplyErased(value)
+    Error { message } => message
+}
+
+fn threeLevelsErased(items: List<List<List<any>>>) = match items {
+    [first, ...rest] => deeplyErased(first)
+    _ => "other"
+}
+
+fn erasedResultRows(items: List<Result<List<any>, string>>) = match items {
+    [first, ...rest] => nestedErasedResult(first)
+    _ => "other"
+}
+
 fn erasedListReturn() -> List<any> = [NestedBox { held: "returned list", tag: 3 }]
 fn erasedResultReturn() -> Result<List<any>, string> = [NestedBox { held: "returned result", tag: 4 }]
 
@@ -224,6 +244,7 @@ fn patternMatchingCase() = {
     let resultCallback: fn() -> Result<List<any>, string> = fn() => [NestedBox { held: "typed result callback", tag: 16 }]
     let erasedBinding: List<any> = [NestedBox { held: "bound list", tag: 5 }]
     let erasedResultBinding: Result<List<any>, string> = [NestedBox { held: "bound result", tag: 6 }]
+    let deepBinding: List<List<any>> = [[NestedBox { held: "deep binding", tag: 22 }]]
     let localAlice = PersonData { name: "Alice", age: 30 }
     let localCircle = Circle { radius: 5 }
     let localSquare = Square { x: 3, y: 7 }
@@ -239,6 +260,17 @@ fn patternMatchingCase() = {
     checkAll("literal, union, structural, and Result patterns", [
         analyze(0) == "Zero",
         toString(nestedErased([NestedBox { held: "boxed", tag: 1 }])) == "boxed",
+        toString(deeplyErased([[NestedBox { held: "deep list", tag: 19 }]])) == "deep list",
+        toString(deeplyErasedResult([[NestedBox { held: "deep promoted", tag: 20 }]])) == "deep promoted",
+        toString(deeplyErasedResult(Success { value: [[NestedBox { held: "deep success", tag: 21 }]] })) == "deep success",
+        toString(deeplyErasedResult(Error { message: "deep error" })) == "deep error",
+        toString(deeplyErased([])) == "other",
+        toString(deeplyErased([[]])) == "other",
+        toString(deeplyErased(deepBinding)) == "deep binding",
+        toString(deeplyErased(deepBinding)) == "deep binding",
+        toString(threeLevelsErased([[[NestedBox { held: "three levels", tag: 23 }]]])) == "three levels",
+        toString(erasedResultRows([Success { value: [NestedBox { held: "result row", tag: 24 }] }])) == "result row",
+        toString(erasedResultRows([Error { message: "row error" }])) == "row error",
         toString(nestedErasedResult([NestedBox { held: "promoted", tag: 1 }])) == "promoted",
         toString(nestedErasedResult(Success { value: [NestedBox { held: "success", tag: 2 }] })) == "success",
         toString(nestedErasedResult(Error { message: "retained error" })) == "retained error",

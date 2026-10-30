@@ -128,10 +128,10 @@ fn coerce_result(cg: &mut Codegen, value: Value, want: &ParamSig, inner: LType) 
     };
     if value.result_inner.is_some() {
         crate::result::map_payload(cg, &value, inner, |cg, loaded| {
-            erase_list_elements(cg, loaded, &payload)
+            coerce_semantic_param(cg, loaded, &payload)
         })
     } else {
-        let payload = erase_list_elements(cg, value, &payload)?;
+        let payload = coerce_semantic_param(cg, value, &payload)?;
         crate::result::make_ok(cg, payload, inner)
     }
 }
@@ -141,43 +141,59 @@ fn erased_result_payload(cg: &Codegen, value: &Value, want: &ParamSig) -> Option
         return None;
     };
     let payload = ParamSig::of(&cg.prog, args.first()?);
-    let erased_owner = crate::collections::list_owner(Some(crate::llty::ANY_TAG_SPELLING));
-    (erased_list_type(&payload) && value.payload_owner.as_deref() != Some(&erased_owner))
+    let target = payload.inferred_type.as_ref()?;
+    let owner = semantic_owner(cg, &payload);
+    let already_erased = owner.is_some() && value.payload_owner == owner;
+    (crate::types::ltype_of(target) != LType::Any && erased_container(target) && !already_erased)
         .then_some(payload)
 }
 
-/// Container erasure must box elements, rather than only retyping its pointer.
-fn erased_list_type(want: &ParamSig) -> bool {
-    let Some(osprey_types::Type::Con { name, args }) = &want.inferred_type else {
+fn erased_container(ty: &osprey_types::Type) -> bool {
+    let osprey_types::Type::Con { name, args } = ty else {
         return false;
     };
-    name == osprey_types::names::LIST
-        && args
-            .first()
-            .is_some_and(|ty| crate::types::ltype_of(ty) == LType::Any)
+    name == osprey_types::names::ANY
+        || ((name == osprey_types::names::LIST || name == osprey_types::names::RESULT)
+            && args.first().is_some_and(erased_container))
 }
 
-fn erased_list_destination(value: &Value, want: &ParamSig) -> bool {
-    erased_list_type(want)
-        && crate::collections::tagged_elem(value).as_deref() != Some(crate::llty::ANY_TAG_SPELLING)
+fn erased_list_element(cg: &Codegen, value: &Value, want: &ParamSig) -> Option<ParamSig> {
+    let osprey_types::Type::Con { name, args } = want.inferred_type.as_ref()? else {
+        return None;
+    };
+    let element = args.first()?;
+    if name != osprey_types::names::LIST || !erased_container(element) {
+        return None;
+    }
+    let target = crate::types::elem_tag(&cg.prog, Some(element));
+    let already_erased = target.is_some() && crate::collections::tagged_elem(value) == target;
+    (!already_erased).then(|| ParamSig::of(&cg.prog, element))
 }
 
 fn erase_list_elements(cg: &mut Codegen, value: Value, want: &ParamSig) -> Result<Value> {
-    if !erased_list_destination(&value, want) {
+    let Some(element_sig) = erased_list_element(cg, &value, want) else {
         return Ok(value);
-    }
+    };
     let source = crate::listlit::escaping(cg, value);
+    let source = coerce_to(cg, source, LType::Ptr)?;
     let builder = crate::collections::list_builder_new_of(cg, "1");
     crate::iter::each_list_elem(cg, &source, |cg, _, element| {
-        let boxed = coerce_to(cg, element, LType::Any)?;
+        let adapted = coerce_semantic_param(cg, element, &element_sig)?;
+        let boxed = erase_result(cg, adapted);
         let _ = crate::iter::push_built(cg, &builder, boxed, "list erasure")?;
         Ok(())
     })?;
-    let mut output = crate::collections::list_builder_seal(cg, &builder).with_owner(Some(
-        crate::collections::list_owner(Some(crate::llty::ANY_TAG_SPELLING)),
-    ));
+    let owner = semantic_owner(cg, want);
+    let mut output = crate::collections::list_builder_seal(cg, &builder).with_owner(owner);
     output.inferred_type.clone_from(&want.inferred_type);
     Ok(output)
+}
+
+fn semantic_owner(cg: &Codegen, signature: &ParamSig) -> Option<String> {
+    signature
+        .inferred_type
+        .as_ref()
+        .and_then(|ty| crate::types::owner_name(&cg.prog, ty))
 }
 
 /// Reconstruct an incoming parameter value from its emitted ABI register.
