@@ -29,7 +29,7 @@ module RegistryFixture {
     /// One `Host::Files.write` a command performed.
     export type Written = { at: string, text: string }
     /// What one run observed: the report, every write in order and every command run.
-    export type Attempt = { report: Reports::Report, written: List<Written>, ran: List<string> }
+    export type Attempt = { report: Reports::Report, written: List<Written>, removed: List<string>, ran: List<string> }
 
     // ---- handlers ----
 
@@ -58,15 +58,26 @@ module RegistryFixture {
     /// Run `args` through `Dispatch::run` over `reads`, `walks` and `webs`,
     /// recording every write and every command run; a read of a path written
     /// earlier in the run answers the written text.
-    export fn runWith(reads, walks, webs, args) = {
+    fn runFault(reads, walks, webs, args, partialPath) = {
+        mut partial = false
         mut written: List<Written> = []
+        mut removed: List<string> = []
         mut ran: List<string> = []
         mut ensured: List<string> = []
         let files = handler Host::Files {
-            read path => readOf(written, reads, path)
+            read path => if listContains(removed, path) { Error { message: "fixture: removed ${path}" } } else { readOf(written, reads, path) }
+            exists path => if listContains(removed, path) { Success { value: false } } else { Fixture::existsIn(listConcat(readRoutes(written), reads), path) }
+            remove path => {
+                removed = listAppend(removed, path)
+                written = filterList(written, fn(w) => writtenAt(w) != path)
+                Success { value: 0 }
+            }
             write path content => {
-                written = listAppend(written, Written { at: path, text: content })
-                Success { value: byteLength(content) }
+                removed = filterList(removed, fn(p) => p != path)
+                let damaged = path == partialPath && !partial
+                partial = partial || damaged
+                written = listAppend(written, Written { at: path, text: if damaged { take(content, 7) } else { content } })
+                if damaged { Error { message: "fixture: partial write" } } else { Success { value: byteLength(content) } }
             }
         }
         let tree = handler Host::Tree {
@@ -86,11 +97,18 @@ module RegistryFixture {
             }
         }
         let report = process(fn() => files(fn() => tree(fn() => web(fn() => Dispatch::run(args)))))
-        Attempt { report: report, written: written, ran: ran }
+        Attempt { report: report, written: written, removed: removed, ran: ran }
     }
+
+    export fn runWith(reads, walks, webs, args) = runFault(reads, walks, webs, args, "")
+
+    /// Run the full command with one write that changes bytes before failing.
+    export fn runPartial(reads, webs, args, path) = runFault(reads, [], webs, args, path)
 
     /// `runWith` with no tree to walk.
     export fn run(reads, webs, args) = runWith(reads, [], webs, args)
+
+    export fn removedPath(a: Attempt, path) = listContains(a.removed, path)
 
     /// The commands the run executed, in order.
     export fn ranOf(a: Attempt) = a.ran

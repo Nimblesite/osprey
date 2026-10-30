@@ -31,6 +31,8 @@ module BuildTests {
         mut commands = ""
         let files = handler Host::Files {
             read path => Fixture::readFor(reads, path)
+            exists path => Fixture::existsIn(reads, path)
+            remove path => Error { message: "fixture: unexpected remove ${path}" }
             write path content => {
                 derived = content
                 derivedAt = path

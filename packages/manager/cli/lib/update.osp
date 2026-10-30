@@ -19,7 +19,7 @@ import registry::Names
 /// so every key moves to the newest release inside its epoch and the report
 /// shows the `~` lines. `--breaking` first retargets each root dependency
 /// whose key has a newer epoch in the listing to that epoch (floor 1), prints
-/// one `epoch @scope/name eN -> eM` line per change, and relocks atomically.
+/// one `epoch @scope/name eN -> eM` line per change, and relocks.
 /// While the overlay is active the published base is resolved first, each
 /// mapping's baseline is replaced by the base's node for its key (only
 /// `--breaking` may move an override's epoch), the development lock is
@@ -129,31 +129,34 @@ module Update {
     fn rebaseAll(lock, breakingWanted, mappings) = foldList(mappings, Rebase { mappings: [], notes: [] }, fn(r, m) => rebaseOne(lock, breakingWanted, r, m))
 
     /// A failed development relock restores the release lock too, so the update changes nothing.
-    fn restoredRelease(s, previousRelease, report) = if statusOf(report) == 0 || previousRelease == "" { report } else { match perform Host::Files.write(Project::lockPathAt(projectOf(s)), previousRelease) {
+    fn restoredRelease(s, previousRelease, report) = if statusOf(report) == 0 { report } else { match Host::restore(Project::lockPathAt(projectOf(s)), previousRelease) {
         Error { message } => failed(listAppend(linesOf(report), "${restoreCode} ${message}"))
         Success => report
     } }
 
-    fn relockedLocal(s, mappings, previousOverlay, previousRelease, lock, breakingWanted, releaseLines) = {
+    fn relockedLocal(s, mappings, previousRelease, lock, breakingWanted, releaseLines) = {
         let r = rebaseAll(lock, breakingWanted, mappings)
-        let local = Transaction::commitOverlay(asLocal(s), previousOverlay, Overlay::render(mappingsOf(r)), listConcat(releaseLines, notesOf(r)))
+        let local = Transaction::commitOverlay(asLocal(s), Overlay::render(mappingsOf(r)), listConcat(releaseLines, notesOf(r)))
         restoredRelease(s, previousRelease, local)
     }
 
     fn mappingsOf(r: Rebase) = r.mappings
     fn notesOf(r: Rebase) = r.notes
 
-    fn withNewBase(s, mappings, previousOverlay, previousRelease, breakingWanted, releaseReport) = match Project::readLockAt(projectOf(s)) {
+    fn withNewBase(s, mappings, previousRelease, breakingWanted, releaseReport) = match Project::readLockAt(projectOf(s)) {
         Error { message } => failed(listAppend(linesOf(releaseReport), message))
-        Success { value } => relockedLocal(s, mappings, previousOverlay, previousRelease, value, breakingWanted, linesOf(releaseReport))
+        Success { value } => relockedLocal(s, mappings, previousRelease, value, breakingWanted, linesOf(releaseReport))
     }
 
     /// Resolve the published base first; then rebase every mapping and relock the development lock.
-    fn overlayUpdate(s, mappings, breakingWanted) = {
-        let previousOverlay = Overlay::textAt(projectOf(s))
-        let previousRelease = perform Host::Files.read(Project::lockPathAt(projectOf(s))) ?: ""
+    fn overlayUpdated(s, mappings, breakingWanted, previousRelease) = {
         let releaseReport = released(s, breakingWanted)
-        if statusOf(releaseReport) != 0 { releaseReport } else { withNewBase(s, mappings, previousOverlay, previousRelease, breakingWanted, releaseReport) }
+        if statusOf(releaseReport) != 0 { releaseReport } else { withNewBase(s, mappings, previousRelease, breakingWanted, releaseReport) }
+    }
+
+    fn overlayUpdate(s, mappings, breakingWanted) = match Host::snapshot(Project::lockPathAt(projectOf(s))) {
+        Error { message } => failed([message])
+        Success { value } => overlayUpdated(s, mappings, breakingWanted, value)
     }
 
     fn withOverlay(s, breakingWanted, mappings) = if Overlay::active(mappings) { overlayUpdate(s, mappings, breakingWanted) } else { released(s, breakingWanted) }

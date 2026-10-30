@@ -66,7 +66,7 @@ module Probes {
     fn start(cwd) = {
         let _made = perform Host::Tree.ensure(work)
         let _written = perform Host::Files.write("${work}/registry-server.json", configText(cwd))
-        let built = sh("${Host::shellWord(compiler(cwd))} build ${Host::shellWord(cwd + "/packages/manager/api")} -o ${Host::shellWord(work + "/registry-server")} --memory=${Host::shellWord(memory())}")
+        let built = sh("${Host::shellWord(compiler(cwd))} build ${Host::shellWord(cwd + "/packages/manager/api")} --no-warnings -o ${Host::shellWord(work + "/registry-server")} --memory=${Host::shellWord(memory())}")
         let _started = sh("(cd ${work} && exec ./registry-server > server.log 2>&1) & echo $! > ${work}/server.pid")
         built.status
     }
@@ -124,6 +124,8 @@ module Probes {
     /// Forward real filesystem operations as though invoked in the consumer.
     fn consumerFiles(dir) = handler Host::Files {
         read path => perform Host::Files.read(rooted(dir, path))
+        exists path => perform Host::Files.exists(rooted(dir, path))
+        remove path => perform Host::Files.remove(rooted(dir, path))
         write path text => perform Host::Files.write(rooted(dir, path), text)
     }
 

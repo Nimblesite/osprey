@@ -17,6 +17,8 @@ module Native {
     export fn files() = handler Host::Files {
         read path => relay(readFile(path))
         write path content => relay(writeFile(path, content))
+        exists path => fileExists(path)
+        remove path => removedFile(path)
     }
 
     fn quiet(_pid, _kind, text) = {
@@ -39,6 +41,20 @@ module Native {
     /// Process answered by the system shell.
     export fn process() = handler Host::Process {
         run command => capture(command)
+    }
+
+    fn fileExists(path) = {
+        let word = Host::shellWord(path)
+        let run = capture("parent=$(dirname -- ${word}); if test -e ${word} || test -L ${word}; then printf present; elif test -r \"$parent\" && test -x \"$parent\"; then printf absent; else false; fi")
+        if run.status != 0 { Error { message: "host.exists: ${trim(run.stderr)}" } }
+        else if run.stdout == "present" { Success { value: true } }
+        else if run.stdout == "absent" { Success { value: false } }
+        else { Error { message: "host.exists: unexpected response" } }
+    }
+
+    fn removedFile(path) = {
+        let run = capture("rm -f -- ${Host::shellWord(path)}")
+        if run.status == 0 { Success { value: 0 } } else { Error { message: "host.remove: ${trim(run.stderr)}" } }
     }
 
     fn relative(line) = if startsWith(line, "./") { drop(line, 2) } else { line }

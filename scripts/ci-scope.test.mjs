@@ -357,8 +357,19 @@ const fs = require('node:fs');
 fs.appendFileSync(process.env.REGISTRY_TEST_RECEIPT, JSON.stringify({ argv: process.argv.slice(2),
   OSPREY_E2E_COMPILER: process.env.OSPREY_E2E_COMPILER, OSPREY_E2E_MEMORY: process.env.OSPREY_E2E_MEMORY }) + '\\n');
 `, { mode: 0o755 })
-  writeFileSync(join(root, 'python3'), '#!/bin/sh\n[ "$*" = "scripts/test-package-publication.py" ]\n', { mode: 0o755 })
+  nativePythonFixture(root)
   return { root, compiler, receipt: join(root, 'receipt.jsonl') }
+}
+
+function nativePythonFixture(root) {
+  writeFileSync(join(root, 'python3'), `#!${process.execPath}
+const fs = require('node:fs');
+const scripts = ['scripts/test-package-publication.py', 'scripts/test-package-interruption.py'];
+if (process.argv.length !== 3 || !scripts.includes(process.argv[2])) process.exitCode = 1;
+else fs.appendFileSync(process.env.REGISTRY_TEST_RECEIPT + '.native', JSON.stringify({
+  script: process.argv[2], compiler: process.env.OSPREY_E2E_COMPILER,
+  memory: process.env.OSPREY_E2E_MEMORY, client: process.env.OSPREY_PACKAGE_CLIENT }) + '\\n');
+`, { mode: 0o755 })
 }
 
 function registryEnv({ root, receipt }, overrides) {
@@ -373,8 +384,21 @@ function registryEnv({ root, receipt }, overrides) {
 function runRegistryMake(fixture, overrides) {
   const result = spawnSync('make', ['-s', '-f', 'scripts/make/tests.mk', '_test_registry',
     `BIN=${relative(process.cwd(), fixture.compiler)}`], { encoding: 'utf8', env: registryEnv(fixture, overrides) })
-  const recorded = existsSync(fixture.receipt) ? readFileSync(fixture.receipt, 'utf8') : ''
-  return { result, invocations: recorded.split('\n').filter(Boolean).map(line => JSON.parse(line)) }
+  return { result, invocations: registryCalls(fixture.receipt), native: registryCalls(fixture.receipt + '.native') }
+}
+
+function registryCalls(path) {
+  const recorded = existsSync(path) ? readFileSync(path, 'utf8') : ''
+  return recorded.split('\n').filter(Boolean).map(line => JSON.parse(line))
+}
+
+function assertNativeRegistryCalls(native, fixture, memory) {
+  assert.deepEqual(native.map(call => call.script), ['scripts/test-package-publication.py', 'scripts/test-package-interruption.py'])
+  for (const call of native) {
+    assert.equal(call.compiler, fixture.compiler)
+    assert.equal(call.memory, memory)
+    assert.equal(call.client, process.env.OSPREY_PACKAGE_CLIENT || resolve('target/osprey-pkg'))
+  }
 }
 
 function withRegistryFixture(body) {
@@ -384,8 +408,9 @@ function withRegistryFixture(body) {
 
 test('registry nested compiler invocations retain the selected compiler and memory backend', () => {
   withRegistryFixture(fixture => {
-    const { result, invocations } = runRegistryMake(fixture, { REGISTRY_MEMORY: 'arc' })
+    const { result, invocations, native } = runRegistryMake(fixture, { REGISTRY_MEMORY: 'arc' })
     assert.equal(result.status, 0, result.stdout + result.stderr)
+    assertNativeRegistryCalls(native, fixture, 'arc')
     // Order proves the fail-fast fixture suite still runs first.
     assert.deepEqual(invocations.map(seen => seen.argv[1]), registrySuites.map(suite => `packages/manager/${suite}`))
     for (const seen of invocations) {
@@ -399,9 +424,10 @@ test('registry nested compiler invocations retain the selected compiler and memo
 
 test('registry suites default to GC and override stale inherited E2E context', () => {
   withRegistryFixture(fixture => {
-    const { result, invocations } = runRegistryMake(fixture, { REGISTRY_MEMORY: undefined,
+    const { result, invocations, native } = runRegistryMake(fixture, { REGISTRY_MEMORY: undefined,
       OSPREY_E2E_COMPILER: '/stale/compiler', OSPREY_E2E_MEMORY: 'default' })
     assert.equal(result.status, 0, result.stdout + result.stderr)
+    assertNativeRegistryCalls(native, fixture, 'gc')
     assert.equal(invocations.length, registrySuites.length)
     for (const seen of invocations) {
       assert.equal(seen.OSPREY_E2E_COMPILER, fixture.compiler)

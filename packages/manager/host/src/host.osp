@@ -17,7 +17,25 @@ module Host {
     export effect Files {
         read: fn(string) -> Result<string, string>
         write: fn(string, string) -> Result<int, string>
+        exists: fn(string) -> Result<bool, string>
+        remove: fn(string) -> Result<int, string>
     }
+
+    export type Snapshot = { present: bool, text: string }
+
+    /// Preserve absence separately from a readable empty file; unreadable
+    /// existing files refuse the mutation instead of becoming empty snapshots.
+    export fn snapshot(path) = match perform Files.exists(path) {
+        Error { message } => Error { message: message }
+        Success { value } => if !value { Success { value: Snapshot { present: false, text: "" } } } else {
+            match perform Files.read(path) {
+                Error { message } => Error { message: message }
+                Success { value } => Success { value: Snapshot { present: true, text: value } }
+            }
+        }
+    }
+
+    export fn restore(path, previous: Snapshot) = if previous.present { perform Files.write(path, previous.text) } else { perform Files.remove(path) }
 
     /// Every non-directory entry under a root, by path relative to it:
     /// single-link regular files, single-link executable files, and anything else (hard links, symlinks,

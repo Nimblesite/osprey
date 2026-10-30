@@ -51,6 +51,8 @@ module FetchTests {
         mut ensured: List<string> = []
         mut written: List<Fixture::ReadRoute> = []
         let files = handler Host::Files {
+            exists path => Fixture::existsIn(written, path)
+            remove path => Error { message: "fixture: unexpected remove ${path}" }
             read path => match Fixture::readFor(written, path) {
                 Success { value } => Success { value: value }
                 Error => Error { message: "fixture: fetch never reads" }

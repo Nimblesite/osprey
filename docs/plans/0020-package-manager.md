@@ -534,8 +534,10 @@ permutation changes a lock or explanation.
       Dependency deltas (`+`, `=`, `~`, `-` per package) and epoch deltas
       (`epoch @scope/name eN -> eM` from `update --breaking`) are printed;
       capability and vulnerability deltas wait for the surfaces and the
-      advisory feed. `Transaction::commit` writes the
-      manifest, relocks, and writes the previous text back when the lock fails.
+      advisory feed. `Transaction::commit` resolves against a proposed manifest through a file
+      effect handler, then writes the manifest immediately before its lock.
+      Interrupted network resolution leaves the manifest untouched; a reported
+      lock-write failure writes the previous manifest text back.
       This is rollback on a reported failure; crash-safe atomicity remains
       blocked on filesystem rename and fsync support.
 - [ ] Make `add`, `remove`, and `update` atomically recompute the registry-only
@@ -830,17 +832,11 @@ lowering security eligibility or allowing the ranker to learn its own bias.
 Exit gate: every `[PACKAGE-CONFORMANCE]` and
 `[PACKAGE-REGISTRY-CONFORMANCE]` requirement passes with retained evidence.
 
-## Deferred — CI integration
+## CI integration
 
-Lowest priority. Start only once the package system has stabilised. Until then
-every registry suite runs through `make registry-test` and stays out of
-`make test` and CI.
-
-- [ ] Run the end-to-end folder-registry demo, a consumer project building
-      against a fetched package, in CI on loopback.
-- [ ] Add the registry suites to `make test` once they type-check quickly.
-- [ ] Make schema/fixture validation a fail-fast `make test` stage. Today the
-      type checker's effect-row solver runs for minutes on the TOML parser.
+- [x] Run the folder-registry loopback demo, including a consumer build against fetched sources, in CI. `.github/workflows/ci.yml` runs `_test_registry` in separate GC and ARC jobs; both are required by the coverage gate.
+- [x] Include both managed-backend registry suites in `make test` through `_test_registry`.
+- [x] Run fixture/schema validation first, followed by manifest, CLI, core/API and loopback suites, with failures propagated. The target also runs the real native publication, installed-source integrity and interrupted-Add regressions. These checks do not establish the deferred hosted trust plane or crash-atomic activation.
 
 ## Fixed risk controls
 

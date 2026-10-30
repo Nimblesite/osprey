@@ -5,11 +5,11 @@ import registry_cli::Project
 import registry_cli::Overlay
 import registry_cli::Lock
 
-/// One atomic file-and-lock update, the shape of `add`, `remove`,
+/// Resolve before changing the manifest or overlay for `add`, `remove`,
 /// `update --breaking` and `use` ([PACKAGE-API], [PACKAGE-LOCAL-OVERRIDE]):
-/// the new text of the manifest or the overlay is written, `lock` recomputes
-/// the lock from it, and when the lock fails (which writes nothing) the
-/// previous text is written back, so either both files change or neither does.
+/// `lock` reads the proposed text through an effect handler. Only after
+/// resolution succeeds are the manifest and lock written. A reported lock
+/// write failure restores both prior file snapshots; the writes are not crash-atomic.
 module Transaction {
     /// Where and how to relock: registry, project, the vanished-release
     /// policy, whether the current lock's choices are sticky (`fresh` drops
@@ -30,26 +30,51 @@ module Transaction {
     /// Relock without touching any file; `update` without `--breaking`.
     export fn relock(s: Settings) = Lock::relock(s.base, s.project, s.fresh, s.acceptRemovals, s.local)
 
-    fn restored(path, previous, locked) = match perform Host::Files.write(path, previous) {
+    fn restored(path, previous, locked) = match Host::restore(path, previous) {
         Error { message } => failed(listAppend(linesOf(locked), "${restoreCode} ${message}"))
         Success => locked
     }
 
-    fn relocked(s, path, previous, prefix) = {
-        let locked = relock(s)
-        if statusOf(locked) == 0 { Reports::success(listConcat(prefix, linesOf(locked))) } else { restored(path, previous, locked) }
+    fn lockPath(s: Settings) = if s.local { Project::localLockPathAt(s.project) } else { Project::lockPathAt(s.project) }
+
+    fn writtenAfter(path, text, target, content) = match perform Host::Files.write(path, text) {
+        Error { message } => Error { message: message }
+        Success => perform Host::Files.write(target, content)
     }
 
-    fn commitAt(s, path, previous, text, prefix) = match perform Host::Files.write(path, text) {
+    fn commitPrepared(target, path, previous, previousLock, text, prefix, resolve) = {
+        mut changed = false
+        let staged = handler Host::Files {
+            exists requested => if requested == path { Success { value: true } } else { perform Host::Files.exists(requested) }
+            remove requested => perform Host::Files.remove(requested)
+            read requested => if requested == path { Success { value: text } } else { perform Host::Files.read(requested) }
+            write requested content => {
+                changed = changed || requested == target
+                if requested != target { perform Host::Files.write(requested, content) } else { writtenAfter(path, text, requested, content) }
+            }
+        }
+        let locked = staged(resolve)
+        if statusOf(locked) == 0 { Reports::success(listConcat(prefix, linesOf(locked))) }
+        else if changed { restored(target, previousLock, restored(path, previous, locked)) } else { locked }
+    }
+
+    fn commitAt(target, path, previous, text, prefix, resolve) = match Host::snapshot(target) {
         Error { message } => failed([message])
-        Success => relocked(s, path, previous, prefix)
+        Success { value } => commitPrepared(target, path, previous, value, text, prefix, resolve)
     }
 
-    /// Write `text` as the manifest and relock; on success `prefix` heads the
-    /// lock's delta lines, on failure `previous` is written back and the
-    /// lock's refusal is the report.
-    export fn commit(s, previous, text, prefix) = commitAt(s, Project::manifestPathAt(projectOf(s)), previous, text, prefix)
+    /// Resolve with proposed manifest `text`; on success `prefix` heads the
+    /// lock delta. A reported lock-write failure restores `previous`.
+    export fn commit(s, previous, text, prefix) = commitAt(lockPath(s), Project::manifestPathAt(projectOf(s)), Host::Snapshot { present: true, text: previous }, text, prefix, fn() => relock(s))
 
     /// The same for the overlay `osprey.local.toml` and the development lock.
-    export fn commitOverlay(s, previous, text, prefix) = commitAt(s, Overlay::pathAt(projectOf(s)), previous, text, prefix)
+    export fn commitOverlay(s, text, prefix) = match Host::snapshot(Overlay::pathAt(projectOf(s))) {
+        Error { message } => failed([message])
+        Success { value } => commitAt(lockPath(s), Overlay::pathAt(projectOf(s)), value, text, prefix, fn() => relock(s))
+    }
+
+    /// An unpublished local Add resolves its overlay before writing the new
+    /// root dependency. The nested overlay transaction supplies the lock.
+    export fn commitLocalManifest(project, previous, text, prefix, resolve) = commitAt(Project::localLockPathAt(project), Project::manifestPathAt(project), Host::Snapshot { present: true, text: previous }, text, prefix, resolve)
+
 }
