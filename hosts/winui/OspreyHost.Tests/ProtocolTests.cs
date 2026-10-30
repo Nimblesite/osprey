@@ -105,6 +105,95 @@ public sealed class ProtocolTests
     public void ALifecyclePhaseIsSentByName() =>
         Assert.Equal("active", Envelopes.Text(JsonDocument.Parse(Events.Lifecycle(1, "active")).RootElement, "phase"));
 
+    /// <summary>One envelope carrying a single patch node, as the framework would send it.</summary>
+    static string EnvelopeOf(string node) =>
+        """{"version":1,"state":"s","requests":[],"patches":[{"key":"root","revision":1,"node":NODE}]}""".Replace("NODE", node, StringComparison.Ordinal);
+
+    /// <summary>A frame with <paramref name="style"/>, spelled as the framework writes it.</summary>
+    static string Frame(string style) =>
+        """{"kind":"framed","style":STYLE,"body":{"kind":"empty"}}""".Replace("STYLE", style, StringComparison.Ordinal);
+
+    /// <summary>A frame style whose one member has <paramref name="value"/>.</summary>
+    static string StyleOf(string member, string value) =>
+        """{"MEMBER":VALUE}""".Replace("MEMBER", member, StringComparison.Ordinal).Replace("VALUE", value, StringComparison.Ordinal);
+
+    /// <summary>The refusal for one patch node, or a message saying it was wrongly accepted.</summary>
+    static string ViewportRefusal(string node)
+    {
+        try
+        {
+            Envelopes.Parse(EnvelopeOf(node));
+        }
+        catch (HostException problem)
+        {
+            return problem.Message;
+        }
+        return "accepted a frame this host cannot draw";
+    }
+
+    [Fact]
+    public void AViewportSizedFrameIsRefused()
+    {
+        foreach (var inset in new[] { "0", "400" })
+        {
+            var problem = ViewportRefusal(Frame(StyleOf("viewportHeightInset", inset)));
+            Assert.Contains("viewportHeightInset", problem);
+            Assert.Contains("-1", problem);
+        }
+    }
+
+    [Fact]
+    public void AScrollingFrameIsRefused()
+    {
+        var problem = ViewportRefusal(Frame(StyleOf("scrollY", "true")));
+        Assert.Contains("scrollY", problem);
+        Assert.Contains("region root", problem);
+    }
+
+    [Fact]
+    public void ANestedFrameWithAViewportIsRefused()
+    {
+        var child = ViewportRefusal("""{"kind":"stack","children":[FRAME]}""".Replace("FRAME", Frame(StyleOf("viewportHeightInset", "12")), StringComparison.Ordinal));
+        Assert.Contains("viewportHeightInset", child);
+        var body = ViewportRefusal("""{"kind":"framed","style":{},"body":FRAME}""".Replace("FRAME", Frame(StyleOf("scrollY", "true")), StringComparison.Ordinal));
+        Assert.Contains("scrollY", body);
+    }
+
+    [Fact]
+    public void AMalformedViewportFieldIsRefusedNotGuessed()
+    {
+        foreach (var style in new[] { StyleOf("viewportHeightInset", """ "4" """), StyleOf("viewportHeightInset", "2.5"), StyleOf("scrollY", "1"), StyleOf("scrollY", """ "true" """) })
+        {
+            Assert.Contains("where it needs", ViewportRefusal(Frame(style)));
+        }
+    }
+
+    [Fact]
+    public void OnlyAbsentOrTheContentSizedDefaultIsAccepted()
+    {
+        (string Node, string Wanted)[] cases =
+        [
+            ("""{"kind":"framed","style":null,"body":{"kind":"empty"}}""", "an object style"),
+            (Frame(StyleOf("viewportHeightInset", "null")), "an integer viewportHeightInset"),
+            (Frame(StyleOf("scrollY", "null")), "a boolean scrollY"),
+            (Frame(StyleOf("viewportHeightInset", "-2")), "viewportHeightInset"),
+            (Frame(StyleOf("viewportHeightInset", "-9223372036854775808")), "viewportHeightInset"),
+        ];
+        foreach (var (node, wanted) in cases)
+        {
+            Assert.Contains(wanted, ViewportRefusal(node));
+        }
+    }
+
+    [Fact]
+    public void AContentSizedFrameKeepsTheDefaults()
+    {
+        foreach (var node in new[] { """{"kind":"framed","body":{"kind":"empty"}}""", Frame("{}"), Frame("""{"viewportHeightInset":-1,"scrollY":false}""") })
+        {
+            Assert.Single(Envelopes.Parse(EnvelopeOf(node)).Patches);
+        }
+    }
+
     [Fact]
     public void TheRegionStoreReplacesPatchedRegionsAndKeepsTheRest()
     {
