@@ -191,6 +191,10 @@ pub(super) fn raw_status(exit_code: i32, signal: i32) -> ExitStatus {
     ExitStatus::from_raw((exit_code << 8) | signal)
 }
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "spec_spawn_tests.rs"]
+mod spawn_tests;
+
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
