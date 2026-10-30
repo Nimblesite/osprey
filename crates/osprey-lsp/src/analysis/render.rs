@@ -1,4 +1,5 @@
 //! Shared symbol signatures and inferred type rendering.
+use osprey_types::{ProgramTypes, Type};
 
 use super::{
     render_type, DocComment, EffectRef, ExternParameter, Parameter, Position, SymbolInfo,
@@ -181,11 +182,31 @@ pub(super) fn render_signature(
 /// "Nothing but a hole" is a question about the type's STRUCTURE, not its
 /// spelling: nothing stops an author writing `type _ = { x: int }`, and asking
 /// whether the rendering equals `"_"` threw that fully proven type away.
-pub(super) fn shown(ty: &osprey_types::Type) -> Option<String> {
-    if matches!(ty, osprey_types::Type::Var(_)) {
+pub(super) fn shown(ty: &Type, types: &ProgramTypes) -> Option<String> {
+    if matches!(ty, Type::Var(_)) {
         return None;
     }
-    Some(osprey_types::render_with_holes(ty))
+    let record = record_view(ty, types);
+    Some(osprey_types::render_with_holes(
+        record.as_ref().map_or(ty, |record| record),
+    ))
+}
+
+fn record_view(ty: &Type, types: &ProgramTypes) -> Option<Type> {
+    let Type::Con { name, .. } = ty else {
+        return None;
+    };
+    let layout = types.ctors.get(name)?;
+    let layout = layout.owner_is_record.then_some(layout)?;
+    let fields = layout
+        .fields
+        .iter()
+        .map(|(field, _)| Some((field.clone(), types.field_type(ty, field)?)))
+        .collect::<Option<_>>()?;
+    Some(Type::Record {
+        name: name.clone(),
+        fields,
+    })
 }
 
 /// Fill every slot the author left to inference — unannotated parameters and an
@@ -198,12 +219,15 @@ pub(super) fn shown(ty: &osprey_types::Type) -> Option<String> {
 /// rule unenforceable from tooling — obeying it downgraded every outline entry
 /// — so both hover and `--symbols` answer from inference through here.
 /// Implements [LSP-HOVER-INFERRED-SIGNATURE].
-pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &osprey_types::ProgramTypes) {
+pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &ProgramTypes) {
     if sym.kind == SymbolKind::Function {
         sym.effect_requirements = types.function_effects.get(&sym.name).cloned();
     }
     if sym.kind == SymbolKind::Variable && sym.ty.is_empty() {
-        if let Some(inferred) = types.let_type(None, sym.position).and_then(shown) {
+        if let Some(inferred) = types
+            .let_type(None, sym.position)
+            .and_then(|ty| shown(ty, types))
+        {
             sym.ty = inferred;
         }
     }
@@ -215,7 +239,7 @@ pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &osprey_types::ProgramT
     let inferred = types.param_types(&sym.name).unwrap_or_default();
     for (slot, (_, written)) in sym.parameters.iter_mut().enumerate() {
         if let (true, Some(found)) = (written.is_empty(), inferred.get(slot)) {
-            if let Some(rendered) = shown(found) {
+            if let Some(rendered) = shown(found, types) {
                 *written = rendered;
             }
         }
@@ -223,7 +247,7 @@ pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &osprey_types::ProgramT
     sym.return_type = sym
         .return_type
         .take()
-        .or_else(|| types.return_type(&sym.name).and_then(shown));
+        .or_else(|| types.return_type(&sym.name).and_then(|ty| shown(ty, types)));
     let signature = render_signature(
         &sym.name,
         &sym.binder,
