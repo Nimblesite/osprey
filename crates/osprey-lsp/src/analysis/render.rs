@@ -182,7 +182,7 @@ pub(super) fn render_signature(
 /// "Nothing but a hole" is a question about the type's STRUCTURE, not its
 /// spelling: nothing stops an author writing `type _ = { x: int }`, and asking
 /// whether the rendering equals `"_"` threw that fully proven type away.
-pub(super) fn shown(ty: &Type, types: &ProgramTypes) -> Option<String> {
+pub(crate) fn shown(ty: &Type, types: &ProgramTypes) -> Option<String> {
     if matches!(ty, Type::Var(_)) {
         return None;
     }
@@ -196,13 +196,8 @@ fn record_view(ty: &Type, types: &ProgramTypes) -> Option<Type> {
     let Type::Con { name, .. } = ty else {
         return None;
     };
+    let fields = types.record_fields(ty)?;
     let layout = types.ctors.get(name)?;
-    let layout = layout.owner_is_record.then_some(layout)?;
-    let fields = layout
-        .fields
-        .iter()
-        .map(|(field, _)| Some((field.clone(), types.field_type(ty, field)?)))
-        .collect::<Option<_>>()?;
     Some(Type::Record {
         name: record_name(ty, layout, name),
         fields,
@@ -233,7 +228,7 @@ pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &ProgramTypes) {
     }
     if sym.kind == SymbolKind::Variable && sym.ty.is_empty() {
         if let Some(inferred) = types
-            .let_type(None, sym.position)
+            .source_let_type(None, sym.position)
             .and_then(|ty| shown(ty, types))
         {
             sym.ty = inferred;

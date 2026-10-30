@@ -219,7 +219,10 @@ pub(crate) fn published(program: &Program) -> Option<Snapshot> {
         (format!("fn {name}"), signature)
     });
     let mut published: Published = functions
-        .chain(sited("let", &types.lets))
+        .chain(
+            sited("let", &types.source_lets)
+                .map(|(label, ty)| (label, types.source_binding_type(ty))),
+        )
         .chain(sited("lambda", &types.lambdas))
         .chain(sited("list", &types.lists))
         .collect();

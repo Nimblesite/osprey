@@ -109,6 +109,7 @@ pub(super) fn publish_program(
         &checker.instantiations,
         &mut checker.ctx,
     );
+    let source_lets = std::sync::Arc::new(lets.clone());
     for table in [&mut lambdas, &mut lets, &mut lists] {
         for ty in table.values_mut() {
             *ty = runtime_site_type(&checker.ctx, ty);
@@ -144,6 +145,7 @@ pub(super) fn publish_program(
         effects,
         lambdas,
         lets,
+        source_lets,
         lists,
         performs,
         handler_ops,
