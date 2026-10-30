@@ -25,6 +25,12 @@ STUB_TOOL = """#!/bin/sh
 case "$*" in
   *"am instrument"*) printf '%s\\n' "$REPORT" ;;
   *"settings get"*) echo null ;;
+  *"exec-out"*)
+    case "$SCREENSHOT_MODE" in
+      unavailable) echo 'stub screenshot transfer failed' >&2; exit 7 ;;
+      malformed) printf 'not a PNG' ;;
+      *) printf '\\211PNG\\r\\n\\032\\n' ;;
+    esac ;;
 esac
 """
 
@@ -150,28 +156,35 @@ def stub_android_tree(root):
     (root / BANK_RUN).parent.joinpath("build").mkdir()
 
 
-def instrumentation_verdict(report):
+def instrumentation_result(report, screenshot_mode="valid"):
     """Exit status of the bank's Android test driver for a device that prints `report`."""
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         stub_android_tree(root)
         env = {
-            "PATH": BASE_PATH, "REPORT": report, "OSPREY_ANDROID_SKIP_BUILD": "1",
+            "PATH": BASE_PATH, "REPORT": report, "SCREENSHOT_MODE": screenshot_mode, "OSPREY_ANDROID_SKIP_BUILD": "1",
             "OSPREY_ANDROID_SERIAL": "stub", "ANDROID_HOME": str(root / "sdk"),
             "ANDROID_NDK_HOME": str(root / "ndk"),
         }
         return subprocess.run(
             ["bash", str(root / BANK_RUN), "--test"], env=env,
             capture_output=True, text=True, check=False,
-        ).returncode
+        )
 
 
 class BankAndroidVerdict(unittest.TestCase):
     def test_report_is_judged_with_tools_every_runner_has(self):
-        self.assertEqual(instrumentation_verdict("Time: 23.282\n\nOK (6 tests)"), 0)
+        self.assertEqual(instrumentation_result("Time: 23.282\n\nOK (6 tests)").returncode, 0)
         failures = "FAILURES!!!\nTests run: 6,  Failures: 1"
         for report in [failures, "INSTRUMENTATION_FAILED: stub", "Time: 1.2"]:
-            self.assertNotEqual(instrumentation_verdict(report), 0, report)
+            self.assertNotEqual(instrumentation_result(report).returncode, 0, report)
+
+    def test_passing_instrumentation_cannot_hide_failed_screenshot_collection(self):
+        for mode in ["unavailable", "malformed"]:
+            with self.subTest(mode=mode):
+                result = instrumentation_result("OK (6 tests)", mode)
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+                self.assertIn("screenshot", result.stderr.lower())
 
 
 if __name__ == "__main__":

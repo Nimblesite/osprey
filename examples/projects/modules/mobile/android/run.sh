@@ -37,13 +37,19 @@ if [[ ${1:-} == --test ]]; then
     "$adb" -s "$serial" shell am instrument -w -r -e server_url "${TALON_SERVER_URL:-http://127.0.0.1:18790}" org.ospreylang.talon.test/android.test.InstrumentationTestRunner | tee "$report"
     mkdir -p "$app/build/screenshots"
     for screen in overview accounts deposit refusal activity security open-account landscape offline; do
-        "$adb" -s "$serial" exec-out run-as org.ospreylang.talon cat "files/screenshots/$screen.png" > "$app/build/screenshots/$screen.png" 2>/dev/null || rm -f "$app/build/screenshots/$screen.png"
+        # A passing report cannot hide missing native acceptance evidence.
+        if ! "$adb" -s "$serial" exec-out run-as org.ospreylang.talon cat "files/screenshots/$screen.png" > "$app/build/screenshots/$screen.png"; then
+            rm -f "$app/build/screenshots/$screen.png"
+            echo "Android screenshot transfer failed: $screen.png" >&2
+            exit 1
+        fi
     done
     python3 - "$app/build/screenshots" <<'PY'
 import pathlib, sys
 for path in pathlib.Path(sys.argv[1]).glob('*.png'):
     if not path.read_bytes().startswith(b'\x89PNG\r\n\x1a\n'):
         path.unlink()
+        sys.exit(f"Invalid Android screenshot: {path.name}")
 PY
     if ! grep -Eq '^OK \([0-9]+ tests?\)' "$report" || grep -Eq 'FAILURES|INSTRUMENTATION_FAILED|shortMsg=' "$report"; then exit 1; fi
 else
