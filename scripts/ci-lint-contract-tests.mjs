@@ -105,6 +105,9 @@ test('a test-only field cannot hide a later product type reference', () => {
 })
 
 const deadCodeMaskControls = [
+  ['standalone test attributes cannot keep unused product functions alive',
+    'pub fn only_attribute_test() {}\n#[test]\nfn witness() { only_attribute_test(); }\nfn main() {}',
+    /fn only_attribute_test/],
   ['split function headers cannot expose where-clause test calls as product references',
     'pub fn only_split_test() {}\n#[cfg(test)]\nfn\n\n witness<T>()\nwhere\n    T: Copy,\n{ only_split_test(); }\nfn main() {}',
     /fn only_split_test/],
