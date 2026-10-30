@@ -1,18 +1,20 @@
 # Plan 0041 — Dependent types as a pluggable discipline, and Mathlib on Osprey
 
+> **STOP — NOT YET IN FORCE.** The `.lean`-only sections of this plan (the deletions, the pointers to [plan 0044](0044-lean-source-compatibility.md), the rewritten phases 3, 5 and 7 and milestones 3, 5, 7 and 8) were written on 2026-10-31 while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores those sections until the PR has merged.** Do not delete, rename, rewrite or stop maintaining anything because of this text before then; the previous revision in git history is the plan for that PR.
+
 Giant leaps - not baby steps
 Violent refactoring
 
-Contracts: [spec 0050](../specs/language/0050-TypeDisciplines.md) for the pluggable discipline seam and [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) for the `lean4` discipline and the Mathlib port. Status: **M0, M1 (a `Prop`/`→` theorem from a recorded Lean export) and M2 implemented and gated by `make _test_proof_kernel` and the speed gate; M3 recorded And/Eq/Iff export checks; broader inductive verification and surface syntax remain unfinished; phase 1 implemented except the two open boxes below.** The road test (M0 to M3) is the first work; it needed one resolver change (positional constructors across files) and one codegen change (recursive `Result` returns). The adversarial reviews [1](../reviews/0041-dependent-types-and-mathlib-review.md), [2](../reviews/0041-dependent-types-and-mathlib-review-2.md) and [3](../reviews/0041-dependent-types-and-mathlib-review-3.md) are each answered item by item at their foot. Stabilization mode holds for the phases after it: none begins without the owner's go.
+Contracts: [spec 0050](../specs/language/0050-TypeDisciplines.md) for the pluggable discipline seam and [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) for the `lean4` discipline, `.lean` source and Mathlib. Source compatibility (the stages, the deletions) is [plan 0044](0044-lean-source-compatibility.md) and runs before any further phase here. Status: **M0, M1 (a `Prop`/`→` theorem from a recorded Lean export) implemented and gated by `make _test_proof_kernel`; M2 (the `.ospml` proof surface) is deleted under plan 0044; M3 recorded And/Eq/Iff export checks; broader inductive verification remains unfinished; phase 1 implemented except the two open boxes below.** The road test (M0 to M3) is the first work; it needed one resolver change (positional constructors across files) and one codegen change (recursive `Result` returns). The adversarial reviews [1](../reviews/0041-dependent-types-and-mathlib-review.md), [2](../reviews/0041-dependent-types-and-mathlib-review-2.md) and [3](../reviews/0041-dependent-types-and-mathlib-review-3.md) are each answered item by item at their foot. Stabilization mode holds for the phases after it: none begins without the owner's go.
 
 ## Summary
 
-Osprey gets a proof assistant whose checked library is Mathlib, built beside the language rather than into it. The Hindley-Milner type system, effect rows, monomorphisation and codegen of today's compiler are not touched; the compiler gains one dispatch seam ([TYPES-DISCIPLINE-SEAM], [spec 0050](../specs/language/0050-TypeDisciplines.md)) that hands a module marked `// osprey: types=<name>` to the package registered under that name. The planned Lean-compatible discipline is `lean4`: a kernel for Lean 4's type theory, an elaborator, tactics and the `@osprey/mathlib` package, all written in Osprey and compiled through the native backend. Other provers and other type systems register the same way ([TYPES-DISCIPLINE-REGISTRY]); the seam is a feature on its own, delivered and proved by two reference disciplines before any kernel is written, and nothing in this plan is the only way to put a solver on Osprey.
+Osprey gets a proof assistant whose checked library is Mathlib, built beside the language rather than into it. The Hindley-Milner type system, effect rows, monomorphisation and codegen of today's compiler are not touched; the compiler gains one dispatch seam ([TYPES-DISCIPLINE-SEAM], [spec 0050](../specs/language/0050-TypeDisciplines.md)) that hands a module marked `// osprey: types=<name>` to the package registered under that name. The Lean-compatible discipline is `lean4`: its input is `.lean` files, its kernel is written in Osprey, and elaboration and tactics are Lean's own until a native replacement proves identical ([PROOF-SOURCE-STAGES]). Other provers and other type systems register the same way ([TYPES-DISCIPLINE-REGISTRY]); the seam is a feature on its own, delivered and proved by two reference disciplines before any kernel is written, and nothing in this plan is the only way to put a solver on Osprey.
 
 ```mermaid
 flowchart LR
     S[module source] -->|types=hm| HM[osprey-types HM checker]
-    S -->|types=lean4| D[lean4 discipline package]
+    P[.lean files] --> D[lean4 discipline package]
     S -->|types=other| X[another registered discipline]
     D --> K[kernel: pure Result function]
     D -->|erasure| A[canonical AST]
@@ -32,7 +34,7 @@ Verified on 2026-10-29: the real `Nat.add_comm` export checks from an empty Ospr
 - [x] Real `Nat.add_comm` dependency export checked from an empty Osprey environment; its statement compared structurally against the intended universal equality and its axiom dependencies recorded ([execution evidence](../reports/proof-m3-export-shape-2026-10-29.md#common-arithmetic-proof-execution)).
 - [x] A changed arithmetic statement or corrupted proof rejected by the same checker; no declaration skipped, assumed or replaced with a toy implementation.
 - [x] Exact runnable command and expected checked/rejected output documented under AGENTS.md Commands; GC, ARC and wasm32 evidence retained with pinned input/tool versions.
-- [ ] Add that exact export to the existing speed gate, then move to a selected Mathlib theorem using the same dependency-driven workflow.
+- [ ] Move to a selected Mathlib theorem using the same dependency-driven workflow. (The speed gate is deleted by plan 0044; exports are no longer added to it.)
 
 Navier–Stokes is the high-water mark for the solution checker. A successful arithmetic proof does not establish that its analysis library, PDE statements or full proof can be checked. Keep that larger objective and the full Mathlib gates below; pull prerequisites forward only when a selected proof demonstrates the need.
 
@@ -66,8 +68,8 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [x] Compiler: a positional union constructor applied from another file folds to its construction (`constructor_resolve.rs`, `resolve.rs`)
 - [x] Resolver test: imported positional variant accepted, imported record still needs named fields
 - [x] `examples/proof/kernel/expectedoutput` and `make _test_proof_kernel` (in `make test`) running the kernel under GC, ARC and wasm32
-- [x] `benchmarks/proof/run.sh` and `m0_identity`: a process-against-process regression gate (a compiled Osprey kernel with the theorem built in against `lean --run`, elaboration included), red when Osprey is slower; not kernel-speed evidence, which is `m1_export`
-- [x] Lean (elan) installed in CI (`test-proof` job, toolchain pinned) and the proof benchmark run on every kernel change
+- [x] `benchmarks/proof/run.sh` and `m0_identity` — **deleted by plan 0044 phase 0**: the two sides did different work, and no timing gates CI any more ([PROOF-SPEED])
+- [x] Lean (elan) installed in CI (`test-proof` job, toolchain pinned); the benchmark run is removed from that job by plan 0044
 - [x] `docs/reports/proof-road-test-2026-10-29.md`: lines, hours, language gaps
 - [x] Compiler: a recursive function returning `Result<T, _>` no longer needs a written signature (`abi_shape_concrete` at the return slot); an open success payload still does
 - [x] Review P0.1: `Terms::equal` is structural (indices, every universe argument), never printed; repeated-binder and universe-argument rejections in `tests/terms.ospml` and `tests/infer.ospml`
@@ -85,14 +87,13 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [x] `m1_export` benchmark input: `benchmarks/proof/m1_export` reads the recorded export from disk on the Osprey side and replays the same module through `lean4checker` on the Lean side; `lean.setup` re-exports the module every run and byte-compares it with the case's copy
 - [x] `m1_export` recorded, 2026-10-29, `PROOF_RUNS=10`, Lean 4.25.0 on arm64 macOS: Osprey 3 ms / 2256 KiB against `lean4checker` 433 ms / 52576 KiB, pass (`osprey_input` `2ab95a53…e053`, `lean_input` `637f6d7d…246d`, `osprey_binary` `748e523c…f7adf0`, `lean_binary` `be06b289…f9201`). Generated rows live in `target/proof/` and are not committed; this line is the record
 
-### M2 — a proof is typed
-- [x] ML-layout proof parser for `theorem name (binders) : type := term` (`src/surface.ospml`), over a whitespace-delimited demo tokenizer: `p:=h`, `p→q` and `∀p` without spaces are not read
-- [x] Direct elaborator to M0 terms; `id_imp_typed`, `imp_trans`, `forall_typed` check and `wrong_typed` is rejected
+### M2 — deleted
+`src/surface.ospml` and its direct elaborator built a Lean look-alike `.ospml` proof surface. That format is deleted and illegal ([PROOF-SOURCE-DELETED]); plan 0044 phase 0 removes the module, its tests and its `expectedoutput` lines. Typing a proof means writing a `.lean` file (plan 0044 phase 1).
 
 ### M3 — inductives
 - [ ] Inductive declarations, constructors, recursors, ι-reduction
 - [ ] `And`, `Iff`, `Eq` as Lean declares them
-- [ ] `and_swap` checks from a Lean export and from the M2 surface
+- [ ] `and_swap` checks from a Lean export of `AndSwap.lean`
 - [ ] Road-test report and the decision point
 
 ### Phase 1 — pluggable disciplines
@@ -121,9 +122,9 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [ ] Cross-check against `lean4lean` and `nanoda`; core, `Std`, Mathlib gates with speed tests
 
 ### Phases 3 to 7
-- [ ] Phase 3: proof AST, ML frontend, unifier, classes, `osprey prove check`, LSP goal view
-- [ ] Phase 4: tactics, `hammer`, `benchmarks/proof/` with miniF2F and PutnamBench
-- [ ] Phase 5: `osprey prove port`, sync job, re-proving, `@osprey/mathlib`, upstream bridge
+- [ ] Phase 3: `.lean` source through the toolchain, then Osprey's own front end — plan 0044 phases 1 and 2
+- [ ] Phase 4: `hammer`, learned proposals, native tactic replacements (plan 0044 phase 4), miniF2F and PutnamBench recorded by hand
+- [ ] Phase 5: Mathlib as `.lean`: sync job, checked environment, upstream bridge
 - [ ] Phase 6: erasure, mixed-discipline corpus program, refinement discipline
 - [ ] Phase 7: the workbench, tracked in [plan 0042](0042-proof-workbench.md)
 
@@ -150,9 +151,9 @@ The standard-choice guard and numeric short-circuit repair pass the 400-case ker
 
 ### Current proof-CI acceptance after stabilization changes
 
-The proof CI entry point is now `make -j3 _test_proof_ci`, defined in [proof.mk](../../scripts/make/proof.mk). Its bounded Make graph builds fresh GC, ARC and wasm32 batch checkers once per invocation, shares those binaries across the complete OpenAI, Lean-core and Unicode checks, and runs the existing kernel and discipline gates. The speed gate runs after those checks finish. The existing 45-minute job deadline, fresh Lean replay, exact statement and axiom checks, corruption refusals and speed requirements remain in force. Scheduling contracts are checked by `node --test scripts/ci-scope.test.mjs scripts/ci-proof-schedule.test.mjs scripts/test-proof-export.mjs`; those structural tests do not establish successful execution of the complete pipeline.
+The proof CI entry point is now `make -j3 _test_proof_ci`, defined in [proof.mk](../../scripts/make/proof.mk). Its bounded Make graph builds fresh GC, ARC and wasm32 batch checkers once per invocation, shares those binaries across the complete OpenAI, Lean-core and Unicode checks, and runs the existing kernel and discipline gates. The speed gate that ran after them is removed by plan 0044 phase 0. The existing 45-minute job deadline, fresh Lean replay, exact statement and axiom checks and corruption refusals remain in force. Scheduling contracts are checked by `node --test scripts/ci-scope.test.mjs scripts/ci-proof-schedule.test.mjs scripts/test-proof-export.mjs`; those structural tests do not establish successful execution of the complete pipeline.
 
-- [ ] Freeze the repaired compiler and kernel, then complete the entire proof-CI graph from clean inputs. Record compiler, checker and source hashes, every required root check and mutation refusal, fresh independent Lean replay and the speed-gate result. The 400-case kernel and 582-root receipts above are historical checkpoints; they do not certify later compiler-conversion or reducer changes. Workbench import performance, full browser interactions and native/installed-extension acceptance remain separate open gates.
+- [ ] Freeze the repaired compiler and kernel, then complete the entire proof-CI graph from clean inputs. Record compiler, checker and source hashes, every required root check and mutation refusal and fresh independent Lean replay. The 400-case kernel and 582-root receipts above are historical checkpoints; they do not certify later compiler-conversion or reducer changes. Workbench import performance, full browser interactions and native/installed-extension acceptance remain separate open gates.
 
 ## Road test first: the first proof
 
@@ -165,7 +166,7 @@ A plain Osprey program, ML flavor, under `examples/proof/kernel/`, run with `osp
 - The proof: the term `fun (p : Prop) (h : p) => h` against the type `∀ (p : Prop), p → p`. `osprey run examples/proof/kernel/main.ospml` prints `checked: id_imp`.
 - The control: `fun (p q : Prop) (h : p) => h` against `∀ (p q : Prop), p → q` is rejected with the two terms that failed to be definitionally equal, as a typed `Result`, never a panic.
 - Both are corpus programs with `.expectedoutput`, so they run under GC, ARC and wasm32 from day one.
-- The first benchmark: `benchmarks/proof/m0_identity` is the process regression gate documented in the benchmark README; its Lean invocation includes elaboration, so its numbers are not kernel-speed evidence. Its existing ordering gate remains unchanged ([PROOF-SPEED]). The harness, the report format and the gate exist from this milestone; every later milestone adds its input to the same harness.
+- The first benchmark, `m0_identity`, compared a compiled kernel against `lean --run` with elaboration included: different work on each side. It is deleted by plan 0044 phase 0, and no timing gates anything ([PROOF-SPEED]).
 
 Answers: can a type checker with substitution, whnf and definitional equality be written comfortably in Osprey as it is today, and how fast does it run.
 
@@ -173,17 +174,15 @@ Answers: can a type checker with substitution, whnf and definitional equality be
 
 The same kernel reads the `lean4export` text of a one-theorem Lean file (`theorem id_imp : ∀ p : Prop, p → p := fun p h => h`): the export parser for constants, levels and the expression forms of M0, nothing more. The program checks Lean's term and prints the same line. A second Lean file with a wrong proof is a rejection test.
 
-Answers: does the kernel agree with Lean on real terms, and how much of the export format is painful to parse in Osprey. The benchmark gains `m1_export`: the export is checked by both kernels and Osprey must be faster.
+Answers: does the kernel agree with Lean on real terms, and how much of the export format is painful to parse in Osprey. `m1_export` records the export checked by both kernels; it is a record, not a gate.
 
-### M2 — a proof is typed, not pasted
+### M2 — deleted
 
-A minimal ML-layout proof parser in the same package: `theorem id_imp (p : Prop) (h : p) : p := h` in a `.ospml` file elaborates, by a direct elaborator with no metavariables, to the M0 term and checks. This is the first line of [PROOF-SURFACE-FLAVORS] and the moment a person can write a proof on Osprey.
-
-Answers: how far a direct elaborator gets before unification is forced, and what the surface will feel like.
+The `.ospml` proof surface of this milestone is banned by [PROOF-SOURCE-DELETED]. A person writes a proof on Osprey by writing a `.lean` file: plan 0044 phase 1.
 
 ### M3 — inductives, and the first Mathlib-shaped theorem
 
-Inductive declarations, constructors, recursors and ι-reduction. The target is `And`, `Iff` and `Eq` as Lean declares them, then `theorem and_swap (p q : Prop) : p ∧ q → q ∧ p`, checked both from a Lean export and from the M2 surface. Nested and mutual encodings, quotients and literals are still out.
+Inductive declarations, constructors, recursors and ι-reduction. The target is `And`, `Iff` and `Eq` as Lean declares them, then `theorem and_swap (p q : Prop) : p ∧ q → q ∧ p` from the export of `AndSwap.lean`. Nested and mutual encodings, quotients and literals are still out.
 
 Answers: the size and shape of the real kernel, and whether the structural-key map and term store of [PROOF-STDLIB] are now blocking. From here the standard-library work is pulled in by a measured need, not scheduled ahead of it.
 
@@ -224,33 +223,27 @@ Exit: both reference packages green; byte-identical output and diagnostics for e
 4. `tests/proof/adversarial/` seeded with the pinned issue 14576 proof of concept and other independently verified published cases; the collision test; the overflow test. Record the primary report and affected/fixed checker revision for each case.
 5. Cross-check against `lean4lean` and `nanoda` at current release on the same export.
 
-Gates, in order: Lean's core library checks; `Std` checks; the full pinned Mathlib export checks, cross-checked, with the first `docs/reports/proof-trust-<date>.md`. Each gate has its speed test: Osprey's check of the same export is faster than Lean's on the same machine, or the gate is red ([PROOF-SPEED]).
+Gates, in order: Lean's core library checks; `Std` checks; the full pinned Mathlib export checks, cross-checked, with the first `docs/reports/proof-trust-<date>.md`. Timings are recorded by hand and gate nothing ([PROOF-SPEED]).
 
-### Phase 3 — surface language and elaborator [PROOF-SURFACE], [PROOF-ELAB]
+### Phase 3 — `.lean` source [PROOF-SOURCE], [PROOF-ELAB]
 
-1. The canonical proof AST and its ML frontend ([PROOF-SURFACE-FLAVORS]); ML first because Lean 4's syntax is already ML-shaped and the port's readers know it. Default and Python frontends are a later step of this phase, gated on cross-flavor equivalence of the elaborated kernel terms.
-2. Unifier, type-class resolution, coercions, literals, attributes, notation and macros.
-3. `osprey prove check` and the LSP goal view.
+Plan 0044 phases 1 and 2: `osprey prove check` over the pinned toolchain with kernel-checked export, then Osprey running Lean's compiled front end with no Lean executable. Exit: `Mathlib/Algebra/Group/Basic.lean`, unmodified, checks at stage 2 with identical export bytes.
 
-Exit: `Mathlib/Algebra/Group/Basic` translated by hand elaborates to terms the kernel finds definitionally equal to the imported ones ([PROOF-MATHLIB-DRIFT]).
+### Phase 4 — automation [PROOF-ELAB]
 
-### Phase 4 — tactics and automation [PROOF-TACTICS]
+1. `hammer` over Z3/cvc5 and E/Vampire with kernel reconstruction; unreconstructed answers are hints.
+2. Native replacements for individual tactics, each switched on only when identical on the corpus (plan 0044 phase 4).
+3. `benchmarks/proof/` with miniF2F and PutnamBench, run by hand; results recorded with hashes.
 
-1. The metaprogramming API and the core tactic list, each with a Mathlib-derived test corpus.
-2. `hammer` over Z3/cvc5 and E/Vampire with kernel reconstruction; unreconstructed answers are hints.
-3. `benchmarks/proof/` with miniF2F and PutnamBench against the current Lean release; results recorded with hashes.
+Exit: the first benchmark report is published. No score is quoted before it is recorded.
 
-Exit: every tactic on the list passes its corpus; the first benchmark report is published. No score is quoted before it is recorded.
+### Phase 5 — Mathlib [PROOF-MATHLIB]
 
-### Phase 5 — the Mathlib port [PROOF-MATHLIB]
+1. The sync job ([PROOF-EXPORT-SYNC]) on a fixed cadence over the pinned Mathlib `.lean` tree, opening the update pull request, red on any failure.
+2. The checked environment of the pin available by Lean name, with licence notices, through [plan 0020](0020-package-manager.md).
+3. The two-way bridge ([PROOF-MATHLIB-UPSTREAM]): every Mathlib defect found goes upstream with Osprey's evidence; local patches are pending-only and listed in the trust report; kernel findings about Lean are disclosed to its maintainers before the report is published.
 
-1. `osprey prove port`: statements, definitions, structures, instances and notations to readable `.ospml` mirroring Mathlib's tree, proofs `by imported`.
-2. The sync job ([PROOF-EXPORT-SYNC]) on a fixed cadence, opening the update pull request, red on any failure.
-3. Re-proving: translated tactic scripts first, automation second; per-module fraction in the trust report.
-4. Licence notices and the `@osprey/mathlib` package through [plan 0020](0020-package-manager.md).
-5. The two-way bridge ([PROOF-MATHLIB-UPSTREAM]): every Mathlib defect the port or the adversarial suite finds goes upstream with Osprey's evidence; local patches are pending-only and listed in the trust report with their upstream link; kernel findings about Lean are disclosed to its maintainers before the report is published.
-
-Exit: the pinned Mathlib commit is fully available by Lean name (layer 1), its statements translated with drift checked (layer 2), and the re-proved fraction reported honestly (layer 3).
+Exit: the pinned Mathlib commit is fully checked and available by Lean name, and builds through `osprey prove check` at stage 2.
 
 ### Phase 6 — programs and proofs together [PROOF-BOUNDARY], [PROOF-ERASE]
 
@@ -262,21 +255,13 @@ Exit: the boundary rules hold in the differential corpus and a second discipline
 
 ### Phase 7 — the proof workbench [PROOF-WORKBENCH]
 
-Delivered by [plan 0042](0042-proof-workbench.md) against [spec 0051](../specs/applications/0051-ProofWorkbench.md); its first three phases run in parallel with M0 to M3 here, and its phase 4 waits on M1 and M3. The steps below are the proof system's side of that plan.
+Delivered by [plan 0042](0042-proof-workbench.md) against [spec 0051](../specs/applications/0051-ProofWorkbench.md), behind plan 0044. The proof system owes it: the `Lean` capability (check, goals, diagnostics) over the toolchain and later over Osprey's front end; the kernel verdict on an export; statement-shape search over the checked environment; nothing only the workbench can call.
 
-1. Mathematics as the only input: Unicode notation through the Lean abbreviation table and a palette, statements and proof steps written as a mathematician phrases them, translated to the ML proof surface and shown beside the mathematics. The user writes no code; the generated `.ospml` is the saved artifact.
-2. The goal pane over the checker protocol's goal-state capability, re-elaborating the declaration under the cursor on every edit without blocking typing; failing steps underlined with the terms that did not unify.
-3. Code actions for `cases`, `induction`, `constructor` and `exact?` that edit the proof in place; refining goals from the pane.
-4. Statement-shape search over the pinned Mathlib, hover with statement and docstring, jump to Mathlib source and to the Lean original.
-5. The rendered document view, which is also the export.
-6. The scratch board: freehand strokes rendered as chalk on slate, a chalk theme for typed mathematics, and handwriting recognition feeding the same statement and step input.
-7. Hosts: native macOS and iOS, VS Code through `@osprey/vscode`, and the browser through wasm32 with a web host; one application, three hosts, proven by the same fixture-driven `update` tests.
-
-Exit: a mathematician new to Osprey writes and checks `and_swap` in under ten minutes without documentation, recorded in the road-test report; every service used is reachable by any editor through spec 0020 or the checker protocol.
+Exit: a mathematician new to Osprey writes and checks `and_swap` in a fresh `.lean` file in under ten minutes without documentation, recorded in the road-test report.
 
 ## Pi delegation
 
-Bulk, mechanical work goes to pi under the AGENTS.md rules: the `lean4export` parser, the tactic test corpora, the statement translator's per-module runs and the benchmark harness. Kernel code, the seam and the trust report are written and reviewed here.
+Bulk, mechanical work goes to pi under the AGENTS.md rules: the `lean4export` parser, the `.olean` reader's table-driven parts, corpus runs and the measurement harness. Kernel code, the seam and the trust report are written and reviewed here.
 
 ## Results first
 
@@ -288,7 +273,8 @@ Every public claim about trust, speed or automation is a link to a dated report 
 - Put a discipline name, a theory or a tactic in `crates/`.
 - Trust a tactic, a solver, a model or a hash.
 - Make a trust, capability or performance claim without its dated evidence in `docs/reports/`.
-- Merge a kernel, elaborator or tactic change that makes any `benchmarks/proof/` gate slower than Lean on the same input.
+- Gate CI on a timing, or claim to be faster than Lean.
+- Read, write or describe any proof format but `.lean` ([PROOF-SOURCE-DELETED]).
 
 The shared workbench library now has a canonical thirteen-group catalogue at `apps/workbench/assets/proof-libraries.json`. `scripts/workbench-proof-assets.py` stages the exact accepted exports and both upstream licenses for every host, with missing/stale/extra/symlink guards and no dependency on an installed Lean authoring toolchain. The full proof verifier retains its separate source and fresh Lean gates. Application event wiring, actual bundled-library host interactions and final captures remain open; the catalogue never stores acceptance flags.
 
@@ -318,38 +304,32 @@ Exit evidence: a dated report covers the complete core/`Std` inventory with zero
 
 Exit evidence: the same ordinary Osprey application runs with two separately selected disciplines; replacing or forking one changes no HM rules and cannot reuse incompatible proof authority. Known defects can be corrected in a discipline package and all dependent artifacts can be located and rechecked. This is compile-time selection and interactive checker selection, not silent runtime mutation of an already checked theory.
 
-### Milestone 3: author proofs from source [PROOF-COMPLETION-FRONTEND]
+### Milestone 3: author proofs from `.lean` source [PROOF-COMPLETION-FRONTEND]
 
-- [ ] Build the canonical proof AST, source ranges and ML proof frontend for every declaration and binder form in [PROOF-SURFACE](../specs/language/0049-DependentTypesAndProofs.md#proof-surface-proof-surface). Cover dependent functions, universes, inductives, structures, classes, instances, namespaces, notation, macros, term proofs and tactic blocks with real library examples.
-- [ ] Implement metavariable scope/occurs/universe checks, higher-order pattern unification, postponed constraints, type-class search with priorities and `outParam`, coercions, overloaded literals, attributes, reducibility and hygienic expansion. Each inference rule needs ambiguous/ill-scoped/false-statement controls; unresolved obligations are errors with locations and goals.
-- [ ] Elaborate and kernel-check new proofs that have no imported proof body. Start with identity and conjunction swap, then equality/quantifiers, natural-number induction and a translated algebra module. Keep imported-term checking distinct from source elaboration in reports and tests.
-- [ ] Produce fresh terms definitionally equal to the pinned imported statements for the existing `Mathlib/Algebra/Group/Basic` acceptance module and its complete dependencies. Replay the resulting proofs independently, comparing resolved statements and axiom dependencies rather than printed names or binder spellings.
-- [ ] Complete Default and Python syntax-flavor frontends over the same proof AST. Round-trip equivalent examples across all three flavors without changes to proof meaning, assumptions, exported interfaces or executable output.
-- [ ] Deliver the specified `osprey prove check` path, dependency-aware incremental checking, protocol diagnostics and editor goal/type services. Before advertising any new CLI entry point, add its actual canonical example/test, exact runnable command and expected result to AGENTS.md Commands; proposed commands in this plan are not evidence that they exist.
+- [ ] Stage 1 (plan 0044 phase 1): `osprey prove check` over the pinned toolchain with kernel-checked export; Lean's `tests/lean`, `benchmarks/proof/tools/` and `examples/proof/openai/` give identical verdicts and first errors. Exact command and expected result in AGENTS.md Commands before the entry point is advertised.
+- [ ] Stage 2 (plan 0044 phase 2): the `.olean` reader and the IR interpreter run Lean's front end in Osprey with no Lean executable; export bytes identical to stage 1 on the same corpora, then on `Mathlib/Algebra/Group/Basic.lean` and its dependencies.
+- [ ] Editor services (goals, hovers, diagnostics, `exact?`) through the language server at both stages.
 
-Exit evidence: a clean environment authors and checks previously unseen proofs from source through CLI and editor, including the algebra acceptance module. Missing metavariables, `sorry`, unrecognised steps and stale generated text cannot produce a completed verdict. This closes the broader proof-frontend milestone, independently of full-library source coverage.
+Exit evidence: a clean environment authors and checks previously unseen `.lean` proofs through CLI and editor, including the algebra module, with the same verdicts as Lean. `sorry` and unsolved goals cannot produce a completed verdict.
 
 ### Milestone 4: usable tactics and proof search [PROOF-COMPLETION-AUTOMATION]
 
-- [ ] Create a versioned behaviour inventory for every tactic in [PROOF-TACTICS-CORE](../specs/language/0049-DependentTypesAndProofs.md#tactics-and-automation-proof-tactics), plus additional tactics used by the pinned library. Include the pinned oracle's applicable `grind`, simplification and arithmetic behaviour rather than treating an older tactic list as permanent coverage.
-- [ ] Implement the metaprogramming API over goals, contexts, environments, metavariables and proof terms, with scoped backtracking, reproducible execution traces and bounded time/memory. Tactics may propose terms and update their own state; only the kernel may accept a declaration.
-- [ ] Deliver structural tactics, rewriting/simplification, induction, arithmetic/normalisation and premise/instance search in dependency order. Each tactic closes only its documented goal class, with positive corpus cases and false, unsupported, resource-exhausted and axiom-policy controls. No-op tactics and admissions never satisfy the inventory.
+- [ ] Tactics are Lean's, run at stage 1 by the toolchain and at stage 2 by Osprey's front end. A native replacement for a tactic (stage 3) is switched on only when identical on the corpus, with positive cases and false, unsupported, resource-exhausted and axiom-policy controls; only the kernel accepts a declaration.
 - [ ] Add `hammer` adapters for the specified external solvers and optional learned premise/step proposals. Reconstruct every accepted result into an Osprey-checked term; unreconstructed answers remain suggestions and leave the goal open. Make unsupported native/reflection proof mechanisms explicit blockers rather than new trusted assertions.
-- [ ] Replay all tactic scripts needed by the translated acceptance modules and record outcomes on fixed miniF2F, PutnamBench and library-derived suites. Pin datasets, splits, oracle toolchains, permitted premises/axioms, solver/model versions, seeds, resource budgets, successful proof terms and all failures. Benchmark tuning cannot inspect the held-out acceptance set.
+- [ ] Record outcomes on fixed miniF2F, PutnamBench and library-derived suites. Pin datasets, splits, oracle toolchains, permitted premises/axioms, solver/model versions, seeds, resource budgets, successful proof terms and all failures. Benchmark tuning cannot inspect the held-out acceptance set.
 
-Exit evidence: every inventory item passes its behavioural suite, supported source proofs replay without hidden admissions, and automation produces independently replayable kernel proofs on the predeclared acceptance set. Publish solve rates, costs and unresolved goals as capability evidence. A timeout or `unknown` is not a proof or a counterexample; this milestone does not promise a decision procedure for arbitrary mathematics.
+Exit evidence: source proofs replay without hidden admissions, every switched-on native tactic is identical on the corpus, and automation produces independently replayable kernel proofs on the predeclared acceptance set. Publish solve rates, costs and unresolved goals as capability evidence. A timeout or `unknown` is not a proof or a counterexample; this milestone does not promise a decision procedure for arbitrary mathematics.
 
 ### Milestone 5: finish the pinned Mathlib library [PROOF-COMPLETION-MATHLIB]
 
 - [ ] Freeze a Mathlib commit and its compatible Lean/exporter toolchains. Generate an exhaustive manifest from the complete library root: module graph, all exported declarations, exact kinds/statements, complete dependency closures, source/export hashes, licences and per-root assumptions. Private/opaque dependencies required for checking belong in the inventory too.
 - [ ] Work through dependency closures in order: foundations and algebra/order; arithmetic, number theory and combinatorics; topology, measure theory, analysis, geometry and probability; then every remaining manifest module. Record accepted, unsupported, blocked and failing declarations separately. Counts always use the fixed denominator; no sample, excluded directory or alternate body silently shrinks it.
 - [ ] Close **checked-export coverage** only when every original required declaration and dependency in the pinned export passes Osprey's compatible kernel. Validate original statement identity, axiom policies and mutations, with fresh Lean/independent replay. Compatible replacement proofs remain a separately named ledger until the original-certificate gate is also closed.
-- [ ] Close **source coverage** only when every statement, definition, structure, instance, notation and required metaprogramming facility has a readable translated source representation that elaborates to its checked meaning. Regenerate the module tree deterministically and reject drift after resolving names, universes and notation.
-- [ ] Close **source-proof replay** only when a cold build can reconstruct every theorem in the pinned library from the translated sources and approved kernel primitives. No imported certificate bodies, aliases back to the theorem being reconstructed, `by imported`, `sorry`, unexplained axioms or unchecked solver/reflection answers may stand in for a source proof. Until then, report the exact reconstructed fraction by module.
+- [ ] Close **source build** only when a cold `osprey prove check` at stage 2, with no Lean executable, builds every module of the pinned Mathlib tree from its unmodified `.lean` sources and produces export bytes identical to the toolchain's. No imported certificate bodies, `sorry`, unexplained axioms or unchecked solver answers may stand in for a built proof. Until then, report the exact built fraction by module.
 - [ ] Package the checked library, searchable statements, source maps and notices through the existing package manager. Verify missing/stale/tampered assets, cold and offline installation, dependency locking and explicit trust-profile selection. Noncomputable definitions remain labelled; availability as mathematics does not claim executable erasure.
 - [ ] Exercise the specified upstream sync workflow: rebuild a changed dependency closure, compare statements and assumptions, invalidate old receipts and publish a dated reconciliation report. Report defects with reproducible evidence and preserve upstream attribution. Unsupported changes remain red; the previous pin remains reproducible.
 
-Exit evidence: all three coverage ledgers are 100% for the declared pin and a clean machine can install, search, author against and rebuild the library. Only the first ledger establishes full imported-certificate coverage; all three are required to close this completion milestone. Navier-Stokes analysis/PDE statements and any research theorem retain their own exact-definition and proof acceptance gates; numerical flow footage does not close them.
+Exit evidence: both ledgers are 100% for the declared pin and a clean machine can install, search, author against and rebuild the library. Only the first ledger establishes full imported-certificate coverage; both are required to close this completion milestone. Navier-Stokes analysis/PDE statements and any research theorem retain their own exact-definition and proof acceptance gates; numerical flow footage does not close them.
 
 ### Milestone 6: verified programs and ordinary Osprey together [PROOF-COMPLETION-PROGRAMS]
 
@@ -361,8 +341,8 @@ Exit evidence: independently authored verified code ships in a real Osprey appli
 
 ### Milestone 7: a complete proof workflow on every host [PROOF-COMPLETION-WORKBENCH]
 
-- [ ] Connect mathematical input, recognised handwriting, source frontends, tactic actions and goal refinement to the same checker services. Free-form notes and unrecognised strokes remain visibly unverified; ambiguous recognition is reviewed before becoming a proof step.
-- [ ] Provide statement-shape and name search over the full pinned library, assumptions, hover, source navigation and portable saved proof documents. Saved output must replay through the CLI independently of the Workbench and preserve its discipline identity; optional generated text alone never establishes acceptance.
+- [ ] Connect the `.lean` editor, goal pane, code actions and lessons to the same `Lean` capability and kernel verdict the CLI uses.
+- [ ] Provide statement-shape and name search over the full pinned library, assumptions, hover and source navigation. A saved `.lean` file replays through `osprey prove check` and through Lean independently of the workbench and preserves its discipline identity.
 - [ ] Tie every goal/verdict to the exact document revision, current imported bytes and checker/theory identity. Cancel or ignore stale results. Editing a proof, changing an assumption, replacing a discipline or losing a dependency immediately withdraws the old accepted verdict.
 - [ ] Run the actual application in installed VS Code, browser and native hosts through author/edit/check/refuse, lessons, hints/reveals, save/reopen/export, library import and discipline-switch journeys. Check the entire rendered mathematical statement at real window sizes; clipped hypotheses or conclusions, suppressed diagnostics and screenshot-only prototypes cannot satisfy acceptance.
 - [ ] Retain the existing novice `and_swap` usability gate and add independently authored induction and imported-library tasks for programmers and mathematicians. Record successful completion, errors, time and accessibility evidence; examples/templates cannot substitute for authoring an unseen proof.
@@ -371,9 +351,9 @@ Exit evidence: the same portable document checks through CLI and every supported
 
 ### Milestone 8: independent operation and continued capability [PROOF-COMPLETION-INDEPENDENCE]
 
-- [ ] In an isolated environment with no Lean executable, authoring toolchain or Lean service, build the Osprey discipline packages, reconstruct the pinned translated library, author and automate new proofs, replay saved Workbench documents and compile the verified application. Distinguish this independence test from the separate bridge that intentionally uses Lean to create or compare an export.
+- [ ] In an isolated environment with no Lean executable, authoring toolchain or Lean service (stage 2 of plan 0044), build the Osprey discipline packages, build the pinned Mathlib from its `.lean` sources, author and automate new `.lean` proofs, replay saved workbench documents and compile the verified application. Distinguish this independence test from the separate bridge that intentionally uses Lean to create or compare an export.
 - [ ] Keep the published judgement specification, independent kernel audits, adversarial cases and formal verification work tied to exact checker revisions and explicit assumptions. Seek checked correspondence between the implementation and its rules, using an independent verifier; passing Osprey's own tests alone does not establish soundness or global consistency.
-- [ ] Publish a capability report with the milestone exits, three library ledgers, accepted/rejected proof receipts, axiom policies, unresolved work, actual host interactions and measured costs. Preserve existing proof-speed, coverage, CI and release-audit gates unchanged; measurements name their work/inputs and do not become competitive messaging.
+- [ ] Publish a capability report with the milestone exits, both library ledgers, accepted/rejected proof receipts, axiom policies, unresolved work, actual host interactions and measured costs. Preserve coverage, CI and release-audit gates unchanged; measurements name their work/inputs and do not become competitive messaging.
 - [ ] Add subsequent capabilities as separately specified, tested discipline/library/tooling work: alternative axiom policies, additional theories and solvers, stronger reconstruction and richer mathematical interaction. A fork's intentional differences from the reference profile are documented and checked under that fork's rules, not hidden as compatibility successes.
 
 Exit evidence: Osprey operates independently for the complete documented scope while Lean and other checkers remain optional external development oracles. A release requires fresh checks and the dependency audit of its exact source SHA. No milestone is complete because a plan, demonstration, benchmark result or badge exists on its own.
@@ -382,4 +362,4 @@ Exit evidence: Osprey operates independently for the complete documented scope w
 
 Each milestone report records its source/checker identities, scope denominator, exact command, expected and actual result, retained failures and the artifact that a reviewer can replay. Reports mark requirements as planned, implemented, verified or blocked; only verified exits close a milestone. Append new evidence rather than restamping an older run after its inputs change.
 
-Kernel stabilization precedes new theory rules. Generic discipline identity and safe invalidation precede switching/forking claims. Source elaboration precedes tactic completion; those feed full source-proof replay. Library inventory/import work and host work may proceed alongside their prerequisites, but full library, verified-program and Workbench exits all precede independence. This ordering refines the existing phases without deleting any retained red test or weakening a gate.
+Kernel stabilization precedes new theory rules. Plan 0044 phase 0 precedes every other phase. Generic discipline identity and safe invalidation precede switching/forking claims. Stage 1 precedes stage 2; stage 2 precedes native replacements and the source-build ledger. Library inventory/import work and host work may proceed alongside their prerequisites, but full library, verified-program and Workbench exits all precede independence. This ordering refines the existing phases without deleting any retained red test or weakening a gate.

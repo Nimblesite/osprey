@@ -1,5 +1,7 @@
 # Dependent types, proofs and the Mathlib port [PROOF]
 
+> **STOP — NOT YET IN FORCE.** The `.lean`-only direction in this document ([PROOF-SOURCE], the format ban, the deletion list, and the matching sections of specs 0051 and 0052 and plans 0041 to 0044) was written on 2026-10-31 while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores every `.lean`-source section until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test or document because of this text before then. After the merge, [plan 0044](../../plans/0044-lean-source-compatibility.md) is the order of work.
+
 ## First goal: soundness, trust, verifiability [PROOF-GOAL]
 
 The only acceptable standard is soundness: no closed term of type `False` is derivable in the empty context, and a proposition is accepted as proved only when a kernel derivation of it exists. There is no tolerance for inconsistency, however small or obscure. Every accepting judgement is reproducible by an independent checker from the kernel's exported derivation, so trust rests on verification and never on the implementation.
@@ -13,7 +15,7 @@ Where Lean's theory or its implementation admits an inconsistency, Osprey must n
 Osprey becomes a proof assistant whose checked library is Mathlib, without changing the type system that Osprey programs use today. Three promises:
 
 1. **Osprey programs keep Hindley-Milner.** Inference, effect rows, monomorphisation and the lowering pipeline of [spec 0023](0023-LanguageFlavors.md) are untouched. A program that compiles today compiles unchanged after every phase of this contract.
-2. **Mathlib checks in Osprey.** An Osprey kernel implements the pinned compatible theory's specified rules, re-checks every exported Mathlib declaration, and ships the library as an Osprey package that mathematicians read, extend and build on. Compatibility never requires reproducing an unsound implementation defect; restricted or revised theories have separate discipline identities.
+2. **Lean proofs run on Osprey.** The proof source format is `.lean`, exactly as the pinned Lean toolchain accepts it ([PROOF-SOURCE]). An Osprey kernel implements the pinned compatible theory's specified rules and re-checks every exported Mathlib declaration; Mathlib's own `.lean` files are the library, unchanged. Compatibility never requires reproducing an unsound implementation defect; restricted or revised theories have separate discipline identities.
 3. **The type system is pluggable.** Each module chooses its discipline: Hindley-Milner (the default) or any registered alternative. Disciplines meet at the existing module signature boundary of [spec 0025](0025-ModulesAndNamespaces.md), and nothing below the canonical AST learns which discipline checked a module. The Lean-compatible dependent discipline of this contract is the first alternative, not the only one: other solvers and logics (higher-order logic, refinement types over SMT, separation logic, a second dependent theory) register the same way and share no code path that is specific to this one.
 
 ## Lean as a development oracle [PROOF-ORACLE]
@@ -37,7 +39,7 @@ This contract adds; it never alters. The rules below are testable and each has a
 
 ## Discipline [PROOF-DISCIPLINE]
 
-`lean4` is a discipline under [spec 0050](0050-TypeDisciplines.md): a package declaring `[discipline] name = "lean4"`, selected per module by `// osprey: types=lean4`, run as a checker process through [TYPES-DISCIPLINE-PROTOCOL](0050-TypeDisciplines.md#checker-protocol-types-discipline-protocol), and meeting every other module at an HM export signature. Everything about registration, selection, the seam, the protocol, caching and the no-harm rules lives in spec 0050 and is not restated here; this contract adds only what is specific to Lean 4's theory.
+`lean4` is a discipline under [spec 0050](0050-TypeDisciplines.md): a package declaring `[discipline] name = "lean4"`, run as a checker process through [TYPES-DISCIPLINE-PROTOCOL](0050-TypeDisciplines.md#checker-protocol-types-discipline-protocol), and meeting every other module at an HM export signature. Its input is `.lean` files ([PROOF-SOURCE]); it never reads proof text written inside a `.ospml` module. How an Osprey module names the `.lean` file that proves things about it is an open design item of plan 0041 phase 6. Everything about registration, the seam, the protocol, caching and the no-harm rules lives in spec 0050 and is not restated here.
 
 ### Boundary with Hindley-Milner [PROOF-BOUNDARY]
 
@@ -85,15 +87,13 @@ Trust claims name the checker, intended rules, assumptions and independently rep
 - **Cross-checkers are pinned and reviewed.** [PROOF-TRUST] step 2 records the exact independent checker revision and its applicable known defects. Upgrade and replay when a relevant soundness fix lands. Agreement between two checkers is evidence, not a consistency proof.
 - **Adversarial testing is continuous.** `tests/proof/adversarial/` grows with every published kernel exploit of any proof assistant, and an AI-driven fuzzing job proposes malformed declarations against the kernel on a schedule, reporting any acceptance as a showstopper.
 
-## Speed [PROOF-SPEED]
+## Measurement [PROOF-SPEED]
 
-Proof-checking cost is measured against the pinned executable reference from the first milestone. The ordering requirements of the existing benchmark gates below remain unchanged. These are engineering constraints on comparable workloads; capability delivery and independent correctness are the product objectives under [PROOF-ORACLE].
+Timing is a record, never a gate, and never a claim. There is no "faster than Lean" requirement anywhere in this contract or in CI.
 
-- **Same work, same module.** Every benchmark runs Osprey's kernel and Lean's on the same Lean module, on the same machine, in the same run, and records both wall times, CPU times and peak memory. Osprey's kernel reads the module's pinned `lean4export` file; Lean's time is the pinned release's `lean4checker` replaying the same module's compiled `.olean` through Lean's kernel, because Lean has no re-check of an export text. The harness re-exports the module on every run and fails unless the export is byte-identical to the one Osprey reads, and the `.olean` is hashed into the row, so the two inputs are provably the same module (`lean4lean` and `nanoda`, once available, are further baselines). Osprey's time is the native build of the kernel under the project's memory backend. Both sides are cold processes, so process start-up is on both clocks. Nothing is compared to a number read elsewhere.
-- **The gate.** `benchmarks/proof/` holds one benchmark per milestone and phase: M1's one-theorem export (`m1_export`, built), M3's `And`/`Iff`/`Eq` with `and_swap`, then Lean's core library, `Std`, and the full pinned Mathlib (none of these built yet). M0's `m0_identity` is a regression gate only: a compiled program with the theorem built in against `lean --run` of a source file, elaboration included, so different work on each side and never cited as kernel speed. Each benchmark is a test: it fails when Osprey's wall time is not below Lean's on the same input, and CI runs it on every change to the kernel. Elaboration and tactics get the same treatment in their phases, measured against `lake build` of the translated module.
-- **Optimisations to measure.** The kernel is a pure program over a content-addressed term store with structural hash-consing, so definitional-equality checks are memoised across the whole library rather than per declaration; the whnf cache is keyed by term identity; `Nat` literals use the accelerated `bigint` operations of [PROOF-STDLIB]; there is no interpreter between the checker and the machine, because the kernel is compiled by Osprey's native backend. Each of these is a benchmarked line item, so a regression names its cause.
-- **The GPU does the bulk work.** Wherever a step of checking is data-parallel it is offloaded to the GPU through Osprey's existing GPU support: hashing and deduplicating the term store on import, the bulk definitional-equality and whnf passes over a whole library's declarations, parallel instance search, and the batch re-check of Mathlib after a sync. The kernel's judgements stay sequential and pure; what moves to the GPU is work the kernel would otherwise repeat, expressed as an effect (`Parallel.map` over a term batch) so the same kernel runs with a CPU handler in tests, under wasm32 and on a machine with no GPU, and with the GPU handler where one exists. Each offload is a benchmarked line item against its CPU handler, and a handler that is not faster is not used.
-- **What is claimed.** The claim is always a link to the dated report of [PROOF-TRUST-REPORT] with the hashes of both inputs and both binaries. Only a successful full-library run supports a statement about full-library checking cost. Selected examples do not establish that result; public prose reports scope and measurements rather than competitive positioning.
+- **File to verdict.** A measurement runs one unmodified `.lean` file from source to verdict on both sides: the pinned Lean toolchain (`lake build` or `lean`), and `osprey prove check` on the same file. Both are cold processes on the same machine in the same run; the report records wall time, CPU time and peak memory for each, with the hashes of the file and both binaries. Nothing else is comparable and nothing else is reported.
+- **Not in CI.** `benchmarks/proof/` runs by hand. Reports under `target/proof/reports/` state the numbers and the inputs and nothing more; public prose reports scope and measurements, not positioning.
+- **What is measured later.** Term-store hash-consing, memoised definitional equality, accelerated `Nat` literals and any GPU offload are line items in the same report once they exist. A handler that is not faster than its CPU twin is not used.
 
 ## Lean export bridge [PROOF-EXPORT]
 
@@ -105,63 +105,39 @@ Proof-checking cost is measured against the pinned executable reference from the
 
 `[PROOF-EXPORT-SYNC]` A scheduled job imports the current Mathlib master on a fixed cadence, records the result as a trust report, and opens a pull request that updates the ported library of [PROOF-MATHLIB]. A failing import is a red report, never a silent skip.
 
-## Proof surface [PROOF-SURFACE]
+## Proof source [PROOF-SOURCE]
 
-`[PROOF-SURFACE-FLAVORS]` The proof language is one canonical proof AST with a frontend per flavor, on the model of [FLAVOR-BOUNDARY](0023-LanguageFlavors.md#canonical-ast-boundary): the elaborator, kernel, tactics and Mathlib port see the proof AST and never the flavor. **ML ships first**, because Lean 4's own syntax is ML-shaped (offside layout, curried application `f a b`, `fun x =>`, `(x : T)` binders, `∀`, `by` blocks) and the people the port is for already read it. Default and Python frontends follow once the ML frontend elaborates the port's acceptance module; a theorem written in any flavor must elaborate to the same kernel term, checked by the cross-flavor equivalence tests of [spec 0023](0023-LanguageFlavors.md#cross-flavor-equivalence-tests). Tactics are named identically in every flavor.
+`[PROOF-SOURCE-LEAN]` **The proof source format is `.lean`.** A proof file is a Lean 4 source file exactly as the pinned toolchain (Lean v4.25.0, Lake, Mathlib at its pin) accepts it: same syntax, same elaboration, same tactics, same imports, same `lakefile`. Osprey adds no keyword, marker, header or dialect. A file Lean accepts, Osprey accepts; a file Lean rejects, Osprey rejects, with the same error at the same position. Lean's own test suite, `Init`, `Std` and Mathlib are the acceptance corpus, in that order, and the verdicts must match declaration for declaration.
 
-The ML frontend extends the layout of [spec 0024](0024-MLFlavorSyntax.md) with these forms, so that a mathematician moving from Lean reads familiar shapes in Osprey's spelling:
+`[PROOF-SOURCE-STAGES]` Three stages, each a shipped product and each gated on the corpus above ([plan 0044](../../plans/0044-lean-source-compatibility.md)):
 
-```ospml
-// osprey: types=lean4
-module Group.Basic
+1. **Toolchain stage.** `osprey prove check Foo.lean` runs the pinned Lean toolchain on the file, exports it through the pinned `lean4export`, and checks the export with Osprey's kernel ([PROOF-KERNEL]). Goals, hovers and errors come from Lean's language server. The toolchain is a bundled or required dependency; without it there is no verdict, and the tool says so.
+2. **Front-end stage.** Osprey reads `.olean` files and runs Lean's compiled front end (parser, elaborator, tactics, Mathlib's metaprograms) itself through an interpreter for Lean's IR, with no Lean executable installed. Verdicts and exported terms are byte-identical to stage 1.
+3. **Native stage.** Hot paths (the kernel already, then the elaborator, then individual tactics) are replaced by Osprey implementations one at a time. Each replacement must give identical results on the whole corpus or it is not switched on.
 
-theorem mul_inv_cancel_left (G : Type u) [Group G] (a b : G) : a⁻¹ * (a * b) = b
-    by rw [← mul_assoc, inv_mul_cancel, one_mul]
+`[PROOF-SOURCE-DELETED]` Two Osprey-invented proof text formats existed before 2026-10-31 and are **deleted and illegal**: the English-sentence document (`Theorem…`/`Assume h :`/`By cases on`/`From h`, with its formula, statement, step, goal-engine and emitter modules) and the Lean look-alike `.ospml` surface (`// osprey: types=lean4`, `theorem … := term`, `by` blocks inside Osprey modules, `by imported`, `osprey prove port`). No spec, plan, test, fixture, golden, lesson or module may describe, read, write or accept either; code that serves them is contamination and is deleted, not maintained. [PROOF-SURFACE-FLAVORS] and the multi-flavor proof AST are withdrawn with them.
 
-def order (G : Type u) [Fintype G] : Nat = Fintype.card G
-```
+`[PROOF-SOURCE-FUTURE]` An Osprey-specific proof format may be reintroduced later only under these conditions: it is mostly Lean, so that conversion to and from `.lean` is mechanical and lossless; every tool opens either format; and nothing in the kernel, the checker, the workbench or the lessons depends on it. It is never a precondition for any Lean feature.
 
-- `theorem`, `def`, `abbrev`, `opaque`, `axiom`, `structure`, `inductive`, `class`, `instance`, `namespace`, `open`, `notation`, `universe` and `variable` declarations;
-- binders `(x : T)`, `{x : T}` implicit, `[C T]` instance, `⦃x : T⦄` strict implicit;
-- `by` tactic blocks and term-mode proofs;
-- Unicode and ASCII spellings for every operator (`→`/`->`, `∀`/`forall`, `λ`/`fun`, `⁻¹`/`inv`).
+`[PROOF-SOURCE-EXTENSION]` Anything that is not a proof (lesson text, media, prompts, hints, progress) lives in one extension format beside the `.lean` file ([spec 0052](../applications/0052-WorkbenchLessons.md)) and refers to declarations in the `.lean` file by name. The extension never contains proof text of its own.
 
-`[PROOF-SURFACE-DOCS]` Documentation comments, executable examples and the HTML documentation site of [spec 0026](0026-DocumentationComments.md) apply to dependent modules unchanged.
+## Elaboration and tactics [PROOF-ELAB]
 
-## Elaborator [PROOF-ELAB]
+Elaboration and tactics are Lean's. At stage 1 the toolchain runs them; at stage 2 Osprey runs Lean's compiled front end; at stage 3 an Osprey replacement for a unifier, type-class search, a coercion rule, a macro or a tactic may be switched on only when it reproduces Lean's result on the whole corpus. The kernel re-checks every produced term before it enters the environment; nothing above the kernel is trusted.
 
-The elaborator turns surface declarations into kernel terms. It is untrusted: every term it produces is re-checked by the kernel before it enters the environment.
-
-- `[PROOF-ELAB-UNIFY]` higher-order pattern unification with metavariables, postponed constraints and delayed assignments, matching Lean 4's behaviour on Mathlib's sources;
-- `[PROOF-ELAB-CLASSES]` type-class resolution by tabled search over instances with priorities and outParams, with a per-declaration instance cache; Mathlib's algebraic hierarchy is the acceptance corpus;
-- `[PROOF-ELAB-COERCE]` coercions, `↑`, numeric literals through `OfNat`, and `@[simp]`/`@[ext]`-style attributes carried in the environment;
-- `[PROOF-ELAB-MACROS]` hygienic notation and macro expansion in Osprey, so Mathlib's notations are declared in the ported library and not in the compiler.
-
-## Tactics and automation [PROOF-TACTICS]
-
-Tactics are Osprey programs over a goal state, written against a metaprogramming API that exposes the environment, metavariables and the kernel.
-
-`[PROOF-TACTICS-CORE]` Shipped before the port claims any file: `intro`, `apply`, `exact`, `refine`, `rw`, `simp`, `cases`, `induction`, `rcases`, `obtain`, `constructor`, `use`, `exists`, `ext`, `funext`, `calc`, `have`, `show`, `by_contra`, `by_cases`, `omega`, `decide`, `norm_num`, `ring`, `linarith`, `nlinarith`, `positivity`, `field_simp`, `aesop`, `tauto`, `gcongr`, `abel`, `group`, `push_cast`, `norm_cast`, `exact?`, `apply?`, `simp?`. A proof in the ported library that names a tactic not on this list is a port blocker, not a reason to add a stub.
-
-`[PROOF-TACTICS-CERT]` External solvers (SMT through Z3 or cvc5, superposition through E or Vampire) are called through `hammer`. A solver answer is reconstructed into a kernel term; an answer that cannot be reconstructed is reported as a hint, and the goal stays open.
+`[PROOF-TACTICS-CERT]` External solvers (SMT through Z3 or cvc5, superposition through E or Vampire) are called through a `hammer` tactic. A solver answer is reconstructed into a kernel term; an answer that cannot be reconstructed is reported as a hint, and the goal stays open.
 
 `[PROOF-TACTICS-GUIDE]` A learned premise-selection and tactic-suggestion model may propose steps. It is a proposer under [PROOF-TACTICS-CERT]; the trust report never counts a proposal as a proof.
 
-`[PROOF-TACTICS-BENCH]` Automation is measured, not asserted: `benchmarks/proof/` runs miniF2F and PutnamBench under a fixed time budget against the current Lean release with its standard automation, and records both scores with the commit hashes. The website quotes only recorded results.
+`[PROOF-TACTICS-BENCH]` Automation is measured, not asserted: `benchmarks/proof/` runs miniF2F and PutnamBench under a fixed time budget, by hand, and records the scores with the commit hashes. The website quotes only recorded results.
 
-## Mathlib port [PROOF-MATHLIB]
+## Mathlib [PROOF-MATHLIB]
 
-`[PROOF-RUNNABLE-LIBRARY]` Delivery proceeds through runnable library theorems before broad source translation. Each selected theorem has a pinned Lean export containing its complete dependency closure, checked from an empty Osprey environment without skipping or assuming unsupported declarations. Acceptance requires the intended statement checked structurally, its actual proof checked by the Osprey kernel, its axiom dependencies reported, and corrupted-proof and changed-statement controls rejected. The exact command and output run under GC, ARC and wasm32. A successful common theorem is evidence for that theorem and its dependencies; larger targets such as Navier–Stokes retain their own unmet requirements.
+`[PROOF-RUNNABLE-LIBRARY]` Delivery proceeds through runnable library theorems. Each selected theorem has a pinned Lean export containing its complete dependency closure, checked from an empty Osprey environment without skipping or assuming unsupported declarations. Acceptance requires the intended statement checked structurally, its actual proof checked by the Osprey kernel, its axiom dependencies reported, and corrupted-proof and changed-statement controls rejected. The exact command and output run under GC, ARC and wasm32. A successful common theorem is evidence for that theorem and its dependencies; larger targets such as Navier–Stokes retain their own unmet requirements.
 
-The port is the package `@osprey/mathlib`, Apache-2.0 with Mathlib's notices, built in three layers that each remain valid on their own:
+Mathlib is used as Mathlib: the pinned commit's `.lean` files, Apache-2.0 with its notices, built through Lake at stage 1 and by Osprey at stage 2. There is no translation, no `@osprey/mathlib` rewrite and no re-proving. The kernel-checked environment of the pinned commit (`[PROOF-MATHLIB-CHECKED]`) is the one deliverable: every declaration available by its Lean name, every proof Osprey-checked, every axiom reported.
 
-1. `[PROOF-MATHLIB-CHECKED]` the imported, kernel-checked environment of the pinned Mathlib commit. Every declaration is available to dependent modules by its Lean name from the first release;
-2. `[PROOF-MATHLIB-SOURCE]` statements, definitions, structures, instances and notations translated by `osprey prove port` into readable `.ospml` files mirroring Mathlib's module tree, with each theorem's proof initially the imported term, marked `by imported`;
-3. `[PROOF-MATHLIB-REPROVED]` proofs re-elaborated from translated tactic scripts, or found by automation, replacing `by imported`. The report records the fraction re-proved per module.
-
-`[PROOF-MATHLIB-UPSTREAM]` The bridge is two-way. The port depends on Mathlib remaining Apache-2.0 and exportable through `lean4export`, and the sync job and the re-proved fraction both move faster when fixes land upstream. So: a defect found in a Mathlib statement, proof or notation during porting, syncing or adversarial testing is reported to Mathlib with the Osprey evidence, and fixed upstream first where Mathlib accepts it; the port carries a local patch only while the upstream fix is pending, listed in the trust report with its upstream link. A port-only fork of a Mathlib file is a drift under [PROOF-MATHLIB-DRIFT], not a feature. Kernel findings about Lean itself ([PROOF-TRUST-LESSONS]) are disclosed to the Lean maintainers before publication, with the dated report following the fix.
-
-`[PROOF-MATHLIB-DRIFT]` The port never diverges in a statement: a translated statement must elaborate to a term definitionally equal to the imported one, checked by the kernel on every sync. A statement that cannot be translated stays available under layer 1 and is listed as untranslated.
+`[PROOF-MATHLIB-UPSTREAM]` The bridge is two-way. A defect found in a Mathlib statement, proof or notation during checking, syncing or adversarial testing is reported to Mathlib with the Osprey evidence and fixed upstream; a local patch is carried only while the upstream fix is pending, listed in the trust report with its upstream link. A fork of a Mathlib file is never a feature. Kernel findings about Lean itself ([PROOF-TRUST-LESSONS]) are disclosed to the Lean maintainers before publication, with the dated report following the fix.
 
 ## Erasure and code generation [PROOF-ERASE]
 
@@ -187,28 +163,23 @@ These are ordinary library additions, available to every Osprey program, and are
 
 ## Tooling [PROOF-TOOLS]
 
-- `osprey prove check <file|project>` elaborates and kernel-checks dependent modules; exit 0 on success, 1 with diagnostics naming the declaration and goal otherwise.
-- `osprey prove import`, `osprey prove port`, `osprey prove bench` as above.
-- The language server of [spec 0020](../tooling/0020-LanguageServerAndEditors.md) shows the goal state at the cursor inside a `by` block, hovers the type of any term, and offers `exact?` results as code actions.
+- `osprey prove check <file.lean | Lake project>` gives Lean's verdict on the file through the current stage of [PROOF-SOURCE-STAGES] and Osprey's kernel verdict on its export; exit 0 when both accept, 1 with Lean's diagnostics otherwise. Imports and `lakefile` dependencies resolve as Lake resolves them.
+- `osprey prove import <export>` reads a `lean4export` file into a checked environment, as above. `osprey prove bench` records a file-to-verdict measurement ([PROOF-SPEED]).
+- The language server of [spec 0020](../tooling/0020-LanguageServerAndEditors.md) forwards `.lean` files to Lean's language server at stage 1 and serves them itself from stage 2: goal state at the cursor, hover types, `exact?` as code actions.
 
 ### Proof workbench [PROOF-WORKBENCH]
 
 The workbench's full contract is [spec 0051](../applications/0051-ProofWorkbench.md); this section states what the proof system owes it and what it may not have.
 
-The workbench is an Osprey Native application ([`@osprey/native`](../../../packages/native/README.md)) in which a proof is written as mathematics, checked as it is written, and read back as mathematics. **The user writes no code.** Mathematics is the input; the ML proof surface of [PROOF-SURFACE-FLAVORS], the kernel term and the checker's verdict are outputs the workbench derives from it.
+The workbench is an Osprey Native application ([`@osprey/native`](../../../packages/native/README.md)) that opens, edits, checks, reads and saves `.lean` files. The document is the `.lean` file and nothing else is saved. Goals, errors and verdicts come from the services of [PROOF-TOOLS]; the kernel verdict comes from Osprey's kernel in-process over the file's export. Lessons ([spec 0052](../applications/0052-WorkbenchLessons.md)) teach Lean itself, with their challenges and solutions as declarations in `.lean` files.
 
-- **Mathematics in, code out.** The buffer accepts mathematics as it is written on paper: Unicode notation (`∀`, `→`, `∧`, `ℕ`, subscripts, binders) typed directly, through the abbreviation table Lean users already know (`\forall`, `\to`, `\and`) or a palette; statements as `Theorem. For all p q, p ∧ q → q ∧ p.`; proof steps as the mathematician phrases them (`Assume h : p ∧ q.`, `By cases on h.`, `It suffices to show q.`, `Apply and_comm.`). The workbench translates each step to the proof surface and shows the generated `.ospml` beside the mathematics, always current, never required reading. The saved artifact is that generated file, so `osprey prove check` on it is the same check the workbench ran and a second tool needs nothing from the workbench.
-- **Live validation.** Every edit re-elaborates the enclosing declaration through the checker protocol of [TYPES-DISCIPLINE-PROTOCOL](0050-TypeDisciplines.md#checker-protocol-types-discipline-protocol); the goal pane shows the hypotheses and goal at the cursor, rendered as mathematics, and a failing step is underlined with the two terms that would not unify, not a parser message. Checking never blocks typing.
-- **Structured proof editing.** `cases`, `induction`, `constructor` and `exact?` are offered as code actions that insert the case split or the found term in place; a proof can be written by refining goals from the pane as well as by typing tactics.
-- **Library at hand.** Search over the pinned Mathlib by statement shape (`?a + ?b = ?b + ?a`) as well as by name; hover on any identifier shows its statement and docstring; jump to its Mathlib source and to the Lean original of a ported theorem.
-- **Reads like a paper.** A rendered view lays the file out as a document: statements as display mathematics, proofs collapsible, with the checker's verdict beside each declaration. The rendered view is the export, so a checked file is the paper.
-- **Every screen a mathematician owns.** The workbench is one Osprey application over `@osprey/native`, so it runs wherever that framework has a host: as a native macOS and iOS application, inside VS Code through `@osprey/vscode`, and in the browser compiled to wasm32 with a web host. One store, one `update`, one set of regions; the hosts differ only in what draws them. A proof written in the browser is the same file checked on the desktop.
-- **Beautiful, or not shipped.** Mathematics is typeset, not monospaced: a proper maths face for the rendered view and the goal pane, correct spacing around relations and operators, real fractions, radicals, sub- and superscripts and large operators, binders laid out as in a journal. Light and dark appearances through the framework theme ([UI-THEME]), motion only where it explains a change, nothing that flickers while checking. The visual bar is a page of Mathlib docs or a well-set paper; a screenshot of the workbench beside the same theorem in a printed journal is part of every release review.
-- **Typed mathematics and legacy working.** The supported Workbench workflow uses typed formulas, notation and proof steps, with optional source inspection. The freehand board, lasso and handwriting workflow were withdrawn on 30 October 2026; do not advertise handwriting recognition or infer a checked proof from a drawing. Opening and saving an existing workspace must preserve its saved strokes, notes and framing. Generic drawing and recognition capabilities in the native SDK remain independent APIs. Actual native and installed-VSIX acceptance is required for the revised interface.
-- **Nothing special for the workbench.** Every service it uses is a capability of the checker protocol or of the language server of spec 0020; a second editor gets the same services, and the discipline gains nothing that only the workbench can see.
+- **Nothing special for the workbench.** Every service it uses is a capability of [PROOF-TOOLS] or a host capability of `@osprey/native`; a second editor gets the same services.
+- **Reads like a paper.** A rendered view lays the file out as a page: statements and goals typeset from Lean's pretty-printer output, proofs collapsible, the verdict beside each declaration. The rendered view is the export.
+- **Every host.** One Osprey application over `@osprey/native`: native macOS and iOS, VS Code through `@osprey/vscode`, and the browser at wasm32. A `.lean` file opened in any host is the same file `osprey prove check` checks.
+- **Beautiful, or not shipped.** Typeset mathematics in a maths face; light and dark through [UI-THEME]; nothing that flickers while checking; a screenshot beside a printed page in every release review.
 
-The workbench is measured by one test: a mathematician who has never used Osprey writes and checks `and_swap` in it in under ten minutes without reading documentation, recorded in the road-test report.
+The workbench is measured by one test: a mathematician who has never used Osprey opens a fresh `.lean` file, writes and checks `and_swap` in it in under ten minutes without reading documentation, recorded in the road-test report.
 
 ## Verification [PROOF-VERIFICATION]
 
-A phase of plan 0041 is complete only with the evidence named there. The gates, in order: `bigint` and the term store benchmarked; Lean's own core library checked; Mathlib checked and cross-checked; the surface language elaborating Mathlib's `Mathlib/Algebra/Group/Basic.lean` from translated source; the core tactic list passing its Mathlib-derived test corpus; the automation benchmark recorded; a dependent module calling into and being called from an HM module in the differential corpus under both memory backends and on wasm32.
+A phase of plan 0041 or 0044 is complete only with the evidence named there. The gates, in order: Lean's own test suite giving identical verdicts through `osprey prove check`; Lean's core library checked; Mathlib checked and cross-checked; `Mathlib/Algebra/Group/Basic.lean`, unmodified, checked at stage 2 with no Lean executable present; the automation benchmark recorded; a dependent module calling into and being called from an HM module in the differential corpus under both memory backends and on wasm32.

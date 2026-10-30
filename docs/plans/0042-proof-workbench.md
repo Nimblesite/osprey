@@ -1,132 +1,68 @@
 # Plan 0042: the proof workbench
 
-Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **phase 1 complete; shared application and VSIX delivery under stabilization.** The application lives at `apps/workbench/`; every phase lands with tests in `apps/workbench/tests/` and must leave `make ci` green. The earlier 87.4% application coverage failure was retained and repaired. The frozen 2026-10-30 application now passes all 108 tests under GC, ARC and wasm32 with 90.8% own-source coverage (2,053 of 2,261 lines), above the unchanged 90% gate. The shared proof kernel separately passes all 325 tests under those three targets. Final imported-proof host, installed-VSIX and screenshot acceptance remain open.
+> **STOP — NOT YET IN FORCE.** This plan was rewritten on 2026-10-31 for the `.lean`-only direction of [PROOF-SOURCE](../specs/language/0049-DependentTypesAndProofs.md#proof-source-proof-source) while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores this rewrite until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test, fixture or screen because of this text before then; the previous revision in git history is the plan for that PR. After the merge, [plan 0044](0044-lean-source-compatibility.md) runs first and this plan resumes behind it.
 
-An agent picking this up reads spec 0051 and the [`@osprey/native` README](../../packages/native/README.md) first, then builds phase 1 exactly as laid out below. The phase order is the dependency order; nothing in a later phase is started before the earlier phase's exit holds.
+Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **the application exists at `apps/workbench/` and still carries the deleted formats; plan 0044 phase 0 removes them and phase 1 installs the `.lean` document and checking services. This plan picks up after that.** Every phase lands with tests in `apps/workbench/tests/` and must leave `make ci` green with the 90% coverage floor.
 
-Design implementation reference: [Paper & Slate handoff](../designs/proof-workbench/README.md), [offline screen gallery](../designs/proof-workbench/index.html) and [playable workflow study](../designs/proof-workbench/prototype/index.html). These are reviewed design artifacts, not production phase completion. The canonical tokens, type and motion contract are in [WORKBENCH-DESIGN](../specs/applications/0051-ProofWorkbench.md#beautiful-or-not-shipped-workbench-design).
+Design reference: [Paper & Slate handoff](../designs/proof-workbench/README.md). Screens that showed the deleted English document or its generated pane are re-captured in phase 3 before they bind; the remaining screens are the oracle as before.
 
-Lean is the development oracle for the compatible proof discipline; the Workbench calls Osprey's own kernel. Follow the [oracle and correction contract](../messaging.md#proof-development-and-the-lean-oracle) and [plan 0041 completion milestones](0041-dependent-types-and-mathlib.md#completion-milestones-proof-completion). Every saved proof and verdict must track the selected discipline; switching or repairing it requires fresh checking, including previously accepted imported proofs.
+## Deleted
+
+Phase 1 of this plan as written before 2026-10-31 ("the proof language": `formula`, `statement`, `step`, `goals`, `emit`, the `and_swap` golden, the in-process prelude and step elaborator) built the formats that [PROOF-SOURCE-DELETED] now bans. Those modules and their tests are contamination and are removed by plan 0044 phase 0. Nothing from that phase is reused.
 
 ## Checklist
 
-Ticked as the work lands; a box is ticked only when its test exists in `apps/workbench/tests/`.
+A box is ticked only when its test exists in `apps/workbench/tests/`.
 
-### Phase 1 — the proof language
-- [x] `apps/workbench/osprey.toml`, `tests/osprey.toml`, coverage threshold registered at 90%
-- [x] `src/notation.ospml` with `Notation::expand` and `Notation::palette`, tested against the table
-- [x] `src/formula.ospml`: `read`, `show`, `equal`; symbol and sentence forms; round-trip corpus
-- [x] `src/statement.ospml` and `src/step.ospml`: headings, phrase table, `Unknown`; ten near-miss sentences
-- [x] `src/goals.ospml`: `start`, `apply`, `Mismatch`; the 50-step timing case
-- [x] `src/emit.ospml`: `tests/golden/and_swap.ospml.expected` byte-identical
-- [x] Every function under 20 lines, every file under 500; suite at 90% line coverage
+### Phase 1 — the `.lean` document (with plan 0044 phase 1)
+- [ ] `src/document.ospml`: open, edit, cursor, save; byte-identical round trip over every `.lean` fixture
+- [ ] `src/lean.ospml`: `LeanCheck`/`LeanGoals` requests with revision tickets; stale completions dropped; the Unavailable path
+- [ ] `src/verdict.ospml`: kernel verdict over the completion's export; `Checked`/`Rejected`/`Unchecked` per declaration
+- [ ] `src/app.ospml`: slices, action union, `update`, the five regions, theme; `src/main.ospml` entries
+- [ ] Fixture tests: region refresh, stale ticket, Lean error underline, corrupted export rejected, `sorry` unchecked, contrast
 
-### Phase 2 — the application
-- [ ] Framework additions with tests in `packages/native/tests/`: `Math` node, `Field` marks and cursor, `Board`, `Recognise`, `board` token; native README updated
-- [ ] `src/app.ospml`: slices, action union, `update`, six regions, theme
-- [ ] `src/kernel.ospml` and `src/verdict.ospml`: the in-process kernel verdict over a kernel-checked prelude (replaces the ticketed `Run`; see the deviation below)
-- [ ] `src/main.ospml`: `Runtime::start`, `Runtime::dispatch`, `Webview::respond`
-- [ ] Fixture tests: region refresh, stale ticket, rejection underline, stroke and lasso, contrast
+### Phase 2 — library and the paper
+- [ ] `Library` over the bundled exports, then the checked Mathlib environment; name and shape search; hover; `exact`/`apply` insertion
+- [ ] `ProofTerms` presentation of checked statements through `Math`, with the notation-identity rules of [WORKBENCH-LIBRARY]
+- [ ] The reading view from Lean's pretty-printed statements and goals; HTML export with MathML
 
 ### Phase 3 — hosts
-- [ ] VS Code: WASI build, `Math`, marked `Field`, `Board` in the renderer; E2E test; `and_swap` screenshot
-- [ ] Browser: `hosts/web/`, wasm32 page, handwriting where present; headless smoke test
-- [ ] macOS and iPadOS: `hosts/apple/` SwiftUI host, PencilKit board and recognition; simulator smoke test
+- [ ] VS Code: WASI build, the `Lean` capability over the toolchain the extension finds; E2E opens `AndSwap.lean` and sees `Checked`; screens re-captured and compared
+- [ ] Browser: `hosts/web/`, wasm32 page, Unavailable until plan 0044 phase 2; headless smoke test
+- [ ] macOS and iPadOS: `hosts/apple/` SwiftUI host, toolchain bundled on macOS; simulator smoke test
+- [ ] Road test recorded in `docs/reports/`: a newcomer writes and checks `and_swap` in a fresh `.lean` file in under ten minutes
 
-### Phase 4 — verdicts, library, paper
-- [ ] Badges from `osprey prove check`; goal engine agrees with the kernel over every fixture step
-- [ ] Library slice from an imported environment; search, hover, `Apply <name>.`
-- [ ] Rendered page and HTML export with MathML
-- [ ] Road test recorded in `docs/reports/`
+## Phase 1 — the `.lean` document [WORKBENCH-DOCUMENT] [WORKBENCH-CHECK] [WORKBENCH-VERDICT] [WORKBENCH-STORE] [WORKBENCH-REGIONS]
 
-## Phase 1 — the proof language without a window [WORKBENCH-FORMULA] [WORKBENCH-STATEMENT] [WORKBENCH-STEPS] [WORKBENCH-GOALS] [WORKBENCH-EMIT]
+**One Osprey application for every host.** `apps/workbench/src/` owns the store, updates, the document, the toolchain adapter, verdicts and the typed `@osprey/native` trees. Hosts render those trees, preserve native control state and execute capabilities. The React study under `docs/designs/` is a visual reference, never a second implementation.
 
-Pure modules, no host, no framework yet. Tests first for every table in the spec.
+1. `Document`: the text and cursor; open and save as bytes; no parsing.
+2. `Lean`: the two requests, their completions and the revision ticket; the Unavailable completion.
+3. `Verdicts`: `Verdicts::decide` on the export carried by a completion, through `ImportedProofs`' kernel path; the per-declaration table of spec 0051.
+4. `App` and `main`: slices, messages, regions, theme, entries.
 
-1. `apps/workbench/osprey.toml` (`[project] name = "workbench"`, `source_roots = ["src", "../../packages/native/src"]`, `default_namespace = "workbench"`, `[modules] allow_wildcard_imports = false`) and `apps/workbench/tests/osprey.toml` (`source_roots = [".", "../src", "../../../packages/native/src"]`, `entry = "main.ospml"`). Register the project in `coverage-thresholds.json` at 90%.
-2. `src/notation.ospml`: the table as one list, `Notation::expand`, `Notation::palette`.
-3. `src/formula.ospml`: the union, `Formula::read` (symbols and sentences, one precedence climber), `Formula::show`, `Formula::equal`.
-4. `src/statement.ospml` and `src/step.ospml`: the headings, the phrase table, `Unknown`.
-5. `src/goals.ospml`: `Goals::start`, `Goals::apply`, `Mismatch`.
-6. `src/emit.ospml`: the canonical `.ospml`, binders lifted from leading `Assume`, `sorry` for `Unknown`.
-7. `tests/`: one file per module, the `and_swap` golden under `tests/golden/and_swap.ospml.expected` (every `.ospml` under `tests/` is compiled as suite source, and the ML frontend has no `theorem` form until the discipline is registered), a generated-formula corpus for the round trip, the ten near-miss sentences, the 50-step timing case.
+Exit: the suite drives the whole application with fixture messages and recorded completions; `osprey apps/workbench --check` reports every export documented; no host yet.
 
-Exit: the suite passes with 90% line coverage; the emitter writes the golden byte for byte; every function under 20 lines, every file under 500. The golden is checked by `osprey prove check` in phase 4, once plan 0041 registers the `lean4` discipline; before that no frontend parses `theorem`.
+## Phase 2 — library and the paper [WORKBENCH-LIBRARY] [WORKBENCH-PAPER]
 
-Deviations from the spec's signatures, recorded in spec 0051: a `Result`'s error channel holds only a string, so `Formulas::read` returns `Reading` (`Read` or `Faulted`) and `Goals::apply` returns `Outcome` (`Advanced` or `Stuck`). The suite has no clock, so the 50-step case asserts the run closes; the under-a-millisecond bound needs a benchmark under `benchmarks/` and is open. The emit golden case compares against a literal byte-identical to `tests/golden/and_swap.ospml.expected`; reading the file itself waits on a file builtin the suite can use.
+The bundled-library flow stands: `assets/proof-libraries.json` lists the pinned export groups; `scripts/workbench-proof-assets.py` stages exact exports and licences; the application re-checks the selected export in-process from an empty environment on every frame or source change; saved state never supplies a verdict. Records for this flow (the `Nat.add_comm` closure, the OpenAI corpus, the identity-guarded notation of `ProofTerms`, the Euclid `Nat.exists_infinite_primes` probe that still exceeds the 180-second diagnostic limit) live in [plan 0041](0041-dependent-types-and-mathlib.md); they are kernel evidence, not host delivery.
 
-## Phase 2 — the application over `@osprey/native` [WORKBENCH-STORE] [WORKBENCH-REGIONS] [WORKBENCH-VERDICT]
+## Phase 3 — hosts [WORKBENCH-HOSTS] [WORKBENCH-VSIX] [WORKBENCH-DESIGN]
 
-**One Osprey application for every host.** `apps/workbench/src/` owns the store, updates, parsing, goals, source generation, verification state and typed `@osprey/native` component trees. Compile that same logic for the browser and native app. Browser and Apple hosts only render those trees, preserve native control state and execute capabilities. The React study under `docs/designs/` is a visual reference; it must not become a second application implementation.
+1. **VS Code.** Compile to WASI through `@osprey/vscode`; the renderer draws `Math` (MathML) and the marked `Editor`; the `Lean` capability runs the toolchain. Share the package host's panel, event transport, WASI runner and renderer. Bundle `workbench.wasm`, lessons and staged exports; packaging fails on missing, invalid, stale or extra content.
+2. **Browser.** The same renderer as a page under `hosts/web/`; never a second implementation.
+3. **macOS and iPadOS.** The SwiftUI host under `hosts/apple/` with a `Math` layout view; the toolchain bundled in the macOS app.
 
-1. The framework additions, each with its own test in `packages/native/tests/`: the `Math` content node and its encoding; per-line marks and a cursor position on the multiline `Field`; the `Board` control and its stroke binding; the `Recognise` capability; the `board` theme token. Document each in the native README under [UI-COMPONENTS], [UI-EVENTS], [UI-EFFECTS] and [UI-THEME].
-2. `src/app.ospml`: the slices, the action union (one union, grouped by the value each binding delivers), `update`, the six regions, the default theme; `src/kernel.ospml` and `src/verdict.ospml` with the in-process kernel verdict of [WORKBENCH-VERDICT].
-3. `src/main.ospml`: `Runtime::start` and `Runtime::dispatch` exports and the `Webview::respond` entry.
-4. Fixture tests through the real `start`/`dispatch`: the region refresh case, the stale ticket case, the rejection underline case, the stroke and lasso cases, the contrast cases.
+Exit per host: the smoke test passes in CI where the platform is available; the screenshot beside a printed page is in `docs/reports/`; the production VSIX matches the surviving reference screens pixel for pixel at identical viewport and state.
 
-Exit: the suite drives the whole application with fixture messages; `osprey apps/workbench --check` reports every export documented; no host yet.
+## Later
 
-Deviations, recorded in spec 0051: the verdict comes from the proof kernel of spec 0049 called in-process, not from a ticketed `Run` of `osprey prove check`, because the kernel is an Osprey library and the workbench is its interface; it works on every host, a tablet included, and needs nothing from plan 0041. The connectives are impredicative encodings over a prelude the kernel admits constant by constant. The multiline editor is a new `Editor` component rather than a change to `Field`; `Math`'s `Row` is `Seq`; the board keeps one host-held slice per stroke and `Recognise` names slices. Learn mode is [plan 0043](0043-workbench-lessons.md).
-
-## Phase 3 — hosts [WORKBENCH-HOSTS] [WORKBENCH-MATH] [WORKBENCH-BOARD] [WORKBENCH-DESIGN]
-
-1. **VS Code.** Compile the application to WASI through `@osprey/vscode`; teach the renderer under `vscode-extension/client/src/osprey-ui/` the `Math` node (MathML), the marked `Field` and the `Board` (a canvas with the chalk stroke shader described in the spec). Add the workbench to the extension's `compiled SDK renderer E2E` test. Screenshot `and_swap` for the review.
-2. **Browser.** Import the same host-neutral renderer modules used by the VSIX and serve the wasm32 build as a page; the browser's handwriting API where present, `Unsupported` where not; a headless smoke test. Never copy the renderer or the Osprey application into a second implementation.
-3. **macOS and iPadOS.** A SwiftUI host in `hosts/apple/` on the model of `examples/macos`, with a `Math` layout view, a PencilKit board and PencilKit recognition; a simulator smoke test; the `chalk` theme reviewed on both appearances.
-
-Exit per host: the smoke test passes in CI where the platform is available; the release review screenshot beside a printed page is in `docs/reports/`.
-
-The earlier proof-library checkpoint covered twelve OpenAI supporting lemmas and all 175 selected core statements (172 original exports and three exact-statement compatible proof bodies). The expanded core public gate passes 525 checks and 1,050 corruption controls with fresh Lean verification. That checkpoint used a canonical twelve-group catalogue. The current manifest and shared asset stager supply the same pinned exports and original licenses to native and VSIX hosts; consult plan 0041 for subsequent corpus additions and their acceptance status. Application catalogue tests, final bundled interactions, coverage and reference-screen acceptance still govern delivery; these proof receipts do not complete those host gates.
-
-The first full Mathlib headline target is Euclid’s `Nat.exists_infinite_primes`, from Mathlib 4.25.0 commit `1ccd71f89cbbd82ae7d097723ce1722ca7b01c33`. The original export is 12,027,058 bytes and 230,909 rows, including 1,551 dependency theorems, and records `propext`, `Classical.choice` and `Quot.sound`. The actual GC checker reached the unchanged 180-second diagnostic limit without a verdict (`target/proof/mathlib-v4.25.0/euclid-osprey-gc-probe.json`); this theorem and its dependencies are not counted as ported or available in the Workbench. Fresh Lean kernel replay passed in 423.85 seconds. The parser alone reads all 2,833 declarations in 11.1 seconds, while the ARC kernel crashes with a confirmed machine-stack overflow after 36.7 seconds (`euclid-osprey-arc-probe.json` and `euclid-arc-crash-summary.json` in that directory). A canonical `ReduceTests.stackDepth` regression reproduces the same stack defect with 200,000 individually checked aliases (`delta-canonical-red-receipt.json`); 100 and 20,000 aliases are passing controls. The reviewed continuation-machine repair now passes that canonical ARC case with zero live allocations and no input drift (`delta-canonical-fixed-receipt.json`); its original run crashed with SIGSEGV. The subsequent shared-kernel checkpoint passes all 393 tests under GC, ARC and wasm32, with zero ARC leaks and unchanged input seals (`target/proof/openai/syntax-frontier-review/fast-whnf-checkpoint-receipt.json`); the unchanged two proof speed gates also pass. The repaired original Euclid certificate still exceeds the 180-second diagnostic limit (`euclid-fast-arc-receipt.json`). The separate completion run was cancelled without a verdict when the user changed the objective to wrapping up PR 325; the 180-second failure remains recorded. Its declaration tracer identifies `Nat.Linear.Expr.denote_toPoly_go` as the current bottleneck; the original certificate remains the regression and is not replaced by a smaller proof. Retain the original certificate and statement; do not replace this milestone with supporting-lemma counts.
-
-### VSIX delivery [WORKBENCH-VSIX]
-
-The contract is [WORKBENCH-VSIX](../specs/applications/0051-ProofWorkbench.md#vsix-adapter-workbench-vsix). Extend the package manager's existing host by sharing its panel/session/rendering machinery. `apps/workbench/src/` remains the single application source for VS Code, browser and native hosts; all maths, proof and lesson decisions stay there.
-
-The 30 October checkpoint has a sealed historical VSIX receipt with 806 extension tests, 169 installed-extension tests and every extension coverage gate above 95%. It proves the bundled Nat, OpenAI and large List proof interactions on that source, but does not sign off the later UI changes or the user's existing VS Code profile. Root screenshot comparisons in `docs/designs/proof-workbench/design-qa.md` remain blocked on recorded geometry, styling and icon differences. The shared imported-theorem display now uses its verified term and the existing mathematics tree, preserving the raw statement and assumptions. Regression tests pin the selected result frame, exact `Nat.add_comm` notation, overloaded-instance refusal, grouping, de Bruijn binding and collisions with global constants and sort names. The frozen application passes all 108 tests under GC, ARC and wasm32 with 90.8% measured own-source coverage (2,053/2,261 lines); the final ARC/WASM source/compiler seals are unchanged. Revised host captures and host/package gates remain open. Keep the delivery boxes open until those current receipts and visual comparisons pass.
-
-The subsequent `run_work` presentation change adds exact natural multiplication, numeral and second-projection notation behind checked declaration identities. Its three new tests bring the app suite to 111 cases, all passing under ARC. That build predates the newly reproduced constructor-metadata name-collision repair and does not supersede the final kernel or host gates. Recheck the repaired source on GC, ARC and wasm32, rebuild both hosts, and capture the actual selected theorem with its full name, readable statement and `propext` assumption before publishing the refreshed Mathlib films. Keep the older 108-case receipt labelled as its historical checkpoint.
-
-The later frame-memo and large-source retention checkpoint passes 113 application cases under GC, ARC and wasm32, with zero skips and unchanged source/compiler seals. The WASM run mounts the real lesson fixtures; the earlier unmounted smoke attempt never reached the assertions and is not acceptance evidence. `target/workbench-pixel/combined-inspection-checkpoint.wasm` (`aa987026…`) passes the fourteen real browser gallery states and the complete `run_work` mathematics bounds check. Its five-colour flow still misses the existing three-second theorem-option readiness check; the original deadlines remain unchanged. These are checked supporting lemmas, not completed headline-theorem ports.
-
-The next sealed source is `target/workbench-pixel/navigation-math-source-seal.json`: actual native and VSIX regressions pin an imported library obscuring the conjunction example. A scrollbar assertion at 821 pixels was an invalid overflow oracle because the formula fits; the corrected actual-window test at 430 pixels retains all end-visibility assertions and passes on the bounded mathematics frame. The shared fixes bound the mathematics frame and close library inspection when the example starts, while retaining imported source and selection. Fresh native/VSIX reruns, corruption re-import and installed-profile capture remain required. These changes do not inherit the older 113-case receipt; the additional navigation case must pass too.
-
-The grouped-inductive kernel checkpoint now passes 375 cases on each of GC, ARC and wasm32 with no skips or input drift and zero live ARC allocations. Receipt: `target/proof/openai/syntax-frontier-review/grouped-final-receipt.json`, compiler `c66c6788…`. Fresh public-corpus replay and original Nat certificate promotion remain separate requirements; this kernel result does not establish visual delivery. A later name-identity audit reproduced false acceptance because namespace components and string/numeric leaves shared a flattened spelling. The repaired importer and independent corpus validator preserve those identities. The current identity checkpoint passes all 379 kernel cases on GC, ARC and wasm32, with no skips or input drift and zero live ARC allocations (`target/proof/openai/syntax-frontier-review/name-identity-canonical-receipt.json`); the four new cases cover both alias refusals and legitimate coexistence. A quotient mutation fixture now names the actual two-component `Quot.lift` rather than a single quoted component; its exact theory-refusal assertion is unchanged. Public-corpus replay, canonical golden checks and application acceptance remain required before promotion and packaging.
-
-- [x] Pin and fix the compiler failures preventing the shared app from compiling; retain the failing regressions until the compiler passes them. The historical compiler checkpoint `6f5c55438f39162831fc9c2ccf3dcdb5d45dcc1a9a984deec4c73de768831dae` passed the full Rust workspace, all twelve crate coverage floors, the 325-case three-target kernel gate, and the 108-case three-target application suite. The application keeps its full shared source; host ABI and foreign-call regressions remain in the tests. Host/image delivery is tracked separately below.
-- [ ] Register `osprey.workbench.open`; open without a workspace, reuse the panel and release its session on disposal.
-- [ ] Share the package host's generic panel, event transport, WASI runner and renderer; preserve existing package behavior.
-- [ ] Complete bounded bundled-lesson reads and isolated progress storage through framework capabilities; forward host-held slices and resolve only approved media assets.
-- [ ] Bundle `target/workbench.wasm` and lesson assets locally, in CI and in every release VSIX; fail packaging on missing, invalid or stale content.
-- [ ] Run the real compiled application through the VS Code browser harness: lessons, Maths/MathML, field editing, board and progress round trip. Run package regressions after host extraction.
-- [ ] Run a real common Lean proof through the shared kernel in the workbench and show the current checked result; corrupt its proof and show the actual rejection. Plan 0041 targets the complete `Nat.add_comm` dependency export after the recorded And/Eq/Iff controls. Plan 0041 now also carries the pinned recent OpenAI proof corpus: eight stack-prefix lemmas, three exact doubling-loop value/work lemmas, one finite-index injectivity lemma and five same-statement five-colour orientation lemmas, with 175 core selections. Their fresh kernel replay and three-target mutation receipts must match the current checker; a later checker change invalidates the earlier receipt. Expose those same checked artifacts and axiom reports through the shared app rather than copying proof code into a platform adapter. Navier–Stokes is a future high-water mark; importing screens alone does not satisfy this proof gate.
-- [ ] Record the exact build, verification and test commands under AGENTS.md Commands; tick completion only with passing evidence and a reviewed screenshot.
-- [ ] Match the production VSIX to `docs/designs/proof-workbench/screens/` at identical viewport and state. Review paired reference/implementation captures for initial board, proof, source, mismatch, reading, slate and responsive layouts. Only unavailable host controls may be omitted; the remaining screens must be pixel perfect. Functional checks alone do not complete this gate.
-
-The registered corpus remains 194 statements: 175 selected core statements, 17 OpenAI supporting lemmas and two Unicode cases. These checked exports are separate from source translation, independent proof reconstruction and completed headline Mathlib ports. Before admitting the choice-dependent Mathlib target, six new standard-basis controls expose four actual refusals missing from the kernel: a valueless `Nonempty` constructor, an identity-function field, an axiom impersonating the family and an extra unused universe. Both genuine controls pass, including the pinned `Init.Classical` export with byte-identical fresh export and fresh Lean kernel replay. The shared guard repair passes its six focused cases and the full 399-case checkpoint under GC, ARC and wasm32, with zero ARC leaks and unchanged source/compiler seals (`target/proof/mathlib-v4.25.0/choice-kernel-matrix-receipt.json`); all 40 Python corpus/staging guards pass. The subsequent symbolic-numeric regression is now repaired: operands are decoded in order, so a nonnumeric left operand does not eagerly reduce a discarded right operand. The canonical 400-case gate passes on GC, ARC and wasm32; the post-import-cleanup source independently passes all 400 cases on all three backends with no input drift and zero live ARC allocations (`target/proof/mathlib-v4.25.0/final-clean-kernel-receipt.json`). The fresh public commands also pass all 582 root checks and 1,164 proof/statement mutations across the unchanged 194-statement corpus, including byte-identical export regeneration and fresh Lean replay (`final-public/receipt.json` in that directory). These receipts do not establish acceptance of the complete Euclid certificate or App/host delivery. Neither the axiom fixture nor the cancelled Euclid run adds a theorem to the count. Keep completion and host delivery boxes open.
-
-## Phase 4 — verdicts, library and the paper [WORKBENCH-VERDICT] [WORKBENCH-LIBRARY] [WORKBENCH-PAPER]
-
-Needs plan 0041 M3 (the `lean4` discipline checking `and_swap`) and M1 (`osprey prove import`).
-
-1. Badges fill: `osprey prove check` on the generated file, the agreement test between the goal engine and the kernel over every fixture step.
-2. The library slice loaded from an imported environment; name and shape search; hover; `Apply <name>.` insertion.
-3. The rendered page and the HTML export with MathML.
-
-Exit: the road test of plan 0041 run in the workbench and recorded in `docs/reports/`: a mathematician or scientist new to Osprey writes and checks `and_swap` in under ten minutes without documentation.
-
-## Later fragments
-
-Equality and rewriting, natural numbers and induction, quantifiers over types, structures: each extends `Formula`, the sentence table, the step table and the goal table, with the same tests, and nothing else. Default and Python flavors of the generated file follow [PROOF-SURFACE-FLAVORS] when their proof frontends exist; the emitter gains a flavor parameter and the goldens a twin.
-
-## Pi delegation
-
-Under the AGENTS.md rules: the notation table and its tests, the near-miss corpus, the formula corpus generator, MathML rendering in the web renderer and the screenshot runs go to pi, each against a skeleton and test written here first. The formula reader, the goal engine, the emitter, the store and the framework additions are written and reviewed here.
+Statement-shape search over the full checked Mathlib, code actions (`cases`, `induction`, `constructor`, `exact?`) through Lean's server, and the browser and iPadOS verdicts, follow plan 0044 phase 2.
 
 ## What this plan never does
 
-- Put a tactic, a theory or a verdict in the application: the kernel decides, the engine only displays.
+- Parse, elaborate, judge or generate proof text in the application: Lean and the kernel decide, the application displays.
+- Read or write any proof format but `.lean`.
 - Let a host filter, label, validate or decide; a host draws and completes capabilities.
-- Ship a monospaced formula, a vector-line "chalk" or a flickering check.
+- Ship a monospaced formula in the reading view, or a flickering check.
 - Add a service only the workbench can call.
