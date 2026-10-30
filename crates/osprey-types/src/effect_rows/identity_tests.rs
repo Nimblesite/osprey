@@ -3,6 +3,23 @@ use super::*;
 use crate::effect_rows_tests::{assert_accepted, diagnostics};
 
 #[test]
+fn borrowed_return_projection_does_not_clone_unrelated_fields() {
+    with_empty_analyzer(|analyzer| {
+        let mut value = model_values::unknown_child_record();
+        value.callable = Some(model_values::returning_unknown(0));
+        let path = [Projection::Returned(Box::default())];
+        let expected = analyzer.project_path(value.clone(), &path);
+        let (actual, clones) =
+            provenance::measured_clones(|| analyzer.project_borrowed_path(&value, &path));
+        assert_eq!(actual, expected);
+        assert_eq!(
+            clones, 1,
+            "only the callable's returned payload may be cloned"
+        );
+    });
+}
+
+#[test]
 fn opaque_structure_is_provenance_even_without_a_callable_component() {
     assert!(Value {
         unknown_structure: true,

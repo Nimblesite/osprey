@@ -63,6 +63,10 @@ impl Analyzer<'_> {
             Some((Projection::Field(field), remaining)) => self
                 .project_borrowed_field(value, field)
                 .and_then(|projected| self.project_path(projected, remaining)),
+            Some((Projection::Returned(_), _)) => value
+                .callable
+                .clone()
+                .and_then(|callable| self.project_path(Value::from_callable(callable), path)),
             _ => self.project_path(value.clone(), path),
         }
     }
