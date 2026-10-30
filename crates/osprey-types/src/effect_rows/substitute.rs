@@ -17,6 +17,13 @@ impl Analyzer<'_> {
                 *value = self.substitute_value_at(value.clone(), target_level, arguments);
             });
             if use_.level == target_level {
+                if arguments
+                    .get(use_.index)
+                    .and_then(Option::as_ref)
+                    .is_some_and(|value| self.projection_absent(value.clone(), &use_.projection))
+                {
+                    continue;
+                }
                 // The callback is caller provenance, but the arguments this
                 // use passes it already belong to the callee. Lift only the
                 // callback into the callee's levels: shifting the invoked
@@ -90,6 +97,20 @@ impl Analyzer<'_> {
         }
         if let Some(callable) = value.callable.take() {
             match callable {
+                Callable::Alternatives(choices) => {
+                    for choice in choices {
+                        let branch = self.substitute_value_at(
+                            Value::from_callable(choice),
+                            target_level,
+                            arguments,
+                        );
+                        if value.carries_provenance() {
+                            value.union(branch);
+                        } else {
+                            value = branch;
+                        }
+                    }
+                }
                 Callable::Parameter {
                     level,
                     index,
@@ -102,7 +123,11 @@ impl Analyzer<'_> {
                         .and_then(|argument| self.project_path(argument, &projection))
                     {
                         shift_value_levels(&mut replacement, target_level, 0);
-                        value.field_names.clone_from(&replacement.field_names);
+                        if !value.carries_provenance() {
+                            value.field_names.clone_from(&replacement.field_names);
+                            value.field_owner.clone_from(&replacement.field_owner);
+                            value.empty_case = replacement.empty_case;
+                        }
                         value.union(replacement);
                     } else if index >= arguments.len() {
                         // Only an absent argument keeps the original binder.

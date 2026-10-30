@@ -159,18 +159,57 @@ pub(super) fn converge(
 /// curried spine (a body that is a closure literal, as ML `f a b = …` lowers),
 /// each nested closure's latent requirements. The written row covers the full
 /// application ([FLAVOR-ML-CURRY]).
-pub(super) fn full_application(body: &Expr, own: &Summary, returned: Option<&Value>) -> Summary {
+pub(super) fn full_application(
+    body: &Expr,
+    own: &Summary,
+    returned: Option<&Value>,
+    ty: Option<&crate::ty::Type>,
+) -> Summary {
     let mut summary = own.clone();
-    let (mut body, mut returned) = (body, returned);
-    while let (Some(inner), Some(Callable::Known(closure))) = (
-        curried_body(body),
-        returned.and_then(|value| value.callable.as_ref()),
-    ) {
-        summary.union(closure.summary.clone());
-        body = inner;
-        returned = closure.returned.as_deref();
+    if curried_body(body).is_some() {
+        if let Some(callable) = returned.and_then(|value| value.callable.as_ref()) {
+            application_callable(callable, ty, &mut summary);
+        }
     }
     summary
+}
+
+fn application_callable(callable: &Callable, ty: Option<&crate::ty::Type>, summary: &mut Summary) {
+    if ty.is_some_and(|ty| !matches!(ty, crate::ty::Type::Fun { .. } | crate::ty::Type::Var(_))) {
+        return;
+    }
+    match callable {
+        Callable::Known(known) => known_application(known, ty, summary),
+        Callable::Alternatives(choices) => {
+            for choice in choices {
+                application_callable(choice, ty, summary);
+            }
+        }
+        Callable::Parameter { .. } | Callable::Unknown => {
+            if matches!(ty, Some(crate::ty::Type::Fun { .. })) {
+                summary.unresolved_dynamic_call = true;
+            }
+        }
+    }
+}
+
+fn known_application(
+    known: &super::KnownCallable,
+    ty: Option<&crate::ty::Type>,
+    summary: &mut Summary,
+) {
+    summary.union(known.summary.clone());
+    let next = ty.and_then(|ty| match ty {
+        crate::ty::Type::Fun { ret, .. } => Some(ret.as_ref()),
+        _ => None,
+    });
+    if let Some(callable) = known
+        .returned
+        .as_deref()
+        .and_then(|value| value.callable.as_ref())
+    {
+        application_callable(callable, next, summary);
+    }
 }
 
 /// The body of the closure literal a curried spine returns, looking through
@@ -219,6 +258,9 @@ pub(super) fn clear_summary_verdicts(summary: &mut Summary) {
 }
 
 pub(super) fn clear_value_verdicts(value: &mut Value) {
+    if let Some(Callable::Alternatives(choices)) = &mut value.callable {
+        super::provenance::map_alternatives(choices, clear_value_verdicts);
+    }
     clear_summary_verdicts(&mut value.deferred);
     // `Callable::Unknown` is deliberately left in place: it is the SHAPE that
     // makes an invocation unresolvable, so the next sweep raises the verdict

@@ -171,7 +171,8 @@ impl Checker {
         let Type::Con { args: relation, .. } = relation else {
             return false;
         };
-        let [receiver, fallback, call, obligations, binders, written, named] = relation.as_slice()
+        let [receiver, fallback, call, obligations, binders, written, named, binding] =
+            relation.as_slice()
         else {
             return false;
         };
@@ -210,7 +211,11 @@ impl Checker {
             self.resolve_method_binders(method, explicit, position, binders, written);
             self.builtin_uses.extend(unpack_obligations(obligations));
             arguments.insert(0, receiver);
-            self.apply_named_fn(Some(method), fallback, arguments)
+            self.apply_named_fn(
+                binding.is_named("$builtin").then_some(method),
+                fallback,
+                arguments,
+            )
         };
         self.push_unify(ret, &result);
         true

@@ -9,6 +9,7 @@
 //! `Policy.label` that belongs to an outer handler.
 
 mod analyze;
+mod assignment_flow;
 mod call_values;
 mod calls;
 mod capabilities;
@@ -73,8 +74,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 type HandlerCandidates = HashMap<(u32, u32), BTreeSet<Vec<String>>>;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Instances {
+    pub(crate) signatures: HashMap<String, (Vec<crate::ty::Type>, crate::ty::Type)>,
     pub(crate) signal_queries: RefCell<HashMap<usize, crate::EffectRequirements>>,
     pub(crate) expression_types: RefCell<HashMap<usize, crate::ty::Type>>,
     pub(crate) methods: crate::methods::Targets,
@@ -100,6 +102,7 @@ pub(crate) struct Instances {
     /// and callbacks have propagated through the closed-program summary.
     pub(crate) handler_inference: RefCell<HandlerCandidates>,
     pub(crate) instantiations: HashMap<usize, HashMap<String, String>>,
+    pub(crate) instantiation_types: HashMap<usize, HashMap<crate::ty::VarId, crate::ty::Type>>,
     pub(crate) binders: HashMap<String, HashMap<String, String>>,
     /// Constructions that store a function outside its field's written row
     /// ([EFFECTS-FIELD-ROWS]).
@@ -255,13 +258,22 @@ struct Function<'a> {
 struct Index<'a> {
     operations: osprey_ast::OperationTable,
     functions: Vec<Function<'a>>,
-    qualified: HashMap<String, usize>,
-    bare: HashMap<String, Vec<usize>>,
+    qualified: HashMap<String, IndexedCallable>,
+    bare: HashMap<String, Vec<IndexedCallable>>,
     effects: HashMap<String, usize>,
     /// Each declared effect's operation names, for a whole-effect row entry.
     effect_operations: HashMap<String, Vec<String>>,
     constructors: HashMap<String, Vec<String>>,
     field_rows: field_rows::FieldRows<'a>,
+}
+
+#[derive(Clone)]
+enum IndexedCallable {
+    Function(usize),
+    Extern {
+        parameters: Vec<String>,
+        signature: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -274,6 +286,7 @@ struct KnownCallable {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Callable {
     Known(Box<KnownCallable>),
+    Alternatives(Vec<Callable>),
     Unknown,
     Parameter {
         level: usize,
@@ -289,6 +302,9 @@ enum Callable {
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 struct Value {
     callable: Option<Callable>,
+    field_owner: Option<field_rows::FieldInstance>,
+    empty_case: Option<EmptyCase>,
+    unknown_structure: bool,
     /// The result of a perform whose provider is selected only when its
     /// enclosing callback runs. This is value provenance, not a requirement
     /// discharge: the ordinary effect summary still tracks the operation.
@@ -302,6 +318,13 @@ struct Value {
     fiber_payload: Option<Box<Value>>,
     channel_sites: BTreeSet<usize>,
     deferred: Summary,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum EmptyCase {
+    Nullary,
+    Error,
+    Collection,
 }
 
 #[derive(Clone, Default)]

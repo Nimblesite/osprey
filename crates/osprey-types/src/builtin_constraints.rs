@@ -7,6 +7,22 @@
 
 use crate::ty::{names, Type};
 
+impl crate::check::Checker {
+    pub(crate) fn apply_bound_fn(
+        &mut self,
+        name: Option<&str>,
+        function: &Type,
+        arguments: Vec<Type>,
+        env: &crate::env::TypeEnv,
+    ) -> Type {
+        self.apply_named_fn(
+            name.filter(|name| env.is_builtin(name)),
+            function,
+            arguments,
+        )
+    }
+}
+
 /// [FLOAT-OPERANDS] Cannot collide with a source identifier or built-in name.
 pub(crate) const NUMERIC_OPERAND_PREFIX: &str = "numeric ";
 

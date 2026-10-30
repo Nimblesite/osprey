@@ -271,6 +271,35 @@ pub fn render_with_holes(ty: &Type) -> String {
     for_reader(ty).to_string()
 }
 
+/// Canonical effect identity shared by inference and field contracts.
+pub(crate) fn effect_instance_key(ty: &Type, nullary_record: &impl Fn(&str) -> bool) -> String {
+    let keys = |types: &[Type]| {
+        types
+            .iter()
+            .map(|ty| effect_instance_key(ty, nullary_record))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match ty {
+        Type::Record { name, .. } if !name.is_empty() && nullary_record(name) => name.clone(),
+        Type::Record { fields, .. } => format!(
+            "{{ {} }}",
+            fields
+                .iter()
+                .map(|(name, ty)| format!("{name}: {}", effect_instance_key(ty, nullary_record)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Type::Con { name, args } if !args.is_empty() => format!("{name}<{}>", keys(args)),
+        Type::Fun { params, ret } => format!(
+            "({}) -> {}",
+            keys(params),
+            effect_instance_key(ret, nullary_record)
+        ),
+        _ => ty.to_string(),
+    }
+}
+
 /// Rewrite a type into the shape a reader should see, then let [`Display`]
 /// spell it — one rendering engine, not two.
 fn for_reader(ty: &Type) -> Type {

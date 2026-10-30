@@ -1,15 +1,35 @@
 //! Effect row projections.
 use super::{
     ordered_values, project_callable, project_deep, project_element, project_fiber_value,
-    project_field, project_success_value, Analyzer, BTreeMap, BTreeSet, CallArguments, Callable,
-    ParameterUse, Projection, Requirement, Requirements, Summary, Value,
+    project_success_value, Analyzer, BTreeMap, BTreeSet, CallArguments, Callable, ParameterUse,
+    Projection, Requirement, Requirements, Summary, Value,
 };
 
 impl Analyzer<'_> {
+    pub(super) fn projection_absent(&self, mut value: Value, path: &[Projection]) -> bool {
+        for projection in path {
+            if value.unknown_structure {
+                return false;
+            }
+            if matches!(
+                (value.empty_case, projection),
+                (Some(super::EmptyCase::Nullary), Projection::Field(_))
+                    | (Some(super::EmptyCase::Error), Projection::SuccessValue)
+            ) {
+                return true;
+            }
+            let Some(next) = self.project_path(value, std::slice::from_ref(projection)) else {
+                return false;
+            };
+            value = next;
+        }
+        false
+    }
+
     pub(super) fn project_path(&self, mut value: Value, path: &[Projection]) -> Option<Value> {
         for projection in path {
             value = match projection {
-                Projection::Field(field) => project_field(value, field),
+                Projection::Field(field) => self.project_owned_field(value, field),
                 Projection::Method(method) => self.project_method(value, *method.clone()),
                 Projection::Returned(arguments) => {
                     self.project_call_return(value, *arguments.clone())
@@ -35,6 +55,11 @@ impl Analyzer<'_> {
         mut value: Value,
         answers: &BTreeMap<Requirement, Value>,
     ) -> Value {
+        if let Some(Callable::Alternatives(choices)) = &mut value.callable {
+            super::provenance::map_alternatives(choices, |branch| {
+                *branch = Self::resolve_handled_value(branch.clone(), answers);
+            });
+        }
         if answers.is_empty() {
             return value;
         }
@@ -56,6 +81,11 @@ impl Analyzer<'_> {
         let requested = std::mem::take(&mut value.performed);
         for requirement in requested {
             if let Some(answer) = answers.get(&requirement) {
+                if !value.carries_provenance() {
+                    value.field_names.clone_from(&answer.field_names);
+                    value.field_owner.clone_from(&answer.field_owner);
+                    value.empty_case = answer.empty_case;
+                }
                 value.union(answer.clone());
             } else {
                 let _ = value.performed.insert(requirement);
@@ -73,13 +103,27 @@ impl Analyzer<'_> {
         mut value: Value,
         arguments: CallArguments,
     ) -> Option<Value> {
+        if let Some(Callable::Alternatives(choices)) = &value.callable {
+            let mut returned = None;
+            for choice in choices {
+                super::merge_optional_value(
+                    &mut returned,
+                    self.project_call_return(
+                        Value::from_callable(choice.clone()),
+                        arguments.clone(),
+                    )
+                    .unwrap_or_else(Value::unknown_value),
+                );
+            }
+            return returned;
+        }
         if let Some(Callable::Known(known)) = &mut value.callable {
             let values = ordered_values(&known.parameters, &arguments.positional, &arguments.named);
             return known
                 .returned
                 .take()
                 .map(|returned| self.substitute_value_at(*returned, 0, &values))
-                .or_else(|| Some(Value::default()));
+                .or_else(|| Some(Value::unknown_value()));
         }
         let mut projected = None;
         project_callable(
@@ -110,6 +154,13 @@ impl Analyzer<'_> {
         arguments: CallArguments,
     ) -> Summary {
         match callee {
+            Callable::Alternatives(choices) => {
+                let mut summary = Summary::default();
+                for choice in choices {
+                    summary.union(self.invoke_with_arguments(choice, arguments.clone()));
+                }
+                summary
+            }
             Callable::Known(known) => {
                 let values =
                     ordered_values(&known.parameters, &arguments.positional, &arguments.named);

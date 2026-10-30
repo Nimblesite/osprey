@@ -12,7 +12,16 @@ pub(super) fn display_effect_arguments(
                 .iter()
                 .map(|ty| {
                     let ty = crate::ty::map_type_vars(ty, &mut |_| Type::prim(crate::ty::HOLE));
-                    effect_type_key(&checker.ctx, &ty)
+                    let display = if let Type::Con { name, .. } = &ty {
+                        if checker.ctx.record_preserves_parameters(name) {
+                            super::publish::runtime_site_type(&checker.ctx, &ty)
+                        } else {
+                            ty
+                        }
+                    } else {
+                        ty
+                    };
+                    effect_type_key(&checker.ctx, &display)
                 })
                 .collect();
             (key.clone(), display)
@@ -51,33 +60,13 @@ pub(super) fn effect_keys(ctx: &InferCtx, arguments: &[Type]) -> Vec<String> {
         .map(|argument| effect_type_key(ctx, argument))
         .collect()
 }
-/// A non-generic named record keeps its useful source identity. A generic
-/// record uses its instantiated fields so `Box<int>` and `Box<string>` cannot
-/// collapse into the same effect requirement ([EFFECTS-GENERIC-INSTANTIATION]).
+/// Named generic applications keep all arguments. Existing structural record
+/// views use their fields; nullary records keep their declaration's name.
+/// Implements [EFFECTS-GENERIC-INSTANTIATION].
 pub(super) fn effect_type_key(ctx: &InferCtx, ty: &Type) -> String {
-    match ty {
-        Type::Record { name, .. } if !name.is_empty() && ctx.record_fields(name, &[]).is_some() => {
-            name.clone()
-        }
-        Type::Record { fields, .. } => format!(
-            "{{ {} }}",
-            fields
-                .iter()
-                .map(|(name, field)| format!("{name}: {}", effect_type_key(ctx, field)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Type::Con { name, args } if !args.is_empty() => {
-            format!("{name}<{}>", effect_keys(ctx, args).join(", "))
-        }
-        Type::Fun { params, ret } => format!(
-            "({}) -> {}",
-            effect_keys(ctx, params).join(", "),
-            effect_type_key(ctx, ret)
-        ),
-        _ => ty.to_string(),
-    }
+    crate::ty::effect_instance_key(ty, &|name| ctx.record_fields(name, &[]).is_some())
 }
+
 pub(super) fn resolved_declared_rows(
     checker: &mut Checker,
 ) -> HashMap<(u32, u32), Vec<Option<Vec<String>>>> {

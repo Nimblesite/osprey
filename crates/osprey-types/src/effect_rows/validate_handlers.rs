@@ -141,6 +141,13 @@ fn latent_operations(value: &super::Value) -> super::Requirements {
     // ended. Quarantine their escape as well as ordinary closures until
     // invocation-time specialization preserves [STAGE-LOWER-ORDER].
     let mut operations = value.deferred.required.clone();
+    if let Some(super::Callable::Alternatives(choices)) = &value.callable {
+        for choice in choices {
+            operations.extend(latent_operations(&super::Value::from_callable(
+                choice.clone(),
+            )));
+        }
+    }
     if let Some(super::Callable::Known(callable)) = &value.callable {
         operations.extend(callable.summary.required.iter().cloned());
         if let Some(returned) = &callable.returned {

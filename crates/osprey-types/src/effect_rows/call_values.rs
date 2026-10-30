@@ -26,6 +26,7 @@ impl Analyzer<'_> {
         let resolved = self.callable(function, scope, env);
         let arguments = self.callsite_arguments(function, arguments, named_arguments, scope, env);
         self.called_value(resolved, arguments)
+            .map(|value| Self::resolve_handled_value(value, &env.handler_returns))
     }
 
     /// Builtin behavior belongs to the resolved binding, not its spelling.
@@ -39,8 +40,30 @@ impl Analyzer<'_> {
         let name = expression_name(function)?;
         (!env.shadowed.contains(name)
             && !env.values.contains_key(name)
-            && self.index.resolve(scope, name).is_none())
+            && self.index.resolve(scope, name).is_none()
+            && !self.foreign_callee(function, scope, env))
         .then_some(name)
+    }
+
+    pub(super) fn foreign_callee(
+        &self,
+        function: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> bool {
+        match function {
+            Expr::TypeApply { function, .. } => self.foreign_callee(function, scope, env),
+            Expr::Identifier(name) => {
+                !env.shadowed.contains(name)
+                    && !env.values.contains_key(name)
+                    && self.index.extern_parameters(scope, name).is_some()
+            }
+            Expr::Path(path) => self
+                .index
+                .extern_parameters(scope, &path.to_string())
+                .is_some(),
+            _ => false,
+        }
     }
 
     pub(super) fn called_value(
@@ -48,15 +71,13 @@ impl Analyzer<'_> {
         resolved: Option<Callable>,
         arguments: CallArguments,
     ) -> Option<Value> {
-        let Some(callee @ (Callable::Known(_) | Callable::Parameter { .. })) = resolved else {
-            // The RESULT of a call we cannot resolve is not thereby a callable.
-            // This branch catches every builtin without a modelled value
-            // (`print`, `listAppend`, …), whose result is plain data; calling
-            // it an unknown callable makes each one poison the merges it flows
-            // into. Staying fail-closed does not depend on this marker: a value
-            // with no callable that is later invoked fails
-            // `statically_named_callee` and is reported at that call.
-            return Some(Value::default());
+        let Some(
+            callee @ (Callable::Known(_) | Callable::Parameter { .. } | Callable::Alternatives(_)),
+        ) = resolved
+        else {
+            // `value` uses the call's inferred type to distinguish a primitive
+            // result from an aggregate whose contents remain unknown.
+            return Some(Value::unknown_value());
         };
         self.project_call_return(Value::from_callable(callee), arguments)
     }
@@ -125,6 +146,7 @@ impl Analyzer<'_> {
         };
         Some(match name {
             "range" | "List" | "Map" => Value {
+                empty_case: (name != "range").then_some(super::EmptyCase::Collection),
                 field_names: Some(BTreeSet::new()),
                 ..Value::default()
             },
@@ -135,21 +157,29 @@ impl Analyzer<'_> {
                 value
             }
             "listAppend" | "listPrepend" => {
-                let mut merged = element(0);
-                if let Some(value) = arguments
-                    .get(1)
-                    .and_then(|argument| self.value(argument, scope, env))
-                {
-                    merge_optional_value(&mut merged, value);
+                let mut merged = None;
+                if let Some(collection) = arguments.first() {
+                    self.merge_collection_elements(&mut merged, collection, scope, env);
                 }
+                merge_optional_value(
+                    &mut merged,
+                    arguments
+                        .get(1)
+                        .and_then(|argument| self.value(argument, scope, env))
+                        .unwrap_or_default(),
+                );
                 aggregate(merged)
             }
             "listConcat" | "mapMerge" => {
-                let mut merged = element(0);
-                if let Some(value) = element(1) {
-                    merge_optional_value(&mut merged, value);
+                let mut merged = None;
+                for collection in arguments.iter().take(2) {
+                    self.merge_collection_elements(&mut merged, collection, scope, env);
                 }
-                aggregate(merged)
+                let empty_case = merged.is_none().then_some(super::EmptyCase::Collection);
+                Value {
+                    empty_case,
+                    ..aggregate(merged)
+                }
             }
             "listReverse" | "listSortBy" | "mapRemove" => arguments
                 .first()
@@ -338,6 +368,13 @@ impl Analyzer<'_> {
         }
         let element = if matches!(name, "map" | "mapList") {
             callback.and_then(|callback| match callback {
+                callback @ Callable::Alternatives(_) => self.called_value(
+                    Some(callback),
+                    CallArguments {
+                        positional: callback_arguments.clone(),
+                        named: Vec::new(),
+                    },
+                ),
                 Callable::Known(known) => known
                     .returned
                     .as_deref()

@@ -30,6 +30,15 @@ impl Analyzer<'_> {
         env: &CallableEnv,
     ) -> Summary {
         let mut out = Summary::default();
+        if self.foreign_callee(function, scope, env) {
+            out.union(self.foreign_argument_effects(
+                function,
+                arguments,
+                named_arguments,
+                scope,
+                env,
+            ));
+        }
         if let Some(callee) = self.callable(function, scope, env) {
             let arguments =
                 self.callsite_arguments(function, arguments, named_arguments, scope, env);
@@ -103,6 +112,54 @@ impl Analyzer<'_> {
                         out.union(self.invoke_with_values(callback, &callback_arguments));
                     }
                 }
+            }
+        }
+        out
+    }
+
+    fn foreign_argument_effects(
+        &self,
+        function: &Expr,
+        arguments: &[Expr],
+        named: &[NamedArgument],
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Summary {
+        let mut out = Summary::default();
+        let name = match function {
+            Expr::Path(path) => Some(path.to_string()),
+            _ => super::expression_name(function).map(str::to_owned),
+        };
+        let signature = name
+            .as_deref()
+            .and_then(|name| self.extern_signature(scope, name));
+        let parameters = name
+            .as_deref()
+            .and_then(|name| self.index.extern_parameters(scope, name));
+        for (index, argument) in arguments
+            .iter()
+            .enumerate()
+            .map(|(index, argument)| (Some(index), argument))
+            .chain(named.iter().map(|argument| {
+                (
+                    parameters.and_then(|parameters| {
+                        parameters.iter().position(|name| name == &argument.name)
+                    }),
+                    &argument.value,
+                )
+            }))
+        {
+            let expected =
+                index.and_then(|index| signature.and_then(|(parameters, _)| parameters.get(index)));
+            if expected.map_or_else(|| self.may_be_callable(argument), type_can_call) {
+                let effects = self.callable(argument, scope, env).map_or_else(
+                    || Summary {
+                        unresolved_dynamic_call: true,
+                        ..Summary::default()
+                    },
+                    |callback| self.invoke_with_values(callback, &[]),
+                );
+                out.union(effects);
             }
         }
         out

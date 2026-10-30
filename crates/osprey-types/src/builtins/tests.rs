@@ -1,9 +1,25 @@
 use super::*;
 
 #[test]
+fn scalar_externs_remain_provable_through_deferred_methods() {
+    for name in ["print", "read"] {
+        crate::effect_rows_tests::assert_accepted(&format!(
+            "extern fn {name}(value: int) -> int\n\
+             fn through(value) = value.{name}()\nlet answer = through(41)\n"
+        ));
+    }
+}
+
+#[test]
 fn registry_classifies_the_compilers_ambient_builtin_inventory() {
     let mut ambient = TypeEnv::new();
-    for declare in [files, terminal, http, websocket, tensors] {
+    for declare in [
+        host::files,
+        host::terminal,
+        host::http,
+        host::websocket,
+        tensors,
+    ] {
         declare(&mut ambient);
     }
     let surface = include_str!("../../../../packages/manager/core/src/surface.osp");
@@ -164,4 +180,25 @@ fn list_combinators_and_sort_match_the_runtime_list_surface() {
         ),
     ];
     assert_signatures(&expected);
+}
+
+#[test]
+fn foreign_callable_bindings_do_not_inherit_builtin_argument_constraints() {
+    for name in ["print", "toString", "length"] {
+        for call in [
+            "foreign(callback)",
+            "foreign(callback: callback)",
+            "callback |> foreign",
+            "callback.foreign()",
+            "through(callback)",
+        ] {
+            let source = format!(
+                "extern fn {name}(callback: fn() -> int) -> int\n\
+                 fn through(callback) = callback.{name}()\n\
+                 let callback = fn() => 41\nlet answer = {}\n",
+                call.replace("foreign", name)
+            );
+            crate::effect_rows_tests::assert_accepted(&source);
+        }
+    }
 }

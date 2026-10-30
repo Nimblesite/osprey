@@ -1,10 +1,28 @@
 //! Effect row value flow.
 use super::{
-    merge_optional_value, merge_value, project_element, walk_children, Analyzer, BTreeMap,
-    BTreeSet, Callable, CallableEnv, Expr, FieldAssignment, KnownCallable, Stmt, Value,
+    merge_optional_value, project_element, Analyzer, BTreeMap, BTreeSet, Callable, CallableEnv,
+    Expr, FieldAssignment, KnownCallable, Value,
 };
 
 impl Analyzer<'_> {
+    pub(super) fn merge_collection_elements(
+        &self,
+        merged: &mut Option<Value>,
+        expression: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) {
+        let value = self
+            .value(expression, scope, env)
+            .unwrap_or_else(Value::unknown_value);
+        if value.empty_case != Some(super::EmptyCase::Collection) {
+            merge_optional_value(
+                merged,
+                project_element(value).unwrap_or_else(Value::unknown_value),
+            );
+        }
+    }
+
     /// `+` concatenates lists and merges maps, preserving callable elements.
     /// Numeric, string and comparison operators produce values without them.
     /// Implements [EFFECTS-PROVENANCE].
@@ -21,12 +39,11 @@ impl Analyzer<'_> {
         let mut element = None;
         if collection {
             for operand in [left, right] {
-                if let Some(value) = self.value(operand, scope, env).and_then(project_element) {
-                    merge_optional_value(&mut element, value);
-                }
+                self.merge_collection_elements(&mut element, operand, scope, env);
             }
         }
         Value {
+            empty_case: (collection && element.is_none()).then_some(super::EmptyCase::Collection),
             element: element.map(Box::new),
             field_names: Some(BTreeSet::new()),
             ..Value::default()
@@ -74,91 +91,9 @@ impl Analyzer<'_> {
         Value::from_callable(Callable::Known(Box::new(KnownCallable {
             parameters,
             summary: self.rows.get(id).cloned().unwrap_or_default(),
-            returned: self.returns.get(id).cloned().flatten().map(Box::new),
+            returned: Some(Box::new(
+                self.returns.get(id).cloned().flatten().unwrap_or_default(),
+            )),
         })))
-    }
-
-    pub(super) fn flow_callable_assignments(
-        &self,
-        expression: &Expr,
-        scope: &[String],
-        env: &mut CallableEnv,
-    ) {
-        match expression {
-            Expr::Block {
-                statements, value, ..
-            } => {
-                for statement in statements {
-                    match statement {
-                        Stmt::Assignment { name, value, .. } => {
-                            if let Some(incoming) = self.value(value, scope, env) {
-                                let mut merged = env.values.remove(name);
-                                merge_optional_value(&mut merged, incoming);
-                                if let Some(merged) = merged {
-                                    let _ = env.values.insert(name.clone(), merged);
-                                }
-                            }
-                            self.flow_callable_assignments(value, scope, env);
-                        }
-                        Stmt::Let { value, .. } | Stmt::Expr { value, .. } => {
-                            self.flow_callable_assignments(value, scope, env);
-                        }
-                        _ => {}
-                    }
-                }
-                if let Some(value) = value {
-                    self.flow_callable_assignments(value, scope, env);
-                }
-            }
-            Expr::Handler {
-                arms,
-                body,
-                return_clause,
-                finally,
-                ..
-            } => {
-                for arm in arms {
-                    self.flow_callable_assignments(&arm.body, scope, env);
-                }
-                self.flow_callable_assignments(body, scope, env);
-                if let Some(clause) = return_clause {
-                    if let Expr::Lambda { body, .. } = clause.as_ref() {
-                        self.flow_callable_assignments(body, scope, env);
-                    }
-                }
-                if let Some(cleanup) = finally {
-                    self.flow_callable_assignments(cleanup, scope, env);
-                }
-            }
-            Expr::Send { channel, value } => {
-                let sites = self
-                    .value(channel, scope, env)
-                    .map(|channel| channel.channel_sites)
-                    .unwrap_or_default();
-                let payload = self
-                    .value(value, scope, env)
-                    .unwrap_or_else(Value::unknown_callable);
-                for site in sites {
-                    merge_value(
-                        env.channel_payloads.entry(site).or_default(),
-                        payload.clone(),
-                    );
-                }
-                self.flow_callable_assignments(channel, scope, env);
-                self.flow_callable_assignments(value, scope, env);
-            }
-            Expr::Match { value, arms } => {
-                self.flow_callable_assignments(value, scope, env);
-                for arm in arms {
-                    self.flow_callable_assignments(&arm.body, scope, env);
-                }
-            }
-            // A closure body has not executed merely because the closure value
-            // was constructed, so its assignments cannot flow yet.
-            Expr::Lambda { .. } => {}
-            _ => walk_children(expression, |child| {
-                self.flow_callable_assignments(child, scope, env);
-            }),
-        }
     }
 }

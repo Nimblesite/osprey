@@ -157,10 +157,28 @@ impl Analyzer<'_> {
                 out
             }
             Expr::TypeConstructor { name, fields, .. } => {
-                self.check_field_rows(super::expression_site(expression), name, fields, scope, env);
+                let owner = self.construction_owner(expression, name);
+                self.check_field_rows(super::expression_site(expression), &owner, fields, scope, env);
                 self.union_over(fields.iter().map(|field| &field.value), scope, env)
             }
-            Expr::Object(fields) | Expr::Update { fields, .. } => {
+            // `record { field: value }` writes the same declared slots a
+            // construction does, so it owes the same rows. Its declaration is
+            // named by the resolved type of the update, since the base is
+            // spelled as a binding. An anonymous record names no declaration
+            // and so owns no written row.
+            Expr::Update { fields, .. } => {
+                for constructor in self.updated_records(expression) {
+                    self.check_field_rows(
+                        super::expression_site(expression),
+                        &constructor,
+                        fields,
+                        scope,
+                        env,
+                    );
+                }
+                self.union_over(fields.iter().map(|field| &field.value), scope, env)
+            }
+            Expr::Object(fields) => {
                 self.union_over(fields.iter().map(|field| &field.value), scope, env)
             }
             Expr::Binary { left, right, .. } => {
@@ -204,7 +222,7 @@ impl Analyzer<'_> {
                 let matched = self.value(value, scope, env);
                 for arm in arms {
                     let mut local = env.clone();
-                    bind_pattern(&arm.pattern, matched.as_ref(), self.index, &mut local);
+                    bind_pattern(&arm.pattern, matched.as_ref(), &self.field_owner(value), self.index, &mut local);
                     out.union(self.expression(&arm.body, scope, &local));
                 }
                 out

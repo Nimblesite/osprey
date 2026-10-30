@@ -116,11 +116,10 @@ impl Checker {
     }
 
     /// A written `Echo<Point>` and an inferred `Echo` fed a `Point` value
-    /// identify the same operation. Resolve nominal record applications to
-    /// their instantiated structural shape before publishing effect-site
-    /// identities; otherwise a handler keyed by `Point` cannot discharge a
-    /// request keyed by `{ x: int, ... }`. Preserve the declaration name for
-    /// value layout and diagnostics, while the effect-row key uses its fields.
+    /// identify the same operation. Resolve non-generic records to their
+    /// named field shape, while generic records retain every argument:
+    /// phantom parameters can govern a field's effect contract even when
+    /// they do not occur in its runtime fields. [EFFECTS-FIELD-ROWS]
     pub(super) fn resolve_effect_argument(&mut self, ty: Type) -> Type {
         match ty {
             Type::Con { name, args } => {
@@ -128,7 +127,11 @@ impl Checker {
                     .into_iter()
                     .map(|argument| self.resolve_effect_argument(argument))
                     .collect();
-                if let Some(fields) = self.ctx.record_fields(&name, &args) {
+                if let Some(fields) = args
+                    .is_empty()
+                    .then(|| self.ctx.record_fields(&name, &args))
+                    .flatten()
+                {
                     Type::Record { name, fields }
                 } else {
                     Type::Con { name, args }

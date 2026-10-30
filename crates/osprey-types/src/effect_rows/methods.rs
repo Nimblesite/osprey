@@ -21,7 +21,8 @@ impl Analyzer<'_> {
                 let projected = self
                     .value(parts.target, scope, env)
                     .and_then(|value| project_field(value, field));
-                let projected = self.index.field_value(field, projected);
+                let owner = self.field_owner(parts.target);
+                let projected = self.owned_field_value(&owner, field, projected);
                 let callee = projected.as_ref().and_then(|value| value.callable.clone());
                 if let Some(callee) = callee {
                     let arguments = self
@@ -102,7 +103,11 @@ impl Analyzer<'_> {
         mut receiver: Value,
         method: MethodProjection,
     ) -> Option<Value> {
-        let mut projected = if let Some(value) = receiver.fields.remove(&method.field) {
+        let mut stored = receiver.fields.remove(&method.field);
+        if let Some(owner) = &receiver.field_owner {
+            stored = self.index.owned_field_value(owner, &method.field, stored);
+        }
+        let mut projected = if let Some(value) = stored {
             value.callable.map(|callee| {
                 let arguments = CallArguments {
                     positional: method.arguments.clone(),
@@ -142,7 +147,7 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<Value> {
-        match self
+        let returned = match self
             .instances
             .methods
             .get(&std::ptr::from_ref(expression).addr())
@@ -160,13 +165,16 @@ impl Analyzer<'_> {
             Some(crate::methods::Target::Deferred(field)) => self
                 .deferred_method(parts, field, scope, env)
                 .and_then(|value| self.project_returned(value)),
-            Some(crate::methods::Target::Function) | None => self.call_value(
-                &Expr::Identifier(parts.method.to_owned()),
-                &self.receiver_first(parts.target, parts.arguments),
-                parts.named,
-                scope,
-                env,
-            ),
-        }
+            Some(crate::methods::Target::Function) | None => {
+                return self.call_value(
+                    &Expr::Identifier(parts.method.to_owned()),
+                    &self.receiver_first(parts.target, parts.arguments),
+                    parts.named,
+                    scope,
+                    env,
+                )
+            }
+        };
+        returned.map(|value| Self::resolve_handled_value(value, &env.handler_returns))
     }
 }

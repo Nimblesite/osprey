@@ -97,6 +97,7 @@ pub(super) fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Ins
     }
     let declared_rows = resolved_declared_rows(checker);
     let mut instances = crate::effect_rows::Instances {
+        signatures: super::publish::resolved_signatures(checker, crate::ctx::InferCtx::expose),
         expression_types: resolved_expression_types(checker).into(),
         methods: checker.methods.clone(),
         non_callable_call_error: checker
@@ -113,6 +114,7 @@ pub(super) fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Ins
         declared_rows,
         display_arguments: display_effect_arguments(checker, &argument_types),
         argument_types,
+        instantiation_types: substitutions.clone(),
         instantiations: substitutions
             .into_iter()
             .map(|(site, bindings)| {

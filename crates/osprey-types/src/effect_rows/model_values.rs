@@ -21,12 +21,17 @@ impl Value {
             + usize::from(self.element.is_some())
             + usize::from(self.result_payload.is_some())
             + usize::from(self.fiber_payload.is_some())
-            + usize::from(self.callable.is_some())
+            + self.callable.as_ref().map_or(0, |callable| match callable {
+                Callable::Alternatives(choices) => choices.len(),
+                _ => 1,
+            })
             + usize::from(!self.deferred.parameter_uses.is_empty())
     }
 
     pub(super) fn carries_provenance(&self) -> bool {
         self.callable.is_some()
+            || self.unknown_structure
+            || self.empty_case.is_some()
             || !self.performed.is_empty()
             || !self.fields.is_empty()
             || self.element.is_some()
@@ -56,6 +61,13 @@ impl Value {
         Self::from_callable(Callable::Unknown)
     }
 
+    pub(super) fn unknown_value() -> Self {
+        Self {
+            unknown_structure: true,
+            ..Self::unknown_callable()
+        }
+    }
+
     pub(super) fn widened(self) -> Self {
         widen_value(self, 0)
     }
@@ -69,6 +81,13 @@ impl Value {
     }
 
     pub(super) fn union(&mut self, other: Self) {
+        self.unknown_structure |= other.unknown_structure;
+        if self.field_owner != other.field_owner {
+            self.field_owner = None;
+        }
+        if self.empty_case != other.empty_case {
+            self.empty_case = None;
+        }
         if self.field_names != other.field_names {
             self.field_names = None;
         }

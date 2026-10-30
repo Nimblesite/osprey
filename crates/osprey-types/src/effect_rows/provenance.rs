@@ -1,8 +1,18 @@
 //! Effect row provenance.
 use super::{
-    BTreeSet, CallArguments, Callable, KnownCallable, ParameterUse, Projection, Requirements,
-    Summary, Value, MAX_PROVENANCE_DEPTH, MAX_PROVENANCE_NODES,
+    Callable, KnownCallable, ParameterUse, Projection, Summary, Value, MAX_PROVENANCE_DEPTH,
+    MAX_PROVENANCE_NODES,
 };
+
+pub(super) fn map_alternatives(choices: &mut Vec<Callable>, mut visit: impl FnMut(&mut Value)) {
+    for choice in choices.iter_mut() {
+        let mut branch = Value::from_callable(choice.clone());
+        visit(&mut branch);
+        *choice = branch.callable.unwrap_or(Callable::Unknown);
+    }
+    choices.sort();
+    choices.dedup();
+}
 
 pub(super) fn map_projection_values(
     projection: &mut [Projection],
@@ -129,6 +139,15 @@ pub(super) fn widen_callable(
     deferred: &mut Summary,
 ) -> Callable {
     match callable {
+        Callable::Alternatives(choices) => {
+            let child_budget = budget / choices.len().max(1);
+            bounded_alternatives(
+                choices
+                    .into_iter()
+                    .map(|choice| widen_callable(choice, depth + 1, child_budget, deferred))
+                    .collect(),
+            )
+        }
         Callable::Known(mut known) => {
             known.summary.widen_at_budget(depth, budget);
             widen_payload(&mut known.returned, depth, budget);
@@ -177,6 +196,12 @@ pub(super) fn terminal_value(mut value: Value) -> Value {
 
 pub(super) fn terminal_callable(callable: Callable, deferred: &mut Summary) -> Callable {
     match callable {
+        Callable::Alternatives(choices) => bounded_alternatives(
+            choices
+                .into_iter()
+                .map(|choice| terminal_callable(choice, deferred))
+                .collect(),
+        ),
         Callable::Known(mut known) => {
             known.summary.widen_at(MAX_PROVENANCE_DEPTH);
             known.returned = known.returned.map(|_| Box::new(Value::unknown_callable()));
@@ -221,6 +246,11 @@ pub(super) fn shift_summary_levels(summary: &mut Summary, amount: usize) {
 pub(super) fn shift_value_levels(value: &mut Value, amount: usize, minimum_level: usize) {
     if let Some(callable) = &mut value.callable {
         match callable {
+            Callable::Alternatives(choices) => {
+                map_alternatives(choices, |branch| {
+                    shift_value_levels(branch, amount, minimum_level);
+                });
+            }
             Callable::Parameter {
                 level, projection, ..
             } => {
@@ -246,34 +276,6 @@ pub(super) fn shift_value_levels(value: &mut Value, amount: usize, minimum_level
     shift_summary_from(&mut value.deferred, amount, minimum_level);
 }
 
-pub(super) fn callable_summary(callable: &Callable) -> Summary {
-    match callable {
-        Callable::Known(known) => known.summary.clone(),
-        Callable::Unknown => Summary {
-            unresolved_dynamic_call: true,
-            ..Summary::default()
-        },
-        Callable::Parameter {
-            level,
-            index,
-            projection,
-        } => Summary {
-            required: Requirements::new(),
-            runtime_builtins: BTreeSet::new(),
-            parameter_uses: [ParameterUse {
-                level: *level,
-                index: *index,
-                projection: projection.clone(),
-                arguments: CallArguments::default(),
-                scopes: Vec::new(),
-            }]
-            .into_iter()
-            .collect(),
-            unresolved_dynamic_call: false,
-        },
-    }
-}
-
 pub(super) fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
     let Some(existing) = slot.take() else {
         *slot = Some(incoming);
@@ -287,38 +289,58 @@ pub(super) fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
         *slot = Some(merged);
         return;
     }
-    *slot = Some(synthetic_join(&existing, &incoming));
+    *slot = Some(joined_alternatives(&existing, &incoming));
 }
 
-/// The synthetic callable of a join neither side of which can summarise the
-/// other: it carries both sides' summaries and returned values, so invoking
-/// it still accounts for every alternative. Implements [EFFECTS-PROVENANCE].
-fn synthetic_join(existing: &Callable, incoming: &Callable) -> Callable {
-    let mut summary = callable_summary(existing);
-    summary.union(callable_summary(incoming));
-    let (parameters, returned) = joined_shapes(existing, incoming);
+fn joined_alternatives(existing: &Callable, incoming: &Callable) -> Callable {
+    let mut alternatives = Vec::new();
+    for callable in [existing, incoming] {
+        match callable {
+            Callable::Alternatives(choices) => alternatives.extend(choices.iter().cloned()),
+            other => alternatives.push(other.clone()),
+        }
+    }
+    bounded_alternatives(alternatives)
+}
+
+fn bounded_alternatives(mut choices: Vec<Callable>) -> Callable {
+    choices.sort();
+    choices.dedup();
+    if choices.len() <= MAX_PROVENANCE_NODES {
+        return Callable::Alternatives(choices);
+    }
+    let mut known = Summary::default();
+    for choice in choices {
+        collect_known_effects(&choice, &mut known);
+    }
+    Callable::Alternatives(vec![known_effects_callable(known), Callable::Unknown])
+}
+
+fn known_effects_callable(summary: Summary) -> Callable {
     Callable::Known(Box::new(KnownCallable {
-        parameters,
+        parameters: Vec::new(),
         summary,
-        returned: returned.map(Box::new),
+        returned: Some(Box::new(Value::unknown_value())),
     }))
 }
 
-/// The shared parameters and merged returned values of the joined callables.
-fn joined_shapes(existing: &Callable, incoming: &Callable) -> (Vec<String>, Option<Value>) {
-    let mut parameters = Vec::new();
-    let mut returned = None;
-    for callable in [existing, incoming] {
-        if let Callable::Known(known) = callable {
-            if parameters.is_empty() || parameters == known.parameters {
-                parameters.clone_from(&known.parameters);
-            }
-            if let Some(value) = known.returned.as_deref().cloned() {
-                merge_optional_value(&mut returned, value);
+fn collect_known_effects(callable: &Callable, summary: &mut Summary) {
+    match callable {
+        Callable::Known(known) => {
+            summary
+                .required
+                .extend(known.summary.required.iter().cloned());
+            summary
+                .runtime_builtins
+                .extend(known.summary.runtime_builtins.iter().cloned());
+        }
+        Callable::Alternatives(choices) => {
+            for choice in choices {
+                collect_known_effects(choice, summary);
             }
         }
+        Callable::Parameter { .. } | Callable::Unknown => {}
     }
-    (parameters, returned)
 }
 
 /// Both sides project the same parameter of the same scope: alternatives over

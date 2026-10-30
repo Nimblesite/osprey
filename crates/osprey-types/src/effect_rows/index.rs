@@ -1,5 +1,5 @@
 //! Effect row index.
-use super::{DeclaredEffect, Function, HashMap, Index, ModuleItem, Program, Stmt};
+use super::{DeclaredEffect, Function, HashMap, Index, IndexedCallable, ModuleItem, Program, Stmt};
 
 impl<'a> Index<'a> {
     pub(super) fn collect(program: &'a Program) -> Self {
@@ -56,8 +56,7 @@ impl<'a> Index<'a> {
                         body,
                         position: *position,
                     });
-                    let _ = self.qualified.insert(qualified, id);
-                    self.bare.entry(name.clone()).or_default().push(id);
+                    self.register_callable(qualified, name, IndexedCallable::Function(id));
                 }
                 Stmt::Effect {
                     name,
@@ -69,19 +68,25 @@ impl<'a> Index<'a> {
                     let names = operations.iter().map(|op| op.name.clone()).collect();
                     let _ = self.effect_operations.insert(name.clone(), names);
                 }
-                Stmt::Type { variants, .. } => {
-                    for variant in variants {
-                        self.field_rows.collect(&variant.name, &variant.fields);
-                        let _ = self.constructors.insert(
-                            variant.name.clone(),
-                            variant
-                                .fields
-                                .iter()
-                                .map(|field| field.name.clone())
-                                .collect(),
-                        );
-                    }
+                Stmt::Extern {
+                    name, parameters, ..
+                } => {
+                    let names: Vec<_> = parameters.iter().map(|p| p.name.clone()).collect();
+                    self.register_callable(
+                        qualify(scope, name),
+                        name,
+                        IndexedCallable::Extern {
+                            parameters: names,
+                            signature: name.clone(),
+                        },
+                    );
                 }
+                Stmt::Type {
+                    name,
+                    variants,
+                    type_params,
+                    ..
+                } => self.collect_type(name, type_params, variants),
                 Stmt::Namespace { name, body, .. } => {
                     let mut nested = scope.to_vec();
                     nested.push(name.label().to_string());
@@ -97,6 +102,25 @@ impl<'a> Index<'a> {
         }
     }
 
+    fn collect_type(
+        &mut self,
+        name: &str,
+        parameters: &[osprey_ast::TypeParam],
+        variants: &'a [osprey_ast::TypeVariant],
+    ) {
+        self.field_rows.register_parameters(name, parameters);
+        for variant in variants {
+            self.field_rows
+                .collect(&variant.name, parameters, &variant.fields);
+            let fields = variant
+                .fields
+                .iter()
+                .map(|field| field.name.clone())
+                .collect();
+            let _ = self.constructors.insert(variant.name.clone(), fields);
+        }
+    }
+
     pub(super) fn collect_module_items(&mut self, items: &'a [ModuleItem], scope: &[String]) {
         for item in items {
             self.collect_stmts(std::slice::from_ref(item.declaration.as_ref()), scope);
@@ -104,22 +128,52 @@ impl<'a> Index<'a> {
     }
 
     pub(super) fn resolve(&self, scope: &[String], name: &str) -> Option<usize> {
-        if name.contains("::") {
-            return self.qualified.get(name).copied();
+        match resolve_named(&self.qualified, &self.bare, scope, name)? {
+            IndexedCallable::Function(id) => Some(*id),
+            IndexedCallable::Extern { .. } => None,
         }
-        for depth in (0..=scope.len()).rev() {
-            let Some(prefix) = scope.get(..depth) else {
-                continue;
-            };
-            let candidate = qualify(prefix, name);
-            if let Some(id) = self.qualified.get(&candidate) {
-                return Some(*id);
-            }
-        }
-        self.bare
-            .get(name)
-            .and_then(|ids| (ids.len() == 1).then(|| ids.first().copied()).flatten())
     }
+
+    pub(super) fn extern_parameters(&self, scope: &[String], name: &str) -> Option<&Vec<String>> {
+        match resolve_named(&self.qualified, &self.bare, scope, name)? {
+            IndexedCallable::Extern { parameters, .. } => Some(parameters),
+            IndexedCallable::Function(_) => None,
+        }
+    }
+
+    pub(super) fn extern_signature_name(&self, scope: &[String], name: &str) -> Option<&str> {
+        match resolve_named(&self.qualified, &self.bare, scope, name)? {
+            IndexedCallable::Extern { signature, .. } => Some(signature),
+            IndexedCallable::Function(_) => None,
+        }
+    }
+
+    fn register_callable(&mut self, qualified: String, name: &str, callable: IndexedCallable) {
+        let _ = self.qualified.insert(qualified, callable.clone());
+        self.bare.entry(name.to_owned()).or_default().push(callable);
+    }
+}
+
+fn resolve_named<'a, T>(
+    qualified: &'a HashMap<String, T>,
+    bare: &'a HashMap<String, Vec<T>>,
+    scope: &[String],
+    name: &str,
+) -> Option<&'a T> {
+    if name.contains("::") {
+        return qualified.get(name);
+    }
+    for depth in (0..=scope.len()).rev() {
+        let Some(prefix) = scope.get(..depth) else {
+            continue;
+        };
+        let candidate = qualify(prefix, name);
+        if let Some(value) = qualified.get(&candidate) {
+            return Some(value);
+        }
+    }
+    bare.get(name)
+        .and_then(|values| (values.len() == 1).then(|| values.first()).flatten())
 }
 
 pub(super) fn qualify(scope: &[String], name: &str) -> String {

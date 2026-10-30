@@ -9,13 +9,27 @@ use super::{
 
 /// Check inferred rows and entry discharge. Implements
 /// [EFFECTS-STATIC-DISCHARGE].
+pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) -> CheckedEffects {
+    let renamed = super::capabilities::resolved(program, &instances.capabilities);
+    let Some(renamed) = renamed else {
+        return check_resolved(program, instances, exports);
+    };
+    let sites = super::capabilities::relocated_sites(program, &renamed);
+    let relocated = super::capabilities::relocated_instances(instances, &sites);
+    let mut proof = check_resolved(&renamed, &relocated, exports);
+    let _ = instances
+        .handler_inference
+        .replace(relocated.handler_inference.into_inner());
+    let original = sites.into_iter().map(|(old, new)| (new, old)).collect();
+    proof.signal_queries = super::capabilities::relocate_map(proof.signal_queries, &original);
+    proof
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "the fixed point, contract validation, and entry proof form one ordered checker pass"
 )]
-pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) -> CheckedEffects {
-    let renamed = super::capabilities::resolved(program, &instances.capabilities);
-    let program = renamed.as_ref().unwrap_or(program);
+fn check_resolved(program: &Program, instances: &Instances, exports: &[&str]) -> CheckedEffects {
     let mut index = Index::collect(program);
     for function in &mut index.functions {
         let entries = function.position.and_then(|position| {
@@ -132,7 +146,8 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
     // Inferred operations outside its named effects are therefore an error.
     for ((function, own), returned) in index.functions.iter().zip(&rows).zip(&returns) {
         if function.effect_row_present {
-            let row = &full_application(function.body, own, returned.as_ref());
+            let result_type = instances.signatures.get(&function.name).map(|(_, ret)| ret);
+            let row = &full_application(function.body, own, returned.as_ref(), result_type);
             let undeclared: BTreeSet<_> = row
                 .required
                 .iter()
@@ -235,6 +250,7 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
         &entry,
         "program entry",
         !instances.non_callable_call_error,
+        instances,
     ));
     for (id, name) in exported {
         if let Some(row) = rows.get(id) {
@@ -242,6 +258,7 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
                 row,
                 &format!("library export `{name}`"),
                 !instances.non_callable_call_error,
+                instances,
             ));
         }
     }

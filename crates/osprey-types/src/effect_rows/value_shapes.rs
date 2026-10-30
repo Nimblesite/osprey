@@ -6,6 +6,7 @@ use super::{
 
 pub(super) fn project_field(mut value: Value, field: &str) -> Option<Value> {
     let mut projected = value.fields.remove(field);
+    project_unknown_structure(value.unknown_structure, &mut projected);
     project_callable(
         value.callable,
         Projection::Field(field.to_string()),
@@ -16,6 +17,7 @@ pub(super) fn project_field(mut value: Value, field: &str) -> Option<Value> {
 
 pub(super) fn project_element(mut value: Value) -> Option<Value> {
     let mut projected = value.element.take().map(|value| *value);
+    project_unknown_structure(value.unknown_structure, &mut projected);
     project_callable(value.callable, Projection::Element, &mut projected);
     projected
 }
@@ -25,14 +27,22 @@ pub(super) fn project_success_value(mut value: Value) -> Option<Value> {
     if let Some(field) = value.fields.remove("value") {
         merge_optional_value(&mut projected, field);
     }
+    project_unknown_structure(value.unknown_structure, &mut projected);
     project_callable(value.callable, Projection::SuccessValue, &mut projected);
     projected
 }
 
 pub(super) fn project_fiber_value(mut value: Value) -> Option<Value> {
     let mut projected = value.fiber_payload.take().map(|value| *value);
+    project_unknown_structure(value.unknown_structure, &mut projected);
     project_callable(value.callable, Projection::FiberValue, &mut projected);
     projected
+}
+
+fn project_unknown_structure(unknown: bool, projected: &mut Option<Value>) {
+    if unknown {
+        merge_optional_value(projected, Value::unknown_value());
+    }
 }
 
 /// Resolve [`Projection::Deep`]: the finite summary of a recursive aggregate.
@@ -74,6 +84,11 @@ fn collect_deep(value: &Value, merged: &mut Value) {
 /// closure always names its parameters, so only joined alternatives flatten.
 pub(super) fn stabilize_merged_callables(value: &Value) -> Value {
     let mut stabilized = value.clone();
+    if let Some(Callable::Alternatives(choices)) = &mut stabilized.callable {
+        super::provenance::map_alternatives(choices, |branch| {
+            *branch = stabilize_merged_callables(branch);
+        });
+    }
     if let Some(Callable::Known(known)) = &value.callable {
         if known.parameters.is_empty() && !known.summary.parameter_uses.is_empty() {
             stabilized.callable = Some(Callable::Unknown);
@@ -100,6 +115,12 @@ pub(super) fn project_callable(
     projected: &mut Option<Value>,
 ) {
     let callable = match callable {
+        Some(Callable::Alternatives(choices)) => {
+            for choice in choices {
+                project_callable(Some(choice), next.clone(), projected);
+            }
+            return;
+        }
         Some(Callable::Parameter {
             level,
             index,

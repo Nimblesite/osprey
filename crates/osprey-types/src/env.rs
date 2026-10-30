@@ -8,6 +8,8 @@ use crate::ty::{Scheme, Type, VarId};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
+mod builtin_bindings;
+
 /// One call's signature, deferred obligations, and ordered declared binders.
 pub(crate) struct AppliedSignature {
     pub ty: Type,
@@ -26,8 +28,8 @@ struct Frame {
     type_params: HashMap<String, Option<Vec<Type>>>,
     /// Names declared `mut` — the only bindings handler-arm assignment may target.
     mutables: HashMap<String, bool>,
-    /// Runtime obligations attached to the builtin binding, cleared by shadowing.
-    runtime_builtins: HashMap<String, bool>,
+    /// Builtin identity and runtime obligations, cleared by shadowing.
+    builtins: HashMap<String, Option<builtin_bindings::Builtin>>,
 }
 
 /// Maps names to their type schemes, with value semantics: bindings added to a
@@ -90,17 +92,6 @@ impl TypeEnv {
             .and_then(Option::as_ref)
     }
 
-    /// Hide an outer declaration's binders and builtin obligations, writing a
-    /// marker only where there is something to hide.
-    fn shadow_declaration(&mut self, name: &str) {
-        if self.type_params(name).is_some() {
-            let _ = self.frame().type_params.insert(name.to_owned(), None);
-        }
-        if self.is_runtime_builtin(name) {
-            let _ = self.frame().runtime_builtins.insert(name.to_owned(), false);
-        }
-    }
-
     pub(crate) fn insert(&mut self, name: impl Into<String>, scheme: Scheme) {
         let name = name.into();
         // A fresh binding shadows any outer `mut` of the same name.
@@ -123,15 +114,6 @@ impl TypeEnv {
     pub(crate) fn is_mutable(&self, name: &str) -> bool {
         self.lookup(|frame| frame.mutables.get(name))
             .is_some_and(|mutable| *mutable)
-    }
-
-    pub(crate) fn mark_runtime_builtin(&mut self, name: &str) {
-        let _ = self.frame().runtime_builtins.insert(name.to_owned(), true);
-    }
-
-    pub(crate) fn is_runtime_builtin(&self, name: &str) -> bool {
-        self.lookup(|frame| frame.runtime_builtins.get(name))
-            .is_some_and(|builtin| *builtin)
     }
 
     /// The currently bound names. Snapshotted on the freshly built builtin
@@ -211,7 +193,7 @@ impl TypeEnv {
             merge_missing(&mut merged.vars, &frame.vars);
             merge_missing(&mut merged.type_params, &frame.type_params);
             merge_missing(&mut merged.mutables, &frame.mutables);
-            merge_missing(&mut merged.runtime_builtins, &frame.runtime_builtins);
+            merge_missing(&mut merged.builtins, &frame.builtins);
         }
         TypeEnv {
             local: Arc::new(merged),
