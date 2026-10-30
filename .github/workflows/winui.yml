@@ -7,8 +7,8 @@ name: WinUI host
 # a window. Then Osprey Storage runs in a real window on the runner's desktop, driven by its
 # self-test script, and the pictures of each step are kept as an artifact.
 #
-# ci.yml calls this workflow on every pull request, and its root `ci` job, the required check,
-# needs both jobs here. A PR that changes no code skips the host at the job level, which reports
+# ci.yml calls this workflow on every pull request, and the `main` ruleset requires both jobs
+# here by name. A PR that changes no code skips the host at the job level, which reports
 # as passing.
 on:
   workflow_dispatch:
