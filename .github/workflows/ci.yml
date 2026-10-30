@@ -772,12 +772,14 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      - name: Upload extension test log on failure
+      - name: Upload extension failure evidence
         uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-log-extension
-          path: vscode-extension/test.log
+          path: |
+            vscode-extension/test.log
+            target/workbench-vsix/failure*
           if-no-files-found: ignore
           retention-days: 7
 
