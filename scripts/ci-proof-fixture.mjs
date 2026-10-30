@@ -1,4 +1,4 @@
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -54,6 +54,17 @@ export function runSchedule(target, environment = {}) {
   } finally { rmSync(root, { recursive: true, force: true }) }
 }
 
+export function benchmarkSetup(compiler) {
+  const source = readFileSync('benchmarks/proof/run.sh', 'utf8')
+  const boundary = source.indexOf('\nhave()')
+  if (boundary < 0) throw new Error('proof benchmark setup boundary moved')
+  const script = source.slice(0, boundary)
+  const env = { ...process.env }
+  delete env.OSPREY_BIN
+  if (compiler !== undefined) env.OSPREY_BIN = compiler
+  return spawnSync('zsh', ['-c', script + '\nprint -rn -- "$OSP"', resolve('benchmarks/proof/run.sh')], { encoding: 'utf8', env })
+}
+
 function barrier(root, memory) {
   writeFileSync(join(root, `started-${memory}`), '')
   const deadline = Date.now() + 2000
@@ -104,6 +115,8 @@ function corpus(args) {
 function benchmark() {
   const root = process.env.FIXTURE_ROOT
   const calls = readFileSync(join(root, 'calls'), 'utf8').trim().split('\n').map(JSON.parse)
+  const compiler = process.env.OSPREY_BIN
+  if (process.env.FIXTURE_ASSERT_COMPILER && (!compiler || !existsSync(compiler) || realpathSync(compiler) !== realpathSync(join(root, 'target/osprey')))) process.exit(24)
   for (const source of ['disciplines', 'openai', 'lean-core', 'unicode']) {
     if (!calls.some(call => call.source === source)) process.exit(22)
   }

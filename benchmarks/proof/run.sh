@@ -48,7 +48,7 @@ set -u
 
 HERE=${0:A:h}
 ROOT=${HERE:h:h}
-OSP=$ROOT/target/release/osprey
+OSP="${OSPREY_BIN:-$ROOT/target/release/osprey}"
 FILTER=${1:-}
 RUNS=${PROOF_RUNS:-10}
 OUT=$ROOT/target/proof/results.jsonl

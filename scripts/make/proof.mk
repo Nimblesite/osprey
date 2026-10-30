@@ -147,7 +147,7 @@ PROOF_BATCH_TARGETS := _test_proof_batch_gc _test_proof_batch_arc _test_proof_ba
 PROOF_CORPUS_TARGETS := _test_proof_openai _test_proof_lean_core _test_proof_unicode
 
 _test_proof_ci: _test_proof_kernel _test_disciplines $(PROOF_CORPUS_TARGETS)
-	zsh benchmarks/proof/run.sh
+	OSPREY_BIN="$(abspath $(BIN))" zsh benchmarks/proof/run.sh
 
 _test_proof_batch_gc _test_proof_batch_arc: _test_proof_batch_%:
 	@$(MKDIR) target/proof/openai

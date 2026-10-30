@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { runKernelSchedule, runSchedule } from './ci-proof-fixture.mjs'
+import { runKernelSchedule, runSchedule, benchmarkSetup } from './ci-proof-fixture.mjs'
 
 test('proof kernel schedules all three backends concurrently and retains every check', () => {
   const result = runKernelSchedule()
@@ -50,4 +50,23 @@ test('files named after proof targets cannot suppress acceptance checks', () => 
   assert.equal(result.status, 0, result.stdout + result.stderr)
   assert.ok(result.calls.some(call => call.source === 'disciplines'))
   assert.equal(result.calls.length, 16)
+})
+
+
+test('proof CI passes its selected compiler to the benchmark', () => {
+  const result = runSchedule('_test_proof_ci', { FIXTURE_ASSERT_COMPILER: '1' })
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+})
+
+test('proof benchmark setup honours the explicit compiler path', () => {
+  const result = benchmarkSetup('/tmp/selected proof compiler')
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, '/tmp/selected proof compiler')
+})
+
+
+test('proof benchmark setup retains the release compiler by default', () => {
+  const result = benchmarkSetup()
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, `${process.cwd()}/target/release/osprey`)
 })
