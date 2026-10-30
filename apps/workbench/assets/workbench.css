@@ -269,6 +269,7 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
   .osp-frame-board-region { height: 488px; }
   .osp-frame-board-toolbar > .osp-axis-horizontal > .osp-spacer, .osp-frame-board-footer > .osp-axis-horizontal > .osp-spacer { display: none; }
   .osp-frame-source-heading > .osp-axis-horizontal { flex-wrap: nowrap; }
+  .osp-frame-source-panel .osp-frame-source-heading .osp-role-heading { font-size: 22px; }
 }
 @media (min-width: 541px) and (max-width: 980px) {
   .osp-frame-solution-column > .osp-axis-vertical:has(> .osp-frame-board-goals) { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 30px; align-items: start; }
