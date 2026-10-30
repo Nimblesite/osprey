@@ -76,6 +76,7 @@ export const ACTION_SCRIPT = String.raw`
     releaseAction();
     pressedAction = button;
     pressedPointerId = event.pointerId;
+    sendPendingFields();
   });
   document.addEventListener("pointerup", function (event) {
     if (event.pointerId !== pressedPointerId) return;

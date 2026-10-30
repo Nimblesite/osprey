@@ -72,8 +72,7 @@ export const WEBVIEW_SCRIPT = `
 
   function postAfterFields(control, value) {
     if (pendingEdits.size === 0 && !pendingActionPatch) return false;
-    const pending = flushFields();
-    pending.forEach(function (_edit, signature) { sendField(signature); });
+    sendPendingFields();
     const id = ++editSequence;
     const signature = "action:" + id;
     pendingEdits.set(signature, { id: id, value: value, control: control, sent: false });
@@ -105,6 +104,11 @@ export const WEBVIEW_SCRIPT = `
     if (!edit || edit.sent) return;
     pendingEdits.set(signature, Object.assign({}, edit, { sent: true }));
     vscode.postMessage(Object.assign({ type: "event", edit: edit.id, value: edit.value }, edit.control));
+  }
+
+  // Pressing another control commits every draft before its own action.
+  function sendPendingFields() {
+    flushFields().forEach(function (_edit, signature) { sendField(signature); });
   }
 
   function armFieldTimer(signature) {
