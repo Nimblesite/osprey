@@ -9,6 +9,20 @@ The Proof Workbench lets you build an argument and see what each step establishe
 
 [Watch the programmer walkthrough](/docs/proofs/videos/proof-workbench/) or [the mathematics walkthrough](/docs/proofs/videos/proof-workbench-math/). Both start with the problem before introducing symbols.
 
+Lean is the [development oracle](/docs/proofs/#lean-as-an-oracle) for compatible proof behaviour; Osprey's own kernel makes the Workbench's decisions. A known unsound certificate must be refused. Changing a discipline or its assumptions requires fresh checking, so a saved Checked verdict cannot transfer automatically to a different theory.
+
+## Watch: for programmers
+
+{% videoPlayer "proof-workbench", true %}
+
+[Transcript and chapters](/docs/proofs/videos/proof-workbench/)
+
+## Watch: for mathematicians
+
+{% videoPlayer "proof-workbench-math", true %}
+
+[Transcript and chapters](/docs/proofs/videos/proof-workbench-math/)
+
 ## Open the Workbench
 
 In a build of the Osprey VS Code extension containing the Workbench, open the Command Palette and run **Osprey: Open Workbench**. No project is required. This hosts the shared Osprey application inside VS Code; it is not a screenshot viewer. The command identifier is `osprey.workbench.open`.
@@ -41,13 +55,13 @@ Change a required fact to one that does not match the goal and inspect the refus
 
 ## Work through lessons
 
-Open **Examples**, choose a lesson and select **Open**. Read its introduction before answering a challenge. Submit an answer and inspect the feedback. The filmed exercise shows hints, a reveal after unsuccessful attempts, and a successful checked answer; revealing an answer is distinct from proving your own draft.
+Open **Examples**, choose a lesson and select **Open**. Read its introduction before answering a challenge. Submit an answer and inspect the feedback. The lesson offers hints and reveals a worked answer after three unsuccessful proof submissions. The walkthrough shows a successful checked answer; revealing a solution is distinct from proving your own draft.
 
 The Navier-Stokes lesson introduces velocity, pressure and incompressibility before showing the equations. Its proof exercise concerns the logical consequences of explicit propositions. It does not formalize fluid analysis or establish the three-dimensional regularity theorem.
 
 ## Read an imported theorem
 
-Open **Notation** and choose a bundled proof library, then select a theorem. The app checks its current export through the shared kernel and displays the actual mathematical statement and the assumptions used by that theorem. For example, `Nat.add_comm` states universal natural-number addition commutativity and has no axioms in its recorded dependency closure.
+From **Board** or **Proof**, open **Notation** and choose a bundled proof library, then select a theorem. The app checks its current export through the shared kernel and displays the actual mathematical statement and the assumptions used by that theorem. For example, `Nat.add_comm` states universal natural-number addition commutativity and has no axioms in its recorded dependency closure.
 
 The [Mathlib progress guide](/docs/mathlib-port/) explains the corpus, provenance and rejection checks. An imported proof and a newly authored Workbench proof are different workflows.
 

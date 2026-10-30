@@ -55,6 +55,11 @@ suite("workbench bundle completeness", () => {
   const extension = path.resolve(__dirname, "../../..");
   const verify = () => spawnSync(process.execPath, [path.join(root, "scripts/verify-package-client.mjs")],
     { encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+  const registryCheck = (part: string): void => {
+    const result = verify(), required = process.platform !== "win32";
+    assert.strictEqual(result.status, required ? 1 : 0, result.stderr);
+    if (required) assert.ok(result.stderr.includes(`Missing bundled local registry ${part}`), result.stderr);
+  };
   setup(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-bundle-"));
     const bundle = path.join(root, "bin", `${process.platform}-${process.arch}`);
@@ -75,6 +80,18 @@ suite("workbench bundle completeness", () => {
     for (const name of ["workbench", "package-workspace"]) fs.copyFileSync(path.join(extension, "bin", `${process.platform}-${process.arch}`, `${name}.wasm`), path.join(bundle, `${name}.wasm`));
   });
   teardown(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  test("packaging enforces the host's local-registry server and package inventory", () => {
+    const bundle = path.dirname(assets), server = path.join(bundle, process.platform === "win32" ? "osprey-registry.exe" : "osprey-registry");
+    fs.rmSync(server);
+    registryCheck("server");
+    fs.writeFileSync(server, "fixture");
+    const packages = path.join(bundle, "registry", "@osprey");
+    fs.rmSync(packages, { recursive: true });
+    registryCheck("packages");
+    fs.mkdirSync(packages);
+    registryCheck("packages");
+  });
 
   test("packaging rejects a missing WASI worker runtime module", () => {
     assert.equal(verify().status, 0, "complete bundle must pass");

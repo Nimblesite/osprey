@@ -125,7 +125,7 @@ fn unit_slots_preserve_the_internal_adapter_and_c_void_boundary() {
         fn main() = publish(1)\n";
     let (dll, slotted, _) = adapted(source);
     assert_eq!(slotted.len(), 1);
-    assert_eq!(slotted[0].ret, CType::Unit);
+    assert_eq!(slotted.first().map(|import| import.ret), Some(CType::Unit));
     for wanted in [
         "define internal void @host_notice(i64 %p0)",
         "call void %fn(i64 %p0)",
