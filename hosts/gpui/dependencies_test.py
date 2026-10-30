@@ -1,3 +1,4 @@
+import gzip
 import io
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -20,9 +21,11 @@ import dependencies as source
 BASH = shutil.which("bash")
 
 
+# gzip stamps the current time into its header, so two archives of the same entry built a second
+# apart differ, and a test that rebuilds one would trip the checksum it took of the first.
 def archive(name="fixture-1.0/Cargo.toml", content=b'license = "MIT"\nold\n'):
     output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:gz") as tar:
+    with gzip.GzipFile(fileobj=output, mode="wb", mtime=0) as packed, tarfile.open(fileobj=packed, mode="w") as tar:
         entry = tarfile.TarInfo(name)
         entry.size = len(content)
         tar.addfile(entry, io.BytesIO(content))
