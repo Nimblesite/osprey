@@ -127,6 +127,50 @@ COUNTER_HOST_PROBE = r'''
 '''
 
 
+GPUI_HOST_PROBE = r'''
+#[path = "__FFI__"] mod ffi;
+use std::ffi::{c_char, CString};
+extern "C" {
+    fn osp_arc_live_objects() -> usize;
+    fn osp_arc_live_bytes() -> usize;
+    fn osprey_identityInput(value: *const c_char) -> *const c_char;
+    fn osprey_release_string(value: *const c_char);
+}
+fn counts() -> (usize, usize) {
+    // SAFETY: the linked ARC runtime exports both scalar counter functions.
+    unsafe { (osp_arc_live_objects(), osp_arc_live_bytes()) }
+}
+fn positive_control() -> Result<(), String> {
+    let value = CString::new("control").map_err(|error| error.to_string())?;
+    let before = counts();
+    // SAFETY: the input outlives the export, which transfers one owned result.
+    let owned = unsafe { osprey_identityInput(value.as_ptr()) };
+    assert!(!owned.is_null());
+    assert_eq!(counts().0, before.0 + 1, "ARC counter missed an owned output");
+    // SAFETY: release exactly the reference the positive control received.
+    unsafe { osprey_release_string(owned) };
+    assert_eq!(counts(), before);
+    Ok(())
+}
+fn round_trip(index: usize) -> Result<(), String> {
+    let context = format!("context:{index}:é🦅");
+    assert_eq!(ffi::Library::start(&context)?, context);
+    let event = format!("event:{index}");
+    assert_eq!(ffi::Library::dispatch(&context, &event)?, format!("{context}|{event}"));
+    Ok(())
+}
+fn main() -> Result<(), String> {
+    ffi::Library::init()?;
+    positive_control()?;
+    let before = counts();
+    for index in 0..1000 { round_trip(index)?; }
+    assert_eq!(counts(), before, "GPUI owned output references leaked");
+    println!("GPUI host ARC ownership passed (2000 exports)");
+    Ok(())
+}
+'''
+
+
 def run_swift_probe(source, binary, *inputs):
     subprocess.run(["swiftc", "-parse-as-library", str(source), *inputs, "-o", str(binary)],
                    check=True, timeout=60)
@@ -154,6 +198,23 @@ def counter_host_probe():
         source.write_text("import Foundation\n" + helper + COUNTER_HOST_PROBE)
         run_swift_probe(source, Path(scratch) / "probe", "-import-objc-header",
                         str(archive.with_suffix(".h")), str(archive))
+
+
+def gpui_host_probe(archive):
+    with tempfile.TemporaryDirectory(prefix="osprey-gpui-ownership-") as scratch:
+        source, fixture, binary = (Path(scratch) / name for name in ["probe.rs", "fixture.o", "probe"])
+        source.write_text(GPUI_HOST_PROBE.replace("__FFI__", str(ROOT / "hosts/gpui/src/ffi.rs")))
+        subprocess.run(["xcrun", "clang", "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                        "-Dmain=mobile_fixture_unused_main", "-I", str(archive.parent), "-c",
+                        str(ROOT / "scripts/mobile-abi.c"), "-o", str(fixture)], check=True, timeout=60)
+        links = [str(fixture), str(archive),
+                 "-Wl,-alias,_osprey_identityInput,_osprey_app_start",
+                 "-Wl,-alias,_osprey_joinWith,_osprey_app_dispatch"]
+        command = ["rustc", "--edition=2021", str(source), "-o", str(binary)]
+        subprocess.run(command + [arg for link in links for arg in ["-C", f"link-arg={link}"]],
+                       check=True, timeout=60)
+        subprocess.run([str(binary)], check=True, timeout=10,
+                       env=dict(os.environ, OSPREY_ARC_DEBUG="1"))
 
 
 def corpus_jobs(target, override=None):
@@ -313,5 +374,7 @@ if __name__ == "__main__":
         storage_host_probe()
     elif sys.argv[1:] == ["--counter-host"]:
         counter_host_probe()
+    elif sys.argv[1:2] == ["--gpui-host"] and len(sys.argv) == 3:
+        gpui_host_probe(Path(sys.argv[2]).resolve())
     else:
         unittest.main()

@@ -15,6 +15,7 @@ xcrun --sdk macosx clang -target arm64-apple-macos12.0 \
     -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
     -O2 -std=c11 -Wall -Wextra -Werror "$scratch/abi.c" "$scratch/abi.a" -o "$scratch/abi"
 "$scratch/abi" >"$scratch/abi.stdout"
+python3 scripts/test-mobile-tools.py --gpui-host "$scratch/abi.a"
 printf 'Mobile C ABI passed\n' >"$scratch/abi.expected"
 diff -u "$scratch/abi.expected" "$scratch/abi.stdout"
 python3 scripts/test-mobile-tools.py --storage-host

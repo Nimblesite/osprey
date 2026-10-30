@@ -15,6 +15,8 @@ extern "C" {
     fn osprey_app_start(source: *const c_char) -> *const c_char;
     /// The application's `dispatch` export: one envelope for the next event.
     fn osprey_app_dispatch(saved: *const c_char, event: *const c_char) -> *const c_char;
+    /// Releases one owned string returned by an application export.
+    fn osprey_release_string(value: *const c_char);
 }
 
 /// The text the runtime fetches through `native_slice`, by slice key.
@@ -181,16 +183,120 @@ impl Library {
     }
 }
 
-/// Copies a returned string: it belongs to Osprey and is overwritten by the next call.
+/// Copies and releases one owned string returned by an application export ([IOS-HOST-ABI]).
 fn copied(value: *const c_char) -> Result<String, String> {
     if value.is_null() {
         return Err("The Osprey application returned no envelope".to_owned());
     }
-    // SAFETY: a non-null result is a NUL-terminated string valid until the next call.
-    unsafe { CStr::from_ptr(value) }
+    // SAFETY: a non-null result is a NUL-terminated string valid until released.
+    let copied = unsafe { CStr::from_ptr(value) }
         .to_str()
         .map(str::to_owned)
         .map_err(|problem| {
             format!("The Osprey application returned text that is not UTF-8: {problem}")
-        })
+        });
+    // SAFETY: every non-null export result transfers exactly one reference to the host.
+    unsafe { osprey_release_string(value) };
+    copied
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    static MODE: AtomicUsize = AtomicUsize::new(0);
+    static RELEASES: AtomicUsize = AtomicUsize::new(0);
+    static SERIAL: Mutex<()> = Mutex::new(());
+
+    fn serial() -> std::sync::MutexGuard<'static, ()> {
+        SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn reset(mode: usize) {
+        MODE.store(mode, Ordering::SeqCst);
+        RELEASES.store(0, Ordering::SeqCst);
+    }
+
+    fn owned(bytes: &[u8]) -> *const c_char {
+        CString::new(bytes)
+            .expect("test output must not contain an interior NUL")
+            .into_raw()
+    }
+
+    fn output() -> *const c_char {
+        match MODE.load(Ordering::SeqCst) {
+            0 => std::ptr::null(),
+            1 => owned(b"copied envelope"),
+            2 => owned(&[0xff, b'x']),
+            mode => unreachable!("unknown test output mode {mode}"),
+        }
+    }
+
+    #[no_mangle]
+    extern "C" fn osprey_main() -> i32 {
+        0
+    }
+
+    #[no_mangle]
+    extern "C" fn osprey_app_start(_source: *const c_char) -> *const c_char {
+        output()
+    }
+
+    #[no_mangle]
+    extern "C" fn osprey_app_dispatch(
+        _saved: *const c_char,
+        _event: *const c_char,
+    ) -> *const c_char {
+        output()
+    }
+
+    #[no_mangle]
+    extern "C" fn osprey_release_string(value: *const c_char) {
+        assert!(!value.is_null(), "the host released a null output");
+        RELEASES.fetch_add(1, Ordering::SeqCst);
+        // SAFETY: each test output is a live CString allocation released at most once.
+        unsafe { drop(CString::from_raw(value as *mut c_char)) };
+    }
+
+    #[test]
+    fn valid_owned_output_is_released_after_copying() {
+        let _serial = serial();
+        reset(1);
+        let result = Library::start("context");
+        assert_eq!(RELEASES.load(Ordering::SeqCst), 1, "owned output leaked");
+        assert_eq!(
+            result.as_deref(),
+            Ok("copied envelope"),
+            "copied output did not survive its release"
+        );
+    }
+
+    #[test]
+    fn malformed_owned_output_is_released() {
+        let _serial = serial();
+        reset(2);
+        let result = Library::dispatch("state", "event");
+        assert_eq!(
+            RELEASES.load(Ordering::SeqCst),
+            1,
+            "malformed owned output leaked"
+        );
+        assert!(result.is_err(), "malformed UTF-8 was accepted: {result:?}");
+    }
+
+    #[test]
+    fn null_output_is_not_released() {
+        let _serial = serial();
+        reset(0);
+        let result = Library::start("context");
+        assert!(result.is_err(), "null output was accepted: {result:?}");
+        assert_eq!(
+            RELEASES.load(Ordering::SeqCst),
+            0,
+            "null output was released"
+        );
+    }
 }

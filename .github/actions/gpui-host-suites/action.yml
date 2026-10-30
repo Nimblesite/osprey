@@ -27,6 +27,13 @@ runs:
       env:
         OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
 
+    - name: Mac archive and host string ownership
+      if: runner.os == 'macOS'
+      shell: bash
+      run: bash scripts/test-macos.sh
+      env:
+        OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
+
     - name: Flock recorded-event smoke
       shell: bash
       run: bash examples/gpui/flock/run.sh --smoke
