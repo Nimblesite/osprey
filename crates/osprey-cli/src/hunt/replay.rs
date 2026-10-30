@@ -72,6 +72,37 @@ pub(super) fn replay_all(
     Ok(())
 }
 
+/// Linux refuses to run a file that some process still holds open for
+/// writing (`ETXTBSY`). A program just linked, or written while another thread
+/// forked, can be held that way for a moment, so the start is retried briefly.
+fn spawn(exe: &Path, workdir: &Path) -> Result<std::process::Child, String> {
+    let mut attempts = 0;
+    loop {
+        match start(exe, workdir) {
+            Err(error) if busy(&error) && attempts < 50 => {
+                attempts += 1;
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            other => {
+                return other.map_err(|error| format!("could not run {}: {error}", exe.display()))
+            }
+        }
+    }
+}
+
+fn busy(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::ExecutableFileBusy
+}
+
+fn start(exe: &Path, workdir: &Path) -> std::io::Result<std::process::Child> {
+    Command::new(exe)
+        .current_dir(workdir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+}
+
 pub(crate) fn run_one(exe: &Path, workdir: &Path, finding: &Finding) -> Result<Replay, String> {
     let _ = std::fs::remove_dir_all(workdir);
     std::fs::create_dir_all(workdir)
@@ -79,13 +110,7 @@ pub(crate) fn run_one(exe: &Path, workdir: &Path, finding: &Finding) -> Result<R
     if let Some(reason) = write_files(workdir, &finding.files) {
         return Ok(Replay::Skipped(reason));
     }
-    let mut child = Command::new(exe)
-        .current_dir(workdir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|error| format!("could not run {}: {error}", exe.display()))?;
+    let mut child = spawn(exe, workdir)?;
     if let Some(mut stdin) = child.stdin.take() {
         // A program that crashes before reading closes the pipe early; that
         // write error is the finding, not a replay failure.
