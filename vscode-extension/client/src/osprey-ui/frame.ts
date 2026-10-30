@@ -59,7 +59,8 @@ function presentation(style: Record<string, unknown>): string[] {
 
 function effects(style: Record<string, unknown>): string[] {
   const mask = "linear-gradient(to right, transparent, #000 5%, #000 60%, transparent), linear-gradient(to bottom, transparent, #000 5%, #000 86%, transparent)";
-  return [...shadow(style), `--osp-frame-backdrop-mask:${style.fadeBackdrop ? mask : "none"}`, `--osp-frame-backdrop-blend:${style.fadeBackdrop ? "lighten" : "normal"}`, `--osp-frame-symbol-direction:${style.trailingSymbols ? "row-reverse" : "inherit"}`];
+  const symbolSize = style.symbolSize === undefined ? 0 : metric(style, "symbolSize");
+  return [...shadow(style), ...(symbolSize === 0 ? [] : [`--osp-frame-symbol-size:${symbolSize}px`]), `--osp-frame-backdrop-mask:${style.fadeBackdrop ? mask : "none"}`, `--osp-frame-backdrop-blend:${style.fadeBackdrop ? "lighten" : "normal"}`, `--osp-frame-symbol-direction:${style.trailingSymbols ? "row-reverse" : "inherit"}`];
 }
 
 function shadow(style: Record<string, unknown>): string[] {

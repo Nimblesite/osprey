@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as sinon from "sinon";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import type { Frame } from "playwright-core";
-import { commands, Uri, window, workspace, type WebviewPanel } from "vscode";
+import { ColorThemeKind, commands, Uri, window, workspace, type WebviewPanel } from "vscode";
 import { activateWithServer, connectEditorBrowser, editorWebviewFrame, waitFor } from "./profiler-kit";
 import * as Wasi from "../../client/src/osprey-ui/wasi";
 import * as NativeRendering from "../../client/src/osprey-ui/render";
@@ -85,6 +85,11 @@ async function responsiveBoardFits(frame: Frame): Promise<void> {
   });
   assert.ok(layout.paneHeight >= layout.boardHeight && layout.paneBottom >= layout.bottom, `the responsive board must retain visible layout space: ${JSON.stringify(layout)}`);
   assert.strictEqual(await frame.locator(".osp-frame-document-name").isVisible(), false, "compact header must hide document metadata");
+  if (await frame.evaluate(() => innerWidth > 540)) {
+    const document = await frame.locator(".osp-frame-proof-document").boundingBox();
+    const goal = await frame.locator(".osp-frame-board-goals").boundingBox();
+    assert.ok(document && goal && goal.x >= document.x + document.width, "tablet proof and goal remain adjacent columns");
+  }
 }
 
 function writeNativeSnapshot(name: string): void {
@@ -158,7 +163,8 @@ export async function lesson(frame: Frame): Promise<void> {
   assert.strictEqual(await frame.locator("#osprey-diagnostics:not([hidden])").count(), 0);
 }
 
-export async function withWorkbench(run: (frame: Frame, opened: () => number) => Promise<void>, failure = "failure"): Promise<void> {
+export async function withWorkbench(run: (frame: Frame, opened: () => number) => Promise<void>, failure = "failure", appearance = ColorThemeKind.Light): Promise<void> {
+  sinon.stub(window, "activeColorTheme").get(() => ({ kind: appearance }));
   sinon.spy(NativeRendering, "renderWorkspace");
   await activateWithServer();
   assert.strictEqual(workspace.workspaceFolders?.length ?? 0, 0, "standalone workbench requires no project");
@@ -220,8 +226,10 @@ export async function checkedProofFits(frame: Frame, theorem: string, assumption
     const verdict = Array.from(document.querySelectorAll(".osp-badge")).find(node => node.textContent === "Checked theorem");
     const axiom = Array.from(document.querySelectorAll(".osp-text")).find(node => node.textContent === axioms);
     const boxes = [selected, verdict, axiom].map(node => {
-      const box = node?.getBoundingClientRect();
-      return box ? { top: box.top, bottom: box.bottom, left: box.left, right: box.right, height: box.height } : null;
+      if (!node) return null;
+      const range = document.createRange(); range.selectNodeContents(node);
+      const box = range.getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom, left: box.left, right: box.right, height: box.height };
     });
     return { boxes, width: innerWidth, height: innerHeight };
   }, { theorem, axioms: assumptions });
@@ -245,6 +253,23 @@ export async function checkedMathematicsFits(frame: Frame): Promise<void> {
   await formal.waitFor();
   assert.strictEqual(await formal.innerText(), layout.label, "the formal view preserves the complete checked statement");
   await frame.getByRole("button", { name: "Imported source", exact: true }).click();
+}
+
+export async function checkedEquationFits(frame: Frame): Promise<void> {
+  const bounds = await frame.locator(".osp-frame-proof-library-result math").evaluate(node => {
+    const parent = node.parentElement!.getBoundingClientRect();
+    const glyphs = Array.from(node.querySelectorAll("mi,mo,mn,mtext")).map(glyph => glyph.getBoundingClientRect());
+    return { left: parent.left, right: parent.right, first: Math.min(...glyphs.map(glyph => glyph.left)), last: Math.max(...glyphs.map(glyph => glyph.right)) };
+  });
+  assert.ok(bounds.first >= bounds.left && bounds.last <= bounds.right + 1, `the complete checked equation must be visible: ${JSON.stringify(bounds)}`);
+}
+
+export async function checkedRunWorkMathematics(frame: Frame): Promise<void> {
+  const formula = frame.locator(".osp-frame-proof-library-result math");
+  assert.strictEqual(await formula.locator("mi").filter({ hasText: /^OAI\.LowSpaceSubsetSum\.WordSeedPowerExecution\.run$/ }).count(), 1, "the checked application retains its complete constant name");
+  assert.ok((await formula.textContent())?.replace(/\s/g, "").endsWith("3×width+1"), "the checked equation shows actual multiplication and addition");
+  assert.deepStrictEqual(await formula.locator("msub > mn").allTextContents(), ["2"], "the checked left side shows its second projection");
+  await checkedEquationFits(frame);
 }
 
 async function notationFits(frame: Frame): Promise<void> {
@@ -275,9 +300,9 @@ export async function selectImportedProof(frame: Frame, name: RegExp): Promise<v
   assert.strictEqual(await frame.locator("#osprey-diagnostics:not([hidden])").count(), 0);
 }
 
-export async function rejectEditedImport(frame: Frame, source: string): Promise<void> {
-  const corrupted = source.replace('"name":235,"type":730,"value":817', '"name":235,"type":730,"value":730');
-  assert.notStrictEqual(corrupted, source, "corrupt the canonical Nat.add_comm proof term, retaining its statement");
+export async function rejectEditedImport(frame: Frame, source: string, mutate = (text: string) => text.replace('"name":235,"type":730,"value":817', '"name":235,"type":730,"value":730')): Promise<void> {
+  const corrupted = mutate(source);
+  assert.notStrictEqual(corrupted, source, "corrupt the selected canonical proof term, retaining its statement");
   await frame.getByRole("button", { name: "Imported source", exact: true }).click();
   const editor = frame.getByRole("textbox", { name: "Current proof export", exact: true });
   assert.strictEqual(await editor.inputValue(), source);

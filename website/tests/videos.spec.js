@@ -209,3 +209,21 @@ for (const width of [390, 1440]) test(`proof docs fit ${width}px and provide bot
     await page.screenshot({ path: `../target/film-review/proof-docs-${width}-${url.split("/").filter(Boolean).at(-1)}.png`, fullPage: true });
   }
 });
+
+for (const [route, ids] of [
+  ["proof-workbench", ["proof-workbench", "proof-workbench-math"]],
+  ["mathlib-port", ["mathlib-bridge", "mathlib-bridge-math"]],
+  ["proofs", proofVideos.map(({ id }) => id)],
+]) test(`proof guide ${route} embeds its captioned films directly`, async ({ page }) => {
+  await page.goto(`/docs/${route}/`);
+  for (const id of ids) {
+    const player = page.locator(`#video-${id}`);
+    await expect(player).toHaveCount(1);
+    await expect(player).toHaveAttribute("controls", "");
+    await expect(player.locator('track[kind="captions"]')).toHaveCount(1);
+    await player.scrollIntoViewIfNeeded();
+    await player.evaluate(video => video.play());
+    await expect.poll(() => player.evaluate(video => video.currentTime), { message: `Inline playback: ${id}` }).toBeGreaterThan(0.25);
+    await player.evaluate(video => video.pause());
+  }
+});

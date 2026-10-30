@@ -103,6 +103,9 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     ) as Record<string, string>;
     assert.deepStrictEqual(Object.keys(clients).sort(), [
       "extension",
+      "osprey-ui/wasi",
+      "osprey-ui/wasi-runner",
+      "osprey-ui/wasi-worker",
       "package-api",
       "package-commands",
       "package-frontend",

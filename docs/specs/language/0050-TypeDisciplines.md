@@ -1,6 +1,6 @@
 # Pluggable type disciplines [TYPES-DISCIPLINE]
 
-**Status:** normative target; **implemented and gated except where marked** (plan 0041, phase 1: the marker, the registry, the checker process with one deadline over build, spawn, request and response, protocol version 2 with imported signatures and `omitted[]`, keyed binary and result caches, erasure ascribed to the written signature, and the `passthrough` and `bounded` reference disciplines under GC, ARC and wasm32 in `make _test_disciplines`; open: exported types and values rendered in an inferred `hm` signature, which today are named in `omitted[]`, and the markerless byte-identity gate). Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), phase 1. First consumer: the `lean4` discipline of [spec 0049](0049-DependentTypesAndProofs.md). This contract stands on its own: it is the mechanism by which any type system other than Hindley-Milner checks an Osprey module, and it is complete before any such system exists.
+**Status:** normative target; **implemented and gated except where marked** (plan 0041, phase 1: the marker, the registry, the checker process with one deadline over build, spawn, request and response, protocol version 2 with imported signatures and `omitted[]`, keyed binary and result caches, erasure ascribed to the written signature, and the `passthrough` and `bounded` reference disciplines under GC, ARC and wasm32 in `make _test_disciplines`; open: exported types and values rendered in an inferred `hm` signature, which today are named in `omitted[]`, the markerless byte-identity gate, and the theory-evolution delivery target below). Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), phase 1. First consumer: the `lean4` discipline of [spec 0049](0049-DependentTypesAndProofs.md). This contract stands on its own: it is the mechanism by which any type system other than Hindley-Milner checks an Osprey module, and it is complete before any such system exists.
 
 ## Aim [TYPES-DISCIPLINE-AIM]
 
@@ -25,6 +25,16 @@ The compiler ships one discipline and knows the shape of all of them:
 | any other | `// osprey: types=<name>` | the package registered under `<name>`, as a separate process | written by the checker | written by the checker |
 
 `hm` is not special-cased anywhere except that it has no process boundary and no erasure step; it is the identity discipline.
+
+## Theory identity and correction [TYPES-DISCIPLINE-EVOLUTION]
+
+This is a delivery target, expanded in [plan 0041 milestone 2](../../plans/0041-dependent-types-and-mathlib.md#milestone-2-replace-and-fork-disciplines-safely-proof-completion-disciplines). The generic seam is implemented; the complete identity, fork and invalidation acceptance described here remains required evidence.
+
+A discipline can be replaced or forked through the registry without embedding its theory in the compiler. Its artifact identity includes package/version, checker binary, rule revision, axiom policy and dependency signatures. Changes invalidate affected caches and proof receipts transitively. Rebuilding under a different discipline must actually recheck the module; an old Checked result cannot be relabelled or reused across incompatible identities.
+
+A checker implementation fix, an axiom-policy change and a change of logical rules are distinct events. The latter two require explicit profiles or separately named forks, with recorded migration results and fresh validation. Proofs using a withdrawn assumption remain unavailable until reconstructed. Cross-discipline proof use needs a checked translation or an explicit interface contract; the HM boundary does not transfer unexpressed guarantees.
+
+Lean is the reference oracle for the first compatible theory, not a mandatory dependency of every discipline or an authority that overrides Osprey's soundness rules. Known unsound oracle behaviour must have a rejection regression. Every fork documents its intended rules and assumptions; switching disciplines is a correction mechanism, not evidence by itself that a theory is consistent. See the [proof messaging contract](../../messaging.md#proof-development-and-the-lean-oracle).
 
 ## Registry [TYPES-DISCIPLINE-REGISTRY]
 

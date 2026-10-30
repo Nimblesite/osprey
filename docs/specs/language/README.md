@@ -27,5 +27,5 @@ Syntax, types, expressions, effects and module semantics.
 - [Structured Concurrency: Cancellation and Turn Isolation](0036-StructuredConcurrency.md)
 - [Arithmetic Effects](0037-ArithmeticEffects.md)
 - [Python Flavor Syntax](0041-PythonFlavorSyntax.md)
-- [Dependent Types, Proofs and the Mathlib Port](0049-DependentTypesAndProofs.md)
-- [Pluggable Type Disciplines](0050-TypeDisciplines.md)
+- [Dependent Types, Proofs and the Mathlib Port](0049-DependentTypesAndProofs.md): an independent checker and libraries, developed using Lean as an oracle.
+- [Pluggable Type Disciplines](0050-TypeDisciplines.md): generic selection, theory identities and safe replacement or forking without embedding a theory in the compiler.

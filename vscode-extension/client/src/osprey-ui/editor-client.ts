@@ -2,6 +2,7 @@
 // webview closure, sharing its issued controls and pending-edit protocol.
 export const EDITOR_SCRIPT = String.raw`
   let lastCaret = "";
+  let editorPositions = new Map();
 
   function editorMirror(element) {
     return element.parentElement.querySelector(".osp-editor-mirror");
@@ -32,10 +33,46 @@ export const EDITOR_SCRIPT = String.raw`
     vscode.postMessage(Object.assign({}, control, { type: "event", ordinal: Number(element.dataset.placeOrdinal), value: offset }));
   }
 
+  function authoredCaret(element, previous) {
+    const current = { value: element.value, cursor: Number(element.dataset.cursorByte) };
+    editorPositions.set(fieldSignature(element), current);
+    if (pendingEdits.has(fieldSignature(element)) || document.activeElement === element) return;
+    const bytes = new TextEncoder().encode(current.value);
+    if (current.cursor > bytes.length) throw new Error("The authored editor caret exceeds its source");
+    const prefix = new TextDecoder("utf-8", { fatal: true }).decode(bytes.slice(0, current.cursor));
+    element.setSelectionRange(prefix.length, prefix.length);
+    if (!previous || previous.value !== current.value || previous.cursor !== current.cursor) revealEditorCaret(element, prefix);
+  }
+
+  function revealEditorCaret(element, prefix) {
+    const box = editorCaretBounds(element, prefix), editor = element.getBoundingClientRect();
+    if (box.top < editor.top) element.scrollTop += box.top - editor.top;
+    if (box.bottom > editor.bottom) element.scrollTop += box.bottom - editor.bottom + 12;
+    editorMirror(element).scrollTop = element.scrollTop;
+  }
+
+  function editorCaretBounds(element, prefix) {
+    const mirror = editorMirror(element), saved = mirror.style.cssText, style = getComputedStyle(element);
+    const lines = prefix.split("\n"), line = mirror.children[lines.length - 1];
+    if (!line || !line.firstChild) throw new Error("The authored editor caret has no source line");
+    mirror.style.setProperty("display", "block", "important");
+    mirror.style.setProperty("visibility", "hidden", "important");
+    ["font", "padding", "letter-spacing", "white-space", "overflow-wrap"].forEach(function (key) { mirror.style.setProperty(key, style.getPropertyValue(key), "important"); });
+    try {
+      const range = document.createRange();
+      range.setStart(line.firstChild, lines[lines.length - 1].length);
+      range.collapse(true);
+      return range.getBoundingClientRect();
+    } finally { mirror.style.cssText = saved; }
+  }
+
   function refreshEditors() {
+    const previous = editorPositions;
+    editorPositions = new Map();
     document.querySelectorAll("textarea[data-native-editor]").forEach(function (element) {
       const pending = pendingEdits.get(fieldSignature(element));
       if (pending) mirrorEdit(element);
+      authoredCaret(element, previous.get(fieldSignature(element)));
       element.addEventListener("scroll", function () {
         const mirror = editorMirror(element);
         mirror.scrollTop = element.scrollTop;

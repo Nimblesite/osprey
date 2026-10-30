@@ -156,6 +156,10 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
   .osp-frame-source-panel { order: -1; flex-basis: auto; width: 100% !important; border-left: 0; border-bottom: 1px solid var(--osp-brand-divider); }
 }
 @media (max-width: 980px) {
+  .osp-frame-app-header, .osp-framed:has(> [data-region-key="heading"]) { height: 69px !important; }
+  .osp-frame-workspace-nav { height: 57px !important; }
+  .osp-frame-header-actions > .osp-axis-horizontal { gap: 2px; }
+  .osp-frame-workspace-nav > .osp-axis-horizontal { gap: 0; }
   .osp-frame-workbench .osp-aside { flex-direction: column; flex: 0 0 auto; }
   .osp-frame-workbench .osp-aside-pane { flex: 0 0 auto; overflow: visible; }
   .osp-frame-workbench .osp-aside-column { overflow: visible; }
@@ -165,12 +169,24 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
   .osp-frame-app-header { padding-left: 20px !important; padding-right: 20px !important; }
   .osp-frame-app-header .osp-role-title { font-size: 24px; }
   .osp-frame-workspace-nav { padding-left: 15px !important; padding-right: 15px !important; }
-  .osp-frame-workspace-nav .osp-button { padding-left: 9px; padding-right: 9px; }
+  .osp-frame-workspace-nav .osp-button { padding: 9px 12px !important; gap: 8px; }
+  .osp-frame-workspace-nav button:is([aria-label="Notation"], [aria-label="Examples"], [aria-label="Source"]) { padding: 9px !important; }
+  .osp-frame-workspace-nav button:is([aria-label="Notation"], [aria-label="Examples"], [aria-label="Source"]) > span:not(.osp-symbol):not(.codicon) { display: none; }
   .osp-frame-board-region { padding: 16px !important; height: 552px; }
   .osp-frame-working-board { min-height: 520px; height: 520px; }
   .osp-frame-solution-column { padding: 30px !important; border-top: 1px solid var(--osp-brand-divider); }
   .osp-frame-paper-document { padding: 30px !important; }
   .osp-frame-goal-margin { padding: 24px 0 0 !important; margin-top: 24px; border-top: 1px solid var(--osp-brand-divider); }
+  .osp-frame-paper-document .osp-frame-goal-margin { padding-top: 22px !important; }
+  .osp-frame-paper-document .osp-frame-goal-content > .osp-axis-vertical { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 30px; align-items: start !important; }
+  .osp-frame-paper-document :is(.osp-frame-goal-context, .osp-frame-goal-progress, .osp-frame-goal-open),
+  .osp-frame-paper-document :is(.osp-frame-goal-context, .osp-frame-goal-progress, .osp-frame-goal-open) > .osp-axis-vertical { display: contents !important; }
+  .osp-frame-paper-document .osp-frame-goal-step-label { grid-column: 1 / -1; grid-row: 1; }
+  .osp-frame-paper-document .osp-frame-goal-title { grid-column: 1; grid-row: 2; }
+  .osp-frame-paper-document .osp-frame-goal-hypotheses { grid-column: 1; grid-row: 3; padding-top: 20px !important; }
+  .osp-frame-paper-document .osp-frame-goal-target { grid-column: 2; grid-row: 2 / 4; padding-top: 0 !important; }
+  .osp-frame-paper-document .osp-frame-goal-footer { grid-column: 1 / -1; grid-row: 4; padding-top: 18px !important; }
+  .osp-frame-paper-document .osp-frame-next-goal { display: none !important; }
   .osp-frame-reading-page { padding: 25px 15px !important; }
   .osp-frame-reading-sheet { padding: 40px !important; }
 }
@@ -178,10 +194,14 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
   .osp-frame-app-header { padding-left: 14px !important; padding-right: 14px !important; }
   .osp-frame-app-header .osp-role-title { font-size: 22px; }
   .osp-frame-app-header .osp-button > span:not(.osp-symbol):not(.codicon) { display: none; }
-  .osp-frame-app-header .osp-framed:has(> button[aria-label="Save"]) { width: 38px !important; }
-  .osp-frame-app-header > .osp-axis-horizontal, .osp-frame-workspace-nav > .osp-axis-horizontal { flex-wrap: nowrap; gap: 4px; }
-  .osp-frame-workspace-nav button:is([aria-label="Notation"], [aria-label="Examples"], [aria-label="Source"]) > span:not(.osp-symbol):not(.codicon) { display: none; }
-  .osp-frame-workbench .osp-frame-workspace-nav .osp-button { font-size: 11px; padding-left: 7px; padding-right: 7px; gap: 5px; }
+  .osp-frame-header-actions .osp-framed:has(> button) { width: 40px !important; height: 44px !important; }
+  .osp-frame-header-actions button { width: 40px !important; height: 44px; min-height: 44px !important; padding: 9px !important; }
+  .osp-frame-workspace-nav .osp-button { min-height: 44px !important; }
+  .osp-frame-example-context { height: 40px !important; padding-left: 16px !important; padding-right: 16px !important; }
+  .osp-frame-example-context > .osp-axis-horizontal { gap: 12px; }
+  .osp-frame-example-context .osp-button { height: 31px; min-height: 31px !important; padding: 6px 0; }
+  .osp-frame-app-header > .osp-axis-horizontal { flex-wrap: nowrap; gap: 4px; }
+  .osp-frame-workspace-nav > .osp-axis-horizontal { flex-wrap: nowrap; }
   .osp-frame-board-region { height: 422px; }
   .osp-frame-working-board { min-height: 390px; height: 390px; }
   .osp-frame-board-empty { padding-left: 30px !important; padding-right: 24px !important; }
@@ -214,7 +234,7 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
   .osp-frame-workbench .osp-frame-wordmark .osp-role-callout, .osp-frame-workbench .osp-frame-wordmark .osp-role-title { font-size: 24px !important; }
 }
 @media (max-width: 540px) {
-  .osp-frame-workbench .osp-frame-wordmark .osp-role-callout, .osp-frame-workbench .osp-frame-wordmark .osp-role-title { font-size: 22px !important; }
+  .osp-frame-workbench .osp-frame-wordmark .osp-role-callout, .osp-frame-workbench .osp-frame-wordmark .osp-role-title { font-size: 21px !important; }
 }
 
 .osp-frame-mismatch-feedback { max-width: 620px; border-left: 2px solid var(--osp-brand-danger); margin-top: 14px; }
@@ -235,6 +255,7 @@ body:has(.osp-frame-workbench) { padding: 0; height: auto; min-height: 100dvh; o
 .osp-frame-workbench .osp-dialog .osp-stack { flex: initial; }
 
 .osp-frame-proof-library-result .osp-framed:has(> math) { width: 100% !important; max-width: 100%; overflow-x: auto; }
+.osp-frame-proof-library-result .osp-role-headline { overflow-wrap: anywhere; }
 .osp-frame-proof-library-formal { max-width: 100%; overflow-x: auto; }
 .osp-frame-proof-library-formal .osp-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 [data-region-key="library"] .osp-media-image[alt="Osprey"] { width: 64px; height: 64px; }

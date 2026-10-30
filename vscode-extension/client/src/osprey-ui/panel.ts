@@ -3,7 +3,7 @@
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { commands, env, Uri, ViewColumn, window, type ExtensionContext, type WebviewPanel } from "vscode";
+import { ColorThemeKind, commands, env, Uri, ViewColumn, window, type ExtensionContext, type WebviewPanel } from "vscode";
 import { createAssetResolver } from "./local-files";
 import { record } from "./protocol";
 import { renderWorkspace } from "./render";
@@ -41,8 +41,9 @@ interface PanelState {
 
 /** Native application context, independent of project and UI decisions. */
 export function nativeContext(arguments_: string[]): Record<string, unknown> {
+  const kind = window.activeColorTheme.kind;
   return { platform: "vscode", now: Math.floor(Date.now() / 1000), offset: -new Date().getTimezoneOffset() * 60,
-    home: os.homedir(), arguments: arguments_ };
+    home: os.homedir(), arguments: arguments_, theme: kind === ColorThemeKind.Light || kind === ColorThemeKind.HighContrastLight ? "light" : "dark" };
 }
 
 function external(raw: Record<string, unknown>, title: string): void {

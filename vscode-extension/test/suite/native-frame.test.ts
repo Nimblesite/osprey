@@ -9,6 +9,11 @@ function frame(properties: Record<string, unknown> = style): string {
 }
 
 suite("native shared frame", () => {
+  test("symbol size follows the shared frame and rejects malformed metrics", () => {
+    assert.ok(frame({ ...style, symbolSize: 13 }).includes("--osp-frame-symbol-size:13px"));
+    assert.ok(!frame({ ...style, symbolSize: 0 }).includes("--osp-frame-symbol-size:"), "zero inherits the surrounding symbol size");
+    for (const symbolSize of [-1, 0.5, 32769, "13px", null]) assert.throws(() => frame({ ...style, symbolSize }), /symbolSize/i);
+  });
   test("a layer preserves the existing fill contract of its aside surface", () => {
     const text = { kind: "text", text: "A shared pane", role: "body", tone: "primary" };
     const node = { kind: "layer", children: [{ kind: "aside", pane: text, aside: text, width: 300, side: "trailing", event: 0 }] };

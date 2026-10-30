@@ -148,7 +148,23 @@ function outputChecks(): number[] {
   ];
 }
 
+function busyCommand(durationMs: number): Uint8Array {
+  const clock = success("clock_time_get", integer(0), [0x42, 0], integer(0));
+  const time = [...integer(0), 0x29, 3, 0];
+  return commandModule(ABI_IMPORTS, [1, 1, I64, ...clock, ...time, 0x21, 0,
+    0x03, 0x40, ...clock, ...time, 0x20, 0, 0x7d, 0x42, ...integer(durationMs * 1000000).slice(1),
+    0x54, 0x0d, 0, 0x0b, 0x0b]);
+}
+
 suite("package workspace in-memory WASI", () => {
+  test("a CPU-bound command keeps the host event loop responsive", async () => {
+    const module = await compileWasi(busyCommand(100));
+    let ticks = 0;
+    const timer = setInterval(() => { ticks += 1; }, 5);
+    try { assert.strictEqual((await runWasi(module, "")).exitCode, 0); }
+    finally { clearInterval(timer); }
+    assert.ok(ticks >= 3, `host timers must run while real WASM computes; received ${ticks} ticks`);
+  });
   test("a real guest consumes UTF-8 args, environment, clocks, entropy and vectored streams", async () => {
     const module = await compileWasi(commandModule(ABI_IMPORTS,
       [0, ...stringTableChecks(), ...clockAndRandomChecks(), ...inputChecks(), ...outputChecks(), 0x0b]));

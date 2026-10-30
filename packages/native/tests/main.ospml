@@ -447,7 +447,7 @@ test ("mathematics decoding refuses unknown kinds missing children non-arrays an
 test ("image and video encode as leaves with their media fields and no ordinal", AdditionCases::mediaEncoding)
 
 test ("presentation frames preserve exact dimensions and inner control provenance", \() =>
-    style = plain(frameName = "solution-column", frameWidth = 430, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameShadow = "floating")
+    style = plain(frameName = "solution-column", frameWidth = 430, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameShadow = "floating", frameSymbolSize = 13)
     walked = Encode::walk ([], Ui::framed (style, Ui::button ("Continue", "", Increment)))
     encoded = listGet walked.nodes 0 ?: JsonNull
     geometry = Doc::field (encoded, "style")
@@ -456,6 +456,8 @@ test ("presentation frames preserve exact dimensions and inner control provenanc
     expect (Doc::number (geometry, "left"), 30)
     expect (Doc::number (geometry, "gap"), 24)
     expect (Doc::text (geometry, "fill"), "canvas")
+    expect (Doc::has (geometry, "symbolSize"), true)
+    expect (Doc::number (geometry, "symbolSize"), 13)
     AdditionCases::frameTypography geometry
     expect (length walked.bindings, 1)
     expect (Doc::number (Doc::field (encoded, "body"), "event"), 0))

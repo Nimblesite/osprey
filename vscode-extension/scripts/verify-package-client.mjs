@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const extension = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+for (const name of ["wasi", "wasi-runner", "wasi-worker"]) {
+  const file = path.join(extension, "out/client/src/osprey-ui", `${name}.js`);
+  if (!fs.existsSync(file) || fs.statSync(file).size === 0) throw new Error(`Missing bundled WASI runtime module: ${file}`);
+}
 const os = process.platform === "win32" ? "win32" : process.platform === "darwin" ? "darwin" : "linux";
 const executable = process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg";
 const client = path.join(extension, "bin", `${os}-${process.arch === "arm64" ? "arm64" : "x64"}`, executable);

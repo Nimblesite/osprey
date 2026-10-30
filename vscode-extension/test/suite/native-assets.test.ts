@@ -61,6 +61,7 @@ suite("workbench bundle completeness", () => {
     assets = path.join(bundle, "workbench");
     fs.mkdirSync(path.join(root, "scripts"), { recursive: true });
     fs.cpSync(path.join(extension, "scripts/verify-package-client.mjs"), path.join(root, "scripts/verify-package-client.mjs"));
+    fs.cpSync(path.join(extension, "out/client/src/osprey-ui"), path.join(root, "out/client/src/osprey-ui"), { recursive: true });
     fs.cpSync(path.join(extension, "../apps/workbench/assets"), assets, { recursive: true });
     fs.cpSync(path.join(extension, "../apps/workbench/lessons"), path.join(assets, "lessons"), { recursive: true });
     fs.copyFileSync(path.join(extension, "icon.png"), path.join(assets, "osprey-logo.png"));
@@ -71,6 +72,23 @@ suite("workbench bundle completeness", () => {
     for (const name of ["workbench", "package-workspace"]) fs.copyFileSync(path.join(extension, "bin", `${process.platform}-${process.arch}`, `${name}.wasm`), path.join(bundle, `${name}.wasm`));
   });
   teardown(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  test("packaging rejects a missing WASI worker runtime module", () => {
+    assert.equal(verify().status, 0, "complete bundle must pass");
+    for (const name of ["wasi", "wasi-runner", "wasi-worker"]) {
+      const file = path.join(root, "out/client/src/osprey-ui", `${name}.js`), original = fs.readFileSync(file);
+      try {
+        fs.rmSync(file);
+        const result = verify();
+        assert.notEqual(result.status, 0, `packaging accepted missing ${name}`);
+        assert.ok(result.stderr.includes(`${name}.js`), result.stderr);
+        fs.writeFileSync(file, "");
+        const empty = verify();
+        assert.notEqual(empty.status, 0, `packaging accepted empty ${name}`);
+        assert.ok(empty.stderr.includes(`${name}.js`), empty.stderr);
+      } finally { fs.writeFileSync(file, original); }
+    }
+  });
 
   test("packaging rejects missing workbench styles fonts licences and logo", () => {
     assert.equal(verify().status, 0, "complete bundle must pass");

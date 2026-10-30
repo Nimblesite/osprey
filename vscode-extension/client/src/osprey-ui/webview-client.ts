@@ -371,9 +371,9 @@ export const WEBVIEW_SCRIPT = `
     restoreFocus();
     focusDialog();
     rebasePendingEdits(pending);
-    refreshEditors();
     refreshBoards();
     restoreScroll(scroll);
+    refreshEditors();
     renderDiagnostics(message.diagnostics);
   }
 

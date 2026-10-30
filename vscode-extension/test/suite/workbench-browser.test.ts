@@ -4,12 +4,26 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as sinon from "sinon";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
-import { commands, Uri, window } from "vscode";
-import { COMMAND, draw, mathematics, viewport, capture, lesson, withWorkbench, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, sourceCloseBounds, selectImportedProof, rejectEditedImport, saveWorking, reopenWorking, exportWorking, comparisonState } from "./workbench-browser-kit";
+import { ColorThemeKind, commands, Uri, window } from "vscode";
+import { COMMAND, draw, mathematics, viewport, capture, lesson, withWorkbench, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, saveWorking, reopenWorking, exportWorking, comparisonState } from "./workbench-browser-kit";
 
 
 suite("workbench VSIX browser", () => {
   teardown(() => sinon.restore());
+  for (const [kind, symbol, colour] of [[ColorThemeKind.Dark, "sun.max", "rgb(32, 39, 35)"],
+    [ColorThemeKind.Light, "moon", "rgb(250, 250, 247)"]] as const) {
+    test(`startup appearance follows editor theme ${kind} and manual toggle preserves work`, async () => {
+      await withWorkbench(async frame => {
+        const theme = frame.getByRole("button", { name: "Switch appearance", exact: true });
+        assert.strictEqual(await theme.locator(".osp-symbol").getAttribute("data-symbol"), symbol);
+        assert.strictEqual(await frame.locator(".osp-frame-workbench").evaluate(node => getComputedStyle(node).backgroundColor), colour);
+        await frame.getByRole("textbox", { name: "Solution title", exact: true }).fill("Keep my theme work");
+        await theme.click();
+        await theme.locator(`[data-symbol="${symbol === "moon" ? "sun.max" : "moon"}"]`).waitFor();
+        assert.strictEqual(await frame.getByRole("textbox", { name: "Solution title", exact: true }).inputValue(), "Keep my theme work");
+      }, `failure-startup-theme-${kind}`, kind);
+    });
+  }
   test("reference icons and theme roundtrips use actual shared SVG assets", async () => {
     await withWorkbench(async frame => {
       const theme = frame.getByRole("button", { name: "Switch appearance", exact: true });
@@ -25,6 +39,19 @@ suite("workbench VSIX browser", () => {
       await theme.click();
       await theme.locator('[data-symbol="moon"]').waitFor();
     }, "failure-reference-icons");
+  });
+  test("app-owned field colours follow manual appearance changes and retain the selected theorem", async () => {
+    await withWorkbench(async frame => {
+      await frame.getByRole("button", { name: "Notation", exact: true }).click();
+      await frame.getByRole("button", { name: "Natural arithmetic", exact: true }).click();
+      const picker = frame.getByRole("combobox", { name: "Theorem", exact: true }), selected = await picker.inputValue();
+      for (const [index, [symbol, background]] of [["moon", "rgb(255, 255, 255)"], ["sun.max", "rgb(41, 50, 45)"], ["moon", "rgb(255, 255, 255)"]].entries()) {
+        if (index > 0) await frame.getByRole("button", { name: "Switch appearance", exact: true }).click();
+        await frame.getByRole("button", { name: "Switch appearance", exact: true }).locator(`[data-symbol="${symbol}"]`).waitFor();
+        assert.strictEqual(await picker.evaluate(node => getComputedStyle(node).backgroundColor), background);
+        assert.strictEqual(await picker.inputValue(), selected);
+      }
+    }, "failure-field-appearance");
   });
   test("source heading symbols use their shared frame's accent ink", async () => {
     await withWorkbench(async frame => {
@@ -73,7 +100,9 @@ suite("workbench VSIX browser", () => {
   for (const [library, theorem, axioms, name] of [
     ["Natural arithmetic", "Nat.add_comm", "none", "arithmetic"],
     ["OpenAI · infinite-stack lemmas", "OAI.PrefixFlows.Interspersed.push_inj", "Quot.sound", "openai"],
+    ["OpenAI · doubling-loop lemmas", "OAI.LowSpaceSubsetSum.WordSeedPowerExecution.run_work", "propext", "doubling-loop"],
     ["List lemmas", "List.map_id", "propext, Quot.sound", "large-list"],
+    ["OpenAI · five-colour orientation", "OAI.TwoPointCorrelations.five_color_isolates_forward", "propext", "five-colour"],
   ]) test(`bundled proof library ${name} checks the actual packaged export without a file picker`, async () => {
     const picker = sinon.spy(window, "showOpenDialog");
     await withWorkbench(async frame => {
@@ -83,9 +112,21 @@ suite("workbench VSIX browser", () => {
       await frame.getByText(`Axioms: ${axioms}`, { exact: true }).waitFor();
       assert.strictEqual(picker.callCount, 0, "bundled discovery must read approved assets directly");
       await checkedProofFits(frame, theorem, `Axioms: ${axioms}`);
-      await checkedMathematicsFits(frame);
-      await capture(frame, `bundled-${name}-proof`);
+      if (name === "doubling-loop") await checkedRunWorkMathematics(frame);
+      if (name === "five-colour") {
+        const source = fs.readFileSync(path.resolve(__dirname, "../../../../examples/proof/openai-number-theory/exports/five-color-orientation.ndjson"), "utf8");
+        await rejectEditedImport(frame, source, text => text.replace('"name":4843,"type":36885,"value":36932', '"name":4843,"type":36885,"value":36885'));
+      } else { await checkedMathematicsFits(frame); await capture(frame, `bundled-${name}-proof`); }
     }, `failure-bundled-${name}`);
+  });
+  for (const view of ["Proof", "Source"]) test(`the checked arithmetic statement fits completely in ${view} notation view`, async () => {
+    await withWorkbench(async frame => {
+      await frame.getByRole("button", { name: view, exact: true }).click();
+      await frame.getByRole("button", { name: "Notation", exact: true }).click();
+      await frame.getByRole("button", { name: "Natural arithmetic", exact: true }).click();
+      await selectImportedProof(frame, /^Nat\.add_comm(?:\s|$)/);
+      await checkedEquationFits(frame);
+    });
   });
   test("the shared app exposes its Osprey branding and reference links", async () => {
     await withWorkbench(async frame => {
@@ -125,6 +166,22 @@ suite("workbench VSIX browser", () => {
       await lesson(frame);
     });
   });
+  test("carrying a lesson reveals its appended proof at the authored editor caret", async () => {
+    await withWorkbench(async frame => {
+      await mathematics(frame);
+      await frame.getByRole("button", { name: "Examples", exact: true }).click();
+      await frame.locator(".osp-section").filter({ hasText: "Navier–Stokes: equations and evidence" }).getByRole("button", { name: "Open", exact: true }).click();
+      const lesson = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../../apps/workbench/lessons/navier-stokes.json"), "utf8"));
+      const challenge = lesson.blocks.find((entry: { challenge?: { id: string } }) => entry.challenge?.id === "prove-remaining-outcome").challenge;
+      await frame.getByRole("textbox", { name: "Your steps", exact: true }).fill(challenge.solution.join("\n"));
+      await frame.getByRole("button", { name: "Open in the workbench", exact: true }).first().click();
+      const editor = frame.getByRole("textbox", { name: "Argument & calculations", exact: true });
+      await pollUntilResult({ fn: () => editor.inputValue(), until: value => value.includes("Theorem remaining_outcome."), timeoutMs: 1000, description: "the lesson proof is appended to the existing document" });
+      const shown = await editor.evaluate((node: HTMLTextAreaElement) => ({ cursor: node.selectionStart, end: node.value.length, scroll: node.scrollTop, overflow: node.scrollHeight - node.clientHeight }));
+      assert.strictEqual(shown.cursor, shown.end, "the shared byte caret must select the end of the appended proof");
+      assert.ok(shown.scroll > 0 && shown.overflow - shown.scroll <= 2, `the appended proof must be visible: ${JSON.stringify(shown)}`);
+    }, "failure-lesson-caret");
+  });
 });
 
 suite("workbench VSIX visual comparison", () => {
@@ -140,6 +197,8 @@ suite("workbench VSIX visual comparison", () => {
       });
       assert.ok(Math.abs(layout.bottom - 990) <= 5, `reference board ends at y990: ${JSON.stringify(layout)}`);
       assert.strictEqual(layout.fill, "rgb(54, 99, 92)", "the reference primary action retains its green fill");
+      const symbol = await frame.getByRole("button", { name: "Zoom out", exact: true }).locator(".osp-symbol").evaluate(node => ({ size: getComputedStyle(node).fontSize, width: node.getBoundingClientRect().width }));
+      assert.deepStrictEqual(symbol, { size: "13px", width: 13 }, "the board footer retains its authored compact symbols");
       await capture(frame, "transcription");
     }, "failure-transcription-reference");
   });
@@ -163,6 +222,18 @@ suite("workbench VSIX visual comparison", () => {
       const micro = await frame.locator(".osp-frame-goal-content").getByText("Hypotheses", { exact: true }).boundingBox();
       assert.ok(micro && Math.abs(micro.height - 16) < 0.1);
     }, "failure-source-geometry");
+  });
+  test("proposition glyphs align with their goal caption instead of centering", async () => {
+    await withWorkbench(async frame => {
+      await comparisonState(frame, "board-first");
+      await frame.getByText("Propositions", { exact: true }).waitFor();
+      const bounds = await frame.evaluate(() => {
+        const caption = Array.from(document.querySelectorAll(".osp-frame-goal-content .osp-role-caption")).find(node => node.textContent === "Propositions");
+        const glyph = document.querySelector('[data-region-key="goal"] math[aria-label="p, q"] mi');
+        return { caption: caption?.getBoundingClientRect().x ?? null, glyph: glyph?.getBoundingClientRect().x ?? null };
+      });
+      assert.ok(bounds.caption !== null && bounds.glyph !== null && Math.abs(bounds.caption - bounds.glyph) <= 2, `propositions share the reference left edge: ${JSON.stringify(bounds)}`);
+    });
   });
   test("slate hypotheses share the reference baseline", async () => {
     await withWorkbench(async frame => {
@@ -222,6 +293,19 @@ suite("workbench VSIX visual comparison", () => {
       assert.strictEqual(selected, true, "Source navigation shows its selected state while the panel is open");
     });
   });
+  test("guided context keeps its caption beside the return action", async () => {
+    await withWorkbench(async frame => {
+      await frame.getByRole("button", { name: "Examples", exact: true }).click();
+      await frame.getByRole("button", { name: "Open conjunction example", exact: true }).click();
+      await frame.getByRole("button", { name: "Return to working", exact: true }).waitFor();
+      const gap = await frame.locator(".osp-frame-example-context").evaluate(node => {
+        const action = node.querySelector("button")!.getBoundingClientRect();
+        const caption = node.querySelector(".osp-role-caption")!.getBoundingClientRect();
+        return caption.left - action.right;
+      });
+      assert.ok(Math.abs(gap - 37) <= 1, `the reference caption follows two18px gaps and its1px divider: ${gap}`);
+    }, "failure-guided-context-gap");
+  });
   test("the proof entry fills its row and keeps Continue at the trailing edge", async () => {
     await withWorkbench(async frame => {
       await comparisonState(frame, "paper-proof");
@@ -232,10 +316,24 @@ suite("workbench VSIX visual comparison", () => {
       assert.ok(bounds.right - bounds.actionRight <= 12, `the reference Continue action belongs at the row edge: ${JSON.stringify(bounds)}`);
     });
   });
+  test("the board proof editor stays within its authored compact row", async () => {
+    await withWorkbench(async frame => {
+      await comparisonState(frame, "board-first");
+      await frame.getByRole("textbox", { name: "Write the next step…", exact: true }).waitFor({ state: "visible" });
+      const bounds = await frame.locator(".osp-frame-proof-step-editor").evaluate(node => {
+        const row = node.getBoundingClientRect(), editor = node.querySelector("textarea")!.getBoundingClientRect();
+        return { height: row.height, top: editor.top - row.top, bottom: row.bottom - editor.bottom };
+      });
+      assert.strictEqual(bounds.height, 49, "the board entry uses the shared 49px reference geometry");
+      assert.ok(bounds.top >= 0 && bounds.bottom >= 0, `the editor fits inside its authored row: ${JSON.stringify(bounds)}`);
+    }, "failure-compact-entry");
+  });
   test("document dividers use the shared palette without a host-theme border", async () => {
     await withWorkbench(async frame => {
       await comparisonState(frame, "optional-source");
-      const ink = await frame.locator(".osp-frame-proof-document .osp-divider").evaluate(node => {
+      await frame.locator(".osp-frame-source-panel").waitFor();
+      const ink = await frame.evaluate(() => {
+        const node = document.querySelector(".osp-frame-proof-document .osp-divider")!;
         const style = getComputedStyle(node); return { border: style.borderTopWidth, background: style.backgroundColor };
       });
       assert.deepStrictEqual(ink, { border: "0px", background: "rgb(215, 221, 213)" });
@@ -281,5 +379,38 @@ suite("workbench VSIX visual comparison", () => {
       await viewport(frame, { width: 834, height: 1194 });
       await comparisonState(frame, "paper-proof");
     });
+  });
+  test("the grouped phone header keeps every action visible within one row", async () => {
+    await withWorkbench(async frame => {
+      await viewport(frame, { width: 390, height: 844 });
+      const geometry = await frame.evaluate(() => {
+        const header = document.querySelector(".osp-frame-app-header")!.getBoundingClientRect(), navigation = document.querySelector(".osp-frame-workspace-nav")!;
+        return { header: navigation.getBoundingClientRect().top - header.top,
+          navigation: navigation.getBoundingClientRect().height + navigation.nextElementSibling!.getBoundingClientRect().height,
+          wordmark: getComputedStyle(document.querySelector(".osp-frame-wordmark .osp-role-title")!).fontSize, actions: getComputedStyle(document.querySelector(".osp-frame-header-actions > .osp-axis-horizontal")!).gap,
+          gap: getComputedStyle(navigation.firstElementChild!).gap, board: getComputedStyle(navigation.querySelector('button[aria-label="Board"]')!).paddingLeft, tools: getComputedStyle(navigation.querySelector('button[aria-label="Notation"]')!).paddingLeft };
+      });
+      assert.deepStrictEqual(geometry, { header: 70, navigation: 58, wordmark: "21px", actions: "2px", gap: "0px", board: "12px", tools: "9px" }, "the compact reference header retains its measured geometry");
+      const bounds = await frame.locator(".osp-frame-header-actions button").evaluateAll(nodes => nodes.map(node => {
+        const box = node.getBoundingClientRect(); return { label: node.getAttribute("aria-label"), left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
+      }));
+      assert.strictEqual(bounds.length, 4);
+      assert.ok(bounds.every(box => box.left >= 0 && box.right <= 390 && box.top >= 0 && box.bottom <= 70 && box.width === 40 && box.height === 44), `phone header actions fit the visible header: ${JSON.stringify(bounds)}`);
+    }, "failure-phone-header");
+  });
+  test("phone Source keeps the target beside the completed draft context", async () => {
+    await withWorkbench(async frame => {
+      await viewport(frame, { width: 390, height: 844 });
+      await comparisonState(frame, "phone-source");
+      const context = await frame.locator(".osp-frame-example-context").evaluate(node => ({ height: node.getBoundingClientRect().height,
+        color: getComputedStyle(node.querySelector('button[aria-label="Return to working"]')!).color }));
+      assert.deepStrictEqual(context, { height: 40, color: "rgb(54, 99, 92)" }, "the compact guided context matches the reference geometry and accent");
+      const layout = await frame.locator(".osp-frame-goal-content").evaluate(node => {
+        const goal = node.getBoundingClientRect(), heading = node.querySelector(".osp-role-heading")!.getBoundingClientRect();
+        const target = Array.from(node.querySelectorAll(".osp-role-caption")).find(item => item.textContent === "To show")!.getBoundingClientRect();
+        return { middle: goal.left + goal.width / 2, targetLeft: target.left, targetTop: target.top, headingBottom: heading.bottom };
+      });
+      assert.ok(layout.targetLeft >= layout.middle && layout.targetTop < layout.headingBottom, `the reference phone Source goal uses two adjacent columns: ${JSON.stringify(layout)}`);
+    }, "failure-phone-source-columns");
   });
 });

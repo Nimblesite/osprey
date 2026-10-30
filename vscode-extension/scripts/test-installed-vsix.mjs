@@ -38,7 +38,8 @@ const compilerHash = createHash("sha256")
   .update(fs.readFileSync(compiler))
   .digest("hex");
 const clientHashes = Object.fromEntries(
-  ["extension", "warning-fixes", "package-api", "package-commands", "package-frontend", "package-listing", "package-workspace", "workbench"].map((name) => [
+  ["extension", "warning-fixes", "package-api", "package-commands", "package-frontend", "package-listing", "package-workspace", "workbench",
+    "osprey-ui/wasi", "osprey-ui/wasi-runner", "osprey-ui/wasi-worker"].map((name) => [
     name,
     createHash("sha256")
       .update(

@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as sinon from "sinon";
-import { commands, Uri, window, workspace, type ExtensionContext, type WebviewPanel, type WorkspaceConfiguration } from "vscode";
+import { ColorThemeKind, commands, Uri, window, workspace, type ExtensionContext, type WebviewPanel, type WorkspaceConfiguration } from "vscode";
 import * as host from "../../client/src/osprey-ui/panel";
 import { registerPackageWorkspace } from "../../client/src/package-workspace";
 import { registerWorkbench } from "../../client/src/workbench";
@@ -13,6 +13,17 @@ import { extensionRoot } from "./osprey-test-env";
 const context = (): ExtensionContext => ({ extensionPath: extensionRoot, extensionUri: Uri.file(extensionRoot), subscriptions: [] } as unknown as ExtensionContext);
 const application = (artifact: string): host.NativeApplication => ({ key: "fixture", artifact, context: {}, execute: async () => ({}) });
 const options = (command: string, prepare: host.NativePanelOptions["prepare"]): host.NativePanelOptions => ({ command, prepare, title: "Native host regression", view: command, loading: "Loading fixture" });
+
+suite("native startup appearance", () => {
+  for (const [kind, expected] of [[ColorThemeKind.Dark, "dark"], [ColorThemeKind.HighContrast, "dark"],
+    [ColorThemeKind.Light, "light"], [ColorThemeKind.HighContrastLight, "light"]] as const) {
+    test(`editor theme kind ${kind} supplies ${expected} application context`, () => {
+      sinon.stub(window, "activeColorTheme").get(() => ({ kind }));
+      try { assert.strictEqual(host.nativeContext([]).theme, expected); }
+      finally { sinon.restore(); }
+    });
+  }
+});
 
 function observePanels(): Map<WebviewPanel, sinon.SinonSpy> {
   const created = new Map<WebviewPanel, sinon.SinonSpy>();

@@ -60,6 +60,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .osp-dialog > .osp-framed { max-width: 100%; }
 .osp-framed[style*="--osp-frame-icon-label:"] .osp-button > span:not(.codicon):not(.osp-symbol) { display: var(--osp-frame-icon-label); }
 .osp-symbol { display: inline-block; flex: 0 0 auto; width: 1em; height: 1em; vertical-align: middle; background: currentColor; mask-image: var(--osp-symbol-image); mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
+.osp-framed[style*="--osp-frame-symbol-size:"] :is(.osp-symbol, .osp-icon, .codicon) { font-size: var(--osp-frame-symbol-size) !important; }
 .osp-framed[style*="--osp-frame-button-padding:"] .osp-button { padding: var(--osp-frame-button-padding); width: 100%; }
 .osp-axis-horizontal > .osp-framed[data-frame-width="fill"] { flex: 1; min-width: 0; }
 .osp-framed[style*="--osp-frame-row-padding:"] .osp-row { padding: var(--osp-frame-row-padding); border: var(--osp-frame-row-border); border-radius: var(--osp-frame-row-radius); background: transparent; box-shadow: none; }
@@ -188,8 +189,8 @@ button:disabled { cursor: default; opacity: .48; }
 .osp-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .osp-field > span { font-size: 11px; font-weight: 650; letter-spacing: .02em; color: var(--osp-muted); }
 .osp-field input, .osp-field textarea, .osp-field select {
-  width: 100%; border: 1px solid var(--vscode-input-border, var(--osp-border));
-  background: var(--vscode-input-background, var(--osp-raised)); color: var(--vscode-input-foreground, var(--osp-text));
+  width: 100%; border: 1px solid var(--osp-brand-outline, var(--vscode-input-border, var(--osp-border)));
+  background: var(--osp-brand-surface, var(--vscode-input-background, var(--osp-raised))); color: var(--osp-brand-primary, var(--vscode-input-foreground, var(--osp-text)));
   border-radius: 8px; padding: 8px 10px; outline: none; transition: border-color var(--osp-motion), box-shadow var(--osp-motion);
 }
 .osp-field input:focus, .osp-field textarea:focus, .osp-field select:focus { border-color: var(--osp-accent); box-shadow: 0 0 0 1px var(--osp-accent); }

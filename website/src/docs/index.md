@@ -23,6 +23,8 @@ Osprey uses typed algebraic effects to separate application requests from their 
 
 ## Proofs and mathematics
 
+Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for compatible proof checking while Osprey builds its independent proof technology and replaceable disciplines.
+
 - **[Proof video learning paths](/docs/proofs/)** - twelve short films, organised into six topics and two audience paths.
 - **[Use the Proof Workbench](/docs/proof-workbench/)** - write an argument, inspect hypotheses and goals, and work through guided lessons.
 - **[Mathlib port progress](/docs/mathlib-port/)** - real checked imports, reproducible commands and the remaining boundaries.
