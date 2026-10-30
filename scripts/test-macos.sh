@@ -17,4 +17,6 @@ xcrun --sdk macosx clang -target arm64-apple-macos12.0 \
 "$scratch/abi" >"$scratch/abi.stdout"
 printf 'Mobile C ABI passed\n' >"$scratch/abi.expected"
 diff -u "$scratch/abi.expected" "$scratch/abi.stdout"
+python3 scripts/test-mobile-tools.py --storage-host
+OSPREY_BIN="$compiler" python3 scripts/test-mobile-tools.py --counter-host
 echo "==> macOS scalar imports/exports and global lifetime passed"

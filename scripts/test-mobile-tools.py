@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Check mobile tool selection and scheduling without an SDK or a network."""
+"""Portable mobile tooling checks and an explicit macOS host ownership oracle."""
 
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -33,6 +34,126 @@ case "$*" in
     esac ;;
 esac
 """
+
+
+# Compile the actual host; doubles isolate string ownership from platform services.
+STORAGE_HOST_PROBE = r'''
+struct NativeNode: Decodable { let kind: String }
+final class DiskTree {
+    struct Guard { let apps: Set<String> }
+    static var current: DiskTree?
+    static func measure(_ root: String, guarding: Guard, progress: (Int64, Int64) -> Void) -> DiskTree? { nil }
+    func graft(_ tree: DiskTree, at: String) {}
+}
+enum PhotoLibrary { static func measure(_ done: @escaping () -> Void) { done() } }
+func canonical(_ path: String) -> String { path }
+func fullDiskAccess() -> Bool { false }
+@MainActor enum HostProbe {
+    static var mode = "valid"
+    static var live = Set<UnsafeRawPointer>()
+    static var releases = 0
+    static func output() -> UnsafePointer<CChar>? {
+        if mode == "nil" { return nil }
+        let value = mode == "valid" ? #"{"model":"state","ui":{"kind":"ready"},"commands":[]}"# : "{broken"
+        guard let pointer = strdup(value) else { fatalError("test allocation failed") }
+        live.insert(UnsafeRawPointer(pointer))
+        return UnsafePointer(pointer)
+    }
+}
+@MainActor func osprey_main() -> Int32 { 0 }
+@MainActor func osprey_storage_start(_ home: String, _ platform: String, _ full: Bool) -> UnsafePointer<CChar>? { HostProbe.output() }
+@MainActor func osprey_storage_dispatch(_ model: String, _ event: String) -> UnsafePointer<CChar>? { HostProbe.output() }
+@MainActor func osprey_release_string(_ pointer: UnsafePointer<CChar>?) {
+    guard let pointer else { preconditionFailure("released null output") }
+    precondition(HostProbe.live.remove(UnsafeRawPointer(pointer)) != nil, "released foreign or duplicate output")
+    HostProbe.releases += 1
+    free(UnsafeMutablePointer(mutating: pointer))
+}
+@main struct StorageOwnershipProbe {
+    @MainActor static func validOutputs() {
+        let store = StorageStore()
+        store.start()
+        precondition(store.ui?.kind == "ready" && store.failure == nil, "valid screen lost")
+        precondition(HostProbe.live.isEmpty && HostProbe.releases == 1, "StorageStore leaked successful output")
+        for index in 0..<100 { store.send(["index": index]) }
+        precondition(HostProbe.live.isEmpty && HostProbe.releases == 101, "StorageStore dispatch leaked output")
+    }
+    @MainActor static func failedOutputs() {
+        HostProbe.mode = "broken"
+        let invalid = StorageStore()
+        invalid.start()
+        precondition(invalid.failure != nil && HostProbe.live.isEmpty && HostProbe.releases == 102, "StorageStore leaked malformed output")
+        HostProbe.mode = "nil"
+        let absent = StorageStore()
+        absent.start()
+        precondition(absent.failure != nil && HostProbe.live.isEmpty && HostProbe.releases == 102, "StorageStore mishandled null output")
+    }
+    @MainActor static func main() {
+        validOutputs()
+        failedOutputs()
+        print("Storage host output ownership: PASS")
+    }
+}
+'''
+
+
+COUNTER_HOST_PROBE = r'''
+@_silgen_name("osp_arc_live_objects") func liveObjects() -> UInt64
+@_silgen_name("osp_arc_live_bytes") func liveBytes() -> UInt64
+@_cdecl("ios_host_log") func probeLog(_ value: UnsafePointer<CChar>?) -> Int64 {
+    value.map { Int64(strlen($0)) } ?? -1
+}
+@main struct CounterOwnershipProbe {
+    static func initializedCounts() -> (UInt64, UInt64) {
+        precondition(setenv("OSPREY_ARC_DEBUG", "1", 1) == 0)
+        precondition(osprey_main() == 0)
+        let objects = liveObjects(), bytes = liveBytes()
+        let control = osprey_summary(5)
+        precondition(liveObjects() == objects + 1 && liveBytes() > bytes, "ARC allocation control failed")
+        osprey_release_string(control)
+        precondition(liveObjects() == objects && liveBytes() == bytes)
+        return (objects, bytes)
+    }
+    static func main() {
+        let (objects, bytes) = initializedCounts()
+        for _ in 0..<1000 {
+            precondition(ospreyString(osprey_summary(5)) == "Count: 5")
+        }
+        precondition(liveObjects() == objects && liveBytes() == bytes, "Counter leaked owned outputs")
+        precondition(ospreyString(nil) == "Osprey returned a null string")
+        print("Counter host output ownership: PASS")
+    }
+}
+'''
+
+
+def run_swift_probe(source, binary, *inputs):
+    subprocess.run(["swiftc", "-parse-as-library", str(source), *inputs, "-o", str(binary)],
+                   check=True, timeout=60)
+    subprocess.run([str(binary)], check=True, timeout=10)
+
+
+def storage_host_probe():
+    host = ROOT / "examples/macos/OspreyStorage/StorageStore.swift"
+    with tempfile.TemporaryDirectory(prefix="osprey-storage-ownership-") as scratch:
+        source = Path(scratch) / "probe.swift"
+        binary = Path(scratch) / "probe"
+        source.write_text("import Foundation\nimport Darwin\n" + STORAGE_HOST_PROBE)
+        run_swift_probe(source, binary, str(host))
+
+
+def counter_host_probe():
+    host = ROOT / "examples/ios/OspreyCounter/OspreyCounterApp.swift"
+    compiler = os.environ.get("OSPREY_BIN", str(ROOT / "target/release/osprey"))
+    with tempfile.TemporaryDirectory(prefix="osprey-counter-ownership-") as scratch:
+        source, archive = Path(scratch) / "probe.swift", Path(scratch) / "counter.a"
+        subprocess.run([compiler, str(ROOT / "examples/ios/app.osp"), "--compile", "--target=macos",
+                        "--memory=arc", "--quiet", "--no-warnings", "-o", str(archive)],
+                       check=True, timeout=60)
+        helper = "func ospreyString(" + host.read_text().split("func ospreyString(", 1)[1]
+        source.write_text("import Foundation\n" + helper + COUNTER_HOST_PROBE)
+        run_swift_probe(source, Path(scratch) / "probe", "-import-objc-header",
+                        str(archive.with_suffix(".h")), str(archive))
 
 
 def corpus_jobs(target, override=None):
@@ -188,4 +309,9 @@ class BankAndroidVerdict(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if sys.argv[1:] == ["--storage-host"]:
+        storage_host_probe()
+    elif sys.argv[1:] == ["--counter-host"]:
+        counter_host_probe()
+    else:
+        unittest.main()

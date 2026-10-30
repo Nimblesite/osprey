@@ -62,8 +62,10 @@ final class StorageStore: ObservableObject {
     }
 
     private func accept(_ pointer: UnsafePointer<CChar>?) {
-        guard let pointer,
-            let envelope = try? JSONDecoder().decode(StorageEnvelope.self, from: Data(String(cString: pointer).utf8))
+        guard let pointer else { return fail("Osprey returned a screen that could not be read") }
+        // Implements [IOS-HOST-ABI]: release owned results even when decoding fails.
+        defer { osprey_release_string(pointer) }
+        guard let envelope = try? JSONDecoder().decode(StorageEnvelope.self, from: Data(String(cString: pointer).utf8))
         else { return fail("Osprey returned a screen that could not be read") }
         model = envelope.model
         ui = envelope.ui

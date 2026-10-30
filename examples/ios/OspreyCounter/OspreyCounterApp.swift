@@ -39,5 +39,9 @@ func iosHostLog(_ message: UnsafePointer<CChar>?) -> Int64 {
 }
 
 func ospreyString(_ pointer: UnsafePointer<CChar>?) -> String {
-    pointer.map { String(cString: $0) } ?? "Osprey returned a null string"
+    pointer.map { owned in
+        // Implements [IOS-HOST-ABI]: exported strings transfer one reference.
+        defer { osprey_release_string(owned) }
+        return String(cString: owned)
+    } ?? "Osprey returned a null string"
 }

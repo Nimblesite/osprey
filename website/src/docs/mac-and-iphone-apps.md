@@ -47,7 +47,7 @@ dispatch (model, event) = envelope (Browse::dispatch (Browse::decode model) even
 The Mac target compiles the project into a static library and a header beside it:
 
 ```sh
-osprey examples/macos/storage --compile --target=macos --memory=none -o examples/macos/build/macos/libOspreyApp.a
+osprey examples/macos/storage --compile --target=macos --memory=arc -o examples/macos/build/macos/libOspreyApp.a
 ```
 
 Every export gets a plain C prototype. An Osprey `string` is a `const char *`, an `int` is an `int64_t`, and a `bool` is a C `bool`:
@@ -59,7 +59,7 @@ const char *osprey_storage_start(const char *home, const char *platform, bool fu
 const char *osprey_storage_dispatch(const char *model, const char *event);
 ```
 
-A returned string belongs to the Osprey runtime: copy it before the next call into the library.
+A returned string carries an Osprey reference valid until `osprey_release_string` releases it. `StorageStore.accept` copies the result into Swift values and releases that reference, including when JSON decoding fails. Host string inputs need remain valid only through their synchronous call; the export adapter copies any string Osprey retains or returns.
 
 ## 5. Swift calls Osprey
 
