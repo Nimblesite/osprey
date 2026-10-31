@@ -11,8 +11,12 @@ public enum FontRegistration {
     }
 
     // Register before AppKit initializes text rendering; retain explicit user preferences.
+    // macOS 26 rasterizes text heavier than earlier releases: only there does turning smoothing
+    // off match the browser's regular STIX stroke; macOS 15 drops well below it without smoothing.
     public static func configureTextRendering() {
-        UserDefaults.standard.register(defaults: ["AppleFontSmoothing": 0])
+        if #available(macOS 26, *) {
+            UserDefaults.standard.register(defaults: ["AppleFontSmoothing": 0])
+        }
     }
 
     public static func registerBundled() throws {
