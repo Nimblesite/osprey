@@ -34,9 +34,31 @@ The verified baseline compiler at `target/summary-final-release/osprey` has SHA-
 
 The isolated analyzer and retained-cache tests are necessary to measure copies, compare otherwise inaccessible complete models and metadata, and inject retained compilation state. User-visible behavior is additionally exercised through real compiler invocations and differential goldens. Passing these checks does not establish complete CI, measured coverage for every project, Workbench visual delivery or release readiness.
 
+## Corrected source and release-profile acceptance
+
+The reviewed production correction is `4170dbd4`. Its release-profile compiler at `target/combined-release/osprey` has SHA-256 `3f4b1db10d948541bb876e82cf00799290f882b1704c09c3a6a78e5a4040eb1a`; the build completed with 1,481 pinned inputs unchanged. The CI-profile artifact used for the slower local compiler and coverage checks has SHA-256 `44e9090f0179867e2f833497d28382f6e68ab778ae15cc7f012483cde9fbbb25`. Keep these artifact cohorts distinct.
+
+| Check | Current verified result |
+| --- | --- |
+| Full `generic_effect_arc_result` integration suite, CI profile | 13 passing cases in 373.61 seconds; both Workbench compilation cases and the GC/ARC fault-injection case passed |
+| Native differential corpus, CI profile | 287 exact goldens, 20 alternate GPU cases and six doctests under each of GC and ARC; zero ARC leaks; 1,230 input pins unchanged |
+| Canonical proof-kernel Make target, CI profile | 400/400 cases and zero skips on each of GC, ARC and WASM; exact kernel/export goldens; 150.90 seconds; this is not the full Lean/speed gate |
+| All package/application source coverage, CI profile | All 40 project/backend gates passed, including both mandatory Workbench entry probes; 1,593 inputs unchanged; every individual threshold retained |
+| Workbench application source coverage | Both GC and ARC measured 2,078/2,280 lines (91.1%); GC suite plus entry completed in 598.92 seconds |
+| Actual release-profile Workbench WASM build | Passed in 110.10 seconds; compiler and application inputs unchanged; full artifact bytes equal the verified `45f67bb9…` baseline |
+| Browser artifact/source equivalence | The exact WASM bytes from the earlier 74 passing browser/visual checks remain unchanged, as do all 148 browser and asset inputs; no claim of a new native renderer run |
+| Canonical release-profile package and installed VSIX | Both commands passed; 169 installed cases passed; 1,481 inputs unchanged and all seven staged outputs restored |
+| Current strict analysis | Workspace Clippy and formatting passed; Hawk reported zero findings; the duplication gate passed |
+
+The current installed package has SHA-256 `b00bc2c19437027d3677a0a2dd2b5cefe7715587001d99e3f3af661a9d5624ac`. Its repeated-pattern editing case passed in 21,374 milliseconds under the unchanged 30,000-millisecond deadline. An earlier installed run using the CI-profile compiler passed 168 cases and exceeded that deadline on this case; preserve that failure. The prior release baseline took 22,505 milliseconds, and standalone checks of the initial sources take approximately 8.5 milliseconds on all three compiler artifacts. Those observations do not establish the cause of the earlier editor timeout. The matched production-profile suite and the actual CI installed suite both passed without changing tests or deadlines.
+
+On [run 41162597660](https://github.com/Nimblesite/osprey/actions/runs/41162597660), the required build, platform hosts, language corpora, Python ports, package coverage, C runtime, integration, extension and full proof/Lean jobs passed on `4170dbd4`; Rust coverage and aggregate acceptance remained pending when this evidence was recorded. The successful extension job includes all 169 installed tests. These results must not be presented as completed required CI on a later report commit.
+
+The existing local twelve-archive inventory is not a fully current runtime bundle: five Apple cache records are stale. The current Apple builder fingerprints every runtime header, and the release workflow invokes its phony rebuild targets before packaging. Do not promote the old cached archives or imply that their existence proves cross-platform execution.
+
 ## Remaining acceptance
 
-The final Workbench WASM has SHA-256 `45f67bb9a8521b90a11a8511f24a3596e5dce427c3ef99613fdc6b1aa55301c9`. The installed test package has SHA-256 `0cfd64e65fb743ede8aa4832a6715566a1e511ba121061894b40eb67004bd7fd`. Temporary staging restored the seven original compiler/WASM/package outputs byte-for-byte. The native build regenerated its C header as expected; it matches the generated archive's header, and no other pinned native input changed. Native project manifest/entry inputs separately match the clean launch revision. These checks establish their stated local acceptance, not complete project coverage or CI on the final pushed head.
+The baseline Workbench WASM has SHA-256 `45f67bb9a8521b90a11a8511f24a3596e5dce427c3ef99613fdc6b1aa55301c9`. The older baseline installed package has SHA-256 `0cfd64e65fb743ede8aa4832a6715566a1e511ba121061894b40eb67004bd7fd`. Temporary staging restored the seven original compiler/WASM/package outputs byte-for-byte. The baseline native build regenerated its C header as expected; it matches that archive's header, and no other pinned native input changed. Native project manifest/entry inputs separately match the clean launch revision. These checks establish their stated baseline acceptance, not a new native build or CI on the final pushed head.
 
 The baseline subsequently completed all 118 Workbench cases and the mandatory entry probe under both GC and ARC. Each backend measured 2,078/2,280 app lines (91.1%) and passed all 20 project gates. The collection's source-drift guard correctly failed because compiler changes landed during collection; these measurements establish baseline behavior only.
 
