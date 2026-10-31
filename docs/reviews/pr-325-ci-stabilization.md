@@ -1,0 +1,33 @@
+# PR 325 stabilization evidence
+
+Reviewed on 2026-10-31. This records verified corrections on `feat/type-disciplines`; merge and release remain conditional on the latest head passing every required check.
+
+## Corrections
+
+- `201241f1`: reuse a checked program only for its matching source, including signed-zero distinctions, and consume a retained result even when the next compilation fails. The code-generation regression tests exercise wrong-source and stale-result boundaries.
+- `47e80a76`: collect stdout and stderr independently before formatting the process demonstration. Its Default and ML syntax flavors share the unchanged post-regression golden. Deliberately split lines exercise chunk boundaries without depending on scheduler timing.
+- `fa2b8103`: avoid copying a named callee's unused return model when computing only immediate effects. Preserve generic specialization, parameter names, dependency reads and diagnostic metadata. Full-state scheduler comparisons retain the established Jacobi transfer semantics, including recursive callback records.
+- `d12bc825`: drain both POSIX process pipes before reporting child exit. The regression ensures the child has exited before draining, then checks all 3,072 bytes from each stream, one exit event with code 7, and no events after exit. The extracted header receives its own coverage gate; the existing gate remains enforced.
+
+## Verification
+
+The compiler at `target/summary-final-release/osprey` has SHA-256 `758cb181dced5547856997b28fba4183d0a1f27d23529649650892703b3f1b05`. A release rebuild verified the same artifact against 1,035 pinned compiler, embedded-asset and runtime source inputs with no drift. Local machine receipts are under `target/logs/ci-prep/`.
+
+| Check | Verified result |
+| --- | --- |
+| `cargo test --profile ci --workspace --lib` | 1,814 passing tests across 13 groups |
+| Strict workspace Clippy, formatting, Hawk and `make _deslop` | Passed |
+| Independent CLI accept/reject, diagnostic and runtime controls | Separate matrices of 90, 150 and 70 passing cases |
+| Native GC and ARC differential corpora | 287 matching goldens, 20 alternate GPU cases and six doctests per backend; zero ARC leaks |
+| WebAssembly differential corpus | 215 matching goldens, 72 pinned unsupported cases, zero leaks, 20 alternate GPU cases and six doctests |
+| Process demonstration after the canonical runtime rebuild | Four matching goldens: Default/ML with GC/ARC |
+| Package coverage policy regressions | 42 passing tests |
+| Canonical macOS ABI and persistent globals | Passed, including GPUI exports and Storage/Counter controls |
+
+The isolated analyzer and retained-cache tests are necessary to measure copies, compare otherwise inaccessible complete models and metadata, and inject retained compilation state. User-visible behavior is additionally exercised through real compiler invocations and differential goldens. Passing these checks does not establish complete CI, measured coverage for every project, Workbench visual delivery or release readiness.
+
+## Remaining acceptance
+
+Require the current Workbench producer's actual exit and artifact, complete project coverage, browser/native acceptance and every required GitHub check on the final pushed head. Preserve the coverage producer-status guard: the earlier cancelled build left producer jobs skipped, which correctly failed that guard before any numeric coverage result existed. Windows failures remain with their assigned owner.
+
+After a green merge, recheck published versions and release the next stable minor using the established release workflow. Require a fresh audit of the exact tag SHA, successful publication/deployment channels, `release-complete` and verified published assets. A running build or an older green head is insufficient evidence.
