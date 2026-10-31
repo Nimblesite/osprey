@@ -230,7 +230,12 @@ struct FrameTypography {
     }
 
     var nativeFont: NSFont {
-        NSFont(name: faceName, size: CGFloat(max(size, 1))) ?? NSFont.systemFont(ofSize: CGFloat(max(size, 1)))
+        let pointSize = CGFloat(max(size, 1))
+        let descriptor = NSFontDescriptor(name: faceName, size: pointSize)
+        // Implements [WORKBENCH-DESIGN-TYPE]: STIX regular matches the browser's OpenType wght=400 face.
+        let regular = family == "serif" ? descriptor.addingAttributes([.variation: [NSNumber(value: 0x77676874): 400]]) : descriptor
+        let font = family == "serif" ? NSFont(descriptor: regular, size: pointSize) : NSFont(name: faceName, size: pointSize)
+        return font ?? NSFont.systemFont(ofSize: pointSize)
     }
 
     // Prevent Float paragraph spacing from rounding upward into an extra pixel over long documents.
