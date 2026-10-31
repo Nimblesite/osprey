@@ -78,6 +78,7 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/micrograd` | Karpathy's micrograd `Value` engine (add, mul, pow, relu, tanh, exp, backward) and `nn` (Neuron, Layer, MLP) against micrograd 0.1.0 and torch (548 oracle assertions) | shipped |
 | `@osprey/tiktoken` | byte-level BPE encoding, decoding and training | in progress |
 | `@osprey/tokenizers` | Hugging Face WordPiece, Unigram and WordLevel models, BERT normalizer, pre-tokenizers, decoders and the BERT template post-processor against tokenizers 0.23.3 (1006 oracle assertions) | shipped |
+| `@osprey/chromecast` | a CAST v2 sender: dns-sd discovery, protobuf framing, a heartbeat-answering TLS session, LAUNCH/LOAD and the media-status loop, against the reference stdlib sender script (201 oracle and scripted-device assertions) | shipped |
 | `@osprey/einops` | `rearrange`, `reduce`, `repeat` patterns | in progress |
 | `@osprey/sacrebleu` | BLEU (every smoothing method, effective order, multiple references), chrF2 and chrF++, the `none`/`13a`/`char` tokenizers, against sacrebleu 2.6.0 (3084 oracle assertions) | shipped |
 | `@osprey/rouge-score` | `RougeScorer` for rouge1/2/L/Lsum, its tokenizer and nltk's Porter stemmer, against rouge-score 0.1.2 (1137 oracle assertions) | shipped |

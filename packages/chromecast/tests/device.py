@@ -165,7 +165,7 @@ def serve_cases(l):
             client = httpCreateClient(f"http://127.0.0.1:{served.port}", 5000)
             body = unwrap_or(body_of(httpGetResponse(client, "/media", "")), "")
             _closed = httpCloseClient(client)
-            return [Check.equal("serve.url", served.url, f"http://127.0.0.1:{served.port}/media"), Check.equal("serve.body", body, "ID3 scripted audio"), Check.equal("serve.unserve", Cast.unserve(served.port), 0), Check.equal("serve.unserve.again", Cast.unserve(served.port), -1)]
+            return [Check.truth("serve.record", structuralEquals(served, Cast.Served(url=served.url, port=served.port)), "served record differs"), Check.equal("serve.url", served.url, f"http://127.0.0.1:{served.port}/media"), Check.equal("serve.body", body, "ID3 scripted audio"), Check.equal("serve.unserve", Cast.unserve(served.port), 0), Check.equal("serve.unserve.again", Cast.unserve(served.port), -1)]
         case Error(message=message):
             return [Check.failed("serve.url", message)]
 
@@ -179,6 +179,17 @@ def body_of(response):
             return body
         case Error(message=message):
             return Error(message=message)
+
+
+def stale_cases():
+    """A cast whose session is gone fails every call instead of hanging."""
+    stale = Cast.Casting(session=Session.Session(handle=999), transport="web-0", port=-5, last="")
+    return [
+        Check.equal("stale.next", outcome(Cast.next(stale), lambda step: step.end), "error read failed"),
+        Check.equal("stale.write", outcome(Session.write(stale.session, "receiver-0", "receiver", Protocol.ping()), lambda _u: "sent"), "error send failed (-1)"),
+        Check.equal("stale.finish", Cast.finish(stale), -1),
+        Check.equal("stale.quiet_ms", Session.QUIET_MS, 10000),
+    ]
 
 
 def failure_cases(l):
@@ -206,6 +217,6 @@ def cases():
         cast_case(l, 2, [1, 11], "error ERROR the device refused the media"),
     ]
     rest = listConcat(listConcat(steps_case(l, 7), receiver_cases(l)), [quiet_case(l), closed_case(l)])
-    all = listConcat(listConcat(first, rest), listConcat(serve_cases(l), failure_cases(l)))
+    all = listConcat(listConcat(first, rest), listConcat(listConcat(serve_cases(l), stale_cases()), failure_cases(l)))
     _cleaned = sh(f"rm -rf {l.dir}")
     return all

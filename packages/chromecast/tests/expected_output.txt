@@ -132,6 +132,8 @@ ok read.volume.12
 ok read.volume.13
 ok read.volume.14
 ok read.volume.count
+ok parse.record
+ok launch.record
 ok read.sessions
 ok read.unparseable
 ok media.lines.0
@@ -182,14 +184,19 @@ ok device.status
 ok device.stop_all
 ok device.quiet
 ok device.closed
+ok serve.record
 ok serve.url
 ok serve.body
 ok serve.unserve
 ok serve.unserve.again
+ok stale.next
+ok stale.write
+ok stale.finish
+ok stale.quiet_ms
 ok fail.resolve
 ok fail.refused
 ok fail.stop_all
 ok fail.start
 ok fail.no_route
 ok fail.no_file
-194 passed, 0 failed
+201 passed, 0 failed

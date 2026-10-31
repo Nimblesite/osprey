@@ -10,6 +10,7 @@ Each package's `NOTICE.md` acknowledges the original repositories and comparison
 
 | Package | Original API/behavior reference | Specifically retained third-party material |
 | --- | --- | --- |
+| [chromecast](chromecast/NOTICE.md) | A project-owned CPython CAST v2 sender script | None identified; MIT Osprey implementation |
 | [einops](einops/NOTICE.md) | Alex Rogozhnikov, einops 0.8.2 | None identified; MIT Osprey implementation |
 | [faiss](faiss/NOTICE.md) | Meta/Facebook, Faiss 1.15.1 | None identified; MIT Osprey implementation |
 | [flash_attn](flash_attn/NOTICE.md) | Dao-AILab FlashAttention conventions | None identified; MIT Osprey implementation |

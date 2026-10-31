@@ -76,7 +76,9 @@ def reading_cases():
     kinds = each("launch.kind", n, lambda name, i: Check.equal(name, launch_of(i).kind, at(Expected.LAUNCH_KIND, i)))
     values = each("launch.value", n, lambda name, i: Check.equal(name, launch_of(i).value, at(Expected.LAUNCH_VALUE, i)))
     volumes = each("read.volume", n, lambda name, i: Check.equal(name, Protocol.read(received(i).payload).volume, at(Expected.RECEIVED_VOLUME, i)))
-    sessions = [Check.equal("read.sessions", join(Protocol.read(received(1).payload).sessions, ","), "7E0C-1F2A"), Check.equal("read.unparseable", Protocol.read("{oops").kind, "")]
+    ready = Protocol.Reading(kind="RECEIVER_STATUS", transport_id="web-9", sessions=[], volume="", states=[], idle_reasons=[])
+    records = [Check.truth("parse.record", structuralEquals(received(0), Protocol.Message(namespace="urn:x-cast:com.google.cast.tp.heartbeat", payload="{\"type\":\"PING\"}")), "parsed record differs"), Check.truth("launch.record", structuralEquals(Protocol.launch_step(ready, ""), Protocol.Step(kind="ready", value="web-9")), "launch step differs")]
+    sessions = records + [Check.equal("read.sessions", join(Protocol.read(received(1).payload).sessions, ","), "7E0C-1F2A"), Check.equal("read.unparseable", Protocol.read("{oops").kind, "")]
     return listConcat(listConcat(listConcat(kinds, values), volumes), sessions)
 
 
