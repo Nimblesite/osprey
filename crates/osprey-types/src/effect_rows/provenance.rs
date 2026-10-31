@@ -294,9 +294,26 @@ pub(super) fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
         *slot = Some(existing);
         return;
     }
-    // A common-prefix Deep loses concrete fields and includes unselected
-    // siblings. Keep each exact projection until the existing bounds apply.
-    *slot = Some(joined_alternatives(existing, incoming));
+    *slot = Some(match (existing, incoming) {
+        (Callable::Known(mut left), Callable::Known(right)) if same_signature(&left, &right) => {
+            if let Some(returned) = right.returned {
+                merge_boxed_value(&mut left.returned, *returned);
+            }
+            Callable::Known(left)
+        }
+        // A common-prefix Deep loses concrete fields and includes unselected
+        // siblings. Keep each exact projection until the existing bounds apply.
+        (existing, incoming) => joined_alternatives(existing, incoming),
+    });
+}
+
+/// Two known closures that take the same parameters and perform the same
+/// row differ only in what they return, and calling either yields one of
+/// those returns: one closure returning their union says exactly as much.
+/// Kept as alternatives instead, a recursive spine's shallower unfoldings
+/// would each survive the join as a closure returning nothing callable.
+fn same_signature(left: &KnownCallable, right: &KnownCallable) -> bool {
+    left.parameters == right.parameters && left.summary == right.summary
 }
 
 fn joined_alternatives(existing: Callable, incoming: Callable) -> Callable {

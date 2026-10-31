@@ -51,33 +51,72 @@ fn advance_return(
 /// walk that hands its whole node to a helper falling back to the walk
 /// flipped between two returns forever. Widening bounds the values, so a
 /// sequence that revisits a value is joined with its predecessor and widened.
-/// Sweep counts cannot distinguish recursion from finite dependency propagation:
-/// cutting after a fixed number of sweeps rejects valid acyclic callback chains.
+///
+/// A function on a reference cycle can feed its own return back, and the
+/// node budget makes widening non-monotone: cutting one subtree to unknown
+/// frees budget for its siblings, so the proof kernel's mutually recursive
+/// returns changed every sweep without ever revisiting. Those functions join
+/// every move from the start (Kleene iteration); a function off every cycle
+/// is a finite function of its callees and keeps recomputing precisely.
+/// Should a joined sequence still revisit, widening has cycled, and the
+/// return is pinned to its terminal shape, which only grows. No sweep is
+/// counted: counts cannot tell recursion from finite dependency propagation
+/// and cutting on one rejects valid acyclic callback chains.
 /// Implements [EFFECTS-PROVENANCE].
 #[derive(Default)]
-pub(super) struct ReturnHistory(HashMap<usize, Returns>);
+pub(super) struct ReturnHistory {
+    returns: HashMap<usize, Returns>,
+    recursive: BTreeSet<usize>,
+}
 
-/// One function's returns so far and whether they have cycled.
+/// One function's returns so far, whether they have cycled, the joined
+/// returns since, and whether those cycled too.
 #[derive(Default)]
 struct Returns {
     seen: BTreeSet<Value>,
     joined: bool,
+    joined_seen: BTreeSet<Value>,
+    terminal: bool,
 }
 
 impl ReturnHistory {
+    /// A history for one fixed point whose `recursive` functions can feed
+    /// their own returns back ([`super::recursion::recursive_functions`]).
+    pub(super) fn new(recursive: BTreeSet<usize>) -> Self {
+        Self {
+            returns: HashMap::new(),
+            recursive,
+        }
+    }
+
     fn settle(&mut self, id: usize, before: Option<&Value>, computed: Value) -> Value {
-        let returns = self.0.entry(id).or_default();
+        let recursive = self.recursive.contains(&id);
+        let returns = self.returns.entry(id).or_default();
         let revisited = returns.seen.contains(&computed);
         returns.joined |= before != Some(&computed) && revisited;
+        returns.joined |= recursive && before.is_some();
         if !returns.joined {
             if !revisited {
                 let _ = returns.seen.insert(computed.clone());
             }
             return computed;
         }
+        returns.join(before, computed)
+    }
+}
+
+impl Returns {
+    fn join(&mut self, before: Option<&Value>, computed: Value) -> Value {
         let mut joined = before.cloned().unwrap_or_default();
         joined.union(computed);
-        joined.widened().widened()
+        if !self.terminal {
+            let widened = joined.clone().widened().widened();
+            self.terminal = before != Some(&widened) && !self.joined_seen.insert(widened.clone());
+            if !self.terminal {
+                return widened;
+            }
+        }
+        super::provenance::terminal_value(joined)
     }
 }
 
@@ -116,7 +155,7 @@ pub(super) fn converge(
     rows: &mut Vec<Summary>,
     returns: &mut Vec<Option<Value>>,
 ) {
-    let mut history = ReturnHistory::default();
+    let mut history = ReturnHistory::new(super::recursion::recursive_functions(index));
     loop {
         let analyzer = Analyzer {
             index,

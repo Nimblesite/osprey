@@ -25,7 +25,7 @@ fn stable_return_sweeps_do_not_retain_duplicate_provenance() {
         before = Some(returned);
     }
     let retained = history
-        .0
+        .returns
         .values()
         .map(|returns| returns.seen.len())
         .sum::<usize>();
@@ -110,7 +110,7 @@ fn assert_history_sequence(sequence: usize, seed: Option<&Value>, functions: usi
         let returned = actual.settle(id, before.get(&id), computed);
         assert_eq!(returned, expected, "{sequence}, {step}, {functions}");
         assert_eq!(
-            actual.0.get(&id).map(|row| row.joined),
+            actual.returns.get(&id).map(|row| row.joined),
             reference.get(&id).map(|(_, joined)| *joined)
         );
         let _ = before.insert(id, returned);
@@ -183,7 +183,7 @@ fn snapshot_return_preserves_output_history_and_change_without_copying_before() 
             let expected = analyzer.function_return(&snapshot_function(&body));
             let step = measure_snapshot_step(&analyzer, &body, &mut state, &mut history);
             assert_eq!(state.1, [expected]);
-            assert_eq!(history.0.get(&0).map(|row| row.joined), Some(false));
+            assert_eq!(history.returns.get(&0).map(|row| row.joined), Some(false));
             assert_eq!(step, (true, 1), "old return snapshot must move");
         },
     );
@@ -203,7 +203,7 @@ fn snapshot_row_preserves_fresh_verdict_and_other_metadata_without_copying_befor
         let step = measure_snapshot_step(&analyzer, &body, &mut state, &mut history);
         assert_eq!(state.0, [expected]);
         assert_eq!(state.1.as_slice(), analyzer.returns);
-        assert!(history.0.is_empty());
+        assert!(history.returns.is_empty());
         assert_eq!(step, (true, 0), "old row snapshot must be borrowed");
     });
 }
