@@ -5,6 +5,7 @@ import importlib.util
 import json
 import re
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -14,6 +15,14 @@ def load_script(name, path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def windows_checkout_bytes(relative):
+    """Bytes a Windows checkout with core.autocrlf=true writes for a tracked path."""
+    result = subprocess.run(["git", "-C", str(PROOF.ROOT), "-c", "core.autocrlf=true",
+                             "cat-file", "--filters", f"HEAD:{relative}"],
+                            capture_output=True, check=True)
+    return result.stdout
 
 
 PROOF = load_script("proof_openai", Path(__file__).with_name("proof-openai.py"))
@@ -271,6 +280,19 @@ class CorpusTests(unittest.TestCase):
                 path.unlink() if value is None else path.write_bytes(value)
                 with self.assertRaisesRegex(ValueError, "missing|stale|inventory"):
                     assets.stage(destination, check=True)
+
+    def test_windows_autocrlf_checkout_preserves_every_pinned_proof_export(self):
+        assets = load_script("proof_assets", PROOF.ROOT / "scripts/workbench-proof-assets.py")
+        groups = assets.groups()
+        manifest = json.loads(assets.MANIFEST.read_text())["libraries"]
+        self.assertEqual({entry["path"] for entry in manifest},
+                         {f"proof-libraries/{group['id']}.ndjson" for group in groups})
+        for group in groups:
+            relative = PROOF.export_path(group).relative_to(PROOF.ROOT).as_posix()
+            checked_out = windows_checkout_bytes(relative)
+            self.assertEqual(checked_out.count(b"\r\n"), 0,
+                             f"{relative}: a Windows autocrlf checkout rewrites pinned export bytes as CRLF")
+            self.assertEqual(PROOF.digest(checked_out), group["export_sha256"], relative)
 
     def test_proof_staging_refuses_a_symlink_without_touching_its_destination(self):
         assets = load_script("proof_assets", PROOF.ROOT / "scripts/workbench-proof-assets.py")
