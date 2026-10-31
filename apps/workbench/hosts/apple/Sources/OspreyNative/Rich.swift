@@ -141,7 +141,20 @@ struct CodeText: NSViewRepresentable {
             context.coordinator.applying = false
         }
         decorate(text)
-        if requested, let window = scroll.window, window.isKeyWindow, ModalFocusBoundary.permits(modalFocusBoundary, in: window) { window.makeFirstResponder(text) }
+        if requested { focus(text, in: scroll, coordinator: context.coordinator) }
+    }
+
+    private func focus(_ text: NSTextView, in scroll: NSScrollView, coordinator: Coordinator) {
+        guard let window = scroll.window, window.isKeyWindow, ModalFocusBoundary.permits(modalFocusBoundary, in: window) else { return }
+        let epoch = focusEpoch
+        // Apply authored focus after the current SwiftUI view-update transaction returns.
+        DispatchQueue.main.async { [weak text, weak scroll, weak window, weak coordinator] in
+            guard let text, let scroll, let window, let coordinator, coordinator.parent.focusEpoch == epoch,
+                coordinator.observedFocusEpoch == epoch, scroll.documentView === text,
+                text.window === window, window.isKeyWindow,
+                ModalFocusBoundary.permits(coordinator.parent.modalFocusBoundary, in: window) else { return }
+            window.makeFirstResponder(text)
+        }
     }
 
     private func decorate(_ text: NSTextView) {

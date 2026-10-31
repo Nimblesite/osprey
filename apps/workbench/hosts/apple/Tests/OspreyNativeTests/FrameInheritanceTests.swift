@@ -220,7 +220,10 @@ final class FrameInheritanceTests: XCTestCase {
     private func assertModalEditorEpochAdvances(_ host: NSHostingView<ModalFocusFixture>, _ window: NSWindow, _ modal: NSTextView) throws {
         XCTAssertTrue(window.makeFirstResponder(nil))
         update(host, ModalFocusFixture(focusEpoch: 1, modalEpoch: 1))
-        XCTAssertTrue(window.firstResponder === modal, "An authored epoch must still focus an editor inside the active dialog")
+        XCTAssertTrue(window.firstResponder === modal, "An authored epoch must still focus an editor inside the active dialog; actual: \(String(describing: window.firstResponder))")
+        XCTAssertTrue(TestResources.scrollViews(host).contains { $0.documentView === modal }, "The focused modal editor must retain its native identity")
+        update(host, ModalFocusFixture(focusEpoch: 1, modalEpoch: 1))
+        XCTAssertTrue(window.firstResponder === modal, "A later render without a new epoch must preserve the dialog editor's focus")
     }
 
     @MainActor
