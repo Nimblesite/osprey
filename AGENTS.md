@@ -19,7 +19,7 @@
 - `tests/` programs run through `crates/run_test_corpus.sh` under GC, ARC and wasm32 (`OSPREY_TARGET=wasm32`), matching the sibling `.expectedoutput` byte-for-byte; an ML twin shares its Default twin's golden.
 - `examples/failscompilation/` holds programs the compiler must reject.
 - Expand existing tests and examples rather than adding files; mix many constructs per program.
-- `coverage-thresholds.json` only goes up.
+- **Aim for 100% coverage in every package and project**; thresholds in `coverage-thresholds.json` only go up.
 
 ## CI
 CI has three phases, each done once. Do not mix up the phases.
