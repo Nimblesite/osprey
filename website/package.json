@@ -44,5 +44,10 @@
   },
   "dependencies": {
     "eleventy-plugin-techdoc": "^0.2.0"
+  },
+  "overrides": {
+    "@11ty/recursive-copy": {
+      "minimatch": "^11.0.1"
+    }
   }
 }
