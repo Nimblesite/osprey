@@ -215,11 +215,8 @@ impl Analyzer<'_> {
             } => {
                 let names: Vec<String> = parameters.iter().map(|p| p.name.clone()).collect();
                 let mut local = env.enter_lambda(&names);
-                let summary = self.expression(body, scope, &local);
-                let returned = self
-                    .known_scalar_call_value(body, scope, &local)
-                    .or_else(|| self.returned_value(body, scope, &mut local))
-                    .map(Box::new);
+                let (summary, returned) = self.lambda_body_model(body, scope, &mut local);
+                let returned = returned.map(Box::new);
                 Some(Value::from_callable(Callable::Known(Box::new(
                     KnownCallable {
                         parameters: names,

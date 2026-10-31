@@ -265,7 +265,10 @@ pub(in crate::effect_rows) fn record_value_visit(expression: &Expr) {
     });
 }
 
-fn measured_value_visits<T>(expression: &Expr, run: impl FnOnce() -> T) -> (T, usize) {
+pub(in crate::effect_rows) fn measured_value_visits<T>(
+    expression: &Expr,
+    run: impl FnOnce() -> T,
+) -> (T, usize) {
     VISITED_SITE.with(|slot| slot.set(Some(expression_site(expression))));
     let measured = crate::effect_rows::provenance::measured_counter(&VALUE_VISITS, run);
     VISITED_SITE.with(|slot| slot.set(None));
@@ -283,7 +286,7 @@ fn nested_callback_values_do_not_revisit_the_same_leaf_exponentially() {
     }
 }
 
-fn nested_callback_body(depth: usize, leaf: &str) -> String {
+pub(in crate::effect_rows) fn nested_callback_body(depth: usize, leaf: &str) -> String {
     (0..depth).fold(leaf.to_owned(), |inner, _| {
         format!("(fn(work)=>work())(fn()=>{inner})")
     })
@@ -355,7 +358,7 @@ fn record_callback_scalar_type(expression: &Expr, instances: &Instances) {
         .insert(expression_site(expression), crate::ty::Type::int());
 }
 
-fn nested_callback_leaf(expression: &Expr) -> &Expr {
+pub(in crate::effect_rows) fn nested_callback_leaf(expression: &Expr) -> &Expr {
     match expression {
         Expr::Call { arguments, .. } => arguments.first().map_or(expression, nested_callback_leaf),
         Expr::Lambda { body, .. } => nested_callback_leaf(body),

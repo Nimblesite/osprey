@@ -1,11 +1,31 @@
 //! Effect row call values.
 use super::{
-    builtin_return_shape, expression_name, merge_optional_value, project_element,
+    builtin_return_shape, expression_name, merge_optional_value, ordered_values, project_element,
     source_named_callee, stabilize_merged_callables, Analyzer, BTreeSet, CallArguments, Callable,
-    CallableEnv, Expr, ExprArgs, NamedArgument, Summary, Value,
+    CallableEnv, Expr, ExprArgs, KnownCallable, NamedArgument, Summary, Value,
 };
 
 impl Analyzer<'_> {
+    pub(super) fn model_known_call(
+        &self,
+        known: KnownCallable,
+        arguments: &CallArguments,
+    ) -> (Summary, Option<Value>) {
+        let values = ordered_values(&known.parameters, &arguments.positional, &arguments.named);
+        let summary = self.substitute_summary_at(known.summary, 0, &values);
+        (summary, self.project_bound_return(known.returned, &values))
+    }
+
+    pub(super) fn project_bound_return(
+        &self,
+        returned: Option<Box<Value>>,
+        values: &[Option<Value>],
+    ) -> Option<Value> {
+        returned
+            .map(|value| self.substitute_value_at(*value, 0, values))
+            .or_else(|| Some(Value::unknown_value()))
+    }
+
     pub(super) fn call_value(
         &self,
         function: &Expr,

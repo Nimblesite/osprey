@@ -115,6 +115,22 @@ impl Analyzer<'_> {
         self.value(expression, scope, env)
     }
 
+    pub(super) fn lambda_body_model(
+        &self,
+        body: &Expr,
+        scope: &[String],
+        env: &mut CallableEnv,
+    ) -> (Summary, Option<Value>) {
+        if let Some((summary, returned)) = self.known_call_model(body, scope, env) {
+            return (summary, Some(returned));
+        }
+        let summary = self.expression(body, scope, env);
+        let returned = self
+            .known_scalar_call_value(body, scope, env)
+            .or_else(|| self.returned_value(body, scope, env));
+        (summary, returned)
+    }
+
     /// An expression's own requirements: its children's, plus the `Arith`
     /// operation its operator may perform. Implements [ARITH-EFFECT-DISCHARGE].
     pub(super) fn expression(
@@ -124,18 +140,28 @@ impl Analyzer<'_> {
         env: &CallableEnv,
     ) -> Summary {
         osprey_ast::with_stack(|| {
-            let mut summary = self.expression_children(expression, scope, env);
-            let types = self.instances.expression_types.borrow();
-            let ty = types.get(&std::ptr::from_ref(expression).addr());
-            if let Some(operation) = crate::arithmetic::operation(expression, ty) {
-                let _ = summary.required.insert(Requirement::new(
-                    osprey_ast::ARITH_EFFECT,
-                    operation,
-                    Vec::new(),
-                ));
-            }
-            summary
+            self.finish_expression_summary(
+                expression,
+                self.expression_children(expression, scope, env),
+            )
         })
+    }
+
+    pub(super) fn finish_expression_summary(
+        &self,
+        expression: &Expr,
+        mut summary: Summary,
+    ) -> Summary {
+        let types = self.instances.expression_types.borrow();
+        let ty = types.get(&std::ptr::from_ref(expression).addr());
+        if let Some(operation) = crate::arithmetic::operation(expression, ty) {
+            let _ = summary.required.insert(Requirement::new(
+                osprey_ast::ARITH_EFFECT,
+                operation,
+                Vec::new(),
+            ));
+        }
+        summary
     }
 
     #[expect(

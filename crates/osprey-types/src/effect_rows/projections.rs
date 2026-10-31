@@ -182,15 +182,11 @@ impl Analyzer<'_> {
 
     fn project_known_return(
         &self,
-        mut known: super::KnownCallable,
+        known: super::KnownCallable,
         arguments: &CallArguments,
     ) -> Option<Value> {
         let values = ordered_values(&known.parameters, &arguments.positional, &arguments.named);
-        known
-            .returned
-            .take()
-            .map(|returned| self.substitute_value_at(*returned, 0, &values))
-            .or_else(|| Some(Value::unknown_value()))
+        self.project_bound_return(known.returned, &values)
     }
 
     pub(super) fn invoke_with_values(

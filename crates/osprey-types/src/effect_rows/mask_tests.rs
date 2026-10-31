@@ -66,3 +66,76 @@ fn a_callback_use_replays_its_layers_innermost_first() {
     )]));
     assert!(!has_store(&get().within(&[mask, twice])));
 }
+
+#[test]
+fn returned_provider_answers_preserve_instance_and_dynamic_scope() {
+    for matching in [false, true] {
+        let (pending, summary) = provider_request();
+        let callback = expr_args::latent_alarm_callback();
+        let env = provider_env(&pending, &summary, &callback, matching);
+        expr_args::assert_call_outcome("source()", &env, &summary, &pending);
+        let returned = if matching { &callback } else { &pending };
+        assert_active_provider(&env, &summary, returned);
+    }
+}
+
+fn provider_request() -> (Value, Summary) {
+    let request = Requirement::new("Supply", "make", vec!["int".to_owned()]);
+    let pending = Value {
+        performed: [request.clone()].into_iter().collect(),
+        ..Value::default()
+    };
+    let summary = Summary {
+        required: [request].into_iter().collect(),
+        ..Summary::default()
+    };
+    (pending, summary)
+}
+
+fn provider_env(
+    pending: &Value,
+    summary: &Summary,
+    callback: &Value,
+    matching: bool,
+) -> CallableEnv {
+    let answer = Requirement::new(
+        "Supply",
+        "make",
+        vec![if matching { "int" } else { "string" }.to_owned()],
+    );
+    let source = expr_args::function_outcome(pending.clone(), summary.clone());
+    let mut env = CallableEnv::default();
+    let _ = env.values.insert("source".to_owned(), source);
+    let _ = env.handler_returns.insert(answer, callback.clone());
+    env
+}
+
+fn assert_active_provider(env: &CallableEnv, summary: &Summary, returned: &Value) {
+    let samples =
+        field_rows::tests::fixture_function_values("fn fixture()=source()\n", |_, body| {
+            identity_tests::with_empty_analyzer(|analyzer| {
+                assert_provider_models(&analyzer, body, env, summary, returned);
+            });
+        });
+    assert_eq!(samples.len(), 1);
+}
+
+fn assert_provider_models(
+    analyzer: &Analyzer<'_>,
+    body: &Expr,
+    env: &CallableEnv,
+    summary: &Summary,
+    returned: &Value,
+) {
+    assert_eq!(analyzer.expression(body, &[], env), *summary);
+    assert_eq!(analyzer.value(body, &[], env), Some(returned.clone()));
+    assert_eq!(
+        analyzer.known_call_model(body, &[], env),
+        Some((summary.clone(), returned.clone()))
+    );
+    let mut active = env.clone();
+    assert_eq!(
+        analyzer.lambda_body_model(body, &[], &mut active),
+        (summary.clone(), Some(returned.clone()))
+    );
+}

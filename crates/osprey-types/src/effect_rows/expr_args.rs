@@ -7,6 +7,62 @@ pub(crate) struct ExprArgs<'a> {
     arguments: &'a [Expr],
 }
 
+#[cfg(test)]
+#[test]
+fn untyped_function_returning_cps_models_each_leaf_once() {
+    use super::field_rows::tests::{fixture_function_values, nested_callback_body};
+    for depth in [2, 4, 6, 8] {
+        let body = nested_callback_body(depth, "fn()=>leaf");
+        let source = format!("let leaf=7\nfn main()={body}\nlet answer=main()()\n");
+        crate::effect_rows_tests::assert_accepted(&source);
+        let samples = fixture_function_values(&source, |_, body| untyped_function_visits(body));
+        assert_eq!(samples.len(), 1);
+        let visits: usize = samples.into_iter().sum();
+        eprintln!("untyped function-returning depth {depth}: leaf visits={visits}");
+        assert!(
+            visits <= depth + 1,
+            "depth {depth} revisited leaf {visits} times"
+        );
+    }
+}
+
+#[cfg(test)]
+fn untyped_function_visits(body: &Expr) -> usize {
+    use super::field_rows::tests::{measured_value_visits, nested_callback_leaf};
+    super::identity_tests::with_empty_analyzer(|analyzer| {
+        let scalar = Value {
+            field_names: Some(std::collections::BTreeSet::new()),
+            ..Value::default()
+        };
+        let mut env = CallableEnv::default();
+        let _ = env.values.insert("leaf".to_owned(), scalar.clone());
+        let expected = returned_function_shape(scalar);
+        let (actual, visits) = measured_value_visits(nested_callback_leaf(body), || {
+            analyzer.value(body, &[], &env)
+        });
+        assert_eq!(actual, Some(expected));
+        assert_eq!(
+            analyzer.expression(body, &[], &env),
+            super::Summary::default()
+        );
+        visits
+    })
+}
+
+#[cfg(test)]
+fn returned_function_shape(returned: Value) -> Value {
+    function_outcome(returned, super::Summary::default())
+}
+
+#[cfg(test)]
+pub(in crate::effect_rows) fn function_outcome(returned: Value, summary: super::Summary) -> Value {
+    Value::from_callable(super::Callable::Known(Box::new(super::KnownCallable {
+        parameters: Vec::new(),
+        summary,
+        returned: Some(Box::new(returned)),
+    })))
+}
+
 impl<'a> ExprArgs<'a> {
     pub(crate) fn new(arguments: &'a [Expr]) -> Self {
         Self {
@@ -250,4 +306,150 @@ fn nested_pipe_argument_retains_effectful_field_dispatch() {
 #[test]
 fn nested_pipe_inline_field_cannot_fall_back_to_generic_free_function() {
     assert_nested_field_dispatch(true);
+}
+
+#[cfg(test)]
+#[test]
+fn forwarding_data_preserves_the_complete_latent_alarm_outcome() {
+    for payload in latent_payloads() {
+        for body in [
+            "source(payload)",
+            "source<int>(payload)",
+            "source(argument0:payload)",
+        ] {
+            assert_call_outcome(
+                body,
+                &forwarding_env(&payload),
+                &super::Summary::default(),
+                &payload,
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+fn forwarding_env(payload: &Value) -> CallableEnv {
+    let mut source = returned_function_shape(Value::parameter(0, 0));
+    if let Some(super::Callable::Known(known)) = &mut source.callable {
+        known.parameters.push("argument0".to_owned());
+    }
+    let mut env = CallableEnv::default();
+    env.values.extend([
+        ("source".to_owned(), source),
+        ("payload".to_owned(), payload.clone()),
+    ]);
+    env
+}
+
+#[cfg(test)]
+fn latent_alarm_summary() -> super::Summary {
+    let mut summary = super::Summary::default();
+    let _ = summary
+        .required
+        .insert(super::Requirement::new("Alarm", "ring", Vec::new()));
+    summary
+}
+
+#[cfg(test)]
+pub(in crate::effect_rows) fn latent_alarm_callback() -> Value {
+    let scalar = Value {
+        field_names: Some(std::collections::BTreeSet::new()),
+        ..Value::default()
+    };
+    function_outcome(scalar, latent_alarm_summary())
+}
+
+#[cfg(test)]
+fn latent_payloads() -> [Value; 4] {
+    let callback = latent_alarm_callback();
+    let packet = packet_payload(&callback);
+    let result = Value {
+        result_payload: Some(Box::new(packet.clone())),
+        ..Value::default()
+    };
+    let iterator = Value {
+        element: Some(Box::new(Value::default())),
+        deferred: latent_alarm_summary(),
+        ..Value::default()
+    };
+    [callback, packet, result, iterator]
+}
+
+#[cfg(test)]
+fn packet_payload(callback: &Value) -> Value {
+    let mut packet = super::model_values::unknown_child_record();
+    let _ = packet
+        .fields
+        .insert("callback".to_owned(), callback.clone());
+    packet.field_names = Some(packet.fields.keys().cloned().collect());
+    packet.field_owner = Some(super::field_rows::FieldInstance {
+        name: "Packet".to_owned(),
+        arguments: vec!["int".to_owned()],
+    });
+    packet
+}
+
+#[cfg(test)]
+pub(in crate::effect_rows) fn assert_call_outcome(
+    body: &str,
+    env: &CallableEnv,
+    summary: &super::Summary,
+    returned: &Value,
+) {
+    let source = format!("fn fixture()=fn()=>{body}\n");
+    let samples = super::field_rows::tests::fixture_function_values(&source, |_, expression| {
+        assert_lambda_outcome(expression, env, summary, returned);
+    });
+    assert_eq!(samples.len(), 1);
+}
+
+#[cfg(test)]
+fn assert_lambda_outcome(
+    expression: &Expr,
+    env: &CallableEnv,
+    summary: &super::Summary,
+    returned: &Value,
+) {
+    assert!(matches!(expression, Expr::Lambda { .. }));
+    if let Expr::Lambda {
+        parameters, body, ..
+    } = expression
+    {
+        assert_eq!(parameters.as_slice(), []);
+        super::identity_tests::with_empty_analyzer(|analyzer| {
+            assert_original_outcome(&analyzer, expression, body, env, summary, returned);
+        });
+    }
+}
+
+#[cfg(test)]
+fn assert_original_outcome(
+    analyzer: &Analyzer<'_>,
+    expression: &Expr,
+    body: &Expr,
+    env: &CallableEnv,
+    summary: &super::Summary,
+    returned: &Value,
+) {
+    let mut local = env.enter_lambda(&[]);
+    assert_eq!(analyzer.expression(body, &[], &local), *summary);
+    assert_eq!(
+        analyzer.returned_value(body, &[], &mut local),
+        Some(returned.clone())
+    );
+    let expected = function_outcome(returned.clone(), summary.clone());
+    assert_eq!(analyzer.value(expression, &[], env), Some(expected));
+}
+
+#[cfg(test)]
+#[test]
+fn type_applied_named_forwarding_keeps_the_alarm_latent() {
+    let prefix = "effect Alarm {ring:fn()->int}\ntype Packet={payload:List<int>,callback:fn()->int}\nfn source<T>(item:T,tag)=item\nfn wrapper()=fn()=>source<Packet>(tag:9,item:Packet{payload:[1,2],callback:fn()=>perform Alarm.ring()})\nlet saved=wrapper()\nlet packet=saved()\n";
+    crate::effect_rows_tests::assert_accepted(&format!(
+        "{prefix}let h=handler Alarm {{ring=>7}}\nlet answer=h(packet.callback)\n"
+    ));
+    crate::effect_rows_tests::assert_rejected_with(
+        &format!("{prefix}let answer=packet.callback()\n"),
+        &["unhandled effect operations", "Alarm.ring"],
+    );
 }
