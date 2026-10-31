@@ -59,6 +59,7 @@ impl Analyzer<'_> {
         env
     }
 
+    #[cfg(test)]
     pub(super) fn function_body(&self, function: &Function<'_>) -> Summary {
         self.expression(
             function.body,
@@ -67,9 +68,17 @@ impl Analyzer<'_> {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn function_return(&self, function: &Function<'_>) -> Option<Value> {
         let mut env = self.scoped_env(&function.parameters);
         self.returned_value(function.body, &function.scope, &mut env)
+    }
+
+    /// Share ordinary-call argument models without changing the inferred domain.
+    /// Implements [EFFECTS-PROVENANCE].
+    pub(super) fn function_body_model(&self, function: &Function<'_>) -> (Summary, Option<Value>) {
+        let mut env = self.scoped_env(&function.parameters);
+        self.lambda_body_model(function.body, &function.scope, &mut env)
     }
 
     /// After the complete effect walk, a known ordinary call has already modeled

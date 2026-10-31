@@ -14,21 +14,15 @@ pub(super) fn advance_function(
     returns: &mut [Option<Value>],
     history: &mut ReturnHistory,
 ) -> bool {
-    let actual = normalized_body(analyzer, function);
+    let (mut actual, returned) = analyzer.function_body_model(function);
+    actual.widen();
     let mut changed = rows
         .get_mut(id)
         .is_some_and(|row| row.merge_inferred_row(actual, analyzer.rows.get(id)));
-    if let (Some(returned), Some(slot)) = (analyzer.function_return(function), returns.get_mut(id))
-    {
+    if let (Some(returned), Some(slot)) = (returned, returns.get_mut(id)) {
         changed |= advance_return(slot, returned, id, history);
     }
     changed
-}
-
-fn normalized_body(analyzer: &Analyzer<'_>, function: &Function<'_>) -> Summary {
-    let mut actual = analyzer.function_body(function);
-    actual.widen();
-    actual
 }
 
 // Recompute the complete current answer. Fold cuts within-pass feedback;

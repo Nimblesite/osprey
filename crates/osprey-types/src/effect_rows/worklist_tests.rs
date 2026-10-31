@@ -186,11 +186,126 @@ fn compare_metadata(worklist: &Instances, whole: &Instances) {
     assert_model_metadata_matches(worklist, whole);
 }
 
-fn with_program(source: &str, run: impl FnOnce(&Index<'_>, &[Stmt])) {
+fn with_program<T>(source: &str, run: impl FnOnce(&Index<'_>, &[Stmt]) -> T) -> T {
     let parsed = osprey_syntax::parse_program(source);
     assert_eq!(parsed.errors, []);
     let index = Index::collect(&parsed.program);
-    run(&index, &parsed.program.statements);
+    run(&index, &parsed.program.statements)
+}
+
+#[test]
+fn ordinary_function_steps_model_each_argument_once() {
+    let observed = [1, 2, 4, 8].map(ordinary_step_visits);
+    assert_eq!(
+        observed, [1; 4],
+        "one value model per argument, not one per walk"
+    );
+}
+
+#[test]
+fn combined_function_models_preserve_real_metadata_and_dependency_reads() {
+    let nested = format!(
+        "fn sink(value)=value\n{}",
+        ALIAS_PROGRAM.replace("alias()", "sink(sink(alias()))")
+    );
+    for source in [ALIAS_PROGRAM, nested.as_str()] {
+        with_program(source, |index, statements| {
+            let state = model(index, &seeded_instances(), statements, worklist_pass);
+            let before = seeded_instances();
+            let after = before.clone();
+            compare_function_transfers(index, statements, &state, &before, &after);
+            compare_metadata(&before, &after);
+        });
+    }
+}
+
+fn compare_function_transfers(
+    index: &Index<'_>,
+    statements: &[Stmt],
+    state: &SolverState,
+    before: &Instances,
+    after: &Instances,
+) {
+    let before_env = file_scope_env(index, before, statements, &state.0, &state.1);
+    let after_env = file_scope_env(index, after, statements, &state.0, &state.1);
+    let before = context(index, before, state, before_env);
+    let after = context(index, after, state, after_env);
+    for function in &index.functions {
+        let expected = recording(|| original_function_model(&before, function));
+        let actual = recording(|| normalized_combined_model(&after, function));
+        assert_eq!(actual, expected, "complete transfer for {}", function.name);
+    }
+}
+
+fn normalized_combined_model(
+    analyzer: &Analyzer<'_>,
+    function: &crate::effect_rows::Function<'_>,
+) -> (Summary, Option<Value>) {
+    let (mut summary, returned) = analyzer.function_body_model(function);
+    summary.widen();
+    (summary, returned.map(|value| value.widened().widened()))
+}
+
+fn ordinary_step_visits(depth: usize) -> usize {
+    let body = (0..depth).fold("value".to_owned(), |value, _| format!("sink({value})"));
+    let source = format!("fn sink(value)=value\nfn caller(value)={body}\n");
+    with_program(&source, |index, statements| {
+        assert!(recursive_functions(index).is_empty());
+        let original = seeded_instances();
+        let state = model(index, &original, statements, worklist_pass);
+        let optimized = original.clone();
+        let before = context(index, &original, &state, CallableEnv::default());
+        let after = context(index, &optimized, &state, CallableEnv::default());
+        assert_ordinary_step(&before, &after)
+    })
+}
+
+fn assert_ordinary_step(before: &Analyzer<'_>, after: &Analyzer<'_>) -> usize {
+    use crate::effect_rows::field_rows::tests::{measured_value_visits, nested_callback_leaf};
+    let id = function_id(before.index, "caller");
+    let function = before.index.functions.get(id).expect("fixture caller");
+    let expected = recording(|| original_function_model(before, function));
+    let leaf = nested_callback_leaf(function.body);
+    let (actual, visits) = measured_value_visits(leaf, || {
+        recording(|| advanced_function_model(after, id, function))
+    });
+    assert_eq!(actual, expected, "full row, return and dependency set");
+    assert_eq!(actual.1, set(&[function_id(before.index, "sink")]));
+    assert_model_metadata_matches(before.instances, after.instances);
+    visits
+}
+
+fn original_function_model(
+    analyzer: &Analyzer<'_>,
+    function: &crate::effect_rows::Function<'_>,
+) -> (Summary, Option<Value>) {
+    let mut summary = analyzer.function_body(function);
+    summary.widen();
+    let returned = analyzer
+        .function_return(function)
+        .map(|value| value.widened().widened());
+    (summary, returned)
+}
+
+fn advanced_function_model(
+    analyzer: &Analyzer<'_>,
+    id: usize,
+    function: &crate::effect_rows::Function<'_>,
+) -> (Summary, Option<Value>) {
+    let mut next = (analyzer.rows.to_vec(), analyzer.returns.to_vec());
+    let mut history = ReturnHistory::new(BTreeSet::new());
+    let _ = advance_function(
+        analyzer,
+        id,
+        function,
+        &mut next.0,
+        &mut next.1,
+        &mut history,
+    );
+    (
+        next.0.get(id).cloned().expect("fixture row"),
+        next.1.get(id).cloned().expect("fixture return"),
+    )
 }
 
 fn compare_models(source: &str, check: impl FnOnce(&Index<'_>, &SolverState)) {

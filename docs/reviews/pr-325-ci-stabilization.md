@@ -9,10 +9,11 @@ Reviewed on 2026-10-31. This records verified corrections on `feat/type-discipli
 - `fa2b8103`: avoid copying a named callee's unused return model when computing only immediate effects. Preserve generic specialization, parameter names, dependency reads and diagnostic metadata. Full-state scheduler comparisons retain the established Jacobi transfer semantics, including recursive callback records.
 - `d12bc825`: drain both POSIX process pipes before reporting child exit. The regression ensures the child has exited before draining, then checks all 3,072 bytes from each stream, one exit event with code 7, and no events after exit. The extracted header receives its own coverage gate; the existing gate remains enforced.
 - `ea3905ca`: correct the lexical order of the installed-VSIX test's expected module inventory. The production bundle already contained the right modules. All 12 literal names, the sorted actual inventory and every per-file hash assertion remain enforced.
+- Share immediate-effect and return-value analysis for ordinary function bodies and nested known-call arguments. The new traversal regression first failed with leaf visits `[2, 3, 5, 9]` at nesting depths `[1, 2, 4, 8]`, then passed with one visit at every depth. An independent two-walk oracle compares complete rows, returned values, dependency reads and diagnostic metadata, including populated signal, handler and field-violation maps. These comparisons preserve the original named-argument ordering and callee eligibility guards.
 
 ## Verification
 
-The compiler at `target/summary-final-release/osprey` has SHA-256 `758cb181dced5547856997b28fba4183d0a1f27d23529649650892703b3f1b05`. A release rebuild verified the same artifact against 1,035 pinned compiler, embedded-asset and runtime source inputs with no drift. Local machine receipts are under `target/logs/ci-prep/`.
+The verified baseline compiler at `target/summary-final-release/osprey` has SHA-256 `758cb181dced5547856997b28fba4183d0a1f27d23529649650892703b3f1b05`. A release rebuild verified the same artifact against 1,035 pinned compiler, embedded-asset and runtime source inputs with no drift. These results predate the subsequent data-shape and combined-traversal changes; they do not establish acceptance of those changes. Local machine receipts are under `target/logs/ci-prep/`.
 
 | Check | Verified result |
 | --- | --- |
@@ -36,6 +37,20 @@ The isolated analyzer and retained-cache tests are necessary to measure copies, 
 
 The final Workbench WASM has SHA-256 `45f67bb9a8521b90a11a8511f24a3596e5dce427c3ef99613fdc6b1aa55301c9`. The installed test package has SHA-256 `0cfd64e65fb743ede8aa4832a6715566a1e511ba121061894b40eb67004bd7fd`. Temporary staging restored the seven original compiler/WASM/package outputs byte-for-byte. The native build regenerated its C header as expected; it matches the generated archive's header, and no other pinned native input changed. Native project manifest/entry inputs separately match the clean launch revision. These checks establish their stated local acceptance, not complete project coverage or CI on the final pushed head.
 
-Require the remaining canonical Workbench GC/ARC suite and entry coverage probes, every project threshold and every required GitHub check on the final pushed head. Preserve the coverage producer-status guard: the earlier cancelled build left producer jobs skipped, which correctly failed that guard before any numeric coverage result existed. The older CI run also exposed the inventory-order test error corrected in `ea3905ca`; its failed result is not merge evidence for the corrected branch. Windows failures remain with their assigned owner.
+The baseline subsequently completed all 118 Workbench cases and the mandatory entry probe under both GC and ARC. Each backend measured 2,078/2,280 app lines (91.1%) and passed all 20 project gates. The collection's source-drift guard correctly failed because compiler changes landed during collection; these measurements establish baseline behavior only.
+
+CI run `41154533373` exhausted the unchanged 40-minute Rust and package coverage budgets and the 45-minute proof budget. The missing Rust artifact then failed aggregate coverage. These are unresolved performance failures, not evidence that numeric thresholds should change. Run `41160409990` tests pushed head `dff4fdd7`; it does not contain the later performance candidates. Windows failures remain with their assigned owner.
+
+## Mandatory completion checklist
+
+- [x] Retrieve the failing job logs and identify the inventory error and compiler performance bottleneck.
+- [x] Preserve the installed module inventory and hashes while correcting its expected lexical order.
+- [x] Verify baseline native, WASM, browser, installed VSIX and GC/ARC project coverage evidence with its stated source scope.
+- [x] Keep branch protection, required checks, coverage thresholds and timeouts intact.
+- [ ] Independently verify the data-shape candidate and its declared `List`/`Map` callback regression fix.
+- [x] Complete the combined-traversal regression, semantic comparison and strict analysis checks: 1,819 workspace library tests, the additional nested metadata permutation, strict workspace Clippy, formatting and the duplication gate passed. Final application and CI acceptance remain separate.
+- [ ] Seal the final compiler inputs and verify application suites, entry probes and coverage with that compiler.
+- [ ] Pass every required GitHub check on the actual final pushed head and merge that head.
+- [ ] Recheck release versions, publish the next stable minor after merge, and verify the exact tag audit, required channels, `release-complete` and published assets.
 
 After a green merge, recheck published versions and release the next stable minor using the established release workflow. Require a fresh audit of the exact tag SHA, successful publication/deployment channels, `release-complete` and verified published assets. A running build or an older green head is insufficient evidence.

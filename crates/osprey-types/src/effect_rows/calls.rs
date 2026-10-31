@@ -117,13 +117,42 @@ impl Analyzer<'_> {
         summary
     }
 
-    fn source_call_values(
+    fn source_call_models(
         &self,
         source: SourceCall<'_>,
         scope: &[String],
         env: &CallableEnv,
-    ) -> super::CallArguments {
-        self.callsite_arguments(source.function, source.arguments, source.named, scope, env)
+    ) -> (Summary, super::CallArguments) {
+        let mut summary = self.expression(source.function, scope, env);
+        let mut argument = |expression: &Expr| {
+            let (row, value) = self.argument_model(expression, scope, env);
+            summary.union(row);
+            value
+        };
+        let positional = source.arguments.iter().map(&mut argument).collect();
+        let named = source
+            .named
+            .iter()
+            .map(|item| (item.name.clone(), argument(&item.value)))
+            .collect();
+        let arguments = super::CallArguments { positional, named };
+        let arguments = self.order_callsite_arguments(source.function, arguments, scope, env);
+        (summary, arguments)
+    }
+
+    fn argument_model(
+        &self,
+        expression: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> (Summary, Option<Value>) {
+        if let Some((summary, value)) = self.known_call_model(expression, scope, env) {
+            return (summary, Some(value));
+        }
+        (
+            self.expression(expression, scope, env),
+            self.value(expression, scope, env),
+        )
     }
 
     fn model_source_call(
@@ -133,11 +162,10 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<(Summary, Value)> {
-        let mut summary = self.call_children(source, scope, env);
+        let (mut summary, arguments) = self.source_call_models(source, scope, env);
         let Callable::Known(known) = self.callable(source.function, scope, env)? else {
             return None;
         };
-        let arguments = self.source_call_values(source, scope, env);
         let (called, returned) = self.model_known_call(*known, &arguments);
         summary.union(called);
         self.finish_call_model(expression, summary, returned, env)

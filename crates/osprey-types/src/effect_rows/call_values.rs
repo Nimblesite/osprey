@@ -111,6 +111,16 @@ impl Analyzer<'_> {
         env: &CallableEnv,
     ) -> CallArguments {
         let arguments = self.call_arguments(arguments, named, scope, env);
+        self.order_callsite_arguments(function, arguments, scope, env)
+    }
+
+    pub(super) fn order_callsite_arguments(
+        &self,
+        function: &Expr,
+        arguments: CallArguments,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> CallArguments {
         if source_named_callee(function, scope, env, self.index) {
             arguments
         } else {
