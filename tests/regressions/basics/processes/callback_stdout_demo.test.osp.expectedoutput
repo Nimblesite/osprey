@@ -22,6 +22,14 @@ Line 3
 ✓ Error process finished with exit code: 1
 === CALLBACK DEMO COMPLETE ===
 The [CALLBACK] lines above show C runtime calling into Osprey!
+--- Fragmented stdout and stderr callbacks ---
+[CALLBACK] Process 99 STDOUT: Line 1
+Line 2
+Line 3
+
+[CALLBACK] Process 99 STDERR: warning
+
+[CALLBACK] Process 99 EXIT: 0
 [CALLBACK] Process 4 STDOUT: asserted callback output
 
 [CALLBACK] Process 4 EXIT: 0
