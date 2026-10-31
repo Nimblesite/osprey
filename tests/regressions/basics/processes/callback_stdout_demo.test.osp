@@ -1,5 +1,5 @@
-// Pipe callbacks carry arbitrary chunks. This demo collects each stream until
-// exit and awaits each process before starting the next one.
+/// Pipe callbacks carry arbitrary chunks. This demo collects each stream until
+/// exit and awaits each process before starting the next one.
 mut stdoutText = ""
 mut stderrText = ""
 

@@ -1,4 +1,4 @@
-// ML twin: collect arbitrary pipe chunks until exit. Processes run sequentially.
+(** ML twin: collect arbitrary pipe chunks until exit. Processes run sequentially. *)
 mut stdoutText = ""
 mut stderrText = ""
 
