@@ -193,7 +193,7 @@ def main():
             "MESSAGE_TEXT": [json.dumps(payload) for _, _, payload in MESSAGES],
             "FRAME_HEX": [hexes(body) for body in frames],
             "RECEIVED_HEX": [hexes(body) for body in received],
-            "RECEIVED_NS": [NS + ns for ns, _ in parsed],
+            "RECEIVED_NS": [ns for ns, _ in parsed],
             "RECEIVED_TEXT": [json.dumps(payload, separators=(",", ":"), ensure_ascii=False) for _, payload in parsed],
             "LAUNCH_KIND": [kind for kind, _ in launches],
             "LAUNCH_VALUE": [value for _, value in launches],

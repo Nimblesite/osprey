@@ -76,7 +76,7 @@ def reading_cases():
     kinds = each("launch.kind", n, lambda name, i: Check.equal(name, launch_of(i).kind, at(Expected.LAUNCH_KIND, i)))
     values = each("launch.value", n, lambda name, i: Check.equal(name, launch_of(i).value, at(Expected.LAUNCH_VALUE, i)))
     volumes = each("read.volume", n, lambda name, i: Check.equal(name, Protocol.read(received(i).payload).volume, at(Expected.RECEIVED_VOLUME, i)))
-    sessions = [Check.equal("read.sessions", Protocol.read(received(1).payload).sessions, ["7E0C-1F2A"]), Check.equal("read.unparseable", Protocol.read("{oops").kind, "")]
+    sessions = [Check.equal("read.sessions", join(Protocol.read(received(1).payload).sessions, ","), "7E0C-1F2A"), Check.equal("read.unparseable", Protocol.read("{oops").kind, "")]
     return listConcat(listConcat(listConcat(kinds, values), volumes), sessions)
 
 
@@ -120,8 +120,8 @@ def device_at(devices, i):
 def browse_detail_cases(devices):
     hosts = toList(map(range(0, len(Expected.BROWSE_HOST)), lambda i: Check.equal(f"browse.host.{i}", device_at(devices, i).host, at(Expected.BROWSE_HOST, i))))
     ports = toList(map(range(0, len(Expected.BROWSE_PORT)), lambda i: Check.equal(f"browse.port.{i}", device_at(devices, i).port, at_int(Expected.BROWSE_PORT, i))))
-    found = Check.equal("browse.named", Discovery.named(devices, "Kitchen TV"), Success(value=device_at(devices, 1)))
-    missing = Check.equal("browse.missing", Discovery.named(devices, "Attic"), Error(message="no Cast device named Attic"))
+    found = Check.equal("browse.named", Device.outcome(Discovery.named(devices, "Kitchen TV"), lambda d: f"{d.host}:{d.port}"), "ok kitchen-cast.local:8010")
+    missing = Check.equal("browse.missing", Device.outcome(Discovery.named(devices, "Attic"), lambda d: d.host), "error no Cast device named Attic")
     live = Check.truth("discover.runs", len(Discovery.discover(1)) >= 0, "discover failed")
     return listConcat(listConcat(hosts, ports), [found, missing, live, Check.equal("browse.empty", len(Discovery.browse("")), 0)])
 
@@ -139,7 +139,7 @@ def hex_cases():
         Check.equal("hex.to_text", Hex.to_text(Hex.of_text(text)), text),
         Check.equal("hex.byte_at", Hex.byte_at("00ff7f", 1), 255),
         Check.equal("hex.byte_hex", Hex.byte_hex(10), "0a"),
-        Check.equal("hex.code_points", Hex.code_points(text), [65, 233, 9749, 128512, 1]),
+        Check.ints_equal("hex.code_points", Hex.code_points(text), [65, 233, 9749, 128512, 1]),
         Check.equal("quote.escapes", Protocol.quote("\"\\\n\r\t\b\f\x01é😀"), "\"\\\"\\\\\\n\\r\\t\\b\\f\\u0001\\u00e9\\ud83d\\ude00\""),
         Check.equal("quote.app", Protocol.APP + Protocol.NS, "CC1AD845urn:x-cast:com.google.cast."),
     ]

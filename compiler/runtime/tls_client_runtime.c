@@ -302,9 +302,9 @@ char *osprey_tls_recv_hex(int64_t handle, int64_t count, int64_t timeout_ms) {
   }
   socket_deadline(session->fd, timeout_ms > 0 ? timeout_ms : 10000);
   session->status = fill_pending(session, count);
-  char *hex = bytes_hex((const unsigned char *)"", 0);
-  if (session->status == TLS_OK) {
-    hex = bytes_hex(session->pending, (size_t)count);
+  bool whole = session->status == TLS_OK;
+  char *hex = bytes_hex(session->pending, whole ? (size_t)count : 0);
+  if (whole) {
     session->pending_len = 0;
   }
   pthread_mutex_unlock(&tls_mutex);

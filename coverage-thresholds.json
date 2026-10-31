@@ -268,6 +268,9 @@
         "language": "osprey",
         "threshold": 97.5
       },
+      "chromecast": {
+        "language": "osprey"
+      },
       "native": {
         "threshold": 97.5,
         "language": "osprey"

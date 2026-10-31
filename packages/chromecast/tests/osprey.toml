@@ -1,0 +1,6 @@
+[project]
+name = "chromecast-tests"
+source_roots = [".", "../src", "../../testing/src"]
+python_sources = ["../src/hex.py", "../src/protocol.py", "../src/discovery.py", "../src/session.py", "../src/cast.py", "../../testing/src/check.py", "expected.py", "device.py", "main.py"]
+default_namespace = "chromecast_tests"
+entry = "main.py"
