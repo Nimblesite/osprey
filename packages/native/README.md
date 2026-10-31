@@ -43,6 +43,8 @@ flowchart LR
 | `src/reactive.ospml` | The `Slices` effect for host-held slices, `Keyed::region` and `Signals::written` ([UI-SIGNALS], [UI-REGIONS]) |
 | `src/theme.ospml` | `Theme`, `Token`, `Contrast` (WCAG 2 luminance and ratio) and `Themes` ([UI-THEME]) |
 | `src/runtime.ospml` | `Runtime::start` and `Runtime::dispatch`: the session, the envelope and the serialized update ([UI-STORE], [UI-PROTOCOL]); `Runtime::begin` and `Runtime::proceed` for a resident session ([UI-RESIDENT]) |
+| `src/machine.ospml` | `Machines`: Rive-style machine documents (inputs, parallel layers, transitions, requests) loaded, validated and settled ([UI-MACHINE](../../docs/specs/platforms/UiMachines.md)) |
+| `src/templates.ospml` | `Templates`: a machine's node template and skins rendered to ordinary nodes ([UI-MACHINE-VIEW]) |
 | `src/stream.ospml` | The `SceneStream` effect and `Streams`: a resident session's rects, discs and sprites sent to the host outside the envelope ([UI-SCENE-STREAM]) |
 | `tests/` | The package's suite: a two-slice probe application driven through the real `start`/`dispatch` path, plus encoding, ordinal, splitter, request, document, theme and list cases |
 
