@@ -111,7 +111,7 @@ jobs:
       matrix:
         include:
           - platform: darwin-arm64
-            os: macos-14
+            os: macos-15
           # darwin-x64 (Intel mac) is dropped: GitHub is deprecating the free
           # `macos-13` Intel runner and it no longer allocates (jobs queue
           # indefinitely). Restore this leg once an Intel runner is available
@@ -511,7 +511,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14,      target: darwin-arm64, artifact: darwin-arm64 }
+          - { os: macos-15,      target: darwin-arm64, artifact: darwin-arm64 }
           # darwin-x64 dropped — see the build matrix note (no Intel runner).
           - { os: ubuntu-latest, target: linux-x64,    artifact: linux-x64 }
           - { os: windows-latest, target: win32-x64,   artifact: win32-x64 }
