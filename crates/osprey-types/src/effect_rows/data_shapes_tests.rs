@@ -76,7 +76,10 @@ fn data_types_are_the_named_types_no_value_of_which_can_be_called() {
         ("Pair".to_owned(), names(&["a", "b"])),
         ("Term".to_owned(), BTreeSet::new()),
     ]);
-    assert_eq!(data.into_iter().collect::<BTreeMap<_, _>>(), expected);
+    assert_eq!(
+        data.fields.into_iter().collect::<BTreeMap<_, _>>(),
+        expected
+    );
 }
 
 #[test]

@@ -13,45 +13,77 @@ use super::{BTreeSet, HashMap, Value};
 use crate::check::CtorInfo;
 use crate::ty::{names, Type};
 
+/// Implements [EFFECTS-PROVENANCE]: declared names cannot regain builtin identity.
+#[derive(Clone, Default)]
+pub(crate) struct DataTypes {
+    fields: HashMap<String, BTreeSet<String>>,
+    declared: BTreeSet<String>,
+}
+
 /// Every declared type no value of which can hold a function, mapped to its
 /// field names (none for a union, whose values have no fields of their own).
 /// A generic type is never included: its parameter may be a function. A
 /// recursive type is included unless some field reaches a function, so this
 /// is the greatest set closed under "every field is function-free".
-pub(crate) fn data_types(ctors: &HashMap<String, CtorInfo>) -> HashMap<String, BTreeSet<String>> {
+pub(crate) fn data_types(ctors: &HashMap<String, CtorInfo>) -> DataTypes {
     let owners = owners(ctors);
-    let mut data: BTreeSet<&str> = owners
+    let declared = owners.keys().cloned().collect();
+    let data = closed_owners(&owners, &declared);
+    let fields = owners
+        .into_iter()
+        .filter(|(name, _)| data.contains(name))
+        .map(|(name, owner)| (name, owner.field_names))
+        .collect();
+    DataTypes { fields, declared }
+}
+
+fn candidates(owners: &HashMap<String, Owner>) -> BTreeSet<&str> {
+    owners
         .iter()
         .filter(|(_, owner)| !owner.generic)
         .map(|(name, _)| name.as_str())
-        .collect();
+        .collect()
+}
+
+fn closed_owners(owners: &HashMap<String, Owner>, declared: &BTreeSet<String>) -> BTreeSet<String> {
+    let mut data = candidates(owners);
     loop {
-        let kept: BTreeSet<&str> = data
-            .iter()
-            .copied()
-            .filter(|name| owners.get(*name).is_some_and(|owner| owner.closed(&data)))
-            .collect();
+        let kept = closed_subset(owners, &data, declared);
         if kept.len() == data.len() {
             break;
         }
         data = kept;
     }
-    let data: BTreeSet<String> = data.into_iter().map(str::to_owned).collect();
-    owners
-        .into_iter()
-        .filter(|(name, _)| data.contains(name))
-        .map(|(name, owner)| (name, owner.field_names))
+    data.into_iter().map(str::to_owned).collect()
+}
+
+fn closed_subset<'a>(
+    owners: &HashMap<String, Owner>,
+    data: &BTreeSet<&'a str>,
+    declared: &BTreeSet<String>,
+) -> BTreeSet<&'a str> {
+    data.iter()
+        .copied()
+        .filter(|name| {
+            owners
+                .get(*name)
+                .is_some_and(|owner| owner.closed(data, declared))
+        })
         .collect()
 }
 
 /// The shape of a value of type `ty` when that type can never hold a
 /// function, given the declared [`data_types`]; `None` otherwise.
-pub(super) fn data_shape(ty: &Type, data: &HashMap<String, BTreeSet<String>>) -> Option<Value> {
-    let known = |name: &str| data.contains_key(name);
+pub(super) fn data_shape(ty: &Type, data: &DataTypes) -> Option<Value> {
+    let known = |name: &str| {
+        data.declared
+            .contains(name)
+            .then(|| data.fields.contains_key(name))
+    };
     let field_names = match ty {
         _ if !function_free(ty, &known) => return None,
         Type::Record { fields, .. } => fields.keys().cloned().collect(),
-        Type::Con { name, .. } => data.get(name).cloned().unwrap_or_default(),
+        Type::Con { name, .. } => data.fields.get(name).cloned().unwrap_or_default(),
         _ => BTreeSet::new(),
     };
     Some(Value {
@@ -70,8 +102,8 @@ struct Owner {
 }
 
 impl Owner {
-    fn closed(&self, data: &BTreeSet<&str>) -> bool {
-        let known = |name: &str| data.contains(name);
+    fn closed(&self, data: &BTreeSet<&str>, declared: &BTreeSet<String>) -> bool {
+        let known = |name: &str| declared.contains(name).then(|| data.contains(name));
         self.fields.iter().all(|ty| function_free(ty, &known))
     }
 }
@@ -96,28 +128,34 @@ fn owners(ctors: &HashMap<String, CtorInfo>) -> HashMap<String, Owner> {
 
 /// Whether no value of `ty` can hold a function, a fiber, a channel, an
 /// iterator or an `any`, reading a named type through `known`.
-fn function_free(ty: &Type, known: &impl Fn(&str) -> bool) -> bool {
+fn function_free(ty: &Type, known: &impl Fn(&str) -> Option<bool>) -> bool {
     match ty {
-        Type::Con { name, args } => {
-            let named = match name.as_str() {
-                names::INT
-                | names::FLOAT
-                | names::BOOL
-                | names::STRING
-                | names::UNIT
-                | names::LIST
-                | names::MAP
-                | names::RESULT => true,
-                other => args.is_empty() && known(other),
-            };
-            named && args.iter().all(|arg| function_free(arg, known))
-        }
+        Type::Con { name, args } => constructor_free(name, args, known),
         Type::Record { fields, .. } => fields.values().all(|field| function_free(field, known)),
         Type::Union { variants, .. } => {
             variants.iter().all(|variant| function_free(variant, known))
         }
         Type::Fun { .. } | Type::Var(_) => false,
     }
+}
+
+fn constructor_free(name: &str, args: &[Type], known: &impl Fn(&str) -> Option<bool>) -> bool {
+    known(name).map_or_else(|| builtin_data(name), |closed| args.is_empty() && closed)
+        && args.iter().all(|arg| function_free(arg, known))
+}
+
+fn builtin_data(name: &str) -> bool {
+    matches!(
+        name,
+        names::INT
+            | names::FLOAT
+            | names::BOOL
+            | names::STRING
+            | names::UNIT
+            | names::LIST
+            | names::MAP
+            | names::RESULT
+    )
 }
 
 #[cfg(test)]

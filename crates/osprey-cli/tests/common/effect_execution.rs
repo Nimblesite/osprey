@@ -2,7 +2,7 @@
 
 use std::process::Command;
 
-fn execute(
+pub(crate) fn execute(
     name: &str,
     extension: &str,
     source: &str,
