@@ -9,6 +9,7 @@ Reviewed on 2026-10-31. This records verified corrections on `feat/type-discipli
 - `fa2b8103`: avoid copying a named callee's unused return model when computing only immediate effects. Preserve generic specialization, parameter names, dependency reads and diagnostic metadata. Full-state scheduler comparisons retain the established Jacobi transfer semantics, including recursive callback records.
 - `d12bc825`: drain both POSIX process pipes before reporting child exit. The regression ensures the child has exited before draining, then checks all 3,072 bytes from each stream, one exit event with code 7, and no events after exit. The extracted header receives its own coverage gate; the existing gate remains enforced.
 - `ea3905ca`: correct the lexical order of the installed-VSIX test's expected module inventory. The production bundle already contained the right modules. All 12 literal names, the sorted actual inventory and every per-file hash assertion remain enforced.
+- `4170dbd4`: preserve callback provenance when a declared `List` or `Map` shadows the builtin type name, including generic declarations. The candidate's earlier classifier rejected valid programs; its corrected classifier distinguishes undeclared builtin names from declared owners. The permanent GC/ARC matrix executes 20 supported callback cases and checks eight exact `Alarm.ring` refusals plus two refusals of unsupported recursive dynamic calls. Existing ARC zero-live-object assertions remain enforced.
 - Share immediate-effect and return-value analysis for ordinary function bodies and nested known-call arguments. The new traversal regression first failed with leaf visits `[2, 3, 5, 9]` at nesting depths `[1, 2, 4, 8]`, then passed with one visit at every depth. An independent two-walk oracle compares complete rows, returned values, dependency reads and diagnostic metadata, including populated signal, handler and field-violation maps. These comparisons preserve the original named-argument ordering and callee eligibility guards.
 
 ## Verification
@@ -39,7 +40,7 @@ The final Workbench WASM has SHA-256 `45f67bb9a8521b90a11a8511f24a3596e5dce427c3
 
 The baseline subsequently completed all 118 Workbench cases and the mandatory entry probe under both GC and ARC. Each backend measured 2,078/2,280 app lines (91.1%) and passed all 20 project gates. The collection's source-drift guard correctly failed because compiler changes landed during collection; these measurements establish baseline behavior only.
 
-CI run `41154533373` exhausted the unchanged 40-minute Rust and package coverage budgets and the 45-minute proof budget. The missing Rust artifact then failed aggregate coverage. These are unresolved performance failures, not evidence that numeric thresholds should change. Run `41160409990` tests pushed head `dff4fdd7`; it does not contain the later performance candidates. Windows failures remain with their assigned owner.
+CI run `41154533373` exhausted the unchanged 40-minute Rust and package coverage budgets and the 45-minute proof budget. The missing Rust artifact then failed aggregate coverage. These are performance failures to resolve in code, not evidence that numeric thresholds should change. The later push superseded run `41160409990` on `dff4fdd7`; that run was cancelled. The reviewed shadow correction is now pushed as `4170dbd4`, with fresh required CI still pending. Windows failures remain with their assigned owner.
 
 ## Mandatory completion checklist
 
@@ -47,7 +48,7 @@ CI run `41154533373` exhausted the unchanged 40-minute Rust and package coverage
 - [x] Preserve the installed module inventory and hashes while correcting its expected lexical order.
 - [x] Verify baseline native, WASM, browser, installed VSIX and GC/ARC project coverage evidence with its stated source scope.
 - [x] Keep branch protection, required checks, coverage thresholds and timeouts intact.
-- [ ] Independently verify the data-shape candidate and its declared `List`/`Map` callback regression fix.
+- [x] Independently verify the declared `List`/`Map` callback correction, complete its permanent GC/ARC acceptance and refusal matrix, and push the reviewed correction. This does not replace final application coverage or CI acceptance of the performance candidate.
 - [x] Complete the combined-traversal regression, semantic comparison and strict analysis checks: 1,819 workspace library tests, the additional nested metadata permutation, strict workspace Clippy, formatting and the duplication gate passed. Final application and CI acceptance remain separate.
 - [ ] Seal the final compiler inputs and verify application suites, entry probes and coverage with that compiler.
 - [ ] Pass every required GitHub check on the actual final pushed head and merge that head.
