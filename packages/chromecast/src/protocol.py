@@ -18,7 +18,7 @@ from chromecast import Hex
 __all__ = [
     "APP", "NS", "Message", "Reading", "Step", "MediaStep", "varint", "read_varint", "frame",
     "frame_length", "parse", "quote", "connect", "ping", "pong", "launch", "get_status", "stop",
-    "load", "read", "launch_step", "media_step",
+    "load", "media", "set_volume", "read", "launch_step", "media_step",
 ]
 
 APP = "CC1AD845"
@@ -44,13 +44,21 @@ class Reading:
     """What the sender needs from a received payload: the message type, the
     Default Media Receiver's transport id (when its application is listed),
     every listed session id, the volume level as text, and each media
-    status's player state with its idle reason."""
+    status's player state with its idle reason. From the first media status
+    it also keeps the media session id, the position, the duration, the
+    playback rate and the supported-commands bitmask, each as text ("" when
+    absent)."""
     kind: str
     transport_id: str
     sessions: list[str]
     volume: str
     states: list[str]
     idle_reasons: list[str]
+    media_session: str
+    position: str
+    duration: str
+    rate: str
+    commands: str
 
 
 class Step:
@@ -221,6 +229,19 @@ def load(url, title, request_id):
     return "{\"type\": \"LOAD\", \"requestId\": " + toString(request_id) + ", \"autoplay\": true, \"currentTime\": 0, \"media\": " + media + "}"
 
 
+def media(kind, media_session, extra, request_id):
+    """A media-namespace command for the loaded media: `PAUSE`, `PLAY`,
+    `STOP`, `SEEK` (extra `"currentTime": s`) or `SET_PLAYBACK_RATE` (extra
+    `"playbackRate": r`). `extra` is "" or one more JSON member."""
+    more = "" if extra == "" else ", " + extra
+    return "{\"type\": " + quote(kind) + ", \"mediaSessionId\": " + media_session + more + ", \"requestId\": " + toString(request_id) + "}"
+
+
+def set_volume(level, request_id):
+    """Set the receiver's volume level, from 0 to 1."""
+    return "{\"type\": \"SET_VOLUME\", \"volume\": {\"level\": " + toString(level) + "}, \"requestId\": " + toString(request_id) + "}"
+
+
 def text_at(doc, path):
     """A scalar at `path` as text, or "" when absent."""
     return unwrap_or(jsonGet(doc, path), "")
@@ -242,11 +263,16 @@ def reading_of(doc) -> Reading:
         volume=text_at(doc, "status.volume.level"),
         states=toList(map(range(0, statuses), lambda i: text_at(doc, f"status[{i}].playerState"))),
         idle_reasons=toList(map(range(0, statuses), lambda i: text_at(doc, f"status[{i}].idleReason"))),
+        media_session=text_at(doc, "status[0].mediaSessionId"),
+        position=text_at(doc, "status[0].currentTime"),
+        duration=text_at(doc, "status[0].media.duration"),
+        rate=text_at(doc, "status[0].playbackRate"),
+        commands=text_at(doc, "status[0].supportedMediaCommands"),
     )
 
 
 def empty_reading() -> Reading:
-    return Reading(kind="", transport_id="", sessions=[], volume="", states=[], idle_reasons=[])
+    return Reading(kind="", transport_id="", sessions=[], volume="", states=[], idle_reasons=[], media_session="", position="", duration="", rate="", commands="")
 
 
 def read(payload) -> Reading:

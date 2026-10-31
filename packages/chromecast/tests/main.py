@@ -7,7 +7,7 @@ device cases in `chromecast_tests.Device` then drive the whole sender over
 real TLS against a scripted device. Everything runs through
 `testing.Check.strictly`, so an integer fault stops the suite.
 """
-from chromecast import Cast, Discovery, Hex, Protocol
+from chromecast import Discovery, Hex, Media, Protocol, Wire
 from chromecast_expected import Expected
 from chromecast_tests import Device
 from testing import Check
@@ -39,7 +39,9 @@ def varint_cases():
 def built():
     """The messages the sender builds, in the oracle's MESSAGES order."""
     first = [Protocol.connect(), Protocol.ping(), Protocol.pong(), Protocol.launch(1), Protocol.get_status(1), Protocol.stop("7E0C-1F2A", 2), Protocol.connect()]
-    return listConcat(first, [Protocol.load("http://192.168.1.20:5123/media", "Blue Monday", 2), Protocol.load("http://10.0.0.5:8000/media", "Say \"hi\" \\ bye", 2)])
+    loads = [Protocol.load("http://192.168.1.20:5123/media", "Blue Monday", 2), Protocol.load("http://10.0.0.5:8000/media", "Say \"hi\" \\ bye", 2)]
+    controls = [Protocol.media("PAUSE", "1", "", 3), Protocol.media("PLAY", "1", "", 4), Protocol.media("STOP", "1", "", 5), Protocol.media("SEEK", "1", "\"currentTime\": 30.5", 6), Protocol.media("SET_PLAYBACK_RATE", "1", "\"playbackRate\": 1.5", 7), Protocol.set_volume(0.25, 8)]
+    return listConcat(listConcat(first, loads), controls)
 
 
 def message_cases():
@@ -76,10 +78,16 @@ def reading_cases():
     kinds = each("launch.kind", n, lambda name, i: Check.equal(name, launch_of(i).kind, at(Expected.LAUNCH_KIND, i)))
     values = each("launch.value", n, lambda name, i: Check.equal(name, launch_of(i).value, at(Expected.LAUNCH_VALUE, i)))
     volumes = each("read.volume", n, lambda name, i: Check.equal(name, Protocol.read(received(i).payload).volume, at(Expected.RECEIVED_VOLUME, i)))
-    ready = Protocol.Reading(kind="RECEIVER_STATUS", transport_id="web-9", sessions=[], volume="", states=[], idle_reasons=[])
+    media = each("read.media", n, lambda name, i: Check.equal(name, media_of(Protocol.read(received(i).payload)), at(Expected.RECEIVED_MEDIA, i)))
+    ready = Protocol.Reading(kind="RECEIVER_STATUS", transport_id="web-9", sessions=[], volume="", states=[], idle_reasons=[], media_session="", position="", duration="", rate="", commands="")
     records = [Check.truth("parse.record", structuralEquals(received(0), Protocol.Message(namespace="urn:x-cast:com.google.cast.tp.heartbeat", payload="{\"type\":\"PING\"}")), "parsed record differs"), Check.truth("launch.record", structuralEquals(Protocol.launch_step(ready, ""), Protocol.Step(kind="ready", value="web-9")), "launch step differs")]
     sessions = records + [Check.equal("read.sessions", join(Protocol.read(received(1).payload).sessions, ","), "7E0C-1F2A"), Check.equal("read.unparseable", Protocol.read("{oops").kind, "")]
-    return listConcat(listConcat(listConcat(kinds, values), volumes), sessions)
+    return listConcat(listConcat(listConcat(listConcat(kinds, values), volumes), media), sessions)
+
+
+def media_of(reading):
+    """A reading's media facts in RECEIVED_MEDIA's order."""
+    return join([reading.media_session, reading.position, reading.rate, reading.commands, reading.duration], "|")
 
 
 def run_start(r):
@@ -130,7 +138,7 @@ def browse_detail_cases(devices):
 
 def title_cases():
     """The media title is the base name without its extension."""
-    return each("title", len(Expected.TITLE), lambda name, i: Check.equal(name, Cast.title(at(Expected.TITLE_PATH, i)), at(Expected.TITLE, i)))
+    return each("title", len(Expected.TITLE), lambda name, i: Check.equal(name, Media.title(at(Expected.TITLE_PATH, i)), at(Expected.TITLE, i)))
 
 
 def hex_cases():
@@ -155,7 +163,7 @@ def all_cases():
 
 
 def main():
-    match Check.strictly(lambda: Check.report(all_cases())):
+    match Check.strictly(lambda: Check.report(Wire.Native(all_cases))):
         case Success(value=value):
             return value
         case Error(message=message):

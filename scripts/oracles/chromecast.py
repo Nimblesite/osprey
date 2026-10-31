@@ -125,6 +125,13 @@ MESSAGES = [
     ("web-7", "media", {"type": "LOAD", "requestId": 2, "autoplay": True, "currentTime": 0, "media": {
         "contentId": "http://10.0.0.5:8000/media", "contentType": "audio/mpeg", "streamType": "BUFFERED",
         "metadata": {"metadataType": 3, "title": "Say \"hi\" \\ bye"}}}),
+    # Media controls the reference CLI lacks; the payloads follow the CAST v2 media namespace.
+    ("web-7", "media", {"type": "PAUSE", "mediaSessionId": 1, "requestId": 3}),
+    ("web-7", "media", {"type": "PLAY", "mediaSessionId": 1, "requestId": 4}),
+    ("web-7", "media", {"type": "STOP", "mediaSessionId": 1, "requestId": 5}),
+    ("web-7", "media", {"type": "SEEK", "mediaSessionId": 1, "currentTime": 30.5, "requestId": 6}),
+    ("web-7", "media", {"type": "SET_PLAYBACK_RATE", "mediaSessionId": 1, "playbackRate": 1.5, "requestId": 7}),
+    ("receiver-0", "receiver", {"type": "SET_VOLUME", "volume": {"level": 0.25}, "requestId": 8}),
 ]
 
 # --- Frames a device sends back ---------------------------------------------------
@@ -148,6 +155,8 @@ RECEIVED = [
     ("media", '{"requestId":0,"status":[],"type":"MEDIA_STATUS"}'),
     ("media", '{"requestId":0,"status":[{"mediaSessionId":1,"playerState":"PAUSED","media":{"metadata":{"title":"Lounge – Café ☕"}}}],'
               '"type":"MEDIA_STATUS"}'),
+    ("media", '{"requestId":4,"status":[{"mediaSessionId":3,"playerState":"PLAYING","currentTime":12.25,"playbackRate":1.5,'
+              '"supportedMediaCommands":15,"media":{"duration":248.0}}],"type":"MEDIA_STATUS"}'),
 ]
 
 TITLE_PATHS = ["/Users/me/Music/Blue Monday.mp3", "song.flac", "/tmp/archive.tar.gz", "/tmp/noext", "/a/b/.hidden"]
@@ -178,6 +187,10 @@ def main():
     launches = [launch_step(json.loads(text), text) for _, text in RECEIVED]
     volumes = [str(json.loads(text).get("status", {}).get("volume", {}).get("level", ""))
                if isinstance(json.loads(text).get("status"), dict) else "" for _, text in RECEIVED]
+    statuses = [json.loads(text).get("status") for _, text in RECEIVED]
+    firsts = [st[0] if isinstance(st, list) and st else {} for st in statuses]
+    media = [[str(f.get(key, "")) for key in ("mediaSessionId", "currentTime", "playbackRate", "supportedMediaCommands")]
+             + [str(f.get("media", {}).get("duration", ""))] for f in firsts]
     titles = [os.path.splitext(os.path.basename(path))[0] for path in TITLE_PATHS]
     runs = [media_steps([json.loads(RECEIVED[i][1]) for i in run]) for run in MEDIA_RUNS]
     devices = browse(BROWSE_TEXT)
@@ -202,6 +215,7 @@ def main():
             "MEDIA_RUN_LINES": ["\n".join(lines) for lines, _ in runs],
             "MEDIA_RUN_END": [end for _, end in runs],
             "RECEIVED_VOLUME": volumes,
+            "RECEIVED_MEDIA": ["|".join(fields) for fields in media],
             "TITLE_PATH": TITLE_PATHS,
             "TITLE": titles,
             "BROWSE_TEXT": BROWSE_TEXT,
@@ -226,6 +240,7 @@ def main():
             "MEDIA_RUN_LINES": "The STATE lines the reference media loop prints for each run, newline-joined.",
             "MEDIA_RUN_END": "How the reference media loop ends each run: DONE <reason>, ERROR or OPEN.",
             "RECEIVED_VOLUME": "`str(status.volume.level)` of each received payload, or \"\" when it has none.",
+            "RECEIVED_MEDIA": "`str` of the first media status's mediaSessionId, currentTime, playbackRate, supportedMediaCommands and media.duration, |-joined (\"\" when absent).",
             "TITLE_PATH": "Media paths whose titles are checked.",
             "TITLE": "The reference title of each path: the base name without its extension.",
             "BROWSE_TEXT": "A `dns-sd -Z _googlecast._tcp local` transcript with two devices.",

@@ -1,7 +1,7 @@
 [project]
 name = "chromecast"
 source_roots = ["src"]
-python_sources = ["src/hex.py", "src/protocol.py", "src/discovery.py", "src/session.py", "src/cast.py"]
+python_sources = ["src/hex.py", "src/protocol.py", "src/wire.py", "src/discovery.py", "src/session.py", "src/media.py", "src/player.py", "src/cast.py"]
 default_namespace = "chromecast"
 
 [package]

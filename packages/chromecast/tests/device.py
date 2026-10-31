@@ -10,7 +10,7 @@ while the session under test writes its CONNECT, LAUNCH, LOAD, PING and
 PONG messages back. Each scenario gets its own random port and scratch
 directory, so the GC and ARC runs of this suite can overlap.
 """
-from chromecast import Cast, Discovery, Hex, Protocol, Session
+from chromecast import Cast, Discovery, Media, Player, Protocol, Session
 from chromecast_expected import Expected
 from testing import Check
 
@@ -97,28 +97,62 @@ def cast_case(l, k, frames, want):
     return Check.equal(f"device.cast.{k}", outcome(got, same), want)
 
 
-def drained(casting, lines):
-    """Every STATE line until playback ends, and the ending."""
-    match Cast.next(casting):
-        case Success(value=step):
-            seen = listConcat(lines, step.lines)
-            return drained(update(casting, last=step.last), seen) if step.end == "" else Success(value=listAppend(seen, step.end))
+def played(player, now):
+    """Polls a player until playback ends, collecting every STATE line."""
+    match Player.poll(player, now, 200):
+        case Success(value=next):
+            return next if next.phase == "ended" else played(update(next, lines=listConcat(player.lines, next.lines)), now + 1000)
         case Error(message=message):
-            return Error(message=message)
+            return update(player, ending="lost " + message)
 
 
-def steps_case(l, k):
-    """start, next and finish by hand, as a UI drives them."""
-    pid = serve(l, k, [1, 6, 7, 7, 8], 0, 1)
-    match Cast.start(device(l, k), f"{l.dir}/song.mp3"):
-        case Success(value=casting):
-            got = drained(casting, [])
-            _finished = Cast.finish(casting)
+def controls(player):
+    """Every media command, sent once the device has named its media session."""
+    sent = [Player.pause(player), Player.play(player), Player.seek(player, 30.5), Player.rate(player, 1.5), Player.volume(player, 0.25), Player.stop(player)]
+    return join(mapList(sent, lambda r: outcome(r, lambda p: toString(p.request))), ",")
+
+
+def player_case(l, k):
+    """A player driven poll by poll, as a UI does, with every control."""
+    pid = serve(l, k, [1, 7, 15, 8], 0, 1)
+    match Player.begin(device(l, k), f"{l.dir}/song.mp3", 0):
+        case Success(value=player):
+            last = played(player, 6000)
+            sent = controls(last)
+            _ended = Player.end(last)
             _done = done(pid)
-            return [Check.equal("device.steps.transport", casting.transport, "web-7"), Check.equal("device.steps", outcome(got, lambda xs: join(xs, "|")), "ok STATE BUFFERING|STATE PLAYING|STATE IDLE|DONE FINISHED")]
+            return [
+                Check.equal("player.launching", player.phase, "launching"),
+                Check.equal("player.title", player.title, "song"),
+                Check.equal("player.ending", last.ending, "DONE FINISHED"),
+                Check.equal("player.transport", last.transport, "web-7"),
+                Check.equal("player.media", f"{last.media_session} {last.position} {last.duration} {last.rate} {last.commands} {last.volume}", "1 12.25 248.0 1.5 15 0.35"),
+                Check.equal("player.player_state", last.player_state, "IDLE"),
+                Check.equal("player.beat", last.beat_at >= 6000, True),
+                Check.equal("player.controls", sent, "ok 4,ok 4,ok 4,ok 4,ok 4,ok 4"),
+            ]
         case Error(message=message):
             _done = done(pid)
-            return [Check.failed("device.steps", message)]
+            return [Check.failed("player", message)]
+
+
+def stale_player(handle):
+    """A player whose session is gone."""
+    return Player.Player(session=Session.Session(handle=handle), port=-5, url="", title="", phase="playing", ending="", transport="web-0", media_session="", player_state="PLAYING", lines=[], position=10.0, duration=12.0, rate=2.0, volume=1.0, commands=0, heard_at=0, beat_at=0, request=3)
+
+
+def elapsed_cases():
+    """The interpolated position, held while paused and at the duration."""
+    p = stale_player(999)
+    return [
+        Check.equal("elapsed.playing", Player.elapsed(p, 500), 11.0),
+        Check.equal("elapsed.clamped", Player.elapsed(p, 5000), 12.0),
+        Check.equal("elapsed.paused", Player.elapsed(update(p, player_state="PAUSED"), 5000), 10.0),
+        Check.equal("elapsed.unknown", Player.elapsed(update(p, duration=0.0), 5000), 20.0),
+        Check.equal("player.unloaded", outcome(Player.pause(p), lambda q: q.player_state), "error nothing is playing yet"),
+        Check.equal("player.beat_ms", Player.BEAT_MS, 5000),
+        Check.equal("player.idle", f"{Player.idle().phase} {Player.idle().session.handle} {Player.end(Player.idle())}", "ended 0 -1"),
+    ]
 
 
 def receiver_cases(l):
@@ -160,12 +194,12 @@ def closed_case(l):
 
 def serve_cases(l):
     """media_url serves the file whole over HTTP; unserve stops it."""
-    match Cast.media_url(f"{l.dir}/song.mp3", "127.0.0.1"):
+    match Media.media_url(f"{l.dir}/song.mp3", "127.0.0.1"):
         case Success(value=served):
             client = httpCreateClient(f"http://127.0.0.1:{served.port}", 5000)
             body = unwrap_or(body_of(httpGetResponse(client, "/media", "")), "")
             _closed = httpCloseClient(client)
-            return [Check.truth("serve.record", structuralEquals(served, Cast.Served(url=served.url, port=served.port)), "served record differs"), Check.equal("serve.url", served.url, f"http://127.0.0.1:{served.port}/media"), Check.equal("serve.body", body, "ID3 scripted audio"), Check.equal("serve.unserve", Cast.unserve(served.port), 0), Check.equal("serve.unserve.again", Cast.unserve(served.port), -1)]
+            return [Check.truth("serve.record", structuralEquals(served, Media.Served(url=served.url, port=served.port)), "served record differs"), Check.equal("serve.url", served.url, f"http://127.0.0.1:{served.port}/media"), Check.equal("serve.body", body, "ID3 scripted audio"), Check.equal("serve.unserve", Media.unserve(served.port), 0), Check.equal("serve.unserve.again", Media.unserve(served.port), -1)]
         case Error(message=message):
             return [Check.failed("serve.url", message)]
 
@@ -183,11 +217,13 @@ def body_of(response):
 
 def stale_cases():
     """A cast whose session is gone fails every call instead of hanging."""
-    stale = Cast.Casting(session=Session.Session(handle=999), transport="web-0", port=-5, last="")
+    stale = update(stale_player(999), media_session="1")
     return [
-        Check.equal("stale.next", outcome(Cast.next(stale), lambda step: step.end), "error read failed"),
+        Check.equal("stale.poll", outcome(Player.poll(stale, 0, 1), lambda p: p.phase), "error read failed"),
+        Check.equal("stale.pause", outcome(Player.pause(stale), lambda p: p.phase), "error send failed (-1)"),
+        Check.equal("stale.volume", outcome(Player.volume(stale, 0.5), lambda p: p.phase), "error send failed (-1)"),
         Check.equal("stale.write", outcome(Session.write(stale.session, "receiver-0", "receiver", Protocol.ping()), lambda _u: "sent"), "error send failed (-1)"),
-        Check.equal("stale.finish", Cast.finish(stale), -1),
+        Check.equal("stale.end", Player.end(stale), -1),
         Check.equal("stale.quiet_ms", Session.QUIET_MS, 10000),
     ]
 
@@ -200,9 +236,9 @@ def failure_cases(l):
         Check.equal("fail.resolve", outcome(Session.open(nowhere.host, nowhere.port), lambda _s: "session"), "error no-such-host.invalid:8009: host does not resolve"),
         Check.equal("fail.refused", outcome(Cast.status(refused), same), f"error 127.0.0.1:{l.port + 9}: connection refused or timed out"),
         Check.equal("fail.stop_all", outcome(Cast.stop_all(refused), lambda xs: join(xs, ",")), f"error 127.0.0.1:{l.port + 9}: connection refused or timed out"),
-        Check.equal("fail.start", outcome(Cast.start(refused, f"{l.dir}/song.mp3"), lambda c: c.transport), f"error 127.0.0.1:{l.port + 9}: connection refused or timed out"),
-        Check.equal("fail.no_route", outcome(Cast.media_url(f"{l.dir}/song.mp3", "no-such-host.invalid"), lambda m: m.url), "error no-such-host.invalid: no route to the device"),
-        Check.equal("fail.no_file", outcome(Cast.media_url(f"{l.dir}/missing.mp3", "127.0.0.1"), lambda m: m.url), f"error {l.dir}/missing.mp3: cannot serve the file (-2)"),
+        Check.equal("fail.start", outcome(Player.begin(refused, f"{l.dir}/song.mp3", 0), lambda p: p.transport), f"error 127.0.0.1:{l.port + 9}: connection refused or timed out"),
+        Check.equal("fail.no_route", outcome(Media.media_url(f"{l.dir}/song.mp3", "no-such-host.invalid"), lambda m: m.url), "error no-such-host.invalid: no route to the device"),
+        Check.equal("fail.no_file", outcome(Media.media_url(f"{l.dir}/missing.mp3", "127.0.0.1"), lambda m: m.url), f"error {l.dir}/missing.mp3: cannot serve the file (-2)"),
     ]
 
 
@@ -216,7 +252,7 @@ def cases():
         cast_case(l, 1, [4], "error ERROR " + unwrap_or(listGet(Expected.RECEIVED_TEXT, 4), "")),
         cast_case(l, 2, [1, 11], "error ERROR the device refused the media"),
     ]
-    rest = listConcat(listConcat(steps_case(l, 7), receiver_cases(l)), [quiet_case(l), closed_case(l)])
+    rest = listConcat(listConcat(listConcat(player_case(l, 7), elapsed_cases()), receiver_cases(l)), [quiet_case(l), closed_case(l)])
     all = listConcat(listConcat(first, rest), listConcat(listConcat(serve_cases(l), stale_cases()), failure_cases(l)))
     _cleaned = sh(f"rm -rf {l.dir}")
     return all

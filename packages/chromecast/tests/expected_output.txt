@@ -25,6 +25,12 @@ ok message.payload.5
 ok message.payload.6
 ok message.payload.7
 ok message.payload.8
+ok message.payload.9
+ok message.payload.10
+ok message.payload.11
+ok message.payload.12
+ok message.payload.13
+ok message.payload.14
 ok message.payload.count
 ok message.frame.0
 ok message.frame.1
@@ -35,6 +41,12 @@ ok message.frame.5
 ok message.frame.6
 ok message.frame.7
 ok message.frame.8
+ok message.frame.9
+ok message.frame.10
+ok message.frame.11
+ok message.frame.12
+ok message.frame.13
+ok message.frame.14
 ok message.frame.count
 ok parse.namespace.0
 ok parse.namespace.1
@@ -51,6 +63,7 @@ ok parse.namespace.11
 ok parse.namespace.12
 ok parse.namespace.13
 ok parse.namespace.14
+ok parse.namespace.15
 ok parse.namespace.count
 ok parse.payload.0
 ok parse.payload.1
@@ -67,6 +80,7 @@ ok parse.payload.11
 ok parse.payload.12
 ok parse.payload.13
 ok parse.payload.14
+ok parse.payload.15
 ok parse.payload.count
 ok parse.length.0
 ok parse.length.1
@@ -83,6 +97,7 @@ ok parse.length.11
 ok parse.length.12
 ok parse.length.13
 ok parse.length.14
+ok parse.length.15
 ok parse.length.count
 ok launch.kind.0
 ok launch.kind.1
@@ -99,6 +114,7 @@ ok launch.kind.11
 ok launch.kind.12
 ok launch.kind.13
 ok launch.kind.14
+ok launch.kind.15
 ok launch.kind.count
 ok launch.value.0
 ok launch.value.1
@@ -115,6 +131,7 @@ ok launch.value.11
 ok launch.value.12
 ok launch.value.13
 ok launch.value.14
+ok launch.value.15
 ok launch.value.count
 ok read.volume.0
 ok read.volume.1
@@ -131,7 +148,25 @@ ok read.volume.11
 ok read.volume.12
 ok read.volume.13
 ok read.volume.14
+ok read.volume.15
 ok read.volume.count
+ok read.media.0
+ok read.media.1
+ok read.media.2
+ok read.media.3
+ok read.media.4
+ok read.media.5
+ok read.media.6
+ok read.media.7
+ok read.media.8
+ok read.media.9
+ok read.media.10
+ok read.media.11
+ok read.media.12
+ok read.media.13
+ok read.media.14
+ok read.media.15
+ok read.media.count
 ok parse.record
 ok launch.record
 ok read.sessions
@@ -178,8 +213,21 @@ ok device.lab
 ok device.cast.0
 ok device.cast.1
 ok device.cast.2
-ok device.steps.transport
-ok device.steps
+ok player.launching
+ok player.title
+ok player.ending
+ok player.transport
+ok player.media
+ok player.player_state
+ok player.beat
+ok player.controls
+ok elapsed.playing
+ok elapsed.clamped
+ok elapsed.paused
+ok elapsed.unknown
+ok player.unloaded
+ok player.beat_ms
+ok player.idle
 ok device.status
 ok device.stop_all
 ok device.quiet
@@ -189,9 +237,11 @@ ok serve.url
 ok serve.body
 ok serve.unserve
 ok serve.unserve.again
-ok stale.next
+ok stale.poll
+ok stale.pause
+ok stale.volume
 ok stale.write
-ok stale.finish
+ok stale.end
 ok stale.quiet_ms
 ok fail.resolve
 ok fail.refused
@@ -199,4 +249,4 @@ ok fail.stop_all
 ok fail.start
 ok fail.no_route
 ok fail.no_file
-201 passed, 0 failed
+251 passed, 0 failed
