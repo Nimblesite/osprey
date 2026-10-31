@@ -79,16 +79,16 @@ def run(command):
             code = awaitProcess(pid)
             cleanupProcess(pid)
             return code
-        case Error(message=message):
+        case Error():
             return -1
 
 
 def discover(seconds) -> list[Device]:
     """The Cast devices that answer a browse lasting `seconds` seconds."""
     out = f"{SCRATCH}/googlecast-{random()}.txt"
-    code = run(f"mkdir -p {SCRATCH} && perl -e 'alarm {seconds}; exec @ARGV' dns-sd -Z _googlecast._tcp local > {out} 2>/dev/null")
+    _browsed = run(f"mkdir -p {SCRATCH} && perl -e 'alarm {seconds}; exec @ARGV' dns-sd -Z _googlecast._tcp local > {out} 2>/dev/null")
     text = unwrap_or(readFile(out), "")
-    removed = run(f"rm -f {out}")
+    _removed = run(f"rm -f {out}")
     return browse(text)
 
 
@@ -97,5 +97,5 @@ def named(devices, name) -> Result[Device, str]:
     match listGet(filterList(devices, lambda d: d.name == name), 0):
         case Success(value=device):
             return Success(value=device)
-        case Error(message=message):
+        case Error():
             return Error(message=f"no Cast device named {name}")

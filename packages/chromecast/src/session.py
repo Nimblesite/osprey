@@ -15,9 +15,10 @@ up through long silences.
 
 from chromecast import Hex, Protocol
 
-__all__ = ["Session", "open", "send", "receive", "close"]
+__all__ = ["QUIET_MS", "Session", "open", "write", "receive", "close"]
 
 QUIET_MS = 10000
+"""How long the device may stay silent before the session sends its own PING, in milliseconds."""
 
 
 @extern
@@ -63,7 +64,7 @@ def dial_reason(code):
     return unwrap_or(listGet(reasons, -1 - code), f"connect failed ({code})")
 
 
-def send(session, dst, ns, payload) -> Result[None, str]:
+def write(session, dst, ns, payload) -> Result[None, str]:
     """Writes one message to `dst` in namespace `ns` (without the
     `urn:x-cast:com.google.cast.` prefix)."""
     code = osprey_tls_send_hex(session.handle, Protocol.frame(dst, ns, payload))
@@ -77,11 +78,11 @@ def open(host, port) -> Result[Session, str]:
         return Error(message=f"{host}:{port}: {dial_reason(handle)}")
     else:
         session = Session(handle=handle)
-        match send(session, "receiver-0", "tp.connection", Protocol.connect()):
+        match write(session, "receiver-0", "tp.connection", Protocol.connect()):
             case Success():
                 return Success(value=session)
             case Error(message=message):
-                closed = osprey_tls_close(handle)
+                _closed = osprey_tls_close(handle)
                 return Error(message=message)
 
 
@@ -90,11 +91,11 @@ def chunk(session, count, timeout_ms) -> Chunk:
     return Chunk(hex=hex, status=osprey_tls_status(session.handle))
 
 
-def heartbeat(session, payload) -> Result[None, str]:
-    return send(session, "receiver-0", "tp.heartbeat", payload)
+def heartbeat(session, payload):
+    return write(session, "receiver-0", "tp.heartbeat", payload)
 
 
-def handled(session, message, quiet_ms) -> Result[Protocol.Message, str]:
+def handled(session, message, quiet_ms):
     """A message that is not a heartbeat is returned; a PING is answered first."""
     kind = Protocol.read(message.payload).kind
     if kind == "PING":
@@ -109,7 +110,7 @@ def handled(session, message, quiet_ms) -> Result[Protocol.Message, str]:
         return Success(value=message)
 
 
-def body(session, header, quiet_ms) -> Result[Protocol.Message, str]:
+def body(session, header, quiet_ms):
     """Reads the body a frame header announces and handles the message."""
     rest = chunk(session, Protocol.frame_length(header), quiet_ms)
     if rest.status != 0:

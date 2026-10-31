@@ -22,7 +22,9 @@ __all__ = [
 ]
 
 APP = "CC1AD845"
+"""The application id of Google's Default Media Receiver, which plays a media URL."""
 NS = "urn:x-cast:com.google.cast."
+"""The prefix every CAST v2 namespace shares."""
 FINISHED = ["FINISHED", "ERROR", "CANCELLED", "INTERRUPTED"]
 
 
@@ -227,7 +229,7 @@ def text_at(doc, path):
 def transport_of(doc, count):
     """The transport id of the Default Media Receiver among `count` applications."""
     found = filter(range(0, count), lambda i: text_at(doc, f"status.applications[{i}].appId") == APP)
-    return fold(found, "", lambda acc, i: text_at(doc, f"status.applications[{i}].transportId"))
+    return fold(found, "", lambda _acc, i: text_at(doc, f"status.applications[{i}].transportId"))
 
 
 def reading_of(doc) -> Reading:
@@ -252,9 +254,9 @@ def read(payload) -> Reading:
     match jsonParse(payload):
         case Success(value=doc):
             reading = reading_of(doc)
-            freed = jsonFree(doc)
+            _freed = unwrap_or(jsonFree(doc), 0)
             return reading
-        case Error(message=message):
+        case Error():
             return empty_reading()
 
 

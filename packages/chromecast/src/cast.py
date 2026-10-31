@@ -18,7 +18,7 @@ from typing import Callable
 
 from chromecast import Discovery, Protocol, Session
 
-__all__ = ["Casting", "title", "media_url", "launch", "start", "next", "finish", "cast", "status", "stop_all"]
+__all__ = ["Casting", "Served", "title", "media_url", "unserve", "launch", "start", "next", "finish", "cast", "status", "stop_all"]
 
 
 @extern
@@ -87,7 +87,12 @@ def media_url(path, host) -> Result[Served, str]:
         return Success(value=Served(url=f"http://{address}:{port}/media", port=port))
 
 
-def launched(session, received) -> Result[str, str]:
+def unserve(port):
+    """Stops the server `media_url` started on `port`; 0, or -1 if none runs there."""
+    return osprey_file_server_stop(port)
+
+
+def launched(session, received):
     """One turn of the launch loop over a received message."""
     match received:
         case Success(value=message):
@@ -102,13 +107,13 @@ def launched(session, received) -> Result[str, str]:
             return Error(message=failure)
 
 
-def launch_wait(session) -> Result[str, str]:
+def launch_wait(session):
     return launched(session, Session.receive(session, Session.QUIET_MS))
 
 
 def launch(session) -> Result[str, str]:
     """Launches the Default Media Receiver and returns its transport id."""
-    match Session.send(session, "receiver-0", "receiver", Protocol.launch(1)):
+    match Session.write(session, "receiver-0", "receiver", Protocol.launch(1)):
         case Success():
             return launch_wait(session)
         case Error(message=failure):
@@ -117,8 +122,8 @@ def launch(session) -> Result[str, str]:
 
 def loaded(session, transport, served, path) -> Result[Casting, str]:
     """Connects to the receiver's transport and LOADs the served file."""
-    connected = Session.send(session, transport, "tp.connection", Protocol.connect())
-    load = Session.send(session, transport, "media", Protocol.load(served.url, title(path), 2))
+    connected = Session.write(session, transport, "tp.connection", Protocol.connect())
+    load = Session.write(session, transport, "media", Protocol.load(served.url, title(path), 2))
     match connected:
         case Error(message=failure):
             return Error(message=failure)
@@ -130,13 +135,13 @@ def loaded(session, transport, served, path) -> Result[Casting, str]:
                     return Error(message=failure)
 
 
-def started(session, served, path) -> Result[Casting, str]:
+def started(session, served, path):
     match launch(session):
         case Success(value=transport):
             return loaded(session, transport, served, path)
         case Error(message=failure):
-            closed = Session.close(session)
-            stopped = osprey_file_server_stop(served.port)
+            _closed = Session.close(session)
+            _stopped = osprey_file_server_stop(served.port)
             return Error(message=failure)
 
 
@@ -150,7 +155,7 @@ def start(device, path) -> Result[Casting, str]:
                 case Success(value=session):
                     return started(session, served, path)
                 case Error(message=failure):
-                    stopped = osprey_file_server_stop(served.port)
+                    _stopped = osprey_file_server_stop(served.port)
                     return Error(message=failure)
 
 
@@ -166,17 +171,17 @@ def next(casting) -> Result[Protocol.MediaStep, str]:
 
 def finish(casting):
     """Closes the session and stops serving the file."""
-    closed = Session.close(casting.session)
+    _closed = Session.close(casting.session)
     return osprey_file_server_stop(casting.port)
 
 
-def played(casting, report: Callable[[str], None]) -> Result[str, str]:
+def played(casting, report) -> Result[str, str]:
     """Runs the media loop, reporting each STATE line, until playback ends."""
     match next(casting):
         case Error(message=failure):
             return Error(message=failure)
         case Success(value=step):
-            reported = forEachList(step.lines, report)
+            forEachList(step.lines, report)
             if step.end == "":
                 return played(update(casting, last=step.last), report)
             elif step.end == "ERROR":
@@ -193,24 +198,32 @@ def cast(device, path, report: Callable[[str], None]) -> Result[str, str]:
             return Error(message=failure)
         case Success(value=casting):
             outcome = played(casting, report)
-            finished = finish(casting)
+            _finished = finish(casting)
             return outcome
 
 
-def asked(device, request) -> Result[Protocol.Reading, str]:
+def replied(session, request) -> Result[Protocol.Reading, str]:
+    """Sends one receiver request on an open session and reads the reply."""
+    match Session.write(session, "receiver-0", "receiver", request):
+        case Error(message=failure):
+            return Error(message=failure)
+        case Success():
+            match Session.receive(session, Session.QUIET_MS):
+                case Success(value=message):
+                    return Success(value=Protocol.read(message.payload))
+                case Error(message=failure):
+                    return Error(message=failure)
+
+
+def asked(device, request):
     """Opens a session, sends one receiver request and reads the reply."""
     match Session.open(device.host, device.port):
         case Error(message=failure):
             return Error(message=failure)
         case Success(value=session):
-            sent = Session.send(session, "receiver-0", "receiver", request)
-            reply = Session.receive(session, Session.QUIET_MS)
-            closed = Session.close(session)
-            match reply:
-                case Success(value=message):
-                    return Success(value=Protocol.read(message.payload))
-                case Error(message=failure):
-                    return Error(message=failure)
+            reply = replied(session, request)
+            _closed = Session.close(session)
+            return reply
 
 
 def status(device) -> Result[str, str]:
@@ -222,15 +235,25 @@ def status(device) -> Result[str, str]:
             return Error(message=failure)
 
 
+def stopped_one(session, id):
+    """Whether the STOP for one application session was written."""
+    match Session.write(session, "receiver-0", "receiver", Protocol.stop(id, 2)):
+        case Success():
+            return True
+        case Error():
+            return False
+
+
 def stopped_sessions(device, sessions) -> Result[list[str], str]:
-    """STOPs each listed application session over one connection."""
+    """STOPs each listed application session over one connection and returns
+    the ids whose STOP was written."""
     match Session.open(device.host, device.port):
         case Error(message=failure):
             return Error(message=failure)
         case Success(value=session):
-            sent = mapList(sessions, lambda id: Session.send(session, "receiver-0", "receiver", Protocol.stop(id, 2)))
-            closed = Session.close(session)
-            return Success(value=sessions)
+            written = filterList(sessions, lambda id: stopped_one(session, id))
+            _closed = Session.close(session)
+            return Success(value=written)
 
 
 def stop_all(device) -> Result[list[str], str]:

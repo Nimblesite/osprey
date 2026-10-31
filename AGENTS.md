@@ -53,11 +53,14 @@ On encountering code that fails silently:
 - Report the problem to the user.
 
 ## CI gates
-- **Protect the Dependabot auto-merge process.** `dependabot-upgrades` is permanent staging, never a disposable feature branch. Never delete it during merged-branch cleanup, rename it, protect it against the sweep bot, retarget routine updates to main, disable the sweep or consolidation PR, or add CI to staging. Preserve `.github/dependabot.yml` and `.github/workflows/dependabot-automerge.yml`; follow AgentPMO/Shipwright and the Deslop implementation. Updates accumulate automatically in staging and reach main through a fully tested consolidation PR. Any process change requires explicit user authorization.
-- **Every release must pass a fresh dependency vulnerability audit of its exact SHA.** Every publishing/deployment job must depend on the unconditional `audit` job, including website-only releases and prereleases. Never skip, suppress, downgrade, or bypass this gate. Scanner/network failures fail the release. `make audit` is the shared local/release check.
-- **Never merge with a known failure.** Adjust github settings to prevent merges to main that are red
-- **One required check: the root `ci` job, named `CI`.** It is GitHub's standard root job: the last job in `ci.yml`, `if: always()`, with `needs:` naming every other job in `ci.yml`, and it fails when any of them failed or was cancelled. Every other workflow that runs on a PR (`ci-windows.yml`, `gpui.yml`, `winui.yml`) is called from `ci.yml` with `uses:`, never triggered by `pull_request` itself. A new job goes into the root job's `needs:`; [`scripts/ci-scope.test.mjs`](scripts/ci-scope.test.mjs) fails when one is missing. The ruleset requires `CI` and nothing else: never list jobs in it, and never replace the root job with a script that polls the API. [`scripts/verify-branch-protection.mjs`](scripts/verify-branch-protection.mjs) asserts this from the `changes` job on every PR.
-- **A new required check skips via a job-level `if:`**, never `on: paths:`/`paths-ignore:`. A path-filtered job never reports, which blocks every merge forever.
+CI has three phases, each done once:
+1. **Build and check** — lint, format check, static analysis; cache the build for later phases.
+2. **Test** — run every test once, with coverage.
+3. **Coverage check** — gate the collected reports against `coverage-thresholds.json`; run no tests.
+
+- **Never weaken a gate or merge red.** The only required check is the root `CI` job in `ci.yml` (`if: always()`, `needs:` every job). Other PR workflows are called via `uses:`. Skip jobs with job-level `if:`, never `paths:` filters.
+- **Releases depend on `make audit`** of their exact SHA; scanner failures fail the release.
+- **`dependabot-upgrades` is permanent staging** — never delete, retarget or change its process without user authorization.
 
 ## Code rules
 - **Files under 500 LOC, functions under 20 LOC.** Refactor when over.
