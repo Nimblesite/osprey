@@ -17,7 +17,7 @@ name: CI
 #      language has a coverage story (Rust via llvm-cov, C via gcov, the
 #      extension via V8).
 #   4. `coverage` gathers those reports and enforces the per-project
-#      thresholds in coverage-thresholds.json, then runs the iOS platform gate.
+#      thresholds in coverage-thresholds.json. It builds and runs nothing.
 #
 # This replaced a pipeline that ran the language corpus SEVEN times per PR —
 # `make test` ran it as TAP, again for goldens, and again under GC and ARC,
@@ -1102,23 +1102,15 @@ jobs:
           docker stop osprey-web-compiler-ci
           docker rm osprey-web-compiler-ci
 
-  # ═══ STAGE 4 ════════════════════════════════════════════════════════════════
-  # Thresholds are enforced HERE, against reports the test jobs produced, so no
-  # suite is ever re-run to measure what it already measured. The C runtime
-  # gate lives in its own job because gcov data never leaves that container.
-  # This existing required context also gates the iOS device/simulator builds
-  # and simulator tests. macos-15 is ARM64, matching the simulator archive.
-  coverage:
-    name: Coverage thresholds
-    needs: [changes, test-rust, test-extension, test-packages, test-registry-gc, test-registry-arc]
-    if: ${{ always() && needs.changes.outputs.code == 'true' }}
+  # iOS/macOS device and simulator builds, simulator tests and the native
+  # Workbench host. macos-15 is ARM64, matching the simulator archive.
+  test-apple:
+    name: "Tests: iOS, macOS and Workbench host"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
-      - name: Package manager suites passed
-        run: |
-          test "${{ needs.test-registry-gc.result }}" = "success"
-          test "${{ needs.test-registry-arc.result }}" = "success"
       - uses: actions/checkout@v7
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
@@ -1136,28 +1128,6 @@ jobs:
       # build script generates its wire model with typeDiagram [PROF-LSP-RUNTIME].
       - name: Install typeDiagram
         uses: ./.github/actions/typediagram
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: coverage-rust
-          path: target/coverage/
-      - uses: actions/download-artifact@v8
-        with:
-          name: coverage-extension
-          path: vscode-extension/coverage/
-      - uses: actions/download-artifact@v8
-        with:
-          name: coverage-packages
-          path: target/coverage/packages/
-
-      - name: Rust per-crate thresholds
-        run: make _coverage_check_rust
-
-      - name: VS Code extension thresholds
-        run: make _coverage_check_vscode_extension
-
-      - name: Package thresholds
-        run: make _coverage_check_packages
 
       - name: iOS and macOS builds, ABI, goldens and app persistence
         run: make ios-test macos-test mobile-ios-test bank-ios-test
@@ -1183,6 +1153,46 @@ jobs:
           name: bank-ios-results
           path: examples/projects/modules/mobile/ios/build/**/*.xcresult
           if-no-files-found: ignore
+
+  # ═══ STAGE 4 ════════════════════════════════════════════════════════════════
+  # Thresholds are enforced HERE, against reports the test jobs produced. This
+  # job builds nothing and runs nothing: it reads reports and compares numbers.
+  # The C runtime gate lives in its own job because gcov data never leaves
+  # that container.
+  coverage:
+    name: Coverage thresholds
+    needs: [changes, test-rust, test-extension, test-packages, test-registry-gc, test-registry-arc]
+    if: ${{ always() && needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Package manager suites passed
+        run: |
+          test "${{ needs.test-registry-gc.result }}" = "success"
+          test "${{ needs.test-registry-arc.result }}" = "success"
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-rust
+          path: target/coverage/
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-extension
+          path: vscode-extension/coverage/
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-packages
+          path: target/coverage/packages/
+
+      - name: Rust per-crate thresholds
+        run: make _coverage_check_rust
+
+      - name: VS Code extension thresholds
+        run: make _coverage_check_vscode_extension
+
+      - name: Package thresholds
+        run: make _coverage_check_packages
 
       - name: Upload combined coverage
         uses: actions/upload-artifact@v7
@@ -1232,6 +1242,7 @@ jobs:
       - test-wasm
       - test-website
       - test-integration
+      - test-apple
       - coverage
       - windows
       - gpui

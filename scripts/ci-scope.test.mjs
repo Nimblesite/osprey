@@ -98,14 +98,25 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
 })
 
 test('the required macOS gate builds and tests the native Workbench host', () => {
-  const coverage = job('coverage', '.github/workflows/ci.yml')
-  const step = (coverage.split('- name: Native Workbench host and rendering regressions\n')[1] ?? '').split('\n      - ')[0]
+  const apple = job('test-apple', '.github/workflows/ci.yml')
+  const step = (apple.split('- name: Native Workbench host and rendering regressions\n')[1] ?? '').split('\n      - ')[0]
   assert.match(step, /^ {8}run: \|\n {10}bash apps\/workbench\/hosts\/apple\/run\.sh --build\n {10}swift test --package-path apps\/workbench\/hosts\/apple$/m)
   assert.match(step, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(step, /^\s*(?:-\s*)?if:/m)
   assert.doesNotMatch(step, /continue-on-error/)
-  assert.match(coverage, /^    runs-on: macos-15$/m)
-  assert.match(coverage, /^ {10}lfs: true$/m)
+  assert.match(apple, /^    runs-on: macos-15$/m)
+  assert.match(apple, /^ {10}lfs: true$/m)
+  assert.match(apple, /^ {8}run: make ios-test macos-test mobile-ios-test bank-ios-test$/m)
+  assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
+})
+
+test('the coverage gate only compares collected reports and never builds or tests', () => {
+  const coverage = job('coverage', '.github/workflows/ci.yml')
+  const runs = [...coverage.matchAll(/^ {8}run: (.+)$/gm)].map((m) => m[1]).filter((r) => r !== '|')
+  assert.deepEqual(runs.filter((r) => r.startsWith('make ')),
+    ['make _coverage_check_rust', 'make _coverage_check_vscode_extension', 'make _coverage_check_packages'])
+  assert.doesNotMatch(coverage, /cargo |swift |xcodebuild|rust-toolchain|typediagram|ios-test|run\.sh/)
+  assert.match(coverage, /^    runs-on: ubuntu-latest$/m)
 })
 
 const stagedBundleFixture = (change) => runStagedBundleFixture(job('test-extension', '.github/workflows/ci.yml'), change)
