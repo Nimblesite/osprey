@@ -103,13 +103,7 @@ pub(super) fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
             }
         },
         "--list-tests" => print_metadata(&osprey_lsp::tests_json(input.program())),
-        "--llvm" | "--run" | "--compile" if report_type_errors(input, cli.warnings) > 0 => {
-            ExitCode::FAILURE
-        }
-        "--llvm" | "--run" | "--compile" if target_error(cli, input).is_some() => ExitCode::FAILURE,
-        "--llvm" => print_ir(cli, input),
-        "--run" => run_program(cli, input),
-        "--compile" => compile_program_to_disk(cli, input),
+        "--llvm" | "--run" | "--compile" => dispatch_codegen(cli, input),
         _ => print_metadata(&format!("{:#?}", input.program())),
     }
 }
@@ -148,13 +142,74 @@ fn print_ir(cli: &Cli, input: &CompilationInput) -> ExitCode {
 /// Errors are reported either way.
 pub(crate) fn report_type_errors(input: &CompilationInput, warnings: Warnings) -> usize {
     let errors = osprey_types::check_program(input.program());
-    for e in &errors {
-        eprintln!("{}", input.diagnostic(e.position, &e.message));
+    let count = report_errors(&errors, input);
+    report_warnings(input, warnings);
+    count
+}
+
+/// Gate a compiling mode exactly like [`report_type_errors`], retaining the
+/// lowered program and published types so codegen reuses this solve instead of
+/// re-running the whole-program check.
+fn gate(
+    input: &CompilationInput,
+    warnings: Warnings,
+) -> Result<osprey_types::CheckedProgram, ExitCode> {
+    let checked = osprey_types::check_and_publish(input.program(), &[]).map_err(|errors| {
+        let _ = report_errors(&errors, input);
+        ExitCode::FAILURE
+    });
+    report_warnings(input, warnings);
+    checked
+}
+
+fn report_errors(errors: &[osprey_types::TypeError], input: &CompilationInput) -> usize {
+    for error in errors {
+        eprintln!("{}", input.diagnostic(error.position, &error.message));
     }
+    errors.len()
+}
+
+fn report_warnings(input: &CompilationInput, warnings: Warnings) {
     if warnings == Warnings::Report {
         warnings::report(input, &warnings::collect(input));
     }
-    errors.len()
+}
+
+/// Route the codegen modes after the shared gate: report type errors, then
+/// target capabilities, then hand the gate's retained solve to codegen so the
+/// whole-program check runs once per build.
+fn dispatch_codegen(cli: &Cli, input: &CompilationInput) -> ExitCode {
+    let checked = match gate(input, cli.warnings) {
+        Ok(checked) => checked,
+        Err(code) => return code,
+    };
+    if target_error(cli, input).is_some() {
+        return ExitCode::FAILURE;
+    }
+    offer_checked(cli, input, checked);
+    let result = run_codegen(cli, input);
+    osprey_codegen::set_reused_check(None);
+    result
+}
+
+fn offer_checked(cli: &Cli, input: &CompilationInput, checked: osprey_types::CheckedProgram) {
+    osprey_codegen::set_reused_check(reuse_eligible(cli, input).then_some(checked));
+}
+
+fn run_codegen(cli: &Cli, input: &CompilationInput) -> ExitCode {
+    match cli.mode.as_str() {
+        "--llvm" => print_ir(cli, input),
+        "--run" => run_program(cli, input),
+        _ => compile_program_to_disk(cli, input),
+    }
+}
+
+/// Whether codegen can consume the gate's solve: the program codegen lowers is
+/// exactly the program the gate solved (no opaque-alias expansion), and a
+/// native coverage build — which instruments before lowering — is excluded.
+fn reuse_eligible(cli: &Cli, input: &CompilationInput) -> bool {
+    std::ptr::eq(input.program(), input.backend_program())
+        && (cli.target != "native" || build_kind(cli) != osprey_debug::BuildKind::Coverage)
 }
 
 pub(super) fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {

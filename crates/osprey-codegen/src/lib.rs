@@ -65,6 +65,7 @@ pub use llty::{LType, Value};
 pub use lower::{
     compile_host_program, compile_library, compile_program, compile_program_coverage,
     compile_program_debug, compile_program_symbolic, compile_wasm_library, compile_wasm_program,
+    set_reused_check,
 };
 pub use osprey_debug::DebugSource;
 

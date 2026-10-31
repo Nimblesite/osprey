@@ -9,6 +9,8 @@ use crate::llty::{LType, Value};
 use osprey_ast::{Expr, Parameter, Position, Program, Stmt};
 
 mod entrypoints;
+#[cfg(test)]
+mod reuse_tests;
 pub use entrypoints::{
     compile_host_program, compile_library, compile_program, compile_program_coverage,
     compile_program_debug, compile_program_symbolic, compile_wasm_library, compile_wasm_program,
@@ -71,20 +73,60 @@ fn lower_static_program(program: &Program) -> Result<Program> {
     })
 }
 
+// The gate's retained solve, offered by the CLI right before codegen and
+// taken by the next `compile_module` so one checked program is lowered and
+// published once across the build. A thread-local rather than a parameter
+// because the native path reaches these entry points through
+// `native::compile_ir`, whose signature is owned elsewhere.
+thread_local! {
+    static REUSED_CHECK: std::cell::Cell<Option<osprey_types::CheckedProgram>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Offer (or clear) the gate's retained solve for the next codegen entry point.
+#[doc(hidden)]
+pub fn set_reused_check(checked: Option<osprey_types::CheckedProgram>) {
+    REUSED_CHECK.with(|slot| slot.set(checked));
+}
+
+/// The lowered program and published types for `program`: the gate's retained
+/// solve when one was supplied, otherwise a fresh lower-and-infer.
+fn solve(
+    program: &Program,
+    options: &CodegenOptions,
+    reused: Option<osprey_types::CheckedProgram>,
+) -> Result<(Program, osprey_types::ProgramTypes)> {
+    if let Some(checked) =
+        reused.filter(|checked| !options.coverage && checked.matches_source(program))
+    {
+        return Ok(checked.into_parts());
+    }
+    solve_fresh(program, options)
+}
+
+fn solve_fresh(
+    program: &Program,
+    options: &CodegenOptions,
+) -> Result<(Program, osprey_types::ProgramTypes)> {
+    let mut lowered = lower_static_program(program)?;
+    if options.coverage {
+        // Source counters must not hide pure closure selection from staging.
+        crate::coverage::instrument_expressions(&mut lowered);
+    }
+    let prog = osprey_types::infer_program(&lowered);
+    Ok((lowered, prog))
+}
+
 fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
+    let reused = REUSED_CHECK.with(std::cell::Cell::take);
     reject_opaque_aliases(program)?;
     let options = with_kernel_mode(options)?;
     let instrumented = options
         .coverage
         .then(|| crate::coverage::instrumented(program));
     let original = instrumented.as_ref().unwrap_or(program);
-    let mut lowered = lower_static_program(original)?;
-    if options.coverage {
-        // Source counters must not hide pure closure selection from staging.
-        crate::coverage::instrument_expressions(&mut lowered);
-    }
+    let (lowered, mut prog) = solve(original, &options, reused)?;
     let program = &lowered;
-    let mut prog = osprey_types::infer_program(program);
     let elaborated = prog.elaborate_calls(program);
     let program = &elaborated;
     let mut cg = Codegen::with_options(prog, options);

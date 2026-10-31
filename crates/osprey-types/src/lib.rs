@@ -107,7 +107,10 @@ pub use builtin_docs::{
 };
 pub use builtins::{builtin_callback_type, builtin_function_type, builtin_signature};
 pub use callback::{redundant_callbacks, REDUNDANT_CALLBACK};
-pub use check::{check_program, check_program_exports, erased_var, infer_program};
+pub use check::{
+    check_and_publish, check_program, check_program_exports, effect_check_count, erased_var,
+    infer_program, CheckedProgram,
+};
 pub use error::TypeError;
 pub use info::{
     CtorLayout, EffectRequirements, HandlerSite, OpType, PerformSite, ProgramTypes, SiteTable,
