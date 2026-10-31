@@ -67,6 +67,8 @@ CI run `41154533373` exhausted the unchanged 40-minute Rust and package coverage
 
 The newly authorized removal of retired handwriting state and workspace-v1 compatibility changes application sources. All earlier Workbench application, browser, WASM, installed-package and native receipts therefore describe the preceding application cohort. The replacement workspace format must prove current title/text round-trips and explicit refusal of the retired format, preserving mathematical, lesson and file workflows. Fresh application acceptance is required before submission.
 
+The replacement application now passes all 118 cases and its mandatory entry probe under GC and ARC, with 2,018/2,206 own-source lines covered (91.5%). The parent independently rehashed all 1,594 collector inputs with zero drift and replayed both unchanged numerical gates. Its rebuilt application WASM has SHA-256 `d6ed6f715328587bf8f9cf46418ab4d7df12b154b79ffa932edaf0f64bb4cf36`; the full browser/visual command passed 63 checks with 318 pins unchanged. Canonical packaging and the installed production VSIX passed all 169 cases with 622 pinned inputs unchanged, independently rehashed by the parent. That archive has SHA-256 `7b34742d834f63a42f8c0ee86876a8e4603efeff458636a4c6ea15a57627eb78`. These receipts do not yet establish the complete WASM application suite, fresh native acceptance or final GitHub CI. Run `41170562511` remains live on `7f8dbd03`; no further push is authorized before its terminal result and final batch verification.
+
 ## Mandatory completion checklist
 
 - [x] Retrieve the failing job logs and identify the inventory error and compiler performance bottleneck.
