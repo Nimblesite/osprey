@@ -44,6 +44,7 @@ The reviewed production correction is `4170dbd4`. Its release-profile compiler a
 | Native differential corpus, CI profile | 287 exact goldens, 20 alternate GPU cases and six doctests under each of GC and ARC; zero ARC leaks; 1,230 input pins unchanged |
 | Canonical proof-kernel Make target, CI profile | 400/400 cases and zero skips on each of GC, ARC and WASM; exact kernel/export goldens; 150.90 seconds; this is not the full Lean/speed gate |
 | All package/application source coverage, CI profile | All 40 project/backend gates passed, including both mandatory Workbench entry probes; 1,593 inputs unchanged; every individual threshold retained |
+| All package/application source coverage, final release profile | Independently collected and gated all 40 GC/ARC project cases with the same release compiler used in the installed package; 1,594 inputs unchanged; both full 20-project gates independently replayed; 457.69 seconds total |
 | Workbench application source coverage | Both GC and ARC measured 2,078/2,280 lines (91.1%); GC suite plus entry completed in 598.92 seconds |
 | Actual release-profile Workbench WASM build | Passed in 110.10 seconds; compiler and application inputs unchanged; full artifact bytes equal the verified `45f67bb9…` baseline |
 | Browser artifact/source equivalence | The exact WASM bytes from the earlier 74 passing browser/visual checks remain unchanged, as do all 148 browser and asset inputs; no claim of a new native renderer run |
@@ -72,7 +73,7 @@ CI run `41154533373` exhausted the unchanged 40-minute Rust and package coverage
 - [x] Keep branch protection, required checks, coverage thresholds and timeouts intact.
 - [x] Independently verify the declared `List`/`Map` callback correction, complete its permanent GC/ARC acceptance and refusal matrix, and push the reviewed correction. This does not replace final application coverage or CI acceptance of the performance candidate.
 - [x] Complete the combined-traversal regression, semantic comparison and strict analysis checks: 1,819 workspace library tests, the additional nested metadata permutation, strict workspace Clippy, formatting and the duplication gate passed. Final application and CI acceptance remain separate.
-- [ ] Seal the final compiler inputs and verify application suites, entry probes and coverage with that compiler.
+- [x] Seal the final release compiler inputs and verify application suites, mandatory entry probes and all 40 GC/ARC coverage gates with that exact compiler. The parent rehashed all 1,594 inputs and the immutable compiler and independently replayed both complete numerical gate checks after the approved pi worker finished.
 - [ ] Pass every required GitHub check on the actual final pushed head and merge that head.
 - [ ] Recheck release versions, publish the next stable minor after merge, and verify the exact tag audit, required channels, `release-complete` and published assets.
 
