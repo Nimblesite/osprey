@@ -15,7 +15,8 @@
 - **Silent failures:** in Osprey, make them typed errors; in Rust/C compiler and runtime code, quarantine with a commented panic that never surfaces in Osprey. Add a failing test and report it.
 
 ## Tests
-- Unit tests live in each crate. `tests/` programs run through `crates/run_test_corpus.sh` under GC, ARC and wasm32 (`OSPREY_TARGET=wasm32`), matching the sibling `.expectedoutput` byte-for-byte; an ML twin shares its Default twin's golden.
+- **Prefer end-to-end tests** that drive real use cases; write unit tests (inside each crate) only when isolation is needed.
+- `tests/` programs run through `crates/run_test_corpus.sh` under GC, ARC and wasm32 (`OSPREY_TARGET=wasm32`), matching the sibling `.expectedoutput` byte-for-byte; an ML twin shares its Default twin's golden.
 - `examples/failscompilation/` holds programs the compiler must reject.
 - Expand existing tests and examples rather than adding files; mix many constructs per program.
 - `coverage-thresholds.json` only goes up.
