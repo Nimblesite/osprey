@@ -326,6 +326,131 @@ setup: $(EXT_NODE_DEPS) $(WEBCOMPILER_NODE_DEPS) $(WEBSITE_NODE_DEPS)
 	bash scripts/install-deslop.sh
 	@echo "==> Setup complete. Run 'make ci' to validate."
 
+## help: List every public target with its usage and expected result.
+.PHONY: help
+help:
+	@grep -hE '^##' $(MAKEFILE_LIST) | sed 's/^## \{0,1\}//'
+
+# =============================================================================
+# Feature checks — each comment states the command's expected result
+# =============================================================================
+
+## proof: Proof CI locally (plan 0041). Fresh Lean exports must be byte-identical
+##        (Lean 4.25.0); recorder (18) and corpus/staging (41) regressions pass;
+##        then the kernel, disciplines and corpora under GC, ARC and wasm32:
+##        openai 51 PASS, lean-core 525 PASS + 1,050 rejected mutations, Unicode
+##        6 checks + 12 rejections. Every PASS row is followed by its rejected
+##        corruption. Checked exports, not Mathlib or headline-theorem ports.
+.PHONY: proof
+proof: build
+	for theorem in id_imp and_swap Nat.add_comm; do bash scripts/proof-export.sh --check --theorem $$theorem || exit 1; done
+	node --test scripts/test-proof-export.mjs
+	python3 scripts/test-proof-openai.py
+	$(MAKE) -j3 _test_proof_ci
+
+## workbench-proof-assets: Stage and byte-check the 13 bundled proof exports and
+##                         2 upstream licences; any extra, missing or changed file fails.
+.PHONY: workbench-proof-assets
+workbench-proof-assets:
+	python3 scripts/workbench-proof-assets.py target/workbench-proof-assets
+	python3 scripts/workbench-proof-assets.py target/workbench-proof-assets --check
+
+## workbench-test: Imported-mathematics cases (Nat.add_comm tree, id_imp assumption
+##                 boundary) under GC and ARC; one passing case each. The full app
+##                 suite passes 108 cases. Pixel acceptance: docs/designs/proof-workbench/design-qa.md.
+.PHONY: workbench-test
+workbench-test: build
+	for memory in gc arc; do \
+	  $(BIN) test apps/workbench/tests --memory=$$memory --filter "proof library file import displays its actual checked statement" || exit 1; \
+	  $(BIN) test apps/workbench/tests --memory=$$memory --filter "imported id_imp exposes its actual statement and no assumptions" || exit 1; \
+	done
+
+## workbench-native-test: Build the Mac Workbench host, then `0 failures` from its
+##                        Swift suite. Fetch Git LFS lesson assets first.
+.PHONY: workbench-native-test
+workbench-native-test: build
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash apps/workbench/hosts/apple/run.sh --build
+	swift test --package-path apps/workbench/hosts/apple
+
+## workbench-render-review: Render a captured region tree natively (full page).
+##   TREE defaults to the browser suite's slate board; expect a 1488x1102 image.
+##   Matching dimensions do not prove pixel fidelity.
+WORKBENCH_TREE ?= target/workbench-vsix/slate-board.native.json
+.PHONY: workbench-render-review
+workbench-render-review:
+	OSPREY_RENDER_REVIEW_FULL_PAGE=1 bash apps/workbench/hosts/apple/render-review.sh $(WORKBENCH_TREE) 1488 1058 target/native-slate.png
+
+## cli-contracts: Compiler CLI contracts: --quiet and --no-warnings (2 each),
+##                closed-stdin launcher (3, OSPREY_TEST_COMPILER/OSPREY_TEST_MEMORY
+##                forwarded), checked source graph (3), Windows DLL boundary (6).
+.PHONY: cli-contracts
+cli-contracts:
+	cargo test -p osprey-cli --test cli_e2e quiet
+	cargo test -p osprey-cli --test cli_e2e no_warnings
+	cargo test --profile ci -p osprey-cli --test input_never_blocks
+	cargo test --profile ci -p osprey-cli checked_source_graph
+	cargo test -p osprey-cli windows_dll
+
+## package-checks: Package governance, licences, hashing, interruption, graph and
+##   workspace UI under GC and ARC. Expect the 19 bundles to match
+##   packages/license-audit.json, every selected test to pass, and
+##   `Package workspace WASM startup: PASS`. Governance: spec 0045; canonical schema
+##   packages/manager/supabase/migrations/schema.yaml. Its Postgres migration is
+##   BLOCKED (DataProvider 0.9.11-beta inspects only `public`); keep that failure:
+##     dotnet tool restore && dotnet tool run DataProviderMigrate migrate --schema \
+##       packages/manager/supabase/migrations/schema.yaml --provider postgres \
+##       --output "$$REGISTRY_MIGRATION_CONNECTION"   # passfile, never a password
+##   Final manifest/lock writes are separate: never report crash-safe transactions.
+.PHONY: package-checks
+package-checks: build
+	node scripts/verify-package-licenses.mjs
+	node --test scripts/test-package-licenses.mjs
+	python3 scripts/test-package-sha256.py
+	$(BIN) packages/manager/fixture-check --run
+	for filter in "schema-check: model declarations" "schema-check: accepted values" "schema-check: rejected values" \
+	  "schema: spec block equals canonical file" "fixtures: names"; do \
+	  $(BIN) test packages/manager/tests --filter "$$filter" || exit 1; \
+	done
+	for filter in "publish: licenses survive publication" "fetch: licenses and attribution are preserved"; do \
+	  $(BIN) test packages/manager/cli/tests --filter "$$filter" || exit 1; \
+	done
+	for memory in gc arc; do \
+	  $(BIN) test packages/manager/tests --memory=$$memory --filter "sha256: raw digest" || exit 1; \
+	  $(BIN) test packages/manager/cli/tests --memory=$$memory --filter "add: partial" || exit 1; \
+	  $(BIN) test packages/manager/cli/tests --memory=$$memory --filter "tree graph: diamond and identical leaf across orgs" || exit 1; \
+	  $(BIN) test packages/manager/cli/tests --memory=$$memory --filter "reports: success output is not a finding" || exit 1; \
+	  $(BIN) test packages/manager/editor/tests --memory=$$memory || exit 1; \
+	  $(BIN) test packages/manager/editor/wire-tests --memory=$$memory || exit 1; \
+	done
+	$(BIN) packages/vscode/tests --run --quiet
+	$(MAKE) target/package-workspace.wasm
+	node $(EXT_DIR)/scripts/verify-package-workspace.mjs target/package-workspace.wasm
+
+## package-coverage-record: Write dated measurements to
+##   target/coverage/packages/measurements.json; coverage-thresholds.json stays
+##   byte-identical. Stale evidence records `null`; a failed gate exits nonzero.
+.PHONY: package-coverage-record
+package-coverage-record:
+	python3 scripts/package_coverage.py --record-measurements
+
+## vsix-e2e: VSIX host E2E — package API/transport, sidebar Manage Packages,
+##   package workspace browser and SDK host, workbench document host. All selected
+##   tests pass. Workbench visual acceptance (WORKBENCH_VISUAL=1) waits on the
+##   workbench owner's app-execution hold. Compiling and packaging alone prove nothing visual.
+VSIX_E2E_GREP := package |direct dependency reports|serialized per-project mutation|command registration|sidebar Manage Packages button|package workspace|compiled SDK renderer E2E|workbench document host wiring$(if $(WORKBENCH_VISUAL),|workbench VSIX browser|workbench VSIX visual comparison,)
+.PHONY: vsix-e2e
+vsix-e2e: $(EXT_NODE_DEPS)
+	OSPREY_TEST_GREP='$(VSIX_E2E_GREP)' npm test --prefix $(EXT_DIR)
+
+## hunt-demo: The bug-detection demo to show anyone first: a planted abort() on
+##   input "9" (tests/hunt/crash.osp) must report `abort crash.osp:4` and
+##   `reproduced (SIGABRT)`, matching tests/hunt/crash.expected. Clean controls:
+##   tests/hunt/clean.osp and record_update_list.osp find nothing;
+##   tests/hunt/process.osp is an engine limitation, never a bug demo.
+.PHONY: hunt-demo
+hunt-demo:
+	$(MAKE) hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10 --out target/hunt-demo"
+
 # =============================================================================
 # Applications
 # =============================================================================
