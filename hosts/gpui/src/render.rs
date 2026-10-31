@@ -28,6 +28,15 @@ pub(super) struct Ctx<'a, 'b> {
     pub(super) revision: u64,
     dark: bool,
     stack: Vec<String>,
+    /// The theme a `themed` ancestor scopes to this subtree, else the application's.
+    scoped: Option<Theme>,
+}
+
+impl Ctx<'_, '_> {
+    /// The theme in force here: the nearest `themed` ancestor's, else the application's.
+    pub(super) fn theme(&self) -> Option<&Theme> {
+        self.scoped.as_ref().or_else(|| self.view.regions.theme())
+    }
 }
 
 /// Renders one framework region by key.
@@ -45,6 +54,7 @@ pub fn region<'a, 'b>(
         key: key.to_owned(),
         revision: 0,
         stack: Vec::new(),
+        scoped: None,
     };
     embed(&mut ctx, key)
 }
@@ -112,8 +122,52 @@ fn container(ctx: &mut Ctx, kind: &str, node: &Value) -> AnyElement {
         "progress" => progress(ctx, node),
         "rows" => controls::rows(ctx, node),
         "picker" => controls::picker(ctx, node),
+        "themed" => themed(ctx, node),
+        "meter" => meter(ctx, node),
         kind => broken(ctx, format!("unknown node kind {kind}")),
     }
+}
+
+/// Draws `body` with `theme` scoped to it, on its `background` token in its `text` ink
+/// ([UI-COMPONENTS], [UI-MACHINE-SKINS]); a malformed theme is refused visibly.
+fn themed(ctx: &mut Ctx, node: &Value) -> AnyElement {
+    let theme = match node.get("theme").cloned().map(serde_json::from_value::<Theme>) {
+        Some(Ok(theme)) => theme,
+        _ => return broken(ctx, "themed node without a valid theme".to_owned()),
+    };
+    let outer = ctx.scoped.replace(theme);
+    let fill = tint(ctx, "background", ctx.cx.theme().background);
+    let ink = tint(ctx, "text", ctx.cx.theme().foreground);
+    let body = node.get("body").cloned().unwrap_or(Value::Null);
+    let element = self::node(ctx, &body);
+    ctx.scoped = outer;
+    div()
+        .flex()
+        .flex_col()
+        .flex_grow(1.)
+        .bg(fill)
+        .text_color(ink)
+        .p(gap(ctx) * 3.)
+        .child(element)
+        .into_any_element()
+}
+
+/// Draws a labelled bar filled to `value` of `total` in the node's tone
+/// ([UI-COMPONENTS-METER]); the framework already clamped both.
+fn meter(ctx: &mut Ctx, node: &Value) -> AnyElement {
+    let total = node.get("total").and_then(Value::as_i64).unwrap_or(1).max(1) as f32;
+    let value = node.get("value").and_then(Value::as_i64).unwrap_or(0).max(0) as f32;
+    let fill = tint(ctx, string(node, "tone"), ctx.cx.theme().accent);
+    let track = tint(ctx, "secondary", ctx.cx.theme().muted).opacity(0.25);
+    div()
+        .id(SharedString::from(control_id(ctx, 0) + ":" + string(node, "label")))
+        .flex_grow(1.)
+        .min_w(px(120.))
+        .h(px(6.))
+        .rounded_full()
+        .bg(track)
+        .child(div().h_full().rounded_full().bg(fill).w(relative((value / total).min(1.))))
+        .into_any_element()
 }
 
 /// Lays out a vertical or horizontal child stack with framework spacing.
@@ -153,7 +207,7 @@ fn text(ctx: &mut Ctx, node: &Value) -> AnyElement {
     let role = string(node, "role");
     // Body text takes the application's `text` token when its theme defines one.
     let fallback = if role == "caption" {
-        ctx.cx.theme().muted_foreground
+        tint(ctx, "secondary", ctx.cx.theme().muted_foreground)
     } else {
         tint(ctx, "text", ctx.cx.theme().foreground)
     };
@@ -316,14 +370,12 @@ pub(super) fn control_id(ctx: &Ctx, ordinal: u64) -> String {
 
 /// Resolves a semantic token, falling back to the kit theme.
 pub(super) fn tint(ctx: &Ctx, name: &str, fallback: Hsla) -> Hsla {
-    colour(ctx.view.regions.theme(), name, ctx.dark).map_or(fallback, Hsla::from)
+    colour(ctx.theme(), name, ctx.dark).map_or(fallback, Hsla::from)
 }
 
 /// Reads the second framework spacing token.
 pub(super) fn gap(ctx: &Ctx) -> Pixels {
     let value = ctx
-        .view
-        .regions
         .theme()
         .and_then(|theme| theme.spacing.get(1))
         .copied();
@@ -334,7 +386,7 @@ pub(super) fn gap(ctx: &Ctx) -> Pixels {
 fn caption(ctx: &Ctx, text: &str) -> Div {
     div()
         .text_sm()
-        .text_color(ctx.cx.theme().muted_foreground)
+        .text_color(tint(ctx, "secondary", ctx.cx.theme().muted_foreground))
         .child(text.to_owned())
 }
 

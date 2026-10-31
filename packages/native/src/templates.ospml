@@ -155,18 +155,34 @@ module Templates
 
     byte (hex, at) = satAdd (satMul (digit (substring hex at (satAdd at 1) ?: "0")) 16) (digit (substring hex (satAdd at 1) (satAdd at 2) ?: "0"))
 
+    // A `#RRGGBB` colour as written, or the chosen skin's `@token`.
+    skinned (machine, named) = Pick::either (startsWith named "@", Doc::text (Doc::field (skin machine, "tokens"), drop named 1), named)
+
     // A `#RRGGBB` colour, or `@token` from the chosen skin, packed with an alpha from 0 to 1.
     colour (machine, shape) =
-        named = Doc::text (shape, "colour")
-        hex = Pick::either (startsWith named "@", Doc::text (Doc::field (skin machine, "tokens"), drop named 1), named)
+        hex = skinned (machine, Doc::text (shape, "colour"))
         Scenes::rgba (byte (hex, 1), byte (hex, 3), byte (hex, 5), floatToInt (round (Pick::either (Doc::has (shape, "alpha"), numberOf (machine, shape, "alpha"), 1.0) * 255.0)) ?: 255)
+
+    // A corner of a w by h rectangle centred on x, y, turned by `angle` radians.
+    corner (x, y, dx, dy, angle) = [x + dx * cos angle - dy * sin angle, y + dx * sin angle + dy * cos angle]
+
+    // A turned rectangle as a filled polygon, which every host draws, rather than a rect's angle.
+    turned (machine, shape, x, y, w, h, angle, depth) =
+        hw = w / 2.0
+        hh = h / 2.0
+        corners = ui::Lists::flatten [corner (x, y, 0.0 - hw, 0.0 - hh, angle), corner (x, y, hw, 0.0 - hh, angle), corner (x, y, hw, hh, angle), corner (x, y, 0.0 - hw, hh, angle)]
+        Scenes::path ([Polygon(corners = corners, closed = true)], Fill, Solid(tint = paint (machine, shape)), depth)
+
+    paint (machine, shape) =
+        hex = skinned (machine, Doc::text (shape, "colour"))
+        Scenes::hex (satAdd (satMul (byte (hex, 1)) 65536) (satAdd (satMul (byte (hex, 3)) 256) (byte (hex, 5))), Pick::either (Doc::has (shape, "alpha"), numberOf (machine, shape, "alpha"), 1.0))
 
     primitive (machine, shape) =
         at = \key => numberOf (machine, shape, key)
         depth = floatToInt (at "depth") ?: 0
         match Doc::text (shape, "shape")
             "disc" => Scenes::disc (at "x", at "y", at "radius", colour (machine, shape), depth)
-            _ => Scenes::rect (at "x", at "y", at "w", at "h", at "angle" + at "turn", colour (machine, shape), depth)
+            _ => turned (machine, shape, at "x", at "y", at "w", at "h", at "angle" + at "turn", depth)
 
     // ---- nodes ----
 

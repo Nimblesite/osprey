@@ -106,7 +106,7 @@
     }
   ],
   "view": {
-    "kind": "framed", "padding": 24, "gap": 16, "fill": "background", "ink": "text", "grow": true, "cross": "center",
+    "kind": "stack", "axis": "vertical",
     "children": [
       {
         "kind": "scene", "width": 320, "height": 180,
@@ -120,7 +120,7 @@
         ]
       },
       { "kind": "text", "text": "{{title}}", "role": "title", "when": { "input": "file", "ne": "" } },
-      { "kind": "empty", "symbol": "music", "text": "Choose an audio file", "detail": "Open an MP3 to cast it to a TV.", "when": { "input": "file", "eq": "" } },
+      { "kind": "empty", "symbol": "document", "text": "Choose an audio file", "detail": "Open an MP3 to cast it to a TV.", "when": { "input": "file", "eq": "" } },
       { "kind": "progress", "text": "Connecting to {{receiver}}…", "detail": "", "when": { "state": "playback", "in": ["connecting"] } },
       { "kind": "badge", "text": "Playing on {{receiver}}", "symbol": "play", "tone": "accent", "when": { "state": "playback", "in": ["playing"] } },
       { "kind": "badge", "text": "Paused", "symbol": "pause", "tone": "secondary", "when": { "state": "playback", "in": ["paused"] } },
@@ -146,12 +146,12 @@
       {
         "kind": "stack", "axis": "horizontal",
         "children": [
-          { "kind": "button", "text": "Back 10 seconds", "symbol": "skip-back", "on": { "set": "skip", "value": -10, "fire": "seek" }, "enabled": { "input": "canSeek", "eq": true }, "when": { "state": "playback", "in": ["playing", "paused"] } },
+          { "kind": "button", "text": "Back 10 seconds", "symbol": "", "on": { "set": "skip", "value": -10, "fire": "seek" }, "enabled": { "input": "canSeek", "eq": true }, "when": { "state": "playback", "in": ["playing", "paused"] } },
           { "kind": "button", "text": "Play", "symbol": "play", "role": "prominent", "on": { "set": "error", "value": "", "fire": "play" }, "enabled": { "all": [{ "input": "file", "ne": "" }, { "input": "receiver", "ne": "" }] }, "when": { "state": "playback", "in": ["stopped", "ended", "failed"] } },
           { "kind": "button", "text": "Pause", "symbol": "pause", "role": "prominent", "on": { "fire": "pause" }, "enabled": { "input": "canPause", "eq": true }, "when": { "state": "playback", "in": ["playing"] } },
           { "kind": "button", "text": "Resume", "symbol": "play", "role": "prominent", "on": { "fire": "resume" }, "when": { "state": "playback", "in": ["paused"] } },
           { "kind": "button", "text": "Stop", "symbol": "stop", "on": { "fire": "stop" }, "when": { "state": "playback", "in": ["playing", "paused"] } },
-          { "kind": "button", "text": "Forward 10 seconds", "symbol": "skip-forward", "on": { "set": "skip", "value": 10, "fire": "seek" }, "enabled": { "input": "canSeek", "eq": true }, "when": { "state": "playback", "in": ["playing", "paused"] } }
+          { "kind": "button", "text": "Forward 10 seconds", "symbol": "", "on": { "set": "skip", "value": 10, "fire": "seek" }, "enabled": { "input": "canSeek", "eq": true }, "when": { "state": "playback", "in": ["playing", "paused"] } }
         ]
       },
       {

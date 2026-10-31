@@ -7,7 +7,7 @@ device cases in `chromecast_tests.Device` then drive the whole sender over
 real TLS against a scripted device. Everything runs through
 `testing.Check.strictly`, so an integer fault stops the suite.
 """
-from chromecast import Discovery, Hex, Media, Protocol, Wire
+from chromecast import Discovery, Dns, Hex, Media, Protocol, Wire
 from chromecast_expected import Expected
 from chromecast_tests import Device
 from testing import Check
@@ -132,7 +132,7 @@ def browse_detail_cases(devices):
     ports = toList(map(range(0, len(Expected.BROWSE_PORT)), lambda i: Check.equal(f"browse.port.{i}", device_at(devices, i).port, at_int(Expected.BROWSE_PORT, i))))
     found = Check.equal("browse.named", Device.outcome(Discovery.named(devices, "Kitchen TV"), lambda d: f"{d.host}:{d.port}"), "ok kitchen-cast.local:8010")
     missing = Check.equal("browse.missing", Device.outcome(Discovery.named(devices, "Attic"), lambda d: d.host), "error no Cast device named Attic")
-    live = Check.truth("discover.runs", len(Discovery.discover(1)) >= 0, "discover failed")
+    live = Check.truth("discover.runs", len(Dns.discover(1)) >= 0, "discover failed")
     return listConcat(listConcat(hosts, ports), [found, missing, live, Check.equal("browse.empty", len(Discovery.browse("")), 0)])
 
 
