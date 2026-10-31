@@ -42,11 +42,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
-
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       # Rust, clang/LLVM, the native C runtime archives and the release CLI.
       - name: Setup Osprey Compiler
@@ -66,11 +61,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
-
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       # Rust, clang/LLVM, the native C runtime archives and the release CLI.
       - name: Setup Osprey Compiler
@@ -93,8 +83,6 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
 
       # The C runtime is built with MinGW (as in ci-windows.yml) and the host with MSYS2's UCRT64
       # Rust, so its build scripts run as GNU programs and the host, GPUI and the Osprey runtime all
@@ -120,9 +108,6 @@ jobs:
       # The CLI builds with rustup's stable MSVC toolchain, as in ci-windows.yml.
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       - name: Build C runtime archives (MinGW)
         shell: msys2 {0}

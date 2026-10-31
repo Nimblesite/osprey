@@ -51,8 +51,6 @@ max_duplication_percent = 3.0
 
 [defaults]
 exclude = [
-  # The lspkit submodule (https://github.com/Nimblesite/lspkit) is gated in its own repo.
-  "lspkit/**",
   # Test code, in every layout the repo uses. The gate scopes to hand-written
   # PRODUCT code; test suites intentionally repeat setup/fixture scaffolding
   # (that repetition is what keeps each test independently readable), so

@@ -10,10 +10,6 @@
 _vsix_clean:
 	cd $(EXT_DIR) && $(RM) bin out dist osprey-*.vsix
 
-# The shared profiler UI the extension links from the lspkit submodule, for CI
-# steps that install and lint the extension outside make.
-_profiler_ui: $(PROFILER_UI_BUILT)
-
 # Stage the freshly-built Rust binary AND the C runtime archives where the
 # extension expects its bundled compiler (bin/<os>-<arch>/), so the VSIX runs
 # against THIS build. The compiler locates its runtime archives next to its own
@@ -98,7 +94,7 @@ _vsix_verify:
 # packaging regression is invisible until the installed extension quietly falls
 # back to whatever `osprey` is on PATH. Same assertion as the `vsix` job in
 # .github/workflows/release.yml.
-_vsix_package: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+_vsix_package: $(EXT_NODE_DEPS)
 	cd $(EXT_DIR) && npm run package
 	@set -e; VSIX=$$(ls -t $(EXT_DIR)/osprey-*.vsix 2>/dev/null | head -1); \
 	if [ -z "$$VSIX" ]; then echo "FAIL: npm run package produced no osprey-*.vsix"; exit 1; fi; \

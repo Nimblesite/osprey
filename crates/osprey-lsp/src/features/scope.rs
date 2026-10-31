@@ -1,7 +1,7 @@
 //! Source binders resolve only inside their lexical regions.
 //! Implements [LSP-DEFINITION-LOCAL] and [LSP-REFERENCES-LOCAL].
 
-use lspkit_vfs::PositionEncoding;
+use lspkit::vfs::PositionEncoding;
 use osprey_ast::Program;
 use osprey_syntax::{binding_ranges, binding_scope, BindingKind, BindingRange, Flavor};
 use std::ops::Range;

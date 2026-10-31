@@ -5,7 +5,7 @@
 //! wire protocol. Navigation is AST-driven (declarations carry real positions);
 //! find-references falls back to whole-word scanning for occurrences.
 
-use lspkit_vfs::PositionEncoding;
+use lspkit::vfs::PositionEncoding;
 
 use osprey_ast::Program;
 

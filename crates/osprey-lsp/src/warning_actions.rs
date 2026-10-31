@@ -1,8 +1,8 @@
 //! Source warnings and their proven edits share one analysis result.
 //! Implements [LSP-CODE-ACTIONS-ANNOTATIONS].
 
+use lspkit::vfs::PositionEncoding;
 use lspkit_server::Diagnostic;
-use lspkit_vfs::PositionEncoding;
 use osprey_ast::{Position, Program};
 use osprey_syntax::{AnnotationEdit, AnnotationTarget};
 use osprey_types::{RedundantAnnotation, RedundantTarget};
@@ -381,10 +381,10 @@ mod tests {
         std::fs::write(root.join("src/main.ospml"), main).expect("entry source");
         std::fs::write(root.join("src/helper.ospml"), helper).expect("helper source");
         let uri = lspkit_server::uri::path_to_uri(&root.join("src/main.ospml")).expect("entry URI");
-        let sibling = lspkit_vfs::DocumentUri::new(
+        let sibling = lspkit::vfs::DocumentUri::new(
             lspkit_server::uri::path_to_uri(&root.join("src/helper.ospml")).expect("sibling URI"),
         );
-        let vfs = lspkit_vfs::Vfs::new(PositionEncoding::Utf16);
+        let vfs = lspkit::vfs::Vfs::new(PositionEncoding::Utf16);
         let analyze = || crate::diagnostics::analyze_live(main, &uri, vfs.encoding(), Some(&vfs));
         assert_eq!(analyze().fixes.len(), 1, "{:?}", analyze());
         // Each live-sibling state must forbid the speculative erasure. The
@@ -394,7 +394,7 @@ mod tests {
             vfs.open(
                 sibling.clone(),
                 text,
-                lspkit_vfs::DocumentVersion::new(version),
+                lspkit::vfs::DocumentVersion::new(version),
             );
             assert!(analyze().fixes.is_empty(), "{why}");
         };

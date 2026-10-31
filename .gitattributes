@@ -10,5 +10,5 @@
 # Proof certificates are hashed as bytes; checkout must preserve their pins.
 *.ndjson -text
 # Each .claude/skills/<name> is a link to .agents/skills/<name>, a directory;
-# Git for Windows makes it a directory link (node lspkit/scripts/link-skills.mjs repairs a checkout without symlinks).
+# Git for Windows makes it a directory link (node scripts/link-skills.mjs repairs a checkout without symlinks).
 .claude/skills/* symlink=dir

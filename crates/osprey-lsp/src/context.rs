@@ -13,7 +13,7 @@
 //! and each falls back to [`Cursor::Declaration`] (the unfiltered answer) rather
 //! than to silence.
 
-use lspkit_vfs::PositionEncoding;
+use lspkit::vfs::PositionEncoding;
 
 use crate::text::prefix_to;
 

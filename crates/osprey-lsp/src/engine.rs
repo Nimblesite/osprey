@@ -1,6 +1,6 @@
 //! [`OspreyEngine`] — the [`lspkit::EngineApi`] implementation.
 //!
-//! State is the open-document [`Vfs`] plus a [`Session`] (from `lspkit-live`)
+//! State is the open-document [`Vfs`] plus a [`Session`] (from `lspkit_server::live`)
 //! that owns the monotonic generation counter and broadcasts change events.
 //! Every analysis is recomputed from current document text via [`crate::model`]
 //! queries. Implements [LSP-ENGINE] and [LSP-REUSE-LSPKIT].
@@ -9,12 +9,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use lspkit::vfs::{PositionEncoding, Vfs};
 use lspkit::{
     Cause, EngineApi, Generation, GenerationEventStream, Progress, RescanScope, RescanTicket,
     Snapshot,
 };
-use lspkit_live::Session;
-use lspkit_vfs::{PositionEncoding, Vfs};
+use lspkit_server::live::Session;
 use tokio::sync::broadcast::error::RecvError;
 use tokio_util::sync::CancellationToken;
 
@@ -58,7 +58,7 @@ impl OspreyEngine {
         self.vfs.encoding()
     }
 
-    fn text(&self, uri: &lspkit_vfs::DocumentUri) -> String {
+    fn text(&self, uri: &lspkit::vfs::DocumentUri) -> String {
         self.vfs.text(uri).unwrap_or_default()
     }
 
@@ -224,7 +224,7 @@ impl EngineApi for OspreyEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lspkit_vfs::{DocumentUri, DocumentVersion};
+    use lspkit::vfs::{DocumentUri, DocumentVersion};
 
     fn engine_with(text: &str) -> (OspreyEngine, DocumentUri) {
         let vfs = Vfs::new(PositionEncoding::Utf16);

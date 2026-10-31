@@ -47,10 +47,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
 
       # No duplication gate here. Deslop measures source text, so its verdict is
       # platform-independent, so running it on a second OS would only duplicate
@@ -102,11 +98,6 @@ jobs:
       - name: GC keeps roots in outer caller stack frames
         shell: msys2 {0}
         run: make _test_gc_stack_root CC=gcc
-
-      # The language server mounts lspkit's profiler, whose build script
-      # generates its wire model with typeDiagram [PROF-LSP-HOST].
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       - name: Build osprey (release)
         run: cargo build --release -p osprey-cli

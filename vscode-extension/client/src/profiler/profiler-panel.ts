@@ -20,11 +20,11 @@ configurePalette(() => resolvePalette(OSPREY_PALETTE,
 export const flamePanel = new SingletonWebviewPanel(() => "ospreyProfiler", handleFlamegraphMessage);
 
 /** Show (or refresh) the singleton profiler panel for a new run. */
-export function showFlamePanel(
+export async function showFlamePanel(
   model: FlameModel,
   summary: ProfileSummary,
   sourcePath: string,
   artifacts?: { speedscope: string; cpuprofile: string },
-): void {
-  flamePanel.show(`Profile: ${path.basename(sourcePath)}`, buildFlamegraphHtml(nativeProfileResult(model, summary, artifacts)));
+): Promise<void> {
+  flamePanel.show(`Profile: ${path.basename(sourcePath)}`, await buildFlamegraphHtml(nativeProfileResult(model, summary, artifacts)));
 }

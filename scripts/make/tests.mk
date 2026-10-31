@@ -82,7 +82,7 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   test_file_runtime tensor_list_tests \
   test_http_length_validation http_server_send_tests http_server_request_tests \
   fiber_runtime_tests http_runtime_tests http_shared_tests \
-  websocket_runtime_tests profiler_runtime_tests profiler_stream_tests \
+  websocket_runtime_tests net_runtime_tests profiler_runtime_tests profiler_stream_tests \
   coverage_runtime_tests
 C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
 C_LIBS_memory_gc_stack_root_tests = -pthread
@@ -162,6 +162,11 @@ C_LIBS_http_shared_tests = -pthread $(OSSL_LIBS)
 C_FLAGS_websocket_runtime_tests = $(OSSL_CFLAGS)
 C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
+# Owns tls_client_runtime.c and file_server_runtime.c: a loopback OpenSSL echo
+# server (18092/18093) and a plain TCP client against the one-file server.
+C_FLAGS_net_runtime_tests = $(OSSL_CFLAGS)
+C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
+C_LIBS_net_runtime_tests = -pthread $(OSSL_LIBS)
 C_PROFILE_profiler_runtime_tests = $(PROF_T)
 C_SRC_profiler_runtime_tests = runtime/profiler_runtime_tests.c runtime/profiler_walk_tests.c runtime/profiler_spec_tests.c $(PROF_SRC)
 C_LIBS_profiler_runtime_tests = -pthread
@@ -339,7 +344,7 @@ _test_profiler:
 # exactly the kind of failure a developer cannot reproduce from a green CI run.
 # Restaging keeps `make test` honest about which compiler it just tested.
 # CI consumes the exact stage-1 bundle; public `make test` builds it first.
-_test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+_test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS)
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
 	cp $(BIN) target/path-bin/osprey
@@ -460,7 +465,7 @@ _test_registry_blockers:
 _language-test: build
 	$(MAKE) _test_language_corpus
 
-_lint: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+_lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
 	node scripts/verify-node-deps-guard.mjs
 	node scripts/verify-no-dead-code.mjs

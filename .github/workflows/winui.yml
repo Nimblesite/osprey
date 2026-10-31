@@ -41,8 +41,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
 
       # The C runtime is built with MinGW (as in ci-windows.yml), and the UCRT64 clang links the
       # application DLL against it.
@@ -62,9 +60,6 @@ jobs:
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       - name: Build C runtime archives (MinGW)
         shell: msys2 {0}

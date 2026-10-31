@@ -5,8 +5,8 @@
 //! the wire shape here lets the rest of the server speak the neutral
 //! [`crate::model`] vocabulary.
 
+use lspkit::vfs::{Position, PositionEncoding, Range, TextEdit};
 use lspkit_server::{Diagnostic, Severity};
-use lspkit_vfs::{Position, PositionEncoding, Range, TextEdit};
 use serde_json::{json, Value};
 
 use crate::analysis::SymbolInfo;

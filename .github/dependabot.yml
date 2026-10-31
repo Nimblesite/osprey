@@ -98,15 +98,3 @@ updates:
       github-actions:
         applies-to: version-updates
         patterns: ["*"]
-
-  - package-ecosystem: gitsubmodule
-    directory: "/"
-    target-branch: "dependabot-upgrades"
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    labels: ["dependencies"]
-    groups:
-      gitsubmodule:
-        applies-to: version-updates
-        patterns: ["*"]

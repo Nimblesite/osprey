@@ -8,11 +8,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use lspkit::vfs::{DocumentUri, DocumentVersion, PositionEncoding, Vfs};
 use lspkit::EngineApi;
 use lspkit_server::diagnostics::{DiagnosticsBatch, DiagnosticsSink};
 use lspkit_server::jsonrpc::{read_message, FramingError, MessageWriter};
 use lspkit_server::{Dispatcher, HandlerResult, JsonRpcError, Message, RequestId};
-use lspkit_vfs::{DocumentUri, DocumentVersion, PositionEncoding, Vfs};
 use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncWrite, BufReader};
 use tokio_util::sync::CancellationToken;

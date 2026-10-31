@@ -33,11 +33,6 @@ runs:
         toolchain: ${{ inputs.rust-toolchain }}
         components: rustfmt, clippy
 
-    # lsp-profiler's build script generates its wire model with typeDiagram, so
-    # every job that compiles the workspace needs it [PROF-LSP-RUNTIME].
-    - name: Install typeDiagram
-      uses: ./.github/actions/typediagram
-
     - name: Cache cargo registry + target
       uses: actions/cache@v6
       with:

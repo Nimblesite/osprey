@@ -20,7 +20,7 @@ include scripts/android.mk
 # =============================================================================
 
 ## build: C runtime archives + Rust workspace (release) + VSCode extension
-build: _runtime _runtime_klee $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+build: _runtime _runtime_klee $(EXT_NODE_DEPS)
 	@echo "==> Building..."
 	cargo build --release --workspace
 	cd $(EXT_DIR) && npm run compile

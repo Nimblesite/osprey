@@ -6,8 +6,8 @@ mod candidates;
 use crate::model::{CodeAction, Span, TextChange};
 use crate::project_cache::ProjectCache;
 use crate::workspace::{file_path, same_path};
+use lspkit::vfs::{DocumentUri, Vfs};
 use lspkit_server::{Diagnostic, Severity};
-use lspkit_vfs::{DocumentUri, Vfs};
 use osprey_project::{ProjectConfig, SourceFile};
 use std::ops::Range;
 

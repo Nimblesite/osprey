@@ -8,7 +8,13 @@ use std::path::Path;
 /// and any `// @link:` / `// @linkdir:` FFI directives (e.g. `-lsqlite3`).
 /// Implements [FFI-LINK-DIRECTIVES].
 pub(super) fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
-    let uses_http = ir.contains("@http") || ir.contains("@websocket");
+    // The extern-callable TLS session and file server live in the HTTP
+    // archive with OpenSSL [FFI-TLS-CLIENT] [FFI-FILE-SERVER].
+    let uses_http = ir.contains("@http")
+        || ir.contains("@websocket")
+        || ir.contains("@osprey_tls_")
+        || ir.contains("@osprey_net_")
+        || ir.contains("@osprey_file_server_");
     let mut args: Vec<_> = runtime_archive(uses_http, memory).into_iter().collect();
     if uses_http {
         args.extend(openssl_flags());

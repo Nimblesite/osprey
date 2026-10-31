@@ -8,7 +8,7 @@
 //! come from the whole project, not just the open buffer
 //! ([`crate::workspace`], [LSP-WORKSPACE]).
 
-use lspkit_vfs::PositionEncoding;
+use lspkit::vfs::PositionEncoding;
 use osprey_ast::Program;
 use osprey_syntax::Flavor;
 use osprey_types::{names, ProgramTypes, Type};

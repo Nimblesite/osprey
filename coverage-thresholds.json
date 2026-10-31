@@ -233,6 +233,12 @@
       },
       "websocket_server_runtime": {
         "language": "c"
+      },
+      "tls_client_runtime": {
+        "language": "c"
+      },
+      "file_server_runtime": {
+        "language": "c"
       }
     },
     "editor": {

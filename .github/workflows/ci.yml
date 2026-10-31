@@ -110,11 +110,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-        # The site's images and videos are Git LFS files; the extension links
-        # the shared profiler UI from the lspkit submodule.
+        # The site's images and videos are Git LFS files.
         with:
           lfs: true
-          submodules: true
 
       - uses: actions/setup-node@v7
         with:
@@ -130,15 +128,14 @@ jobs:
       # Skills live in .agents/skills for every agent; Claude Code reads them
       # through links in .claude/skills.
       - name: Every skill is linked for Claude Code
-        run: node lspkit/scripts/link-skills.mjs --check .
+        run: |
+          node --test scripts/link-skills.test.mjs
+          node scripts/link-skills.mjs --check .
 
       # Rust toolchain + clang/LLVM + lldb-dap + the C runtime archives + the
       # release binary.
       - name: Setup Osprey Compiler
         uses: ./.github/actions/setup-osprey-compiler
-
-      - name: Build the shared profiler UI (lspkit submodule)
-        run: make _profiler_ui
 
       - name: Install VS Code extension dependencies
         run: npm ci
@@ -294,10 +291,6 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -367,10 +360,6 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -399,8 +388,6 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -431,8 +418,6 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -463,8 +448,6 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -493,10 +476,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -517,10 +496,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -558,10 +533,6 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -693,9 +664,6 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-        # The extension links the shared profiler UI from the lspkit submodule.
-        with:
-          submodules: true
       # `pretest` compiles the extension, which copies its icon from this
       # LFS-stored logo; packaging also requires the README GIFs and the workbench
       # assets/lessons media it stages verbatim. Refuse pointers.
@@ -730,10 +698,6 @@ jobs:
           sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
           test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
-
-      # npm installs a packed copy of the built UI, so it is built first.
-      - name: Build the shared profiler UI (lspkit submodule)
-        run: make _profiler_ui
 
       - name: Install VS Code extension dependencies
         run: npm ci
@@ -797,10 +761,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -871,10 +831,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         # The site's images and videos are Git LFS files; the Book's examples
-        # build the compiler, whose workspace resolves through lspkit.
+        # build the compiler.
         with:
           lfs: true
-          submodules: true
       - uses: ./.github/actions/detect-ci-scope
         id: filter
       - uses: actions/setup-node@v7
@@ -882,11 +841,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: website/package-lock.json
-
-      # Building the compiler compiles lspkit's profiler, whose build.rs runs
-      # typeDiagram; without it on PATH the cargo build fails before any test.
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -957,10 +911,6 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -1112,10 +1062,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
-          submodules: true
           lfs: true
 
       - name: Install jq
@@ -1123,11 +1070,6 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      # The iOS and macOS builds compile the workspace, whose lsp-profiler
-      # build script generates its wire model with typeDiagram [PROF-LSP-RUNTIME].
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       - name: iOS and macOS builds, ABI, goldens and app persistence
         run: make ios-test macos-test mobile-ios-test bank-ios-test

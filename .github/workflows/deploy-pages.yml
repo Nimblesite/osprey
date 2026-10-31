@@ -50,9 +50,6 @@ jobs:
           fetch-depth: 0
           # The site's images and videos are Git LFS files.
           lfs: true
-          # `make wasm-site` builds the workspace, whose lsp-profiler crates
-          # live in the lspkit submodule.
-          submodules: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -61,11 +58,6 @@ jobs:
           # whose cached memory backing store goes stale on `memory.grow`
           # before Node 24 — see the comment on the ci.yml wasm job.
           node-version: "24"
-
-      # lsp-profiler's build script generates its wire model with typeDiagram,
-      # so `make wasm-site` cannot compile the workspace without it on PATH.
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

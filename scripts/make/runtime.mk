@@ -110,6 +110,8 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_runtime.c      -o bin/http_server_runtime.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/websocket_client_runtime.c -o bin/websocket_client_runtime.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/websocket_server_runtime.c -o bin/websocket_server_runtime.o && \
+	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/tls_client_runtime.c        -o bin/tls_client_runtime.o && \
+	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/file_server_runtime.c       -o bin/file_server_runtime.o && \
 	  $(RM) bin/libfiber_runtime.a bin/libhttp_runtime.a bin/libfiber_runtime_gc.a bin/libhttp_runtime_gc.a bin/libfiber_runtime_arc.a bin/libhttp_runtime_arc.a && \
 	  $(AR) rcs bin/libfiber_runtime.a $(FIB_OBJ) && \
 	  $(AR) rcs bin/libhttp_runtime.a  $(HTTP_OBJ) && \
