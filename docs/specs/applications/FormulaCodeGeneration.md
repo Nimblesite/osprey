@@ -19,7 +19,7 @@ Mathematics in, code out, is four different jobs. Confusing them is how a tool e
 | Expression evaluation | a closed expression over known values | one number | **In scope**, as the value mode of a generated function |
 | Executable function generation | a definition naming a function, its inputs and its domain | a pure Osprey function and its source | **In scope; the first fragment** |
 | Solver synthesis | an equation or constraint with no isolated variable | a solved form, a root, a search procedure | **Out of scope**; refused by name until a specified algorithm exists |
-| Proof extraction | a statement and steps | a checker term and a verdict | Out of scope here; it is [WORKBENCH-EMIT](0051-ProofWorkbench.md#generated-code-workbench-emit) and [WORKBENCH-VERDICT](0051-ProofWorkbench.md#verdict-workbench-verdict), unchanged |
+| Proof extraction | a statement and steps | a checker term and a verdict | Out of scope here; it is [legacy proof emitter](0051-ProofWorkbench.md#deleted-formats-workbench-deleted) and [WORKBENCH-VERDICT](0051-ProofWorkbench.md#verdict-workbench-verdict), unchanged |
 
 A generated function is **not** a proof and never claims a theorem. The two panes may sit in the same window; they share no verdict, no status and no receipt.
 
@@ -68,13 +68,13 @@ fall_time(h) = sqrt(2 * h / g).
 
 A `Constant` or `Example` sentence belongs to the block that precedes it. `Example` sentences are test data, not code: they never appear in the generated module and never change its bytes, so they matter only to `Tested`.
 
-Readings and faults carry a 1-based column counted in **Unicode scalar values**, with exact UTF-8 byte spans retained for caret and host mapping. This proposed reader must test those conversions rather than assume the units of the existing [formula reader](0051-ProofWorkbench.md#formulas-workbench-formula). `Definitions::read : string -> Reading` mirrors `Formulas::read`: a `Read Document` or a `Faulted Fault`, because a `Result`'s error channel holds only a message. Every refusal names the column and the shortest thing that would have made the text well formed. A block with any fault is refused whole; a document with one faulted block generates nothing, so a partial algorithm never appears beside a clean preview.
+Readings and faults carry a 1-based column counted in **Unicode scalar values**, with exact UTF-8 byte spans retained for caret and host mapping. This proposed reader must test those conversions rather than assume the units of the existing [legacy formula reader](0051-ProofWorkbench.md#deleted-formats-workbench-deleted). `Definitions::read : string -> Reading` mirrors `Formulas::read`: a `Read Document` or a `Faulted Fault`, because a `Result`'s error channel holds only a message. Every refusal names the column and the shortest thing that would have made the text well formed. A block with any fault is refused whole; a document with one faulted block generates nothing, so a partial algorithm never appears beside a clean preview.
 
 Precedence, loosest first: `+ -`, `* /`, unary `-`, `^` (right associative), application, atoms. Parentheses override. `2 h` is refused as `ImplicitMultiplication` with the fix `2 * h`: adjacency means function application everywhere else in the workbench, and letting it also mean multiplication is how `f (x)` becomes ambiguous.
 
 ## The term language [WORKBENCH-CODEGEN-TERMS]
 
-Arithmetic terms are **not** formulas. `Formula` of [WORKBENCH-FORMULA](0051-ProofWorkbench.md#formulas-workbench-formula) is propositional and stays propositional; a numeric expression is never a proposition and is never handed to the kernel. A definition document contains no proposition at all.
+Arithmetic terms are **not** formulas. `Formula` of the [legacy proof reader](0051-ProofWorkbench.md#deleted-formats-workbench-deleted) is propositional and stays propositional; a numeric expression is never a proposition and is never handed to the kernel. A definition document contains no proposition at all.
 
 ```
 type Expr =
@@ -156,7 +156,7 @@ Rules:
 - No `?:`, no `unwrap`-like builtin, no placeholder body, no `sorry` analogue, no empty branch. Every branch is total or returns `Error`.
 - A `// osprey: flavor=ml` module with no definitions is not emitted; an empty document produces no file and a neutral explanation.
 - The bytes are a pure function of canonical mathematical input, explicit domains/numerical policies, target source-language profile and generator version; the receipt identifies every one. Two runs on the same input are byte-identical, and generation has no clock, no locale, no host and no random source.
-- The source pane is read-only, line-numbered and highlighted with the roles of [WORKBENCH-DESIGN-FEEDBACK](0051-ProofWorkbench.md#proof-feedback-and-source-workbench-design-feedback): keywords, names, types, operators, comments. Editing it is not offered; a deliberate "Copy as ordinary document" action produces an unlinked Osprey file document whose code statuses are all cleared.
+- The source pane is read-only, line-numbered and highlighted with the [source presentation](0051-ProofWorkbench.md#typeset-mathematics-workbench-math) roles: keywords, names, types, operators, comments. Editing it is not offered; a deliberate "Copy as ordinary document" action produces an unlinked Osprey file document whose code statuses are all cleared.
 - Export writes exactly the bytes shown, through the existing `SaveFile` capability, as `<name>.ospml`, and optionally the receipt as `<name>.receipt.json`. Nothing else is written, and no workspace path is created without that explicit action.
 
 ### Line map and diagnostics [WORKBENCH-CODEGEN-LINEMAP]
@@ -320,7 +320,7 @@ The refusal vocabulary is closed and each code is a typed fault, not a string: `
 
 ## One application, mechanical hosts [WORKBENCH-CODEGEN-APP]
 
-Everything above lives in the shared Osprey application over `@osprey/native`, on native, in VS Code and in the browser, from one source tree, under [WORKBENCH-LAYOUT](0051-ProofWorkbench.md#home-and-layout-workbench-layout) and [WORKBENCH-STORE](0051-ProofWorkbench.md#store-workbench-store). Parsing, the term IR, every decision table, generation, the line map, statuses, receipts and invalidation are application code. A host renders regions and completes capabilities; it makes no decision and holds no second generator. There is no TypeScript, Swift, C# or Rust implementation of any rule in this document.
+Everything above lives in the shared Osprey application over `@osprey/native`, on native, in VS Code and in the browser, from one source tree, under [WORKBENCH-LAYOUT](0051-ProofWorkbench.md#layout-workbench-layout) and [WORKBENCH-STORE](0051-ProofWorkbench.md#store-workbench-store). Parsing, the term IR, every decision table, generation, the line map, statuses, receipts and invalidation are application code. A host renders regions and completes capabilities; it makes no decision and holds no second generator. There is no TypeScript, Swift, C# or Rust implementation of any rule in this document.
 
 Candidate modules, each under 500 lines with functions under 20, joining the existing layout table:
 
