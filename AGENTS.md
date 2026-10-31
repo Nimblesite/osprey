@@ -4,7 +4,7 @@
 
 ## Workflow
 - ❌ subagents, linked worktrees, git hooks (delete them). Primary checkout only; git = commit/push.
-- **pi agents — exact ids only:** `kimi-coding/k3.1-pro-highspeed`, `zai/glm-5.3`, `zai/glm-5.3-flash`, `deepseek/deepseek-flash`. `pi auth check --model <id>` first; out of credit → tell user, switch model.
+- **Offload legwork (repetitive, simple work) to pi agents** — exact ids only, in this precedence: `kimi-coding/k3.1-pro-highspeed` → `zai/glm-5.3` → `zai/glm-5.3-flash` → `deepseek/deepseek-flash`. `pi auth check --model <id>` first; out of credit → tell user, fall to the next. You own their output: review and fix it.
 - **Tokens:** check file size before reading, grep first, smallest diff.
 - **Entry points = commented make targets.** Answer usage questions from `make help`. Demo findings with a verified finding first; label clean controls and engine limitations.
 
