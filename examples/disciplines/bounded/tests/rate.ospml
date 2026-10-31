@@ -1,0 +1,13 @@
+// osprey: types=bounded
+
+namespace bounded
+
+(** The module this package's suite runs the `bounded` discipline over. *)
+module Rate
+    (** `p` percent of `total`, for `p` between zero and one hundred. *)
+    // @bound p in 0..100
+    export scale (p, total) = intDiv (total * p, 100)
+
+    (** Half of `total`, through a call the checker can bound. *)
+    // @bound total in 0..100000
+    export half total = scale (50, total)

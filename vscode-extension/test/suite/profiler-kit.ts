@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { chromium, type Browser, type Frame } from "playwright-core";
+import { chromium, errors, type Browser, type Frame } from "playwright-core";
 import type { LanguageClient } from "vscode-languageclient/node";
 import { profilerStatusText, type ProcessesProvider, type ProfilerStore } from "@nimblesite/lsp-profiler-ui";
 import type { ProcessList, ProfileReport, StartProfileResult } from "@nimblesite/lsp-profiler-ui/out/src/wire-generated";
@@ -30,11 +30,24 @@ export async function connectEditorBrowser(): Promise<Browser> {
 }
 
 
+const FRAME_PROBE_MS = 100;
+
+async function frameMatches(frame: Frame, selector: string): Promise<boolean> {
+  if (frame.isDetached()) return false;
+  try {
+    await frame.locator(selector).waitFor({ state: "attached", timeout: FRAME_PROBE_MS });
+    return true;
+  } catch (error) {
+    if (error instanceof errors.TimeoutError || frame.isDetached()) return false;
+    throw error;
+  }
+}
+
 export async function editorWebviewFrame(browser: Browser, selector: string): Promise<Frame> {
   const frame = await pollUntilResult({
     fn: async () => {
       for (const candidate of browser.contexts().flatMap((context) => context.pages()).flatMap((page) => page.frames())) {
-        if (await candidate.locator(selector).count() > 0) return candidate;
+        if (await frameMatches(candidate, selector)) return candidate;
       }
       return undefined;
     },

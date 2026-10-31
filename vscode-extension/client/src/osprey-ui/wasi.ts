@@ -4,6 +4,7 @@
 // grants a filesystem: stdin is the frame string and stdout is one envelope.
 
 import { randomFillSync } from "crypto";
+import { runInWorker } from "./wasi-runner";
 
 const ESUCCESS = 0;
 const EBADF = 8;
@@ -27,6 +28,7 @@ export interface WasiResult {
 export interface WasiOptions {
   readonly args?: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
+  readonly signal?: AbortSignal;
 }
 
 /** The WASI functions this host implements; a module importing any other is rejected. */
@@ -260,10 +262,8 @@ function decodedOutput(chunks: Buffer[], stream: string): string {
   }
 }
 
-/** Run one WASI command to completion with in-memory stdin and bounded captured output. */
-export async function runWasi(module: WebAssembly.Module, input: string, options: WasiOptions = {}): Promise<WasiResult> {
-  validateImports(module);
-  const state: WasiState = {
+function commandState(input: string, options: WasiOptions): WasiState {
+  return {
     descriptors: new Map([[0, 0], [1, 0], [2, 0]]),
     cursor: 0,
     stdin: Buffer.from(input, "utf8"),
@@ -273,20 +273,35 @@ export async function runWasi(module: WebAssembly.Module, input: string, options
     environ: environment(options.env),
     bytes: 0,
   };
-  let exitCode = 0;
+}
+
+async function executeCommand(module: WebAssembly.Module, state: WasiState): Promise<number> {
   try {
     const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: wasiImports(state) });
     state.memory = instance.exports.memory as WebAssembly.Memory | undefined;
     const start = instance.exports._start;
     if (typeof start !== "function") throw new Error("Osprey workspace module does not export _start");
     start();
+    return 0;
   } catch (error) {
-    if (error instanceof WasiExit) exitCode = error.code;
+    if (error instanceof WasiExit) return error.code;
     else throw error;
   }
+}
+
+/** The same bounded runtime, invoked only inside its command worker. */
+export async function runWasiInline(module: WebAssembly.Module, input: string, options: WasiOptions = {}): Promise<WasiResult> {
+  validateImports(module);
+  const state = commandState(input, options);
+  const exitCode = await executeCommand(module, state);
   return {
     stdout: decodedOutput(state.stdout, "stdout"),
     stderr: decodedOutput(state.stderr, "stderr"),
     exitCode,
   };
+}
+
+/** Run one isolated command without blocking the extension's event loop. */
+export async function runWasi(module: WebAssembly.Module, input: string, options: WasiOptions = {}): Promise<WasiResult> {
+  return runInWorker(module, input, options);
 }

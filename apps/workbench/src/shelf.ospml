@@ -1,0 +1,75 @@
+// Implements [LESSONS-FILES] and [LESSONS-PROGRESS]: the requests that load
+// the catalogue, the lessons it names and the learner's progress, and the
+// reading of what the host wrote back. Lesson text lands in host-held slices;
+// only the open lesson's text is kept in the store.
+namespace workbench
+
+import workbench::Lessons
+import workbench::Catalogues
+import workbench::Blocks
+import workbench::Tutors
+import ui::Doc
+import ui::Lists
+import ui::Requests
+
+(** The lesson requests and the reading of their results ([LESSONS-FILES]). *)
+module Shelves
+    (** The ticket and slice of the catalogue read. *)
+    export catalogueKey = "lessons:catalogue"
+
+    (** The ticket and slice of the read of every lesson. *)
+    export textsKey = "lessons:texts"
+
+    (** The ticket and slice of the progress read and write ([LESSONS-PROGRESS]). *)
+    export progressKey = "lessons:progress"
+
+    (** The ticket of a progress write. *)
+    export savedKey = "lessons:saved"
+
+    (** The catalogue read, asked for at start. *)
+    export catalogue () = Requests::ask (catalogueKey, ui::ReadTexts(texts = ["lessons/catalogue.json"], textLimit = 65536, textSlice = catalogueKey))
+
+    (** The read of every lesson the catalogue names, in catalogue order. *)
+    export lessons slugs = Requests::ask (textsKey, ui::ReadTexts(texts = mapList (slugs, \slug => "lessons/" + slug + ".json"), textLimit = 1048576, textSlice = textsKey))
+
+    (** The progress read, asked for at start; a missing file completes with an error and means no progress. *)
+    export progress () = Requests::ask (progressKey, ui::StoreRead(readName = "lessons/progress.json", readLimit = 65536, readSlice = progressKey))
+
+    (** The completed keys of `tutor` written to the progress slice, ahead of `store` ([LESSONS-PROGRESS]). *)
+    export progressWrite tutor = Requests::write (progressKey, Doc::write (Tutors::save tutor))
+
+    (** The store write of the progress slice to `lessons/progress.json`. *)
+    export store () = Requests::ask (savedKey, ui::StoreWrite(writeName = "lessons/progress.json", writeSlice = progressKey))
+
+    files text = Doc::items (Doc::field (Doc::parse text, "files"))
+
+    // A file the host could not read reports its error; an empty text is a fault too.
+    fileText file = match isEmpty (Doc::text (file, "error"))
+        true => Doc::text (file, "text")
+        false => ""
+
+    (** The slugs the catalogue in the host's read result names, or why it does not read. *)
+    export slugs text = match listGet (files text) 0
+        Error _ => Error(message = "the catalogue was not read")
+        Success file => match Catalogues::read (fileText file)
+            Error problem => Error(message = problem)
+            Success found => Success(value = found.catalogueSlugs)
+
+    (** One catalogue entry per lesson in the host's read result, a lesson that does not read listed with its fault. *)
+    export entries (slugs, text) = mapList (slugs, \slug => entry (slug, sourceOf (text, slug)))
+
+    entry (slug, source) = match Lessons::read source
+        Error problem => Listing(entrySlug = slug, entryTitle = slug, entrySummary = "", entryStage = 0, entryMinutes = 0, entryChallenges = [], entryFault = faulted (source, problem))
+        Success lesson => Listing(entrySlug = slug, entryTitle = lesson.lessonTitle, entrySummary = lesson.lessonSummary, entryStage = lesson.lessonStage, entryMinutes = lesson.lessonMinutes, entryChallenges = mapList (Blocks::challenges lesson.lessonBlocks, \challenge => Tutors::keyOf (slug, challenge.challengeId)), entryFault = "")
+
+    faulted (source, problem) = match isEmpty source
+        true => "the lesson file was not read"
+        false => problem
+
+    (** The text of lesson `slug` in the host's read result, empty when it was not read. *)
+    export sourceOf (text, slug) = match Lists::find (files text, \file => Doc::text (file, "path") == "lessons/" + slug + ".json")
+        Success file => fileText file
+        Error _ => ""
+
+    (** The completed keys in the host's progress read; unreadable text is no progress. *)
+    export completed text = (Tutors::restore text).tutorCompleted

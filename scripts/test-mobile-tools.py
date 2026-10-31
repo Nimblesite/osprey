@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Check mobile tool selection and scheduling without an SDK or a network."""
+"""Portable mobile tooling checks and an explicit macOS host ownership oracle."""
 
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -25,8 +26,195 @@ STUB_TOOL = """#!/bin/sh
 case "$*" in
   *"am instrument"*) printf '%s\\n' "$REPORT" ;;
   *"settings get"*) echo null ;;
+  *"exec-out"*)
+    case "$SCREENSHOT_MODE" in
+      unavailable) echo 'stub screenshot transfer failed' >&2; exit 7 ;;
+      malformed) printf 'not a PNG' ;;
+      *) printf '\\211PNG\\r\\n\\032\\n' ;;
+    esac ;;
 esac
 """
+
+
+# Compile the actual host; doubles isolate string ownership from platform services.
+STORAGE_HOST_PROBE = r'''
+struct NativeNode: Decodable { let kind: String }
+final class DiskTree {
+    struct Guard { let apps: Set<String> }
+    static var current: DiskTree?
+    static func measure(_ root: String, guarding: Guard, progress: (Int64, Int64) -> Void) -> DiskTree? { nil }
+    func graft(_ tree: DiskTree, at: String) {}
+}
+enum PhotoLibrary { static func measure(_ done: @escaping () -> Void) { done() } }
+func canonical(_ path: String) -> String { path }
+func fullDiskAccess() -> Bool { false }
+@MainActor enum HostProbe {
+    static var mode = "valid"
+    static var live = Set<UnsafeRawPointer>()
+    static var releases = 0
+    static func output() -> UnsafePointer<CChar>? {
+        if mode == "nil" { return nil }
+        let value = mode == "valid" ? #"{"model":"state","ui":{"kind":"ready"},"commands":[]}"# : "{broken"
+        guard let pointer = strdup(value) else { fatalError("test allocation failed") }
+        live.insert(UnsafeRawPointer(pointer))
+        return UnsafePointer(pointer)
+    }
+}
+@MainActor func osprey_main() -> Int32 { 0 }
+@MainActor func osprey_storage_start(_ home: String, _ platform: String, _ full: Bool) -> UnsafePointer<CChar>? { HostProbe.output() }
+@MainActor func osprey_storage_dispatch(_ model: String, _ event: String) -> UnsafePointer<CChar>? { HostProbe.output() }
+@MainActor func osprey_release_string(_ pointer: UnsafePointer<CChar>?) {
+    guard let pointer else { preconditionFailure("released null output") }
+    precondition(HostProbe.live.remove(UnsafeRawPointer(pointer)) != nil, "released foreign or duplicate output")
+    HostProbe.releases += 1
+    free(UnsafeMutablePointer(mutating: pointer))
+}
+@main struct StorageOwnershipProbe {
+    @MainActor static func validOutputs() {
+        let store = StorageStore()
+        store.start()
+        precondition(store.ui?.kind == "ready" && store.failure == nil, "valid screen lost")
+        precondition(HostProbe.live.isEmpty && HostProbe.releases == 1, "StorageStore leaked successful output")
+        for index in 0..<100 { store.send(["index": index]) }
+        precondition(HostProbe.live.isEmpty && HostProbe.releases == 101, "StorageStore dispatch leaked output")
+    }
+    @MainActor static func failedOutputs() {
+        HostProbe.mode = "broken"
+        let invalid = StorageStore()
+        invalid.start()
+        precondition(invalid.failure != nil && HostProbe.live.isEmpty && HostProbe.releases == 102, "StorageStore leaked malformed output")
+        HostProbe.mode = "nil"
+        let absent = StorageStore()
+        absent.start()
+        precondition(absent.failure != nil && HostProbe.live.isEmpty && HostProbe.releases == 102, "StorageStore mishandled null output")
+    }
+    @MainActor static func main() {
+        validOutputs()
+        failedOutputs()
+        print("Storage host output ownership: PASS")
+    }
+}
+'''
+
+
+COUNTER_HOST_PROBE = r'''
+@_silgen_name("osp_arc_live_objects") func liveObjects() -> UInt64
+@_silgen_name("osp_arc_live_bytes") func liveBytes() -> UInt64
+@_cdecl("ios_host_log") func probeLog(_ value: UnsafePointer<CChar>?) -> Int64 {
+    value.map { Int64(strlen($0)) } ?? -1
+}
+@main struct CounterOwnershipProbe {
+    static func initializedCounts() -> (UInt64, UInt64) {
+        precondition(setenv("OSPREY_ARC_DEBUG", "1", 1) == 0)
+        precondition(osprey_main() == 0)
+        let objects = liveObjects(), bytes = liveBytes()
+        let control = osprey_summary(5)
+        precondition(liveObjects() == objects + 1 && liveBytes() > bytes, "ARC allocation control failed")
+        osprey_release_string(control)
+        precondition(liveObjects() == objects && liveBytes() == bytes)
+        return (objects, bytes)
+    }
+    static func main() {
+        let (objects, bytes) = initializedCounts()
+        for _ in 0..<1000 {
+            precondition(ospreyString(osprey_summary(5)) == "Count: 5")
+        }
+        precondition(liveObjects() == objects && liveBytes() == bytes, "Counter leaked owned outputs")
+        precondition(ospreyString(nil) == "Osprey returned a null string")
+        print("Counter host output ownership: PASS")
+    }
+}
+'''
+
+
+GPUI_HOST_PROBE = r'''
+#[path = "__FFI__"] mod ffi;
+use std::ffi::{c_char, CString};
+extern "C" {
+    fn osp_arc_live_objects() -> usize;
+    fn osp_arc_live_bytes() -> usize;
+    fn osprey_identityInput(value: *const c_char) -> *const c_char;
+    fn osprey_release_string(value: *const c_char);
+}
+fn counts() -> (usize, usize) {
+    // SAFETY: the linked ARC runtime exports both scalar counter functions.
+    unsafe { (osp_arc_live_objects(), osp_arc_live_bytes()) }
+}
+fn positive_control() -> Result<(), String> {
+    let value = CString::new("control").map_err(|error| error.to_string())?;
+    let before = counts();
+    // SAFETY: the input outlives the export, which transfers one owned result.
+    let owned = unsafe { osprey_identityInput(value.as_ptr()) };
+    assert!(!owned.is_null());
+    assert_eq!(counts().0, before.0 + 1, "ARC counter missed an owned output");
+    // SAFETY: release exactly the reference the positive control received.
+    unsafe { osprey_release_string(owned) };
+    assert_eq!(counts(), before);
+    Ok(())
+}
+fn round_trip(index: usize) -> Result<(), String> {
+    let context = format!("context:{index}:é🦅");
+    assert_eq!(ffi::Library::start(&context)?, context);
+    let event = format!("event:{index}");
+    assert_eq!(ffi::Library::dispatch(&context, &event)?, format!("{context}|{event}"));
+    Ok(())
+}
+fn main() -> Result<(), String> {
+    ffi::Library::init()?;
+    positive_control()?;
+    let before = counts();
+    for index in 0..1000 { round_trip(index)?; }
+    assert_eq!(counts(), before, "GPUI owned output references leaked");
+    println!("GPUI host ARC ownership passed (2000 exports)");
+    Ok(())
+}
+'''
+
+
+def run_swift_probe(source, binary, *inputs):
+    subprocess.run(["swiftc", "-parse-as-library", str(source), *inputs, "-o", str(binary)],
+                   check=True, timeout=60)
+    subprocess.run([str(binary)], check=True, timeout=10)
+
+
+def storage_host_probe():
+    host = ROOT / "examples/macos/OspreyStorage/StorageStore.swift"
+    with tempfile.TemporaryDirectory(prefix="osprey-storage-ownership-") as scratch:
+        source = Path(scratch) / "probe.swift"
+        binary = Path(scratch) / "probe"
+        source.write_text("import Foundation\nimport Darwin\n" + STORAGE_HOST_PROBE)
+        run_swift_probe(source, binary, str(host))
+
+
+def counter_host_probe():
+    host = ROOT / "examples/ios/OspreyCounter/OspreyCounterApp.swift"
+    compiler = os.environ.get("OSPREY_BIN", str(ROOT / "target/release/osprey"))
+    with tempfile.TemporaryDirectory(prefix="osprey-counter-ownership-") as scratch:
+        source, archive = Path(scratch) / "probe.swift", Path(scratch) / "counter.a"
+        subprocess.run([compiler, str(ROOT / "examples/ios/app.osp"), "--compile", "--target=macos",
+                        "--memory=arc", "--quiet", "--no-warnings", "-o", str(archive)],
+                       check=True, timeout=60)
+        helper = "func ospreyString(" + host.read_text().split("func ospreyString(", 1)[1]
+        source.write_text("import Foundation\n" + helper + COUNTER_HOST_PROBE)
+        run_swift_probe(source, Path(scratch) / "probe", "-import-objc-header",
+                        str(archive.with_suffix(".h")), str(archive))
+
+
+def gpui_host_probe(archive):
+    with tempfile.TemporaryDirectory(prefix="osprey-gpui-ownership-") as scratch:
+        source, fixture, binary = (Path(scratch) / name for name in ["probe.rs", "fixture.o", "probe"])
+        source.write_text(GPUI_HOST_PROBE.replace("__FFI__", str(ROOT / "hosts/gpui/src/ffi.rs")))
+        subprocess.run(["xcrun", "clang", "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                        "-Dmain=mobile_fixture_unused_main", "-I", str(archive.parent), "-c",
+                        str(ROOT / "scripts/mobile-abi.c"), "-o", str(fixture)], check=True, timeout=60)
+        links = [str(fixture), str(archive),
+                 "-Wl,-alias,_osprey_identityInput,_osprey_app_start",
+                 "-Wl,-alias,_osprey_joinWith,_osprey_app_dispatch"]
+        command = ["rustc", "--edition=2021", str(source), "-o", str(binary)]
+        subprocess.run(command + [arg for link in links for arg in ["-C", f"link-arg={link}"]],
+                       check=True, timeout=60)
+        subprocess.run([str(binary)], check=True, timeout=10,
+                       env=dict(os.environ, OSPREY_ARC_DEBUG="1"))
 
 
 def corpus_jobs(target, override=None):
@@ -150,29 +338,43 @@ def stub_android_tree(root):
     (root / BANK_RUN).parent.joinpath("build").mkdir()
 
 
-def instrumentation_verdict(report):
+def instrumentation_result(report, screenshot_mode="valid"):
     """Exit status of the bank's Android test driver for a device that prints `report`."""
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         stub_android_tree(root)
         env = {
-            "PATH": BASE_PATH, "REPORT": report, "OSPREY_ANDROID_SKIP_BUILD": "1",
+            "PATH": BASE_PATH, "REPORT": report, "SCREENSHOT_MODE": screenshot_mode, "OSPREY_ANDROID_SKIP_BUILD": "1",
             "OSPREY_ANDROID_SERIAL": "stub", "ANDROID_HOME": str(root / "sdk"),
             "ANDROID_NDK_HOME": str(root / "ndk"),
         }
         return subprocess.run(
             ["bash", str(root / BANK_RUN), "--test"], env=env,
             capture_output=True, text=True, check=False,
-        ).returncode
+        )
 
 
 class BankAndroidVerdict(unittest.TestCase):
     def test_report_is_judged_with_tools_every_runner_has(self):
-        self.assertEqual(instrumentation_verdict("Time: 23.282\n\nOK (6 tests)"), 0)
+        self.assertEqual(instrumentation_result("Time: 23.282\n\nOK (6 tests)").returncode, 0)
         failures = "FAILURES!!!\nTests run: 6,  Failures: 1"
         for report in [failures, "INSTRUMENTATION_FAILED: stub", "Time: 1.2"]:
-            self.assertNotEqual(instrumentation_verdict(report), 0, report)
+            self.assertNotEqual(instrumentation_result(report).returncode, 0, report)
+
+    def test_passing_instrumentation_cannot_hide_failed_screenshot_collection(self):
+        for mode in ["unavailable", "malformed"]:
+            with self.subTest(mode=mode):
+                result = instrumentation_result("OK (6 tests)", mode)
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+                self.assertIn("screenshot", result.stderr.lower())
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if sys.argv[1:] == ["--storage-host"]:
+        storage_host_probe()
+    elif sys.argv[1:] == ["--counter-host"]:
+        counter_host_probe()
+    elif sys.argv[1:2] == ["--gpui-host"] and len(sys.argv) == 3:
+        gpui_host_probe(Path(sys.argv[2]).resolve())
+    else:
+        unittest.main()

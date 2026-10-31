@@ -11,7 +11,9 @@ const SITE = path.resolve(__dirname, "../_site");
 const ORIGIN = "https://www.ospreylang.dev";
 const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
-const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/", "/docs/packages-in-vscode/"];
+const proofVideos = require("../src/_data/proofVideos.js");
+const proofWatch = (id) => `/docs/proofs/videos/${id}/`;
+const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/", "/docs/packages-in-vscode/", ...proofVideos.map(({ id }) => proofWatch(id))];
 const read = (file) => fs.readFileSync(path.join(SITE, file), "utf8");
 const jsonLd = (html) =>
   [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
@@ -25,14 +27,15 @@ test("the native chapter track loads its WebVTT file", async () => {
   expect(cues(source).length).toBeGreaterThan(3);
 });
 
-for (const watch of WATCH_PAGES) test(`${watch} describes its video with VideoObject and key moments`, () => {
+for (const watch of WATCH_PAGES) test(`${watch} describes its video with VideoObject and key moments`, async ({ page }) => {
   const html = read(`${watch.slice(1)}index.html`);
   const video = jsonLd(html).find((data) => data["@type"] === "VideoObject");
   expect(video, "VideoObject").toBeTruthy();
   for (const key of ["name", "description", "thumbnailUrl", "uploadDate", "duration", "contentUrl"]) expect(video[key], key).toBeTruthy();
   expect(video.uploadDate).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/);
   expect(video.duration).toMatch(/^PT(\d+H)?(\d+M)?(\d+S)?$/);
-  expect(video.name).toBe(html.match(/<title>(.*?)<\/title>/)[1]);
+  const title = await page.evaluate(source => new DOMParser().parseFromString(source, "text/html").title, html);
+  expect(video.name).toBe(title);
   expect(fs.existsSync(path.join(SITE, new URL(video.contentUrl).pathname))).toBe(true);
 
   const starts = video.hasPart.map((clip) => clip.startOffset);
@@ -166,4 +169,103 @@ for (const width of [390, 1440]) {
 test("homepage Python GPU excerpt includes the actual tensor operation", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator('#gpt2 code.language-python')).toContainText('return or_stop(perform(Tensor.mat_mul(a, b, rows, inner, cols)), lambda: a)');
+});
+
+
+test("proof learning paths pair all six topics and keep current port evidence separate", async ({ page }) => {
+  const topics = Object.keys(require("../src/_data/proofTopics.json"));
+  expect(topics).toHaveLength(6);
+  expect(proofVideos).toHaveLength(12);
+  await page.goto("/docs/proofs/");
+  for (const id of topics) {
+    await expect(page.locator(`h2[id="${id}"]`)).toBeVisible();
+    for (const suffix of ["", "-math"]) await expect(page.locator(`table a[href="${proofWatch(id + suffix)}"]`)).toHaveCount(1);
+  }
+  await expect(page.locator('.docs-nav-desktop a[href="/docs/mathlib-port/"]')).toBeVisible();
+  await page.goto("/docs/mathlib-port/");
+  await expect(page.locator("main")).toContainText("real imported proofs in the native and VS Code Workbench");
+  await expect(page.locator("main")).toContainText("The dated corpus totals below describe the wider repository checkpoint");
+  await expect(page.locator("main")).not.toContainText("The films show ten selected supporting lemmas");
+  await expect(page.locator("main")).toContainText("525 successful root checks");
+});
+
+for (const { id } of proofVideos) test(`proof film ${id} plays with real media, captions and chapters`, async ({ page }) => {
+  await page.goto(proofWatch(id));
+  const player = page.locator("figure.video video");
+  await player.scrollIntoViewIfNeeded();
+  await player.evaluate(video => video.play());
+  await expect.poll(() => player.evaluate(video => video.currentTime)).toBeGreaterThan(0.25);
+  expect(await player.evaluate(video => [video.videoWidth, video.videoHeight])).toEqual([1920, 1080]);
+  expect(await player.evaluate(video => video.muted)).toBe(false);
+  expect(await player.evaluate(video => video.duration)).toBeGreaterThanOrEqual(60);
+  expect(await player.evaluate(video => video.duration)).toBeLessThanOrEqual(180);
+  await expect.poll(() => player.evaluate(video => video.textTracks[0].cues?.length ?? 0)).toBeGreaterThan(0);
+  await expect(page.locator(".video-chapters a").first()).toBeVisible();
+  await expect(page.locator(".video-transcript li").first()).toBeVisible();
+});
+
+for (const width of [390, 1440]) test(`proof docs fit ${width}px and provide both audience routes`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  for (const url of ["/docs/proofs/", proofWatch("proof-workbench"), "/docs/mathlib-port/"]) {
+    await page.goto(url);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `../target/film-review/proof-docs-${width}-${url.split("/").filter(Boolean).at(-1)}.png`, fullPage: true });
+  }
+});
+
+for (const [route, ids] of [
+  ["proof-workbench", ["proof-workbench", "proof-workbench-math"]],
+  ["mathlib-port", ["mathlib-bridge", "mathlib-bridge-math"]],
+  ["proofs", proofVideos.map(({ id }) => id)],
+]) test(`proof guide ${route} embeds its captioned films directly`, async ({ page }) => {
+  await page.goto(`/docs/${route}/`);
+  for (const id of ids) {
+    const player = page.locator(`#video-${id}`);
+    await expect(player).toHaveCount(1);
+    await expect(player).toHaveAttribute("controls", "");
+    await expect(player.locator('track[kind="captions"]')).toHaveCount(1);
+    await player.scrollIntoViewIfNeeded();
+    await player.evaluate(video => video.play());
+    await expect.poll(() => player.evaluate(video => video.currentTime), { message: `Inline playback: ${id}` }).toBeGreaterThan(0.25);
+    await player.evaluate(video => video.pause());
+  }
+});
+
+function expectNavierSolution(text, label) {
+  expect(text, label).toMatch(/Open\s?AI/i);
+  expect(text, label).toMatch(/finite.time/i);
+  expect(text, label).toMatch(/smooth forc/i);
+  expect(text, label).toContain("Lean");
+}
+
+test("Navier tutorial and docs credit the published OpenAI solution with its forcing hypothesis", () => {
+  const lesson = require("../../apps/workbench/lessons/navier-stokes.json");
+  const lessonText = lesson.blocks.filter(block => block.kind === "prose").map(block => block.text).join(" ");
+  const classical = lesson.blocks.find(block => block.kind === "prose" && block.text.includes("Leray"));
+  expect(classical.text).toMatch(/unforced.*small|small.*unforced/is);
+  const guides = ["proof-workbench.md", "mathlib-port.md", "proofs/index.md"];
+  for (const [label, text] of [["Workbench lesson", lessonText], ...guides.map(file => [file, fs.readFileSync(path.resolve(__dirname, "../src/docs", file), "utf8")])]) {
+    expect(text, label).toContain("https://openai.com/index/navier-stokes-solution/");
+    expectNavierSolution(text, label);
+    expect(text, label).not.toMatch(/remains marked Active|evaluation process would continue/);
+  }
+});
+
+test("shipped Navier lesson and both audience films narrate the solution and smooth forcing", () => {
+  const captions = ["../../apps/workbench/lessons/media/navier-stokes/film.en.vtt", "../src/assets/videos/osprey-navier-stokes-proof.en.vtt", "../src/assets/videos/osprey-navier-stokes-proof-math.en.vtt"];
+  for (const file of captions) {
+    const text = fs.readFileSync(path.resolve(__dirname, file), "utf8");
+    expectNavierSolution(text, file);
+    expect(text, file).not.toMatch(/evaluation process continues|marked Active/);
+  }
+});
+
+test("proof watch titles and descriptions preserve punctuation once", async ({ page }) => {
+  const entry = require("../src/_data/videos.json")["navier-stokes-proof"];
+  await page.goto(proofWatch("navier-stokes-proof"));
+  await expect(page).toHaveTitle(entry.name);
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", entry.description);
+  const graph = jsonLd(await page.content()).find(item => item["@graph"])["@graph"];
+  const breadcrumb = graph.find(item => item["@type"] === "BreadcrumbList");
+  expect(breadcrumb.itemListElement.at(-1).name).toBe(entry.name);
 });

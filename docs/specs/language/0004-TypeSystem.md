@@ -318,36 +318,15 @@ position, or a contravariant parameter in an output position, is a compile
 error. Effect operations check the same way: operation parameters are inputs,
 operation results outputs ([Algebraic Effects](0017-AlgebraicEffects.md#generic-effects)).
 
-`[TYPE-VARIANCE-ASSIGN]` **Variance directs assignability structurally, and
-the leaves match exactly.** Plain HM unification is untouched — every
-well-typed expression keeps a principal type. At *assignment sites* (call
-arguments, annotated bindings, return positions), a variance-declared
-constructor's arguments are matched directionally: covariant (`out`)
-arguments recurse expected-accepts-actual, contravariant (`in`) arguments
-recurse with the roles flipped, invariant arguments unify exactly. The
-recursion continues only through **same-name** variance-declared constructors
-and bottoms out in **exact unification**.
+`[TYPE-VARIANCE-ASSIGN]` **Variance directs assignability structurally.** Plain HM unification is unchanged. At assignment sites (call arguments, annotated bindings and return positions), covariant (`out`) arguments recurse expected-accepts-actual, contravariant (`in`) arguments recurse with the roles flipped, and invariant arguments unify exactly. Recursion through same-name variance-declared constructors preserves that direction. Ordinary leaves unify exactly; permitted erasure to `any` also requires the representation adaptation below.
 
-`[TYPE-VARIANCE-COERCION]` **The language's one coercion applies at direct
-value sites only, never inside a constructor argument.** A bare `T` satisfies a
-`Result<T, E>` slot (an implicit `Success`); the inverse never holds anywhere.
-That coercion changes the value's REPRESENTATION, and nothing rebuilds a
-container's contents, so it cannot reach through an argument position:
-`Feed<int>` does **not** satisfy a `Feed<Result<int, Error>>` slot, under
-`out T`, under `in T`, or unannotated. Function payloads match exactly for the
-same reason, so a `Feed<(int) -> Result<int, Error>>` does not match a
-`Feed<(int) -> int>` slot — while a *directly* assigned function value still
-matches assignably, its parameters flipped and its return coerced
-(`(Result<int, E>) -> bool` satisfies an `(int) -> bool` slot).
+`[TYPE-VARIANCE-COERCION]` **Implicit `Success` promotion applies at direct value sites, never inside a constructor argument.** A bare `T` satisfies a `Result<T, E>` slot; the inverse never holds. `Feed<int>` therefore does not satisfy `Feed<Result<int, string>>`, regardless of its variance marker. A `Feed<(int) -> Result<int, string>>` cannot satisfy `Feed<(int) -> int>` either. Direct function assignments still compare parameters contravariantly and returns covariantly, with direct-site promotion where allowed: `(Result<int, string>) -> bool` satisfies an `(int) -> bool` slot.
 
-**Consequence, stated so no one has to re-derive it:** because that coercion is
-the only subtyping the language has, and it is barred from argument positions,
-`out T`, `in T` and an unannotated parameter accept and refuse **exactly the
-same programs** at assignment sites today. A variance marker's observable effect
-is [TYPE-VARIANCE-POSITIONS] — where the parameter may be written — not which
-assignments type-check. The directional recursion above is nonetheless
-normative: it is what a future representation-PRESERVING subtype relation would
-travel through, and the day one exists the three markers stop agreeing.
+Erasure to `any` is a separate conversion. Supported list, Result and nominal record/union adapters rebuild the affected representation recursively rather than reinterpreting its pointer. For example, `List<List<int>>` can satisfy `List<List<any>>` by boxing the inner elements; `Result<List<int>, string>` can satisfy `Result<List<any>, string>` by adapting a success payload while preserving an error and its message. Neither conversion inserts nested `Success` wrappers.
+
+For `Feed<out T>` with a field containing `T`, `Feed<int>` can satisfy `Feed<any>`. For `Gate<in T>` with an `(T) -> bool` field, `Gate<any>` can satisfy `Gate<int>`: its callable adapter boxes the supplied integer for the original consumer. This does not recover an arbitrary `any` as an integer. Function-valued payloads require the corresponding callable adapters. Rebuilding a record or union preserves its constructor tag, fields and original immutable value, including nullary variants; recursive nominal conversions reuse a memoized converter.
+
+Variance markers therefore constrain both legal parameter positions and which erasure assignments are accepted. A pointer-sized ABI alone is not evidence that two payload representations agree. The [Default](../../../tests/regressions/basics/types/type_equality_comprehensive.test.osp) and [ML](../../../tests/regressions/basics/types/type_equality_comprehensive.test.ospml) regressions cover nominal conversion and preservation of the original values; the [pattern corpus](../../../tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp) and both [Default](../../../tests/effects/resume/answer_transform.test.osp) and [ML](../../../tests/effects/resume/answer_transform.test.ospml) resume regressions cover nested list and Result transport. Full acceptance still requires the combined compiler and provenance checks; a conversion's isolated backend result does not establish that wider acceptance.
 
 Built-in constructors' declared variance: `Result<out T, out E>`,
 `List<out T>`, `Fiber<out T>`, `Map<K, out V>` (keys invariant); `Channel<T>`

@@ -1,0 +1,237 @@
+{
+  "format": 1,
+  "slug": "navier-stokes",
+  "title": "Navier–Stokes: equations and evidence",
+  "summary": "Read the fluid equations, the OpenAI solution published in September 2026, and explore logical reasoning under explicit assumptions.",
+  "stage": 3,
+  "minutes": 9,
+  "after": [
+    "not-and-contradiction"
+  ],
+  "blocks": [
+    {
+      "kind": "prose",
+      "text": "The Navier–Stokes equations describe fluid motion. The unknowns are a velocity u and a pressure p. The symbol ν is the viscosity, and f is an external force.\n\nThe first equation records how the velocity changes. The second says the divergence of the velocity is zero: the fluid is incompressible, so no region of it gains or loses volume."
+    },
+    {
+      "kind": "math",
+      "math": {
+        "kind": "op",
+        "symbol": "=",
+        "left": {
+          "kind": "op",
+          "symbol": "+",
+          "left": {
+            "kind": "frac",
+            "top": {
+              "kind": "seq",
+              "items": [
+                {
+                  "kind": "sym",
+                  "text": "∂"
+                },
+                {
+                  "kind": "sym",
+                  "text": "u"
+                }
+              ]
+            },
+            "bottom": {
+              "kind": "seq",
+              "items": [
+                {
+                  "kind": "sym",
+                  "text": "∂"
+                },
+                {
+                  "kind": "sym",
+                  "text": "t"
+                }
+              ]
+            }
+          },
+          "right": {
+            "kind": "seq",
+            "items": [
+              {
+                "kind": "paren",
+                "body": {
+                  "kind": "op",
+                  "symbol": "·",
+                  "left": {
+                    "kind": "sym",
+                    "text": "u"
+                  },
+                  "right": {
+                    "kind": "sym",
+                    "text": "∇"
+                  }
+                }
+              },
+              {
+                "kind": "sym",
+                "text": "u"
+              }
+            ]
+          }
+        },
+        "right": {
+          "kind": "op",
+          "symbol": "+",
+          "left": {
+            "kind": "op",
+            "symbol": "+",
+            "left": {
+              "kind": "seq",
+              "items": [
+                {
+                  "kind": "sym",
+                  "text": "−"
+                },
+                {
+                  "kind": "sym",
+                  "text": "∇"
+                },
+                {
+                  "kind": "sym",
+                  "text": "p"
+                }
+              ]
+            },
+            "right": {
+              "kind": "seq",
+              "items": [
+                {
+                  "kind": "sym",
+                  "text": "ν"
+                },
+                {
+                  "kind": "sym",
+                  "text": "Δ"
+                },
+                {
+                  "kind": "sym",
+                  "text": "u"
+                }
+              ]
+            }
+          },
+          "right": {
+            "kind": "sym",
+            "text": "f"
+          }
+        }
+      },
+      "spoken": "The partial derivative of u with respect to t, plus u dot nabla applied to u, equals minus nabla p, plus nu times the Laplacian of u, plus f."
+    },
+    {
+      "kind": "math",
+      "math": {
+        "kind": "op",
+        "symbol": "=",
+        "left": {
+          "kind": "op",
+          "symbol": "·",
+          "left": {
+            "kind": "sym",
+            "text": "∇"
+          },
+          "right": {
+            "kind": "sym",
+            "text": "u"
+          }
+        },
+        "right": {
+          "kind": "num",
+          "text": "0"
+        }
+      },
+      "spoken": "Nabla dot u equals zero."
+    },
+    {
+      "kind": "image",
+      "source": "media/navier-stokes/equations.jpg",
+      "alt": "The two Navier–Stokes equations appear above a flowing velocity field; labels identify u as velocity, p as pressure, and nu as viscosity.",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "kind": "video",
+      "source": "media/navier-stokes/film.mp4",
+      "poster": "media/navier-stokes/poster.jpg",
+      "captions": "media/navier-stokes/film.en.vtt",
+      "alt": "The Navier–Stokes equations appear beside an account of OpenAI's published solution: a smooth fluid at rest under a smooth force develops a finite-time singularity while its energy stays finite, formalized in Lean. The final card explains that the lesson checks logical deductions, not the fluid analysis.",
+      "seconds": 55
+    },
+    {
+      "kind": "prose",
+      "text": "A smooth solution supplies velocity and pressure satisfying the equations throughout its time interval, starting from the given initial flow. A finite-time singularity prevents continuing that smooth solution through the blowup time.\n\nLeray's weak solutions, introduced in 1934, exist globally under the standard hypotheses; weak and smooth solutions are different claims. In two dimensions, the classical smooth-flow result is global. In three dimensions, smooth solutions exist locally in time. Standard unforced small-data theorems give global smooth solutions under their size and regularity hypotheses. The smooth forcing in OpenAI's result is a separate condition."
+    },
+    {
+      "kind": "prose",
+      "text": "On 8 September 2026, OpenAI published a solution of the three-dimensional Navier–Stokes existence and smoothness problem. Its internal system produced an analytical proof, formalized in Lean, that a smooth fluid initially at rest under a smooth force develops a finite-time singularity while its energy remains finite. That is a forced flow breaking down in finite time; it is not a claim that every unforced flow blows up. Source: https://openai.com/index/navier-stokes-solution/.\n\nSeparately, Osprey checks seventeen selected lemmas about stacks, loop work, finite indices and number theory from the pinned openai/math release under GC, ARC and wasm32. It does not check the headline Navier–Stokes proof, and this lesson does not present that proof.\n\nWe use smooth and blowup as names for propositions in a simplified logic exercise. The formula below is an assumed model for that exercise. It does not formalize the analytical problem or establish either outcome."
+    },
+    {
+      "kind": "formula",
+      "formula": "(smooth ∨ blowup) ∧ ¬(smooth ∧ blowup)"
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "prove",
+        "id": "prove-remaining-outcome",
+        "prompt": "Prove that if one of the two outcomes holds, and blowup leads to the impossible, then smooth holds.",
+        "statement": "Theorem remaining_outcome. For all smooth blowup, (smooth ∨ blowup) → (blowup → ⊥) → smooth.",
+        "given": [],
+        "solution": [
+          "Assume outcomes : smooth ∨ blowup.",
+          "Assume noBlowup : blowup → ⊥.",
+          "By cases on outcomes, as isSmooth and isBlowup.",
+          "From isSmooth.",
+          "Contradiction from isBlowup and noBlowup."
+        ],
+        "hints": [
+          "Assume both premises, then split the disjunction into two cases.",
+          "Use isSmooth in the first case and the contradiction in the blowup case."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "state",
+        "id": "state-outcomes-exclusive",
+        "prompt": "Write that smooth and blowup cannot both hold. Negate the conjunction, with smooth on the left and blowup on the right.",
+        "variables": [
+          "smooth",
+          "blowup"
+        ],
+        "expected": "¬(smooth ∧ blowup)",
+        "hints": [
+          "Form smooth ∧ blowup inside parentheses.",
+          "Negate the whole parenthesised conjunction."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "judge",
+        "id": "judge-unproved-smoothness",
+        "prompt": "This one-line proof asserts smooth without any hypothesis. Decide whether the kernel accepts it.",
+        "statement": "Theorem clay. For all smooth, smooth.",
+        "steps": [
+          "From smooth."
+        ],
+        "hints": [
+          "Look for a hypothesis named smooth in the proof.",
+          "For all smooth declares a proposition; it does not supply evidence that smooth holds."
+        ]
+      }
+    },
+    {
+      "kind": "prose",
+      "text": "Naming a proposition is not proving it. These exercises check logical deductions from their stated assumptions. They do not check the fluid analysis behind the published solution or reproduce its Lean formalization."
+    }
+  ]
+}

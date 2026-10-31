@@ -1,0 +1,22 @@
+[package]
+name = "@osprey/passthrough"
+
+# The package is also its own assertion suite ([TYPES-DISCIPLINE-VERIFICATION]):
+# `osprey test examples/disciplines/passthrough` compiles `src/checker.ospml`
+# as the entry, and its `main` runs the cases when standard input carries no
+# request line. The compiler builds one file for a checker, so every module of
+# the discipline lives in that file.
+[project]
+name = "passthrough"
+source_roots = ["src"]
+default_namespace = "passthrough"
+entry = "src/checker.ospml"
+
+# What the compiler reads when a project marks a source
+# `// osprey: types=passthrough` ([TYPES-DISCIPLINE-REGISTRY]).
+[discipline]
+name = "passthrough"
+checker = "src/checker.ospml"
+
+[modules]
+allow_wildcard_imports = false

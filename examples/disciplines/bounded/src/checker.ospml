@@ -1,0 +1,69 @@
+namespace bounded
+
+import bounded::Annotations
+import bounded::Calls
+import bounded::Erasure
+import bounded::Replies
+import bounded::Signature
+import bounded::Words
+
+(** The checker program of [TYPES-DISCIPLINE-PROTOCOL]. *)
+module Checker
+    (** The protocol version this checker speaks; the compiler refuses another, so
+        an answer to a request too broken to carry a version says this. *)
+    protocolVersion = 2
+
+    (** The erased module did not pass the compiler. *)
+    codeCheck = "check"
+
+    (** The checker itself could not answer. *)
+    codeInternal = "internal"
+
+    (** Answer the one request line [TYPES-DISCIPLINE-PROTOCOL] writes to
+        standard input. With no line at all — somebody running the built
+        checker by hand — the program prints nothing and exits cleanly. *)
+    export run () =
+        handle Arith
+            overflow _ _ _ wrapped => wrapped
+            divideByZero _ _ => 0.0
+            remainderByZero _ => 0
+        line = input ()
+        match isEmpty line
+            true => nothing ()
+            false => print (answer line)
+
+    nothing () = cleanupProcess 0
+
+    answer (line) = match decoded line
+        Words::Parsed request => inspect request
+        Words::NotRequest => Replies::failure (protocolVersion, codeInternal, "the request line is not one JSON object of the checker protocol")
+
+    decoded (line) = match jsonDecode line
+        Error _ => Words::NotRequest
+        Success document => requestOf document
+
+    requestOf (document) =
+        version = jsonInt (field (document, "version")) ?: 0
+        source = textIn (document, "module", "source")
+        cache = textIn (document, "options", "cache_dir")
+        compiler = textIn (document, "options", "compiler")
+        match version > 0 && !isEmpty source && !isEmpty cache && !isEmpty compiler
+            true => Words::Parsed (Words::Request(version = version, path = textIn (document, "module", "path"), source = source, cache = cache, compiler = compiler))
+            false => Words::NotRequest
+
+    textIn (document, section, key) = jsonText (field (field (document, section), key)) ?: ""
+
+    field (json, name) = jsonField (json, name) ?: JsonNull
+
+    inspect (request) =
+        readings = Annotations::collect request.source
+        problems = Calls::violations (readings.definitions, request.source)
+        match problems
+            [] => accept (request, readings)
+            _ => Replies::rejected (request.version, problems)
+
+    accept (request, readings) =
+        erased = Erasure::of (request.source, readings.annotations)
+        match Signature::of (request, erased)
+            Words::Signed sig => Replies::accepted (request.version, sig, erased)
+            Words::Unsigned message => Replies::failure (request.version, codeCheck, "the erased module did not pass the compiler: " + message)

@@ -1,0 +1,73 @@
+namespace prooftests
+
+import proof::Export
+import proof::Checked
+import proof::Environment
+import proof::Fixtures
+import proof::Terms
+import proof
+    Single
+    Theorem
+    Const
+    App
+    NatLit
+    Succ
+    Zero
+import proof::Naturals
+import prooftests::Support
+
+(** String export literals retain every Unicode scalar by expanding into
+    ordinary checked constructor applications. Implements [PROOF-EXPORT]. *)
+module StringTests
+    export run () =
+        test ("the empty string literal reads as the checked UTF8 construction", \() =>
+            expect (readValue "", "((String.ofByteArray (List.utf8Encode (List.nil.{0} Char))) (((ByteArray.IsValidUTF8.intro (List.utf8Encode (List.nil.{0} Char))) (List.nil.{0} Char)) ((Eq.refl.{1} ByteArray) (List.utf8Encode (List.nil.{0} Char)))))"))
+        test ("string literals preserve ASCII and supplementary Unicode code points", \() =>
+            expect (characters "A😀", "65,128512"))
+        test ("a string literal cannot acquire a type from an empty environment", \() =>
+            expect (startsWith (Support::messageOf (Checked::exported (Environment::empty (), literal "")), "unknown constant `String.ofByteArray`"), true))
+
+    literal text = inserted (replace (Fixtures::idImp (), "\"value\":6", "\"value\":7") ?: "MISSING NEEDLE", text)
+
+    inserted (recorded, text) = replace (recorded, "{\"thm\":", "{\"ie\":7,\"strVal\":\"${text}\"}\n{\"thm\":") ?: "MISSING NEEDLE"
+
+    value text = match Export::read (literal text)
+        Success items => match items
+            [item] => termOf item
+            other => Error(message = "expected one theorem")
+        Error message => Error(message = message)
+
+    termOf item = match item
+        Single decl => match decl.body
+            Theorem term => Success(value = term)
+            other => Error(message = "expected theorem body")
+        other => Error(message = "expected single declaration")
+
+    readValue text = match value text
+        Success term => Terms::show (term, [])
+        Error message => message
+
+    characters text = match value text
+        Success term => scalarList (Terms::spine term)
+        Error message => message
+
+    scalarList spine = match spine.spineArgs
+        [bytes, valid] => match (Terms::spine bytes).spineArgs
+            [chars] => scalarValues chars
+            other => "expected encoded characters"
+        other => "expected string constructor"
+
+    scalarValues term = match (Terms::spine term).spineArgs
+        [ty] => ""
+        [ty, character, rest] => scalarHead ((Terms::spine character).spineArgs, scalarValues rest)
+        other => "expected character list"
+
+    scalarHead (args, rest) = match args
+        [term] => match term
+            NatLit scalar => "${Naturals::show scalar}${separator rest}"
+            other => "expected scalar literal"
+        other => "expected character constructor"
+
+    separator rest = match rest == ""
+        true => ""
+        false => ",${rest}"

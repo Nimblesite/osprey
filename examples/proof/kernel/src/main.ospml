@@ -1,0 +1,55 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+import proof::Environment
+import proof::Surface
+import proof::Checked
+import proof::Fixtures
+
+// M0 of plan 0041: the kernel checks `fun (p : Prop) (h : p) => h` against
+// `∀ (p : Prop), p → p` and prints `checked: id_imp`; a wrong proof of the
+// same statement, and a statement that is not a type, are rejected with
+// the kernel's reason.
+
+prop () = Sort Zero
+
+(** `∀ (p : Prop), p → p` *)
+idType () = Pi "p" (prop ()) (Pi "h" (BVar 0) (BVar 1))
+
+(** `fun (p : Prop) (h : p) => h` *)
+idProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 0))
+
+(** `fun (p : Prop) (h : p) => p`: a term of the wrong type. *)
+badProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 1))
+
+report (name, outcome) = match outcome
+    Success env => print "checked: ${name}"
+    Error message => print "rejected: ${name}: ${message}"
+
+(** M1 and M2: an export and a surface theorem go through `Checked`. *)
+typed (env, text) = match Surface::theorem text
+    Success parsed => Checked::theorem (env, parsed.theoremName, parsed.statement, parsed.proof)
+    Error message => Error(message = message)
+
+surfaceReport (env, text) = match Surface::theorem text
+    Success parsed => report (parsed.theoremName, typed (env, text))
+    Error message => print "rejected: ${message}"
+
+exportReport (env, name, text) = report ("${name} (export)", Checked::exportedDeclaring (env, text, name))
+
+main () =
+    env = Environment::empty ()
+    report ("id_imp", Checked::theorem (env, "id_imp", idType (), idProof ()))
+    report ("id_imp_bad", Checked::theorem (env, "id_imp_bad", idType (), badProof ()))
+    report ("not_a_type", Checked::theorem (env, "not_a_type", idProof (), idProof ()))
+    surfaceReport (env, "theorem id_imp_typed (p : Prop) (h : p) : p := h")
+    surfaceReport (env, "theorem imp_trans (p q r : Prop) (f : p → q) (g : q → r) : p → r := fun (x : p) => g (f x)")
+    surfaceReport (env, "theorem forall_typed : ∀ (p : Prop), p → p := fun (p : Prop) (h : p) => h")
+    surfaceReport (env, "theorem wrong_typed (p q : Prop) (h : p) : q := h")
+    exportReport (env, "id_imp", Fixtures::idImp ())
+    exportReport (env, "id_imp_bad", Fixtures::idImpBad ())
+    forEachList (["and_swap", "eq_symm", "iff_refl"], \name => exportReport (env, name, Fixtures::andSwap ()))
+    exportReport (env, "and_swap", Fixtures::andSwapBad ())
+    exportReport (env, "Nat.add_comm", Fixtures::natAddComm ())
+    exportReport (env, "Nat.add_comm", Fixtures::natAddCommBad ())

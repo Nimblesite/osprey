@@ -1,0 +1,7 @@
+[
+{"file": "Cargo.toml", "before": ["[dependencies.resvg]\nversion = \"0.46.0\"\n"], "after": ["[dependencies.resvg]\nversion = \"0.48.1\"\n"]},
+{"file": "Cargo.toml", "before": ["[dependencies.usvg]\nversion = \"0.46.0\"\n"], "after": ["[dependencies.usvg]\nversion = \"0.48.1\"\n"]},
+{"file": "Cargo.toml", "before": ["[dependencies.ttf-parser]\nversion = \"0.25\"\n\n"], "after": [""]},
+{"file": "Cargo.toml", "before": ["[dependencies.slotmap]\n"], "after": ["[dependencies.skrifa]\nversion = \"0.44\"\ndefault-features = false\nfeatures = [\n    \"std\",\n]\n\n[dependencies.slotmap]\n"]},
+{"file": "src/svg_renderer.rs", "before": ["fn font_has_char(db: &usvg::fontdb::Database, id: usvg::fontdb::ID, ch: char) -> bool {\n    db.with_face_data(id, |font_data, face_index| {\n        ttf_parser::Face::parse(font_data, face_index)\n            .ok()\n            .and_then(|face| face.glyph_index(ch))\n            .is_some()\n    })\n    .unwrap_or(false)\n}\n"], "after": ["fn font_has_char(db: &usvg::fontdb::Database, id: usvg::fontdb::ID, ch: char) -> bool {\n    use skrifa::MetadataProvider as _;\n\n    db.with_face_data(id, |font_data, face_index| {\n        skrifa::FontRef::from_index(font_data, face_index)\n            .ok()\n            .and_then(|face| face.charmap().map(ch))\n            .is_some()\n    })\n    .unwrap_or(false)\n}\n"]}
+]

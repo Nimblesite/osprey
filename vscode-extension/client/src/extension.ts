@@ -44,6 +44,7 @@ import {
   compileAndRunCurrentFile,
 } from "./compile-commands";
 import { registerPackageWorkspace } from "./package-workspace";
+import { registerWorkbench } from "./workbench";
 import { registerPackageCommands } from "./package-commands";
 import { registerLocalRegistry } from "./local-registry";
 import { huntCurrentFile } from "./hunt";
@@ -107,6 +108,7 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
   // configured loopback registry does not answer ([PACKAGE-LOCAL-REGISTRY]).
   const localRegistry = registerLocalRegistry(context);
   registerPackageWorkspace(context, (folder) => localRegistry.ensureRunning(folder));
+  registerWorkbench(context);
   registerPackageCommands(context);
   registerWarningFixes(context, (params) =>
     client.sendRequest(CodeActionRequest.type, params),

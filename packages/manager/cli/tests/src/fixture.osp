@@ -35,6 +35,12 @@ module Fixture {
         Error => if readPath(r) == path { Success { value: readContent(r) } } else { answer }
     })
 
+    /// Presence in this fixture's explicit file table, including empty files.
+    export fn existsIn(reads, path) = Success { value: match readFor(reads, path) {
+        Success => true
+        Error => false
+    } }
+
     /// The walk routed for `dir`, all files regular, else the fixture's own refusal.
     export fn walkFor(walks, dir) = foldList(walks, Error { message: "fixture: no tree ${dir}" }, fn(answer, w: WalkRoute) => match answer {
         Success => answer

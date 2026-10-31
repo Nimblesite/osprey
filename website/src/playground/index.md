@@ -575,7 +575,7 @@ date: "git Last Modified"
     let currentFlavor = 'osp';
     const SAMPLES = {
         // @generated:osp — filled from tests/regressions/basics/osprey_mega_showcase.test.osp by scripts/update-playground.js
-        osp: `/// 🦅 Osprey in one screen — algebraic effects, fibers, unions, HM inference.
+        osp: `/// Osprey in one screen — algebraic effects, fibers, unions, HM inference.
 /// The SAME account() runs in two worlds; only the installed handler differs.
 effect Console {
     /// Write one line to the console the handler represents.
@@ -644,7 +644,7 @@ fn badge(t) = match t {
 
 /// ACT 1: the same account() body runs against a real ledger and a dry run.
 fn showWorlds() = {
-    print("🦅 OSPREY FEATURE TOUR\\n══════════════════════════════════════\\nACT 1 · algebraic effects — same code, two worlds")
+    print("OSPREY FEATURE TOUR\\n══════════════════════════════════════\\nACT 1 · algebraic effects — same code, two worlds")
     let real = realWorld()
     print("  ↳ realWorld() returned \${real}")
     let mock = dryRun()
@@ -807,7 +807,7 @@ badge t = match t
 
 (** ACT 1: the same [account] body runs against a real ledger and a dry run. *)
 showWorlds () =
-    print "🦅 OSPREY FEATURE TOUR\\n══════════════════════════════════════\\nACT 1 · algebraic effects — same code, two worlds"
+    print "OSPREY FEATURE TOUR\\n══════════════════════════════════════\\nACT 1 · algebraic effects — same code, two worlds"
     real = realWorld ()
     print "  ↳ realWorld() returned \${real}"
     mock = dryRun ()

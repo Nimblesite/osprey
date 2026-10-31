@@ -15,6 +15,7 @@
 
 mod core;
 mod gpu;
+mod host;
 
 use crate::env::TypeEnv;
 use crate::ty::{Scheme, Type};
@@ -99,14 +100,17 @@ fn build_base_env() -> TypeEnv {
     strings(&mut e);
     functional(&mut e);
     lists(&mut e);
-    runtime_group(&mut e, files);
+    runtime_group(&mut e, host::files);
     tensors(&mut e);
-    runtime_group(&mut e, http);
+    runtime_group(&mut e, host::http);
     json(&mut e);
     runtime_group(&mut e, concurrency);
-    runtime_group(&mut e, websocket);
-    runtime_group(&mut e, terminal);
+    runtime_group(&mut e, host::websocket);
+    runtime_group(&mut e, host::terminal);
     gpu::declare(&mut e);
+    for name in e.bound_names() {
+        e.mark_builtin(&name);
+    }
     e
 }
 
@@ -335,12 +339,6 @@ fn maps(e: &mut TypeEnv) {
     poly(e, "mapValues", vec![0], vec![m()], Type::list(v()));
 }
 
-fn files(e: &mut TypeEnv) {
-    // File surface [BUILTIN-FILE].
-    mono(e, "readFile", vec![s()], res(s()));
-    mono(e, "writeFile", vec![s(), s()], res(i()));
-}
-
 /// One safetensors tensor as host floats, never a `GpuBuffer`
 /// [BUILTIN-FILE-TENSOR]. Like `gpuLoadTensor` it is a weight loader a static
 /// `Tensor` handler arm answers `load` with, so it carries no runtime-builtin
@@ -352,35 +350,6 @@ fn tensors(e: &mut TypeEnv) {
         vec![s(), s()],
         res(Type::list(Type::float())),
     );
-}
-
-fn http(e: &mut TypeEnv) {
-    mono(e, "httpCreateClient", vec![s(), i()], i());
-    mono(e, "httpCloseClient", vec![i()], i());
-    mono(e, "httpGet", vec![i(), s(), s()], i());
-    mono(e, "httpGetResponse", vec![i(), s(), s()], res(i()));
-    mono(e, "httpPostResponse", vec![i(), s(), s(), s()], res(i()));
-    mono(e, "httpResponseBody", vec![i()], res(s()));
-    mono(e, "httpResponseFree", vec![i()], res(i()));
-    mono(e, "httpResponseStatus", vec![i()], i());
-    mono(e, "httpResponseHeader", vec![i(), s()], res(s()));
-    // (clientId, path, body, headers) for POST/PUT; (clientId, path, headers) for DELETE.
-    mono(e, "httpPost", vec![i(), s(), s(), s()], i());
-    mono(e, "httpPut", vec![i(), s(), s(), s()], i());
-    mono(e, "httpDelete", vec![i(), s(), s()], i());
-    mono(e, "httpCreateServer", vec![i(), s()], i());
-    // The C runtime calls this handler with the four request strings and reads
-    // the returned record using the built-in HttpResponse layout.
-    mono(
-        e,
-        "httpListen",
-        vec![
-            i(),
-            Type::fun(vec![s(), s(), s(), s()], Type::prim("HttpResponse")),
-        ],
-        i(),
-    );
-    mono(e, "httpStopServer", vec![i()], i());
 }
 
 fn json(e: &mut TypeEnv) {
@@ -452,16 +421,6 @@ fn concurrency(e: &mut TypeEnv) {
     );
 }
 
-fn websocket(e: &mut TypeEnv) {
-    mono(e, "websocketCreateServer", vec![i(), s(), s()], i());
-    mono(e, "websocketServerListen", vec![i()], i());
-    mono(e, "websocketServerBroadcast", vec![i(), s()], i());
-    mono(e, "websocketKeepAlive", vec![], u());
-    mono(e, "websocketConnect", vec![s()], i());
-    mono(e, "websocketSend", vec![i(), s()], i());
-    mono(e, "websocketClose", vec![i()], i());
-}
-
 /// The declared function type of a built-in's parameter — the callback
 /// contract a C-side slot dictates (`httpListen`'s handler, `spawnProcess`'s
 /// output handler), as `(parameter types, return type)`. `None` when `name` is
@@ -500,27 +459,6 @@ pub fn builtin_signature(name: &str) -> Option<String> {
         }
     }
     Some(format!("{name} : {}", scheme.ty))
-}
-
-fn terminal(e: &mut TypeEnv) {
-    mono(e, "termReadKey", vec![], res(s()));
-    mono(e, "termRawMode", vec![i()], u());
-    mono(e, "termCols", vec![], i());
-    mono(e, "termRows", vec![], i());
-    mono(e, "termClear", vec![], i());
-    mono(e, "termMoveCursor", vec![i(), i()], i());
-    mono(e, "termHideCursor", vec![], i());
-    mono(e, "termShowCursor", vec![], i());
-    // External process control [BUILTIN-PROCESS]: spawning can fail before a
-    // handle exists; await and cleanup operate on a successful handle.
-    mono(
-        e,
-        "spawnProcess",
-        vec![s(), Type::fun(vec![i(), i(), s()], u())],
-        res(i()),
-    );
-    mono(e, "awaitProcess", vec![i()], i());
-    mono(e, "cleanupProcess", vec![i()], u());
 }
 
 /// The compiler's only built-in effect. Implements [ARITH-EFFECT-OPS].

@@ -15,7 +15,11 @@
 //! `--coverage` instruments each suite and reports per-file and total line
 //! coverage; `--coverage-json <path>` also writes the merged hit counts.
 //! `--memory=gc|arc|none` selects one backend for every discovered suite;
-//! when omitted, child compiler invocations use the compiler's default.
+//! when omitted, child compiler invocations use the compiler's default and
+//! report the native GC default to their own programs.
+//! Every child is handed `OSPREY_TEST_COMPILER` (this executable) and
+//! `OSPREY_TEST_MEMORY` (the selected backend), overriding any inherited value,
+//! so suites can select matching nested compiler builds.
 //! Unchanged native suites reuse content-addressed executables across runs.
 
 use crate::{TEST_CACHE_DIR_ENV, TEST_COVERAGE_BUILD_ENV, USAGE};
@@ -27,6 +31,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 const TEST_JOBS_ENV: &str = "OSPREY_TEST_JOBS";
+/// What a suite child is told about the compiler that launched it.
+const TEST_COMPILER_ENV: &str = "OSPREY_TEST_COMPILER";
+const TEST_MEMORY_ENV: &str = "OSPREY_TEST_MEMORY";
+/// Native suites default to GC, so a child told nothing about a backend names
+/// the backend its own compiler would have picked.
+const DEFAULT_TEST_MEMORY: &str = "gc";
 const MIN_DEFAULT_JOBS: usize = 2;
 const MAX_DEFAULT_JOBS: usize = 4;
 const TEST_CACHE_DIR: &str = "osprey-test-cache-v1";
@@ -282,7 +292,8 @@ fn suite_command(
     dump: Option<&Path>,
     memory: Option<&str>,
 ) -> std::io::Result<Command> {
-    let mut command = Command::new(std::env::current_exe()?);
+    let compiler = std::env::current_exe()?;
+    let mut command = Command::new(&compiler);
     let cache_dir = std::env::var_os(TEST_CACHE_DIR_ENV)
         .filter(|path| !path.is_empty())
         .map_or_else(|| std::env::temp_dir().join(TEST_CACHE_DIR), PathBuf::from);
@@ -293,6 +304,7 @@ fn suite_command(
     if let Some(memory) = memory {
         let _ = command.arg(format!("--memory={memory}"));
     }
+    expose_context(&mut command, &compiler, memory);
     close_stdin(&mut command);
     if let Some(value) = filter {
         let _ = command.env("OSPREY_TEST_FILTER", value);
@@ -310,6 +322,16 @@ fn suite_command(
         }
     }
     Ok(command)
+}
+
+/// Implements [TESTING-CLI-RUN-CONTEXT]: a case may launch a compiler of its own, so every child is
+/// told which compiler runs it and which backend it selected. Setting both as
+/// launch values replaces an inherited one: context blessed by some earlier
+/// process must not replace the current suite context.
+fn expose_context(command: &mut Command, compiler: &Path, memory: Option<&str>) {
+    let _ = command
+        .env(TEST_COMPILER_ENV, compiler)
+        .env(TEST_MEMORY_ENV, memory.unwrap_or(DEFAULT_TEST_MEMORY));
 }
 
 fn close_stdin(command: &mut Command) {

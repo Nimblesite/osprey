@@ -110,6 +110,7 @@ mod tests {
                 }],
                 doc: None,
             },
+            discipline: None,
         };
         let found = extract(&ProjectConfig::for_root(Path::new("app")), &[source]);
         assert!(found

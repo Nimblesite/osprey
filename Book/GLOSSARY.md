@@ -80,7 +80,7 @@ A named request declared by an effect, with specified argument and result types.
 
 ## Package
 
-A distributable unit of reusable project code. Osprey's package client resolves folder-registry releases, verifies downloaded source and builds from exact locks. Hosted publishing, the public package website and trust services remain planned. Project modules and imports do not require a registry. See the [package guide](../website/src/docs/package-manager.md).
+A distributable unit of reusable project code. Osprey's package client resolves folder-registry releases, verifies downloaded source and builds from exact locks. Hosted publishing, the public package website and trust services remain planned. Project modules and imports do not require a registry. See the [package guide](https://www.ospreylang.dev/docs/package-manager/).
 
 ## Parameter
 

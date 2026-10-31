@@ -1,0 +1,25 @@
+namespace bounded
+
+(** Single characters of a source line, as the textual scan sees them. *)
+module Chars
+    (** The characters a function, parameter or identifier is spelled with. *)
+    identifierCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+
+    (** The character at `index`, or `""` past the end of the line. *)
+    export at (text, index) = substring (text, index, index + 1) ?: ""
+
+    (** Whether `char` is one character of an identifier or a number. *)
+    export identifier char = match isEmpty char
+        true => false
+        false => contains (identifierCharacters, char)
+
+    (** Whether `char` is a space or a tab. *)
+    export blank char = char == " " || char == "\t"
+
+    (** The index of the first character from `index` that is not blank. *)
+    export spaced (text, index) = match blank (at (text, index))
+        true => spaced (text, index + 1)
+        false => index
+
+    (** The column the line's first non-blank character sits at. *)
+    export indent text = spaced (text, 0)

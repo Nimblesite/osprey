@@ -48,3 +48,19 @@ extension and bundled binary MUST be version-matched.
   sources are verified at startup (`verifyStartup`).
 - Marketplace publishing uses GitHub OIDC and Microsoft Entra
   workload-identity federation, with no stored PAT.
+
+## Package manager discovery `[EDITOR-PACKAGE-ACTION]`
+
+The existing Osprey sidebar's Program and Processes headers expose a **Manage Packages** toolbar action, with an accessible name and package icon, invoking `osprey.packages.open`. The action remains available without a running debug session or profiler. It opens the existing package workspace rather than a second implementation. Multi-root workspaces require explicit project selection; cancellation performs no operation. The Command Palette and manifest context menu remain additional entry points.
+
+## Module explorer `[EDITOR-MODULE-EXPLORER]`
+
+**Status: planned; not implemented.** Delivery is tracked in the [module explorer plan](../../plans/module-explorer.md). Provide a Module Explorer in the existing Osprey sidebar, analogous in purpose to Basilisk's module browser and SharpLsp's Solution Explorer.
+
+The tree groups workspace projects, their declared modules, namespaces and source files, then direct and transitive package dependencies with organization-qualified identities. Resolve semantic membership and imports through the compiler's checked project/source graph, including all supported syntax flavors; directory names alone cannot establish module membership. Distinguish local overrides and locked releases. Do not infer that a package is removable from source-graph data alone.
+
+Opening a source item navigates to its actual document and declaration range when supplied by the compiler. Refresh, active-file reveal and keyboard navigation preserve project context. The explorer exposes the existing Manage Packages action for the selected project; it delegates mutations to the package manager and never edits manifests itself.
+
+Loading, stale data, missing locks and failed project analysis have explicit states; unavailable information is never shown as an empty successful tree or invented zero counts. Display package verification findings with the affected item; do not expose a dependency inventory that cannot report its available security warnings. Never label an unchecked package safe. Read-only navigation works in untrusted workspaces; operations requiring trust are refused explicitly. Exclude generated caches and prevent navigation outside authorized workspace/dependency roots through traversal or symlinks.
+
+Acceptance requires real editor E2E tests against multi-root projects, cross-flavor modules, local overrides and locked dependencies. Assert source navigation, project-scoped Manage Packages, cancellation, refresh after edits/add/remove, failed analysis, verification findings and keyboard operation. Tests must prove compiler-backed membership rather than a synthetic tree fixture.

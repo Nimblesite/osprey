@@ -162,6 +162,7 @@ fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
             source: source.to_string(),
             global_line_start: 1,
             global_line_end: 1,
+            discipline: None,
         }],
         source_name_by_mangled: std::collections::BTreeMap::new(),
         public_api: std::collections::BTreeMap::new(),

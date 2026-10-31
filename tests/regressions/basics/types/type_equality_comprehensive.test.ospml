@@ -145,6 +145,105 @@ label f = match f
     Feed _supply => "supplied"
     Dry => "dry"
 mkFeed () = Feed(supply = \x => x * 2)
+integerFeed () = Feed(supply = 7)
+erasedFeedValue (feed : Feed<any>) = match feed
+    Feed value => toString value
+    Dry => "dry"
+type Parcel out T =
+    held : T
+integerParcel () = Parcel(held = 11)
+erasedParcelValue (parcel : Parcel<any>) = toString parcel.held
+failedFeed : Unit -> Feed<Result<int, string>>
+failedFeed () = Feed(supply = Error(message = "kept error"))
+successfulFeed () = Feed(supply = Success(value = 13))
+erasedResultFeedValue (feed : Feed<Result<any, string>>) = match feed
+    Feed value => toString value
+    Dry => "dry"
+concreteFeedValue feed = match feed
+    Feed value => value
+    Dry => 0
+integerFeedList () = [integerFeed ()]
+erasedFeedListValue feeds = match feeds
+    [first, ..._rest] => erasedFeedValue first
+    _ => "empty"
+integerFeedResult () = Success(value = integerFeed ())
+failedFeedResult : Unit -> Result<Feed<int>, string>
+failedFeedResult () = Error(message = "wrapped error")
+erasedFeedResultValue (result : Result<Feed<any>, string>) = match result
+    Success value => erasedFeedValue value
+    Error message => message
+covariantErasureCase () =
+    original = integerFeed ()
+    parcel = integerParcel ()
+    foldList ([
+        erasedFeedValue original == "7",
+        concreteFeedValue original == 7,
+        erasedFeedValue Dry == "dry",
+        erasedParcelValue parcel == "11",
+        parcel.held == 11,
+        erasedResultFeedValue (failedFeed ()) == "Error(kept error)",
+        erasedResultFeedValue (successfulFeed ()) == "Success(13)",
+        erasedFeedListValue (integerFeedList ()) == "7",
+        erasedFeedResultValue (integerFeedResult ()) == "7",
+        erasedFeedResultValue (failedFeedResult ()) == "wrapped error"
+    ], true, \(good, next) => good && next)
+type Chain out T =
+    ChainEnd
+    ChainMore
+        held : T
+        tail : Chain<T>
+integerChain () = ChainMore(held = 19, tail = ChainMore(held = 23, tail = ChainEnd))
+erasedChainValue (chain : Chain<any>) = match chain
+    ChainEnd => "end"
+    ChainMore value rest => "${toString value},${erasedChainValue rest}"
+functionFeed : Unit -> Feed<(int) -> int>
+functionFeed () = Feed(supply = \_input => 17)
+erasedFunctionFeedValue : Feed<(int) -> any> -> string
+erasedFunctionFeedValue feed = match feed
+    Feed value => toString (value 0)
+    Dry => "dry"
+acceptsAny (value : any) = toString value == "7"
+anyGate () = Gate(admit = acceptsAny)
+runGate gate = match gate
+    Gate callback => callback 7
+    Open => false
+runAnyGate (gate : Gate<any>) = match gate
+    Gate callback => callback "7"
+    Open => false
+anyGates () = [anyGate ()]
+type Receiver in T =
+    consume : (T) -> bool
+anyReceiver () = Receiver(consume = acceptsAny)
+runReceiver receiver = receiver.consume 7
+runAnyReceiver (receiver : Receiver<any>) = receiver.consume "7"
+runGates gates = match gates
+    [first, ..._rest] => runGate first
+    _ => false
+anyGateResult : Unit -> Result<Gate<any>, string>
+anyGateResult () = Success(value = anyGate ())
+failedGateResult : Unit -> Result<Gate<any>, string>
+failedGateResult () = Error(message = "gate error")
+anyGateResults () = [anyGateResult ()]
+runGateResults results = match results
+    [first, ..._rest] => runGateResult first
+    _ => false
+runGateResult (result : Result<Gate<int>, string>) = match result
+    Success value => runGate value
+    Error message => message != "gate error"
+contravariantErasureCase () =
+    original = anyGate ()
+    receiver = anyReceiver ()
+    foldList ([
+        runGate original,
+        runAnyGate original,
+        !(runGate Open),
+        runGates (anyGates ()),
+        runGateResult (anyGateResult ()),
+        runGateResults (anyGateResults ()),
+        runReceiver receiver,
+        runAnyReceiver receiver,
+        !(runGateResult (failedGateResult ()))
+    ], true, \(good, next) => good && next)
 
 describe g = match g
     Gate _admit => "guarded"
@@ -239,6 +338,10 @@ typeEqualityCase () =
         !(sameColor (Red, Blue)),
         colorName Green == "green",
         label (mkFeed ()) == "supplied",
+        covariantErasureCase (),
+        erasedChainValue (integerChain ()) == "19,23,end",
+        erasedFunctionFeedValue (functionFeed ()) == "17",
+        contravariantErasureCase (),
         describe (mkGate ()) == "guarded",
         identityOf<int> 5 == 5,
         identityOf<string> "os" == "os",

@@ -1,0 +1,11 @@
+[
+  {
+    "file": "Cargo.toml",
+    "before": [
+      "[dependencies.paste]\nversion = \"1.0\"\n"
+    ],
+    "after": [
+      "[dependencies.paste]\nversion = \"0.2.3\"\npackage = \"pastey\"\n"
+    ]
+  }
+]

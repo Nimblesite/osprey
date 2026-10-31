@@ -1,12 +1,16 @@
 import Foundation
 
+@_silgen_name("osp_arc_live_objects") private func storageArcObjects() -> UInt64
+@_silgen_name("osp_arc_live_bytes") private func storageArcBytes() -> UInt64
+
 // Implements [IOS-TARGET-MACOS]: assertions against the real device. The
 // boundary and volume checks read this machine; the browser checks walk a
 // folder whose contents are known and drive Osprey through the same events
 // the app sends, so hidden files must be measured and filtered for them to pass.
 enum SmokeCheck {
     static func run() -> Bool {
-        let checks = boundaryChecks() + volumeChecks() + browserChecks() + linkChecks()
+        guard setenv("OSPREY_ARC_DEBUG", "1", 1) == 0 else { return false }
+        let checks = boundaryChecks() + volumeChecks() + browserChecks() + linkChecks() + ownershipChecks()
         let failures = checks.compactMap { $0.1 ? nil : $0.0 }
         let verdict = failures.isEmpty ? "OSPREY_MACOS_STORAGE_SMOKE_OK" : "FAIL: \(failures.joined(separator: ", "))"
         print(verdict)
@@ -17,12 +21,27 @@ enum SmokeCheck {
         return failures.isEmpty
     }
 
+    private static func ownershipChecks() -> [(String, Bool)] {
+        let objects = storageArcObjects(), bytes = storageArcBytes()
+        let control = osprey_storage_formatCount(1_234_005)
+        guard storageArcObjects() == objects + 1 && storageArcBytes() > bytes else {
+            return [("ARC allocation control", false)]
+        }
+        osprey_release_string(control)
+        for _ in 0..<1000 {
+            guard text(osprey_storage_formatCount(1_234_005), owned: true) == "1,234,005" else {
+                return [("owned export text", false)]
+            }
+        }
+        return [("owned export allocations recover", storageArcObjects() == objects && storageArcBytes() == bytes)]
+    }
+
     /// The exports and imports cross the C boundary the iPhone apps use.
     private static func boundaryChecks() -> [(String, Bool)] {
         [
             ("initialize once", osprey_main() == 0),
-            ("string export", text(osprey_storage_formatBytes(4_143_181_824)) == "4.1 GB"),
-            ("grouped count", text(osprey_storage_formatCount(1_234_005)) == "1,234,005"),
+            ("string export", text(osprey_storage_formatBytes(4_143_181_824), owned: true) == "4.1 GB"),
+            ("grouped count", text(osprey_storage_formatCount(1_234_005), owned: true) == "1,234,005"),
             ("integer export", osprey_storage_percent(450, 750) == 60),
             ("zero divisor", osprey_storage_percent(1, 0) == 0),
         ]
@@ -118,7 +137,7 @@ enum SmokeCheck {
     }
 
     private static func envelope(_ pointer: UnsafePointer<CChar>?) -> Envelope {
-        let raw = text(pointer)
+        let raw = text(pointer, owned: true)
         let json = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String: Any]
         let walk = (json?["commands"] as? [[String: Any]])?.first
         let guarding = DiskTree.Guard(apps: Set(walk?["apps"] as? [String] ?? []))
@@ -130,7 +149,11 @@ enum SmokeCheck {
         return envelope(osprey_storage_dispatch(from.model, String(decoding: data, as: UTF8.self)))
     }
 
-    private static func text(_ pointer: UnsafePointer<CChar>?) -> String { pointer.map { String(cString: $0) } ?? "" }
+    private static func text(_ pointer: UnsafePointer<CChar>?, owned: Bool = false) -> String {
+        guard let pointer else { return "" }
+        defer { if owned { osprey_release_string(pointer) } }
+        return String(cString: pointer)
+    }
 
     private static func entries(_ count: Int64) -> [(name: String, bytes: Int64, visible: Int64, hidden: Bool, guarded: Bool)] {
         (0..<max(count, 0)).map {

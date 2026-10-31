@@ -9,7 +9,7 @@ from tokenizers.Models import (
     Token, build_unigram, build_wordlevel, build_wordpiece, char_starts,
     id_to_token, unigram_encode, unigram_tokenize, wordlevel_tokenize, wordpiece_tokenize,
 )
-from tokenizers.Normalizers import Norm, bert_normalize, norm_of, norm_text, prepend_cp, replace_space
+from tokenizers.Normalizers import Norm, append_norm, bert_normalize, char_at, empty_norm, end_at, norm_of, norm_text, prepend_cp, replace_space, start_at
 from tokenizers.PreTokenizers import (
     META_CP, bert_pretokenize, char_delimiter_split, digits_pretokenize,
     metaspace_pretokenize, punctuation_pretokenize, whitespace_pretokenize, whitespace_split,
@@ -245,7 +245,20 @@ def meta_helper_cases():
     """Metaspace's replacement and prepend primitives on a Norm."""
     repl = fold(range(len(Expected.META_HELPER_INPUTS)), [], lambda acc, i: listAppend(acc, Check.equal(f"norm.replace.{i}", norm_text(replace_space(norm_of(unwrap_or(listGet(Expected.META_HELPER_INPUTS, i), "")), META_CP)), unwrap_or(listGet(Expected.META_REPLACE, i), ""))))
     prep = fold(range(len(Expected.META_PREPEND_INPUTS)), [], lambda acc, i: listAppend(acc, Check.equal(f"norm.prepend.{i}", norm_text(prepend_cp(norm_of(unwrap_or(listGet(Expected.META_PREPEND_INPUTS, i), "")), META_CP)), unwrap_or(listGet(Expected.META_PREPEND, i), ""))))
-    return listConcat(repl, prep)
+    return concat_all([repl, prep, alignment_cases()])
+
+
+def alignment_cases():
+    n = append_norm(empty_norm(), 233, 7, 9)
+    return [
+        Check.equal("norm.align.text", norm_text(n), "é"),
+        Check.equal("norm.align.char", char_at(n, 0), 233),
+        Check.equal("norm.align.start", start_at(n, 0), 7),
+        Check.equal("norm.align.end", end_at(n, 0), 9),
+        Check.equal("norm.align.empty.char", char_at(empty_norm(), 0), 0),
+        Check.equal("norm.align.empty.start", start_at(empty_norm(), 0), 0),
+        Check.equal("norm.align.empty.end", end_at(empty_norm(), 0), 0),
+    ]
 
 
 def encoding_of(ids, tokens, offsets):

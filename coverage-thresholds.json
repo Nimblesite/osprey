@@ -16,6 +16,7 @@
     ],
     "packages": [
       "Each packages/<name>/osprey.toml requires its own entry and tests/osprey.toml suite. Minimum: 90%; only higher thresholds are explicit.",
+      "Shipped apps/<name> projects are gated the same way under projects.apps.",
       "Measure compiled E2E suites with osprey test --coverage-json and exact output goldens; unit-only results do not qualify. Gate only that package's src/ files, excluding tests and imported helpers.",
       "Missing, empty, malformed or incomplete source reports fail. Data-only files have no executable line counters.",
       "Reports and per-package totals: target/coverage/packages/. No averaging between packages.",
@@ -81,6 +82,18 @@
         "threshold": 95,
         "language": "c"
       },
+      "memory_arc_alloc": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "memory_arc_drop": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "memory_arc_registry": {
+        "threshold": 95,
+        "language": "c"
+      },
       "memory_gc": {
         "language": "c"
       },
@@ -134,6 +147,9 @@
         "language": "c"
       },
       "system_runtime": {
+        "language": "c"
+      },
+      "system_process_posix": {
         "language": "c"
       },
       "file_runtime": {
@@ -239,7 +255,7 @@
         "threshold": 100.0
       },
       "jinja2": {
-        "threshold": 97.1,
+        "threshold": 97.3,
         "language": "osprey"
       },
       "micrograd": {
@@ -247,15 +263,15 @@
         "threshold": 97.5
       },
       "native": {
-        "threshold": 96.5,
+        "threshold": 97.5,
         "language": "osprey"
       },
       "numpy": {
         "language": "osprey",
-        "threshold": 97.9
+        "threshold": 98.0
       },
       "re": {
-        "threshold": 90.2,
+        "threshold": 90.4,
         "language": "osprey"
       },
       "rouge_score": {
@@ -268,7 +284,7 @@
       },
       "safetensors": {
         "language": "osprey",
-        "threshold": 97.6
+        "threshold": 98.2
       },
       "scipy": {
         "language": "osprey",
@@ -276,7 +292,7 @@
       },
       "sklearn": {
         "language": "osprey",
-        "threshold": 98.6
+        "threshold": 99.2
       },
       "testing": {
         "threshold": 98.6,
@@ -284,14 +300,14 @@
       },
       "tiktoken": {
         "language": "osprey",
-        "threshold": 95.1
+        "threshold": 95.3
       },
       "tokenizers": {
         "language": "osprey",
         "threshold": 97.9
       },
       "torch": {
-        "threshold": 96.1,
+        "threshold": 98.8,
         "language": "osprey"
       },
       "transformers": {
@@ -301,6 +317,11 @@
       "vscode": {
         "language": "osprey",
         "threshold": 100.0
+      }
+    },
+    "apps": {
+      "workbench": {
+        "language": "osprey"
       }
     }
   }

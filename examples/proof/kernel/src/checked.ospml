@@ -1,0 +1,78 @@
+namespace proof
+
+import proof::Environment
+import proof::Infer
+import proof::Export
+import proof::Inductive
+import proof::Quotients
+
+(** Adding declarations to an environment through the kernel: a theorem or
+    definition is checked against its statement, an axiom's statement must
+    be a type. Shared by the example entry and the speed-gate entry so both
+    re-check an export by the same code ([PROOF-EXPORT], [PROOF-SPEED]). *)
+module Checked
+    (** Add `name : ty := value` as a theorem: the statement must be a type
+        and the proof must have it. *)
+    export theorem (env, name, ty, value) = match Infer::sort (env, [], ty)
+        Success level => proved (env, name, ty, value)
+        Error message => Error(message = message)
+
+    proved (env, name, ty, value) = match Infer::check (env, [], value, ty)
+        Success checked => Environment::add (env, Decl(name = name, params = [], ty = ty, body = Theorem value))
+        Error message => Error(message = message)
+
+    (** Every declaration of a `lean4export` text, in file order; the first
+        rejection stops the file. An inductive block goes through
+        `Inductive::add`, which re-derives and compares its every claim. *)
+    export exported (env, text) = match Export::read text
+        Success items => foldList (items, Success(value = env), \(so_far, item) => itemised (so_far, item))
+        Error message => Error(message = message)
+
+    itemised (so_far, item) = match so_far
+        Success env => itemDeclared (env, item)
+        Error message => Error(message = message)
+
+    (** One constant through `declare`, one block through the theory. *)
+    itemDeclared (env, item) = match item
+        Single decl => declare (env, decl)
+        Group block => Inductive::add (env, block)
+
+    (** `exported`, and the export must have declared `name`: an empty or
+        unrelated file checks nothing and is a rejection, never a pass. *)
+    export exportedDeclaring (env, text, name) = match exported (env, text)
+        Success checked => declaredIn (checked, name)
+        Error message => Error(message = message)
+
+    declaredIn (env, name) = match Environment::find (env, name)
+        Success decl => Success(value = env)
+        Error _ => Error(message = "the export declares no `${name}`")
+
+    (** A theorem, definition or opaque from an export is added as what it
+        is, with its universe parameters: its statement must be a type and
+        its value must have that type; `Environment::add` then holds the
+        parameters to the scoping rule. A definition stays a definition, so
+        later declarations unfold it; an opaque keeps its checked value but
+        never unfolds. *)
+    export declare (env, decl) = match Quotients::reserved decl.name
+        true => Quotients::declare (env, decl)
+        false => ordinaryDeclaration (env, decl)
+
+    ordinaryDeclaration (env, decl) = match decl.body
+        Quotient kind => Quotients::declare (env, decl)
+        Theorem value => valued (env, decl, value)
+        Definition value => valued (env, decl, value)
+        Opaque value => valued (env, decl, value)
+        Axiom => axiom (env, decl)
+        other => Error(message = "`${decl.name}` is an inductive constant outside its block")
+
+    valued (env, decl, value) = match Infer::sort (env, [], decl.ty)
+        Success level => proven (env, decl, value)
+        Error message => Error(message = message)
+
+    proven (env, decl, value) = match Infer::check (env, [], value, decl.ty)
+        Success checked => Environment::add (env, decl)
+        Error message => Error(message = message)
+
+    axiom (env, decl) = match Infer::sort (env, [], decl.ty)
+        Success level => Environment::add (env, decl)
+        Error message => Error(message = message)

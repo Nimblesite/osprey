@@ -34,7 +34,7 @@ module App
         _ => Runtime::step store
 
     (** Routes every framework message without matching cross-namespace constructors. *)
-    export update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(action, key) => typed (store, action, key), \(action, on) => toggled (store, action, on), \(_, _) => Runtime::step store, \(ticket, outcome) => completed (store, ticket, outcome), \_ => Runtime::step store, \elapsed => Simulation::frame (store, elapsed), \(action, input) => controlled (store, action, input))
+    export update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(action, key) => typed (store, action, key), \(action, on) => toggled (store, action, on), \(_, _) => Runtime::step store, \(ticket, outcome) => completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \elapsed => Simulation::frame (store, elapsed), \(action, input) => controlled (store, action, input))
 
     (** Refreshes Flock's field, HUD, panel and stable root regions. *)
     export regions (before, after, frames, writes) = View::regions (before, after, frames, writes)

@@ -1,15 +1,35 @@
 //! Effect row call values.
 use super::{
-    builtin_return_shape, expression_name, merge_optional_value, project_element,
+    builtin_return_shape, expression_name, merge_optional_value, ordered_values, project_element,
     source_named_callee, stabilize_merged_callables, Analyzer, BTreeSet, CallArguments, Callable,
-    CallableEnv, Expr, NamedArgument, Summary, Value,
+    CallableEnv, Expr, ExprArgs, KnownCallable, NamedArgument, Summary, Value,
 };
 
 impl Analyzer<'_> {
+    pub(super) fn model_known_call(
+        &self,
+        known: KnownCallable,
+        arguments: &CallArguments,
+    ) -> (Summary, Option<Value>) {
+        let values = ordered_values(&known.parameters, &arguments.positional, &arguments.named);
+        let summary = self.substitute_summary_at(known.summary, 0, &values);
+        (summary, self.project_bound_return(known.returned, &values))
+    }
+
+    pub(super) fn project_bound_return(
+        &self,
+        returned: Option<Box<Value>>,
+        values: &[Option<Value>],
+    ) -> Option<Value> {
+        returned
+            .map(|value| self.substitute_value_at(*value, 0, values))
+            .or_else(|| Some(Value::unknown_value()))
+    }
+
     pub(super) fn call_value(
         &self,
         function: &Expr,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named_arguments: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -26,6 +46,7 @@ impl Analyzer<'_> {
         let resolved = self.callable(function, scope, env);
         let arguments = self.callsite_arguments(function, arguments, named_arguments, scope, env);
         self.called_value(resolved, arguments)
+            .map(|value| Self::resolve_handled_value(value, &env.handler_returns))
     }
 
     /// Builtin behavior belongs to the resolved binding, not its spelling.
@@ -39,8 +60,30 @@ impl Analyzer<'_> {
         let name = expression_name(function)?;
         (!env.shadowed.contains(name)
             && !env.values.contains_key(name)
-            && self.index.resolve(scope, name).is_none())
+            && self.index.resolve(scope, name).is_none()
+            && !self.foreign_callee(function, scope, env))
         .then_some(name)
+    }
+
+    pub(super) fn foreign_callee(
+        &self,
+        function: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> bool {
+        match function {
+            Expr::TypeApply { function, .. } => self.foreign_callee(function, scope, env),
+            Expr::Identifier(name) => {
+                !env.shadowed.contains(name)
+                    && !env.values.contains_key(name)
+                    && self.index.extern_parameters(scope, name).is_some()
+            }
+            Expr::Path(path) => self
+                .index
+                .extern_parameters(scope, &path.to_string())
+                .is_some(),
+            _ => false,
+        }
     }
 
     pub(super) fn called_value(
@@ -48,15 +91,13 @@ impl Analyzer<'_> {
         resolved: Option<Callable>,
         arguments: CallArguments,
     ) -> Option<Value> {
-        let Some(callee @ (Callable::Known(_) | Callable::Parameter { .. })) = resolved else {
-            // The RESULT of a call we cannot resolve is not thereby a callable.
-            // This branch catches every builtin without a modelled value
-            // (`print`, `listAppend`, …), whose result is plain data; calling
-            // it an unknown callable makes each one poison the merges it flows
-            // into. Staying fail-closed does not depend on this marker: a value
-            // with no callable that is later invoked fails
-            // `statically_named_callee` and is reported at that call.
-            return Some(Value::default());
+        let Some(
+            callee @ (Callable::Known(_) | Callable::Parameter { .. } | Callable::Alternatives(_)),
+        ) = resolved
+        else {
+            // `value` uses the call's inferred type to distinguish a primitive
+            // result from an aggregate whose contents remain unknown.
+            return Some(Value::unknown_value());
         };
         self.project_call_return(Value::from_callable(callee), arguments)
     }
@@ -64,12 +105,22 @@ impl Analyzer<'_> {
     pub(super) fn callsite_arguments(
         &self,
         function: &Expr,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
     ) -> CallArguments {
         let arguments = self.call_arguments(arguments, named, scope, env);
+        self.order_callsite_arguments(function, arguments, scope, env)
+    }
+
+    pub(super) fn order_callsite_arguments(
+        &self,
+        function: &Expr,
+        arguments: CallArguments,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> CallArguments {
         if source_named_callee(function, scope, env, self.index) {
             arguments
         } else {
@@ -79,7 +130,7 @@ impl Analyzer<'_> {
 
     pub(super) fn call_arguments(
         &self,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -104,7 +155,7 @@ impl Analyzer<'_> {
     pub(super) fn builtin_call_value(
         &self,
         name: &str,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -125,6 +176,7 @@ impl Analyzer<'_> {
         };
         Some(match name {
             "range" | "List" | "Map" => Value {
+                empty_case: (name != "range").then_some(super::EmptyCase::Collection),
                 field_names: Some(BTreeSet::new()),
                 ..Value::default()
             },
@@ -135,21 +187,29 @@ impl Analyzer<'_> {
                 value
             }
             "listAppend" | "listPrepend" => {
-                let mut merged = element(0);
-                if let Some(value) = arguments
-                    .get(1)
-                    .and_then(|argument| self.value(argument, scope, env))
-                {
-                    merge_optional_value(&mut merged, value);
+                let mut merged = None;
+                if let Some(collection) = arguments.first() {
+                    self.merge_collection_elements(&mut merged, collection, scope, env);
                 }
+                merge_optional_value(
+                    &mut merged,
+                    arguments
+                        .get(1)
+                        .and_then(|argument| self.value(argument, scope, env))
+                        .unwrap_or_default(),
+                );
                 aggregate(merged)
             }
             "listConcat" | "mapMerge" => {
-                let mut merged = element(0);
-                if let Some(value) = element(1) {
-                    merge_optional_value(&mut merged, value);
+                let mut merged = None;
+                for collection in arguments.iter().take(2) {
+                    self.merge_collection_elements(&mut merged, collection, scope, env);
                 }
-                aggregate(merged)
+                let empty_case = merged.is_none().then_some(super::EmptyCase::Collection);
+                Value {
+                    empty_case,
+                    ..aggregate(merged)
+                }
             }
             "listReverse" | "listSortBy" | "mapRemove" => arguments
                 .first()
@@ -181,7 +241,7 @@ impl Analyzer<'_> {
     /// recursive aggregate — flows into the fold result. The callback's own
     /// latent effects are invoked by `eager_callback_slots`. Implements
     /// [EFFECTS-PROVENANCE].
-    fn fold_value(&self, arguments: &[Expr], scope: &[String], env: &CallableEnv) -> Value {
+    fn fold_value(&self, arguments: ExprArgs<'_>, scope: &[String], env: &CallableEnv) -> Value {
         let mut acc = arguments
             .get(1)
             .and_then(|argument| self.value(argument, scope, env))
@@ -196,7 +256,7 @@ impl Analyzer<'_> {
     fn merge_fold_return(
         &self,
         acc: &mut Value,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         scope: &[String],
         env: &CallableEnv,
     ) {
@@ -219,7 +279,7 @@ impl Analyzer<'_> {
     fn fold_callback_arguments(
         &self,
         acc: &Value,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         scope: &[String],
         env: &CallableEnv,
     ) -> CallArguments {
@@ -244,11 +304,11 @@ impl Analyzer<'_> {
     pub(super) fn eager_callback_arguments(
         &self,
         name: &str,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         scope: &[String],
         env: &CallableEnv,
     ) -> Vec<Option<Value>> {
-        let element = |arguments: &[Expr]| {
+        let element = |arguments: ExprArgs<'_>| {
             arguments
                 .first()
                 .and_then(|argument| self.value(argument, scope, env))
@@ -275,7 +335,7 @@ impl Analyzer<'_> {
     fn signal_snapshot_value(
         &self,
         name: &str,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
@@ -319,7 +379,7 @@ impl Analyzer<'_> {
     pub(super) fn lazy_iterator_value(
         &self,
         name: &str,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         scope: &[String],
         env: &CallableEnv,
     ) -> Value {
@@ -338,6 +398,13 @@ impl Analyzer<'_> {
         }
         let element = if matches!(name, "map" | "mapList") {
             callback.and_then(|callback| match callback {
+                callback @ Callable::Alternatives(_) => self.called_value(
+                    Some(callback),
+                    CallArguments {
+                        positional: callback_arguments.clone(),
+                        named: Vec::new(),
+                    },
+                ),
                 Callable::Known(known) => known
                     .returned
                     .as_deref()
@@ -356,29 +423,16 @@ impl Analyzer<'_> {
         }
     }
 
-    pub(super) fn receiver_first(&self, receiver: &Expr, arguments: &[Expr]) -> Vec<Expr> {
-        let originals: Vec<_> = std::iter::once(receiver).chain(arguments).collect();
-        let copies: Vec<_> = originals
-            .iter()
-            .map(|expression| (*expression).clone())
-            .collect();
-        for (source, copy) in originals.into_iter().zip(&copies) {
-            crate::arithmetic::transfer(
-                source,
-                copy,
-                &mut self.instances.expression_types.borrow_mut(),
-            );
-        }
-        copies
+    pub(super) fn receiver_first<'b>(receiver: &'b Expr, arguments: &'b [Expr]) -> ExprArgs<'b> {
+        ExprArgs::with_receiver(receiver, arguments)
     }
 
     /// `left |> right` answered by `apply` as the call it desugars to: the
     /// receiver leads a call's arguments, or is a bare callee's one argument.
-    fn piped<T>(
-        &self,
-        left: &Expr,
-        right: &Expr,
-        apply: impl FnOnce(&Expr, &[Expr], &[NamedArgument]) -> T,
+    fn piped<'b, T>(
+        left: &'b Expr,
+        right: &'b Expr,
+        apply: impl FnOnce(&Expr, ExprArgs<'b>, &[NamedArgument]) -> T,
     ) -> T {
         match right {
             Expr::Call {
@@ -387,10 +441,10 @@ impl Analyzer<'_> {
                 named_arguments,
             } => apply(
                 function,
-                &self.receiver_first(left, arguments),
+                Self::receiver_first(left, arguments),
                 named_arguments,
             ),
-            _ => apply(right, std::slice::from_ref(left), &[]),
+            _ => apply(right, ExprArgs::new(std::slice::from_ref(left)), &[]),
         }
     }
 
@@ -401,7 +455,7 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Summary {
-        self.piped(left, right, |function, arguments, named| {
+        Self::piped(left, right, |function, arguments, named| {
             self.call(function, arguments, named, scope, env)
         })
     }
@@ -413,7 +467,7 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<Value> {
-        self.piped(left, right, |function, arguments, named| {
+        Self::piped(left, right, |function, arguments, named| {
             self.call_value(function, arguments, named, scope, env)
         })
     }

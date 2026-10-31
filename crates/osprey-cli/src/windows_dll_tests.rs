@@ -116,3 +116,23 @@ fn the_header_declares_a_binder_per_slot() {
     assert!(!header.contains("must define with C linkage"), "{header}");
     assert!(header.ends_with(HEADER_CLOSE), "{header}");
 }
+
+/// The internal Unit adapter calls the C-void import slot, preserving both signatures.
+#[test]
+fn unit_slots_preserve_the_internal_adapter_and_c_void_boundary() {
+    let source = "extern fn host_notice(value: int)\n\
+        fn publish(value) = host_notice(value)\n\
+        fn main() = publish(1)\n";
+    let (dll, slotted, _) = adapted(source);
+    assert_eq!(slotted.len(), 1);
+    assert_eq!(slotted.first().map(|import| import.ret), Some(CType::Unit));
+    for wanted in [
+        "define internal void @host_notice(i64 %p0)",
+        "call void %fn(i64 %p0)",
+        "define internal i64 @__osprey_host_host_notice(i64 %p0)",
+        "call void @host_notice(i64 %p0)",
+        "ret i64 0",
+    ] {
+        assert!(dll.contains(wanted), "missing `{wanted}` in:\n{dll}");
+    }
+}

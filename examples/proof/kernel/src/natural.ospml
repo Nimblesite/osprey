@@ -1,0 +1,206 @@
+namespace proof
+
+(** An exact natural number of any size: little-endian limbs in base
+    1_000_000_000, with no zero limb on top, so zero is `[]` and every value
+    has one spelling. `int` is a 64-bit `i64`; a limb and a limb sum or
+    difference always fit it, so the saturating builtins never saturate
+    here and no arithmetic effect is raised. *)
+type Natural =
+    naturalLimbs : List<int>
+
+(** Lean's `natVal` literals and the `Nat` operations the kernel needs on
+    them, exactly: nothing is ever rounded, wrapped or saturated
+    ([PROOF-STDLIB]). `parse` reads only the spelling `lean4export` writes. *)
+module Naturals
+    base () = 1000000000
+
+    (** Zero. *)
+    export zero () = Natural(naturalLimbs = [])
+
+    (** One. *)
+    export one () = Natural(naturalLimbs = [1])
+
+    (** Whether `n` is zero. *)
+    export isZero (n) = isEmpty n.naturalLimbs
+
+    (** Whether the limbs have the canonical literal spelling used by both
+        inference and numeric reduction. Implements [PROOF-KERNEL-THEORY]. *)
+    export canonical (value) = match parse (show value)
+        Success parsed => equal (value, parsed)
+        Error _ => false
+
+    (** The decimal digits `lean4export` writes for a `natVal`: one or more
+        ASCII digits with no sign, no space and no leading zero unless the
+        text is "0". Any other text is refused with the text named. *)
+    export parse (text) = match spelled (text)
+        true => chunked (text, [])
+        false => Error(message = "not a natural literal: \"${text}\"")
+
+    spelled (text) = byteLength text > 0 && digitsFrom (text, 0) && !(byteLength text > 1 && leadingZero (byteAt (text, 0)))
+
+    leadingZero (byte) = match byte
+        Success value => value == 48
+        Error _ => false
+
+    digitsFrom (text, at) = match at >= byteLength text
+        true => true
+        false => isDigit (byteAt (text, at)) && digitsFrom (text, satAdd at 1)
+
+    isDigit (byte) = match byte
+        Success value => value >= 48 && value <= 57
+        Error _ => false
+
+    (** Nine digits at a time from the right, lowest limb first. *)
+    chunked (text, limbs) = match byteLength text <= 9
+        true => limbed (text, limbs, "")
+        false => limbed (drop (text, satSub (byteLength text) 9), limbs, take (text, satSub (byteLength text) 9))
+
+    limbed (digits, limbs, rest) = match parseInt digits
+        Success value => chunkedRest (listAppend (limbs, value), rest)
+        Error _ => Error(message = "not a natural literal: \"${digits}\"")
+
+    chunkedRest (limbs, rest) = match rest
+        "" => Success(value = trimmed limbs)
+        other => chunked (other, limbs)
+
+    (** `limbs` without zero limbs on top. *)
+    trimmed (limbs) = Natural(naturalLimbs = listReverse (dropZeros (listReverse limbs)))
+
+    dropZeros (limbs) = match limbs
+        [] => []
+        [first, ...rest] => droppedHead (first, rest, limbs)
+
+    droppedHead (first, rest, limbs) = match first == 0
+        true => dropZeros rest
+        false => limbs
+
+    (** The decimal spelling: `parse (show n)` is `n`. *)
+    export show (n) = match listReverse n.naturalLimbs
+        [] => "0"
+        [top, ...rest] => foldList (rest, toString top, \(text, limb) => "${text}${padded limb}")
+
+    (** A lower limb with its leading zeros, nine digits in all; built
+        totally, so no failure can be hidden behind a fallback. *)
+    padded (limb) = "${zeros (satSub 9 (byteLength (toString limb)))}${toString limb}"
+
+    zeros (count) = match count <= 0
+        true => ""
+        false => "0${zeros (satSub count 1)}"
+
+    (** `value` as a natural, refused when negative; read through its
+        decimal spelling, so no division is needed. *)
+    export ofInt (value) = match value >= 0
+        true => parse (toString value)
+        false => Error(message = "${toString value} is negative")
+
+    (** `n` as an `int`, refused when it is 10^18 or more. *)
+    export toInt (n) = match listLength n.naturalLimbs <= 2
+        true => Success(value = foldList (listReverse n.naturalLimbs, 0, \(total, limb) => satAdd (satMul total (base ())) limb))
+        false => Error(message = "${show n} does not fit an int")
+
+    (** -1, 0 or 1 as `left` is below, equal to or above `right`. *)
+    export compare (left, right) = match listLength left.naturalLimbs == listLength right.naturalLimbs
+        true => compareLimbs (listReverse left.naturalLimbs, listReverse right.naturalLimbs)
+        false => lengthOrder (listLength left.naturalLimbs, listLength right.naturalLimbs)
+
+    lengthOrder (left, right) = match left < right
+        true => -1
+        false => 1
+
+    compareLimbs (left, right) = match left
+        [] => 0
+        [a, ...la] => compareHead (a, la, right)
+
+    compareHead (a, la, right) = match right
+        [] => 1
+        [b, ...lb] => compareStep (a, b, la, lb)
+
+    compareStep (a, b, la, lb) = match a == b
+        true => compareLimbs (la, lb)
+        false => lengthOrder (a, b)
+
+    (** Lean's `Nat.beq`. *)
+    export equal (left, right) = compare (left, right) == 0
+
+    (** Lean's `Nat.ble`. *)
+    export le (left, right) = compare (left, right) <= 0
+
+    (** Lean's `Nat.add`. *)
+    export add (left, right) = trimmed (sumLimbs (left.naturalLimbs, right.naturalLimbs, 0))
+
+    sumLimbs (left, right, carry) = match left
+        [] => carried (right, carry)
+        [a, ...la] => sumHead (a, la, right, carry)
+
+    sumHead (a, la, right, carry) = match right
+        [] => carried (listPrepend (la, a), carry)
+        [b, ...lb] => sumStep (satAdd (satAdd a b) carry, la, lb)
+
+    sumStep (total, la, lb) = match total >= base ()
+        true => listPrepend (sumLimbs (la, lb, 1), satSub total (base ()))
+        false => listPrepend (sumLimbs (la, lb, 0), total)
+
+    carried (limbs, carry) = match carry
+        0 => limbs
+        _ => sumLimbs (limbs, [carry], 0)
+
+    (** Grade-school multiplication in base 10^9. Canonical limbs are below
+        10^9, so every word product is below 10^18 and fits int exactly.
+        Decimal chunking splits that product without division effects.
+        Implements [PROOF-STDLIB] [PROOF-KERNEL-THEORY]. *)
+    export multiply (left, right) = match canonical left && canonical right
+        true => productLimbs (left.naturalLimbs, right.naturalLimbs)
+        false => Error(message = "invalid natural multiplication operand")
+
+    productLimbs (left, right) = match left
+        [] => Success(value = zero ())
+        [digit, ...rest] => sumProducts (productDigit (digit, right), shiftedProduct (productLimbs (rest, right)))
+
+    productDigit (digit, limbs) = match limbs
+        [] => Success(value = zero ())
+        [word, ...rest] => sumProducts (ofInt (satMul digit word), shiftedProduct (productDigit (digit, rest)))
+
+    shiftedProduct (outcome) = match outcome
+        Error message => Error(message = message)
+        Success value => Success(value = shiftedWord value)
+
+    shiftedWord (value) = match isZero value
+        true => value
+        false => Natural(naturalLimbs = listPrepend (value.naturalLimbs, 0))
+
+    sumProducts (left, right) = match left
+        Error message => Error(message = message)
+        Success first => sumProductRight (first, right)
+
+    sumProductRight (first, right) = match right
+        Error message => Error(message = message)
+        Success second => Success(value = add (first, second))
+
+    (** Lean's `Nat.succ`. *)
+    export succ (n) = add (n, one ())
+
+    (** Lean's `Nat.sub`, truncated: `left - right` is zero when `right`
+        is larger. *)
+    export sub (left, right) = match le (right, left)
+        true => trimmed (differenceLimbs (left.naturalLimbs, right.naturalLimbs, 0))
+        false => zero ()
+
+    differenceLimbs (left, right, borrow) = match left
+        [] => []
+        [a, ...la] => differenceHead (a, la, right, borrow)
+
+    differenceHead (a, la, right, borrow) = match right
+        [] => differenceStep (a, la, 0, [], borrow)
+        [b, ...lb] => differenceStep (a, la, b, lb, borrow)
+
+    differenceStep (a, la, b, lb, borrow) = differenceOf (satSub (satSub a b) borrow, la, lb)
+
+    differenceOf (digit, la, lb) = match digit < 0
+        true => listPrepend (differenceLimbs (la, lb, 1), satAdd digit (base ()))
+        false => listPrepend (differenceLimbs (la, lb, 0), digit)
+
+    (** The natural one below `n`, which `Nat.succ` of it is; refused for
+        zero, which is no successor. *)
+    export predecessor (n) = match isZero n
+        true => Error(message = "0 is not a successor")
+        false => Success(value = sub (n, one ()))

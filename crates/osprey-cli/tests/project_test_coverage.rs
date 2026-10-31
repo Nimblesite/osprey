@@ -1,7 +1,4 @@
-//! End-to-end coverage of a project suite ([TESTING-PROJECT-SUITE], #291): a
-//! directory holding an `osprey.toml` runs as one suite, and its coverage is
-//! reported per physical source file, so lines from a sibling source root are
-//! attributed to the file that wrote them rather than to the test entry.
+//! Project-suite coverage ([TESTING-PROJECT-SUITE], #291) belongs to its physical source files.
 
 #![expect(
     clippy::expect_used,
@@ -10,6 +7,9 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+#[path = "project_test_coverage/callback.rs"]
+mod callback;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")

@@ -4,6 +4,51 @@ use super::{
     resolve_positioned, type_name_to_type, Checker, HashMap, HashSet, Program, Type,
 };
 
+pub(super) fn resolved_signatures(
+    checker: &mut Checker,
+    resolve: fn(&mut crate::ctx::InferCtx, &Type) -> Type,
+) -> HashMap<String, (Vec<Type>, Type)> {
+    checker
+        .fn_sigs
+        .iter()
+        .map(|(name, (params, ret))| {
+            let params = params
+                .iter()
+                .map(|ty| resolve(&mut checker.ctx, ty))
+                .collect();
+            (name.clone(), (params, resolve(&mut checker.ctx, ret)))
+        })
+        .collect()
+}
+
+/// Runtime site tables keep field layouts after the effect proof has retained
+/// and checked the complete nominal instance, including phantom parameters.
+pub(super) fn runtime_site_type(ctx: &crate::ctx::InferCtx, ty: &Type) -> Type {
+    match ty {
+        Type::Con { name, args } if !args.is_empty() => runtime_record(ctx, name, args),
+        Type::Fun { params, ret } => Type::fun(
+            params.iter().map(|ty| runtime_site_type(ctx, ty)).collect(),
+            runtime_site_type(ctx, ret),
+        ),
+        _ => ty.clone(),
+    }
+}
+
+fn runtime_record(ctx: &crate::ctx::InferCtx, name: &str, args: &[Type]) -> Type {
+    ctx.record_fields(name, args).map_or_else(
+        || {
+            Type::con(
+                name.to_owned(),
+                args.iter().map(|ty| runtime_site_type(ctx, ty)).collect(),
+            )
+        },
+        |fields| Type::Record {
+            name: name.to_owned(),
+            fields,
+        },
+    )
+}
+
 /// The erased view of every effect: each declared type parameter resolves to a
 /// type variable, which the backend lowers to its uniform boxed representation
 /// — one operation ABI per program regardless of how many instantiations
@@ -42,15 +87,7 @@ pub(super) fn publish_program(
         HashMap::new()
     };
 
-    let functions = checker
-        .fn_sigs
-        .iter()
-        .map(|(name, (params, ret))| {
-            let rp = params.iter().map(|t| checker.ctx.apply(t)).collect();
-            let rr = checker.ctx.apply(ret);
-            (name.clone(), (rp, rr))
-        })
-        .collect();
+    let functions = resolved_signatures(&mut checker, crate::ctx::InferCtx::apply);
     let ctors = publish_ctors(&checker);
     let unions = checker.union_variants.clone();
     let effects = publish_effects(&checker);
@@ -72,6 +109,12 @@ pub(super) fn publish_program(
         &checker.instantiations,
         &mut checker.ctx,
     );
+    let source_lets = std::sync::Arc::new(lets.clone());
+    for table in [&mut lambdas, &mut lets, &mut lists] {
+        for ty in table.values_mut() {
+            *ty = runtime_site_type(&checker.ctx, ty);
+        }
+    }
     let perform_tys = checker.perform_tys.clone();
     let performs = dedupe_sites(perform_tys.iter().map(|(pos, op, args)| {
         let site = crate::info::PerformSite {
@@ -102,6 +145,7 @@ pub(super) fn publish_program(
         effects,
         lambdas,
         lets,
+        source_lets,
         lists,
         performs,
         handler_ops,

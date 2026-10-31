@@ -147,15 +147,21 @@ impl Resolver<'_> {
                 }
             }
         }
+        let mut program = Program {
+            statements: self.program,
+            // An assembled project is many files merged into one program;
+            // no single file's `//!` documents the whole of it.
+            doc: None,
+        };
+        // A positional constructor applied in a file that never saw its
+        // declaration kept the call form; declaration and use now share one
+        // linked name, so the fold of [TYPE-UNION-POSITIONAL] applies.
+        let arities = osprey_ast::positional::declared_arities(&program.statements);
+        osprey_ast::positional::fold_constructions(&mut program, &arities);
         Resolution {
             source_dependencies: self.source_dependencies.into_iter().collect(),
             method_candidates: self.method_candidates.into_iter().collect(),
-            program: Program {
-                statements: self.program,
-                // An assembled project is many files merged into one program;
-                // no single file's `//!` documents the whole of it.
-                doc: None,
-            },
+            program,
             entry_prologue: self.entry_prologue,
             documentation_bindings,
             source_names: self.source_names,

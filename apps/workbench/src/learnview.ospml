@@ -1,0 +1,176 @@
+// Implements [LESSONS-MODE], [LESSONS-CHALLENGES] and [LESSONS-FEEDBACK]: the
+// Learn regions. The lesson page holds a slot per challenge, so typing an
+// answer re-sends only that challenge's region. Every mark shown is the
+// kernel's, made at submission.
+namespace workbench
+
+import ui::Ui
+import ui::Lists
+import workbench::Lessons
+import workbench::Blocks
+import workbench::Tutors
+import workbench::Formulas
+import workbench::Notation
+import workbench::Reviews
+
+(** The completed challenge keys as their own signal, so typing an answer does not refresh the catalogue ([LESSONS-STORE]). *)
+type Achieved =
+    doneKeys : List<string>
+
+(** Every input read by one challenge, without unrelated challenge attempts. *)
+type ChallengeState = MissingChallenge string | ReadyChallenge Challenge Attempt
+
+(** The Learn regions: the catalogue, the open lesson and each challenge ([LESSONS-MODE]). *)
+module LearnViews
+    shelf () = perform Signal<Shelf>.read ()
+
+    (** Challenge identifiers are scoped to their lesson, including their host region identity. *)
+    export regionKey (slug, id) = "challenge:" + Tutors::keyOf (slug, id)
+
+    (** [LESSONS-MODE] Every lesson in catalogue order, with its minutes, a tick when every challenge in it is right, and why it failed to load. *)
+    export catalogue () =
+        current = shelf ()
+        Ui::column (listConcat ([Ui::styled ("Lessons", ui::Title, ui::Primary), status current], catalogueEntries current))
+
+    catalogueEntries current = listAppend (mapList (current.entries, \entry => listed (entry, (perform Signal<Achieved>.read ()).doneKeys))) (Ui::section ("Explore the workbench", "A conjunction proof checked by the kernel.", [Ui::button ("Open conjunction example", "arrow.right", StartExample)]))
+
+    status current = match isEmpty current.shelfProblem
+        false => Ui::badge (current.shelfProblem, "exclamationmark.triangle", ui::Caution)
+        true => Ui::caption (loading current)
+
+    loading current = match isEmpty current.entries
+        true => "Loading lessons…"
+        false => "Each challenge is checked by the Osprey kernel."
+
+    finished (entry, done) = !isEmpty entry.entryChallenges && Lists::all (entry.entryChallenges, \key => listContains (done, key))
+
+    listed (entry, done) = match isEmpty entry.entryFault
+        false => Ui::section (entry.entryTitle, "", [Ui::badge ("This lesson does not load: " + entry.entryFault, "exclamationmark.triangle", ui::Danger)])
+        true => Ui::section (entry.entryTitle, "Stage ${entry.entryStage} · ${entry.entryMinutes} minutes", [Ui::text entry.entrySummary, Ui::row (listAppend (ticked (entry, done), Ui::button ("Open", "book", Open entry.entrySlug)))])
+
+    ticked (entry, done) = match finished (entry, done)
+        true => [Ui::badge ("Complete", "checkmark.seal", ui::Good)]
+        false => []
+
+    (** [LESSONS-FORMAT] The open lesson as one page: its blocks in order, each challenge a slot of its own. *)
+    export lesson () = match Lessons::read (shelf ()).openSource
+        Error said => Ui::column [Ui::button ("All lessons", "chevron.left", Close), Ui::badge (said, "exclamationmark.triangle", ui::Danger)]
+        Success found => Ui::column (listConcat ([Ui::button ("All lessons", "chevron.left", Close), Ui::styled (found.lessonTitle, ui::Title, ui::Primary), Ui::styled (found.lessonSummary, ui::Lead, ui::Secondary)], mapList (found.lessonBlocks, \block => shown block)))
+
+    // Media paths are relative to the lessons folder; the hosts resolve them from the application's folder.
+    shown block = match block
+        Prose text => Ui::text text
+        Display formula => Ui::math (Formulas::typeset formula, Formulas::show formula)
+        Mathematics tree spoken => Ui::math (tree, spoken)
+        Picture still => Ui::image ("lessons/" + still.stillSource, still.stillAlt, still.stillWidth, still.stillHeight)
+        Clip film => Ui::video ("lessons/" + film.filmSource, "lessons/" + film.filmPoster, "lessons/" + film.filmCaptions, film.filmAlt, film.filmSeconds)
+        Exercise item => Ui::slot (regionKey ((shelf ()).openSlug, item.challengeId))
+
+    (** The challenge `id` of the open lesson, or why there is none. *)
+    export find (source, id) = match Lessons::read source
+        Error said => Error(message = said)
+        Success found => Lists::find (Blocks::challenges found.lessonBlocks, \item => item.challengeId == id)
+
+    (** [LESSONS-CHALLENGES] Challenge `id`: its prompt, what is given, the answer, the kernel's mark, the hints shown and the controls. *)
+    export challenge () = match perform Signal<ChallengeState>.read ()
+        MissingChallenge said => Ui::caption said
+        ReadyChallenge item work => posed (item, work)
+
+    (** The complete inputs for the challenge's named signal view. *)
+    export challengeState (bench, id) = match find (bench.shelf.openSource, id)
+        Error said => MissingChallenge said
+        Success item => ReadyChallenge item (Tutors::attempt (bench.tutor, Tutors::keyOf (bench.shelf.openSlug, id)))
+
+    posed (item, work) = Ui::section (titleOf item.challengeTask, "", listConcat (listConcat ([Ui::text item.challengePrompt], given item.challengeTask), listConcat ([answered (item, work)], listConcat (FormulaKeys::pad (item.challengeTask, item.challengeId), listConcat (Feedback::marks work, Feedback::controls (item, work))))))
+
+    titleOf task = match task
+        ProveTask _ => "Prove it"
+        StateTask _ => "Write it"
+        JudgeTask _ => "Does it check?"
+
+    given task = match task
+        ProveTask proving => listPrepend (mapList (proving.provedGiven, \line => Ui::styled (line, ui::Mono, ui::Secondary))) (Ui::styled (proving.provedHeading, ui::Mono, ui::Primary))
+        StateTask stating => [Ui::caption ("Use only " + join (stating.statedVariables, ", ") + ".")]
+        JudgeTask judging => listPrepend (mapList (judging.judgedSteps, \line => Ui::styled (line, ui::Mono, ui::Secondary))) (Ui::styled (judging.judgedHeading, ui::Mono, ui::Primary))
+
+    // A prove answer is an editor, so the kernel's refusal can underline the step it refused.
+    answered (item, work) = match item.challengeTask
+        ProveTask _ => Ui::editor ("Your steps", work.attemptAnswer, length work.attemptAnswer, Feedback::underline work, Answer item.challengeId, Answer item.challengeId)
+        StateTask _ => Ui::column [Ui::caption "Your formula", Ui::focusedInlineEditor ("Your formula", work.attemptAnswer, Tutors::cursorOf work, Tutors::focusOf work, Answer item.challengeId, FormulaPlace item.challengeId)]
+        JudgeTask _ => Ui::picker ("Does the kernel accept this proof?", [Ui::choice ("checks", "It checks"), Ui::choice ("fails", "It fails")], Feedback::chosen work.attemptRuling, Pick item.challengeId)
+
+(** [LESSONS-STATE] The formula keypad: the challenge's permitted variables and the parser's supported symbols, each inserted at the answer's caret. *)
+module FormulaKeys
+    // The parser's connectives, read from the one notation table; the names are the keyboard's own wording.
+    named () = [["to", "implies"], ["not", "not"], ["and", "and"], ["or", "or"], ["iff", "both ways"]]
+
+    keyButton (id, symbol, label) = Ui::button (label, "", Key id symbol)
+
+    symbolButton (id, pair) =
+        abbreviation = listGet pair 0 ?: ""
+        symbol = Notation::symbolOf abbreviation
+        keyButton (id, symbol, symbol + " " + (listGet pair 1 ?: ""))
+
+    variableButtons (task, id) = match task
+        StateTask stating => mapList (stating.statedVariables, \name => keyButton (id, name, name))
+        _ => []
+
+    symbolButtons id = listConcat (mapList (named (), \pair => symbolButton (id, pair)), [keyButton (id, "(", "("), keyButton (id, ")", ")")])
+
+    (** Every key of a state challenge in display order; the other tasks have no formula keys. *)
+    export buttons (task, id) = match task
+        StateTask _ => listConcat (variableButtons (task, id), symbolButtons id)
+        _ => []
+
+    paired keys = pairedFrom (keys, 0)
+
+    pairedFrom (keys, index) = match index >= length keys
+        true => []
+        false => listPrepend (pairedFrom (keys, satAdd index 2), Ui::row (Lists::slice (keys, index, satAdd index 2)))
+
+    (** The visible keypad follows the formula field; short key rows fit narrow lesson panes. *)
+    export pad (task, id) = match task
+        StateTask _ => [Ui::section ("Insert a symbol", "Click a key to insert at the caret.", listConcat (paired (variableButtons (task, id)), paired (symbolButtons id)))]
+        _ => []
+
+(** The kernel's mark, hints and controls of one challenge ([LESSONS-FEEDBACK]). *)
+module Feedback
+    (** The ruling's picker key, empty before a choice. *)
+    export chosen ruling = match ruling
+        Checks => "checks"
+        Fails => "fails"
+        Undecided => ""
+
+    (** The underline on the answer line holding the step the kernel refused. *)
+    export underline work = match work.attemptMarking
+        Marked grade => underlined (grade, work.attemptAnswer)
+        Unmarked => []
+
+    underlined (grade, answer) = match grade
+        Incorrect at said => lined (Reviews::rowOf (answer, at), said)
+        _ => []
+
+    lined (row, said) = match row < 0
+        true => []
+        false => [Ui::mark (satAdd row 1, true, ui::Danger, "Refused", said)]
+
+    (** The badge and the kernel's words for the last submission, nothing since the last edit. *)
+    export marks work = listConcat (graded work.attemptMarking, revealed work)
+
+    graded marking = match marking
+        Unmarked => []
+        Marked grade => worded grade
+
+    worded grade = match grade
+        Correct said => [Ui::badge ("Right", "checkmark.seal", ui::Good), Ui::text said]
+        Incorrect _ said => [Ui::badge ("Not yet", "xmark.circle", ui::Danger), Ui::text said]
+        Unfinished said => [Ui::badge ("Unfinished", "ellipsis.circle", ui::Caution), Ui::text said]
+
+    revealed work = match work.attemptRevealed
+        true => [Ui::caption "This is the solution. Submit it and the kernel will check it."]
+        false => []
+
+    (** The hints shown so far, then Submit, Hint, Show solution and Open in the workbench. *)
+    export controls (item, work) =
+        hints = Lists::slice (item.challengeHints, 0, work.attemptHints)
+        listAppend (mapList (hints, \hint => Ui::label (hint, "lightbulb")), Ui::row [Ui::action ("Submit", "paperplane", ui::Prominent, Tutors::readyAttempt (work, item), Submit item.challengeId), Ui::action ("Hint", "lightbulb", ui::Plain, work.attemptHints < length item.challengeHints, Hint item.challengeId), Ui::action ("Show solution", "eye", ui::Plain, Tutors::revealableAttempt (work, item), Reveal item.challengeId), Ui::action ("Open in the workbench", "arrow.up.forward.square", ui::Plain, true, Carry item.challengeId)])

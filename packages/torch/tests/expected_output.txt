@@ -289,6 +289,7 @@ ok tensor.strides
 ok tensor.src_offset
 ok tensor.bcast_shapes2
 ok tensor.combine_op
+ok tensor.combine_variants
 ok tensor.sum_axes
 ok tensor.sum_to_size
 ok autograd.empty
@@ -331,6 +332,7 @@ ok tensor.strides
 ok tensor.src_offset
 ok tensor.bcast_shapes2
 ok tensor.combine_op
+ok tensor.combine_variants
 ok tensor.sum_axes
 ok tensor.sum_to_size
 ok autograd.empty
@@ -352,4 +354,4 @@ ok optim.ClipResult
 ok optim.unsupported_norm.-1.0
 ok optim.unsupported_norm.0.0
 ok optim.unsupported_norm.1.0
-354 passed, 0 failed
+356 passed, 0 failed

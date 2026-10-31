@@ -1,0 +1,11 @@
+[project]
+name = "bounded-roundtrip"
+source_roots = ["src"]
+default_namespace = "roundtrip"
+entry = "main.ospml"
+
+[dependencies]
+"@osprey/bounded" = { path = "../bounded" }
+
+[modules]
+allow_wildcard_imports = false

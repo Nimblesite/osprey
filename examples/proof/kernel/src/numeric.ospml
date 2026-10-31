@@ -1,0 +1,124 @@
+namespace proof
+
+import proof::Terms
+import proof::Environment
+import proof::Naturals
+import proof::Reduce
+import proof::NumericCanonical
+import proof::DeclarationBodies
+
+(** One numeric fast-path outcome: the checked term a candidate step reduces
+    to, or no rule, leaving the ordinary reduction unchanged. Shared by the
+    batch kernel's `Reduce` and by tests; no error channel, because a missed
+    rule is ordinary behaviour, never a failure. *)
+type NumericStep = NumericReduced Term | NoNumericRule
+
+(** Saturated `Nat.ble` and `Nat.mul`, at no universe arguments, over
+    numerical operands exposed by shared reduction. Each rule requires its
+    complete declaration closure to match pinned Lean 4.25 term trees.
+    This follows Lean's `reduce_nat` boundary without a `decLe`/`decLt`
+    proof shortcut. Implements [PROOF-KERNEL-THEORY]. *)
+module Numeric
+    (** The candidate step for one weak-head application spine. *)
+    export step (env, term) = match term
+        App head right => binaryHead (env, head, right)
+        other => NoNumericRule
+
+    binaryHead (env, head, right) = match head
+        App function left => matched (env, function, left, right)
+        other => NoNumericRule
+
+    (** Whether the environment carries the exact pinned closure the
+        numeric rules assume; exposed so an integrator and the tests can
+        assert the guard itself, not only its shadow on `step`. *)
+    export pinned (env) = canonical env
+
+    matched (env, head, left, right) = match head
+        Const name levels => binaryConstant (env, name, levels, left, right)
+        other => NoNumericRule
+
+    (** Only the two saturated primitive heads at no universe arguments. *)
+    binaryConstant (env, name, levels, left, right) = match (name == "Nat.ble" || name == "Nat.mul") && isEmpty levels
+        false => NoNumericRule
+        true => match validLiterals left && validLiterals right
+            true => numerals (env, left, right, name)
+            false => NoNumericRule
+
+    validLiterals (term) = match term
+        NatLit value => Naturals::canonical value
+        App head arg => validLiterals head && validLiterals arg
+        Lam name domain body => validLiterals domain && validLiterals body
+        Pi name domain body => validLiterals domain && validLiterals body
+        Let name ty value body => validLiterals ty && validLiterals value && validLiterals body
+        Proj family index target => validLiterals target
+        other => true
+
+    (** Both operands decode before anything expensive happens: a variable,
+        a partial application or a non-numeral never allocates the pinned
+        expected trees. *)
+    numerals (env, left, right, operation) = match numeral (env, left)
+        Error _ => NoNumericRule
+        Success first => match numeral (env, right)
+            Error _ => NoNumericRule
+            Success second => guarded (env, first, second, operation)
+
+    (** Peel constructor successors and transparent wrappers while retaining
+        compact literal limbs; never enumerate a literal's predecessors. *)
+    numeral (env, term) = decoded (env, term, Naturals::zero ())
+
+    decoded (env, term, count) = match term
+        NatLit value => canonicalLimbs (value, count)
+        other => view (env, Terms::spine (Reduce::whnf (env, term)), count)
+
+    view (env, spine, count) = match spine.spineHead
+        Const name levels => headView (env, name, levels, spine.spineArgs, count)
+        other => Error(message = "not a numeral")
+
+    headView (env, name, levels, args, count) = match name == "Nat.zero" && isEmpty levels && isEmpty args
+        true => Success(value = count)
+        false => succView (env, name, levels, args, count)
+
+    succView (env, name, levels, args, count) = match name == "Nat.succ" && isEmpty levels && listLength args == 1
+        false => Error(message = "not a numeral")
+        true => succLiteral (env, listGet (args, 0), count)
+
+    succLiteral (env, found, count) = match found
+        Error _ => Error(message = "not a numeral")
+        Success value => decoded (env, value, Naturals::succ count)
+
+    (** Literal limbs must be the one canonical spelling `Infer` types
+        literals by, so a forged or malformed literal stays on the ordinary
+        path and can never gain canonical arithmetic. *)
+    canonicalLimbs (value, count) = match Naturals::canonical value
+        true => Success(value = Naturals::add (value, count))
+        false => Error(message = "not a canonical natural literal")
+
+    (** Checked arithmetic only after the structural guard: a forged or
+        partial environment keeps the ordinary reduction and never receives
+        canonical `<=` semantics. *)
+    guarded (env, left, right, operation) = match canonical env
+        false => NoNumericRule
+        true => match operation
+            "Nat.ble" => NumericReduced (boolean (Naturals::le (left, right)))
+            "Nat.mul" => multiplication (env, left, right)
+            other => NoNumericRule
+
+    multiplication (env, left, right) = match foldList (NumericCanonical::multiplication (), true, \(ok, expected) => ok && declared (env, expected))
+        false => NoNumericRule
+        true => match Naturals::multiply (left, right)
+            Error _ => NoNumericRule
+            Success value => NumericReduced (NatLit value)
+
+    boolean (value) = match value
+        true => Const "Bool.true" []
+        false => Const "Bool.false" []
+
+    (** Whether every pinned declaration is present with the exact tree,
+        parameters, type and metadata; binder names are immaterial, as they
+        are in `Terms::equal`. The expected answer is pinned here, never
+        read from the environment being validated. *)
+    canonical (env) = foldList (NumericCanonical::definitions (), true, \(ok, expected) => ok && declared (env, expected)) && foldList (NumericCanonical::inductives (), true, \(ok, expected) => ok && declared (env, expected))
+
+    export declared (env, expected) = match Environment::find (env, expected.name)
+        Error _ => false
+        Success actual => actual.name == expected.name && DeclarationBodies::sameNames (actual.params, expected.params) && Terms::equal (actual.ty, expected.ty) && DeclarationBodies::equal (actual.body, expected.body)

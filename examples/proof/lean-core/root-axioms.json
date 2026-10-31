@@ -1,0 +1,273 @@
+{
+  "nat-basic": {
+    "Nat.succ_add": [],
+    "Nat.add_succ": [],
+    "Nat.add_one": [],
+    "Nat.add_one_ne_zero": [],
+    "Nat.zero_ne_add_one": [
+      "propext"
+    ],
+    "Nat.zero_add": [],
+    "Nat.add_comm": [],
+    "Nat.add_assoc": [],
+    "Nat.add_left_comm": [],
+    "Nat.add_right_comm": [],
+    "Nat.add_left_cancel": [
+      "propext"
+    ],
+    "Nat.add_right_cancel": [
+      "propext"
+    ],
+    "Nat.eq_zero_of_add_eq_zero": [],
+    "Nat.eq_zero_of_add_eq_zero_left": [],
+    "Nat.mul_succ": [],
+    "Nat.succ_mul": [],
+    "Nat.mul_comm": [],
+    "Nat.left_distrib": [],
+    "Nat.right_distrib": [
+      "propext"
+    ],
+    "Nat.mul_add": [],
+    "Nat.add_mul": [
+      "propext"
+    ],
+    "Nat.mul_assoc": [
+      "propext"
+    ],
+    "Nat.mul_left_comm": [
+      "propext"
+    ],
+    "Nat.mul_two": [],
+    "Nat.two_mul": [],
+    "Nat.mul_zero": [],
+    "Nat.zero_mul": [],
+    "Nat.mul_one": [],
+    "Nat.one_mul": [],
+    "Nat.pow_zero": [],
+    "Nat.pow_succ": [],
+    "Nat.sub_zero": [],
+    "Nat.succ_lt_succ": [],
+    "Nat.not_add_one_le_zero": [],
+    "Nat.add_one_pos": [],
+    "Nat.pred_lt": [],
+    "Nat.sub_one_lt": [],
+    "Nat.succ_sub_succ": [],
+    "Nat.sub_add_eq": [
+      "propext"
+    ],
+    "Nat.le_of_eq": [],
+    "Nat.lt.step": [],
+    "Nat.le_of_succ_le": [],
+    "Nat.le_of_lt": []
+  },
+  "nat-lemmas": {
+    "Nat.sub_one": [],
+    "Nat.one_add": [],
+    "Nat.lt_iff_add_one_le": [
+      "propext"
+    ],
+    "Nat.one_add_le_iff": [
+      "propext"
+    ],
+    "Nat.pred_one_add": [],
+    "Nat.add_succ_sub_one": [],
+    "Nat.succ_add_sub_one": [],
+    "Nat.pred_sub": [
+      "propext"
+    ],
+    "Nat.self_add_sub_one": [],
+    "Nat.sub_one_add_self": [],
+    "Nat.self_add_pred": [],
+    "Nat.pred_add_self": [],
+    "Nat.add_add_add_comm": [],
+    "Nat.succ_eq_one_add": [],
+    "Nat.succ_add_eq_add_succ": [],
+    "Nat.eq_zero_of_add_eq_zero_right": [],
+    "Nat.add_eq_zero_iff": [],
+    "Nat.add_left_cancel_iff": [
+      "propext"
+    ],
+    "Nat.add_right_cancel_iff": [
+      "propext"
+    ],
+    "Nat.add_left_inj": [
+      "propext"
+    ],
+    "Nat.add_right_inj": [
+      "propext"
+    ],
+    "Nat.lt_of_add_lt_add_right": [],
+    "Nat.lt_of_add_lt_add_left": [],
+    "Nat.add_lt_add_iff_left": [],
+    "Nat.add_lt_add_iff_right": [],
+    "Nat.add_lt_add_of_le_of_lt": [],
+    "Nat.add_lt_add_of_lt_of_le": [],
+    "Nat.mul_mul_mul_comm": [
+      "propext"
+    ],
+    "Nat.succ_mul_succ": [],
+    "Nat.add_one_mul_add_one": [],
+    "Nat.sub_sub_self": [
+      "propext"
+    ],
+    "Nat.add_sub_cancel_right": [
+      "propext"
+    ],
+    "Nat.add_sub_cancel'": [
+      "propext"
+    ],
+    "Nat.succ_sub_sub_succ": [
+      "propext"
+    ]
+  },
+  "bool": {
+    "Bool.false_ne_true": [],
+    "Bool.eq_false_or_eq_true": [],
+    "Bool.eq_iff_iff": [
+      "propext"
+    ],
+    "Bool.decide_eq_true": [
+      "propext"
+    ],
+    "Bool.decide_eq_false": [
+      "propext"
+    ],
+    "Bool.and_comm": [],
+    "Bool.and_left_comm": [],
+    "Bool.and_right_comm": [],
+    "Bool.not_and": [],
+    "Bool.not_or": [],
+    "Bool.or_comm": [],
+    "Bool.or_left_comm": [],
+    "Bool.or_right_comm": [],
+    "Bool.and_or_distrib_left": [],
+    "Bool.and_or_distrib_right": [],
+    "Bool.or_and_distrib_left": [],
+    "Bool.or_and_distrib_right": [],
+    "Bool.and_self_left": [],
+    "Bool.or_self_left": [],
+    "Bool.and_not_self": [],
+    "Bool.or_not_self": [],
+    "Bool.xor_false": [],
+    "Bool.xor_true": [],
+    "Bool.coe_iff_coe": []
+  },
+  "option-basic": {
+    "Option.getD_none": [],
+    "Option.getD_some": [],
+    "Option.map_none": [],
+    "Option.map_some": [],
+    "Option.isSome_none": [],
+    "Option.isSome_some": [],
+    "Option.isNone_none": [],
+    "Option.isNone_some": [],
+    "Option.bind_none": [],
+    "Option.bind_some": [],
+    "Option.map_id": [
+      "Quot.sound"
+    ],
+    "Option.join_none": [],
+    "Option.join_some": [],
+    "Option.getM_none": [],
+    "Option.getM_some": [],
+    "Option.all_some": [],
+    "Option.any_some": [],
+    "Option.orElse_some": [],
+    "Option.orElse_none": []
+  },
+  "list-basic": {
+    "List.length_nil": [],
+    "List.length_singleton": [],
+    "List.length_cons": [],
+    "List.head_cons": [],
+    "List.headD_nil": [],
+    "List.headD_cons": [],
+    "List.tail_nil": [],
+    "List.tail_cons": [],
+    "List.map_nil": [],
+    "List.map_cons": [],
+    "List.filter_nil": [],
+    "List.filterMap_nil": [],
+    "List.filterMap_cons": [],
+    "List.foldr_nil": [],
+    "List.foldr_cons": [],
+    "List.foldl_nil": [],
+    "List.foldl_cons": [],
+    "List.reverse_nil": [],
+    "List.nil_append": [],
+    "List.cons_append": [],
+    "List.append_nil": [
+      "propext"
+    ],
+    "List.append_assoc": [
+      "propext"
+    ],
+    "List.length_append": [
+      "propext"
+    ],
+    "List.any_nil": [],
+    "List.any_cons": [],
+    "List.all_nil": [],
+    "List.all_cons": []
+  },
+  "list-lemmas": {
+    "List.map_id": [
+      "propext",
+      "Quot.sound"
+    ],
+    "List.map_id'": [
+      "propext",
+      "Quot.sound"
+    ],
+    "List.map_append": [
+      "propext"
+    ],
+    "List.map_reverse": [
+      "propext"
+    ],
+    "List.length_reverse": [
+      "propext"
+    ],
+    "List.reverse_reverse": [
+      "propext"
+    ],
+    "List.isEmpty_reverse": [
+      "propext"
+    ],
+    "List.mem_append": [
+      "propext"
+    ],
+    "List.not_mem_append": [
+      "propext"
+    ],
+    "List.forall_mem_append": [
+      "propext",
+      "Quot.sound"
+    ],
+    "List.mem_cons_self": [],
+    "List.getElem_cons": [
+      "propext"
+    ],
+    "List.getElem_zero": [],
+    "List.getElem_singleton": [
+      "propext"
+    ]
+  },
+  "prod": {
+    "Prod.swap_swap": [],
+    "Prod.fst_swap": [],
+    "Prod.snd_swap": [],
+    "Prod.swap_prod_mk": [],
+    "Prod.swap_swap_eq": [
+      "Quot.sound"
+    ],
+    "Prod.swap_inj": [
+      "propext"
+    ],
+    "Prod.map_id": [],
+    "Prod.map_id'": [],
+    "Prod.map_comp_map": [],
+    "Prod.map_map": [],
+    "Prod.map_comp_swap": []
+  }
+}

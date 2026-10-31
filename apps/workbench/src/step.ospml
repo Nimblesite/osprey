@@ -1,0 +1,268 @@
+// Implements [WORKBENCH-STEPS]: the phrase table is the whole tactic language a
+// user ever sees. Reading is total, so a sentence outside the table becomes
+// `Unknown` and is kept, underlined, never sent to a checker.
+namespace workbench
+
+import workbench::Formulas
+
+(** A proof step as phrased by the writer ([WORKBENCH-STEPS]). *)
+type Step = Assume string Formula | Cases string (List<string>) | Split | Left | Right | Exact string | Apply string | Absurd string string | Done | Unknown string
+
+(** The phrase table of [WORKBENCH-STEPS], read one sentence at a time and written back as tactics. *)
+module Steps
+    // Whitespace a sentence may hold, including the line breaks of a pasted proof body.
+    separators = [" ", "\t", "\n", "\r"]
+
+    blank code = code == 32 || code == 9 || code == 10 || code == 13
+
+    letter code = (code >= 97 && code <= 122) || (code >= 65 && code <= 90)
+
+    nameChar code = letter code || (code >= 48 && code <= 57) || code == 95 || code == 39
+
+    codeAt (text, at) = codePointAt (text, at) ?: 0
+
+    width code = codePointWidth code ?: 1
+
+    glyphAt (text, at) = substring (text, at, satAdd at (width (codeAt (text, at)))) ?: ""
+
+    token (items, at) = listGet items at ?: ""
+
+    after (items, from) = collected (items, from, [])
+
+    collected (items, at, done) = match at >= length items
+        true => done
+        false => collected (items, satAdd at 1, listAppend (done, token (items, at)))
+
+    leading (items, count) = gathered (items, 0, count, [])
+
+    gathered (items, at, count, done) = match at >= count
+        true => done
+        false => gathered (items, satAdd at 1, count, listAppend (done, token (items, at)))
+
+    // The first letter may be either case; every later letter must match the table.
+    lowerFirst text = toLowerCase (glyphAt (text, 0)) + drop (text, length (glyphAt (text, 0)))
+
+    sameWord (given, fixed) = given == fixed || lowerFirst given == lowerFirst fixed
+
+    punctuation glyph = glyph == ":" || glyph == "," || glyph == "."
+
+    spaced (text, at, done) = match at >= length text
+        true => done
+        false => separated (text, at, done)
+
+    separated (text, at, done) =
+        glyph = glyphAt (text, at)
+        next = satAdd at (width (codeAt (text, at)))
+        match punctuation glyph
+            true => spaced (text, next, done + " " + glyph + " ")
+            false => spaced (text, next, done + glyph)
+
+    carve (part, separator) = match split (part, separator)
+        Success pieces => pieces
+        Error _ => [part]
+
+    addAll (grown, pieces) = foldList (pieces, grown, \(acc, piece) => addOne (acc, piece))
+
+    addOne (grown, piece) = match isEmpty piece
+        true => grown
+        false => listAppend (grown, piece)
+
+    carved (parts, separator) = foldList (parts, [], \(grown, part) => addAll (grown, carve (part, separator)))
+
+    // The words and the marks `:`, `,` and `.` of a sentence, each a token of its own.
+    words text = foldList (separators, [spaced (text, 0, "")], \(parts, separator) => carved (parts, separator))
+
+    nameStart text = letter (codeAt (text, 0))
+
+    nameRest (text, at) = match at >= length text
+        true => true
+        false => continued (text, at)
+
+    continued (text, at) = match nameChar (codeAt (text, at))
+        true => nameRest (text, satAdd at (width (codeAt (text, at))))
+        false => false
+
+    isIdentifier text = nameStart text && nameRest (text, 1)
+
+    spelled (items, fixed) = agrees (items, fixed, 0)
+
+    agrees (items, fixed, at) = match at >= length fixed
+        true => true
+        false => agreed (items, fixed, at)
+
+    agreed (items, fixed, at) = match sameWord (token (items, at), token (fixed, at))
+        true => agrees (items, fixed, satAdd at 1)
+        false => false
+
+    exactly (items, fixed) = length items == length fixed && spelled (items, fixed)
+
+    prefixed (items, fixed) = length items > length fixed && spelled (items, fixed)
+
+    firstStep (tried, at, kept) = match at >= length tried
+        true => Unknown kept
+        false => settled (listGet tried at ?: Unknown kept, tried, at, kept)
+
+    settled (step, tried, at, kept) = match step
+        Unknown _ => firstStep (tried, satAdd at 1, kept)
+        _ => step
+
+    (** The step of one sentence of the table; total, so an unrecognised sentence is `Unknown` with its text trimmed. *)
+    export read sentence =
+        trimmed = trim sentence
+        items = words trimmed
+        match token (items, satSub (length items) 1) == "."
+            true => attempt (leading (items, satSub (length items) 1), trimmed)
+            false => Unknown trimmed
+
+    attempt (items, kept) =
+        tried = [
+            closed (items, kept),
+            sides (items, kept),
+            both (items, kept),
+            assumed (items, kept),
+            cased (items, kept),
+            exacted (items, kept),
+            applied (items, kept),
+            absurd (items, kept),
+        ]
+        firstStep (tried, 0, kept)
+
+    // A sentence that must be exactly `fixed`, and the step it becomes.
+    lit (items, kept, fixed, step) = match exactly (items, fixed)
+        true => step
+        false => Unknown kept
+
+    closed (items, kept) = firstStep ([
+        lit (items, kept, ["done"], Done),
+        lit (items, kept, ["qed"], Done),
+        lit (items, kept, ["QED"], Done),
+    ], 0, kept)
+
+    sides (items, kept) = firstStep ([
+        lit (items, kept, ["left"], Left),
+        lit (items, kept, ["show", "the", "left", "side"], Left),
+        lit (items, kept, ["right"], Right),
+        lit (items, kept, ["show", "the", "right", "side"], Right),
+    ], 0, kept)
+
+    both (items, kept) = firstStep ([
+        lit (items, kept, ["we", "show", "both"], Split),
+        suffices (items, kept),
+    ], 0, kept)
+
+    // The two formulas after `show` are ignored: [WORKBENCH-GOALS] decides whether they hold.
+    suffices (items, kept) = match prefixed (items, ["it", "suffices", "to", "show"])
+        true => Split
+        false => Unknown kept
+
+    assumed (items, kept) = match sameWord (token (items, 0), "assume") || sameWord (token (items, 0), "suppose")
+        true => introduced (items, kept, ":")
+        false => letIntro (items, kept)
+
+    letIntro (items, kept) = match sameWord (token (items, 0), "let")
+        true => introduced (items, kept, "be")
+        false => Unknown kept
+
+    introduced (items, kept, marker) =
+        subject = token (items, 1)
+        match isIdentifier subject && token (items, 2) == marker && length items > 3
+            true => assumedFormula (items, kept, subject)
+            false => Unknown kept
+
+    assumedFormula (items, kept, subject) = match Formulas::read (join (after (items, 3), " "))
+        Read formula => Assume subject formula
+        Faulted _ => Unknown kept
+
+    // `By cases` commits to the cases form, so a truncated one is Unknown rather than `exact cases`.
+    cased (items, kept) = match spelled (items, ["by", "cases"])
+        true => byCases (items, kept)
+        false => splitInto (items, kept)
+
+    byCases (items, kept) = match length items == 9 && spelled (items, ["by", "cases", "on"]) && token (items, 4) == "," && sameWord (token (items, 5), "as") && sameWord (token (items, 7), "and")
+        true => casedAs (items, kept, 3, 6, 8)
+        false => Unknown kept
+
+    splitInto (items, kept) = match length items == 6 && sameWord (token (items, 0), "split") && sameWord (token (items, 2), "into") && sameWord (token (items, 4), "and")
+        true => casedAs (items, kept, 1, 3, 5)
+        false => Unknown kept
+
+    casedAs (items, kept, subjectAt, firstAt, secondAt) =
+        subject = token (items, subjectAt)
+        first = token (items, firstAt)
+        second = token (items, secondAt)
+        match isIdentifier subject && isIdentifier first && isIdentifier second
+            true => Cases subject [first, second]
+            false => Unknown kept
+
+    exacted (items, kept) =
+        tried = [
+            single (items, kept, ["from"], \(subject) => Exact subject),
+            byExact (items, kept),
+            single (items, kept, ["this", "is"], \(subject) => Exact subject),
+        ]
+        firstStep (tried, 0, kept)
+
+    // `cases` belongs to the cases form, so `By cases.` is not `exact cases`.
+    byExact (items, kept) = match sameWord (token (items, 1), "cases")
+        true => Unknown kept
+        false => single (items, kept, ["by"], \(subject) => Exact subject)
+
+    applied (items, kept) =
+        tried = [
+            single (items, kept, ["apply"], \(subject) => Apply subject),
+            single (items, kept, ["use"], \(subject) => Apply subject),
+        ]
+        firstStep (tried, 0, kept)
+
+    single (items, kept, fixed, build) =
+        subject = token (items, length fixed)
+        match length items == satAdd (length fixed) 1 && spelled (items, fixed) && isIdentifier subject
+            true => build subject
+            false => Unknown kept
+
+    absurd (items, kept) = match length items == 5 && spelled (items, ["contradiction", "from"]) && sameWord (token (items, 3), "and")
+        true => controversial (items, kept)
+        false => Unknown kept
+
+    controversial (items, kept) =
+        first = token (items, 2)
+        second = token (items, 4)
+        match isIdentifier first && isIdentifier second
+            true => Absurd first second
+            false => Unknown kept
+
+    (** The step sentences of a proof body in order: each ends at a `.` followed by whitespace or the end, and empty pieces are dropped. *)
+    export sentences text = walked (text, 0, 0, [])
+
+    walked (text, start, at, done) = match at >= length text
+        true => pushed (done, substring (text, start, at) ?: "")
+        false => spread (text, start, at, done)
+
+    spread (text, start, at, done) = match glyphAt (text, at) == "."
+        true => stopped (text, start, at, done)
+        false => walked (text, start, satAdd at (width (codeAt (text, at))), done)
+
+    stopped (text, start, at, done) = match sentenceEnd (text, at)
+        true => walked (text, satAdd at 1, satAdd at 1, pushed (done, substring (text, start, satAdd at 1) ?: ""))
+        false => walked (text, start, satAdd at 1, done)
+
+    sentenceEnd (text, at) = match satAdd at 1 >= length text
+        true => true
+        false => blank (codeAt (text, satAdd at 1))
+
+    pushed (done, piece) = match isEmpty (trim piece)
+        true => done
+        false => listAppend (done, trim piece)
+
+    (** The tactic of [WORKBENCH-EMIT] a step becomes: empty for `Done`, `sorry` for an unknown sentence. *)
+    export tactic step = match step
+        Assume subject _ => "intro " + subject
+        Cases subject names => "cases " + subject + " with " + join (names, " ")
+        Split => "constructor"
+        Left => "left"
+        Right => "right"
+        Exact subject => "exact " + subject
+        Apply subject => "apply " + subject
+        Absurd first second => "exact absurd " + first + " " + second
+        Done => ""
+        Unknown _ => "sorry"

@@ -1,0 +1,18 @@
+//! The `bounded` reference type discipline of [TYPES-DISCIPLINE-REFERENCE]
+//! (spec 0050): `// @bound n in 0..100` above a function bounds one `int`
+//! parameter, every call site inside the module is checked against it by
+//! interval arithmetic, and the module is erased to plain `int` for the HM
+//! pipeline. The README names the subset this deliberately small checker
+//! does not read.
+//!
+//! This directory is the checker project: the compiler builds it as one
+//! program with `<compiler> <checker-directory> --compile`, one file per
+//! module, and `main.ospml` is the entry. It cannot name `test`: that links
+//! the TAP reporter, whose plan would follow the one response line. The suite
+//! drives the built binary as a separate process and keeps its own assertions.
+
+namespace bounded
+
+import bounded::Checker
+
+main () = Checker::run ()

@@ -22,7 +22,7 @@ impl Analyzer<'_> {
                 _ => continue,
             };
             out.union(self.expression(value, scope, env));
-            self.flow_callable_assignments(value, scope, env);
+            let _ = self.flow_callable_assignments(value, scope, env);
             if let Stmt::Let { name, .. } = statement {
                 let _ = env.shadowed.insert(name.clone());
             }

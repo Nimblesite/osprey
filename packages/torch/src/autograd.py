@@ -86,6 +86,10 @@ def append(tape, node):
     return Step(tape=Tape(nodes=listAppend(tape.nodes, node)), out=len(tape.nodes))
 
 
+def record_value(tape, value, op, inputs, saved_values):
+    return append(tape, Node(op=op, inputs=inputs, saved=saved_values, shape=value.shape, value=value, axis=0, param=0.0, keep=False))
+
+
 def leaf(tape, value):
     """A constant input node: no inputs, no backward contribution."""
     return append(tape, Node(op="leaf", inputs=[], saved=[], shape=value.shape, value=value, axis=0, param=0.0, keep=False))
@@ -230,90 +234,68 @@ def vjp(f, x, v):
 
 def add(tape, a, b):
     """Tape add (torch's `+`): broadcasts, backward passes the gradient."""
-    av = value_of(tape, a)
-    bv = value_of(tape, b)
-    out = Array.add(av, bv)
-    return append(tape, Node(op="add", inputs=[a, b], saved=[], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.add(value_of(tape, a), value_of(tape, b)), "add", [a, b], [])
 
 
 def sub(tape, a, b):
     """Tape subtract (torch's `-`)."""
-    av = value_of(tape, a)
-    bv = value_of(tape, b)
-    out = Array.subtract(av, bv)
-    return append(tape, Node(op="sub", inputs=[a, b], saved=[], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.subtract(value_of(tape, a), value_of(tape, b)), "sub", [a, b], [])
 
 
 def mul(tape, a, b):
     """Tape multiply (torch's `*`): backward is `g * other`."""
     av = value_of(tape, a)
     bv = value_of(tape, b)
-    out = Array.multiply(av, bv)
-    return append(tape, Node(op="mul", inputs=[a, b], saved=[av, bv], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.multiply(av, bv), "mul", [a, b], [av, bv])
 
 
 def div(tape, a, b):
     """Tape divide (torch's `/`): backward `g / b` and `-g * a / b^2`."""
     av = value_of(tape, a)
     bv = value_of(tape, b)
-    out = Array.divide(av, bv)
-    return append(tape, Node(op="div", inputs=[a, b], saved=[av, bv], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.divide(av, bv), "div", [a, b], [av, bv])
 
 
 def neg(tape, a):
     """Tape negative."""
-    av = value_of(tape, a)
-    out = Array.negative(av)
-    return append(tape, Node(op="neg", inputs=[a], saved=[], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.negative(value_of(tape, a)), "neg", [a], [])
 
 
 def exp(tape, a):
     """Tape elementwise exp: backward is `g * out`."""
-    av = value_of(tape, a)
-    out = Array.exp(av)
-    return append(tape, Node(op="exp", inputs=[a], saved=[], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.exp(value_of(tape, a)), "exp", [a], [])
 
 
 def log(tape, a):
     """Tape elementwise natural log: backward is `g / a`."""
     av = value_of(tape, a)
-    out = Array.log(av)
-    return append(tape, Node(op="log", inputs=[a], saved=[av], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.log(av), "log", [a], [av])
 
 
 def sqrt(tape, a):
     """Tape elementwise sqrt: backward is `g / (2 * out)`."""
-    av = value_of(tape, a)
-    out = Array.sqrt(av)
-    return append(tape, Node(op="sqrt", inputs=[a], saved=[], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.sqrt(value_of(tape, a)), "sqrt", [a], [])
 
 
 def square(tape, a):
     """Tape elementwise square: backward is `2 * g * a`."""
     av = value_of(tape, a)
-    out = Array.square(av)
-    return append(tape, Node(op="square", inputs=[a], saved=[av], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.square(av), "square", [a], [av])
 
 
 def tanh(tape, a):
     """Tape elementwise tanh: backward is `g * (1 - out^2)`."""
-    av = value_of(tape, a)
-    out = Array.tanh(av)
-    return append(tape, Node(op="tanh", inputs=[a], saved=[], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.tanh(value_of(tape, a)), "tanh", [a], [])
 
 
 def sigmoid(tape, a):
     """Tape elementwise sigmoid: backward is `g * out * (1 - out)`."""
-    av = value_of(tape, a)
-    out = sigmoid_forward(av)
-    return append(tape, Node(op="sigmoid", inputs=[a], saved=[], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, sigmoid_forward(value_of(tape, a)), "sigmoid", [a], [])
 
 
 def relu(tape, a):
     """Tape elementwise ReLU: backward is `g * (out > 0)`."""
-    av = value_of(tape, a)
-    out = Tensor.max_scalar(av, 0.0)
-    return append(tape, Node(op="relu", inputs=[a], saved=[], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Tensor.max_scalar(value_of(tape, a), 0.0), "relu", [a], [])
 
 
 def leaky_relu(tape, a, slope):
@@ -327,15 +309,13 @@ def leaky_relu(tape, a, slope):
 def gelu(tape, a):
     """Tape GELU with torch's default exact forward and backward formulas."""
     av = value_of(tape, a)
-    out = gelu_forward(av)
-    return append(tape, Node(op="gelu", inputs=[a], saved=[av], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, gelu_forward(av), "gelu", [a], [av])
 
 
 def silu(tape, a):
     """Tape SiLU (swish): `x * sigmoid(x)`, torch's exact backward."""
     av = value_of(tape, a)
-    out = Array.multiply(av, sigmoid_forward(av))
-    return append(tape, Node(op="silu", inputs=[a], saved=[av], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Array.multiply(av, sigmoid_forward(av)), "silu", [a], [av])
 
 
 def sum_all(tape, a):
@@ -373,8 +353,7 @@ def matmul(tape, a, b):
     for 2-D operands."""
     av = value_of(tape, a)
     bv = value_of(tape, b)
-    out = Linalg.matmul(av, bv)
-    return append(tape, Node(op="matmul", inputs=[a, b], saved=[av, bv], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
+    return record_value(tape, Linalg.matmul(av, bv), "matmul", [a, b], [av, bv])
 
 
 def softmax(tape, a, dim):

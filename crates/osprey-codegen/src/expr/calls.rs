@@ -216,6 +216,9 @@ pub(super) fn gen_call(
         let slots = arg_exprs(arguments, named);
         return apply_bound_lambda(cg, name, &params, &body, position, &slots);
     }
+    if cg.extern_params.contains_key(name) {
+        return gen_user_call(cg, name, arguments, named);
+    }
     match name {
         // Every intrinsic with a value form — print, toString, the float and
         // integer builtins — lowers through the one table the iterator

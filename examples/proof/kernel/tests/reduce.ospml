@@ -1,0 +1,153 @@
+namespace prooftests
+
+import proof::Environment
+import proof::Reduce
+import proof::Terms
+import proof::Checked
+import proof::Fixtures
+import proof::Infer
+import proof
+    Zero
+    Succ
+    Sort
+    BVar
+    Const
+    App
+    Lam
+    Let
+    Axiom
+    Definition
+    Theorem
+    Pi
+    Binder
+    Decl
+import prooftests::Support
+
+(** Beta, delta and zeta to weak head normal form, and eta in defeq. *)
+module ReduceTests
+    closed () = Sort (Succ Zero)
+    f () = Const "f" []
+
+    export run () =
+        computations ()
+        equalities ()
+        congruence ()
+        batchBeta ()
+        stackDepth ()
+        kReduction ()
+
+    computations () =
+        test ("whnf beta-reduces a lambda applied to a term", \() =>
+            expect (Support::whnfOf (Environment::empty (), App (Lam "x" (Sort Zero) (BVar 0)) (closed ())), "Type"))
+
+        test ("whnf unfolds a definition but not a theorem or an axiom", \() =>
+            expect (Support::whnfOf (Support::envWith (Definition (closed ())), Const "c" []), "Type")
+            expect (Support::whnfOf (Support::envWith (Theorem (closed ())), Const "c" []), "c")
+            expect (Support::whnfOf (Support::envWith Axiom, Const "c" []), "c"))
+
+        test ("whnf reduces a let by substituting its value", \() =>
+            expect (Support::whnfOf (Environment::empty (), Let "x" (Sort Zero) (closed ()) (BVar 0)), "Type"))
+
+    equalities () =
+        // The kernel orients eta from the lambda: the lambda must be the
+        // left operand, so only that direction is asserted here.
+        test ("defeq accepts eta", \() =>
+            expect (Support::defeqOf (Environment::empty (), Lam "x" (Sort Zero) (App (f ()) (BVar 0)), f ()), true))
+
+        test ("defeq rejects distinct sorts", \() =>
+            expect (Support::defeqOf (Environment::empty (), Sort Zero, Sort (Succ Zero)), false))
+
+        test ("defeq unfolds a definition and keeps distinct constants apart", \() =>
+            expect (Support::defeqOf (Support::envWith (Definition (closed ())), Const "c" [], closed ()), true)
+            expect (Support::defeqOf (Environment::empty (), Const "c" [], Const "d" []), false))
+
+    congruence () = test ("application congruence preserves unfolding, beta fallback and distinct arguments or heads", \() =>
+        match comparisonEnvironment ()
+            Error message => expect (message, "the comparison declarations check")
+            Success env =>
+                expect (Reduce::defeq (env, App (Const "F" []) (Const "A" []), App (Const "F" []) (Sort Zero)), true)
+                expect (Reduce::defeq (env, App (Const "F" []) (Const "A" []), App (Const "F" []) (Const "B" [])), false)
+                expect (Reduce::defeq (env, App (Const "F" []) (Const "A" []), App (Const "G" []) (Sort Zero)), false)
+                expect (Reduce::defeq (env, App (Const "identity" []) (Const "A" []), App (Const "identity" []) (Sort Zero)), true)
+                expect (Reduce::defeq (env, App (Const "identity" []) (Const "A" []), App (Const "identity" []) (Const "B" [])), false)
+                expect (Reduce::defeq (env, App (Const "erase" []) (Const "A" []), App (Const "erase" []) (Const "B" [])), true)
+                expect (Reduce::defeq (env, App (Const "identity" []) (Const "A" []), App (Const "identityAgain" []) (Sort Zero)), true)
+                expect (Reduce::defeq (env, Const "identity" [], App (Const "identity" []) (Const "A" [])), false)
+                expect (Terms::equal (Reduce::whnf (env, App (Const "partialH" []) (Const "A" [])), App (App (Const "H" []) (Sort Zero)) (Const "A" [])), true)
+                expect (Reduce::defeq (env, App (Lam "T" (closed ()) (BVar 0)) (Const "A" []), Sort Zero), true))
+
+    comparisonEnvironment () = foldList (comparisonDeclarations (), Success(value = Environment::empty ()), comparisonDeclaration)
+
+    comparisonDeclaration (progress, decl) = match progress
+        Error message => Error(message = message)
+        Success env => Checked::declare (env, decl)
+
+    comparisonDeclarations () = [Decl(name = "A", params = [], ty = closed (), body = Definition (Sort Zero)), Decl(name = "B", params = [], ty = closed (), body = Axiom), comparisonFunction "F", comparisonFunction "G", comparisonDefinition ("identity", BVar 0), comparisonDefinition ("identityAgain", BVar 0), comparisonDefinition ("erase", Sort Zero), Decl(name = "H", params = [], ty = Pi "T" (closed ()) (Pi "U" (closed ()) (closed ())), body = Axiom), comparisonDefinitionValue ("partialH", App (Const "H" []) (Sort Zero))]
+
+    comparisonFunction name = Decl(name = name, params = [], ty = Pi "T" (closed ()) (closed ()), body = Axiom)
+
+    comparisonDefinition (name, body) = comparisonDefinitionValue (name, Lam "T" (closed ()) body)
+
+    comparisonDefinitionValue (name, body) = Decl(name = name, params = [], ty = Pi "T" (closed ()) (closed ()), body = Definition body)
+
+    batchBeta () =
+        test ("multi-binder beta matches sequential substitution with free arguments", \() =>
+            expect (sameBeta (threeBinders (), [BVar 4, BVar 7]), true)
+            expect (sameBeta (threeBinders (), [BVar 4, BVar 7, Const "last" []]), true))
+
+        test ("multi-binder beta substitutes into a remaining dependent domain", \() =>
+            expect (sameBeta (Lam "x" (closed ()) (Lam "y" (BVar 0) (BVar 1)), [Sort Zero]), true))
+
+        test ("multi-binder beta preserves let and projection scope", \() =>
+            expect (sameBeta (Lam "x" (Sort Zero) (Lam "y" (Sort Zero) (Let "z" (Sort Zero) (BVar 1) (proof::Proj "Box" 0 (App (BVar 1) (BVar 0))))), [Const "a" [], Const "b" []]), true))
+
+    threeBinders () = Lam "x" (Sort Zero) (Lam "y" (Sort Zero) (Lam "z" (Sort Zero) (App (BVar 2) (App (BVar 1) (BVar 0)))))
+
+    sameBeta (term, args) = structuralEquals (Reduce::whnf (Environment::empty (), Terms::apps (term, args)), Reduce::whnf (Environment::empty (), foldList (args, term, referenceBeta)))
+
+    referenceBeta (term, arg) = match term
+        Lam name domain body => Terms::instantiate (body, arg)
+        other => App other arg
+
+    kReduction () =
+        test ("K reduces an arbitrary equality proof at matching indices", \() =>
+            match Checked::exported (Environment::empty (), Fixtures::andSwap ())
+                Success env =>
+                    expect (Terms::equal (Reduce::whnf (env, equalityCase (BVar 1, BVar 1)), BVar 1), true)
+                    expect (isProposition (env, Infer::infer (env, selfContext (), equalityCase (BVar 1, BVar 1))), true)
+                Error message => expect (message, "valid Eq declarations"))
+
+        test ("K leaves equality proofs at different indices stuck", \() =>
+            match Checked::exported (Environment::empty (), Fixtures::andSwap ())
+                Success env => expect (Terms::equal (Reduce::whnf (env, equalityCase (BVar 2, BVar 1)), equalityCase (BVar 2, BVar 1)), true)
+                Error message => expect (message, "valid Eq declarations"))
+
+        test ("an axiom named Eq recursor cannot trigger K reduction", \() =>
+            expect (Terms::equal (Reduce::whnf (Support::envWithDecl (Decl(name = "Eq.rec", params = [], ty = Sort Zero, body = Axiom)), equalityCase (BVar 1, BVar 1)), equalityCase (BVar 1, BVar 1)), true))
+
+    equalityCase (left, right) = Terms::apps (Const "Eq.rec" [Succ Zero, Succ Zero], [Sort Zero, left, equalityMotive left, left, right, BVar 0])
+
+    equalityMotive left = Lam "q" (Sort Zero) (Lam "h" (Terms::apps (Const "Eq" [Succ Zero], [Sort Zero, Terms::shift (left, 0, 1), BVar 0])) (Sort Zero))
+
+    selfContext () = [Binder(name = "h", ty = Terms::apps (Const "Eq" [Succ Zero], [Sort Zero, BVar 0, BVar 0])), Binder(name = "p", ty = Sort Zero)]
+
+    isProposition (env, result) = match result
+        Success ty => Terms::equal (Reduce::whnf (env, ty), Sort Zero)
+        Error _ => false
+
+    (** Implements [PROOF-KERNEL-THEORY]: finite delta chains must not exhaust the machine stack. *)
+    export stackDepth () =
+        test ("a long checked delta chain normalizes without machine-stack overflow", \() =>
+            match deltaEnvironment (200000)
+                Success env => expect (Terms::equal (Reduce::whnf (env, Const "alias199999" []), Sort Zero), true)
+                Error message => expect (message, "every alias has its checked Sort 1 type"))
+
+    deltaEnvironment count = foldList (toList (range (0, count)), Success(value = Environment::empty ()), addDelta)
+
+    addDelta (prior, index) = match prior
+        Error message => prior
+        Success env => Checked::declare (env, Decl(name = "alias${index}", params = [], ty = Sort (Succ Zero), body = Definition (previousDelta index)))
+
+    previousDelta index = match index == 0
+        true => Sort Zero
+        false => Const "alias${satSub index 1}" []

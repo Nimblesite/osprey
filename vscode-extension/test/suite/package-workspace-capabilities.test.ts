@@ -242,17 +242,19 @@ suite("package workspace capabilities", () => {
   test("every framework capability is answered here or refused by name", async () => {
     // Every `Capability` constructor in packages/native/src/capability.ospml, as the encoder names it
     // ([NATIVE-HOSTS-COVERAGE]): a capability added to the framework fails here until this host answers or refuses it.
-    const refused = ["run", "list-directories", "read-texts", "store-read", "store-write", "store-list", "store-delete", "choose-file", "choose-folder", "save-file", "measure-folders", "reveal", "cancel", "animate"];
+    const refused = ["run", "list-directories", "read-texts", "store-read", "store-write", "store-list", "store-delete", "choose-file", "choose-folder", "save-file", "measure-folders", "reveal", "cancel", "animate", "fingerprint", "open-settings", "read-plists", "recognise", "running-applications"];
     const source = fs.readFileSync(path.resolve(__dirname, "..", "..", "..", "..", "packages", "native", "src", "capability.ospml"), "utf8").replace(/\r/g, "");
     const block = source.slice(source.indexOf("type Capability ="));
     const body = block.slice(0, block.search(/\n\S/));
-    const kinds = [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) => match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase());
+    const kinds = [...body.matchAll(/^ {4}([A-Z]\w*)$/gm)].map((match) => match[1] === "ReadPropertyLists" ? "read-plists" : match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase());
+    const encodedKinds = [...source.matchAll(/str "kind" "([^"]+)"/g)].map(match => match[1]);
+    assert.deepStrictEqual([...kinds].sort(), [...encodedKinds].sort(), "constructor inventory must match actual encoded wire kinds");
     assert.ok(kinds.includes("measure-folders"), kinds.join(","));
     assert.deepStrictEqual([...ANSWERED_CAPABILITIES, ...refused].sort(), [...kinds].sort());
     const root = temporary();
     try {
       const execute = createRequestExecutor(hostFor(root));
-      for (const kind of refused) await assert.rejects(execute({ ticket: kind, kind }), /Unsupported native capability/);
+      for (const kind of refused) await assert.rejects(execute({ ticket: kind, kind }), error => error instanceof Error && error.message === `Unsupported native capability: ${kind}`);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

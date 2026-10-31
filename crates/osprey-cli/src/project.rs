@@ -75,6 +75,7 @@ impl CompilationInput {
             flavor,
             source: source.clone(),
             program,
+            discipline: None,
         };
         let assembled = osprey_project::assemble_one(source_file)?;
         Ok(Self::assembled(
@@ -206,12 +207,31 @@ impl CompilationInput {
     }
 
     /// Format a flattened checker location using its physical source file.
+    /// A position inside a discipline's erased module is that checker's
+    /// fault: the message becomes a `discipline-error` naming the discipline,
+    /// never a type error in code the user wrote ([TYPES-DISCIPLINE-SEAM]).
     pub(crate) fn diagnostic(&self, position: Option<Position>, message: &str) -> String {
         let Some(position) = position else {
             return format!("{}: {message}", self.display_path);
         };
         let (path, line, column) = self.location(position);
-        format!("{path}:{line}:{column}: {message}")
+        match self.discipline_at(position) {
+            Some(name) => format!(
+                "{path}:{line}:{column}: {}: the erased module written by discipline `{name}` \
+                 does not satisfy its own signature: {message}",
+                osprey_project::discipline::ERROR_PREFIX
+            ),
+            None => format!("{path}:{line}:{column}: {message}"),
+        }
+    }
+
+    fn discipline_at(&self, position: Position) -> Option<&str> {
+        let CompilationUnit::Project(project) = &self.unit else {
+            return None;
+        };
+        project
+            .source_at_line(position.line)
+            .and_then(|(source, _)| source.discipline.as_deref())
     }
 
     /// Render symbols with source-level qualified names where assembly mangled them.

@@ -25,7 +25,7 @@ module View
 
     solid tint = ui::Solid(tint = tint)
 
-    fill steps paint = Scenes::path (steps, ui::Filled, paint, 1)
+    fill steps paint = Scenes::path (steps, ui::Fill, paint, 1)
 
     // Black squares beneath the transparent paths: bounds by origin and size, drawn by centre.
     quad (x, y, side) = Scenes::rect (x + side * 0.5, y + side * 0.5, side, side, 0.0, Scenes::rgb (0, 0, 0), 0)
@@ -37,7 +37,7 @@ module View
     // A circle as two half arcs from its right-hand point, as the original builds it.
     circle centre = fill [ui::MoveTo(toX = centre + 30.0, toY = 85.0), ui::ArcTo(radiusX = 30.0, radiusY = 30.0, rotation = 0.0, large = false, sweep = false, toX = centre - 30.0, toY = 85.0), ui::ArcTo(radiusX = 30.0, radiusY = 30.0, rotation = 0.0, large = false, sweep = false, toX = centre + 30.0, toY = 85.0), ui::Close] (solid (Scenes::hex (16711680, 0.5)))
 
-    logo () = Scenes::moved (Logo::steps (), ui::Filled, solid (black ()), 10.0, 200.0, 0.9, 1)
+    logo () = Scenes::moved (Logo::steps (), ui::Fill, solid (black ()), 10.0, 200.0, 0.9, 1)
 
     bolt () = fill [ui::Polygon(corners = [150.0, 300.0, 200.0, 225.0, 200.0, 275.0, 250.0, 200.0], closed = false)] (solid (Scenes::hex (1920728, 1.0)))
 
@@ -55,7 +55,7 @@ module View
         x = toFloat i * 10.0
         listAppend out (ui::LineTo(toX = 40.0 + x, toY = 420.0 + sin x * 40.0))
 
-    wave () = Scenes::path (range (1, 50) |> fold [ui::MoveTo(toX = 40.0, toY = 420.0)] wavePoint, ui::Stroked(width = 1.0, dashes = [], bevel = true), solid (green ()), 1)
+    wave () = Scenes::path (range (1, 50) |> fold [ui::MoveTo(toX = 40.0, toY = 420.0)] wavePoint, ui::Line(width = 1.0, dashes = [], bevel = true), solid (green ()), 1)
 
     // The fixed drawing, in the original's paint order: quads, then every path.
     demo () = listConcat (quads ()) (listConcat [square (50.0, 16711680), square (150.0, 255), square (250.0, 65280), square (350.0, 0), circle 530.0, circle 570.0, logo (), bolt (), star (), banner ()] (listConcat (pie ()) [wave ()]))
@@ -73,7 +73,7 @@ module View
     // A line of fewer than two points draws nothing, as in the original.
     freehand (points, dashed) = match length points < 4
         true => []
-        false => [Scenes::path (lineSteps points, ui::Stroked(width = 1.0, dashes = dashes dashed, bevel = false), solid (black ()), 2)]
+        false => [Scenes::path (lineSteps points, ui::Line(width = 1.0, dashes = dashes dashed, bevel = false), solid (black ()), 2)]
 
     drawn (sketch, style) = foldList (sketch.lines, [], \(out, points) => listConcat out (freehand (points, style.dashed)))
 
@@ -85,7 +85,7 @@ module View
         false => "Dashed"
 
     (** The instruction and the two buttons. *)
-    export header () = Ui::row [Ui::text "Mouse down any point and drag to draw lines (Hold on shift key to draw straight lines)", ui::Spacer, Ui::button (dashLabel (styleSlice ()).dashed, ui::NoSymbol, ToggleDash), Ui::button ("Clear", ui::NoSymbol, Clear)]
+    export header () = Ui::row [Ui::text "Mouse down any point and drag to draw lines (Hold on shift key to draw straight lines)", ui::Spacer, Ui::button (dashLabel (styleSlice ()).dashed, (ui::Symbols::name ui::NoSymbol), ToggleDash), Ui::button ("Clear", (ui::Symbols::name ui::NoSymbol), Clear)]
 
     (** The stable layout: header over canvas. *)
     export root () = Ui::column [Ui::slot "header", Ui::slot "canvas"]

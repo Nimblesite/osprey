@@ -72,6 +72,37 @@ pub(super) fn replay_all(
     Ok(())
 }
 
+/// Linux refuses to run a file that some process still holds open for
+/// writing (`ETXTBSY`). A program just linked, or written while another thread
+/// forked, can be held that way for a moment, so the start is retried briefly.
+fn spawn(exe: &Path, workdir: &Path) -> Result<std::process::Child, String> {
+    let mut attempts = 0;
+    loop {
+        match start(exe, workdir) {
+            Err(error) if busy(&error) && attempts < 50 => {
+                attempts += 1;
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            other => {
+                return other.map_err(|error| format!("could not run {}: {error}", exe.display()))
+            }
+        }
+    }
+}
+
+fn busy(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::ExecutableFileBusy
+}
+
+fn start(exe: &Path, workdir: &Path) -> std::io::Result<std::process::Child> {
+    Command::new(exe)
+        .current_dir(workdir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+}
+
 pub(crate) fn run_one(exe: &Path, workdir: &Path, finding: &Finding) -> Result<Replay, String> {
     let _ = std::fs::remove_dir_all(workdir);
     std::fs::create_dir_all(workdir)
@@ -79,13 +110,7 @@ pub(crate) fn run_one(exe: &Path, workdir: &Path, finding: &Finding) -> Result<R
     if let Some(reason) = write_files(workdir, &finding.files) {
         return Ok(Replay::Skipped(reason));
     }
-    let mut child = Command::new(exe)
-        .current_dir(workdir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|error| format!("could not run {}: {error}", exe.display()))?;
+    let mut child = spawn(exe, workdir)?;
     if let Some(mut stdin) = child.stdin.take() {
         // A program that crashes before reading closes the pipe early; that
         // write error is the finding, not a replay failure.
@@ -166,11 +191,17 @@ pub(super) fn raw_status(exit_code: i32, signal: i32) -> ExitStatus {
     ExitStatus::from_raw((exit_code << 8) | signal)
 }
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "spec_spawn_tests.rs"]
+mod spawn_tests;
+
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
+    use super::super::spec_findings_tests::Dir;
+    #[cfg(unix)]
+    use super::super::spec_replay_tests::write_executable_fixture;
+    use super::*;
 
     fn finding(files: Vec<(String, Vec<u8>)>) -> Finding {
         Finding {
@@ -215,14 +246,18 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn replay_fixture() -> (Dir, PathBuf, PathBuf) {
+        let scratch = Dir::new("native-replay");
+        let script = scratch.0.join("probe");
+        let workdir = scratch.0.join("work");
+        (scratch, script, workdir)
+    }
+
+    #[cfg(unix)]
     #[test]
     fn stdin_and_files_reach_the_native_program() {
-        let workdir =
-            std::env::temp_dir().join(format!("osprey-hunt-replay-{}", std::process::id()));
-        let script =
-            std::env::temp_dir().join(format!("osprey-hunt-replay-{}.sh", std::process::id()));
-        std::fs::write(&script, "#!/bin/sh\nread n\n[ \"$n\" = 9 ] && [ \"$(cat data.txt)\" = payload ] && kill -SEGV $$\nexit 0\n").expect("script");
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let (_scratch, script, workdir) = replay_fixture();
+        write_executable_fixture(&script, b"#!/bin/sh\nread n\n[ \"$n\" = 9 ] && [ \"$(cat data.txt)\" = payload ] && kill -SEGV $$\nexit 0\n").expect("script");
         let crash = finding(vec![("data.txt".into(), b"payload".to_vec())]);
         assert_eq!(
             run_one(&script, &workdir, &crash).expect("replay"),
@@ -238,8 +273,6 @@ mod tests {
             matches!(run_one(&script, &workdir, &escape).expect("replay"), Replay::Skipped(reason) if reason.contains("outside"))
         );
         assert!(!workdir.join("../escape.txt").exists());
-        let _ = std::fs::remove_dir_all(&workdir);
-        let _ = std::fs::remove_file(&script);
     }
 
     #[test]

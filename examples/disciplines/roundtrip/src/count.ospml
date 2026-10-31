@@ -1,0 +1,19 @@
+// osprey: types=passthrough
+
+namespace roundtrip
+
+import roundtrip::Numbers
+
+(** The module the `passthrough` discipline checks: it imports an `hm` module,
+    so the checker receives `Numbers`'s export signature and must stub it before
+    the compiler can check this file on its own ([TYPES-DISCIPLINE-PROTOCOL]).
+    Nothing here needs a theory — the point is the round trip. *)
+module Count
+    (** `n` doubled through the imported `hm` module. *)
+    export doubled n = Numbers::twice n
+
+    (** `n` doubled and then described, so a `string` crosses the seam too. *)
+    export label n = Numbers::describe (Numbers::twice n)
+
+    (** The sum of `a` and `b`, doubled. *)
+    export total (a, b) = Numbers::twice (a + b)

@@ -194,9 +194,9 @@ module Disk
 
     (** The symbol leading an item's row: a link, a folder the walk could not read, a folder, an archive or any other file. *)
     export look item = match item.itemLink
-        true => ui::External
+        true => (ui::Symbols::name ui::External)
         false => match item.itemGuarded
-            true => ui::Lock
+            true => (ui::Symbols::name ui::Lock)
             false => match item.itemFolder
-                true => ui::Folder
-                false => Pick::either (listContains (archives ()) (extension item.itemName), ui::Package, ui::Document)
+                true => (ui::Symbols::name ui::Folder)
+                false => Pick::either (listContains (archives ()) (extension item.itemName), (ui::Symbols::name ui::Package), (ui::Symbols::name ui::Document))

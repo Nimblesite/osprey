@@ -4,10 +4,11 @@
   "description": "Official website for the Osprey Programming Language",
   "main": "index.js",
   "scripts": {
+    "brand-assets": "node scripts/render-brand.mjs",
     "prepare-site": "npm run update-playground && npm run copy-spec && npm run copy-mermaid && npm run generate-docs",
     "start": "npm run prepare-site && eleventy --serve",
     "dev": "npm run prepare-site && eleventy --serve --watch",
-    "build": "npm run prepare-site && eleventy",
+    "build": "npm run clean && npm run prepare-site && eleventy",
     "copy-spec": "node scripts/copy-spec.js",
     "copy-mermaid": "node scripts/copy-mermaid.js",
     "generate-docs": "bash scripts/generate-docs.sh && npm run add-ml-twins",

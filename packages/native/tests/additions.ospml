@@ -1,0 +1,280 @@
+// Cases for the mathematics, editor, board, recognition and theme additions.
+namespace uitests
+
+import ui::Ui
+import ui::Frames
+    inset
+    bar
+    text
+import ui::Encode
+import ui::Doc
+import ui::Events
+import ui::Messages
+import ui::Requests
+import ui::Strokes
+import ui::Themes
+import ui::Maths
+
+module AdditionCases
+    actionName action = match action
+        Increment => "increment"
+        Typed => "typed"
+        Load => "load"
+
+    refusal result = match result
+        Success _ => "accepted"
+        Error problem => problem
+
+    sampleStroke () = ui::Stroke(strokePoints = [ui::Point(pointX = 1, pointY = 2), ui::Point(pointX = 3, pointY = 4)], strokeWidth = 2, strokeAt = 9)
+
+    strokeSource = "{\"points\":[[1,2],[3,4]],\"width\":2,\"at\":9}"
+
+    routed message = Messages::route (message,
+        \action => "tap ${actionName action}",
+        \(action, text) => "text ${actionName action}:${text}",
+        \(action, flag) => "flag ${actionName action}:${flag}",
+        \(action, points) => "integer ${actionName action}:${points}",
+        \(ticket, _) => "completed ${ticket}",
+        \phase => "phase ${phase}",
+        \(action, stroke) => "stroke ${actionName action}:${length stroke.strokePoints}/${stroke.strokeWidth}/${stroke.strokeAt}",
+        \(action, indices) => "lasso ${actionName action}:${join (mapList (indices, \index => "${index}")) ","}",
+        \_ => "frame",
+        \(_, _) => "controlled")
+
+    editorNode () = listGet (Doc::items (Doc::field (listGet (Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::editor ("Proof", "one\ntwo", 3, [Ui::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])).nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
+
+    (** [UI-COMPONENTS-EDITOR]: text and cursor bindings follow the preceding button, and marks retain every field. *)
+    export editorEncoding () =
+        focusedEditorEncoding ()
+        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::editor ("Proof", "one\ntwo", 3, [Ui::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])
+        doc = editorNode ()
+        mark = listGet (Doc::items (Doc::field (doc, "marks"))) 0 ?: JsonNull
+        expect (Doc::text (doc, "kind"), "editor")
+        expect (Doc::text (doc, "label"), "Proof")
+        expect (Doc::text (doc, "value"), "one\ntwo")
+        expect (Doc::number (doc, "cursor"), 3)
+        expect (Doc::number (doc, "event"), 1)
+        expect (Doc::number (doc, "placeEvent"), 2)
+        expect (length walked.bindings, 3)
+        expect (Doc::number (mark, "line"), 2)
+        expect (Doc::flag (mark, "underlined"), true)
+        expect ("${Doc::text (mark, "tone")}/${Doc::text (mark, "badge")}/${Doc::text (mark, "note")}", "danger/E/Expected a premise")
+
+    focusedEditorEncoding () =
+        node = Ui::focusedInlineEditor ("Formula", "p→q", length "p→", 3, Typed, Load)
+        doc = listGet (Encode::walk ([], node)).nodes 0 ?: JsonNull
+        expect (Doc::has (doc, "focusEpoch"), true)
+        expect (Doc::number (doc, "focusEpoch"), 3)
+        expect (Doc::flag (doc, "inline"), true)
+        expect (Doc::number (doc, "cursor"), length "p→")
+        expect (Doc::number (doc, "event"), 0)
+        expect (Doc::number (doc, "placeEvent"), 1)
+        expect (Doc::has (editorNode (), "focusEpoch"), true)
+        expect (Doc::number (editorNode (), "focusEpoch"), 0)
+
+    placed value = Events::bind (ui::PlaceInput(action = Typed), value)
+
+    (** [UI-COMPONENTS-EDITOR]: cursor offsets arrive as placed integers, clamp at zero and refuse other JSON kinds. *)
+    export cursorValues () =
+        expect (routed (placed (JsonInt 7) ?: ui::Act(act = Increment)), "integer typed:7")
+        expect (routed (placed (JsonInt (0 - 3)) ?: ui::Act(act = Increment)), "integer typed:0")
+        expect (refusal (placed (JsonString "7")), "A cursor control sent a value of the wrong kind")
+
+    (** [UI-COMPONENTS-BOARD]: the board names its host slice and binds strokes before the lasso. *)
+    export boardEncoding () =
+        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::illustratedBoard ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)])
+        doc = listGet (Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
+        expect (Doc::text (doc, "kind"), "board")
+        expect (Doc::text (doc, "slice"), "proof/strokes")
+        expect (Doc::text (doc, "backdrop"), "chalk-study.png")
+        expect (Doc::number (doc, "count"), 2)
+        expect (Doc::flag (doc, "lasso"), true)
+        expect (Doc::number (doc, "event"), 1)
+        expect (Doc::number (doc, "lassoEvent"), 2)
+        expect (length walked.bindings, 3)
+        boardCamera ()
+
+    (** [UI-COMPONENTS-BOARD]: a valid stroke retains both ordered points, its width and its completion time. *)
+    export strokeDecoding () =
+        stroke = Strokes::decode (Doc::parse strokeSource) ?: ui::Stroke(strokePoints = [], strokeWidth = 0, strokeAt = 0)
+        first = listGet stroke.strokePoints 0 ?: ui::Point(pointX = 0 - 1, pointY = 0 - 1)
+        second = listGet stroke.strokePoints 1 ?: ui::Point(pointX = 0 - 1, pointY = 0 - 1)
+        expect (length stroke.strokePoints, 2)
+        expect ("${first.pointX},${first.pointY};${second.pointX},${second.pointY}", "1,2;3,4")
+        expect (stroke.strokeWidth, 2)
+        expect (stroke.strokeAt, 9)
+
+    malformed source = refusal (Strokes::decode (Doc::parse source))
+
+    (** [UI-COMPONENTS-BOARD]: empty points, negative coordinates and non-pair points are refused with the exact diagnostic. *)
+    export strokeRefusals () =
+        expect (malformed "{\"points\":[],\"width\":2,\"at\":9}", "A board control sent a malformed stroke")
+        expect (malformed "{\"points\":[[1,-2]],\"width\":2,\"at\":9}", "A board control sent a malformed stroke")
+        expect (malformed "{\"points\":[3],\"width\":2,\"at\":9}", "A board control sent a malformed stroke")
+        expect (malformed "{\"points\":[[1,2,3]],\"width\":2,\"at\":9}", "A board control sent a malformed stroke")
+        expect (malformed "{\"points\":[[1,2]],\"at\":9}", "A board control sent a malformed stroke")
+        expect (malformed "{\"points\":[[1,2]],\"width\":0,\"at\":9}", "A board control sent a malformed stroke")
+        expect (malformed "{\"points\":[[1,2]],\"width\":2,\"at\":-1}", "A board control sent a malformed stroke")
+        expect (malformed "{\"points\":[[1,2]],\"width\":2,\"at\":\"9\"}", "A board control sent a malformed stroke")
+
+    (** [UI-COMPONENTS-BOARD]: a lasso delivers non-negative stroke indices and refuses strings and negative indices. *)
+    export lassoValues () =
+        expect (routed (Strokes::lasso (Load, JsonArray [JsonInt 0, JsonInt 2]) ?: ui::Act(act = Increment)), "lasso load:0,2")
+        expect (refusal (Strokes::lasso (Load, JsonArray [JsonString "x"])), "A board control sent a lasso that is not a list of strokes")
+        expect (refusal (Strokes::lasso (Load, JsonArray [JsonInt (0 - 1)])), "A board control sent a lasso that is not a list of strokes")
+
+    (** [UI-EFFECTS-RECOGNISE]: recognition carries the ticket, the host-held stroke slices it reads and the output limit. *)
+    export recognitionEncoding () =
+        request = Requests::encode (Requests::ask ("ink:1", ui::Recognise(strokeSlices = ["board:0", "board:2"], recogniseLimit = 80)))
+        expect (Doc::write request, "{\"ticket\":\"ink:1\",\"kind\":\"recognise\",\"slices\":[\"board:0\",\"board:2\"],\"limit\":80}")
+
+    (** [UI-EVENTS]: routing delivers placed offsets, strokes and lassos only to their matching handlers. *)
+    export messageRouting () =
+        expect (routed (Events::bind (ui::StrokeInput(action = Typed), Doc::parse strokeSource) ?: ui::Act(act = Increment)), "stroke typed:2/2/9")
+        expect (refusal (Events::bind (ui::StrokeInput(action = Typed), JsonNull)), "A board control sent a malformed stroke")
+        expect (routed (Events::bind (ui::LassoInput(action = Load), JsonArray [JsonInt 0, JsonInt 2]) ?: ui::Act(act = Increment)), "lasso load:0,2")
+        expect (refusal (Events::bind (ui::LassoInput(action = Load), JsonBool false)), "A board control sent a lasso that is not a list of strokes")
+        expect (routed (ui::Placed(placer = Typed, placed = 7)), "integer typed:7")
+        expect (routed (ui::Stroked(stroker = Typed, stroked = sampleStroke ())), "stroke typed:2/2/9")
+        expect (routed (ui::Lassoed(lassoer = Load, lassoed = [0, 2])), "lasso load:0,2")
+
+    (** [UI-THEME-BOARD]: the board's surface and stroke token names stay stable. *)
+    export boardTokens () = expect (join Themes::boardTokens ",", "board,chalk")
+
+    roundTrip tree = Doc::write (Maths::encode (Maths::decode (Maths::encode tree) ?: ui::Sym "failed")) == Doc::write (Maths::encode tree)
+
+    corpus () = [
+        ui::Sym "x",
+        ui::Num "2",
+        ui::Seq [],
+        ui::Seq [ui::Sym "a", ui::Num "1"],
+        ui::Sup (ui::Sym "x") (ui::Num "2"),
+        ui::Sub (ui::Sym "x") (ui::Num "2"),
+        ui::Frac (ui::Num "2") (ui::Sym "x"),
+        ui::Root (ui::Sym "x"),
+        ui::Binder "∀" [ui::Sym "x", ui::Sym "y"] (ui::Sym "x"),
+        ui::Op "=" (ui::Sym "x") (ui::Num "2"),
+        ui::Paren (ui::Sym "x"),
+        ui::Big "∑" (ui::Num "0") (ui::Sym "n") (ui::Sym "x"),
+        ui::Sup (ui::Frac (ui::Num "1") (ui::Num "2")) (ui::Num "3"),
+        ui::Big "∫" (ui::Num "0") (ui::Num "1") (ui::Frac (ui::Sup (ui::Sym "x") (ui::Num "2")) (ui::Num "2")),
+    ]
+
+    (** [UI-COMPONENTS-MATH] [LESSONS-FORMAT]: `Maths::decode` is the exact inverse of `Maths::encode` across every constructor, nesting included. *)
+    export mathRoundTrip () = forEachList (corpus (), \tree => expect (roundTrip tree, true))
+
+    decodeError source = match Maths::decode (Doc::parse source)
+        Success _ => "accepted"
+        Error problem => problem
+
+    (** [UI-COMPONENTS-MATH] [LESSONS-FORMAT]: decoding refuses an unknown kind, a missing child, a non-array `items`, a non-object node and non-string text or symbol with the exact diagnostic. *)
+    export mathRefusals () =
+        expect (decodeError "{\"kind\":\"foo\"}", "a math node has the unknown kind `foo`")
+        expect (decodeError "{\"kind\":\"root\"}", "a math node of kind `root` is missing its child `body`")
+        expect (decodeError "{\"kind\":\"seq\",\"items\":7}", "a math node of kind `seq` has a non-array `items`")
+        expect (decodeError "7", "a math node must be an object")
+        expect (decodeError "{\"kind\":\"sym\",\"text\":7}", "a math node of kind `sym` has a non-string `text`")
+        expect (decodeError "{\"kind\":\"op\",\"symbol\":7,\"left\":{\"kind\":\"sym\",\"text\":\"x\"},\"right\":{\"kind\":\"num\",\"text\":\"2\"}}", "a math node of kind `op` has a non-string `symbol`")
+        mathShapeRefusals ()
+        mathChildRefusals ()
+
+    mathShapeRefusals () =
+        expect (decodeError "{}", "a math node is missing its kind")
+        expect (decodeError "{\"kind\":7}", "a math node is missing its kind")
+        expect (decodeError "{\"kind\":\"sym\"}", "a math node of kind `sym` is missing its `text`")
+        expect (decodeError "{\"kind\":\"seq\"}", "a math node of kind `seq` is missing its `items`")
+        expect (decodeError "{\"kind\":\"seq\",\"items\":[{},{}]}", "a math node is missing its kind")
+        expect (decodeError "{\"kind\":\"binder\"}", "a math node of kind `binder` is missing its `symbol`")
+        expect (decodeError "{\"kind\":\"binder\",\"symbol\":\"∀\"}", "a math node of kind `binder` is missing its `names`")
+        expect (decodeError "{\"kind\":\"binder\",\"symbol\":\"∀\",\"names\":[]}", "a math node of kind `binder` is missing its child `body`")
+
+    mathChildRefusals () =
+        expect (decodeError "{\"kind\":\"sup\"}", "a math node of kind `sup` is missing its child `base`")
+        expect (decodeError "{\"kind\":\"sup\",\"base\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `sup` is missing its child `script`")
+        expect (decodeError "{\"kind\":\"op\",\"symbol\":\"=\"}", "a math node of kind `op` is missing its child `left`")
+        expect (decodeError "{\"kind\":\"op\",\"symbol\":\"=\",\"left\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `op` is missing its child `right`")
+        expect (decodeError "{\"kind\":\"big\"}", "a math node of kind `big` is missing its `symbol`")
+        expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\"}", "a math node of kind `big` is missing its child `lower`")
+        expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `big` is missing its child `upper`")
+        expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"},\"upper\":{\"kind\":\"num\",\"text\":\"2\"}}", "a math node of kind `big` is missing its child `body`")
+
+    (** [LESSONS-FRAMEWORK]: an image and a video encode as leaves with their media fields and take no control ordinal. *)
+    export mediaEncoding () =
+        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::image ("media/a.jpg", "A chain", 1920, 1080), Ui::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)])
+        doc = listGet walked.nodes 0 ?: JsonNull
+        children = Doc::items (Doc::field (doc, "children"))
+        image = listGet children 1 ?: JsonNull
+        video = listGet children 2 ?: JsonNull
+        expect (Doc::write image, "{\"kind\":\"image\",\"source\":\"media/a.jpg\",\"alt\":\"A chain\",\"width\":1920,\"height\":1080}")
+        expect (Doc::write video, "{\"kind\":\"video\",\"source\":\"media/a.mp4\",\"poster\":\"media/a.jpg\",\"captions\":\"media/a.vtt\",\"alt\":\"A film\",\"seconds\":40}")
+        expect (Doc::has (image, "event"), false)
+        expect (Doc::has (video, "event"), false)
+        expect (length walked.bindings, 1)
+
+
+    export frameTypography geometry =
+        expect (Doc::text (geometry, "font"), "serif")
+        expect (Doc::number (geometry, "textSize"), 27)
+        expect (Doc::flag (geometry, "italic"), true)
+        expect (Doc::flag (geometry, "hug"), true)
+        expect (Doc::text (geometry, "align"), "center")
+        expect (Doc::text (geometry, "cross"), "end")
+        expect (Doc::number (geometry, "controlHeight"), 40)
+        expect (Doc::number (geometry, "controlPadding"), 12)
+        expect (jsonFloat (Doc::field (geometry, "lineHeight")) ?: 0.0, 34.72)
+        expect (jsonFloat (Doc::field (geometry, "tracking")) ?: 0.0, -0.6)
+        expect (jsonFloat (Doc::field (geometry, "mathScale")) ?: 0.0, 1.08)
+        expect (Doc::flag (geometry, "quietControls"), true)
+        expect (Doc::flag (geometry, "fadeBackdrop"), true)
+        expect (Doc::flag (geometry, "trailingSymbols"), true)
+        expect (Doc::text (geometry, "shadow"), "floating")
+        filledButton ()
+        frameHelpers ()
+
+    frameHelpers () =
+        padded = inset (3, 5, 7, 11)
+        expect (padded.frameTop, 3)
+        expect (padded.frameRight, 5)
+        expect (padded.frameBottom, 7)
+        expect (padded.frameLeft, 11)
+        strip = bar 75
+        expect (strip.frameHeight, 75)
+        expect (strip.frameGrow, false)
+        typography = text ("serif", 29, true)
+        expect (typography.frameFont, "serif")
+        expect (typography.frameTextSize, 29)
+        expect (typography.frameItalic, true)
+        expect (typography.frameHug, true)
+
+    boardCamera () =
+        walked = Encode::walk ([], Ui::interactiveBoard ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load))
+        node = listGet walked.nodes 0 ?: JsonNull
+        expect (Doc::flag (node, "panning"), true)
+        expect (Doc::text (node, "backdrop"), "chalk-study.png")
+        expect (Doc::number (node, "event"), 0)
+        expect (Doc::number (node, "lassoEvent"), 1)
+        expect (Doc::number (node, "panEvent"), 2)
+        expect (length walked.bindings, 3)
+        expect (routed (Events::bind (listGet walked.bindings 2 ?: ui::Tap(action = Increment), JsonString "{x:12}") ?: ui::Act(act = Increment)), "text load:{x:12}")
+        narrowMargin ()
+
+    narrowMargin () =
+        node = listGet (Encode::walk ([], Ui::boundedAside (Ui::text "Proof", ui::Trailing, Ui::text "Goal", 184, 160, 320, 360, Load))).nodes 0 ?: JsonNull
+        expect (Doc::number (node, "width"), 184)
+        expect (Doc::number (node, "least"), 160)
+        expect (Doc::number (node, "most"), 320)
+        expect (Doc::number (node, "keep"), 360)
+
+
+    filledButton () =
+        node = listGet (Encode::walk ([], Ui::action ("Insert", "", ui::Filled, true, Increment))).nodes 0 ?: JsonNull
+        expect (Doc::text (node, "role"), "filled")
+        inlineEditor ()
+
+    inlineEditor () =
+        walked = Encode::walk ([], Ui::inlineEditor ("Next step", "From h.", 7, Typed, Load))
+        node = listGet walked.nodes 0 ?: JsonNull
+        expect (Doc::flag (node, "inline"), true)
+        expect (Doc::number (node, "event"), 0)
+        expect (Doc::number (node, "placeEvent"), 1)
+        expect (length walked.bindings, 2)

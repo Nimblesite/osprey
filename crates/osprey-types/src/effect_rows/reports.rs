@@ -15,7 +15,8 @@ pub(super) fn collect(
         .zip(rows)
         .zip(returns)
         .map(|((function, own), returned)| {
-            let row = full_application(function.body, own, returned.as_ref());
+            let result_type = instances.signatures.get(&function.name).map(|(_, ret)| ret);
+            let row = full_application(function.body, own, returned.as_ref(), result_type);
             (function.qualified.clone(), report(instances, row))
         })
         .collect()
@@ -42,13 +43,13 @@ pub(super) fn report(instances: &Instances, row: Summary) -> EffectRequirements 
     }
 }
 
-fn operation_name(instances: &Instances, requirement: &Requirement) -> String {
+pub(super) fn operation_name(instances: &Instances, requirement: &Requirement) -> String {
     let mut display = requirement.clone();
     display.arguments = instances
         .display_arguments
         .get(&requirement.arguments)
         .cloned()
-        .unwrap_or_else(|| vec![crate::ty::HOLE.to_owned(); requirement.arguments.len()]);
+        .unwrap_or_else(|| requirement.arguments.clone());
     requirement_name(&display)
 }
 

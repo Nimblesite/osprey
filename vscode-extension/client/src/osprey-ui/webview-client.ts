@@ -3,6 +3,10 @@
 // application state and sends no capability request; every value is attributed
 // to the region, revision and ordinal the Node renderer emitted.
 
+import { EDITOR_SCRIPT } from "./editor-client";
+import { BOARD_SCRIPT } from "./board-client";
+import { ACTION_SCRIPT } from "./action-client";
+
 export const WEBVIEW_SCRIPT = `
 (function () {
   const vscode = acquireVsCodeApi();
@@ -14,6 +18,29 @@ export const WEBVIEW_SCRIPT = `
   let pendingLoss = null;
   let editSequence = 0;
   let hostDiagnostics = [];
+  let runtimeBusy = false;
+  let runtimeTracked = false;
+  let pressedAction = null;
+  let pressedPointerId = null;
+  let cancelledAction = null;
+  let pendingActionPatch = null;
+  const pausedControls = new Map();
+
+  function updateBusy() {
+    const root = document.getElementById("osprey-root"), notice = document.getElementById("osprey-runtime-status");
+    const busy = runtimeBusy || pendingEdits.size > 0;
+    if (notice) notice.hidden = !busy;
+    if (!root) return;
+    root.setAttribute("aria-busy", String(busy));
+    root.querySelectorAll("button, select").forEach(function (control) {
+      if (control === pressedAction) return;
+      if (runtimeBusy) {
+        if (!pausedControls.has(control)) pausedControls.set(control, control.disabled);
+        control.disabled = true;
+      } else if (pausedControls.has(control)) control.disabled = pausedControls.get(control);
+    });
+    if (!runtimeBusy) pausedControls.clear();
+  }
 
   function closest(target, selector) {
     return target && target.closest ? target.closest(selector) : null;
@@ -38,7 +65,21 @@ export const WEBVIEW_SCRIPT = `
       const raw = element.getAttribute("data-value");
       value = kind === "number" ? Number(raw) : kind === "bool" ? raw === "true" : kind === "string" ? raw : null;
     }
+    if (postAfterFields(control, value)) return;
+    if (runtimeTracked) { runtimeBusy = true; updateBusy(); }
     vscode.postMessage(Object.assign({ type: "event", value: value }, control));
+  }
+
+  function postAfterFields(control, value) {
+    if (pendingEdits.size === 0 && !pendingActionPatch) return false;
+    sendPendingFields();
+    const id = ++editSequence;
+    const signature = "action:" + id;
+    pendingEdits.set(signature, { id: id, value: value, control: control, sent: false });
+    if (runtimeTracked) runtimeBusy = true;
+    updateBusy();
+    sendField(signature);
+    return true;
   }
 
   // Presentation matching only preserves the draft's display. Osprey resolves
@@ -63,6 +104,11 @@ export const WEBVIEW_SCRIPT = `
     if (!edit || edit.sent) return;
     pendingEdits.set(signature, Object.assign({}, edit, { sent: true }));
     vscode.postMessage(Object.assign({ type: "event", edit: edit.id, value: edit.value }, edit.control));
+  }
+
+  // Pressing another control commits every draft before its own action.
+  function sendPendingFields() {
+    flushFields().forEach(function (_edit, signature) { sendField(signature); });
   }
 
   function armFieldTimer(signature) {
@@ -110,12 +156,14 @@ export const WEBVIEW_SCRIPT = `
   }
 
   function acknowledgeEdit(message) {
+    if (acknowledgeBoardEdit(message)) return;
     const entry = Array.from(pendingEdits.entries()).find(function (entry) { return entry[1].id === message.edit; });
     if (!entry) return;
     const signature = entry[0];
     clearTimeout(fieldTimers.get(signature));
     fieldTimers.delete(signature);
     pendingEdits.delete(signature);
+    updateBusy();
     if (message.accepted === true) return;
     pendingLoss = message.error || "The text edit was refused; it was not applied.";
     fieldsBySignature(signature).forEach(function (element) { element.value = element.getAttribute("data-value") || ""; });
@@ -140,6 +188,8 @@ export const WEBVIEW_SCRIPT = `
   }
 
   function saveFocus() {
+    savedFocus = null;
+    if (!document.hasFocus()) return;
     const active = document.activeElement;
     if (!active || !active.getAttribute) return;
     const id = active.getAttribute("data-focus");
@@ -150,6 +200,20 @@ export const WEBVIEW_SCRIPT = `
       end: typeof active.selectionEnd === "number" ? active.selectionEnd : null,
       signature: active.matches("input, textarea") ? fieldSignature(active) : null,
     };
+  }
+
+  let dialogReturnFocus = null;
+  function focusDialog() {
+    const dialog = document.querySelector("[data-native-dialog]");
+    if (!document.hasFocus()) { if (!dialog) dialogReturnFocus = null; return; }
+    if (dialog) {
+      if (dialogReturnFocus === null) dialogReturnFocus = document.activeElement?.getAttribute("data-focus") || "";
+      if (!dialog.contains(document.activeElement)) (dialog.querySelector("button, input, textarea, select, a[href]") || dialog).focus();
+    } else if (dialogReturnFocus !== null) {
+      const focus = Array.from(document.querySelectorAll("[data-focus]")).find(function (node) { return node.getAttribute("data-focus") === dialogReturnFocus; });
+      if (focus) focus.focus();
+      dialogReturnFocus = null;
+    }
   }
 
   function restoreFocus() {
@@ -208,7 +272,10 @@ export const WEBVIEW_SCRIPT = `
     });
   }
 
+${ACTION_SCRIPT}
+
   document.addEventListener("click", function (event) {
+    if (event instanceof PointerEvent && event.detail !== 0 && pressedPointerId !== null && event.pointerId !== pressedPointerId) return;
     const external = closest(event.target, "a[data-external]");
     if (external) {
       event.preventDefault();
@@ -217,9 +284,11 @@ export const WEBVIEW_SCRIPT = `
     }
     closeMenus();
     const element = closest(event.target, "[data-event-region]");
-    if (!element || element.hasAttribute("data-splitter")) return;
-    if (element.matches("input, textarea, select")) return;
+    if (element && element === cancelledAction && event.detail !== 0) { releaseAction(); return; }
+    if (!element || element.hasAttribute("data-splitter") || element.hasAttribute("data-native-dialog")) return;
+    if (element.matches("input, textarea, select, canvas")) return;
     postEvent(element);
+    releaseAction();
   });
 
   document.addEventListener("input", function (event) {
@@ -237,6 +306,7 @@ export const WEBVIEW_SCRIPT = `
       control: control,
       sent: false,
     });
+    updateBusy();
     armFieldTimer(signature);
   });
 
@@ -248,7 +318,18 @@ export const WEBVIEW_SCRIPT = `
   });
 
   document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape") { closeMenus(); return; }
+    if (event.key === "Escape") {
+      const dialog = document.querySelector("[data-native-dialog]");
+      if (dialog) { event.preventDefault(); postEvent(dialog, null); }
+      closeMenus(); return;
+    }
+    const modal = document.querySelector("[data-native-dialog]");
+    if (modal && event.key === "Tab") {
+      const fields = Array.from(modal.querySelectorAll("button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href]"));
+      const index = fields.indexOf(document.activeElement);
+      const next = event.shiftKey ? (index <= 0 ? fields.length - 1 : index - 1) : (index + 1) % fields.length;
+      event.preventDefault(); (fields[next] || modal).focus(); return;
+    }
     const element = event.target;
     if (!element || !element.getAttribute) return;
     if (element.hasAttribute("data-splitter") && /^Arrow(Left|Right)$/.test(event.key)) {
@@ -322,30 +403,44 @@ export const WEBVIEW_SCRIPT = `
   });
 
   function renderMessage(message) {
+    if (boardDrawing) { deferredBoardRender = message; return; }
     const pending = flushFields();
     saveFocus();
     const scroll = captureScroll();
     const root = document.getElementById("osprey-root");
-    if (root) root.innerHTML = message.html;
+    if (root && (!pressedAction || !patchHeldAction(root, message.html))) {
+      if (pressedAction) releaseAction();
+      root.innerHTML = message.html;
+    }
     restoreFocus();
+    focusDialog();
     rebasePendingEdits(pending);
+    refreshBoards();
     restoreScroll(scroll);
+    refreshEditors();
     renderDiagnostics(message.diagnostics);
+    updateBusy();
   }
 
   window.addEventListener("message", function (event) {
     const message = event.data;
     if (!message || typeof message !== "object") return;
+    if (message.type === "busy") { runtimeTracked = true; runtimeBusy = message.active === true; updateBusy(); return; }
     if (message.type === "render") { renderMessage(message); return; }
     if (message.type === "edit-result") { acknowledgeEdit(message); return; }
     if (message.type === "fatal") {
+      cancelAction();
       flushFields();
       pendingEdits.clear();
+      runtimeBusy = false;
+      updateBusy();
       pendingLoss = message.message;
       renderDiagnostics(hostDiagnostics);
     }
   });
 
+${EDITOR_SCRIPT}
+${BOARD_SCRIPT}
   vscode.postMessage({ type: "ready" });
 })();
 `;

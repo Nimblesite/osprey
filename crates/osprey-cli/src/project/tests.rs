@@ -17,6 +17,7 @@ fn usage_project(inputs: &[(&str, String)]) -> Result<CompilationInput, Vec<Proj
             path: PathBuf::from(path),
             flavor: Flavor::Default,
             program: osprey_syntax::parse_program(source).program,
+            discipline: None,
             source: source.clone(),
         })
         .collect();
@@ -163,6 +164,7 @@ fn aggregate_sources_keeps_link_directives_from_every_file() {
             source: (*source).to_string(),
             global_line_start: 1,
             global_line_end: 2,
+            discipline: None,
         })
         .collect();
     let project = AssembledProject {
@@ -215,6 +217,7 @@ fn project_symbol_mapping_changes_exact_names_and_localizes_positions() {
         source: String::new(),
         global_line_start: 1,
         global_line_end: 2,
+        discipline: None,
     };
     let mut source_names = std::collections::BTreeMap::new();
     let _ = source_names.insert("main".to_string(), "app::main".to_string());

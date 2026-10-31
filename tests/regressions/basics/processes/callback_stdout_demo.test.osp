@@ -1,19 +1,39 @@
-// 🔥 REAL CALLBACK-BASED STDOUT DEMO 🔥
-// This demonstrates the C runtime calling back into Osprey functions for:
-// - STDOUT events (eventType = 1) when process writes to stdout
-// - STDERR events (eventType = 2) when process writes to stderr
-// - EXIT events (eventType = 3) when process terminates
-//
-// THE CALLBACK FUNCTION IS CALLED FROM C RUNTIME INTO OSPREY!
+/// Pipe callbacks carry arbitrary chunks. This demo collects each stream until
+/// exit and awaits each process before starting the next one.
+mut stdoutText = ""
+mut stderrText = ""
 
 print("=== CALLBACK-BASED STDOUT COLLECTION DEMO ===")
 
-/// Define the callback function that C runtime will call
-fn processEventHandler(processID: int, eventType: int, data: string) = {
+fn outputTrace(processID, channel, data) =
+    if data == "" { "" } else { "[CALLBACK] Process ${processID} ${channel}: ${data}\n" }
+
+fn completeTrace(processID, data) = {
+    let output = outputTrace(processID, "STDOUT", stdoutText)
+    let errors = outputTrace(processID, "STDERR", stderrText)
+    print("${output}${errors}[CALLBACK] Process ${processID} EXIT: ${data}")
+}
+
+effect CollectedOutput {
+    stdout: fn(string) -> Unit
+    stderr: fn(string) -> Unit
+    finished: fn(int, string) -> Unit
+}
+
+fn processEventHandler(processID, eventType, data) = {
+    handle CollectedOutput {
+        stdout chunk => { stdoutText = stdoutText + chunk }
+        stderr chunk => { stderrText = stderrText + chunk }
+        finished processID data => {
+            completeTrace(processID, data)
+            stdoutText = ""
+            stderrText = ""
+        }
+    }
     match eventType {
-        1 => print("[CALLBACK] Process ${toString(processID)} STDOUT: ${data}")
-        2 => print("[CALLBACK] Process ${toString(processID)} STDERR: ${data}")
-        3 => print("[CALLBACK] Process ${toString(processID)} EXIT: ${data}")
+        1 => perform CollectedOutput.stdout(data)
+        2 => perform CollectedOutput.stderr(data)
+        3 => perform CollectedOutput.finished(processID, data)
         _ => print("[CALLBACK] Process ${toString(processID)} UNKNOWN EVENT ${toString(eventType)}: ${data}")
     }
 }
@@ -33,13 +53,7 @@ match result1 {
 }
 
 // Test 2: Multiple output lines callback demo.
-// ONE `printf` rather than three chained `echo`s on purpose. Three echoes are
-// three separate writes to the pipe, so the runtime's reader can wake between
-// them and split the text across two STDOUT callbacks — the same three lines
-// arrive, but under a second `[CALLBACK]` prefix, which is a different
-// transcript. A single sub-PIPE_BUF write is atomic, so the chunking is fixed
-// and this program's output is a property of the runtime rather than of
-// machine load. [BUILTIN-PROCESS]
+// Write boundaries do not determine callback boundaries. [BUILTIN-PROCESS]
 print("--- Test 2: Multiple Lines Callback ---")
 let result2 = spawnProcess("printf 'Line 1\\nLine 2\\nLine 3\\n'", processEventHandler)
 match result2 {
@@ -65,8 +79,12 @@ match result3 {
     Error => print("✗ Failed to spawn error process")
 }
 
-print("=== CALLBACK DEMO COMPLETE ===")
-print("The [CALLBACK] lines above show C runtime calling into Osprey!")
+print("=== CALLBACK DEMO COMPLETE ===\nThe [CALLBACK] lines above show C runtime calling into Osprey!\n--- Fragmented stdout and stderr callbacks ---")
+processEventHandler(99, 1, "Line 1\nLi")
+processEventHandler(99, 2, "warn")
+processEventHandler(99, 1, "ne 2\nLine 3\n")
+processEventHandler(99, 2, "ing\n")
+processEventHandler(99, 3, "0")
 
 /// Drives stdout, exit callbacks, waits, and cleanup from inside the test body.
 fn callbackLifecycleCase() = {

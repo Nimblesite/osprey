@@ -1,0 +1,115 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+
+(** The three tables of a `lean4export` NDJSON file: injective name spellings, universe
+    levels and expressions, each numbered in its own space. Map keys are
+    strings because that is the one key the builtin maps take. *)
+type Tables =
+    names : Map<string, string>
+    levels : Map<string, Level>
+    exprs : Map<string, Term>
+
+(** JSON access and table lookup, shared by every line handler of the
+    `lean4export` reader ([PROOF-EXPORT]): every accessor names the member it
+    cannot read, `upon` runs the next step only on success, and an index is
+    resolved through the table that owns it, so a reference to an index the
+    file never defined is refused rather than guessed. *)
+module ExportJson
+    (** `next` applied to the value, or the error passed through. *)
+    export upon (outcome, next) = match outcome
+        Success value => next value
+        Error message => Error(message = message)
+
+    (** The member `name`, which must be present. *)
+    export fieldIn (json, name) = match jsonField (json, name)
+        Success value => Success(value = value)
+        Error _ => Error(message = "no ${name}")
+
+    (** Whether the object carries `name`. *)
+    export hasField (json, name) = match jsonField (json, name)
+        Success _ => true
+        Error _ => false
+
+    export textIn (json, name) = upon (fieldIn (json, name), \value => textAs (value, name))
+
+    textAs (value, name) = match jsonText value
+        Success text => Success(value = text)
+        Error _ => Error(message = "${name} is not a string")
+
+    export intIn (json, name) = upon (fieldIn (json, name), \value => intAs (value, name))
+
+    (** The integer `value`, which `name` names. *)
+    export intAs (value, name) = match jsonInt value
+        Success number => Success(value = number)
+        Error _ => Error(message = "${name} is not an integer")
+
+    export arrayIn (json, name) = upon (fieldIn (json, name), \value => arrayAs (value, name))
+
+    arrayAs (value, name) = match value
+        JsonArray items => Success(value = items)
+        other => Error(message = "${name} is not an array")
+
+    export boolIn (json, name) = upon (fieldIn (json, name), \value => boolAs (value, name))
+
+    boolAs (value, name) = match jsonBool value
+        Success flag => Success(value = flag)
+        Error _ => Error(message = "${name} is not a boolean")
+
+    (** Name 0 is the anonymous root and prints as the empty prefix. *)
+    export nameOf (tables, index) = match index == 0
+        true => Success(value = "")
+        false => namedEntry (tables, index)
+
+    namedEntry (tables, index) = match mapGet (tables.names, toString index)
+        Success name => Success(value = name)
+        Error _ => Error(message = "unknown name ${toString index}")
+
+    (** Level 0 is `Zero`. *)
+    export levelOf (tables, index) = match index == 0
+        true => Success(value = Zero)
+        false => leveledEntry (tables, index)
+
+    leveledEntry (tables, index) = match mapGet (tables.levels, toString index)
+        Success level => Success(value = level)
+        Error _ => Error(message = "unknown level ${toString index}")
+
+    export exprOf (tables, index) = match mapGet (tables.exprs, toString index)
+        Success term => Success(value = term)
+        Error _ => Error(message = "unknown expr ${toString index}")
+
+    (** A declaration's name, through the name table. *)
+    export declName (tables, json) = upon (intIn (json, "name"), \ref => declarationName (tables, ref))
+
+    declarationName (tables, index) = match index == 0
+        true => Error(message = "name 0 is the anonymous root, not a declaration name")
+        false => nameOf (tables, index)
+
+    (** Legacy flagless declarations remain readable; any supplied safety metadata must be safe. *)
+    export safeField (json, key) = upon (fieldIn (json, key), \raw => upon (safeFlag raw, \safe => safeMode safe))
+
+    safeFlag raw = match hasField (raw, "isUnsafe")
+        true => upon (boolIn (raw, "isUnsafe"), \unsafe => safeDeclaration (raw, !unsafe))
+        false => Success(value = raw)
+
+    safeMode raw = match hasField (raw, "safety")
+        true => upon (textIn (raw, "safety"), \mode => safeDeclaration (raw, mode == "safe"))
+        false => Success(value = raw)
+
+    safeDeclaration (raw, safe) = match safe
+        true => Success(value = raw)
+        false => Error(message = "unsafe declarations are refused")
+
+    (** A declaration's statement, through the expression table. *)
+    export typedOf (tables, json) = upon (intIn (json, "type"), \ref => exprOf (tables, ref))
+
+    (** The universe parameters of a declaration, in file order: an array
+        of name-table indices. *)
+    export paramsOf (tables, json) = upon (arrayIn (json, "levelParams"), \items => nameList (tables, items, "level parameter"))
+
+    (** Every element of a name-index list, in order; `label` names an
+        element that is not an index. *)
+    export nameList (tables, items, label) = match items
+        [] => Success(value = [])
+        [first, ...rest] => upon (intAs (first, label), \index => upon (nameOf (tables, index), \name => upon (nameList (tables, rest, label), \names => Success(value = listPrepend (names, name)))))

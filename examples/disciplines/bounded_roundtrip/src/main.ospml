@@ -1,0 +1,14 @@
+namespace roundtrip
+
+import roundtrip::Percent
+
+// The erased `Percent` is ordinary `int` code whose arithmetic still asks for
+// a policy, so the entry point supplies one ([ARITH-EFFECT]).
+main () =
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print "scale 50 200 = ${toString (Percent::scale (50, 200))}"
+    print "half 200 = ${toString (Percent::half 200)}"
+    print "quarter 200 = ${toString (Percent::quarter 200)}"

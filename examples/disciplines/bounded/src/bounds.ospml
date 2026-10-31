@@ -1,0 +1,61 @@
+namespace bounded
+
+import bounded::Words
+
+(** Inclusive integer intervals, each operation refusing to invent a bound. *)
+module Bounds
+    (** The interval of one integer literal. *)
+    export literal n = Words::Bound(lo = n, hi = n)
+
+    (** Whether `inner` lies entirely inside `outer`, endpoints included. *)
+    export covers (outer, inner) = inner.lo >= outer.lo && inner.hi <= outer.hi
+
+    (** The interval as the diagnostics and the tests spell it. *)
+    export written (bound) = "[" + toString bound.lo + ", " + toString bound.hi + "]"
+
+    (** The interval of `a + b`, or none when an endpoint overflows. *)
+    export add (a, b) = span (checkedAdd (a.lo, b.lo), checkedAdd (a.hi, b.hi))
+
+    (** The interval of `a - b`, or none when an endpoint overflows. *)
+    export subtract (a, b) = span (checkedSub (a.lo, b.hi), checkedSub (a.hi, b.lo))
+
+    (** The interval of `a * b`, the hull of its four corner products. *)
+    export multiply (a, b) =
+        corners = [
+            checkedMul (a.lo, b.lo),
+            checkedMul (a.lo, b.hi),
+            checkedMul (a.hi, b.lo),
+            checkedMul (a.hi, b.hi)]
+        match numbers corners
+            Words::Present products => Words::Known (Words::Bound(lo = lowest products, hi = highest products))
+            Words::Missing => Words::Unknown
+
+    span (low, high) = match low
+        Success bottom => match high
+            Success top => Words::Known (Words::Bound(lo = bottom, hi = top))
+            Error _ => Words::Unknown
+        Error _ => Words::Unknown
+
+    numbers (results) = foldList (results, Words::Present [], absorb)
+
+    absorb (found, result) = match found
+        Words::Present values => match result
+            Success value => Words::Present (listAppend (values, value))
+            Error _ => Words::Missing
+        Words::Missing => Words::Missing
+
+    lowest (values) = foldList (values, head (values), lowerOf)
+
+    highest (values) = foldList (values, head (values), higherOf)
+
+    lowerOf (low, value) = match value < low
+        true => value
+        false => low
+
+    higherOf (high, value) = match value > high
+        true => value
+        false => high
+
+    head (values) = match values
+        [] => 0
+        [first, ..._] => first

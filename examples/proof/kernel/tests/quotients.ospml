@@ -1,0 +1,314 @@
+namespace prooftests
+
+import proof::Checked
+import proof::Environment
+import proof::Fixtures
+import proof::Quotients
+import proof::Terms
+import proof::Infer
+import proof::Inductive
+import prooftests::Shapes
+import prooftests::Support
+import proof
+    Zero
+    Succ
+    Sort
+    Param
+    BVar
+    Const
+    App
+    Lam
+    Pi
+    Decl
+    Env
+    Axiom
+    Quotient
+    QuotType
+    QuotCtor
+    QuotLift
+    QuotInd
+
+(** The four quotient primitives and the soundness axiom
+    ([PROOF-KERNEL-THEORY], [PROOF-KERNEL-AXIOMS]). The recorded
+    `QuotientCases` export is the only oracle: every case re-checks it
+    through `Checked::exportedDeclaring`, the path the proof gate uses, or
+    edits one recorded declaration claim of it and asserts the exact theory
+    refusal, so no case restates a signature the kernel itself derives.
+    Refusal cases never accept a reader or inference failure in place of a
+    theory refusal: each asserts a message only `Quotients` produces. *)
+module QuotientTests
+    export run () =
+        recorded ()
+        signatures ()
+        primitiveNames ()
+        initialization ()
+        universes ()
+        malformed ()
+        reduction ()
+        choiceBasis ()
+
+    recorded () =
+        test ("actual Lean quotient lift induction and soundness exports check", \() =>
+            expect (outcomes (), "declared;declared;declared;"))
+
+        test ("the recorded export installs four primitives and one axiom", \() =>
+            expect (kinds (base (), ["Quot", "Quot.mk", "Quot.lift", "Quot.ind", "Quot.sound"]), "Quot type | Quot.mk ctor | Quot.lift lift | Quot.ind ind | Quot.sound axiom"))
+
+        test ("Quot's changed statement is refused", \() =>
+            expect (verdict (edited (typeLine (), claimed ("type", "[6]", 23, 0))), "`Quot` does not have its derived quotient signature"))
+
+        test ("Quot.mk's changed statement is refused", \() =>
+            expect (verdict (edited (ctorLine (), claimed ("ctor", "[6]", 25, 0))), "`Quot.mk` does not have its derived quotient signature"))
+
+        test ("an unknown quotient kind is explicitly refused by the reader", \() =>
+            expect (verdict (edited (typeLine (), claimed ("not-a-kind", "[6]", 23, 74))), "line 106: unsupported quotient kind: not-a-kind"))
+
+    signatures () =
+        test ("Quot.lift's changed statement is refused", \() =>
+            expect (verdict (edited (liftLine (), claimed ("lift", "[6,27]", 26, 0))), "`Quot.lift` does not have its derived quotient signature"))
+
+        test ("Quot.ind's changed statement is refused", \() =>
+            expect (verdict (edited (indLine (), claimed ("ind", "[6]", 31, 0))), "`Quot.ind` does not have its derived quotient signature"))
+
+        test ("a Quot.ind motive stated at Type instead of Prop is refused", \() =>
+            expect (verdict (edited (motiveLine (), "{\"forallE\":{\"binderInfo\":\"default\",\"body\":0,\"name\":15,\"type\":102},\"ie\":103}")), "`Quot.ind` does not have its derived quotient signature"))
+
+        test ("Quot.sound's changed statement is refused", \() =>
+            expect (verdict (edited (soundLine (), "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[6],\"name\":73,\"type\":0}}")), "`Quot.sound` does not have its derived quotient signature"))
+
+    primitiveNames () =
+        test ("Quot declared with the constructor's kind is refused", \() =>
+            expect (verdict (edited (typeLine (), claimed ("ctor", "[6]", 23, 74))), "invalid quotient primitive `Quot` or initialization order"))
+
+        test ("Quot.mk declared under Quot.lift's name is refused", \() =>
+            expect (verdict (edited (ctorLine (), "{\"in\":99998,\"str\":{\"pre\":23,\"str\":\"lift\"}}\n" + claimed ("ctor", "[6]", 99998, 80))), "invalid quotient primitive `Quot.lift` or initialization order"))
+
+        test ("Quot.mk declared before Quot is an initialization-order refusal", \() =>
+            expect (Support::messageOf (Quotients::declare (without ("Quot"), declOf ("Quot.mk"))), "invalid quotient primitive `Quot.mk` or initialization order"))
+
+        test ("Quot.sound declared before Quot.ind is a soundness refusal", \() =>
+            expect (Support::messageOf (Quotients::declare (without ("Quot.ind"), declOf ("Quot.sound"))), "invalid quotient soundness axiom `Quot.sound`"))
+
+    initialization () =
+        test ("Quot is refused when the checked Eq family is absent", \() =>
+            expect (Support::messageOf (Quotients::declare (without ("Eq"), declOf ("Quot"))), "invalid quotient primitive `Quot` or initialization order"))
+
+        test ("an axiom named Quot is refused, not accepted as the primitive", \() =>
+            expect (verdict (edited (typeLine (), "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[6],\"name\":23,\"type\":74}}")), "invalid quotient soundness axiom `Quot`"))
+
+        test ("a second Quot primitive is refused as a duplicate constant", \() =>
+            expect (verdict (edited (typeLine (), typeLine () + "\n" + typeLine ())), "constant `Quot` is already declared"))
+
+        test ("a second Quot.sound axiom is refused as a duplicate constant", \() =>
+            expect (verdict (edited (soundLine (), soundLine () + "\n" + soundLine ())), "constant `Quot.sound` is already declared"))
+
+        test ("an axiom named Eq cannot initialize quotient primitives", \() =>
+            expect (Support::messageOf (Quotients::declare (forgedEquality (base ()), declOf "Quot")), "invalid quotient primitive `Quot` or initialization order"))
+
+    universes () =
+        test ("Quot.lift repeating its universe parameter is refused", \() =>
+            expect (Support::messageOf (Quotients::declare (without ("Quot.lift"), repeatedLift ())), "constant `Quot.lift` uses a universe parameter it does not declare, or declares one twice"))
+
+        test ("Quot.lift with its universe parameters in the other order is refused", \() =>
+            expect (verdict (edited (liftLine (), claimed ("lift", "[27,6]", 26, 100))), "`Quot.lift` does not have its derived quotient signature"))
+
+        test ("a theorem named Quot is refused as a reserved name, not checked", \() =>
+            expect (verdict (edited (typeLine (), "{\"thm\":{\"all\":[23],\"levelParams\":[],\"name\":23,\"type\":0,\"value\":0}}")), "`Quot` is reserved for quotient theory"))
+
+        test ("Quot with two universe parameters is refused", \() =>
+            expect (verdict (edited (typeLine (), freshName (99999, "v_extra") + claimed ("type", "[6,99999]", 23, 74))), "this quotient primitive takes one universe parameter"))
+
+    malformed () =
+        test ("Quot with no universe parameters is refused", \() =>
+            expect (verdict (edited (typeLine (), claimed ("type", "[]", 23, 74))), "invalid quotient universe parameters"))
+
+        test ("Quot.lift with one universe parameter is refused", \() =>
+            expect (verdict (edited (liftLine (), claimed ("lift", "[6]", 26, 100))), "Quot.lift takes two universe parameters"))
+
+        test ("Quot.sound with two universe parameters is refused", \() =>
+            expect (verdict (edited (soundLine (), "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[6,27],\"name\":73,\"type\":272}}")), "Quot.sound takes one universe parameter"))
+
+        test ("an extra member in a primitive's body is refused, not dropped", \() =>
+            expect (naming (verdict (edited (typeLine (), "{\"quot\":{\"kind\":\"type\",\"levelParams\":[6],\"name\":23,\"type\":74,\"extra\":1}}")), "extra"), "the refusal names extra"))
+
+    reduction () =
+        test ("the real lift_mk theorem with a corrupted proof is a type mismatch", \() =>
+            expect (Shapes::kindOf (verdict (edited ("\"type\":231,\"value\":233", "\"type\":231,\"value\":119"))), "type mismatch"))
+
+        test ("lift_mk claiming a false Nat result is a type mismatch", \() =>
+            expect (Shapes::kindOf (verdict (edited (resultLine (), oneExpressions () + claimedResult ()))), "type mismatch"))
+
+        test ("zeroOnQuotient on a Quot.mk computes to the zero it returns", \() =>
+            expect (Support::defeqOf (base (), computed (), Const "Nat.zero" []), true))
+
+        test ("Quot.lift keeps applying past its arity, so the extra argument reaches f", \() =>
+            expect (Support::defeqOf (base (), extraApplied (), Const "Nat.zero" []), true))
+
+        test ("quotient computation with extra application is actually typed", \() =>
+            expect (Support::inferred (base (), [], extraApplied ()), "Nat"))
+
+    forgedEquality env = replacedEquality (env, declOf "Eq")
+
+    replacedEquality (env, original) = Env(decls = mapSet (env.decls, "Eq", Decl(name = original.name, params = original.params, ty = original.ty, body = Axiom)), order = env.order)
+
+    (** What `exportedDeclaring` says about `name`: `declared`, or the
+        kernel's own refusal text. *)
+    declared (text, name) = declarationResult (Checked::exportedDeclaring (Environment::empty (), text, name))
+
+    declarationResult result = match result
+        Success _ => "declared"
+        Error message => message
+
+    (** `declared` for a mutated export, always through the same name. *)
+    verdict (text) = declared (text, "QuotientCases.lift_mk")
+
+    outcomes () = foldList (["QuotientCases.lift_mk", "QuotientCases.ind_mk", "QuotientCases.sound"], "", \(text, name) => "${text}${declared (Fixtures::quotients (), name)};")
+
+    (** The recorded export re-checked by the kernel, or an empty
+        environment after a soft failure, so no case below reads a spoofed
+        environment as a checked one. *)
+    base () = match Checked::exported (Environment::empty (), Fixtures::quotients ())
+        Success env => env
+        Error message =>
+            check "the recorded quotient export checks" "no error" message
+            Environment::empty ()
+
+    kinds (env, names) = Shapes::views (mapList (names, \name => installedKind (env, name)))
+
+    installedKind (env, name) = match Environment::find (env, name)
+        Success decl => "${decl.name} ${bodyKind decl.body}"
+        Error message => "error: ${message}"
+
+    (** The quotient kind an installed primitive carries; anything else is
+        not the quotient theory this file is about. *)
+    bodyKind (body) = match body
+        Quotient kind => kindName kind
+        Axiom => "axiom"
+        _ => "not quotient theory"
+
+    kindName (kind) = match kind
+        QuotType => "type"
+        QuotCtor => "ctor"
+        QuotLift => "lift"
+        QuotInd => "ind"
+
+    (** The recorded export with `from` replaced by `to`. A needle that is
+        not there yields a text whose first line is not the `meta` header,
+        so a typo in an edit can never read as a rejection of the theory. *)
+    edited (from, to) = replace (Fixtures::quotients (), from, to) ?: "MISSING NEEDLE\n"
+
+    (** A quoted primitive as the record states it with one claim changed:
+        its kind, its `levelParams` array, its name index and its statement
+        index. *)
+    claimed (kind, params, name, ty) = "{\"quot\":{\"kind\":\"${kind}\",\"levelParams\":${params},\"name\":${toString name},\"type\":${toString ty}}}"
+
+    (** `the refusal names <member>` when the verdict mentions `member`, and
+        the verdict itself otherwise. *)
+    naming (message, member) = match indexOf (message, member)
+        Success _ => "the refusal names ${member}"
+        Error _ => message
+
+    (** The five recorded declaration lines, verbatim. *)
+    typeLine () = "{\"quot\":{\"kind\":\"type\",\"levelParams\":[6],\"name\":23,\"type\":74}}"
+
+    ctorLine () = "{\"quot\":{\"kind\":\"ctor\",\"levelParams\":[6],\"name\":25,\"type\":80}}"
+
+    liftLine () = "{\"quot\":{\"kind\":\"lift\",\"levelParams\":[6,27],\"name\":26,\"type\":100}}"
+
+    indLine () = "{\"quot\":{\"kind\":\"ind\",\"levelParams\":[6],\"name\":31,\"type\":116}}"
+
+    soundLine () = "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[6],\"name\":73,\"type\":272}}"
+
+    (** The one line stating `Quot.ind`'s motive `β : @Quot α r → Prop`. *)
+    motiveLine () = "{\"forallE\":{\"binderInfo\":\"default\",\"body\":37,\"name\":15,\"type\":102},\"ie\":103}"
+
+    (** The one line stating `lift_mk`'s result, `zeroOnQuotient (mk n) = 0`. *)
+    resultLine () = "{\"app\":{\"arg\":198,\"fn\":229},\"ie\":230}"
+
+    (** The same result stated as `= 1`, in the four expressions a one
+        literal needs, so the claim is false and its `rfl` proof is not. *)
+    claimedResult () = "{\"app\":{\"arg\":289,\"fn\":229},\"ie\":230}"
+
+    oneExpressions () = "{\"ie\":286,\"natVal\":\"1\"}\n{\"app\":{\"arg\":286,\"fn\":193},\"ie\":287}\n{\"app\":{\"arg\":286,\"fn\":196},\"ie\":288}\n{\"app\":{\"arg\":288,\"fn\":287},\"ie\":289}\n"
+
+    (** The actual checked fixture is the prerequisite for every mutation.
+        A failed lookup is an assertion failure, never a fabricated fixture. *)
+    declOf name = match Environment::find (base (), name)
+        Success decl => decl
+        Error message =>
+            check "the fixture declares the requested primitive" name message
+            Decl(name = name, params = [], ty = Sort Zero, body = Axiom)
+
+    without name = removed (base (), name)
+
+    removed (env, name) = Env(decls = mapRemove (env.decls, name), order = filterList (env.order, \entry => entry != name))
+
+    freshName (index, text) = "{\"in\":${toString index},\"str\":{\"pre\":0,\"str\":\"${text}\"}}\n"
+
+    (** The recorded `Quot.lift`, with its statement's `v` read as `u` and
+        its parameter list repeating `u`: every position still instantiates
+        to one level, so only the duplicate name can refuse it. *)
+    repeatedLift () = Decl(name = "Quot.lift", params = ["u", "u"], ty = unifiedLift (), body = Quotient QuotLift)
+
+    unifiedLift () =
+        lift = recordedLift ()
+        Terms::instantiateLevels (lift.ty, ["v"], [Param "u"])
+
+    recordedLift () = declOf ("Quot.lift")
+
+    (** `QuotientCases.zeroOnQuotient (@Quot.mk Nat related 0)`. *)
+    computed () = App (Const "QuotientCases.zeroOnQuotient" []) (constructed ())
+
+    constructed () = Terms::apps (Const "Quot.mk" [Succ Zero], [Const "Nat" [], Const "QuotientCases.related" [], Const "Nat.zero" []])
+
+    (** `@Quot.lift Nat r (Nat → Nat) (fun x y => 0) h (mk 0) 0`, whose own
+        result is `f 0` applied to the extra `0`: Lean's `quot_reduce_rec`
+        appends every argument past the eliminator's arity. *)
+    extraApplied () = App (lifted ()) (Const "Nat.zero" [])
+
+    lifted () = Terms::apps (Const "Quot.lift" [Succ Zero, Succ Zero], [Const "Nat" [], Const "QuotientCases.related" [], arrow (), constantly (), respects (), constructed ()])
+
+    arrow () = Pi "y" (Const "Nat" []) (Const "Nat" [])
+
+    constantly () = Lam "x" (Const "Nat" []) (Lam "y" (Const "Nat" []) (Const "Nat.zero" []))
+
+    (** `fun a b h => @Eq.refl (Nat → Nat) (fun y => 0)`: `f a` and `f b`
+        both β-reduce to that function. *)
+    respects () = Lam "a" (Const "Nat" []) (Lam "b" (Const "Nat" []) (Lam "h" (App (App (Const "QuotientCases.related" []) (BVar 1)) (BVar 0)) (refl ())))
+
+    refl () = App (App (Const "Eq.refl" [Succ Zero]) (arrow ())) (Lam "y" (Const "Nat" []) (Const "Nat.zero" []))
+
+    (** Implements [PROOF-KERNEL-AXIOMS]: names alone do not authenticate the standard choice basis. *)
+    export choiceBasis () =
+        test ("standard choice accepts the actual pinned Lean export", \() =>
+            expect (declared (Fixtures::choiceCases (), "Classical.choice"), "declared"))
+        test ("choice accepts the witness-bearing Nonempty family", \() =>
+            expect (choiceFrom (choiceFamily (witnessIntro ()), ["u"]), "declared"))
+        test ("standard choice refuses a Nonempty with a valueless constructor", \() =>
+            expect (choiceFrom (choiceFamily (emptyIntro ()), ["u"]), choiceMismatch ()))
+        test ("standard choice refuses a Nonempty containing only an identity function", \() =>
+            expect (choiceFrom (choiceFamily (functionIntro ()), ["u"]), choiceMismatch ()))
+        test ("standard choice refuses an axiom impersonating Nonempty", \() =>
+            expect (choiceFrom (Checked::declare (Environment::empty (), nonemptyFormer ()), ["u"]), choiceMismatch ()))
+        test ("standard choice refuses an additional unused universe", \() =>
+            expect (choiceFrom (choiceFamily (witnessIntro ()), ["u", "v"]), "Classical.choice takes one universe parameter"))
+
+    choiceMismatch () = "`Classical.choice` does not have its derived choice signature over the genuine `Nonempty` family"
+
+    choiceFrom (prepared, parameters) = match prepared
+        Success env => declarationResult (Checked::declare (env, Decl(name = "Classical.choice", params = parameters, ty = choiceType (), body = Axiom)))
+        Error message => "fixture must declare its datatype first: ${message}"
+
+    choiceFamily constructorType = Inductive::declare (Environment::empty (), nonemptyFormer (), [Decl(name = "Nonempty.intro", params = ["u"], ty = constructorType, body = Axiom)], 1)
+
+    nonemptyFormer () = Decl(name = "Nonempty", params = ["u"], ty = Pi "a" (Sort (Param "u")) (Sort Zero), body = Axiom)
+
+    nonemptyAt index = App (Const "Nonempty" [Param "u"]) (BVar index)
+
+    choiceType () = Pi "a" (Sort (Param "u")) (Pi "h" (nonemptyAt 0) (BVar 1))
+
+    witnessIntro () = Pi "a" (Sort (Param "u")) (Pi "value" (BVar 0) (nonemptyAt 1))
+
+    emptyIntro () = Pi "a" (Sort (Param "u")) (nonemptyAt 0)
+
+    functionIntro () = Pi "a" (Sort (Param "u")) (Pi "identity" (Pi "x" (BVar 0) (BVar 1)) (nonemptyAt 1))

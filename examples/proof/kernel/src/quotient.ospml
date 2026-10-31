@@ -1,0 +1,177 @@
+namespace proof
+
+import proof::Environment
+import proof::Terms
+import proof::Levels
+import proof::Infer
+import proof::DeclarationBodies
+
+(** Authenticate the standard choice basis against its derived Nonempty
+    family and signature. Other assumptions retain their explicit names;
+    checking remains relative to those assumptions. Implements [PROOF-KERNEL-AXIOMS]. *)
+module Axioms
+    export reserved name = name == "Classical.choice"
+
+    export declare (env, decl) = match decl.body
+        Axiom => universal (env, decl)
+        other => Error(message = "`${decl.name}` is reserved for the standard choice axiom")
+
+    universal (env, decl) = match decl.params
+        [u] => claim (env, decl, Param u)
+        other => Error(message = "Classical.choice takes one universe parameter")
+
+    claim (env, decl, u) = match genuine env && Terms::equal (decl.ty, choiceSignature u)
+        false => Error(message = "`Classical.choice` does not have its derived choice signature over the genuine `Nonempty` family")
+        true => Success(value = decl)
+
+    choiceSignature u = Pi "α" (Sort u) (Pi "h" (App (Const "Nonempty" [u]) (BVar 0)) (BVar 1))
+
+    genuine env = match Environment::find (env, "Nonempty")
+        Success decl => former decl && introduced env
+        Error _ => false
+
+    former decl = match decl.params
+        [u] => match decl.body
+            TypeFormer info => Terms::equal (decl.ty, formerType (Param u)) && familyOk info
+            other => false
+        other => false
+
+    formerType u = Pi "α" (Sort u) (Sort Zero)
+
+    familyOk info = info.familyParams == 1 && info.familyIndices == 0 && DeclarationBodies::sameNames (info.familyCtors, ["Nonempty.intro"]) && !info.familyRecursive && !info.familyReflexive && DeclarationBodies::sameNames (info.familyAll, ["Nonempty"]) && info.familyNested == 0
+
+    introduced env = match Environment::find (env, "Nonempty.intro")
+        Success decl => constructor decl
+        Error _ => false
+
+    constructor decl = match decl.params
+        [u] => match decl.body
+            Constructor info => ctorOk info && Terms::equal (decl.ty, introType (Param u))
+            other => false
+        other => false
+
+    ctorOk info = info.ctorFamily == "Nonempty" && info.ctorIndex == 0 && info.ctorParams == 1 && info.ctorFields == 1
+
+    introType u = Pi "α" (Sort u) (Pi "val" (BVar 0) (App (Const "Nonempty" [u]) (BVar 1)))
+
+(** The four primitive quotient signatures, independently derived from
+    Lean 4.25 kernel/quot.cpp. Exported claims never define their theory.
+    Implements [PROOF-KERNEL-THEORY] [PROOF-KERNEL-AXIOMS]. *)
+module Quotients
+    export reserved name = Axioms::reserved name || listContains (["Quot", "Quot.mk", "Quot.lift", "Quot.ind", "Quot.sound"], name)
+
+    export declare (env, decl) = match Axioms::reserved decl.name
+        true => choice (env, decl)
+        false => listed (env, decl)
+
+    choice (env, decl) = match Axioms::declare (env, decl)
+        Success checked => typed (env, checked)
+        Error message => Error(message = message)
+
+    listed (env, decl) = match decl.body
+        Quotient kind => primitive (env, decl, kind)
+        Axiom => sound (env, decl)
+        other => Error(message = "`${decl.name}` is reserved for quotient theory")
+
+    primitive (env, decl, kind) = match decl.name == nameOf kind && previous (env, kind) && equalityReady env
+        false => Error(message = "invalid quotient primitive `${decl.name}` or initialization order")
+        true => claim (env, decl, expected (kind, decl.params))
+
+    sound (env, decl) = match decl.name == "Quot.sound" && installed (env, "Quot.ind")
+        true => claim (env, decl, soundParameters decl.params)
+        false => Error(message = "invalid quotient soundness axiom `${decl.name}`")
+
+    claim (env, decl, expectedType) = match expectedType
+        Error message => Error(message = message)
+        Success ty => match Terms::equal (decl.ty, ty)
+            false => Error(message = "`${decl.name}` does not have its derived quotient signature")
+            true => typed (env, Decl(name = decl.name, params = decl.params, ty = ty, body = decl.body))
+
+    typed (env, decl) = match Infer::sort (env, [], decl.ty)
+        Success _ => Environment::add (env, decl)
+        Error message => Error(message = message)
+
+    nameOf kind = match kind
+        QuotType => "Quot"
+        QuotCtor => "Quot.mk"
+        QuotLift => "Quot.lift"
+        QuotInd => "Quot.ind"
+
+    previous (env, kind) = match kind
+        QuotType => true
+        QuotCtor => installed (env, "Quot")
+        QuotLift => installed (env, "Quot.mk")
+        QuotInd => installed (env, "Quot.lift")
+
+    installed (env, name) = match Environment::find (env, name)
+        Success decl => match decl.body
+            Quotient kind => nameOf kind == name
+            other => false
+        Error _ => false
+
+    expected (kind, params) = match params
+        [u] => singleUniverse (kind, Param u)
+        [u, v] => match kind
+            QuotLift => Success(value = liftType (Param u, Param v))
+            other => Error(message = "this quotient primitive takes one universe parameter")
+        other => Error(message = "invalid quotient universe parameters")
+
+    singleUniverse (kind, u) = match kind
+        QuotType => Success(value = quotientType u)
+        QuotCtor => Success(value = constructorType u)
+        QuotInd => Success(value = inductionType u)
+        QuotLift => Error(message = "Quot.lift takes two universe parameters")
+
+    soundParameters params = match params
+        [u] => Success(value = soundType (Param u))
+        other => Error(message = "Quot.sound takes one universe parameter")
+
+    relation depth = Pi "a" (BVar depth) (Pi "b" (BVar (satAdd depth 1)) (Sort Zero))
+
+    quotientAt (u, depth) = Terms::apps (Const "Quot" [u], [BVar depth, BVar (satSub depth 1)])
+
+    constructorAt (u, depth, value) = Terms::apps (Const "Quot.mk" [u], [BVar depth, BVar (satSub depth 1), value])
+
+    equality (u, ty, left, right) = Terms::apps (Const "Eq" [u], [ty, left, right])
+
+    quotientType u = Pi "α" (Sort u) (Pi "r" (relation 0) (Sort u))
+
+    constructorType u = Pi "α" (Sort u) (Pi "r" (relation 0) (Pi "a" (BVar 1) (quotientAt (u, 2))))
+
+    liftType (u, v) = Pi "α" (Sort u) (Pi "r" (relation 0) (Pi "β" (Sort v) (Pi "f" (Pi "x" (BVar 2) (BVar 1)) (Pi "h" (respects v) (Pi "q" (quotientAt (u, 4)) (BVar 3))))))
+
+    respects v = Pi "a" (BVar 3) (Pi "b" (BVar 4) (Pi "h" (Terms::apps (BVar 4, [BVar 1, BVar 0])) (equality (v, BVar 4, App (BVar 3) (BVar 2), App (BVar 3) (BVar 1)))))
+
+    inductionType u = Pi "α" (Sort u) (Pi "r" (relation 0) (Pi "β" (Pi "q" (quotientAt (u, 1)) (Sort Zero)) (Pi "mk" (Pi "a" (BVar 2) (App (BVar 1) (constructorAt (u, 3, BVar 0)))) (Pi "q" (quotientAt (u, 3)) (App (BVar 2) (BVar 0))))))
+
+    soundType u = Pi "α" (Sort u) (Pi "r" (relation 0) (Pi "a" (BVar 1) (Pi "b" (BVar 2) (Pi "h" (Terms::apps (BVar 2, [BVar 1, BVar 0])) (equality (u, quotientAt (u, 4), constructorAt (u, 4, BVar 2), constructorAt (u, 4, BVar 1)))))))
+
+    equalityReady env = match Environment::find (env, "Eq")
+        Success decl => equalityFormer decl && equalityConstructor env
+        Error _ => false
+
+    equalityFormer decl = match decl.params
+        [u] => Terms::equal (decl.ty, equalityType (Param u)) && equalityFamily decl.body
+        other => false
+
+    equalityType u = Pi "α" (Sort u) (Pi "a" (BVar 0) (Pi "b" (BVar 1) (Sort Zero)))
+
+    equalityFamily body = match body
+        TypeFormer info => info.familyParams == 2 && info.familyIndices == 1 && equalityNames info.familyCtors
+        other => false
+
+    equalityNames names = match names
+        ["Eq.refl"] => true
+        other => false
+
+    equalityConstructor env = match Environment::find (env, "Eq.refl")
+        Success decl => match decl.params
+            [u] => Terms::equal (decl.ty, reflexivityType (Param u)) && reflexivityBody decl.body
+            other => false
+        Error _ => false
+
+    reflexivityType u = Pi "α" (Sort u) (Pi "a" (BVar 0) (equality (u, BVar 1, BVar 0, BVar 0)))
+
+    reflexivityBody body = match body
+        Constructor info => info.ctorFamily == "Eq" && info.ctorIndex == 0 && info.ctorParams == 2 && info.ctorFields == 0
+        other => false

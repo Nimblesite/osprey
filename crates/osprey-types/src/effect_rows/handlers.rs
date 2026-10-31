@@ -67,9 +67,11 @@ impl Analyzer<'_> {
             // values using only the outer handler environment.
             let mut arm_env =
                 self.handler_arm_env(site.effect, arm, site.body, site.stage, scope, env);
+            let changes = self.flow_callable_assignments(&arm.body, scope, &mut arm_env);
+            super::assignment_flow::merge_changes(&mut local.values, changes);
             let value = self
                 .returned_value(&arm.body, scope, &mut arm_env)
-                .unwrap_or_else(Value::unknown_callable);
+                .unwrap_or_else(Value::unknown_value);
             let _ = local.handler_returns.insert(
                 Requirement::new(site.effect, &arm.operation, arguments.clone()),
                 value,
@@ -102,18 +104,22 @@ impl Analyzer<'_> {
         {
             if performed_effect == effect && performed_operation == operation {
                 for (index, argument) in arguments.iter().enumerate() {
-                    if let (Some(slot), Some(value)) =
-                        (out.get_mut(index), self.value(argument, scope, env))
-                    {
-                        merge_optional_value(slot, value);
+                    if let Some(slot) = out.get_mut(index) {
+                        merge_optional_value(
+                            slot,
+                            self.value(argument, scope, env)
+                                .unwrap_or_else(Value::unknown_value),
+                        );
                     }
                 }
                 for argument in named_arguments {
                     if let Some(index) = parameters.iter().position(|name| name == &argument.name) {
-                        if let (Some(slot), Some(value)) =
-                            (out.get_mut(index), self.value(&argument.value, scope, env))
-                        {
-                            merge_optional_value(slot, value);
+                        if let Some(slot) = out.get_mut(index) {
+                            merge_optional_value(
+                                slot,
+                                self.value(&argument.value, scope, env)
+                                    .unwrap_or_else(Value::unknown_value),
+                            );
                         }
                     }
                 }

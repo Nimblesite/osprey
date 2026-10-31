@@ -1,0 +1,62 @@
+# Recording tools for the proof-kernel export fixture ([PROOF-EXPORT]):
+# a real Lean + lean4export run for `theorem id_imp`. Both dependencies are
+# pinned to the tags whose own lean-toolchain is exactly the one CI installs
+# for the test-proof job (leanprover/lean4:v4.25.0):
+#   lean4export  cfefafacc917b2d14c5f9bb092ed337f71317a4a (tag v4.25.0)
+#   lean4checker aa03950243dc18750c1546602ab054609ea8d57d (tag v4.25.0)
+# This rev of lean4export writes the NDJSON format 3.1.0, which is the format
+# the kernel's reader (examples/proof/kernel/src/export.ospml) reads — see
+# docs/reports/proof-export-fixture-2026-10-29.md for the recording.
+name = "idimp-tools"
+
+[[require]]
+name = "lean4export"
+git = "https://github.com/leanprover/lean4export"
+rev = "cfefafacc917b2d14c5f9bb092ed337f71317a4a"
+
+[[require]]
+name = "lean4checker"
+git = "https://github.com/leanprover/lean4checker"
+rev = "aa03950243dc18750c1546602ab054609ea8d57d"
+
+[[lean_lib]]
+name = "IdImp"
+
+# M3 export fixture: real `inductive` blocks (And, Iff, Eq) plus theorems that
+# go through their generated recursors — examples/proof/kernel/exports/and_swap.ndjson.
+[[lean_lib]]
+name = "AndSwap"
+
+# Recent OpenAI-release declarations checked by the shared Osprey kernel.
+[[lean_lib]]
+name = "OpenAIWordSeed"
+
+[[lean_lib]]
+name = "OpenAIStacks"
+
+[[lean_lib]]
+name = "QuotientCases"
+
+[[lean_lib]]
+name = "OpenAIAmbientPolar"
+
+[[lean_lib]]
+name = "StringCases"
+
+[[lean_lib]]
+name = "NatCompatible"
+
+[[lean_lib]]
+name = "CounterfeitEquality"
+
+[[lean_lib]]
+name = "CounterfeitEqualityRenamed"
+
+[[lean_lib]]
+name = "CounterfeitAddition"
+
+[[lean_lib]]
+name = "NestedTree"
+
+[[lean_lib]]
+name = "RecursorCases"

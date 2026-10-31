@@ -187,9 +187,11 @@ fn displayed_type(s: &SymbolInfo, program: &Program) -> String {
     if !s.ty.is_empty() {
         return s.ty.clone();
     }
-    osprey_types::infer_program(program)
-        .let_type(None, s.position)
-        .map_or_else(String::new, osprey_types::render_with_holes)
+    let types = osprey_types::infer_program(program);
+    types
+        .source_let_type(None, s.position)
+        .and_then(|ty| crate::analysis::shown(ty, &types))
+        .unwrap_or_default()
 }
 
 /// What a name means at the place it is *written*, when no declaration of it is

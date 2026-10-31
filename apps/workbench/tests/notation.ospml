@@ -1,0 +1,79 @@
+// [WORKBENCH-NOTATION] cases: every row of the table both ways, completion,
+// longest match and the palette.
+namespace workbenchtests
+
+import workbench::Notation
+
+(** The notation cases of [WORKBENCH-VERIFICATION]. *)
+module NotationCases
+    // One row typed the way a user types it: a backslash, the abbreviation, a completing space.
+    typed entry = "\\" + entry.abbreviation + " "
+
+    // The rows whose expansion is not their symbol followed by that space.
+    wrong () = filterList (Notation::table, \entry => Notation::expand (typed entry) != entry.symbol + " ")
+
+    // The rows whose expansion changes when expanded a second time.
+    unstable () = filterList (Notation::table, \entry => Notation::expand (Notation::expand (typed entry)) != Notation::expand (typed entry))
+
+    // The first abbreviation of a list of failing rows, empty when there is none.
+    firstBad (seen, entry) = match isEmpty seen
+        true => entry.abbreviation
+        false => seen
+
+    // The failing count with the first failing abbreviation, readable inside one expect.
+    report rows = "${length rows} failing rows, ${foldList (rows, "", firstBad)}"
+
+    (** [WORKBENCH-NOTATION]: every row of the table expands to its symbol followed by the completing space. *)
+    export everyRow () = expect (report (wrong ()), "0 failing rows, ")
+
+    (** [WORKBENCH-NOTATION]: expanding the expanded form of every row changes nothing. *)
+    export idempotentRow () = expect (report (unstable ()), "0 failing rows, ")
+
+    (** [WORKBENCH-NOTATION]: the table holds every abbreviation of the spec section. *)
+    export tableComplete () = expect (length Notation::table, 71)
+
+    (** [WORKBENCH-NOTATION]: a completed abbreviation becomes its symbol where it stands, and the formula keys read their symbol from the one table. *)
+    export completed () =
+        expect (Notation::expand "p \\and q", "p ∧ q")
+        expect (Notation::expand "f\\inv x", "f⁻¹ x")
+        expect (Notation::symbolOf "to", "→")
+        expect (Notation::symbolOf "notin", "∉")
+        expect (Notation::symbolOf "missing", "")
+
+    (** [WORKBENCH-NOTATION]: an abbreviation still being typed stays as typed. *)
+    export unfinished () =
+        expect (Notation::expand "p \\and", "p \\and")
+
+    (** [WORKBENCH-NOTATION]: to completes where top, one word longer, does not. *)
+    export toVersusTop () =
+        expect (Notation::expand "\\to ", "→ ")
+        expect (Notation::expand "\\top ", "\\top ")
+
+    (** [WORKBENCH-NOTATION]: the longest complete abbreviation wins, so notin is not not plus in. *)
+    export longest () =
+        expect (Notation::expand "\\notin ", "∉ ")
+
+    (** [WORKBENCH-NOTATION]: a punctuation abbreviation completes immediately. *)
+    export arrow () =
+        expect (Notation::expand "\\-> ", "→ ")
+        expect (Notation::expand "\\->p", "→p")
+
+    (** [WORKBENCH-NOTATION]: subscript digits chain into a run. *)
+    export subscripts () =
+        expect (Notation::expand "\\_1\\_2 ", "₁₂ ")
+
+    (** [WORKBENCH-NOTATION]: expansion is total and idempotent on text it cannot use. *)
+    export total () =
+        expect (Notation::expand "", "")
+        expect (Notation::expand "p ∧ q → r", "p ∧ q → r")
+        expect (Notation::expand "a\\\\b", "a\\\\b")
+        once = Notation::expand "\\forall p, p \\and p "
+        expect (once, "∀ p, p ∧ p ")
+        expect (Notation::expand once, once)
+
+    (** [WORKBENCH-NOTATION]: a trailing backslash lists the matching entries, in table order. *)
+    export palette () =
+        expect (length (Notation::palette "fo"), 1)
+        expect (length (Notation::palette ""), length Notation::table)
+        expect (join (mapList (Notation::palette "no", \entry => entry.symbol), " "), "¬ ∉")
+        expect (length (Notation::palette "zz"), 0)

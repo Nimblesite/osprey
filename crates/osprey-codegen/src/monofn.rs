@@ -109,7 +109,7 @@ fn slot_spelling(v: &Value) -> String {
     let inferred = v
         .inferred_type
         .as_ref()
-        .map_or_else(String::new, ToString::to_string);
+        .map_or_else(String::new, crate::types::abi_spelling);
     format!("{}:{owner}:{result}:{inferred}", v.ty.as_str())
 }
 
@@ -125,13 +125,13 @@ fn declared_spelling(cg: &Codegen, name: &str) -> String {
         .param_types(name)
         .unwrap_or(&[])
         .iter()
-        .map(ToString::to_string)
+        .map(crate::types::abi_spelling)
         .collect::<Vec<_>>()
         .join(",");
     let ret = cg
         .prog
         .return_type(name)
-        .map_or_else(String::new, ToString::to_string);
+        .map_or_else(String::new, crate::types::abi_spelling);
     format!("[{params}]->{ret}")
 }
 
@@ -158,7 +158,7 @@ fn emit(
 /// ([BUILTIN-LIST-GET]).
 type Abi<'a> = (
     &'a [ParamSig],
-    (LType, Option<LType>, Option<String>),
+    (LType, Option<LType>, Option<String>, osprey_types::Type),
     &'a [Option<String>],
 );
 
@@ -176,7 +176,14 @@ fn emit_at(
     let (params, ret, owners) = slots;
     let target = Instantiation {
         symbol: format!("{name}{MONO_INFIX}{}", cg.next_monofn_id()),
-        sig: (params.to_vec(), ret.0, ret.1, None, ret.2.clone()),
+        sig: (
+            params.to_vec(),
+            ret.0,
+            ret.1,
+            None,
+            ret.2.clone(),
+            Some(ret.3.clone()),
+        ),
     };
     let _ = cg.monofns.insert(key, target.clone());
     let saved = cg.enter_nested_fn();
@@ -240,23 +247,35 @@ pub(crate) fn specialize_callback(
         crate::types::ltype_of(ret_type),
         crate::types::result_inner(ret_type),
         return_owner(cg, ret_type),
+        ret_type.clone(),
     );
     let target = emit_at(cg, name, key, &parameters, &body, (&params, ret, &owners))?;
     Ok(Some(target.symbol))
 }
 
 /// The instantiation's return slot, from the signature inference resolved for
-/// the function. A return type inference left open has no slot to emit, so the
-/// annotation diagnostic still stands for that case.
-fn return_slot(cg: &Codegen, name: &str) -> Result<(LType, Option<LType>, Option<String>)> {
+/// the function. A hole anywhere the value representation travels has no slot to
+/// emit, so the annotation diagnostic still stands for that case.
+///
+/// A hole in a `Result`'s ERROR channel is not one of those places: the channel
+/// is phantom — the `Error` variant stores a string message and the slot is
+/// `i8*` whatever `E` is ([`crate::result`]) — so inference leaves it open and
+/// [`abi_shape_concrete`] skips it. Asking the whole type instead rejected
+/// `-> Result<Term, _>`, the hole [TYPE-RENDER-HOLES] calls the honest spelling,
+/// and told the author to annotate a signature that changes nothing emitted.
+fn return_slot(
+    cg: &Codegen,
+    name: &str,
+) -> Result<(LType, Option<LType>, Option<String>, osprey_types::Type)> {
     let ty = cg.prog.return_type(name).ok_or_else(|| unresolved(name))?;
-    if osprey_types::has_type_var(ty) {
+    if !crate::types::abi_shape_concrete(ty) {
         return Err(unresolved(name));
     }
     Ok((
         crate::types::ltype_of(ty),
         crate::types::result_inner(ty),
         return_owner(cg, ty),
+        ty.clone(),
     ))
 }
 
@@ -306,26 +325,9 @@ fn call(cg: &mut Codegen, target: &Instantiation, args: Vec<Value>) -> Result<Va
 
 #[cfg(test)]
 mod tests {
-    fn fanout_helpers() -> String {
-        use std::fmt::Write;
-        (1..=8).fold(String::new(), |mut source, depth| {
-            let previous = if depth == 1 {
-                "leaf".into()
-            } else {
-                format!("l{}", depth - 1)
-            };
-            writeln!(
-                source,
-                "fn l{depth}(x) = \"${{{previous}(x)}}${{{previous}(x)}}\""
-            )
-            .expect("in-memory source");
-            source
-        })
-    }
-
     #[test]
     fn nested_generic_fanout_has_bounded_ir_growth() {
-        let helpers = fanout_helpers();
+        let helpers = crate::genfn::tests::fanout_helpers();
         let source = format!("fn leaf(x) = x\n{helpers}print(l8(\"z\"))\n");
         let parsed = osprey_syntax::parse_program_for_path("fanout.osp", &source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
@@ -339,7 +341,7 @@ mod tests {
 
     #[test]
     fn expansion_budget_preserves_stateful_handle_parameter_metadata() {
-        let helpers = fanout_helpers();
+        let helpers = crate::genfn::tests::fanout_helpers();
         let source = format!("fn leaf(x) = x\n{helpers}fn greet() = \"done\"\nfn waitIt(f) = await(f)\nfn takeIt(ch) = recv(ch)\nlet warm = l8(\"z\")\nlet ch = Channel(1)\nsend(ch, \"message\")\nprint(\"${{warm}}${{waitIt(spawn greet())}}${{takeIt(ch)}}\")\n");
         let parsed = osprey_syntax::parse_program_for_path("fiber-fanout.osp", &source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);

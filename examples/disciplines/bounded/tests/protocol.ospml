@@ -1,0 +1,306 @@
+namespace bounded
+
+(** The checker protocol of [TYPES-DISCIPLINE-PROTOCOL], driven exactly as the
+    compiler drives it: one request line on standard input, one JSON response
+    line on standard output, byte-exact against a golden. The subject is the
+    checker binary the suite's own build produced; the compiler's `--signature`
+    step is a test double so an answer never depends on which compiler build
+    runs the suite. The real compiler is proven end to end by the roundtrip
+    project in `_test_disciplines`. *)
+
+type Expected =
+    code : string
+    line : int
+    column : int
+    message : string
+
+type Where =
+    package : string
+    checker : string
+    scratch : string
+    note : string
+
+(** The checker's answers for in-range, out-of-range, unknown, annotation and
+    erasure cases, plus the two failures through the protocol. *)
+module Protocol
+    (** Run every protocol case once. *)
+    export run () =
+        where = locate ()
+        match isEmpty where.package
+            true => check ("the suite finds the checker the build produced", "found", where.note)
+            false => cases where
+
+    signatureText = "signature Rate\n    scale : (int, int) -> int\n    relay : (int) -> int\n    literals : () -> int\n    add : (int, int) -> int\n    inc : (int) -> int\n    ok : () -> int\n"
+
+    cases (where) =
+        prepared = runShell ("mkdir -p " + quote where.scratch)
+        match prepared == 0
+            true => asked (where)
+            false => check ("the suite can make its scratch directory", "prepared", "mkdir failed")
+
+    asked (where) =
+        acceptedCases (where)
+        rejectedCases (where)
+        finish (where)
+
+    acceptedCases (where) =
+        test ("accepts literal, sum and product arguments inside the bound and erases the annotations", \() =>
+            expect (ask (where, inRangeSource (), stub where), accepted (signatureText, inRangeErased ())))
+        test ("parses several annotations, both parameter forms and their boundaries", \() =>
+            expect (ask (where, severalSource (), stub where), accepted (signatureText, severalErased ())))
+        test ("accepts an erased module the compiler reports no export signature for", \() =>
+            expect (ask (where, silentSource (), silentStub where), accepted ("", silentErased ())))
+
+    rejectedCases (where) =
+        test ("rejects a literal outside the bound with its interval and line", \() =>
+            expect (ask (where, literalSource (), stub where), rejected [range (9, 8, "p", "scale", "[150, 150]", "[0, 100]")]))
+        test ("rejects sums and products outside the bound with their computed intervals", \() =>
+            expect (ask (where, compoundSource (), stub where), rejected [range (9, 8, "p", "scale", "[110, 110]", "[0, 100]"), range (10, 8, "p", "scale", "[150, 150]", "[0, 100]")]))
+        test ("rejects an argument with no bound, naming the argument text", \() =>
+            expect (ask (where, unknownSource (), stub where), rejected [unknown (9, 8, "x"), unknown (10, 8, "x + 1")]))
+        test ("rejects an argument to the second of two bounded parameters", \() =>
+            expect (ask (where, secondBoundSource (), stub where), rejected [range (13, 8, "b", "add", "[31, 31]", "[20, 30]")]))
+        test ("a malformed request is one internal diagnostic, not an empty answer", \() =>
+            expect (askText (where, "{\"version\":2}"), rejected [Expected(code = "internal", line = 0, column = 0, message = "the request line is not one JSON object of the checker protocol")]))
+        test ("a compiler that refuses the erased module is a check rejection", \() =>
+            expect (ask (where, plainSource (), failingStub where), rejected [Expected(code = "check", line = 0, column = 0, message = "the erased module did not pass the compiler: fixture: the erased module does not infer")]))
+
+    finish (where) =
+        cleaned = runShell ("rm -rf " + quote where.scratch + " /tmp/osprey-bounded-protocol.txt")
+        cleanupProcess cleaned
+
+    stub (where) = where.package + "/tests/signature-stub.sh"
+
+    silentStub (where) = where.package + "/tests/silent-stub.sh"
+
+    failingStub (where) = where.package + "/tests/failing-stub.sh"
+
+    range (line, column, param, callee, actual, declared) =
+        Expected(code = "out-of-range", line = line, column = column, message = "argument `" + param + "` to `" + callee + "` is in " + actual + ", outside " + declared)
+
+    unknown (line, column, argument) =
+        Expected(code = "unknown", line = line, column = column, message = "argument `" + argument + "` to `scale` has no bound")
+
+    (** The checker's one-line answer to `source`, or the reason there is none. *)
+    ask (where, source, compiler) = askText (where, encoded (requestFor (where, source, compiler)))
+
+    askText (where, request) = match writeFile (where.scratch + "/request.json", request)
+        Error message => "writeFile: " + message
+        Success _ => ran where
+
+    ran (where) =
+        command = quote where.checker + " < " + quote (where.scratch + "/request.json") + " > " + quote (where.scratch + "/response.json") + " 2> " + quote (where.scratch + "/stderr.txt")
+        code = runShell command
+        match code == 0
+            true => answerText where
+            false => "the checker exited " + toString code + ": " + stderrText where
+
+    answerText (where) = match readFile (where.scratch + "/response.json")
+        Success text => trim text
+        Error message => "readFile: " + message
+
+    stderrText (where) = match readFile (where.scratch + "/stderr.txt")
+        Success text => trim text
+        Error message => message
+
+    requestFor (where, source, compiler) =
+        JsonObject [
+            field ("version", JsonInt 2),
+            field ("module", JsonObject [field ("path", JsonString "demo/rate.ospml"), field ("flavor", JsonString "ml"), field ("source", JsonString source)]),
+            field ("imports", JsonArray []),
+            field ("options", JsonObject [field ("project_root", JsonString "."), field ("cache_dir", JsonString where.scratch), field ("compiler", JsonString compiler)])
+        ]
+
+    accepted (sig, erased) =
+        encoded (JsonObject [
+            field ("version", JsonInt 2),
+            field ("result", JsonString "accepted"),
+            field ("signature", JsonString sig),
+            field ("erased", JsonObject [field ("flavor", JsonString "ml"), field ("source", JsonString erased)]),
+            field ("diagnostics", JsonArray [])
+        ])
+
+    rejected (problems) =
+        encoded (JsonObject [
+            field ("version", JsonInt 2),
+            field ("result", JsonString "rejected"),
+            field ("diagnostics", JsonArray (mapList problems described))
+        ])
+
+    described (problem) = match problem.line == 0
+        true => JsonObject [field ("code", JsonString problem.code), field ("severity", JsonString "error"), field ("message", JsonString problem.message)]
+        false => JsonObject [field ("code", JsonString problem.code), field ("severity", JsonString "error"), field ("line", JsonInt problem.line), field ("column", JsonInt problem.column), field ("message", JsonString problem.message)]
+
+    field (name, value) = JsonMember(name, value)
+
+    encoded (document) = jsonEncode document ?: "the expected answer could not be encoded"
+
+    (** The package directory, its newest built checker and a scratch
+        directory, found from the working directory the suite started in. *)
+    locate () =
+        command = "(for base in . .. ../.. ../../.. ../../../..; do for pkg in \"$base/examples/disciplines/bounded\" \"$base\"; do dir=\"$pkg/.osprey/cache/disciplines/build\"; latest=$(ls -t \"$dir\"/bounded-* 2>/dev/null | head -1); if [ -n \"$latest\" ]; then printf \"%s\\n%s\\n\" \"$pkg\" \"$latest\"; exit 0; fi; done; done; exit 1)"
+        searched = runShell (command + " > /tmp/osprey-bounded-protocol.txt 2>/dev/null")
+        placed (searched, readText "/tmp/osprey-bounded-protocol.txt")
+
+    placed (_searched, listing) = match length (lines listing) >= 2
+        true => packageRoot (listGet (lines listing) 0 ?: "", listGet (lines listing) 1 ?: "")
+        false => Where(package = "", checker = "", scratch = "", note = "no built checker under any candidate package directory (" + trim listing + ")")
+
+    packageRoot (package, checker) =
+        Where(package = package, checker = checker, scratch = package + "/.osprey/cache/bounded-suite", note = "")
+
+    readText (path) = match readFile path
+        Success text => text
+        Error message => message
+
+    quote (text) = "'" + escaped text + "'"
+
+    escaped (text) = replace (text, "'", "'\\''") ?: text
+
+    runShell (command) = match spawnProcess (command, ignoreEvent)
+        Success process => awaited process
+        Error _ => -1
+
+    awaited (process) =
+        code = awaitProcess process
+        cleanupProcess process
+        code
+
+    ignoreEvent (_pid, _kind, _data) = cleanupProcess 0
+
+    (** One module whose every call the discipline must accept. *)
+    inRangeSource () = join [
+        "// osprey: types=bounded",
+        "namespace demo",
+        "",
+        "module Rate",
+        "    // @bound p in 0..100",
+        "    export scale (p, total) = intDiv (total * p, 100)",
+        "",
+        "    // @bound q in 0..50",
+        "    export relay q =",
+        "        scale (q + 5 * 9, 10)",
+        "",
+        "    export literals () = scale (100, 400)"
+    ] "\n" + "\n"
+
+    inRangeErased () = join [
+        "// osprey: types=hm",
+        "namespace demo",
+        "",
+        "module Rate",
+        "    export scale (p, total) = intDiv (total * p, 100)",
+        "",
+        "    export relay q =",
+        "        scale (q + 5 * 9, 10)",
+        "",
+        "    export literals () = scale (100, 400)"
+    ] "\n" + "\n"
+
+    severalSource () = join [
+        "// osprey: types=bounded",
+        "namespace demo",
+        "",
+        "module Rate",
+        "    // @bound a in 0..10",
+        "    // @bound b in 20..30",
+        "    export add (a, b) = a + b",
+        "",
+        "    // @bound n in 0..10",
+        "    export inc n = n + 1",
+        "",
+        "    export ok () =",
+        "        add (10, 20)",
+        "        inc 10"
+    ] "\n" + "\n"
+
+    severalErased () = join [
+        "// osprey: types=hm",
+        "namespace demo",
+        "",
+        "module Rate",
+        "    export add (a, b) = a + b",
+        "",
+        "    export inc n = n + 1",
+        "",
+        "    export ok () =",
+        "        add (10, 20)",
+        "        inc 10"
+    ] "\n" + "\n"
+
+    literalSource () = join [
+        "// osprey: types=bounded",
+        "namespace demo",
+        "",
+        "module Rate",
+        "    // @bound p in 0..100",
+        "    export scale (p, total) = intDiv (total * p, 100)",
+        "",
+        "    export wide () =",
+        "        scale (150, 10)"
+    ] "\n" + "\n"
+
+    compoundSource () = join [
+        "// osprey: types=bounded",
+        "namespace demo",
+        "",
+        "module Rate",
+        "    // @bound p in 0..100",
+        "    export scale (p, total) = intDiv (total * p, 100)",
+        "",
+        "    export off () =",
+        "        scale (40 + 70, 10)",
+        "        scale (5 * 30, 10)"
+    ] "\n" + "\n"
+
+    unknownSource () = join [
+        "// osprey: types=bounded",
+        "namespace demo",
+        "",
+        "module Rate",
+        "    // @bound p in 0..100",
+        "    export scale (p, total) = intDiv (total * p, 100)",
+        "",
+        "    export probe (x) =",
+        "        scale (x, 10)",
+        "        scale (x + 1, 10)"
+    ] "\n" + "\n"
+
+    secondBoundSource () = join [
+        "// osprey: types=bounded",
+        "namespace demo",
+        "",
+        "module Rate",
+        "    // @bound a in 0..10",
+        "    // @bound b in 20..30",
+        "    export add (a, b) = a + b",
+        "",
+        "    // @bound n in 0..10",
+        "    export inc n = n + 1",
+        "",
+        "    export ok () =",
+        "        add (5, 31)"
+    ] "\n" + "\n"
+
+    plainSource () = join [
+        "// osprey: types=bounded",
+        "namespace demo",
+        "",
+        "module Rate",
+        "    export plain () = 1"
+    ] "\n" + "\n"
+
+    silentSource () = join [
+        "// osprey: types=bounded",
+        "namespace demo",
+        "",
+        "// @bound p in 0..100",
+        "export scale (p, total) = intDiv (total * p, 100)"
+    ] "\n" + "\n"
+
+    silentErased () = join [
+        "// osprey: types=hm",
+        "namespace demo",
+        "",
+        "export scale (p, total) = intDiv (total * p, 100)"
+    ] "\n" + "\n"

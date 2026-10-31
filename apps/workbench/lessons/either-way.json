@@ -1,0 +1,79 @@
+{
+  "format": 1,
+  "slug": "either-way",
+  "title": "Either way",
+  "summary": "Prove a claim from p or q by showing that the claim follows in each of the two cases.",
+  "stage": 2,
+  "minutes": 7,
+  "after": ["and-swap"],
+  "blocks": [
+    {
+      "kind": "prose",
+      "text": "The disjunction p ∨ q says that at least one of p and q holds. It does not tell us which. To use it, we must show that our conclusion follows from p and also follows from q.\n\nBy cases on a disjunction creates two goals. The first carries the left case, and the second carries the right case. The workbench keeps the second goal waiting while we finish the first."
+    },
+    {
+      "kind": "formula",
+      "formula": "p ∨ q → q ∨ p"
+    },
+    {
+      "kind": "prose",
+      "text": "To build a disjunction, choose the side you can prove. Left. changes the goal p ∨ q to p. Right. changes it to q. You do not need to prove both sides.\n\nIn the proof below, the p case needs Right. because p is on the right of the goal q ∨ p. The q case needs Left. Each case then closes from its own hypothesis."
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "prove",
+        "id": "prove-or-swap",
+        "prompt": "Prove that p or q gives q or p. The assumption is given; handle both cases.",
+        "statement": "Theorem or_swap. For all p q, p ∨ q → q ∨ p.",
+        "given": ["Assume h : p ∨ q."],
+        "solution": [
+          "By cases on h, as hp and hq.",
+          "Right.",
+          "From hp.",
+          "Left.",
+          "From hq."
+        ],
+        "hints": [
+          "Split h into the p case and the q case.",
+          "Choose Right in the p case, then Left in the q case."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "state",
+        "id": "state-swapped-disjunction",
+        "prompt": "Write the disjunction with q on the left and p on the right. The kernel expects this order.",
+        "variables": ["p", "q"],
+        "expected": "q ∨ p",
+        "hints": [
+          "Use ∨ for or.",
+          "Write q first and p second."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "judge",
+        "id": "judge-case-side",
+        "prompt": "This attempt chooses the left side in both cases. Decide whether it checks.",
+        "statement": "Theorem or_swap_attempt. For all p q, p ∨ q → q ∨ p.",
+        "steps": [
+          "Assume h : p ∨ q.",
+          "By cases on h, as hp and hq.",
+          "Left.",
+          "From hp.",
+          "Left.",
+          "From hq."
+        ],
+        "hints": [
+          "In the first case, Left. changes q ∨ p to q.",
+          "The available hypothesis hp proves p."
+        ]
+      }
+    }
+  ]
+}

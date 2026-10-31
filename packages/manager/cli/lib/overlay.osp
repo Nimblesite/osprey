@@ -116,13 +116,10 @@ module Overlay {
 
     /// The overlay at `dir`: no file means no overrides; a file that does
     /// not parse is its `overlay.*` code.
-    export fn readAt(dir) = match perform Host::Files.read(pathAt(dir)) {
-        Error => Success { value: [] }
-        Success { value } => parsed(value)
+    export fn readAt(dir) = match Host::snapshot(pathAt(dir)) {
+        Error { message } => Error { message: message }
+        Success { value } => if value.present { parsed(value.text) } else { Success { value: [] } }
     }
-
-    /// The overlay text at `dir`, "" when there is none.
-    export fn textAt(dir) = perform Host::Files.read(pathAt(dir)) ?: ""
 
     /// Whether any key is overridden.
     export fn active(mappings) = !isEmpty(mappings)

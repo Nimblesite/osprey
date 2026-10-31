@@ -35,6 +35,7 @@ mod ios;
 mod ios_abi;
 mod project;
 mod sandbox;
+mod signature;
 mod target_capabilities;
 mod test_cmd;
 mod test_coverage;

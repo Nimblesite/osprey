@@ -71,11 +71,15 @@ pub(crate) fn declares_slots<'f>(mut names: impl Iterator<Item = &'f str>) -> bo
 /// left as written — constructors do not curry, so the arity mistake is
 /// reported by the checker against the call the author actually wrote.
 pub(crate) fn construct(name: &str, args: Vec<Expr>) -> Option<Expr> {
-    let arity = POSITIONAL_CTORS.with(|s| s.borrow().get(name).copied())?;
-    if arity != args.len() {
+    if !accepts_arity(name, args.len()) {
         return None;
     }
     Some(osprey_ast::positional::construction(name, args))
+}
+
+/// Check the constructor before lowering speculative application arguments.
+pub(crate) fn accepts_arity(name: &str, count: usize) -> bool {
+    POSITIONAL_CTORS.with(|s| s.borrow().get(name).copied() == Some(count))
 }
 
 #[cfg(test)]

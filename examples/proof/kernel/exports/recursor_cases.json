@@ -1,0 +1,30 @@
+{
+  "id": "recursor_cases",
+  "module": "RecursorCases",
+  "source_path": "benchmarks/proof/tools/RecursorCases.lean",
+  "source_sha256": "1515d3f7cff12127be9d56e982aaaba49abbf82697fccb4fccb4796f9855c582",
+  "export_path": "examples/proof/kernel/exports/recursor_cases.ndjson",
+  "export_sha256": "c5c101a4206ffeaa58280d5d26cfb1851d4e08335d23ac69e0aa794194adb311",
+  "theorems": [
+    "Tree.leaf_nodes",
+    "Tree.node_nodes",
+    "Forest.nil_nodes",
+    "Forest.cons_nodes",
+    "NestedArray.node_empty_nodes",
+    "NestedArray.node_one_nodes",
+    "IndexedTree.reflexive_count",
+    "IndexedTree.indexed_count"
+  ],
+  "axioms": [],
+  "theorem_axioms": {
+    "Tree.leaf_nodes": [],
+    "Tree.node_nodes": [],
+    "Forest.nil_nodes": [],
+    "Forest.cons_nodes": [],
+    "NestedArray.node_empty_nodes": [],
+    "NestedArray.node_one_nodes": [],
+    "IndexedTree.reflexive_count": [],
+    "IndexedTree.indexed_count": []
+  },
+  "embedded": "recursorCases"
+}

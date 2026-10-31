@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.400 --> 00:16.108
+A proof state records the assumptions available to you and the goal you must establish. Osprey is a functional programming language, and its proof workbench makes that state visible while you write. We will follow a conjunction proof and then explore a lesson.
+
+00:16.958 --> 00:36.061
+Statement: if p and q both hold, then q and p both hold. Assume the pair. By cases introduces its two parts as hypotheses. Next, split the required conclusion into q and p, and supply their evidence in that order. Each move must follow a rule the checker accepts.
+
+00:36.911 --> 00:53.310
+The goal pane shows a context and a conclusion. The context lists hypotheses you have assumed. The conclusion is what remains to prove. A hypothesis named p is not a proof of every claim about p. Read both sides before choosing a step.
+
+00:54.678 --> 01:12.494
+Open Examples to find lessons and challenges. Read the explanation, attempt the exercise, and submit your answer. Hints are available. After three incorrect proof submissions, Show solution reveals a worked proof. Study and submit it to the kernel, then inspect the feedback.
+
+01:13.344 --> 01:30.653
+Source shows the theorem text generated from your argument, with explicit holes for unfinished steps. This text did not produce the displayed verdict: Osprey's own kernel checked your steps directly. Passing the generated file to Lean is a separate path that is still being built.
+
+01:31.503 --> 01:47.945
+For a first session, complete And, the other way around. Then swap its last two steps and read the kernel's reason for refusing it. A proof of p cannot discharge the goal q. The changing proof state explains the result. Osprey is actively evolving.

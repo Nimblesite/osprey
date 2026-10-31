@@ -1,7 +1,7 @@
 // Shared between the two translation units of the system-runtime suite.
 //
-// They are one BINARY -- coverage of system_runtime.c is measured across the
-// whole suite, not per file -- but two objects, because the allocator, fork,
+// They are one BINARY -- system_runtime.c and system_process_posix.h each
+// measure coverage across this whole suite -- but two objects, because the allocator, fork,
 // thread and mutex interposers that the failure tests need may be defined in
 // exactly one of them. Everything the behavioural half already had stays
 // there; only what both halves touch is declared here.

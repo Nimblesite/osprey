@@ -2,7 +2,7 @@
 
 use std::process::Command;
 
-fn execute(
+pub(crate) fn execute(
     name: &str,
     extension: &str,
     source: &str,
@@ -17,11 +17,7 @@ fn execute(
     let _ = command
         .arg(&path)
         .args(["--run", &format!("--memory={memory}")]);
-    if memory == "arc" {
-        let _ = command.env("OSPREY_ARC_DEBUG", "1");
-    } else {
-        let _ = command.env_remove("OSPREY_ARC_DEBUG");
-    }
+    runtime_environment(&mut command, memory);
     let output = command.output();
     let _ = std::fs::remove_file(&path);
     output
@@ -48,7 +44,7 @@ pub(crate) fn assert_flavored_output(name: &str, extension: &str, source: &str, 
     }
 }
 
-fn assert_arc_clean(stderr: &str) {
+pub(crate) fn assert_arc_clean(stderr: &str) {
     let reports: Vec<&str> = stderr
         .lines()
         .filter_map(|line| line.strip_prefix("[osp-arc] exit: "))
@@ -64,4 +60,12 @@ fn assert_arc_clean(stderr: &str) {
             .is_some_and(|report| report.starts_with("0 live objects, ")),
         "ARC retained live objects: {stderr}"
     );
+}
+
+pub(crate) fn runtime_environment(command: &mut Command, memory: &str) {
+    if memory == "arc" {
+        let _ = command.env("OSPREY_ARC_DEBUG", "1");
+    } else {
+        let _ = command.env_remove("OSPREY_ARC_DEBUG");
+    }
 }

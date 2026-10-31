@@ -1,0 +1,66 @@
+// Implements [UI-COMPONENTS]: explicit presentation metrics belong to the
+// application's component tree and have identical units on every host.
+namespace ui
+
+(** A frame's dimensions, edge insets and semantic surface tokens; zero dimensions take the available natural size. *)
+type FrameStyle =
+    frameName : string
+    frameWidth : int
+    frameHeight : int
+    frameViewportHeightInset : int
+    frameScrollY : bool
+    frameTop : int
+    frameRight : int
+    frameBottom : int
+    frameLeft : int
+    frameRadius : int
+    frameGap : int
+    frameFill : string
+    frameInk : string
+    frameLine : string
+    frameLineEdge : string
+    frameGrow : bool
+    frameFont : string
+    frameTextSize : int
+    frameMathScale : float
+    frameLineHeight : float
+    frameTracking : float
+    frameItalic : bool
+    frameHug : bool
+    frameAlign : string
+    frameCross : string
+    frameControlHeight : int
+    frameControlPadding : int
+    frameSymbolSize : int
+    frameQuietControls : bool
+    frameIconOnly : bool
+    frameFadeBackdrop : bool
+    frameTrailingSymbols : bool
+    frameFlatRows : bool
+    frameShadow : string
+
+(** One inline text run; its semantic colour and italics are authored by the application. *)
+type TextRun =
+    runText : string
+    runInk : string
+    runItalic : bool
+
+(** Pure frame values; hosts apply them without making application layout decisions. *)
+module Frames
+    (** A natural-size, transparent frame. *)
+    export plain = FrameStyle(frameName = "", frameWidth = 0, frameHeight = 0, frameViewportHeightInset = -1, frameScrollY = false, frameTop = 0, frameRight = 0, frameBottom = 0, frameLeft = 0, frameRadius = 0, frameGap = 0, frameFill = "", frameInk = "", frameLine = "", frameLineEdge = "all", frameGrow = false, frameFont = "", frameTextSize = 0, frameMathScale = 0.0, frameLineHeight = 0.0, frameTracking = 0.0, frameItalic = false, frameHug = false, frameAlign = "start", frameCross = "stretch", frameControlHeight = 0, frameControlPadding = -1, frameSymbolSize = 0, frameQuietControls = false, frameIconOnly = false, frameFadeBackdrop = false, frameTrailingSymbols = false, frameFlatRows = false, frameShadow = "")
+
+    (** Insets in points, clockwise from the top. *)
+    export inset (top, right, bottom, left) =
+        style = plain
+        style(frameTop = top, frameRight = right, frameBottom = bottom, frameLeft = left)
+
+    (** A fixed-height bar filling its width on the named surface. *)
+    export bar height =
+        style = plain
+        style(frameHeight = height, frameGrow = false)
+
+    (** Typography inherits through frames; families are serif, sans or mono, and size zero inherits. *)
+    export text (family, size, italic) =
+        style = plain
+        style(frameFont = family, frameTextSize = size, frameItalic = italic, frameHug = true)

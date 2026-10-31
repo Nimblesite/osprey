@@ -121,6 +121,107 @@ fn label(f) = match f {
     Dry => "dry"
 }
 fn mkFeed() = Feed { supply: |x| => x * 2 }
+fn integerFeed() = Feed { supply: 7 }
+fn erasedFeedValue(feed: Feed<any>) = match feed {
+    Feed(value) => toString(value)
+    Dry => "dry"
+}
+type Parcel<out T> = { held: T }
+fn integerParcel() = Parcel { held: 11 }
+fn erasedParcelValue(parcel: Parcel<any>) = toString(parcel.held)
+fn failedFeed() -> Feed<Result<int, string>> = Feed { supply: Error { message: "kept error" } }
+fn successfulFeed() = Feed { supply: Success { value: 13 } }
+fn erasedResultFeedValue(feed: Feed<Result<any, string>>) = match feed {
+    Feed(value) => toString(value)
+    Dry => "dry"
+}
+fn concreteFeedValue(feed) = match feed {
+    Feed(value) => value
+    Dry => 0
+}
+fn integerFeedList() = [integerFeed()]
+fn erasedFeedListValue(feeds) = match feeds {
+    [first, ..._rest] => erasedFeedValue(first)
+    _ => "empty"
+}
+fn integerFeedResult() = Success { value: integerFeed() }
+fn failedFeedResult() -> Result<Feed<int>, string> = Error { message: "wrapped error" }
+fn erasedFeedResultValue(result: Result<Feed<any>, string>) = match result {
+    Success { value } => erasedFeedValue(value)
+    Error { message } => message
+}
+fn covariantErasureCase() = {
+    let original = integerFeed()
+    let parcel = integerParcel()
+    foldList([
+        erasedFeedValue(original) == "7",
+        concreteFeedValue(original) == 7,
+        erasedFeedValue(Dry) == "dry",
+        erasedParcelValue(parcel) == "11",
+        parcel.held == 11,
+        erasedResultFeedValue(failedFeed()) == "Error(kept error)",
+        erasedResultFeedValue(successfulFeed()) == "Success(13)",
+        erasedFeedListValue(integerFeedList()) == "7",
+        erasedFeedResultValue(integerFeedResult()) == "7",
+        erasedFeedResultValue(failedFeedResult()) == "wrapped error"
+    ], true, |good, next| => good && next)
+}
+type Chain<out T> = ChainEnd | ChainMore { held: T, tail: Chain<T> }
+fn integerChain() = ChainMore { held: 19, tail: ChainMore { held: 23, tail: ChainEnd } }
+fn erasedChainValue(chain: Chain<any>) = match chain {
+    ChainEnd => "end"
+    ChainMore(value, rest) => "${toString(value)},${erasedChainValue(rest)}"
+}
+fn functionFeed() -> Feed<(int) -> int> = Feed { supply: |_input| => 17 }
+fn erasedFunctionFeedValue(feed: Feed<(int) -> any>) = match feed {
+    Feed(value) => toString(value(0))
+    Dry => "dry"
+}
+fn acceptsAny(value: any) = toString(value) == "7"
+fn anyGate() = Gate { admit: acceptsAny }
+fn runGate(gate) = match gate {
+    Gate(callback) => callback(7)
+    Open => false
+}
+fn runAnyGate(gate: Gate<any>) = match gate {
+    Gate(callback) => callback("7")
+    Open => false
+}
+fn anyGates() = [anyGate()]
+type Receiver<in T> = { consume: (T) -> bool }
+fn anyReceiver() = Receiver { consume: acceptsAny }
+fn runReceiver(receiver) = receiver.consume(7)
+fn runAnyReceiver(receiver: Receiver<any>) = receiver.consume("7")
+fn runGates(gates) = match gates {
+    [first, ..._rest] => runGate(first)
+    _ => false
+}
+fn anyGateResult() -> Result<Gate<any>, string> = Success { value: anyGate() }
+fn failedGateResult() -> Result<Gate<any>, string> = Error { message: "gate error" }
+fn anyGateResults() = [anyGateResult()]
+fn runGateResults(results) = match results {
+    [first, ..._rest] => runGateResult(first)
+    _ => false
+}
+fn runGateResult(result: Result<Gate<int>, string>) = match result {
+    Success { value } => runGate(value)
+    Error { message } => message != "gate error"
+}
+fn contravariantErasureCase() = {
+    let original = anyGate()
+    let receiver = anyReceiver()
+    foldList([
+        runGate(original),
+        runAnyGate(original),
+        !runGate(Open),
+        runGates(anyGates()),
+        runGateResult(anyGateResult()),
+        runGateResults(anyGateResults()),
+        runReceiver(receiver),
+        runAnyReceiver(receiver),
+        !runGateResult(failedGateResult())
+    ], true, |good, next| => good && next)
+}
 
 fn describe(g) = match g {
     Gate(_admit) => "guarded"
@@ -200,6 +301,10 @@ fn typeEqualityCase() = {
         !(sameColor(a: Red, b: Blue)),
         colorName(Green) == "green",
         label(mkFeed()) == "supplied",
+        covariantErasureCase(),
+        erasedChainValue(integerChain()) == "19,23,end",
+        erasedFunctionFeedValue(functionFeed()) == "17",
+        contravariantErasureCase(),
         describe(mkGate()) == "guarded",
         identityOf<int>(5) == 5,
         identityOf<string>("os") == "os",

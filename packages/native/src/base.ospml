@@ -12,9 +12,10 @@ type Merge T =
 
 (** List helpers Osprey has no built-in for yet: finding, testing, flattening, slicing, positions, distinctness and a stable sort (Nimblesite/osprey#276). *)
 module Lists
-    collect<T, U> : (List<U>, List<T>, (T) -> U, int) -> List<U>
-    collect (out, items, f, index) = match listGet items index
-        Success item => listAppend out (f item)
+    // Append the item at `index` when it exists.
+    kept<T> : (List<T>, List<T>, int) -> List<T>
+    kept (out, items, index) = match listGet items index
+        Success item => listAppend out item
         Error _ => out
 
     (** The first item that `matches`, or an error when none does. *)
@@ -48,16 +49,16 @@ module Lists
 
     (** The items from index `start` up to but excluding `stop`; indexes past the end contribute nothing. *)
     export slice<T> : (List<T>, int, int) -> List<T>
-    slice (items, start, stop) = range (start, stop) |> fold [] (\(out, index) => collect (out, items, \item => item, index))
+    slice (items, start, stop) = range (start, stop) |> fold [] (\(out, index) => kept (out, items, index))
 
     (** True when no two keys repeat. *)
     export distinct keys = length (mapKeys (range (0, length keys) |> fold (Map ()) (\(seen, index) => mapSet seen (listGet keys index ?: "") true))) == length keys
 
     takeLeft<T> : (Merge<T>, List<T>) -> Merge<T>
-    takeLeft (merging, left) = Merge(mergeLeft = satAdd merging.mergeLeft 1, mergeRight = merging.mergeRight, merged = collect (merging.merged, left, \item => item, merging.mergeLeft))
+    takeLeft (merging, left) = Merge(mergeLeft = satAdd merging.mergeLeft 1, mergeRight = merging.mergeRight, merged = kept (merging.merged, left, merging.mergeLeft))
 
     takeRight<T> : (Merge<T>, List<T>) -> Merge<T>
-    takeRight (merging, right) = Merge(mergeLeft = merging.mergeLeft, mergeRight = satAdd merging.mergeRight 1, merged = collect (merging.merged, right, \item => item, merging.mergeRight))
+    takeRight (merging, right) = Merge(mergeLeft = merging.mergeLeft, mergeRight = satAdd merging.mergeRight 1, merged = kept (merging.merged, right, merging.mergeRight))
 
     // Stable: on a tie the left element goes first.
     leftFirst<T> : (Merge<T>, List<T>, List<T>, (T, T) -> bool) -> bool

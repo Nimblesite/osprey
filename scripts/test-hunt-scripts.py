@@ -278,6 +278,96 @@ class HostCompilerTests(unittest.TestCase):
         self.assertEqual(process.returncode, 0, process.stderr)
 
 
+def stub(directory, name, body):
+    """A stand-in executable: the closure inspector never needs a real toolchain."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / name
+    path.write_text("#!/bin/sh\n" + body)
+    path.chmod(0o755)
+    return path
+
+
+def mock_toolchain(tools):
+    """A stubbed KLEE toolchain, so the real `_runtime_klee` recipe wiring runs offline.
+
+    The stubs live in a space-free directory: the recipe's pre-existing tool
+    invocations are not quoted, and only the closure seams are under test here.
+    """
+    for tool in ("opt", "clang++", "llvm-config"):
+        stub(tools / "bin", tool, "exit 0\n")
+    ok = "exit 0\n"
+    return [f"KLEE_PREFIX={tools}", f"KLEE_CC={stub(tools, 'kcc', ok)}",
+            f"KLEE_LINK={stub(tools, 'klink', ok)}", f"KLEE_LLVM_BIN={tools / 'bin'}"]
+
+
+class KleeClosureTests(unittest.TestCase):
+    """[SYMEX-MOCK-CLOSED] the closure recipe replayed with a stand-in llvm-nm.
+
+    A failing nm or awk is a build error in its own right; only grep's "no
+    matches" means the module is closed. No KLEE toolchain, engine or clang
+    runtime build is involved: the fake nm answers, and the bitcode is a stub.
+    """
+
+    def closure(self, nm_script, target="_klee_closure", toolchain=False):
+        """Run one make target; also return what the fake nm was actually handed."""
+        # A path with a space: every seam (make -C, RUNTIME=, nm argument) must quote.
+        with tempfile.TemporaryDirectory(prefix="klee closure fixture ") as tmp, \
+                tempfile.TemporaryDirectory(prefix="klee-tools-") as tools:
+            root = Path(tmp)
+            if " " not in str(root):
+                raise AssertionError("the fixture path must contain a space")
+            (root / "compiler").mkdir()
+            receipt = root / "inspected"
+            nm = stub(root, "llvm-nm", f'printf \'%s\\n\' "$*" >> "{receipt}"\n' + nm_script)
+            runtime = root / "libosprey_runtime_klee_gc.bc"
+            runtime.write_bytes(b"BC\xc0\xde")
+            (root / "Makefile").write_text("".join(
+                f"include {ROOT / fragment}\n" for fragment in ("scripts/make/config.mk", "scripts/make/runtime.mk")))
+            arguments = ["make", "--no-print-directory", "-s", target, f"KLEE_NM={nm}",
+                         f"RUNTIME={runtime}", "KLEE_BACKEND=gc"]
+            if toolchain:
+                arguments += mock_toolchain(Path(tools))
+            done = subprocess.run(arguments, cwd=root, capture_output=True, text=True, check=False)
+            return done, receipt.read_text().splitlines() if receipt.exists() else []
+
+    def test_an_empty_symbol_table_is_the_closed_module(self):
+        done, inspected = self.closure("exit 0\n")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(len(inspected), 1, inspected)
+
+    def test_a_failing_nm_is_a_build_error_not_an_empty_result(self):
+        done, inspected = self.closure("exit 9\n")
+        self.assertNotEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("llvm-nm", done.stdout + done.stderr)
+        self.assertEqual(len(inspected), 1, "the inspector ran, and its failure still failed the build")
+
+    def test_a_symbol_klee_does_not_provide_leaves_the_module_open(self):
+        done, _ = self.closure("echo '                 U osprey_unprovided_symbol'\nexit 0\n")
+        self.assertNotEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("osprey_unprovided_symbol", done.stdout + done.stderr)
+
+    def test_symbols_klee_provides_keep_the_module_closed(self):
+        done, _ = self.closure("echo '                 U malloc'\necho '                 U abort'\nexit 0\n")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+
+    def test_both_managed_backends_run_the_closure_check(self):
+        closed, inspected = self.closure("exit 0\n", target="_runtime_klee", toolchain=True)
+        self.assertEqual(closed.returncode, 0, closed.stdout + closed.stderr)
+        # The receipt is what nm was handed — proof of inspection, not of echoing.
+        self.assertEqual(len(inspected), 2, inspected)
+        for backend in ("gc", "arc"):
+            seen = [line for line in inspected if line.endswith(f"libosprey_runtime_klee_{backend}.bc")]
+            self.assertEqual(len(seen), 1, f"{backend} runtime was never inspected: {inspected}")
+            self.assertIn("--undefined-only /", seen[0], "nm must receive an absolute runtime")
+            self.assertIn("klee closure fixture ", seen[0], "the space path must survive quoting")
+        open_module, open_inspected = self.closure(
+            "case \"$*\" in *klee_arc.bc*) echo '                 U osprey_gc_only_missing';; esac\nexit 0\n",
+            target="_runtime_klee", toolchain=True)
+        self.assertNotEqual(open_module.returncode, 0, open_module.stdout + open_module.stderr)
+        self.assertIn("symbolic arc runtime is not closed", open_module.stdout)
+        self.assertEqual(len(open_inspected), 2, open_inspected)
+
+
 class FormatOracleTests(unittest.TestCase):
     """The committed float matrix is exactly what the oracle writes today."""
 

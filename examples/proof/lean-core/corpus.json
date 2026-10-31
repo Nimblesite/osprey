@@ -1,0 +1,1457 @@
+{
+  "toolchain": "leanprover/lean4:v4.25.0",
+  "toolchain_path": "~/.elan/toolchains/leanprover--lean4---v4.25.0",
+  "exporter": "lean4export cfefafacc917b2d14c5f9bb092ed337f71317a4a (tag v4.25.0)",
+  "probe_binary": "target/proof/openai/check-batch.gc (pre-rebuild probe; parent will rebuild/matrix)",
+  "groups": [
+    {
+      "id": "nat-basic",
+      "module": "Init.Data.Nat.Basic",
+      "stdlib_source": "Init/Data/Nat/Basic.lean",
+      "stdlib_source_sha256": "74c62ccabe494d3d2325bce4472ec4fd3f4b12628e2bdc8273bc334025647c71",
+      "selected": [
+        "Nat.succ_add",
+        "Nat.add_succ",
+        "Nat.add_one",
+        "Nat.add_one_ne_zero",
+        "Nat.zero_ne_add_one",
+        "Nat.zero_add",
+        "Nat.add_comm",
+        "Nat.add_assoc",
+        "Nat.add_left_comm",
+        "Nat.add_right_comm",
+        "Nat.add_left_cancel",
+        "Nat.add_right_cancel",
+        "Nat.eq_zero_of_add_eq_zero",
+        "Nat.eq_zero_of_add_eq_zero_left",
+        "Nat.mul_succ",
+        "Nat.succ_mul",
+        "Nat.mul_comm",
+        "Nat.left_distrib",
+        "Nat.right_distrib",
+        "Nat.mul_add",
+        "Nat.add_mul",
+        "Nat.mul_assoc",
+        "Nat.mul_left_comm",
+        "Nat.mul_two",
+        "Nat.two_mul",
+        "Nat.mul_zero",
+        "Nat.zero_mul",
+        "Nat.mul_one",
+        "Nat.one_mul",
+        "Nat.pow_zero",
+        "Nat.pow_succ",
+        "Nat.sub_zero",
+        "Nat.succ_lt_succ",
+        "Nat.not_add_one_le_zero",
+        "Nat.add_one_pos",
+        "Nat.pred_lt",
+        "Nat.sub_one_lt",
+        "Nat.succ_sub_succ",
+        "Nat.sub_add_eq",
+        "Nat.le_of_eq",
+        "Nat.lt.step",
+        "Nat.le_of_succ_le",
+        "Nat.le_of_lt"
+      ],
+      "export_path": "examples/proof/lean-core/exports/nat-basic.ndjson",
+      "sha256": "b145edce16d1503bde6ee60fea861491957e5bf9d50eeb00c981ef718a033882",
+      "bytes": 373119,
+      "lines": 7151,
+      "declarations": 175,
+      "decl_by_kind": {
+        "axiom": 1,
+        "def": 74,
+        "inductive": 24,
+        "thm": 76
+      },
+      "axioms": [
+        "propext"
+      ],
+      "lean_meta": {
+        "githash": "cdd38ac5115bdeec5f609e9126cce00f51ae88b3",
+        "version": "4.25.0"
+      },
+      "format_version": "3.1.0",
+      "exporter_version": "3.1.0",
+      "probes": [
+        {
+          "name": "Nat.succ_add",
+          "result": "PASS Nat.succ_add | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_succ",
+          "result": "PASS Nat.add_succ | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_one",
+          "result": "PASS Nat.add_one | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_one_ne_zero",
+          "result": "PASS Nat.add_one_ne_zero | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.zero_ne_add_one",
+          "result": "PASS Nat.zero_ne_add_one | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.zero_add",
+          "result": "PASS Nat.zero_add | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_comm",
+          "result": "PASS Nat.add_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_assoc",
+          "result": "PASS Nat.add_assoc | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_left_comm",
+          "result": "PASS Nat.add_left_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_right_comm",
+          "result": "PASS Nat.add_right_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_left_cancel",
+          "result": "PASS Nat.add_left_cancel | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_right_cancel",
+          "result": "PASS Nat.add_right_cancel | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.eq_zero_of_add_eq_zero",
+          "result": "PASS Nat.eq_zero_of_add_eq_zero | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.eq_zero_of_add_eq_zero_left",
+          "result": "PASS Nat.eq_zero_of_add_eq_zero_left | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.mul_succ",
+          "result": "PASS Nat.mul_succ | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.succ_mul",
+          "result": "PASS Nat.succ_mul | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.mul_comm",
+          "result": "PASS Nat.mul_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.left_distrib",
+          "result": "PASS Nat.left_distrib | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.right_distrib",
+          "result": "PASS Nat.right_distrib | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.mul_add",
+          "result": "PASS Nat.mul_add | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_mul",
+          "result": "PASS Nat.add_mul | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.mul_assoc",
+          "result": "PASS Nat.mul_assoc | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.mul_left_comm",
+          "result": "PASS Nat.mul_left_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.mul_two",
+          "result": "PASS Nat.mul_two | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.two_mul",
+          "result": "PASS Nat.two_mul | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.mul_zero",
+          "result": "PASS Nat.mul_zero | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.zero_mul",
+          "result": "PASS Nat.zero_mul | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.mul_one",
+          "result": "PASS Nat.mul_one | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.one_mul",
+          "result": "PASS Nat.one_mul | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.pow_zero",
+          "result": "PASS Nat.pow_zero | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.pow_succ",
+          "result": "PASS Nat.pow_succ | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.sub_zero",
+          "result": "PASS Nat.sub_zero | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.succ_lt_succ",
+          "result": "PASS Nat.succ_lt_succ | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.not_add_one_le_zero",
+          "result": "PASS Nat.not_add_one_le_zero | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_one_pos",
+          "result": "PASS Nat.add_one_pos | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.pred_lt",
+          "result": "PASS Nat.pred_lt | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.sub_one_lt",
+          "result": "PASS Nat.sub_one_lt | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.succ_sub_succ",
+          "result": "PASS Nat.succ_sub_succ | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.sub_add_eq",
+          "result": "PASS Nat.sub_add_eq | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.le_of_eq",
+          "result": "PASS Nat.le_of_eq | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.lt.step",
+          "result": "PASS Nat.lt.step | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.le_of_succ_le",
+          "result": "PASS Nat.le_of_succ_le | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.le_of_lt",
+          "result": "PASS Nat.le_of_lt | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "id": "nat-lemmas",
+      "module": "Init.Data.Nat.Lemmas",
+      "stdlib_source": "Init/Data/Nat/Lemmas.lean",
+      "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+      "selected": [
+        "Nat.sub_one",
+        "Nat.one_add",
+        "Nat.lt_iff_add_one_le",
+        "Nat.one_add_le_iff",
+        "Nat.pred_one_add",
+        "Nat.add_succ_sub_one",
+        "Nat.succ_add_sub_one",
+        "Nat.pred_sub",
+        "Nat.self_add_sub_one",
+        "Nat.sub_one_add_self",
+        "Nat.self_add_pred",
+        "Nat.pred_add_self",
+        "Nat.add_add_add_comm",
+        "Nat.succ_eq_one_add",
+        "Nat.succ_add_eq_add_succ",
+        "Nat.eq_zero_of_add_eq_zero_right",
+        "Nat.add_eq_zero_iff",
+        "Nat.add_left_cancel_iff",
+        "Nat.add_right_cancel_iff",
+        "Nat.add_left_inj",
+        "Nat.add_right_inj",
+        "Nat.add_eq_left",
+        "Nat.add_eq_right",
+        "Nat.lt_of_add_lt_add_right",
+        "Nat.lt_of_add_lt_add_left",
+        "Nat.add_lt_add_iff_left",
+        "Nat.add_lt_add_iff_right",
+        "Nat.add_lt_add_of_le_of_lt",
+        "Nat.add_lt_add_of_lt_of_le",
+        "Nat.mul_mul_mul_comm",
+        "Nat.succ_mul_succ",
+        "Nat.add_one_mul_add_one",
+        "Nat.sub_sub_self",
+        "Nat.sub_sub_sub_cancel_right",
+        "Nat.add_sub_cancel_right",
+        "Nat.add_sub_cancel'",
+        "Nat.succ_sub_sub_succ"
+      ],
+      "export_path": "examples/proof/lean-core/exports/nat-lemmas.ndjson",
+      "sha256": "20511ce02417e4be5e97b3c3ba688d94c841891409f4914cdfb3c0d699bc4b02",
+      "bytes": 4405447,
+      "lines": 86730,
+      "declarations": 1357,
+      "decl_by_kind": {
+        "axiom": 3,
+        "def": 565,
+        "inductive": 74,
+        "opaque": 2,
+        "quot": 4,
+        "thm": 709
+      },
+      "axioms": [
+        "Classical.choice",
+        "Quot.sound",
+        "propext"
+      ],
+      "lean_meta": {
+        "githash": "cdd38ac5115bdeec5f609e9126cce00f51ae88b3",
+        "version": "4.25.0"
+      },
+      "format_version": "3.1.0",
+      "exporter_version": "3.1.0",
+      "probes": [
+        {
+          "name": "Nat.sub_one",
+          "result": "FAIL Nat.sub_one: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.one_add",
+          "result": "FAIL Nat.one_add: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.7,
+          "exit": 0
+        },
+        {
+          "name": "Nat.lt_iff_add_one_le",
+          "result": "FAIL Nat.lt_iff_add_one_le: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.one_add_le_iff",
+          "result": "FAIL Nat.one_add_le_iff: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Nat.pred_one_add",
+          "result": "FAIL Nat.pred_one_add: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_succ_sub_one",
+          "result": "FAIL Nat.add_succ_sub_one: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Nat.succ_add_sub_one",
+          "result": "FAIL Nat.succ_add_sub_one: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Nat.pred_sub",
+          "result": "FAIL Nat.pred_sub: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.3,
+          "exit": 0
+        },
+        {
+          "name": "Nat.self_add_sub_one",
+          "result": "FAIL Nat.self_add_sub_one: kernel: line 71755: unsupported: strVal",
+          "seconds": 3.1,
+          "exit": 0
+        },
+        {
+          "name": "Nat.sub_one_add_self",
+          "result": "FAIL Nat.sub_one_add_self: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Nat.self_add_pred",
+          "result": "FAIL Nat.self_add_pred: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.4,
+          "exit": 0
+        },
+        {
+          "name": "Nat.pred_add_self",
+          "result": "FAIL Nat.pred_add_self: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_add_add_comm",
+          "result": "FAIL Nat.add_add_add_comm: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Nat.succ_eq_one_add",
+          "result": "FAIL Nat.succ_eq_one_add: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Nat.succ_add_eq_add_succ",
+          "result": "FAIL Nat.succ_add_eq_add_succ: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Nat.eq_zero_of_add_eq_zero_right",
+          "result": "FAIL Nat.eq_zero_of_add_eq_zero_right: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.6,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_eq_zero_iff",
+          "result": "FAIL Nat.add_eq_zero_iff: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_left_cancel_iff",
+          "result": "FAIL Nat.add_left_cancel_iff: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.0,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_right_cancel_iff",
+          "result": "FAIL Nat.add_right_cancel_iff: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_left_inj",
+          "result": "FAIL Nat.add_left_inj: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.2,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_right_inj",
+          "result": "FAIL Nat.add_right_inj: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_eq_left",
+          "result": "FAIL Nat.add_eq_left: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.0,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_eq_right",
+          "result": "FAIL Nat.add_eq_right: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.lt_of_add_lt_add_right",
+          "result": "FAIL Nat.lt_of_add_lt_add_right: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.lt_of_add_lt_add_left",
+          "result": "FAIL Nat.lt_of_add_lt_add_left: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_lt_add_iff_left",
+          "result": "FAIL Nat.add_lt_add_iff_left: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_lt_add_iff_right",
+          "result": "FAIL Nat.add_lt_add_iff_right: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_lt_add_of_le_of_lt",
+          "result": "FAIL Nat.add_lt_add_of_le_of_lt: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_lt_add_of_lt_of_le",
+          "result": "FAIL Nat.add_lt_add_of_lt_of_le: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Nat.mul_mul_mul_comm",
+          "result": "FAIL Nat.mul_mul_mul_comm: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.succ_mul_succ",
+          "result": "FAIL Nat.succ_mul_succ: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_one_mul_add_one",
+          "result": "FAIL Nat.add_one_mul_add_one: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.sub_sub_self",
+          "result": "FAIL Nat.sub_sub_self: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.8,
+          "exit": 0
+        },
+        {
+          "name": "Nat.sub_sub_sub_cancel_right",
+          "result": "FAIL Nat.sub_sub_sub_cancel_right: kernel: line 71755: unsupported: strVal",
+          "seconds": 2.0,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_sub_cancel_right",
+          "result": "FAIL Nat.add_sub_cancel_right: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        },
+        {
+          "name": "Nat.add_sub_cancel'",
+          "result": "FAIL Nat.add_sub_cancel': kernel: line 71755: unsupported: strVal",
+          "seconds": 2.1,
+          "exit": 0
+        },
+        {
+          "name": "Nat.succ_sub_sub_succ",
+          "result": "FAIL Nat.succ_sub_sub_succ: kernel: line 71755: unsupported: strVal",
+          "seconds": 1.9,
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "id": "bool",
+      "module": "Init.Data.Bool",
+      "stdlib_source": "Init/Data/Bool.lean",
+      "stdlib_source_sha256": "1b2ae4d9686eee1217915cb51f557661da901c4f5a553f5c9e6d9502a8a5c75d",
+      "selected": [
+        "Bool.false_ne_true",
+        "Bool.eq_false_or_eq_true",
+        "Bool.eq_iff_iff",
+        "Bool.decide_eq_true",
+        "Bool.decide_eq_false",
+        "Bool.and_comm",
+        "Bool.and_left_comm",
+        "Bool.and_right_comm",
+        "Bool.not_and",
+        "Bool.not_or",
+        "Bool.or_comm",
+        "Bool.or_left_comm",
+        "Bool.or_right_comm",
+        "Bool.and_or_distrib_left",
+        "Bool.and_or_distrib_right",
+        "Bool.or_and_distrib_left",
+        "Bool.or_and_distrib_right",
+        "Bool.and_self_left",
+        "Bool.or_self_left",
+        "Bool.and_not_self",
+        "Bool.or_not_self",
+        "Bool.xor_false",
+        "Bool.xor_true",
+        "Bool.coe_iff_coe"
+      ],
+      "export_path": "examples/proof/lean-core/exports/bool.ndjson",
+      "sha256": "3cb63d4e758e50c94de6733f19d8cbab85badde3cc3a9d77b83614e02734af5f",
+      "bytes": 195077,
+      "lines": 3707,
+      "declarations": 124,
+      "decl_by_kind": {
+        "axiom": 1,
+        "def": 48,
+        "inductive": 10,
+        "thm": 65
+      },
+      "axioms": [
+        "propext"
+      ],
+      "lean_meta": {
+        "githash": "cdd38ac5115bdeec5f609e9126cce00f51ae88b3",
+        "version": "4.25.0"
+      },
+      "format_version": "3.1.0",
+      "exporter_version": "3.1.0",
+      "probes": [
+        {
+          "name": "Bool.false_ne_true",
+          "result": "PASS Bool.false_ne_true | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.eq_false_or_eq_true",
+          "result": "PASS Bool.eq_false_or_eq_true | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.eq_iff_iff",
+          "result": "PASS Bool.eq_iff_iff | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.decide_eq_true",
+          "result": "PASS Bool.decide_eq_true | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.decide_eq_false",
+          "result": "PASS Bool.decide_eq_false | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.and_comm",
+          "result": "PASS Bool.and_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.and_left_comm",
+          "result": "PASS Bool.and_left_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.and_right_comm",
+          "result": "PASS Bool.and_right_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.not_and",
+          "result": "PASS Bool.not_and | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.not_or",
+          "result": "PASS Bool.not_or | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.or_comm",
+          "result": "PASS Bool.or_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.or_left_comm",
+          "result": "PASS Bool.or_left_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.or_right_comm",
+          "result": "PASS Bool.or_right_comm | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.and_or_distrib_left",
+          "result": "PASS Bool.and_or_distrib_left | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.and_or_distrib_right",
+          "result": "PASS Bool.and_or_distrib_right | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.or_and_distrib_left",
+          "result": "PASS Bool.or_and_distrib_left | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.or_and_distrib_right",
+          "result": "PASS Bool.or_and_distrib_right | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.and_self_left",
+          "result": "PASS Bool.and_self_left | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.or_self_left",
+          "result": "PASS Bool.or_self_left | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.and_not_self",
+          "result": "PASS Bool.and_not_self | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.or_not_self",
+          "result": "PASS Bool.or_not_self | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.xor_false",
+          "result": "PASS Bool.xor_false | axioms: propext",
+          "seconds": 0.3,
+          "exit": 0
+        },
+        {
+          "name": "Bool.xor_true",
+          "result": "PASS Bool.xor_true | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "Bool.coe_iff_coe",
+          "result": "PASS Bool.coe_iff_coe | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "id": "option-basic",
+      "module": "Init.Data.Option.Basic",
+      "stdlib_source": "Init/Data/Option/Basic.lean",
+      "stdlib_source_sha256": "de3c24b0c6ee8d1d8c7ff2847926e6f13ce9ab0af2d0be5ec0ee9b6ffa9cda70",
+      "selected": [
+        "Option.getD_none",
+        "Option.getD_some",
+        "Option.map_none",
+        "Option.map_some",
+        "Option.isSome_none",
+        "Option.isSome_some",
+        "Option.isNone_none",
+        "Option.isNone_some",
+        "Option.bind_none",
+        "Option.bind_some",
+        "Option.map_id",
+        "Option.join_none",
+        "Option.join_some",
+        "Option.getM_none",
+        "Option.getM_some",
+        "Option.all_some",
+        "Option.any_some",
+        "Option.orElse_some",
+        "Option.orElse_none"
+      ],
+      "export_path": "examples/proof/lean-core/exports/option-basic.ndjson",
+      "sha256": "075fc7f2cd0e0098ba1a9882731936823043e4d77f5707593a0723fab5121484",
+      "bytes": 100744,
+      "lines": 1757,
+      "declarations": 63,
+      "decl_by_kind": {
+        "axiom": 1,
+        "def": 26,
+        "inductive": 11,
+        "quot": 4,
+        "thm": 21
+      },
+      "axioms": [
+        "Quot.sound"
+      ],
+      "lean_meta": {
+        "githash": "cdd38ac5115bdeec5f609e9126cce00f51ae88b3",
+        "version": "4.25.0"
+      },
+      "format_version": "3.1.0",
+      "exporter_version": "3.1.0",
+      "probes": [
+        {
+          "name": "Option.getD_none",
+          "result": "PASS Option.getD_none | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.getD_some",
+          "result": "PASS Option.getD_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.map_none",
+          "result": "PASS Option.map_none | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.map_some",
+          "result": "PASS Option.map_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.isSome_none",
+          "result": "PASS Option.isSome_none | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.isSome_some",
+          "result": "PASS Option.isSome_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.isNone_none",
+          "result": "PASS Option.isNone_none | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.isNone_some",
+          "result": "PASS Option.isNone_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.bind_none",
+          "result": "PASS Option.bind_none | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.bind_some",
+          "result": "PASS Option.bind_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.map_id",
+          "result": "PASS Option.map_id | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.join_none",
+          "result": "PASS Option.join_none | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.join_some",
+          "result": "PASS Option.join_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.getM_none",
+          "result": "PASS Option.getM_none | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.getM_some",
+          "result": "PASS Option.getM_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.all_some",
+          "result": "PASS Option.all_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.any_some",
+          "result": "PASS Option.any_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.orElse_some",
+          "result": "PASS Option.orElse_some | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Option.orElse_none",
+          "result": "PASS Option.orElse_none | axioms: Quot.sound",
+          "seconds": 0.0,
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "id": "list-basic",
+      "module": "Init.Data.List.Basic",
+      "stdlib_source": "Init/Data/List/Basic.lean",
+      "stdlib_source_sha256": "08044b074626f8619fd9ecab93bf2386e86545fe400cb30660df62fb36df952b",
+      "selected": [
+        "List.length_nil",
+        "List.length_singleton",
+        "List.length_cons",
+        "List.head_cons",
+        "List.headD_nil",
+        "List.headD_cons",
+        "List.tail_nil",
+        "List.tail_cons",
+        "List.map_nil",
+        "List.map_cons",
+        "List.filter_nil",
+        "List.filterMap_nil",
+        "List.filterMap_cons",
+        "List.foldr_nil",
+        "List.foldr_cons",
+        "List.foldl_nil",
+        "List.foldl_cons",
+        "List.reverse_nil",
+        "List.nil_append",
+        "List.cons_append",
+        "List.append_nil",
+        "List.append_assoc",
+        "List.length_append",
+        "List.any_nil",
+        "List.any_cons",
+        "List.all_nil",
+        "List.all_cons"
+      ],
+      "export_path": "examples/proof/lean-core/exports/list-basic.ndjson",
+      "sha256": "f734675df9b89ac4c4c2e3a3d2cbe834010f3b96c4170f4605f929fea975e493",
+      "bytes": 207935,
+      "lines": 3796,
+      "declarations": 113,
+      "decl_by_kind": {
+        "axiom": 1,
+        "def": 60,
+        "inductive": 15,
+        "thm": 37
+      },
+      "axioms": [
+        "propext"
+      ],
+      "lean_meta": {
+        "githash": "cdd38ac5115bdeec5f609e9126cce00f51ae88b3",
+        "version": "4.25.0"
+      },
+      "format_version": "3.1.0",
+      "exporter_version": "3.1.0",
+      "probes": [
+        {
+          "name": "List.length_nil",
+          "result": "PASS List.length_nil | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.length_singleton",
+          "result": "PASS List.length_singleton | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.length_cons",
+          "result": "PASS List.length_cons | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "List.head_cons",
+          "result": "PASS List.head_cons | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.headD_nil",
+          "result": "PASS List.headD_nil | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.headD_cons",
+          "result": "PASS List.headD_cons | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "List.tail_nil",
+          "result": "PASS List.tail_nil | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "List.tail_cons",
+          "result": "PASS List.tail_cons | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.map_nil",
+          "result": "PASS List.map_nil | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "List.map_cons",
+          "result": "PASS List.map_cons | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.filter_nil",
+          "result": "PASS List.filter_nil | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.filterMap_nil",
+          "result": "PASS List.filterMap_nil | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.filterMap_cons",
+          "result": "PASS List.filterMap_cons | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.foldr_nil",
+          "result": "PASS List.foldr_nil | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.foldr_cons",
+          "result": "PASS List.foldr_cons | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.foldl_nil",
+          "result": "PASS List.foldl_nil | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.foldl_cons",
+          "result": "PASS List.foldl_cons | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.reverse_nil",
+          "result": "PASS List.reverse_nil | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.nil_append",
+          "result": "PASS List.nil_append | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "List.cons_append",
+          "result": "PASS List.cons_append | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.append_nil",
+          "result": "PASS List.append_nil | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "List.append_assoc",
+          "result": "PASS List.append_assoc | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "List.length_append",
+          "result": "PASS List.length_append | axioms: propext",
+          "seconds": 0.2,
+          "exit": 0
+        },
+        {
+          "name": "List.any_nil",
+          "result": "PASS List.any_nil | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.any_cons",
+          "result": "PASS List.any_cons | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.all_nil",
+          "result": "PASS List.all_nil | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "List.all_cons",
+          "result": "PASS List.all_cons | axioms: propext",
+          "seconds": 0.1,
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "id": "list-lemmas",
+      "module": "Init.Data.List.Lemmas",
+      "stdlib_source": "Init/Data/List/Lemmas.lean",
+      "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+      "selected": [
+        "List.map_id",
+        "List.map_id'",
+        "List.map_append",
+        "List.map_reverse",
+        "List.length_reverse",
+        "List.reverse_reverse",
+        "List.isEmpty_reverse",
+        "List.mem_append",
+        "List.not_mem_append",
+        "List.forall_mem_append",
+        "List.mem_cons_self",
+        "List.getElem_cons",
+        "List.getElem_zero",
+        "List.getElem_singleton"
+      ],
+      "export_path": "examples/proof/lean-core/exports/list-lemmas.ndjson",
+      "sha256": "fee152f2ed6fb2748ccdeb4129ebe9cd9f30dabcd46c09eb2b00e88bf9603d71",
+      "bytes": 809122,
+      "lines": 15513,
+      "declarations": 313,
+      "decl_by_kind": {
+        "axiom": 2,
+        "def": 138,
+        "inductive": 28,
+        "quot": 4,
+        "thm": 141
+      },
+      "axioms": [
+        "Quot.sound",
+        "propext"
+      ],
+      "lean_meta": {
+        "githash": "cdd38ac5115bdeec5f609e9126cce00f51ae88b3",
+        "version": "4.25.0"
+      },
+      "format_version": "3.1.0",
+      "exporter_version": "3.1.0",
+      "probes": [
+        {
+          "name": "List.map_id",
+          "result": "FAIL List.map_id: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "List.map_id'",
+          "result": "FAIL List.map_id': kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "List.map_append",
+          "result": "FAIL List.map_append: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "List.map_reverse",
+          "result": "FAIL List.map_reverse: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.5,
+          "exit": 0
+        },
+        {
+          "name": "List.length_reverse",
+          "result": "FAIL List.length_reverse: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "List.reverse_reverse",
+          "result": "FAIL List.reverse_reverse: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "List.isEmpty_reverse",
+          "result": "FAIL List.isEmpty_reverse: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "List.mem_append",
+          "result": "FAIL List.mem_append: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "List.not_mem_append",
+          "result": "FAIL List.not_mem_append: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "List.forall_mem_append",
+          "result": "FAIL List.forall_mem_append: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.5,
+          "exit": 0
+        },
+        {
+          "name": "List.mem_cons_self",
+          "result": "FAIL List.mem_cons_self: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.6,
+          "exit": 0
+        },
+        {
+          "name": "List.getElem_cons",
+          "result": "FAIL List.getElem_cons: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.7,
+          "exit": 0
+        },
+        {
+          "name": "List.getElem_zero",
+          "result": "FAIL List.getElem_zero: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.5,
+          "exit": 0
+        },
+        {
+          "name": "List.getElem_singleton",
+          "result": "FAIL List.getElem_singleton: kernel: type mismatch: `(fun (x : (List.{u_1} \u03b1)) => (\u2200 (x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32 : (Fin ((List.length.{u_1} \u03b1) x))), ((motive x) x._@.Init.Prelude.1017806716._hygCtx.11.Init.Prelude.1017806716._hygCtx._hyg.32)))` has type `((List.{u_1} \u03b1) \u2192 Sort imax 1 u_2)` but `((List.{u_1} \u03b1) \u2192 Sort u_2)` was expected",
+          "seconds": 0.6,
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "id": "prod",
+      "module": "Init.Data.Prod",
+      "stdlib_source": "Init/Data/Prod.lean",
+      "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+      "selected": [
+        "Prod.map_id",
+        "Prod.map_id'",
+        "Prod.map_comp_map",
+        "Prod.map_map",
+        "Prod.swap_swap",
+        "Prod.fst_swap",
+        "Prod.snd_swap",
+        "Prod.swap_prod_mk",
+        "Prod.swap_swap_eq",
+        "Prod.swap_inj",
+        "Prod.map_comp_swap"
+      ],
+      "export_path": "examples/proof/lean-core/exports/prod.ndjson",
+      "sha256": "722d81d4811cf432a1c9ab378fe70128465eaf038736d141c656a241dda9f089",
+      "bytes": 125362,
+      "lines": 2474,
+      "declarations": 58,
+      "decl_by_kind": {
+        "axiom": 2,
+        "def": 18,
+        "inductive": 6,
+        "quot": 4,
+        "thm": 28
+      },
+      "axioms": [
+        "Quot.sound",
+        "propext"
+      ],
+      "lean_meta": {
+        "githash": "cdd38ac5115bdeec5f609e9126cce00f51ae88b3",
+        "version": "4.25.0"
+      },
+      "format_version": "3.1.0",
+      "exporter_version": "3.1.0",
+      "probes": [
+        {
+          "name": "Prod.map_id",
+          "result": "FAIL Prod.map_id: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Prod.map_id'",
+          "result": "FAIL Prod.map_id': kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Prod.map_comp_map",
+          "result": "FAIL Prod.map_comp_map: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.1,
+          "exit": 0
+        },
+        {
+          "name": "Prod.map_map",
+          "result": "FAIL Prod.map_map: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Prod.swap_swap",
+          "result": "FAIL Prod.swap_swap: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Prod.fst_swap",
+          "result": "FAIL Prod.fst_swap: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Prod.snd_swap",
+          "result": "FAIL Prod.snd_swap: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Prod.swap_prod_mk",
+          "result": "FAIL Prod.swap_prod_mk: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Prod.swap_swap_eq",
+          "result": "FAIL Prod.swap_swap_eq: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Prod.swap_inj",
+          "result": "FAIL Prod.swap_inj: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        },
+        {
+          "name": "Prod.map_comp_swap",
+          "result": "FAIL Prod.map_comp_swap: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+          "seconds": 0.0,
+          "exit": 0
+        }
+      ]
+    }
+  ],
+  "lean": {
+    "githash": "cdd38ac5115bdeec5f609e9126cce00f51ae88b3",
+    "version": "4.25.0"
+  },
+  "axiom_types": "@Classical.choice : {\u03b1 : Sort u_1} \u2192 Nonempty \u03b1 \u2192 \u03b1\n@Quot.sound : \u2200 {\u03b1 : Sort u_1} {r : \u03b1 \u2192 \u03b1 \u2192 Prop} {a b : \u03b1}, r a b \u2192 Quot.mk r a = Quot.mk r b\n@propext : \u2200 {a b : Prop}, (a \u2194 b) \u2192 a = b"
+}

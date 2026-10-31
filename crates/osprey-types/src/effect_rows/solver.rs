@@ -1,7 +1,7 @@
 //! Effect row solver.
 use super::{
-    map_parameter_use_values, map_projection_values, Analyzer, Callable, CallableEnv, Expr,
-    Function, HashMap, Index, Instances, Stmt, Summary, Value,
+    map_parameter_use_values, map_projection_values, Analyzer, BTreeSet, Callable, CallableEnv,
+    Expr, Function, HashMap, Index, Instances, Stmt, Summary, Value,
 };
 
 /// Advance one function's inferred row and return provenance by a single
@@ -14,38 +14,29 @@ pub(super) fn advance_function(
     returns: &mut [Option<Value>],
     history: &mut ReturnHistory,
 ) -> bool {
-    let mut changed = false;
-    let mut actual = analyzer.function_body(function);
+    let (mut actual, returned) = analyzer.function_body_model(function);
     actual.widen();
-    if let Some(row) = rows.get_mut(id) {
-        let before = row.clone();
-        // Requirements and parameter uses only grow toward the least fixed
-        // point, so unioning them is what makes this converge. The provenance
-        // verdict is not of that kind — see `check` — so take the freshly
-        // computed one. `widen` still re-raises it when it drops a use.
-        let resolved = actual.unresolved_dynamic_call;
-        row.union(actual);
-        row.unresolved_dynamic_call = resolved;
-        row.widen();
-        changed |= *row != before;
-    }
-    if let Some(returned) = analyzer.function_return(function) {
-        if let Some(slot) = returns.get_mut(id) {
-            let before = slot.clone();
-            // Recompute rather than merge with the previous iteration.
-            // `function_return` already merges every return path of the body,
-            // so each pass yields a COMPLETE answer for the rows it was given;
-            // unioning across passes only preserves superseded ones. The one
-            // feedback a pass cannot complete on its own — `fold`'s accumulator
-            // carrying its callback's return — is cut in `fold_value`, which
-            // stabilises that contribution instead of unrolling it. A return
-            // that cycles instead of settling is joined; see `ReturnHistory`.
-            let computed = returned.widened().widened();
-            *slot = Some(history.settle(id, before.as_ref(), computed));
-            changed |= *slot != before;
-        }
+    let mut changed = rows
+        .get_mut(id)
+        .is_some_and(|row| row.merge_inferred_row(actual, analyzer.rows.get(id)));
+    if let (Some(returned), Some(slot)) = (returned, returns.get_mut(id)) {
+        changed |= advance_return(slot, returned, id, history);
     }
     changed
+}
+
+// Recompute the complete current answer. Fold cuts within-pass feedback;
+// ReturnHistory joins only actual cycles. Never union superseded returns.
+fn advance_return(
+    slot: &mut Option<Value>,
+    returned: Value,
+    id: usize,
+    history: &mut ReturnHistory,
+) -> bool {
+    let before = slot.take();
+    let computed = returned.widened().widened();
+    *slot = Some(history.settle(id, before.as_ref(), computed));
+    *slot != before
 }
 
 /// Every return value each function has had during one fixed point, and
@@ -53,32 +44,73 @@ pub(super) fn advance_function(
 /// each pass keeps it precise, but nothing makes that sequence monotone: a
 /// walk that hands its whole node to a helper falling back to the walk
 /// flipped between two returns forever. Widening bounds the values, so a
-/// sequence that never settles must revisit one it already left; from then
-/// on that function's return is joined with its previous one, which only
-/// grows and so converges. Implements [EFFECTS-PROVENANCE].
+/// sequence that revisits a value is joined with its predecessor and widened.
+///
+/// A function on a reference cycle can feed its own return back, and the
+/// node budget makes widening non-monotone: cutting one subtree to unknown
+/// frees budget for its siblings, so the proof kernel's mutually recursive
+/// returns changed every sweep without ever revisiting. Those functions join
+/// every move from the start (Kleene iteration); a function off every cycle
+/// is a finite function of its callees and keeps recomputing precisely.
+/// Should a joined sequence still revisit, widening has cycled, and the
+/// return is pinned to its terminal shape, which only grows. No sweep is
+/// counted: counts cannot tell recursion from finite dependency propagation
+/// and cutting on one rejects valid acyclic callback chains.
+/// Implements [EFFECTS-PROVENANCE].
 #[derive(Default)]
-pub(super) struct ReturnHistory(HashMap<usize, Returns>);
+pub(super) struct ReturnHistory {
+    returns: HashMap<usize, Returns>,
+    recursive: BTreeSet<usize>,
+}
 
-/// One function's returns so far, and whether they have cycled.
+/// One function's returns so far, whether they have cycled, the joined
+/// returns since, and whether those cycled too.
 #[derive(Default)]
 struct Returns {
-    seen: Vec<Value>,
+    seen: BTreeSet<Value>,
     joined: bool,
+    joined_seen: BTreeSet<Value>,
+    terminal: bool,
 }
 
 impl ReturnHistory {
+    /// A history for one fixed point whose `recursive` functions can feed
+    /// their own returns back ([`super::recursion::recursive_functions`]).
+    pub(super) fn new(recursive: BTreeSet<usize>) -> Self {
+        Self {
+            returns: HashMap::new(),
+            recursive,
+        }
+    }
+
     fn settle(&mut self, id: usize, before: Option<&Value>, computed: Value) -> Value {
-        let returns = self.0.entry(id).or_default();
-        returns.joined |= before != Some(&computed) && returns.seen.contains(&computed);
+        let recursive = self.recursive.contains(&id);
+        let returns = self.returns.entry(id).or_default();
+        let revisited = returns.seen.contains(&computed);
+        returns.joined |= before != Some(&computed) && revisited;
+        returns.joined |= recursive && before.is_some();
         if !returns.joined {
-            if returns.seen.last() != Some(&computed) {
-                returns.seen.push(computed.clone());
+            if !revisited {
+                let _ = returns.seen.insert(computed.clone());
             }
             return computed;
         }
+        returns.join(before, computed)
+    }
+}
+
+impl Returns {
+    fn join(&mut self, before: Option<&Value>, computed: Value) -> Value {
         let mut joined = before.cloned().unwrap_or_default();
         joined.union(computed);
-        joined.widened().widened()
+        if !self.terminal {
+            let widened = joined.clone().widened().widened();
+            self.terminal = before != Some(&widened) && !self.joined_seen.insert(widened.clone());
+            if !self.terminal {
+                return widened;
+            }
+        }
+        super::provenance::terminal_value(joined)
     }
 }
 
@@ -109,7 +141,8 @@ pub(super) fn file_scope_env(
 }
 
 /// Least fixed point over every function's row and return provenance:
-/// recursive and forward calls only add requirements.
+/// recursive and forward calls only add requirements. Each sweep analyses
+/// only the functions whose inputs moved ([`super::worklist`]).
 pub(super) fn converge(
     index: &Index<'_>,
     instances: &Instances,
@@ -117,38 +150,81 @@ pub(super) fn converge(
     rows: &mut Vec<Summary>,
     returns: &mut Vec<Option<Value>>,
 ) {
-    let mut history = ReturnHistory::default();
-    loop {
+    let solve = Solve {
+        index,
+        instances,
+        statements,
+    };
+    let mut history = ReturnHistory::new(super::recursion::recursive_functions(index));
+    let mut reads = vec![BTreeSet::new(); index.functions.len()];
+    let mut dirty: BTreeSet<usize> = (0..index.functions.len()).collect();
+    while !dirty.is_empty() {
+        dirty = solve.sweep(&dirty, (rows, returns), &mut history, &mut reads);
+    }
+}
+
+/// The program one fixed point solves.
+struct Solve<'a> {
+    index: &'a Index<'a>,
+    instances: &'a Instances,
+    statements: &'a [Stmt],
+}
+
+impl Solve<'_> {
+    /// Re-analyse `dirty` against the current state, then write the new state
+    /// back and return the functions the next sweep must re-analyse.
+    fn sweep(
+        &self,
+        dirty: &BTreeSet<usize>,
+        (rows, returns): (&mut Vec<Summary>, &mut Vec<Option<Value>>),
+        history: &mut ReturnHistory,
+        reads: &mut [BTreeSet<usize>],
+    ) -> BTreeSet<usize> {
+        let (index, instances) = (self.index, self.instances);
+        let (file_scope, file_reads) = super::worklist::recording(|| {
+            file_scope_env(index, instances, self.statements, rows, returns)
+        });
         let analyzer = Analyzer {
             index,
             rows,
             returns,
             instances,
-            file_scope: file_scope_env(index, instances, statements, rows, returns),
+            file_scope,
         };
-        let mut next = rows.clone();
-        let mut next_returns = returns.clone();
-        let changed = index
-            .functions
-            .iter()
-            .enumerate()
-            .fold(false, |changed, (id, function)| {
-                advance_function(
-                    &analyzer,
-                    id,
-                    function,
-                    &mut next,
-                    &mut next_returns,
-                    &mut history,
-                ) || changed
+        let mut next = (rows.clone(), returns.clone());
+        let moved = self.advance(&analyzer, dirty, &mut next, history, reads);
+        // `analyzer` borrows `rows`/`returns`; its last use is the advance
+        // above, so the borrow has ended by the time the new state is written.
+        (*rows, *returns) = next;
+        super::worklist::affected(&moved, &file_reads, reads)
+    }
+
+    /// Advance each dirty function one iteration, recording what it read;
+    /// returns the functions that moved.
+    fn advance(
+        &self,
+        analyzer: &Analyzer<'_>,
+        dirty: &BTreeSet<usize>,
+        (rows, returns): &mut (Vec<Summary>, Vec<Option<Value>>),
+        history: &mut ReturnHistory,
+        reads: &mut [BTreeSet<usize>],
+    ) -> BTreeSet<usize> {
+        let mut moved = BTreeSet::new();
+        for &id in dirty {
+            let Some(function) = self.index.functions.get(id) else {
+                continue;
+            };
+            let (changed, read) = super::worklist::recording(|| {
+                advance_function(analyzer, id, function, rows, returns, history)
             });
-        // `analyzer` borrows `rows`/`returns`; its last use is the fold above,
-        // so the borrow has ended by the time the new state is written back.
-        *rows = next;
-        *returns = next_returns;
-        if !changed {
-            return;
+            if let Some(slot) = reads.get_mut(id) {
+                *slot = read;
+            }
+            if changed {
+                let _ = moved.insert(id);
+            }
         }
+        moved
     }
 }
 
@@ -159,18 +235,57 @@ pub(super) fn converge(
 /// curried spine (a body that is a closure literal, as ML `f a b = …` lowers),
 /// each nested closure's latent requirements. The written row covers the full
 /// application ([FLAVOR-ML-CURRY]).
-pub(super) fn full_application(body: &Expr, own: &Summary, returned: Option<&Value>) -> Summary {
+pub(super) fn full_application(
+    body: &Expr,
+    own: &Summary,
+    returned: Option<&Value>,
+    ty: Option<&crate::ty::Type>,
+) -> Summary {
     let mut summary = own.clone();
-    let (mut body, mut returned) = (body, returned);
-    while let (Some(inner), Some(Callable::Known(closure))) = (
-        curried_body(body),
-        returned.and_then(|value| value.callable.as_ref()),
-    ) {
-        summary.union(closure.summary.clone());
-        body = inner;
-        returned = closure.returned.as_deref();
+    if curried_body(body).is_some() {
+        if let Some(callable) = returned.and_then(|value| value.callable.as_ref()) {
+            application_callable(callable, ty, &mut summary);
+        }
     }
     summary
+}
+
+fn application_callable(callable: &Callable, ty: Option<&crate::ty::Type>, summary: &mut Summary) {
+    if ty.is_some_and(|ty| !matches!(ty, crate::ty::Type::Fun { .. } | crate::ty::Type::Var(_))) {
+        return;
+    }
+    match callable {
+        Callable::Known(known) => known_application(known, ty, summary),
+        Callable::Alternatives(choices) => {
+            for choice in choices {
+                application_callable(choice, ty, summary);
+            }
+        }
+        Callable::Parameter { .. } | Callable::Unknown => {
+            if matches!(ty, Some(crate::ty::Type::Fun { .. })) {
+                summary.unresolved_dynamic_call = true;
+            }
+        }
+    }
+}
+
+fn known_application(
+    known: &super::KnownCallable,
+    ty: Option<&crate::ty::Type>,
+    summary: &mut Summary,
+) {
+    summary.union(known.summary.clone());
+    let next = ty.and_then(|ty| match ty {
+        crate::ty::Type::Fun { ret, .. } => Some(ret.as_ref()),
+        _ => None,
+    });
+    if let Some(callable) = known
+        .returned
+        .as_deref()
+        .and_then(|value| value.callable.as_ref())
+    {
+        application_callable(callable, next, summary);
+    }
 }
 
 /// The body of the closure literal a curried spine returns, looking through
@@ -219,6 +334,9 @@ pub(super) fn clear_summary_verdicts(summary: &mut Summary) {
 }
 
 pub(super) fn clear_value_verdicts(value: &mut Value) {
+    if let Some(Callable::Alternatives(choices)) = &mut value.callable {
+        super::provenance::map_alternatives(choices, clear_value_verdicts);
+    }
     clear_summary_verdicts(&mut value.deferred);
     // `Callable::Unknown` is deliberately left in place: it is the SHAPE that
     // makes an invocation unresolvable, so the next sweep raises the verdict
@@ -238,62 +356,9 @@ pub(super) fn clear_value_verdicts(value: &mut Value) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{ReturnHistory, Value};
+#[path = "settle_tests.rs"]
+mod settle_tests;
 
-    const FUNCTION: usize = 0;
-    const STABLE_SWEEPS: usize = 512;
-
-    #[test]
-    fn stable_return_sweeps_do_not_retain_duplicate_provenance() {
-        let value = Value::channel(7);
-        let mut history = ReturnHistory::default();
-        let mut before = None;
-        for _ in 0..STABLE_SWEEPS {
-            let returned = history.settle(FUNCTION, before.as_ref(), value.clone());
-            assert_eq!(returned, value);
-            before = Some(returned);
-        }
-        let retained = history
-            .0
-            .values()
-            .map(|returns| returns.seen.len())
-            .sum::<usize>();
-        assert_eq!(
-            retained, 1,
-            "stable sweeps must retain one provenance value"
-        );
-    }
-
-    #[test]
-    fn seeded_stable_return_still_detects_a_later_cycle() {
-        let first = Value::channel(7);
-        let second = Value::channel(9);
-        let mut history = ReturnHistory::default();
-        assert_eq!(history.settle(FUNCTION, Some(&first), first.clone()), first);
-        assert_eq!(
-            history.settle(FUNCTION, Some(&first), second.clone()),
-            second
-        );
-        let returned = history.settle(FUNCTION, Some(&second), first.clone());
-        let mut expected = first;
-        expected.union(second);
-        assert_eq!(returned, expected);
-    }
-
-    #[test]
-    fn non_last_revisits_keep_joining_later_provenance() {
-        let [first, second, third] = [7, 9, 11].map(Value::channel);
-        let mut history = ReturnHistory::default();
-        let mut before = None;
-        for value in [&first, &first, &second, &second, &third, &first] {
-            before = Some(history.settle(FUNCTION, before.as_ref(), value.clone()));
-        }
-        let mut expected = first;
-        expected.union(third);
-        assert_eq!(before, Some(expected.clone()));
-        let joined = history.settle(FUNCTION, before.as_ref(), second.clone());
-        expected.union(second);
-        assert_eq!(joined, expected);
-    }
-}
+#[cfg(test)]
+#[path = "solver_tests.rs"]
+mod tests;

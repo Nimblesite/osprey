@@ -1,5 +1,6 @@
 //! Arithmetic values and implicit requests. Implements [ARITH-EFFECT].
 
+use crate::effect_rows::ExprArgs;
 use crate::error::TypeError;
 use crate::ty::{names, Type};
 use osprey_ast::{AstNode, Expr, Position};
@@ -145,7 +146,7 @@ fn nonzero_literal(expr: &Expr) -> bool {
 }
 
 /// Discharge proven-total direct numeric builtin calls, retaining alias requirements.
-pub(crate) fn total_builtin_operations(name: &str, arguments: &[Expr]) -> Vec<&'static str> {
+pub(crate) fn total_builtin_operations(name: &str, arguments: ExprArgs<'_>) -> Vec<&'static str> {
     let integer = |index| {
         arguments
             .get(index)

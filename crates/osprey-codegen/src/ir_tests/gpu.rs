@@ -1,6 +1,40 @@
 use super::*;
 
 #[test]
+fn foreign_intrinsics_keep_host_identity_and_refuse_device_emission() {
+    let ir = module("extern fn abs(value: int) -> int\nlet answer = abs(-3)\n");
+    shows(&ir, &["call i64 @abs(i64"]);
+    testkit::contents(&ir, &[], &["osprey_abs(p0, fault)"]);
+    let error = compile_err("extern fn abs(value: int) -> int\nlet out = toGpu([-3, 4]) |> gpuMap(fn(x) => abs(x))\nprint(gpuLength(out))\n");
+    assert!(error
+        .to_string()
+        .contains("foreign function `abs` has no device form"));
+}
+
+#[test]
+fn foreign_calls_fail_before_each_gpu_launch_form() {
+    for expression in [
+        "gpuMap(toGpu([-3, 4]), abs)",
+        "gpuMap(toGpu([-3, 4]), foreign)",
+        "gpuMap(toGpu([-3, 4]), fn(value) => helper(value))",
+        "gpuZipWith(toGpu([-3]), toGpu([4]), fn(a, b) => abs(wrapAdd(a, b)))",
+        "gpuFold(toGpu([-3, 4]), 0, fn(total, value) => abs(wrapAdd(total, value)))",
+    ] {
+        let error = compile_err(&format!("extern fn abs(value: int) -> int\nfn helper(value) = abs(value)\nlet foreign = abs\nlet answer = {expression}\n"));
+        assert!(error
+            .to_string()
+            .contains("foreign function `abs` has no device form"));
+    }
+}
+
+#[test]
+fn foreign_kernel_aliases_do_not_capture_a_nearer_local_function() {
+    let ir = module("extern fn importedWord(value: int) -> int\nfn main() = {\nlet importedWord = fn(value) => wrapMul(value, 2)\nlet selected = importedWord\nlet out = gpuMap(toGpu([3]), selected)\nprint(gpuLength(out))\n}\n");
+    shows(&ir, &["mul i64"]);
+    testkit::contents(&ir, &[], &["call i64 @importedWord("]);
+}
+
+#[test]
 fn named_device_callbacks_keep_their_defining_scope() {
     let ir = module("let factor = 2.0\nfn scale(x) = x * factor\nfn apply(f, x) = f(x)\nfn caller(factor, x) = apply(scale, x)\nfn main() = {\n    let out = toGpu([3.0]) |> gpuMap(fn(x) => caller(100.0, x))\n    print(gpuLength(out))\n}\n");
     testkit::contents(&ir, &[], &["call i32 @osprey_gpu_declined("]);

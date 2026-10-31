@@ -87,22 +87,22 @@ def utf8_of(bs):
             return Error(message="invalid UTF-8 in header: " + message)
 
 
-def load(data):
-    """Parse and validate a safetensors file, or Error naming the failure."""
-    match header_length(data):
+def then(result, continue_with):
+    match result:
         case Success(value=value):
-            return header_of(data, value)
+            return continue_with(value)
         case Error(message=message):
             return Error(message=message)
+
+
+def load(data):
+    """Parse and validate a safetensors file, or Error naming the failure."""
+    return then(header_length(data), lambda value: header_of(data, value))
 
 
 def header_of(data, n):
     """Read the header text of length `n` and parse it."""
-    match header_string(data, n):
-        case Success(value=value):
-            return json_of(data, n, value)
-        case Error(message=message):
-            return Error(message=message)
+    return then(header_string(data, n), lambda value: json_of(data, n, value))
 
 
 def json_of(data, n, text):
@@ -130,11 +130,7 @@ def build_file(data, n, root):
 
 def collected_of(data, n, root):
     """Collect the header members and finish the file."""
-    match collect_all(root):
-        case Success(value=value):
-            return finish_file(data, n, value)
-        case Error(message=message):
-            return Error(message=message)
+    return then(collect_all(root), lambda value: finish_file(data, n, value))
 
 
 def collect_all(root):
@@ -156,20 +152,12 @@ def collect_members(members, i, meta, infos) -> Result[Collected, str]:
 
 def add_metadata(members, i, meta, infos, m):
     """Parse member `m` as the `__metadata__` string map and continue."""
-    match string_map(m.value):
-        case Success(value=value):
-            return collect_members(members, i + 1, value, infos)
-        case Error(message=message):
-            return Error(message=message)
+    return then(string_map(m.value), lambda value: collect_members(members, i + 1, value, infos))
 
 
 def add_tensor(members, i, meta, infos, m):
     """Parse member `m` as a tensor entry and continue."""
-    match tensor_of(m):
-        case Success(value=value):
-            return collect_members(members, i + 1, meta, listAppend(infos, value))
-        case Error(message=message):
-            return Error(message=message)
+    return then(tensor_of(m), lambda value: collect_members(members, i + 1, meta, listAppend(infos, value)))
 
 
 def tensor_of(m):
@@ -182,29 +170,17 @@ def tensor_of(m):
 
 def dtype_of(m):
     """Extract the `dtype` string, then the shape."""
-    match field_str(m.value, "dtype"):
-        case Success(value=value):
-            return shape_of(m, value)
-        case Error(message=message):
-            return Error(message=message)
+    return then(field_str(m.value, "dtype"), lambda value: shape_of(m, value))
 
 
 def shape_of(m, dtype):
     """Extract the `shape` int list, then the offsets."""
-    match field_ints(m.value, "shape"):
-        case Success(value=value):
-            return offsets_of(m, dtype, value)
-        case Error(message=message):
-            return Error(message=message)
+    return then(field_ints(m.value, "shape"), lambda value: offsets_of(m, dtype, value))
 
 
 def offsets_of(m, dtype, shape):
     """Extract the `data_offsets` pair and build the TensorInfo."""
-    match field_ints(m.value, "data_offsets"):
-        case Success(value=value):
-            return make_info(m.name, dtype, shape, value)
-        case Error(message=message):
-            return Error(message=message)
+    return then(field_ints(m.value, "data_offsets"), lambda value: make_info(m.name, dtype, shape, value))
 
 
 def make_info(name, dtype, shape, offsets):
@@ -220,11 +196,7 @@ def make_info(name, dtype, shape, offsets):
 
 def field_str(v, name):
     """The string value of member `name` of object `v`."""
-    match find_member(v.members, name):
-        case Success(value=value):
-            return member_str(value, name)
-        case Error(message=message):
-            return Error(message=message)
+    return then(find_member(v.members, name), lambda value: member_str(value, name))
 
 
 def member_str(m, name):
@@ -254,11 +226,7 @@ def find_at(members, i, name) -> Result[JsonParser.JsonMember, str]:
 
 def field_ints(v, name):
     """The int-list value of member `name` of object `v`."""
-    match find_member(v.members, name):
-        case Success(value=value):
-            return ints_of(value.value, name)
-        case Error(message=message):
-            return Error(message=message)
+    return then(find_member(v.members, name), lambda value: ints_of(value.value, name))
 
 
 def ints_of(value, name):
@@ -304,11 +272,7 @@ def collect_metadata(members, i, acc) -> Result[dict[str, str], str]:
 def finish_file(data, n, collected):
     """Sort tensors by offset, validate them, and check the buffer is covered."""
     sorted_infos = listSortBy(collected.infos, info_cmp)
-    match validate(data, sorted_infos, 0):
-        case Success(value=value):
-            return buffer_check(data, n, collected, sorted_infos, value)
-        case Error(message=message):
-            return Error(message=message)
+    return then(validate(data, sorted_infos, 0), lambda value: buffer_check(data, n, collected, sorted_infos, value))
 
 
 def buffer_check(data, n, collected, sorted_infos, end):
@@ -420,11 +384,7 @@ def metadata(file):
 
 def get_tensor(file, name):
     """Decode the tensor named `name`, or Error when absent."""
-    match find_tensor(file.tensors, name):
-        case Success(value=value):
-            return Success(value=decode_range(file, value, 0, element_count(value)))
-        case Error(message=message):
-            return Error(message=message)
+    return then(find_tensor(file.tensors, name), lambda value: Success(value=decode_range(file, value, 0, element_count(value))))
 
 
 def find_tensor(tensors, name):
@@ -517,11 +477,7 @@ def decode_i64(data, off):
 
 def get_slice(file, name, first, last):
     """Decode rows `first`..`last` of the first dimension of `name`."""
-    match find_tensor(file.tensors, name):
-        case Success(value=value):
-            return slice_of(file, value, first, last)
-        case Error(message=message):
-            return Error(message=message)
+    return then(find_tensor(file.tensors, name), lambda value: slice_of(file, value, first, last))
 
 
 def slice_of(file, info, first, last):

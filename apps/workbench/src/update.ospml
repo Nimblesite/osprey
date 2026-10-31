@@ -1,0 +1,213 @@
+// Implements [WORKBENCH-STORE] and [LESSONS-STORE]: the one `update`. Every
+// verdict comes from the kernel through `Reviews` and `Tutors`; this module
+// only routes messages to them and to the host. A retired board control's
+// input is refused visibly and changes nothing ([WORKBENCH-BOARD]).
+namespace workbench
+
+import workbench::Benches
+import workbench::Reviews
+import workbench::Coach
+import workbench::ProofLibraries
+import workbench::BundledLibraries
+import workbench::Workspaces
+import workbench::Statements
+import workbench::Steps
+import ui::Runtime
+import ui::Messages
+import ui::Splitters
+
+(** Edits to the document, each followed by the kernel's verdicts on it ([WORKBENCH-VERDICT]). *)
+module Drafts
+    export exampleStatement () = "Theorem and_swap. For all p q, p ∧ q → q ∧ p."
+
+    export exampleAssumption () = "Assume h : p ∧ q."
+
+    last text = match endsWith text "\n"
+        true => ""
+        false => listGet (listReverse (lines text)) 0 ?: ""
+
+    (** The uncommitted line, kept verbatim, after the proof heading. *)
+    export pending text = match trim (last text) == "Proof."
+        true => ""
+        false => match indexOf (text, "\nProof.")
+            Error _ => ""
+            Success _ => last text
+
+    (** The source preceding the editable proof line. *)
+    export prefix text = match indexOf (text, "\nProof.")
+        Error _ => text + "\nProof.\n"
+        Success _ => linedPrefix text
+
+    linedPrefix text = match trim (last text) == "Proof."
+        true => text + "\n"
+        false => take text (satSub (length text) (length (last text)))
+
+    (** An edited proof row remains part of the same source document and is checked through the same kernel path. *)
+    export stepEdited (bench, text) =
+        source = editablePrefix bench.draft + text + editableSuffix bench.draft
+        checked = edited (bench, source)
+        checked(draft = positioned (changed (bench.draft, source), satAdd (length (editablePrefix bench.draft)) (length text)))
+
+    proofSentences source = match listGet (Statements::document source) 0
+        Error _ => []
+        Success found => Steps::sentences found.proof
+
+    bodyStart source = match indexOf (source, "\nProof.")
+        Error _ => length source
+        Success at => satAdd at 7
+
+    spanNext (source, walk, sentence) =
+        start = satAdd walk.at (indexOf (drop source walk.at, sentence) ?: 0)
+        finish = satAdd start (length sentence)
+        { at = finish, spans = listAppend walk.spans { start = start, finish = finish } }
+
+    selectedSpan draft = listGet (foldList (proofSentences draft.draftText, { at = bodyStart draft.draftText, spans = [] }, \(walk, sentence) => spanNext (draft.draftText, walk, sentence))).spans draft.selectedStep
+
+    export editablePrefix draft = match selectedSpan draft
+        Success span => take draft.draftText span.start
+        Error _ => prefix draft.draftText
+
+    editableSuffix draft = match selectedSpan draft
+        Success span => drop draft.draftText span.finish
+        Error _ => ""
+
+    export editableText draft = match selectedSpan draft
+        Success span => substring (draft.draftText, span.start, span.finish) ?: ""
+        Error _ => pending draft.draftText
+
+    export entryCaret draft =
+        position = satSub draft.caret (length (editablePrefix draft))
+        match position < 0
+            true => 0
+            false => match position > length (editableText draft)
+                true => length (editableText draft)
+                false => position
+
+    export selected (draft, key) = match parseInt key
+        Error _ => draft
+        Success index => selectIndex (draft, index)
+
+    selectIndex (draft, index) =
+        picked = draft(selectedStep = index)
+        match selectedSpan picked
+            Error _ => draft
+            Success span => picked(caret = span.finish)
+
+    (** The document replaced by `text`, keeping the caret, and every declaration checked again. *)
+    export edited (bench, text) = bench(draft = positioned (changed (bench.draft, text), length text), verdicts = Reviewed(checks = Reviews::review text))
+
+    export unselected draft = draft(selectedStep = -1)
+
+    export changed (draft, text) = draft(draftText = text)
+
+    export positioned (draft, caret) = draft(caret = caret)
+
+    export renamed (draft, title) = draft(draftTitle = title)
+
+    (** `text` after `before`, separated by `gap` unless `before` is blank. *)
+    export joined (before, gap, text) = match isEmpty (trim before)
+        true => text
+        false => before + gap + text
+
+(** Pane and mode taps ([WORKBENCH-STORE], [LESSONS-MODE]). *)
+module Layouts
+    (** The layout after a tap on a mode, surface or pane control. *)
+    export tapped (layout, action) = match action
+        DismissNotice => layout(noticeText = "", noticeBad = false)
+        LeaveExample => layout(guided = false)
+        ToggleTheme => layout(slate = !layout.slate)
+        ToWork => layout(mode = Working)
+        ToLearn => layout(mode = Learning)
+        ToPaper => layout(mode = Working, paperFirst = true)
+        ToRead => layout(mode = ReadingPage)
+        ToggleGoal => layout(goalOpen = !layout.goalOpen)
+        ToggleGenerated => layout(mode = Working, paperFirst = true, generatedOpen = !layout.generatedOpen)
+        ToggleLibrary => layout(libraryOpen = !layout.libraryOpen)
+        _ => layout
+
+    (** The layout after a disclosure delivered `open` to `action`. *)
+    export switched (layout, action, open) = match action
+        ToggleGoal => layout(goalOpen = open)
+        ToggleGenerated => layout(mode = Working, paperFirst = true, generatedOpen = open)
+        ToggleLibrary => layout(libraryOpen = open)
+        _ => layout
+
+    (** The side column dragged to `width`, within the splitter's limits. *)
+    export widened (layout, width) = layout(sideWidth = Splitters::clamp width)
+
+(** The application's `update` ([WORKBENCH-STORE]). *)
+module Update
+    tapped (bench, action) = match action
+        SaveWorkspace => Workspaces::save bench
+        OpenWorkspace => Workspaces::open bench
+        OpenProofLibrary => ProofLibraries::open bench
+        OpenBundledProof path => BundledLibraries::open (bench, path)
+        ToggleLibrary => libraryToggled bench
+        ExportSource => Workspaces::source bench
+        InsertExample => Runtime::step (Drafts::stepEdited (bench, Drafts::exampleAssumption ()))
+        NextProofLine => Runtime::step (nextLine bench)
+        StartExample => Runtime::step (exampleStarted bench)
+        RestartExample => Runtime::step (Drafts::edited (bench(draft = Drafts::unselected bench.draft), Drafts::exampleStatement () + "\nProof.\n"))
+        LeaveExample => Runtime::step (exampleLeft bench)
+        Open slug => Runtime::step (Coach::open (bench, slug))
+        Close => Runtime::step (Coach::close bench)
+        Submit id => Coach::submit (bench, id)
+        Hint id => Runtime::step (Coach::hint (bench, id))
+        Reveal id => Runtime::step (Coach::reveal (bench, id))
+        Carry id => Runtime::step (Coach::carry (bench, id))
+        Key id text => Runtime::step (Coach::insert (bench, id, text))
+        _ => Runtime::step (bench(layout = Layouts::tapped (bench.layout, action)))
+
+    exampleLayout layout = layout(mode = Working, guided = true, paperFirst = false, libraryOpen = false)
+
+    exampleBackup bench = match bench.layout.guided
+        true => bench.exampleBackup
+        false => Benches::save bench
+
+    exampleLeft bench = match bench.exampleBackup
+        JsonObject _ =>
+            saved = Benches::restore bench.exampleBackup
+            layout = Layouts::tapped (bench.layout, LeaveExample)
+            bench(draft = saved.draft, verdicts = saved.verdicts, layout = layout(paperFirst = saved.layout.paperFirst), exampleBackup = JsonNull)
+        _ => bench(layout = Layouts::tapped (bench.layout, LeaveExample))
+
+    exampleStarted bench = Drafts::edited (bench(layout = exampleLayout bench.layout, exampleBackup = exampleBackup bench), Drafts::exampleStatement () + "\nProof.\n" + Drafts::exampleAssumption () + "\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp.")
+
+    nextLine bench =
+        source = bench.draft.draftText
+        ended = match endsWith source "\n"
+            true => source
+            false => source + "\n"
+        Drafts::edited (bench(draft = Drafts::unselected bench.draft), ended)
+
+    libraryToggled bench =
+        shown = bench(layout = Layouts::tapped (bench.layout, ToggleLibrary))
+        match shown.layout.libraryOpen
+            true => BundledLibraries::load shown
+            false => Runtime::step shown
+
+    typed (bench, action, text) = match action
+        SelectProof => Runtime::step (ProofLibraries::selected (bench, text))
+        EditProofSource => Runtime::step (ProofLibraries::edited (bench, text))
+        SelectStep => Runtime::step (bench(draft = Drafts::selected (bench.draft, text)))
+        Rename => Runtime::step (bench(draft = Drafts::renamed (bench.draft, text)))
+        Edit => Runtime::step (Drafts::edited (bench(draft = Drafts::unselected bench.draft), text))
+        StepEdit => Runtime::step (Drafts::stepEdited (bench, text))
+        Answer id => Runtime::step (Coach::answer (bench, id, text))
+        Pick id => Runtime::step (Coach::pick (bench, id, text))
+        _ => Runtime::step bench
+
+    sized (bench, action, number) = match action
+        Place => Runtime::step (bench(draft = Drafts::positioned (bench.draft, number)))
+        StepPlace => Runtime::step (bench(draft = Drafts::positioned (bench.draft, satAdd (length (Drafts::editablePrefix bench.draft)) number)))
+        FormulaPlace id => Runtime::step (Coach::moved (bench, id, number))
+        Widen => Runtime::step (bench(layout = Layouts::widened (bench.layout, number)))
+        _ => Runtime::step bench
+
+    switched (bench, action, open) = match action
+        ToggleProofLibraries => Runtime::step (BundledLibraries::expanded (bench, open))
+        ToggleProofSource => Runtime::step (ProofLibraries::expanded (bench, open))
+        _ => Runtime::step (bench(layout = Layouts::switched (bench.layout, action, open)))
+
+    (** The next store, requests and slice writes for `message` ([WORKBENCH-STORE]). *)
+    export apply (_, bench, message) = Messages::route (message, \action => tapped (bench, action), \(action, text) => typed (bench, action, text), \(action, open) => switched (bench, action, open), \(action, number) => sized (bench, action, number), \(ticket, outcome) => Completions::completed (bench, ticket, outcome), \_ => Runtime::step bench, \(_, _) => Runtime::step bench, \(_, _) => Runtime::step bench, \_ => Runtime::step bench, \(_, _) => Runtime::step bench)

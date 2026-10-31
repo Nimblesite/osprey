@@ -31,6 +31,21 @@ public sealed class CoverageTests
     }
 
     [Fact]
+    public void TheConstructorAliasesAreTheWireNamesTheEncoderWrites()
+    {
+        Assert.Contains("math", Framework.NodeKinds);
+        Assert.DoesNotContain("typeset", Framework.NodeKinds);
+        Assert.Contains("read-plists", Framework.CapabilityKinds);
+        Assert.DoesNotContain("read-property-lists", Framework.CapabilityKinds);
+    }
+
+    [Fact]
+    public void EveryRefusedKindIsShownAsAVisibleDiagnosticNamingIt()
+    {
+        Assert.All(Coverage.Refused, kind => Assert.Contains(kind, Coverage.Refusal(kind), StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void EverySymbolHasOneFluentGlyph()
     {
         Assert.Equal(Framework.Symbols.Order(), Glyphs.ByName.Keys.Order());

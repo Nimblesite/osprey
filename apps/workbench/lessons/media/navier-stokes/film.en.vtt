@@ -1,0 +1,16 @@
+WEBVTT
+
+00:00.350 --> 00:13.299
+Navier-Stokes equations describe moving fluids. The unknowns are velocity and pressure. Viscosity spreads motion; an external force can drive it. Zero divergence means incompressibility.
+
+00:13.699 --> 00:20.528
+Leray proved that weak solutions exist for all time. In two dimensions, smooth solutions also persist.
+
+00:20.928 --> 00:28.207
+Three-dimensional smooth solutions exist locally in time. Global results depend on the precise hypotheses.
+
+00:28.607 --> 00:43.524
+In September twenty twenty six, OpenAI published a solution with a Lean formalization. Its internal system proved that smooth forcing can drive fluid initially at rest to a finite-time singularity, while energy stays finite.
+
+00:43.924 --> 00:52.398
+Osprey checks selected supporting lemmas. These lesson exercises teach logical deductions; they do not check the complete fluid proof.

@@ -1,0 +1,57 @@
+{
+  "toolchain": "leanprover/lean4:v4.25.0",
+  "purpose": "Lean-valid custom operators must retain formal names in the checked workbench; these are adversarial controls, not mathematical result ports.",
+  "groups": [
+    {
+      "id": "counterfeit-equality",
+      "module": "CounterfeitEquality",
+      "source_path": "benchmarks/proof/tools/CounterfeitEquality.lean",
+      "source_sha256": "3809022b97980dbe5bcc99f6a9ab072fa072f425cf2ca0ad855414952d5df9c8",
+      "export_path": "examples/proof/kernel/exports/counterfeit-equality.ndjson",
+      "export_sha256": "b925955431accc03feccc6d756ee4150df6f928a6cfbdce0d35e6f5f2a8e9907",
+      "theorems": [
+        "claimed_equality"
+      ],
+      "axioms": [],
+      "theorem_axioms": {
+        "claimed_equality": []
+      },
+      "embedded": "counterfeitEquality",
+      "prelude": true
+    },
+    {
+      "id": "counterfeit-equality-renamed",
+      "module": "CounterfeitEqualityRenamed",
+      "source_path": "benchmarks/proof/tools/CounterfeitEqualityRenamed.lean",
+      "source_sha256": "7008c1370f6a8d3df7c8f756c799278820d1e64ae8b146050f83fd974083bf2a",
+      "export_path": "examples/proof/kernel/exports/counterfeit-equality-renamed.ndjson",
+      "export_sha256": "c052f68353a701e7e263fa5c6d27c6040ab73008ca717eaee1ceffaea4b65001",
+      "theorems": [
+        "claimed_equality"
+      ],
+      "axioms": [],
+      "theorem_axioms": {
+        "claimed_equality": []
+      },
+      "embedded": "counterfeitEqualityRenamed",
+      "prelude": true
+    },
+    {
+      "id": "counterfeit-addition",
+      "module": "CounterfeitAddition",
+      "source_path": "benchmarks/proof/tools/CounterfeitAddition.lean",
+      "source_sha256": "5719d3cacb3ce5ba0d02d66bf0ad5370d4f71b7a635115c5f303d23ab5ea8b5b",
+      "export_path": "examples/proof/kernel/exports/counterfeit-addition.ndjson",
+      "export_sha256": "34717f19e7bd8c01decf6fc599be8a3dda1c7fb7bc7bebec8cb2c541adfbd376",
+      "theorems": [
+        "claimed_left"
+      ],
+      "axioms": [],
+      "theorem_axioms": {
+        "claimed_left": []
+      },
+      "embedded": "counterfeitAddition",
+      "prelude": true
+    }
+  ]
+}

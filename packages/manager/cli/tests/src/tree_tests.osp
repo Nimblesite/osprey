@@ -19,6 +19,8 @@ module TreeTests {
     fn runCommand(reads, args) = {
         let files = handler Host::Files {
             read path => Fixture::readFor(reads, path)
+            exists path => Fixture::existsIn(reads, path)
+            remove path => Error { message: "fixture: unexpected remove ${path}" }
             write path content => Error { message: "fixture: tree never writes ${path} (${byteLength(content)} bytes)" }
         }
         let tree = handler Host::Tree {

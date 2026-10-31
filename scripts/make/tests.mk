@@ -75,6 +75,7 @@ PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-st
 # (_coverage_check_c_runtime) iterate this same table, so adding one row wires
 # a suite into testing AND coverage measurement.
 C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
+  host_import_gc_tests host_import_arc_tests \
   memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
   list_tests map_tests string_runtime_tests float_spelling_portable_tests json_runtime_tests \
   effects_runtime_tests builtins_runtime_tests test_system_runtime \
@@ -88,6 +89,9 @@ C_LIBS_memory_gc_stack_root_tests = -pthread
 C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc.c
 C_LIBS_memory_arc_tests = -pthread
 C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc.c
+C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
+C_SRC_host_import_arc_tests = $(filter-out runtime/memory_gc.c,$(C_SRC_host_import_gc_tests)) runtime/memory_arc.c
+C_FLAGS_host_import_arc_tests = -DHOST_IMPORT_ARC
 C_LIBS_memory_gc_tests = -pthread
 C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
 C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_host.c runtime/tensor_file.c runtime/file_runtime.c
@@ -321,48 +325,6 @@ _test_profiler:
 	@echo "==> [profiler] osprey --profile end-to-end..."
 	@bash scripts/test_profiler.sh
 
-# Assertion-driven language corpus: recursively runs both *.test.osp and
-# *.test.ospml suites. These inspect internal values rather than stdout goldens.
-# Some loopback integration twins intentionally use the same fixed port so their
-# Default and ML sources lower to identical IR; one worker prevents port races.
-_test_language_corpus:
-	@echo "==> [language] Default + ML assertion corpus..."
-	@OSPREY_TEST_JOBS=1 ./$(BIN) test tests
-
-# _test_goldens: byte-exact stdout comparison against the .expectedoutput
-# goldens. Distinct from the target above, which runs the same corpus through
-# the built-in TAP runner and so only ever observes whether the in-language
-# assertions passed. An assertion can only state what someone thought to write
-# down as a value; the goldens pin the ENTIRE observable output — print ORDER,
-# exact formatting, and the TAP tally that exposes a deleted assertion.
-_test_goldens: _conformance-gc
-
-# _test_wasm_goldens: the same corpus, the same goldens, the OTHER code
-# generator. Every program that links on wasm32 is compiled to a module, run
-# under Node's WASI host, and held to the byte-exact output the native backend
-# produces; the rest report as named skips because they use a feature the
-# portable runtime deliberately does not port [WASM-TARGET]. Without this the
-# wasm target is gated by three hand-picked example programs, which cannot
-# notice a backend that miscompiles arithmetic, strings, maps or pattern
-# matching everywhere else.
-_test_wasm_goldens:
-	@echo "==> [wasm32] golden stdout comparison under WASI..."
-	@WASM_CC="$(WASM_CC)" WASI_SYSROOT="$(WASI_SYSROOT)" bash scripts/test-wasm-arc-ownership.sh
-	@OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
-
-# _conformance-gc: run every assertion suite under the tracing GC backend.
-_conformance-gc:
-	@echo "==> [conformance] assertion corpus under --memory=gc..."
-	@OSPREY_TEST_JOBS=1 zsh crates/run_test_corpus.sh gc
-
-# _conformance-arc: run every assertion suite under the Perceus ARC backend;
-# every suite must pass and end with zero live ARC objects. OSPREY_ARC_DEBUG=1 makes
-# memory_arc.c report its live count at exit, which is the only automatic check
-# for the [GC-ARC-PERCEUS] zero-leak bar.
-_conformance-arc:
-	@echo "==> [conformance] assertion corpus under --memory=arc..."
-	@OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 zsh crates/run_test_corpus.sh arc
-
 # --- vscode-extension -------------------------------------------------------
 # The extension's LSP server spawns the `osprey` binary at runtime, so the
 # integration tests need a real compiler on PATH: the Rust binary is staged as
@@ -463,6 +425,9 @@ _bank_test:
 # consumer project against the fetched sources. Local tests and CI run all
 # suites under both managed backends; the TAP runner propagates failed checks.
 REGISTRY_MEMORY ?= gc
+REGISTRY_NATIVE_CLIENT = $(CURDIR)/target/$(if $(filter arc,$(REGISTRY_MEMORY)),registry-tests/osprey-pkg-arc,osprey-pkg)
+_test_registry: export OSPREY_E2E_COMPILER = $(abspath $(BIN))
+_test_registry: export OSPREY_E2E_MEMORY = $(REGISTRY_MEMORY)
 _test_registry:
 	@case "$(REGISTRY_MEMORY)" in gc|arc) ;; *) echo "Registry tests require GC or ARC"; exit 1 ;; esac
 	@echo "==> Registry fixture and schema validation (fail-fast)..."
@@ -476,7 +441,12 @@ _test_registry:
 	@echo "==> Registry end-to-end: server, fetch and consumer build..."
 	./$(BIN) test packages/manager/e2e --memory=$(REGISTRY_MEMORY)
 	@echo "==> Native publication and installed-source integrity regressions..."
-	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(CURDIR)/target/osprey-pkg}" python3 scripts/test-package-publication.py
+	@if [ "$(REGISTRY_MEMORY)" = arc ] && [ -z "$$OSPREY_PACKAGE_CLIENT" ]; then \
+	  mkdir -p "$(CURDIR)/target/registry-tests" && \
+	  "$(abspath $(BIN))" build packages/manager/cli --memory=arc --quiet --no-warnings -o "$(REGISTRY_NATIVE_CLIENT)"; \
+	fi
+	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-publication.py
+	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-interruption.py
 
 # Blocked host capabilities, each asserted as the behavior the package system
 # needs. Red is the documented state until the capability lands in Osprey;
@@ -499,6 +469,7 @@ _lint: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	node --test scripts/test-package-licenses.mjs
 	python3 scripts/test-release-gate.py
 	python3 scripts/test-package-coverage.py
+	python3 scripts/test-package-coverage-projects.py
 	python3 scripts/test-python-app-ports-contracts.py
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings

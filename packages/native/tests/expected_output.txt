@@ -1,56 +1,74 @@
-ok 1 - a disclosure takes its ordinal before the controls it reveals
-ok 2 - a screen's toolbar controls take ordinals before its children
-ok 3 - an aside's pane takes ordinals before its column and rows keep their symbol and group
-ok 4 - an aside's splitter carries the column width and its limits and binds after both columns
-ok 5 - a splitter delivers its dragged width clamped to its limits
-ok 6 - a link carries its label and web address and takes no ordinal
-ok 7 - controls take depth-first ordinals in drawing order
-ok 8 - an encoded region decodes with its components and text intact
-ok 9 - a control carries the ordinal of its binding
-ok 10 - start sends every region once with the theme
-ok 11 - a tap refreshes only the region whose signal changed
-ok 12 - text input reaches update through its binding and patches its own region
-ok 13 - stale, unknown and mismatched events are rejected without change
-ok 14 - an edit from prior state keeps its meaning when ordinals shift
-ok 15 - an edit whose typed action is gone or ambiguous refuses without change
-ok 16 - an edit with an impossible original refuses without change
-ok 17 - a resolved edit updates the current state
-ok 18 - capability requests carry tickets and completions return to update
-ok 19 - malformed events are diagnosed, never guessed
-ok 20 - contrast follows WCAG relative luminance
-ok 21 - sorting is stable and lists stay total
-ok 22 - tabs carry their pages and bind after the pages' controls, and segments carry their tones
-ok 23 - every constructor encodes as the component it names
-ok 24 - run and http requests encode their bounds, headers and slices
-ok 25 - documents, lists, themes and slice writes are read totally
-ok 26 - filesystem and store requests preserve paths bounds and slices
-ok 27 - desktop requests preserve picker export and cancellation payloads
-ok 28 - semantic text roles preserve every protocol spelling
-ok 29 - host capabilities preserve namespace operation arguments and bounds
-ok 30 - context menus bind actions after their content controls
-ok 31 - a scene encodes its primitives as flat typed arrays
-ok 32 - colours pack as RRGGBBAA
-ok 33 - a path encodes its steps, outline, paint and transform
-ok 34 - a scene binding delivers keys and pointer positions in scene units
-ok 35 - a frame event delivers its elapsed seconds and patches nothing when ignored
-ok 36 - an animate request carries its on flag
-ok 37 - every symbol encodes as a distinct host-neutral name
-ok 38 - labels, icons, badges, empty states, buttons, tabs and rows send their symbol names
-ok 39 - a pair encodes its label and value without a binding
-ok 40 - platforms decode to the union and encode back to their names
-ok 41 - a start context carries a linux or windows platform
-ok 42 - product-specific work is a host call with its namespace and arguments
-ok 43 - a split scene streams its fixed-size primitives in order and keeps the rest
-ok 44 - an enveloped scene reports nothing streamed
-ok 45 - streamed primitives read back every field a host import takes
-ok 46 - a resident session keeps its store out of the envelope
-ok 47 - a resident session refuses stale controls and prior-state edits without change
-ok 48 - a split streams scenes from every container in the encoder's order
-ok 49 - primitives that do not stream read back zero fields
-ok 50 - a resident session delivers completions, phases and frames and refuses malformed text
-ok 51 - an idle session holds only its store
-ok 52 - toggles and pickers deliver their own value kinds and refuse others
-ok 53 - progress, swatches, alerts, prominent buttons and leading asides encode
-ok 54 - a meter sends its amount clamped into a total of at least one
-1..54
-# tests=54 passed=54 failed=0 skipped=0
+ok 1 - mathematics encodes every layout variant without flattening
+ok 2 - mathematics keeps accessibility text and consumes no control ordinal
+ok 3 - a disclosure takes its ordinal before the controls it reveals
+ok 4 - a screen's toolbar controls take ordinals before its children
+ok 5 - an aside's pane takes ordinals before its column and rows keep their symbol and group
+ok 6 - an aside's splitter carries the column width and its limits and binds after both columns
+ok 7 - a splitter delivers its dragged width clamped to its limits
+ok 8 - a link carries its label and web address and takes no ordinal
+ok 9 - controls take depth-first ordinals in drawing order
+ok 10 - an encoded region decodes with its components and text intact
+ok 11 - a control carries the ordinal of its binding
+ok 12 - start sends every region once with the theme
+ok 13 - a tap refreshes only the region whose signal changed
+ok 14 - text input reaches update through its binding and patches its own region
+ok 15 - stale, unknown and mismatched events are rejected without change
+ok 16 - an edit from prior state keeps its meaning when ordinals shift
+ok 17 - an edit whose typed action is gone or ambiguous refuses without change
+ok 18 - an edit with an impossible original refuses without change
+ok 19 - a resolved edit updates the current state
+ok 20 - capability requests carry tickets and completions return to update
+ok 21 - malformed events are diagnosed, never guessed
+ok 22 - contrast follows WCAG relative luminance
+ok 23 - sorting is stable and lists stay total
+ok 24 - tabs carry their pages and bind after the pages' controls, and segments carry their tones
+ok 25 - every constructor encodes as the component it names
+ok 26 - run and http requests encode their bounds, headers and slices
+ok 27 - documents, lists, themes and slice writes are read totally
+ok 28 - filesystem and store requests preserve paths bounds and slices
+ok 29 - desktop requests preserve picker export and cancellation payloads
+ok 30 - semantic text roles preserve every protocol spelling
+ok 31 - host capabilities preserve namespace operation arguments and bounds
+ok 32 - context menus bind actions after their content controls
+ok 33 - a scene encodes its primitives as flat typed arrays
+ok 34 - colours pack as RRGGBBAA
+ok 35 - a path encodes its steps, outline, paint and transform
+ok 36 - a scene binding delivers keys and pointer positions in scene units
+ok 37 - a frame event delivers its elapsed seconds and patches nothing when ignored
+ok 38 - an animate request carries its on flag
+ok 39 - every symbol encodes as a distinct host-neutral name
+ok 40 - labels, icons, badges, empty states, buttons, tabs and rows send their symbol names
+ok 41 - a pair encodes its label and value without a binding
+ok 42 - platforms decode to the union and encode back to their names
+ok 43 - a start context carries a linux or windows platform
+ok 44 - product-specific work is a host call with its namespace and arguments
+ok 45 - a split scene streams its fixed-size primitives in order and keeps the rest
+ok 46 - an enveloped scene reports nothing streamed
+ok 47 - streamed primitives read back every field a host import takes
+ok 48 - a resident session keeps its store out of the envelope
+ok 49 - a resident session refuses stale controls and prior-state edits without change
+ok 50 - a split streams scenes from every container in the encoder's order
+ok 51 - primitives that do not stream read back zero fields
+ok 52 - a resident session delivers completions, phases and frames and refuses malformed text
+ok 53 - an idle session holds only its store
+ok 54 - toggles and pickers deliver their own value kinds and refuse others
+ok 55 - progress, swatches, alerts, prominent buttons and leading asides encode
+ok 56 - a meter sends its amount clamped into a total of at least one
+ok 57 - an editor binds text then cursor after earlier controls and preserves its marks
+ok 58 - a cursor binding delivers placed offsets, clamps negatives and refuses text
+ok 59 - a board names its host slice and binds strokes before its lasso
+ok 60 - a board stroke decodes two ordered points with their width and time
+ok 61 - empty negative and non-pair stroke points are refused with the exact diagnostic
+ok 62 - a lasso delivers stroke indices and refuses strings and negative indices
+ok 63 - a recognition request names its stroke slices and output limit
+ok 64 - message routing delivers placed stroked and lassoed values to their handlers
+ok 65 - board themes name the board and chalk tokens
+ok 66 - mathematics decodes back to the tree it encodes across every constructor
+ok 67 - mathematics decoding refuses unknown kinds missing children non-arrays and non-objects
+ok 68 - image and video encode as leaves with their media fields and no ordinal
+ok 69 - presentation frames explicitly disable viewport sizing by default
+ok 70 - presentation frames preserve exact dimensions and inner control provenance
+ok 71 - scoped themes and dialogs retain their inner controls and dismissal provenance
+ok 72 - inline text retains mathematical emphasis and semantic source colours without bindings
+1..72
+# tests=72 passed=72 failed=0 skipped=0

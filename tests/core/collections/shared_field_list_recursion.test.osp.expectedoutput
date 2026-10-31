@@ -1,0 +1,3 @@
+ok 1 - recursive functions read shared record fields off list pattern elements and found results
+1..1
+# tests=1 passed=1 failed=0 skipped=0

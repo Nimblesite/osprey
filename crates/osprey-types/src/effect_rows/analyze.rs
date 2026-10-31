@@ -1,7 +1,7 @@
 //! Effect row analyze.
 use super::{
-    bind_pattern, site_arguments, Analyzer, Callable, CallableEnv, Expr, Function, HashMap,
-    HashSet, InterpolatedPart, Position, Requirement, Summary, Value,
+    bind_pattern, site_arguments, Analyzer, Callable, CallableEnv, Expr, ExprArgs, Function,
+    HashMap, HashSet, InterpolatedPart, Position, Requirement, Summary, Value,
 };
 
 impl Analyzer<'_> {
@@ -59,6 +59,7 @@ impl Analyzer<'_> {
         env
     }
 
+    #[cfg(test)]
     pub(super) fn function_body(&self, function: &Function<'_>) -> Summary {
         self.expression(
             function.body,
@@ -67,9 +68,39 @@ impl Analyzer<'_> {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn function_return(&self, function: &Function<'_>) -> Option<Value> {
         let mut env = self.scoped_env(&function.parameters);
         self.returned_value(function.body, &function.scope, &mut env)
+    }
+
+    /// Share ordinary-call argument models without changing the inferred domain.
+    /// Implements [EFFECTS-PROVENANCE].
+    pub(super) fn function_body_model(&self, function: &Function<'_>) -> (Summary, Option<Value>) {
+        let mut env = self.scoped_env(&function.parameters);
+        self.lambda_body_model(function.body, &function.scope, &mut env)
+    }
+
+    /// After the complete effect walk, a known ordinary call has already modeled
+    /// every argument; its proven primitive result contains no callable payload.
+    pub(super) fn known_scalar_call_value(
+        &self,
+        expression: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Option<Value> {
+        let function = match expression {
+            Expr::Call { function, .. } => function.as_ref(),
+            _ => return None,
+        };
+        match function {
+            Expr::Identifier(_) | Expr::Path(_) | Expr::Lambda { .. } => {}
+            _ => return None,
+        }
+        let value = self.scalar_shape(expression)?;
+        let callee = self.callable(function, scope, env);
+        matches!(callee, Some(Callable::Known(_)))
+            .then(|| self.typed_value(expression, value, None))
     }
 
     pub(super) fn returned_value(
@@ -93,6 +124,22 @@ impl Analyzer<'_> {
         self.value(expression, scope, env)
     }
 
+    pub(super) fn lambda_body_model(
+        &self,
+        body: &Expr,
+        scope: &[String],
+        env: &mut CallableEnv,
+    ) -> (Summary, Option<Value>) {
+        if let Some((summary, returned)) = self.known_call_model(body, scope, env) {
+            return (summary, Some(returned));
+        }
+        let summary = self.expression(body, scope, env);
+        let returned = self
+            .known_scalar_call_value(body, scope, env)
+            .or_else(|| self.returned_value(body, scope, env));
+        (summary, returned)
+    }
+
     /// An expression's own requirements: its children's, plus the `Arith`
     /// operation its operator may perform. Implements [ARITH-EFFECT-DISCHARGE].
     pub(super) fn expression(
@@ -102,18 +149,28 @@ impl Analyzer<'_> {
         env: &CallableEnv,
     ) -> Summary {
         osprey_ast::with_stack(|| {
-            let mut summary = self.expression_children(expression, scope, env);
-            let types = self.instances.expression_types.borrow();
-            let ty = types.get(&std::ptr::from_ref(expression).addr());
-            if let Some(operation) = crate::arithmetic::operation(expression, ty) {
-                let _ = summary.required.insert(Requirement::new(
-                    osprey_ast::ARITH_EFFECT,
-                    operation,
-                    Vec::new(),
-                ));
-            }
-            summary
+            self.finish_expression_summary(
+                expression,
+                self.expression_children(expression, scope, env),
+            )
         })
+    }
+
+    pub(super) fn finish_expression_summary(
+        &self,
+        expression: &Expr,
+        mut summary: Summary,
+    ) -> Summary {
+        let types = self.instances.expression_types.borrow();
+        let ty = types.get(&std::ptr::from_ref(expression).addr());
+        if let Some(operation) = crate::arithmetic::operation(expression, ty) {
+            let _ = summary.required.insert(Requirement::new(
+                osprey_ast::ARITH_EFFECT,
+                operation,
+                Vec::new(),
+            ));
+        }
+        summary
     }
 
     #[expect(
@@ -157,10 +214,28 @@ impl Analyzer<'_> {
                 out
             }
             Expr::TypeConstructor { name, fields, .. } => {
-                self.check_field_rows(super::expression_site(expression), name, fields, scope, env);
+                let owner = self.construction_owner(expression, name);
+                self.check_field_rows(super::expression_site(expression), &owner, fields, scope, env);
                 self.union_over(fields.iter().map(|field| &field.value), scope, env)
             }
-            Expr::Object(fields) | Expr::Update { fields, .. } => {
+            // `record { field: value }` writes the same declared slots a
+            // construction does, so it owes the same rows. Its declaration is
+            // named by the resolved type of the update, since the base is
+            // spelled as a binding. An anonymous record names no declaration
+            // and so owns no written row.
+            Expr::Update { fields, .. } => {
+                for constructor in self.updated_records(expression) {
+                    self.check_field_rows(
+                        super::expression_site(expression),
+                        &constructor,
+                        fields,
+                        scope,
+                        env,
+                    );
+                }
+                self.union_over(fields.iter().map(|field| &field.value), scope, env)
+            }
+            Expr::Object(fields) => {
                 self.union_over(fields.iter().map(|field| &field.value), scope, env)
             }
             Expr::Binary { left, right, .. } => {
@@ -194,7 +269,7 @@ impl Analyzer<'_> {
                 named_arguments,
             } => match crate::methods::parts(expression) {
                 Some(parts) => self.method_call(expression, &parts, scope, env),
-                None => self.call(function, arguments, named_arguments, scope, env),
+                None => self.call(function, ExprArgs::new(arguments), named_arguments, scope, env),
             },
             Expr::MethodCall { .. } => crate::methods::parts(expression)
                 .map(|parts| self.method_call(expression, &parts, scope, env))
@@ -204,7 +279,7 @@ impl Analyzer<'_> {
                 let matched = self.value(value, scope, env);
                 for arm in arms {
                     let mut local = env.clone();
-                    bind_pattern(&arm.pattern, matched.as_ref(), self.index, &mut local);
+                    bind_pattern(&arm.pattern, matched.as_ref(), &self.field_owner(value), self.index, &mut local);
                     out.union(self.expression(&arm.body, scope, &local));
                 }
                 out

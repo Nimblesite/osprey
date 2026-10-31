@@ -1,6 +1,6 @@
 //! Conservative compile-time initializer purity classification.
 
-use osprey_ast::{Expr, InterpolatedPart};
+use osprey_ast::{Expr, InterpolatedPart, Stmt};
 
 /// [MODULES-INIT]: a declared function reference executes no initializer.
 pub(crate) fn is_function_reference(expression: &Expr, graph: &crate::model::ProjectGraph) -> bool {
@@ -20,6 +20,9 @@ pub(crate) fn is_pure(expression: &Expr) -> bool {
             InterpolatedPart::Expr(value) => is_pure(value),
         }),
         Expr::List(items, _) => items.iter().all(is_pure),
+        Expr::Block { statements, value, .. } => statements.iter().all(|statement| {
+            matches!(statement, Stmt::Let { mutable: false, value, .. } if is_pure(value))
+        }) && value.as_deref().is_some_and(is_pure),
         Expr::Map(entries) => entries
             .iter()
             .all(|entry| is_pure(&entry.key) && is_pure(&entry.value)),

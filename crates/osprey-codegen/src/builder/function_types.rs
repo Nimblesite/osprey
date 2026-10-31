@@ -1,6 +1,7 @@
 //! Emitter function types.
 use super::{
-    ltype_of, Codegen, CtorView, Expr, FiberSig, FnSig, LType, ParamSig, ProgramTypes, Type,
+    ltype_of, Codegen, CtorView, Expr, FiberSig, FnSig, ImportAbi, LType, ParamSig, ProgramTypes,
+    Type,
 };
 
 impl Codegen {
@@ -161,6 +162,7 @@ impl Codegen {
                 FiberSig::of(prog, ret),
                 crate::types::result_payload_owner(prog, ret)
                     .or_else(|| crate::types::owner_name(prog, ret)),
+                Some((**ret).clone()),
             )),
             _ => None,
         }
@@ -232,7 +234,14 @@ impl Codegen {
 
     /// The LLVM spelling of `name`'s emitted return slot (Result block or
     /// scalar) — the type its `define`/`call` lines actually carry.
+    /// Implements [FFI-UNIT-RETURN] for C imports.
     pub(crate) fn fn_ret_spelling(&self, name: &str) -> String {
+        if self.import_abi == ImportAbi::Direct
+            && self.extern_params.contains_key(name)
+            && self.prog.return_type(name) == Some(&Type::unit())
+        {
+            return String::from("void");
+        }
         crate::llty::ret_spelling(
             self.fn_ret_ltype(name).unwrap_or(LType::I64),
             self.fn_ret_result_inner(name),

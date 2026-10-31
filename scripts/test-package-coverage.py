@@ -16,12 +16,21 @@ from unittest.mock import patch
 from pathlib import Path
 from package_coverage_evidence import record_measurements, seal_evidence, source_inputs
 from package_coverage_test_support import (
-    ROOT, FOOTER, GOLDEN, add_package, bad_report_cases, file_report,
-    check_c_runtime, make_fixture, own_report, py_source, write_gates, write_json,
+    ROOT, FOOTER, GOLDEN, CoverageTestCase, add_package, bad_report_cases,
+    file_report, check_c_runtime, c_runtime_gate_cases, own_report, py_source, write_gates, write_json,
 )
 
 
-class PackageThresholdTests(unittest.TestCase):
+class PackageThresholdTests(CoverageTestCase):
+    def test_extracted_runtime_headers_preserve_the_library_threshold(self):
+        gates = json.loads((ROOT / "coverage-thresholds.json").read_text())["projects"]["c_runtime"]
+        headers = list((ROOT / "compiler/runtime").glob("memory_arc_*.h"))
+        self.assertTrue(headers)
+        for header in headers + [ROOT / "compiler/runtime/system_process_posix.h"]:
+            self.assertIn(header.stem, gates)
+            baseline = gates["memory_arc"]["threshold"] if header.stem.startswith("memory_arc_") else gates["system_runtime"].get("threshold", 90)
+            self.assertGreaterEqual(gates[header.stem].get("threshold", 90), baseline)
+
     def test_threshold_configuration_has_no_measurements(self):
         config = json.loads((ROOT / "coverage-thresholds.json").read_text())
         self.assertNotIn("package_measurements", config)
@@ -39,14 +48,7 @@ class PackageThresholdTests(unittest.TestCase):
         packages = config["projects"].get("packages", {})
         shipped = {p.name for p in (ROOT / "packages").iterdir() if (p / "osprey.toml").is_file()}
         self.assertEqual(set(packages), shipped, "Every package must have its own coverage gate")
-        for name, entry in packages.items():
-            threshold = entry.get("threshold", 90)
-            self.assertGreaterEqual(threshold, 90, name)
-            self.assertIsInstance(threshold, (int, float), f"{name}: threshold must be numeric")
-            self.assertLessEqual(threshold, 100, name)
-            self.assertEqual(entry["language"], "osprey", name)
-            self.assertTrue((ROOT / "packages" / name / "tests" / "osprey.toml").is_file(), name)
-            self.assertTrue((ROOT / "packages" / name / "tests" / "expected_output.txt").is_file(), name)
+        self.assert_gated_group(packages, ROOT / "packages")
 
     def test_collection_runs_at_most_one_compiler_per_cpu(self):
         # 19 concurrent `osprey test` collections exhausted the CI runner's
@@ -71,45 +73,7 @@ class PackageThresholdTests(unittest.TestCase):
                     self.assertGreater(entry["threshold"], 90, name)
 
 
-class CheckerTests(unittest.TestCase):
-    def setUp(self):
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.base = Path(directory.name)
-
-    def fixture(self, packages, thresholds=None):
-        return make_fixture(tempfile.mkdtemp(dir=self.base), packages, thresholds)
-
-    def simple_fixture(self, name="demo", lines=4, expected=GOLDEN, source=None, relative="src/lib.py"):
-        return self.fixture({name: {"sources": {relative: py_source(lines) if source is None else source}, "expected": expected}})
-
-    def threshold_fixture(self, threshold, total):
-        return self.fixture({"demo": {"sources": {"src/lib.py": py_source(total)}}}, {"demo": threshold})
-
-    def assert_coverage(self, fixture, covered, total, code):
-        fixture.write_report("demo", own_report("demo", covered, total))
-        result = fixture.check()
-        self.assert_exit(result, code)
-        return result
-
-    def assert_exit(self, result, code, context=""):
-        self.assertEqual(result.returncode, code, context + result.stdout + result.stderr)
-
-    def assert_invalid(self, fixture, problem):
-        result = fixture.check()
-        self.assert_exit(result, 1)
-        self.assertIn(problem, result.stdout)
-        self.assertIsNone(fixture.result("demo")["percentage"])
-
-    def assert_measurement(self, fixture, name, counts):
-        row = fixture.measurements()["packages"][name]
-        self.assertEqual(tuple(row[key] for key in ("covered", "total", "percentage")), counts)
-        self.assertEqual(fixture.config()["projects"]["packages"][name]["threshold"], 90)
-
-    def assert_problem(self, result, message, stderr=False):
-        self.assert_exit(result, 1)
-        self.assertIn(message, result.stderr if stderr else result.stdout)
-
+class CheckerTests(CoverageTestCase):
     def test_omitted_threshold_enforces_90_and_preserves_failing_measurements(self):
         for covered, exit_code in ((9, 0), (8, 1)):
             with self.subTest(covered=covered):
@@ -154,9 +118,9 @@ class CheckerTests(unittest.TestCase):
                 self.assert_coverage(fixture, covered, 1375, code)
 
     def test_c_runtime_omitted_threshold_enforces_90_and_keeps_higher_overrides(self):
-        for percentage, entry, code in ((89, {}, 2), (90, {}, 0), (94, {"threshold": 95}, 2), (95, {"threshold": 95}, 0)):
+        for percentage, entry, code, suffix in c_runtime_gate_cases():
             with self.subTest(percentage=percentage, entry=entry):
-                result = check_c_runtime(Path(tempfile.mkdtemp(dir=self.base)), percentage, entry)
+                result = check_c_runtime(Path(tempfile.mkdtemp(dir=self.base)), percentage, entry, suffix)
                 self.assert_exit(result, code)
 
     def test_c_runtime_invalid_thresholds_fail_closed(self):
@@ -170,7 +134,9 @@ class CheckerTests(unittest.TestCase):
         fixture = self.simple_fixture()
         write_json(fixture.reports / "demo.json", own_report("demo", 4, 4))
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, "A raw report does not prove its suite passed: " + result.stdout)
+        self.assert_exit(result, 1, "A raw report does not prove its suite passed: ")
+        self.assertIn("coverage unavailable", result.stdout)
+        self.assertNotIn("own source lines", result.stdout)
 
     def test_recording_rejects_inputs_changed_by_the_gate(self):
         fixture = self.simple_fixture()
@@ -300,13 +266,6 @@ class CheckerTests(unittest.TestCase):
         result = fixture.check()
         self.assert_exit(result, 1)
         self.assertIn("duplicate source path", result.stdout)
-
-    def assert_bad_report(self, fixture, label, report):
-        fixture.write_report("bad", report)
-        result = fixture.check()
-        self.assert_exit(result, 1, label)
-        self.assertFalse(fixture.result("bad")["pass"], label)
-        self.assertTrue(fixture.result("bad")["missing_evidence"], label)
 
     def test_untrustworthy_reports_fail(self):
         fixture = self.simple_fixture("bad", 5)
@@ -534,6 +493,7 @@ class CheckerTests(unittest.TestCase):
         result = fixture.check()
         self.assert_exit(result, 2)
         self.assertIn("missing tests/osprey.toml", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

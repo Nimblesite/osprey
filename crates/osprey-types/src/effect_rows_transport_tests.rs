@@ -456,3 +456,40 @@ fn rejected_named_performs_still_report_the_handlers_callback_effects() {
         true,
     );
 }
+
+const CALLBACK_PAIR: &str = "type Callback = Callback { callback: fn() -> int }\n\
+    type Pair = Pair { left: Callback, right: Callback }\n\
+    let pair = Pair { left: Callback { callback: fn() => 1 }, right: Callback { callback: fn() => 2 } }\n";
+
+fn assert_callback_pair_choice(body: &str) {
+    assert_accepted(&format!(
+        "{CALLBACK_PAIR}fn choose(pair, flag) = {body}\n\
+        print(toString(choose(pair, true).callback()))\n"
+    ));
+}
+
+#[test]
+fn joined_callback_record_direct_projection_controls_are_pure() {
+    for body in ["pair.left", "pair.right"] {
+        assert_callback_pair_choice(body);
+    }
+}
+
+#[test]
+fn joined_callback_record_if_retains_nested_field_provenance() {
+    assert_callback_pair_choice("if flag { pair.left } else { pair.right }");
+}
+
+#[test]
+fn joined_callback_record_match_retains_nested_field_provenance() {
+    assert_callback_pair_choice("match flag { true => pair.left false => pair.right }");
+}
+
+#[test]
+fn joined_callback_record_effects_still_require_their_handler() {
+    let declarations = format!(
+        "{}fn choose(pair, flag) = if flag {{ pair.left }} else {{ pair.right }}\n",
+        CALLBACK_PAIR.replace("fn() => 2", "fetch")
+    );
+    probe_call(&declarations, "choose(pair, false).callback()", true);
+}

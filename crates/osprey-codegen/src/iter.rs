@@ -251,12 +251,13 @@ pub(crate) fn acc_step(
         Some(inner) => crate::result::make_ok(cg, new, inner)?,
         None => crate::cast::coerce_to(cg, new, tmpl.ty)?,
     };
-    // Loop-carried slot rebind for a pointer accumulator: dup the incoming
-    // value BEFORE dropping the outgoing one (a combine returning `acc`
-    // unchanged must never free it). Keyed on the static type — an integer
-    // accumulator's bits must never be released [GC-ARC-PERCEUS].
+    // Move a fresh callback result into the loop slot; otherwise retain the
+    // borrowed incoming value before releasing the old accumulator. Returning
+    // `acc` unchanged must keep it alive. [GC-ARC-PERCEUS]
     if new.ty.is_managed_ptr() {
-        crate::arc::escape_retain(cg, &new);
+        if !crate::arc::consume_into_store(cg, &new.operand) {
+            crate::arc::escape_retain(cg, &new);
+        }
         let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
         crate::arc::release_operand(cg, &old);
     }
@@ -307,7 +308,7 @@ pub(crate) fn list_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Valu
 /// `List<float>` printed IEEE-754 bits before that distinction existed
 /// ([`crate::collections::LIST_TAG`]) — plus the loop itself, for a combinator
 /// that needs the raw word.
-fn each_list_elem(
+pub(crate) fn each_list_elem(
     cg: &mut Codegen,
     l: &Value,
     body: impl FnOnce(&mut Codegen, &ListLoop, Value) -> Result<()>,
@@ -370,7 +371,12 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
 /// Store a freshly produced element in the list under construction. Answers
 /// its element type, which tags the built list
 /// ([`crate::collections::LIST_TAG`]).
-fn push_built(cg: &mut Codegen, bld: &str, elem: Value, builtin: &str) -> Result<Option<String>> {
+pub(crate) fn push_built(
+    cg: &mut Codegen,
+    bld: &str,
+    elem: Value,
+    builtin: &str,
+) -> Result<Option<String>> {
     if elem.result_inner.is_some() {
         return Err(CodegenError::unsupported(format!(
             "{builtin} cannot store an unhandled Result element; handle it in the callback"

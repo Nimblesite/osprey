@@ -36,6 +36,8 @@ module InstallTests {
         mut written: List<Fixture::ReadRoute> = []
         let files = handler Host::Files {
             read path => Fixture::readAfter(written, reads, path)
+            exists path => Fixture::existsIn(listConcat(written, reads), path)
+            remove path => Error { message: "fixture: unexpected remove ${path}" }
             write path content => {
                 written = listPrepend(written, Fixture::readRoute(path, content))
                 writes = "${writes}${path}=${content}|"

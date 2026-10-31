@@ -1,0 +1,83 @@
+{
+  "format": 1,
+  "slug": "what-is-a-proof",
+  "title": "What is a proof?",
+  "summary": "A claim becomes a checked proof when allowed steps lead from its assumptions to its conclusion.",
+  "stage": 1,
+  "minutes": 5,
+  "after": [],
+  "blocks": [
+    {
+      "kind": "prose",
+      "text": "A claim says that something holds. It might be true or false. A proof gives reasons to accept the claim, beginning with what is assumed and ending with what was claimed.\n\nEach step must follow a rule. A rule might let you use an assumption, take a statement apart, or combine two statements. The next step then has a new, precise goal."
+    },
+    {
+      "kind": "video",
+      "source": "media/what-is-a-proof/film.mp4",
+      "poster": "media/what-is-a-proof/poster.jpg",
+      "captions": "media/what-is-a-proof/film.en.vtt",
+      "alt": "A proof of p ∧ q → q ∧ p appears one step at a time beside its current goal. Assuming h and splitting it into hp and hq leaves q and p to prove; From hq and From hp close those goals in order.",
+      "seconds": 45
+    },
+    {
+      "kind": "prose",
+      "text": "Consider the claim that p implies p. This does not say whether p is true. It says that if p is assumed, p follows. The proof assumes p, names that assumption h, and then uses h.\n\nThe workbench checks the whole chain. A checked badge means the kernel has verified that the steps prove the written claim. It does not mean that the claim was important, or that its assumptions hold in the world."
+    },
+    {
+      "kind": "formula",
+      "formula": "p → p"
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "state",
+        "id": "write-identity",
+        "prompt": "Write the claim that p implies itself.",
+        "variables": [
+          "p"
+        ],
+        "expected": "p → p",
+        "hints": [
+          "Use an arrow for implication.",
+          "Put p on both sides of the arrow."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "prove",
+        "id": "prove-identity",
+        "prompt": "Prove that p implies itself. Assume p, give the assumption a name, and finish from that name.",
+        "statement": "Theorem identity. For all p, p → p.",
+        "given": [],
+        "solution": [
+          "Assume h : p.",
+          "From h."
+        ],
+        "hints": [
+          "Begin with Assume h : p.",
+          "The remaining goal is exactly the statement held by h."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "judge",
+        "id": "judge-identity",
+        "prompt": "This proof has two assumptions and finishes from one of them. Decide whether it checks.",
+        "statement": "Theorem keep_first. For all p q, p → q → p.",
+        "steps": [
+          "Assume h : p.",
+          "Assume k : q.",
+          "From k."
+        ],
+        "hints": [
+          "After both assumptions, the goal is p.",
+          "Compare what k proves with that goal."
+        ]
+      }
+    }
+  ]
+}

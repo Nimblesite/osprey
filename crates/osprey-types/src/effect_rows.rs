@@ -9,6 +9,9 @@
 //! `Policy.label` that belongs to an outer handler.
 
 mod analyze;
+mod assignment_flow;
+mod expr_args;
+pub(crate) use expr_args::ExprArgs;
 mod call_values;
 mod calls;
 mod capabilities;
@@ -60,7 +63,11 @@ mod gpu;
 use gpu::{gpu_kernel_slot, validate_gpu_kernel};
 mod validate_handlers;
 use validate_handlers::validate_handler_arms;
+mod data_shapes;
 mod reachability;
+pub(crate) use data_shapes::data_types;
+mod recursion;
+mod worklist;
 use reachability::{fibered_operation, operation_pairs, walk_children};
 
 use crate::error::TypeError;
@@ -73,10 +80,16 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 type HandlerCandidates = HashMap<(u32, u32), BTreeSet<Vec<String>>>;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Instances {
+    #[cfg(test)]
+    pub(crate) owner_substitutions: std::cell::Cell<usize>,
+    pub(crate) signatures: HashMap<String, (Vec<crate::ty::Type>, crate::ty::Type)>,
     pub(crate) signal_queries: RefCell<HashMap<usize, crate::EffectRequirements>>,
     pub(crate) expression_types: RefCell<HashMap<usize, crate::ty::Type>>,
+    /// Declared types no value of which can hold a function, with their field
+    /// names ([`data_shapes::data_types`]).
+    pub(crate) data_types: data_shapes::DataTypes,
     pub(crate) methods: crate::methods::Targets,
     /// A type error already proved a call target is not callable. It cannot
     /// also be an effectful dynamic callable in the accepted-program proof.
@@ -100,6 +113,7 @@ pub(crate) struct Instances {
     /// and callbacks have propagated through the closed-program summary.
     pub(crate) handler_inference: RefCell<HandlerCandidates>,
     pub(crate) instantiations: HashMap<usize, HashMap<String, String>>,
+    pub(crate) instantiation_types: HashMap<usize, HashMap<crate::ty::VarId, crate::ty::Type>>,
     pub(crate) binders: HashMap<String, HashMap<String, String>>,
     /// Constructions that store a function outside its field's written row
     /// ([EFFECTS-FIELD-ROWS]).
@@ -255,13 +269,22 @@ struct Function<'a> {
 struct Index<'a> {
     operations: osprey_ast::OperationTable,
     functions: Vec<Function<'a>>,
-    qualified: HashMap<String, usize>,
-    bare: HashMap<String, Vec<usize>>,
+    qualified: HashMap<String, IndexedCallable>,
+    bare: HashMap<String, Vec<IndexedCallable>>,
     effects: HashMap<String, usize>,
     /// Each declared effect's operation names, for a whole-effect row entry.
     effect_operations: HashMap<String, Vec<String>>,
     constructors: HashMap<String, Vec<String>>,
     field_rows: field_rows::FieldRows<'a>,
+}
+
+#[derive(Clone)]
+enum IndexedCallable {
+    Function(usize),
+    Extern {
+        parameters: Vec<String>,
+        signature: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -274,6 +297,7 @@ struct KnownCallable {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Callable {
     Known(Box<KnownCallable>),
+    Alternatives(Vec<Callable>),
     Unknown,
     Parameter {
         level: usize,
@@ -288,7 +312,12 @@ enum Callable {
 /// would make an effect escape possible.
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 struct Value {
+    #[cfg(test)]
+    clone_probe: provenance::CloneProbe,
     callable: Option<Callable>,
+    field_owner: Option<field_rows::FieldInstance>,
+    empty_case: Option<EmptyCase>,
+    unknown_structure: bool,
     /// The result of a perform whose provider is selected only when its
     /// enclosing callback runs. This is value provenance, not a requirement
     /// discharge: the ordinary effect summary still tracks the operation.
@@ -302,6 +331,13 @@ struct Value {
     fiber_payload: Option<Box<Value>>,
     channel_sites: BTreeSet<usize>,
     deferred: Summary,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum EmptyCase {
+    Nullary,
+    Error,
+    Collection,
 }
 
 #[derive(Clone, Default)]

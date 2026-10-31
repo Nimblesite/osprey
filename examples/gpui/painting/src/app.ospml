@@ -22,7 +22,7 @@ module App
         _ => Runtime::step store
 
     (** Routes every framework message the port uses; the rest leave the store as it is. *)
-    export update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \_ => Runtime::step store, \(action, input) => controlled (store, action, input))
+    export update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(action, input) => controlled (store, action, input))
 
     (** Refreshes the canvas, header and root regions. *)
     export regions (before, after, frames, writes) = View::regions (before, after, frames, writes)

@@ -52,6 +52,7 @@ fn project(flavor: Flavor, text: &str) -> Result<osprey_project::AssembledProjec
         flavor,
         source: text.to_string(),
         program: parsed.program,
+        discipline: None,
     };
     assemble(&config(name), &[source]).map_err(|errors| {
         errors
@@ -459,6 +460,26 @@ fn imported_record_constructors_reject_positional_fields() {
             "{call}: {messages:?}"
         );
     }
+}
+
+/// A union variant declared `Node T T` in one file and applied `Node a b` in
+/// another folds to the same construction its own file would have parsed
+/// ([TYPE-UNION-POSITIONAL]): the applying file's parser never saw the
+/// declaration, so the resolver folds it after linking.
+#[test]
+fn imported_positional_variants_fold_to_constructions() {
+    let main =
+        "namespace xf\n\nimport xf::Ts\n\nmain () = print (Ts::label (Node (Leaf 1) (Leaf 2)))\n";
+    let library = "namespace xf\n\ntype T = Leaf int | Node T T\n\nmodule Ts\n    export label t = match t\n        Leaf n => toString n\n        Node l r => \"(${label l} ${label r})\"\n";
+    let sources = [
+        support::parsed("main.ospml", Flavor::Ml, main),
+        support::parsed("a.ospml", Flavor::Ml, library),
+    ];
+    let project = assemble(&config("main.ospml"), &sources).expect("assembles");
+    let errors = osprey_types::check_program(&project.program);
+    assert!(errors.is_empty(), "{errors:?}");
+    let folded = format!("{:?}", project.program.statements);
+    assert!(folded.contains("TypeConstructor"), "{folded}");
 }
 
 #[test]

@@ -497,3 +497,107 @@ fn numeric_operator_errors_map_back_to_the_declaring_module() {
     }
     std::fs::remove_dir_all(project).expect("remove project fixture");
 }
+
+/// A recursively specialised function needs one return slot to emit, so the
+/// backend reads it from the inferred signature. `Result`'s ERROR channel is
+/// phantom — the block's slot is a fixed `i8*` ([ERR-PAYLOAD]) — so inference
+/// leaves it open as the hole [TYPE-RENDER-HOLES] calls its honest spelling,
+/// and a recursive `-> Result<T, _>` still has a slot to emit. Asking the whole
+/// type instead refused this group and told the author to annotate the error
+/// channel, which no annotation of it can change.
+const RECURSIVE_RESULT_PROJECT: &str = concat!(
+    "namespace rec\n",
+    "\n",
+    "type Tree = Leaf int | Node Tree Tree\n",
+    "\n",
+    "(** Rendering through a recursive group, with no written signatures. *)\n",
+    "module Trees\n",
+    "    (** Render `tree`. *)\n",
+    "    export label tree = match tree\n",
+    "        Leaf n => Success(value = toString n)\n",
+    "        Node left right => join (label left, label right)\n",
+    "\n",
+    "    (** The other half of the group: `join` calls `label` back. *)\n",
+    "    join (left, right) = match left\n",
+    "        Success a => wrap (a, right)\n",
+    "        Error message => Error(message = message)\n",
+    "\n",
+    "    wrap (a, right) = match right\n",
+    "        Success b => Success(value = \"(${a} ${b})\")\n",
+    "        Error message => Error(message = message)\n",
+    "\n",
+    "main () = match Trees::label (Node (Leaf 1) (Leaf 2))\n",
+    "    Success text => print text\n",
+    "    Error message => print \"error: ${message}\"\n",
+);
+
+/// The retained refusal: here the SUCCESS payload is the open slot, so the
+/// emitted `Result` block has no value representation and the annotation really
+/// is the answer.
+const RECURSIVE_OPEN_PAYLOAD_PROJECT: &str = concat!(
+    "namespace rec\n",
+    "\n",
+    "type N = Zero | Succ N\n",
+    "\n",
+    "collect (n) = match n\n",
+    "    Zero => Success(value = [])\n",
+    "    Succ k => collect k\n",
+    "\n",
+    "render (outcome) = match outcome\n",
+    "    Success xs => print \"ok\"\n",
+    "    Error message => print message\n",
+    "\n",
+    "main () = render (collect Zero)\n",
+);
+
+fn recursive_project(name: &str, source: &str) -> std::io::Result<PathBuf> {
+    let project = std::env::temp_dir().join(format!(
+        "osprey_recursive_result_{name}_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&project);
+    std::fs::create_dir_all(project.join("src"))?;
+    std::fs::write(
+        project.join("osprey.toml"),
+        "[project]\nname = \"rec\"\nsource_roots = [\"src\"]\ndefault_namespace = \"rec\"\nentry = \"src/main.ospml\"\n",
+    )?;
+    std::fs::write(project.join("src/main.ospml"), source)?;
+    Ok(project)
+}
+
+#[test]
+fn recursive_result_group_runs_without_written_signatures() -> Result<(), Box<dyn std::error::Error>>
+{
+    let project = recursive_project("annotated", RECURSIVE_RESULT_PROJECT)?;
+    for backend in ["gc", "arc"] {
+        let output = run(&[arg(&project), "--run".into(), format!("--memory={backend}")]);
+        assert_eq!(output.code, Some(0), "{backend}: {}", output.stderr);
+        assert_eq!(output.stdout, "(1 2)\n", "{backend}");
+        assert!(
+            !output
+                .stderr
+                .contains("is recursive and its return type is not inferred"),
+            "{backend}: {}",
+            output.stderr
+        );
+    }
+    std::fs::remove_dir_all(project)?;
+    Ok(())
+}
+
+#[test]
+fn recursive_function_with_an_open_payload_still_asks_for_a_signature(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let project = recursive_project("open", RECURSIVE_OPEN_PAYLOAD_PROJECT)?;
+    let output = run(&[arg(&project), "--run".into(), "--quiet".into()]);
+    assert_eq!(output.code, Some(1), "stdout={}", output.stdout);
+    assert!(
+        output
+            .stderr
+            .contains("is recursive and its return type is not inferred"),
+        "{}",
+        output.stderr
+    );
+    std::fs::remove_dir_all(project)?;
+    Ok(())
+}

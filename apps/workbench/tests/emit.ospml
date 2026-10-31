@@ -1,0 +1,50 @@
+// [WORKBENCH-EMIT] cases: the and_swap golden, binders, holes and layout.
+namespace workbenchtests
+
+import workbench::Formulas
+import workbench::Emit
+import workbenchtests::FixtureFiles
+
+(** The emitter cases of [WORKBENCH-VERIFICATION]. *)
+module EmitCases
+    (** An emitted claim that does not read is a broken fixture, never `⊥`; the
+        shared fixture helper returns a typed failure to the case boundary. *)
+    formula text = FixtureFiles::formula ("emit", text)
+
+    swap = "p ∧ q → q ∧ p"
+
+    proof (name, claim, steps) = workbench::Proof(statement = workbench::Statement(name = name, named = true, variables = ["p", "q"], claim = claim), steps = steps)
+
+    swapSteps (premise) = [workbench::Assume "h" premise, workbench::Cases "h" ["hp", "hq"], workbench::Split, workbench::Exact "hq", workbench::Exact "hp"]
+
+    (** [WORKBENCH-EMIT]: the spec's and_swap example is written exactly. *)
+    export andSwap () =
+        FixtureFiles::bind (formula swap, \claim =>
+        FixtureFiles::bind (formula "p ∧ q", \premise =>
+            FixtureFiles::ok (expect (Emit::document [proof ("and_swap", claim, swapSteps premise)], "// osprey: types=lean4\nnamespace proofs\n\ntheorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by\n    cases h with hp hq\n    constructor\n    exact hq\n    exact hp\n"))))
+
+    (** [WORKBENCH-EMIT]: an unknown step is a comment and a `sorry` hole; later steps stay as comments. *)
+    export holes () =
+        FixtureFiles::bind (formula swap, \swapClaim =>
+        FixtureFiles::bind (formula "p ∧ q", \conjunction =>
+        FixtureFiles::bind (formula "p → p", \reflexive =>
+            expect (Emit::declaration (proof ("and_swap", swapClaim, [workbench::Assume "h" conjunction, workbench::Unknown "Hence the result follows."])), "theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by\n    -- Hence the result follows.\n    sorry\n")
+            expect (Emit::declaration (proof ("t", reflexive, [workbench::Unknown "Therefore p.", workbench::Exact "h", workbench::Done])), "theorem t (p q : Prop) : p → p := by\n    -- Therefore p.\n    sorry\n    -- exact h\n")
+            FixtureFiles::ok (expect (Emit::declaration (proof ("and_swap", swapClaim, [])), "theorem and_swap (p q : Prop) : p ∧ q → q ∧ p := by\n    sorry\n")))))
+
+    (** [WORKBENCH-EMIT]: only a leading assumption that matches the premise becomes a binder. *)
+    export binders () =
+        FixtureFiles::bind (formula "p → q → p", \nested =>
+        FixtureFiles::bind (formula "p", \antecedent =>
+        FixtureFiles::bind (formula "q", \consequent =>
+            expect (Emit::declaration (proof ("k", nested, [workbench::Assume "a" antecedent, workbench::Assume "b" consequent, workbench::Exact "a"])), "theorem k (p q : Prop) (a : p) (b : q) : p := by\n    exact a\n")
+            expect (Emit::declaration (proof ("k", nested, [workbench::Assume "a" consequent, workbench::Exact "a"])), "theorem k (p q : Prop) : p → q → p := by\n    intro a\n    exact a\n")
+            FixtureFiles::ok (expect (Emit::declaration (workbench::Proof(statement = workbench::Statement(name = "top", named = true, variables = [], claim = workbench::Top), steps = [workbench::Done])), "theorem top : ⊤ := by\n    sorry\n")))))
+
+    (** [WORKBENCH-EMIT]: declarations are separated by one blank line under the fixed header. *)
+    export layout () =
+        FixtureFiles::bind (formula "p → p", \reflexive =>
+        FixtureFiles::bind (formula "q → q", \self =>
+        FixtureFiles::bind (formula "p", \antecedent =>
+        FixtureFiles::bind (formula "q", \consequent =>
+            FixtureFiles::ok (expect (Emit::document [proof ("a", reflexive, [workbench::Assume "h" antecedent, workbench::Exact "h"]), proof ("b", self, [workbench::Assume "h" consequent, workbench::Exact "h"])], "// osprey: types=lean4\nnamespace proofs\n\ntheorem a (p q : Prop) (h : p) : p := by\n    exact h\n\ntheorem b (p q : Prop) (h : q) : q := by\n    exact h\n"))))))

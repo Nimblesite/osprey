@@ -41,7 +41,7 @@ That is a policy you chose. The wildcard also accepts negative numbers. This fun
 
 Put the wildcard last. If it came first, it would cover every value and leave the later arms unreachable. The compiler rejects arms after a catch-all.
 
-The complete [decisions example](examples/chapter-04/decisions.osp) calls both functions. From `Book`, run:
+The complete [decisions example](https://github.com/Nimblesite/osprey/blob/main/Book/examples/chapter-04/decisions.osp) calls both functions. From `Book`, run:
 
 ```sh
 ../target/release/osprey examples/chapter-04/decisions.osp --run
@@ -111,7 +111,7 @@ You could use a wildcard to cover the new state. For this renderer, an explicit 
 
 *Figure 4.2 — A new variant creates a decision to finish.*
 
-The [unreachable-arm example](examples/chapter-04/failscompilation/unreachable-arm.osp) makes the other mistake: `_` appears before `false`. Check it, then move the specific arm before the wildcard. A catch-all covers the remaining cases only when earlier arms have had their turn.
+The [unreachable-arm example](https://github.com/Nimblesite/osprey/blob/main/Book/examples/chapter-04/failscompilation/unreachable-arm.osp) makes the other mistake: `_` appears before `false`. Check it, then move the specific arm before the wildcard. A catch-all covers the remaining cases only when earlier arms have had their turn.
 
 ## Flight Log checkpoint
 
@@ -124,14 +124,14 @@ fn summary(lesson) =
     "${lesson.title} [${statusLabel(lesson.status)}]"
 ```
 
-The complete [Flight Log source](examples/chapter-04/flight-log.osp) constructs one planned lesson and one completed lesson. Running it prints:
+The complete [Flight Log source](https://github.com/Nimblesite/osprey/blob/main/Book/examples/chapter-04/flight-log.osp) constructs one planned lesson and one completed lesson. Running it prints:
 
 ```text
 Read a match [planned]
 Read a match [complete: handled both cases]
 ```
 
-Check both lines against [the recorded output](examples/chapter-04/flight-log.expectedoutput). Together they exercise both variants and show that the completed note survives construction, matching, and formatting.
+Check both lines against [the recorded output](https://github.com/Nimblesite/osprey/blob/main/Book/examples/chapter-04/flight-log.expectedoutput). Together they exercise both variants and show that the completed note survives construction, matching, and formatting.
 
 Change the completed note and predict the second line. Then add `Learning` and its label to this checkpoint. Construct a learning lesson and print its summary too. You have changed the data model and finished the corresponding decision.
 

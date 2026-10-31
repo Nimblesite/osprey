@@ -55,7 +55,7 @@ Each host declares its column in code, and its tests read the framework's source
 | Webview | `RENDERED_KINDS` in [`render.ts`](../../../vscode-extension/client/src/osprey-ui/render.ts), `ANSWERED_CAPABILITIES` in [`capabilities.ts`](../../../vscode-extension/client/src/osprey-ui/capabilities.ts) | the renderer and capability suites in `vscode-extension/test/suite` |
 | WinUI | [`Coverage.cs`](../../../hosts/winui/OspreyHost.Core/Coverage.cs) | `CoverageTests`, with the renderer refusing to start unless it draws exactly the declared kinds |
 
-Symbols are a closed, host-neutral vocabulary: the `Symbol` union in [`symbol.ospml`](../../../packages/native/src/symbol.ospml), sent as each member's lowercase name. Each host maps every member to its own icon set and tests that it does (the GPUI host's `every_framework_symbol_has_a_kit_icon`, the webview's Codicon test), so no member is drawn as a fallback. The framework holds no host's icon names, capabilities or product vocabulary; work only one host can do is a `HostCall`.
+The typed symbol helpers provide a closed, host-neutral vocabulary: the `Symbol` union in [`symbol.ospml`](../../../packages/native/src/symbol.ospml), converted by `Symbols::name` to each member's lowercase string. Existing control constructors also accept string names and bundled SVG registrations. Each host maps every member to its own icon set and tests that it does (the GPUI host's `every_framework_symbol_has_a_kit_icon`, the webview's Codicon test), so no member is drawn as a fallback. The framework holds no host's icon names, capabilities or product vocabulary; work only one host can do is a `HostCall`.
 
 ## Conformance [NATIVE-HOSTS-CONFORMANCE]
 

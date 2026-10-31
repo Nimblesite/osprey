@@ -8,7 +8,15 @@ tags: [tutorials, video]
 
 Watch real Osprey applications and tools. Each video includes captions, chapters and a transcript; the accompanying guide explains how to use the feature.
 
-{%- for item in collections.all | sort(false, false, "data.title") %}{% if item.data.video and item.url.startsWith("/docs/") %}{% set v = item.data.video | video %}
+## Proofs and mathematics
+
+[Choose a proof learning path](/docs/proofs/): six topics, each with a programmer introduction and a mathematics version. Start with dependent types, then explore the Workbench, the running Mathlib port, deliberate proof rejection and numerical fluid evidence.
+
+The series follows the [Lean oracle relationship](/docs/proofs/#lean-as-an-oracle): real reference proofs, Osprey's own checker, and explicit milestones toward independent operation.
+
+## Applications and tools
+
+{%- for item in collections.all | sort(false, false, "data.title") %}{% if item.data.video and not item.data.film and item.url.startsWith("/docs/") %}{% set v = item.data.video | video %}
 
 ## {{ v.name }}
 

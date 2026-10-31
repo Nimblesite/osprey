@@ -1,0 +1,100 @@
+// [WORKBENCH-STATEMENT] cases: the spec's and_swap document, the heading words,
+// declaration splitting, undeclared atoms and malformed claims.
+namespace workbenchtests
+
+import workbench::Formulas
+import workbench::Statements
+
+(** The [WORKBENCH-STATEMENT] cases over real documents. *)
+module StatementCases
+    andSwapText = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n  Assume h : p ∧ q.\n  By cases on h, as hp and hq.\n  It suffices to show q and p.\n  From hq.\n  From hp."
+
+    headingsText = "Example. true.\nTheorem. true.\nLemma. true.\nProposition. true."
+
+    pairText = "Lemma left. For all p, p → p.\nProof.\n  This is h.\nTheorem right. For all q, q ∧ true.\n  From h."
+
+    strayText = "Theorem stray. r ∧ p.\nProof.\n  From h."
+
+    brokenText = "Theorem broken. p ∧.\nProof.\n  From h."
+
+    // A declaration to stand in for a missing list entry; every field says so.
+    fresh () = workbench::Declaration(statement = workbench::Statement(name = "", named = false, variables = [], claim = workbench::Bot), proof = "", problems = [])
+
+    sole found = match listGet found 0
+        Success one => one
+        Error _ => fresh ()
+
+    spot found at = match listGet found at
+        Success one => one
+        Error _ => fresh ()
+
+    (** A problem to stand in for a missing entry; every field says so. *)
+    problem problems at = match listGet problems at
+        Success one => one
+        Error _ => workbench::Problem(line = 0, column = 0, message = "missing problem", fix = "missing fix")
+
+    (** [WORKBENCH-STATEMENT]: the spec's and_swap document reads to one named declaration with its variables, claim and raw proof. *)
+    export andSwap () =
+        found = Statements::document andSwapText
+        one = sole found
+        expect (length found, 1)
+        expect (one.statement.name, "and_swap")
+        expect (one.statement.named, true)
+        expect (join (one.statement.variables, " "), "p q")
+        expect (Formulas::show one.statement.claim, "p ∧ q → q ∧ p")
+        expect (isEmpty one.problems, true)
+        expect (contains (one.proof, "Assume h : p ∧ q."), true)
+        expect (contains (one.proof, "Proof."), false)
+
+    (** [WORKBENCH-STATEMENT]: every heading word opens a declaration, and an unnamed heading is numbered `t_<n>` in document order. *)
+    export headings () =
+        found = Statements::document headingsText
+        expect (join (mapList (found, \one => one.statement.name), " "), "t_1 t_2 t_3 t_4")
+        expect (isEmpty (filterList (found, \one => one.statement.named)), true)
+        expect (join (mapList (found, \one => Formulas::show one.statement.claim), " "), "⊤ ⊤ ⊤ ⊤")
+        expect (isEmpty (filterList (found, \one => length one.problems > 0)), true)
+
+    (** [WORKBENCH-STATEMENT]: two declarations split at the second heading line, each keeping only its own proof, and `Proof.` stays optional. *)
+    export split () =
+        found = Statements::document pairText
+        first = sole found
+        second = spot found 1
+        expect (length found, 2)
+        expect (first.statement.name, "left")
+        expect (Formulas::show first.statement.claim, "p → p")
+        expect (first.proof, "This is h.")
+        expect (contains (first.proof, "Theorem"), false)
+        expect (isEmpty first.problems, true)
+        expect (second.statement.name, "right")
+        expect (join (second.statement.variables, " "), "q")
+        expect (Formulas::show second.statement.claim, "q ∧ ⊤")
+        expect (second.proof, "From h.")
+        expect (contains (second.proof, "Lemma"), false)
+        expect (isEmpty second.problems, true)
+
+    (** [WORKBENCH-STATEMENT]: an atom no binder declares is one problem per atom, naming it with its fix, at the claim's position. *)
+    export undeclared () =
+        found = Statements::document strayText
+        one = sole found
+        expect (length one.problems, 2)
+        first = problem one.problems 0
+        second = problem one.problems 1
+        expect (first.line, 1)
+        expect (first.column, 16)
+        expect (first.message, "`r` is not declared")
+        expect (first.fix, "declare `r` with For all")
+        expect (second.line, 1)
+        expect (second.message, "`p` is not declared")
+        expect (second.fix, "declare `p` with For all")
+
+    (** [WORKBENCH-STATEMENT]: a claim that does not read is one problem carrying the fault's expected text and line-relative column, and the claim falls back to `Bot`. *)
+    export malformed () =
+        found = Statements::document brokenText
+        one = sole found
+        expect (length one.problems, 1)
+        fault = problem one.problems 0
+        expect (fault.line, 1)
+        expect (fault.column, 20)
+        expect (fault.message, "a proposition after `∧`")
+        expect (fault.fix, "rewrite the claim so it reads")
+        expect (Formulas::show one.statement.claim, "⊥")

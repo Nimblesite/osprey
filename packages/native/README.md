@@ -33,6 +33,7 @@ flowchart LR
 | --- | --- |
 | `src/base.ospml` | `Pick::either` and `Lists`: a stable comparator sort, slices, flattening, distinctness, positions and `find`, `any`, `all` over Osprey's built-in list functions |
 | `src/doc.ospml` | `Doc`: total readers and member builders over the built-in `Json`, for the framework's own trusted state |
+| `src/math.ospml` | `Math` and `Maths::encode`/`Maths::decode`: typed mathematical layout trees and their protocol round trip ([UI-COMPONENTS-MATH]) |
 | `src/symbol.ospml` | `Symbol` (semantic icons), `Platform` and `Symbols` ([UI-COMPONENTS-SYMBOLS], [UI-CONTEXT-PLATFORM]) |
 | `src/node.ospml` | `Node<A>`, `Tab<A>`, `Row<A>`, `Binding<A>`, the tone, role, side and axis unions, `Splitters` and the `Ui` constructors ([UI-COMPONENTS]) |
 | `src/encode.ospml` | `Encode::walk`: one depth-first walk that encodes a region and collects its bindings in ordinal order ([UI-PROTOCOL]) |
@@ -77,6 +78,12 @@ Constraints on the current compiler, each with its upstream issue:
 - **[#282](https://github.com/Nimblesite/osprey/issues/282).** A constructor from another namespace cannot appear in a pattern, so applications take `Message` apart through `Messages::route`.
 - **[#276](https://github.com/Nimblesite/osprey/issues/276)**, **[#279](https://github.com/Nimblesite/osprey/issues/279)** and **[#280](https://github.com/Nimblesite/osprey/issues/280)** (#279 and #280 fixed after 19cf04c0). Lists are transformed with the built-in `mapList`, `filterList`, `foldList` and `forEachList`; `Lists` keeps only what has no built-in yet.
 
+## Message router migration [UI-EVENTS]
+
+The current source API takes eleven arguments: `Messages::route (message, tapped, typed, toggled, sized, completed, phased, stroked, lassoed, framed, controlled)`. Clients using the earlier seven-argument API must add handlers for strokes, lassos, display frames and scene input before updating their native package source pin. Existing text/choice and size/cursor delivery stays in the same handlers. A client that does not support a new event must report that refusal through its application error state; silently retaining the previous state would hide the unsupported operation. Input refusals must not be disguised as unrelated capability completions.
+
+Pin the package source revision together with its host renderer and capability adapters. Source compatibility and host wire compatibility are separate checks: validate the actual consuming app under GC and ARC, including a visible unsupported-event refusal, before replacing its pin. The process request serializer always emits the Boolean `plist` field, including `false`, for hosts that require it.
+
 ## Regions, patches and identity [UI-REGIONS]
 
 The application lists its regions in one function that holds the `handle static` block, one `Keyed::region` per region key. The root region is always present. A region embeds another with a `Slot key` node, so the tree is a set of keyed regions rather than one serialized document. A key that disappears produces a removal, and its pending events become stale.
@@ -90,10 +97,22 @@ Every stateful or reorderable node has a stable semantic key, unique within its 
 | Group | Components |
 | --- | --- |
 | Structure | `Split` (navigation columns), `Tabs`, `Screen` (title, subtitle, toolbar), `Section` (title, footer), `Aside` (a pane with a column on its leading or trailing side, divided by a splitter whose width lives in the store, [UI-COMPONENTS-SPLITTER]), `Stack`, `Layer` (children drawn over one another), `Slot`, `Spacer`, `Divider` |
-| Content | `Text` with a semantic text role and tone, `Label` (text and symbol), `Icon` (a large decorative symbol), `Link` (a labelled `https` page the host opens in the browser and refuses any other address), `Pair` (a label and its value on one line), `Badge` (label, symbol, tone), `Segments` strip, `Empty` state, `Progress`, `Meter` (a labelled bar filled to an amount of a total in a tone, [UI-COMPONENTS-METER]), `Swatch` |
+| Content | `Text` with a semantic text role and tone, `Label` (text and symbol), `Icon` (a large decorative symbol), `Link` (a labelled `https` page the host opens in the browser and refuses any other address), `Evidence` and `Pair` (label/value lines), `Badge` (label, symbol, tone), `Segments` strip, `Empty` state, `Progress`, `Meter` (a labelled share of a total), `Brand`, `Swatch`, `Typeset` mathematics with spoken text ([UI-COMPONENTS-MATH]), `Image` and `Video` media ([LESSONS-FRAMEWORK]) |
 | Collections | `Rows` with stable row keys, selection and per-row content; a row may lead with a symbol and name a group, and consecutive rows of one group share its heading |
-| Controls | `Button` with role and enabled flag, `Field` (secure or multiline, committing on edit or submit), `Toggle`, `Picker`, `Disclosure` (title and revealed children; the expansion is a flag binding taken before the children's ordinals) |
-| Presentation | `Alert` bound to a typed dismissal action |
+| Controls | `Button` with role and enabled flag, `Field` (secure or multiline, committing on edit or submit), `Toggle`, `Picker`, `Disclosure` (title and revealed children; the expansion is a flag binding taken before the children's ordinals), `Editor` with per-line marks and cursor placement ([UI-COMPONENTS-EDITOR]), `Board` with host-held strokes and an optional lasso ([UI-COMPONENTS-BOARD]) |
+| Presentation | `Framed` with application-authored geometry, typography and control metrics; `Alert` bound to a typed dismissal action |
+
+`Ui::framed (style, content)` carries layout and presentation from Osprey to every host ([UI-COMPONENTS-FRAMED]). Start with `plain` imported from `ui::Frames`; named fields set dimensions, edge insets, gap, radius and semantic fill/ink/border tokens. `frameHug` preserves intrinsic width; otherwise a zero-width frame fills its proposal. Zero height keeps natural height unless `frameGrow` fills the available space. `frameAlign` positions content vertically (`start`, `center`, `end`); `frameCross` positions it horizontally (`stretch`, `start`, `center`, `end`).
+
+On Apple, natural content that outgrows a growing pane scrolls within that pane. Content that fits keeps its authored alignment, so an empty-state card can stay centred without pushing the application header off screen.
+
+`frameViewportHeightInset` defaults to -1, which preserves ordinary height and grow behavior. A nonnegative inset sets the frame height to the greater of `frameHeight` and the content viewport height minus that inset. For example, `plain(frameHeight = 440, frameViewportHeightInset = 270)` gives 788 points in a 1058-point content viewport. Native title bars are excluded; overflowing document height does not change the viewport. This explicit height takes precedence over grow. A scene using viewport sizing permits its page to extend below the viewport; other scenes retain their existing bounded layout. `frameScrollY` defaults to false; setting it to true makes the frame’s content scroll vertically within its authored bounds, preserving access to the last item without enlarging the frame. Combined with viewport sizing, this is a maximum height: short content keeps its natural height, with `frameHeight` as its minimum; longer content scrolls within the viewport bound.
+
+`frameFont` selects `serif`, `sans` or `mono`; `frameTextSize` gives points/pixels and zero inherits; `frameItalic` accompanies an explicit font or size. These values inherit through nested frames and apply to text, editors and mathematics without inspecting application-specific role names. `Frames::text (family, size, italic)` constructs an intrinsic-width typography frame. `frameMathScale` multiplies the inherited text size for mathematics; zero inherits the parent scale (initially 1). A size of 34 with scale 1.08 preserves 36.72-point mathematical typography on every host. `frameLineHeight` sets the text line box in points/pixels; zero inherits. `frameTracking` sets letter spacing; zero inherits. `frameControlPadding` sets horizontal button padding, with -1 inheriting and zero drawing flush. `frameSymbolSize` sets control symbols in points/pixels; a positive value inherits through nested plain frames and zero preserves the surrounding metric. `frameControlHeight` sets the minimum button height and zero inherits; `frameQuietControls` makes plain buttons transparent and remains active through nested plain frames. `frameIconOnly` keeps the button’s accessible label while drawing its symbol, and `frameFlatRows` draws selectable rows without cards or disclosure chevrons. `frameFadeBackdrop` fades only a board’s backdrop image toward its edges, preserving live strokes. `frameTrailingSymbols` places button symbols after their labels and inherits through nested plain frames. Backdrop fading defaults to false at each frame. `frameShadow = "floating"` gives a surface a shadow with zero horizontal offset, 20-point vertical offset, 50-point CSS blur and the primary ink at 2/15 opacity; an empty value draws no shadow, and unknown names fail explicitly. Shadows do not change layout. `frameLineEdge` chooses `all`, `top`, `right`, `bottom` or `left` for the border token. `frameAlign = "baseline"` aligns an immediate horizontal stack by its first text baselines. Existing control ordinals and region provenance pass through a frame unchanged. These expanded presentation properties have regression assertions; screenshot acceptance remains pending.
+
+`Ui::rich (runs, role)` wraps inline mathematical emphasis and syntax colours as one paragraph. Each `Ui::run (text, ink, italic)` supplies literal text, an optional semantic ink token and emphasis; hosts never tokenize the source. `Ui::themed (theme, content)` scopes the application’s palette to a subtree, and `Ui::dialog (title, content, dismiss)` exposes an accessible modal surface with an explicit dismissal binding.
+
+`Ui::inlineEditor` keeps the existing text/cursor provenance with a compact placeholder presentation. `Ui::interactiveBoard` retains the stroke and lasso ordinals and appends a camera binding; camera movement reports absolute x/y offsets as JSON text. Framing and notes remain application state. `Ui::boundedAside` carries per-column width limits so a narrow mathematical goal margin does not inherit a different application’s sidebar minimum.
 
 Components are semantic, so a host presents each one where it is placed:
 
@@ -106,7 +125,7 @@ Expansion, like every other control value, lives in the store; the host keeps on
 
 ### Symbols [UI-COMPONENTS-SYMBOLS]
 
-Every icon is a `Symbol`: `Add`, `Delete`, `Dismiss`, `Check`, `Warning`, `Info`, `Question`, `Search`, `Settings`, `Star`, `Play`, `Pause`, `Stop`, `Refresh`, `Folder`, `Document`, `Package`, `Inbox`, `Globe`, `External`, `Lock`, `Shield`, `Branch`, `Tag`, `Clock`, `Person`, `Cursor`, `Chevron`, or `NoSymbol` for none. The wire carries `Symbols::name`, the variant's lowercase name (`NoSymbol` is empty), and each host maps every name to its own icon set: the GPUI host to Lucide icons, the VS Code host to Codicons, an Apple host to SF Symbols. An application never names a host's icon, and each host's tests check that every framework symbol has an icon, so a new symbol cannot ship undrawn.
+Controls accept semantic symbol names as strings. `Symbols::name` converts a typed `Symbol`, such as `Add`, `Folder` or `NoSymbol`, to its lowercase wire name; `NoSymbol` becomes an empty string. Existing string names and bundled SVG registrations remain supported. Each host maps supported names to its icon set: GPUI uses Lucide icons, VS Code uses Codicons, and Apple uses SF Symbols or registered artwork. The host suites check the framework's typed symbol inventory.
 
 ### Splitters [UI-COMPONENTS-SPLITTER]
 
@@ -114,9 +133,41 @@ An `Aside` carries its column's width in points and a size binding, so the width
 
 During a drag the host previews the width within the limits Osprey sent and the room the window leaves. When the drag ends it sends the width once, as a whole number of points, and Osprey's answer replaces the preview. A size binding accepts only an integer, and `Events::bind` clamps it to the limits before the application's `update` sees it, so an application never stores a width outside them. On a phone an aside stacks its column under its pane, so there is nothing to drag.
 
+### Bundled symbols [UI-COMPONENTS]
+
+The Apple host reads an optional `symbols.json` from its bundled resource root: a flat mapping such as `{"moon":"icons/moon.svg"}`. Buttons and standalone icons use the registered SVG as template artwork, inheriting the surrounding ink. An absent registry or unmapped name keeps the platform symbol; malformed registries, missing declared artwork and paths escaping the resource root produce a visible icon error. The registry is bounded to 64 KiB and 128 entries, with each SVG bounded to 256 KiB. Bundle the artwork's licence with its files.
+
+### Typeset mathematics [UI-COMPONENTS-MATH]
+
+`Ui::math (tree, spoken)` produces a `Typeset` node carrying a structured `Math` tree and accessible Unicode text. Its protocol kind is `math`, with the tree in `math` and the accessible text in `spoken`; it consumes no event ordinal. `Math` supports symbols, numbers, sequences (`Seq`, since `Row` already names a selectable row), scripts, fractions, radicals, binders, operators, parentheses and big operators. The Apple host lays out the tree with bundled STIX Two Math and refuses startup if its required fonts cannot be registered. Web hosts render the same tree as MathML. Every host exposes `spoken` to assistive technology.
+
+`Maths::encode` turns a tree into its protocol form and `Maths::decode` is its exact inverse, so `decode (encode tree)` is the same tree and a lesson's `math` block is read back rather than trusted. An unknown `kind`, a missing child, a non-object node or a non-string `text`/`symbol` is refused with an error naming the fault.
+
+The Apple renderer keeps fitting formulae at their natural ink size. Wider formulae scroll horizontally inside their pane, retaining the complete formal statement and its spoken text.
+
+### Media [LESSONS-FRAMEWORK]
+
+`Ui::image (source, alt, width, height)` is a still picture with required alternative text, scaled to fit its width while keeping its aspect ratio; `alt` is what assistive technology reads. Its protocol kind is `image` with the fields `source`, `alt`, `width` and `height`, and it consumes no event ordinal. `Ui::video (source, poster, captions, alt, seconds)` is a film the person starts: it shows its poster and a play control until then, never autoplays, turns captions on by default and prints the length on the poster. Its protocol kind is `video` with `source`, `poster`, `captions` (WebVTT), `alt` and `seconds`. Neither component carries a binding: playing a video is the host's business and never reaches `update`, and the host may refuse a source outside the application's bundled files. The Apple host renders landscape films at 16:9 and reads bounded plain-text WebVTT tracks (64 KiB), including header annotations, UTF-8 BOMs and mathematical text entities. It reports missing, malformed or unsupported caption tracks and media decoding errors visibly; it does not silently play without required captions.
+
+### Editor [UI-COMPONENTS-EDITOR]
+
+`Ui::focusedInlineEditor (label, value, cursor, epoch, edit, place)` opts a compact editor into application-authored focus requests. It preserves the text and caret ordinals. Existing `Ui::editor` and `Ui::inlineEditor` signatures are unchanged and emit epoch zero. The wire field `focusEpoch` defaults to zero only when absent; explicit null, a non-integer, a negative value or a value above 9,007,199,254,740,991 is refused.
+
+A host establishes a baseline when the field first appears and retains the highest observed epoch for that field identity. Focus is requested only above that high-water mark; a decrease followed by a replay cannot request focus again. Removing the field forgets its baseline. A different keyed region creates a new field identity and baseline, so its first advance works independently of the old region's counter. Ordinary text/caret patches and unchanged epochs do not request focus. A native host never activates an inactive window to fulfill a request. The application advances the epoch for an explicit editing action, such as a symbol key; the host executes that decision. This protocol carries a caret, not a selection range.
+
+`Ui::editor (label, value, cursor, marks, edit, place)` carries a multiline editor's label, whole text, cursor offset and per-line marks. Its text binding takes the next depth-first ordinal and its cursor binding takes the one immediately after. The host sends the whole text after each edit and sends cursor offsets in UTF-8 bytes. A cursor value arrives as `Placed`; the framework clamps a negative offset to zero and refuses a non-integer value.
+
+Each `Ui::mark (line, underlined, tone, badge, note)` names a 1-based line. The host draws its underline in the given tone when `underlined` is true, a trailing `badge`, and its `note`; empty badge or note text draws nothing.
+
+### Board [UI-COMPONENTS-BOARD]
+
+`Ui::board (slice, count, lassoing, stroke, lasso)` carries the name of the host slice holding the board's strokes, the number to draw, whether the lasso is enabled, and the two bindings. The stroke binding takes the next ordinal and the lasso binding takes the one after it. The host draws strokes in `chalk` on the `board` token and sends each finished stroke once as `{"points":[[x,y],...],"width":w,"at":t}`. Points are ordered pairs of non-negative integer coordinates; the framework refuses empty points and malformed pairs.
+
+When `lassoing` is true, the host offers a lasso and sends the enclosed strokes as a JSON array of non-negative integer indices. These arrive as `Stroked` and `Lassoed` messages respectively. The host must not send an unfinished stroke more than once or invent stroke indices.
+
 ## Bindings and events [UI-EVENTS]
 
-A control's binding is a **typed action value**, not a callback or an event dictionary. `Button` carries an `A`; `Field`, `Toggle`, `Picker`, `Tabs` and `Rows` selection carry an `A` that names the binding, and the framework delivers `Entered`, `Switched`, `Chose` or `Act` messages with the bound action and a value of the matching type. An `Aside`'s splitter delivers `Resized` with a width in points. A text binding can only produce a text message, a toggle only a boolean and a splitter only an integer.
+A control's binding is a **typed action value**, not a callback or an event dictionary. `Button` carries an `A`; `Field`, `Toggle`, `Picker`, `Tabs` and `Rows` selection carry an `A` that names the binding, and the framework delivers `Entered`, `Switched`, `Chose` or `Act` messages with the bound action and a value of the matching type. An `Aside`'s splitter delivers `Resized` with a width in points. An `Editor` cursor delivers `Placed` with a UTF-8 byte offset; a `Board` delivers `Stroked` with a finished stroke and `Lassoed` with the selected stroke indices. A text binding can only produce a text message, a toggle only a boolean and a splitter, cursor, stroke or lasso only its matching value kind.
 
 When encoding a region, the framework assigns each binding an opaque ID: region key, region revision and depth-first ordinal. The host returns only that ID and a bounded value. To resolve an event, the framework renders the named region from the current store, checks the revision, finds the binding by ordinal, checks the value kind and produces the typed message. Events for removed regions, stale revisions, unknown ordinals or mismatched value kinds are rejected with a visible diagnostic. The host cannot construct an arbitrary action, and a binding ID is never an authorization token.
 
@@ -148,10 +199,17 @@ The rules are the same on every host:
 - More children than the limit are measured but not listed, and set `truncated`, as does a walk that reaches its deadline. `Cancel` with the request's ticket stops the walk, which completes with the error `cancelled`.
 - The adapter sorts, hides, formats and decides nothing: [examples/storage](../../examples/storage/README.md) ranks, words and draws the result in Osprey.
 
+### Recognition [UI-EFFECTS-RECOGNISE]
+
+`Recognise` names the host-held slices that hold the strokes to read and a result limit, so stroke points never travel through the opaque state. Its request has kind `recognise`, a `slices` array of slice keys (each holding one stroke in the board's stroke format, as `Boards::strokeWrite` writes it) and `limit`. The host performs handwriting recognition on those strokes and completes with `{"text": "..."}`, the text bounded by that limit. A host without handwriting support completes with an error whose message is exactly `Unsupported`; the application presents that state as a disabled board lasso.
+
 ## Theme and motion [UI-THEME]
 
 Semantic colour tokens, spacing, shapes and motion durations are Osprey values. The application's theme is sent once with the first envelope; the host resolves roles against the current appearance and never chooses raw colours itself. Contrast policy is computed and tested in Osprey (`Contrast::ratio`, WCAG 2 relative luminance). The system Reduce Motion preference always wins in the host.
 
+### Board tokens [UI-THEME-BOARD]
+
+`Themes::boardTokens` names the two board colours in order: `board` for the slate and `chalk` for the strokes. A theme without those tokens draws a board on `canvas` in `primary`.
 ## Scenes and frames [UI-SCENE]
 
 A `Scene` node is a surface in the application's own unit space, drawn from a list of `Primitive` values: rectangles, discs, line strips, sprites by atlas index and glyph runs, each with a position, size, rotation, a packed `0xRRGGBBAA` colour and a depth that orders layers, and paths: path-builder steps (move, line, quadratic and cubic curves, arcs, polygons, close), a fill or a stroke with width, dashes and joins, a solid or linear-gradient `Paint` of float `Tint`s, and a translate-and-scale transform. `Scenes` builds them. `Ui::canvas` is a scene in window pixels, without a unit space or letterbox; `examples/gpui/painting` uses it to reproduce GPUI's own painting example pixel for pixel. The host scales the surface to fit, draws one pass per depth and sends keys and pointer positions with the Shift state, in scene units, through the node's single binding as `Controlled` messages; `Inputs::route` takes them apart. The encoding is one small array per primitive with a type code first, so a painter reads it without a schema and the encoder builds it in one `mapList`.
@@ -162,7 +220,7 @@ An application that animates asks for the host's frame clock with the `Animate` 
 
 An application exports `Runtime::start (context, init, render, save, theme)` and `Runtime::dispatch (state, event, update, render, save, restore)` under names of its choosing, and imports a `*_slice` function that answers `Slices.fetch`. The start context is `{"now","offset","platform","home","arguments"}`.
 
-**Platform [UI-CONTEXT-PLATFORM].** `platform` is the host's operating system as Rust's `std::env::consts::OS` spells it: `macos`, `ios`, `linux`, `windows`, `android` or `web`. `Symbols::platform` decodes it into the `Platform` union, and any other name arrives as `OtherPlatform` with the name kept, so a new host never fails to start. Every result is an envelope:
+**Platform [UI-CONTEXT-PLATFORM].** `platform` is the host's operating system as Rust's `std::env::consts::OS` spells it: `macos`, `ios`, `linux`, `windows`, `android` or `web`. `Context.platform` preserves the supplied string. Call `Symbols::platform` when a typed `Platform` is needed; an unknown name becomes `OtherPlatform` with the original string retained. Every result is an envelope:
 
 | Field | Meaning |
 | --- | --- |

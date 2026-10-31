@@ -7,106 +7,14 @@ use crate::builder::{Codegen, CodegenOptions, Linkage, ParamSig};
 use crate::error::Result;
 use crate::llty::{LType, Value};
 use osprey_ast::{Expr, Parameter, Position, Program, Stmt};
-use osprey_debug::DebugSource;
 
-/// Compile a whole program to an LLVM IR module (text), driven by the inferred
-/// types in [`osprey_types::ProgramTypes`].
-///
-/// # Errors
-///
-/// Returns `Err` if any function body, top-level statement, or `main`
-/// expression contains a construct that cannot be lowered to LLVM IR.
-pub fn compile_program(program: &Program) -> Result<String> {
-    compile_program_with_options(program, CodegenOptions::default())
-}
-
-/// Compile app logic whose module state remains live after initialization.
-/// The host owns process lifetime and calls exported functions after entry
-/// returns. [IOS-TARGET-ENTRY] [WASM-WEB-ABI]
-///
-/// # Errors
-///
-/// Returns `Err` under the same conditions as [`compile_program`].
-pub fn compile_library(program: &Program) -> Result<String> {
-    compile_module(program, CodegenOptions::default(), true)
-}
-
-/// Compile a whole program for wasm32, whose 4-byte pointers change the
-/// allocation-mask stride ([`crate::meta`]).
-///
-/// # Errors
-///
-/// Returns `Err` under the same conditions as [`compile_program`].
-pub fn compile_wasm_program(program: &Program) -> Result<String> {
-    compile_program_with_options(program, wasm_options())
-}
-
-/// Compile app logic for wasm32 whose module state remains live after the
-/// entry returns ([WASM-WEB-ABI]), with wasm32 pointer-width metadata.
-///
-/// # Errors
-///
-/// Returns `Err` under the same conditions as [`compile_program`].
-pub fn compile_wasm_library(program: &Program) -> Result<String> {
-    compile_module(program, wasm_options(), true)
-}
-
-/// The codegen options every wasm32 compilation shares.
-fn wasm_options() -> CodegenOptions {
-    CodegenOptions {
-        wasm32: true,
-        ..CodegenOptions::default()
-    }
-}
-
-/// Compile a whole program with LLVM/DWARF debug metadata rooted at `source`.
-///
-/// # Errors
-///
-/// Returns `Err` under the same conditions as [`compile_program`].
-pub fn compile_program_debug(program: &Program, source: DebugSource) -> Result<String> {
-    compile_program_with_options(
-        program,
-        CodegenOptions {
-            debug_source: Some(source),
-            ..CodegenOptions::default()
-        },
-    )
-}
-
-/// Compile a whole program for symbolic execution [SYMEX-CODEGEN]: debug
-/// metadata rooted at `source` so the engine names Osprey lines, and fatal
-/// paths that `abort` so it reports them.
-///
-/// # Errors
-///
-/// Returns `Err` under the same conditions as [`compile_program`].
-pub fn compile_program_symbolic(program: &Program, source: DebugSource) -> Result<String> {
-    compile_program_with_options(
-        program,
-        CodegenOptions {
-            debug_source: Some(source),
-            symbolic: true,
-            ..CodegenOptions::default()
-        },
-    )
-}
-
-/// Compile a whole program with line-coverage instrumentation
-/// [TESTING-COVERAGE-CODEGEN].
-///
-/// # Errors
-///
-/// Returns `Err` under the same conditions as [`compile_program`].
-pub fn compile_program_coverage(program: &Program) -> Result<String> {
-    compile_program_with_options(
-        program,
-        CodegenOptions {
-            coverage: true,
-            ..CodegenOptions::default()
-        },
-    )
-}
+mod entrypoints;
+#[cfg(test)]
+mod reuse_tests;
+pub use entrypoints::{
+    compile_host_program, compile_library, compile_program, compile_program_coverage,
+    compile_program_debug, compile_program_symbolic, compile_wasm_library, compile_wasm_program,
+};
 
 /// `options` with the GPU kernel lowering resolved from the environment. The
 /// lowering is an environment switch so the corpus harness can compile the same
@@ -165,20 +73,60 @@ fn lower_static_program(program: &Program) -> Result<Program> {
     })
 }
 
+// The gate's retained solve, offered by the CLI right before codegen and
+// taken by the next `compile_module` so one checked program is lowered and
+// published once across the build. A thread-local rather than a parameter
+// because the native path reaches these entry points through
+// `native::compile_ir`, whose signature is owned elsewhere.
+thread_local! {
+    static REUSED_CHECK: std::cell::Cell<Option<osprey_types::CheckedProgram>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Offer (or clear) the gate's retained solve for the next codegen entry point.
+#[doc(hidden)]
+pub fn set_reused_check(checked: Option<osprey_types::CheckedProgram>) {
+    REUSED_CHECK.with(|slot| slot.set(checked));
+}
+
+/// The lowered program and published types for `program`: the gate's retained
+/// solve when one was supplied, otherwise a fresh lower-and-infer.
+fn solve(
+    program: &Program,
+    options: &CodegenOptions,
+    reused: Option<osprey_types::CheckedProgram>,
+) -> Result<(Program, osprey_types::ProgramTypes)> {
+    if let Some(checked) =
+        reused.filter(|checked| !options.coverage && checked.matches_source(program))
+    {
+        return Ok(checked.into_parts());
+    }
+    solve_fresh(program, options)
+}
+
+fn solve_fresh(
+    program: &Program,
+    options: &CodegenOptions,
+) -> Result<(Program, osprey_types::ProgramTypes)> {
+    let mut lowered = lower_static_program(program)?;
+    if options.coverage {
+        // Source counters must not hide pure closure selection from staging.
+        crate::coverage::instrument_expressions(&mut lowered);
+    }
+    let prog = osprey_types::infer_program(&lowered);
+    Ok((lowered, prog))
+}
+
 fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
+    let reused = REUSED_CHECK.with(std::cell::Cell::take);
     reject_opaque_aliases(program)?;
     let options = with_kernel_mode(options)?;
     let instrumented = options
         .coverage
         .then(|| crate::coverage::instrumented(program));
     let original = instrumented.as_ref().unwrap_or(program);
-    let mut lowered = lower_static_program(original)?;
-    if options.coverage {
-        // Source counters must not hide pure closure selection from staging.
-        crate::coverage::instrument_expressions(&mut lowered);
-    }
+    let (lowered, mut prog) = solve(original, &options, reused)?;
     let program = &lowered;
-    let mut prog = osprey_types::infer_program(program);
     let elaborated = prog.elaborate_calls(program);
     let program = &elaborated;
     let mut cg = Codegen::with_options(prog, options);
@@ -480,12 +428,9 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
     // A returned list literal leaves the only scope that knows it is the flat
     // layout — callers see `List<T>` [`crate::listlit::escaping`].
     let body = crate::listlit::escaping(cg, body);
-    if let Some(inner) = cg.fn_ret_result_inner(name) {
-        // An existing Result is re-laid to the *declared* success-slot type: a
-        // body like `Error { message }` types its slot from the message (`i8*`),
-        // which must agree with the `i64` the callers read or the block's
-        // disc/errmsg offsets shift on 32-bit targets. [WASM-TARGET-WIDTH]
-        return crate::result::fit_to_inner(cg, body, inner);
+    if let Some(ty) = cg.prog.return_type(name).cloned() {
+        let signature = ParamSig::of(&cg.prog, &ty);
+        return crate::cast::coerce_semantic_param(cg, body, &signature);
     }
     let ret_ty = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
     // This cast never RECOVERS anything: a body of type `any` returned through

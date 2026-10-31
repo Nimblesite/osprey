@@ -109,14 +109,105 @@ pub(crate) fn erase_result(cg: &mut Codegen, semantic: Value) -> Value {
 /// Adapt an inline argument to the semantic parameter shape while keeping a
 /// Result as a typed block (there is no emitted ABI boundary to erase here).
 pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: &ParamSig) -> Result<Value> {
+    let v = crate::closure::adapt_to(cg, v, want)?;
+    let v = crate::aggregate::erasure::adapt(cg, v, want)?;
+    let v = erase_list_elements(cg, v, want)?;
     let value = match want.result_inner {
-        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
+        Some(inner) => coerce_result(cg, v, want, inner)?,
         None => coerce_to(cg, v, want.ty)?,
     };
     Ok(match want.fiber.clone() {
         Some(fiber) => fiber.restore(value),
         None => value,
     })
+}
+
+/// Result payloads retain their semantic target even when both ABIs are pointers.
+fn coerce_result(cg: &mut Codegen, value: Value, want: &ParamSig, inner: LType) -> Result<Value> {
+    let Some(payload) = erased_result_payload(cg, &value, want) else {
+        return crate::result::fit_to_inner(cg, value, inner);
+    };
+    if value.result_inner.is_some() {
+        crate::result::map_payload(cg, &value, inner, |cg, loaded| {
+            coerce_semantic_param(cg, loaded, &payload)
+        })
+    } else {
+        let payload = coerce_semantic_param(cg, value, &payload)?;
+        crate::result::make_ok(cg, payload, inner)
+    }
+}
+
+fn erased_result_payload(cg: &Codegen, value: &Value, want: &ParamSig) -> Option<ParamSig> {
+    let osprey_types::Type::Con { args, .. } = want.inferred_type.as_ref()? else {
+        return None;
+    };
+    let payload = ParamSig::of(&cg.prog, args.first()?);
+    let target = payload.inferred_type.as_ref()?;
+    let owner = semantic_owner(cg, &payload);
+    let already_erased =
+        owner.is_some() && value.payload_owner == owner && same_semantics(value, want);
+    let source = value
+        .element_type(osprey_types::names::RESULT)
+        .or_else(|| value.result_payload_type.clone());
+    let changing = erased_container(target) || source.as_ref().is_some_and(erased_container);
+    (crate::types::ltype_of(target) != LType::Any && changing && !already_erased).then_some(payload)
+}
+
+fn erased_container(ty: &osprey_types::Type) -> bool {
+    crate::aggregate::erasure::contains_any(ty)
+}
+
+fn same_semantics(value: &Value, want: &ParamSig) -> bool {
+    value
+        .inferred_type
+        .as_ref()
+        .zip(want.inferred_type.as_ref())
+        .is_some_and(|(source, target)| {
+            crate::types::abi_spelling(source) == crate::types::abi_spelling(target)
+        })
+}
+
+fn erased_list_element(cg: &Codegen, value: &Value, want: &ParamSig) -> Option<ParamSig> {
+    let osprey_types::Type::Con { name, args } = want.inferred_type.as_ref()? else {
+        return None;
+    };
+    let element = args.first()?;
+    let source = value.element_type(osprey_types::names::LIST);
+    let changing = erased_container(element) || source.as_ref().is_some_and(erased_container);
+    if name != osprey_types::names::LIST || !changing {
+        return None;
+    }
+    let target = crate::types::elem_tag(&cg.prog, Some(element));
+    let already_erased = target.is_some()
+        && crate::collections::tagged_elem(value) == target
+        && same_semantics(value, want);
+    (!already_erased).then(|| ParamSig::of(&cg.prog, element))
+}
+
+fn erase_list_elements(cg: &mut Codegen, value: Value, want: &ParamSig) -> Result<Value> {
+    let Some(element_sig) = erased_list_element(cg, &value, want) else {
+        return Ok(value);
+    };
+    let source = crate::listlit::escaping(cg, value);
+    let source = coerce_to(cg, source, LType::Ptr)?;
+    let builder = crate::collections::list_builder_new_of(cg, "1");
+    crate::iter::each_list_elem(cg, &source, |cg, _, element| {
+        let adapted = coerce_semantic_param(cg, element, &element_sig)?;
+        let boxed = erase_result(cg, adapted);
+        let _ = crate::iter::push_built(cg, &builder, boxed, "list erasure")?;
+        Ok(())
+    })?;
+    let owner = semantic_owner(cg, want);
+    let mut output = crate::collections::list_builder_seal(cg, &builder).with_owner(owner);
+    output.inferred_type.clone_from(&want.inferred_type);
+    Ok(output)
+}
+
+fn semantic_owner(cg: &Codegen, signature: &ParamSig) -> Option<String> {
+    signature
+        .inferred_type
+        .as_ref()
+        .and_then(|ty| crate::types::owner_name(&cg.prog, ty))
 }
 
 /// Reconstruct an incoming parameter value from its emitted ABI register.

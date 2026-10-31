@@ -58,7 +58,13 @@ public static class Envelopes
 
     static SliceWrite Slice(JsonElement item) => new(Text(item, "key"), Text(item, "text"));
 
-    static Patch Patched(JsonElement item) => new(Text(item, "key"), Number(item, "revision"), Member(item, "node"));
+    static Patch Patched(JsonElement item)
+    {
+        var key = Text(item, "key");
+        var node = Member(item, "node");
+        Viewports.Refuse(key, node);
+        return new Patch(key, Number(item, "revision"), node);
+    }
 
     static string Word(JsonElement item) =>
         item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" : throw Malformed("a string", item);

@@ -1,0 +1,16 @@
+WEBVTT
+
+00:00.350 --> 00:06.451
+A solver searches for a solution. In a maze, it may try many paths before one reaches the exit.
+
+00:06.851 --> 00:12.988
+A checker does something narrower. You propose one path; it follows each turn and answers yes or no.
+
+00:13.388 --> 00:20.680
+Osprey's kernel is a checker. It never guesses. Here is the same proof of and swap, but with its last two steps reversed.
+
+00:21.080 --> 00:30.779
+After the goal splits, q must come first. From hp offers p instead, so the kernel refuses step four. The goal is q; this step proves p.
+
+00:31.179 --> 00:34.315
+The workbench is the interface. The kernel decides.

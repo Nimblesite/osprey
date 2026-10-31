@@ -1,0 +1,16 @@
+namespace roundtrip
+
+import roundtrip::Count
+import roundtrip::Numbers
+
+// The erased `Count` is ordinary Osprey with an `Arith` row, so the entry
+// supplies the arithmetic policy ([ARITH-EFFECT]).
+main () =
+    handle Arith
+        overflow op lhs rhs wrapped => wrapped
+        divideByZero op lhs => 0.0
+        remainderByZero lhs => 0
+    print "count doubled 3 = ${toString (Count::doubled 3)}"
+    print "count label 5 = ${Count::label 5}"
+    print "count total 2 5 = ${toString (Count::total (2, 5))}"
+    print "numbers twice 4 = ${toString (Numbers::twice 4)}"

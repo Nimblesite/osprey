@@ -4,17 +4,12 @@
 // theme-safe rendering and bounded capabilities; package state and decisions
 // stay in Osprey.
 
-import { randomBytes } from "crypto";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
-import { commands, env, ExtensionContext, Range, Uri, ViewColumn, window, workspace } from "vscode";
+import { commands, ExtensionContext, Range, Uri, ViewColumn, window, workspace } from "vscode";
 import { shipwrightPlatform } from "./client-config";
 import { createRequestExecutor, type CapabilityHost } from "./osprey-ui/capabilities";
-import { renderWorkspace } from "./osprey-ui/render";
-import { createWorkspaceSession, type WorkspaceSession } from "./osprey-ui/session";
-import { compileWasi, runWasi } from "./osprey-ui/wasi";
-import { workspaceHtml } from "./osprey-ui/webview-html";
+import { nativeContext, registerNativePanel, type NativeApplication } from "./osprey-ui/panel";
 
 export const PACKAGE_WORKSPACE_COMMAND = "osprey.packages.open";
 const PANEL_TITLE = "Osprey Packages";
@@ -118,131 +113,22 @@ export function hostBridge(context: Pick<ExtensionContext, "extensionPath">): Ca
   };
 }
 
-function openExternal(url: string): Promise<boolean> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return Promise.resolve(false);
+async function application(context: ExtensionContext, ready: (folder: Uri) => Promise<boolean>, resource?: Uri): Promise<NativeApplication | undefined> {
+  const folder = await folderFor(resource);
+  if (!folder) {
+    if (!workspace.workspaceFolders?.length) void window.showErrorMessage("Open a workspace folder before managing Osprey packages.");
+    return undefined;
   }
-  if (parsed.protocol !== "https:" || parsed.username || parsed.password) return Promise.resolve(false);
-  return Promise.resolve(env.openExternal(Uri.parse(parsed.toString())));
+  if (!await ready(folder)) return undefined;
+  const registry = registryOrigin(folder);
+  const artifact = applicationPath(context);
+  const bridge = hostBridge(context);
+  return { key: JSON.stringify([folder.toString(), registry, artifact, bridge.configuredExecutable]), artifact,
+    context: nativeContext([folder.toString(), registry]), execute: createRequestExecutor(bridge) };
 }
 
-function startContext(folder: Uri, registry: string): Record<string, unknown> {
-  return {
-    platform: "vscode",
-    now: Math.floor(Date.now() / 1000),
-    offset: -new Date().getTimezoneOffset() * 60,
-    home: os.homedir(),
-    arguments: [folder.toString(), registry],
-  };
-}
-
-function panelHtml(context: ExtensionContext, panel: import("vscode").WebviewPanel): string {
-  return workspaceHtml({
-    nonce: randomBytes(18).toString("base64"),
-    assetUri: panel.webview.asWebviewUri(Uri.joinPath(context.extensionUri, "icon.png")).toString(),
-    cspSource: panel.webview.cspSource,
-  });
-}
-
-/**
- * Register the singleton package workspace panel and its command. `ready`
- * runs before the panel opens and may refuse it, e.g. when the local registry
- * is down and the user declines to start it ([PACKAGE-LOCAL-REGISTRY]).
- */
-export function registerPackageWorkspace(
-  context: ExtensionContext,
-  ready: (folder: Uri) => Promise<boolean> = async () => true,
-): { dispose(): void } {
-  let panel: import("vscode").WebviewPanel | undefined;
-  let session: WorkspaceSession | undefined;
-  let openedFolder = "";
-  let module: Promise<WebAssembly.Module> | undefined;
-
-  const disposePanel = (): void => {
-    session?.dispose();
-    if (panel) panel.dispose();
-  };
-
-  const open = async (resource?: Uri): Promise<void> => {
-    const folder = await folderFor(resource);
-    if (!folder) {
-      if (!workspace.workspaceFolders?.length) void window.showErrorMessage("Open a workspace folder before managing Osprey packages.");
-      return;
-    }
-    if (!await ready(folder)) return;
-    if (panel && openedFolder === folder.toString()) {
-      panel.reveal(undefined, true);
-      return;
-    }
-    disposePanel();
-    let registry: string;
-    let artifact: string;
-    try {
-      registry = registryOrigin(folder);
-      artifact = applicationPath(context);
-    } catch (error) {
-      void window.showErrorMessage(`Osprey Packages: ${String((error as Error).message)}`);
-      return;
-    }
-    module ??= fs.promises.readFile(artifact).then((bytes) => compileWasi(bytes));
-    const compiled = await module.catch((error) => {
-      module = undefined;
-      void window.showErrorMessage(`Osprey Packages: could not load ${artifact}: ${String((error as Error).message)}`);
-      return undefined;
-    });
-    if (!compiled) return;
-    openedFolder = folder.toString();
-    panel = window.createWebviewPanel(VIEW_ID, PANEL_TITLE, ViewColumn.Active, {
-      enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [context.extensionUri],
-    });
-    panel.iconPath = Uri.joinPath(context.extensionUri, "icon.png");
-    panel.webview.html = panelHtml(context, panel);
-    session = createWorkspaceSession({
-      run: (frame) => runWasi(compiled, frame),
-      render: (regions, _diagnostics, theme) => renderWorkspace({
-        regions,
-        theme,
-        assetUri: panel?.webview.asWebviewUri(Uri.joinPath(context.extensionUri, "icon.png")).toString(),
-      }),
-      send: (message) => { void panel?.webview.postMessage(message); },
-      execute: createRequestExecutor(hostBridge(context)),
-      now: () => Math.floor(Date.now() / 1000),
-      report: (error) => console.error("Osprey package workspace:", error),
-    });
-    const activeSession = session;
-    const start = startContext(folder, registry);
-    panel.webview.onDidReceiveMessage((raw: unknown) => {
-      if (raw && typeof raw === "object" && (raw as { type?: unknown }).type === "ready") {
-        void activeSession.start(start);
-        return;
-      }
-      if (raw && typeof raw === "object" && (raw as { type?: unknown }).type === "external") {
-        const url = (raw as { url?: unknown }).url;
-        if (typeof url === "string") {
-          void openExternal(url).then((opened) => {
-            if (!opened) void window.showErrorMessage("Osprey Packages refused a non-HTTPS external link.");
-          });
-        }
-        return;
-      }
-      activeSession.message(raw);
-    });
-    const created = panel;
-    created.onDidDispose(() => {
-      activeSession.dispose();
-      if (panel === created) {
-        panel = undefined;
-        session = undefined;
-        openedFolder = "";
-      }
-    });
-    panel.reveal(undefined, true);
-  };
-
-  const disposable = commands.registerCommand(PACKAGE_WORKSPACE_COMMAND, open);
-  context.subscriptions.push(disposable);
-  return disposable;
+/** Register the package app through the shared native panel host. */
+export function registerPackageWorkspace(context: ExtensionContext, ready: (folder: Uri) => Promise<boolean> = async () => true): { dispose(): void } {
+  return registerNativePanel(context, { command: PACKAGE_WORKSPACE_COMMAND, view: VIEW_ID, title: PANEL_TITLE,
+    loading: "Loading your packages…", prepare: resource => application(context, ready, resource) });
 }

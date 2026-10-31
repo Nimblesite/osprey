@@ -1,0 +1,139 @@
+{
+  "repository": "https://github.com/openai/math",
+  "commit": "7ef5c0cc5ca4b0e072b7a050fca09ab24bc6fa3a",
+  "upstream_toolchain": "leanprover/lean4:v4.34.1",
+  "port_toolchain": "leanprover/lean4:v4.25.0",
+  "groups": [
+    {
+      "id": "stacks",
+      "module": "OpenAIStacks",
+      "upstream": "lean/OAI/Computability/Interspersed/Stacks.lean",
+      "upstream_sha256": "189e695b2649cf6b7473b727620298c7b5001eee621854c17fcbf792d383ce36",
+      "port_sha256": "5e8d19236e94d59207b4c7f3f8fa05fc358fd59516546e45a774096186281b4f",
+      "export_sha256": "f2256725919162d349eca2454b26ebc23fe939caec07650db4f1a9ccc83855f3",
+      "theorems": [
+        "OAI.PrefixFlows.Interspersed.push_zero",
+        "OAI.PrefixFlows.Interspersed.push_succ",
+        "OAI.PrefixFlows.Interspersed.prepend_nil",
+        "OAI.PrefixFlows.Interspersed.prepend_cons",
+        "OAI.PrefixFlows.Interspersed.prepend_append",
+        "OAI.PrefixFlows.Interspersed.tail_push",
+        "OAI.PrefixFlows.Interspersed.push_inj",
+        "OAI.PrefixFlows.Interspersed.push_constant"
+      ],
+      "axioms": [
+        "propext",
+        "Quot.sound"
+      ],
+      "kind": "supporting lemmas",
+      "theorem_axioms": {
+        "OAI.PrefixFlows.Interspersed.push_zero": [],
+        "OAI.PrefixFlows.Interspersed.push_succ": [],
+        "OAI.PrefixFlows.Interspersed.prepend_nil": [],
+        "OAI.PrefixFlows.Interspersed.prepend_cons": [],
+        "OAI.PrefixFlows.Interspersed.prepend_append": [
+          "propext"
+        ],
+        "OAI.PrefixFlows.Interspersed.tail_push": [],
+        "OAI.PrefixFlows.Interspersed.push_inj": [
+          "Quot.sound"
+        ],
+        "OAI.PrefixFlows.Interspersed.push_constant": [
+          "Quot.sound"
+        ]
+      }
+    },
+    {
+      "id": "word-seed",
+      "module": "OpenAIWordSeed",
+      "upstream": "lean/OAI/Combinatorics/LowSpaceSubsetSum/Word/WordSeedPowerExecution.lean",
+      "upstream_sha256": "4a0a7083b725eb1e99b75b7ee9254244fa538c379bbda20bf2634734ccfd6882",
+      "port_sha256": "fa632bfef96dc770d855c143cc9e103cb59d8b300dbe7aa370031c7a58f4f167",
+      "export_sha256": "14b3950c6e2ea1e73ed3fa529baf236346cb397da4bfa5d695c0049511b81a33",
+      "theorems": [
+        "OAI.LowSpaceSubsetSum.WordSeedPowerExecution.loop_value",
+        "OAI.LowSpaceSubsetSum.WordSeedPowerExecution.run_value",
+        "OAI.LowSpaceSubsetSum.WordSeedPowerExecution.run_work"
+      ],
+      "axioms": [
+        "propext"
+      ],
+      "kind": "supporting lemmas",
+      "theorem_axioms": {
+        "OAI.LowSpaceSubsetSum.WordSeedPowerExecution.loop_value": [
+          "propext"
+        ],
+        "OAI.LowSpaceSubsetSum.WordSeedPowerExecution.run_value": [
+          "propext"
+        ],
+        "OAI.LowSpaceSubsetSum.WordSeedPowerExecution.run_work": [
+          "propext"
+        ]
+      }
+    },
+    {
+      "id": "ambient-polar",
+      "module": "OpenAIAmbientPolar",
+      "upstream": "lean/OAI/Algebra/Determinantal/AmbientCoefficient.lean",
+      "upstream_sha256": "155c922a7de580d301c64c227989d4a54595fd5c618288754f83764b874991a0",
+      "port_sha256": "73c238fc68e44c68b031aff4494221550fb2ca64ac84f4aa91bd4ffcd3ac2afa",
+      "export_sha256": "b3cef268b53ce335e0df7eec9fa50d0fa7fdf6118748d62fc421b4c24bf7a177",
+      "theorems": [
+        "OAI.PermanentBorder.AmbientPolar.groupIndex_injective"
+      ],
+      "axioms": [
+        "propext"
+      ],
+      "kind": "supporting lemma; exact statement, constructive finite-case proof",
+      "theorem_axioms": {
+        "OAI.PermanentBorder.AmbientPolar.groupIndex_injective": [
+          "propext"
+        ]
+      }
+    },
+    {
+      "id": "five-color-orientation",
+      "module": "FiveColorOrientation",
+      "lean_project": "examples/proof/openai-number-theory/lean",
+      "upstream": "lean/OAI/NumberTheory/TwoPoint/Walks/FiveColorOrientation.lean",
+      "source_path": "examples/proof/openai-number-theory/lean/FiveColorOrientation.lean",
+      "source_sha256": "b09e6f250fdb3dfee876edf96056a34dec0e4e2fa3cec866a7bf84edb8a4fb0f",
+      "export_path": "examples/proof/openai-number-theory/exports/five-color-orientation.ndjson",
+      "export_sha256": "23bbe06b52c7d70a395d0d0facf821735953a88a071888fff64ca4358c50b756",
+      "original": {
+        "source_path": "examples/proof/openai/upstream/FiveColorOrientation.lean",
+        "source_sha256": "94c58f50a04b192020fd60fe997003f4b42eed34cd6a6bbcd1ba2cecf7dcffd2",
+        "export_path": "examples/proof/openai-number-theory/exports/five-color-orientation-original.ndjson",
+        "export_sha256": "729bd45ead65764e3fba0a83c345fff84c461f325766d91fccfc76fa8fb912f5"
+      },
+      "theorems": [
+        "OAI.TwoPointCorrelations.short_shift_quotient_gap",
+        "OAI.TwoPointCorrelations.short_shift_forward_colors",
+        "OAI.TwoPointCorrelations.short_shift_not_reverse_colors",
+        "OAI.TwoPointCorrelations.intervalColor_bounds",
+        "OAI.TwoPointCorrelations.five_color_isolates_forward"
+      ],
+      "axioms": [
+        "propext"
+      ],
+      "kind": "supporting lemmas; exact statements, core integer proofs replacing omega",
+      "theorem_axioms": {
+        "OAI.TwoPointCorrelations.short_shift_quotient_gap": [
+          "propext"
+        ],
+        "OAI.TwoPointCorrelations.short_shift_forward_colors": [
+          "propext"
+        ],
+        "OAI.TwoPointCorrelations.short_shift_not_reverse_colors": [
+          "propext"
+        ],
+        "OAI.TwoPointCorrelations.intervalColor_bounds": [
+          "propext"
+        ],
+        "OAI.TwoPointCorrelations.five_color_isolates_forward": [
+          "propext"
+        ]
+      }
+    }
+  ]
+}

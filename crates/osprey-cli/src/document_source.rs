@@ -45,6 +45,7 @@ pub(crate) fn load(cli: &Cli) -> Result<SourceSet, String> {
             flavor,
             source,
             program: parsed.program,
+            discipline: None,
         }],
     })
 }

@@ -29,7 +29,7 @@ const char *dispatch(const char *saved, const char *event);
 
 Calls are synchronous and serialized on GPUI's main thread. Input strings are borrowed for the call; the host copies the returned string immediately. The envelope is the one `@osprey/native` encodes ([NATIVE-HOSTS-TRANSPORT](../applications/0047-OspreyNativeHosts.md)): `version`, `state`, `slices`, `patches`, `removed`, `requests`, `diagnostics` and, at start, `theme`. The host rejects an envelope it cannot decode, an unknown node kind or an unknown capability, and shows the diagnostic. It never draws a fallback.
 
-The start context's `platform` is the operating system as `std::env::consts::OS` spells it (`macos`, `linux`, `windows`), which the framework decodes into its `Platform` union ([UI-CONTEXT-PLATFORM](../../../packages/native/README.md)).
+The start context's `platform` is the operating system as `std::env::consts::OS` spells it (`macos`, `linux`, `windows`), which `Context.platform` retains as a string; `Symbols::platform` converts it to the `Platform` union when needed ([UI-CONTEXT-PLATFORM](../../../packages/native/README.md)).
 
 ## Rendering [GPUI-HOST-RENDER]
 

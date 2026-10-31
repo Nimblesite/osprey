@@ -270,3 +270,24 @@ fn single_variant_same_name_type_is_a_record() {
     let foo = info.ctors.get("Foo").expect("Foo ctor published");
     assert!(foo.owner_is_record);
 }
+
+#[test]
+fn duplicate_definitions_are_rejected_in_every_declaration_order() {
+    // A second declaration must not silently republish a different ABI under
+    // one symbol: fn→extern and extern→fn agree, and a repeated extern is a
+    // duplicate too.
+    for source in [
+        "extern fn dup() -> Unit\nfn dup() = 1\n",
+        "fn dup() = 1\nextern fn dup() -> Unit\n",
+        "extern fn dup() -> Unit\nextern fn dup() -> int\n",
+    ] {
+        let errs = check(source);
+        let duplicates = errs
+            .iter()
+            .filter(|e| e.message == "duplicate definition `dup`")
+            .count();
+        assert_eq!(duplicates, 1, "{source}: {errs:?}");
+    }
+    let clean = check("extern fn first() -> Unit\nfn second() = 1\n");
+    assert!(clean.is_empty(), "distinct names must typecheck: {clean:?}");
+}

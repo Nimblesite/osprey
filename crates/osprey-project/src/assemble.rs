@@ -119,6 +119,7 @@ fn rebase(sources: &[SourceFile]) -> (Vec<SourceFile>, Vec<SourceMetadata>, Vec<
             source: source.source.clone(),
             global_line_start: start,
             global_line_end: end,
+            discipline: source.discipline.clone(),
         });
         offset = end;
     }

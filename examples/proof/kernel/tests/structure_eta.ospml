@@ -1,0 +1,309 @@
+namespace prooftests
+import proof::Terms
+import proof::Environment
+import proof::Checked
+import proof::Inductive
+import proof::Infer
+import proof::Reduce
+import proof::Fixtures
+import prooftests::Support
+import proof
+    Proj
+    BVar
+    Const
+    App
+    Lam
+    Pi
+    Sort
+    Succ
+    Zero
+    Max
+    Param
+    Decl
+    Axiom
+    Definition
+    Opaque
+    Binder
+(** Structure eta of [PROOF-KERNEL-THEORY]: one side a saturated constructor
+    application of a one-constructor, zero-index, non-recursive family, the
+    other side any term of the same type; they are definitionally equal when
+    every field argument equals the corresponding projection of the other
+    term. This is Lean 4.25.0's `try_eta_struct` (src/kernel/type_checker.cpp
+    line 784, tag v4.25.0): the constructor must be saturated, the family
+    must be `is_structure_like`, the two sides' types must themselves be
+    definitionally equal, and then each field is compared with a kernel
+    projection of the other side. Proof irrelevance answers first for
+    propositions, so a Prop family never needs eta, and a rejected projection
+    (forbidden Prop data) refuses eta instead of leaking. The positives run
+    against a real Lean export: the recorded `StructureEta` module below, the
+    Lean-defined product fixture with `prod_eta` and `prod_map_id`, both proved by `rfl`
+    in Lean 4.25.0 and both rejected by this kernel until structure eta
+    lands. Every control that must stay false stays false. *)
+module StructureEtaTests
+    (** Runs the structure-eta cases; the testing built-ins report TAP. *)
+    export run () =
+        recorded ()
+        eta ()
+        mapId ()
+        dependent ()
+        boundaries ()
+        propositions ()
+        core ()
+
+    (** Core Prod.map pattern-matches through a recursor, unlike the
+        projection-only fixture. Implements [PROOF-KERNEL-THEORY]. *)
+    export core () =
+        test ("core Prod.map_id rfl proof checks", \() =>
+            expect (verdict (Fixtures::coreProdMap (), "Prod.map_id"), "declared"))
+        test ("core Prod.map_id' rfl proof checks", \() =>
+            expect (verdict (Fixtures::coreProdMap (), "Prod.map_id'"), "declared"))
+        test ("core product composition proofs check with the full dependency export", \() =>
+            expect (verdict (Fixtures::coreProdAll (), "Prod.map_comp_map"), "declared"))
+        coreComparison (coreEnvironment ())
+        propositionMajor (unitEnvironment ())
+
+    coreComparison (env) =
+        test ("core recursor map identity equals the identity function", \() =>
+            expect (conversionIn (env, coreContext (), coreMap (coreId (BVar 1, "v")), coreIdentity ()), true))
+        test ("core recursor map identity applied to a variable computes", \() =>
+            expect (conversionIn (env, coreContext (), App (coreMap (coreId (BVar 1, "v"))) (BVar 0), BVar 0), true))
+        test ("core recursor map with a distinct field function refuses identity", \() =>
+            expect (conversionIn (coreDifferent env, coreContext (), coreMap (App (Const "k" [Param "v"]) (BVar 1)), coreIdentity ()), false))
+
+    coreEnvironment () = match split (Fixtures::coreProdMap (), "\n")
+        Success lines => declared (Checked::exportedDeclaring (Environment::empty (), join (filterList (lines, \line => !startsWith (line, "{\"thm\":")), "\n"), "Prod.map"), "the actual core definitions check")
+        Error message => declared (Error(message = message), "the actual core export splits")
+
+    coreContext () = [Binder(name = "p", ty = Terms::apps (Const "Prod" [Param "u", Param "v"], [BVar 1, BVar 0])), Binder(name = "β", ty = Sort (Succ (Param "v"))), Binder(name = "α", ty = Sort (Succ (Param "u")))]
+    corePair () = Terms::apps (Const "Prod" [Param "u", Param "v"], [BVar 2, BVar 1])
+    coreId (domain, level) = App (Const "id" [Succ (Param level)]) domain
+    coreMap (second) = Terms::apps (Const "Prod.map" [Param "u", Param "u", Param "v", Param "v"], [BVar 2, BVar 2, BVar 1, BVar 1, coreId (BVar 2, "u"), second])
+    coreIdentity () = App (Const "id" [Max (Succ (Param "u")) (Succ (Param "v"))]) (corePair ())
+    coreDifferent (env) = declared (Checked::declare (env, Decl(name = "k", params = ["v"], ty = Pi "β" (Sort (Succ (Param "v"))) (Pi "x" (BVar 0) (BVar 1)), body = Axiom)), "the distinct field function checks")
+
+    propositionMajor (env) =
+        test ("a Prop structure recursor application remains well typed", \() =>
+            expect (checkedIn (env, unitContext (), unitApplication (), Const "EtaData" []), "ok: EtaData"))
+        test ("a Prop structure major is not eta-expanded for data computation", \() =>
+            expect (conversionIn (env, unitContext (), unitApplication (), Const "etaValue" []), false))
+
+    unitContext () = [Binder(name = "p", ty = Const "PUnit" [Zero])]
+    unitApplication () = Terms::apps (Const "PUnit.rec" [Succ Zero, Zero], [Lam "p" (Const "PUnit" [Zero]) (Const "EtaData" []), Const "etaValue" [], BVar 0])
+    unitEnvironment () = unitValue (declared (Checked::declare (declared (Checked::exported (Environment::empty (), Fixtures::punitRec ()), "the PUnit export checks"), Decl(name = "EtaData", params = [], ty = Sort (Succ Zero), body = Axiom)), "the result type checks"))
+    unitValue (env) = declared (Checked::declare (env, Decl(name = "etaValue", params = [], ty = Const "EtaData" [], body = Axiom)), "the result value checks")
+    // The recorded export, its two rfl theorems, and theorem-free twins --
+    (** The recorded `StructureEta` module exactly as the pinned lean4export
+        (tag v4.25.0) wrote it: NDJSON format 3.1.0, 285 lines, 15575 bytes,
+        sha256 `2ba806e8da4160959f98f1338355b0d66e97dde7657c88c45eabab181a320605`,
+        accepted by the pinned lean4checker. The Lean-defined product fixture
+        (`Init/Prelude.lean:546`: one constructor `Prod.mk` of two fields, no
+        indices, not recursive) beside core's `Eq`, `id` and `Prod.map`
+        (`Init/Core.lean:214`), plus `prod_eta` and `prod_map_id`, whose
+        `Eq.refl` proofs the Lean kernel accepts only through
+        `try_eta_struct`. *)
+    fixture () = "{\"meta\":{\"exporter\":{\"name\":\"lean4export\",\"version\":\"3.1.0\"},\"format\":{\"version\":\"3.1.0\"},\"lean\":{\"githash\":\"cdd38ac5115bdeec5f609e9126cce00f51ae88b3\",\"version\":\"4.25.0\"}}}\n{\"in\":1,\"str\":{\"pre\":0,\"str\":\"Eq\"}}\n{\"in\":2,\"str\":{\"pre\":0,\"str\":\"u\"}}\n{\"il\":1,\"param\":2}\n{\"in\":3,\"str\":{\"pre\":0,\"str\":\"α\"}}\n{\"ie\":0,\"sort\":1}\n{\"in\":4,\"str\":{\"pre\":0,\"str\":\"a\"}}\n{\"in\":5,\"str\":{\"pre\":4,\"str\":\"_@\"}}\n{\"in\":6,\"str\":{\"pre\":5,\"str\":\"_internal\"}}\n{\"in\":7,\"str\":{\"pre\":6,\"str\":\"_hyg\"}}\n{\"in\":8,\"num\":{\"i\":0,\"pre\":7}}\n{\"bvar\":0,\"ie\":1}\n{\"bvar\":1,\"ie\":2}\n{\"ie\":3,\"sort\":0}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":3,\"name\":8,\"type\":2},\"ie\":4}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":4,\"name\":8,\"type\":1},\"ie\":5}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":5,\"name\":3,\"type\":0},\"ie\":6}\n{\"in\":9,\"str\":{\"pre\":1,\"str\":\"refl\"}}\n{\"const\":{\"name\":1,\"us\":[1]},\"ie\":7}\n{\"app\":{\"arg\":2,\"fn\":7},\"ie\":8}\n{\"app\":{\"arg\":1,\"fn\":8},\"ie\":9}\n{\"app\":{\"arg\":1,\"fn\":9},\"ie\":10}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":10,\"name\":4,\"type\":1},\"ie\":11}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":11,\"name\":3,\"type\":0},\"ie\":12}\n{\"in\":10,\"str\":{\"pre\":1,\"str\":\"rec\"}}\n{\"in\":11,\"str\":{\"pre\":0,\"str\":\"u_1\"}}\n{\"il\":2,\"param\":11}\n{\"in\":12,\"str\":{\"pre\":0,\"str\":\"motive\"}}\n{\"in\":13,\"str\":{\"pre\":0,\"str\":\"t\"}}\n{\"bvar\":2,\"ie\":13}\n{\"app\":{\"arg\":13,\"fn\":7},\"ie\":14}\n{\"app\":{\"arg\":2,\"fn\":14},\"ie\":15}\n{\"app\":{\"arg\":1,\"fn\":15},\"ie\":16}\n{\"ie\":17,\"sort\":2}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":17,\"name\":13,\"type\":16},\"ie\":18}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":18,\"name\":8,\"type\":2},\"ie\":19}\n{\"in\":14,\"str\":{\"pre\":0,\"str\":\"refl\"}}\n{\"app\":{\"arg\":2,\"fn\":1},\"ie\":20}\n{\"const\":{\"name\":9,\"us\":[1]},\"ie\":21}\n{\"app\":{\"arg\":13,\"fn\":21},\"ie\":22}\n{\"app\":{\"arg\":2,\"fn\":22},\"ie\":23}\n{\"app\":{\"arg\":23,\"fn\":20},\"ie\":24}\n{\"bvar\":3,\"ie\":25}\n{\"bvar\":4,\"ie\":26}\n{\"app\":{\"arg\":26,\"fn\":7},\"ie\":27}\n{\"app\":{\"arg\":25,\"fn\":27},\"ie\":28}\n{\"app\":{\"arg\":1,\"fn\":28},\"ie\":29}\n{\"app\":{\"arg\":2,\"fn\":25},\"ie\":30}\n{\"app\":{\"arg\":1,\"fn\":30},\"ie\":31}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":31,\"name\":13,\"type\":29},\"ie\":32}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":32,\"name\":8,\"type\":25},\"ie\":33}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":33,\"name\":14,\"type\":24},\"ie\":34}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":34,\"name\":12,\"type\":19},\"ie\":35}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":35,\"name\":8,\"type\":1},\"ie\":36}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":36,\"name\":3,\"type\":0},\"ie\":37}\n{\"ie\":38,\"lam\":{\"binderInfo\":\"default\",\"body\":1,\"name\":14,\"type\":24}}\n{\"ie\":39,\"lam\":{\"binderInfo\":\"default\",\"body\":38,\"name\":12,\"type\":19}}\n{\"ie\":40,\"lam\":{\"binderInfo\":\"default\",\"body\":39,\"name\":8,\"type\":1}}\n{\"ie\":41,\"lam\":{\"binderInfo\":\"implicit\",\"body\":40,\"name\":3,\"type\":0}}\n{\"inductive\":{\"ctors\":[{\"cidx\":0,\"induct\":1,\"isUnsafe\":false,\"levelParams\":[2],\"name\":9,\"numFields\":0,\"numParams\":2,\"type\":12}],\"recs\":[{\"all\":[1],\"isUnsafe\":false,\"k\":true,\"levelParams\":[11,2],\"name\":10,\"numIndices\":1,\"numMinors\":1,\"numMotives\":1,\"numParams\":2,\"rules\":[{\"ctor\":9,\"nfields\":0,\"rhs\":41}],\"type\":37}],\"types\":[{\"all\":[1],\"ctors\":[9],\"isRec\":false,\"isReflexive\":false,\"isUnsafe\":false,\"levelParams\":[2],\"name\":1,\"numIndices\":1,\"numNested\":0,\"numParams\":2,\"type\":6}]}}\n{\"in\":15,\"str\":{\"pre\":1,\"str\":\"recOn\"}}\n{\"app\":{\"arg\":25,\"fn\":7},\"ie\":42}\n{\"app\":{\"arg\":13,\"fn\":42},\"ie\":43}\n{\"app\":{\"arg\":1,\"fn\":43},\"ie\":44}\n{\"app\":{\"arg\":25,\"fn\":13},\"ie\":45}\n{\"app\":{\"arg\":26,\"fn\":21},\"ie\":46}\n{\"app\":{\"arg\":25,\"fn\":46},\"ie\":47}\n{\"app\":{\"arg\":47,\"fn\":45},\"ie\":48}\n{\"app\":{\"arg\":13,\"fn\":25},\"ie\":49}\n{\"app\":{\"arg\":2,\"fn\":49},\"ie\":50}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":50,\"name\":14,\"type\":48},\"ie\":51}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":51,\"name\":13,\"type\":44},\"ie\":52}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":52,\"name\":8,\"type\":13},\"ie\":53}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":53,\"name\":12,\"type\":19},\"ie\":54}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":54,\"name\":8,\"type\":1},\"ie\":55}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":55,\"name\":3,\"type\":0},\"ie\":56}\n{\"const\":{\"name\":10,\"us\":[2,1]},\"ie\":57}\n{\"bvar\":5,\"ie\":58}\n{\"app\":{\"arg\":58,\"fn\":57},\"ie\":59}\n{\"app\":{\"arg\":26,\"fn\":59},\"ie\":60}\n{\"app\":{\"arg\":25,\"fn\":60},\"ie\":61}\n{\"app\":{\"arg\":1,\"fn\":61},\"ie\":62}\n{\"app\":{\"arg\":13,\"fn\":62},\"ie\":63}\n{\"app\":{\"arg\":2,\"fn\":63},\"ie\":64}\n{\"ie\":65,\"lam\":{\"binderInfo\":\"default\",\"body\":64,\"name\":14,\"type\":48}}\n{\"ie\":66,\"lam\":{\"binderInfo\":\"default\",\"body\":65,\"name\":13,\"type\":44}}\n{\"ie\":67,\"lam\":{\"binderInfo\":\"implicit\",\"body\":66,\"name\":8,\"type\":13}}\n{\"ie\":68,\"lam\":{\"binderInfo\":\"implicit\",\"body\":67,\"name\":12,\"type\":19}}\n{\"ie\":69,\"lam\":{\"binderInfo\":\"implicit\",\"body\":68,\"name\":8,\"type\":1}}\n{\"ie\":70,\"lam\":{\"binderInfo\":\"implicit\",\"body\":69,\"name\":3,\"type\":0}}\n{\"def\":{\"all\":[15],\"hints\":\"abbrev\",\"levelParams\":[11,2],\"name\":15,\"safety\":\"safe\",\"type\":56,\"value\":70}}\n{\"in\":16,\"str\":{\"pre\":0,\"str\":\"id\"}}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":2,\"name\":4,\"type\":1},\"ie\":71}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":71,\"name\":3,\"type\":0},\"ie\":72}\n{\"ie\":73,\"lam\":{\"binderInfo\":\"default\",\"body\":1,\"name\":4,\"type\":1}}\n{\"ie\":74,\"lam\":{\"binderInfo\":\"implicit\",\"body\":73,\"name\":3,\"type\":0}}\n{\"def\":{\"all\":[16],\"hints\":{\"regular\":1},\"levelParams\":[2],\"name\":16,\"safety\":\"safe\",\"type\":72,\"value\":74}}\n{\"in\":17,\"str\":{\"pre\":0,\"str\":\"Prod\"}}\n{\"in\":18,\"str\":{\"pre\":0,\"str\":\"v\"}}\n{\"il\":3,\"param\":18}\n{\"in\":19,\"str\":{\"pre\":0,\"str\":\"β\"}}\n{\"ie\":75,\"sort\":3}\n{\"il\":4,\"succ\":0}\n{\"il\":5,\"max\":[4,1]}\n{\"il\":6,\"max\":[5,3]}\n{\"ie\":76,\"sort\":6}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":76,\"name\":19,\"type\":75},\"ie\":77}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":77,\"name\":3,\"type\":0},\"ie\":78}\n{\"in\":20,\"str\":{\"pre\":17,\"str\":\"mk\"}}\n{\"in\":21,\"str\":{\"pre\":0,\"str\":\"fst\"}}\n{\"in\":22,\"str\":{\"pre\":0,\"str\":\"snd\"}}\n{\"const\":{\"name\":17,\"us\":[1,3]},\"ie\":79}\n{\"app\":{\"arg\":25,\"fn\":79},\"ie\":80}\n{\"app\":{\"arg\":13,\"fn\":80},\"ie\":81}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":81,\"name\":22,\"type\":2},\"ie\":82}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":82,\"name\":21,\"type\":2},\"ie\":83}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":83,\"name\":19,\"type\":75},\"ie\":84}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":84,\"name\":3,\"type\":0},\"ie\":85}\n{\"in\":23,\"str\":{\"pre\":17,\"str\":\"rec\"}}\n{\"app\":{\"arg\":2,\"fn\":79},\"ie\":86}\n{\"app\":{\"arg\":1,\"fn\":86},\"ie\":87}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":17,\"name\":13,\"type\":87},\"ie\":88}\n{\"in\":24,\"str\":{\"pre\":0,\"str\":\"mk\"}}\n{\"const\":{\"name\":20,\"us\":[1,3]},\"ie\":89}\n{\"app\":{\"arg\":26,\"fn\":89},\"ie\":90}\n{\"app\":{\"arg\":25,\"fn\":90},\"ie\":91}\n{\"app\":{\"arg\":2,\"fn\":91},\"ie\":92}\n{\"app\":{\"arg\":1,\"fn\":92},\"ie\":93}\n{\"app\":{\"arg\":93,\"fn\":13},\"ie\":94}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":94,\"name\":22,\"type\":13},\"ie\":95}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":95,\"name\":21,\"type\":13},\"ie\":96}\n{\"app\":{\"arg\":1,\"fn\":13},\"ie\":97}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":97,\"name\":13,\"type\":81},\"ie\":98}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":98,\"name\":24,\"type\":96},\"ie\":99}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":99,\"name\":12,\"type\":88},\"ie\":100}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":100,\"name\":19,\"type\":75},\"ie\":101}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":101,\"name\":3,\"type\":0},\"ie\":102}\n{\"app\":{\"arg\":2,\"fn\":13},\"ie\":103}\n{\"app\":{\"arg\":1,\"fn\":103},\"ie\":104}\n{\"ie\":105,\"lam\":{\"binderInfo\":\"default\",\"body\":104,\"name\":22,\"type\":25}}\n{\"ie\":106,\"lam\":{\"binderInfo\":\"default\",\"body\":105,\"name\":21,\"type\":25}}\n{\"ie\":107,\"lam\":{\"binderInfo\":\"default\",\"body\":106,\"name\":24,\"type\":96}}\n{\"ie\":108,\"lam\":{\"binderInfo\":\"default\",\"body\":107,\"name\":12,\"type\":88}}\n{\"ie\":109,\"lam\":{\"binderInfo\":\"default\",\"body\":108,\"name\":19,\"type\":75}}\n{\"ie\":110,\"lam\":{\"binderInfo\":\"default\",\"body\":109,\"name\":3,\"type\":0}}\n{\"inductive\":{\"ctors\":[{\"cidx\":0,\"induct\":17,\"isUnsafe\":false,\"levelParams\":[2,18],\"name\":20,\"numFields\":2,\"numParams\":2,\"type\":85}],\"recs\":[{\"all\":[17],\"isUnsafe\":false,\"k\":false,\"levelParams\":[11,2,18],\"name\":23,\"numIndices\":0,\"numMinors\":1,\"numMotives\":1,\"numParams\":2,\"rules\":[{\"ctor\":20,\"nfields\":2,\"rhs\":110}],\"type\":102}],\"types\":[{\"all\":[17],\"ctors\":[20],\"isRec\":false,\"isReflexive\":false,\"isUnsafe\":false,\"levelParams\":[2,18],\"name\":17,\"numIndices\":0,\"numNested\":0,\"numParams\":2,\"type\":78}]}}\n{\"in\":25,\"str\":{\"pre\":17,\"str\":\"fst\"}}\n{\"in\":26,\"str\":{\"pre\":0,\"str\":\"self\"}}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":13,\"name\":26,\"type\":87},\"ie\":111}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":111,\"name\":19,\"type\":75},\"ie\":112}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":112,\"name\":3,\"type\":0},\"ie\":113}\n{\"ie\":114,\"proj\":{\"idx\":0,\"struct\":1,\"typeName\":17}}\n{\"ie\":115,\"lam\":{\"binderInfo\":\"default\",\"body\":114,\"name\":26,\"type\":87}}\n{\"ie\":116,\"lam\":{\"binderInfo\":\"default\",\"body\":115,\"name\":19,\"type\":75}}\n{\"ie\":117,\"lam\":{\"binderInfo\":\"default\",\"body\":116,\"name\":3,\"type\":0}}\n{\"def\":{\"all\":[25],\"hints\":\"abbrev\",\"levelParams\":[2,18],\"name\":25,\"safety\":\"safe\",\"type\":113,\"value\":117}}\n{\"in\":27,\"str\":{\"pre\":17,\"str\":\"snd\"}}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":2,\"name\":26,\"type\":87},\"ie\":118}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":118,\"name\":19,\"type\":75},\"ie\":119}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":119,\"name\":3,\"type\":0},\"ie\":120}\n{\"ie\":121,\"proj\":{\"idx\":1,\"struct\":1,\"typeName\":17}}\n{\"ie\":122,\"lam\":{\"binderInfo\":\"default\",\"body\":121,\"name\":26,\"type\":87}}\n{\"ie\":123,\"lam\":{\"binderInfo\":\"default\",\"body\":122,\"name\":19,\"type\":75}}\n{\"ie\":124,\"lam\":{\"binderInfo\":\"default\",\"body\":123,\"name\":3,\"type\":0}}\n{\"def\":{\"all\":[27],\"hints\":\"abbrev\",\"levelParams\":[2,18],\"name\":27,\"safety\":\"safe\",\"type\":120,\"value\":124}}\n{\"in\":28,\"str\":{\"pre\":0,\"str\":\"prod_eta\"}}\n{\"in\":29,\"str\":{\"pre\":0,\"str\":\"p\"}}\n{\"il\":7,\"max\":[4,3]}\n{\"il\":8,\"max\":[7,1]}\n{\"const\":{\"name\":1,\"us\":[8]},\"ie\":125}\n{\"app\":{\"arg\":13,\"fn\":79},\"ie\":126}\n{\"app\":{\"arg\":2,\"fn\":126},\"ie\":127}\n{\"app\":{\"arg\":127,\"fn\":125},\"ie\":128}\n{\"app\":{\"arg\":13,\"fn\":89},\"ie\":129}\n{\"app\":{\"arg\":2,\"fn\":129},\"ie\":130}\n{\"const\":{\"name\":25,\"us\":[1,3]},\"ie\":131}\n{\"app\":{\"arg\":13,\"fn\":131},\"ie\":132}\n{\"app\":{\"arg\":2,\"fn\":132},\"ie\":133}\n{\"app\":{\"arg\":1,\"fn\":133},\"ie\":134}\n{\"app\":{\"arg\":134,\"fn\":130},\"ie\":135}\n{\"const\":{\"name\":27,\"us\":[1,3]},\"ie\":136}\n{\"app\":{\"arg\":13,\"fn\":136},\"ie\":137}\n{\"app\":{\"arg\":2,\"fn\":137},\"ie\":138}\n{\"app\":{\"arg\":1,\"fn\":138},\"ie\":139}\n{\"app\":{\"arg\":139,\"fn\":135},\"ie\":140}\n{\"app\":{\"arg\":140,\"fn\":128},\"ie\":141}\n{\"app\":{\"arg\":1,\"fn\":141},\"ie\":142}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":142,\"name\":29,\"type\":87},\"ie\":143}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":143,\"name\":19,\"type\":75},\"ie\":144}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":144,\"name\":3,\"type\":0},\"ie\":145}\n{\"const\":{\"name\":9,\"us\":[6]},\"ie\":146}\n{\"app\":{\"arg\":127,\"fn\":146},\"ie\":147}\n{\"app\":{\"arg\":1,\"fn\":147},\"ie\":148}\n{\"ie\":149,\"lam\":{\"binderInfo\":\"default\",\"body\":148,\"name\":29,\"type\":87}}\n{\"ie\":150,\"lam\":{\"binderInfo\":\"implicit\",\"body\":149,\"name\":19,\"type\":75}}\n{\"ie\":151,\"lam\":{\"binderInfo\":\"implicit\",\"body\":150,\"name\":3,\"type\":0}}\n{\"thm\":{\"all\":[28],\"levelParams\":[2,18],\"name\":28,\"type\":145,\"value\":151}}\n{\"in\":30,\"str\":{\"pre\":17,\"str\":\"map\"}}\n{\"in\":31,\"str\":{\"pre\":0,\"str\":\"γ\"}}\n{\"in\":32,\"str\":{\"pre\":0,\"str\":\"δ\"}}\n{\"in\":33,\"str\":{\"pre\":0,\"str\":\"f\"}}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":13,\"name\":8,\"type\":25},\"ie\":152}\n{\"in\":34,\"str\":{\"pre\":0,\"str\":\"g\"}}\n{\"in\":35,\"str\":{\"pre\":0,\"str\":\"x\"}}\n{\"app\":{\"arg\":58,\"fn\":79},\"ie\":153}\n{\"app\":{\"arg\":26,\"fn\":153},\"ie\":154}\n{\"app\":{\"arg\":26,\"fn\":79},\"ie\":155}\n{\"app\":{\"arg\":25,\"fn\":155},\"ie\":156}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":156,\"name\":35,\"type\":154},\"ie\":157}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":157,\"name\":34,\"type\":152},\"ie\":158}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":158,\"name\":33,\"type\":152},\"ie\":159}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":159,\"name\":32,\"type\":75},\"ie\":160}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":160,\"name\":31,\"type\":0},\"ie\":161}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":161,\"name\":19,\"type\":75},\"ie\":162}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":162,\"name\":3,\"type\":0},\"ie\":163}\n{\"bvar\":6,\"ie\":164}\n{\"app\":{\"arg\":164,\"fn\":131},\"ie\":165}\n{\"app\":{\"arg\":58,\"fn\":165},\"ie\":166}\n{\"app\":{\"arg\":1,\"fn\":166},\"ie\":167}\n{\"app\":{\"arg\":167,\"fn\":13},\"ie\":168}\n{\"app\":{\"arg\":168,\"fn\":91},\"ie\":169}\n{\"app\":{\"arg\":164,\"fn\":136},\"ie\":170}\n{\"app\":{\"arg\":58,\"fn\":170},\"ie\":171}\n{\"app\":{\"arg\":1,\"fn\":171},\"ie\":172}\n{\"app\":{\"arg\":172,\"fn\":2},\"ie\":173}\n{\"app\":{\"arg\":173,\"fn\":169},\"ie\":174}\n{\"ie\":175,\"lam\":{\"binderInfo\":\"default\",\"body\":174,\"name\":35,\"type\":154}}\n{\"ie\":176,\"lam\":{\"binderInfo\":\"default\",\"body\":175,\"name\":34,\"type\":152}}\n{\"ie\":177,\"lam\":{\"binderInfo\":\"default\",\"body\":176,\"name\":33,\"type\":152}}\n{\"ie\":178,\"lam\":{\"binderInfo\":\"implicit\",\"body\":177,\"name\":32,\"type\":75}}\n{\"ie\":179,\"lam\":{\"binderInfo\":\"implicit\",\"body\":178,\"name\":31,\"type\":0}}\n{\"ie\":180,\"lam\":{\"binderInfo\":\"implicit\",\"body\":179,\"name\":19,\"type\":75}}\n{\"ie\":181,\"lam\":{\"binderInfo\":\"implicit\",\"body\":180,\"name\":3,\"type\":0}}\n{\"def\":{\"all\":[30],\"hints\":{\"regular\":1},\"levelParams\":[2,18],\"name\":30,\"safety\":\"safe\",\"type\":163,\"value\":181}}\n{\"in\":36,\"str\":{\"pre\":17,\"str\":\"recOn\"}}\n{\"app\":{\"arg\":58,\"fn\":89},\"ie\":182}\n{\"app\":{\"arg\":26,\"fn\":182},\"ie\":183}\n{\"app\":{\"arg\":2,\"fn\":183},\"ie\":184}\n{\"app\":{\"arg\":1,\"fn\":184},\"ie\":185}\n{\"app\":{\"arg\":185,\"fn\":25},\"ie\":186}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":186,\"name\":22,\"type\":25},\"ie\":187}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":187,\"name\":21,\"type\":25},\"ie\":188}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":103,\"name\":24,\"type\":188},\"ie\":189}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":189,\"name\":13,\"type\":127},\"ie\":190}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":190,\"name\":12,\"type\":88},\"ie\":191}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":191,\"name\":19,\"type\":75},\"ie\":192}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":192,\"name\":3,\"type\":0},\"ie\":193}\n{\"const\":{\"name\":23,\"us\":[2,1,3]},\"ie\":194}\n{\"app\":{\"arg\":26,\"fn\":194},\"ie\":195}\n{\"app\":{\"arg\":25,\"fn\":195},\"ie\":196}\n{\"app\":{\"arg\":13,\"fn\":196},\"ie\":197}\n{\"app\":{\"arg\":1,\"fn\":197},\"ie\":198}\n{\"app\":{\"arg\":2,\"fn\":198},\"ie\":199}\n{\"ie\":200,\"lam\":{\"binderInfo\":\"default\",\"body\":199,\"name\":24,\"type\":188}}\n{\"ie\":201,\"lam\":{\"binderInfo\":\"default\",\"body\":200,\"name\":13,\"type\":127}}\n{\"ie\":202,\"lam\":{\"binderInfo\":\"implicit\",\"body\":201,\"name\":12,\"type\":88}}\n{\"ie\":203,\"lam\":{\"binderInfo\":\"implicit\",\"body\":202,\"name\":19,\"type\":75}}\n{\"ie\":204,\"lam\":{\"binderInfo\":\"implicit\",\"body\":203,\"name\":3,\"type\":0}}\n{\"def\":{\"all\":[36],\"hints\":\"abbrev\",\"levelParams\":[11,2,18],\"name\":36,\"safety\":\"safe\",\"type\":193,\"value\":204}}\n{\"in\":37,\"str\":{\"pre\":0,\"str\":\"prod_map_id\"}}\n{\"const\":{\"name\":1,\"us\":[6]},\"ie\":205}\n{\"forallE\":{\"binderInfo\":\"default\",\"body\":127,\"name\":35,\"type\":87},\"ie\":206}\n{\"app\":{\"arg\":206,\"fn\":205},\"ie\":207}\n{\"const\":{\"name\":30,\"us\":[1,3]},\"ie\":208}\n{\"app\":{\"arg\":2,\"fn\":208},\"ie\":209}\n{\"app\":{\"arg\":1,\"fn\":209},\"ie\":210}\n{\"app\":{\"arg\":2,\"fn\":210},\"ie\":211}\n{\"app\":{\"arg\":1,\"fn\":211},\"ie\":212}\n{\"const\":{\"name\":16,\"us\":[1]},\"ie\":213}\n{\"app\":{\"arg\":2,\"fn\":213},\"ie\":214}\n{\"app\":{\"arg\":214,\"fn\":212},\"ie\":215}\n{\"const\":{\"name\":16,\"us\":[3]},\"ie\":216}\n{\"app\":{\"arg\":1,\"fn\":216},\"ie\":217}\n{\"app\":{\"arg\":217,\"fn\":215},\"ie\":218}\n{\"app\":{\"arg\":218,\"fn\":207},\"ie\":219}\n{\"const\":{\"name\":16,\"us\":[8]},\"ie\":220}\n{\"app\":{\"arg\":87,\"fn\":220},\"ie\":221}\n{\"app\":{\"arg\":221,\"fn\":219},\"ie\":222}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":222,\"name\":19,\"type\":75},\"ie\":223}\n{\"forallE\":{\"binderInfo\":\"implicit\",\"body\":223,\"name\":3,\"type\":0},\"ie\":224}\n{\"app\":{\"arg\":206,\"fn\":146},\"ie\":225}\n{\"app\":{\"arg\":218,\"fn\":225},\"ie\":226}\n{\"ie\":227,\"lam\":{\"binderInfo\":\"implicit\",\"body\":226,\"name\":19,\"type\":75}}\n{\"ie\":228,\"lam\":{\"binderInfo\":\"implicit\",\"body\":227,\"name\":3,\"type\":0}}\n{\"thm\":{\"all\":[37],\"levelParams\":[2,18],\"name\":37,\"type\":224,\"value\":228}}"
+    (** Line 197 of the recording: `thm prod_eta`. *)
+    etaThmLine () = "{\"thm\":{\"all\":[28],\"levelParams\":[2,18],\"name\":28,\"type\":145,\"value\":151}}"
+    (** Line 285 of the recording: `thm prod_map_id`. *)
+    mapIdThmLine () = "{\"thm\":{\"all\":[37],\"levelParams\":[2,18],\"name\":37,\"type\":224,\"value\":228}}"
+    (** The recording with `thm prod_eta` removed: everything else,
+        `prod_map_id` included, still loads. *)
+    withoutEta () = dropLine (fixture (), etaThmLine ())
+    (** The recording with both `rfl` theorems removed: the family, its
+        constructor, recursor, projections, `Prod.map` and `id` all remain,
+        so a failure below is missing eta, never a fixture fault. *)
+    stripped () = dropLine (withoutEta (), mapIdThmLine ())
+    dropLine (text, line) = match replace (text, "\n${line}", "")
+        Success cut => cut
+        Error message =>
+            check "the recording drops its rfl theorem" "no error" message
+            text
+    // Environments the cases run in --
+    (** The theorem-free export fully checked; naming `Prod.map` proves the
+        whole stripped text loaded, nothing dropped mid-file. *)
+    defsEnv () = declared (Checked::exportedDeclaring (Environment::empty (), stripped (), "Prod.map"), "the stripped export checks")
+    declared (result, label) = match result
+        Success env => env
+        Error message =>
+            check label "success" message
+            Environment::empty ()
+    // The real-export positives --
+    (** The two theorems real Lean checked: the kernel must declare each one
+        again from the recording that carries only it. *)
+    recorded () =
+        test ("the real Lean prod_eta proof checks through the kernel", \() =>
+            expect (verdict (fixture (), "prod_eta"), "declared"))
+        test ("the real Lean prod_map_id proof checks through the kernel", \() =>
+            expect (verdict (withoutEta (), "prod_map_id"), "declared"))
+    verdict (text, name) = match Checked::exportedDeclaring (Environment::empty (), text, name)
+        Success env => "declared"
+        Error message => "error: ${message}"
+    eta () =
+        test ("a constructor of the projections equals the original pair", \() =>
+            expect (conversionIn (defsEnv (), prodContext (), mkOfProjections (), BVar 0), true))
+        test ("rfl proves the constructor of the projections equals the pair", \() =>
+            expect (checkedIn (defsEnv (), prodContext (), eqRefl (mkOfProjections ()), eqOf (mkOfProjections (), BVar 0)), "ok: ${Support::render (eqOf (mkOfProjections (), BVar 0))}"))
+        transparentAlias ()
+        opaqueAliases ()
+        directRaw ()
+    // A checked Definition whose value is the recorded constructor, η-expanded
+    (** `pairAlias α β (Prod.fst α β p) (Prod.snd α β p)` vs `p`: only δ (then
+        the fields' own δ) stands between the recorded constructor and η, so
+        the two are definitionally equal exactly when η reads the whnf'd
+        spine. The alias type is the recorded constructor's own type, so no
+        universe or binder choice here is ours to get wrong. *)
+    transparentAlias () =
+        test ("the recorded constructor type types the alias value", \() =>
+            expect (checkedIn (aliasEnv (), [], aliasValue (), ctorType (defsEnv ())), "ok: ${Support::render (ctorType (defsEnv ()))}"))
+        test ("the alias application has the pair's type", \() =>
+            expect (Support::inferred (aliasEnv (), prodContext (), aliased ("pairAlias")), Support::render (prodTypeUnder ())))
+        test ("a transparent alias of the projections equals the pair", \() =>
+            expect (conversionIn (aliasEnv (), prodContext (), aliased ("pairAlias"), BVar 0), true))
+    opaqueAliases () =
+        test ("an axiom-bodied alias is never eta'd", \() =>
+            expect (conversionIn (opaqueEnv (), prodContext (), aliased ("axAlias"), BVar 0), false))
+        test ("an axiom-bodied alias does not unfold", \() =>
+            expect (Support::unfolded (opaqueEnv (), "axAlias"), "error: axioms do not unfold"))
+        test ("an opaque-bodied alias is never eta'd", \() =>
+            expect (conversionIn (opaqueEnv (), prodContext (), aliased ("opAlias"), BVar 0), false))
+        test ("an opaque-bodied alias does not unfold", \() =>
+            expect (Support::unfolded (opaqueEnv (), "opAlias"), "error: opaque declarations do not unfold"))
+    (** The same pair built from raw projections, in the alias environment:
+        η with no δ in front of it. Green here beside the red alias case is
+        what rules out a bad environment, context or typing. *)
+    directRaw () =
+        test ("the recorded constructor of raw projections equals the pair", \() =>
+            expect (conversionIn (aliasEnv (), prodContext (), rawMk (), BVar 0), true))
+    rawMk () = Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 2, BVar 1, Proj "Prod" 0 (BVar 0), Proj "Prod" 1 (BVar 0)])
+    aliasEnv () = declared (Environment::add (defsEnv (), aliasDecl ("pairAlias", Definition (aliasValue ()))), "the transparent alias declares")
+    opaqueEnv () = second (declared (Environment::add (aliasEnv (), aliasDecl ("axAlias", Axiom)), "the axiom alias declares"))
+    second (env) = declared (Environment::add (env, aliasDecl ("opAlias", Opaque (aliasValue ()))), "the opaque alias declares")
+    aliasDecl (name, body) = Decl(name = name, params = ["u", "v"], ty = ctorType (defsEnv ()), body = body)
+    (** The recorded `Prod.mk` type: four Π binders, two parameters then two
+        fields. A missing constant fails the enclosing case, never silently. *)
+    ctorType (env) = match Environment::find (env, "Prod.mk")
+        Success decl => decl.ty
+        Error message =>
+            check "the fixture records Prod.mk" "success" message
+            Sort Zero
+    (** `fun α β a b => Prod.mk α β a b`, each binder typed by the recorded
+        constructor type itself. *)
+    aliasValue () = expand (defsEnv (), ctorType (defsEnv ()))
+    expand (env, ty) = match Reduce::whnf (env, ty)
+        Pi name domain rest => Lam name domain (expand (env, rest))
+        other => Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 3, BVar 2, BVar 1, BVar 0])
+    aliased (name) = Terms::apps (Const name [Param "u", Param "v"], [BVar 2, BVar 1, projectionAt 0, projectionAt 1])
+    mapId () =
+        test ("Prod.map id id is the identity function", \() =>
+            expect (checkedIn (defsEnv (), prodContext (), functionRefl (mapIdTerm ()), functionEq (mapIdTerm (), idTerm ())), "ok: ${Support::render (functionEq (mapIdTerm (), idTerm ()))}"))
+    // The dependent-family positive --
+    dependent () =
+        test ("a constructor of the projections equals the original in a dependent family", \() =>
+            expect (checkedIn (sigEnv (), sigContext (), sigRefl (sigMk ()), sigEqOf (sigMk (), BVar 0)), "ok: ${Support::render (sigEqOf (sigMk (), BVar 0))}"))
+    sigEnv () = declared (Inductive::declare (defsEnv (), sigFormer (), [sigCtor ()], 0), "the dependent family declares")
+    (** `Sig : Type 1` with one constructor of four fields, the fourth
+        dependent on the third: `Sig.mk : ∀ (A : Type 0) (B : A → Type 0)
+        (x : A), B x → Sig`. *)
+    sigFormer () = Decl(name = "Sig", params = [], ty = Sort (Succ (Succ Zero)), body = Axiom)
+    sigCtor () = Decl(name = "Sig.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "B" (Pi "b" (BVar 0) (Sort (Succ Zero))) (Pi "x" (BVar 1) (Pi "y" (Terms::apps (BVar 1, [BVar 0])) (Const "Sig" [])))), body = Axiom)
+    sigContext () = [Binder(name = "s", ty = Const "Sig" []), Binder(name = "B", ty = Pi "b" (BVar 0) (Sort (Succ Zero))), Binder(name = "A", ty = Sort (Succ Zero))]
+    sigMk () = Terms::apps (Const "Sig.mk" [], [Proj "Sig" 0 (BVar 0), Proj "Sig" 1 (BVar 0), Proj "Sig" 2 (BVar 0), Proj "Sig" 3 (BVar 0)])
+    sigEqOf (left, right) = Terms::apps (Const "Eq" [Succ (Succ Zero)], [Const "Sig" [], left, right])
+    sigRefl (term) = Terms::apps (Const "Eq.refl" [Succ (Succ Zero)], [Const "Sig" [], term])
+    // Controls: what must never become equal --
+    boundaries () =
+        basicBoundaries ()
+        familyBoundaries ()
+        fakeBoundaries ()
+
+    basicBoundaries () =
+        test ("function eta still compares a lambda with its spine", \() =>
+            expect (Support::defeqOf (defsEnv (), Lam "x" (Sort Zero) (App (BVar 1) (BVar 0)), BVar 0), true))
+        test ("a constructor of the swapped projections is not the pair", \() =>
+            expect (conversionIn (defsEnv (), prodContext (), mkSwapped (), BVar 0), false))
+        test ("another family's constructor never collapses to its argument", \() =>
+            expect (conversionIn (packedEnv (), packedContext (), Terms::apps (Const "Packed.mk" [], [BVar 1, BVar 0]), BVar 0), false))
+    familyBoundaries () =
+        test ("a two-constructor family refuses eta even on matching projections", \() =>
+            expect (conversionIn (n2Env (), n2Context (), Terms::apps (Const "N2.succ2" [], [Proj "N2" 0 (BVar 0)]), BVar 0), false))
+        test ("a two-constructor family has no projections to project", \() =>
+            expect (Support::messageOf (Infer::infer (n2Env (), n2Context (), Proj "N2" 0 (BVar 0))), "invalid projection `N2.0`"))
+        test ("a recursive one-constructor family refuses eta even on matching projections", \() =>
+            expect (conversionIn (r1Env (), r1Context (), Terms::apps (Const "R1.mk" [], [Proj "R1" 0 (BVar 0)]), BVar 0), false))
+        test ("an indexed one-constructor family refuses eta even on matching projections", \() =>
+            expect (conversionIn (i1Env (), i1Context (), Terms::apps (Const "I1.wrap" [], [Proj "I1" 0 (BVar 0)]), BVar 0), false))
+    fakeBoundaries () =
+        test ("a constructor named only by an axiom never collapses to its argument", \() =>
+            expect (conversionIn (fkEnv (), fkContext (), App (Const "Fk.mk" []) (BVar 0), BVar 0), false))
+        test ("a projection of an axiom-named constructor never reduces", \() =>
+            expect (Terms::equal (Reduce::whnf (fkEnv (), Proj "Fk" 0 (App (Const "Fk.mk" []) (BVar 0))), Proj "Fk" 0 (App (Const "Fk.mk" []) (BVar 0))), true))
+    propositions () =
+        test ("proof irrelevance still answers for a Prop family", \() =>
+            expect (Reduce::conversion (hiddenEnv (), hiddenContext (), hiddenMkOf (BVar 1), BVar 0, true), true))
+        test ("differing hidden data is never collapsed", \() =>
+            expect (Reduce::conversion (hiddenEnv (), hiddenTwoContext (), hiddenTwoMkOf (BVar 0), hiddenTwoMkOf (BVar 1), false), false))
+        test ("differing hidden data still answers irrelevant as proofs", \() =>
+            expect (Reduce::conversion (hiddenEnv (), hiddenTwoContext (), hiddenTwoMkOf (BVar 0), hiddenTwoMkOf (BVar 1), true), true))
+        test ("a proof constructor is not its hidden witness without irrelevance", \() =>
+            expect (Reduce::conversion (hiddenEnv (), hiddenContext (), hiddenMkOf (BVar 1), BVar 0, false), false))
+        test ("eta cannot make a forbidden Prop projection inferable", \() =>
+            expect (Support::messageOf (Infer::infer (hiddenEnv (), hiddenContext (), Proj "Hidden" 0 (BVar 0))), "invalid projection `Hidden.0`"))
+    // Terms and contexts under the Prod environment --
+    (** Definitional equality in a binder context, without irrelevance:
+        exactly what plain `defeq` is where terms mention binders. *)
+    conversionIn (env, context, left, right) = Reduce::conversion (env, context, left, right, false)
+    (** `p : Prod α β`, innermost first, so `p` is `#0`. *)
+    prodContext () = [Binder(name = "p", ty = pType ()), Binder(name = "β", ty = Sort (Param "v")), Binder(name = "α", ty = Sort (Param "u"))]
+    (** `Prod.{u, v} α β` as `p`'s binder records it. *)
+    pType () = Terms::apps (Const "Prod" [Param "u", Param "v"], [BVar 1, BVar 0])
+    (** `Prod.{u, v} α β` under the whole context. *)
+    prodTypeUnder () = Terms::apps (Const "Prod" [Param "u", Param "v"], [BVar 2, BVar 1])
+    (** `Prod.mk α β (Prod.fst α β p) (Prod.snd α β p)`. *)
+    mkOfProjections () = Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 2, BVar 1, projectionAt 0, projectionAt 1])
+    (** `Prod.mk α β (Prod.snd α β p) (Prod.fst α β p)`. *)
+    mkSwapped () = Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 2, BVar 1, projectionAt 1, projectionAt 0])
+    projectionAt (index) = Terms::apps (projectionHead index, [BVar 2, BVar 1, BVar 0])
+    projectionHead (index) = match index
+        0 => Const "Prod.fst" [Param "u", Param "v"]
+        other => Const "Prod.snd" [Param "u", Param "v"]
+    (** `Prod.map α β α β (id α) (id β)`, unapplied to its pair. *)
+    mapIdTerm () = Terms::apps (Const "Prod.map" [Param "u", Param "v"], [BVar 2, BVar 1, BVar 2, BVar 1, Terms::apps (Const "id" [Param "u"], [BVar 2]), Terms::apps (Const "id" [Param "v"], [BVar 1])])
+    (** `id (Prod α β)`. *)
+    idTerm () = Terms::apps (Const "id" [eqLevel ()], [prodTypeUnder ()])
+    (** The level `Prod α β` lives at. *)
+    eqLevel () = Max (Succ Zero) (Max (Param "u") (Param "v"))
+    eqOf (left, right) = Terms::apps (Const "Eq" [eqLevel ()], [prodTypeUnder (), left, right])
+    eqRefl (term) = Terms::apps (Const "Eq.refl" [eqLevel ()], [prodTypeUnder (), term])
+    functionType () = Pi "p" (prodTypeUnder ()) (Terms::shift (prodTypeUnder (), 0, 1))
+    functionEq (left, right) = Terms::apps (Const "Eq" [eqLevel ()], [functionType (), left, right])
+    functionRefl term = Terms::apps (Const "Eq.refl" [eqLevel ()], [functionType (), term])
+    checkedIn (env, context, term, expected) = match Infer::check (env, context, term, expected)
+        Success ty => "ok: ${Support::render ty}"
+        Error message => "error: ${message}"
+    // Adversarial families declared beside the Prod environment --
+    packedContext () = [Binder(name = "x", ty = BVar 0), Binder(name = "A", ty = Sort (Succ Zero))]
+    (** `Packed : Type 1` with `Packed.mk : ∀ (A : Type 0) (x : A), Packed`. *)
+    packedEnv () = declared (Inductive::declare (Environment::empty (), Decl(name = "Packed", params = [], ty = Sort (Succ (Succ Zero)), body = Axiom), [Decl(name = "Packed.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "x" (BVar 0) (Const "Packed" [])), body = Axiom)], 0), "the packed family declares")
+    n2Context () = [Binder(name = "n", ty = Const "N2" [])]
+    (** `N2 : Type` with two constructors, the recursive one of one field. *)
+    n2Env () = declared (Inductive::declare (Environment::empty (), Decl(name = "N2", params = [], ty = Sort (Succ Zero), body = Axiom), [Decl(name = "N2.zero2", params = [], ty = Const "N2" [], body = Axiom), Decl(name = "N2.succ2", params = [], ty = Pi "n" (Const "N2" []) (Const "N2" []), body = Axiom)], 0), "the two-constructor family declares")
+    r1Context () = [Binder(name = "r", ty = Const "R1" [])]
+    (** `R1 : Type` with one recursive constructor of one field: exactly the
+        family `is_structure_like` refuses, where accepting eta would equate
+        every element by infinite descent. *)
+    r1Env () = declared (Inductive::declare (Environment::empty (), Decl(name = "R1", params = [], ty = Sort (Succ Zero), body = Axiom), [Decl(name = "R1.mk", params = [], ty = Pi "r" (Const "R1" []) (Const "R1" []), body = Axiom)], 0), "the recursive family declares")
+    i1Context () = [Binder(name = "w", ty = Terms::apps (Const "I1" [], [Sort Zero]))]
+    (** `I1 : Type 0 → Type 0` with one constructor of one field: one index,
+        so `is_structure_like` refuses it. *)
+    i1Env () = declared (Inductive::declare (Environment::empty (), Decl(name = "I1", params = [], ty = Pi "A" (Sort (Succ Zero)) (Sort (Succ (Succ Zero))), body = Axiom), [Decl(name = "I1.wrap", params = [], ty = Pi "A" (Sort (Succ Zero)) (Terms::apps (Const "I1" [], [BVar 0])), body = Axiom)], 1), "the indexed family declares")
+    fkContext () = [Binder(name = "y", ty = Const "Fk" [])]
+    (** `Fk : Type` with `Fk.mk : Fk → Fk` named only by an axiom: no
+        constructor body anywhere, so nothing may eta. *)
+    fkEnv () = declared (Environment::add (declared (Environment::add (Environment::empty (), Decl(name = "Fk", params = [], ty = Sort (Succ Zero), body = Axiom)), "the fake family declares"), Decl(name = "Fk.mk", params = [], ty = Pi "x" (Const "Fk" []) (Const "Fk" []), body = Axiom)), "the fake constructor declares")
+    hiddenContext () = [Binder(name = "h", ty = App (Const "Hidden" []) (BVar 1)), Binder(name = "w", ty = BVar 0), Binder(name = "A", ty = Sort (Succ Zero))]
+    hiddenTwoContext () = [Binder(name = "w1", ty = BVar 1), Binder(name = "w2", ty = BVar 0), Binder(name = "A", ty = Sort (Succ Zero))]
+    hiddenMkOf (witness) = Terms::apps (Const "Hidden.mk" [], [BVar 2, witness])
+    hiddenTwoMkOf (witness) = Terms::apps (Const "Hidden.mk" [], [BVar 2, witness])
+    (** `Hidden : Type 1 → Prop` with one constructor of one data field:
+        proof irrelevance's home, and the projection the kernel refuses. *)
+    hiddenEnv () = declared (Inductive::declare (Environment::empty (), Decl(name = "Hidden", params = [], ty = Pi "A" (Sort (Succ Zero)) (Sort Zero), body = Axiom), [Decl(name = "Hidden.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "w" (BVar 0) (App (Const "Hidden" []) (BVar 1))), body = Axiom)], 0), "the hidden family declares")

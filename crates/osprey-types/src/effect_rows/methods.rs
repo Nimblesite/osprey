@@ -1,7 +1,7 @@
 //! Effect row methods.
 use super::{
     method_thunk, project_callable, project_field, specialize_summary, Analyzer, CallArguments,
-    CallableEnv, Expr, MethodProjection, Projection, Summary, Value,
+    CallableEnv, Expr, ExprArgs, MethodProjection, Projection, Summary, Value,
 };
 
 impl Analyzer<'_> {
@@ -21,11 +21,12 @@ impl Analyzer<'_> {
                 let projected = self
                     .value(parts.target, scope, env)
                     .and_then(|value| project_field(value, field));
-                let projected = self.index.field_value(field, projected);
+                let owner = self.field_owner(parts.target);
+                let projected = self.owned_field_value(&owner, field, projected);
                 let callee = projected.as_ref().and_then(|value| value.callable.clone());
                 if let Some(callee) = callee {
                     let arguments = self
-                        .call_arguments(parts.arguments, parts.named, scope, env)
+                        .call_arguments(ExprArgs::new(parts.arguments), parts.named, scope, env)
                         .in_written_order();
                     out.union(self.invoke_with_arguments(callee, arguments));
                 } else if projected.is_none() || self.may_be_callable_field(parts.target, field) {
@@ -49,7 +50,7 @@ impl Analyzer<'_> {
             }
             Some(crate::methods::Target::Function) | None => self.call(
                 &Expr::Identifier(parts.method.to_owned()),
-                &self.receiver_first(parts.target, parts.arguments),
+                Self::receiver_first(parts.target, parts.arguments),
                 parts.named,
                 scope,
                 env,
@@ -69,10 +70,10 @@ impl Analyzer<'_> {
         env: &CallableEnv,
     ) -> Option<Value> {
         let function = Expr::Identifier(parts.method.to_owned());
-        let arguments = self.receiver_first(parts.target, parts.arguments);
+        let arguments = Self::receiver_first(parts.target, parts.arguments);
         let fallback = method_thunk(
-            self.call_effects(&function, &arguments, parts.named, scope, env),
-            self.call_value(&function, &arguments, parts.named, scope, env),
+            self.call_effects(&function, arguments, parts.named, scope, env),
+            self.call_value(&function, arguments, parts.named, scope, env),
         );
         let method = MethodProjection {
             field: field.to_owned(),
@@ -102,7 +103,11 @@ impl Analyzer<'_> {
         mut receiver: Value,
         method: MethodProjection,
     ) -> Option<Value> {
-        let mut projected = if let Some(value) = receiver.fields.remove(&method.field) {
+        let mut stored = receiver.fields.remove(&method.field);
+        if let Some(owner) = &receiver.field_owner {
+            stored = self.index.owned_field_value(owner, &method.field, stored);
+        }
+        let mut projected = if let Some(value) = stored {
             value.callable.map(|callee| {
                 let arguments = CallArguments {
                     positional: method.arguments.clone(),
@@ -142,7 +147,7 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<Value> {
-        match self
+        let returned = match self
             .instances
             .methods
             .get(&std::ptr::from_ref(expression).addr())
@@ -153,20 +158,23 @@ impl Analyzer<'_> {
                     .and_then(|value| project_field(value, field))
                     .and_then(|value| value.callable);
                 let arguments = self
-                    .call_arguments(parts.arguments, parts.named, scope, env)
+                    .call_arguments(ExprArgs::new(parts.arguments), parts.named, scope, env)
                     .in_written_order();
                 self.called_value(callee, arguments)
             }
             Some(crate::methods::Target::Deferred(field)) => self
                 .deferred_method(parts, field, scope, env)
                 .and_then(|value| self.project_returned(value)),
-            Some(crate::methods::Target::Function) | None => self.call_value(
-                &Expr::Identifier(parts.method.to_owned()),
-                &self.receiver_first(parts.target, parts.arguments),
-                parts.named,
-                scope,
-                env,
-            ),
-        }
+            Some(crate::methods::Target::Function) | None => {
+                return self.call_value(
+                    &Expr::Identifier(parts.method.to_owned()),
+                    Self::receiver_first(parts.target, parts.arguments),
+                    parts.named,
+                    scope,
+                    env,
+                )
+            }
+        };
+        returned.map(|value| Self::resolve_handled_value(value, &env.handler_returns))
     }
 }

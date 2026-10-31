@@ -271,16 +271,16 @@ pub(crate) fn fit_lambda_return(
     // A lambda's return slot is typed by its signature, so a list literal
     // returned through a cell loses the flat tag [`crate::listlit::escaping`].
     let value = crate::listlit::escaping(cg, value);
-    let value = match sig {
-        Some((_, _, Some(inner), _, _)) if value.result_inner.is_some() => {
-            crate::result::repack_to_inner(cg, value, *inner)?
+    match sig {
+        Some(signature) => {
+            let want = crate::builder::ParamSig {
+                ty: signature.1,
+                result_inner: signature.2,
+                fiber: signature.3.clone(),
+                inferred_type: signature.5.clone(),
+            };
+            crate::cast::coerce_semantic_param(cg, value, &want)
         }
-        Some((_, _, Some(inner), _, _)) => crate::result::make_ok(cg, value, *inner)?,
-        Some((_, ret, None, _, _)) => crate::cast::coerce_to(cg, value, *ret)?,
-        None => value,
-    };
-    Ok(match sig.and_then(|signature| signature.3.clone()) {
-        Some(fiber) => fiber.restore(value),
-        None => value,
-    })
+        None => Ok(value),
+    }
 }

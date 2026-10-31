@@ -37,6 +37,12 @@ functions with `extern` ([IOS-TARGET-CAPABILITIES](iOSCodegen.md#target-capabili
 A directive qualified with a native operating system does not apply to those
 targets.
 
+## Unit Returns [FFI-UNIT-RETURN]
+
+An extern whose return type is `Unit` calls a C `void` function. Its LLVM declaration and call use `void`, with no result register; the caller receives Osprey's `Unit` value. An omitted extern return type also means `Unit`. Declare the actual return type of a C function that returns a value, even when the caller discards it.
+
+Osprey function values retain their normal calling convention. A wrapper around a `Unit`-returning extern calls the C function with its `void` ABI and returns Osprey's `Unit` value.
+
 ## The `Ptr` Type [FFI-PTR]
 
 `Ptr` is an opaque C pointer (`i8*`). It also crosses the app-library C boundary as `void *` ([IOS-HOST-ABI](iOSCodegen.md#c-function-boundary-ios-host-abi)). It may appear in signatures and may be

@@ -1,0 +1,291 @@
+namespace proof
+
+import proof::Levels
+import proof::Naturals
+
+(** A term of the Pi fragment of [PROOF-KERNEL-THEORY] with de Bruijn
+    indices: `BVar 0` is the innermost binder. Binder names are kept for
+    printing only. *)
+type Term = Sort Level | BVar int | Const string (List<Level>) | App Term Term | Lam string Term Term | Pi string Term Term | Let string Term Term Term | Proj string int Term | NatLit Natural
+
+(** A term's head and its arguments, first argument first. *)
+type Spine =
+    spineHead : Term
+    spineArgs : List<Term>
+
+(** Shifting, substitution, universe instantiation, structural equality and
+    printing of terms. *)
+module Terms
+    (** `head` applied to `args`, first argument first. *)
+    export apps (head, args) = foldList (args, head, \(applied, arg) => App applied arg)
+
+    (** The variables of `count` binders, outermost first, seen from under
+        `offset` further binders: `BVar (offset + count - 1)` down to
+        `BVar offset`. *)
+    export vars (offset, count) = match count <= 0
+        true => []
+        false => listPrepend (vars (offset, satSub count 1), BVar (satAdd offset (satSub count 1)))
+
+    (** `term` taken apart into its head and arguments. *)
+    export spine (term) = spineInto (term, [])
+
+    spineInto (term, args) = match term
+        App head arg => spineInto (head, listPrepend (args, arg))
+        other => Spine(spineHead = other, spineArgs = args)
+
+    (** Whether the constant `name` occurs anywhere in `term`. *)
+    export occurs (term, name) = match term
+        Const found levels => found == name
+        App head arg => occurs (head, name) || occurs (arg, name)
+        Lam x domain body => occurs (domain, name) || occurs (body, name)
+        Pi x domain body => occurs (domain, name) || occurs (body, name)
+        Proj family index target => family == name || occurs (target, name)
+        Let x ty value body => occurs (ty, name) || occurs (value, name) || occurs (body, name)
+        other => false
+
+    (** Every constant name `term` mentions, in traversal order and with
+        repetitions: a projection names its family, and a natural literal
+        names the checked `Nat` family and its two constructors. *)
+    export constants (term) = symbols (term, [])
+
+    symbols (term, found) = match term
+        Const name levels => listAppend (found, name)
+        App head arg => symbols (arg, symbols (head, found))
+        Lam x domain body => symbols (body, symbols (domain, found))
+        Pi x domain body => symbols (body, symbols (domain, found))
+        Proj family index target => symbols (target, listAppend (found, family))
+        Let x ty value body => symbols (body, symbols (value, symbols (ty, found)))
+        NatLit value => listAppend (listAppend (listAppend (found, "Nat"), "Nat.zero"), "Nat.succ")
+        other => found
+
+    (** The first `count` of `items`, polymorphic across term and family lists. *)
+    export prefix (items, count) = match count <= 0
+        true => []
+        false => match items
+            [] => []
+            [first, ...rest] => listPrepend (prefix (rest, satSub count 1), first)
+
+    (** `items` without its first `count`. *)
+    export suffix (items, count) = match count <= 0
+        true => items
+        false => suffixed (items, count)
+
+    suffixed (items, count) = match items
+        [] => []
+        [first, ...rest] => suffix (rest, satSub count 1)
+
+    (** Whether two term lists are equal position by position. *)
+    export equalAll (left, right) = match left
+        [] => isEmpty right
+        [a, ...la] => equalAllHead (a, la, right)
+
+    equalAllHead (a, la, right) = match right
+        [] => false
+        [b, ...lb] => equal (a, b) && equalAll (la, lb)
+
+    (** Add `by` to every bound variable at index `cutoff` or above. *)
+    export shift (term, cutoff, by) = match by == 0 || !mentioned (term, cutoff, true)
+        true => term
+        false => shifted (term, cutoff, by)
+
+    shifted (term, cutoff, by) = match term
+        BVar index => shiftVar (index, cutoff, by)
+        App head arg => App (shifted (head, cutoff, by)) (shifted (arg, cutoff, by))
+        Lam name domain body => Lam name (shifted (domain, cutoff, by)) (shifted (body, satAdd cutoff 1, by))
+        Pi name domain body => Pi name (shifted (domain, cutoff, by)) (shifted (body, satAdd cutoff 1, by))
+        Proj family index target => Proj family index (shifted (target, cutoff, by))
+        Let name ty value body => Let name (shifted (ty, cutoff, by)) (shifted (value, cutoff, by)) (shifted (body, satAdd cutoff 1, by))
+        other => other
+
+    shiftVar (index, cutoff, by) = match index >= cutoff
+        true => BVar (satAdd index by)
+        false => BVar index
+
+    (** Replace `BVar depth` in `term` by `value` (lifted past `depth`
+        binders) and lower the free variables above it. *)
+    export substitute (term, depth, value) = match mentioned (term, depth, true)
+        true => substituted (term, depth, value)
+        false => term
+
+    substituted (term, depth, value) = match term
+        BVar index => substituteVar (index, depth, value)
+        App head arg => App (substituted (head, depth, value)) (substituted (arg, depth, value))
+        Lam name domain body => Lam name (substituted (domain, depth, value)) (substituted (body, satAdd depth 1, value))
+        Pi name domain body => Pi name (substituted (domain, depth, value)) (substituted (body, satAdd depth 1, value))
+        Proj family index target => Proj family index (substituted (target, depth, value))
+        Let name ty inner body => Let name (substituted (ty, depth, value)) (substituted (inner, depth, value)) (substituted (body, satAdd depth 1, value))
+        other => other
+
+    substituteVar (index, depth, value) = match index == depth
+        true => shift (value, 0, depth)
+        false => lowered (index, depth)
+
+    lowered (index, depth) = match index > depth
+        true => BVar (satSub index 1)
+        false => BVar index
+
+    (** The body of a binder with its variable replaced by `value`. *)
+    export instantiate (body, value) = substitute (body, 0, value)
+
+    (** Consume lambda arguments in one pass; values are innermost first.
+        This is the same capture-avoiding beta substitution as `instantiate`.
+        Implements [PROOF-KERNEL-THEORY]. *)
+    export instantiateMany (body, values) = match values
+        [] => body
+        [single] => instantiate (body, single)
+        many => match mentioned (body, 0, true)
+            true => substitutedMany (body, 0, values)
+            false => body
+
+    substitutedMany (term, depth, values) = match term
+        BVar index => manyVar (index, depth, values)
+        App head arg => App (substitutedMany (head, depth, values)) (substitutedMany (arg, depth, values))
+        Lam name domain body => Lam name (substitutedMany (domain, depth, values)) (substitutedMany (body, satAdd depth 1, values))
+        Pi name domain body => Pi name (substitutedMany (domain, depth, values)) (substitutedMany (body, satAdd depth 1, values))
+        Proj family index target => Proj family index (substitutedMany (target, depth, values))
+        Let name ty value body => Let name (substitutedMany (ty, depth, values)) (substitutedMany (value, depth, values)) (substitutedMany (body, satAdd depth 1, values))
+        other => other
+
+    manyVar (index, depth, values) = match index < depth
+        true => BVar index
+        false => manyFree (index, depth, values)
+
+    manyFree (index, depth, values) = match values
+        [] => BVar index
+        [value, ...rest] => match index == depth
+            true => shift (value, 0, depth)
+            false => manyFree (satSub index 1, depth, rest)
+
+    (** `term` with the universe parameters `params` replaced by `args`
+        in every sort and every constant instantiation. *)
+    export instantiateLevels (term, params, args) = match isEmpty params || identityLevels (params, args)
+        true => term
+        false => instantiatedLevels (term, params, args)
+
+    identityLevels (params, args) = match params
+        [] => isEmpty args
+        [name, ...rest] => match args
+            [] => false
+            [arg, ...more] => identityLevel (name, arg) && identityLevels (rest, more)
+
+    identityLevel (name, level) = match level
+        Param actual => name == actual
+        _ => false
+
+    instantiatedLevels (term, params, args) = match term
+        Sort level => Sort (Levels::instantiate (level, params, args))
+        Const name levels => Const name (mapList (levels, \level => Levels::instantiate (level, params, args)))
+        App head arg => App (instantiatedLevels (head, params, args)) (instantiatedLevels (arg, params, args))
+        Lam name domain body => Lam name (instantiatedLevels (domain, params, args)) (instantiatedLevels (body, params, args))
+        Pi name domain body => Pi name (instantiatedLevels (domain, params, args)) (instantiatedLevels (body, params, args))
+        Proj family index target => Proj family index (instantiatedLevels (target, params, args))
+        Let name ty value body => Let name (instantiatedLevels (ty, params, args)) (instantiatedLevels (value, params, args)) (instantiatedLevels (body, params, args))
+        other => other
+
+    (** Whether every universe parameter in `term` is one of `params`. *)
+    export declared (term, params) = match term
+        Sort level => Levels::declared (level, params)
+        Const name levels => foldList (levels, true, \(ok, level) => ok && Levels::declared (level, params))
+        App head arg => declared (head, params) && declared (arg, params)
+        Lam name domain body => declared (domain, params) && declared (body, params)
+        Pi name domain body => declared (domain, params) && declared (body, params)
+        Proj family index target => declared (target, params)
+        Let name ty value body => declared (ty, params) && declared (value, params) && declared (body, params)
+        other => true
+
+    (** Whether `BVar index` occurs free in `term`. *)
+    export mentions (term, index) = mentioned (term, index, false)
+
+    mentioned (term, index, above) = match term
+        BVar found => found == index || (above && found > index)
+        App head arg => mentioned (head, index, above) || mentioned (arg, index, above)
+        Lam name domain body => mentioned (domain, index, above) || mentioned (body, satAdd index 1, above)
+        Pi name domain body => mentioned (domain, index, above) || mentioned (body, satAdd index 1, above)
+        Proj family field target => mentioned (target, index, above)
+        Let name ty value body => mentioned (ty, index, above) || mentioned (value, index, above) || mentioned (body, satAdd index 1, above)
+        other => false
+
+    (** Print with the binder names in scope, innermost first. A constant
+        shows its universe arguments as `name.{u, v}`. *)
+    export show (term, names) = match term
+        Sort level => showSort level
+        BVar index => listGet (names, index) ?: "#${toString index}"
+        Const name levels => showConst (name, levels)
+        App head arg => "(${show (head, names)} ${show (arg, names)})"
+        Lam name domain body => "(fun (${name} : ${show (domain, names)}) => ${show (body, listPrepend (names, name))})"
+        Pi name domain body => showPi (name, domain, body, names)
+        Proj family index target => "(${family}.${toString index} ${show (target, names)})"
+        NatLit value => Naturals::show value
+        Let name ty value body => "(let ${name} : ${show (ty, names)} := ${show (value, names)}; ${show (body, listPrepend (names, name))})"
+
+    showSort level = match Levels::show level
+        "0" => "Prop"
+        "1" => "Type"
+        other => "Sort ${other}"
+
+    showConst (name, levels) = match levels
+        [] => name
+        [first, ...rest] => "${name}.{${foldList (rest, Levels::show first, \(text, level) => "${text}, ${Levels::show level}")}}"
+
+    showPi (name, domain, body, names) = match mentions (body, 0)
+        true => "(∀ (${name} : ${show (domain, names)}), ${show (body, listPrepend (names, name))})"
+        false => "(${show (domain, names)} → ${show (body, listPrepend (names, name))})"
+
+    (** Structural equality: binder names are ignored (the indices carry the
+        binding structure), universe levels are compared up to normal form,
+        and nothing is printed. *)
+    export equal (left, right) = match left
+        Sort u => equalSort (u, right)
+        BVar i => equalVar (i, right)
+        Const a la => equalConst (a, la, right)
+        App f a => equalApp (f, a, right)
+        Lam x a f => equalLam (a, f, right)
+        Pi x a f => equalPi (a, f, right)
+        Proj family index target => equalProj (family, index, target, right)
+        NatLit value => equalNatural (value, right)
+        Let x t v b => equalLet (t, v, b, right)
+
+    equalSort (u, right) = match right
+        Sort v => Levels::equal u v
+        other => false
+
+    equalVar (i, right) = match right
+        BVar j => i == j
+        other => false
+
+    equalConst (a, la, right) = match right
+        Const b lb => a == b && equalLevels (la, lb)
+        other => false
+
+    equalApp (f, a, right) = match right
+        App g b => equal (f, g) && equal (a, b)
+        other => false
+
+    equalLam (a, f, right) = match right
+        Lam y b g => equal (a, b) && equal (f, g)
+        other => false
+
+    equalPi (a, f, right) = match right
+        Pi y b g => equal (a, b) && equal (f, g)
+        other => false
+
+    equalLet (t, v, b, right) = match right
+        Let y t2 v2 b2 => equal (t, t2) && equal (v, v2) && equal (b, b2)
+        other => false
+
+    (** Whether two universe argument lists agree position by position. *)
+    export equalLevels (left, right) = match left
+        [] => isEmpty right
+        [a, ...la] => equalHead (a, la, right)
+
+    equalHead (a, la, right) = match right
+        [] => false
+        [b, ...lb] => Levels::equal a b && equalLevels (la, lb)
+
+    equalProj (family, index, target, right) = match right
+        Proj other field value => family == other && index == field && equal (target, value)
+        other => false
+
+    equalNatural (value, right) = match right
+        NatLit other => Naturals::equal (value, other)
+        other => false

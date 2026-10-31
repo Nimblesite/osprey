@@ -30,6 +30,7 @@ pub(crate) fn shadowed(cg: &Codegen, name: &str) -> bool {
         || cg.call_aliases.contains_key(name)
         || cg.module_globals.contains_key(name)
         || cg.fn_params.contains_key(name)
+        || cg.extern_params.contains_key(name)
 }
 
 fn absolute_cell(cg: &mut Codegen, ty: osprey_types::Type) -> Result<Value> {

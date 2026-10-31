@@ -1,0 +1,145 @@
+[
+  {
+    "file": "src/linux/platform.rs",
+    "before": [
+      "        Request,\n        inhibit::{InhibitFlags, InhibitOptions, InhibitProxy},\n    },\n    enumflags2::BitFlags,\n};\nuse calloop::{EventLoop, LoopHandle, LoopSignal, channel::Sender};\nuse futures::channel::oneshot;\n"
+    ],
+    "after": [
+      "        Request,\n        inhibit::{InhibitFlags, InhibitOptions, InhibitProxy},\n    },\n};\nuse calloop::{EventLoop, LoopHandle, LoopSignal, channel::Sender};\nuse futures::channel::oneshot;\n"
+    ]
+  },
+  {
+    "file": "src/linux/platform.rs",
+    "before": [
+      "    let request = proxy\n        .inhibit(\n            None,\n            BitFlags::from(InhibitFlags::Suspend),\n            InhibitOptions::default().set_reason(reason.as_str()),\n        )\n        .await\n"
+    ],
+    "after": [
+      "    let request = proxy\n        .inhibit(\n            None,\n            // ashpd 0.13.13's zbus 6 backport replaced `enumflags2::BitFlags<T>`\n            // with a `bitflags` newtype, so flag sets are built from the\n            // maintained uppercase constants (`inhibit::InhibitFlags`).\n            InhibitFlags::SUSPEND,\n            InhibitOptions::default().set_reason(reason.as_str()),\n        )\n        .await\n"
+    ]
+  },
+  {
+    "file": "src/linux/system_notifications.rs",
+    "before": [
+      "use gpui::{\n    ForegroundExecutor, SharedString, SystemNotification, SystemNotificationResponse, Task,\n};\n\n/// The XDG action key invoked when the user activates the notification body\n/// rather than a specific action button.\n"
+    ],
+    "after": [
+      "use gpui::{\n    ForegroundExecutor, SharedString, SystemNotification, SystemNotificationResponse, Task,\n};\nuse notify_rust::NotificationResponse;\n\n/// The XDG action key invoked when the user activates the notification body\n/// rather than a specific action button.\n"
+    ]
+  },
+  {
+    "file": "src/linux/system_notifications.rs",
+    "before": [
+      "        let spawn_result = std::thread::Builder::new()\n            .name(\"system-notification\".to_string())\n            .spawn(move || match built.show() {\n                Ok(handle) => handle.wait_for_action(|action| {\n                    let action_id = match action {\n                        // Sent by `notify-rust` when the notification closes\n                        // without being activated.\n                        \"__closed\" => return,\n                        transport_id => {\n                            let Some(action_id) = response_action_id(transport_id, &action_ids)\n                            else {\n                                log::warn!(\n                                    \"system notification returned unknown action {transport_id:?}\"\n                                );\n                                return;\n                            };\n                            action_id\n                        }\n                    };\n                    sender\n                        .unbounded_send(SystemNotificationResponse { tag, action_id })\n                        .ok();\n                }),\n                Err(error) => log::warn!(\"failed to show system notification: {error}\"),\n            });\n        if let Err(error) = spawn_result {\n"
+    ],
+    "after": [
+      "        let spawn_result = std::thread::Builder::new()\n            .name(\"system-notification\".to_string())\n            .spawn(move || match built.show() {\n                Ok(handle) => {\n                    // `wait_for_response` reports a listener failure as a value instead of\n                    // panicking, so it is logged as a visible diagnostic. The application keeps its\n                    // current semantics: no response is delivered unless the platform reported one.\n                    if let Err(error) =\n                        handle.wait_for_response(|response: &NotificationResponse| {\n                            deliver_response(&sender, &tag, response, &action_ids);\n                        })\n                    {\n                        log::error!(\"system notification listener failed for {tag:?}: {error}\");\n                    }\n                }\n                Err(error) => log::warn!(\"failed to show system notification: {error}\"),\n            });\n        if let Err(error) = spawn_result {\n"
+    ]
+  },
+  {
+    "file": "src/linux/system_notifications.rs",
+    "before": [
+      "    }\n}\n\nfn response_action_id(\n    transport_id: &str,\n    action_ids: &HashMap<String, SharedString>,\n"
+    ],
+    "after": [
+      "    }\n}\n\n/// Delivers one typed notification response to the application, or explains why it cannot.\nfn deliver_response(\n    sender: &mpsc::UnboundedSender<SystemNotificationResponse>,\n    tag: &SharedString,\n    response: &NotificationResponse,\n    action_ids: &HashMap<String, SharedString>,\n) {\n    let action_id = match response {\n        // The XDG protocol reports a body click as the reserved `default` action.\n        NotificationResponse::Default => response_action_id(DEFAULT_ACTION, action_ids),\n        NotificationResponse::Action(transport_id) => response_action_id(transport_id, action_ids),\n        // A close carries no action, and the XDG protocol has no inline reply.\n        NotificationResponse::Closed(_) | NotificationResponse::Reply(_) => return,\n    };\n    let Some(action_id) = action_id else {\n        log::warn!(\"system notification returned unknown action {response:?}\");\n        return;\n    };\n    sender\n        .unbounded_send(SystemNotificationResponse {\n            tag: tag.clone(),\n            action_id,\n        })\n        .ok();\n}\n\nfn response_action_id(\n    transport_id: &str,\n    action_ids: &HashMap<String, SharedString>,\n"
+    ]
+  },
+  {
+    "file": "src/linux/system_notifications.rs",
+    "before": [
+      "#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn caller_action_ids_do_not_collide_with_transport_action_ids() {\n"
+    ],
+    "after": [
+      "#[cfg(test)]\n",
+      "mod tests {\n",
+      "    use super::*;\n",
+      "\n",
+      "    fn delivered(\n",
+      "        response: &NotificationResponse,\n",
+      "        action_ids: &HashMap<String, SharedString>,\n",
+      "    ) -> Option<SystemNotificationResponse> {\n",
+      "        let (sender, mut receiver) = mpsc::unbounded();\n",
+      "        deliver_response(&sender, &SharedString::from(\"tag\"), response, action_ids);\n",
+      "        receiver.try_recv().ok()\n",
+      "    }\n",
+      "\n",
+      "    fn action_ids() -> HashMap<String, SharedString> {\n",
+      "        HashMap::from([\n",
+      "            (\"gpui-action-0\".to_string(), SharedString::from(\"open\")),\n",
+      "            (\"gpui-action-1\".to_string(), SharedString::from(\"default\")),\n",
+      "        ])\n",
+      "    }\n",
+      "\n",
+      "    #[test]\n",
+      "    fn a_body_click_is_delivered_without_an_action_id() {\n",
+      "        let response = delivered(&NotificationResponse::Default, &action_ids());\n",
+      "        let response = response.expect(\"a body click is delivered\");\n",
+      "        assert_eq!(response.tag, SharedString::from(\"tag\"));\n",
+      "        assert_eq!(response.action_id, None);\n",
+      "    }\n",
+      "\n",
+      "    #[test]\n",
+      "    fn a_declared_action_is_delivered_with_its_application_id() {\n",
+      "        let response = delivered(\n",
+      "            &NotificationResponse::Action(\"gpui-action-0\".to_string()),\n",
+      "            &action_ids(),\n",
+      "        );\n",
+      "        assert_eq!(\n",
+      "            response.expect(\"a declared action is delivered\").action_id,\n",
+      "            Some(SharedString::from(\"open\"))\n",
+      "        );\n",
+      "    }\n",
+      "\n",
+      "    #[test]\n",
+      "    fn an_application_id_that_looks_reserved_is_delivered_unchanged() {\n",
+      "        let response = delivered(\n",
+      "            &NotificationResponse::Action(\"gpui-action-1\".to_string()),\n",
+      "            &action_ids(),\n",
+      "        );\n",
+      "        assert_eq!(\n",
+      "            response.expect(\"a declared action is delivered\").action_id,\n",
+      "            Some(SharedString::from(\"default\"))\n",
+      "        );\n",
+      "    }\n",
+      "\n",
+      "    #[test]\n",
+      "    fn a_close_delivers_nothing() {\n",
+      "        let close = NotificationResponse::Closed(notify_rust::CloseReason::Dismissed);\n",
+      "        assert!(delivered(&close, &action_ids()).is_none());\n",
+      "    }\n",
+      "\n",
+      "    #[test]\n",
+      "    fn an_undeclared_transport_id_delivers_nothing() {\n",
+      "        let unknown = NotificationResponse::Action(\"gpui-action-9\".to_string());\n",
+      "        assert!(delivered(&unknown, &action_ids()).is_none());\n",
+      "    }\n",
+      "\n",
+      "    #[test]\n",
+      "    fn a_reply_delivers_nothing() {\n",
+      "        let reply = NotificationResponse::Reply(\"hello\".to_string());\n",
+      "        assert!(delivered(&reply, &action_ids()).is_none());\n",
+      "    }\n",
+      "\n",
+      "    #[test]\n",
+      "    fn caller_action_ids_do_not_collide_with_transport_action_ids() {\n"
+    ]
+  },
+  {
+    "file": "src/linux/system_notifications.rs",
+    "before": [
+      "        // `show` connects to the session bus and `wait_for_action` blocks\n"
+    ],
+    "after": [
+      "        // `show` connects to the session bus and `wait_for_response` blocks\n"
+    ]
+  },
+  {
+    "file": "src/linux/system_notifications.rs",
+    "before": [
+      "        // server-assigned id on a live handle, which `wait_for_action`\n"
+    ],
+    "after": [
+      "        // server-assigned id on a live handle, which `wait_for_response`\n"
+    ]
+  }
+]

@@ -22,7 +22,8 @@ import registry::Names
 /// baseline (the development lock's published node, else the release lock's,
 /// else the newest listed release of the required epoch), writes the mapping
 /// into `osprey.local.toml` and relocks the development lock; the overlay and
-/// the lock change together or not at all. `--published` removes a mapping,
+/// a reported lock-write failure restores the overlay. Activation still spans
+/// two separate file writes. `--published` removes a mapping,
 /// `--clear` removes them all, `--list` prints each with its current source
 /// digest. `[dependencies]` is never rewritten.
 module Use {
@@ -141,7 +142,7 @@ module Use {
 
     // ---- the transactions ----
 
-    fn committed(s, mappings, mapping, note) = Transaction::commitOverlay(s, Overlay::textAt(projectOf(s)), Overlay::render(Overlay::withMapping(mappings, mapping)), [note])
+    fn committed(s, mappings, mapping, note) = Transaction::commitOverlay(s, Overlay::render(Overlay::withMapping(mappings, mapping)), [note])
 
     fn mapped(s, manifest, mappings, key, path, epochWord) = {
         let baseline = baselineOf(s, manifest, key, epochWord)
@@ -176,12 +177,12 @@ module Use {
     }
 
     fn published(s, mappings, key) = if Overlay::overridden(mappings, key) {
-        Transaction::commitOverlay(s, Overlay::textAt(projectOf(s)), Overlay::render(Overlay::without(mappings, key)), ["published ${Names::display(key)}"])
+        Transaction::commitOverlay(s, Overlay::render(Overlay::without(mappings, key)), ["published ${Names::display(key)}"])
     } else {
         failed(["${notOverriddenCode} ${Names::display(key)}"])
     }
 
-    fn cleared(s, mappings) = Transaction::commitOverlay(s, Overlay::textAt(projectOf(s)), Overlay::render([]), ["cleared ${length(mappings)} overrides"])
+    fn cleared(s, mappings) = Transaction::commitOverlay(s, Overlay::render([]), ["cleared ${length(mappings)} overrides"])
 
     // ---- the listing ----
 

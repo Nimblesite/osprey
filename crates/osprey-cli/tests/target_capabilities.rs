@@ -148,6 +148,91 @@ fn wasm_rejects_fibers_terminals_and_foreign_imports() -> std::io::Result<()> {
     rejects("extern fn absent(value: int) -> int\n", "wasm32", "absent")
 }
 
+/// Each WASI libc symbol must be declared once and called once through the C
+/// ABI, so a second declaration or a missing call cannot satisfy the contract.
+fn assert_wasi_void_calls(ir: &str) {
+    for expected in [
+        "declare void @perror(i8*)",
+        "declare void @abort()",
+        "call void @perror(i8*",
+        "call void @abort()",
+    ] {
+        assert_eq!(
+            ir.matches(expected).count(),
+            1,
+            "expected exactly one `{expected}`:\n{ir}"
+        );
+    }
+}
+
+/// Both first-class imports get one forwarder at the Osprey function-value ABI.
+fn assert_wasi_closures(ir: &str) {
+    for wrapper in [
+        "define internal i64 @__fnval_perror(",
+        "define internal i64 @__fnval_abort(",
+    ] {
+        assert_eq!(
+            ir.matches(wrapper).count(),
+            1,
+            "expected exactly one `{wrapper}`:\n{ir}"
+        );
+    }
+}
+
+/// WASI libc supplies `void perror(const char*)` and `void abort(void)`, so a
+/// wasm32 program may import both and the emitted module must carry exactly one
+/// declaration and one call per symbol. [WASI-LIBC-ABI]
+#[test]
+fn wasm_accepts_wasi_libc_perror_and_abort() -> std::io::Result<()> {
+    let source = "extern fn perror(message: string) -> Unit\nextern fn abort() -> Unit\n\
+                  perror(\"wasm libc\")\nabort()\n";
+    let output = compile(source, "wasm32")?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_wasi_void_calls(&String::from_utf8_lossy(&output.stdout));
+    Ok(())
+}
+
+/// A first-class import goes through the named function's environment-dropping
+/// forwarder: the wrapper returns the `i64` Unit zero, only the wrapped C callee
+/// is `void`, and the forwarder body makes the single call. [WASI-LIBC-ABI]
+#[test]
+fn wasm_wraps_wasi_libc_imports_as_first_class_values() -> std::io::Result<()> {
+    let source = "extern fn perror(message: string) -> Unit\n\
+                  extern fn abort() -> Unit\n\
+                  fn main() =\n\
+                      print(\"${toString(listLength([perror]))}${toString(listLength([abort]))}\")\n";
+    let output = compile(source, "wasm32")?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let ir = String::from_utf8_lossy(&output.stdout);
+    assert_wasi_closures(&ir);
+    assert_wasi_void_calls(&ir);
+    Ok(())
+}
+
+/// The WASI libc ABI is a fixed C signature per symbol, so a same-named import
+/// with a different arity or type is refused before any IR exists rather than
+/// called through a mismatched prototype. [WASI-LIBC-ABI]
+#[test]
+fn wasm_rejects_wrong_wasi_libc_signatures() -> std::io::Result<()> {
+    for source in [
+        "extern fn perror(value: int) -> Unit\nprint(41)\n",
+        "extern fn perror(message: string) -> int\nprint(perror(\"x\"))\n",
+        "extern fn abort(code: int) -> Unit\nprint(41)\n",
+        "extern fn abort() -> int\nprint(abort())\n",
+    ] {
+        rejects(source, "wasm32", "WASI libc ABI")?;
+    }
+    Ok(())
+}
+
 #[test]
 fn wasm_preserves_browser_imports_and_substituting_effects() -> std::io::Result<()> {
     let source = "extern fn osprey_web_render(html: string) -> int\n\

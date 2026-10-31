@@ -263,7 +263,7 @@ pub(crate) fn fn_value_concrete(ty: &Type) -> bool {
 /// Whether a type's ABI shape is concrete: every part that actually travels in
 /// the value representation is variable-free. A `Result`'s error channel is
 /// phantom (the `Error` variant stores a string message), so it is skipped.
-fn abi_shape_concrete(ty: &Type) -> bool {
+pub(crate) fn abi_shape_concrete(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => false,
         Type::Con { name, args } if name == names::RESULT => {
@@ -278,9 +278,21 @@ fn abi_shape_concrete(ty: &Type) -> bool {
     }
 }
 
+/// A specialization key retains the success type while ignoring Result's
+/// phantom error channel. Fresh error variables never change the emitted ABI.
+pub(crate) fn abi_spelling(ty: &Type) -> String {
+    match ty {
+        Type::Con { name, args } if name == names::RESULT => args.first().map_or_else(
+            || names::RESULT.to_string(),
+            |payload| format!("Result<{}>", abi_spelling(payload)),
+        ),
+        _ => ty.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{fn_value_concrete, Type};
+    use super::{abi_shape_concrete, fn_value_concrete, Type};
     use osprey_types::names;
 
     fn result(ok: Type) -> Type {
@@ -325,5 +337,24 @@ mod tests {
             ret: Box::new(result(string())),
         };
         assert!(!fn_value_concrete(&closure));
+    }
+
+    /// The emitted return slot of a recursively specialised function is chosen
+    /// from the same shape as a closure's, so `-> Result<Term, _>` has a slot to
+    /// emit and `-> Result<_, string>` does not ([TYPE-RENDER-HOLES]).
+    #[test]
+    fn a_result_error_channel_is_phantom_for_the_emitted_return_slot() {
+        assert!(abi_shape_concrete(&result(string())));
+        assert!(!abi_shape_concrete(&result(Type::Var(3))));
+        assert!(!abi_shape_concrete(&Type::Var(3)));
+    }
+
+    #[test]
+    fn result_cache_spelling_preserves_payload_types_but_not_phantom_errors() {
+        let first = result(string());
+        let second = Type::con(names::RESULT, vec![string(), Type::Var(99)]);
+        let integer = result(Type::con(names::INT, vec![]));
+        assert_eq!(super::abi_spelling(&first), super::abi_spelling(&second));
+        assert_ne!(super::abi_spelling(&first), super::abi_spelling(&integer));
     }
 }

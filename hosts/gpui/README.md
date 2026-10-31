@@ -17,6 +17,10 @@ hosts/gpui/run.sh --smoke       # start, tap Add, assert "Count 1" through the r
 
 `run.sh` compiles the application for the system it runs on. `OSPREY_GPUI_APP=<project dir>` points it at another Osprey Native application whose entry exports `start` and `dispatch` (see [probe/main.ospml](probe/main.ospml), or [Flock's](../../examples/gpui/flock/main.ospml) for a resident session that streams its scene). `OSPREY_BIN` selects another compiler, `OSPREY_GPUI_WINDOW` the window size (`default` or `WxH`), and `--bench <seconds>` prints fps, dispatch, paint and frame time.
 
+`python3 hosts/gpui/dependencies.py` stages the dependency backports declared in [dependencies.json](dependencies.json). It verifies each published archive, applies the exact preimages in [patches/](patches/), and checks the complete resulting source tree. Both this host and the Painting reference must declare the same inventory. A successful run prints `GPUI dependency source integrity: N backports PASS`, where `N` equals the inventory size. Within each declared cached crate, modified, missing or additional source files and symlinks are refused. Invalid package paths and mismatched workspace overrides are also refused; unrelated sibling cache directories are outside this inventory. `run.sh` and `make audit` run this check automatically.
+
+`python3 hosts/gpui/dependencies_test.py` checks the staging and refusal contracts, including concurrent staging and verification of the winning source tree. `run.sh`, `make gpui-test` and `make audit` run these guards before building or scanning. Dependency repairs must also pass the unchanged repository audit and host/rendering checks; staging verifies source identity, while the two workspace lockfiles describe the dependencies scanned by `make audit`.
+
 ## Layout
 
 | Path | Contents |

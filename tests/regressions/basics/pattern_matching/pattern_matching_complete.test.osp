@@ -24,6 +24,112 @@ type Person = PersonData { name: string, age: int }
 type Shape  = Circle { radius: int }
             | Square { x: int, y: int }
 
+type NestedValue = NestedEmpty | NestedWord { text: string }
+fn nestedHead(items) = match items {
+    [NestedWord { text }, ...tail] => "${text}:${listLength(tail)}"
+    _ => "other"
+}
+fn literalHead(items) = match items {
+    [7, ...tail] => listLength(tail)
+    _ => -1
+}
+fn nestedLists(items) = match items {
+    [[NestedWord { text }, ...inner], ...outer] => "${text}:${listLength(inner)}:${listLength(outer)}"
+    _ => "other"
+}
+
+type NestedPair = NestedPair(int, string)
+fn nestedTuple(items: List<NestedPair>) = match items {
+    [(left, right), ...tail] => "${left}:${right}:${listLength(tail)}"
+    _ => "other"
+}
+
+type NestedBox = { held: string, tag: int }
+type NestedLoader = { load: fn() -> List<any> }
+type NestedResultLoader = { load: fn() -> Result<List<any>, string> }
+fn nestedErased(items: List<any>) = match items {
+    [{ held, .. }, ..._tail] => held
+    _ => "other"
+}
+
+fn nestedErasedResult(items: Result<List<any>, string>) = match items {
+    Success { value } => nestedErased(value)
+    Error { message } => message
+}
+
+fn deeplyErased(items: List<List<any>>) = match items {
+    [first, ..._rest] => nestedErased(first)
+    _ => "other"
+}
+
+fn deeplyErasedResult(items: Result<List<List<any>>, string>) = match items {
+    Success { value } => deeplyErased(value)
+    Error { message } => message
+}
+
+fn threeLevelsErased(items: List<List<List<any>>>) = match items {
+    [first, ..._rest] => deeplyErased(first)
+    _ => "other"
+}
+
+fn erasedResultRows(items: List<Result<List<any>, string>>) = match items {
+    [first, ..._rest] => nestedErasedResult(first)
+    _ => "other"
+}
+
+fn erasedListReturn() -> List<any> = [NestedBox { held: "returned list", tag: 3 }]
+fn erasedResultReturn() -> Result<List<any>, string> = [NestedBox { held: "returned result", tag: 4 }]
+
+fn concreteCallback() = [NestedBox { held: "named callback", tag: 10 }]
+fn useErasedList(work) = nestedErased(work())
+fn useErasedResult(work) = nestedErasedResult(work())
+
+fn readErasedRow(value: any) = match value {
+    { held, .. } => toString(held)
+    _ => "other"
+}
+fn concreteRowCallback(work) = work(NestedBox { held: "argument", tag: 18 }) == "argument"
+
+fn capturedLoaders(prefix) = {
+    let text = prefix + "!"
+    let source = fn() => [NestedBox { held: text, tag: 17 }]
+    { plain: NestedLoader { load: source }, wrapped: NestedResultLoader { load: source } }
+}
+
+effect PatternGeneric<T> { get: fn() -> T }
+effect PatternEcho<T> { echo: fn(T) -> T }
+fn genericRows() = {
+    handle PatternGeneric<List<any>> { get => concreteCallback() }
+    nestedErased(perform PatternGeneric<List<any>>.get())
+}
+fn genericResultRows() = {
+    handle PatternGeneric<Result<List<any>, string>> { get => concreteCallback() }
+    nestedErasedResult(perform PatternGeneric<Result<List<any>, string>>.get())
+}
+fn genericWholeResult() = {
+    handle PatternEcho<any> { echo value => value }
+    perform PatternEcho<any>.echo(Error { message: "generic error" })
+}
+
+effect PatternRows { get: fn() -> List<any> }
+effect PatternResultRows { get: fn() -> Result<List<any>, string> }
+fn effectRows() = {
+    let rows = handler PatternRows { get => concreteCallback() }
+    rows(fn() => nestedErased(perform PatternRows.get()))
+}
+fn effectResultRows() = {
+    let rows = handler PatternResultRows { get => concreteCallback() }
+    rows(fn() => nestedErasedResult(perform PatternResultRows.get()))
+}
+fn effectWrappedRows() = {
+    let rows = handler PatternResultRows { get => Success { value: concreteCallback() } }
+    rows(fn() => nestedErasedResult(perform PatternResultRows.get()))
+}
+fn effectErrorRows() = {
+    let rows = handler PatternResultRows { get => Error { message: "effect ${toString(42)}" } }
+    rows(fn() => nestedErasedResult(perform PatternResultRows.get()))
+}
+
 fn analyze(n) = match n {
     0  => "Zero"
     42 => "The answer to everything!"
@@ -130,6 +236,15 @@ print("bad toString = ${toString(badDiv)}")
 
 /// Replays every meaningful branch with value-level assertions.
 fn patternMatchingCase() = {
+    let capturedText = "captured callback"
+    let escaped = capturedLoaders("escaped")
+    let loader = NestedLoader { load: fn() => [NestedBox { held: "field", tag: 13 }] }
+    let resultLoader = NestedResultLoader { load: fn() => [NestedBox { held: "result field", tag: 14 }] }
+    let callback: fn() -> List<any> = fn() => [NestedBox { held: "typed callback", tag: 15 }]
+    let resultCallback: fn() -> Result<List<any>, string> = fn() => [NestedBox { held: "typed result callback", tag: 16 }]
+    let erasedBinding: List<any> = [NestedBox { held: "bound list", tag: 5 }]
+    let erasedResultBinding: Result<List<any>, string> = [NestedBox { held: "bound result", tag: 6 }]
+    let deepBinding: List<List<any>> = [[NestedBox { held: "deep binding", tag: 22 }]]
     let localAlice = PersonData { name: "Alice", age: 30 }
     let localCircle = Circle { radius: 5 }
     let localSquare = Square { x: 3, y: 7 }
@@ -144,6 +259,62 @@ fn patternMatchingCase() = {
     }
     checkAll("literal, union, structural, and Result patterns", [
         analyze(0) == "Zero",
+        toString(nestedErased([NestedBox { held: "boxed", tag: 1 }])) == "boxed",
+        toString(deeplyErased([[NestedBox { held: "deep list", tag: 19 }]])) == "deep list",
+        toString(deeplyErasedResult([[NestedBox { held: "deep promoted", tag: 20 }]])) == "deep promoted",
+        toString(deeplyErasedResult(Success { value: [[NestedBox { held: "deep success", tag: 21 }]] })) == "deep success",
+        toString(deeplyErasedResult(Error { message: "deep error" })) == "deep error",
+        toString(deeplyErased([])) == "other",
+        toString(deeplyErased([[]])) == "other",
+        toString(deeplyErased(deepBinding)) == "deep binding",
+        toString(deeplyErased(deepBinding)) == "deep binding",
+        toString(threeLevelsErased([[[NestedBox { held: "three levels", tag: 23 }]]])) == "three levels",
+        toString(erasedResultRows([Success { value: [NestedBox { held: "result row", tag: 24 }] }])) == "result row",
+        toString(erasedResultRows([Error { message: "row error" }])) == "row error",
+        toString(nestedErasedResult([NestedBox { held: "promoted", tag: 1 }])) == "promoted",
+        toString(nestedErasedResult(Success { value: [NestedBox { held: "success", tag: 2 }] })) == "success",
+        toString(nestedErasedResult(Error { message: "retained error" })) == "retained error",
+        toString(nestedErased(erasedListReturn())) == "returned list",
+        toString(nestedErasedResult(erasedResultReturn())) == "returned result",
+        toString(nestedErased(erasedBinding)) == "bound list",
+        toString(nestedErasedResult(erasedResultBinding)) == "bound result",
+        toString(useErasedList(fn() => [NestedBox { held: "callback list", tag: 7 }])) == "callback list",
+        toString(useErasedResult(fn() => [NestedBox { held: "callback result", tag: 8 }])) == "callback result",
+        toString(useErasedResult(fn() => Success { value: [NestedBox { held: "callback success", tag: 9 }] })) == "callback success",
+        toString(useErasedResult(fn() => Error { message: "callback error" })) == "callback error",
+        toString(nestedErased(concreteCallback())) == "named callback",
+        toString(useErasedList(concreteCallback)) == "named callback",
+        toString(useErasedResult(concreteCallback)) == "named callback",
+        toString(useErasedList(fn() => [NestedBox { held: capturedText, tag: 11 }])) == capturedText,
+        toString(useErasedResult(fn() => [NestedBox { held: capturedText, tag: 12 }])) == capturedText,
+        toString(useErasedList(fn() => [])) == "other",
+        toString(useErasedResult(fn() => [7])) == "other",
+        toString(nestedErased(loader.load())) == "field",
+        toString(nestedErasedResult(resultLoader.load())) == "result field",
+        toString(nestedErased(callback())) == "typed callback",
+        toString(nestedErasedResult(resultCallback())) == "typed result callback",
+        toString(nestedErased(escaped.plain.load())) == "escaped!",
+        toString(nestedErased(escaped.plain.load())) == "escaped!",
+        toString(nestedErasedResult(escaped.wrapped.load())) == "escaped!",
+        toString(nestedErasedResult(escaped.wrapped.load())) == "escaped!",
+        concreteRowCallback(readErasedRow),
+        toString(genericRows()) == "named callback",
+        toString(genericResultRows()) == "named callback",
+        toString(genericWholeResult()) == "Error(generic error)",
+        toString(effectRows()) == "named callback",
+        toString(effectResultRows()) == "named callback",
+        toString(effectWrappedRows()) == "named callback",
+        toString(effectErrorRows()) == "effect 42",
+        toString(nestedErased([7])) == "other",
+        nestedTuple([NestedPair(3, "q"), NestedPair(4, "r")]) == "3:q:1",
+        nestedTuple([]) == "other",
+        nestedHead([NestedWord { text: "u" }, NestedEmpty]) == "u:1",
+        nestedHead([NestedEmpty]) == "other",
+        nestedHead([]) == "other",
+        literalHead([7, 8]) == 1,
+        literalHead([8, 7]) == -1,
+        nestedLists([[NestedWord { text: "v" }], []]) == "v:0:1",
+        nestedLists([[NestedEmpty]]) == "other",
         analyze(42) == "The answer to everything!",
         analyze(7) == "Some other number",
         isEven(0) == 1,

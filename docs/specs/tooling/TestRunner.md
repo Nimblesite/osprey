@@ -23,6 +23,8 @@ suite fails to compile, fails to run, or skips a case without naming a reason
 
 Standalone file suites run in separate temporary working directories, removed after each suite finishes, including failures. Source paths and the selected cache directory are resolved before changing directories. Relative output files therefore stay out of the caller's directory. Project suites retain the caller's working directory.
 
+**`[TESTING-CLI-RUN-CONTEXT]`** Each suite process receives `OSPREY_TEST_COMPILER`, the executable running the suite, and `OSPREY_TEST_MEMORY`, its selected backend. The runner replaces inherited values for both variables; without a backend flag, the context reports the native GC default. Suites that launch another compiler can read these values and pass the backend through `--memory` to keep nested builds aligned.
+
 **`[TESTING-PROJECT-SUITE]`** A `path` that is a directory holding an
 `osprey.toml` is one project suite. It runs like `osprey <dir> --run`: the
 manifest's `entry` and `source_roots` are assembled into one program, so a

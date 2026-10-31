@@ -1,4 +1,8 @@
 import * as assert from "assert";
+import { EventEmitter } from "node:events";
+import { spawnSync } from "node:child_process";
+import threads = require("node:worker_threads");
+import * as sinon from "sinon";
 import { compileWasi, runWasi } from "../../client/src/osprey-ui/wasi";
 
 // A four-import WASI command that reads fd 0 into memory and writes the same
@@ -148,7 +152,67 @@ function outputChecks(): number[] {
   ];
 }
 
+function busyCommand(durationMs: number): Uint8Array {
+  const clock = success("clock_time_get", integer(0), [0x42, 0], integer(0));
+  const time = [...integer(0), 0x29, 3, 0];
+  return commandModule(ABI_IMPORTS, [1, 1, I64, ...clock, ...time, 0x21, 0,
+    0x03, 0x40, ...clock, ...time, 0x20, 0, 0x7d, 0x42, ...integer(durationMs * 1000000).slice(1),
+    0x54, 0x0d, 0, 0x0b, 0x0b]);
+}
+
+async function workerOutcome(reply: unknown, code = 0, failure?: Error) {
+  const worker = Object.assign(new EventEmitter(), { terminate: async () => code });
+  const constructor = sinon.stub(threads, "Worker").returns(worker as unknown as threads.Worker);
+  try {
+    const result = runWasi(await compileWasi(Buffer.from(ECHO_WASM, "base64")), "");
+    if (reply !== undefined) worker.emit("message", reply);
+    if (failure) worker.emit("error", failure);
+    worker.emit("exit", code);
+    return await result;
+  } finally { constructor.restore(); }
+}
+
+suite("WASI worker failure boundary", () => {
+  test("the worker entry refuses execution without its private message port", () => {
+    const entry = require.resolve("../../client/src/osprey-ui/wasi-worker");
+    const result = spawnSync(process.execPath, [entry], { encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+    assert.strictEqual(result.status, 1);
+    assert.ok(result.stderr.includes("requires a worker port"), result.stderr);
+  });
+  test("worker startup failures and unexpected exits reject without a stale result", async () => {
+    await assert.rejects(workerOutcome(undefined, 1, new Error("worker startup failed")), /worker startup failed/);
+    await assert.rejects(workerOutcome(undefined, 2), /worker exited with 2/);
+    for (const reply of [undefined, null, "invalid"]) await assert.rejects(workerOutcome(reply), /without a result/);
+  });
+  test("malformed worker replies never become successful WASI output", async () => {
+    for (const result of [undefined, null, "invalid", {}, { stdout: 1 }, { stdout: "" }, { stdout: "", stderr: 1 }, { stdout: "", stderr: "" }, { stdout: "", stderr: "", exitCode: 0.5 }]) {
+      await assert.rejects(workerOutcome({ result }), /invalid result/);
+    }
+    await assert.rejects(workerOutcome({ error: "guest failed" }), /guest failed/);
+    assert.deepStrictEqual(await workerOutcome({ error: 42, result: { stdout: "", stderr: "", exitCode: 0 } }), { stdout: "", stderr: "", exitCode: 0 });
+  });
+});
+
 suite("package workspace in-memory WASI", () => {
+  test("an aborted command never starts and an infinite guest can be cancelled", async () => {
+    const module = await compileWasi(commandModule([], [0, 0x03, 0x40, 0x0c, 0, 0x0b, 0x0b]));
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await assert.rejects(runWasi(module, "", { signal: cancelled.signal }), /cancelled/);
+    const active = new AbortController();
+    const pending = runWasi(module, "", { signal: active.signal });
+    const timer = setTimeout(() => active.abort(), 100);
+    try { await assert.rejects(pending, /cancelled/); }
+    finally { clearTimeout(timer); }
+  });
+  test("a CPU-bound command keeps the host event loop responsive", async () => {
+    const module = await compileWasi(busyCommand(100));
+    let ticks = 0;
+    const timer = setInterval(() => { ticks += 1; }, 5);
+    try { assert.strictEqual((await runWasi(module, "")).exitCode, 0); }
+    finally { clearInterval(timer); }
+    assert.ok(ticks >= 3, `host timers must run while real WASM computes; received ${ticks} ticks`);
+  });
   test("a real guest consumes UTF-8 args, environment, clocks, entropy and vectored streams", async () => {
     const module = await compileWasi(commandModule(ABI_IMPORTS,
       [0, ...stringTableChecks(), ...clockAndRandomChecks(), ...inputChecks(), ...outputChecks(), 0x0b]));

@@ -117,6 +117,7 @@ suite("Processes panel — the server lists live Osprey programs", () => {
   test("a click on the row opens nothing: an Osprey entry is a native binary, not source", async function () {
     this.timeout(COMMAND_MS);
     const { target } = live;
+    await refreshed();
     const row = await listedRow(target.pid);
     assert.equal(row.command, undefined, "no open-on-click for a binary entry");
     const before = vscode.window.activeTextEditor?.document.uri.toString();

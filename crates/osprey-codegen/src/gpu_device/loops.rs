@@ -4,10 +4,42 @@
 
 use super::dialect::{callee, describe};
 use super::emit::{Emitted, Emitter, Local};
-use super::Ty;
-use osprey_ast::Expr;
+use super::{Ty, Uniform};
+use osprey_ast::{Expr, Stmt};
+
+pub(super) fn uniform_local(i: usize, uniform: &Uniform) -> Local {
+    match uniform {
+        Uniform::Scalar(ty) => Local::Scalar(*ty, format!("u{i}_v")),
+        Uniform::Buffer => Local::Buffer(format!("u{i}"), format!("u{i}_len")),
+    }
+}
 
 impl Emitter<'_> {
+    pub(super) fn block_contents(&mut self, statements: &[Stmt], value: Option<&Expr>) -> Emitted {
+        for statement in statements {
+            self.statement(statement)?;
+        }
+        match value {
+            Some(value) => self.expression(value),
+            None => Err("a block without a value has no device form".into()),
+        }
+    }
+
+    fn statement(&mut self, statement: &Stmt) -> Result<(), String> {
+        let Stmt::Let {
+            name,
+            mutable: false,
+            value,
+            ..
+        } = statement
+        else {
+            return Err("a statement other than an immutable `let` has no device form".into());
+        };
+        let local = self.argument(value)?;
+        self.bind(name, local);
+        Ok(())
+    }
+
     /// `fold(range(start, end), seed, combine)` as an in-order loop.
     pub(super) fn fold(&mut self, arguments: &[Expr]) -> Emitted {
         let [source, seed, combine] = arguments else {

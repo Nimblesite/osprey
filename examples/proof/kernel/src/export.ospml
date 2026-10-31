@@ -1,0 +1,392 @@
+namespace proof
+
+import proof::Levels
+import proof::Terms
+import proof::Environment
+import proof::ExportJson
+import proof::ExportInductive
+import proof::Naturals
+import proof::Literals
+
+(** The reader's state: the tables so far, the items in file order, and the
+    number of the line being read, `1` being the meta header. *)
+type Reading =
+    tables : Tables
+    items : List<Item>
+    line : int
+
+(** Reader for `lean4export`'s NDJSON format 3.1.0 — the one code that
+    parses Lean's format ([PROOF-EXPORT]). Every line is one JSON object:
+    the `meta` header, an `in` name, an `il` level, an `ie` expression or a
+    declaration. Name 0 is the anonymous root and level 0 is `Zero`; an
+    item only ever refers to indices its table already defines, each index
+    is defined once (`freshIn`), and each line is one item (`shaped`). The reader
+    adds nothing to the theory: every declaration arrives as the kernel's
+    own `Decl`, an inductive line as the `Block` its claims describe,
+    opaque lines as non-unfolding `Decl`s, and the quotient kind still to
+    come is refused with the line kind named. *)
+module Export
+    (** Every item in the file, in file order. *)
+    export read source = unfolded (foldList (lines source, Success(value = started ()), \(reading, text) => stepped (reading, text)))
+
+    started () = Reading(tables = Tables(names = Map(), levels = Map(), exprs = Map()), items = [], line = 1)
+
+    unfolded (reading) = match reading
+        Success final => Success(value = final.items)
+        Error message => Error(message = message)
+
+    stepped (reading, text) = match reading
+        Error message => Error(message = message)
+        Success current => steppedAt (current, text)
+
+    (** Line 1 is the meta header; every later line is one item. *)
+    steppedAt (current, text) = match current.line
+        1 => metaLine (current, text)
+        number => itemLine (counted (current), number, text)
+
+    counted (current) = Reading(tables = current.tables, items = current.items, line = satAdd current.line 1)
+
+    wrapped (number, outcome) = match outcome
+        Success reading => Success(value = reading)
+        Error reason => Error(message = "line ${toString number}: ${reason}")
+
+    (** The header must name format version 3.1.0, whatever the exporter. *)
+    metaLine (current, text) = wrapped (1, metaVersion (counted (current), jsonDecode text))
+
+    metaVersion (next, outcome) = ExportJson::upon (outcome, \json => ExportJson::upon (ExportJson::fieldIn (json, "meta"), \meta => ExportJson::upon (ExportJson::fieldIn (meta, "format"), \format => ExportJson::upon (ExportJson::textIn (format, "version"), \version => versionOk (next, version)))))
+
+    versionOk (next, version) = match version == "3.1.0"
+        true => Success(value = next)
+        false => Error(message = "unsupported format version ${version}")
+
+    itemLine (next, number, text) = match text == ""
+        true => Success(value = next)
+        false => wrapped (number, routed (next, jsonDecode text))
+
+    (** A line is a name, a level, an expression or a declaration, and is
+        exactly one of them: an index line has its index and one kind, a
+        declaration line its kind alone. A line carrying a second kind is
+        refused rather than read as whichever kind is tried first. *)
+    routed (reading, outcome) = ExportJson::upon (outcome, \json => ExportJson::upon (shaped json, \checked => routedName (reading, checked)))
+
+    shaped (json) = match json
+        JsonObject members => membersFit (json, listLength members, wantedMembers (indexed json))
+        other => Error(message = "not an object")
+
+    indexed (json) = ExportJson::hasField (json, "in") || ExportJson::hasField (json, "il") || ExportJson::hasField (json, "ie")
+
+    wantedMembers (index) = match index
+        true => 2
+        false => 1
+
+    membersFit (json, count, wanted) = match count == wanted
+        true => Success(value = json)
+        false => Error(message = "${toString count} members where one kind is expected")
+
+    routedName (reading, json) = match ExportJson::hasField (json, "in")
+        true => nameLine (reading, json)
+        false => routedLevel (reading, json)
+
+    routedLevel (reading, json) = match ExportJson::hasField (json, "il")
+        true => levelLine (reading, json)
+        false => routedExpr (reading, json)
+
+    routedExpr (reading, json) = match ExportJson::hasField (json, "ie")
+        true => exprLine (reading, json)
+        false => declLine (reading, json)
+
+    (** The line's kind: the one member besides its index member. *)
+    kindOf (json, skip) = match json
+        JsonObject members => kindScan (members, skip)
+        other => Error(message = "not an object")
+
+    kindScan (members, skip) = match members
+        [] => Error(message = "no kind")
+        [first, ...rest] => kindPick (first, rest, skip)
+
+    kindPick (first, rest, skip) = match first
+        JsonMember name value => kindNamed (name, rest, skip)
+        other => Error(message = "no kind")
+
+    kindNamed (name, rest, skip) = match name == skip
+        true => kindScan (rest, skip)
+        false => Success(value = name)
+
+    (** A kind the format defines but the kernel does not read, or no kind
+        the reader knows: refused either way, with the kind named. *)
+    refused (json, skip, kinds) = ExportJson::upon (kindOf (json, skip), \kind => refusal (kind, listContains (kinds, kind)))
+
+    refusal (kind, known) = match known
+        true => Error(message = "unsupported: ${kind}")
+        false => Error(message = "unknown item: ${kind}")
+
+    (** Every index is defined once: an index already in its table, or
+        below `first` (name 0 is the anonymous root and level 0 is `Zero`,
+        so both tables start at 1; no index is negative), is refused rather
+        than overwritten, so no later item can rebind what an earlier one
+        used. Order is not required: a reference to an index not yet
+        defined is refused by `nameOf`, `levelOf` and `exprOf`. *)
+    freshIn (table, index, first, kind) = match index < first
+        true => Error(message = "${kind} ${toString index} is reserved")
+        false => unusedIn (table, index, kind)
+
+    unusedIn (table, index, kind) = match mapContains (table, toString index)
+        true => Error(message = "${kind} ${toString index} is already defined")
+        false => Success(value = index)
+
+    setTables (reading, tables) = Reading(tables = tables, items = reading.items, line = reading.line)
+
+    setName (reading, index, name) = setTables (reading, Tables(names = mapSet (reading.tables.names, toString index, name), levels = reading.tables.levels, exprs = reading.tables.exprs))
+
+    setLevel (reading, index, level) = setTables (reading, Tables(names = reading.tables.names, levels = mapSet (reading.tables.levels, toString index, level), exprs = reading.tables.exprs))
+
+    setExpr (reading, index, term) = setTables (reading, Tables(names = reading.tables.names, levels = reading.tables.levels, exprs = mapSet (reading.tables.exprs, toString index, term)))
+
+    addItem (reading, item) = Reading(tables = reading.tables, items = listAppend (reading.items, item), line = reading.line)
+
+    (** Names print as dotted with the anonymous root omitted. *)
+    dotted (prefix, leaf) = match prefix
+        "" => leaf
+        other => "${other}.${leaf}"
+
+    (** A name is `str` or `num`; both name their dotted prefix by index. *)
+    nameLine (reading, json) = ExportJson::upon (ExportJson::intIn (json, "in"), \index => ExportJson::upon (freshIn (reading.tables.names, index, 1, "name"), \fresh => nameForm (reading, json, fresh)))
+
+    nameForm (reading, json, index) = match ExportJson::hasField (json, "str")
+        true => nameStr (reading, json, index)
+        false => nameNum (reading, json, index)
+
+    nameStr (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "str"), \str => ExportJson::upon (ExportJson::intIn (str, "pre"), \parent => ExportJson::upon (ExportJson::textIn (str, "str"), \leaf => ExportJson::upon (stringName leaf, \name => nameDone (reading, index, parent, name)))))
+
+    (** Implements [PROOF-EXPORT]: JSON-quoted ambiguous string components
+        preserve Lean Name identity; numeric components keep decimal spelling. *)
+    stringName leaf = ExportJson::upon (jsonQuote leaf, \quoted => escapedName (leaf, quoted))
+
+    escapedName (leaf, quoted) = match leaf == "" || quoted != "\"${leaf}\"" || dottedLeaf leaf || numericLeaf leaf
+        true => Success(value = quoted)
+        false => Success(value = leaf)
+
+    dottedLeaf leaf = match indexOf (leaf, ".")
+        Success _ => true
+        Error _ => false
+
+    numericLeaf leaf = match parseInt leaf
+        Success number => leaf == toString number
+        Error _ => false
+
+    (** A `num` leaf is rendered in the table's one spelling. *)
+    nameNum (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "num"), \num => ExportJson::upon (ExportJson::intIn (num, "pre"), \parent => ExportJson::upon (ExportJson::intIn (num, "i"), \value => numericName (reading, index, parent, value))))
+
+    numericName (reading, index, parent, value) = match value >= 0
+        true => nameDone (reading, index, parent, toString value)
+        false => Error(message = "numeric name components must be nonnegative")
+
+    nameDone (reading, index, parent, leaf) = ExportJson::upon (ExportJson::nameOf (reading.tables, parent), \prefix => Success(value = setName (reading, index, dotted (prefix, leaf))))
+
+    (** A level is `succ`, `max`, `imax` or `param`. *)
+    levelLine (reading, json) = ExportJson::upon (ExportJson::intIn (json, "il"), \index => ExportJson::upon (freshIn (reading.tables.levels, index, 1, "level"), \fresh => levelForm (reading, json, fresh)))
+
+    levelForm (reading, json, index) = match ExportJson::hasField (json, "succ")
+        true => levelSucc (reading, json, index)
+        false => levelPair (reading, json, index)
+
+    levelSucc (reading, json, index) = ExportJson::upon (ExportJson::intIn (json, "succ"), \ref => ExportJson::upon (ExportJson::levelOf (reading.tables, ref), \level => Success(value = setLevel (reading, index, Succ level))))
+
+    levelPair (reading, json, index) = match ExportJson::hasField (json, "max")
+        true => paired (reading, json, index, "max", false)
+        false => levelIMax (reading, json, index)
+
+    levelIMax (reading, json, index) = match ExportJson::hasField (json, "imax")
+        true => paired (reading, json, index, "imax", true)
+        false => levelParam (reading, json, index)
+
+    (** `max` and `imax` carry their two sides as one two-element array. *)
+    paired (reading, json, index, key, imax) = ExportJson::upon (ExportJson::arrayIn (json, key), \sides => pairSides (reading, sides, index, key, imax))
+
+    pairSides (reading, sides, index, key, imax) = match listLength sides == 2
+        false => Error(message = "${key} needs two sides")
+        true => ExportJson::upon (sideOf (sides, key, 0), \left => ExportJson::upon (sideOf (sides, key, 1), \right => pairedDone (reading, index, imax, left, right)))
+
+    sideOf (sides, key, at) = ExportJson::upon (sideAt (sides, at, key), \value => ExportJson::intAs (value, "${key} side"))
+
+    sideAt (sides, at, key) = match listGet (sides, at)
+        Success value => Success(value = value)
+        Error _ => Error(message = "${key} needs two sides")
+
+    pairedDone (reading, index, imax, left, right) = ExportJson::upon (ExportJson::levelOf (reading.tables, left), \first => ExportJson::upon (ExportJson::levelOf (reading.tables, right), \second => Success(value = setLevel (reading, index, combined (imax, first, second)))))
+
+    combined (imax, first, second) = match imax
+        true => IMax first second
+        false => Max first second
+
+    (** A parameter level names its parameter through the name table. *)
+    levelParam (reading, json, index) = match ExportJson::hasField (json, "param")
+        true => paramLevel (reading, json, index)
+        false => refused (json, "il", [])
+
+    paramLevel (reading, json, index) = ExportJson::upon (ExportJson::intIn (json, "param"), \ref => ExportJson::upon (ExportJson::nameOf (reading.tables, ref), \name => Success(value = setLevel (reading, index, Param name))))
+
+    (** Read a supported expression; unknown kinds are refused. *)
+    exprLine (reading, json) = ExportJson::upon (ExportJson::intIn (json, "ie"), \index => ExportJson::upon (freshIn (reading.tables.exprs, index, 0, "expr"), \fresh => exprForm (reading, json, fresh)))
+
+    exprForm (reading, json, index) = match ExportJson::hasField (json, "sort")
+        true => sorted (reading, json, index)
+        false => exprBvar (reading, json, index)
+
+    exprBvar (reading, json, index) = match ExportJson::hasField (json, "bvar")
+        true => varred (reading, json, index)
+        false => exprConst (reading, json, index)
+
+    exprConst (reading, json, index) = match ExportJson::hasField (json, "const")
+        true => consted (reading, json, index)
+        false => exprApp (reading, json, index)
+
+    exprApp (reading, json, index) = match ExportJson::hasField (json, "app")
+        true => applied (reading, json, index)
+        false => exprLam (reading, json, index)
+
+    exprLam (reading, json, index) = match ExportJson::hasField (json, "lam")
+        true => lammed (reading, json, index)
+        false => exprForall (reading, json, index)
+
+    exprForall (reading, json, index) = match ExportJson::hasField (json, "forallE")
+        true => foralled (reading, json, index)
+        false => exprLet (reading, json, index)
+
+    (** Let expressions retain their type, value and body for checking. *)
+    exprLet (reading, json, index) = match ExportJson::hasField (json, "letE")
+        true => letted (reading, json, index)
+        false => exprProj (reading, json, index)
+
+    exprProj (reading, json, index) = match ExportJson::hasField (json, "proj")
+        true => projected (reading, json, index)
+        false => exprNatural (reading, json, index)
+
+    exprNatural (reading, json, index) = match ExportJson::hasField (json, "natVal")
+        true => ExportJson::upon (ExportJson::textIn (json, "natVal"), \text => ExportJson::upon (Naturals::parse text, \value => Success(value = setExpr (reading, index, NatLit value))))
+        false => exprString (reading, json, index)
+
+    exprString (reading, json, index) = match ExportJson::hasField (json, "strVal")
+        true => ExportJson::upon (ExportJson::textIn (json, "strVal"), \text => ExportJson::upon (Literals::string text, \value => Success(value = setExpr (reading, index, value))))
+        false => refused (json, "ie", ["mdata", "fvar", "mvar"])
+
+    (** Projections retain their family and field index for kernel checking;
+        reading one never substitutes an unchecked field. [PROOF-KERNEL-THEORY] *)
+    projected (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "proj"), \proj => ExportJson::upon (ExportJson::intIn (proj, "typeName"), \ref => ExportJson::upon (ExportJson::nameOf (reading.tables, ref), \name => ExportJson::upon (ExportJson::intIn (proj, "idx"), \field => ExportJson::upon (ExportJson::intIn (proj, "struct"), \target => ExportJson::upon (ExportJson::exprOf (reading.tables, target), \term => Success(value = setExpr (reading, index, Proj name field term))))))))
+
+    sorted (reading, json, index) = ExportJson::upon (ExportJson::intIn (json, "sort"), \ref => ExportJson::upon (ExportJson::levelOf (reading.tables, ref), \level => Success(value = setExpr (reading, index, Sort level))))
+
+    varred (reading, json, index) = ExportJson::upon (ExportJson::intIn (json, "bvar"), \depth => Success(value = setExpr (reading, index, BVar depth)))
+
+    (** A constant names its head and carries its level arguments. *)
+    consted (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "const"), \c => ExportJson::upon (ExportJson::intIn (c, "name"), \ref => ExportJson::upon (ExportJson::nameOf (reading.tables, ref), \name => ExportJson::upon (ExportJson::arrayIn (c, "us"), \items => ExportJson::upon (levelList (reading.tables, items), \levels => Success(value = setExpr (reading, index, Const name levels)))))))
+
+    (** Every element of a level-argument list, in order. *)
+    levelList (tables, items) = match items
+        [] => Success(value = [])
+        [first, ...rest] => ExportJson::upon (ExportJson::intAs (first, "level argument"), \ref => ExportJson::upon (ExportJson::levelOf (tables, ref), \level => ExportJson::upon (levelList (tables, rest), \levels => Success(value = listPrepend (levels, level)))))
+
+    applied (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "app"), \a => ExportJson::upon (ExportJson::intIn (a, "fn"), \head => ExportJson::upon (ExportJson::intIn (a, "arg"), \arg => ExportJson::upon (ExportJson::exprOf (reading.tables, head), \caller => ExportJson::upon (ExportJson::exprOf (reading.tables, arg), \value => Success(value = setExpr (reading, index, App caller value)))))))
+
+    (** `lam` and `forallE` differ only in the constructor; `binderInfo`
+        is validated and dropped, and the name is kept for printing. *)
+    lammed (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "lam"), \node => bound (reading, index, node, true))
+
+    foralled (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "forallE"), \node => bound (reading, index, node, false))
+
+    bound (reading, index, binder, lambda) = ExportJson::upon (ExportJson::textIn (binder, "binderInfo"), \info => boundInfo (reading, index, binder, lambda, info))
+
+    boundInfo (reading, index, binder, lambda, info) = match listContains (["default", "implicit", "strictImplicit", "instImplicit"], info)
+        true => boundName (reading, index, binder, lambda)
+        false => Error(message = "bad binderInfo ${info}")
+
+    boundName (reading, index, binder, lambda) = ExportJson::upon (ExportJson::intIn (binder, "name"), \ref => ExportJson::upon (ExportJson::nameOf (reading.tables, ref), \name => ExportJson::upon (ExportJson::intIn (binder, "type"), \ty => ExportJson::upon (ExportJson::exprOf (reading.tables, ty), \domain => ExportJson::upon (ExportJson::intIn (binder, "body"), \body => ExportJson::upon (ExportJson::exprOf (reading.tables, body), \inner => Success(value = setExpr (reading, index, boundForm (lambda, name, domain, inner)))))))))
+
+    boundForm (lambda, name, domain, inner) = match lambda
+        true => Lam name domain inner
+        false => Pi name domain inner
+
+    (** A let carries name, type, value and body; `nondep` is a hint and
+        is dropped. *)
+    letted (reading, json, index) = ExportJson::upon (ExportJson::fieldIn (json, "letE"), \letE => ExportJson::upon (ExportJson::intIn (letE, "name"), \nref => ExportJson::upon (ExportJson::nameOf (reading.tables, nref), \name => ExportJson::upon (ExportJson::intIn (letE, "type"), \tref => ExportJson::upon (ExportJson::exprOf (reading.tables, tref), \domain => ExportJson::upon (ExportJson::intIn (letE, "value"), \vref => ExportJson::upon (ExportJson::exprOf (reading.tables, vref), \value => letBody (reading, index, letE, name, domain, value))))))))
+
+    letBody (reading, index, letE, name, domain, value) = ExportJson::upon (ExportJson::intIn (letE, "body"), \bref => ExportJson::upon (ExportJson::exprOf (reading.tables, bref), \inner => Success(value = setExpr (reading, index, Let name domain value inner))))
+
+    (** A declaration line names one constant or one inductive block:
+        `thm`, `def`, `axiom`, `opaque` and `inductive` are the forms the
+        kernel reads, everything else is refused. *)
+    declLine (reading, json) = match ExportJson::hasField (json, "thm")
+        true => theoremed (reading, json)
+        false => declDef (reading, json)
+
+    declDef (reading, json) = match ExportJson::hasField (json, "def")
+        true => defined (reading, json)
+        false => declAxiom (reading, json)
+
+    declAxiom (reading, json) = match ExportJson::hasField (json, "axiom")
+        true => axiomed (reading, json)
+        false => declInductive (reading, json)
+
+    declInductive (reading, json) = match ExportJson::hasField (json, "inductive")
+        true => inducted (reading, json)
+        false => declOpaque (reading, json)
+
+    (** An opaque declaration is read exactly like a theorem — name,
+        universe parameters, statement and value through the same tables —
+        but only after its safety: the exporter's `isUnsafe` flag must be
+        present and explicitly false. *)
+    declOpaque (reading, json) = match ExportJson::hasField (json, "opaque")
+        true => opaqued (reading, json)
+        false => declQuotient (reading, json)
+
+    declQuotient (reading, json) = match ExportJson::hasField (json, "quot")
+        true => quotiented (reading, json)
+        false => refused (json, "", [])
+
+    quotiented (reading, json) = ExportJson::upon (ExportJson::fieldIn (json, "quot"), \raw => ExportJson::upon (quotientShape raw, \data => ExportJson::upon (ExportJson::textIn (data, "kind"), \kind => ExportJson::upon (quotientKind kind, \tag => quotientDeclaration (reading, data, tag)))))
+
+    quotientShape raw = match raw
+        JsonObject members => ExportJson::upon (quotientMembers members, \ok => quotientCount (raw, listLength members))
+        other => Error(message = "quotient declaration is not an object")
+
+    quotientCount (raw, count) = match count == 4
+        true => Success(value = raw)
+        false => Error(message = "quotient declaration needs exactly kind, levelParams, name and type")
+
+    quotientMembers members = match members
+        [] => Success(value = true)
+        [entry, ...rest] => match entry
+            JsonMember name value => match listContains (["kind", "levelParams", "name", "type"], name)
+                true => quotientMembers rest
+                false => Error(message = "unsupported quotient member: ${name}")
+            other => Error(message = "invalid quotient member")
+
+    quotientKind kind = match kind
+        "type" => Success(value = QuotType)
+        "ctor" => Success(value = QuotCtor)
+        "lift" => Success(value = QuotLift)
+        "ind" => Success(value = QuotInd)
+        other => Error(message = "unsupported quotient kind: ${other}")
+
+    quotientDeclaration (reading, data, kind) = ExportJson::upon (ExportJson::declName (reading.tables, data), \name => ExportJson::upon (ExportJson::paramsOf (reading.tables, data), \params => ExportJson::upon (ExportJson::typedOf (reading.tables, data), \ty => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Quotient kind)))))))
+
+    opaqued (reading, json) = ExportJson::upon (ExportJson::fieldIn (json, "opaque"), \opq => ExportJson::upon (ExportJson::boolIn (opq, "isUnsafe"), \unsafe => opaqueSafety (reading, opq, unsafe)))
+
+    opaqueSafety (reading, opq, unsafe) = match unsafe
+        true => Error(message = "unsafe opaque declarations are refused")
+        false => valuedDeclaration (reading, opq, \value => Opaque value)
+
+    theoremed (reading, json) = ExportJson::upon (ExportJson::safeField (json, "thm"), \raw => valuedDeclaration (reading, raw, \value => Theorem value))
+
+    defined (reading, json) = ExportJson::upon (ExportJson::safeField (json, "def"), \raw => valuedDeclaration (reading, raw, \value => Definition value))
+
+    (** Theorem, definition and opaque bodies share the same checked table
+        reads; only their reduction and reporting semantics differ. *)
+    valuedDeclaration (reading, raw, body) = ExportJson::upon (ExportJson::declName (reading.tables, raw), \name => ExportJson::upon (ExportJson::paramsOf (reading.tables, raw), \params => ExportJson::upon (ExportJson::typedOf (reading.tables, raw), \ty => ExportJson::upon (ExportJson::intIn (raw, "value"), \vref => ExportJson::upon (ExportJson::exprOf (reading.tables, vref), \value => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = body value)))))))))
+
+    axiomed (reading, json) = ExportJson::upon (ExportJson::safeField (json, "axiom"), \ax => ExportJson::upon (ExportJson::declName (reading.tables, ax), \name => ExportJson::upon (ExportJson::paramsOf (reading.tables, ax), \params => ExportJson::upon (ExportJson::typedOf (reading.tables, ax), \ty => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Axiom))))))))
+
+    (** One inductive line is one block: the type former, its constructors
+        and its recursor, each read exactly like a theorem's name,
+        parameters and statement. *)
+    inducted (reading, json) = ExportJson::upon (ExportInductive::blocked (reading.tables, json), \block => Success(value = addItem (reading, Group block)))

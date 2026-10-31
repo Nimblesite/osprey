@@ -128,6 +128,53 @@ fn returnClauseCase() = checkAll("a return clause converts normal completion", [
     (checkedDouble(4611686018427387904)(valueWork) ?: -1) == -1
 ])
 
+type ResumeBox = { held: string }
+effect ErasedBoxAsk { control value: fn() -> List<any> }
+effect ErasedBoxResultAsk { control value: fn() -> Result<List<any>, string> }
+
+fn resumeBoxValues() = [ResumeBox { held: "boxed" }]
+fn resumeBoxText(values: List<any>) = match values {
+    [{ held, .. }] => toString(held)
+    _ => "other"
+}
+fn resumeBoxWork() = resumeBoxText(perform ErasedBoxAsk.value())
+fn resumeResultBoxWork() = match perform ErasedBoxResultAsk.value() {
+    Success { value } => resumeBoxText(value)
+    Error { message } => message
+}
+
+let plainBoxResume = handler ErasedBoxAsk { value => resume(resumeBoxValues()) }
+let promotedBoxResume = handler ErasedBoxResultAsk { value => resume(resumeBoxValues()) }
+let wrappedBoxResume = handler ErasedBoxResultAsk { value => resume(Success { value: resumeBoxValues() }) }
+let errorBoxResume = handler ErasedBoxResultAsk { value => resume(Error { message: join(["resume", "error"], " ") }) }
+
+effect NestedBoxAsk { control value: fn() -> List<List<any>> }
+effect NestedBoxResultAsk { control value: fn() -> Result<List<List<any>>, string> }
+
+fn nestedResumeValues() = [resumeBoxValues()]
+fn nestedResumeText(values) = match values {
+    [items] => resumeBoxText(items)
+    _ => "other"
+}
+fn nestedResumeWork() = nestedResumeText(perform NestedBoxAsk.value())
+fn nestedResultResumeWork() = match perform NestedBoxResultAsk.value() {
+    Success { value } => nestedResumeText(value)
+    Error { message } => message
+}
+
+let plainNestedResume = handler NestedBoxAsk { value => resume(nestedResumeValues()) }
+let promotedNestedResume = handler NestedBoxResultAsk { value => resume(nestedResumeValues()) }
+let wrappedNestedResume = handler NestedBoxResultAsk { value => resume(Success { value: nestedResumeValues() }) }
+let errorNestedResume = handler NestedBoxResultAsk { value => resume(Error { message: join(["nested", "error"], " ") }) }
+
+fn nestedResumeChecks() = checkAll("nested lists preserve erased resume payloads", [
+    nestedResumeText(nestedResumeValues()) == "boxed",
+    plainNestedResume(nestedResumeWork) == "boxed",
+    promotedNestedResume(nestedResultResumeWork) == "boxed",
+    wrappedNestedResume(nestedResultResumeWork) == "boxed",
+    errorNestedResume(nestedResultResumeWork) == "nested error"
+])
+
 /// A resumed branch answer is already transformed; an abandoned one never is.
 fn controlAnswerCase() = {
     let opened = gate(true)
@@ -136,8 +183,14 @@ fn controlAnswerCase() = {
         around(controlWork) == "done=42!", stop(controlWork) == "stopped",
         bracket(twoAsks) == "[[done=44]]", opened(controlWork) == "open 6",
         closed(controlWork) == "closed", closed(twoAsks) == "closed",
-        opened(twoAsks) == "open 55"
+        opened(twoAsks) == "open 55",
+        resumeBoxText(resumeBoxValues()) == "boxed",
+        plainBoxResume(resumeBoxWork) == "boxed",
+        promotedBoxResume(resumeResultBoxWork) == "boxed",
+        wrappedBoxResume(resumeResultBoxWork) == "boxed",
+        errorBoxResume(resumeResultBoxWork) == "resume error"
     ])
+    nestedResumeChecks()
 }
 
 /// Repeated applications share a factory's cells; separate factories do not.

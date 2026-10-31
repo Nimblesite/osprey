@@ -7,6 +7,36 @@ use std::process::{Command, Stdio};
 #[path = "common/effect_execution.rs"]
 mod effect_execution;
 
+#[path = "common/workbench_fixture.rs"]
+mod workbench_fixture;
+
+#[test]
+fn workbench_retains_record_identity_through_shared_proof_helpers() -> io::Result<()> {
+    compile_workbench("apps/workbench", "wasm32")
+}
+
+#[test]
+fn workbench_apple_host_includes_shared_proof_dependencies() -> io::Result<()> {
+    compile_workbench("apps/workbench/hosts/apple/app", "macos")
+}
+
+fn compile_workbench(project: &str, target: &str) -> io::Result<()> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .current_dir(root)
+        .arg(project)
+        .args(["--llvm", "--quiet", "--no-warnings"])
+        .arg(format!("--target={target}"))
+        .output()?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("define"));
+    Ok(())
+}
+
 const STATIC_FINALIZERS: &str = r#"
 static effect Config { number: fn() -> int }
 effect Log { note: fn(string) -> Unit }
@@ -52,7 +82,8 @@ type Payload = { items: List<string> }
 
 fn abandoned(outer) = {
     let owned = mapList([1, 2, 3], fn(n) => "item:${n}")
-    let owner = Payload { items: owned }
+    let original = Payload { items: outer }
+    let owner = match listLength(owned) == 3 { true => Payload { items: owned } false => original }
     let capture = fn() => join(owner.items, ",")
     let message = "${capture()}:${listLength(outer)}"
     let answer = perform Stop.halt(message)
@@ -76,6 +107,50 @@ fn abandoning_control_releases_body_owners_and_preserves_outer_captures() {
         "osp",
         ABANDONED_OWNERS,
         "finalized:a!,b!\n22:a!,b!\n",
+    );
+}
+
+const MIXED_MATCH_OWNERS: &str = r#"
+type Node = Node { text: string }
+fn choose(fresh, old) = match fresh {
+    true => Node { text: "fresh:${42}" }
+    false => old
+}
+fn nested(fresh, old) = match fresh { true => match fresh { true => old false => choose(true, old) } false => choose(false, old) }
+fn wrappedChoice(fresh, old) = match fresh { true => Success { value: choose(true, Node { text: "unused" }) } false => old }
+fn resultText(result) = match result { Success { value } => value.text Error { message } => message }
+type Viewed = { text: string }
+fn erasedChoice(fresh, old: any) = match fresh { true => Viewed { text: "fresh:${42}" } false => old }
+fn erasedText(value: any) = match value { { text } => text _ => "unexpected erased shape" }
+fn repeated(which, old) = match which { 0 => old 1 => old _ => Node { text: "fresh:${42}" } }
+fn discard(old) = match repeated(1, old) { Node { text } => byteLength(text) }
+fn repeatedLifetime(n) = {
+    let base = Node { text: "base:${n}" }
+    let size = discard(base)
+    let replacement = Node { text: "replacement:${n}" }
+    "${base.text}|${replacement.text}|${size}"
+}
+fn exercise() = {
+    let old = Node { text: "outer:${7}" }
+    let alias = old
+    let first = nested(false, old)
+    let second = choose(true, old)
+    let wrapped = nested(true, old)
+    let last = fold(range(0, 10000), old, fn(current, index) => choose(index % 2 == 0, current))
+    let kept = Success { value: old }
+    let boxed = Viewed { text: old.text }
+    "${first.text}|${second.text}|${wrapped.text}|${last.text}|${alias.text}|${resultText(wrappedChoice(true, kept))}|${resultText(wrappedChoice(false, kept))}|${erasedText(erasedChoice(true, boxed))}|${erasedText(erasedChoice(false, boxed))}"
+}
+print("${exercise()}|${repeatedLifetime(7)}")
+"#;
+
+#[test]
+fn mixed_match_owners_preserve_borrows_aliases_and_loop_accumulators() {
+    effect_execution::assert_flavored_output(
+        "mixed_match_owners",
+        "osp",
+        MIXED_MATCH_OWNERS,
+        "outer:7|fresh:42|outer:7|fresh:42|outer:7|fresh:42|outer:7|fresh:42|outer:7|base:7|replacement:7|6\n",
     );
 }
 
@@ -229,17 +304,58 @@ fn write_port_identity_project(root: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn run_port_identities(root: &Path, memory: &str) -> io::Result<std::process::Output> {
+/// One run of `root` with the shared launcher flags. `extra` carries only the
+/// flags a caller genuinely needs, so every existing caller keeps its exact
+/// behaviour, warnings included.
+fn run_project(root: &Path, memory: &str, extra: &[&str]) -> io::Result<std::process::Output> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
-    let _ = command.current_dir(repo_root()).arg(root).args([
-        "--run",
-        "--quiet",
-        &format!("--memory={memory}"),
-    ]);
-    if memory == "arc" {
-        let _ = command.env("OSPREY_ARC_DEBUG", "1");
-    }
+    let _ = command
+        .current_dir(repo_root())
+        .arg(root)
+        .args(["--run", "--quiet", &format!("--memory={memory}")])
+        .args(extra);
+    effect_execution::runtime_environment(&mut command, memory);
     command.output()
+}
+
+fn run_port_identities(root: &Path, memory: &str) -> io::Result<std::process::Output> {
+    run_project(root, memory, &[])
+}
+
+/// The staged fixture compiles the whole workbench root set; warnings are not
+/// what it asserts and the redundant-annotation oracle dominates that build.
+fn compile_goal_fixture(root: &Path, memory: &str) -> io::Result<PathBuf> {
+    let binary = root.join(format!("fixture-{memory}{}", std::env::consts::EXE_SUFFIX));
+    let output = goal_compile_command(root, &binary, memory).output()?;
+    assert!(
+        output.status.success(),
+        "{memory} compile: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(binary)
+}
+
+fn goal_compile_command(root: &Path, binary: &Path, memory: &str) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
+    let _ = command
+        .current_dir(repo_root())
+        .arg(root)
+        .args(["--compile", "--quiet", "--no-warnings"])
+        .arg(format!("--memory={memory}"))
+        .arg("-o")
+        .arg(binary);
+    command
+}
+
+fn run_goal_fault(root: &Path, binary: &Path, memory: &str) -> io::Result<std::process::Output> {
+    let mut command = Command::new(binary);
+    let _ = command.current_dir(root);
+    effect_execution::runtime_environment(&mut command, memory);
+    let output = command.output()?;
+    if memory == "arc" {
+        effect_execution::assert_arc_clean(&String::from_utf8_lossy(&output.stderr));
+    }
+    Ok(output)
 }
 
 fn assert_port_identities(root: &Path, memory: &str, expected: &str) -> io::Result<()> {
@@ -254,6 +370,9 @@ fn assert_port_identities(root: &Path, memory: &str, expected: &str) -> io::Resu
         expected,
         "{memory} released a Maybe publication payload before Names::display read it"
     );
+    if memory == "arc" {
+        effect_execution::assert_arc_clean(&String::from_utf8_lossy(&output.stderr));
+    }
     Ok(())
 }
 
@@ -294,6 +413,7 @@ print(toString(observed))
     let mut child = Command::new(env!("CARGO_BIN_EXE_osprey"))
         .current_dir(repo_root())
         .args(["/dev/stdin", "--run", "--quiet", "--memory=arc"])
+        .env("OSPREY_ARC_DEBUG", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -311,5 +431,50 @@ print(toString(observed))
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "Success(42)\n");
+    effect_execution::assert_arc_clean(&String::from_utf8_lossy(&output.stderr));
     Ok(())
+}
+
+fn phase(label: &str) {
+    eprintln!("phase {label} at {:?}", std::time::SystemTime::now());
+}
+
+/// [WORKBENCH-GOALS] A goal formula the reader refuses is a broken fixture,
+/// never `⊥`: the shared typed helper fails the active test normally. The
+/// valid formula in the same pipeline still prints itself. Both controls run
+/// under GC and ARC, and no exit path is skipped on either OS family.
+#[test]
+fn a_faulted_workbench_goal_formula_fails_its_case_without_fabricating_bottom() -> io::Result<()> {
+    let root =
+        TempProject(std::env::temp_dir().join(format!("osprey_goal_fault_{}", std::process::id())));
+    workbench_fixture::stage(&root.0, &repo_root())?;
+    for memory in ["gc", "arc"] {
+        check_goal_backend(&root.0, memory)?;
+    }
+    Ok(())
+}
+
+fn check_goal_backend(root: &Path, memory: &str) -> io::Result<()> {
+    phase(&format!("{memory} compile once"));
+    let binary = compile_goal_fixture(root, memory)?;
+    std::fs::write(root.join("formula.txt"), "p ∧")?;
+    workbench_fixture::assert_faulted(&run_goal_fault(root, &binary, memory)?, memory);
+    std::fs::write(root.join("formula.txt"), workbench_fixture::VALID_FORMULA)?;
+    assert_valid_goal(&run_goal_fault(root, &binary, memory)?, memory);
+    std::fs::remove_file(root.join("formula.txt"))?;
+    workbench_fixture::assert_missing(&run_goal_fault(root, &binary, memory)?, memory);
+    Ok(())
+}
+
+fn assert_valid_goal(output: &std::process::Output, memory: &str) {
+    assert!(
+        output.status.success(),
+        "{memory}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        workbench_fixture::VALID_STDOUT,
+        "{memory} changed the goal pipeline's stdout"
+    );
 }

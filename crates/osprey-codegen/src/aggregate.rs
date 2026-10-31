@@ -23,6 +23,7 @@ use osprey_ast::{Expr, FieldAssignment};
 
 mod construct;
 pub(crate) use construct::gen_constructor;
+pub(crate) mod erasure;
 
 /// A field's value as a record stores it: a list literal takes the runtime
 /// layout first, because the field's declared `List<T>` promises an

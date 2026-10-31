@@ -1,11 +1,12 @@
 //! Continuation handler construction and answer transport.
 use super::{
     bind_arm_params, box_codegen_value, build_env, capture_list_resuming, checked_arm_op,
-    coerce_to, coerce_to_op_result, declare_coro, declare_stack, emit_drive_fn, gen_expr, ltype_of,
-    op_sig_for, promote_to_result, reload_env, result_inner, ret_and_exit, return_clause,
-    unbox_coro_value, ArmCap, Codegen, CodegenError, Expr, HandlerArm, LType, OpSig, Result,
-    ResumeCodegenContext, Value,
+    coerce_to, declare_coro, declare_stack, emit_drive_fn, gen_expr, op_sig_for, promote_to_result,
+    reload_env, ret_and_exit, return_clause, unbox_coro_value, ArmCap, Codegen, CodegenError, Expr,
+    HandlerArm, LType, OpSig, Result, ResumeCodegenContext, Value,
 };
+use crate::builder::ParamSig;
+use crate::cast::coerce_semantic_param;
 
 #[derive(Clone)]
 pub(super) struct DriveArm {
@@ -253,8 +254,7 @@ pub(super) fn emit_resuming_arm_fn(
         (LType::Ptr, String::from("__coro")),
     ];
     bind_arm_params(cg, arm, spec.sig, spec.resolved, &mut params)?;
-    let op_ret_ty = ltype_of(&spec.resolved.ret);
-    let op_ret_result_inner = result_inner(&spec.resolved.ret);
+    let op_return = ParamSig::of(&cg.prog, &spec.resolved.ret);
     cg.resume_ctx = spec.sig.mode.is_control().then(|| ResumeCodegenContext {
         env: String::from("%__env"),
         coro: String::from("%__coro"),
@@ -264,8 +264,7 @@ pub(super) fn emit_resuming_arm_fn(
         answer_owner: spec.answer.owner.clone(),
         answer_payload_owner: spec.answer.payload_owner.clone(),
         answer_inferred_type: spec.answer.inferred_type.clone(),
-        op_ret_ty,
-        op_ret_result_inner,
+        op_return: op_return.clone(),
     });
     let body_raw = crate::expr::gen_body(cg, &arm.body)?;
     // Control arms answer the region even when they never invoke resume.
@@ -273,7 +272,7 @@ pub(super) fn emit_resuming_arm_fn(
     let body = if spec.sig.mode.is_control() {
         coerce_to_answer(cg, body_raw, spec.answer)?
     } else {
-        coerce_to_op_result(cg, body_raw, op_ret_ty, op_ret_result_inner)?
+        coerce_semantic_param(cg, body_raw, &op_return)?
     };
     let boxed = box_codegen_value(cg, body);
     crate::arc::epilogue(cg, None);
@@ -291,7 +290,7 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
         Some(expr) => gen_expr(cg, expr)?,
         None => Value::unit(),
     };
-    let raw_value = coerce_to_op_result(cg, raw_value, ctx.op_ret_ty, ctx.op_ret_result_inner)?;
+    let raw_value = coerce_semantic_param(cg, raw_value, &ctx.op_return)?;
     let boxed_value = box_codegen_value(cg, raw_value);
     let _ = cg.call(
         "i64",

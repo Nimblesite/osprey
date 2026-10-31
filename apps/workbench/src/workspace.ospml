@@ -1,0 +1,304 @@
+// Implements [WORKBENCH-STORE]: portable working contains source and title, never a cached proof verdict.
+namespace workbench
+
+import proof::CachedImports
+import proof::Trust
+import ui::Ui
+import ui::Frames
+    plain
+    text
+import ui::Lists
+import ui::Doc
+import ui::Requests
+import ui::Runtime
+import workbench::Reviews
+import workbench::Statements
+import workbench::Steps
+import workbench::Emit
+import workbench::ProofTerms
+
+(** Explicit save, open and source export over the same bounded host capabilities on every platform. *)
+module Workspaces
+    export notice (bench, text, bad) = bench(layout = messaged (bench.layout, text, bad))
+
+    messaged (layout, text, bad) = layout(noticeText = text, noticeBad = bad)
+
+    export encode bench = jsonEncode (JsonObject [Doc::num ("version", 2), Doc::str ("title", bench.draft.draftTitle), Doc::str ("text", bench.draft.draftText)])
+
+    export save bench = match encode bench
+        Error problem => Runtime::step (notice (bench, problem, true))
+        Success source => saving (bench, "workspace:saved", "solution.proof.json", source)
+
+    saving (bench, ticket, name, source) = ui::Step(stepStore = bench, requests = [Requests::ask (ticket, ui::SaveFile(suggested = name, exportSlice = ticket))], writes = [Requests::write (ticket, source)])
+
+    export open bench = Runtime::asking (bench, [Requests::ask ("workspace:opened", ui::ChooseFile(types = ["json"], chosenLimit = 8388608, chosenSlice = "workspace:import"))])
+
+    export source bench =
+        declarations = filterList (Statements::document bench.draft.draftText, \found => isEmpty found.problems)
+        match isEmpty declarations
+            true => Runtime::step (notice (bench, "No supported statement is available to export.", true))
+            false => saving (bench, "workspace:source", "proof.ospml", Emit::document (mapList (declarations, \found => Proof(statement = found.statement, steps = mapList (Steps::sentences found.proof, \sentence => Steps::read sentence)))))
+
+    export decode source = match jsonDecode source
+        Error _ => Error(message = "The workspace is not valid JSON.")
+        Success doc => match Doc::has (doc, "board")
+            true => Error(message = "Workspaces containing drawing data are unsupported.")
+            false => validated doc
+
+    supportedVersion doc = match Doc::field (doc, "version")
+        JsonInt version => version == 2
+        _ => false
+
+    validated doc = match jsonText (Doc::field (doc, "text"))
+        Error _ => Error(message = "The workspace is missing its written working.")
+        Success source => match supportedVersion doc && length source <= 1048576
+            false => Error(message = "The workspace version or document size is unsupported.")
+            true => match jsonText (Doc::field (doc, "title"))
+                Error _ => Error(message = "The workspace is missing its title.")
+                Success title => Success(value = { title = title, source = source })
+
+    restoredLayout layout = layout(guided = false, mode = Working, noticeText = "Workspace opened. Supported statements have been checked again.", noticeBad = false)
+
+    restored (bench, saved) = bench(draft = Draft(draftTitle = saved.title, draftText = saved.source, caret = length saved.source, selectedStep = -1), verdicts = Reviewed(checks = Reviews::review saved.source), layout = restoredLayout bench.layout)
+
+    export opened bench = match decode (perform ui::Slices.fetch "workspace:import")
+        Error problem => Runtime::step (notice (bench, problem, true))
+        Success saved => Runtime::step (restored (bench, saved))
+
+    export completed (bench, ticket, result) = match Doc::flag (result, "cancelled")
+        true => Runtime::step bench
+        false => received (bench, ticket, result)
+
+    received (bench, ticket, result) = match isEmpty (Doc::text (result, "path"))
+        true => Runtime::step (notice (bench, "The host returned no file receipt.", true))
+        false => match ticket
+            "workspace:opened" => opened bench
+            "workspace:source" => Runtime::step (notice (bench, "Generated source exported.", false))
+            "workspace:saved" => Runtime::step (notice (bench, "Workspace saved.", false))
+            _ => Runtime::step bench
+
+(** [WORKBENCH-VERDICT] Shared file import and current-source checking for every host. *)
+module ProofLibraries
+    export fileKey = "proof:import"
+    inlineLimit = 1048576
+
+    export source current = match current.exportLarge
+        true => perform ui::Slices.fetch fileKey
+        false => current.exportText
+
+    missing current = current.exportLarge && isEmpty (source current)
+
+    unavailable = "The imported source is unavailable. Open the proof export again."
+
+    selectionResult (current, name) = match missing current
+        true => Error(message = unavailable)
+        false => CachedImports::check (source current, name)
+
+    export open bench =
+        current = bench.imports
+        ready = bench(imports = current(libraryPending = fileKey, libraryTicket = "proof:opened"))
+        Runtime::asking (ready, [Requests::ask ("proof:opened", ui::ChooseFile(types = ["json", "ndjson", "jsonl"], chosenLimit = 8388608, chosenSlice = fileKey))])
+
+    export imported (bench, content) = ui::Step(stepStore = bench(imports = replaced (bench.imports, content)), requests = [], writes = [ui::SliceWrite(sliceKey = fileKey, sliceText = content)])
+
+    revised current = current(exportRevision = satAdd current.exportRevision 1)
+
+    replaced (current, content) =
+        changed = revised current
+        next = changed(exportText = retained content, exportLarge = byteLength content > inlineLimit, exportProblem = "", libraryPending = "", libraryTicket = "", libraryExpanded = false)
+        match CachedImports::catalogue content
+            Error problem => next(exportProblem = problem)
+            Success entries => selectedEntry (next, entries)
+
+    retained content = match byteLength content > inlineLimit
+        true => ""
+        false => content
+
+    selectedEntry (current, entries) = match Lists::find (entries, \entry => entry.importedName == current.exportSelected)
+        Success _ => current
+        Error _ => match listGet entries 0
+            Success first => current(exportSelected = first.importedName)
+            Error _ => current(exportProblem = "The export contains no theorem entries.")
+
+    export completed (bench, result) = match bench.imports.libraryTicket == "proof:opened"
+        false => Runtime::step bench
+        true => receivedFile (bench, result)
+
+    receivedFile (bench, result) = match Doc::flag (result, "cancelled")
+        true => Runtime::step (settled bench)
+        false => match isEmpty (Doc::text (result, "path"))
+            true => failed (bench, "The host returned no file receipt.")
+            false => Runtime::step (bench(imports = replaced (bench.imports, perform ui::Slices.fetch fileKey)))
+
+    settled bench =
+        current = bench.imports
+        bench(imports = current(libraryPending = "", libraryTicket = ""))
+
+    export failed (bench, problem) = Runtime::step (Workspaces::notice (settled bench, "The proof library could not be opened: " + problem, true))
+
+    export edited (bench, content) = match byteLength content > inlineLimit
+        true =>
+            changed = revised bench.imports
+            bench(imports = changed(exportProblem = "Inline source editing is limited to 1 MiB. Import the updated file instead."))
+        false => bench(imports = replaced (bench.imports, content))
+
+    export selected (bench, name) =
+        changed = revised bench.imports
+        next = changed(exportSelected = name)
+        match selectionResult (next, name)
+            Success _ => bench(imports = next(exportProblem = ""))
+            Error problem => bench(imports = next(exportProblem = problem))
+
+    export expanded (bench, open) =
+        current = bench.imports
+        bench(imports = current(exportExpanded = open))
+
+    (** Results are derived from the current source, never restored from saved acceptance flags. *)
+    export pane current = Ui::framed (plain(frameName = "proof-library", frameGap = 16), Ui::column [Ui::slot "library-actions", content current, Ui::disclosure ("Imported source", current.exportExpanded, ToggleProofSource, sourceFields current)])
+
+    (** The library's actions are their own region: resolving a press re-renders
+        only this region, never re-checking the current export. *)
+    export actions current = Ui::framed (plain(frameName = "proof-library-actions", frameGap = 16), Ui::column [BundledLibraries::pane current, Ui::section ("Proof library", "Inspect exported theorems checked by the kernel.", [Ui::button ("Open proof library", "folder", OpenProofLibrary)])])
+
+    sourceFields current = match current.exportExpanded
+        false => []
+        true => match current.exportLarge
+            true => [Ui::caption "This export is too large for inline editing. Import an updated file to check changes."]
+            false => [Ui::framed (plain(frameFont = "mono", frameTextSize = 14), Ui::multiline ("Current proof export", current.exportText, "Paste an exported proof library", EditProofSource))]
+
+    content current = match isEmpty current.libraryPending
+        true => currentContent current
+        false => Ui::caption "Reading the selected proof library…"
+
+    currentContent current = match missing current
+        true => previousRefusal (current, unavailable)
+        false => availableContent current
+
+    availableContent current = match isEmpty current.exportText && !current.exportLarge && current.exportRevision == 0
+        true => Ui::caption "Open a proof export to inspect its theorems and assumptions."
+        false => match isEmpty current.exportProblem
+            false => previousRefusal (current, current.exportProblem)
+            true => match CachedImports::catalogue (source current)
+                Error problem => previousRefusal (current, problem)
+                Success entries => checked (current, entries)
+
+    refused problem = Ui::framed (plain(frameGap = 8), Ui::column [Ui::badge ("Import refused", "", ui::Danger), Ui::text problem])
+
+    // Keep the issued typed selector recoverable when host data changes before dispatch.
+    previousRefusal (current, problem) = match isEmpty current.exportSelected
+        true => refused problem
+        false => Ui::column [Ui::caption "Previous selection · not checked", theoremPicker (current, [current.exportSelected]), refused problem]
+
+    theoremPicker (current, names) = Ui::picker ("Theorem", mapList (names, \name => Ui::choice (name, name)), current.exportSelected, SelectProof)
+
+    checked (current, entries) = Ui::framed (plain(frameGap = 16), Ui::column [theoremPicker (current, mapList (entries, \entry => entry.importedName)), chosen (current, entries)])
+
+    chosen (current, entries) = match Lists::find (entries, \entry => entry.importedName == current.exportSelected)
+        Error _ => refused "Select a theorem in the current export."
+        Success entry => Ui::framed (plain(frameName = "proof-library-result", frameGap = 12), Ui::column [Ui::styled (entry.importedName, ui::Headline, ui::Primary), Ui::badge ("Checked theorem", "", ui::Good), Ui::caption ("Axioms: " + assumptions entry.importedAxioms), Ui::framed (plain(frameFont = "serif", frameTextSize = 19), Ui::math (ProofTerms::typeset (entry.importedType, entry.importedNotation), entry.importedStatement)), formalStatement (current, entry)])
+
+    formalStatement (current, entry) = match current.exportExpanded
+        true => Ui::column [Ui::caption "Exact checked statement", Ui::framed (plain(frameName = "proof-library-formal", frameFont = "mono", frameTextSize = 12), Ui::text entry.importedStatement)]
+        false => Ui::column []
+
+    assumptions names = match Trust::described (Success(value = names))
+        Success text => text
+        Error message => "refused: ${message}"
+
+(** Bundled exports are discovered here; only ImportedProofs can award a verdict. *)
+module BundledLibraries
+    cataloguePath = "proof-libraries.json"
+
+    export handles ticket = ticket == "proof:catalogue" || startsWith ticket "proof:bundled:"
+
+    export load bench = match catalogue bench.imports.libraryCatalogue
+        Success _ => Runtime::step bench
+        Error _ => Runtime::asking (bench, [read ("proof:catalogue", cataloguePath, 65536)])
+
+    read (ticket, path, limit) = Requests::ask (ticket, ui::ReadTexts(texts = [path], textLimit = limit, textSlice = ticket))
+
+    entries current = Doc::items (Doc::field (Doc::parse current.libraryCatalogue, "libraries"))
+
+    listed (current, path) = Lists::any (entries current, \entry => safeEntry entry && Doc::text (entry, "path") == path)
+
+    export open (bench, path) = match listed (bench.imports, path)
+        false => failure (bench, "proof:bundled", "The selected library is absent from the catalogue.")
+        true =>
+            current = bench.imports
+            pending = current(exportText = "", exportLarge = false, exportSelected = "", exportProblem = "", libraryPending = path, libraryTicket = "proof:bundled:${satAdd current.exportRevision 1}", exportRevision = satAdd current.exportRevision 1, libraryExpanded = false)
+            Runtime::asking (bench(imports = pending), [read (pending.libraryTicket, path, 8388608)])
+
+    export pane current = Ui::disclosure ("Bundled proof libraries", current.libraryExpanded, ToggleProofLibraries, catalogueContent current)
+
+    export expanded (bench, open) =
+        current = bench.imports
+        bench(imports = current(libraryExpanded = open))
+
+    catalogueContent current = match current.libraryExpanded
+        false => []
+        true => listPrepend (listedContent current) (Ui::caption "Open a library to check its theorems and assumptions.")
+
+    listedContent current = match isEmpty current.libraryProblem
+        false => [Ui::caption current.libraryProblem]
+        true => match isEmpty current.libraryCatalogue
+            true => [Ui::caption "The bundled library catalogue is loading."]
+            false => match catalogue current.libraryCatalogue
+                Error problem => [Ui::caption ("Bundled libraries could not be loaded: " + problem)]
+                Success _ => mapList (entries current, \entry => Ui::button (Doc::text (entry, "title"), "book", OpenBundledProof (Doc::text (entry, "path"))))
+
+    export completed (bench, ticket) = match currentTicket (bench.imports, ticket)
+        false => Runtime::step bench
+        true => received (bench, ticket)
+
+    currentTicket (current, ticket) = ticket == "proof:catalogue" || (!isEmpty current.libraryTicket && ticket == current.libraryTicket)
+
+    received (bench, ticket) = match readText ticket
+        Error problem => failed (bench, ticket, problem)
+        Success file => match ticket == "proof:catalogue"
+            true => catalogued (bench, file)
+            false => imported (bench, file)
+
+    readText ticket = match jsonDecode (perform ui::Slices.fetch ticket)
+        Error problem => Error(message = "The library read result is invalid: " + problem)
+        Success doc => match Doc::items (Doc::field (doc, "files"))
+            [file] => match isEmpty (Doc::text (file, "error"))
+                true => Success(value = file)
+                false => Error(message = Doc::text (file, "error"))
+            _ => Error(message = "The library read did not return exactly one file.")
+
+    safeEntry entry = !isEmpty (Doc::text (entry, "title")) && startsWith (Doc::text (entry, "path")) "proof-libraries/" && endsWith (Doc::text (entry, "path")) ".ndjson" && (indexOf (Doc::text (entry, "path"), "..") ?: -1) < 0
+
+    catalogue content = match byteLength content <= 65536
+        false => Error(message = "The library catalogue exceeds 64 KiB.")
+        true => match jsonDecode content
+            Error problem => Error(message = "The library catalogue is invalid: " + problem)
+            Success doc => match Doc::field (doc, "libraries")
+                JsonArray values => match !isEmpty values && Lists::all (values, safeEntry)
+                    true => Success(value = content)
+                    false => Error(message = "The library catalogue contains no usable libraries or an invalid path.")
+                _ => Error(message = "The library catalogue is missing its libraries.")
+
+    catalogued (bench, file) = match Doc::text (file, "path") == cataloguePath
+        false => failed (bench, "proof:catalogue", "The host returned a different library catalogue.")
+        true => match catalogue (Doc::text (file, "text"))
+            Error problem => failed (bench, "proof:catalogue", problem)
+            Success source =>
+                current = bench.imports
+                Runtime::step (bench(imports = current(libraryCatalogue = source, libraryProblem = "", exportRevision = satAdd current.exportRevision 1)))
+
+    imported (bench, file) = match !isEmpty bench.imports.libraryPending && Doc::text (file, "path") == bench.imports.libraryPending
+        false => failed (bench, bench.imports.libraryTicket, "The host returned a different proof library.")
+        true =>
+            current = bench.imports
+            ProofLibraries::imported (bench(imports = current(libraryPending = "")), Doc::text (file, "text"))
+
+    export failed (bench, ticket, problem) = match currentTicket (bench.imports, ticket)
+        false => Runtime::step bench
+        true => failure (bench, ticket, problem)
+
+    failure (bench, ticket, problem) =
+        current = bench.imports
+        next = match ticket == "proof:catalogue"
+            true => current(libraryProblem = "Bundled libraries could not be loaded: " + problem)
+            false => current(libraryPending = "", libraryTicket = "", exportProblem = problem)
+        Runtime::step (bench(imports = next(exportRevision = satAdd current.exportRevision 1)))

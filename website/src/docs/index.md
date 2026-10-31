@@ -21,6 +21,14 @@ Osprey is built for **safety, elegance and performance**: algebraic effects and 
 - **[Video tutorials](/docs/tutorials/)** — narrated videos of real Osprey apps being built, with chapters, the commands to run each app, and a transcript.
 - **[Osprey and Swift interop on the Mac and iPhone](/docs/tutorials/swift-interop/)** — a three-minute video: Osprey exports in a generated C header, Swift `@_cdecl` imports, an effect handler at the boundary, and one Xcode target for every Apple SDK.
 
+## Proofs and mathematics
+
+Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for compatible proof checking while Osprey builds its independent proof technology and replaceable disciplines.
+
+- **[Proof video learning paths](/docs/proofs/)** - twelve short films, organised into six topics and two audience paths.
+- **[Use the Proof Workbench](/docs/proof-workbench/)** - write an argument, inspect hypotheses and goals, and work through guided lessons.
+- **[Mathlib port progress](/docs/mathlib-port/)** - real checked imports, reproducible commands and the remaining boundaries.
+
 ## Build applications
 
 - **[Osprey Native](/docs/osprey-native/)** — the application framework: one store, signals, typed screens and capabilities; SwiftUI, VS Code and GPU hosts draw them.

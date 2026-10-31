@@ -1,0 +1,119 @@
+namespace prooftests
+
+import proof::Export
+import proof::Checked
+import proof::Environment
+import proof::Fixtures
+import proof::Terms
+import proof
+    Single
+    Group
+    Theorem
+    Opaque
+import prooftests::Support
+
+(** Lean's opaque declarations ([PROOF-EXPORT]): the compact recorded IdImp
+    export with its `thm` line written as the pinned lean4export writes an
+    opaque — the same name, statement and proof, plus the explicit
+    `isUnsafe` false — reads as a `Body Opaque` through the same tables,
+    checks like a theorem through the same `Checked` path, never unfolds,
+    refuses a wrong proof, refuses the unsafe and flagless forms, and
+    refuses a value that smuggles an undeclared universe parameter. *)
+module OpaqueTests
+
+    (** Runs the opaque-declaration cases; the testing built-ins report the TAP lines. *)
+    export run () =
+        reading ()
+        checking ()
+        safety ()
+
+    reading () =
+        test ("an opaque declaration reads as Body Opaque with its statement and proof, never a theorem", \() =>
+            expect (described (Export::read (opaqueExport ())), "id_imp | (∀ (p : Prop), (p → p)) | opaque (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))"))
+
+        test ("the compact theorem export still reads as a theorem, not opaque", \() =>
+            expect (described (Export::read (Fixtures::idImp ())), "id_imp | (∀ (p : Prop), (p → p)) | theorem (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))"))
+
+    checking () =
+        test ("an accepted opaque checks and is declared", \() =>
+            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), opaqueExport (), "id_imp")), "declared"))
+
+        test ("an accepted opaque never unfolds", \() =>
+            expect (Support::unfolded (declaredEnv (Checked::exportedDeclaring (Environment::empty (), opaqueExport (), "id_imp")), "id_imp"), "error: opaque declarations do not unfold"))
+
+        test ("the wrong proof of an opaque statement is refused", \() =>
+            expect (startsWith (Support::messageOf (Checked::exportedDeclaring (Environment::empty (), wrongProofExport (), "id_imp")), "type mismatch"), true))
+
+    safety () =
+        test ("an unsafe opaque is refused, named by its line", \() =>
+            expect (Support::messageOf (Export::read (unsafeExport ())), "line 24: unsafe opaque declarations are refused"))
+
+        test ("an opaque without its safety flag is refused", \() =>
+            expect (Support::messageOf (Export::read (unflaggedExport ())), "line 24: no isUnsafe"))
+
+        test ("an opaque value cannot smuggle an undeclared universe parameter", \() =>
+            expect (Support::messageOf (Checked::exportedDeclaring (Environment::empty (), smuggled (), "opaque_u")), "constant `opaque_u` uses a universe parameter it does not declare, or declares one twice"))
+
+    (** One declaration rendered as `name | statement | body`; anything
+        else reads as its own failure, never as a pass. *)
+    described (outcome) = match outcome
+        Success items => sole items
+        Error message => "error: ${message}"
+
+    sole (items) = match length items == 1
+        true => match listGet (items, 0)
+            Success item => single item
+            Error message => "error: ${message}"
+        false => "expected one declaration, found ${toString (length items)}"
+
+    single (item) = match item
+        Single decl => "${decl.name} | ${Terms::show (decl.ty, [])} | ${bodied decl.body}"
+        Group block => "block of ${join (mapList (block.formers, \former => former.name), ", ")}"
+
+    (** The one distinction the reader must keep: an opaque is never a
+        theorem, and either prints its proof term. *)
+    bodied (body) = match body
+        Opaque value => "opaque ${Terms::show (value, [])}"
+        Theorem value => "theorem ${Terms::show (value, [])}"
+        other => "neither"
+
+    (** A checked export, or a failed case before any use of the empty
+        fallback. *)
+    declaredEnv (outcome) = match outcome
+        Success env => env
+        Error message =>
+            check "the export declares the opaque" "no error" message
+            Environment::empty ()
+
+    declaredOutcome (outcome) = match outcome
+        Success env => "declared"
+        Error message => message
+
+    (** The recorded export's `meta` line, so every hand-written export
+        starts from the one header the reader accepts. *)
+    metaLine () = listGet (lines (Fixtures::idImp ()), 0) ?: ""
+
+    (** The compact IdImp export's final line, as a `thm` and as the
+        exporter writes the same declaration opaque. *)
+    thmLine () = "{\"thm\":{\"all\":[1],\"levelParams\":[],\"name\":1,\"type\":4,\"value\":6}}"
+
+    opaqueLine () = "{\"opaque\":{\"all\":[1],\"isUnsafe\":false,\"levelParams\":[],\"name\":1,\"type\":4,\"value\":6}}"
+
+    (** The compact recorded export with its final `thm` line opaque. *)
+    opaqueExport () = replace (Fixtures::idImp (), thmLine (), opaqueLine ()) ?: ""
+
+    (** The opaque line with the safety flag made true: refused. *)
+    unsafeExport () = replace (opaqueExport (), "\"isUnsafe\":false", "\"isUnsafe\":true") ?: ""
+
+    (** The opaque line with the safety flag removed: refused, never
+        defaulted to safe. *)
+    unflaggedExport () = replace (opaqueExport (), "\"isUnsafe\":false,", "") ?: ""
+
+    (** The statement offered as its own proof: a type mismatch, never a
+        pass. *)
+    wrongProofExport () = replace (opaqueExport (), "\"type\":4,\"value\":6", "\"type\":4,\"value\":4") ?: ""
+
+    (** `opaque opaque_u : Sort u → Sort u := fun x => x` with `u` absent
+        from `levelParams`: the value checks against the statement, so only
+        the environment's scoping rule can refuse the smuggled parameter. *)
+    smuggled () = "${metaLine ()}\n{\"in\":1,\"str\":{\"pre\":0,\"str\":\"opaque_u\"}}\n{\"in\":2,\"str\":{\"pre\":0,\"str\":\"u\"}}\n{\"il\":1,\"param\":2}\n{\"ie\":0,\"sort\":1}\n{\"bvar\":0,\"ie\":1}\n{\"ie\":2,\"forallE\":{\"binderInfo\":\"default\",\"body\":0,\"name\":0,\"type\":0}}\n{\"ie\":3,\"lam\":{\"binderInfo\":\"default\",\"body\":1,\"name\":0,\"type\":0}}\n{\"opaque\":{\"all\":[1],\"isUnsafe\":false,\"levelParams\":[],\"name\":1,\"type\":2,\"value\":3}}\n"

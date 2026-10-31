@@ -7,7 +7,6 @@ import ui::Ui
 import ui::Doc
 import ui::Keyed
 import ui::Runtime
-import ui::Symbols
 import ui::Requests
 import ui::Lists
 import ui::Messages
@@ -34,12 +33,12 @@ memoed () = (perform Signal<Memo>.read ()).memo
 // count: at 0 the first tap increments, at 1 the increment is withdrawn and
 // Load shifts to the first ordinal.
 goButtons () = match tallied ()
-    1 => [Ui::button ("Go", ui::Play, Load)]
-    _ => [Ui::button ("Go", ui::Play, Increment), Ui::button ("Go", ui::Play, Load)]
+    1 => [Ui::button ("Go", "play", Load)]
+    _ => [Ui::button ("Go", "play", Increment), Ui::button ("Go", "play", Load)]
 
 rootView () = Ui::column (listConcat [Ui::text "Count ${tallied ()}"] (goButtons ()))
 
-noteView () = Ui::column [ui::Field(label = "Note", value = memoed (), prompt = "", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", ui::Inbox, Load), Ui::button ("Load", ui::Inbox, Load)]
+noteView () = Ui::column [ui::Field(label = "Note", value = memoed (), prompt = "", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", "tray", Load), Ui::button ("Load", "tray", Load)]
 
 tallySlice () = perform Signal<Tally>.read ()
 
@@ -55,7 +54,7 @@ regions (before, store, frames, _) =
 
 probe count text = Probe(counter = Tally(tally = count), note = Memo(memo = text))
 
-initial context = Runtime::step (probe 0 (Symbols::platformText context.platform))
+initial context = Runtime::step (probe 0 context.platform)
 
 loaded outcome = match outcome
     Success result => jsonText result ?: "?"
@@ -69,7 +68,7 @@ tapped (store, action) = match action
     Load => Runtime::asking (store, [Requests::ask ("load:1", ui::StoreRead(readName = "memo.txt", readLimit = 100, readSlice = "memo"))])
     Typed => Runtime::step store
 
-update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(_, text) => typed (store, text), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, outcome) => Runtime::step (probe store.counter.tally (loaded outcome)), \_ => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(_, text) => typed (store, text), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, outcome) => Runtime::step (probe store.counter.tally (loaded outcome)), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
 
 save store = JsonObject [Doc::num ("tally", store.counter.tally), Doc::str ("memo", store.note.memo)]
 

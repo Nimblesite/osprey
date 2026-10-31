@@ -1,0 +1,33 @@
+namespace proof
+
+import proof::Terms
+import proof::Naturals
+
+(** Lean 4.25 string literals are ordinary String.ofByteArray values with
+    an explicit UTF8 witness, as in Init/Prelude and String.mk. Importing
+    them adds no typing or equality rule: Infer checks every application.
+    Implements [PROOF-EXPORT] [PROOF-KERNEL-THEORY]. *)
+module Literals
+    export string text = match characters (text, 0)
+        Success chars => Success(value = constructed chars)
+        Error message => Error(message = message)
+
+    characters (text, offset) = match offset >= byteLength text
+        true => Success(value = App (Const "List.nil" [Zero]) (Const "Char" []))
+        false => match codePointAt (text, offset)
+            Success scalar => characterWidth (text, offset, scalar, codePointWidth scalar)
+            Error message => Error(message = "invalid string literal: ${message}")
+
+    characterWidth (text, offset, scalar, width) = match width
+        Success size => match characters (text, satAdd offset size)
+            Success rest => characterList (scalar, rest, Naturals::parse (toString scalar))
+            Error message => Error(message = message)
+        Error message => Error(message = "invalid string scalar: ${message}")
+
+    characterList (scalar, rest, parsed) = match parsed
+        Success number => Success(value = Terms::apps (Const "List.cons" [Zero], [Const "Char" [], App (Const "Char.ofNat" []) (NatLit number), rest]))
+        Error message => Error(message = "invalid string scalar: ${message}")
+
+    constructed chars = witnessed (chars, App (Const "List.utf8Encode" []) chars)
+
+    witnessed (chars, bytes) = Terms::apps (Const "String.ofByteArray" [], [bytes, Terms::apps (Const "ByteArray.IsValidUTF8.intro" [], [bytes, chars, Terms::apps (Const "Eq.refl" [Succ Zero], [Const "ByteArray" [], bytes])])])

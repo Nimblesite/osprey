@@ -29,6 +29,14 @@ trap 'rm -rf "$scratch"' EXIT
 fingerprint="$archive.inputs"
 mirror="compiler/lib/$(basename "$archive")"
 
+runtime_inputs_are_newer() {
+    local input
+    for input in compiler/runtime/*.c compiler/runtime/*.h; do
+        [[ "$input" -nt "$archive" ]] && return 0
+    done
+    return 1
+}
+
 {
     printf '%s\n' "$triple" "$sdk_path" "$clang" "$libtool" "${flags[@]}" "${OSPREY_RUNTIME_SHIMS:-}"
     "$clang" --version
@@ -39,7 +47,7 @@ mirror="compiler/lib/$(basename "$archive")"
     cksum compiler/runtime/*.h scripts/ios-runtime.sh scripts/runtime-memory.sh scripts/ios.mk Makefile
 } >"$scratch/inputs"
 
-if [[ ! -s "$archive" ]] || ! cmp -s "$scratch/inputs" "$fingerprint"; then
+if [[ ! -s "$archive" ]] || ! cmp -s "$scratch/inputs" "$fingerprint" || runtime_inputs_are_newer; then
     echo "==> building Apple C runtime: $triple"
     for source in "${sources[@]}"; do
         compile_runtime_source "$source" "$clang" -target "$triple" -isysroot "$sdk_path" "${flags[@]}"
@@ -53,4 +61,4 @@ if [[ ! -s "$archive" ]] || ! cmp -s "$scratch/inputs" "$fingerprint"; then
     mv "$scratch/runtime.a" "$archive"
     mv "$scratch/inputs" "$fingerprint"
 fi
-if ! cmp -s "$archive" "$mirror"; then cp "$archive" "$mirror"; fi
+if [[ "$archive" -nt "$mirror" ]] || ! cmp -s "$archive" "$mirror"; then cp "$archive" "$mirror"; fi

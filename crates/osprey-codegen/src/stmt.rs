@@ -290,13 +290,15 @@ fn lambda_cell(cg: &Codegen, position: Option<Position>) -> Option<(osprey_types
 }
 
 /// The definition `value` is a bare ALIAS for, when binding it materialises no
-/// value of its own — `let g = identity` with a generic `identity`.
+/// value of its own — a declared Osprey function or a foreign function.
 fn alias_target(cg: &Codegen, value: &Expr) -> Option<String> {
     let Expr::Identifier(n) = value else {
         return None;
     };
     let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
-    (cg.lookup(&target).is_none() && cg.fn_defs.contains_key(&target)).then_some(target)
+    (cg.lookup(&target).is_none()
+        && (cg.fn_defs.contains_key(&target) || cg.extern_params.contains_key(&target)))
+    .then_some(target)
 }
 
 /// Register the file-scope bindings that resolve by NAME rather than by value,

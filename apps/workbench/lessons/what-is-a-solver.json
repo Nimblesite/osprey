@@ -1,0 +1,87 @@
+{
+  "format": 1,
+  "slug": "what-is-a-solver",
+  "title": "What is a solver?",
+  "summary": "A solver searches for an answer, while the workbench kernel checks a proposed answer and reports honestly when none is complete.",
+  "stage": 1,
+  "minutes": 6,
+  "after": [
+    "what-is-a-solution"
+  ],
+  "blocks": [
+    {
+      "kind": "prose",
+      "text": "Searching for a solution and checking a solution are different jobs. A search tries possible answers until it finds one that works. A check examines an answer that has already been proposed.\n\nA person, another program, or a search tool may propose a proof. The Osprey kernel does not search for that proof. It checks the steps in front of it against the claim."
+    },
+    {
+      "kind": "video",
+      "source": "media/what-is-a-solver/film.mp4",
+      "poster": "media/what-is-a-solver/poster.jpg",
+      "captions": "media/what-is-a-solver/film.en.vtt",
+      "alt": "A maze first shows many candidate routes, then one route being checked. The film then presents the conjunction proof with its last steps reversed: step four offers p while the goal is q, and the kernel rejects it.",
+      "seconds": 37
+    },
+    {
+      "kind": "prose",
+      "text": "Checking has a clear standard. Every step must fit the current goal, and every goal must be closed. A rejected step identifies a mismatch. An unfinished proof is reported as not finished rather than accepted or declared false.\n\nThis narrow job makes the verdict dependable. The kernel need not trust whoever found the proof, because it checks the proof itself. It also need not claim that no proof exists when the current attempt has a hole."
+    },
+    {
+      "kind": "formula",
+      "formula": "(p → q) ∧ p → q"
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "state",
+        "id": "state-search-result",
+        "prompt": "Write that having an implication from p to q, together with p, gives q. Keep the implication on the left of ∧ and p on its right.",
+        "variables": [
+          "p",
+          "q"
+        ],
+        "expected": "(p → q) ∧ p → q",
+        "hints": [
+          "Group p → q and p with ∧.",
+          "Put an arrow from that conjunction to q."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "judge",
+        "id": "judge-checked-search-result",
+        "prompt": "A search proposed this proof. Decide whether the kernel will accept it.",
+        "statement": "Theorem modus_ponens. For all p q, (p → q) → p → q.",
+        "steps": [
+          "Assume f : p → q.",
+          "Assume x : p.",
+          "Apply f.",
+          "From x."
+        ],
+        "hints": [
+          "Applying f to the goal q leaves the goal p.",
+          "The last step supplies p from x."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "judge",
+        "id": "judge-skipped-step",
+        "prompt": "This attempt leaves out the application of f. Decide whether it still checks.",
+        "statement": "Theorem shortcut. For all p q, (p → q) → p → q.",
+        "steps": [
+          "Assume f : p → q.",
+          "Assume x : p.",
+          "From x."
+        ],
+        "hints": [
+          "After both assumptions, the goal is q.",
+          "x proves p, not q."
+        ]
+      }
+    }
+  ]
+}

@@ -68,6 +68,33 @@ fn match_lowers_to_phi() {
 }
 
 #[test]
+fn mixed_match_transfers_fresh_owners_and_retains_only_borrowed_arms() {
+    let ir = module("type Node = Node(int)\nfn choose(flag: bool, old: Node) = match flag { true => old false => Node(7) }\n");
+    let body = function_body(&ir, "define internal i8* @choose(i1 %$p0, i8* %$p1)");
+    let (arms, joined) = body.split_once(" = phi i8* ").expect("managed match join");
+    assert!(
+        arms.contains("call void @osp_retain(i8* %$p1)"),
+        "the borrowed arm must acquire its own reference before joining:\n{body}"
+    );
+    assert!(
+        !joined.contains("call void @osp_retain("),
+        "the join transfers its reference without duplicating a freshly owned arm:\n{body}"
+    );
+}
+
+#[test]
+fn repeated_borrowed_match_operands_each_acquire_their_own_reference() {
+    let ir = module("type Node = Node(int)\nfn choose(which: int, old: Node) = match which { 0 => old 1 => old _ => Node(7) }\n");
+    let body = function_body(&ir, "define internal i8* @choose(i64 %$p0, i8* %$p1)");
+    let (arms, _) = body.split_once(" = phi i8* ").expect("managed match join");
+    assert_eq!(
+        arms.matches("call void @osp_retain(i8* %$p1)").count(),
+        2,
+        "each borrowed predecessor must acquire its own reference:\n{body}"
+    );
+}
+
+#[test]
 fn named_arguments_are_ordered_by_declaration() {
     // Call sites pass b before a; the emitted call must follow declared order.
     // The total helper keeps this fixture focused on argument order.
@@ -82,6 +109,40 @@ fn named_arguments_are_ordered_by_declaration() {
             .contains("@takeFirst(i64 11, i64 22)"),
         "extern calls must preserve declaration order and the C ABI:\n{external}"
     );
+}
+
+#[test]
+fn bound_ffi_callbacks_use_raw_code_pointers() {
+    let ir = module(
+        "extern fn print(callback: fn() -> int) -> int\n\
+         let callback = fn() => 41\nlet answer = print(callback)\n",
+    );
+    shows(&ir, &["bitcast i64 ()* @__callback_"]);
+}
+
+#[test]
+fn foreign_ffi_callbacks_use_their_raw_code_pointer() {
+    let ir = module("extern fn print(callback: fn() -> int) -> int\nextern fn read() -> int\nlet answer = print(read)\n");
+    shows(
+        &ir,
+        &["declare i64 @read()", "bitcast i64 ()* @read to i8*"],
+    );
+}
+
+#[test]
+fn bound_capturing_ffi_callbacks_remain_rejected() {
+    let error = compile_err("extern fn print(callback: fn() -> int) -> int\nfn invoke(value) = {\nlet callback = fn() => value\nprint(callback)\n}\nlet answer = invoke(41)\n");
+    assert!(error
+        .to_string()
+        .contains("capturing lambda as an FFI callback"));
+}
+
+#[test]
+fn computed_ffi_closures_are_never_passed_as_code() {
+    let error = compile_err("extern fn print(callback: fn() -> int) -> int\nlet callbacks = [fn() => 41]\nlet answer = print(match callbacks {\n[value] => value\n_ => fn() => 0\n})\n");
+    assert!(error
+        .to_string()
+        .contains("dynamic closure as an FFI callback"));
 }
 
 #[test]
@@ -385,7 +446,10 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
     // wildcard element, trailing catch-all (pattern.rs gen_list_match,
     // bind_list_arm).
     let ir = module(
-        "fn classify(xs) = match xs {\n\
+        "type Level = Zero | Param { value: string }\n\
+             fn nested(xs) = match xs { [Param { value }, ...rest] => value\n\
+               _ => \"none\" }\n\
+             fn classify(xs) = match xs {\n\
                []                  => \"empty\"\n\
                [only]              => \"one(${only})\"\n\
                [_, second, ...rest] => \"rest=${listLength(rest)}\"\n\
@@ -393,7 +457,7 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
              }\n\
              fn main() -> Unit = {\n\
                let xs = listAppend(listAppend(List(), 1), 2)\n\
-               print(classify(xs))\n\
+               print(\"${classify(xs)}:${nested([Param { value: \"u\" }, Zero])}\")\n\
              }\n",
     );
     shows(
@@ -405,6 +469,11 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
             "icmp sge i64",
         ],
     );
+    let corpus = module(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp"
+    )));
+    shows(&corpus, &["osprey_list_get", "icmp eq i64"]);
 }
 
 #[test]

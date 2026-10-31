@@ -86,6 +86,14 @@ pub(super) fn specialize_summary(summary: &mut Summary, bindings: &HashMap<Strin
 }
 
 pub(super) fn specialize_value(value: &mut Value, bindings: &HashMap<String, String>) {
+    if let Some(owner) = &mut value.field_owner {
+        for argument in &mut owner.arguments {
+            *argument = specialize_argument(argument, bindings);
+        }
+    }
+    if let Some(Callable::Alternatives(choices)) = &mut value.callable {
+        super::provenance::map_alternatives(choices, |branch| specialize_value(branch, bindings));
+    }
     specialize_summary(&mut value.deferred, bindings);
     specialize_requirements(&mut value.performed, bindings);
     if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {

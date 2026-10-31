@@ -1,0 +1,18 @@
+[
+{"file": "src/scrollable_mask.rs", "before": ["use instant::Instant;\n"], "after": ["#[cfg(not(target_family = \"wasm\"))]\nuse std::time::Instant;\n#[cfg(target_family = \"wasm\")]\nuse web_time::Instant;\n"]},
+{"file": "src/input/base/blink_cursor.rs", "before": ["use instant::Duration;\n"], "after": ["use std::time::Duration;\n"]},
+{"file": "src/input/editor/lsp/semantic_tokens.rs", "before": ["use instant::Duration;\n"], "after": [""]},
+{"file": "src/input/editor/lsp/semantic_tokens.rs", "before": ["use ropey::Rope;\n"], "after": ["use ropey::Rope;\nuse std::time::Duration;\n"]},
+{"file": "src/input/editor/lsp/hover.rs", "before": ["use instant::Duration;\n"], "after": [""]},
+{"file": "src/input/editor/lsp/hover.rs", "before": ["use ropey::Rope;\n"], "after": ["use ropey::Rope;\nuse std::time::Duration;\n"]},
+{"file": "src/input/editor/lsp/document_colors.rs", "before": ["use instant::Duration;\n"], "after": [""]},
+{"file": "src/input/editor/lsp/document_colors.rs", "before": ["use std::ops::Range;\n"], "after": ["use std::ops::Range;\nuse std::time::Duration;\n"]},
+{"file": "src/measure.rs", "before": ["use gpui::SharedString;\n"], "after": ["use gpui::SharedString;\n#[cfg(not(target_family = \"wasm\"))]\nuse std::time::Instant;\n#[cfg(target_family = \"wasm\")]\nuse web_time::Instant;\n"]},
+{"file": "src/measure.rs", "before": ["start: instant::Instant,"], "after": ["start: Instant,"]},
+{"file": "src/measure.rs", "before": ["start: instant::Instant::now(),"], "after": ["start: Instant::now(),"]},
+{"file": "src/undo_history.rs", "before": ["use instant::{Duration, Instant};\n"], "after": ["#[cfg(not(target_family = \"wasm\"))]\nuse std::time::{Duration, Instant};\n#[cfg(target_family = \"wasm\")]\nuse web_time::{Duration, Instant};\n"]},
+{"file": "src/undo_history.rs", "before": ["    use instant::Duration;\n"], "after": ["    use std::time::Duration;\n"]},
+{"file": "src/scrollbar.rs", "before": ["use instant::{Duration, Instant};\n"], "after": ["#[cfg(not(target_family = \"wasm\"))]\nuse std::time::{Duration, Instant};\n#[cfg(target_family = \"wasm\")]\nuse web_time::{Duration, Instant};\n"]},
+{"file": "src/hover_card.rs", "before": ["use instant::Duration;\n"], "after": ["use std::time::Duration;\n"]},
+{"file": "Cargo.toml", "before": ["[dependencies.instant]\nversion = \"0.1\"\nfeatures = [\"wasm-bindgen\"]\n\n"], "after": [""]}
+]

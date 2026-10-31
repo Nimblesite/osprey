@@ -3,6 +3,8 @@
 // lockup and accents so the page belongs in any VS Code colour theme.
 
 export const WORKSPACE_STYLES = `
+#osprey-runtime-status:not([hidden]) { position: fixed; bottom: 36px; left: 16px; z-index: 100; padding: 8px 12px; border: 1px solid var(--osp-border); border-radius: 4px; color: var(--osp-text); background: var(--osp-surface); }
+#osprey-root[aria-busy="true"] canvas { pointer-events: none; }
 :root {
   color-scheme: light dark;
   --osp-canvas: var(--vscode-editor-background, light-dark(#f6f8fb, #0c1325));
@@ -32,12 +34,70 @@ body {
   overflow: hidden;
 }
 button, input, textarea, select { font: inherit; color: inherit; }
+.osp-math { font-family: "STIX Two Math", "Latin Modern Math", math; font-size: 1.25em; line-height: normal; max-width: 100%; }
+.osp-editor { min-width: 0; }
+.osp-editor-label { display: block; color: var(--osp-muted); margin-bottom: 12px; }
+.osp-editor-surface { position: relative; min-height: 320px; }
+.osp-editor-mirror, .osp-editor textarea { margin: 0; padding: 12px; width: 100%; min-height: 320px; font: 20px/1.7 "STIX Two Text", Georgia, serif; letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; border: 0; }
+.osp-editor-mirror { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.osp-editor-line { display: block; }
+.osp-editor-underlined { text-decoration: underline wavy; text-underline-offset: 5px; }
+.osp-editor textarea { display: block; position: relative; resize: vertical; background: transparent; color: transparent; caret-color: var(--osp-text); }
+.osp-editor textarea:focus-visible { outline-offset: -2px; }
+.osp-editor-feedback { margin: 8px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.osp-editor-feedback:empty { display: none; }
+.osp-editor-inline .osp-editor-label, .osp-editor-inline .osp-editor-mirror { display: none; }
+.osp-editor-inline textarea { color: var(--osp-text); resize: none; padding: 12px 0; border: 0; box-shadow: none; width: 100%; background: transparent; }
+.osp-editor-inline textarea::placeholder { font-style: italic; color: var(--osp-muted); }
+.osp-editor-feedback li { margin-top: 8px; }
+.osp-board { position: relative; width: 100%; height: min(70vh, 900px); min-height: 320px; overflow: hidden; background: var(--osp-board, #202723); }
+.osp-board > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: 0; }
+.osp-board canvas { position: relative; display: block; width: 100%; height: 100%; touch-action: none; color: var(--osp-chalk, #ECEDE5); cursor: crosshair; }
+.osp-layer { position: relative; min-width: 0; min-height: 0; }
+.osp-layer-fill { display: flex; flex-direction: column; flex: 1; align-self: stretch; }
+.osp-layer > :not(:first-child) { position: absolute; inset: 0; pointer-events: none; }
+:is(.osp-layer > :not(:first-child), .osp-layer > :not(:first-child) *):is([data-event-ordinal], a, label, video, [data-context-host], .osp-dialog, .osp-alert, .osp-framed[style*="background:"]) { pointer-events: auto; }
+.osp-themed { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.osp-dialog { position: absolute; inset: 0; z-index: 20; display: flex; justify-content: flex-end; align-items: flex-start; outline: none; }
+.osp-dialog > .osp-framed { max-width: 100%; }
+.osp-framed[style*="--osp-frame-icon-label:"] .osp-button > span:not(.codicon):not(.osp-symbol) { display: var(--osp-frame-icon-label); }
+.osp-symbol { display: inline-block; flex: 0 0 auto; width: 1em; height: 1em; vertical-align: middle; background: currentColor; mask-image: var(--osp-symbol-image); mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
+.osp-framed[style*="--osp-frame-symbol-size:"] :is(.osp-symbol, .codicon):not(.osp-icon *) { font-size: var(--osp-frame-symbol-size) !important; }
+.osp-framed[style*="--osp-frame-button-padding:"] .osp-button { padding: var(--osp-frame-button-padding); width: 100%; }
+.osp-axis-horizontal > .osp-framed[data-frame-width="fill"] { flex: 1; min-width: 0; }
+.osp-framed[style*="--osp-frame-row-padding:"] .osp-row { padding: var(--osp-frame-row-padding); border: var(--osp-frame-row-border); border-radius: var(--osp-frame-row-radius); background: transparent; box-shadow: none; }
+.osp-framed[style*="--osp-frame-row-padding:"] .osp-row.osp-selected { background: var(--osp-brand-selection); }
+.osp-framed[style*="--osp-frame-row-padding:"] .osp-rows { gap: var(--osp-stack-gap, 6px); }
+.osp-framed[style*="--osp-frame-line-height:"] .osp-text { line-height: var(--osp-frame-line-height) !important; }
+.osp-framed[style*="--osp-frame-tracking:"] .osp-text { letter-spacing: var(--osp-frame-tracking) !important; }
+.osp-framed[style*="--osp-frame-control-padding:"] .osp-button { padding-inline: var(--osp-frame-control-padding); }
+.osp-rich-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.osp-framed > .osp-axis-horizontal { align-items: var(--osp-stack-align, center) !important; }
+.osp-framed > .osp-stack { gap: var(--osp-stack-gap, 12px); }
+.osp-framed .osp-button { flex-direction: var(--osp-frame-symbol-direction, row); }
+.osp-framed .osp-board > img { mask-image: var(--osp-frame-backdrop-mask, none); mask-composite: intersect; mix-blend-mode: var(--osp-frame-backdrop-blend, normal); }
+.osp-framed[data-frame-grow="true"] > .osp-stack { flex: 1; min-height: 0; }
+.osp-framed { --osp-font-serif: "STIX Two Text", Georgia, serif; --osp-font-sans: "Geist", sans-serif; --osp-font-mono: Menlo, ui-monospace, monospace; }
+.osp-framed[style*="--osp-frame-font:"] .osp-text { font-family: var(--osp-frame-font) !important; }
+.osp-framed[style*="--osp-frame-text-size:"] .osp-text { font-size: var(--osp-frame-text-size) !important; }
+.osp-framed[style*="--osp-frame-font-style:"] .osp-text { font-style: var(--osp-frame-font-style) !important; }
+.osp-framed[style*="--osp-frame-control-height:"] .osp-button { min-height: var(--osp-frame-control-height); }
+.osp-framed[style*="--osp-frame-control-fill:"] .osp-button-plain { background: var(--osp-frame-control-fill); }
+.osp-framed[style*="--osp-frame-font:"] .osp-button { font-family: var(--osp-frame-font); }
+.osp-framed[style*="--osp-frame-text-size:"] .osp-button { font-size: var(--osp-frame-text-size); }
+.osp-framed[style*="--osp-frame-text-size:"] .osp-math { font-size: calc(var(--osp-frame-text-size) * var(--osp-frame-math-scale, 1)) !important; }
+.osp-framed[style*="--osp-frame-text-size:"] .osp-editor textarea, .osp-framed[style*="--osp-frame-text-size:"] .osp-editor-mirror, .osp-framed[style*="--osp-frame-text-size:"] .osp-editor-surface { font-size: var(--osp-frame-text-size) !important; }
+.osp-framed[style*="--osp-frame-font:"] .osp-editor textarea, .osp-framed[style*="--osp-frame-font:"] .osp-editor-mirror, .osp-framed[style*="--osp-frame-font:"] .osp-editor-surface { font-family: var(--osp-frame-font) !important; }
+.osp-media-image, .osp-media-video { display: block; width: 100%; max-width: 100%; height: auto; border-radius: 4px; }
+.osp-media-video { background: var(--osp-board, #202723); }
+@media (forced-colors: active) { .osp-editor-mirror { display: none; } .osp-editor textarea { color: CanvasText; } }
 button { cursor: pointer; }
+.osp-button-filled { background: var(--osp-brand-accent); color: var(--osp-brand-canvas); border-radius: 5px; }
 button:disabled { cursor: default; opacity: .48; }
 :focus-visible { outline: 2px solid var(--osp-accent); outline-offset: 2px; }
 .osp-shell { height: 100vh; display: flex; flex-direction: column; min-height: 0; }
 #osprey-root { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.osp-root { height: 100%; }
+.osp-root { height: 100%; display: flex; flex-direction: column; }
 .osp-region { min-height: 0; }
 .osp-screen { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .osp-screen-header {
@@ -94,7 +154,7 @@ button:disabled { cursor: default; opacity: .48; }
 .osp-section-title { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--osp-muted); }
 .osp-section-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .osp-section-footer { color: var(--osp-muted); font-size: 11px; border-top: 1px solid var(--osp-border); padding-top: 10px; }
-.osp-text { margin: 0; }
+.osp-text { margin: 0; white-space: pre-wrap; }
 .osp-role-display { font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; }
 .osp-role-large { font-size: 22px; line-height: 1.2; font-weight: 650; letter-spacing: -.01em; }
 .osp-role-title { font-size: 18px; font-weight: 650; }
@@ -105,13 +165,16 @@ button:disabled { cursor: default; opacity: .48; }
 .osp-role-caption { font-size: 11.5px; color: var(--osp-muted); }
 .osp-role-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .osp-role-mono { font-family: var(--vscode-editor-font-family, "SFMono-Regular", Consolas, monospace); font-size: 12px; }
+.osp-tone-primary { color: var(--osp-text); }
 .osp-tone-secondary { color: var(--osp-muted); }
 .osp-tone-accent { color: var(--osp-accent); }
 .osp-tone-good { color: var(--osp-good); }
 .osp-tone-caution { color: var(--osp-caution); }
 .osp-tone-danger { color: var(--osp-danger); }
 .codicon { flex: 0 0 auto; }
-.osp-icon { display: inline-flex; color: var(--osp-muted); }
+.osp-icon { display: inline-flex; color: var(--osp-muted); font-size: var(--osp-frame-text-size, 32px); }
+.osp-icon > :is(.osp-symbol, .codicon) { font-size: inherit; }
+.osp-framed[style*="color:"] .osp-icon { color: inherit; }
 .osp-label { display: inline-flex; align-items: center; gap: 7px; }
 .osp-pair { display: grid; grid-template-columns: minmax(90px, .5fr) 1fr; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--osp-border); }
 .osp-pair-label { color: var(--osp-muted); }
@@ -129,8 +192,8 @@ button:disabled { cursor: default; opacity: .48; }
 .osp-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .osp-field > span { font-size: 11px; font-weight: 650; letter-spacing: .02em; color: var(--osp-muted); }
 .osp-field input, .osp-field textarea, .osp-field select {
-  width: 100%; border: 1px solid var(--vscode-input-border, var(--osp-border));
-  background: var(--vscode-input-background, var(--osp-raised)); color: var(--vscode-input-foreground, var(--osp-text));
+  width: 100%; border: 1px solid var(--osp-brand-outline, var(--vscode-input-border, var(--osp-border)));
+  background: var(--osp-brand-surface, var(--vscode-input-background, var(--osp-raised))); color: var(--osp-brand-primary, var(--vscode-input-foreground, var(--osp-text)));
   border-radius: 8px; padding: 8px 10px; outline: none; transition: border-color var(--osp-motion), box-shadow var(--osp-motion);
 }
 .osp-field input:focus, .osp-field textarea:focus, .osp-field select:focus { border-color: var(--osp-accent); box-shadow: 0 0 0 1px var(--osp-accent); }

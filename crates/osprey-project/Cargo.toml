@@ -9,12 +9,14 @@ repository.workspace = true
 [dependencies]
 osprey-ast = { workspace = true }
 osprey-syntax = { workspace = true }
-
-# Type-checking the ASSEMBLED program is how the module-boundary tests prove a
-# flattened project is still a well-typed program — the assembler alone cannot
-# tell an unreachable constructor from a reachable one.
-[dev-dependencies]
+# The discipline seam infers the export signature of an `hm` module a checker
+# imports ([TYPES-DISCIPLINE-PROTOCOL]); the module-boundary tests type-check
+# the ASSEMBLED program for the same reason.
 osprey-types = { workspace = true }
+# The checker protocol of [TYPES-DISCIPLINE-PROTOCOL] is JSON, like the
+# language server's; nothing else in this crate serializes.
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

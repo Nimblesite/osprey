@@ -1,0 +1,97 @@
+namespace prooftests
+
+import proof::Levels
+import proof::Terms
+import proof::Environment
+import proof::Reduce
+import proof::Infer
+import proof
+    Zero
+    Sort
+    BVar
+    Const
+    App
+    Lam
+    Pi
+    Decl
+    Axiom
+    Definition
+    Theorem
+
+(** Builders and renderings the kernel cases share. Every helper that can
+    fail reports the failure through a soft assertion or an `error:` string,
+    so a broken kernel can never read as a pass. *)
+module Support
+    (** `Prop`. *)
+    export prop () = Sort Zero
+
+    (** `∀ (p : Prop), p → p` *)
+    export idType () = Pi "p" (prop ()) (Pi "h" (BVar 0) (BVar 1))
+
+    (** `fun (p : Prop) (h : p) => h` *)
+    export idProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 0))
+
+    (** `fun (p : Prop) (h : p) => p`, which does not prove `idType ()`. *)
+    export badProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 1))
+
+    (** A declaration of `name` with the given body. *)
+    export decl (name, body) = Decl(name = name, params = [], ty = Sort Zero, body = body)
+
+    (** An environment holding `c` with the given body; a rejected add fails
+        the enclosing case before falling back. *)
+    export envWith body = match Environment::add (Environment::empty (), decl ("c", body))
+        Success env => env
+        Error message =>
+            check "the environment accepts the declaration" "no error" message
+            Environment::empty ()
+
+    (** An environment holding `decl`; a rejected add fails the enclosing case. *)
+    export envWithDecl decl = match Environment::add (Environment::empty (), decl)
+        Success env => env
+        Error message =>
+            check "the environment accepts the declaration" "no error" message
+            Environment::empty ()
+
+    (** Two attempts to declare `name` in a fresh environment. *)
+    export twice name = match Environment::add (Environment::empty (), decl (name, Axiom))
+        Success env => Environment::add (env, decl (name, Axiom))
+        Error message => Error(message = message)
+
+    (** The error text of a result, or an obvious marker. *)
+    export messageOf result = match result
+        Success _ => "unexpected success"
+        Error message => message
+
+    (** A term with binder names and free variables rendered. *)
+    export render term = Terms::show (term, [])
+
+    (** The weak head normal form of `term` under `env`, rendered. *)
+    export whnfOf (env, term) = render (Reduce::whnf (env, term))
+
+    (** Definitional equality under `env`. *)
+    export defeqOf (env, left, right) = Reduce::defeq (env, left, right)
+
+    (** The inferred type of `term`, rendered. *)
+    export inferred (env, context, term) = match Infer::infer (env, context, term)
+        Success ty => render ty
+        Error message => "error: ${message}"
+
+    (** A successful check rendered as `ok: <expected>`. *)
+    export checked (env, term, expected) = match Infer::check (env, [], term, expected)
+        Success ty => "ok: ${render ty}"
+        Error message => "error: ${message}"
+
+    (** The universe level of a type, rendered. *)
+    export sorted (env, context, term) = match Infer::sort (env, context, term)
+        Success level => Levels::show level
+        Error message => "error: ${message}"
+
+    (** Whether `env` declares `name`. *)
+    export declares (env, name) = match Environment::find (env, name)
+        Success _ => true
+        Error _ => false
+
+    (** What `name` unfolds to under `env`, rendered. *)
+    export unfolded (env, name) = match Environment::unfold (env, name, [])
+        Success value => render value
+        Error message => "error: ${message}"

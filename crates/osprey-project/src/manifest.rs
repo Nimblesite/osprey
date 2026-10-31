@@ -2,6 +2,7 @@
 //! `osprey.toml`. Unknown keys are ignored so packaging/tooling sections can
 //! evolve independently of the compiler.
 
+use crate::manifest_codec as codec;
 use crate::ProjectError;
 use osprey_syntax::Flavor;
 use std::path::{Path, PathBuf};
@@ -32,7 +33,40 @@ pub struct ProjectConfig {
     pub allow_wildcard_imports: bool,
     /// Suppress application-only hierarchy and reverse-domain style advice.
     pub published_library: bool,
+    /// `[project].types`: the type discipline of every source without a
+    /// `// osprey: types=` marker ([TYPES-DISCIPLINE-SELECT], spec 0050).
+    pub types: Option<String>,
+    /// `[dependencies]` entries by package name; only the name and an optional
+    /// local `path` are read here, the solver owns the rest (spec 0029).
+    pub dependencies: Vec<Dependency>,
+    /// The `[discipline]` table a package declares when it is a type discipline
+    /// ([TYPES-DISCIPLINE-REGISTRY], spec 0050).
+    pub discipline: Option<DisciplineDecl>,
 }
+
+/// One `[dependencies]` entry as the compiler reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dependency {
+    /// The `@org/name` package identity.
+    pub name: String,
+    /// A workspace-local package directory, relative to the manifest, used
+    /// when the package is not installed under `.osprey/packages`.
+    pub path: Option<PathBuf>,
+}
+
+/// The `[discipline]` table of a type-discipline package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisciplineDecl {
+    /// The word after `types=`.
+    pub name: String,
+    /// The checker program, relative to the manifest: an Osprey program with `main`.
+    pub checker: PathBuf,
+    /// Per-module time limit for the checker process.
+    pub timeout_seconds: u64,
+}
+
+/// The default `[discipline].timeout_seconds`.
+pub(crate) const DEFAULT_TIMEOUT_SECONDS: u64 = 600;
 
 impl ProjectConfig {
     /// Whether a saved or unsaved path belongs to the configured source roots.
@@ -64,6 +98,9 @@ impl ProjectConfig {
             flavor: None,
             allow_wildcard_imports: false,
             published_library: false,
+            types: None,
+            dependencies: Vec::new(),
+            discipline: None,
         }
     }
 
@@ -95,7 +132,7 @@ fn parse_line(
     config: &mut ProjectConfig,
     errors: &mut Vec<ProjectError>,
 ) {
-    let content = raw.split('#').next().unwrap_or_default().trim();
+    let content = codec::strip_comment(raw).trim();
     if content.is_empty() {
         return;
     }
@@ -104,7 +141,7 @@ fn parse_line(
         section.push_str(name.trim());
         return;
     }
-    let Some((key, value)) = content.split_once('=') else {
+    let Some((key, value)) = codec::split_assignment(content) else {
         errors.push(ProjectError::manifest(line, "expected `key = value`"));
         return;
     };
@@ -120,22 +157,27 @@ fn apply_key(
     errors: &mut Vec<ProjectError>,
 ) {
     let result = match (section, key) {
-        ("project", "name") => parse_string(value).map(|v| config.name = v),
-        ("project", "source_roots") => parse_list(value).map(|roots| {
+        ("project", "name") => codec::parse_string(value).map(|v| config.name = v),
+        ("project", "source_roots") => codec::parse_list(value).map(|roots| {
             config.source_roots = roots.into_iter().map(PathBuf::from).collect();
         }),
-        ("project", "python_sources") => parse_list(value).map(|paths| {
+        ("project", "python_sources") => codec::parse_list(value).map(|paths| {
             config.python_sources = paths.into_iter().map(PathBuf::from).collect();
         }),
         ("project", "default_namespace") => {
-            parse_string(value).map(|v| config.default_namespace = Some(v))
+            codec::parse_string(value).map(|v| config.default_namespace = Some(v))
         }
-        ("project", "entry") => parse_string(value).map(|v| config.entry = Some(v.into())),
+        ("project", "entry") => codec::parse_string(value).map(|v| config.entry = Some(v.into())),
         ("project", "flavor") => parse_flavor(value).map(|v| config.flavor = Some(v)),
         ("modules", "allow_wildcard_imports") => {
             parse_bool(value).map(|v| config.allow_wildcard_imports = v)
         }
         ("modules", "published_library") => parse_bool(value).map(|v| config.published_library = v),
+        ("project", "types") => codec::parse_string(value).map(|v| config.types = Some(v)),
+        ("dependencies", name) => {
+            parse_dependency(name, value).map(|d| config.dependencies.push(d))
+        }
+        ("discipline", key) => apply_discipline_key(key, value, config),
         _ => return,
     };
     if let Err(message) = result {
@@ -143,26 +185,51 @@ fn apply_key(
     }
 }
 
-fn parse_string(value: &str) -> Result<String, String> {
-    value
-        .strip_prefix('"')
-        .and_then(|inner| inner.strip_suffix('"'))
-        .map(str::to_string)
-        .ok_or_else(|| "expected a quoted string".to_string())
+/// `"@org/name" = { epoch = 1, min_release = 1 }` or `{ path = "../pkg" }`.
+fn parse_dependency(name: &str, value: &str) -> Result<Dependency, String> {
+    let name = codec::parse_string(name)?;
+    let inner = value
+        .strip_prefix('{')
+        .and_then(|rest| rest.strip_suffix('}'))
+        .ok_or_else(|| "expected an inline table".to_string())?;
+    let mut path = None;
+    for field in codec::split_items(inner)? {
+        if field.is_empty() {
+            return Err("an empty field in an inline table".to_string());
+        }
+        path = declared_path(path, field)?;
+    }
+    Ok(Dependency { name, path })
 }
 
-fn parse_list(value: &str) -> Result<Vec<String>, String> {
-    let inner = value
-        .strip_prefix('[')
-        .and_then(|items| items.strip_suffix(']'))
-        .ok_or_else(|| "expected a string list".to_string())?;
-    if inner.trim().is_empty() {
-        return Ok(Vec::new());
+/// The dependency path after one field: no `=` or a second `path` is a fault.
+fn declared_path(path: Option<PathBuf>, field: &str) -> Result<Option<PathBuf>, String> {
+    let (key, value) = codec::split_assignment(field)
+        .ok_or_else(|| format!("expected `key = value` in an inline table, got `{field}`"))?;
+    if codec::key_name(key)? != "path" {
+        return Ok(path);
     }
-    inner
-        .split(',')
-        .map(|item| parse_string(item.trim()))
-        .collect()
+    if path.is_some() {
+        return Err("a dependency declares `path` twice".to_string());
+    }
+    Ok(Some(codec::parse_string(value.trim())?.into()))
+}
+
+fn apply_discipline_key(key: &str, value: &str, config: &mut ProjectConfig) -> Result<(), String> {
+    let decl = config.discipline.get_or_insert_with(|| DisciplineDecl {
+        name: String::new(),
+        checker: PathBuf::new(),
+        timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
+    });
+    match key {
+        "name" => codec::parse_string(value).map(|v| decl.name = v),
+        "checker" => codec::parse_string(value).map(|v| decl.checker = PathBuf::from(v)),
+        "timeout_seconds" => value
+            .parse::<u64>()
+            .map(|v| decl.timeout_seconds = v)
+            .map_err(|error| format!("expected a whole number of seconds ({error})")),
+        _ => Ok(()),
+    }
 }
 
 fn parse_bool(value: &str) -> Result<bool, String> {
@@ -174,7 +241,7 @@ fn parse_bool(value: &str) -> Result<bool, String> {
 }
 
 fn parse_flavor(value: &str) -> Result<Flavor, String> {
-    parse_string(value)?.parse()
+    codec::parse_string(value)?.parse()
 }
 
 #[cfg(test)]
@@ -202,12 +269,230 @@ mod tests {
     #[test]
     fn reports_bad_supported_values_and_ignores_other_sections() {
         let text = "[project]\nname = bare\n[package]\nversion = nope\n\
-                    [modules]\nallow_wildcard_imports = maybe\n";
+                    [modules]\nallow_wildcard_imports = maybe\nflavor \"ml\"\n";
         let errors = ProjectConfig::parse(text, Path::new("osprey.toml"));
         let errors = match errors {
             Ok(value) => panic!("expected errors, got {value:?}"),
             Err(errors) => errors,
         };
-        assert_eq!(errors.len(), 2);
+        assert_eq!(
+            errors.len(),
+            3,
+            "the assignment-less line is the third fault"
+        );
+    }
+
+    #[test]
+    fn parses_discipline_selection_registry_and_dependencies() {
+        // Implements [TYPES-DISCIPLINE-SELECT] and [TYPES-DISCIPLINE-REGISTRY].
+        let text = "[project]\nname = \"proofs\"\ntypes = \"bounded\"\n\
+                    [dependencies]\n\"@osprey/bounded\" = { path = \"../bounded\" }\n\
+                    \"@osprey/testing\" = { epoch = 1, min_release = 1 }\n\
+                    [discipline]\nname = \"bounded\"\nchecker = \"src/checker.ospml\"\n\
+                    unknown_field = 1\ntimeout_seconds = 30\n";
+        let config = match ProjectConfig::parse(text, Path::new("/tmp/app/osprey.toml")) {
+            Ok(value) => value,
+            Err(errors) => panic!("unexpected manifest errors: {errors:?}"),
+        };
+        assert_eq!(config.types.as_deref(), Some("bounded"));
+        assert_eq!(
+            config.dependencies,
+            vec![
+                Dependency {
+                    name: "@osprey/bounded".into(),
+                    path: Some("../bounded".into())
+                },
+                Dependency {
+                    name: "@osprey/testing".into(),
+                    path: None
+                },
+            ]
+        );
+        assert_eq!(
+            config.discipline,
+            Some(DisciplineDecl {
+                name: "bounded".into(),
+                checker: "src/checker.ospml".into(),
+                timeout_seconds: 30,
+            })
+        );
+    }
+
+    fn parsed(text: &str) -> ProjectConfig {
+        let outcome = ProjectConfig::parse(text, Path::new("/tmp/app/osprey.toml"));
+        assert!(outcome.is_ok(), "unexpected manifest errors: {outcome:?}");
+        outcome.unwrap_or_else(|_| ProjectConfig::for_root(Path::new(".")))
+    }
+
+    fn errors_of(text: &str) -> Vec<ProjectError> {
+        match ProjectConfig::parse(text, Path::new("/tmp/app/osprey.toml")) {
+            Err(errors) => errors,
+            Ok(_) => Vec::new(),
+        }
+    }
+
+    #[test]
+    fn decodes_escaped_backslashes_and_quotes_in_supported_values() {
+        let text =
+            "[project]\nname = \"a\\\\b\"\nsource_roots = [\"C:\\\\work\\\\x\", \"q\\\"uote\"]\n\
+                    entry = \"src\\\\main.ospml\"\n";
+        let config = parsed(text);
+        assert_eq!(config.name, "a\\b");
+        assert_eq!(
+            config.source_roots,
+            vec![PathBuf::from("C:\\work\\x"), PathBuf::from("q\"uote")]
+        );
+        assert_eq!(config.entry, Some(PathBuf::from("src\\main.ospml")));
+    }
+
+    #[test]
+    fn keeps_commas_and_hashes_inside_strings_and_strips_real_comments() {
+        let text = "[project] # the section\nname = \"keep # this\" # trailing note\n\
+                    source_roots = [\"comma,inside\", \"hash#inside\"]\n";
+        let config = parsed(text);
+        assert_eq!(config.name, "keep # this");
+        assert_eq!(
+            config.source_roots,
+            vec![PathBuf::from("comma,inside"), PathBuf::from("hash#inside")]
+        );
+    }
+
+    #[test]
+    fn dependency_tables_reject_fields_without_equals_and_duplicate_paths() {
+        for line in [
+            "\"@o/p\" = { path \"../pkg\" }",
+            "\"@o/p\" = { path = \"a\", path = \"b\" }",
+            "\"@o/p\" = { , }",
+            "\"@o/p\" = { = \"x\" }",
+        ] {
+            let text = format!("[dependencies]\n{line}\n");
+            let errors = errors_of(&text);
+            assert_eq!(errors.len(), 1, "{line}: {errors:?}");
+            let diagnosed = errors.first().and_then(|error| error.line);
+            assert_eq!(diagnosed, Some(2), "{line}: {errors:?}");
+        }
+    }
+
+    #[test]
+    fn dependency_tables_keep_pathless_registry_and_trailing_comma_forms() {
+        let text = "[dependencies]\n\"@o/registry\" = { epoch = 1, min_release = 1 }\n\"@o/path\" = { path = \"../pkg\", }\n\"@o/empty\" = {}\n";
+        let config = parsed(text);
+        let paths: Vec<_> = config
+            .dependencies
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect();
+        assert_eq!(paths, vec![None, Some(PathBuf::from("../pkg")), None]);
+    }
+
+    #[test]
+    fn dependency_tables_accept_quoted_and_escaped_quoted_path_keys() {
+        let text = "[dependencies]\n\"@o/quoted\" = { \"path\" = \"../pkg\" }\n\
+                    \"@o/escaped\" = { \"\\u0070ath\" = \"../other\" }\n\
+                    \"@o/bare\" = { path = \"../bare\" }\n";
+        let config = parsed(text);
+        let paths: Vec<_> = config
+            .dependencies
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect();
+        assert_eq!(
+            paths,
+            vec![
+                Some(PathBuf::from("../pkg")),
+                Some(PathBuf::from("../other")),
+                Some(PathBuf::from("../bare")),
+            ]
+        );
+    }
+
+    #[test]
+    fn quoted_names_and_unknown_keys_may_hold_equals() {
+        let text = "[dependencies]\n\"@o/p=q\" = { \"metadata=tag\" = \"ignored\", path = \"../pkg\" }\n\"@o/plain\" = { \"metadata=tag\" = \"ignored\" }\n\"@o/emptykey\" = { \"\" = \"ignored\", path = \"../empty\" }\n";
+        let config = parsed(text);
+        let named: Vec<_> = config
+            .dependencies
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.path.as_deref()))
+            .collect();
+        assert_eq!(named.len(), 3, "every dependency keeps its name and path");
+        assert_eq!(named.first(), Some(&("@o/p=q", Some(Path::new("../pkg")))));
+        assert_eq!(named.get(1), Some(&("@o/plain", None)));
+        assert_eq!(
+            named.get(2),
+            Some(&("@o/emptykey", Some(Path::new("../empty"))))
+        );
+    }
+
+    #[test]
+    fn dependency_tables_refuse_a_path_declared_under_two_spellings() {
+        for line in [
+            "\"@o/p\" = { path = \"a\", \"path\" = \"b\" }",
+            "\"@o/p\" = { \"path\" = \"a\", path = \"b\" }",
+        ] {
+            let text = format!("[dependencies]\n{line}\n");
+            let errors = errors_of(&text);
+            assert_eq!(errors.len(), 1, "{line}: {errors:?}");
+            let diagnosed = errors.first().and_then(|error| error.line);
+            assert_eq!(diagnosed, Some(2), "{line}: {errors:?}");
+        }
+    }
+
+    #[test]
+    fn lists_accept_a_trailing_comma_but_never_empty_items() {
+        let config = parsed("[project]\nsource_roots = [\"src\",]\n");
+        assert_eq!(config.source_roots, vec![PathBuf::from("src")]);
+        for bad in ["[,\"src\"]", "[\"src\",,\"x\"]"] {
+            let text = format!("[project]\nsource_roots = {bad}\n");
+            assert_eq!(errors_of(&text).len(), 1, "{bad}");
+        }
+    }
+
+    #[test]
+    fn dependency_paths_may_hold_commas_and_hashes() {
+        let text = "[dependencies]\n\"@osprey/deps\" = { path = \"weird,dir#1\" }\n";
+        let config = parsed(text);
+        assert_eq!(
+            config.dependencies,
+            vec![Dependency {
+                name: "@osprey/deps".into(),
+                path: Some("weird,dir#1".into())
+            }]
+        );
+    }
+
+    #[test]
+    fn malformed_escapes_name_their_own_source_line() {
+        let cases = [
+            ("name = \"bad\\q\"", 3),
+            ("source_roots = [\"unterminated]", 3),
+        ];
+        for (line, number) in cases {
+            let text = format!("[project]\nname = \"ok\"\n{line}\n");
+            let errors = errors_of(&text);
+            assert_eq!(errors.len(), 1, "{line}: {errors:?}");
+            let diagnosed = errors.first().and_then(|error| error.line);
+            assert_eq!(diagnosed, Some(number), "{line}: {errors:?}");
+        }
+    }
+
+    #[test]
+    fn discipline_timeout_defaults_and_rejects_non_numbers() {
+        let text = "[discipline]\nname = \"x\"\nchecker = \"c.ospml\"\n";
+        let config = ProjectConfig::parse(text, Path::new("osprey.toml"));
+        assert_eq!(
+            config
+                .ok()
+                .and_then(|c| c.discipline)
+                .map(|d| d.timeout_seconds),
+            Some(DEFAULT_TIMEOUT_SECONDS)
+        );
+        let bad = "[discipline]\ntimeout_seconds = soon\n[dependencies]\n\"@o/p\" = 3\n";
+        assert_eq!(
+            ProjectConfig::parse(bad, Path::new("osprey.toml"))
+                .err()
+                .map(|e| e.len()),
+            Some(2)
+        );
     }
 }

@@ -1,0 +1,17 @@
+{
+  "id": "string_cases",
+  "module": "StringCases",
+  "source_path": "benchmarks/proof/tools/StringCases.lean",
+  "source_sha256": "6345ee7e9c05377035da6186654ffd1e5bd4f01408c0874eb0f5e53b51d301d3",
+  "export_path": "examples/proof/kernel/exports/string_cases.ndjson",
+  "export_sha256": "20a1f12d49625f999e1e4aaa0972ce38d9cc93521b9c73a3f7f794fe2cd9fd89",
+  "theorems": [
+    "StringCases.empty_mk",
+    "StringCases.unicode_mk"
+  ],
+  "axioms": [],
+  "theorem_axioms": {
+    "StringCases.empty_mk": [],
+    "StringCases.unicode_mk": []
+  }
+}

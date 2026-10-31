@@ -370,8 +370,24 @@ fn hsla(tint: Tint) -> Hsla {
 
 #[cfg(test)]
 mod tests {
-    use super::{runs, LAYERED_RUN};
-    use crate::scene::Shape;
+    use super::{hsla, runs, LAYERED_RUN};
+    use crate::scene::{Shape, Tint};
+
+    #[test]
+    fn tint_keeps_fractional_hue_channels_and_alpha() {
+        let green = gpui_kit::Rgba::from(hsla(Tint::Hsl([1. / 3., 1., 0.5, 0.4])));
+        assert_channels(green, [0., 1., 0., 0.4]);
+        assert_eq!(green.a, 0.4);
+        let roundtrip = gpui_kit::Rgba::from(hsla(Tint::Rgb([0.2, 0.4, 0.6, 0.3])));
+        assert_channels(roundtrip, [0.2, 0.4, 0.6, 0.3]);
+    }
+
+    fn assert_channels(colour: gpui_kit::Rgba, expected: [f32; 4]) {
+        let actual = [colour.r, colour.g, colour.b, colour.a];
+        for (got, expected) in actual.into_iter().zip(expected) {
+            assert!((got - expected).abs() < 0.00001);
+        }
+    }
 
     fn disc(depth: f32) -> Shape {
         Shape::Disc {

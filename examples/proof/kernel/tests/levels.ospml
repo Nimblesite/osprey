@@ -1,0 +1,105 @@
+namespace prooftests
+
+import proof::Levels
+import proof
+    Zero
+    Succ
+    Max
+    IMax
+    Param
+
+(** Normalisation, equality and printing of universe levels. *)
+module LevelsTests
+    one () = Succ Zero
+    maxUV () = Max (Param "u") (Param "v")
+
+    export run () =
+        test ("imax one u equals u for zero and positive universe assignments", \() =>
+            expect (Levels::equal (IMax (one ()) (Param "u")) (Param "u"), true)
+            expect (Levels::equal (IMax Zero (Param "u")) (Param "u"), true)
+            expect (Levels::equal (IMax (Succ (one ())) (Param "u")) (Param "u"), false))
+
+        test ("open successor maxima preserve the exact universe of imported stack proofs", \() =>
+            expect (Levels::equal (IMax (one ()) (Succ (Param "u"))) (Succ (Param "u")), true)
+            expect (Levels::equal (Max (Succ (Param "u")) (Succ (Param "v"))) (Succ (maxUV ())), true)
+            expect (Levels::equal (Max (Max (one ()) (Param "v")) (Max (Succ (Param "u")) (Param "v"))) (Max (Succ (Param "u")) (Param "v")), true)
+            expect (Levels::equal (IMax (Param "u") (IMax (Param "u") (one ()))) (Max (one ()) (Param "u")), true)
+            expect (Levels::equal (Max (Param "u") (Param "v")) (Max (Param "v") (Param "u")), true)
+            expect (Levels::equal (IMax (Param "u") (Param "v")) (Max (Param "u") (Param "v")), false)
+            expect (Levels::equal (Max (one ()) (Param "u")) (Param "u"), false)
+            expect (Levels::equal (IMax (one ()) (Param "u")) (one ()), false))
+
+        test ("geq holds where every assignment agrees", \() =>
+            expect (Levels::geq (one ()) Zero, true)
+            expect (Levels::geq (Param "u") Zero, true)
+            expect (Levels::geq (Param "u") (Param "u"), true)
+            expect (Levels::geq (Succ (Param "u")) (Param "u"), true)
+            expect (Levels::geq (Succ (Param "u")) (Succ (Param "u")), true)
+            expect (Levels::geq (Succ (Succ Zero)) (one ()), true)
+            expect (Levels::geq (maxUV ()) (Param "v"), true)
+            expect (Levels::geq (maxUV ()) (maxUV ()), true)
+            expect (Levels::geq (Succ (maxUV ())) (Succ (Param "u")), true)
+            expect (Levels::geq (maxUV ()) (IMax (Param "u") (Param "v")), true)
+            expect (Levels::geq (IMax (Param "u") (Param "v")) (Param "v"), true)
+            expect (Levels::geq (Max (Param "u") (one ())) (one ()), true))
+
+        test ("geq refuses wherever some assignment disagrees", \() =>
+            expect (Levels::geq Zero (one ()), false)
+            expect (Levels::geq (Param "u") (one ()), false)
+            expect (Levels::geq Zero (Param "u"), false)
+            expect (Levels::geq (Param "u") (Param "v"), false)
+            expect (Levels::geq (Param "u") (Succ (Param "u")), false)
+            expect (Levels::geq (one ()) (Succ (Succ Zero)), false)
+            expect (Levels::geq (Param "u") (maxUV ()), false)
+            expect (Levels::geq (IMax (Param "u") (Param "v")) (Param "u"), false)
+            expect (Levels::geq (Succ (Param "u")) (Succ (Succ (Param "u"))), false)
+            expect (Levels::geq (Max (Param "u") (one ())) (Param "v"), false))
+
+        test ("isNotZero and isZero hold only where every assignment agrees", \() =>
+            expect (Levels::isNotZero (one ()), true)
+            expect (Levels::isNotZero (Succ (Param "u")), true)
+            expect (Levels::isNotZero (Max (Param "u") (one ())), true)
+            expect (Levels::isNotZero (IMax (Param "u") (one ())), true)
+            expect (Levels::isNotZero Zero, false)
+            expect (Levels::isNotZero (Param "u"), false)
+            expect (Levels::isNotZero (IMax (one ()) (Param "u")), false)
+            expect (Levels::isZero Zero, true)
+            expect (Levels::isZero (IMax (Param "u") Zero), true)
+            expect (Levels::isZero (Max Zero Zero), true)
+            expect (Levels::isZero (Param "u"), false)
+            expect (Levels::isZero (one ()), false))
+
+        test ("normal collapses max 1 0 to 1", \() =>
+            expect (Levels::show (Levels::normal (Max (one ()) Zero)), "1"))
+
+        test ("imax u 0 is zero", \() =>
+            expect (Levels::show (Levels::normal (IMax (Param "u") Zero)), "0")
+            expect (Levels::height (IMax (Param "u") Zero), 0)
+            expect (Levels::equal (IMax (Param "u") Zero) Zero, true))
+
+        test ("show prints 0, 1 and an open max", \() =>
+            expect (Levels::show Zero, "0")
+            expect (Levels::show (one ()), "1")
+            expect (Levels::show (maxUV ()), "max u v"))
+
+        test ("closed rejects a parameter", \() =>
+            expect (Levels::closed (Param "u"), false)
+            expect (Levels::closed (Max (one ()) Zero), true))
+
+        test ("equal compares levels by normal form", \() =>
+            expect (Levels::equal (Max Zero Zero) Zero, true)
+            expect (Levels::equal (one ()) (Succ (Max Zero Zero)), true)
+            expect (Levels::equal (one ()) Zero, false))
+
+        test ("equal is structural on normal forms, not a comparison of prints", \() =>
+            expect (Levels::equal (Param "u") (Param "v"), false)
+            expect (Levels::equal (Max (Param "u") (Param "u")) (Param "u"), true)
+            expect (Levels::equal (IMax (Param "u") Zero) Zero, true)
+            expect (Levels::equal (IMax (Param "u") (one ())) (Max (Param "u") (one ())), true)
+            expect (Levels::equal (Max Zero (Param "u")) (Param "u"), true))
+
+        test ("instantiate replaces the named parameters by position", \() =>
+            expect (Levels::show (Levels::instantiate (Max (Param "u") (Param "v"), ["u", "v"], [one (), Zero])), "1")
+            expect (Levels::show (Levels::instantiate (Succ (Param "v"), ["u"], [Zero])), "v+1")
+            expect (Levels::declared (maxUV (), ["u"]), false)
+            expect (Levels::declared (maxUV (), ["v", "u"]), true))

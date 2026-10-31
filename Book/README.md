@@ -1,5 +1,7 @@
 # The Osprey Book
 
+<a href="https://ospreylang.dev/"><img src="../website/src/assets/images/logo.png" alt="Osprey" width="96" /></a>
+
 *The Osprey Book* is a practical introduction to programming with Osprey for beginner-to-intermediate developers. It starts with a program you can run in minutes, then builds toward typed data, explicit failure, effects, concurrency, and native or WebAssembly delivery.
 
 Start with [Chapter 9 — Ask for an effect](manuscript/09-ask-for-an-effect.md) for a step-by-step introduction to effects and handlers: typed requests, handler scope, why callbacks matter, and the same Flight Log function under terminal and test handlers. [Chapter 8](manuscript/08-prove-what-the-program-does.md) teaches behavior tests; [Chapter 10](manuscript/10-read-write-and-call-the-web.md) applies effects to storage, failure, and HTTP. Each includes runnable examples, exercises, and recorded results.

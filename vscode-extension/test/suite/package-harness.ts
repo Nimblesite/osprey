@@ -189,16 +189,19 @@ initial context =
     next (Editor::configuration ("sdk/config-two", "osprey.packages", listGet args 2 ?: ""), \second =>
         finish (args, opened, first, second))))
 
-regions (_before, _after, frames, _) = [Keyed::region (frames, "sdk-host", [], \() => Ui::button ("SDK host probe", ui::Info, 0))]
+regions (_before, _after, frames, _) = [Keyed::region (frames, "sdk-host", [], \() => Ui::button ("SDK host probe", (ui::Symbols::name ui::Info), 0))]
 palette = ui::Theme(tokens = [], spacing = [4], feedback = 160, settle = 220)
 main () = print (Runtime::start (input (), initial, regions, \value => JsonString value, palette))
 `;
 
 let sdkHostModule: Promise<WebAssembly.Module> | undefined;
 
+export function compileSdkHost(): Promise<WebAssembly.Module> {
+  return sdkHostModule ??= compileSdkWasm(SDK_HOST_SOURCE, BUILD_MS);
+}
+
 export async function sdkHostRequests(arguments_: readonly string[]): Promise<readonly NativeRequest[]> {
-  sdkHostModule ??= compileSdkWasm(SDK_HOST_SOURCE, BUILD_MS);
-  const envelope = await runSdkWasmJson(await sdkHostModule, JSON.stringify({ platform: "vscode", arguments: arguments_ }));
+  const envelope = await runSdkWasmJson(await compileSdkHost(), JSON.stringify({ platform: "vscode", arguments: arguments_ }));
   const parsed = parseEnvelope(JSON.stringify(envelope));
   assert.deepStrictEqual(parsed.diagnostics, []);
   const state: unknown = JSON.parse(parsed.state);

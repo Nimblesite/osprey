@@ -18,6 +18,36 @@ use std::process::Command;
 const LATER: &str = "later";
 const EARLY: &str = "early";
 
+const RECORD_DEFAULTS: &str = r"namespace demo
+type Frame =
+    width : int
+    height : int
+module Later
+    export plain = Frame(width = 1, height = 2)
+    export preset = plain(width = 2)
+    export updated width = plain(width = width)
+";
+const RECORD_CALLER: &str = r#"namespace demo
+module Early
+    export result () =
+        changed = Later::updated Later::preset.width
+        "${Later::plain.width},${Later::plain.height} ${changed.width}"
+"#;
+
+#[test]
+fn module_record_updates_keep_the_original_and_apply_the_new_fields() {
+    run_project("record_update", |root| {
+        write_project(
+            root,
+            RECORD_DEFAULTS,
+            RECORD_CALLER,
+            "namespace demo\nprint (Early::result ())\n",
+            "src/main.ospml",
+            "ospml",
+        );
+    });
+}
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }

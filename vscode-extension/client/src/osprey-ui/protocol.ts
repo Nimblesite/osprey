@@ -2,6 +2,9 @@
 // session string, keyed regions and bounded requests printed by the Osprey
 // runtime. Everything here validates the wire shape; it never interprets a
 // package model or an application action.
+import { record, naturalInteger as integer } from "./wire";
+import { boardStroke, boardSelection } from "./board-value";
+export { record } from "./wire";
 
 export interface NativeRequest {
   readonly ticket: string;
@@ -54,14 +57,6 @@ export const PROTOCOL_VERSION = 1;
 const MAX_SLICES = 256;
 const MAX_SLICE_KEY = 256;
 const MAX_SLICE_TEXT = 8 * 1024 * 1024;
-
-export function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function integer(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
 
 function strings(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -179,14 +174,14 @@ export function completionFrame(state: string, now: number, ticket: string, outc
 }
 
 function simpleValue(value: unknown): value is null | boolean | number | string {
-  return value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string";
+  return value === null || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value)) || typeof value === "string";
 }
 
 /** Accept only a control event for a region revision the host currently shows. */
 export function parseUiEvent(message: unknown, regions: Regions, now: number): UiEvent | undefined {
   if (!record(message) || message.type !== "event") return undefined;
   if (typeof message.region !== "string" || !integer(message.revision) || !integer(message.ordinal)) return undefined;
-  if (!simpleValue(message.value)) return undefined;
+  if (!simpleValue(message.value) && !boardStroke(message.value) && !boardSelection(message.value)) return undefined;
   const region = regions.get(message.region);
   if (!region || region.revision !== message.revision) return undefined;
   return { region: message.region, revision: message.revision, ordinal: message.ordinal, value: message.value, now };

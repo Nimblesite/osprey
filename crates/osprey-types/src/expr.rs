@@ -625,7 +625,7 @@ impl Checker {
         }
         let (fname, ft) = self.infer_callee(function, env);
         let args = self.ordered_arg_types(fname.as_deref(), &ft, arguments, named, env);
-        self.apply_named_fn(fname.as_deref(), &ft, args)
+        self.apply_bound_fn(fname.as_deref(), &ft, args, env)
     }
 
     fn infer_callee(&mut self, function: &Expr, env: &TypeEnv) -> (Option<String>, Type) {
@@ -881,6 +881,14 @@ impl Checker {
                 Type::con("$binders", fallback.params),
                 Type::con("$written", written),
                 Type::con("$named", named),
+                Type::con(
+                    if env.is_builtin(parts.method) {
+                        "$builtin"
+                    } else {
+                        "$source"
+                    },
+                    vec![],
+                ),
             ],
         );
         let line = position.map_or(0, |position| position.line);
@@ -955,7 +963,7 @@ impl Checker {
         for na in named {
             args.push(self.infer_expr(&na.value, env));
         }
-        self.apply_named_fn(Some(parts.method), &ft, args)
+        self.apply_bound_fn(Some(parts.method), &ft, args, env)
     }
 
     /// Resolve call arguments to types, reordering named arguments to the
@@ -1203,7 +1211,7 @@ impl Checker {
         } else {
             let (name, ft) = self.infer_callee(right, env);
             let lt = self.infer_expr(left, env);
-            self.apply_named_fn(name.as_deref(), &ft, vec![lt])
+            self.apply_bound_fn(name.as_deref(), &ft, vec![lt], env)
         }
     }
 
@@ -1364,7 +1372,9 @@ impl Checker {
                 }
             }
             self.check_ctor_fields(name, fields, &dmap);
-            if is_record {
+            // Generic records must retain even phantom arguments: a field's
+            // effect contract can depend on them. [EFFECTS-FIELD-ROWS]
+            if is_record && args.is_empty() {
                 Type::Record {
                     name: owner,
                     fields: dmap,

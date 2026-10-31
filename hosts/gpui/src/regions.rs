@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::envelope::{Envelope, Request, Theme};
+use crate::envelope::{Envelope, Patch, Request, Slice, Theme};
 use crate::ffi::{self, Streamed};
 
 /// One region's current tree and the revision it was drawn at.
@@ -37,51 +37,53 @@ impl Regions {
     }
 
     /// Applies one envelope and returns the capabilities it asks the host to answer.
-    pub fn apply(&mut self, envelope: Envelope) -> Vec<Request> {
-        let Envelope {
-            state,
-            slices,
-            patches,
-            removed,
-            requests,
-            diagnostics,
-            theme,
-            ..
-        } = envelope;
-        self.state = state;
-        for key in removed {
+    pub fn apply(&mut self, envelope: Envelope) -> Result<Vec<Request>, String> {
+        let stream = ffi::take_stream()?.into_iter();
+        self.state = envelope.state;
+        for key in envelope.removed {
             self.regions.remove(&key);
         }
-        let mut stream = ffi::take_stream().into_iter();
+        self.patch_regions(envelope.patches, stream);
+        self.publish_slices(envelope.slices);
+        if envelope.theme.is_some() {
+            self.theme = envelope.theme;
+        }
+        self.diagnostics.extend(envelope.diagnostics);
+        Ok(envelope.requests)
+    }
+
+    fn patch_regions(&mut self, patches: Vec<Patch>, mut stream: impl Iterator<Item = Streamed>) {
         for patch in patches {
-            let mut node = patch.node;
-            let mut streams = Vec::new();
-            if let Err(problem) = attach(&mut node, &mut stream, &mut streams) {
-                self.diagnostics.push(problem);
-            }
-            self.regions.insert(
-                patch.key,
-                Region {
-                    revision: patch.revision,
-                    node,
-                    streams,
-                },
-            );
+            self.patch_region(patch, &mut stream);
         }
         if stream.next().is_some() {
             self.diagnostics
                 .push("the application streamed more shapes than its scenes counted".to_owned());
         }
+    }
+
+    fn patch_region(&mut self, patch: Patch, stream: &mut impl Iterator<Item = Streamed>) {
+        let mut node = patch.node;
+        let mut streams = Vec::new();
+        if let Err(problem) = attach(&mut node, stream, &mut streams) {
+            self.diagnostics.push(problem);
+        }
+        let _ = self.regions.insert(
+            patch.key,
+            Region {
+                revision: patch.revision,
+                node,
+                streams,
+            },
+        );
+    }
+
+    fn publish_slices(&mut self, slices: Vec<Slice>) {
         for slice in slices {
             if let Err(problem) = ffi::put_slice(&slice.key, &slice.text) {
                 self.diagnostics.push(problem);
             }
         }
-        if theme.is_some() {
-            self.theme = theme;
-        }
-        self.diagnostics.extend(diagnostics);
-        requests
     }
 
     /// The region drawn under `key`, if the framework has patched it.
@@ -206,5 +208,31 @@ mod tests {
                 .unwrap();
         let mut stream = (1..=2).map(shape);
         assert!(attach(&mut node, &mut stream, &mut Vec::new()).is_err());
+    }
+
+    #[test]
+    fn a_failed_stream_read_does_not_commit_the_next_envelope() {
+        use crate::ffi::test_support::{isolated_test, with_poisoned_stream};
+        if isolated_test() {
+            return;
+        }
+        let mut regions = super::Regions::new();
+        assert!(regions.apply(session("before")).is_ok());
+        assert_eq!(regions.state(), "before");
+        with_poisoned_stream(|| {
+            assert!(regions.apply(session("after")).is_err());
+            assert_eq!(
+                regions.state(),
+                "before",
+                "failed stream committed the new session"
+            );
+        });
+    }
+
+    fn session(state: &str) -> crate::envelope::Envelope {
+        crate::envelope::parse(&format!(
+            r#"{{"version":1,"state":"{state}","patches":[],"requests":[]}}"#
+        ))
+        .expect("valid envelope")
     }
 }

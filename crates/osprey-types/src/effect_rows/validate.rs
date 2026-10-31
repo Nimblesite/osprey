@@ -1,7 +1,5 @@
 //! Effect row validate.
-use super::{
-    requirement_name, validate_handler_arms, Analyzer, CallableEnv, Stmt, Summary, TypeError,
-};
+use super::{validate_handler_arms, Analyzer, CallableEnv, Instances, Stmt, Summary, TypeError};
 
 /// File initializers run before program entry installs its policies. [ARITH-EFFECT-CONST]
 pub(super) fn validate_arithmetic_initializers(
@@ -28,13 +26,18 @@ pub(super) fn validate_arithmetic_initializers(
     }
 }
 
-pub(super) fn entry_errors(entry: &Summary, context: &str, show_dynamic: bool) -> Vec<TypeError> {
+pub(super) fn entry_errors(
+    entry: &Summary,
+    context: &str,
+    show_dynamic: bool,
+    instances: &Instances,
+) -> Vec<TypeError> {
     let mut errors = Vec::new();
     if !entry.required.is_empty() {
         let operations = entry
             .required
             .iter()
-            .map(requirement_name)
+            .map(|requirement| super::reports::operation_name(instances, requirement))
             .collect::<Vec<_>>()
             .join(", ");
         errors.push(TypeError::new(format!(

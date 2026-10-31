@@ -16,8 +16,10 @@
 //! forwarder that drops the env ([`named_fn_cell`]). Callable handlers use this
 //! representation and install their arms through the existing effect ABI.
 
+mod adapt;
 mod captures;
 mod environment;
+pub(crate) use adapt::{adapt_to, argument as adapted_argument};
 mod source;
 
 use captures::closure_captures;
@@ -58,8 +60,12 @@ pub(crate) fn specialisation_key(target: &str, sig: &FnSig) -> String {
         .collect::<Vec<_>>()
         .join(",");
     format!(
-        "{target}|({semantic_params})->{}:{:?}:{:?}|{ret}({plist})",
-        sig.1, sig.2, sig.3
+        "{target}|({semantic_params})->{}:{:?}:{:?}:{:?}:{:?}|{ret}({plist})",
+        sig.1,
+        sig.2,
+        sig.3,
+        sig.4,
+        sig.5.as_ref().map(crate::types::abi_spelling)
     )
 }
 
@@ -150,14 +156,14 @@ pub(crate) fn raw_callback_lambda(
             "a capturing lambda as an FFI callback (captures cannot cross the C boundary; use a named function)",
         ));
     }
-    let (param_tys, ret_ty, ret_inner, _, _) = sig;
+    let (param_tys, ..) = sig;
     let (ret_spelling, plist) = spelling(sig);
     let name = format!("__callback_{}", cg.next_lambda_id());
     let saved = cg.enter_nested_fn();
     begin_named_source(cg, &name, source_name, position);
     let params = bind_params_from(cg, parameters, param_tys, 0);
     source_parameters(cg, parameters, 0);
-    let emitted = closure_return(cg, body, *ret_ty, *ret_inner);
+    let emitted = closure_return(cg, body, sig);
     cg.exit_nested_fn(saved, &ret_spelling, &name, &params);
     emitted?;
     let reg = cg.emit_reg(format!("bitcast {ret_spelling} ({plist})* @{name} to i8*"));
@@ -263,10 +269,11 @@ pub(crate) fn cell_call(
 /// caller that has a register and the signature it was produced under —
 /// closure-cell calls here and extracted GPU kernels [GPU-KERNEL-EXTRACT].
 pub(crate) fn returned(reg: String, sig: &FnSig) -> Value {
-    let value = match sig.2 {
+    let mut value = match sig.2 {
         Some(inner) => Value::result(reg, inner).with_payload_owner(sig.4.clone()),
         None => Value::new(reg, sig.1).with_owner(sig.4.clone()),
     };
+    value.inferred_type.clone_from(&sig.5);
     match sig.3.clone() {
         Some(fiber) => fiber.restore(value),
         None => value,
@@ -322,7 +329,6 @@ fn specialized_named_cell(
 fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
     let sig = named_fn_sig(cg, name)
         .ok_or_else(|| CodegenError::invalid(format!("`{name}` has no resolved signature")))?;
-    let real_inner = cg.fn_ret_result_inner(name);
     let real_ret = cg.fn_ret_spelling(name);
     let (ret_spelling, plist) = spelling(&sig);
     if !cg.fn_params.contains_key(name) {
@@ -337,15 +343,12 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
         typed.push(format!("{} %{reg}", t.ty));
         params.push((t.ty, reg));
     }
-    let r = cg.emit_reg(format!("call {real_ret} @{name}({})", typed.join(", ")));
-    let rv = match real_inner {
-        Some(inner) => Value::result(r, inner),
-        None => Value::new(r, cg.fn_ret_ltype(name).unwrap_or(LType::I64)),
-    };
+    let r = cg.emit_call_result(&real_ret, name, &typed.join(", "));
+    let rv = returned(r, &sig);
     // The forwarded call's +1 must be owned so `ret_as_sig`'s epilogue
     // transfers exactly one reference out [GC-ARC-PERCEUS].
     crate::arc::own(cg, &rv);
-    let emitted = ret_as_sig(cg, rv, sig.1, sig.2);
+    let emitted = ret_as_sig(cg, rv, &sig);
     cg.exit_nested_fn(saved, &ret_spelling, &fwd, &params);
     emitted?;
     let g = format!("@__fnval_cell_{name}");
@@ -370,7 +373,7 @@ fn named_fn_sig(cg: &Codegen, name: &str) -> Option<FnSig> {
 /// signature (no env): the return is a Result block `{ T, i8 }*` when it
 /// returns `Result<T, _>`, else the plain scalar.
 fn spelling(sig: &FnSig) -> (String, String) {
-    let (param_tys, ret_ty, ret_inner, _, _) = sig;
+    let (param_tys, ret_ty, ret_inner, ..) = sig;
     let ret = crate::llty::ret_spelling(*ret_ty, *ret_inner);
     (
         ret,
@@ -395,33 +398,16 @@ fn spelling_with_env(sig: &FnSig) -> (String, String) {
 
 /// Lower a closure body and emit its `ret` matching the signature's return
 /// discipline.
-fn closure_return(
-    cg: &mut Codegen,
-    body: &Expr,
-    ret_ty: LType,
-    ret_inner: Option<LType>,
-) -> Result<()> {
+fn closure_return(cg: &mut Codegen, body: &Expr, sig: &FnSig) -> Result<()> {
     let bv = crate::expr::gen_body(cg, body)?;
     crate::iter::reject_escape(cg, &bv)?;
-    ret_as_sig(cg, bv, ret_ty, ret_inner)
+    ret_as_sig(cg, bv, sig)
 }
 
-/// Adapt a value to a signature's return discipline and emit the `ret`: a
-/// `Result<T, _>` slot wraps a bare value into Success (or preserves an existing
-/// Result); a scalar slot accepts only a plain value.
-fn ret_as_sig(cg: &mut Codegen, v: Value, ret_ty: LType, ret_inner: Option<LType>) -> Result<()> {
-    // The signature advertises a runtime `List` handle, so the epilogue has to
-    // hand back one: a list LITERAL leaves the body as a flat
-    // `{ length, data }` header, and returning it under a `List#` tag makes the
-    // caller's `listGet` read that header as an `OspreyList` and segfault
-    // ([`crate::listlit::escaping`]). The named-function path converts at the
-    // same seam in `fit_lambda_return`.
-    let v = crate::listlit::escaping(cg, v);
-    let rv = match ret_inner {
-        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
-        None => crate::cast::coerce_to(cg, v, ret_ty)?,
-    };
-    emit_return(cg, &rv);
+/// All callback returns use their semantic target, including container erasure.
+fn ret_as_sig(cg: &mut Codegen, value: Value, sig: &FnSig) -> Result<()> {
+    let fitted = crate::expr::fit_lambda_return(cg, value, Some(sig))?;
+    emit_return(cg, &fitted);
     Ok(())
 }
 

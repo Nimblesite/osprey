@@ -1,5 +1,5 @@
 //! Effect row names.
-use super::{CallableEnv, Expr, HashMap, Index, Position, Requirement};
+use super::{CallableEnv, Expr, ExprArgs, HashMap, Index, Position, Requirement};
 
 /// Method calls and piped calls are both plain calls whose receiver becomes the
 /// first argument; every desugaring site builds that argument list here.
@@ -104,7 +104,7 @@ pub(super) fn requirement_name(requirement: &Requirement) -> String {
 // Signal intrinsics share positional and named callback resolution.
 pub(super) fn signal_argument<'a>(
     slot: usize,
-    arguments: &'a [Expr],
+    arguments: ExprArgs<'a>,
     named: &'a [osprey_ast::NamedArgument],
 ) -> Option<&'a Expr> {
     arguments.get(slot).or_else(|| {

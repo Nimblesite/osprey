@@ -12,7 +12,8 @@
 use super::dialect::{
     bool_arms, callee, describe, elvis_gather, float_binary, float_literal, int_binary, int_literal,
 };
-use super::{DeviceBody, Ty, Uniform};
+use super::loops::uniform_local;
+use super::{DeviceBody, DeviceFailure, Ty, Uniform};
 use crate::builder::Codegen;
 use osprey_ast::{Expr, MatchArm, NamedArgument, Parameter, Stmt};
 use std::collections::HashMap;
@@ -44,6 +45,7 @@ pub(super) struct Emitter<'a> {
     temps: usize,
     scopes: Vec<HashMap<String, Local>>,
     pub(super) depth: usize,
+    foreign_call: Option<String>,
 }
 
 /// Helper inlining deeper than this is treated as recursion.
@@ -57,7 +59,7 @@ pub(super) fn body(
     body: &Expr,
     params: &[Ty],
     captures: &[(String, Uniform)],
-) -> Result<DeviceBody, String> {
+) -> Result<DeviceBody, DeviceFailure> {
     if parameters.len() != params.len() {
         return Err("the kernel's arity disagrees with the combinator's slots".into());
     }
@@ -67,6 +69,7 @@ pub(super) fn body(
         temps: 0,
         scopes: vec![HashMap::new()],
         depth: 0,
+        foreign_call: None,
     };
     for (i, (parameter, ty)) in parameters.iter().zip(params).enumerate() {
         emitter.bind(&parameter.name, Local::Scalar(*ty, format!("p{i}")));
@@ -74,7 +77,7 @@ pub(super) fn body(
     for (i, (name, uniform)) in captures.iter().enumerate() {
         emitter.bind(name, uniform_local(i, uniform));
     }
-    let (result_ty, result) = emitter.expression(body)?;
+    let (result_ty, result) = emitter.checked_expression(body)?;
     Ok(DeviceBody {
         lines: emitter.blocks.pop().unwrap_or_default(),
         result,
@@ -87,14 +90,15 @@ pub(super) fn body(
     })
 }
 
-fn uniform_local(i: usize, uniform: &Uniform) -> Local {
-    match uniform {
-        Uniform::Scalar(ty) => Local::Scalar(*ty, format!("u{i}_v")),
-        Uniform::Buffer => Local::Buffer(format!("u{i}"), format!("u{i}_len")),
-    }
-}
-
 impl Emitter<'_> {
+    fn checked_expression(&mut self, expression: &Expr) -> Result<(Ty, String), DeviceFailure> {
+        self.expression(expression).map_err(|reason| {
+            self.foreign_call
+                .take()
+                .map_or(DeviceFailure::Unsupported(reason), DeviceFailure::Foreign)
+        })
+    }
+
     pub(super) fn line(&mut self, text: String) {
         if let Some(block) = self.blocks.last_mut() {
             block.push(text);
@@ -230,15 +234,25 @@ impl Emitter<'_> {
         let Expr::Identifier(name) = function else {
             return Err("a computed callee has no device form".into());
         };
-        match (self.lookup(name), name.as_str()) {
-            (Some(Local::Function(closure)), _) => self.invoke(name, &closure, arguments),
-            (Some(_), _) => Err(format!(
+        match self.lookup(name) {
+            Some(Local::Function(closure)) => self.invoke(name, &closure, arguments),
+            Some(_) => Err(format!(
                 "`{name}` is a kernel value, not a function the device can call"
             )),
-            (None, "fold") => self.fold(arguments),
-            (None, "gpuLength") => self.length(arguments),
-            (None, _) if self.cg.device.defs.contains_key(name) => self.inline(name, arguments),
-            (None, _) => self.builtin(name, arguments),
+            None => self.named_call(name, arguments),
+        }
+    }
+
+    fn named_call(&mut self, name: &str, arguments: &[Expr]) -> Emitted {
+        if self.cg.extern_params.contains_key(name) {
+            self.foreign_call = Some(name.to_owned());
+            return Err(format!("foreign function `{name}` has no device form"));
+        }
+        match name {
+            "fold" => self.fold(arguments),
+            "gpuLength" => self.length(arguments),
+            _ if self.cg.device.defs.contains_key(name) => self.inline(name, arguments),
+            _ => self.builtin(name, arguments),
         }
     }
 
@@ -474,30 +488,5 @@ impl Emitter<'_> {
         let result = self.block_contents(statements, value);
         let _ = self.scopes.pop();
         result
-    }
-
-    fn block_contents(&mut self, statements: &[Stmt], value: Option<&Expr>) -> Emitted {
-        for statement in statements {
-            self.statement(statement)?;
-        }
-        match value {
-            Some(value) => self.expression(value),
-            None => Err("a block without a value has no device form".into()),
-        }
-    }
-
-    fn statement(&mut self, statement: &Stmt) -> Result<(), String> {
-        let Stmt::Let {
-            name,
-            mutable: false,
-            value,
-            ..
-        } = statement
-        else {
-            return Err("a statement other than an immutable `let` has no device form".into());
-        };
-        let local = self.argument(value)?;
-        self.bind(name, local);
-        Ok(())
     }
 }

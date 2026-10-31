@@ -21,13 +21,24 @@
 
 #include "float_spelling.h"
 #include "string_runtime.h"
+#include "memory_hooks.h"
 
-char *osp_string_dup_internal(const char *s, size_t n) {
-    char *out = (char *)malloc(n + 1);
+static char *string_copy_into(char *out, const char *s, size_t n) {
     if (!out) return NULL;
     if (n > 0) memcpy(out, s, n);
     out[n] = '\0';
     return out;
+}
+
+char *osp_string_dup_internal(const char *s, size_t n) {
+    return string_copy_into((char *)malloc(n + 1), s, n);
+}
+
+/* [IOS-HOST-IMPORTS] The host retains its buffer; the selected managed backend owns this copy. */
+char *osp_host_string_copy(const char *s) {
+    if (!s) return NULL;
+    size_t n = strlen(s);
+    return string_copy_into(osp_alloc_tagged((int64_t)(n + 1), OSP_MEM_RAW), s, n);
 }
 
 char *osp_string_empty_internal(void) { return osp_string_dup_internal("", 0); }

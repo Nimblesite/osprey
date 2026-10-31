@@ -1,0 +1,421 @@
+[
+  {
+    "file": "Cargo.toml",
+    "before": [
+      "short_description = \"notify-rust example\"\n\n[features]\nasync = [\"zbus/async-io\"]\nd = [\"dbus\"]\nd_vendored = [\"dbus/vendored\"]\ndebug_namespace = []\n"
+    ],
+    "after": [
+      "short_description = \"notify-rust example\"\n\n[features]\nasync = [\"zbus/default-rt\"]\nd = [\"dbus\"]\nd_vendored = [\"dbus/vendored\"]\ndebug_namespace = []\n"
+    ]
+  },
+  {
+    "file": "Cargo.toml",
+    "before": [
+      "    \"zbus\",\n    \"serde\",\n    \"async\",\n]\nz-with-tokio = [\n    \"zbus\",\n    \"serde\",\n    \"tokio\",\n]\n\n[lib]\n"
+    ],
+    "after": [
+      "    \"zbus\",\n    \"serde\",\n    \"async\",\n    \"zbus/proxy\",\n]\nz-with-tokio = [\n    \"zbus\",\n    \"serde\",\n    \"tokio\",\n    \"zbus/proxy\",\n]\n\n[lib]\n"
+    ]
+  },
+  {
+    "file": "Cargo.toml",
+    "before": [
+      "optional = true\n\n[target.'cfg(all(unix, not(target_os = \"macos\")))'.dependencies.zbus]\nversion = \"5\"\noptional = true\ndefault-features = false\n\n"
+    ],
+    "after": [
+      "optional = true\n\n[target.'cfg(all(unix, not(target_os = \"macos\")))'.dependencies.zbus]\nversion = \"6.0\"\noptional = true\ndefault-features = false\n\n"
+    ]
+  },
+  {
+    "file": "src/hints.rs",
+    "before": [
+      "#![cfg_attr(rustfmt, rustfmt_skip)]\n\n#[cfg(all(feature = \"zbus\", unix, not(target_os = \"macos\")))]\nuse zbus::zvariant;\n\n#[cfg(all(unix, not(target_os = \"macos\")))]\npub(crate) mod message;\n"
+    ],
+    "after": [
+      "#![cfg_attr(rustfmt, rustfmt_skip)]\n\n#[cfg(all(feature = \"zbus\", unix, not(target_os = \"macos\")))]\nuse zbus::Variant;\n\n#[cfg(all(unix, not(target_os = \"macos\")))]\npub(crate) mod message;\n"
+    ]
+  },
+  {
+    "file": "src/hints.rs",
+    "before": [
+      "        .finalize();\n\n     assert_eq!(hints_to_map(&n1), maplit::hashmap!{\n         \"foo\" => zvariant::Value::Str(\"bar2\".into()),\n         \"f00\" => zvariant::Value::Str(\"bar3\".into())\n     });\n}\n\n#[cfg(all(feature = \"zbus\", unix, not(target_os = \"macos\")))]\npub(crate) fn hints_to_map(notification: &Notification) -> HashMap::<&str, zvariant::Value<'_>> {\n    notification\n        .get_hints()\n        .map(Into::into)\n"
+    ],
+    "after": [
+      "        .finalize();\n\n     assert_eq!(hints_to_map(&n1), maplit::hashmap!{\n         \"foo\" => Variant::Str(\"bar2\".into()),\n         \"f00\" => Variant::Str(\"bar3\".into())\n     });\n}\n\n#[cfg(all(feature = \"zbus\", unix, not(target_os = \"macos\")))]\npub(crate) fn hints_to_map(notification: &Notification) -> HashMap::<&str, Variant<'_>> {\n    notification\n        .get_hints()\n        .map(Into::into)\n"
+    ]
+  },
+  {
+    "file": "src/hints.rs",
+    "before": [
+      "}\n\n#[cfg(all(feature = \"zbus\", unix, not(target_os = \"macos\")))]\nimpl<'a> From<&'a Hint> for (&'a str, zvariant::Value<'a>) {\n    fn from(val: &'a Hint) -> Self {\n        use self::constants::*;\n        match val {\n            Hint::ActionIcons(value)       => (ACTION_ICONS   , zvariant::Value::Bool(*value)), // bool\n            Hint::Category(value)          => (CATEGORY       , zvariant::Value::Str(value.as_str().into())),\n            Hint::DesktopEntry(value)      => (DESKTOP_ENTRY  , zvariant::Value::Str(value.as_str().into())),\n\n            #[cfg(all(feature = \"zbus\", feature = \"images_no_default_features\", unix, not(target_os = \"macos\")))]\n            //Hint::ImageData(image)         => (image_spec(*crate::SPEC_VERSION).as_str(), ImagePayload::from(*image).into()),\n            Hint::ImageData(image)         => (\n                image_spec_str(*crate::SPEC_VERSION),\n                zvariant::Value::Structure(\n                    image.to_tuple().into()\n                )\n            ),\n\n\n            Hint::ImagePath(value)         => (IMAGE_PATH     , zvariant::Value::Str(value.as_str().into())),\n            Hint::Resident(value)          => (RESIDENT       , zvariant::Value::Bool(*value)), // bool\n            Hint::SoundFile(value)         => (SOUND_FILE     , zvariant::Value::Str(value.as_str().into())),\n            Hint::SoundName(value)         => (SOUND_NAME     , zvariant::Value::Str(value.as_str().into())),\n            Hint::SuppressSound(value)     => (SUPPRESS_SOUND , zvariant::Value::Bool(*value)),\n            Hint::Transient(value)         => (TRANSIENT      , zvariant::Value::Bool(*value)),\n            Hint::X(value)                 => (X              , zvariant::Value::I32(*value)),\n            Hint::Y(value)                 => (Y              , zvariant::Value::I32(*value)),\n            Hint::Urgency(value)           => (URGENCY        , zvariant::Value::U8(*value as u8)),\n            Hint::Custom(key, val)         => (key.as_str()   , zvariant::Value::Str(val.as_str().into())),\n            Hint::CustomInt(key, val)      => (key.as_str()   , zvariant::Value::I32(*val)),\n            Hint::Invalid                  => (INVALID        , zvariant::Value::Str(INVALID.into()))\n        }\n    }\n}\n"
+    ],
+    "after": [
+      "}\n\n#[cfg(all(feature = \"zbus\", unix, not(target_os = \"macos\")))]\nimpl<'a> From<&'a Hint> for (&'a str, Variant<'a>) {\n    fn from(val: &'a Hint) -> Self {\n        use self::constants::*;\n        match val {\n            Hint::ActionIcons(value)       => (ACTION_ICONS   , Variant::Bool(*value)), // bool\n            Hint::Category(value)          => (CATEGORY       , Variant::Str(value.as_str().into())),\n            Hint::DesktopEntry(value)      => (DESKTOP_ENTRY  , Variant::Str(value.as_str().into())),\n\n            #[cfg(all(feature = \"zbus\", feature = \"images_no_default_features\", unix, not(target_os = \"macos\")))]\n            //Hint::ImageData(image)         => (image_spec(*crate::SPEC_VERSION).as_str(), ImagePayload::from(*image).into()),\n            Hint::ImageData(image)         => (\n                image_spec_str(*crate::SPEC_VERSION),\n                Variant::Structure(\n                    image.to_tuple().into()\n                )\n            ),\n\n\n            Hint::ImagePath(value)         => (IMAGE_PATH     , Variant::Str(value.as_str().into())),\n            Hint::Resident(value)          => (RESIDENT       , Variant::Bool(*value)), // bool\n            Hint::SoundFile(value)         => (SOUND_FILE     , Variant::Str(value.as_str().into())),\n            Hint::SoundName(value)         => (SOUND_NAME     , Variant::Str(value.as_str().into())),\n            Hint::SuppressSound(value)     => (SUPPRESS_SOUND , Variant::Bool(*value)),\n            Hint::Transient(value)         => (TRANSIENT      , Variant::Bool(*value)),\n            Hint::X(value)                 => (X              , Variant::I32(*value)),\n            Hint::Y(value)                 => (Y              , Variant::I32(*value)),\n            Hint::Urgency(value)           => (URGENCY        , Variant::U8(*value as u8)),\n            Hint::Custom(key, val)         => (key.as_str()   , Variant::Str(val.as_str().into())),\n            Hint::CustomInt(key, val)      => (key.as_str()   , Variant::I32(*val)),\n            Hint::Invalid                  => (INVALID        , Variant::Str(INVALID.into()))\n        }\n    }\n}\n"
+    ]
+  },
+  {
+    "file": "src/xdg/mod.rs",
+    "before": [
+      "#[cfg(feature = \"dbus\")]\nuse dbus::ffidisp::Connection as DbusConnection;\n#[cfg(feature = \"zbus\")]\nuse zbus::{block_on, zvariant};\n\nuse crate::{error::*, notification::Notification};\n\n"
+    ],
+    "after": [
+      "#[cfg(feature = \"dbus\")]\nuse dbus::ffidisp::Connection as DbusConnection;\n#[cfg(feature = \"zbus\")]\nuse zbus::block_on;\n\nuse crate::{error::*, notification::Notification};\n\n"
+    ]
+  },
+  {
+    "file": "src/xdg/mod.rs",
+    "before": [
+      "\n            #[cfg(feature = \"zbus\")]\n            NotificationHandleInner::Zbus(inner) => {\n                block_on(\n                    inner.wait_for_action(|response: &NotificationResponse| match response {\n                        NotificationResponse::Default => invocation_closure(\"default\"),\n"
+    ],
+    "after": [
+      "\n            #[cfg(feature = \"zbus\")]\n            NotificationHandleInner::Zbus(inner) => {\n                // `wait_for_action` returns nothing, so the published 4.18.2\n                // fail-explicit contract is preserved rather than logging the\n                // failure and continuing.\n                block_on(\n                    inner.wait_for_action(|response: &NotificationResponse| match response {\n                        NotificationResponse::Default => invocation_closure(\"default\"),\n"
+    ]
+  },
+  {
+    "file": "src/xdg/mod.rs",
+    "before": [
+      "                        NotificationResponse::Reply(_) => { /* XDG does not support inline replies */ }\n                        NotificationResponse::Closed(_) => invocation_closure(\"__closed\"), // FIXME: remove backward compatibility with 5.0\n                    }),\n                );\n            }\n        };\n    }\n"
+    ],
+    "after": [
+      "                        NotificationResponse::Reply(_) => { /* XDG does not support inline replies */ }\n                        NotificationResponse::Closed(_) => invocation_closure(\"__closed\"), // FIXME: remove backward compatibility with 5.0\n                    }),\n                )\n                .expect(\"notify-rust: could not listen for notification actions\");\n            }\n        };\n    }\n"
+    ]
+  },
+  {
+    "file": "src/xdg/mod.rs",
+    "before": [
+      "            NotificationHandleInner::Dbus(inner) => inner.wait_for_action(handler),\n            #[cfg(feature = \"zbus\")]\n            NotificationHandleInner::Zbus(inner) => {\n                block_on(inner.wait_for_action(handler));\n                Ok(())\n            }\n        }\n"
+    ],
+    "after": [
+      "            NotificationHandleInner::Dbus(inner) => inner.wait_for_action(handler),\n            #[cfg(feature = \"zbus\")]\n            NotificationHandleInner::Zbus(inner) => {\n                block_on(inner.wait_for_action(handler))?;\n                Ok(())\n            }\n        }\n"
+    ]
+  },
+  {
+    "file": "src/xdg/mod.rs",
+    "before": [
+      "                unimplemented!(\"async methods are not supported with the `dbus` backend\");\n            }\n            #[cfg(feature = \"zbus\")]\n            NotificationHandleInner::Zbus(inner) => inner.wait_for_action(invocation_closure).await,\n        }\n    }\n\n"
+    ],
+    "after": [
+      "                unimplemented!(\"async methods are not supported with the `dbus` backend\");\n            }\n            #[cfg(feature = \"zbus\")]\n            NotificationHandleInner::Zbus(inner) => inner\n                .wait_for_action(invocation_closure)\n                .await\n                .expect(\"notify-rust: could not listen for notification actions\"),\n        }\n    }\n\n"
+    ]
+  },
+  {
+    "file": "src/xdg/mod.rs",
+    "before": [
+      "            }\n            #[cfg(feature = \"zbus\")]\n            NotificationHandleInner::Zbus(inner) => {\n                block_on(inner.wait_for_action(|action: &NotificationResponse| {\n                    if let NotificationResponse::Closed(reason) = action {\n                        handler.call(*reason);\n                    }\n                }));\n            }\n        };\n    }\n"
+    ],
+    "after": [
+      "            }\n            #[cfg(feature = \"zbus\")]\n            NotificationHandleInner::Zbus(inner) => {\n                // `on_close` returns no value, so the published 4.18.2\n                // fail-explicit contract is preserved rather than dropping the\n                // failure.\n                block_on(inner.wait_for_action(|action: &NotificationResponse| {\n                    if let NotificationResponse::Closed(reason) = action {\n                        handler.call(*reason);\n                    }\n                }))\n                .expect(\"notify-rust: could not listen for the notification close signal\");\n            }\n        };\n    }\n"
+    ]
+  },
+  {
+    "file": "src/xdg/mod.rs",
+    "before": [
+      "/// Return value of [`get_server_information()`].\n#[derive(Debug)]\n#[cfg_attr(feature = \"serde\", derive(serde::Deserialize))]\n#[cfg_attr(feature = \"zbus\", derive(zvariant::Type))]\npub struct ServerInformation {\n    /// The product name of the server.\n    pub name: String,\n"
+    ],
+    "after": [
+      "/// Return value of [`get_server_information()`].\n#[derive(Debug)]\n#[cfg_attr(feature = \"serde\", derive(serde::Deserialize))]\n#[cfg_attr(feature = \"zbus\", derive(zbus::Type))]\npub struct ServerInformation {\n    /// The product name of the server.\n    pub name: String,\n"
+    ]
+  },
+  {
+    "file": "src/xdg/mod.rs",
+    "before": [
+      "where\n    F: FnOnce(&ActionResponse<'_>),\n{\n    block_on(zbus_rs::handle_action(id, action_response_adapter(func)));\n    Ok(())\n}\n\n/// Listens for the `ActionInvoked(UInt32, String)` signal.\n"
+    ],
+    "after": [
+      "where\n    F: FnOnce(&ActionResponse<'_>),\n{\n    block_on(zbus_rs::handle_action(id, action_response_adapter(func))).map_err(Error::from)\n}\n\n/// Listens for the `ActionInvoked(UInt32, String)` signal.\n"
+    ]
+  },
+  {
+    "file": "src/xdg/mod.rs",
+    "before": [
+      "    if std::env::var(DBUS_SWITCH_VAR).is_ok() {\n        dbus_rs::handle_action(id, action_response_adapter(func))\n    } else {\n        block_on(zbus_rs::handle_action(id, action_response_adapter(func)));\n        Ok(())\n    }\n}\n\n"
+    ],
+    "after": [
+      "    if std::env::var(DBUS_SWITCH_VAR).is_ok() {\n        dbus_rs::handle_action(id, action_response_adapter(func))\n    } else {\n        block_on(zbus_rs::handle_action(id, action_response_adapter(func))).map_err(Error::from)\n    }\n}\n\n"
+    ]
+  },
+  {
+    "file": "src/xdg/zbus_rs.rs",
+    "before": [
+      "use crate::{error::*, notification::Notification, xdg};\nuse futures_lite::stream::StreamExt;\nuse zbus::MatchRule;\n\nuse super::bus::NotificationBus;\nuse crate::response::{NotificationResponse, ResponseHandler};\n\npub mod bus;\nmod handle;\n"
+    ],
+    "after": [
+      "use crate::{error::*, notification::Notification, xdg};\nuse zbus::MatchRule;\n\nuse super::bus::NotificationBus;\nuse crate::response::ResponseHandler;\n\npub mod bus;\nmod handle;\n"
+    ]
+  },
+  {
+    "file": "src/xdg/zbus_rs.rs",
+    "before": [
+      "/// Listens for the `ActionInvoked(UInt32, String)` Signal.\n///\n/// No need to use this, check out `Notification::show_and_wait_for_action(FnOnce(action:&str))`\npub async fn handle_action(id: u32, func: impl ResponseHandler) {\n    let connection = zbus::Connection::session().await.unwrap();\n    wait_for_action_signal(&connection, id, func).await;\n}\n\nasync fn wait_for_action_signal(\n    connection: &zbus::Connection,\n    id: u32,\n    handler: impl ResponseHandler,\n) {\n    let action_signal_rule = MatchRule::builder()\n        .msg_type(zbus::message::Type::Signal)\n        .interface(xdg::NOTIFICATION_INTERFACE)\n        .unwrap()\n        .member(\"ActionInvoked\")\n        .unwrap()\n        .build();\n\n    let proxy = zbus::fdo::DBusProxy::new(connection).await.unwrap();\n    proxy.add_match_rule(action_signal_rule).await.unwrap();\n\n    let close_signal_rule = MatchRule::builder()\n        .msg_type(zbus::message::Type::Signal)\n        .interface(xdg::NOTIFICATION_INTERFACE)\n        .unwrap()\n        .member(\"NotificationClosed\")\n        .unwrap()\n        .build();\n    proxy.add_match_rule(close_signal_rule).await.unwrap();\n\n    while let Ok(Some(msg)) = zbus::MessageStream::from(connection).try_next().await {\n        let header = msg.header();\n        if let zbus::message::Type::Signal = header.message_type() {\n            match header.member() {\n                Some(name) if name == \"ActionInvoked\" => {\n                    match msg.body().deserialize::<(u32, String)>() {\n                        Ok((nid, action)) if nid == id => {\n                            let response = if action == \"default\" {\n                                NotificationResponse::Default\n                            } else {\n                                NotificationResponse::Action(action)\n                            };\n                            handler.call(&response);\n                            break;\n                        }\n                        _ => {}\n                    }\n                }\n                Some(name) if name == \"NotificationClosed\" => {\n                    match msg.body().deserialize::<(u32, u32)>() {\n                        Ok((nid, reason)) if nid == id => {\n                            handler.call(&NotificationResponse::Closed(reason.into()));\n                            break;\n                        }\n                        _ => {}\n                    }\n                }\n                _ => {}\n            }\n        }\n    }\n}\n"
+    ],
+    "after": [
+      "/// Listens for the `ActionInvoked(UInt32, String)` Signal.\n",
+      "///\n",
+      "/// No need to use this, check out `Notification::show_and_wait_for_action(FnOnce(action:&str))`\n",
+      "pub async fn handle_action(id: u32, func: impl ResponseHandler) -> zbus::Result<()> {\n",
+      "    let connection = zbus::Connection::session().await?;\n",
+      "    wait_for_action_signal(&connection, id, func).await\n",
+      "}\n",
+      "\n",
+      "async fn wait_for_action_signal(\n",
+      "    connection: &zbus::Connection,\n",
+      "    id: u32,\n",
+      "    handler: impl ResponseHandler,\n",
+      ") -> zbus::Result<()> {\n",
+      "    // zbus 6 defers match-rule validation to `build`, so `build` is the only\n",
+      "    // fallible step of a rule; the failures it reports are returned unchanged.\n",
+      "    let action_signal_rule = MatchRule::builder()\n",
+      "        .msg_type(zbus::message::Type::Signal)\n",
+      "        .interface(xdg::NOTIFICATION_INTERFACE)\n",
+      "        .member(\"ActionInvoked\")\n",
+      "        .build()?;\n",
+      "\n",
+      "    let proxy = zbus::fdo::DBusProxy::new(connection).await?;\n",
+      "    proxy.add_match_rule(action_signal_rule).await?;\n",
+      "\n",
+      "    let close_signal_rule = MatchRule::builder()\n",
+      "        .msg_type(zbus::message::Type::Signal)\n",
+      "        .interface(xdg::NOTIFICATION_INTERFACE)\n",
+      "        .member(\"NotificationClosed\")\n",
+      "        .build()?;\n",
+      "    proxy.add_match_rule(close_signal_rule).await?;\n",
+      "\n",
+      "    let mut stream = zbus::MessageStream::from(connection);\n",
+      "    signal_stream::wait_for_response(&mut stream, id, handler).await\n",
+      "}\n",
+      "\n",
+      "#[cfg(test)]\n",
+      "mod action_failure_tests {\n",
+      "    use super::*;\n",
+      "    use crate::response::NotificationResponse;\n",
+      "\n",
+      "    const CHILD: &str = \"NOTIFY_RUST_MISSING_BUS_CHILD\";\n",
+      "    const MISSING_BUS: &str = \"unix:path=/nonexistent/osprey-bus\";\n",
+      "    const NAMED_TEST: &str =\n",
+      "        \"xdg::zbus_rs::action_failure_tests::missing_session_bus_is_reported_not_dropped\";\n",
+      "\n",
+      "    /// The missing-bus contract. Run directly, this re-executes the binary with the address set for\n",
+      "    /// that process alone and fails unless the child's assertion passes, so the filtered test never\n",
+      "    /// passes vacuously.\n",
+      "    #[test]\n",
+      "    fn missing_session_bus_is_reported_not_dropped() {\n",
+      "        if std::env::var_os(CHILD).is_some() {\n",
+      "            assert_missing_bus_is_reported();\n",
+      "        } else {\n",
+      "            assert!(\n",
+      "                run_child(NAMED_TEST).success(),\n",
+      "                \"the missing-session-bus assertion must pass in the child process\"\n",
+      "            );\n",
+      "        }\n",
+      "    }\n",
+      "\n",
+      "    fn assert_missing_bus_is_reported() {\n",
+      "        let result = zbus::block_on(handle_action(1, |_: &NotificationResponse| {}));\n",
+      "        assert!(\n",
+      "            result.is_err(),\n",
+      "            \"a missing session bus must be reported, not dropped: {result:?}\"\n",
+      "        );\n",
+      "    }\n",
+      "\n",
+      "    /// Re-executes this binary with the missing-bus address, which only that process ever sees.\n",
+      "    fn run_child(test: &str) -> std::process::ExitStatus {\n",
+      "        std::process::Command::new(std::env::current_exe().expect(\"the test binary has a path\"))\n",
+      "            .args([\"--exact\", test, \"--nocapture\"])\n",
+      "            .env(CHILD, \"1\")\n",
+      "            .env(\"DBUS_SESSION_BUS_ADDRESS\", MISSING_BUS)\n",
+      "            .status()\n",
+      "            .expect(\"the test binary must start\")\n",
+      "    }\n",
+      "\n",
+      "    /// A libtest binary runs tests on several threads and `std::env::set_var` is unsound while they\n",
+      "    /// run, so only the child is configured; this process must never see the sentinel address.\n",
+      "    #[test]\n",
+      "    fn the_missing_bus_check_does_not_mutate_this_process_environment() {\n",
+      "        let (request, request_rx) = std::sync::mpsc::channel();\n",
+      "        let (observed_tx, observed) = std::sync::mpsc::channel();\n",
+      "        let reader = std::thread::spawn(move || {\n",
+      "            let _ = request_rx.recv();\n",
+      "            let _ = observed_tx.send(std::env::var(\"DBUS_SESSION_BUS_ADDRESS\").ok());\n",
+      "        });\n",
+      "        let status = run_child(NAMED_TEST);\n",
+      "        let _ = request.send(());\n",
+      "        let seen = observed.recv().ok().flatten();\n",
+      "        reader.join().expect(\"the reader thread must not panic\");\n",
+      "        assert!(\n",
+      "            status.success(),\n",
+      "            \"the missing-session-bus check must pass in the child process\"\n",
+      "        );\n",
+      "        assert_ne!(\n",
+      "            seen.as_deref(),\n",
+      "            Some(MISSING_BUS),\n",
+      "            \"this process's environment was mutated: {seen:?}\"\n",
+      "        );\n",
+      "    }\n",
+      "}\n",
+      "\n",
+      "/// Turns a notification signal stream into exactly one typed response.\n",
+      "///\n",
+      "/// The stream carries `ActionInvoked` and `NotificationClosed` signals for every notification on the\n",
+      "/// session bus, so a caller has to keep draining it until its own id appears. The outcome of that\n",
+      "/// drain is a value: a response was delivered, or the listener failed. A stream error and a stream\n",
+      "/// that ends without a response are both failures and must not be reported as success.\n",
+      "pub(crate) mod signal_stream {\n",
+      "    use crate::response::{NotificationResponse, ResponseHandler};\n",
+      "    use futures_lite::{Stream, StreamExt};\n",
+      "    use std::sync::Arc;\n",
+      "\n",
+      "    const ACTION_INVOKED: &str = \"ActionInvoked\";\n",
+      "    const NOTIFICATION_CLOSED: &str = \"NotificationClosed\";\n",
+      "    const DEFAULT_ACTION: &str = \"default\";\n",
+      "\n",
+      "    /// The response carried by `message` for notification `id`, if it has one.\n",
+      "    fn response_for(message: &zbus::Message, id: u32) -> Option<NotificationResponse> {\n",
+      "        if message.header().message_type() != zbus::message::Type::Signal {\n",
+      "            return None;\n",
+      "        }\n",
+      "        match message.header().member().map(|member| member.as_str())? {\n",
+      "            ACTION_INVOKED => match message.body().deserialize::<(u32, String)>() {\n",
+      "                Ok((signal_id, action)) if signal_id == id => Some(action_response(action)),\n",
+      "                _ => None,\n",
+      "            },\n",
+      "            NOTIFICATION_CLOSED => match message.body().deserialize::<(u32, u32)>() {\n",
+      "                Ok((signal_id, reason)) if signal_id == id => {\n",
+      "                    Some(NotificationResponse::Closed(reason.into()))\n",
+      "                }\n",
+      "                _ => None,\n",
+      "            },\n",
+      "            _ => None,\n",
+      "        }\n",
+      "    }\n",
+      "\n",
+      "    fn action_response(action: String) -> NotificationResponse {\n",
+      "        if action == DEFAULT_ACTION {\n",
+      "            NotificationResponse::Default\n",
+      "        } else {\n",
+      "            NotificationResponse::Action(action)\n",
+      "        }\n",
+      "    }\n",
+      "\n",
+      "    /// Drains `stream` until notification `id` produces a response, then calls `handler` once.\n",
+      "    pub(crate) async fn wait_for_response<S>(\n",
+      "        stream: &mut S,\n",
+      "        id: u32,\n",
+      "        handler: impl ResponseHandler,\n",
+      "    ) -> zbus::Result<()>\n",
+      "    where\n",
+      "        S: Stream<Item = zbus::Result<zbus::Message>> + Unpin,\n",
+      "    {\n",
+      "        while let Some(item) = stream.next().await {\n",
+      "            if let Some(response) = response_for(&item?, id) {\n",
+      "                handler.call(&response);\n",
+      "                return Ok(());\n",
+      "            }\n",
+      "        }\n",
+      "        Err(zbus::Error::InputOutput(Arc::new(\n",
+      "            std::io::Error::from(std::io::ErrorKind::UnexpectedEof),\n",
+      "        )))\n",
+      "    }\n",
+      "\n",
+      "    #[cfg(test)]\n",
+      "    mod tests {\n",
+      "        use super::*;\n",
+      "        use crate::response::CloseReason;\n",
+      "        use futures_lite::stream;\n",
+      "        use std::cell::RefCell;\n",
+      "        use zbus::export::serde::Serialize;\n",
+      "\n",
+      "        const INTERFACE: &str = \"org.freedesktop.Notifications\";\n",
+      "        const PATH: &str = \"/org/freedesktop/Notifications\";\n",
+      "\n",
+      "        fn signal(\n",
+      "            member: &str,\n",
+      "            body: impl Serialize + zbus::DynamicType,\n",
+      "        ) -> zbus::Result<zbus::Message> {\n",
+      "            zbus::Message::signal(PATH, INTERFACE, member).build(&body)\n",
+      "        }\n",
+      "\n",
+      "        fn action_invoked(id: u32, action: &str) -> zbus::Message {\n",
+      "            signal(ACTION_INVOKED, (id, action)).expect(\"a signal message is well formed\")\n",
+      "        }\n",
+      "\n",
+      "        fn closed(id: u32, reason: u32) -> zbus::Message {\n",
+      "            signal(NOTIFICATION_CLOSED, (id, reason)).expect(\"a signal message is well formed\")\n",
+      "        }\n",
+      "\n",
+      "        fn other_member() -> zbus::Message {\n",
+      "            signal(\"SomethingElse\", (1u32,)).expect(\"a signal message is well formed\")\n",
+      "        }\n",
+      "\n",
+      "        fn drain(items: Vec<zbus::Result<zbus::Message>>) -> (zbus::Result<()>, Option<NotificationResponse>) {\n",
+      "            let seen = RefCell::new(None);\n",
+      "            let mut items = stream::iter(items);\n",
+      "            let result = futures_lite::future::block_on(wait_for_response(&mut items, 7, |response: &NotificationResponse| {\n",
+      "                *seen.borrow_mut() = Some(response.clone());\n",
+      "            }));\n",
+      "            (result, seen.into_inner())\n",
+      "        }\n",
+      "\n",
+      "        #[test]\n",
+      "        fn matching_action_invoked_calls_the_handler_once() {\n",
+      "            let (result, seen) = drain(vec![Ok(other_member()), Ok(action_invoked(7, \"open\"))]);\n",
+      "            assert!(result.is_ok(), \"a delivered action is success: {result:?}\");\n",
+      "            assert_eq!(seen, Some(NotificationResponse::Action(\"open\".to_string())));\n",
+      "        }\n",
+      "\n",
+      "        #[test]\n",
+      "        fn the_default_action_maps_to_the_default_response() {\n",
+      "            let (result, seen) = drain(vec![Ok(action_invoked(7, \"default\"))]);\n",
+      "            assert!(result.is_ok(), \"a body click is success: {result:?}\");\n",
+      "            assert_eq!(seen, Some(NotificationResponse::Default));\n",
+      "        }\n",
+      "\n",
+      "        #[test]\n",
+      "        fn a_close_signal_maps_to_its_reason() {\n",
+      "            let (result, seen) = drain(vec![Ok(closed(7, 2))]);\n",
+      "            assert!(result.is_ok(), \"a close is success: {result:?}\");\n",
+      "            assert_eq!(seen, Some(NotificationResponse::Closed(CloseReason::Dismissed)));\n",
+      "        }\n",
+      "\n",
+      "        #[test]\n",
+      "        fn another_notification_id_is_ignored_until_the_stream_ends() {\n",
+      "            let (result, seen) = drain(vec![Ok(action_invoked(8, \"open\")), Ok(closed(9, 1))]);\n",
+      "            assert!(seen.is_none(), \"no other notification's response may be delivered\");\n",
+      "            assert!(result.is_err(), \"a stream that ends without our response is a failure: {result:?}\");\n",
+      "        }\n",
+      "\n",
+      "        #[test]\n",
+      "        fn a_stream_error_is_reported_not_dropped() {\n",
+      "            let (result, seen) = drain(vec![Ok(other_member()), Err(zbus::Error::Failure(\"bus dropped\".into()))]);\n",
+      "            assert!(seen.is_none());\n",
+      "            assert!(result.is_err(), \"a stream error must reach the caller: {result:?}\");\n",
+      "        }\n",
+      "\n",
+      "        #[test]\n",
+      "        fn a_stream_end_without_a_response_is_an_error() {\n",
+      "            let (result, seen) = drain(vec![Ok(other_member())]);\n",
+      "            assert!(seen.is_none());\n",
+      "            assert!(result.is_err(), \"the connection ending is a failure: {result:?}\");\n",
+      "        }\n",
+      "    }\n",
+      "}\n"
+    ]
+  },
+  {
+    "file": "src/xdg/zbus_rs/handle.rs",
+    "before": [
+      "        }\n    }\n\n    pub async fn wait_for_action(&self, invocation_closure: impl ActionResponseHandler) {\n        wait_for_action_signal(&self.connection, self.id, invocation_closure).await;\n    }\n\n    pub async fn close_fallible(&self) -> Result<()> {\n"
+    ],
+    "after": [
+      "        }\n    }\n\n    pub async fn wait_for_action(\n        &self,\n        invocation_closure: impl ActionResponseHandler,\n    ) -> zbus::Result<()> {\n        wait_for_action_signal(&self.connection, self.id, invocation_closure).await\n    }\n\n    pub async fn close_fallible(&self) -> Result<()> {\n"
+    ]
+  },
+  {
+    "file": "src/xdg/zbus_rs/handle.rs",
+    "before": [
+      "    where\n        F: FnOnce(CloseReason),\n    {\n        zbus::block_on(self.wait_for_action(|action: &NotificationResponse| {\n            if let NotificationResponse::Closed(reason) = action {\n                closure(*reason);\n            }\n        }));\n    }\n\n    pub fn update_fallible(&mut self) -> Result<()> {\n"
+    ],
+    "after": [
+      "    where\n        F: FnOnce(CloseReason),\n    {\n        // `on_close` returns no value, so the published 4.18.2 contract of\n        // panicking when the signal listener cannot be installed is kept\n        // instead of dropping the failure.\n        zbus::block_on(self.wait_for_action(|action: &NotificationResponse| {\n            if let NotificationResponse::Closed(reason) = action {\n                closure(*reason);\n            }\n        }))\n        .expect(\"notify-rust: could not listen for the notification close signal\");\n    }\n\n    pub fn update_fallible(&mut self) -> Result<()> {\n"
+    ]
+  }
+]

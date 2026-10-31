@@ -1,0 +1,46 @@
+namespace bounded
+
+import bounded::Words
+
+(** The one JSON line [TYPES-DISCIPLINE-PROTOCOL] answers with. *)
+module Replies
+    (** The protocol's only diagnostic severity: a violation is an error. *)
+    severityError = "error"
+
+    (** The answer when a well-formed document cannot be encoded: still a
+        rejection, so standard output is never empty. *)
+    fallback = "{\"version\":2,\"result\":\"rejected\",\"diagnostics\":[{\"code\":\"internal\",\"severity\":\"error\",\"message\":\"the checker could not encode its answer\"}]}"
+
+    (** An accepted module with its export signature and its erased source. *)
+    export accepted (version, sig, erased) = encoded (JsonObject [
+        versionJson version,
+        member ("result", JsonString "accepted"),
+        member ("signature", JsonString sig),
+        member ("erased", erasedJson erased),
+        member ("diagnostics", JsonArray [])])
+
+    (** One rejected call site or more. *)
+    export rejected (version, problems) = encoded (JsonObject [
+        versionJson version,
+        member ("result", JsonString "rejected"),
+        member ("diagnostics", JsonArray (mapList (problems, described)))])
+
+    (** A rejection with no source line: a failure of the checker itself. *)
+    export failure (version, code, message) =
+        rejected (version, [Words::Problem(code = code, line = 0, column = 0, message = message)])
+
+    encoded (document) = jsonEncode document ?: fallback
+
+    erasedJson (source) = JsonObject [member ("flavor", JsonString "ml"), member ("source", JsonString source)]
+
+    described (problem) = match problem.line == 0
+        true => JsonObject [codeJson problem, severity (), member ("message", JsonString problem.message)]
+        false => JsonObject [codeJson problem, severity (), member ("line", JsonInt problem.line), member ("column", JsonInt problem.column), member ("message", JsonString problem.message)]
+
+    codeJson (problem) = member ("code", JsonString problem.code)
+
+    severity () = member ("severity", JsonString severityError)
+
+    versionJson (version) = member ("version", JsonInt version)
+
+    member (name, value) = JsonMember(name, value)

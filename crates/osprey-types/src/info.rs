@@ -5,6 +5,7 @@
 
 use crate::ty::{names, Type, VarId};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Closed-program requirements on full application, separate from written row bounds.
 /// Unknown callback effects are never represented as an empty proven row.
@@ -42,6 +43,28 @@ pub struct CtorLayout {
     pub fields: Vec<(String, Type)>,
 }
 
+impl CtorLayout {
+    /// Whether the field types retain every declared argument, including arguments in nested types.
+    #[must_use]
+    pub fn carries_all_parameters(&self) -> bool {
+        fields_carry_parameters(self.fields.iter().map(|(_, ty)| ty), self.type_params.len())
+    }
+}
+
+pub(crate) fn fields_carry_parameters<'a>(
+    fields: impl Iterator<Item = &'a Type>,
+    count: usize,
+) -> bool {
+    let mut used = std::collections::BTreeSet::new();
+    for ty in fields {
+        let _ = crate::ty::map_type_vars(ty, &mut |var| {
+            let _ = used.insert(var);
+            Type::Var(var)
+        });
+    }
+    used.len() == count
+}
+
 /// One effect operation's resolved signature.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OpType {
@@ -76,9 +99,10 @@ pub struct ProgramTypes {
     /// Lambda source position → its resolved function type, so the backend
     /// lowers every lambda from inferred types, not guesses.
     pub(crate) lambdas: SiteTable,
-    /// `let` binding source position → its resolved type, so editor hover can
-    /// show the type of an unannotated binding. Implements [LSP-HOVER-VARIABLES]
+    /// `let` binding source position → its resolved runtime representation.
     pub(crate) lets: SiteTable,
+    /// Original binding types, shared unchanged by backend specialization and layout conversion.
+    pub(crate) source_lets: Arc<SiteTable>,
     /// Each list literal's resolved `List<T>`, keyed by its source position.
     /// The backend reads it when the literal itself cannot supply an element
     /// representation — i.e. when it is empty.
@@ -127,6 +151,60 @@ pub struct HandlerSite {
 }
 
 impl ProgramTypes {
+    /// Instantiate a declared record's layout; nominal arguments remain available on the input type.
+    #[must_use]
+    pub fn record_fields(&self, ty: &Type) -> Option<std::collections::BTreeMap<String, Type>> {
+        let Type::Con { name, .. } = ty else {
+            return None;
+        };
+        let layout = self
+            .ctors
+            .get(name)
+            .filter(|layout| layout.owner_is_record)?;
+        layout
+            .fields
+            .iter()
+            .map(|(field, _)| Some((field.clone(), self.field_type(ty, field)?)))
+            .collect()
+    }
+
+    pub(crate) fn source_binding_type(&self, ty: Type) -> Type {
+        let ty = self.source_binding_arguments(ty);
+        let fields = match &ty {
+            Type::Con { name, .. }
+                if self
+                    .ctors
+                    .get(name)
+                    .is_some_and(CtorLayout::carries_all_parameters) =>
+            {
+                self.record_fields(&ty)
+            }
+            _ => None,
+        };
+        match (fields, ty) {
+            (Some(fields), Type::Con { name, .. }) => Type::Record { name, fields },
+            (_, ty) => ty,
+        }
+    }
+
+    fn source_binding_arguments(&self, ty: Type) -> Type {
+        let nested = |types: Vec<Type>| {
+            types
+                .into_iter()
+                .map(|ty| self.source_binding_type(ty))
+                .collect()
+        };
+        match ty {
+            Type::Con { name, args } => Type::con(name, nested(args)),
+            Type::Fun { params, ret } => Type::fun(nested(params), self.source_binding_type(*ret)),
+            Type::Union { name, variants } => Type::Union {
+                name,
+                variants: nested(variants),
+            },
+            ty => ty,
+        }
+    }
+
     /// Instantiate a record field against the actual generic type arguments.
     #[must_use]
     pub fn field_type(&self, record: &Type, field: &str) -> Option<Type> {
@@ -238,8 +316,8 @@ impl ProgramTypes {
         self.lambdas.get(function, position)
     }
 
-    /// The resolved type of the `let` binding written at `position` inside
-    /// top-level function `function`. Implements [LSP-HOVER-VARIABLES]
+    /// The runtime representation of a `let` binding inside top-level `function`.
+    /// Reader views use [`Self::source_let_type`] to retain nominal arguments.
     #[must_use]
     pub fn let_type(
         &self,
@@ -247,6 +325,17 @@ impl ProgramTypes {
         position: Option<osprey_ast::Position>,
     ) -> Option<&Type> {
         self.lets.get(function, position)
+    }
+
+    /// A binding's original inferred type, unchanged by backend specialization or layout conversion.
+    /// Implements [LSP-HOVER-VARIABLES].
+    #[must_use]
+    pub fn source_let_type(
+        &self,
+        function: Option<&str>,
+        position: Option<osprey_ast::Position>,
+    ) -> Option<&Type> {
+        self.source_lets.get(function, position)
     }
 
     /// The resolved element type of the list literal written at `position`

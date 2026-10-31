@@ -8,6 +8,7 @@
 include scripts/make/config.mk
 include scripts/make/runtime.mk
 include scripts/make/tests.mk
+include scripts/make/proof.mk
 include scripts/make/apps.mk
 include scripts/make/extension.mk
 
@@ -27,6 +28,8 @@ build: _runtime _runtime_klee $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 ## audit: Full dependency vulnerability scan; scanner errors and advisories fail.
 .PHONY: audit
 audit:
+	python3 hosts/gpui/dependencies.py
+	python3 hosts/gpui/dependencies_test.py
 	osv-scanner scan source --recursive --all-vulns .
 
 ## test: Fail-fast tests + coverage + per-project threshold enforcement.
@@ -57,6 +60,8 @@ test: build
 # test` subcommand itself stays covered by bank-test and the CLI e2e suite.
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
+	$(MAKE) _test_proof_kernel
+	$(MAKE) _test_disciplines
 	$(MAKE) _test_profiler
 	$(MAKE) _vsix_bundle
 	$(MAKE) _test_vscode_extension
@@ -469,6 +474,8 @@ gpui-compare: _runtime_macos
 ## gpui-test: The native package, Flock and painting suites, the host's unit
 ##            tests and clippy, and the probe and Flock recorded-event smokes.
 gpui-test: _runtime_macos _runtime
+	python3 hosts/gpui/dependencies.py
+	python3 hosts/gpui/dependencies_test.py
 	cargo build --release -p osprey-cli
 	for suite in packages/native/tests examples/gpui/flock/test examples/gpui/painting/test; do \
 		$(BIN) test $$suite || exit 1; \

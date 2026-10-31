@@ -50,15 +50,8 @@ pub(crate) fn runtime_effect_key(effect: &str, args: &[Type]) -> Result<String> 
 /// boxing it yet. Keeping this separate lets escaping handler returns retain the
 /// adapted value itself, including a newly-created `Success` block.
 pub(crate) fn adapt_erased(cg: &mut Codegen, value: Value, resolved: &Type) -> Result<Value> {
-    let expected_inner = result_inner(resolved);
-    match (value.result_inner, expected_inner) {
-        (Some(_), None) => Err(CodegenError::invalid(
-            "cannot pass an unhandled Result through a plain effect slot",
-        )),
-        (Some(_), Some(inner)) => crate::result::repack_to_inner(cg, value, inner),
-        (None, Some(inner)) => crate::result::make_ok(cg, value, inner),
-        _ => Ok(value),
-    }
+    let signature = crate::builder::ParamSig::of(&cg.prog, resolved);
+    crate::cast::coerce_semantic_param(cg, value, &signature)
 }
 
 /// Box a value crossing an erased operation slot without losing a `Result`.

@@ -35,6 +35,7 @@ module Encode
         Mono => "mono"
 
     buttonRole value = match value
+        Filled => "filled"
         Prominent => "prominent"
         Plain => "plain"
         Destructive => "destructive"
@@ -90,7 +91,7 @@ module Encode
     entryAt (walked, tabs, index) = match listGet tabs index
         Success tab =>
             inner = walk (walked.bindings, tab.page)
-            json = JsonObject [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" (Symbols::name tab.tabSymbol), JsonMember "child" (first inner)]
+            json = JsonObject [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" tab.tabSymbol, JsonMember "child" (first inner)]
             Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
         Error _ => walked
 
@@ -98,7 +99,7 @@ module Encode
     rowAt (walked, rows, index) = match listGet rows index
         Success item =>
             inner = walk (walked.bindings, item.cell)
-            json = JsonObject [str "key" item.rowKey, str "symbol" (Symbols::name item.rowSymbol), str "group" item.rowGroup, JsonMember "child" (first inner)]
+            json = JsonObject [str "key" item.rowKey, str "symbol" item.rowSymbol, str "group" item.rowGroup, JsonMember "child" (first inner)]
             Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
         Error _ => walked
 
@@ -131,11 +132,11 @@ module Encode
         one (inner.bindings, kind "disclosure" [str "title" title, bit "expanded" expanded, num "event" (length bindings), JsonMember "children" (JsonArray inner.nodes)])
 
     // Two columns: the pane's controls take ordinals before the aside's, and the splitter between them takes the next.
-    aside<A> : (List<Binding<A>>, Side, Node<A>, Node<A>, int, A) -> Walked<A>
-    aside (bindings, place, column, pane, width, action) =
+    aside<A> : (List<Binding<A>>, Side, Node<A>, Node<A>, int, int, int, int, A) -> Walked<A>
+    aside (bindings, place, column, pane, width, least, most, keep, action) =
         content = walk (bindings, pane)
         beside = walk (content.bindings, column)
-        limits = [num "width" width, num "least" Splitters::least, num "most" Splitters::most, num "keep" Splitters::keep]
+        limits = [num "width" width, num "least" least, num "most" most, num "keep" keep]
         bound (beside.bindings, SizeInput(action = action), "aside", listConcat [str "side" (side place), JsonMember "pane" (first content), JsonMember "aside" (first beside)] limits)
 
     contextMenu<A> : (List<Binding<A>>, Node<A>, List<Node<A>>) -> Walked<A>
@@ -144,13 +145,50 @@ module Encode
         menu = all (body.bindings, actions)
         one (menu.bindings, kind "context-menu" [JsonMember "body" (first body), JsonMember "items" (JsonArray menu.nodes)])
 
+    markJson item = JsonObject [num "line" item.markLine, bit "underlined" item.underlined, str "tone" (tone item.markTone), str "badge" item.markBadge, str "note" item.markNote]
+
+    // [UI-COMPONENTS-EDITOR] Two controls in one: the text binding takes the next ordinal, the cursor binding the one after.
+    editor<A> : (List<Binding<A>>, string, string, bool, int, int, List<Mark>, A, A) -> Walked<A>
+    editor (bindings, label, value, inline, cursor, epoch, marks, edit, place) =
+        texted = listAppend bindings (TextInput(action = edit))
+        members = [str "label" label, str "value" value, bit "inline" inline, num "cursor" cursor, num "focusEpoch" epoch, JsonMember "marks" (JsonArray (mapList (marks, \item => markJson item))), num "event" (length bindings), num "placeEvent" (length texted)]
+        one (listAppend texted (PlaceInput(action = place)), kind "editor" members)
+
+    // [UI-COMPONENTS-BOARD] Camera binding follows the existing stroke and lasso ordinals.
+    board<A> : (List<Binding<A>>, string, int, bool, string, bool, bool, A, A, A) -> Walked<A>
+    board (bindings, slice, count, lassoing, backdrop, panning, camera, pan, stroke, lasso) =
+        stroked = listAppend bindings (StrokeInput(action = stroke))
+        lassoed = listAppend stroked (LassoInput(action = lasso))
+        members = [str "slice" slice, num "count" count, bit "lasso" lassoing, str "backdrop" backdrop, bit "panning" panning, num "event" (length bindings), num "lassoEvent" (length stroked)]
+        match camera
+            false => one (lassoed, kind "board" members)
+            true => one (listAppend lassoed (TextInput(action = pan)), kind "board" (listAppend members (num "panEvent" (length lassoed))))
+
+    leaf<A> : (List<Binding<A>>, string, List<JsonMember>) -> Walked<A>
+    leaf (bindings, name, members) = one (bindings, kind name members)
+
     // [UI-COMPONENTS-METER] The amount is clamped into 0..total and the total is at least 1, so a host divides safely.
     meter (label, amount, total, meterTone) =
         whole = Pick::either (total < 1, 1, total)
         [str "label" label, num "value" (Pick::either (amount < 0, 0, Pick::either (amount > whole, whole, amount))), num "total" whole, str "tone" (tone meterTone)]
 
-    leaf<A> : (List<Binding<A>>, string, List<JsonMember>) -> Walked<A>
-    leaf (bindings, name, members) = one (bindings, kind name members)
+    runJson run = JsonObject [str "text" run.runText, str "ink" run.runInk, bit "italic" run.runItalic]
+
+    frameJson style = JsonObject [str "name" style.frameName, num "width" style.frameWidth, num "height" style.frameHeight, num "viewportHeightInset" style.frameViewportHeightInset, bit "scrollY" style.frameScrollY, num "top" style.frameTop, num "right" style.frameRight, num "bottom" style.frameBottom, num "left" style.frameLeft, num "radius" style.frameRadius, num "gap" style.frameGap, str "fill" style.frameFill, str "ink" style.frameInk, str "line" style.frameLine, str "lineEdge" style.frameLineEdge, bit "grow" style.frameGrow, str "font" style.frameFont, num "textSize" style.frameTextSize, JsonMember "mathScale" (JsonFloat style.frameMathScale), JsonMember "lineHeight" (JsonFloat style.frameLineHeight), JsonMember "tracking" (JsonFloat style.frameTracking), bit "italic" style.frameItalic, bit "hug" style.frameHug, str "align" style.frameAlign, str "cross" style.frameCross, num "controlHeight" style.frameControlHeight, num "controlPadding" style.frameControlPadding, num "symbolSize" style.frameSymbolSize, bit "quietControls" style.frameQuietControls, bit "iconOnly" style.frameIconOnly, bit "fadeBackdrop" style.frameFadeBackdrop, bit "trailingSymbols" style.frameTrailingSymbols, bit "flatRows" style.frameFlatRows, str "shadow" style.frameShadow]
+
+    framed<A> : (List<Binding<A>>, FrameStyle, Node<A>) -> Walked<A>
+    framed (bindings, style, content) =
+        inner = walk (bindings, content)
+        one (inner.bindings, kind "framed" [JsonMember "style" (frameJson style), JsonMember "body" (first inner)])
+
+    dialog (bindings, title, content, action) =
+        dismissing = listAppend bindings (Tap(action = action))
+        inner = walk (dismissing, content)
+        one (inner.bindings, kind "dialog" [str "title" title, num "event" (length bindings), JsonMember "body" (first inner)])
+
+    themed (bindings, theme, content) =
+        inner = walk (bindings, content)
+        one (inner.bindings, kind "themed" [JsonMember "theme" (Themes::encode theme), JsonMember "body" (first inner)])
 
     real value = JsonFloat value
 
@@ -188,8 +226,8 @@ module Encode
         Close => JsonArray [JsonInt 6]
 
     stroke outline = match outline
-        Filled => [JsonInt 0]
-        Stroked width dashes bevel => listConcat [JsonInt 1, real width, flag bevel] (reals dashes)
+        Fill => [JsonInt 0]
+        Line width dashes bevel => listConcat [JsonInt 1, real width, flag bevel] (reals dashes)
 
     painted paint = match paint
         Solid tint => [JsonInt 0, tinted tint]
@@ -208,21 +246,24 @@ module Encode
     (** Encodes `node` and collects its bindings after `bindings`, depth first, so each control's ordinal is the index of its binding. *)
     export walk<A> : (List<Binding<A>>, Node<A>) -> Walked<A>
     walk (bindings, node) = match node
+        RichText runs textRole => leaf (bindings, "rich-text", [JsonMember "runs" (JsonArray (mapList (runs, runJson))), str "role" (role textRole)])
         Text value textRole textTone => leaf (bindings, "text", [str "text" value, str "role" (role textRole), str "tone" (tone textTone)])
+        Evidence label value => leaf (bindings, "evidence", [str "label" label, str "value" value])
         Pair label value => leaf (bindings, "pair", [str "label" label, str "value" value])
-        Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" (Symbols::name symbol), str "tone" (tone badgeTone)])
-        Label label symbol => leaf (bindings, "label", [str "label" label, str "symbol" (Symbols::name symbol)])
-        Icon symbol => leaf (bindings, "icon", [str "symbol" (Symbols::name symbol)])
+        Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" symbol, str "tone" (tone badgeTone)])
+        Label label symbol => leaf (bindings, "label", [str "label" label, str "symbol" symbol])
+        Icon symbol => leaf (bindings, "icon", [str "symbol" symbol])
         Link label address => leaf (bindings, "link", [str "label" label, str "url" address])
         Spacer => leaf (bindings, "spacer", [])
         Divider => leaf (bindings, "divider", [])
         Segments values label => leaf (bindings, "segments", [JsonMember "tones" (toneList values), str "label" label])
-        Empty symbol title detail => leaf (bindings, "empty", [str "symbol" (Symbols::name symbol), str "title" title, str "detail" detail])
+        Empty symbol title detail => leaf (bindings, "empty", [str "symbol" symbol, str "title" title, str "detail" detail])
         Progress label detail => leaf (bindings, "progress", [str "label" label, str "detail" detail])
         Meter label amount total meterTone => leaf (bindings, "meter", meter (label, amount, total, meterTone))
         Swatch name light dark => leaf (bindings, "swatch", [str "name" name, str "light" light, str "dark" dark])
         Slot key => leaf (bindings, "slot", [str "key" key])
-        Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" (Symbols::name symbol), str "role" (buttonRole buttonKind), bit "enabled" enabled])
+        Brand => leaf (bindings, "brand", [])
+        Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" symbol, str "role" (buttonRole buttonKind), bit "enabled" enabled])
         Field label value prompt secure multiline policy action => bound (bindings, TextInput(action = action), "field", [str "label" label, str "value" value, str "prompt" prompt, bit "secure" secure, bit "multiline" multiline, str "commit" (commit policy)])
         Toggle label on action => bound (bindings, FlagInput(action = action), "toggle", [str "label" label, bit "on" on])
         Picker label items selected action => bound (bindings, ChoiceInput(action = action), "picker", [str "label" label, JsonMember "choices" (choices items), str "selected" selected])
@@ -233,8 +274,16 @@ module Encode
         Screen title subtitle toolbar children => screen (bindings, title, subtitle, toolbar, children)
         Split panes => nested (bindings, "split", [], panes)
         Layer children => nested (bindings, "layer", [], children)
+        Framed style content => framed (bindings, style, content)
+        Themed theme content => themed (bindings, theme, content)
+        Dialog title content dismiss => dialog (bindings, title, content, dismiss)
         ContextMenu content actions => contextMenu (bindings, content, actions)
-        Aside place column pane width action => aside (bindings, place, column, pane, width, action)
+        Aside place column pane width least most keep action => aside (bindings, place, column, pane, width, least, most, keep, action)
         Tabs entries selected action => tabs (bindings, entries, selected, action)
         Rows entries selected action => rows (bindings, entries, selected, action)
+        Typeset tree text => leaf (bindings, "math", [JsonMember "math" (Maths::encode tree), str "spoken" text])
+        Image source alt width height => leaf (bindings, "image", [str "source" source, str "alt" alt, num "width" width, num "height" height])
+        Video source poster captions alt seconds => leaf (bindings, "video", [str "source" source, str "poster" poster, str "captions" captions, str "alt" alt, num "seconds" seconds])
+        Editor label value inline cursor epoch marks edit place => editor (bindings, label, value, inline, cursor, epoch, marks, edit, place)
+        Board slice count lassoing backdrop panning camera pan stroke lasso => board (bindings, slice, count, lassoing, backdrop, panning, camera, pan, stroke, lasso)
         Scene width height atlas primitives action sent => scene (bindings, width, height, atlas, primitives, action, sent)

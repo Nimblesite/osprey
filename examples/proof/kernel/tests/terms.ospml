@@ -1,0 +1,140 @@
+namespace prooftests
+
+import proof::Terms
+import proof
+    Zero
+    Succ
+    Param
+    Sort
+    BVar
+    Const
+    App
+    Lam
+    Pi
+    Let
+    Proj
+import prooftests::Support
+
+(** Shifting, substitution, occurrence and printing of de Bruijn terms. *)
+module TermsTests
+    closed () = Sort (Succ Zero)
+
+    export run () =
+        shifting ()
+        substitution ()
+        sharing ()
+        boundaries ()
+        inspection ()
+        equality ()
+        universes ()
+        identities ()
+        prefixes ()
+
+    shifting () =
+        test ("shift raises only indices at or above the cutoff", \() =>
+            expect (Support::render (Terms::shift (BVar 0, 0, 1)), "#1")
+            expect (Support::render (Terms::shift (BVar 1, 1, 2)), "#3")
+            expect (Support::render (Terms::shift (BVar 0, 1, 2)), "#0"))
+
+        test ("shift below a binder leaves the bound index alone", \() =>
+            expect (Support::render (Terms::shift (Lam "x" (Sort Zero) (BVar 0), 0, 1)), "(fun (x : Prop) => x)")
+            expect (Support::render (Terms::shift (Lam "x" (Sort Zero) (BVar 1), 0, 1)), "(fun (x : Prop) => #2)"))
+
+    substitution () =
+        test ("substituting index zero lowers the indices above it", \() =>
+            expect (Support::render (Terms::instantiate (App (BVar 0) (BVar 1), closed ())), "(Type #0)")
+            expect (Terms::equal (Terms::instantiate (App (BVar 0) (BVar 1), closed ()), App (closed ()) (BVar 0)), true))
+
+        test ("instantiate under a lambda lifts the replacement past the binder", \() =>
+            expect (Support::render (Terms::instantiate (Lam "y" (Sort Zero) (BVar 1), BVar 9)), "(fun (y : Prop) => #10)"))
+
+    sharing () =
+        test ("substitution leaves the closed side of an application alone", \() =>
+            expect (Support::render (Terms::instantiate (App (Lam "x" (Sort Zero) (BVar 0)) (BVar 0), Const "c" [])), "((fun (x : Prop) => x) c)"))
+
+        test ("a substitution that reaches nothing returns the term it was given", \() =>
+            expect (Support::render (Terms::instantiate (Lam "f" (Sort Zero) (Lam "x" (BVar 0) (BVar 1)), Const "v" [])), "(fun (f : Prop) => (fun (x : f) => f))"))
+
+        test ("a substitution crosses a let binder and leaves its closed parts alone", \() =>
+            expect (Support::render (Terms::instantiate (Let "x" (Proj "Box" 0 (Const "d" [])) (Const "c" []) (App (BVar 1) (BVar 2)), BVar 9)), "(let x : (Box.0 d) := c; (#10 #1))"))
+
+        test ("a projection rebuilds only its target", \() =>
+            expect (Support::render (Terms::instantiate (Proj "Box" 1 (App (BVar 0) (Const "k" [])), Const "v" [])), "(Box.1 (v k))"))
+
+    boundaries () =
+        test ("shift moves only indices at or above the cutoff", \() =>
+            expect (Support::render (Terms::shift (App (BVar 2) (Const "k" []), 2, 3)), "(#5 k)")
+            expect (Support::render (Terms::shift (BVar 0, 2, 3)), "#0")
+            expect (Support::render (Terms::shift (App (Sort Zero) (BVar 0), 1, 1)), "(Prop #0)"))
+
+        test ("a negative shift lowers the indices at or above the cutoff", \() =>
+            expect (Support::render (Terms::shift (BVar 3, 0, -2)), "#1")
+            expect (Support::render (Terms::shift (BVar 0, 1, -2)), "#0"))
+
+    inspection () =
+        test ("constant inventory keeps projection and repeated literal dependencies in traversal order", \() =>
+            literal = proof::NatLit (proof::Natural(naturalLimbs = [1]))
+            term = App (proof::Proj "Box" 0 (App (Const "build" []) literal)) literal
+            expect (join (Terms::constants term, ","), "Box,build,Nat,Nat.zero,Nat.succ,Nat,Nat.zero,Nat.succ"))
+
+        test ("mentions sees a free variable through a binder only", \() =>
+            expect (Terms::mentions (Lam "x" (Sort Zero) (BVar 1), 0), true)
+            expect (Terms::mentions (Lam "x" (Sort Zero) (BVar 0), 0), false))
+
+        test ("show prints the id type, Prop and Type", \() =>
+            expect (Support::render (Support::idType ()), "(∀ (p : Prop), (p → p))")
+            expect (Support::render (Sort Zero), "Prop")
+            expect (Support::render (Sort (Succ Zero)), "Type")
+            expect (Support::render (Sort (Succ (Succ Zero))), "Sort 2"))
+
+    equality () =
+        test ("equal is structural: repeated binder names do not merge distinct indices", \() =>
+            expect (Terms::equal (Lam "x" (Sort Zero) (Lam "x" (Sort Zero) (BVar 0)), Lam "x" (Sort Zero) (Lam "x" (Sort Zero) (BVar 1))), false)
+            expect (Terms::equal (Lam "x" (Sort Zero) (Lam "x" (Sort Zero) (BVar 0)), Lam "a" (Sort Zero) (Lam "b" (Sort Zero) (BVar 0))), true))
+
+        test ("equal compares every universe argument of a constant", \() =>
+            expect (Terms::equal (Const "F" [Zero], Const "F" [Succ Zero]), false)
+            expect (Terms::equal (Const "F" [Zero], Const "F" []), false)
+            expect (Terms::equal (Const "F" [Succ Zero], Const "F" [Succ (Zero)]), true)
+            expect (Terms::equal (Sort (Param "u"), Sort (Param "v")), false)
+            expect (Terms::equal (Sort (proof::Max Zero Zero), Sort Zero), true)
+            expect (Terms::equal (Const "F" [proof::Max Zero Zero], Const "F" [Zero]), true))
+
+        test ("equal distinguishes lambda from pi over the same binder", \() =>
+            expect (Terms::equal (Lam "x" (Sort Zero) (BVar 0), Pi "x" (Sort Zero) (BVar 0)), false))
+
+    universes () =
+        test ("instantiateLevels reaches sorts and constants under binders", \() =>
+            expect (Support::render (Terms::instantiateLevels (Pi "x" (Sort (Param "u")) (App (Const "F" [Param "u"]) (BVar 0)), ["u"], [Succ Zero])), "(∀ (x : Type), (F.{1} x))")
+            expect (structuralEquals (Terms::instantiateLevels (Const "F" [Param "u", Param "v"], ["u", "v"], [Param "v", Param "u"]), Const "F" [Param "v", Param "u"]), true)
+            expect (structuralEquals (Terms::instantiateLevels (Const "F" [Param "u"], ["u", "u"], [Param "u", Succ Zero]), Const "F" [Param "u"]), true)
+            expect (structuralEquals (Terms::instantiateLevels (Const "F" [Param "u", Param "v"], ["u", "v"], [Succ Zero]), Const "F" [Succ Zero, Param "v"]), true)
+            expect (structuralEquals (Terms::instantiateLevels (deepUniverseTerm (Param "u"), ["u"], [Succ Zero]), deepUniverseTerm (Succ Zero)), true)
+            expect (Terms::declared (Const "F" [Param "u"], ["u"]), true)
+            expect (Terms::declared (Lam "x" (Sort (Param "v")) (BVar 0), ["u"]), false))
+
+        test ("show prints the universe arguments of a constant", \() =>
+            expect (Support::render (Const "F" [Zero, Param "u"]), "F.{0, u}"))
+
+    identities () = test ("identity shifts and empty universe substitutions preserve every term variant", \() => forEachList (identityTerms (), \term =>
+        expect (structuralEquals (Terms::shift (term, 0, 0), term), true)
+        expect (structuralEquals (Terms::shift (term, 3, 0), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, [], []), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, [], [Succ Zero]), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, ["u"], [Param "u"]), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, ["u", "v"], [Param "u", Param "v"]), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, ["u"], []), term), true)
+        expect (structuralEquals (Terms::instantiateLevels (term, ["u"], [Param "u", Succ Zero]), term), true)
+        expect (Terms::equal (term, term), true)))
+
+    identityTerms () = listAppend ([Sort (proof::Max Zero (proof::IMax (Param "u") (Succ Zero))), Const "F" [Param "u"], BVar 4, App (BVar 1) (BVar 0), Lam "x" (Sort Zero) (BVar 1), Pi "x" (Sort Zero) (BVar 0), proof::Proj "Holder" 0 (BVar 0), proof::Let "x" (Sort Zero) (Const "v" []) (BVar 1), proof::NatLit (proof::Natural(naturalLimbs = [1])), proof::NatLit (proof::Natural(naturalLimbs = [0])), proof::NatLit (proof::Natural(naturalLimbs = [-1])), proof::NatLit (proof::Natural(naturalLimbs = [1, 0]))], deepUniverseTerm (Param "u"))
+
+    deepUniverseTerm level = fold (range (0, 128), Const "F" [level], \(body, _) => Pi "x" (Sort level) body)
+
+    export prefixes () = test ("prefix supports independent element types and exact counts", \() =>
+        expect (join (Terms::prefix (["first", "second"], 1), ","), "first")
+        expect (structuralEquals (Terms::prefix ([1, 2, 3], 2), [1, 2]), true)
+        expect (structuralEquals (Terms::prefix ([Sort Zero, BVar 0], 1), [Sort Zero]), true)
+        expect (isEmpty (Terms::prefix (["first"], 0)), true)
+        expect (isEmpty (Terms::prefix (["first"], -1)), true)
+        expect (join (Terms::prefix (["first"], 5), ","), "first"))

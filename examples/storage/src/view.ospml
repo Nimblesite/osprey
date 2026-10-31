@@ -38,20 +38,20 @@ module View
     (** The window: the places sidebar beside the open folder's page. *)
     export root () = Ui::split [Ui::slot "places", Ui::slot "folder"]
 
-    placeRow (system, path) = Ui::entry (path, ui::Folder, "Chosen", Ui::text (Disk::name (system, path)))
+    placeRow (system, path) = Ui::entry (path, (ui::Symbols::name ui::Folder), "Chosen", Ui::text (Disk::name (system, path)))
 
     drives (system, home) =
         top = Disk::rootOf (system, home)
-        Pick::either (top == home, [], [Ui::entry (top, ui::Folder, "Places", Ui::text top)])
+        Pick::either (top == home, [], [Ui::entry (top, (ui::Symbols::name ui::Folder), "Places", Ui::text top)])
 
     (** The sidebar: home, the top of its volume and every folder the person chose, with the open one selected. *)
     export places () =
         place = placeNow ()
-        home = Ui::entry (place.homeFolder, ui::Person, "Places", Ui::text "Home")
+        home = Ui::entry (place.homeFolder, (ui::Symbols::name ui::Person), "Places", Ui::text "Home")
         chosen = mapList (place.chosenFolders, \path => placeRow (place.osName, path))
         Ui::screen ("Storage", "", [], [Ui::rows (listConcat (listPrepend (drives (place.osName, place.homeFolder)) home) chosen, place.openFolder, PickPlace)])
 
-    crumb (system, path) = Ui::button (Disk::name (system, path), ui::NoSymbol, OpenFolder(openedPath = path))
+    crumb (system, path) = Ui::button (Disk::name (system, path), (ui::Symbols::name ui::NoSymbol), OpenFolder(openedPath = path))
 
     (** The open folder's page: Up, Rescan, Choose Folder and the hidden-items switch in its toolbar, the folders leading to it, and its listing. *)
     export folder () =
@@ -59,9 +59,9 @@ module View
         options = optionsNow ()
         system = place.osName
         tools = [
-            Ui::action ("Up", ui::Chevron, ui::Plain, Disk::isRoot (system, place.openFolder) == false, GoUp),
-            Ui::button ("Rescan", ui::Refresh, Remeasure),
-            Ui::button ("Choose Folder…", ui::Folder, PickFolder),
+            Ui::action ("Up", (ui::Symbols::name ui::Chevron), ui::Plain, Disk::isRoot (system, place.openFolder) == false, GoUp),
+            Ui::button ("Rescan", (ui::Symbols::name ui::Refresh), Remeasure),
+            Ui::button ("Choose Folder…", (ui::Symbols::name ui::Folder), PickFolder),
             Ui::toggle ("Hidden items", options.showHidden, ShowHidden),
         ]
         crumbs = Ui::row (mapList (Disk::trail (system, place.openFolder), \path => crumb (system, path)))
@@ -98,7 +98,7 @@ module View
     row (place, options, ranking, largest, item) =
         bytes = Disk::size (options.showHidden, item)
         cell = Ui::column [Ui::row [named (item.itemHidden, item.itemName), ui::Spacer, Ui::caption (detail (place.osName, item, bytes, ranking.rankBytes))], Ui::meter (Disk::shareText (bytes, ranking.rankBytes), bytes, largest, ui::Accent)]
-        Ui::entry (item.itemPath, Disk::look item, "", Ui::contextMenu (cell, [Ui::button (Words::reveal place.osName, ui::External, ShowIn(shownPath = item.itemPath))]))
+        Ui::entry (item.itemPath, Disk::look item, "", Ui::contextMenu (cell, [Ui::button (Words::reveal place.osName, (ui::Symbols::name ui::External), ShowIn(shownPath = item.itemPath))]))
 
     sizes (hidden, items) = foldList (items, 0, \(total, item) => satAdd total (Disk::size (hidden, item)))
 
@@ -107,10 +107,10 @@ module View
         count = satSub ranking.rankCount ranking.rankKept
         bytes = satSub ranking.rankBytes (sizes (options.showHidden, ranking.rankTop))
         cell = Ui::column [Ui::row [Ui::text (plural (count, "smaller item", "smaller items")), ui::Spacer, Ui::caption "${Disk::formatBytes (place.osName, bytes)} · ${Disk::shareText (bytes, ranking.rankBytes)}"], Ui::meter (Disk::shareText (bytes, ranking.rankBytes), bytes, largest, ui::Secondary)]
-        Pick::either (count > 0, [Ui::entry ("smaller", ui::NoSymbol, "", cell)], [])
+        Pick::either (count > 0, [Ui::entry ("smaller", (ui::Symbols::name ui::NoSymbol), "", cell)], [])
 
     // Folders the walk could not open are listed last, so the person sees which ones are not counted.
-    sealed (place, item) = Ui::entry (item.itemPath, ui::Lock, "", Ui::contextMenu (Ui::row [named (item.itemHidden, item.itemName), ui::Spacer, Ui::caption "Could not be read"], [Ui::button (Words::reveal place.osName, ui::External, ShowIn(shownPath = item.itemPath))]))
+    sealed (place, item) = Ui::entry (item.itemPath, (ui::Symbols::name ui::Lock), "", Ui::contextMenu (Ui::row [named (item.itemHidden, item.itemName), ui::Spacer, Ui::caption "Could not be read"], [Ui::button (Words::reveal place.osName, (ui::Symbols::name ui::External), ShowIn(shownPath = item.itemPath))]))
 
     guarded (place, options, walked) = mapList (filterList (walked.walkedItems, \item => item.itemGuarded && Disk::inSight (options.showHidden, item)), \item => sealed (place, item))
 
@@ -121,8 +121,8 @@ module View
         mapList (listConcat (listConcat unread cut) scope, \line => Ui::caption line)
 
     emptied hidden = match hidden
-        true => Ui::empty (ui::Folder, "Nothing here", "This folder is empty.")
-        false => Ui::empty (ui::Info, "Everything here is hidden", "Turn on Hidden items to see what this folder holds.")
+        true => Ui::empty ((ui::Symbols::name ui::Folder), "Nothing here", "This folder is empty.")
+        false => Ui::empty ((ui::Symbols::name ui::Info), "Everything here is hidden", "Turn on Hidden items to see what this folder holds.")
 
     summary (place, ranking) = Ui::styled ("${Disk::formatBytes (place.osName, ranking.rankBytes)} in ${plural (ranking.rankCount, "item", "items")}", ui::Headline, ui::Primary)
 
@@ -135,9 +135,9 @@ module View
             false => Ui::column (listAppend head (emptied options.showHidden))
 
     measured (place, options, walked) = match walked.walkedMissing
-        true => Ui::empty (ui::Question, "This folder is gone", "It was moved or deleted after it was opened. Choose another folder.")
+        true => Ui::empty ((ui::Symbols::name ui::Question), "This folder is gone", "It was moved or deleted after it was opened. Choose another folder.")
         false => match walked.walkedError == ""
-            false => Ui::empty (ui::Warning, "Cannot read this folder", walked.walkedError)
+            false => Ui::empty ((ui::Symbols::name ui::Warning), "Cannot read this folder", walked.walkedError)
             true => ranked (place, options, walked, Disk::rank (options.showHidden, shown (), walked.walkedItems))
 
     measuring place = Ui::column [ui::Progress(label = "Measuring ${Disk::name (place.osName, place.openFolder)}…", detail = "Every file below it counts. A walk that runs past two minutes stops and shows what it measured.")]
@@ -148,5 +148,5 @@ module View
         walk = walkNow ()
         match walk.walkStage
             "measuring" => measuring place
-            "failed" => Ui::empty (ui::Warning, "Cannot measure ${Disk::name (place.osName, place.openFolder)}", walk.walkProblem)
+            "failed" => Ui::empty ((ui::Symbols::name ui::Warning), "Cannot measure ${Disk::name (place.osName, place.openFolder)}", walk.walkProblem)
             _ => measured (place, optionsNow (), walkedNow ())

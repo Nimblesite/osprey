@@ -69,7 +69,8 @@ const DECL =
 const IMPL = /^\s*impl\b[^{]*?\b([A-Za-z_]\w*)\s*(?:<[^{]*>)?\s*(?:where[^{]*)?\{/;
 const VARIANT = /^\s{4,}([A-Z]\w*)\s*(?:[{(,=]|$)/;
 const FIELD = /^\s{4,}pub\s+(?:\([^)]*\)\s*)?([a-z_]\w*)\s*:/;
-const CFG_TEST = /^\s*#\[cfg\(test\)\]/;
+const TEST_ONLY = /^\s*#\[(?:cfg\(test\)|test)\]/;
+const ITEM_HEADER = /^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:(?:async|unsafe|extern(?:\s*"[^"]*")?)\s+)*(?:fn\s+\w|(?:struct|enum|trait|impl|type|use|const|static|mod|union)\b)/;
 
 const walk = (dir, out = []) => {
   for (const entry of readdirSync(dir)) {
@@ -95,17 +96,26 @@ const hasTestModuleDeclaration = (path) =>
     /^\s*#\[cfg\(test\)\]\s*mod tests\s*;/m.test(files.get(join(dirname(path), parent)) ?? ""),
   );
 
-// The 1-based [start, end] of the brace block opening at `start`, or of a
-// single `;`-terminated declaration when no brace follows.
+const delimiterDepth = (line, initial) =>
+  (line.match(/->|[()[\]<>]/g) ?? []).reduce((depth, token) =>
+    token === "->" ? depth : Math.max(0, depth + (/[([<]/.test(token) ? 1 : -1)), initial);
+
+// The 1-based span of a brace block, semicolon declaration or comma-terminated
+// field; commas inside parameter lists and generic types do not end the span.
 const blockSpan = (lines, start) => {
   let depth = 0;
-  let sawBrace = false;
+  let sawBrace = false, item = false;
+  let delimiters = 0, prefix = "";
   for (let j = start - 1; j < lines.length; j += 1) {
     const line = lines[j];
+    if (!item) prefix += ` ${line.replace(/^\s*(?:#\[[^\]]*\]\s*)+/, "").replace(/\/\/.*$/, "")}`;
+    item ||= ITEM_HEADER.test(prefix);
+    delimiters = delimiterDepth(line.replace(/\/\/.*$/, ""), delimiters);
     depth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
     if (line.includes("{")) sawBrace = true;
     if (sawBrace && depth <= 0) return [start, j + 1];
     if (!sawBrace && line.trimEnd().endsWith(";")) return [start, j + 1];
+    if (!sawBrace && !item && delimiters === 0 && /,\s*(?:\/\/.*)?$/.test(line)) return [start, j + 1];
   }
   return [start, lines.length];
 };
@@ -115,7 +125,7 @@ const testMask = (lines) => {
   const mask = new Set();
   let i = 0;
   while (i < lines.length) {
-    if (CFG_TEST.test(lines[i])) {
+    if (TEST_ONLY.test(lines[i])) {
       const [a, b] = blockSpan(lines, i + 1);
       for (let k = a; k <= b; k += 1) mask.add(k);
       i = b;

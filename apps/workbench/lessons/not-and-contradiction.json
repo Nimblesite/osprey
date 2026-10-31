@@ -1,0 +1,78 @@
+{
+  "format": 1,
+  "slug": "not-and-contradiction",
+  "title": "Not and contradiction",
+  "summary": "Negation says that a statement leads to falsehood, and contradictory evidence closes any proof goal.",
+  "stage": 2,
+  "minutes": 7,
+  "after": [
+    "either-way"
+  ],
+  "blocks": [
+    {
+      "kind": "prose",
+      "text": "The negation ¬p says that p leads to falsehood. In the workbench, ¬p means p → ⊥, where ⊥ is falsehood. If p holds and ¬p also holds, the two hypotheses contradict each other.\n\nA contradiction cannot provide a consistent description of a situation. In a proof, evidence of p together with evidence of ¬p closes the current goal. The step Contradiction from h and k. names the evidence in that order: h proves p, and k proves ¬p."
+    },
+    {
+      "kind": "formula",
+      "formula": "p → ¬p → ⊥"
+    },
+    {
+      "kind": "prose",
+      "text": "The order in that sentence matters. The first name supplies a proposition; the second supplies its negation. The kernel also understands the definition of negation, so p → ⊥ can play the role of ¬p when the proof term is checked.\n\nContradiction is different from proving that a particular claim is false. It shows that the hypotheses already available cannot all hold together. From that impossible situation, the kernel accepts any target as proved."
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "prove",
+        "id": "prove-no-contradiction",
+        "prompt": "Prove that p and its negation lead to falsehood.",
+        "statement": "Theorem no_contradiction. For all p, p → ¬p → ⊥.",
+        "given": [],
+        "solution": [
+          "Assume hp : p.",
+          "Assume hn : ¬p.",
+          "Contradiction from hp and hn."
+        ],
+        "hints": [
+          "Assume p, then assume its negation.",
+          "Name hp first in the Contradiction step."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "state",
+        "id": "state-not-both",
+        "prompt": "Write that p and its negation cannot both hold. Negate the whole conjunction.",
+        "variables": [
+          "p"
+        ],
+        "expected": "¬(p ∧ ¬p)",
+        "hints": [
+          "Write p ∧ ¬p inside parentheses.",
+          "Place ¬ before the parentheses."
+        ]
+      }
+    },
+    {
+      "kind": "challenge",
+      "challenge": {
+        "kind": "judge",
+        "id": "judge-contradiction-closes",
+        "prompt": "Here the target is q, which is unrelated to p. Decide whether contradictory hypotheses still close the proof.",
+        "statement": "Theorem anything_follows. For all p q, p → ¬p → q.",
+        "steps": [
+          "Assume hp : p.",
+          "Assume hn : ¬p.",
+          "Contradiction from hp and hn."
+        ],
+        "hints": [
+          "hp proves p and hn proves its negation.",
+          "A contradiction closes the current target, whatever that target is."
+        ]
+      }
+    }
+  ]
+}

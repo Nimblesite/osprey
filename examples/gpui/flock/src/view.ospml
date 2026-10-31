@@ -63,7 +63,7 @@ module View
         false => []
 
     // Pause is visible in the HUD as well as stopping the simulation clock.
-    hudItems (world, settings) = listConcat [Ui::badge ("Round ${world.roundNumber}", ui::Play, ui::Accent), Ui::badge ("Score ${world.scoreValue}", ui::Star, ui::Good), Ui::badge ("Flock ${length world.birds}", ui::Inbox, ui::Primary), Ui::badge ("FPS ${world.fps}", ui::Settings, ui::Secondary), Ui::button (pauseLabel settings.paused, ui::NoSymbol, TogglePause)] (pauseItem settings.paused)
+    hudItems (world, settings) = listConcat [Ui::badge ("Round ${world.roundNumber}", (ui::Symbols::name ui::Play), ui::Accent), Ui::badge ("Score ${world.scoreValue}", (ui::Symbols::name ui::Star), ui::Good), Ui::badge ("Flock ${length world.birds}", (ui::Symbols::name ui::Inbox), ui::Primary), Ui::badge ("FPS ${world.fps}", (ui::Symbols::name ui::Settings), ui::Secondary), Ui::button (pauseLabel settings.paused, (ui::Symbols::name ui::NoSymbol), TogglePause)] (pauseItem settings.paused)
 
     (** Status badges and the pause control, refreshed with world or settings. *)
     export hud () = Ui::row (hudItems (worldSlice (), settingsSlice ()))

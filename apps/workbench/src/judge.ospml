@@ -1,0 +1,87 @@
+// Implements [LESSONS-CHALLENGES] and [LESSONS-FEEDBACK]: the kernel judges
+// every answer. A prove answer is right when the kernel checks the proof, a
+// state answer when the kernel finds it the same proposition by definition,
+// and a judge answer when it agrees with the kernel's verdict, decided then.
+namespace workbench
+
+import workbench::Formulas
+import workbench::Statements
+import workbench::Steps
+import workbench::Verdicts
+import workbench::Closing
+import workbench::Propositions
+import workbench::Preludes
+import proof::Infer
+import proof::Reduce
+
+(** The result of one submission: right with the kernel's word, wrong at an answer step (`-1` when no step is to blame) with the reason, or not finished ([LESSONS-FEEDBACK]). *)
+type Grade = Correct string | Incorrect int string | Unfinished string
+
+(** A declaration read from a heading and steps, ready for the kernel, or why it is not. *)
+type Framed = Declared Statement (List<Step>) | Undeclared string
+
+(** Judges answers with the proof kernel ([LESSONS-CHALLENGES]). *)
+module Judge
+    // The challenge's heading and steps as one document, read as the workbench reads any document.
+    (** The declaration `heading` opens with `steps` as its proof, or why it does not read. *)
+    export pose (heading, steps) = match listGet (Statements::document (heading + "\nProof.\n" + join (steps, "\n"))) 0
+        Error _ => Undeclared "the statement has no heading"
+        Success declaration => posed declaration
+
+    posed declaration = match listGet declaration.problems 0
+        Success problem => Undeclared problem.message
+        Error _ => Declared declaration.statement (mapList (Steps::sentences declaration.proof, \sentence => Steps::read sentence))
+
+    (** The kernel's judgement of `answer` as the rest of the proof of a prove challenge ([LESSONS-PROVE]). *)
+    export prove (task, answer) = match pose (task.provedHeading, listAppend (task.provedGiven, answer))
+        Undeclared reason => Unfinished reason
+        Declared statement steps => proved (Verdicts::decide (statement, steps), length (Steps::sentences (join (task.provedGiven, "\n"))))
+
+    proved (verdict, before) = match verdict
+        Checked => Correct "Right. The Osprey kernel checked it."
+        Rejected at reason => Incorrect (answerStep (at, before)) ("The kernel refused this step: " + reason)
+        Unchecked reason => Unfinished reason
+
+    // A refused step among the given ones, or the statement, blames no answer line.
+    answerStep (at, before) = match at < before
+        true => 0 - 1
+        false => satSub at before
+
+    (** The kernel's judgement of a judge challenge: `checks` is the learner's choice that the shown proof checks ([LESSONS-JUDGE]). *)
+    export rule (task, checks) = match pose (task.judgedHeading, task.judgedSteps)
+        Undeclared reason => Unfinished ("the lesson's proof does not read: " + reason)
+        Declared statement steps => ruled (Verdicts::decide (statement, steps), checks)
+
+    ruled (verdict, checks) = match verdict
+        Checked => agreed (checks, "The kernel checks this proof.", 0 - 1)
+        Rejected at reason => agreed (!checks, "The kernel refuses step ${satAdd at 1}: " + reason, at)
+        Unchecked reason => Unfinished ("the lesson's proof is not finished: " + reason)
+
+    agreed (right, said, at) = match right
+        true => Correct ("Right. " + said)
+        false => Incorrect at ("Not this time. " + said)
+
+    (** The kernel's judgement of `answer` as the formula of a state challenge ([LESSONS-STATE]). *)
+    export written (task, answer) = match Formulas::read answer
+        Faulted fault => Unfinished ("this does not read as a formula yet: expected " + fault.expected + " at column ${fault.column}")
+        Read formula => within (task, formula)
+
+    within (task, formula) = match listGet (filterList (Statements::atoms formula, \atom => !listContains (task.statedVariables, atom))) 0
+        Success stray => Incorrect (0 - 1) ("`" + stray + "` is not one of " + join (task.statedVariables, ", "))
+        Error _ => expecting (task, formula)
+
+    expecting (task, formula) = match Formulas::read task.statedExpected
+        Faulted _ => Unfinished "the lesson's expected formula does not read"
+        Read expected => compared (task.statedVariables, formula, expected)
+
+    closed (names, formula) = Closing::close (Propositions::props (names, Propositions::of formula), [])
+
+    compared (names, formula, expected) = match Preludes::build ()
+        Refused message => Unfinished ("the prelude was refused: " + message)
+        Admitted env => sorted (env, closed (names, formula), closed (names, expected))
+
+    sorted (env, answer, expected) = match Infer::sort (env, [], answer)
+        Error message => Incorrect (0 - 1) ("The kernel does not accept this as a proposition: " + message)
+        Success _ => match Reduce::defeq (env, answer, expected)
+            true => Correct "Right. The kernel finds it the same proposition."
+            false => Incorrect (0 - 1) "The kernel finds a different proposition. It may be equivalent, but it is not the one asked for."

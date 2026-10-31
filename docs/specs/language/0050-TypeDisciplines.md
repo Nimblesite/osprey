@@ -1,6 +1,6 @@
 # Pluggable type disciplines [TYPES-DISCIPLINE]
 
-**Status:** normative target; **no implementation started.** Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), phase 1. First consumer: the `lean4` discipline of [spec 0049](0049-DependentTypesAndProofs.md). This contract stands on its own: it is the mechanism by which any type system other than Hindley-Milner checks an Osprey module, and it is complete before any such system exists.
+**Status:** normative target; **implemented and gated except where marked** (plan 0041, phase 1: the marker, the registry, the checker process with one deadline over build, spawn, request and response, protocol version 2 with imported signatures and `omitted[]`, keyed binary and result caches, erasure ascribed to the written signature, and the `passthrough` and `bounded` reference disciplines under GC, ARC and wasm32 in `make _test_disciplines`; open: exported types and values rendered in an inferred `hm` signature, which today are named in `omitted[]`, the markerless byte-identity gate, and the theory-evolution delivery target below). Delivery: [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), phase 1. First consumer: the `lean4` discipline of [spec 0049](0049-DependentTypesAndProofs.md). This contract stands on its own: it is the mechanism by which any type system other than Hindley-Milner checks an Osprey module, and it is complete before any such system exists.
 
 ## Aim [TYPES-DISCIPLINE-AIM]
 
@@ -26,6 +26,16 @@ The compiler ships one discipline and knows the shape of all of them:
 
 `hm` is not special-cased anywhere except that it has no process boundary and no erasure step; it is the identity discipline.
 
+## Theory identity and correction [TYPES-DISCIPLINE-EVOLUTION]
+
+This is a delivery target, expanded in [plan 0041 milestone 2](../../plans/0041-dependent-types-and-mathlib.md#milestone-2-replace-and-fork-disciplines-safely-proof-completion-disciplines). The generic seam is implemented; the complete identity, fork and invalidation acceptance described here remains required evidence.
+
+A discipline can be replaced or forked through the registry without embedding its theory in the compiler. Its artifact identity includes package/version, checker binary, rule revision, axiom policy and dependency signatures. Changes invalidate affected caches and proof receipts transitively. Rebuilding under a different discipline must actually recheck the module; an old Checked result cannot be relabelled or reused across incompatible identities.
+
+A checker implementation fix, an axiom-policy change and a change of logical rules are distinct events. The latter two require explicit profiles or separately named forks, with recorded migration results and fresh validation. Proofs using a withdrawn assumption remain unavailable until reconstructed. Cross-discipline proof use needs a checked translation or an explicit interface contract; the HM boundary does not transfer unexpressed guarantees.
+
+Lean is the reference oracle for the first compatible theory, not a mandatory dependency of every discipline or an authority that overrides Osprey's soundness rules. Known unsound oracle behaviour must have a rejection regression. Every fork documents its intended rules and assumptions; switching disciplines is a correction mechanism, not evidence by itself that a theory is consistent. See the [proof messaging contract](../../messaging.md#proof-development-and-the-lean-oracle).
+
 ## Registry [TYPES-DISCIPLINE-REGISTRY]
 
 A discipline is a package ([spec 0029](../ecosystem/0029-PackageManagement.md)) whose manifest declares one table:
@@ -36,10 +46,11 @@ name = "@osprey/lean4"
 
 [discipline]
 name = "lean4"                   # the word after `types=`
-checker = "src/checker.ospml"    # an Osprey program with `main`
+checker = "src"                  # an Osprey program: one source file, or a project directory
+                                 # with its own osprey.toml whose entry is the checker
 ```
 
-- The compiler holds no list of discipline names, no knowledge of any theory, and no code that runs only for one discipline. A CI test greps `crates/` for every registered discipline name and for the words `kernel`, `tactic`, `theorem` and `refinement`, and fails on a hit outside test fixtures.
+- The compiler holds no list of discipline names, no knowledge of any theory, and no code that runs only for one discipline. A CI test (`crates/osprey-project/tests/discipline_purity.rs`) scans the code under `crates/` for every registered discipline name in a string literal and for the words `tactic`, `theorem`, `refinement` and `lean4` anywhere, and fails on a hit outside comments and test modules. `kernel` is not searched because it is the keyword of the `kernel` handler region of spec 0035 and names the GPU pipeline throughout; the proof kernel lives under `examples/`, never under `crates/`.
 - A project uses a discipline by listing its package under `[dependencies]`; nothing else is configured. Two dependencies registering the same `name` is a `discipline-error` at project load, naming both packages.
 - The checker program is built once by the ordinary build pipeline, under the project's memory backend, and cached beside the package by content hash. A discipline is therefore itself an Osprey program under every rule of the language: no panics, typed `Result`, both backends, wasm32 where the package claims it.
 

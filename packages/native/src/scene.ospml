@@ -3,6 +3,118 @@
 // application owns every position, colour and rule; the host owns pixels.
 namespace ui
 
+(** One drawn shape of a scene in the scene's unit space: a position, a size, a rotation in radians, a packed `0xRRGGBBAA` colour and the layer it sits on, lower layers first ([UI-SCENE]). A sprite names its image by index into the scene's atlas. *)
+type Primitive =
+    Rect
+        x : float
+        y : float
+        w : float
+        h : float
+        angle : float
+        color : int
+        depth : int
+    Disc
+        x : float
+        y : float
+        radius : float
+        color : int
+        depth : int
+    Strip
+        points : List<float>
+        color : int
+        stroke : float
+        depth : int
+    Sprite
+        sprite : int
+        x : float
+        y : float
+        w : float
+        h : float
+        angle : float
+        color : int
+        depth : int
+    Glyphs
+        glyphs : string
+        x : float
+        y : float
+        size : float
+        color : int
+        depth : int
+    Path
+        steps : List<PathStep>
+        outline : Outline
+        paint : Paint
+        moveX : float
+        moveY : float
+        scale : float
+        depth : int
+
+(** A colour with float channels from 0 to 1, as sRGB or as hue, saturation and lightness, so a host keeps the exact value. *)
+type Tint =
+    Rgb
+        red : float
+        green : float
+        blue : float
+        alpha : float
+    Hsl
+        hue : float
+        saturation : float
+        lightness : float
+        opacity : float
+
+(** One drawing command of a path, in the order a path builder receives it; curves name their end point first. *)
+type PathStep =
+    MoveTo
+        toX : float
+        toY : float
+    LineTo
+        toX : float
+        toY : float
+    CurveTo
+        toX : float
+        toY : float
+        ctrlX : float
+        ctrlY : float
+    CubicTo
+        toX : float
+        toY : float
+        ctrlAX : float
+        ctrlAY : float
+        ctrlBX : float
+        ctrlBY : float
+    ArcTo
+        radiusX : float
+        radiusY : float
+        rotation : float
+        large : bool
+        sweep : bool
+        toX : float
+        toY : float
+    Polygon
+        corners : List<float>
+        closed : bool
+    Close
+
+(** Whether a path is filled or drawn as a line; a line has a width, an optional dash pattern and bevel or miter joins. `Fill` and `Line` are spelled apart from the button role `Filled` and the board message `Stroked`, because one namespace cannot declare two constructors of one name. *)
+type Outline =
+    Fill
+    Line
+        width : float
+        dashes : List<float>
+        bevel : bool
+
+(** A solid tint or a two-stop linear gradient; `angle` is in degrees and the stops are fractions along it. *)
+type Paint =
+    Solid
+        tint : Tint
+    Linear
+        angle : float
+        from : Tint
+        fromAt : float
+        to : Tint
+        toAt : float
+        oklab : bool
+
 (** Builds scene primitives and packs their colours ([UI-SCENE]). Positions and sizes are in the scene's unit space, angles in radians, colours `0xRRGGBBAA`, and `depth` orders layers from the back. *)
 module Scenes
     (** A filled rectangle centred on `x`, `y`, rotated by `angle`. *)
@@ -20,7 +132,7 @@ module Scenes
     (** `text` with its baseline starting at `x`, `y`, `size` units tall. *)
     export glyphs (text, x, y, size, color, depth) = Glyphs(glyphs = text, x = x, y = y, size = size, color = color, depth = depth)
 
-    (** A filled or stroked path built from `steps`, painted with `paint`, with no transform. *)
+    (** A filled (`Fill`) or line-drawn (`Line`) path built from `steps`, painted with `paint`, with no transform. *)
     export path (steps, outline, paint, depth) = Path(steps = steps, outline = outline, paint = paint, moveX = 0.0, moveY = 0.0, scale = 1.0, depth = depth)
 
     (** A path translated by `moveX`, `moveY` and then scaled by `scale`, as the host's path builder applies them. *)

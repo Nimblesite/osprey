@@ -1,0 +1,399 @@
+// Implements [WORKBENCH-REGIONS] and [LESSONS-MODE]: the Work regions. Each
+// view reads only the slices it shows, so a keystroke in the document
+// re-sends `document`, `goal` and `generated` and nothing else.
+namespace workbench
+
+import ui::Ui
+import ui::Frames
+    plain
+    text
+import workbench::Statements
+import workbench::Steps
+import workbench::Goals
+import workbench::Formulas
+import workbench::Emit
+import workbench::Reviews
+import workbench::Lists
+import workbench::Notation
+import workbench::Drafts
+import workbench::ProofLibraries
+import workbench::Palettes
+
+(** The Work regions of [WORKBENCH-REGIONS] and the root that holds every region. *)
+module WorkViews
+    export draft () = perform Signal<Draft>.read ()
+
+    export layout () = perform Signal<Layout>.read ()
+
+    shelf () = perform Signal<Shelf>.read ()
+
+    working mode = match mode
+        Working => true
+        Learning => false
+        ReadingPage => false
+
+    picked on = match on
+        true => ui::Prominent
+        false => ui::Plain
+
+    (** [WORKBENCH-REGIONS] [LESSONS-MODE] The Work and Learn segment over the surface the mode shows. *)
+    export root () =
+        current = layout ()
+        Ui::themed (palette current, Ui::framed (plain(frameName = "workbench", frameGrow = true, frameFill = "canvas"), Ui::column [Ui::framed (plain(frameHeight = 75), Ui::slot "heading"), ui::Divider, navigation current, ui::Divider, contextBar current, operationNotice current, surface current, footer ()]))
+
+    palette current = match current.slate
+        true => Palettes::chalk
+        false => Palettes::initial ()
+
+    export header () = Ui::framed (plain(frameName = "app-header", frameControlPadding = 12, frameAlign = "center", frameControlHeight = 40, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 75, frameLeft = 36, frameRight = 36), Ui::row [wordmark (), ui::Spacer, Ui::framed (plain(frameName = "document-name", frameHeight = 42, frameGap = 6, frameHug = true, frameAlign = "center"), Ui::column [Ui::caption (documentTitle (draft ())), Ui::caption (documentStatus (perform Signal<Reviewed>.read ()).checks)]), ui::Spacer, headerActions (layout ())])
+
+    headerActions current = Ui::framed (plain(frameName = "header-actions", frameGap = 9, frameHug = true, frameAlign = "center"), Ui::row [Ui::button ("Play walkthrough", "play.fill", ToLearn), sizedIconButton ("Switch appearance", appearanceSymbol current, ToggleTheme, 40, 40), sizedIconButton ("Open workspace", "folder.open", OpenWorkspace, 44, 38), Ui::framed (plain(frameWidth = 82, frameHeight = 38, frameFont = "sans", frameTextSize = 12, frameLine = "outline", frameRadius = 5, frameQuietControls = true, frameControlHeight = 38), Ui::button ("Save", "square.and.arrow.down", SaveWorkspace))])
+
+    appearanceSymbol current = match current.slate
+        true => "sun.max"
+        false => "moon"
+
+    export letter (family, size, italic, content, role, tone) = Ui::framed (text (family, size, italic), Ui::styled (content, role, tone))
+
+    iconButton (label, symbol, action) = sizedIconButton (label, symbol, action, 38, 38)
+
+    sizedIconButton (label, symbol, action, width, height) = Ui::framed (plain(frameHug = true, frameWidth = width, frameHeight = height, frameIconOnly = true, frameQuietControls = true, frameControlHeight = height, frameAlign = "center"), Ui::button (label, symbol, action))
+
+    export documentSize (full, rail) = match (layout ()).mode
+        Working => match (layout ()).paperFirst
+            true => full
+            false => rail
+        _ => full
+
+    proofTitleSize () = match (layout ()).generatedOpen
+        true => 31
+        false => documentSize (44, 29)
+
+    claimSize () = match (layout ()).generatedOpen
+        true => 34
+        false => documentSize (44, 27)
+
+    wordmark () = Ui::framed (plain(frameName = "wordmark", frameGap = 10, frameTracking = -0.6, frameHug = true, frameAlign = "center"), Ui::row [letter ("serif", 27, true, "Proof", ui::Callout, ui::Primary), letter ("serif", 27, false, "Workbench", ui::Title, ui::Primary)])
+
+    documentTitle source = match listGet (Statements::document source.draftText) 0
+        Success found => proofTitle found.statement
+        Error _ => source.draftTitle
+
+    documentStatus checks = match isEmpty checks
+        true => "Your working · unchecked"
+        false => match isEmpty (filterList (checks, \check => check.checkTone != "checked"))
+            true => "Every statement checked by the kernel"
+            false => "Contains unchecked or refused statements"
+
+    navigation current = Ui::framed (plain(frameName = "workspace-nav", frameControlPadding = 17, frameAlign = "center", frameControlHeight = 40, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 59, frameLeft = 36, frameRight = 36, frameGap = 8), Ui::row [Ui::action ("Proof", "book", picked (working current.mode), true, ToPaper), Ui::action ("Read", "book", picked (reading current.mode), true, ToRead), ui::Spacer, Ui::button ("Notation", "textformat", ToggleLibrary), Ui::button ("Examples", "magnifyingglass", ToLearn), Ui::action ("Source", "chevron.left.forwardslash.chevron.right", picked current.generatedOpen, true, ToggleGenerated)])
+
+    contextBar current = match current.guided
+        false => Ui::column []
+        true => Ui::framed (plain(frameName = "example-context", frameControlPadding = 0, frameHeight = 45, frameLeft = 32, frameRight = 32, frameAlign = "center", frameGap = 18, frameFont = "sans", frameTextSize = 13, frameQuietControls = true, frameControlHeight = 38, frameLine = "divider", frameLineEdge = "bottom"), Ui::row [Ui::framed (plain(frameInk = "accent", frameHug = true), Ui::button ("Return to working", "arrow.left", LeaveExample)), Ui::framed (plain(frameWidth = 1, frameHeight = 18, frameFill = "divider"), Ui::column []), Ui::caption "Guided example"])
+
+    operationNotice current = match isEmpty current.noticeText
+        true => Ui::column []
+        false => Ui::framed (plain(frameName = "operation-notice", frameTop = 12, frameRight = 24, frameBottom = 12, frameLeft = 24), Ui::row [Ui::styled (current.noticeText, ui::Body, noticeTone current.noticeBad), ui::Spacer, iconButton ("Dismiss message", "xmark", DismissNotice)])
+
+    noticeTone bad = match bad
+        true => ui::Danger
+        false => ui::Secondary
+
+    reading mode = match mode
+        ReadingPage => true
+        _ => false
+
+    footer () = Ui::framed (plain(frameName = "app-footer", frameAlign = "center", frameFont = "sans", frameTextSize = 11, frameHeight = 43, frameLine = "divider", frameLineEdge = "top", frameLeft = 26, frameRight = 26), Ui::row [Ui::caption "Your working stays yours. Checked proofs are marked by the kernel.", ui::Spacer, Ui::link ("Built with Osprey", "https://ospreylang.dev/")])
+
+    about () = Ui::section ("Built with Osprey", "Explore the language behind the workbench.", [Ui::image ("osprey-logo.png", "Osprey", 64, 64), Ui::link ("Osprey website", "https://ospreylang.dev/"), Ui::link ("Language documentation", "https://ospreylang.dev/docs/"), Ui::link ("Workbench source", "https://github.com/Nimblesite/osprey/tree/main/apps/workbench")])
+
+    surface current = match inspectingLibrary current
+        true => librarySurface ()
+        false => ordinarySurface current
+
+    inspectingLibrary current =
+        imported = perform Signal<ImportedState>.read ()
+        working current.mode && current.libraryOpen && (!isEmpty imported.exportText || imported.exportLarge)
+
+    // Imported mathematics keeps its identity and readable size outside the narrow working margin.
+    librarySurface () = Ui::framed (plain(frameName = "proof-library-inspection", frameGrow = true, frameTop = 32, frameRight = 32, frameBottom = 40, frameLeft = 32, frameGap = 24), Ui::column [Ui::framed (plain(frameHug = true), Ui::button ("Close proof library", "arrow.left", ToggleLibrary)), Ui::slot "library"])
+
+    ordinarySurface current = match current.mode
+        Learning => Ui::framed (plain(frameName = "lesson-page", frameTop = 32, frameRight = 32, frameBottom = 48, frameLeft = 32, frameGap = 24), learned ())
+        Working => worked current
+        ReadingPage => Ui::framed (plain(frameName = "reading-page", frameCross = "center", frameFill = "inset", frameTop = 60, frameBottom = 80, frameGrow = true), Ui::framed (plain(frameName = "reading-sheet", frameWidth = 900, frameTop = 60, frameRight = 84, frameBottom = 60, frameLeft = 84, frameFill = "canvas", frameLine = "divider"), Ui::slot "document"))
+
+    previewFine (inset, content) = Ui::framed (plain(frameTop = inset, frameFont = "sans", frameTextSize = 13, frameLineHeight = 22.75), Ui::caption content)
+
+    outlinedIcon (label, action, size, radius) = Ui::framed (plain(frameWidth = size, frameHeight = size, frameRadius = radius, frameLine = "accent", frameIconOnly = true, frameQuietControls = true, frameControlHeight = satSub size 2, frameFont = "sans", frameTextSize = 18, frameAlign = "center"), Ui::button (label, "xmark", action))
+
+    learned () = match isEmpty (shelf ()).openSlug
+        true => Ui::slot "catalogue"
+        false => Ui::slot "lesson"
+
+    worked current = match current.generatedOpen
+        false => paperSurface current
+        true => Ui::framed (plain(frameName = "source-layout", frameGrow = true, frameTop = 32, frameRight = 32, frameGap = 28), Ui::row [Ui::framed (plain(frameGrow = true), paperSurface current), sourcePanel ()])
+
+    sourcePanel () = Ui::framed (plain(frameName = "source-panel", frameWidth = 440, frameLine = "divider", frameLineEdge = "left", frameFill = "inset"), Ui::layer [sourceBody (), Ui::framed (plain(frameTop = 12, frameRight = 12, frameCross = "end"), outlinedIcon ("Close source", ToggleGenerated, 32, 5))])
+
+    sourceBody () = Ui::framed (plain(frameTop = 24, frameRight = 16, frameBottom = 24, frameLeft = 16, frameGap = 0), Ui::column [sourcePart (0, sourceHeading ()), sourcePart (16, previewFine (0, "Generated proof source · read only")), Ui::framed (plain(frameTop = 20), Ui::slot "generated"), sourcePart (20, previewFine (0, "This is the generated source for your document. You never need to edit it.")), sourcePart (20, sourceExport ())])
+
+    sourcePart (top, content) = Ui::framed (plain(frameTop = top, frameLeft = 8, frameRight = 8), content)
+
+    sourceHeading () = Ui::framed (plain(frameName = "source-heading", frameHeight = 36, frameTop = 6, frameLineHeight = 30.0, frameGap = 16, frameAlign = "center"), Ui::row [Ui::framed (plain(frameWidth = 18, frameFont = "sans", frameTextSize = 16, frameInk = "accent"), Ui::icon "chevron.left.forwardslash.chevron.right"), letter ("serif", 24, false, "Behind the mathematics", ui::Heading, ui::Primary)])
+
+    sourceExport () = Ui::framed (plain(frameName = "source-export", frameHug = true, frameHeight = 37, frameControlHeight = 35, frameControlPadding = 12, frameQuietControls = true, frameLine = "outline", frameRadius = 4, frameFont = "sans", frameTextSize = 13), Ui::button ("Export generated source", "", ExportSource))
+
+    paperSurface current = match current.generatedOpen
+        false => Ui::framed (plain(frameTop = 40, frameRight = 84, frameBottom = 60, frameLeft = 84, frameName = "paper-document", frameGrow = true), Ui::aside (Ui::framed (plain(frameRight = 48), Ui::slot "document"), ui::Trailing, goalMargin (32, current), librarySideWidth (current, 270, 430), Widen))
+        true => Ui::framed (plain(frameLeft = 32, frameBottom = 60, frameName = "paper-document", frameGrow = true), sourceManuscript current)
+
+    librarySideWidth (current, ordinary, library) = match current.libraryOpen
+        true => library
+        false => ordinary
+
+    sourceManuscript current = Ui::framed (plain(frameName = "source-manuscript"), Ui::boundedAside (Ui::framed (plain(frameRight = 24), Ui::slot "document"), ui::Trailing, goalMargin (20, current), librarySideWidth (current, 180, 430), librarySideWidth (current, 160, 360), librarySideWidth (current, 320, 640), 360, Widen))
+
+    goalMargin (inset, current) = Ui::framed (plain(frameTop = 8, frameLeft = inset, frameName = "goal-margin", frameGap = 24), Ui::column (panes current))
+
+    panes current = match current.libraryOpen
+        true => [Ui::slot "library"]
+        false => visible (current.goalOpen, Ui::slot "goal")
+
+    visible (on, node) = match on
+        true => [node]
+        false => []
+
+    toneOf tone = match tone
+        "checked" => ui::Good
+        "rejected" => ui::Danger
+        _ => ui::Caution
+
+    badgeOf tone = match tone
+        "checked" => "Checked"
+        "rejected" => "Refused"
+        _ => "Unchecked"
+
+    rowOf check = match check.checkLine < 0
+        true => check.checkHead
+        false => check.checkLine
+
+    marked check = Ui::mark (satAdd (rowOf check) 1, check.checkLine >= 0, toneOf check.checkTone, badgeOf check.checkTone, check.checkNote)
+
+    (** [WORKBENCH-VERDICT] The document as an editor, each declaration marked with the kernel's verdict on its line. *)
+    export document () =
+        text = draft ()
+        reading = match (layout ()).mode
+            ReadingPage => true
+            _ => false
+        match listGet (Statements::document text.draftText) 0
+            Success found => match isEmpty found.problems && length (Statements::document text.draftText) == 1
+                true => proofDocument (text, found, reading)
+                false => writtenDocument (text, reading)
+            Error _ => writtenDocument (text, reading)
+
+    writtenDocument (text, reading) = match reading
+        false => solutionDocument text
+        true => Ui::framed (plain(frameName = "solution-reading", frameGap = 24), Ui::column [Ui::styled ("YOUR SOLUTION", ui::Eyebrow, ui::Secondary), Ui::styled (text.draftTitle, ui::Display, ui::Primary), Ui::badge ("Unchecked", "", ui::Secondary), Ui::styled (text.draftText, ui::Lead, ui::Primary)])
+
+    solutionDocument text = Ui::framed (plain(frameName = "solution", frameGap = 24), Ui::column [Ui::styled ("YOUR SOLUTION", ui::Eyebrow, ui::Secondary), Ui::framed (plain(frameName = "solution-title"), Ui::field ("Solution title", text.draftTitle, "Untitled solution", Rename)), Ui::row [Ui::badge ("Unchecked", "", ui::Secondary), Ui::caption "Free-form working"], Ui::framed (plain(frameName = "solution-editor", frameHeight = 360, frameLine = "divider", frameRadius = 3), Ui::editor ("Argument & calculations", text.draftText, text.caret, mapList ((perform Signal<Reviewed>.read ()).checks, \check => marked check), Edit, Place)), Ui::caption "Your written working stays as you left it."])
+
+    proofTitle statement = match statement.name == "and_swap"
+        true => "Commutativity of conjunction"
+        false => replace statement.name "_" " " ?: statement.name
+
+    proofDocument (text, found, reading) = Ui::framed (plain(frameName = "proof-document", frameGap = 0), Ui::column [Ui::framed (plain(frameFont = "sans", frameTextSize = 12, frameLineHeight = 18.0), Ui::styled ("A FIRST ARGUMENT · PROPOSITIONAL LOGIC", ui::Eyebrow, ui::Secondary)), Ui::framed (plain(frameTop = 18, frameLineHeight = titleLeading (), frameTracking = titleTracking ()), letter ("serif", proofTitleSize (), false, displayTitle found.statement, ui::Display, ui::Primary)), Ui::framed (plain(frameTop = 20, frameFont = "sans", frameTextSize = 13, frameLineHeight = 22.75, frameGap = 10), proofVerdict ()), Ui::framed (plain(frameTop = 28), statementProse ("For all propositions " + join (found.statement.variables, " and ") + ".", found.statement.variables)), Ui::framed (plain(frameName = "claim", frameTop = claimTop (), frameCross = "center", frameTextSize = claimSize (), frameMathScale = 1.08), shown found.statement.claim), Ui::framed (plain(frameName = "proof-heading", frameTop = claimBottom (), frameLineHeight = documentSize (35.0, 28.75)), letter ("serif", documentSize (28, 23), true, "Proof.", ui::Heading, ui::Primary)), Ui::framed (plain(frameTop = 10), proofBody (text, found, reading))])
+
+    displayTitle statement = match statement.name == "and_swap" && !(layout ()).paperFirst && working (layout ()).mode
+        true => "Commutativity\nof conjunction"
+        false => proofTitle statement
+
+    titleLeading () = match (layout ()).generatedOpen
+        true => 34.72
+        false => match (layout ()).paperFirst
+            true => 49.28
+            false => 32.48
+
+    titleTracking () = match (layout ()).paperFirst
+        true => -1.0
+        false => -0.5
+
+    claimTop () = documentSize (24, 25)
+
+    claimBottom () = documentSize (34, 25)
+
+    statementProse (content, names) = Ui::framed (plain(frameName = "statement", frameFont = "serif", frameTextSize = documentSize (23, 18), frameLineHeight = statementLeading ()), proseText (content, names))
+
+    statementLeading () = match (layout ()).paperFirst
+        true => 29.0
+        false => 23.0
+
+    proofBody (text, found, reading) = match reading
+        false => proofRows (text, found)
+        true => Ui::column (mapList (toList (range (0, length (Steps::sentences found.proof))), \index => proofRow (Steps::sentences found.proof, index)))
+
+    proofVerdict () = match listGet (perform Signal<Reviewed>.read ()).checks 0
+        Success check => Ui::row [Ui::badge (badgeOf check.checkTone, "", toneOf check.checkTone), Ui::caption check.checkNote]
+        Error _ => Ui::badge ("Unchecked", "", ui::Secondary)
+
+    proofRows (draft, found) =
+        sentences = Steps::sentences found.proof
+        result = Goals::run (found.statement, mapList (sentences, \sentence => Steps::read sentence))
+        count = visibleRows (draft, sentences, result)
+        selected = match draft.selectedStep >= 0
+            true => draft.selectedStep
+            false => satSub count 1
+        Ui::framed (plain(frameName = "proof-rows", frameGap = 0, frameFlatRows = true), Ui::column [Ui::rows (mapList (toList (range (0, count)), \index => Ui::item (toString index, proofRow (sentences, index))), toString selected, SelectStep), stepEntry (draft, result), initialStepHelp (draft, found), outcome result])
+
+    export complete result = match result
+        Advanced progress => isEmpty progress.open
+        _ => false
+
+    visibleRows (draft, sentences, result) = match complete result || draft.selectedStep >= 0
+        true => length sentences
+        false => satSub (length sentences) (unfinished (Drafts::editableText draft))
+
+    stepEntry (draft, result) = match complete result && draft.selectedStep < 0
+        true => Ui::framed (plain(frameName = "proof-completion", frameTop = 0, frameGap = 0, frameFont = "sans", frameTextSize = 13, frameLineHeight = 16.0), Ui::column [Ui::framed (plain(frameHug = true, frameInk = "accent", frameControlHeight = 34, frameTrailingSymbols = true, frameQuietControls = true, frameControlPadding = 0), Ui::button ("Start the example again", "arrow.right", RestartExample)), Ui::framed (plain(frameTop = 24), ui::Divider), Ui::framed (plain(frameTop = 16), Ui::caption "Draft goals complete. The kernel verdict is shown above.")])
+        false => Ui::framed (plain(frameTop = 0), Ui::framed (plain(frameName = "proof-step-editor", frameFont = "serif", frameTextSize = documentSize (24, 18), frameHeight = documentSize (56, 49), frameFill = entryFill result, frameLine = entryLine result, frameLineEdge = "bottom", frameLeft = 9, frameRight = 8, frameGap = 7, frameRadius = 3, frameAlign = "center"), Ui::row [Ui::framed (plain(frameWidth = 22, frameFont = "sans", frameTextSize = 13), Ui::caption (entryNumber draft)), Ui::inlineEditor ("Write the next step…", Drafts::editableText draft, Drafts::entryCaret draft, StepEdit, StepPlace), iconButton ("Continue proof", "arrow.right", NextProofLine)]))
+
+    initialStepHelp (draft, found) = match (layout ()).guided && draft.selectedStep < 0 && isEmpty (Steps::sentences found.proof) && Formulas::show found.statement.claim == "p ∧ q → q ∧ p"
+        false => Ui::column []
+        true => Ui::framed (plain(frameName = "proof-step-help", frameHeight = 50, frameAlign = "center", frameFont = "sans", frameTextSize = 12, frameControlHeight = 30, frameControlPadding = 5, frameQuietControls = true), Ui::row [Ui::caption ("Try “" + Drafts::exampleAssumption () + "”"), ui::Spacer, Ui::framed (plain(frameHug = true, frameInk = "accent"), Ui::button ("Insert example", "", InsertExample))])
+
+    entryNumber draft = match draft.selectedStep >= 0
+        true => toString (satAdd draft.selectedStep 1)
+        false => toString (satAdd (sentenceCount draft.draftText) (emptyEntry (Drafts::editableText draft)))
+
+    sentenceCount source = match listGet (Statements::document source) 0
+        Success found => length (Steps::sentences found.proof)
+        Error _ => 0
+
+    emptyEntry content = match isEmpty content
+        true => 1
+        false => 0
+
+    entryFill result = match result
+        Stuck _ => "dangerSurface"
+        UnsupportedStep _ _ => "inset"
+        _ => "selection"
+
+    entryLine result = match result
+        Stuck _ => "danger"
+        UnsupportedStep _ _ => "caution"
+        _ => "accent"
+
+    unfinished text = match isEmpty (trim text)
+        true => 0
+        false => 1
+
+    proofRow (sentences, index) = Ui::framed (plain(frameName = "proof-step", frameAlign = "baseline", frameTop = 7, frameRight = 8, frameBottom = 7, frameLeft = 8, frameGap = 22), Ui::row [Ui::framed (plain(frameWidth = 16, frameFont = "sans", frameTextSize = 13, frameLineHeight = 16.0), Ui::caption "${satAdd index 1}"), prose (listGet sentences index ?: "", ["p", "q", "h", "hp", "hq"])])
+
+    prose (content, names) = Ui::framed (plain(frameFont = "serif", frameTextSize = proseSize (), frameLineHeight = proseLeading ()), proseText (content, names))
+
+    proseText (content, names) = Ui::rich (mapList (proseParts content, \word => Ui::run (word, "", italicWord (word, names))), ui::Lead)
+
+    proseLeading () = match (layout ()).generatedOpen
+        true => 31.5
+        false => match (layout ()).paperFirst
+            true => 36.0
+            false => 27.0
+
+    proseSize () = match (layout ()).generatedOpen
+        true => 21
+        false => documentSize (24, 18)
+
+    proseParts content =
+        words = split (content, " ") ?: [content]
+        mapList (toList (range (0, length words)), \index => proseWord (words, index))
+
+    proseWord (words, index) = beforeWord index + (listGet words index ?: "")
+
+    beforeWord index = match index == 0
+        true => ""
+        false => " "
+
+    italicWord (word, names) = listContains (names, trim (replace (replace word "." "" ?: word) ":" "" ?: word))
+
+    export shown formula = Ui::math (Formulas::typeset formula, Formulas::show formula)
+
+    outcome found = match found
+        Stuck failure => match failure
+            Mismatch mismatch => Ui::framed (plain(frameName = "mismatch-feedback", frameTop = 12, frameRight = 18, frameBottom = 12, frameLeft = 18, frameGap = 12), Ui::column [Ui::styled ("The goal and this step differ.", ui::Body, ui::Danger), Ui::caption mismatch.reason, Ui::framed (plain(frameName = "goal-comparison", frameGap = 14), Ui::row [Ui::caption "Needed", shown mismatch.expected, Ui::caption "This step gives", shown mismatch.found])])
+            Inapplicable reason => Ui::framed (plain(frameName = "stopped-feedback", frameTop = 12, frameRight = 18, frameBottom = 12, frameLeft = 18, frameGap = 12), Ui::column [Ui::styled ("This step does not apply here.", ui::Body, ui::Danger), Ui::caption reason])
+        UnsupportedStep text _ => Ui::framed (plain(frameName = "unsupported-feedback", frameTop = 12, frameLeft = 18, frameBottom = 12, frameGap = 12), Ui::column [Ui::badge ("Wording not recognised", "text.bubble", ui::Secondary), Ui::text text, Ui::caption "This wording has not been checked. The goal is from the last understood step."])
+        Advanced _ => Ui::caption ""
+
+    proofs text = mapList (filterList (Statements::document text, \found => isEmpty found.problems), \found => Proof(statement = found.statement, steps = mapList (Steps::sentences found.proof, \sentence => Steps::read sentence)))
+
+    (** [WORKBENCH-EMIT] The generated Lean module, read only. *)
+    export generated () = match proofs (draft ()).draftText
+        [] => Ui::caption "Your free-form working is kept as written. No source is generated until a supported statement is recognised."
+        found => SourceViews::document (Emit::document found, mapList (found, \proof => proof.statement.name), sourceSelection found)
+
+    sourceSelection found = match listGet found 0
+        Error _ => -1
+        Success proof => match length found == 1
+            false => -1
+            true => Emit::lineAt (proof, sourceStep (draft (), proof))
+
+    sourceStep (draft, proof) = match draft.selectedStep >= 0
+        true => draft.selectedStep
+        false => satSub (length proof.steps) 1
+
+    rules () = [{ ruleName = "and_intro", ruleSays = "p → q → p ∧ q" }, { ruleName = "and_cases", ruleSays = "p ∧ q → (p → q → r) → r" }, { ruleName = "or_inl", ruleSays = "p → p ∨ q" }, { ruleName = "or_inr", ruleSays = "q → p ∨ q" }, { ruleName = "or_cases", ruleSays = "p ∨ q → (p → r) → (q → r) → r" }, { ruleName = "iff_intro", ruleSays = "(p → q) → (q → p) → (p ↔ q)" }, { ruleName = "absurd", ruleSays = "p → ¬p → r" }]
+
+    ruled item = match Formulas::read item.ruleSays
+        Read formula => Ui::row [Ui::styled (item.ruleName, ui::Mono, ui::Accent), shown formula]
+        Faulted _ => Ui::row [Ui::styled (item.ruleName, ui::Mono, ui::Accent), Ui::text item.ruleSays]
+
+    (** [WORKBENCH-REGIONS] The prelude's rules, which the kernel itself checked, and the symbol abbreviations, read only. *)
+    (** [WORKBENCH-REGIONS] The proof library's bundled libraries and file action. *)
+    export libraryActions () = ProofLibraries::actions (perform Signal<ImportedState>.read ())
+
+    export library () = Ui::column [ProofLibraries::pane (perform Signal<ImportedState>.read ()), Ui::section ("Rules", "Checked by the kernel when the workbench starts.", mapList (rules (), \item => ruled item)), Ui::section ("Typing symbols", "Type a backslash and the name.", mapList (Notation::table, \entry => Ui::caption ("\\" + entry.abbreviation + "  " + entry.symbol))), about ()]
+
+(** Read-only source colours are chosen beside the mathematical document, identically on every host. *)
+module SourceViews
+    export document (source, names, active) =
+        rows = lines source
+        Ui::framed (plain(frameName = "source-code", frameTop = 16, frameBottom = 16, frameLeft = 8, frameRight = 8, frameGap = 0, frameFont = "mono", frameTextSize = 14, frameLineHeight = 26.6), Ui::column (mapList (toList (range (0, length rows)), \index => numbered (index, listGet rows index ?: "", names, active))))
+
+    numbered (index, content, names, active) = Ui::framed (plain(frameName = "source-line", frameAlign = "baseline", frameGap = 0, frameFill = selectedFill (index == active), frameLine = selectedLine (index == active), frameLineEdge = "left"), Ui::row [Ui::framed (plain(frameWidth = 26, frameInk = "sourceComment", frameFont = "mono", frameTextSize = 11, frameLineHeight = 20.9), Ui::styled ("${satAdd index 1}", ui::Mono, ui::Secondary)), Ui::framed (plain(frameFont = "mono", frameTextSize = 14), line (content, names))])
+
+    selectedFill selected = match selected
+        true => "selection"
+        false => ""
+
+    selectedLine selected = match selected
+        true => "accent"
+        false => ""
+
+    line (content, names) = match isEmpty content
+        true => words ([" "], names)
+        false => match startsWith (trim content, "//") || startsWith (trim content, "--")
+            true => Ui::rich ([Ui::run (content, "sourceComment", true)], ui::Mono)
+            false => words (split (content, " ") ?: [content], names)
+
+    words (parts, names) = Ui::rich (mapList (toList (range (0, length parts)), \index => word (listGet parts index ?: "", index, names)), ui::Mono)
+
+    word (content, index, names) = Ui::run (spacing index + content, colour (content, names), false)
+
+    spacing index = match index == 0
+        true => ""
+        false => " "
+
+    member (items, text) = !isEmpty (filterList (items, \item => item == text))
+
+    colour (text, names) = match member (["namespace", "theorem", "by", "cases", "with", "constructor", "exact"], text)
+        true => "sourceKeyword"
+        false => otherColour (text, names)
+
+    otherColour (text, names) = match text == "sorry"
+        true => "danger"
+        false => match member (["Prop)", "Prop", ":=", "∧"], text)
+            true => "sourceType"
+            false => match member (names, text)
+                true => "sourceName"
+                false => "primary"

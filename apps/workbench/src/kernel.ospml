@@ -1,0 +1,123 @@
+// Implements [WORKBENCH-VERDICT]: the bridge to the proof kernel of spec 0049
+// ([PROOF-KERNEL-THEORY]). Formulas and steps become kernel terms over a
+// prelude the kernel itself checks; the kernel's answer is the verdict. The
+// connectives are their impredicative encodings in `Prop`, so the Pi fragment
+// of the kernel decides the whole propositional fragment of the workbench.
+namespace workbench
+
+import proof::Environment
+import proof::Infer
+
+(** A kernel term with names in place of de Bruijn indices. *)
+type Named = NVar string | NConst string | NApp Named Named | NLam string Named Named | NPi string Named Named | NProp
+
+(** One prelude constant before the kernel admits it: its name, statement and value, and whether it unfolds. *)
+type Constant =
+    title : string
+    statement : Named
+    value : Named
+    unfolds : bool
+
+(** The prelude environment, or the kernel's reason for refusing a prelude constant. *)
+type Prelude = Admitted proof::Env | Refused string
+
+(** Named terms to kernel terms. *)
+module Closing
+    (** The kernel term of `term` with the names of `scope` bound, innermost first; a free name becomes a constant the kernel reports as unknown. *)
+    export close (term, scope) = match term
+        NVar name => position (scope, name, 0)
+        NConst name => proof::Const name []
+        NApp head arg => proof::App (close (head, scope)) (close (arg, scope))
+        NLam name domain body => proof::Lam name (close (domain, scope)) (close (body, listPrepend (scope, name)))
+        NPi name domain body => proof::Pi name (close (domain, scope)) (close (body, listPrepend (scope, name)))
+        NProp => proof::Sort proof::Zero
+
+    position (scope, name, at) = match listGet scope at
+        Error _ => proof::Const name []
+        Success found => match found == name
+            true => proof::BVar at
+            false => position (scope, name, satAdd at 1)
+
+(** Formulas as kernel propositions, and the prelude that defines their connectives. *)
+module Propositions
+    // A non-dependent arrow binds a name no formula can spell.
+    (** `from → to` as a kernel Pi. *)
+    export arrow (from, to) = NPi "·" from to
+
+    (** `head` applied to each of `args` in order. *)
+    export apply (head, args) = foldList (args, head, \(done, arg) => NApp done arg)
+
+    (** The kernel proposition of `formula`. *)
+    export of formula = match formula
+        Var name => NVar name
+        Top => NConst "True"
+        Bot => NConst "False"
+        Not inner => apply (NConst "Not", [of inner])
+        And left right => apply (NConst "And", [of left, of right])
+        Or left right => apply (NConst "Or", [of left, of right])
+        Imp left right => arrow (of left, of right)
+        Iff left right => apply (NConst "Iff", [of left, of right])
+        Forall names inner => props (names, of inner)
+
+    (** `∀ (names : Prop), body`. *)
+    export props (names, body) = foldList (listReverse names, body, \(done, name) => NPi name NProp done)
+
+    (** `fun (names : Prop) => body`. *)
+    export lambdas (names, body) = foldList (listReverse names, body, \(done, name) => NLam name NProp done)
+
+    v name = NVar name
+
+    to3 (a, b, c) = arrow (a, arrow (b, c))
+
+    definitions () = [
+        Constant(title = "True", statement = NProp, value = props (["r"], arrow (v "r", v "r")), unfolds = true),
+        Constant(title = "False", statement = NProp, value = props (["r"], v "r"), unfolds = true),
+        Constant(title = "Not", statement = arrow (NProp, NProp), value = lambdas (["p"], arrow (v "p", NConst "False")), unfolds = true),
+        Constant(title = "And", statement = to3 (NProp, NProp, NProp), value = lambdas (["p", "q"], props (["r"], arrow (to3 (v "p", v "q", v "r"), v "r"))), unfolds = true),
+        Constant(title = "Or", statement = to3 (NProp, NProp, NProp), value = lambdas (["p", "q"], props (["r"], to3 (arrow (v "p", v "r"), arrow (v "q", v "r"), v "r"))), unfolds = true),
+        Constant(title = "Iff", statement = to3 (NProp, NProp, NProp), value = lambdas (["p", "q"], apply (NConst "And", [arrow (v "p", v "q"), arrow (v "q", v "p")])), unfolds = true),
+    ]
+
+    pq () = ["p", "q"]
+
+    pqr () = ["p", "q", "r"]
+
+    theorems () = [
+        Constant(title = "and_intro", statement = props (pq (), to3 (v "p", v "q", apply (NConst "And", [v "p", v "q"]))), value = lambdas (pq (), NLam "a" (v "p") (NLam "b" (v "q") (NLam "r" NProp (NLam "k" (to3 (v "p", v "q", v "r")) (apply (v "k", [v "a", v "b"])))))), unfolds = false),
+        Constant(title = "and_cases", statement = props (pqr (), to3 (apply (NConst "And", [v "p", v "q"]), to3 (v "p", v "q", v "r"), v "r")), value = lambdas (pqr (), NLam "h" (apply (NConst "And", [v "p", v "q"])) (NLam "k" (to3 (v "p", v "q", v "r")) (apply (v "h", [v "r", v "k"])))), unfolds = false),
+        Constant(title = "or_inl", statement = props (pq (), arrow (v "p", apply (NConst "Or", [v "p", v "q"]))), value = lambdas (pq (), NLam "a" (v "p") (NLam "r" NProp (NLam "f" (arrow (v "p", v "r")) (NLam "g" (arrow (v "q", v "r")) (NApp (v "f") (v "a")))))), unfolds = false),
+        Constant(title = "or_inr", statement = props (pq (), arrow (v "q", apply (NConst "Or", [v "p", v "q"]))), value = lambdas (pq (), NLam "b" (v "q") (NLam "r" NProp (NLam "f" (arrow (v "p", v "r")) (NLam "g" (arrow (v "q", v "r")) (NApp (v "g") (v "b")))))), unfolds = false),
+        Constant(title = "or_cases", statement = props (pqr (), to3 (apply (NConst "Or", [v "p", v "q"]), arrow (v "p", v "r"), arrow (arrow (v "q", v "r"), v "r"))), value = lambdas (pqr (), NLam "h" (apply (NConst "Or", [v "p", v "q"])) (NLam "f" (arrow (v "p", v "r")) (NLam "g" (arrow (v "q", v "r")) (apply (v "h", [v "r", v "f", v "g"]))))), unfolds = false),
+        Constant(title = "iff_intro", statement = props (pq (), to3 (arrow (v "p", v "q"), arrow (v "q", v "p"), apply (NConst "Iff", [v "p", v "q"]))), value = lambdas (pq (), NLam "a" (arrow (v "p", v "q")) (NLam "b" (arrow (v "q", v "p")) (apply (NConst "and_intro", [arrow (v "p", v "q"), arrow (v "q", v "p"), v "a", v "b"])))), unfolds = false),
+        Constant(title = "absurd", statement = props (["p", "r"], to3 (v "p", apply (NConst "Not", [v "p"]), v "r")), value = lambdas (["p", "r"], NLam "a" (v "p") (NLam "n" (apply (NConst "Not", [v "p"])) (apply (v "n", [v "a", v "r"])))), unfolds = false),
+    ]
+
+    (** Every prelude constant in the order the kernel admits them: the connectives, then their rules. *)
+    export constants () = listConcat (definitions (), theorems ())
+
+(** The prelude environment, every constant admitted by the kernel's own checks. *)
+module Preludes
+    body constant = match constant.unfolds
+        true => proof::Definition (Closing::close (constant.value, []))
+        false => proof::Theorem (Closing::close (constant.value, []))
+
+    admit (env, constant) =
+        statement = Closing::close (constant.statement, [])
+        match Infer::sort (env, [], statement)
+            Error message => Refused ("`" + constant.title + "`: " + message)
+            Success _ => checked (env, constant, statement)
+
+    checked (env, constant, statement) = match Infer::check (env, [], Closing::close (constant.value, []), statement)
+        Error message => Refused ("`" + constant.title + "`: " + message)
+        Success _ => added (Environment::add (env, proof::Decl(name = constant.title, params = [], ty = statement, body = body constant)))
+
+    added result = match result
+        Success env => Admitted env
+        Error message => Refused message
+
+    next (prelude, constant) = match prelude
+        Refused message => Refused message
+        Admitted env => admit (env, constant)
+
+    (** The kernel environment holding the prelude, or why the kernel refused a constant of it. *)
+    export build () = foldList (Propositions::constants (), Admitted (Environment::empty ()), \(prelude, constant) => next (prelude, constant))

@@ -1,0 +1,24 @@
+namespace bounded
+
+import bounded::Chars
+
+(** The comma separated argument list of one call, at the call's own depth. *)
+module Arguments
+    (** The arguments of the text between a call's parentheses. *)
+    export at text = match isEmpty (trim text)
+        true => []
+        false => cut (text, 0, 0, 0, [])
+
+    cut (text, index, depth, start, parts) = match index >= length text
+        true => listAppend (parts, trim (substring (text, start, length text) ?: ""))
+        false => step (text, index, depth, start, parts, Chars::at (text, index))
+
+    step (text, index, depth, start, parts, char) = match char
+        "(" => cut (text, index + 1, depth + 1, start, parts)
+        ")" => cut (text, index + 1, depth - 1, start, parts)
+        "," => division (text, index, depth, start, parts)
+        _ => cut (text, index + 1, depth, start, parts)
+
+    division (text, index, depth, start, parts) = match depth == 0
+        true => cut (text, index + 1, depth, index + 1, listAppend (parts, trim (substring (text, start, index) ?: "")))
+        false => cut (text, index + 1, depth, start, parts)

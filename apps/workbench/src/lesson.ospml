@@ -1,0 +1,296 @@
+// Implements [LESSONS-FORMAT], [LESSONS-FILES] and [LESSONS-CHALLENGES]: a
+// lesson file read into typed blocks. Every refusal names the JSON path and
+// the rule it breaks, and an unsafe media path never leaves this module.
+namespace workbench
+
+import workbench::Formulas
+import ui::Lists
+import ui::Doc
+import ui::Maths
+
+(** A still picture of a lesson: its path under the lessons folder, its description and its size ([LESSONS-FORMAT]). *)
+type Still =
+    stillSource : string
+    stillAlt : string
+    stillWidth : int
+    stillHeight : int
+
+(** A lesson film: its path, poster, WebVTT captions, description and length in seconds ([LESSONS-FORMAT]). *)
+type Film =
+    filmSource : string
+    filmPoster : string
+    filmCaptions : string
+    filmAlt : string
+    filmSeconds : int
+
+(** A prove challenge: the declaration heading, the locked steps shown before the answer, and a kernel-checked solution ([LESSONS-PROVE]). *)
+type Proving =
+    provedHeading : string
+    provedGiven : List<string>
+    provedSolution : List<string>
+
+(** A state challenge: the variables the answer may use and the formula it must equal by definition ([LESSONS-STATE]). *)
+type Stating =
+    statedVariables : List<string>
+    statedExpected : string
+
+(** A judge challenge: the declaration heading and the proof the learner rules on ([LESSONS-JUDGE]). *)
+type Judging =
+    judgedHeading : string
+    judgedSteps : List<string>
+
+(** What a challenge asks for ([LESSONS-CHALLENGES]). *)
+type Task = ProveTask Proving | StateTask Stating | JudgeTask Judging
+
+(** One challenge: its identifier within the lesson, the prompt, the hints in order and the task ([LESSONS-CHALLENGES]). *)
+type Challenge =
+    challengeId : string
+    challengePrompt : string
+    challengeHints : List<string>
+    challengeTask : Task
+
+(** One block of a lesson page, in reading order ([LESSONS-FORMAT]). *)
+type Block = Prose string | Display Formula | Mathematics ui::Math string | Picture Still | Clip Film | Exercise Challenge
+
+(** A lesson: its slug, title, summary, stage, minutes, the lessons it builds on and its blocks ([LESSONS-FORMAT]). *)
+type Lesson =
+    lessonSlug : string
+    lessonTitle : string
+    lessonSummary : string
+    lessonStage : int
+    lessonMinutes : int
+    lessonAfter : List<string>
+    lessonBlocks : List<Block>
+
+(** A block read from JSON, or why it was refused. *)
+type Piece = Took Block | Spoiled string
+
+(** A task read from JSON, or why it was refused. *)
+type Asked = Posed Task | Unposed string
+
+(** Blocks read so far, or the first refusal. *)
+type Gather = Gathering (List<Block>) | Stopped string
+
+(** Reads lesson files ([LESSONS-FORMAT]). *)
+module Lessons
+    lowerOrDigit code = (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || code == 45
+
+    (** Whether `text` is a slug: non-empty lowercase letters, digits and hyphens. *)
+    export isSlug text = !isEmpty text && slugFrom (text, 0)
+
+    slugFrom (text, at) = match at >= length text
+        true => true
+        false => lowerOrDigit (codePointAt (text, at) ?: 0) && slugFrom (text, satAdd at 1)
+
+    holds (text, part) = match indexOf (text, part)
+        Success _ => true
+        Error _ => false
+
+    (** Whether `path` is a safe media path of lesson `slug` ([LESSONS-FILES]): under `media/<slug>/`, with no `..` and no backslash. *)
+    export safeMedia (slug, path) = startsWith (path, "media/" + slug + "/") && !holds (path, "..") && !holds (path, "\\")
+
+    (** The first non-empty problem of `problems`, or empty. *)
+    export firstOf problems = listGet (filterList (problems, \problem => !isEmpty problem)) 0 ?: ""
+
+    (** The problem when `key` of `doc` at `path` is not non-empty text, or empty. *)
+    export needText (doc, key, path) = match isEmpty (Doc::text (doc, key))
+        true => path + "." + key + " must be non-empty text"
+        false => ""
+
+    (** The problem when `key` of `doc` at `path` is not a positive whole number, or empty. *)
+    export needPositive (doc, key, path) = match Doc::number (doc, key) > 0
+        true => ""
+        false => path + "." + key + " must be a positive whole number"
+
+    (** The problem when `key` of `doc` at `path` is not a safe media path of lesson `slug`, or empty. *)
+    export needMedia (slug, doc, key, path) = match safeMedia (slug, Doc::text (doc, key))
+        true => ""
+        false => path + "." + key + " must be a path under media/" + slug + "/ with no `..`"
+
+    stageProblem doc = match Doc::number (doc, "stage") >= 1 && Doc::number (doc, "stage") <= 3
+        true => ""
+        false => "stage must be 1, 2 or 3"
+
+    header (doc, slug) = firstOf [
+        formatProblem doc,
+        slugProblem slug,
+        needText (doc, "title", "lesson"),
+        needText (doc, "summary", "lesson"),
+        stageProblem doc,
+        needPositive (doc, "minutes", "lesson"),
+        afterProblem doc,
+    ]
+
+    formatProblem doc = match Doc::number (doc, "format") == 1
+        true => ""
+        false => "this lesson needs a newer workbench (format must be 1)"
+
+    slugProblem slug = match isSlug slug
+        true => ""
+        false => "slug must be lowercase letters, digits and hyphens"
+
+    afterProblem doc = match Lists::any (Doc::texts (doc, "after"), \other => !isSlug other)
+        true => "after must list lesson slugs"
+        false => ""
+
+    (** The lesson in `source`, or the first rule it breaks, named by its JSON path ([LESSONS-FORMAT]). *)
+    export read source = match jsonDecode source
+        Error _ => Error(message = "the lesson is not JSON")
+        Success doc => checked (doc, Doc::text (doc, "slug"))
+
+    checked (doc, slug) = match header (doc, slug)
+        "" => gathered (doc, slug, (foldList (Doc::items (Doc::field (doc, "blocks")), { at = 0, done = Gathering [] }, \(walk, item) => { at = satAdd walk.at 1, done = gather (walk.done, slug, item, walk.at) })).done)
+        problem => Error(message = problem)
+
+    gather (done, slug, item, at) = match done
+        Stopped problem => Stopped problem
+        Gathering blocks => grown (blocks, Blocks::read (slug, item, "blocks[${at}]"))
+
+    grown (blocks, piece) = match piece
+        Took block => Gathering (listAppend (blocks, block))
+        Spoiled problem => Stopped problem
+
+    gathered (doc, slug, gather) = match gather
+        Stopped problem => Error(message = problem)
+        Gathering blocks => complete (doc, slug, blocks)
+
+    complete (doc, slug, blocks) = match firstOf [Blocks::problem blocks, Blocks::duplicate (Blocks::challenges blocks)]
+        "" => Success(value = Lesson(lessonSlug = slug, lessonTitle = Doc::text (doc, "title"), lessonSummary = Doc::text (doc, "summary"), lessonStage = Doc::number (doc, "stage"), lessonMinutes = Doc::number (doc, "minutes"), lessonAfter = Doc::texts (doc, "after"), lessonBlocks = blocks))
+        problem => Error(message = problem)
+
+(** Reads one block of a lesson and checks the lesson's blocks as a whole ([LESSONS-FORMAT]). *)
+module Blocks
+    (** The block `doc` at `path` of lesson `slug`, or why it is refused. *)
+    export read (slug, doc, path) = match Doc::text (doc, "kind")
+        "prose" => prose (doc, path)
+        "formula" => formula (Doc::text (doc, "formula"), path)
+        "math" => mathematics (doc, path)
+        "image" => picture (slug, doc, path)
+        "video" => clip (slug, doc, path)
+        "challenge" => Challenges::block (Doc::field (doc, "challenge"), path + ".challenge")
+        other => Spoiled (path + ".kind `" + other + "` is not a block kind")
+
+    prose (doc, path) = match isEmpty (Doc::text (doc, "text"))
+        true => Spoiled (path + ".text must be non-empty text")
+        false => Took (Prose (Doc::text (doc, "text")))
+
+    formula (text, path) = match Formulas::read text
+        Read found => Took (Display found)
+        Faulted fault => Spoiled (path + ".formula does not read: expected " + fault.expected + " at column ${fault.column}")
+
+    mathematics (doc, path) = match Maths::decode (Doc::field (doc, "math"))
+        Error problem => Spoiled (path + ".math: " + problem)
+        Success tree => spoken (tree, doc, path)
+
+    spoken (tree, doc, path) = match isEmpty (Doc::text (doc, "spoken"))
+        true => Spoiled (path + ".spoken must be non-empty text")
+        false => Took (Mathematics tree (Doc::text (doc, "spoken")))
+
+    picture (slug, doc, path) = match Lessons::firstOf [Lessons::needMedia (slug, doc, "source", path), Lessons::needText (doc, "alt", path), Lessons::needPositive (doc, "width", path), Lessons::needPositive (doc, "height", path)]
+        "" => Took (Picture (Still(stillSource = Doc::text (doc, "source"), stillAlt = Doc::text (doc, "alt"), stillWidth = Doc::number (doc, "width"), stillHeight = Doc::number (doc, "height"))))
+        problem => Spoiled problem
+
+    clip (slug, doc, path) = match Lessons::firstOf [Lessons::needMedia (slug, doc, "source", path), Lessons::needMedia (slug, doc, "poster", path), Lessons::needMedia (slug, doc, "captions", path), Lessons::needText (doc, "alt", path), Lessons::needPositive (doc, "seconds", path)]
+        "" => Took (Clip (Film(filmSource = Doc::text (doc, "source"), filmPoster = Doc::text (doc, "poster"), filmCaptions = Doc::text (doc, "captions"), filmAlt = Doc::text (doc, "alt"), filmSeconds = Doc::number (doc, "seconds"))))
+        problem => Spoiled problem
+
+    (** Every challenge of `blocks`, in order. *)
+    export challenges blocks = foldList (blocks, [], \(found, block) => withChallenge (found, block))
+
+    withChallenge (found, block) = match block
+        Exercise challenge => listAppend (found, challenge)
+        _ => found
+
+    (** Why `blocks` cannot be a lesson: none at all, or no challenge among them. *)
+    export problem blocks = match isEmpty blocks
+        true => "blocks must not be empty"
+        false => match isEmpty (challenges blocks)
+            true => "a lesson needs at least one challenge"
+            false => ""
+
+    (** The first challenge identifier used twice in `challenges`, as a problem, or empty. *)
+    export duplicate challenges = (foldList (challenges, { ids = [], clash = "" }, \(walk, challenge) => noted (walk, challenge.challengeId))).clash
+
+    noted (walk, id) = match isEmpty walk.clash && listContains (walk.ids, id)
+        true => { ids = walk.ids, clash = "the challenge id `" + id + "` is used twice" }
+        false => { ids = listAppend (walk.ids, id), clash = walk.clash }
+
+(** Reads one challenge of a lesson ([LESSONS-CHALLENGES]). *)
+module Challenges
+    (** The challenge block `doc` at `path`, or why it is refused. *)
+    export block (doc, path) = match Lessons::firstOf [idProblem (doc, path), Lessons::needText (doc, "prompt", path)]
+        "" => built (doc, task (doc, path))
+        problem => Spoiled problem
+
+    idProblem (doc, path) = match Lessons::isSlug (Doc::text (doc, "id"))
+        true => ""
+        false => path + ".id must be lowercase letters, digits and hyphens"
+
+    built (doc, asked) = match asked
+        Unposed problem => Spoiled problem
+        Posed found => Took (Exercise (Challenge(challengeId = Doc::text (doc, "id"), challengePrompt = Doc::text (doc, "prompt"), challengeHints = Doc::texts (doc, "hints"), challengeTask = found)))
+
+    task (doc, path) = match Doc::text (doc, "kind")
+        "prove" => proving (doc, path)
+        "state" => stating (doc, path)
+        "judge" => judging (doc, path)
+        other => Unposed (path + ".kind `" + other + "` is not a challenge kind")
+
+    proving (doc, path) = match Lessons::needText (doc, "statement", path)
+        "" => Posed (ProveTask (Proving(provedHeading = Doc::text (doc, "statement"), provedGiven = Doc::texts (doc, "given"), provedSolution = Doc::texts (doc, "solution"))))
+        problem => Unposed problem
+
+    stating (doc, path) = match Lessons::firstOf [Lessons::needText (doc, "expected", path), variablesProblem (doc, path)]
+        "" => Posed (StateTask (Stating(statedVariables = Doc::texts (doc, "variables"), statedExpected = Doc::text (doc, "expected"))))
+        problem => Unposed problem
+
+    variablesProblem (doc, path) = match isEmpty (Doc::texts (doc, "variables"))
+        true => path + ".variables must name at least one proposition"
+        false => ""
+
+    judging (doc, path) = match Lessons::firstOf [Lessons::needText (doc, "statement", path), stepsProblem (doc, path)]
+        "" => Posed (JudgeTask (Judging(judgedHeading = Doc::text (doc, "statement"), judgedSteps = Doc::texts (doc, "steps"))))
+        problem => Unposed problem
+
+    stepsProblem (doc, path) = match isEmpty (Doc::texts (doc, "steps"))
+        true => path + ".steps must list the proof to judge"
+        false => ""
+
+(** One stage of the catalogue: its number and its name ([LESSONS-FILES]). *)
+type Stage =
+    stageNumber : int
+    stageName : string
+
+(** The catalogue: the stages and the lesson slugs in teaching order ([LESSONS-FILES]). *)
+type Catalogue =
+    catalogueStages : List<Stage>
+    catalogueSlugs : List<string>
+
+(** Reads `lessons/catalogue.json` ([LESSONS-FILES]). *)
+module Catalogues
+    stage doc = Stage(stageNumber = Doc::number (doc, "stage"), stageName = Doc::text (doc, "name"))
+
+    problem doc = Lessons::firstOf [
+        format doc,
+        slugsProblem (Doc::texts (doc, "lessons")),
+        stagesProblem (mapList (Doc::items (Doc::field (doc, "stages")), \item => stage item)),
+    ]
+
+    format doc = match Doc::number (doc, "format") == 1
+        true => ""
+        false => "this catalogue needs a newer workbench (format must be 1)"
+
+    slugsProblem slugs = match isEmpty slugs || Lists::any (slugs, \slug => !Lessons::isSlug slug) || !Lists::distinct slugs
+        true => "lessons must be distinct lesson slugs, at least one"
+        false => ""
+
+    stagesProblem stages = match isEmpty stages || Lists::any (stages, \item => isEmpty item.stageName)
+        true => "stages must each have a number and a name"
+        false => ""
+
+    (** The catalogue in `source`, or the first rule it breaks. *)
+    export read source = match jsonDecode source
+        Error _ => Error(message = "the catalogue is not JSON")
+        Success doc => match problem doc
+            "" => Success(value = Catalogue(catalogueStages = mapList (Doc::items (Doc::field (doc, "stages")), \item => stage item), catalogueSlugs = Doc::texts (doc, "lessons")))
+            found => Error(message = found)

@@ -1,0 +1,76 @@
+namespace prooftests
+
+import proof::Terms
+import proof::Environment
+import proof::Checked
+import proof::Fixtures
+import proof::Inductive
+import proof::Infer
+import proof::Reduce
+import prooftests::Support
+import proof
+    Proj
+    BVar
+    Const
+    App
+    Pi
+    Sort
+    Succ
+    Zero
+    Param
+    Binder
+    Decl
+    Axiom
+
+(** Real structure projections and rejection of data extraction from Prop.
+    Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
+module ProjectionTests
+    export run () =
+        fields ()
+        rejections ()
+        dependent ()
+
+    fields () =
+        test ("And projections infer their respective proposition under binders", \() =>
+            expect (Support::inferred (andEnv (), context (), Proj "And" 0 (BVar 0)), "#2")
+            expect (Support::inferred (andEnv (), context (), Proj "And" 1 (BVar 0)), "#1"))
+
+        test ("projections reduce the corresponding constructor field", \() =>
+            expect (Terms::equal (Reduce::whnf (andEnv (), Proj "And" 0 (pair ())), BVar 1), true)
+            expect (Terms::equal (Reduce::whnf (andEnv (), Proj "And" 1 (pair ())), BVar 0), true))
+
+        test ("projection terms preserve substitution and universe instantiation", \() =>
+            expect (Terms::equal (Terms::instantiate (Proj "Box" 0 (BVar 0), Const "x" [Param "u"]), Proj "Box" 0 (Const "x" [Param "u"])), true)
+            expect (Terms::equal (Terms::instantiateLevels (Proj "Box" 0 (Const "x" [Param "u"]), ["u"], [Zero]), Proj "Box" 0 (Const "x" [Zero])), true))
+
+    rejections () =
+        test ("projections reject another family negative indices and missing fields", \() =>
+            expect (Support::messageOf (Infer::infer (andEnv (), context (), Proj "Iff" 0 (BVar 0))), "invalid projection `Iff.0`")
+            expect (Support::messageOf (Infer::infer (andEnv (), context (), Proj "And" (-1) (BVar 0))), "invalid projection `And.-1`")
+            expect (Support::messageOf (Infer::infer (andEnv (), context (), Proj "And" 2 (BVar 0))), "invalid projection `And.2`"))
+
+        test ("a projection of the wrong constructor family never reduces", \() =>
+            expect (Terms::equal (Reduce::whnf (andEnv (), Proj "Iff" 0 (pair ())), Proj "Iff" 0 (pair ())), true))
+
+        test ("a proposition cannot project its hidden data witness", \() =>
+            expect (Support::messageOf (Infer::infer (hiddenEnv (), [Binder(name = "h", ty = App (Const "Hidden" []) (BVar 0)), Binder(name = "A", ty = Sort (Succ Zero))], Proj "Hidden" 0 (BVar 0))), "invalid projection `Hidden.0`"))
+
+    dependent () =
+        test ("a dependent field type substitutes the previous projection", \() =>
+            expect (Support::inferred (packedEnv (), [Binder(name = "h", ty = Const "Packed" [])], Proj "Packed" 1 (BVar 0)), "(Packed.0 #0)"))
+
+    andEnv () = verified (Checked::exported (Environment::empty (), Fixtures::andSwap ()))
+
+    verified (result) = match result
+        Success env => env
+        Error message =>
+            check "projection fixture declarations check" "success" message
+            Environment::empty ()
+
+    context () = [Binder(name = "h", ty = Terms::apps (Const "And" [], [BVar 1, BVar 0])), Binder(name = "q", ty = Sort Zero), Binder(name = "p", ty = Sort Zero)]
+
+    pair () = Terms::apps (Const "And.intro" [], [BVar 3, BVar 2, BVar 1, BVar 0])
+
+    hiddenEnv () = verified (Inductive::declare (Environment::empty (), Decl(name = "Hidden", params = [], ty = Pi "A" (Sort (Succ Zero)) (Sort Zero), body = Axiom), [Decl(name = "Hidden.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "w" (BVar 0) (App (Const "Hidden" []) (BVar 1))), body = Axiom)], 1))
+
+    packedEnv () = verified (Inductive::declare (Environment::empty (), Decl(name = "Packed", params = [], ty = Sort (Succ (Succ Zero)), body = Axiom), [Decl(name = "Packed.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "x" (BVar 0) (Const "Packed" [])), body = Axiom)], 0))

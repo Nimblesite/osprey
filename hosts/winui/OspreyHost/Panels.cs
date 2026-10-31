@@ -65,4 +65,3 @@ sealed partial class Renderer
         return Column([bar, content]);
     }
 }
-

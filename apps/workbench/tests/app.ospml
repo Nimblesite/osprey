@@ -1,0 +1,216 @@
+// [WORKBENCH-VERIFICATION] and [LESSONS-VERIFICATION] fixtures: the whole
+// application through `App::respond`, the VS Code boundary, with the shipped
+// lessons as the host's slices. Every event is a real host event document.
+namespace workbenchtests
+
+import workbench::App
+import workbench::Formulas
+import ui::Lists
+import ui::Doc
+
+effect FixtureReport
+    record : string => Unit
+
+(** Fallible fixtures keep their errors until the test boundary or an explicit host-error payload. *)
+module FixtureFiles
+    export root () = match readFile "apps/workbench/lessons/catalogue.json"
+        Success _ => Success(value = "apps/workbench/lessons/")
+        Error repositoryProblem => match readFile "../lessons/catalogue.json"
+            Success _ => Success(value = "../lessons/")
+            Error suiteProblem => Error(message = "No workbench fixtures: apps/workbench/lessons/catalogue.json: ${repositoryProblem}; ../lessons/catalogue.json: ${suiteProblem}")
+
+    export read path = bind (root (), \directory => readAt (directory, path))
+
+    readAt (directory, path) = match readFile (directory + path)
+        Success text => Success(value = text)
+        Error problem => Error(message = "Workbench fixture ${directory}${path}: ${problem}")
+
+    export ok value = Success(value = value)
+
+    export bind (result, next) = match result
+        Error problem => Error(message = problem)
+        Success value => next value
+
+    export report problem = perform FixtureReport.record problem
+
+    (** Unit-only: a Result-returning case must not be buried inside Success(Error(...)). *)
+    export unit : (Unit -> Unit) -> (Unit -> Result<Unit, string>)
+    unit work = \() => ok (work ())
+
+    export checked : (Unit -> Result<Unit, string>) -> (Unit -> Unit)
+    checked work = \() =>
+        handle FixtureReport
+            record problem => check problem true false
+        match work ()
+            Success _ => expect (true, true)
+            Error problem => check problem true false
+
+    (** A malformed formula returns its exact fault instead of inventing a proposition. *)
+    export formula (context, text) = match Formulas::read text
+        workbench::Read found => Success(value = found)
+        workbench::Faulted fault => Error(message = "${context} formula ${text}: fault ${toString fault.column}: ${fault.expected}")
+
+    export failures () =
+        match read "missing-fixture-regression.json"
+            Error problem => expect ((indexOf (problem, "missing-fixture-regression.json") ?: -1) >= 0, true)
+            Success _ => expect (true, false)
+        match formula ("regression", ")")
+            Error problem => expect ((indexOf (problem, "regression formula ): fault") ?: -1) >= 0, true)
+            Success _ => expect (true, false)
+
+(** Drives the workbench through start and dispatch, as a host does. *)
+module Drive
+    read path = FixtureFiles::read path
+
+    file (path, result) = match result
+        Success text => JsonObject [Doc::str ("path", path), Doc::str ("error", ""), Doc::str ("text", text)]
+        Error problem =>
+            FixtureFiles::report problem
+            JsonObject [Doc::str ("path", path), Doc::str ("error", problem)]
+
+    files items = JsonString (Doc::write (JsonObject [JsonMember "files" (JsonArray items)]))
+
+    slugs () = ["what-is-a-proof", "what-is-a-solution", "what-is-a-solver", "and-swap", "either-way", "not-and-contradiction", "navier-stokes"]
+
+    // The host's slices: the catalogue and lesson reads, saved progress, and one stroke.
+    held () = JsonObject [JsonMember "lessons:catalogue" (files [file ("lessons/catalogue.json", read "catalogue.json")]), JsonMember "lessons:texts" (files (mapList (slugs (), \slug => file ("lessons/" + slug + ".json", read (slug + ".json"))))), JsonMember "lessons:progress" (JsonString "{\"completed\":[\"and-swap/judge-wrong-order\"]}")]
+
+    (** The first envelope of a new session. *)
+    export started () = remember (Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "start"), JsonMember "context" (Doc::parse "{\"now\":1,\"offset\":0,\"platform\":\"macos\"}"), JsonMember "slices" (held ())]))), JsonNull)
+
+    (** The envelope after `event` reaches the session `envelope` left. *)
+    export post (envelope, event) = dispatchHeld (envelope, event, held ())
+
+    export postHeld (envelope, event, extras) = dispatchHeld (envelope, event, JsonObject (listConcat (Doc::members (held ()), Doc::members extras)))
+
+    (** Two real lesson files deliberately share a challenge id; the host supplies this slice on every event. *)
+    export postSharedChallenge (envelope, event) =
+        current = held ()
+        FixtureFiles::bind (sharedChallenge (Doc::text (current, "lessons:texts")), \changed => FixtureFiles::ok (dispatchHeld (envelope, event, JsonObject (listAppend (filterList (Doc::members current, \member => memberKey member != "lessons:texts"), Doc::str ("lessons:texts", changed))))))
+
+    sharedChallenge source = match replace source "write-identity" "state-swapped-goal"
+        Success changed => Success(value = changed)
+        Error problem => Error(message = "Shared challenge fixture: " + problem)
+
+    dispatchHeld (envelope, event, slices) = remember (Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "dispatch"), Doc::str ("state", Doc::text (envelope, "state")), JsonMember "event" (Doc::parse event), JsonMember "slices" slices]))), envelope)
+
+    (** Preserve both the ordinal and revision of the tree that actually issued the control. *)
+    export labelled (_envelope, issued, region, label, value) =
+        found = findLabel (label, node (issued, region))
+        expect (Doc::has (found, "event"), true)
+        control (region, revision (issued, region), Doc::number (found, "event"), value)
+
+    export activate (envelope, issued, region, label) = post (envelope, labelled (envelope, issued, region, label, "null"))
+
+    memberKey member = match member
+        JsonMember key _ => key
+
+    writtenInto (held, item) =
+        key = Doc::text (item, "key")
+        JsonObject (listAppend (filterList (Doc::members held, \member => memberKey member != key)) (Doc::str (key, Doc::text (item, "text"))))
+
+    (** Retain real slice writes exactly as a host does, without reconstructing board data. *)
+    export hostSlices envelopes = foldList (envelopes, JsonObject [], \(held, envelope) => foldList (Doc::items (Doc::field (envelope, "slices")), held, writtenInto))
+
+    (** The keys of the regions an envelope re-sent, in order. *)
+    export keys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key")), ",")
+
+    (** The host retains every region's revision even when the latest envelope has no patch for it. *)
+    export revision (envelope, key) = signalRevisionOf (signalFramesFromJson (Doc::field (Doc::parse (Doc::text (envelope, "state")), "frames"))) key
+
+    (** The tickets of the requests in `envelope`. *)
+    export tickets envelope = join (mapList (Doc::items (Doc::field (envelope, "requests")), \item => Doc::text (item, "ticket")), ",")
+
+    (** The keys of the slices `envelope` wrote. *)
+    export written envelope = join (mapList (Doc::items (Doc::field (envelope, "slices")), \item => Doc::text (item, "key")), ",")
+
+    (** The store the session of `envelope` carries. *)
+    export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
+
+    (** A control event: `value` as JSON text, on control `ordinal` of `region` as drawn at `revision`. *)
+    export control (region, revision, ordinal, value) = "{\"kind\":\"ui\",\"region\":\"" + region + "\",\"revision\":${revision},\"ordinal\":${ordinal},\"value\":" + value + ",\"now\":5}"
+
+    (** A tap on control `ordinal` of region `region` as `envelope` drew it. *)
+    export tap (envelope, region, ordinal) = control (region, revision (envelope, region), ordinal, "null")
+
+    (** A completion of `ticket` with `result` as JSON text. *)
+    export done (ticket, result) = "{\"kind\":\"completed\",\"ticket\":\"" + ticket + "\",\"ok\":true,\"result\":" + result + ",\"now\":6}"
+
+    (** A failed completion of `ticket` with `error`. *)
+    export failed (ticket, error) = "{\"kind\":\"completed\",\"ticket\":\"" + ticket + "\",\"ok\":false,\"error\":\"" + error + "\",\"now\":6}"
+
+    (** `text` as a JSON string. *)
+    export quoted text = jsonQuote text ?: "\"\""
+
+    (** A session with the catalogue and every lesson loaded. *)
+    export loaded () = post (post (started (), done ("lessons:catalogue", "{}")), done ("lessons:texts", "{}"))
+
+
+    (** The actual rendered region tree and its issued control ordinals. *)
+    export node (envelope, key) = foldList (retainedRegions envelope, JsonNull, \(found, item) => pickNode (found, item, key))
+
+    (** The test host retains emitted trees; patches and removed keys stay unmodified for isolation assertions. *)
+    remember (current, previous) =
+        patches = Doc::items (Doc::field (current, "patches"))
+        replaced = listConcat (Doc::texts (current, "removed"), mapList (patches, \patch => Doc::text (patch, "key")))
+        kept = filterList (retainedRegions previous, \patch => !listContains (replaced, Doc::text (patch, "key")))
+        JsonObject (listAppend (Doc::members current, JsonMember "_hostRegions" (JsonArray (listConcat (kept, patches)))))
+
+    retainedRegions envelope = match Doc::has (envelope, "_hostRegions")
+        true => Doc::items (Doc::field (envelope, "_hostRegions"))
+        false => Doc::items (Doc::field (envelope, "patches"))
+
+    pickNode (found, item, key) = match Doc::text (item, "key") == key
+        true => Doc::field (item, "node")
+        false => found
+
+    export findNode (kind, node) = matchingNode ("kind", kind, node)
+
+    export findTitle (title, node) = matchingNode ("title", title, node)
+
+    (** A rendered control found by its actual label, not a guessed ordinal. *)
+    export findLabel (label, node) = matchingNode ("label", label, node)
+
+    (** A frame found by its authored name, not by its position. *)
+    export findNamed (name, node) = matchingNode ("frameName", name, node)
+
+    export expectControlFrame (node, label, size, radius) =
+        style = Doc::field (matchingNode ("controlLabel", label, node), "style")
+        expect (Doc::number (style, "width"), size)
+        expect (Doc::number (style, "height"), size)
+        expect (Doc::number (style, "radius"), radius)
+        expect (Doc::text (style, "align"), "center")
+
+    matchingNode (field, value, node) = match Doc::text (node, "kind")
+        "" => JsonNull
+        _ => match nodeField (field, node) == value
+            true => node
+            false => foldList (childNodes node, JsonNull, \(found, child) => firstNode (found, field, value, child))
+
+    (** A node field by name; a frame's authored name lives in its `style` object ([UI-COMPONENTS]). *)
+    nodeField (field, node) = match field
+        "frameName" => Doc::text (Doc::field (node, "style"), "name")
+        "controlLabel" => Doc::text (Doc::field (node, "body"), "label")
+        _ => Doc::text (node, field)
+
+    firstNode (found, field, value, child) = match found
+        JsonNull => matchingNode (field, value, child)
+        _ => found
+
+    (** The persisted dependency set of the actual keyed host region. *)
+    export dependencies (envelope, key) =
+        frames = Doc::items (Doc::field (Doc::parse (Doc::text (envelope, "state")), "frames"))
+        frame = Lists::find (frames, \item => Doc::text (item, "key") == key) ?: JsonNull
+        Doc::texts (frame, "dependencies")
+
+    childNodes node = listConcat ([Doc::field (node, "body"), Doc::field (node, "pane"), Doc::field (node, "aside")], Doc::items (Doc::field (node, "children")))
+
+    (** Read actual displayed prose independently of its token/run serialization. *)
+    export visibleText node = match Doc::text (node, "kind")
+        "" => ""
+        "text" => Doc::text (node, "text")
+        "rich-text" => join (mapList (Doc::items (Doc::field (node, "runs")), \run => Doc::text (run, "text")), "")
+        "math" => Doc::text (node, "spoken")
+        "badge" => Doc::text (node, "label")
+        "editor" => Doc::text (node, "value")
+        _ => join (mapList (childNodes node, visibleText), " ")

@@ -171,3 +171,6 @@ examples/gpt2/weights/
 
 # Playwright run output
 test-results/
+
+# The Lake build tree of the proof-export recording tools (scripts/proof-export.sh)
+benchmarks/proof/tools/.lake/

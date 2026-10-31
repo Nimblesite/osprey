@@ -7,16 +7,14 @@ name: GPUI host
 # Flock and Painting then open in real windows on the runner's desktop and are pictured. The
 # frame-rate bench stays on a Mac with a display; hosted runners have none to pace frames.
 #
-# Every job is a required check (scripts/verify-branch-protection.mjs), pinned by its literal name,
-# so each system is its own job rather than a matrix entry whose name interpolates; the Mac and
+# ci.yml calls this workflow on every pull request, and its root `ci` job, the required check,
+# needs every job here. Each system is its own job, reporting under its own name; the Mac and
 # Linux jobs share their suites through .github/actions/gpui-host-suites. A PR that changes no code
-# skips the hosts at the job level, which reports as passing; an `on: paths:` filter would leave a
-# required check pending forever.
+# skips the hosts at the job level, which reports as passing.
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
-  # ci-windows.yml calls it on a manual run, because a workflow not yet on main cannot be dispatched.
+  # ci.yml calls it on every pull request, and ci-windows.yml on a manual run, because a workflow
+  # not yet on main cannot be dispatched.
   workflow_call:
 
 concurrency:
@@ -102,7 +100,7 @@ jobs:
       # Rust, so its build scripts run as GNU programs and the host, GPUI and the Osprey runtime all
       # link one UCRT. Rustup's Rust with the GNU target builds GPUI's resource script as an MSVC
       # library and links msvcrt beside the runtime's UCRT. The UCRT64 clang and llvm-ar build the
-      # windows-x64 app archive.
+      # windows-x64 app archive. diffutils gives the compare.sh suite's stubs `cmp`.
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -110,6 +108,7 @@ jobs:
           update: true
           install: >-
             make
+            diffutils
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-clang
             mingw-w64-ucrt-x86_64-llvm

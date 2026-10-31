@@ -15,6 +15,8 @@ use crate::ty::{names, Scheme, Type};
 use osprey_ast::{Expr, MatchArm, Pattern};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+mod joins;
+
 fn is_result(t: &Type) -> bool {
     matches!(t, Type::Con { name, .. } if name == names::RESULT)
 }
@@ -37,10 +39,11 @@ impl Checker {
     pub(crate) fn infer_match(&mut self, value: &Expr, arms: &[MatchArm], env: &TypeEnv) -> Type {
         let disc = self.infer_expr(value, env);
         let result = self.ctx.fresh();
-        for arm in arms {
-            let body_ty = self.infer_arm(arm, &disc, env);
-            self.push_unify(&result, &body_ty);
-        }
+        let bodies = arms
+            .iter()
+            .map(|arm| self.infer_arm(arm, &disc, env))
+            .collect::<Vec<_>>();
+        let result = self.match_result(result, &bodies);
         self.check_exhaustive(&disc, arms);
         self.check_redundant_arms(arms, &disc);
         result

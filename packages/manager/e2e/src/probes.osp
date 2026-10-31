@@ -32,6 +32,33 @@ module Probes {
 
     fn sh(command) = perform Host::Process.run(command)
 
+    fn configured(key, fallback) = {
+        let value = trim(sh("printenv ${Host::shellWord(key)}").stdout)
+        if value == "" { fallback } else { value }
+    }
+
+    fn compiler(cwd) = configured("OSPREY_E2E_COMPILER", configured("OSPREY_TEST_COMPILER", "${cwd}/target/release/osprey"))
+    fn memory() = configured("OSPREY_E2E_MEMORY", configured("OSPREY_TEST_MEMORY", "gc"))
+
+    fn compilerCommand(command, selected) = if startsWith(command, "'osprey' ") {
+        Host::shellWord(selected) + (substring(command, 8, byteLength(command)) ?: "")
+    } else { command }
+
+    fn buildProcess(cwd) = {
+        let selected = compiler(cwd)
+        let mode = memory()
+        handler Host::Process {
+            run command => {
+                let selectedCommand = compilerCommand(command, selected)
+                perform Host::Process.run(if startsWith(selectedCommand, Host::shellWord(selected) + " ") {
+                    selectedCommand + " --memory=" + Host::shellWord(mode)
+                } else { selectedCommand })
+            }
+        }
+    }
+
+    fn runBuild(cwd, args) = buildProcess(cwd)(fn() => Build::run(args))
+
     fn configText(cwd) = "{\"address\":\"127.0.0.1\",\"port\":${port},\"root\":\"${cwd}/packages/manager/sample-registry\"}"
 
     /// Build the server binary and start it in the work directory, where it
@@ -39,7 +66,7 @@ module Probes {
     fn start(cwd) = {
         let _made = perform Host::Tree.ensure(work)
         let _written = perform Host::Files.write("${work}/registry-server.json", configText(cwd))
-        let built = sh("${cwd}/target/release/osprey build ${cwd}/packages/manager/api -o ${work}/registry-server")
+        let built = sh("${Host::shellWord(compiler(cwd))} build ${Host::shellWord(cwd + "/packages/manager/api")} --no-warnings -o ${Host::shellWord(work + "/registry-server")} --memory=${Host::shellWord(memory())}")
         let _started = sh("(cd ${work} && exec ./registry-server > server.log 2>&1) & echo $! > ${work}/server.pid")
         built.status
     }
@@ -97,6 +124,8 @@ module Probes {
     /// Forward real filesystem operations as though invoked in the consumer.
     fn consumerFiles(dir) = handler Host::Files {
         read path => perform Host::Files.read(rooted(dir, path))
+        exists path => perform Host::Files.exists(rooted(dir, path))
+        remove path => perform Host::Files.remove(rooted(dir, path))
         write path text => perform Host::Files.write(rooted(dir, path), text)
     }
 
@@ -105,12 +134,12 @@ module Probes {
         ensure path => perform Host::Tree.ensure(rooted(dir, path))
     }
 
-    fn consumerProcess(dir, compilerDir) = handler Host::Process {
-        run command => perform Host::Process.run("cd ${Host::shellWord(dir)} && PATH=${Host::shellWord(compilerDir)}:\"$PATH\" ${command}")
+    fn consumerProcess(dir) = handler Host::Process {
+        run command => perform Host::Process.run("cd ${Host::shellWord(dir)} && ${command}")
     }
 
     fn defaultBuildAt(cwd, dir, args) = {
-        consumerFiles(dir)(fn() => consumerTree(dir)(fn() => consumerProcess(dir, "${cwd}/target/release")(fn() => Build::run(args))))
+        consumerFiles(dir)(fn() => consumerTree(dir)(fn() => consumerProcess(dir)(fn() => runBuild(cwd, args))))
     }
 
     fn defaultBuild(cwd, args) = defaultBuildAt(cwd, consumerDir(cwd), args)
@@ -119,8 +148,8 @@ module Probes {
     export fn buildPaths(cwd) = {
         let bare = defaultBuild(cwd, [])
         let run = defaultBuild(cwd, ["--run"])
-        let relative = Build::run(["--compiler", "${cwd}/target/release/osprey", "--run", "--project", "${work}/consumer"])
-        let absolute = Build::run(["--compiler", "${cwd}/target/release/osprey", "--run", "--project", consumerDir(cwd)])
+        let relative = runBuild(cwd, ["--compiler", compiler(cwd), "--run", "--project", "${work}/consumer"])
+        let absolute = runBuild(cwd, ["--compiler", compiler(cwd), "--run", "--project", consumerDir(cwd)])
         [
             Probe { label: "bare build compiles the consumer", expected: "0", actual: "${bare.status}" },
             Probe { label: "bare build --run executes the consumer", expected: consumerLine, actual: firstLine(run) },
@@ -169,8 +198,8 @@ module Probes {
         let external = preparePythonBuild(outside)
         let bare = defaultBuildAt(cwd, local, [])
         let run = defaultBuildAt(cwd, local, ["--run"])
-        let relative = Build::run(["--compiler", "${cwd}/target/release/osprey", "--run", "--project", pythonBuildDir])
-        let absolute = Build::run(["--compiler", "${cwd}/target/release/osprey", "--run", "--project", outside])
+        let relative = runBuild(cwd, ["--compiler", compiler(cwd), "--run", "--project", pythonBuildDir])
+        let absolute = runBuild(cwd, ["--compiler", compiler(cwd), "--run", "--project", outside])
         let cleaned = sh("rm -rf ${Host::shellWord(outside)}")
         [
             Probe { label: "Python project setup", expected: "0 0", actual: "${setupResult(prepared)} ${setupResult(external)}" },
@@ -202,7 +231,7 @@ module Probes {
         let locked = Dispatch::run(["lock", "--registry", base, "--project", dir])
         let _fetched = Dispatch::run(["fetch", "--registry", base, "--project", dir])
         let verified = Dispatch::run(["verify", "--offline", "--project", dir])
-        let built = Dispatch::run(["build", "--compiler", "${cwd}/target/release/osprey", "--run", "--project", dir])
+        let built = buildProcess(cwd)(fn() => Dispatch::run(["build", "--compiler", compiler(cwd), "--run", "--project", dir]))
         [
             Probe { label: "consumer lock bytes match the fixture", expected: fixtureLockText(), actual: readFile("${dir}/osprey.lock") ?: "" },
             Probe { label: "consumer lock prints + lines", expected: expectedPlus(newest(catalog)), actual: joinedPlus(locked) },

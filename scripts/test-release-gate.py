@@ -12,10 +12,12 @@ shape changes so the body can no longer be found, that is a failure too — a te
 that silently stops testing is worse than no test.
 """
 import json
+import os
 import pathlib
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 
 WORKFLOW = pathlib.Path(".github/workflows/release.yml")
@@ -135,6 +137,55 @@ def package_failures(text):
     return failures
 
 
+STAGE_STEP = "Stage bundled compiler + manifest"
+STAGER_SENTINEL = "workbench-proof-assets-ran"
+STAGER_STUB = ("import pathlib, sys\n"
+               "pathlib.Path(sys.argv[1], 'workbench-proof-assets-ran').write_text('ran')\n")
+
+
+def stage_fixture(root, target, version):
+    """Lay out the staging inputs; the proof stager is a sentinel stub."""
+    payload = root/"dist"/f"osprey-{version}-{target}"
+    payload.mkdir(parents=True)
+    (payload/"osprey").write_text("binary")
+    with tarfile.open(root/"dist"/f"osprey-{version}-{target}.tar.gz", "w:gz") as archive:
+        archive.add(payload, arcname=payload.name)
+    for name in ("package-workspace", "workbench"):
+        (root/"dist"/name).mkdir(parents=True)
+        (root/"dist"/name/f"{name}.wasm").write_text("wasm")
+    for name in ("apps/workbench/lessons/catalogue.json", "apps/workbench/assets/workbench.css",
+                 "website/src/assets/images/logo.png", "scripts/workbench-proof-assets.py"):
+        file = root/name
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(STAGER_STUB if name.endswith(".py") else "fixture")
+    (root/"shipwright.json").write_text('{"product": {"version": "0.0.0"}, "components": []}')
+
+
+def stage_result(text, target="linux-x64", version="0.0.0-test"):
+    """Run the real staging shell and report whether it invoked the stager."""
+    script = step_script(text, STAGE_STEP)
+    for key, value in {"needs.version.outputs.version": version, "matrix.target": target}.items():
+        script = script.replace("${{ " + key + " }}", value)
+    with tempfile.TemporaryDirectory(prefix="osprey-stage-") as directory:
+        root = pathlib.Path(directory)
+        stage_fixture(root, target, version)
+        result = subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,
+                                env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "VERSION": version},
+                                capture_output=True, text=True)
+        return result, (root/"vscode-extension"/"bin"/target/"workbench"/STAGER_SENTINEL).exists()
+
+
+def proof_staging_failures(text):
+    result, staged = stage_result(text)
+    if result.returncode != 0:
+        return [f"release packaging does not stage the bundle\n{result.stdout}{result.stderr}"]
+    if staged:
+        return []
+    return ["release packaging copies apps/workbench/assets/. without running "
+            "scripts/workbench-proof-assets.py, so the VSIX ships the committed asset bodies "
+            "and no approved proof exports"]
+
+
 def run(script, results, scope, summary):
     env = {
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
@@ -171,9 +222,25 @@ def decision_failures(script, summary):
     return failures
 
 
+def windows_compiler_failures():
+    failures = []
+    for workflow in (WORKFLOW, pathlib.Path(".github/workflows/ci-windows.yml")):
+        text = workflow.read_text()
+        pin = re.search(r"^      - name: Pin the MinGW clang[^\n]*", text, re.MULTILINE)
+        build = re.search(r"^      - name: Compile package manager client(?: \(Windows\))?$", text, re.MULTILINE)
+        if pin is None or build is None or pin.start() >= build.start():
+            failures.append(f"{workflow}: pin MinGW clang before compiling the Windows package client")
+            continue
+        block = text[pin.end():].split("      - name:", 1)[0]
+        if 'echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"' not in block:
+            failures.append(f"{workflow}: export the pinned compiler as OSPREY_CC")
+    return failures
+
+
 def main():
+    subprocess.run([sys.executable, "hosts/gpui/dependencies_test.py"], check=True)
     text = WORKFLOW.read_text()
-    failures = package_failures(text)
+    failures = package_failures(text) + windows_compiler_failures() + proof_staging_failures(text)
     with tempfile.NamedTemporaryFile(suffix=".md") as summary:
         failures.extend(decision_failures(gate_script(text), summary.name))
     if failures:
@@ -181,8 +248,10 @@ def main():
         for failure in failures:
             print(f"  - {failure}")
         return 1
+    print("Windows compiler selection: OK (CI and release)")
     print(f"release gate decision table: OK ({len(TABLE)} cases)")
     print(f"release packaging: OK ({2 * len(APPLE_ARCHIVES) + 2} cases)")
+    print("release workbench proof staging: OK")
     return 0
 
 

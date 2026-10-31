@@ -14,6 +14,7 @@ use osprey_ast::{Expr, MatchArm, Pattern};
 
 mod list;
 mod literal;
+mod nested;
 mod result;
 mod structural;
 mod union;
@@ -109,6 +110,18 @@ fn emit_arm(
     phi_in: &mut Vec<(Value, String)>,
     bind: impl FnOnce(&mut Codegen),
 ) -> Result<()> {
+    try_emit_arm(cg, arm, phi_in, |cg| {
+        bind(cg);
+        Ok(())
+    })
+}
+
+fn try_emit_arm(
+    cg: &mut Codegen,
+    arm: &MatchArm,
+    phi_in: &mut Vec<(Value, String)>,
+    bind: impl FnOnce(&mut Codegen) -> Result<()>,
+) -> Result<()> {
     let position = match &arm.body {
         Expr::Block { statements, .. } => statements.first().and_then(crate::stmt::stmt_position),
         _ => None,
@@ -116,7 +129,7 @@ fn emit_arm(
     .or_else(|| crate::stmt::tail_position(&arm.body));
     cg.with_debug_scope(position, |cg| {
         cg.with_local_scope(|cg| {
-            bind(cg);
+            bind(cg)?;
             push_arm(cg, &arm.body, phi_in)
         })
     })
@@ -137,7 +150,21 @@ fn finish_guarded_arm(
     is_last: bool,
     bind: impl FnOnce(&mut Codegen),
 ) -> Result<()> {
-    emit_arm(cg, arm, phi_in, bind)?;
+    finish_checked_arm(cg, arm, phi_in, next, is_last, |cg| {
+        bind(cg);
+        Ok(())
+    })
+}
+
+fn finish_checked_arm(
+    cg: &mut Codegen,
+    arm: &MatchArm,
+    phi_in: &mut Vec<(Value, String)>,
+    next: &str,
+    is_last: bool,
+    bind: impl FnOnce(&mut Codegen) -> Result<()>,
+) -> Result<()> {
+    try_emit_arm(cg, arm, phi_in, bind)?;
     cg.start_block(next);
     if is_last {
         cg.emit("unreachable");
@@ -165,18 +192,18 @@ fn finish_phi(
     // descriptor by rendering and narrowing — a crash, found the moment a
     // catch-all's string joined a narrowed field ([TYPE-ANY]).
     let wants_any = phi_in.iter().any(|(v, _)| v.ty == LType::Any);
+    let adapted_arms = adapt_phi_arms(cg, phi_in, target_result_inner, wants_any)?;
+    let arm_values = adapted_arms
+        .iter()
+        .map(|(value, _)| value.clone())
+        .collect::<Vec<_>>();
+    // Snapshot every edge before promoting one: two borrowed exits may name
+    // the same SSA operand, but only one of their retains runs on any path.
+    let borrowed_arms = crate::arc::borrowed_phi_arms(cg, &arm_values, mark);
     let mut incoming_values = Vec::with_capacity(phi_in.len());
-    for (value, exit) in phi_in {
-        cg.start_block(exit);
-        let adapted = match target_result_inner {
-            Some(inner) => crate::result::repack_to_inner(cg, value.clone(), inner)?,
-            None => value.clone(),
-        };
-        let adapted = if wants_any && adapted.ty != LType::Any {
-            crate::anybox::box_any(cg, adapted)?
-        } else {
-            adapted
-        };
+    for ((adapted, exit), borrowed) in adapted_arms.into_iter().zip(borrowed_arms) {
+        cg.start_block(&exit);
+        crate::arc::promote_phi_arm(cg, &adapted, borrowed);
         let pred = cg.snapshot_to(end);
         incoming_values.push((adapted, pred));
     }
@@ -193,7 +220,12 @@ fn finish_phi(
             for (v, blk) in &incoming_values {
                 eprintln!(
                     "DBG arm blk {blk}: llvm {:?} ty {:?} osp_ty {:?} result_inner {:?} inferred {:?} operand {}",
-                    v.llvm_ty(), v.ty, v.osp_ty, v.result_inner, v.inferred_type, v.operand
+                    v.llvm_ty(),
+                    v.ty,
+                    v.osp_ty,
+                    v.result_inner,
+                    v.inferred_type,
+                    v.operand
                 );
             }
             eprintln!(
@@ -264,6 +296,40 @@ fn finish_phi(
         .collect::<Vec<_>>();
     crate::arc::move_phi_owners(cg, &incoming_ops, &out, mark);
     Ok(out)
+}
+
+fn adapt_phi_arms(
+    cg: &mut Codegen,
+    arms: &[(Value, String)],
+    inner: Option<LType>,
+    wants_any: bool,
+) -> Result<Vec<(Value, String)>> {
+    arms.iter()
+        .map(|(value, exit)| {
+            cg.start_block(exit);
+            let adapted = adapt_phi_value(cg, value.clone(), inner, wants_any)?;
+            let next = cg.fresh_label();
+            cg.emit(format!("br label %{next}"));
+            Ok((adapted, next))
+        })
+        .collect()
+}
+
+fn adapt_phi_value(
+    cg: &mut Codegen,
+    value: Value,
+    inner: Option<LType>,
+    wants_any: bool,
+) -> Result<Value> {
+    let adapted = match inner {
+        Some(inner) => crate::result::repack_to_inner(cg, value, inner)?,
+        None => value,
+    };
+    if wants_any && adapted.ty != LType::Any {
+        crate::anybox::box_any(cg, adapted)
+    } else {
+        Ok(adapted)
+    }
 }
 
 /// A checked join retains the concrete type even when an empty literal has no

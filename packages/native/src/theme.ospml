@@ -54,5 +54,8 @@ module Themes
         Doc::num ("settle", theme.settle),
     ]
 
+    (** [UI-THEME-BOARD] The tokens a `Board` is drawn with: `board`, its slate, and `chalk`, its strokes. A theme without them draws a board on `canvas` in `primary`. *)
+    export boardTokens = ["board", "chalk"]
+
     (** The token called `name`, or an error when the theme has none. *)
     export named (theme, name) = Lists::find (theme.tokens, \item => item.tokenName == name)

@@ -78,6 +78,22 @@ impl InferCtx {
         )
     }
 
+    pub(crate) fn record_preserves_parameters(&self, name: &str) -> bool {
+        let Some((parameters, _)) = self.records.get(name) else {
+            return false;
+        };
+        let arguments: Option<Vec<_>> = (0..parameters.len())
+            .map(|index| u32::try_from(index).ok().map(Type::Var))
+            .collect();
+        let Some(arguments) = arguments else {
+            return false;
+        };
+        let Some(fields) = self.record_fields(name, &arguments) else {
+            return false;
+        };
+        crate::info::fields_carry_parameters(fields.values(), parameters.len())
+    }
+
     /// The one record that declares `field`, instantiated at fresh type
     /// arguments; `None` when no record or several declare it.
     pub(crate) fn sole_record_declaring(&mut self, field: &str) -> Option<Type> {
@@ -92,7 +108,11 @@ impl InferCtx {
         let (name, arity) = (name.clone(), params.len());
         let args: Vec<Type> = (0..arity).map(|_| self.fresh()).collect();
         let fields = self.record_fields(&name, &args)?;
-        Some(Type::Record { name, fields })
+        Some(if args.is_empty() {
+            Type::Record { name, fields }
+        } else {
+            Type::con(name, args)
+        })
     }
 
     /// Declare an opaque alias: a nominal type that only the declarations of

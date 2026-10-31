@@ -1,0 +1,1 @@
+FAIL OAI.PermanentBorder.AmbientPolar.groupIndex_injective: kernel: type mismatch: `(fun (α : Sort u) => (∀ (a : α), (∀ (b : α), (Decidable (((Eq.{u} α) a) b)))))` has type `(Sort u → Sort imax u imax u 1)` but `(Sort u → Sort max 1 u)` was expected

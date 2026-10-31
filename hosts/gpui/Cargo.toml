@@ -17,3 +17,22 @@ serde_json = "1"
 debug = 1
 
 [workspace]
+
+[patch.crates-io]
+metal = { path = "../../target/gpui-dependencies/metal-0.33.0" }
+pulp = { path = "../../target/gpui-dependencies/pulp-0.22.3" }
+rav1e = { path = "../../target/gpui-dependencies/rav1e-0.8.1" }
+atspi = { path = "../../target/gpui-dependencies/atspi-0.29.0" }
+atspi-common = { path = "../../target/gpui-dependencies/atspi-common-0.13.0" }
+atspi-proxies = { path = "../../target/gpui-dependencies/atspi-proxies-0.13.0" }
+accesskit_unix = { path = "../../target/gpui-dependencies/accesskit_unix-0.22.1" }
+accesskit_atspi_common = { path = "../../target/gpui-dependencies/accesskit_atspi_common-0.19.1" }
+gpui-base = { path = "../../target/gpui-dependencies/gpui-base-0.8.1" }
+gpui-component = { path = "../../target/gpui-dependencies/gpui-component-0.8.1" }
+gpui-pre-reqwest = { path = "../../target/gpui-dependencies/gpui-pre-reqwest-0.12.15" }
+gpui-pre = { path = "../../target/gpui-dependencies/gpui-pre-0.3.10" }
+cosmic-text = { path = "../../target/gpui-dependencies/cosmic-text-0.19.0" }
+notify-rust = { path = "../../target/gpui-dependencies/notify-rust-4.18.2" }
+ashpd = { path = "../../target/gpui-dependencies/ashpd-0.13.13" }
+gpui-pre-linux = { path = "../../target/gpui-dependencies/gpui-pre-linux-0.3.10" }
+oo7 = { path = "../../target/gpui-dependencies/oo7-0.6.0" }

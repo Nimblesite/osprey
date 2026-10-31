@@ -90,6 +90,7 @@ fn assemble_if_needed(
             .unwrap_or(osprey_syntax::Flavor::Default),
         source: source.to_string(),
         program,
+        discipline: None,
     };
     osprey_project::assemble_one(source_file)
         .map(|assembled| (assembled.program, assembled.backend))

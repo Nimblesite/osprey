@@ -112,6 +112,63 @@ returnClauseCase () =
         (checkedDouble 4611686018427387904 valueWork ?: -1) == -1
     ]
 
+type ResumeBox =
+    held : string
+effect ErasedBoxAsk
+    control value : Unit => List<any>
+effect ErasedBoxResultAsk
+    control value : Unit => Result<List<any>, string>
+
+resumeBoxValues () = [ResumeBox(held = "boxed")]
+resumeBoxText : List<any> -> string
+resumeBoxText values = match values
+    [{ held, .. }] => toString held
+    _ => "other"
+resumeBoxWork () = resumeBoxText (perform ErasedBoxAsk.value ())
+resumeResultBoxWork () = match perform ErasedBoxResultAsk.value ()
+    Success value => resumeBoxText value
+    Error message => message
+
+plainBoxResume = handler ErasedBoxAsk
+    value => resume (resumeBoxValues ())
+promotedBoxResume = handler ErasedBoxResultAsk
+    value => resume (resumeBoxValues ())
+wrappedBoxResume = handler ErasedBoxResultAsk
+    value => resume (Success(value = resumeBoxValues ()))
+errorBoxResume = handler ErasedBoxResultAsk
+    value => resume (Error(message = join ["resume", "error"] " "))
+
+effect NestedBoxAsk
+    control value : Unit => List<List<any>>
+effect NestedBoxResultAsk
+    control value : Unit => Result<List<List<any>>, string>
+
+nestedResumeValues () = [resumeBoxValues ()]
+nestedResumeText values = match values
+    [items] => resumeBoxText items
+    _ => "other"
+nestedResumeWork () = nestedResumeText (perform NestedBoxAsk.value ())
+nestedResultResumeWork () = match perform NestedBoxResultAsk.value ()
+    Success value => nestedResumeText value
+    Error message => message
+
+plainNestedResume = handler NestedBoxAsk
+    value => resume (nestedResumeValues ())
+promotedNestedResume = handler NestedBoxResultAsk
+    value => resume (nestedResumeValues ())
+wrappedNestedResume = handler NestedBoxResultAsk
+    value => resume (Success(value = nestedResumeValues ()))
+errorNestedResume = handler NestedBoxResultAsk
+    value => resume (Error(message = join ["nested", "error"] " "))
+
+nestedResumeChecks () = checkAll "nested lists preserve erased resume payloads" [
+    nestedResumeText (nestedResumeValues ()) == "boxed",
+    plainNestedResume nestedResumeWork == "boxed",
+    promotedNestedResume nestedResultResumeWork == "boxed",
+    wrappedNestedResume nestedResultResumeWork == "boxed",
+    errorNestedResume nestedResultResumeWork == "nested error"
+]
+
 (** A resumed branch answer is already transformed; an abandoned one never is. *)
 controlAnswerCase () =
     opened = gate true
@@ -120,8 +177,14 @@ controlAnswerCase () =
         around controlWork == "done=42!", stop controlWork == "stopped",
         bracket twoAsks == "[[done=44]]", opened controlWork == "open 6",
         closed controlWork == "closed", closed twoAsks == "closed",
-        opened twoAsks == "open 55"
+        opened twoAsks == "open 55",
+        resumeBoxText (resumeBoxValues ()) == "boxed",
+        plainBoxResume resumeBoxWork == "boxed",
+        promotedBoxResume resumeResultBoxWork == "boxed",
+        wrappedBoxResume resumeResultBoxWork == "boxed",
+        errorBoxResume resumeResultBoxWork == "resume error"
     ]
+    nestedResumeChecks ()
 
 (** Repeated applications share a factory's cells; separate factories do not. *)
 factoryStateCase () =

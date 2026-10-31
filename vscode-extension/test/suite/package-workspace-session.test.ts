@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { createWorkspaceSession, type SessionDeps } from "../../client/src/osprey-ui/session";
+import { createWorkspaceSession, type SessionDeps, type WorkspaceSession } from "../../client/src/osprey-ui/session";
 import type { NativeRequest } from "../../client/src/osprey-ui/protocol";
 
 function envelope(state: string, revision: number, requests: NativeRequest[] = []): string {
@@ -24,7 +24,84 @@ function recordedSession(initialRevision = 0, overrides: Partial<SessionDeps> = 
   return { session, frames, sent };
 }
 
+function refuseStaleAction(session: WorkspaceSession, sent: Record<string, unknown>[], active: boolean): void {
+  const before = sent.length;
+  session.message({ type: "event", region: "root", revision: 2, ordinal: 0, value: null });
+  assert.deepStrictEqual(sent.slice(before), [{ type: "busy", active }]);
+}
+
+function pendingSliceSession() {
+  const frames: Record<string, unknown>[] = [], held: ReadonlyMap<string, string>[] = [];
+  const replies: ((value: unknown) => void)[] = [];
+  const { session } = recordedSession(0, {
+    run: async (raw) => {
+      frames.push(JSON.parse(raw));
+      const revision = frames.length;
+      const requests = revision <= 2 ? [{ ticket: `pick-${revision}`, kind: "choose-file", slice: "document", limit: 1024, types: ["ospml"] }] : [];
+      return { stdout: envelope(`s${revision}`, revision, requests), exitCode: 0 };
+    },
+    execute: (_request, slices) => { held.push(slices); return new Promise(resolve => replies.push(resolve)); },
+  });
+  const deliver = (text: string): void => {
+    const reply = replies.shift();
+    assert.ok(reply, "a file request must be pending");
+    reply({ result: { path: "/picked/proof.ospml" }, slices: [{ key: "document", text }] });
+  };
+  return { session, frames, held, deliver };
+}
+
 suite("package workspace session", () => {
+  test("a refused action preserves the actual queued busy state without executing", async () => {
+    let hold = false, release = (): void => undefined, calls = 0;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const { session, sent } = recordedSession(0, { run: async () => {
+      calls += 1;
+      if (hold) await gate;
+      return { stdout: envelope("s", 1), exitCode: 0 };
+    } });
+    await session.start({});
+    for (const active of [false, true]) {
+      hold = active;
+      if (active) session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: null });
+      refuseStaleAction(session, sent, active);
+    }
+    release(); await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(calls, 2, "only start and the valid action may execute");
+    session.dispose();
+  });
+  test("busy remains set until every queued runtime frame has finished", async () => {
+    let hold = false, release = (): void => undefined;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const { session, sent } = recordedSession(0, { run: async () => {
+      if (hold) await gate;
+      return { stdout: envelope("s", 1), exitCode: 0 };
+    } });
+    await session.start({});
+    sent.length = 0;
+    hold = true;
+    for (let ordinal = 0; ordinal < 2; ordinal++) session.message({ type: "event", region: "root", revision: 1, ordinal, value: null });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepStrictEqual(sent.filter(message => message.type === "busy"), [{ type: "busy", active: true }]);
+    release();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepStrictEqual(sent.filter(message => message.type === "busy"), [{ type: "busy", active: true }, { type: "busy", active: false }]);
+    session.dispose();
+  });
+  test("retired file deliveries cannot enter a restarted session", async () => {
+    const { session, frames, held, deliver } = pendingSliceSession();
+    await session.start({ project: "old" });
+    await session.start({ project: "current" });
+    deliver("private retired proof");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(frames.length, 2, "a retired completion cannot dispatch");
+    assert.strictEqual(held[1].get("document"), undefined, "retired text leaked into the current session");
+    deliver("current proof");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(frames.length, 3);
+    assert.deepStrictEqual(frames[2].slices, { document: "current proof" });
+    session.dispose();
+  });
+
   test("failed runtime commands report their exit code and available diagnostic output", async () => {
     for (const stdout of ["", " runtime diagnostic "]) {
       const reported: string[] = [];
@@ -34,7 +111,7 @@ suite("package workspace session", () => {
       await session.start({});
       const message = `The Osprey workspace exited with code 7${stdout ? ": runtime diagnostic" : ""}`;
       assert.deepStrictEqual(reported, [message]);
-      assert.deepStrictEqual(sent.at(-1), { type: "fatal", message });
+      assert.deepStrictEqual(sent.slice(-2), [{ type: "fatal", message }, { type: "busy", active: false }]);
       session.dispose();
     }
   });
@@ -43,12 +120,12 @@ suite("package workspace session", () => {
     for (const failure of ["wire refused", new Error("wire refused")]) {
       const { session, sent } = recordedSession(0, { run: async () => { throw failure; } });
       await session.start({});
-      assert.deepStrictEqual(sent.at(-1), { type: "fatal", message: "wire refused" });
+      assert.deepStrictEqual(sent.slice(-2), [{ type: "fatal", message: "wire refused" }, { type: "busy", active: false }]);
       session.dispose();
     }
     const { session, sent } = recordedSession(0, { render: () => { throw new Error("render refused"); } });
     await session.start({});
-    assert.deepStrictEqual(sent.at(-1), { type: "fatal", message: "render refused" });
+    assert.deepStrictEqual(sent.slice(-2), [{ type: "fatal", message: "render refused" }, { type: "busy", active: false }]);
     session.dispose();
     await assert.rejects(session.start({}), /session is disposed/);
   });
@@ -106,8 +183,8 @@ suite("package workspace session", () => {
     await session.start({});
     session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: "draft", edit: 1 });
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepStrictEqual(sent.slice(-2), [{ type: "edit-result", edit: 1, accepted: false, error: "binding refused" },
-      { type: "render", html: "HTML", diagnostics: ["binding refused"] }]);
+    assert.deepStrictEqual(sent.slice(-3), [{ type: "edit-result", edit: 1, accepted: false, error: "binding refused" },
+      { type: "render", html: "HTML", diagnostics: ["binding refused"] }, { type: "busy", active: false }]);
     session.dispose();
   });
 
@@ -138,8 +215,8 @@ suite("package workspace session", () => {
     assert.deepStrictEqual(frames[2], { operation: "dispatch", state: "s2", event: {
       kind: "ui-edit", prior: "s1", region: "root", revision: 1, ordinal: 0, value: " draft ", now: 1,
     } });
-    assert.deepStrictEqual(sent.slice(-2), [{ type: "edit-result", edit: 7, accepted: true },
-      { type: "render", html: "HTML", diagnostics: [] }]);
+    assert.deepStrictEqual(sent.slice(-3), [{ type: "edit-result", edit: 7, accepted: true },
+      { type: "render", html: "HTML", diagnostics: [] }, { type: "busy", active: false }]);
     session.dispose();
   });
 
@@ -193,5 +270,55 @@ suite("package workspace session", () => {
     session.message({ type: "event", region: "root", revision: 4, ordinal: 0, value: "real" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.ok(frames.some((frame) => frame.includes('"state":"s1"') && frame.includes('"value":"real"')));
+  });
+
+  test("capability executions receive host-held slices and their deliveries ride the next frame", async () => {
+    const frames: Record<string, unknown>[] = [];
+    const received: { request: NativeRequest; slices: ReadonlyMap<string, string> }[] = [];
+    const request: NativeRequest = { ticket: "save", kind: "store-write", name: "lessons/progress.json", slice: "lessons:progress" };
+    const envelopeWithSlice = (state: string, revision: number, withRequest: boolean): string => JSON.stringify({
+      version: 1, state, diagnostics: [], theme: null, removed: [], patches: [{ key: "root", revision, node: { kind: "text", text: "Ready" } }],
+      requests: withRequest ? [request] : [],
+      slices: withRequest ? [{ key: "lessons:progress", text: "{\"completed\":[]}" }] : [],
+    });
+    const session = createWorkspaceSession({
+      run: async (frame) => {
+        frames.push(JSON.parse(frame));
+        const started = frames.length === 1;
+        return { stdout: envelopeWithSlice(started ? "s1" : "s2", frames.length, started), exitCode: 0 };
+      },
+      render: () => "HTML", send: () => undefined,
+      execute: async (executed, held) => {
+        received.push({ request: executed, slices: held });
+        return { result: { path: "lessons/progress.json" }, slices: [{ key: "host:facts", text: "written" }] };
+      },
+      now: () => 1, report: () => undefined,
+    });
+    await session.start({});
+    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.strictEqual(received.length, 1);
+    assert.strictEqual(received[0].slices.get("lessons:progress"), "{\"completed\":[]}");
+    assert.strictEqual(frames[0].slices, undefined);
+    const completion = frames.at(-1);
+    assert.deepStrictEqual((completion?.event as Record<string, unknown>)?.result, { path: "lessons/progress.json" });
+    assert.deepStrictEqual(completion?.slices, { "lessons:progress": "{\"completed\":[]}", "host:facts": "written" });
+    session.dispose();
+  });
+
+  test("a foreign executor result is delivered untouched even when it names a result member", async () => {
+    const frames: Record<string, unknown>[] = [];
+    const session = createWorkspaceSession({
+      run: async (frame) => {
+        frames.push(JSON.parse(frame));
+        return { stdout: envelope("s1", 1, frames.length === 1 ? [{ ticket: "facts", kind: "host-call" }] : []), exitCode: 0 };
+      },
+      render: () => "HTML", send: () => undefined,
+      execute: async () => ({ result: "inner", authority: "vscode" }),
+      now: () => 1, report: () => undefined,
+    });
+    await session.start({});
+    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual((frames.at(-1)?.event as Record<string, unknown>)?.result, { result: "inner", authority: "vscode" });
+    session.dispose();
   });
 });

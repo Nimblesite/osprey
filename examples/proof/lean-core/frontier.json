@@ -1,0 +1,2421 @@
+{
+  "toolchain": "leanprover/lean4:v4.25.0",
+  "toolchain_path": "~/.elan/toolchains/leanprover--lean4---v4.25.0",
+  "exporter": "lean4export cfefafacc917b2d14c5f9bb092ed337f71317a4a (tag v4.25.0)",
+  "probe_binary": "target/proof/openai/check-batch.gc (parent-owned; may predate latest kernel work \u2014 parent rebuilds and runs the final matrix)",
+  "kind": "frontier",
+  "groups": [
+    {
+      "id": "nat-lemmas",
+      "module": "Init.Data.Nat.Lemmas",
+      "stdlib_source": "Init/Data/Nat/Lemmas.lean",
+      "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+      "selected": [
+        "Nat.sub_one",
+        "Nat.one_add",
+        "Nat.lt_iff_add_one_le",
+        "Nat.one_add_le_iff",
+        "Nat.pred_one_add",
+        "Nat.add_succ_sub_one",
+        "Nat.succ_add_sub_one",
+        "Nat.pred_sub",
+        "Nat.self_add_sub_one",
+        "Nat.sub_one_add_self",
+        "Nat.self_add_pred",
+        "Nat.pred_add_self",
+        "Nat.add_add_add_comm",
+        "Nat.succ_eq_one_add",
+        "Nat.succ_add_eq_add_succ",
+        "Nat.eq_zero_of_add_eq_zero_right",
+        "Nat.add_eq_zero_iff",
+        "Nat.add_left_cancel_iff",
+        "Nat.add_right_cancel_iff",
+        "Nat.add_left_inj",
+        "Nat.add_right_inj",
+        "Nat.add_eq_left",
+        "Nat.add_eq_right",
+        "Nat.lt_of_add_lt_add_right",
+        "Nat.lt_of_add_lt_add_left",
+        "Nat.add_lt_add_iff_left",
+        "Nat.add_lt_add_iff_right",
+        "Nat.add_lt_add_of_le_of_lt",
+        "Nat.add_lt_add_of_lt_of_le",
+        "Nat.mul_mul_mul_comm",
+        "Nat.succ_mul_succ",
+        "Nat.add_one_mul_add_one",
+        "Nat.sub_sub_self",
+        "Nat.sub_sub_sub_cancel_right",
+        "Nat.add_sub_cancel_right",
+        "Nat.add_sub_cancel'",
+        "Nat.succ_sub_sub_succ"
+      ],
+      "roots": [
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.sub_one",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.sub_one.ndjson",
+          "sha256": "601d1a0d354b6444a31b958e2272be2d09c29f272f97e4b16d265f38adbd7b0c",
+          "bytes": 40315,
+          "lines": 720,
+          "declarations": 26,
+          "decl_by_kind": {
+            "def": 18,
+            "inductive": 7,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.sub_one",
+            "result": "PASS Nat.sub_one | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.one_add",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.one_add.ndjson",
+          "sha256": "874ea965a5da08785b9ab545f97d90e94aa92493dc76d77c418aea2dee96d50b",
+          "bytes": 59452,
+          "lines": 1119,
+          "declarations": 34,
+          "decl_by_kind": {
+            "def": 21,
+            "inductive": 7,
+            "thm": 6
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.one_add",
+            "result": "PASS Nat.one_add | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.lt_iff_add_one_le",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.lt_iff_add_one_le.ndjson",
+          "sha256": "c8bbe4e48699bfea266a351920b430fa1fce8eb8dd85c2c623e8b2bb20388f8e",
+          "bytes": 61486,
+          "lines": 1076,
+          "declarations": 41,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 21,
+            "inductive": 11,
+            "thm": 8
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.lt_iff_add_one_le",
+            "result": "PASS Nat.lt_iff_add_one_le | axioms: propext",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.one_add_le_iff",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.one_add_le_iff.ndjson",
+          "sha256": "c54ae85420b44441216ee1b675c9b0693ba2bbc1403a97baa5033fcdf9aae136",
+          "bytes": 84313,
+          "lines": 1540,
+          "declarations": 54,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 26,
+            "inductive": 12,
+            "thm": 15
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.one_add_le_iff",
+            "result": "PASS Nat.one_add_le_iff | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.pred_one_add",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.pred_one_add.ndjson",
+          "sha256": "511f094a0b3f2c558198c4147743100dda2dd19c1d37afb189fddaa158c1fea1",
+          "bytes": 64587,
+          "lines": 1232,
+          "declarations": 38,
+          "decl_by_kind": {
+            "def": 23,
+            "inductive": 7,
+            "thm": 8
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.pred_one_add",
+            "result": "PASS Nat.pred_one_add | axioms: none",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_succ_sub_one",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_succ_sub_one.ndjson",
+          "sha256": "88cd73a8520e56cc058d2c6e9711af81832b247fd5e97e831cc1709c9a131444",
+          "bytes": 51421,
+          "lines": 905,
+          "declarations": 34,
+          "decl_by_kind": {
+            "def": 24,
+            "inductive": 9,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.add_succ_sub_one",
+            "result": "PASS Nat.add_succ_sub_one | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.succ_add_sub_one",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.succ_add_sub_one.ndjson",
+          "sha256": "4ad08e0048a67f3b44652a8c1d8d2aefaca52dc533d894bd44e37fa50f5e91f8",
+          "bytes": 66805,
+          "lines": 1231,
+          "declarations": 41,
+          "decl_by_kind": {
+            "def": 27,
+            "inductive": 9,
+            "thm": 5
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.succ_add_sub_one",
+            "result": "PASS Nat.succ_add_sub_one | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.pred_sub",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.pred_sub.ndjson",
+          "sha256": "22be7e9d1b2a6eef45024117517b7c378c1de1a5013f2c8b5ec1120a554eb6a5",
+          "bytes": 95590,
+          "lines": 1809,
+          "declarations": 57,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 30,
+            "inductive": 11,
+            "thm": 15
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.pred_sub",
+            "result": "PASS Nat.pred_sub | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.self_add_sub_one",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.self_add_sub_one.ndjson",
+          "sha256": "1af1b34a4151fb03ce44553dbf0f2511e899b245e1a405224a0afea65ef37f27",
+          "bytes": 124968,
+          "lines": 2420,
+          "declarations": 68,
+          "decl_by_kind": {
+            "def": 39,
+            "inductive": 11,
+            "thm": 18
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.self_add_sub_one",
+            "result": "PASS Nat.self_add_sub_one | axioms: none",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.sub_one_add_self",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.sub_one_add_self.ndjson",
+          "sha256": "b6daa27fab964a1ee3e14525c125478430d1a61a563a2345c79b42e35124e191",
+          "bytes": 126778,
+          "lines": 2460,
+          "declarations": 69,
+          "decl_by_kind": {
+            "def": 39,
+            "inductive": 11,
+            "thm": 19
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.sub_one_add_self",
+            "result": "PASS Nat.sub_one_add_self | axioms: none",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.self_add_pred",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.self_add_pred.ndjson",
+          "sha256": "50aa03630f0fffd0aa9ffc090db70b57b833aa310ab39bd533a73d173bc782e2",
+          "bytes": 125519,
+          "lines": 2431,
+          "declarations": 69,
+          "decl_by_kind": {
+            "def": 39,
+            "inductive": 11,
+            "thm": 19
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.self_add_pred",
+            "result": "PASS Nat.self_add_pred | axioms: none",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.pred_add_self",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.pred_add_self.ndjson",
+          "sha256": "1c83dfd9a901e8436de8ddcd40a6db8ed52ea0a0b07e3f6c14bf79afd1d4eef5",
+          "bytes": 127367,
+          "lines": 2472,
+          "declarations": 70,
+          "decl_by_kind": {
+            "def": 39,
+            "inductive": 11,
+            "thm": 20
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.pred_add_self",
+            "result": "PASS Nat.pred_add_self | axioms: none",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_add_add_comm",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_add_add_comm.ndjson",
+          "sha256": "01f63a9281fb4a087987737558ec3457595d96d835e06086ffb3124bd6bdf85e",
+          "bytes": 73731,
+          "lines": 1426,
+          "declarations": 37,
+          "decl_by_kind": {
+            "def": 22,
+            "inductive": 7,
+            "thm": 8
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.add_add_add_comm",
+            "result": "PASS Nat.add_add_add_comm | axioms: none",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.succ_eq_one_add",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.succ_eq_one_add.ndjson",
+          "sha256": "e2ca81c0fbd3e8bf8e2906714405fc2c9c52622756499fe57ea5d632e0d88bc5",
+          "bytes": 59988,
+          "lines": 1130,
+          "declarations": 35,
+          "decl_by_kind": {
+            "def": 21,
+            "inductive": 7,
+            "thm": 7
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.succ_eq_one_add",
+            "result": "PASS Nat.succ_eq_one_add | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.succ_add_eq_add_succ",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.succ_add_eq_add_succ.ndjson",
+          "sha256": "442fe9a17a1b370ba657afa8c3453a3b6efd71b9dad8d0874f0c9b46991f9f19",
+          "bytes": 45192,
+          "lines": 822,
+          "declarations": 25,
+          "decl_by_kind": {
+            "def": 15,
+            "inductive": 7,
+            "thm": 3
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.succ_add_eq_add_succ",
+            "result": "PASS Nat.succ_add_eq_add_succ | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.eq_zero_of_add_eq_zero_right",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.eq_zero_of_add_eq_zero_right.ndjson",
+          "sha256": "854f9f68752bfb4c91ee455ec63b206b85ca637a9277b28b7307dea9610d3a87",
+          "bytes": 88586,
+          "lines": 1630,
+          "declarations": 44,
+          "decl_by_kind": {
+            "def": 26,
+            "inductive": 12,
+            "thm": 6
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.eq_zero_of_add_eq_zero_right",
+            "result": "PASS Nat.eq_zero_of_add_eq_zero_right | axioms: none",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_eq_zero_iff",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_eq_zero_iff.ndjson",
+          "sha256": "8704f0f1a77220ded0fbcb4fcf6e756b70020501d28f9ce5c2d6f5b2bd9b2721",
+          "bytes": 99878,
+          "lines": 1840,
+          "declarations": 47,
+          "decl_by_kind": {
+            "def": 28,
+            "inductive": 13,
+            "thm": 6
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.add_eq_zero_iff",
+            "result": "PASS Nat.add_eq_zero_iff | axioms: none",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_left_cancel_iff",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_left_cancel_iff.ndjson",
+          "sha256": "2d8be1879c2c29e9b3970182ade6f1d5e7e67067c0848cbf2396c8c98b371b1b",
+          "bytes": 108371,
+          "lines": 2033,
+          "declarations": 57,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 27,
+            "inductive": 10,
+            "thm": 19
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.add_left_cancel_iff",
+            "result": "PASS Nat.add_left_cancel_iff | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_right_cancel_iff",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_right_cancel_iff.ndjson",
+          "sha256": "11ebf7c1166c55eaf98c1c87feb59305cc740ae57a0fc1a33ca25d080e32d9a8",
+          "bytes": 116380,
+          "lines": 2200,
+          "declarations": 61,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 29,
+            "inductive": 10,
+            "thm": 21
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.add_right_cancel_iff",
+            "result": "PASS Nat.add_right_cancel_iff | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_left_inj",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_left_inj.ndjson",
+          "sha256": "e2f24041fee97b8ad9dbf336c2849b219498541d7e253345ab687682cc86beeb",
+          "bytes": 116885,
+          "lines": 2209,
+          "declarations": 62,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 29,
+            "inductive": 10,
+            "thm": 22
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.add_left_inj",
+            "result": "PASS Nat.add_left_inj | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_right_inj",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_right_inj.ndjson",
+          "sha256": "abe452a9feceaee004978d596f048bdeca5fce5d953eb0da54c06086be8f4f6d",
+          "bytes": 108877,
+          "lines": 2042,
+          "declarations": 58,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 27,
+            "inductive": 10,
+            "thm": 20
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.add_right_inj",
+            "result": "PASS Nat.add_right_inj | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_eq_left",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_eq_left.ndjson",
+          "sha256": "c84b6af2c260858c006b829039ea0e825bd63aaf9464af97428369c6175a51bb",
+          "bytes": 3952294,
+          "lines": 77266,
+          "declarations": 1260,
+          "decl_by_kind": {
+            "axiom": 3,
+            "def": 545,
+            "inductive": 72,
+            "opaque": 2,
+            "quot": 4,
+            "thm": 634
+          },
+          "closure_axioms": [
+            "Classical.choice",
+            "Quot.sound",
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.add_eq_left",
+            "result": "FAIL Nat.add_eq_left: kernel: line 71954: unsupported: mutual inductive",
+            "seconds": 2.2,
+            "exit": 0,
+            "status": "blocked"
+          },
+          "status": "blocked",
+          "refusal_declaration": "Lean.Syntax"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_eq_right",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_eq_right.ndjson",
+          "sha256": "9241e1d1b6eaacf313dcc07396940662e5780f86e2c5da2d159483fc1898c47d",
+          "bytes": 3949891,
+          "lines": 77211,
+          "declarations": 1260,
+          "decl_by_kind": {
+            "axiom": 3,
+            "def": 545,
+            "inductive": 72,
+            "opaque": 2,
+            "quot": 4,
+            "thm": 634
+          },
+          "closure_axioms": [
+            "Classical.choice",
+            "Quot.sound",
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.add_eq_right",
+            "result": "FAIL Nat.add_eq_right: kernel: line 71954: unsupported: mutual inductive",
+            "seconds": 2.2,
+            "exit": 0,
+            "status": "blocked"
+          },
+          "status": "blocked",
+          "refusal_declaration": "Lean.Syntax"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.lt_of_add_lt_add_right",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.lt_of_add_lt_add_right.ndjson",
+          "sha256": "34907d132270983b5188f3c4e1fb6f10b57e9abdb3b2c270d3f1099af16a650d",
+          "bytes": 162579,
+          "lines": 3125,
+          "declarations": 55,
+          "decl_by_kind": {
+            "def": 34,
+            "inductive": 12,
+            "thm": 9
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.lt_of_add_lt_add_right",
+            "result": "PASS Nat.lt_of_add_lt_add_right | axioms: none",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.lt_of_add_lt_add_left",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.lt_of_add_lt_add_left.ndjson",
+          "sha256": "165b38a7233577ede35081f007d6daf37a285e1a010216852dba5c7cf4f3d77e",
+          "bytes": 184194,
+          "lines": 3561,
+          "declarations": 64,
+          "decl_by_kind": {
+            "def": 38,
+            "inductive": 12,
+            "thm": 14
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.lt_of_add_lt_add_left",
+            "result": "PASS Nat.lt_of_add_lt_add_left | axioms: none",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_lt_add_iff_left",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_lt_add_iff_left.ndjson",
+          "sha256": "a485d2b8a498c8ed0e2ce5958c39b33171a69a68232146b9eab29b9b67c0fd60",
+          "bytes": 249790,
+          "lines": 4794,
+          "declarations": 92,
+          "decl_by_kind": {
+            "def": 49,
+            "inductive": 15,
+            "thm": 28
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.add_lt_add_iff_left",
+            "result": "PASS Nat.add_lt_add_iff_left | axioms: none",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_lt_add_iff_right",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_lt_add_iff_right.ndjson",
+          "sha256": "6e047a89fa1d171d6e9c7bc932a7b9f974dc7c1e1d594eef82964bb3c2ebafd5",
+          "bytes": 249621,
+          "lines": 4790,
+          "declarations": 92,
+          "decl_by_kind": {
+            "def": 49,
+            "inductive": 15,
+            "thm": 28
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.add_lt_add_iff_right",
+            "result": "PASS Nat.add_lt_add_iff_right | axioms: none",
+            "seconds": 0.3,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_lt_add_of_le_of_lt",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_lt_add_of_le_of_lt.ndjson",
+          "sha256": "e4236780ea891ea9a94673d03076b1391183ad21982af28ba2f49ea28269b757",
+          "bytes": 263088,
+          "lines": 5089,
+          "declarations": 91,
+          "decl_by_kind": {
+            "def": 49,
+            "inductive": 14,
+            "thm": 28
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.add_lt_add_of_le_of_lt",
+            "result": "PASS Nat.add_lt_add_of_le_of_lt | axioms: none",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_lt_add_of_lt_of_le",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_lt_add_of_lt_of_le.ndjson",
+          "sha256": "4573867d3a812e853c23e2712a28bfa4ca74941902bb0bac399decae61225307",
+          "bytes": 263273,
+          "lines": 5092,
+          "declarations": 91,
+          "decl_by_kind": {
+            "def": 49,
+            "inductive": 14,
+            "thm": 28
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.add_lt_add_of_lt_of_le",
+            "result": "PASS Nat.add_lt_add_of_lt_of_le | axioms: none",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.mul_mul_mul_comm",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.mul_mul_mul_comm.ndjson",
+          "sha256": "3ca595cb78162f1922c228f78b1150abf20a5f2a1816a1e0bf999dede1fb65f5",
+          "bytes": 144641,
+          "lines": 2854,
+          "declarations": 68,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 32,
+            "inductive": 11,
+            "thm": 24
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.mul_mul_mul_comm",
+            "result": "PASS Nat.mul_mul_mul_comm | axioms: propext",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.succ_mul_succ",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.succ_mul_succ.ndjson",
+          "sha256": "ff358ad02f46b49a538cbe1f32ca6ed7b1ac7c23d29d78951d9a66715b4d12b4",
+          "bytes": 94159,
+          "lines": 1815,
+          "declarations": 49,
+          "decl_by_kind": {
+            "def": 29,
+            "inductive": 9,
+            "thm": 11
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.succ_mul_succ",
+            "result": "PASS Nat.succ_mul_succ | axioms: none",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_one_mul_add_one",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_one_mul_add_one.ndjson",
+          "sha256": "78e6f46ac3432cbcf68d9628bf4024944194464c4bb6f96f451c7baebc4527f2",
+          "bytes": 95540,
+          "lines": 1840,
+          "declarations": 51,
+          "decl_by_kind": {
+            "def": 29,
+            "inductive": 9,
+            "thm": 13
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Nat.add_one_mul_add_one",
+            "result": "PASS Nat.add_one_mul_add_one | axioms: none",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.sub_sub_self",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.sub_sub_self.ndjson",
+          "sha256": "2cac07aab15c44c00b0508f03939fd39df9d4e964f2e2e4f3e2c1e89041d91d0",
+          "bytes": 287616,
+          "lines": 5567,
+          "declarations": 123,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 58,
+            "inductive": 17,
+            "thm": 47
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.sub_sub_self",
+            "result": "PASS Nat.sub_sub_self | axioms: propext",
+            "seconds": 0.3,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.sub_sub_sub_cancel_right",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.sub_sub_sub_cancel_right.ndjson",
+          "sha256": "a65b5d623f9c82ccb3fa220ef96c2b91a7b85eef090cbd9dbda7f2ea2b2856b2",
+          "bytes": 4217516,
+          "lines": 83149,
+          "declarations": 1285,
+          "decl_by_kind": {
+            "axiom": 2,
+            "def": 552,
+            "inductive": 73,
+            "opaque": 2,
+            "quot": 4,
+            "thm": 652
+          },
+          "closure_axioms": [
+            "Quot.sound",
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.sub_sub_sub_cancel_right",
+            "result": "FAIL Nat.sub_sub_sub_cancel_right: kernel: line 71065: unsupported: mutual inductive",
+            "seconds": 2.1,
+            "exit": 0,
+            "status": "blocked"
+          },
+          "status": "blocked",
+          "refusal_declaration": "Lean.Syntax"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_sub_cancel_right",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_sub_cancel_right.ndjson",
+          "sha256": "0df3b0902e55c1f9616869eb1e6189a440f9c9ddb8e50fbaa898fd4c80eda5d8",
+          "bytes": 99090,
+          "lines": 1848,
+          "declarations": 58,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 30,
+            "inductive": 11,
+            "thm": 16
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.add_sub_cancel_right",
+            "result": "PASS Nat.add_sub_cancel_right | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.add_sub_cancel'",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.add_sub_cancel'.ndjson",
+          "sha256": "0a0c7c968d5c0d2cbd4773f3005becb28a05d8749254d8b26a61da3b1bd7ca2d",
+          "bytes": 248836,
+          "lines": 4783,
+          "declarations": 107,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 53,
+            "inductive": 17,
+            "thm": 36
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.add_sub_cancel'",
+            "result": "PASS Nat.add_sub_cancel' | axioms: propext",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "nat-lemmas",
+          "module": "Init.Data.Nat.Lemmas",
+          "name": "Nat.succ_sub_sub_succ",
+          "stdlib_source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+          "temp_export": "target/proof/openai/lean-core-frontier/nat-lemmas/Nat.succ_sub_sub_succ.ndjson",
+          "sha256": "69935f43037b0012424092b90000f43326894422074523f67677e8aefcd0324b",
+          "bytes": 82893,
+          "lines": 1548,
+          "declarations": 51,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 27,
+            "inductive": 11,
+            "thm": 12
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Nat.succ_sub_sub_succ",
+            "result": "PASS Nat.succ_sub_sub_succ | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        }
+      ],
+      "accepted": [
+        "Nat.sub_one",
+        "Nat.one_add",
+        "Nat.lt_iff_add_one_le",
+        "Nat.one_add_le_iff",
+        "Nat.pred_one_add",
+        "Nat.add_succ_sub_one",
+        "Nat.succ_add_sub_one",
+        "Nat.pred_sub",
+        "Nat.self_add_sub_one",
+        "Nat.sub_one_add_self",
+        "Nat.self_add_pred",
+        "Nat.pred_add_self",
+        "Nat.add_add_add_comm",
+        "Nat.succ_eq_one_add",
+        "Nat.succ_add_eq_add_succ",
+        "Nat.eq_zero_of_add_eq_zero_right",
+        "Nat.add_eq_zero_iff",
+        "Nat.add_left_cancel_iff",
+        "Nat.add_right_cancel_iff",
+        "Nat.add_left_inj",
+        "Nat.add_right_inj",
+        "Nat.lt_of_add_lt_add_right",
+        "Nat.lt_of_add_lt_add_left",
+        "Nat.add_lt_add_iff_left",
+        "Nat.add_lt_add_iff_right",
+        "Nat.add_lt_add_of_le_of_lt",
+        "Nat.add_lt_add_of_lt_of_le",
+        "Nat.mul_mul_mul_comm",
+        "Nat.succ_mul_succ",
+        "Nat.add_one_mul_add_one",
+        "Nat.sub_sub_self",
+        "Nat.add_sub_cancel_right",
+        "Nat.add_sub_cancel'",
+        "Nat.succ_sub_sub_succ"
+      ],
+      "blocked": [
+        "Nat.add_eq_left",
+        "Nat.add_eq_right",
+        "Nat.sub_sub_sub_cancel_right"
+      ],
+      "consolidation": {
+        "names": [
+          "Nat.sub_one",
+          "Nat.one_add",
+          "Nat.lt_iff_add_one_le",
+          "Nat.one_add_le_iff",
+          "Nat.pred_one_add",
+          "Nat.add_succ_sub_one",
+          "Nat.succ_add_sub_one",
+          "Nat.pred_sub",
+          "Nat.self_add_sub_one",
+          "Nat.sub_one_add_self",
+          "Nat.self_add_pred",
+          "Nat.pred_add_self",
+          "Nat.add_add_add_comm",
+          "Nat.succ_eq_one_add",
+          "Nat.succ_add_eq_add_succ",
+          "Nat.eq_zero_of_add_eq_zero_right",
+          "Nat.add_eq_zero_iff",
+          "Nat.add_left_cancel_iff",
+          "Nat.add_right_cancel_iff",
+          "Nat.add_left_inj",
+          "Nat.add_right_inj",
+          "Nat.lt_of_add_lt_add_right",
+          "Nat.lt_of_add_lt_add_left",
+          "Nat.add_lt_add_iff_left",
+          "Nat.add_lt_add_iff_right",
+          "Nat.add_lt_add_of_le_of_lt",
+          "Nat.add_lt_add_of_lt_of_le",
+          "Nat.mul_mul_mul_comm",
+          "Nat.succ_mul_succ",
+          "Nat.add_one_mul_add_one",
+          "Nat.sub_sub_self",
+          "Nat.add_sub_cancel_right",
+          "Nat.add_sub_cancel'",
+          "Nat.succ_sub_sub_succ"
+        ],
+        "export_path": "examples/proof/lean-core/exports/nat-lemmas-accepted.ndjson",
+        "sha256": "b0ef4493d37ae7990d4e968ab5e1d270808e3912a4812e7001dddb6cca43ccc3",
+        "bytes": 551257,
+        "lines": 10821,
+        "declarations": 237,
+        "decl_by_kind": {
+          "axiom": 1,
+          "def": 83,
+          "inductive": 22,
+          "thm": 131
+        },
+        "probes": [
+          {
+            "name": "Nat.sub_one",
+            "result": "PASS Nat.sub_one | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.one_add",
+            "result": "PASS Nat.one_add | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.lt_iff_add_one_le",
+            "result": "PASS Nat.lt_iff_add_one_le | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.one_add_le_iff",
+            "result": "PASS Nat.one_add_le_iff | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.pred_one_add",
+            "result": "PASS Nat.pred_one_add | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_succ_sub_one",
+            "result": "PASS Nat.add_succ_sub_one | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.succ_add_sub_one",
+            "result": "PASS Nat.succ_add_sub_one | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.pred_sub",
+            "result": "PASS Nat.pred_sub | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.self_add_sub_one",
+            "result": "PASS Nat.self_add_sub_one | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.sub_one_add_self",
+            "result": "PASS Nat.sub_one_add_self | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.self_add_pred",
+            "result": "PASS Nat.self_add_pred | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.pred_add_self",
+            "result": "PASS Nat.pred_add_self | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_add_add_comm",
+            "result": "PASS Nat.add_add_add_comm | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.succ_eq_one_add",
+            "result": "PASS Nat.succ_eq_one_add | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.succ_add_eq_add_succ",
+            "result": "PASS Nat.succ_add_eq_add_succ | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.eq_zero_of_add_eq_zero_right",
+            "result": "PASS Nat.eq_zero_of_add_eq_zero_right | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_eq_zero_iff",
+            "result": "PASS Nat.add_eq_zero_iff | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_left_cancel_iff",
+            "result": "PASS Nat.add_left_cancel_iff | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_right_cancel_iff",
+            "result": "PASS Nat.add_right_cancel_iff | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_left_inj",
+            "result": "PASS Nat.add_left_inj | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_right_inj",
+            "result": "PASS Nat.add_right_inj | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.lt_of_add_lt_add_right",
+            "result": "PASS Nat.lt_of_add_lt_add_right | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.lt_of_add_lt_add_left",
+            "result": "PASS Nat.lt_of_add_lt_add_left | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_lt_add_iff_left",
+            "result": "PASS Nat.add_lt_add_iff_left | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_lt_add_iff_right",
+            "result": "PASS Nat.add_lt_add_iff_right | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_lt_add_of_le_of_lt",
+            "result": "PASS Nat.add_lt_add_of_le_of_lt | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_lt_add_of_lt_of_le",
+            "result": "PASS Nat.add_lt_add_of_lt_of_le | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.mul_mul_mul_comm",
+            "result": "PASS Nat.mul_mul_mul_comm | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.succ_mul_succ",
+            "result": "PASS Nat.succ_mul_succ | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_one_mul_add_one",
+            "result": "PASS Nat.add_one_mul_add_one | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.sub_sub_self",
+            "result": "PASS Nat.sub_sub_self | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_sub_cancel_right",
+            "result": "PASS Nat.add_sub_cancel_right | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.add_sub_cancel'",
+            "result": "PASS Nat.add_sub_cancel' | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "Nat.succ_sub_sub_succ",
+            "result": "PASS Nat.succ_sub_sub_succ | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          }
+        ],
+        "passing": [
+          "Nat.sub_one",
+          "Nat.one_add",
+          "Nat.lt_iff_add_one_le",
+          "Nat.one_add_le_iff",
+          "Nat.pred_one_add",
+          "Nat.add_succ_sub_one",
+          "Nat.succ_add_sub_one",
+          "Nat.pred_sub",
+          "Nat.self_add_sub_one",
+          "Nat.sub_one_add_self",
+          "Nat.self_add_pred",
+          "Nat.pred_add_self",
+          "Nat.add_add_add_comm",
+          "Nat.succ_eq_one_add",
+          "Nat.succ_add_eq_add_succ",
+          "Nat.eq_zero_of_add_eq_zero_right",
+          "Nat.add_eq_zero_iff",
+          "Nat.add_left_cancel_iff",
+          "Nat.add_right_cancel_iff",
+          "Nat.add_left_inj",
+          "Nat.add_right_inj",
+          "Nat.lt_of_add_lt_add_right",
+          "Nat.lt_of_add_lt_add_left",
+          "Nat.add_lt_add_iff_left",
+          "Nat.add_lt_add_iff_right",
+          "Nat.add_lt_add_of_le_of_lt",
+          "Nat.add_lt_add_of_lt_of_le",
+          "Nat.mul_mul_mul_comm",
+          "Nat.succ_mul_succ",
+          "Nat.add_one_mul_add_one",
+          "Nat.sub_sub_self",
+          "Nat.add_sub_cancel_right",
+          "Nat.add_sub_cancel'",
+          "Nat.succ_sub_sub_succ"
+        ],
+        "failing": [],
+        "failing_results": [],
+        "retained": true
+      }
+    },
+    {
+      "id": "list-lemmas",
+      "module": "Init.Data.List.Lemmas",
+      "stdlib_source": "Init/Data/List/Lemmas.lean",
+      "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+      "selected": [
+        "List.map_id",
+        "List.map_id'",
+        "List.map_append",
+        "List.map_reverse",
+        "List.length_reverse",
+        "List.reverse_reverse",
+        "List.isEmpty_reverse",
+        "List.mem_append",
+        "List.not_mem_append",
+        "List.forall_mem_append",
+        "List.mem_cons_self",
+        "List.getElem_cons",
+        "List.getElem_zero",
+        "List.getElem_singleton"
+      ],
+      "roots": [
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.map_id",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.map_id.ndjson",
+          "sha256": "d9fa2dec0dd7fb4bbfaef3e47df4e77f88a8162f801b130126d67b08d0012497",
+          "bytes": 61227,
+          "lines": 1171,
+          "declarations": 33,
+          "decl_by_kind": {
+            "axiom": 2,
+            "def": 11,
+            "inductive": 6,
+            "quot": 4,
+            "thm": 10
+          },
+          "closure_axioms": [
+            "Quot.sound",
+            "propext"
+          ],
+          "probe": {
+            "name": "List.map_id",
+            "result": "PASS List.map_id | axioms: propext, Quot.sound",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.map_id'",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.map_id'.ndjson",
+          "sha256": "bd90a65014d319362c3cacd74356470b47ba370ed07779931bcd3349a5d76d2e",
+          "bytes": 61979,
+          "lines": 1185,
+          "declarations": 34,
+          "decl_by_kind": {
+            "axiom": 2,
+            "def": 11,
+            "inductive": 6,
+            "quot": 4,
+            "thm": 11
+          },
+          "closure_axioms": [
+            "Quot.sound",
+            "propext"
+          ],
+          "probe": {
+            "name": "List.map_id'",
+            "result": "PASS List.map_id' | axioms: propext, Quot.sound",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.map_append",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.map_append.ndjson",
+          "sha256": "021a0b8b7d91c4de7755eac1a39e5daf99a4ff4f57d2ab533de7a429375b6092",
+          "bytes": 69070,
+          "lines": 1315,
+          "declarations": 33,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 16,
+            "inductive": 8,
+            "thm": 8
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "List.map_append",
+            "result": "PASS List.map_append | axioms: propext",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.map_reverse",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.map_reverse.ndjson",
+          "sha256": "b806cd451b4c35b2c1736747b5e9f1cd324a660d68b6f248a89e3dc4d0043aed",
+          "bytes": 104605,
+          "lines": 2076,
+          "declarations": 43,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 21,
+            "inductive": 8,
+            "thm": 13
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "List.map_reverse",
+            "result": "PASS List.map_reverse | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.length_reverse",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.length_reverse.ndjson",
+          "sha256": "effc124fa36559400f0871dd95339ada1572c6ddae4626e00b3623872ef23de3",
+          "bytes": 133341,
+          "lines": 2544,
+          "declarations": 63,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 35,
+            "inductive": 12,
+            "thm": 15
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "List.length_reverse",
+            "result": "PASS List.length_reverse | axioms: propext",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.reverse_reverse",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.reverse_reverse.ndjson",
+          "sha256": "a3be8919e6abe77c17df15b9951d79f8fb1c39f85dc25cac7549f9ef9359de23",
+          "bytes": 53374,
+          "lines": 1027,
+          "declarations": 26,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 10,
+            "inductive": 6,
+            "thm": 9
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "List.reverse_reverse",
+            "result": "PASS List.reverse_reverse | axioms: propext",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.isEmpty_reverse",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.isEmpty_reverse.ndjson",
+          "sha256": "cd89cb80bee7d5d19fbcf97f45d04af0aae1120cd22b1c66e7a52d265a826da0",
+          "bytes": 370875,
+          "lines": 7085,
+          "declarations": 165,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 80,
+            "inductive": 21,
+            "thm": 63
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "List.isEmpty_reverse",
+            "result": "PASS List.isEmpty_reverse | axioms: propext",
+            "seconds": 0.3,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.mem_append",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.mem_append.ndjson",
+          "sha256": "e341499242ecee124133b9c10eb73e22069f247617847feb13b5cca26c79dd9b",
+          "bytes": 201629,
+          "lines": 3839,
+          "declarations": 87,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 42,
+            "inductive": 15,
+            "thm": 29
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "List.mem_append",
+            "result": "PASS List.mem_append | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.not_mem_append",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.not_mem_append.ndjson",
+          "sha256": "481d74068163889392d7fbccab887cb08217481fd015d78927143bb380ce31e1",
+          "bytes": 217872,
+          "lines": 4124,
+          "declarations": 96,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 44,
+            "inductive": 16,
+            "thm": 35
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "List.not_mem_append",
+            "result": "PASS List.not_mem_append | axioms: propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.forall_mem_append",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.forall_mem_append.ndjson",
+          "sha256": "3430c88f891fdaf544d76afca74f3a4712fde737fb69a063f3981d59be9ac445",
+          "bytes": 244696,
+          "lines": 4617,
+          "declarations": 108,
+          "decl_by_kind": {
+            "axiom": 2,
+            "def": 46,
+            "inductive": 16,
+            "quot": 4,
+            "thm": 40
+          },
+          "closure_axioms": [
+            "Quot.sound",
+            "propext"
+          ],
+          "probe": {
+            "name": "List.forall_mem_append",
+            "result": "PASS List.forall_mem_append | axioms: Quot.sound, propext",
+            "seconds": 0.1,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.mem_cons_self",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.mem_cons_self.ndjson",
+          "sha256": "1cab8a03babf4a4ad44760ccb74557d4af875fd55819be8f5e837b0c447bc9c2",
+          "bytes": 16791,
+          "lines": 305,
+          "declarations": 7,
+          "decl_by_kind": {
+            "def": 3,
+            "inductive": 3,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "List.mem_cons_self",
+            "result": "PASS List.mem_cons_self | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.getElem_cons",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.getElem_cons.ndjson",
+          "sha256": "dc1c540e2ec3fce3705cb73d1fa5e26037b51507b4788b998813b77f3ec7a866",
+          "bytes": 395018,
+          "lines": 7472,
+          "declarations": 140,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 80,
+            "inductive": 23,
+            "thm": 36
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "List.getElem_cons",
+            "result": "PASS List.getElem_cons | axioms: propext",
+            "seconds": 0.7,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.getElem_zero",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.getElem_zero.ndjson",
+          "sha256": "f377b9caa50fa86284f252d1e5f9df98f856d1f9a1709481bdafbcb5d0e067dd",
+          "bytes": 328682,
+          "lines": 6245,
+          "declarations": 123,
+          "decl_by_kind": {
+            "def": 68,
+            "inductive": 20,
+            "thm": 35
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "List.getElem_zero",
+            "result": "PASS List.getElem_zero | axioms: none",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "list-lemmas",
+          "module": "Init.Data.List.Lemmas",
+          "name": "List.getElem_singleton",
+          "stdlib_source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+          "temp_export": "target/proof/openai/lean-core-frontier/list-lemmas/List.getElem_singleton.ndjson",
+          "sha256": "40ab21a66cb4f65f6e32441862546996ce7ea9b723543fb009ff02c12ff0aa55",
+          "bytes": 286188,
+          "lines": 5458,
+          "declarations": 106,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 57,
+            "inductive": 19,
+            "thm": 29
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "List.getElem_singleton",
+            "result": "PASS List.getElem_singleton | axioms: propext",
+            "seconds": 0.2,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        }
+      ],
+      "accepted": [
+        "List.map_id",
+        "List.map_id'",
+        "List.map_append",
+        "List.map_reverse",
+        "List.length_reverse",
+        "List.reverse_reverse",
+        "List.isEmpty_reverse",
+        "List.mem_append",
+        "List.not_mem_append",
+        "List.forall_mem_append",
+        "List.mem_cons_self",
+        "List.getElem_cons",
+        "List.getElem_zero",
+        "List.getElem_singleton"
+      ],
+      "blocked": [],
+      "consolidation": {
+        "names": [
+          "List.map_id",
+          "List.map_id'",
+          "List.map_append",
+          "List.map_reverse",
+          "List.length_reverse",
+          "List.reverse_reverse",
+          "List.isEmpty_reverse",
+          "List.mem_append",
+          "List.not_mem_append",
+          "List.forall_mem_append",
+          "List.mem_cons_self",
+          "List.getElem_cons",
+          "List.getElem_zero",
+          "List.getElem_singleton"
+        ],
+        "export_path": "examples/proof/lean-core/exports/list-lemmas.ndjson",
+        "sha256": "fee152f2ed6fb2748ccdeb4129ebe9cd9f30dabcd46c09eb2b00e88bf9603d71",
+        "bytes": 809122,
+        "lines": 15513,
+        "declarations": 313,
+        "decl_by_kind": {
+          "axiom": 2,
+          "def": 138,
+          "inductive": 28,
+          "quot": 4,
+          "thm": 141
+        },
+        "probes": [
+          {
+            "name": "List.map_id",
+            "result": "PASS List.map_id | axioms: propext, Quot.sound",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.map_id'",
+            "result": "PASS List.map_id' | axioms: propext, Quot.sound",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.map_append",
+            "result": "PASS List.map_append | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.map_reverse",
+            "result": "PASS List.map_reverse | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.length_reverse",
+            "result": "PASS List.length_reverse | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.reverse_reverse",
+            "result": "PASS List.reverse_reverse | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.isEmpty_reverse",
+            "result": "PASS List.isEmpty_reverse | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.mem_append",
+            "result": "PASS List.mem_append | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.not_mem_append",
+            "result": "PASS List.not_mem_append | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.forall_mem_append",
+            "result": "PASS List.forall_mem_append | axioms: propext, Quot.sound",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.mem_cons_self",
+            "result": "PASS List.mem_cons_self | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.getElem_cons",
+            "result": "PASS List.getElem_cons | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.getElem_zero",
+            "result": "PASS List.getElem_zero | axioms: none",
+            "exit": 0,
+            "status": "accepted"
+          },
+          {
+            "name": "List.getElem_singleton",
+            "result": "PASS List.getElem_singleton | axioms: propext",
+            "exit": 0,
+            "status": "accepted"
+          }
+        ],
+        "passing": [
+          "List.map_id",
+          "List.map_id'",
+          "List.map_append",
+          "List.map_reverse",
+          "List.length_reverse",
+          "List.reverse_reverse",
+          "List.isEmpty_reverse",
+          "List.mem_append",
+          "List.not_mem_append",
+          "List.forall_mem_append",
+          "List.mem_cons_self",
+          "List.getElem_cons",
+          "List.getElem_zero",
+          "List.getElem_singleton"
+        ],
+        "failing": [],
+        "failing_results": [],
+        "retained": true
+      }
+    },
+    {
+      "id": "prod",
+      "module": "Init.Data.Prod",
+      "stdlib_source": "Init/Data/Prod.lean",
+      "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+      "selected": [
+        "Prod.map_id",
+        "Prod.map_id'",
+        "Prod.map_comp_map",
+        "Prod.map_map",
+        "Prod.swap_swap",
+        "Prod.fst_swap",
+        "Prod.snd_swap",
+        "Prod.swap_prod_mk",
+        "Prod.swap_swap_eq",
+        "Prod.swap_inj",
+        "Prod.map_comp_swap"
+      ],
+      "roots": [
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.map_id",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.map_id.ndjson",
+          "sha256": "d8f8d6dc32d3822aabc3498aca6dd3f8cc8b28be5f3a2eefeb7a0e8bfeab138c",
+          "bytes": 16698,
+          "lines": 330,
+          "declarations": 8,
+          "decl_by_kind": {
+            "def": 5,
+            "inductive": 2,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Prod.map_id",
+            "result": "PASS Prod.map_id | axioms: none",
+            "exit": 0,
+            "status": "accepted",
+            "receipt": "target/proof/openai/promoted-groups-final-matrix.log"
+          },
+          "status": "accepted",
+          "previous_probe": {
+            "name": "Prod.map_id",
+            "result": "FAIL Prod.map_id: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (id.{u_1+1} \u03b1)) (id.{u_2+1} \u03b2))) (id.{max u_2+1 u_1+1} ((Prod.{u_1, u_2} \u03b1) \u03b2)))))` was expected",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "blocked"
+          }
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.map_id'",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.map_id'.ndjson",
+          "sha256": "2a26696d1e64841f85b4e0e89c1dda5059e5fd768f87c193d833ad729c0b35d6",
+          "bytes": 16238,
+          "lines": 321,
+          "declarations": 7,
+          "decl_by_kind": {
+            "def": 4,
+            "inductive": 2,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Prod.map_id'",
+            "result": "PASS Prod.map_id' | axioms: none",
+            "exit": 0,
+            "status": "accepted",
+            "receipt": "target/proof/openai/promoted-groups-final-matrix.log"
+          },
+          "status": "accepted",
+          "previous_probe": {
+            "name": "Prod.map_id'",
+            "result": "FAIL Prod.map_id': kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => ((rfl.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (fun (a : \u03b1) => a)) (fun (b : \u03b2) => b)))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_1+1 u_2+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (fun (a : \u03b1) => a)) (fun (b : \u03b2) => b))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (fun (a : \u03b1) => a)) (fun (b : \u03b2) => b)))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (((Eq.{max u_2+1 u_1+1} (((Prod.{u_1, u_2} \u03b1) \u03b2) \u2192 ((Prod.{u_1, u_2} \u03b1) \u03b2))) ((((((Prod.map.{u_1, u_1, u_2, u_2} \u03b1) \u03b1) \u03b2) \u03b2) (fun (a : \u03b1) => a)) (fun (b : \u03b2) => b))) (fun (x : ((Prod.{u_1, u_2} \u03b1) \u03b2)) => x))))` was expected",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "blocked"
+          }
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.map_comp_map",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.map_comp_map.ndjson",
+          "sha256": "4804f7d049cf294e4edb21d371d2cc01e6249a62c978e622fb75d38a7aef8742",
+          "bytes": 21350,
+          "lines": 431,
+          "declarations": 8,
+          "decl_by_kind": {
+            "def": 5,
+            "inductive": 2,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Prod.map_comp_map",
+            "result": "PASS Prod.map_comp_map | axioms: none",
+            "exit": 0,
+            "status": "accepted",
+            "receipt": "target/proof/openai/promoted-groups-final-matrix.log"
+          },
+          "status": "accepted",
+          "previous_probe": {
+            "name": "Prod.map_comp_map",
+            "result": "FAIL Prod.map_comp_map: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => (fun (\u03b3 : Sort u_3+1) => (fun (\u03b4 : Sort u_4+1) => (fun (\u03b5 : Sort u_5+1) => (fun (\u03b6 : Sort u_6+1) => (fun (f : (\u03b1 \u2192 \u03b2)) => (fun (f' : (\u03b3 \u2192 \u03b4)) => (fun (g : (\u03b2 \u2192 \u03b5)) => (fun (g' : (\u03b4 \u2192 \u03b6)) => ((rfl.{max max max u_1+1 u_3+1 u_5+1 u_6+1} (((Prod.{u_1, u_3} \u03b1) \u03b3) \u2192 ((Prod.{u_5, u_6} \u03b5) \u03b6))) (((((Function.comp.{max u_3+1 u_1+1, max u_4+1 u_2+1, max u_6+1 u_5+1} ((Prod.{u_1, u_3} \u03b1) \u03b3)) ((Prod.{u_2, u_4} \u03b2) \u03b4)) ((Prod.{u_5, u_6} \u03b5) \u03b6)) ((((((Prod.map.{u_2, u_5, u_4, u_6} \u03b2) \u03b5) \u03b4) \u03b6) g) g')) ((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) f')))))))))))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (\u2200 (\u03b3 : Sort u_3+1), (\u2200 (\u03b4 : Sort u_4+1), (\u2200 (\u03b5 : Sort u_5+1), (\u2200 (\u03b6 : Sort u_6+1), (\u2200 (f : (\u03b1 \u2192 \u03b2)), (\u2200 (f' : (\u03b3 \u2192 \u03b4)), (\u2200 (g : (\u03b2 \u2192 \u03b5)), (\u2200 (g' : (\u03b4 \u2192 \u03b6)), (((Eq.{max max max u_1+1 u_3+1 u_5+1 u_6+1} (((Prod.{u_1, u_3} \u03b1) \u03b3) \u2192 ((Prod.{u_5, u_6} \u03b5) \u03b6))) (((((Function.comp.{max u_3+1 u_1+1, max u_4+1 u_2+1, max u_6+1 u_5+1} ((Prod.{u_1, u_3} \u03b1) \u03b3)) ((Prod.{u_2, u_4} \u03b2) \u03b4)) ((Prod.{u_5, u_6} \u03b5) \u03b6)) ((((((Prod.map.{u_2, u_5, u_4, u_6} \u03b2) \u03b5) \u03b4) \u03b6) g) g')) ((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) f'))) (((((Function.comp.{max u_3+1 u_1+1, max u_4+1 u_2+1, max u_6+1 u_5+1} ((Prod.{u_1, u_3} \u03b1) \u03b3)) ((Prod.{u_2, u_4} \u03b2) \u03b4)) ((Prod.{u_5, u_6} \u03b5) \u03b6)) ((((((Prod.map.{u_2, u_5, u_4, u_6} \u03b2) \u03b5) \u03b4) \u03b6) g) g')) ((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) f')))))))))))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (\u2200 (\u03b3 : Sort u_3+1), (\u2200 (\u03b4 : Sort u_4+1), (\u2200 (\u03b5 : Sort u_5+1), (\u2200 (\u03b6 : Sort u_6+1), (\u2200 (f : (\u03b1 \u2192 \u03b2)), (\u2200 (f' : (\u03b3 \u2192 \u03b4)), (\u2200 (g : (\u03b2 \u2192 \u03b5)), (\u2200 (g' : (\u03b4 \u2192 \u03b6)), (((Eq.{max max max u_6+1 u_5+1 u_3+1 u_1+1} (((Prod.{u_1, u_3} \u03b1) \u03b3) \u2192 ((Prod.{u_5, u_6} \u03b5) \u03b6))) (((((Function.comp.{max u_3+1 u_1+1, max u_4+1 u_2+1, max u_6+1 u_5+1} ((Prod.{u_1, u_3} \u03b1) \u03b3)) ((Prod.{u_2, u_4} \u03b2) \u03b4)) ((Prod.{u_5, u_6} \u03b5) \u03b6)) ((((((Prod.map.{u_2, u_5, u_4, u_6} \u03b2) \u03b5) \u03b4) \u03b6) g) g')) ((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) f'))) ((((((Prod.map.{u_1, u_5, u_3, u_6} \u03b1) \u03b5) \u03b3) \u03b6) (((((Function.comp.{u_1+1, u_2+1, u_5+1} \u03b1) \u03b2) \u03b5) g) f)) (((((Function.comp.{u_3+1, u_4+1, u_6+1} \u03b3) \u03b4) \u03b6) g') f')))))))))))))` was expected",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "blocked"
+          }
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.map_map",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.map_map.ndjson",
+          "sha256": "abf44ef606be30a0c8f6ee230a352360be3ebac467ea37563b557f348e22e45e",
+          "bytes": 20954,
+          "lines": 419,
+          "declarations": 8,
+          "decl_by_kind": {
+            "def": 5,
+            "inductive": 2,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Prod.map_map",
+            "result": "PASS Prod.map_map | axioms: none",
+            "exit": 0,
+            "status": "accepted",
+            "receipt": "target/proof/openai/promoted-groups-final-matrix.log"
+          },
+          "status": "accepted",
+          "previous_probe": {
+            "name": "Prod.map_map",
+            "result": "FAIL Prod.map_map: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => (fun (\u03b3 : Sort u_3+1) => (fun (\u03b4 : Sort u_4+1) => (fun (\u03b5 : Sort u_5+1) => (fun (\u03b6 : Sort u_6+1) => (fun (f : (\u03b1 \u2192 \u03b2)) => (fun (f' : (\u03b3 \u2192 \u03b4)) => (fun (g : (\u03b2 \u2192 \u03b5)) => (fun (g' : (\u03b4 \u2192 \u03b6)) => (fun (x : ((Prod.{u_1, u_3} \u03b1) \u03b3)) => ((rfl.{max u_5+1 u_6+1} ((Prod.{u_5, u_6} \u03b5) \u03b6)) (((((((Prod.map.{u_2, u_5, u_4, u_6} \u03b2) \u03b5) \u03b4) \u03b6) g) g') (((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) f') x))))))))))))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (\u2200 (\u03b3 : Sort u_3+1), (\u2200 (\u03b4 : Sort u_4+1), (\u2200 (\u03b5 : Sort u_5+1), (\u2200 (\u03b6 : Sort u_6+1), (\u2200 (f : (\u03b1 \u2192 \u03b2)), (\u2200 (f' : (\u03b3 \u2192 \u03b4)), (\u2200 (g : (\u03b2 \u2192 \u03b5)), (\u2200 (g' : (\u03b4 \u2192 \u03b6)), (\u2200 (x : ((Prod.{u_1, u_3} \u03b1) \u03b3)), (((Eq.{max u_5+1 u_6+1} ((Prod.{u_5, u_6} \u03b5) \u03b6)) (((((((Prod.map.{u_2, u_5, u_4, u_6} \u03b2) \u03b5) \u03b4) \u03b6) g) g') (((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) f') x))) (((((((Prod.map.{u_2, u_5, u_4, u_6} \u03b2) \u03b5) \u03b4) \u03b6) g) g') (((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) f') x))))))))))))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (\u2200 (\u03b3 : Sort u_3+1), (\u2200 (\u03b4 : Sort u_4+1), (\u2200 (\u03b5 : Sort u_5+1), (\u2200 (\u03b6 : Sort u_6+1), (\u2200 (f : (\u03b1 \u2192 \u03b2)), (\u2200 (f' : (\u03b3 \u2192 \u03b4)), (\u2200 (g : (\u03b2 \u2192 \u03b5)), (\u2200 (g' : (\u03b4 \u2192 \u03b6)), (\u2200 (x : ((Prod.{u_1, u_3} \u03b1) \u03b3)), (((Eq.{max u_6+1 u_5+1} ((Prod.{u_5, u_6} \u03b5) \u03b6)) (((((((Prod.map.{u_2, u_5, u_4, u_6} \u03b2) \u03b5) \u03b4) \u03b6) g) g') (((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) f') x))) (((((((Prod.map.{u_1, u_5, u_3, u_6} \u03b1) \u03b5) \u03b3) \u03b6) (((((Function.comp.{u_1+1, u_2+1, u_5+1} \u03b1) \u03b2) \u03b5) g) f)) (((((Function.comp.{u_3+1, u_4+1, u_6+1} \u03b3) \u03b4) \u03b6) g') f')) x)))))))))))))` was expected",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "blocked"
+          }
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.swap_swap",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.swap_swap.ndjson",
+          "sha256": "c9241cbede2bc338154486003ac39214556428f01e78bc8d1f6f8472e67d8401",
+          "bytes": 17124,
+          "lines": 335,
+          "declarations": 9,
+          "decl_by_kind": {
+            "def": 6,
+            "inductive": 2,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Prod.swap_swap",
+            "result": "PASS Prod.swap_swap | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.fst_swap",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.fst_swap.ndjson",
+          "sha256": "126ff8bfba46356ec5cfefca93ff668da0d3569144747727fa660ef829287512",
+          "bytes": 10709,
+          "lines": 199,
+          "declarations": 7,
+          "decl_by_kind": {
+            "def": 4,
+            "inductive": 2,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Prod.fst_swap",
+            "result": "PASS Prod.fst_swap | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.snd_swap",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.snd_swap.ndjson",
+          "sha256": "cc6595966d0e6ceaaa1e3d024ed1db1adcab6996ea3fd790963a8f3b67427fcc",
+          "bytes": 10709,
+          "lines": 199,
+          "declarations": 7,
+          "decl_by_kind": {
+            "def": 4,
+            "inductive": 2,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Prod.snd_swap",
+            "result": "PASS Prod.snd_swap | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.swap_prod_mk",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.swap_prod_mk.ndjson",
+          "sha256": "904e04e51775585362799ef3533512acebb55ca84db39580029f83b35961e635",
+          "bytes": 11224,
+          "lines": 211,
+          "declarations": 7,
+          "decl_by_kind": {
+            "def": 4,
+            "inductive": 2,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Prod.swap_prod_mk",
+            "result": "PASS Prod.swap_prod_mk | axioms: none",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.swap_swap_eq",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.swap_swap_eq.ndjson",
+          "sha256": "9673be8e7c2c928c017c7e505265de627b74df543bcd5ffb0c7479d14688e444",
+          "bytes": 34035,
+          "lines": 653,
+          "declarations": 20,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 9,
+            "inductive": 2,
+            "quot": 4,
+            "thm": 4
+          },
+          "closure_axioms": [
+            "Quot.sound"
+          ],
+          "probe": {
+            "name": "Prod.swap_swap_eq",
+            "result": "PASS Prod.swap_swap_eq | axioms: Quot.sound",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.swap_inj",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.swap_inj.ndjson",
+          "sha256": "00635393cbcf33bf844b013f565041bc4c8b9e9bb13025b3b62a7e5d6db58515",
+          "bytes": 84921,
+          "lines": 1702,
+          "declarations": 37,
+          "decl_by_kind": {
+            "axiom": 1,
+            "def": 13,
+            "inductive": 6,
+            "thm": 17
+          },
+          "closure_axioms": [
+            "propext"
+          ],
+          "probe": {
+            "name": "Prod.swap_inj",
+            "result": "PASS Prod.swap_inj | axioms: propext",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "accepted"
+          },
+          "status": "accepted"
+        },
+        {
+          "group": "prod",
+          "module": "Init.Data.Prod",
+          "name": "Prod.map_comp_swap",
+          "stdlib_source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+          "temp_export": "target/proof/openai/lean-core-frontier/prod/Prod.map_comp_swap.ndjson",
+          "sha256": "e73044dfeb60e17690b0184f140b6c502f4b6f8e453496a0a910b9fdf621d0d7",
+          "bytes": 22512,
+          "lines": 447,
+          "declarations": 11,
+          "decl_by_kind": {
+            "def": 8,
+            "inductive": 2,
+            "thm": 1
+          },
+          "closure_axioms": [],
+          "probe": {
+            "name": "Prod.map_comp_swap",
+            "result": "PASS Prod.map_comp_swap | axioms: none",
+            "exit": 0,
+            "status": "accepted",
+            "receipt": "target/proof/openai/promoted-groups-final-matrix.log"
+          },
+          "status": "accepted",
+          "previous_probe": {
+            "name": "Prod.map_comp_swap",
+            "result": "FAIL Prod.map_comp_swap: kernel: type mismatch: `(fun (\u03b1 : Sort u_1+1) => (fun (\u03b2 : Sort u_2+1) => (fun (\u03b3 : Sort u_3+1) => (fun (\u03b4 : Sort u_4+1) => (fun (f : (\u03b1 \u2192 \u03b2)) => (fun (g : (\u03b3 \u2192 \u03b4)) => ((rfl.{max max max u_1+1 u_2+1 u_3+1 u_4+1} (((Prod.{u_3, u_1} \u03b3) \u03b1) \u2192 ((Prod.{u_2, u_4} \u03b2) \u03b4))) (((((Function.comp.{max u_1+1 u_3+1, max u_3+1 u_1+1, max u_4+1 u_2+1} ((Prod.{u_3, u_1} \u03b3) \u03b1)) ((Prod.{u_1, u_3} \u03b1) \u03b3)) ((Prod.{u_2, u_4} \u03b2) \u03b4)) ((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) g)) ((Prod.swap.{u_3, u_1} \u03b3) \u03b1)))))))))` has type `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (\u2200 (\u03b3 : Sort u_3+1), (\u2200 (\u03b4 : Sort u_4+1), (\u2200 (f : (\u03b1 \u2192 \u03b2)), (\u2200 (g : (\u03b3 \u2192 \u03b4)), (((Eq.{max max max u_1+1 u_2+1 u_3+1 u_4+1} (((Prod.{u_3, u_1} \u03b3) \u03b1) \u2192 ((Prod.{u_2, u_4} \u03b2) \u03b4))) (((((Function.comp.{max u_1+1 u_3+1, max u_3+1 u_1+1, max u_4+1 u_2+1} ((Prod.{u_3, u_1} \u03b3) \u03b1)) ((Prod.{u_1, u_3} \u03b1) \u03b3)) ((Prod.{u_2, u_4} \u03b2) \u03b4)) ((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) g)) ((Prod.swap.{u_3, u_1} \u03b3) \u03b1))) (((((Function.comp.{max u_1+1 u_3+1, max u_3+1 u_1+1, max u_4+1 u_2+1} ((Prod.{u_3, u_1} \u03b3) \u03b1)) ((Prod.{u_1, u_3} \u03b1) \u03b3)) ((Prod.{u_2, u_4} \u03b2) \u03b4)) ((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) g)) ((Prod.swap.{u_3, u_1} \u03b3) \u03b1)))))))))` but `(\u2200 (\u03b1 : Sort u_1+1), (\u2200 (\u03b2 : Sort u_2+1), (\u2200 (\u03b3 : Sort u_3+1), (\u2200 (\u03b4 : Sort u_4+1), (\u2200 (f : (\u03b1 \u2192 \u03b2)), (\u2200 (g : (\u03b3 \u2192 \u03b4)), (((Eq.{max max max u_4+1 u_3+1 u_2+1 u_1+1} (((Prod.{u_3, u_1} \u03b3) \u03b1) \u2192 ((Prod.{u_2, u_4} \u03b2) \u03b4))) (((((Function.comp.{max u_1+1 u_3+1, max u_3+1 u_1+1, max u_4+1 u_2+1} ((Prod.{u_3, u_1} \u03b3) \u03b1)) ((Prod.{u_1, u_3} \u03b1) \u03b3)) ((Prod.{u_2, u_4} \u03b2) \u03b4)) ((((((Prod.map.{u_1, u_2, u_3, u_4} \u03b1) \u03b2) \u03b3) \u03b4) f) g)) ((Prod.swap.{u_3, u_1} \u03b3) \u03b1))) (((((Function.comp.{max u_1+1 u_3+1, max u_2+1 u_4+1, max u_2+1 u_4+1} ((Prod.{u_3, u_1} \u03b3) \u03b1)) ((Prod.{u_4, u_2} \u03b4) \u03b2)) ((Prod.{u_2, u_4} \u03b2) \u03b4)) ((Prod.swap.{u_4, u_2} \u03b4) \u03b2)) ((((((Prod.map.{u_3, u_4, u_1, u_2} \u03b3) \u03b4) \u03b1) \u03b2) g) f)))))))))` was expected",
+            "seconds": 0.0,
+            "exit": 0,
+            "status": "blocked"
+          }
+        }
+      ],
+      "accepted": [
+        "Prod.map_id",
+        "Prod.map_id'",
+        "Prod.map_comp_map",
+        "Prod.map_map",
+        "Prod.swap_swap",
+        "Prod.fst_swap",
+        "Prod.snd_swap",
+        "Prod.swap_prod_mk",
+        "Prod.swap_swap_eq",
+        "Prod.swap_inj",
+        "Prod.map_comp_swap"
+      ],
+      "blocked": [],
+      "consolidation": {
+        "export_path": "examples/proof/lean-core/exports/prod.ndjson",
+        "sha256": "722d81d4811cf432a1c9ab378fe70128465eaf038736d141c656a241dda9f089",
+        "bytes": 125362,
+        "lines": 2474,
+        "declarations": 58,
+        "decl_by_kind": {
+          "axiom": 2,
+          "def": 18,
+          "inductive": 6,
+          "quot": 4,
+          "thm": 28
+        },
+        "names": [
+          "Prod.map_id",
+          "Prod.map_id'",
+          "Prod.map_comp_map",
+          "Prod.map_map",
+          "Prod.swap_swap",
+          "Prod.fst_swap",
+          "Prod.snd_swap",
+          "Prod.swap_prod_mk",
+          "Prod.swap_swap_eq",
+          "Prod.swap_inj",
+          "Prod.map_comp_swap"
+        ],
+        "passing": [
+          "Prod.map_id",
+          "Prod.map_id'",
+          "Prod.map_comp_map",
+          "Prod.map_map",
+          "Prod.swap_swap",
+          "Prod.fst_swap",
+          "Prod.snd_swap",
+          "Prod.swap_prod_mk",
+          "Prod.swap_swap_eq",
+          "Prod.swap_inj",
+          "Prod.map_comp_swap"
+        ],
+        "failing": [],
+        "failing_results": [],
+        "retained": true,
+        "receipt": "target/proof/openai/promoted-groups-final-matrix.log"
+      }
+    }
+  ],
+  "frontier_temp_dir": "target/proof/openai/lean-core-frontier",
+  "totals": {
+    "per_group": {
+      "nat-lemmas": {
+        "selected": 37,
+        "accepted": 34,
+        "blocked": 3,
+        "consolidation_retained": true
+      },
+      "list-lemmas": {
+        "selected": 14,
+        "accepted": 14,
+        "blocked": 0,
+        "consolidation_retained": true
+      },
+      "prod": {
+        "selected": 11,
+        "accepted": 11,
+        "blocked": 0,
+        "consolidation_retained": true
+      }
+    },
+    "all": {
+      "selected": 62,
+      "accepted": 59,
+      "blocked": 3
+    }
+  },
+  "closure_axiom_names_union": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "axiom_types": "@Classical.choice : {\u03b1 : Sort u_1} \u2192 Nonempty \u03b1 \u2192 \u03b1\n@Quot.sound : \u2200 {\u03b1 : Sort u_1} {r : \u03b1 \u2192 \u03b1 \u2192 Prop} {a b : \u03b1}, r a b \u2192 Quot.mk r a = Quot.mk r b\n@propext : \u2200 {a b : Prop}, (a \u2194 b) \u2192 a = b",
+  "ledger_note": "roots[].closure_axioms is the complete axiom ledger of each root's exported closure from the NDJSON interning; the probe binary's `axioms:` line reports only the checked proof's own dependencies. Distinct ledgers; never compared as equal. Product recursor-major eta refusals were resolved on2026-10-30; previous_probe retains the original refusals. Nat-compatible proof ports are separate in compatible.json; the three original mutual-inductive certificates remain blocked.",
+  "conservative_note": "Counts are probe-binary observations of the current target/proof/openai/check-batch.gc only. No final matrix claim: the parent rebuilds the kernel and reruns GC/ARC/wasm.",
+  "temp_exports_note": "roots[].temp_export paths under target/proof/openai/lean-core-frontier are removed after the run; each root's export is reproducible via `lake exe lean4export <module> -- <name>` from benchmarks/proof/tools and verified by its recorded sha256.",
+  "inventory_all_175": {
+    "total_names": 175,
+    "per_group": {
+      "nat-basic": {
+        "names": 43,
+        "source_sha256": "74c62ccabe494d3d2325bce4472ec4fd3f4b12628e2bdc8273bc334025647c71",
+        "ledger": "corpus.json probes on the unchanged grouped export",
+        "corpus_accepted_strict": 43
+      },
+      "nat-lemmas": {
+        "names": 37,
+        "source_sha256": "0239669bdef5efbfdc78aa452053a17a350d593dc1d6e77a72245a59487fc62a",
+        "ledger": "frontier.json groups[] roots (per-root)"
+      },
+      "bool": {
+        "names": 24,
+        "source_sha256": "1b2ae4d9686eee1217915cb51f557661da901c4f5a553f5c9e6d9502a8a5c75d",
+        "ledger": "corpus.json probes on the unchanged grouped export",
+        "corpus_accepted_strict": 24
+      },
+      "option-basic": {
+        "names": 19,
+        "source_sha256": "de3c24b0c6ee8d1d8c7ff2847926e6f13ce9ab0af2d0be5ec0ee9b6ffa9cda70",
+        "ledger": "corpus.json probes on the unchanged grouped export",
+        "corpus_accepted_strict": 19
+      },
+      "list-basic": {
+        "names": 27,
+        "source_sha256": "08044b074626f8619fd9ecab93bf2386e86545fe400cb30660df62fb36df952b",
+        "ledger": "corpus.json probes on the unchanged grouped export",
+        "corpus_accepted_strict": 27
+      },
+      "list-lemmas": {
+        "names": 14,
+        "source_sha256": "7375c8beec0a1ff5a0272db842e9624ed294883b4071092e37b9d95c9022839e",
+        "ledger": "frontier.json groups[] roots (per-root)"
+      },
+      "prod": {
+        "names": 11,
+        "source_sha256": "0d88c019f9992c82560d255267c3b303904a3066c610eb732fb58c8e1e7cf49f",
+        "ledger": "frontier.json groups[] roots (per-root)"
+      }
+    },
+    "note": "existing 7 grouped exports under exports/ are untouched; <gid>-accepted.ndjson files are additional consolidations of frontier-accepted roots only and never replace the grouped export"
+  }
+}

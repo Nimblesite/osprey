@@ -1,0 +1,85 @@
+namespace prooftests
+
+import proof::Naturals
+import proof::Terms
+import proof::Environment
+import proof::Export
+import proof::Fixtures
+import proof::Inductive
+import proof::Infer
+import proof::Reduce
+import prooftests::Support
+import proof
+    NatLit
+    Natural
+    Group
+    Const
+    App
+    Lam
+    BVar
+    Sort
+    Succ
+    Zero
+    Decl
+    Axiom
+
+(** Literal inference is tied to the checked Nat family, not its spelling.
+    Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
+module NaturalLiteralTests
+    export run () =
+        typing ()
+        reduction ()
+        reading ()
+
+    typing () =
+        test ("natural literals require the canonical checked Nat declaration", \() =>
+            expect (Support::inferred (natEnv (), [], literal "18446744073709551616"), "Nat")
+            expect (Support::messageOf (Infer::infer (Environment::empty (), [], literal "0")), "invalid natural literal or Nat declaration")
+            expect (Support::messageOf (Infer::infer (shadowNat (), [], literal "1")), "invalid natural literal or Nat declaration"))
+
+        test ("malformed internal natural representations cannot acquire a type", \() =>
+            expect (Support::messageOf (Infer::infer (natEnv (), [], NatLit (Natural(naturalLimbs = [-1])))), "invalid natural literal or Nat declaration")
+            expect (Support::messageOf (Infer::infer (natEnv (), [], NatLit (Natural(naturalLimbs = [0])))), "invalid natural literal or Nat declaration")
+            expect (Support::messageOf (Infer::infer (natEnv (), [], NatLit (Natural(naturalLimbs = [1000000000])))), "invalid natural literal or Nat declaration"))
+
+    reduction () =
+        test ("natural literals compare exactly with zero and successor constructors", \() =>
+            expect (Reduce::defeq (natEnv (), literal "0", Const "Nat.zero" []), true)
+            expect (Reduce::defeq (natEnv (), literal "2", App (Const "Nat.succ" []) (literal "1")), true)
+            expect (Reduce::defeq (natEnv (), literal "18446744073709551616", literal "18446744073709551617"), false))
+
+        test ("the checked Nat recursor computes on compact natural literals", \() =>
+            expect (Reduce::defeq (natEnv (), repeated ("0"), literal "0"), true)
+            expect (Reduce::defeq (natEnv (), repeated ("2"), literal "2"), true))
+
+    reading () =
+        test ("an export refuses a signed natural literal at its original line", \() =>
+            expect (Support::messageOf (Export::read (replace (Fixtures::natAddComm (), "\"natVal\":\"0\"", "\"natVal\":\"-1\"") ?: "")), "line 627: not a natural literal: \"-1\""))
+
+    literal (text) = match Naturals::parse text
+        Success value => NatLit value
+        Error message =>
+            check "the literal fixture reads" "success" message
+            NatLit (Naturals::zero ())
+
+    natEnv () = match Export::read (Fixtures::natAddComm ())
+        Success items => firstBlock items
+        Error message => failed message
+
+    firstBlock (items) = match items
+        [item, ...rest] => blockEnvironment item
+        other => failed "the first item must be the checked Nat block"
+
+    blockEnvironment (item) = match item
+        Group block => match Inductive::add (Environment::empty (), block)
+            Success env => env
+            Error message => failed message
+        other => failed "the first item must be the checked Nat block"
+
+    failed (message) =
+        check "the canonical Nat declaration checks" "success" message
+        Environment::empty ()
+
+    shadowNat () = Support::envWithDecl (Decl(name = "Nat", params = [], ty = Sort (Succ Zero), body = Axiom))
+
+    repeated (text) = Terms::apps (Const "Nat.rec" [Succ Zero], [Lam "n" (Const "Nat" []) (Const "Nat" []), literal "0", Lam "n" (Const "Nat" []) (Lam "ih" (Const "Nat" []) (App (Const "Nat.succ" []) (BVar 0))), literal text])

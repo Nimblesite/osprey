@@ -1,0 +1,18 @@
+[
+{"file": "src/skeleton.rs", "before": ["use instant::Duration;\n"], "after": ["use std::time::Duration;\n"]},
+{"file": "src/progress/progress_circle.rs", "before": ["use instant::Duration;\n"], "after": [""]},
+{"file": "src/progress/progress_circle.rs", "before": ["use std::f32::consts::TAU;\n"], "after": ["use std::f32::consts::TAU;\nuse std::time::Duration;\n"]},
+{"file": "src/progress/progress.rs", "before": ["use instant::Duration;\n"], "after": ["use std::time::Duration;\n"]},
+{"file": "src/list/list.rs", "before": ["use instant::Duration;\nuse std::ops::Range;\n"], "after": ["use std::ops::Range;\nuse std::time::Duration;\n"]},
+{"file": "src/hover_card.rs", "before": ["use instant::Duration;\n"], "after": ["use std::time::Duration;\n"]},
+{"file": "src/spinner.rs", "before": ["use instant::Duration;\n"], "after": ["use std::time::Duration;\n"]},
+{"file": "src/shimmer.rs", "before": ["use instant::Duration;\n"], "after": ["use std::time::Duration;\n"]},
+{"file": "src/speech/waveform.rs", "before": ["use instant::Instant;\n"], "after": ["#[cfg(not(target_family = \"wasm\"))]\nuse std::time::Instant;\n#[cfg(target_family = \"wasm\")]\nuse web_time::Instant;\n"]},
+{"file": "src/speech/level.rs", "before": ["use std::{collections::VecDeque, time::Duration};\n\nuse instant::Instant;\n"], "after": ["#[cfg(not(target_family = \"wasm\"))]\nuse std::time::Instant;\n#[cfg(target_family = \"wasm\")]\nuse web_time::Instant;\n\nuse std::{collections::VecDeque, time::Duration};\n"]},
+{"file": "src/speech/state.rs", "before": ["use std::{cell::OnceCell, rc::Rc, time::Duration};\n"], "after": ["#[cfg(not(target_family = \"wasm\"))]\nuse std::time::Instant;\n#[cfg(target_family = \"wasm\")]\nuse web_time::Instant;\n\nuse std::{cell::OnceCell, rc::Rc, time::Duration};\n"]},
+{"file": "src/speech/state.rs", "before": ["now: instant::Instant"], "after": ["now: Instant"]},
+{"file": "Cargo.toml", "before": ["[dependencies.instant]\nversion = \"0.1\"\nfeatures = [\"wasm-bindgen\"]\n\n"], "after": [""]},
+{"file": "Cargo.toml", "before": ["[dependencies.uuid]\nversion = \"1.10\"\n\n"], "after": ["[dependencies.uuid]\nversion = \"1.10\"\n\n[dependencies.web-time]\nversion = \"1\"\n\n"]},
+{"file": "Cargo.toml", "before": ["[dependencies.paste]\nversion = \"1\"\n"], "after": ["[dependencies.paste]\nversion = \"0.2.3\"\npackage = \"pastey\"\n"]},
+{"file": "Cargo.toml", "before": ["[target.'cfg(target_os = \"windows\")'.dependencies.resvg]\nversion = \"0.45.1\"\n"], "after": ["[target.'cfg(target_os = \"windows\")'.dependencies.resvg]\nversion = \"0.48.1\"\n"]}
+]

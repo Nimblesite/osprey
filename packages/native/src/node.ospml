@@ -13,7 +13,7 @@ type TextRole = Display | Large | Title | Heading | Lead | Headline | Body | Cal
 type Side = Leading | Trailing
 
 (** How strongly a button reads: the page's main action, a plain one or a destructive one. *)
-type ButtonRole = Prominent | Plain | Destructive
+type ButtonRole = Prominent | Plain | Destructive | Filled
 
 (** The direction a stack lays out its children. *)
 type Axis = Vertical | Horizontal
@@ -28,12 +28,34 @@ type Choice =
     choiceKey : string
     choiceLabel : string
 
+(** A per-line mark on an editor: the 1-based line, whether it is underlined and in which tone, a trailing badge and a note beside it; an empty badge or note draws none ([UI-COMPONENTS-EDITOR]). *)
+type Mark =
+    markLine : int
+    underlined : bool
+    markTone : Tone
+    markBadge : string
+    markNote : string
+
+(** One point of a stroke, in board points from the board's top-left corner. *)
+type Point =
+    pointX : int
+    pointY : int
+
+(** One finished stroke: its points in order, its width in points and the host clock in milliseconds when it ended ([UI-COMPONENTS-BOARD]). *)
+type Stroke =
+    strokePoints : List<Point>
+    strokeWidth : int
+    strokeAt : int
+
 (** A semantic component tree; `A` is the application's action union, so every control carries a typed action, never a callback ([UI-COMPONENTS]). *)
 type Node A =
     Text
         content : string
         role : TextRole
         tone : Tone
+    RichText
+        textRuns : List<TextRun>
+        richRole : TextRole
     Stack
         axis : Axis
         children : List<Node<A>>
@@ -50,6 +72,16 @@ type Node A =
         panes : List<Node<A>>
     Layer
         children : List<Node<A>>
+    Framed
+        frameStyle : FrameStyle
+        frameContent : Node<A>
+    Themed
+        localTheme : Theme
+        themedContent : Node<A>
+    Dialog
+        dialogTitle : string
+        dialogBody : Node<A>
+        dialogDismiss : A
     ContextMenu
         menuBody : Node<A>
         menuActions : List<Node<A>>
@@ -58,6 +90,9 @@ type Node A =
         aside : Node<A>
         pane : Node<A>
         extent : int
+        asideLeast : int
+        asideMost : int
+        paneKeep : int
         resize : A
     Tabs
         tabs : List<Tab<A>>
@@ -65,18 +100,21 @@ type Node A =
         bind : A
     Slot
         key : string
+    Evidence
+        label : string
+        value : string
     Pair
         label : string
         value : string
     Badge
         label : string
-        symbol : Symbol
+        symbol : string
         tone : Tone
     Label
         label : string
-        symbol : Symbol
+        symbol : string
     Icon
-        symbol : Symbol
+        symbol : string
     Link
         label : string
         address : string
@@ -86,7 +124,7 @@ type Node A =
         tones : List<Tone>
         label : string
     Empty
-        symbol : Symbol
+        symbol : string
         title : string
         detail : string
     Progress
@@ -97,6 +135,7 @@ type Node A =
         amount : int
         total : int
         tone : Tone
+    Brand
     Swatch
         name : string
         light : string
@@ -107,7 +146,7 @@ type Node A =
         bind : A
     Button
         label : string
-        symbol : Symbol
+        symbol : string
         role : ButtonRole
         enabled : bool
         action : A
@@ -138,6 +177,39 @@ type Node A =
         message : string
         visible : bool
         dismiss : A
+    Typeset
+        math : Math
+        spoken : string
+    Image
+        imageSource : string
+        imageAlt : string
+        imageWidth : int
+        imageHeight : int
+    Video
+        videoSource : string
+        videoPoster : string
+        videoCaptions : string
+        videoAlt : string
+        videoSeconds : int
+    Editor
+        editorLabel : string
+        editorValue : string
+        editorInline : bool
+        cursor : int
+        editorFocusEpoch : int
+        marks : List<Mark>
+        edit : A
+        place : A
+    Board
+        boardSlice : string
+        strokeCount : int
+        lassoEnabled : bool
+        boardBackdrop : string
+        boardPanning : bool
+        boardPanBinding : bool
+        boardPan : A
+        stroke : A
+        lasso : A
     Scene
         sceneWidth : float
         sceneHeight : float
@@ -146,129 +218,17 @@ type Node A =
         play : A
         streamedCount : int
 
-(** One drawn shape of a scene in the scene's unit space: a position, a size, a rotation in radians, a packed `0xRRGGBBAA` colour and the layer it sits on, lower layers first ([UI-SCENE]). A sprite names its image by index into the scene's atlas. *)
-type Primitive =
-    Rect
-        x : float
-        y : float
-        w : float
-        h : float
-        angle : float
-        color : int
-        depth : int
-    Disc
-        x : float
-        y : float
-        radius : float
-        color : int
-        depth : int
-    Strip
-        points : List<float>
-        color : int
-        stroke : float
-        depth : int
-    Sprite
-        sprite : int
-        x : float
-        y : float
-        w : float
-        h : float
-        angle : float
-        color : int
-        depth : int
-    Glyphs
-        glyphs : string
-        x : float
-        y : float
-        size : float
-        color : int
-        depth : int
-    Path
-        steps : List<PathStep>
-        outline : Outline
-        paint : Paint
-        moveX : float
-        moveY : float
-        scale : float
-        depth : int
-
-(** A colour with float channels from 0 to 1, as sRGB or as hue, saturation and lightness, so a host keeps the exact value. *)
-type Tint =
-    Rgb
-        red : float
-        green : float
-        blue : float
-        alpha : float
-    Hsl
-        hue : float
-        saturation : float
-        lightness : float
-        opacity : float
-
-(** One drawing command of a path, in the order a path builder receives it; curves name their end point first. *)
-type PathStep =
-    MoveTo
-        toX : float
-        toY : float
-    LineTo
-        toX : float
-        toY : float
-    CurveTo
-        toX : float
-        toY : float
-        ctrlX : float
-        ctrlY : float
-    CubicTo
-        toX : float
-        toY : float
-        ctrlAX : float
-        ctrlAY : float
-        ctrlBX : float
-        ctrlBY : float
-    ArcTo
-        radiusX : float
-        radiusY : float
-        rotation : float
-        large : bool
-        sweep : bool
-        toX : float
-        toY : float
-    Polygon
-        corners : List<float>
-        closed : bool
-    Close
-
-(** Whether a path is filled or stroked; a stroke has a width, an optional dash pattern and bevel or miter joins. *)
-type Outline =
-    Filled
-    Stroked
-        width : float
-        dashes : List<float>
-        bevel : bool
-
-(** A solid tint or a two-stop linear gradient; `angle` is in degrees and the stops are fractions along it. *)
-type Paint =
-    Solid
-        tint : Tint
-    Linear
-        angle : float
-        from : Tint
-        fromAt : float
-        to : Tint
-        toAt : float
-        oklab : bool
-
 (** One tab: its key, label, symbol and page. *)
 type Tab A =
     tabKey : string
     tabLabel : string
-    tabSymbol : Symbol
+    tabSymbol : string
     page : Node<A>
 
-(** A selectable row. Consecutive rows naming one `rowGroup` share its heading; `NoSymbol` or an empty group draws none. *)
+(** A selectable row. Consecutive rows naming one `rowGroup` share its heading; an empty symbol or group draws none. *)
 type Row A =
     rowKey : string
-    rowSymbol : Symbol
+    rowSymbol : string
     rowGroup : string
     cell : Node<A>
 
@@ -283,6 +243,12 @@ type Binding A =
     ChoiceInput
         action : A
     SizeInput
+        action : A
+    PlaceInput
+        action : A
+    StrokeInput
+        action : A
+    LassoInput
         action : A
     SceneInput
         action : A
@@ -306,6 +272,26 @@ module Splitters
 
 (** Typed constructors for the component vocabulary; applications build trees with these and never write protocol JSON ([UI-COMPONENTS]). *)
 module Ui
+    (** Exact application-authored insets, dimensions and semantic surfaces around a component. *)
+    export framed<A> : (FrameStyle, Node<A>) -> Node<A>
+    framed (style, content) = Framed(frameStyle = style, frameContent = content)
+
+    (** Inline runs wrap as one text paragraph, preserving mathematical emphasis and source colours. *)
+    export rich<A> : (List<TextRun>, TextRole) -> Node<A>
+    rich (runs, role) = RichText(textRuns = runs, richRole = role)
+
+    (** A text run with a semantic ink token and explicit emphasis. *)
+    export run (text, ink, italic) = TextRun(runText = text, runInk = ink, runItalic = italic)
+
+    (** A scoped application-owned palette, inherited by the whole subtree. *)
+    export themed<A> : (Theme, Node<A>) -> Node<A>
+    themed (theme, content) = Themed(localTheme = theme, themedContent = content)
+
+    (** An accessible modal surface; content and dismissal are application-authored. *)
+    export dialog<A> : (string, Node<A>, A) -> Node<A>
+    dialog (title, content, dismiss) = Dialog(dialogTitle = title, dialogBody = content, dialogDismiss = dismiss)
+
+
     // Explicit generic signatures: an unannotated helper is instantiated once
     // for every caller in a later file (Nimblesite/osprey#277).
     (** Body text in the primary tone. *)
@@ -333,31 +319,39 @@ module Ui
     section (title, footer, children) = Section(title = title, footer = footer, children = children)
 
     (** A plain, enabled button with a label and symbol that delivers `action` when pressed. *)
-    export button<A> : (string, Symbol, A) -> Node<A>
+    export button<A> : (string, string, A) -> Node<A>
     button (label, symbol, action) = Button(label = label, symbol = symbol, role = Plain, enabled = true, action = action)
 
     (** A button with an explicit role and enabled state that delivers `act` when pressed. *)
-    export action<A> : (string, Symbol, ButtonRole, bool, A) -> Node<A>
+    export action<A> : (string, string, ButtonRole, bool, A) -> Node<A>
     action (label, symbol, role, enabled, act) = Button(label = label, symbol = symbol, role = role, enabled = enabled, action = act)
+
+    (** A label and its value on one line, such as an observed fact. *)
+    export evidence<A> : (string, string) -> Node<A>
+    evidence (label, value) = Evidence(label = label, value = value)
 
     (** A label and its value on one line, such as a setting and its current value. *)
     export pair<A> : (string, string) -> Node<A>
     pair (label, value) = Pair(label = label, value = value)
 
+    (** [UI-COMPONENTS-METER] A bar filled to `amount` out of `total` in `tone`, read out with `label`, such as the space a folder takes on its disk. *)
+    export meter<A> : (string, int, int, Tone) -> Node<A>
+    meter (label, amount, total, tone) = Meter(label = label, amount = amount, total = total, tone = tone)
+
     (** A status badge; its label and symbol carry the meaning, so colour is never the only signal. *)
-    export badge<A> : (string, Symbol, Tone) -> Node<A>
+    export badge<A> : (string, string, Tone) -> Node<A>
     badge (label, symbol, tone) = Badge(label = label, symbol = symbol, tone = tone)
 
     (** An empty state: a symbol, a title and a line of detail saying why there is nothing to show. *)
-    export empty<A> : (Symbol, string, string) -> Node<A>
+    export empty<A> : (string, string, string) -> Node<A>
     empty (symbol, title, detail) = Empty(symbol = symbol, title = title, detail = detail)
 
     (** Text led by a symbol. *)
-    export label<A> : (string, Symbol) -> Node<A>
+    export label<A> : (string, string) -> Node<A>
     label (content, symbol) = Label(label = content, symbol = symbol)
 
     (** A large decorative symbol, hidden from accessibility. *)
-    export icon<A> : Symbol -> Node<A>
+    export icon<A> : string -> Node<A>
     icon symbol = Icon(symbol = symbol)
 
     (** A labelled `https` web page the host opens in the browser; nothing is sent until a person follows it. *)
@@ -372,10 +366,6 @@ module Ui
     export disclosure<A> : (string, bool, A, List<Node<A>>) -> Node<A>
     disclosure (title, expanded, bind, children) = Disclosure(title = title, expanded = expanded, bind = bind, children = children)
 
-    (** [UI-COMPONENTS-METER] A bar filled to `amount` out of `total` in `tone`, read out with `label`, such as the space a folder takes on its disk. *)
-    export meter<A> : (string, int, int, Tone) -> Node<A>
-    meter (label, amount, total, tone) = Meter(label = label, amount = amount, total = total, tone = tone)
-
     (** A placeholder the host fills with the region named `key`, so that region refreshes on its own. *)
     export slot<A> : string -> Node<A>
     slot key = Slot(key = key)
@@ -386,7 +376,7 @@ module Ui
 
     (** `pane` with an `aside` column `width` points wide on `side`, such as a list and its inspector, divided by a splitter ([UI-COMPONENTS-SPLITTER]). Dragging the splitter delivers the column's new width to `resize`, within `Splitters` limits. As a page's child the two fill the page and scroll on their own; elsewhere they take their natural height. *)
     export aside<A> : (Node<A>, Side, Node<A>, int, A) -> Node<A>
-    aside (pane, side, column, width, resize) = Aside(side = side, aside = column, pane = pane, extent = Splitters::clamp width, resize = resize)
+    aside (pane, side, column, width, resize) = boundedAside (pane, side, column, width, Splitters::least, Splitters::most, Splitters::keep, resize)
 
     (** A navigable page on the theme's canvas. Toolbar buttons join the window toolbar and a toolbar field searches the page. A page whose child is a list, an empty state, a region or an aside fits the window and lets that child fill it; any other page scrolls. In a split's first pane a screen is the navigation sidebar. *)
     export screen<A> : (string, string, List<Node<A>>, List<Node<A>>) -> Node<A>
@@ -412,16 +402,72 @@ module Ui
     export choice (key, label) = Choice(choiceKey = key, choiceLabel = label)
 
     (** A tab named `key` with a label, a symbol and the page it shows. *)
-    export tab<A> : (string, string, Symbol, Node<A>) -> Tab<A>
+    export tab<A> : (string, string, string, Node<A>) -> Tab<A>
     tab (key, label, symbol, page) = Tab(tabKey = key, tabLabel = label, tabSymbol = symbol, page = page)
 
     (** A row with no symbol or group. *)
     export item<A> : (string, Node<A>) -> Row<A>
-    item (key, cell) = Row(rowKey = key, rowSymbol = NoSymbol, rowGroup = "", cell = cell)
+    item (key, cell) = Row(rowKey = key, rowSymbol = "", rowGroup = "", cell = cell)
 
     (** A row led by `symbol` under the heading `group`; consecutive rows of one group share that heading. *)
-    export entry<A> : (string, Symbol, string, Node<A>) -> Row<A>
+    export entry<A> : (string, string, string, Node<A>) -> Row<A>
     entry (key, symbol, group, cell) = Row(rowKey = key, rowSymbol = symbol, rowGroup = group, cell = cell)
+
+    (** [UI-COMPONENTS-CONTEXT-MENU] Secondary actions for content; the host exposes them by pointer and keyboard context-menu gestures. *)
+    export contextMenu<A> : (Node<A>, List<Node<A>>) -> Node<A>
+    contextMenu (content, actions) = ContextMenu(menuBody = content, menuActions = actions)
+
+    (** [UI-COMPONENTS-MATH] Typeset mathematics: the host lays out `math` with a mathematics face and exposes `spoken` to assistive technology. *)
+    export math<A> : (Math, string) -> Node<A>
+    math (tree, text) = Typeset(math = tree, spoken = text)
+
+    (** [LESSONS-FRAMEWORK] A still picture with required alternative text, scaled to fit its width and keeping its aspect ratio; it carries no binding. *)
+    export image<A> : (string, string, int, int) -> Node<A>
+    image (source, alt, width, height) = Image(imageSource = source, imageAlt = alt, imageWidth = width, imageHeight = height)
+
+    (** [LESSONS-FRAMEWORK] A film the person starts, showing its poster and a play control until then; captions are on by default and it never autoplays, and it carries no binding. *)
+    export video<A> : (string, string, string, string, int) -> Node<A>
+    video (source, poster, captions, alt, seconds) = Video(videoSource = source, videoPoster = poster, videoCaptions = captions, videoAlt = alt, videoSeconds = seconds)
+
+    (** [UI-COMPONENTS-EDITOR] A multiline text editor with per-line marks and a cursor: each edit delivers the whole text to `edit`, each caret move delivers its UTF-8 byte offset to `place`. *)
+    export editor<A> : (string, string, int, List<Mark>, A, A) -> Node<A>
+    editor (label, value, cursor, marks, edit, place) = editorNode (label, value, false, cursor, 0, marks, edit, place)
+
+    (** A mark on 1-based `line`: an underline in `tone` when `underlined`, with a trailing `badge` and a `note`; empty text draws none. *)
+    export mark (line, underlined, tone, badge, note) = Mark(markLine = line, underlined = underlined, markTone = tone, markBadge = badge, markNote = note)
+
+    (** [UI-COMPONENTS-BOARD] A writable board drawing the `count` strokes the host holds in the slices `slice:0` to `slice:<count - 1>`, each a stroke's JSON; each finished stroke is delivered once to `stroke`, and a lasso, offered only when `lassoing`, delivers the indices of the strokes it encloses to `lasso`. *)
+    export board<A> : (string, int, bool, A, A) -> Node<A>
+    board (slice, count, lassoing, stroke, lasso) = illustratedBoard (slice, count, lassoing, "", stroke, lasso)
+
+
+    (** A drawing board with an explicitly supplied reference image behind the retained strokes. *)
+    export illustratedBoard<A> : (string, int, bool, string, A, A) -> Node<A>
+    illustratedBoard (slice, count, lassoing, backdrop, stroke, lasso) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, boardBackdrop = backdrop, boardPanning = false, boardPanBinding = false, boardPan = stroke, stroke = stroke, lasso = lasso)
+
+
+    (** A board camera drag reports its final absolute x/y offsets as bounded JSON text to `pan`. *)
+    export interactiveBoard<A> : (string, int, bool, string, bool, A, A, A) -> Node<A>
+    interactiveBoard (slice, count, lassoing, backdrop, panning, stroke, lasso, pan) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, boardBackdrop = backdrop, boardPanning = panning, boardPanBinding = true, boardPan = pan, stroke = stroke, lasso = lasso)
+
+    (** A multiline free-form field; editing reports the complete text. *)
+    export multiline<A> : (string, string, string, A) -> Node<A>
+    multiline (label, value, prompt, bind) = Field(label = label, value = value, prompt = prompt, secure = false, multiline = true, commit = OnEdit, bind = bind)
+
+
+    (** Application-owned splitter limits allow narrow goal margins without changing other applications. *)
+    export boundedAside<A> : (Node<A>, Side, Node<A>, int, int, int, int, A) -> Node<A>
+    boundedAside (pane, side, column, width, least, most, keep, resize) = Aside(side = side, aside = column, pane = pane, extent = width, asideLeast = least, asideMost = most, paneKeep = keep, resize = resize)
+
+
+    (** A compact mathematical step editor, with its accessible label used as the placeholder. *)
+    export inlineEditor<A> : (string, string, int, A, A) -> Node<A>
+    inlineEditor (label, value, cursor, edit, place) = editorNode (label, value, true, cursor, 0, [], edit, place)
+
+    (** [UI-COMPONENTS-EDITOR] An authored epoch increase requests focus on a retained editor; first appearance establishes its baseline. *)
+    export focusedInlineEditor (label, value, cursor, epoch, edit, place) = editorNode (label, value, true, cursor, epoch, [], edit, place)
+
+    editorNode (label, value, inline, cursor, epoch, marks, edit, place) = Editor(editorLabel = label, editorValue = value, editorInline = inline, cursor = cursor, editorFocusEpoch = epoch, marks = marks, edit = edit, place = place)
 
     (** [UI-SCENE] A surface `width` by `height` units that the host scales to fit, drawn from `primitives` with sprites taken from `atlas` by index. Keys and pointer positions in scene units reach `play` as `Controlled` messages. *)
     export scene<A> : (float, float, List<string>, List<Primitive>, A) -> Node<A>
@@ -430,7 +476,3 @@ module Ui
     (** [UI-SCENE] A scene in window pixels: no unit space, no letterbox, origin at the window's top left, as a canvas that paints in window coordinates. *)
     export canvas<A> : (List<Primitive>, A) -> Node<A>
     canvas (primitives, play) = Scene(sceneWidth = 0.0, sceneHeight = 0.0, atlas = [], primitives = primitives, play = play, streamedCount = 0)
-
-    (** [UI-COMPONENTS-CONTEXT-MENU] Secondary actions for content; the host exposes them by pointer and keyboard context-menu gestures. *)
-    export contextMenu<A> : (Node<A>, List<Node<A>>) -> Node<A>
-    contextMenu (content, actions) = ContextMenu(menuBody = content, menuActions = actions)

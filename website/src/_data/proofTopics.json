@@ -1,0 +1,63 @@
+{
+  "dependent-types": {
+    "title": "What are dependent types?",
+    "intro": "Types can describe facts about values. Start with a list-length example, then watch Osprey check an actual identity proof.",
+    "detail": "The length-indexed list is a conceptual introduction, not a shipped Osprey API. Ordinary Osprey programs retain Hindley-Milner type inference; dependent proof terms belong to a separate checking discipline.",
+    "guide": "/docs/proof-workbench/",
+    "sources": [
+      "examples/proof/kernel/src/main.ospml",
+      "examples/proof/kernel/src/term.ospml"
+    ]
+  },
+  "osprey-proof-kernel": {
+    "title": "How Osprey checks a proof",
+    "intro": "Follow a statement and its evidence through the proof kernel written in Osprey.",
+    "detail": "The kernel infers a proof term's type and compares it with the claimed statement. The recorded runs show both acceptance and deliberate rejection. This is a check of the supplied statement and proof, not automatic verification of an entire application.",
+    "guide": "/docs/mathlib-port/",
+    "sources": [
+      "examples/proof/kernel/src/infer.ospml",
+      "examples/proof/kernel/src/checked.ospml"
+    ]
+  },
+  "proof-workbench": {
+    "title": "Use the Proof Workbench",
+    "intro": "Write a small argument, inspect hypotheses and goals, and complete a guided exercise in the real Workbench.",
+    "detail": "A Checked verdict comes from the shared Osprey kernel. A draft can still contain open goals, and unsupported or mismatched steps must be refused. The optional generated source is a separate view; its presence alone does not establish a proof. The films show the layout recorded during production, including some freehand board controls. The supported proof workflow uses typed formulas and proof steps; these videos do not demonstrate mathematical handwriting recognition.",
+    "guide": "/docs/proof-workbench/",
+    "sources": [
+      "apps/workbench/src/verdict.ospml",
+      "apps/workbench/src/goals.ospml",
+      "apps/workbench/lessons/"
+    ]
+  },
+  "mathlib-bridge": {
+    "title": "The Mathlib port is underway",
+    "intro": "See actual imported mathematical proofs being checked by Osprey, with each theorem's assumptions made visible.",
+    "detail": "The films record an earlier selection of supporting lemmas; the dated progress guide records the current public corpus separately. These are checked exports from Lean developments, not a completed port of Mathlib or the headline research theorems.",
+    "guide": "/docs/mathlib-port/",
+    "sources": [
+      "examples/proof/openai/corpus.json",
+      "examples/proof/lean-core/corpus.json",
+      "scripts/proof-openai.py"
+    ]
+  },
+  "proofs-that-say-no": {
+    "title": "A proof checker must say no",
+    "intro": "Compare a valid proof with deliberately corrupted evidence and a false replacement statement.",
+    "detail": "A trustworthy check needs negative controls. Acceptance must disappear when the evidence or statement changes; a parser error or missing dependency is not a substitute for a kernel type-mismatch rejection.",
+    "guide": "/docs/mathlib-port/",
+    "sources": [
+      "examples/proof/kernel/tests/export.ospml",
+      "scripts/test-proof-openai.py"
+    ]
+  },
+  "navier-stokes-proof": {
+    "title": "Navier-Stokes: the solution and Osprey",
+    "intro": "Learn what OpenAI solved, inspect the fluid equations in the Workbench, and explore computation and checked reasoning in Osprey.",
+    "detail": "On 8 September 2026, OpenAI published a solution with a Lean formalization: smooth forcing produces a finite-time singularity from initially smooth fluid at rest while energy remains finite. The films explain that result before exploring Osprey. The periodic two-dimensional Taylor-Green flow is a separate numerical example with measured residuals; the Workbench exercise checks a propositional implication under explicit premises. Separately, Osprey checks selected computability, work-counter and number-theory exports from openai/math, while the complete headline theorem remains to be ported. The recorded computation and residual checker are production assets in the separate TikTok repository; the source link below opens the Workbench lesson.",
+    "guide": "/docs/proof-workbench/",
+    "sources": [
+      "apps/workbench/lessons/navier-stokes.json"
+    ]
+  }
+}

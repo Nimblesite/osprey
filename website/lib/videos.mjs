@@ -68,17 +68,19 @@ const seekLink = (start, label) =>
   `<a href="?t=${Math.floor(start)}" data-seek="${Math.floor(start)}"><time>${clock(start)}</time> ${label}</a>`;
 
 /** The player and its chapter list. */
-export const videoPlayer = (id) => {
+export const videoPlayer = (id, embedded = false) => {
   const v = video(id);
   const chapters = v.chapters.map((chapter) => `    <li>${seekLink(chapter.start, escapeHtml(chapter.text))}</li>`).join("\n");
-  return `<figure class="video" data-video="${v.id}">
-  <video id="video-${v.id}" controls preload="metadata" playsinline width="${v.width}" height="${v.height}" poster="${v.poster}" aria-label="${escapeHtml(v.name)}">
+  const player = `<figure class="video${embedded ? " video-embedded" : ""}" data-video="${v.id}">
+  <video id="video-${v.id}" controls preload="${embedded ? "none" : "metadata"}" playsinline width="${v.width}" height="${v.height}" poster="${v.poster}" aria-label="${escapeHtml(v.name)}">
     <source src="${v.content}" type="video/mp4">
     <track kind="captions" srclang="en" label="English" src="${v.captions}" default>
     <track kind="chapters" srclang="en" label="Chapters" src="${v.chapterTrack}">
   </video>
-  <figcaption>${escapeHtml(v.name)} (${clock(v.duration)}). Captions are on; choose a chapter to jump to it.</figcaption>
-</figure>
+  <figcaption>${escapeHtml(v.name)} (${clock(v.duration)}). ${embedded ? "English captions are available in the player." : "Captions are on; choose a chapter to jump to it."}</figcaption>
+</figure>`;
+  if (embedded) return player;
+  return `${player}
 <nav class="video-chapters" aria-label="Video chapters">
   <ol>
 ${chapters}

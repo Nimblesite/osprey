@@ -1,0 +1,489 @@
+// [WORKBENCH-VERIFICATION] and [LESSONS-VERIFICATION]: the application cases,
+// each a sequence of real host events through `App::respond`.
+namespace workbenchtests
+
+import workbenchtests::Drive
+import ui::Doc
+import workbench::App
+import workbench::Benches
+import workbench::Drafts
+
+(** The application cases of [WORKBENCH-VERIFICATION] and [LESSONS-VERIFICATION]. *)
+module AppCases
+    swapped () = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hp.\nFrom hq."
+
+    export typed (envelope, text) = Drive::post (envelope, Drive::control ("document", Drive::revision (envelope, "document"), 1, Drive::quoted text))
+
+    export check envelope = match listGet (Doc::items (Doc::field (Drive::stored envelope, "checks"))) 0
+        Success found => Doc::text (found, "tone") + " at ${Doc::number (found, "line")}"
+        Error _ => "none"
+
+    (** [WORKBENCH-STORE] Start draws the mathematical workspace and requests lessons and progress without retaining retired drawing state or writing board metadata. *)
+    export start () =
+        first = Drive::started ()
+        expect (Drive::keys first, "root,heading,document,goal,generated,library,library-actions,catalogue,lesson")
+        expect (Drive::tickets first, "lessons:catalogue,lessons:progress")
+        expect (Drive::written first, "")
+        WorkspaceCases::withoutDrawing (Drive::stored first)
+        hostTheme ("dark", true)
+        hostTheme ("light", false)
+        hostTheme ("", false)
+
+    hostTheme (theme, slate) =
+        envelope = Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "start"), JsonMember "context" (JsonObject [Doc::str ("platform", "vscode"), Doc::str ("theme", theme)])])))
+        expect (Doc::flag (Drive::stored envelope, "slate"), slate)
+        toggled = Drive::activate (envelope, envelope, "heading", "Switch appearance")
+        expect (Doc::flag (Drive::stored toggled, "slate"), !slate)
+
+    (** [WORKBENCH-REGIONS] The paper fills the content viewport from its own insets: no authored board height, no preview strip, no second column and no drawing region is drawn. *)
+    export paperViewport () =
+        first = Drive::started ()
+        root = Drive::node (first, "root")
+        paper = Drive::findNamed ("paper-document", root)
+        expect (Doc::text (paper, "kind"), "framed")
+        style = Doc::field (paper, "style")
+        expect (Doc::flag (style, "grow"), true)
+        expect (Doc::number (style, "height"), 0)
+        expect (Doc::number (style, "viewportHeightInset"), -1)
+        expect (Doc::number (style, "left"), 84)
+        expect (Doc::number (style, "bottom"), 60)
+        margin = Doc::field (Drive::findNamed ("goal-margin", paper), "style")
+        expect (Doc::number (margin, "left"), 32)
+        expect (Doc::number (margin, "gap"), 24)
+        forEachList (["working-board", "board-preview-strip", "solution-column"], \name => expect (Doc::text (Drive::findNamed (name, root), "kind"), ""))
+        expect (Doc::text (Drive::node (first, "board"), "kind"), "")
+        expect (has (regionJson (first, "root"), "\"key\":\"document\""), true)
+
+    (** [WORKBENCH-REGIONS] A keystroke in the document re-sends `document`, `goal` and `generated` and nothing else. *)
+    export keystroke () = expect (Drive::keys (typed (Drive::started (), "Theorem t. For all p, p → p.")), "heading,document,goal,generated")
+
+    (** [WORKBENCH-VERDICT] The kernel refuses the swapped proof at its sixth row, where the refused step was written. *)
+    export underline () =
+        expect (check (typed (Drive::started (), swapped ())), "rejected at 5")
+        expect (check (typed (Drive::started (), "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp.")), "checked at -1")
+
+    (** A stroke value an old board host could still send; the retired region must refuse it. *)
+    stroke () = "{\"points\":[[1,2],[30,40]],\"width\":2,\"at\":5}"
+    (** [WORKBENCH-FILES] The current document reopens through the real host file flow. *)
+    export reopened envelope = WorkspaceCases::opened envelope
+
+    (** [WORKBENCH-BOARD] An unregistered drawing control writes no slice, draws nothing and changes no document. *)
+    export absentControls () =
+        loaded = reopened (typed (Drive::started (), "Theorem t. For all p, p → p."))
+        expect (Drive::written loaded, "")
+        WorkspaceCases::withoutDrawing (Drive::stored loaded)
+        expect (Doc::text (Drive::stored loaded, "text"), "Theorem t. For all p, p → p.")
+        refused = Drive::post (loaded, Drive::control ("board", Drive::revision (loaded, "board"), 0, stroke ()))
+        expect (Drive::keys refused, "")
+        expect (Drive::written refused, "")
+        expect (Drive::tickets refused, "")
+        expect (diagnostics refused, "Stale control: region board revision 0 is not current")
+        WorkspaceCases::withoutDrawing (Drive::stored refused)
+        expect (Doc::text (Drive::stored refused, "text"), "Theorem t. For all p, p → p.")
+
+    (** The diagnostics a host was told about, so a refusal is visible rather than silent. *)
+    diagnostics envelope = join (Doc::texts (envelope, "diagnostics"), ",")
+    export lassoed first = Drive::post (first, Drive::control ("board", Drive::revision (first, "board"), 1, "[0]"))
+
+    (** [UI-EFFECTS-RECOGNISE] The retired board asks for no recognition, offers no review control, and a stray ink completion changes no document and no verdict. *)
+    export lasso () =
+        written = typed (Drive::started (), "Theorem t. For all p, p → p.")
+        asked = lassoed written
+        expect (Drive::tickets asked, "")
+        expect (Drive::written asked, "")
+        expect (diagnostics asked, "Stale control: region board revision 0 is not current")
+        expect (has (regionJson (written, "document"), "Use this statement"), false)
+        replied = Drive::post (asked, Drive::done ("ink:1", "{\"text\":\"Theorem t. For all p, p → p.\"}"))
+        expect (Drive::keys replied, "")
+        expect (Doc::text (Drive::stored replied, "text"), "Theorem t. For all p, p → p.")
+        expect (Doc::has (Drive::stored replied, "preview"), false)
+        expect (Doc::has (Drive::stored replied, "samplePreview"), false)
+
+    (** [LESSONS-FILES] [LESSONS-PROGRESS] The catalogue's lessons are read and listed; saved progress is restored. *)
+    export loading () =
+        listed = Drive::loaded ()
+        expect (length (Doc::items (Doc::field (Drive::stored listed, "entries"))), 7)
+        expect (Drive::keys listed, "root,catalogue,lesson")
+        restored = Drive::post (listed, Drive::done ("lessons:progress", "{}"))
+        expect (join (Doc::texts (Doc::field (Drive::stored restored, "tutor"), "completed"), ","), "and-swap/judge-wrong-order")
+
+    // Learn, then open the fourth lesson, `and-swap`.
+    export opened () =
+        loaded = Drive::loaded ()
+        learning = Drive::activate (loaded, loaded, "root", "Examples")
+        expect (Doc::flag (Drive::stored learning, "learning"), true)
+        Drive::post (learning, Drive::tap (learning, "catalogue", 3))
+
+    region id = "challenge:and-swap/" + id
+
+    answered (envelope, id, text) = Drive::post (envelope, Drive::control (region id, Drive::revision (envelope, region id), 0, Drive::quoted text))
+
+    (** [LESSONS-MODE] Opening a lesson draws a region per challenge; typing an answer re-sends only that challenge. *)
+    export challenge () =
+        lesson = opened ()
+        expect (Doc::text (Drive::stored lesson, "lesson"), "and-swap")
+        expect (Doc::text (Drive::node (lesson, "challenge:and-swap/state-swapped-goal"), "kind"), "section")
+        expect (listContains (Drive::dependencies (lesson, region "state-swapped-goal"), "<unknown>"), false)
+        expect (Drive::keys (answered (lesson, "state-swapped-goal", "q ∧ p")), region "state-swapped-goal")
+        closed = Drive::activate (lesson, lesson, "lesson", "All lessons")
+        expect (Doc::text (Drive::stored closed, "lesson"), "")
+        expect (length (Doc::items (Doc::field (Drive::stored closed, "entries"))), 7)
+        expect (Doc::text (Drive::stored (Drive::post (closed, Drive::tap (closed, "catalogue", 3))), "lesson"), "and-swap")
+
+    marking envelope = match listGet (Doc::items (Doc::field (Doc::field (Drive::stored envelope, "tutor"), "tries"))) 0
+        Success found => Doc::text (Doc::field (found, "mark"), "kind")
+        Error _ => "none"
+
+    submitted (envelope, text) =
+        typed = answered (envelope, "state-swapped-goal", text)
+        Drive::activate (typed, typed, region "state-swapped-goal", "Submit")
+
+    (** [LESSONS-STATE] [LESSONS-PROGRESS] A right answer is marked by the kernel and saved as progress; a wrong one is marked wrong and saves nothing. *)
+    export submit () =
+        right = submitted (opened (), "q ∧ p")
+        expect (marking right, "correct")
+        expect (Drive::tickets right, "lessons:saved")
+        expect (Drive::written right, "lessons:progress")
+        wrong = submitted (opened (), "p ∧ q")
+        expect (marking wrong, "incorrect")
+        expect (Drive::tickets wrong, "")
+        expect (marking (answered (wrong, "state-swapped-goal", "p ∧ q ∧ r")), "")
+        lost = Drive::post (right, Drive::failed ("lessons:saved", "disk full"))
+        expect (has (regionJson (lost, "catalogue"), "Your progress was not saved: disk full"), true)
+        expect (listContains (Doc::texts (Doc::field (Drive::stored lost, "tutor"), "completed"), "and-swap/state-swapped-goal"), true)
+
+    (** [WORKBENCH-BOARD] A stray legacy ink answer cannot overwrite the focused lesson answer, mark it or save it. *)
+    export inked () =
+        focused = answered (opened (), "state-swapped-goal", "q")
+        after = Drive::post (focused, Drive::done ("ink:1", "{\"text\":\"∧ p\"}"))
+        expect (Doc::write (Drive::stored after), Doc::write (Drive::stored focused))
+        expect (Drive::keys after, "")
+        expect (Drive::tickets after, "")
+        expect (marking after, "")
+        expect (has (regionJson (focused, region "state-swapped-goal"), "\"value\":\"q\""), true)
+        typedAnswer ()
+
+    (** Typing into the focused answer still redraws only that challenge after a stray legacy ink answer was dropped. *)
+    typedAnswer () =
+        lesson = opened ()
+        answeredLesson = answered (lesson, "state-swapped-goal", "q ∧ p")
+        expect (Drive::keys answeredLesson, region "state-swapped-goal")
+        expect (has (regionJson (answeredLesson, region "state-swapped-goal"), "\"value\":\"q ∧ p\""), true)
+
+    (** [LESSONS-MODE] Open in the workbench appends the challenge as a declaration and shows Work. *)
+    export carry () =
+        lesson = opened ()
+        carried = Drive::post (lesson, Drive::control (region "prove-and-swap", Drive::revision (lesson, region "prove-and-swap"), 5, "null"))
+        expect (Doc::flag (Drive::stored carried, "learning"), false)
+        expect (startsWith (Doc::text (Drive::stored carried, "text"), "Theorem and_swap."), true)
+
+    (** [WORKBENCH-VERIFICATION] The typeset row edits the same source document without dropping its statement or earlier steps. *)
+    export rowEditing () =
+        source = "Theorem t. For all p, p → p.\nProof.\nAssume h : p.\n"
+        before = Drafts::edited (Benches::fresh (), source)
+        after = Drafts::stepEdited (before, "From h.")
+        expect (after.draft.draftText, source + "From h.")
+        expect (after.draft.caret, length after.draft.draftText)
+        expect (Drafts::pending source, "")
+        expect (Drafts::prefix source, source)
+        expect (Drafts::pending after.draft.draftText, "From h.")
+        earlierRow ()
+
+    export regionJson (envelope, key) = Doc::write (Drive::node (envelope, key))
+
+    export has (text, part) = match indexOf (text, part)
+        Success _ => true
+        Error _ => false
+
+    (** [WORKBENCH-GOALS] Unsupported wording stays verbatim and unchecked at the real host boundary, without an invented proposition. *)
+    export unsupportedFeedback () =
+        source = "Theorem t. For all p, p → p.\nProof.\nAssume h : p.\nUse symmetry here."
+        written = typed (Drive::started (), source)
+        editor = Drive::findNode ("editor", Drive::node (written, "document"))
+        expect (Doc::text (editor, "kind"), "editor")
+        placed = Drive::post (written, Drive::control ("document", Drive::revision (written, "document"), Doc::number (editor, "placeEvent"), toString (satSub (length (Drafts::pending source)) 1)))
+        shown = regionJson (placed, "document")
+        expect (Doc::text (Drive::stored placed, "text"), source)
+        expect (has (shown, "Wording not recognised"), true)
+        expect (has (shown, "Use symmetry here."), true)
+        expect (has (shown, "Offered"), false)
+        expect (has (shown, "⊤"), false)
+        expect (startsWith (check placed, "unchecked at "), true)
+
+    (** [WORKBENCH-STORE] Naming and reading a free-form solution preserve the same source and title. *)
+    export namedReading () =
+        first = Drive::started ()
+        named = Drive::post (first, Drive::control ("document", Drive::revision (first, "document"), 0, Drive::quoted "A geometric series"))
+        written = typed (named, "For |r| < 1, consider the partial sum.")
+        reading = Drive::activate (written, written, "root", "Read")
+        expect (Doc::text (Drive::stored reading, "title"), "A geometric series")
+        expect (Doc::text (Drive::stored reading, "text"), "For |r| < 1, consider the partial sum.")
+        expect (Doc::flag (Drive::stored reading, "reading"), true)
+        expect (has (regionJson (reading, "document"), "A geometric series"), true)
+        expect (has (regionJson (reading, "document"), "\"kind\":\"editor\""), false)
+
+    earlierRow () =
+        source = "Theorem t. For all p, p → p.\nProof.\nAssume h : p.\nFrom missing.\nDone."
+        bench = Drafts::edited (Benches::fresh (), source)
+        picked = bench(draft = Drafts::selected (bench.draft, "1"))
+        changed = Drafts::stepEdited (picked, "From h.")
+        expect (changed.draft.draftText, "Theorem t. For all p, p → p.\nProof.\nAssume h : p.\nFrom h.\nDone.")
+        expect (Drafts::editableText changed.draft, "From h.")
+        expect (changed.draft.selectedStep, 1)
+        cleared = Drafts::stepEdited (picked, "")
+        expect (Drafts::entryCaret cleared.draft >= 0, true)
+        expect (Drafts::entryCaret cleared.draft <= length (Drafts::editableText cleared.draft), true)
+
+    (** [WORKBENCH-STORE] Returning from an example restores the complete working through serialized host frames. *)
+    export exampleRoundTrip () =
+        source = "Theorem mine. For all p, p → p.\nProof.\nAssume mine : p.\nFrom mine.\n"
+        catalogued = Drive::loaded ()
+        before = personalWorking (catalogued, source)
+        learning = Drive::activate (before, before, "root", "Examples")
+        example = Drive::activate (learning, learning, "catalogue", "Open conjunction example")
+        expect (Doc::flag (Drive::stored example, "guided"), true)
+        expect (Doc::text (Drive::stored example, "text") == source, false)
+        button = Drive::findLabel ("Return to working", Drive::node (example, "root"))
+        expect (Doc::text (button, "kind"), "button")
+        returned = Drive::post (example, Drive::tap (example, "root", Doc::number (button, "event")))
+        expect (Doc::flag (Drive::stored returned, "guided"), false)
+        sameWorking (Drive::stored before, Drive::stored returned)
+
+    personalWorking (first, source) =
+        named = Drive::post (first, Drive::control ("document", Drive::revision (first, "document"), 0, Drive::quoted "My argument"))
+        written = typed (named, source)
+        paper = Drive::activate (written, written, "root", "Proof")
+        rows = Drive::findNode ("rows", Drive::node (paper, "document"))
+        Drive::post (paper, Drive::control ("document", Drive::revision (paper, "document"), Doc::number (rows, "event"), Drive::quoted "0"))
+
+    sameWorking (before, after) =
+        expect (Doc::text (after, "title"), Doc::text (before, "title"))
+        expect (Doc::text (after, "text"), Doc::text (before, "text"))
+        expect (Doc::number (after, "caret"), Doc::number (before, "caret"))
+        expect (Doc::number (after, "selectedStep"), Doc::number (before, "selectedStep"))
+        expect (Doc::flag (after, "paper"), true)
+        expect (structuralEquals (Doc::field (after, "checks")) (Doc::field (before, "checks")), true)
+
+    (** [LESSONS-FORMAT] The lesson occupies one natural page around all its challenges, without the fixed-height board aside or a filling pane. *)
+    export lessonPageScroll () =
+        loaded = Drive::loaded ()
+        learning = Drive::activate (loaded, loaded, "root", "Examples")
+        opened = Drive::post (learning, Drive::tap (learning, "catalogue", 3))
+        page = Drive::findNamed ("lesson-page", Drive::node (opened, "root"))
+        expect (Doc::text (page, "kind"), "framed")
+        style = Doc::field (page, "style")
+        expect (Doc::flag (style, "grow"), false)
+        expect (Doc::number (style, "height"), 0)
+        expect (Doc::number (style, "viewportHeightInset"), -1)
+        expect (Doc::number (style, "gap"), 24)
+        expect (Doc::text (Drive::findNode ("slot", page), "key"), "lesson")
+        expect (Doc::text (Drive::findNode ("aside", page), "kind"), "")
+
+(** Real host workflows retain controls, slices and approvals across every transition. *)
+module WorkflowCases
+    stored envelope = Drive::stored envelope
+
+    (** The guided conjunction example, opened from a saved mathematical document. *)
+    export example () =
+        openExample (AppCases::reopened (Drive::loaded ()))
+
+    openExample working =
+        learning = Drive::activate (working, working, "root", "Examples")
+        Drive::activate (learning, learning, "catalogue", "Open conjunction example")
+
+    (** [WORKBENCH-BOARD] The paper fills the page without drawing controls, and a current mathematical document reopens through the real file flow. *)
+    export boardTools () =
+        first = Drive::started ()
+        expect (Doc::text (Drive::node (first, "board"), "kind"), "")
+        root = Drive::node (first, "root")
+        forEachList (["Draw", "Pan board", "Zoom in", "Zoom out", "Fit", "Working notes", "Clear", "Preview sample transcription", "Transcribe selection", "Use this statement"], \label => expect (Doc::has (Drive::findLabel (label, root), "event"), false))
+        expect (Doc::text (Drive::findNamed ("paper-document", root), "kind"), "framed")
+        savedWorking ()
+
+    savedWorking () =
+        restored = AppCases::reopened (AppCases::typed (Drive::started (), "Keep this calculation."))
+        WorkspaceCases::withoutDrawing (stored restored)
+        expect (Doc::text (stored restored, "text"), "Keep this calculation.")
+
+    (** The accepted sample names its canonical step and inserts it through its own control. *)
+    insertedExample accepted =
+        expectStepInset accepted
+        expect (AppCases::has (Drive::visibleText (Drive::node (accepted, "document")), "Try “Assume h : p ∧ q.”"), true)
+        expect (Doc::has (Drive::findLabel ("Insert example", Drive::node (accepted, "document")), "event"), true)
+        Drive::activate (accepted, accepted, "document", "Insert example")
+
+    (** A step insertion extends the stored text, keeps the theorem prefix and adds no newline. *)
+    expectStepInserted (before, after, step) =
+        text = Doc::text (stored after, "text")
+        expect (text, Drafts::prefix (Doc::text (stored before, "text")) + step)
+        expect (Drafts::pending text, step)
+        expect (AppCases::has (text, step + "\n"), false)
+        expect (Doc::number (stored after, "selectedStep"), Doc::number (stored before, "selectedStep"))
+        expect (startsWith (AppCases::check after, "checked"), false)
+
+    expectProofLeading (envelope, leading) =
+        style = Doc::field (Drive::findNamed ("proof-heading", Drive::node (envelope, "document")), "style")
+        expect (jsonFloat (Doc::field (style, "lineHeight")) ?: -1.0, leading)
+
+    expectStepInset envelope =
+        rows = Drive::findNamed ("proof-rows", Drive::node (envelope, "document"))
+        entry = listGet (Doc::items (Doc::field (Doc::field (rows, "body"), "children"))) 1 ?: JsonNull
+        expect (Doc::text (Doc::field (Doc::field (entry, "body"), "style"), "name"), "proof-step-editor")
+        expect (Doc::number (Doc::field (entry, "style"), "top"), 0)
+        expectedHeight = match Doc::flag (stored envelope, "paper")
+            true => 56
+            false => 49
+        expect (Doc::number (Doc::field (Doc::field (entry, "body"), "style"), "height"), expectedHeight)
+
+    expectHeaderGeometry envelope =
+        actions = Drive::findNamed ("header-actions", Drive::node (envelope, "heading"))
+        expect (Doc::text (actions, "kind"), "framed")
+        expect (Doc::number (Doc::field (actions, "style"), "gap"), 9)
+        children = Doc::items (Doc::field (Doc::field (actions, "body"), "children"))
+        expect (length children, 4)
+        expect (Doc::number (Doc::field (listGet children 1 ?: JsonNull, "style"), "width"), 40)
+        expect (Doc::number (Doc::field (listGet children 2 ?: JsonNull, "style"), "width"), 44)
+
+    expectCompletionLeading envelope =
+        completion = Drive::findNamed ("proof-completion", Drive::node (envelope, "document"))
+        expect (jsonFloat (Doc::field (Doc::field (completion, "style"), "lineHeight")) ?: -1.0, 16.0)
+
+    expectRestart guide =
+        expectHeaderGeometry guide
+        expectCompletionLeading guide
+        restarted = Drive::activate (guide, guide, "document", "Start the example again")
+        expectStepInset restarted
+        before = stored guide
+        after = stored restarted
+        expect (AppCases::check guide, "checked at -1")
+        expect (Doc::text (after, "text"), "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n")
+        expect (Doc::number (after, "selectedStep"), -1)
+        expect (startsWith (AppCases::check restarted, "checked"), false)
+        WorkspaceCases::withoutDrawing (after)
+        expect (structuralEquals (Doc::field (before, "exampleBackup")) (Doc::field (after, "exampleBackup")), true)
+        returned = Drive::activate (restarted, restarted, "root", "Return to working")
+        expect (Doc::flag (stored returned, "guided"), false)
+        expect (Doc::text (stored returned, "text"), "")
+
+    export sourceModes () =
+        guide = example ()
+        expectProofLeading (guide, 28.75)
+        expectRestart guide
+        opened = Drive::activate (guide, guide, "root", "Source")
+        expect (Doc::flag (stored opened, "paper"), true)
+        expectProofLeading (opened, 35.0)
+        expect (Doc::text (Drive::findLabel ("Source", Drive::node (opened, "root")), "role"), "prominent")
+        expect (AppCases::has (AppCases::regionJson (opened, "root"), "source-panel"), true)
+        expect (Doc::has (Drive::findLabel ("Board", Drive::node (opened, "root")), "event"), false)
+        closed = Drive::activate (opened, opened, "root", "Close source")
+        expect (Doc::flag (stored closed, "generated"), false)
+        expect (AppCases::has (AppCases::regionJson (closed, "root"), "source-panel"), false)
+        read = Drive::activate (closed, closed, "root", "Read")
+        expect (Doc::flag (stored read, "reading"), true)
+        expect (AppCases::has (AppCases::regionJson (read, "document"), "inline"), false)
+        expect (AppCases::has (Drive::visibleText (Drive::node (read, "document")), "From hp."), true)
+        proofMode read
+
+    proofMode read =
+        proof = Drive::activate (read, read, "root", "Proof")
+        expect (Doc::flag (stored proof, "reading"), false)
+        expect (Doc::flag (stored proof, "paper"), true)
+        expect (Doc::text (stored proof, "text"), Doc::text (stored read, "text"))
+
+    (** [WORKBENCH-BOARD] The real mathematical walkthrough carries the working into its guided example, restarts it to a zero-step statement, inserts its own step without a verdict, and returns the working unchanged; the source panel's own close control keeps its authored bounds. *)
+    export sampleReview () =
+        written = AppCases::typed (Drive::loaded (), "My original working.")
+        example = openExample written
+        expect (Doc::flag (stored example, "guided"), true)
+        expect (AppCases::check example, "checked at -1")
+        restarted = Drive::activate (example, example, "document", "Start the example again")
+        expect (Doc::text (stored restarted, "text"), "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n")
+        expect (startsWith (AppCases::check restarted, "checked"), false)
+        source = Drive::activate (restarted, restarted, "root", "Source")
+        Drive::expectControlFrame (Drive::node (source, "root"), "Close source", 32, 5)
+        expect (AppCases::has (AppCases::regionJson (source, "root"), "source-panel"), true)
+        closed = Drive::activate (source, source, "root", "Close source")
+        expect (AppCases::has (AppCases::regionJson (closed, "root"), "source-panel"), false)
+        expect (AppCases::has (AppCases::regionJson (closed, "goal"), "Propositions"), true)
+        accepted = insertedExample closed
+        expectStepInserted (closed, accepted, "Assume h : p ∧ q.")
+        returned = Drive::activate (accepted, accepted, "root", "Return to working")
+        expect (Doc::text (stored returned, "text"), "My original working.")
+        expect (Doc::flag (stored returned, "guided"), false)
+
+    (** [UI-EFFECTS-RECOGNISE] No ink review remains: a stray completion inserts and approves no statement, and the typed document is the only source. *)
+    export inkReview () =
+        ready = Drive::loaded ()
+        written = AppCases::typed (ready, "Use symmetry here.")
+        expect (Doc::has (Drive::findLabel ("Use this statement", Drive::node (written, "document")), "event"), false)
+        replied = Drive::post (written, Drive::done ("ink:1", "{\"text\":\"Use symmetry here.\"}"))
+        expect (Drive::keys replied, "")
+        expect (Drive::written replied, "")
+        expect (Doc::text (stored replied, "text"), "Use symmetry here.")
+        expect (Doc::has (stored replied, "preview"), false)
+        expect (Doc::has (stored replied, "samplePreview"), false)
+        empty = Drive::post (written, Drive::done ("ink:1", "{\"text\":\"\"}"))
+        expect (Doc::text (stored empty, "text"), "Use symmetry here.")
+        expect (isEmpty (Doc::text (stored empty, "notice")), true)
+
+    export savedSource () = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp."
+
+    saving () =
+        first = Drive::started ()
+        named = Drive::post (first, Drive::labelled (first, first, "document", "Solution title", Drive::quoted "My argument"))
+        opened = AppCases::reopened named
+        written = AppCases::typed (opened, savedSource ())
+        requested = Drive::postHeld (written, Drive::labelled (written, written, "heading", "Save", "null"), Drive::hostSlices [first, opened])
+        expect (Drive::tickets requested, "workspace:saved")
+        requested
+
+    export files () =
+        requested = saving ()
+        source = Doc::text (Drive::hostSlices [requested], "workspace:saved")
+        saved = Doc::parse source
+        expect (Doc::text (saved, "title"), "My argument")
+        expect (Doc::text (saved, "text"), savedSource ())
+        expect (Doc::has (saved, "checks"), false)
+        expect (Doc::has (saved, "board"), false)
+        expect (Doc::number (saved, "version"), 2)
+        cancelled = Drive::post (requested, Drive::done ("workspace:saved", "{\"cancelled\":true}"))
+        expect (Doc::text (stored requested, "notice"), "Workspace opened. Supported statements have been checked again.")
+        expect (Doc::text (stored cancelled, "notice"), Doc::text (stored requested, "notice"))
+        expect (Doc::write (stored cancelled), Doc::write (stored requested))
+        completed = Drive::post (requested, Drive::done ("workspace:saved", "{\"path\":\"working.json\"}"))
+        expect (Doc::text (stored completed, "notice"), "Workspace saved.")
+        loaded = reopened source
+        expect (Doc::text (stored loaded, "text"), savedSource ())
+        WorkspaceCases::withoutDrawing (stored loaded)
+        expect (AppCases::check loaded, "checked at -1")
+        exported loaded
+
+    reopened source =
+        first = Drive::started ()
+        asked = Drive::activate (first, first, "heading", "Open workspace")
+        expect (Drive::tickets asked, "workspace:opened")
+        Drive::postHeld (asked, Drive::done ("workspace:opened", "{\"path\":\"working.json\"}"), JsonObject [Doc::str ("workspace:import", source)])
+
+    exported loaded =
+        opened = Drive::activate (loaded, loaded, "root", "Source")
+        asked = Drive::activate (opened, opened, "root", "Export generated source")
+        expect (Drive::tickets asked, "workspace:source")
+        match FixtureFiles::read "../tests/golden/and_swap.ospml.expected"
+            Success expected => expect (Doc::text (Drive::hostSlices [asked], "workspace:source"), expected)
+            Error problem => FixtureFiles::report problem
+        completed = Drive::post (asked, Drive::done ("workspace:source", "{\"path\":\"proof.ospml\"}"))
+        expect (Doc::text (stored completed, "notice"), "Generated source exported.")
+
+    export fileFailures () =
+        first = Drive::started ()
+        asked = Drive::activate (first, first, "heading", "Open workspace")
+        cancelled = Drive::post (asked, Drive::done ("workspace:opened", "{\"cancelled\":true}"))
+        expect (Doc::text (stored cancelled, "text"), "")
+        broken = Drive::postHeld (asked, Drive::done ("workspace:opened", "{\"path\":\"broken.json\"}"), JsonObject [Doc::str ("workspace:import", "not JSON")])
+        expect (Doc::flag (stored broken, "noticeBad"), true)
+        expect (AppCases::has (Doc::text (stored broken, "notice"), "JSON"), true)
+        missing = Drive::post (asked, Drive::done ("workspace:opened", "{}"))
+        expect (AppCases::has (Doc::text (stored missing, "notice"), "receipt"), true)
+        failed = Drive::post (asked, Drive::failed ("workspace:opened", "Permission denied"))
+        expect (Doc::flag (stored failed, "noticeBad"), true)
+        expect (AppCases::has (Doc::text (stored failed, "notice"), "Permission denied"), true)

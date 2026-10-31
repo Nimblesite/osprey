@@ -50,17 +50,17 @@ module Streams
         Split panes => Split(panes = many panes)
         Layer children => Layer(children = many children)
         ContextMenu content actions => ContextMenu(menuBody = split content, menuActions = many actions)
-        Aside place column pane width action => asideSplit (place, column, pane, width, action)
+        Aside place column pane width least most keep action => asideSplit (place, column, pane, width, least, most, keep, action)
         Tabs entries selected action => Tabs(tabs = mapList (entries, \tab => page tab), selected = selected, bind = action)
         Rows entries selected action => Rows(rows = mapList (entries, \row => cell row), selected = selected, bind = action)
         Disclosure title expanded action children => Disclosure(title = title, expanded = expanded, bind = action, children = many children)
         _ => node
 
-    // The pane is walked before its column, as the encoder walks them.
-    asideSplit<A> : (Side, Node<A>, Node<A>, int, A) -> Node<A> ![SceneStream | e]
-    asideSplit (place, column, pane, width, action) =
+    // The pane is walked before its column, as the encoder walks them, and the column keeps its own splitter limits.
+    asideSplit<A> : (Side, Node<A>, Node<A>, int, int, int, int, A) -> Node<A> ![SceneStream | e]
+    asideSplit (place, column, pane, width, least, most, keep, action) =
         first = split pane
-        Aside(side = place, aside = split column, pane = first, extent = width, resize = action)
+        Aside(side = place, aside = split column, pane = first, extent = width, asideLeast = least, asideMost = most, paneKeep = keep, resize = action)
 
     (** The stream code of a primitive: 0 rect, 1 disc, 3 sprite, the scene encoding's codes. *)
     export code : Primitive -> int

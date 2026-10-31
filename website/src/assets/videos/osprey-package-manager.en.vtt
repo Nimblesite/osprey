@@ -15,5 +15,5 @@ Choose Add to project, review the confirmation and confirm. Switch to Installed 
 00:34.575 --> 00:40.410
 To remove it, select the direct dependency and choose Remove dependency. Confirm the change.
 
-00:40.860 --> 00:48.039
+00:40.860 --> 00:48.040
 The Installed view updates to show the remaining dependencies. Add and remove packages without leaving VS Code.

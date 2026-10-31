@@ -114,17 +114,17 @@ examples/mobile/android/run.sh --live-smoke
 The native host build scripts perform these steps for the sample. To compile another host around the same Osprey project:
 
 ```bash
-osprey build examples/mobile/inbox --target=ios -o build/ios/inbox.a --memory=none
-osprey build examples/mobile/inbox --target=ios-sim -o build/ios-sim/inbox.a --memory=none
-osprey build examples/mobile/inbox --target=android-arm64 -o build/android-arm64/inbox.a --memory=none
-osprey build examples/mobile/inbox --target=android-x64 -o build/android-x64/inbox.a --memory=none
+osprey build examples/mobile/inbox --target=ios -o build/ios/inbox.a --memory=arc
+osprey build examples/mobile/inbox --target=ios-sim -o build/ios-sim/inbox.a --memory=arc
+osprey build examples/mobile/inbox --target=android-arm64 -o build/android-arm64/inbox.a --memory=arc
+osprey build examples/mobile/inbox --target=android-x64 -o build/android-x64/inbox.a --memory=arc
 ```
 
 Each archive has a sibling `.h` file. iOS targets use ARM64 with a minimum of iOS 15; Android targets use API 26 for ARM64 or x86-64. The library must match the host application's architecture and platform.
 
 ## Target checks and current limits
 
-Mobile C ABI targets currently require explicit `--memory=none`. GC, ARC, native debugger/profiler options, and `--run` are rejected. The host owns application launch and asynchronous platform work.
+Mobile C ABI targets default to ARC; the commands above select it explicitly. Tracing GC, native debugger/profiler options, and `--run` are rejected. The host owns application launch and asynchronous platform work.
 
 The compiler also rejects dynamic control handlers, unavailable process operations, and built-in HTTP/WebSocket calls for mobile targets before LLVM or linking. Use native platform services through explicit C imports or an application command protocol, as Issue Inbox does. Value-operation handlers remain available.
 

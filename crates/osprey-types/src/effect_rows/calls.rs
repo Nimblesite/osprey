@@ -1,36 +1,209 @@
 //! Effect row calls.
 use super::{
-    eager_callback_slots, expression_site, gpu_kernel_slot, iterator_consumer,
-    statically_named_callee, type_can_call, Analyzer, CallableEnv, Expr, NamedArgument,
-    Requirement, Summary,
+    eager_callback_slots, expression_name, expression_site, gpu_kernel_slot, iterator_consumer,
+    statically_named_callee, type_can_call, Analyzer, Callable, CallableEnv, Expr, ExprArgs,
+    NamedArgument, Requirement, Summary, Value,
 };
+
+#[derive(Clone, Copy)]
+struct SourceCall<'a> {
+    function: &'a Expr,
+    arguments: ExprArgs<'a>,
+    named: &'a [NamedArgument],
+}
+
+impl<'a> SourceCall<'a> {
+    fn read(expression: &'a Expr) -> Option<Self> {
+        match expression {
+            Expr::Call {
+                function,
+                arguments,
+                named_arguments,
+            } => Some(Self {
+                function,
+                arguments: ExprArgs::new(arguments),
+                named: named_arguments,
+            }),
+            _ => None,
+        }
+    }
+}
 
 impl Analyzer<'_> {
     pub(super) fn call(
         &self,
         function: &Expr,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named_arguments: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
     ) -> Summary {
-        let mut out = self.expression(function, scope, env);
-        out.union(self.expressions(arguments, scope, env));
-        out.union(self.named_expressions(named_arguments, scope, env));
+        let source = SourceCall {
+            function,
+            arguments,
+            named: named_arguments,
+        };
+        let mut out = self.call_children(source, scope, env);
         out.union(self.call_effects(function, arguments, named_arguments, scope, env));
         out
+    }
+
+    /// Share one argument model between a known call's immediate row and its
+    /// returned value. Unsupported transports keep the complete original path.
+    pub(super) fn known_call_model(
+        &self,
+        expression: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Option<(Summary, Value)> {
+        let source = self.known_source_call(expression, scope, env)?;
+        osprey_ast::with_stack(|| self.model_source_call(expression, source, scope, env))
+    }
+
+    fn known_source_call<'b>(
+        &self,
+        expression: &'b Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Option<SourceCall<'b>> {
+        let source = SourceCall::read(expression)?;
+        self.shared_call_eligible(expression, source.function, scope, env)
+            .then_some(source)
+    }
+
+    fn shared_call_eligible(
+        &self,
+        expression: &Expr,
+        function: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> bool {
+        crate::methods::parts(expression).is_none()
+            && (expression_name(function) != Some("Channel") || env.shadowed.contains("Channel"))
+            && self.builtin_callee(function, scope, env).is_none()
+            && !self.foreign_callee(function, scope, env)
+            && self.known_callee_source(function, scope, env)
+    }
+
+    fn known_callee_source(&self, function: &Expr, scope: &[String], env: &CallableEnv) -> bool {
+        match function {
+            Expr::Lambda { .. } => true,
+            Expr::Identifier(name) => self.known_identifier_source(name, scope, env),
+            Expr::Path(path) => self.index.resolve(scope, &path.to_string()).is_some(),
+            Expr::TypeApply { function, .. } => self.known_callee_source(function, scope, env),
+            _ => false,
+        }
+    }
+
+    fn known_identifier_source(&self, name: &str, scope: &[String], env: &CallableEnv) -> bool {
+        match env.values.get(name) {
+            Some(value) => {
+                value.performed.is_empty()
+                    && matches!(value.callable.as_ref(), Some(Callable::Known(_)))
+            }
+            None => !env.shadowed.contains(name) && self.index.resolve(scope, name).is_some(),
+        }
+    }
+
+    fn call_children(
+        &self,
+        source: SourceCall<'_>,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Summary {
+        let mut summary = self.expression(source.function, scope, env);
+        summary.union(self.union_over(source.arguments.iter(), scope, env));
+        summary.union(self.named_expressions(source.named, scope, env));
+        summary
+    }
+
+    fn source_call_models(
+        &self,
+        source: SourceCall<'_>,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> (Summary, super::CallArguments) {
+        let mut summary = self.expression(source.function, scope, env);
+        let mut argument = |expression: &Expr| {
+            let (row, value) = self.argument_model(expression, scope, env);
+            summary.union(row);
+            value
+        };
+        let positional = source.arguments.iter().map(&mut argument).collect();
+        let named = source
+            .named
+            .iter()
+            .map(|item| (item.name.clone(), argument(&item.value)))
+            .collect();
+        let arguments = super::CallArguments { positional, named };
+        let arguments = self.order_callsite_arguments(source.function, arguments, scope, env);
+        (summary, arguments)
+    }
+
+    fn argument_model(
+        &self,
+        expression: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> (Summary, Option<Value>) {
+        if let Some((summary, value)) = self.known_call_model(expression, scope, env) {
+            return (summary, Some(value));
+        }
+        (
+            self.expression(expression, scope, env),
+            self.value(expression, scope, env),
+        )
+    }
+
+    fn model_source_call(
+        &self,
+        expression: &Expr,
+        source: SourceCall<'_>,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Option<(Summary, Value)> {
+        let (mut summary, arguments) = self.source_call_models(source, scope, env);
+        let Callable::Known(known) = self.callable(source.function, scope, env)? else {
+            return None;
+        };
+        let (called, returned) = self.model_known_call(*known, &arguments);
+        summary.union(called);
+        self.finish_call_model(expression, summary, returned, env)
+    }
+
+    fn finish_call_model(
+        &self,
+        expression: &Expr,
+        summary: Summary,
+        returned: Option<Value>,
+        env: &CallableEnv,
+    ) -> Option<(Summary, Value)> {
+        let summary = self.finish_expression_summary(expression, summary);
+        returned.map(|value| {
+            let value = Self::resolve_handled_value(value, &env.handler_returns);
+            (summary, self.typed_value(expression, value, None))
+        })
     }
 
     pub(super) fn call_effects(
         &self,
         function: &Expr,
-        arguments: &[Expr],
+        arguments: ExprArgs<'_>,
         named_arguments: &[NamedArgument],
         scope: &[String],
         env: &CallableEnv,
     ) -> Summary {
         let mut out = Summary::default();
-        if let Some(callee) = self.callable(function, scope, env) {
+        if self.foreign_callee(function, scope, env) {
+            out.union(self.foreign_argument_effects(
+                function,
+                arguments,
+                named_arguments,
+                scope,
+                env,
+            ));
+        }
+        if let Some(callee) = self.call_effects_callable(function, scope, env) {
             let arguments =
                 self.callsite_arguments(function, arguments, named_arguments, scope, env);
             out.union(self.invoke_with_arguments(callee, arguments));
@@ -103,6 +276,54 @@ impl Analyzer<'_> {
                         out.union(self.invoke_with_values(callback, &callback_arguments));
                     }
                 }
+            }
+        }
+        out
+    }
+
+    fn foreign_argument_effects(
+        &self,
+        function: &Expr,
+        arguments: ExprArgs<'_>,
+        named: &[NamedArgument],
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Summary {
+        let mut out = Summary::default();
+        let name = match function {
+            Expr::Path(path) => Some(path.to_string()),
+            _ => expression_name(function).map(str::to_owned),
+        };
+        let signature = name
+            .as_deref()
+            .and_then(|name| self.extern_signature(scope, name));
+        let parameters = name
+            .as_deref()
+            .and_then(|name| self.index.extern_parameters(scope, name));
+        for (index, argument) in arguments
+            .iter()
+            .enumerate()
+            .map(|(index, argument)| (Some(index), argument))
+            .chain(named.iter().map(|argument| {
+                (
+                    parameters.and_then(|parameters| {
+                        parameters.iter().position(|name| name == &argument.name)
+                    }),
+                    &argument.value,
+                )
+            }))
+        {
+            let expected =
+                index.and_then(|index| signature.and_then(|(parameters, _)| parameters.get(index)));
+            if expected.map_or_else(|| self.may_be_callable(argument), type_can_call) {
+                let effects = self.callable(argument, scope, env).map_or_else(
+                    || Summary {
+                        unresolved_dynamic_call: true,
+                        ..Summary::default()
+                    },
+                    |callback| self.invoke_with_values(callback, &[]),
+                );
+                out.union(effects);
             }
         }
         out

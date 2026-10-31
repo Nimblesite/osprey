@@ -4,9 +4,56 @@ use super::{
     TypeError,
 };
 
-#[cfg(test)]
+// Whole-program effect proofs run, counted so the build path can assert it
+// solves once across the gate and codegen. [TYPE-EFFECT-PROOF-COUNT]
 std::thread_local! {
     static EFFECT_CHECKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The number of whole-program effect proofs run on this thread. Hidden: an
+/// observability hook for the build-path reuse test, not a stable API.
+#[doc(hidden)]
+#[must_use]
+pub fn effect_check_count() -> usize {
+    EFFECT_CHECKS.with(std::cell::Cell::get)
+}
+
+/// One whole-program solve, retained for codegen: the lowered backend program
+/// (prelude attached, static handlers discharged) and the published backend
+/// types. Codegen consumes this instead of re-running [`infer_program`].
+#[derive(Debug)]
+pub struct CheckedProgram {
+    source: Program,
+    source_debug: String,
+    lowered: Program,
+    types: crate::info::ProgramTypes,
+}
+
+impl CheckedProgram {
+    fn new(source: &Program, lowered: Program, types: crate::info::ProgramTypes) -> Self {
+        Self {
+            source: osprey_ast::with_stack(|| source.clone()),
+            source_debug: osprey_ast::with_stack(|| format!("{source:?}")),
+            lowered,
+            types,
+        }
+    }
+
+    /// Whether these checked artifacts belong to exactly this source program.
+    #[must_use]
+    pub fn matches_source(&self, program: &Program) -> bool {
+        osprey_ast::with_stack(|| {
+            // PartialEq equates signed zeros; derived Debug retains their sign
+            // throughout the AST, including literal patterns. NaNs fail PartialEq.
+            self.source == *program && self.source_debug == format!("{program:?}")
+        })
+    }
+
+    /// Split into the lowered program and its published types.
+    #[must_use]
+    pub fn into_parts(self) -> (Program, crate::info::ProgramTypes) {
+        (self.lowered, self.types)
+    }
 }
 
 /// Type-check a program. Returns every type error found (empty ⇒ well-typed).
@@ -18,17 +65,34 @@ pub fn check_program(program: &Program) -> Vec<TypeError> {
 /// effects, independently of handlers installed by `main`. [IOS-HOST-ABI]
 #[must_use]
 pub fn check_program_exports(program: &Program, exports: &[&str]) -> Vec<TypeError> {
-    match crate::staging::lower_static_checked(program) {
-        Ok(lowered) => {
-            checked_program_with_exports(
-                &lowered,
-                exports,
-                crate::staging::has_staging(program),
-                false,
-            )
-            .errors
-        }
+    match check_and_publish(program, exports) {
+        Ok(_) => Vec::new(),
         Err(errors) => errors,
+    }
+}
+
+/// Lower, check and publish a program in one solve, retaining the artifacts
+/// codegen needs so the build path never re-runs the whole-program check.
+/// Callers that only need diagnostics go through [`check_program`].
+///
+/// # Errors
+/// Returns lowering errors or the program's type and effect errors.
+pub fn check_and_publish(
+    program: &Program,
+    exports: &[&str],
+) -> Result<CheckedProgram, Vec<TypeError>> {
+    let lowered = crate::staging::lower_static_checked(program)?;
+    let checker = checked_program_with_exports(
+        &lowered,
+        exports,
+        crate::staging::has_staging(program),
+        false,
+    );
+    if checker.errors.is_empty() {
+        let types = publish_program(&lowered, checker, true);
+        Ok(CheckedProgram::new(program, lowered, types))
+    } else {
+        Err(checker.errors)
     }
 }
 /// Run inference and publish the resolved signatures, constructor layouts and
@@ -93,7 +157,6 @@ pub(super) fn checked_program_with_exports(
 
 fn settle_effect_contracts(checker: &mut Checker, program: &Program, exports: &[&str]) -> bool {
     let instances = effect_instances(checker);
-    #[cfg(test)]
     EFFECT_CHECKS.with(|calls| calls.set(calls.get() + 1));
     let effect_proof = crate::effect_rows::check(program, &instances, exports);
     if refine_handler_arguments(checker, &instances) {

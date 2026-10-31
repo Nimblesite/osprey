@@ -29,15 +29,15 @@
   .nav-link:hover, .nav-link.active { background: rgba(110, 213, 255, 0.08); }
   .nav-links > li { align-self: start; }
   .nav-submenu { position: static; min-width: 0; padding: 0.25rem 0; background: transparent; border: 0; box-shadow: none; }
-  .nav-submenu .nav-link { white-space: normal; }
+  .nav-submenu .nav-link { min-height: 44px; padding-block: 0.5rem; white-space: normal; }
   html:not(.nav-ready) .nav { height: auto; min-height: var(--header-height); flex-wrap: wrap; }
   html:not(.nav-ready) .nav-links { display: grid; position: static; flex-basis: 100%; margin-block: 0 0.5rem; }
   html:not(.nav-ready) .mobile-menu-toggle { display: none; }
 }
 @media (max-width: 900px) and (max-height: 500px) {
   .nav-links { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: none; }
-  .nav-links > li:has(.nav-group[open]) { grid-column: span 3; }
-  .nav-group[open] .nav-submenu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .nav-links > li:has(.nav-group[open]) { grid-column: 1 / -1; }
+  .nav-group[open] .nav-submenu { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 768px) {
   .two-column { grid-template-columns: 1fr; }

@@ -9,7 +9,6 @@ import ui::Messages
 import ui::Pick
 import ui::Requests
 import ui::Runtime
-import ui::Symbols
 import storage::Disk
 import storage::Measured
 import storage::View
@@ -132,7 +131,7 @@ module Browse
 module App
     (** The store at launch, with a walk of the person's home folder asked for. *)
     export initial context =
-        system = Symbols::platformText context.platform
+        system = context.platform
         home = Pick::either (context.home == "", Disk::fallback system, context.home)
         Browse::measure (Browse::launched (system, home), opening (home, context.arguments))
 
@@ -142,7 +141,7 @@ module App
         Error _ => home
 
     (** Applies one message: a tap, a row choice, the hidden-items switch or a completion. *)
-    export update (_, store, message) = Messages::route (message, \action => Browse::tapped (store, action), \(action, key) => Browse::chose (store, action, key), \(action, on) => Browse::toggled (store, action, on), \(_, _) => Runtime::step store, \(ticket, outcome) => Browse::completed (store, ticket, outcome), \_ => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+    export update (_, store, message) = Messages::route (message, \action => Browse::tapped (store, action), \(action, key) => Browse::chose (store, action, key), \(action, on) => Browse::toggled (store, action, on), \(_, _) => Runtime::step store, \(ticket, outcome) => Browse::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
 
     placeSlice () = perform Signal<Place>.read ()
 

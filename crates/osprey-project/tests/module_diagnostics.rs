@@ -37,6 +37,7 @@ fn diagnose(flavor: Flavor, text: &str) -> Vec<String> {
         flavor,
         source: text.to_string(),
         program: parsed.program,
+        discipline: None,
     };
     error_messages(&config(name), &[source])
 }

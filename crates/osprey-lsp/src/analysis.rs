@@ -14,12 +14,12 @@ use osprey_ast::{
 use std::fmt::Write as _;
 mod render;
 pub(crate) mod requirements;
-pub(crate) use render::fill_inferred;
 pub use render::render_type_params;
 use render::{
     effect_sym, extern_pairs, fn_sym, generic_decl_sym, let_sym, param_pairs, render_doc,
     render_effect_row,
 };
+pub(crate) use render::{fill_inferred, shown};
 
 /// What kind of declaration a [`SymbolInfo`] describes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

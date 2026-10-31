@@ -14,9 +14,16 @@ impl Analyzer<'_> {
         let uses = std::mem::take(&mut summary.parameter_uses);
         for mut use_ in uses {
             map_parameter_use_values(&mut use_, |value| {
-                *value = self.substitute_value_at(value.clone(), target_level, arguments);
+                *value = self.substitute_value_at(std::mem::take(value), target_level, arguments);
             });
             if use_.level == target_level {
+                if arguments
+                    .get(use_.index)
+                    .and_then(Option::as_ref)
+                    .is_some_and(|value| self.projection_absent(value, &use_.projection))
+                {
+                    continue;
+                }
                 // The callback is caller provenance, but the arguments this
                 // use passes it already belong to the callee. Lift only the
                 // callback into the callee's levels: shifting the invoked
@@ -77,7 +84,7 @@ impl Analyzer<'_> {
         // replace its parameter with itself indefinitely for nested records,
         // and can also attribute a callback to the wrong lexical binder.
         for nested in value.fields.values_mut() {
-            *nested = self.substitute_value_at(nested.clone(), target_level, arguments);
+            *nested = self.substitute_value_at(std::mem::take(nested), target_level, arguments);
         }
         self.substitute_payload_at(&mut value.element, target_level, arguments);
         self.substitute_payload_at(&mut value.result_payload, target_level, arguments);
@@ -85,25 +92,44 @@ impl Analyzer<'_> {
         value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
         if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
             map_projection_values(projection, |value| {
-                *value = self.substitute_value_at(value.clone(), target_level, arguments);
+                *value = self.substitute_value_at(std::mem::take(value), target_level, arguments);
             });
         }
         if let Some(callable) = value.callable.take() {
             match callable {
+                Callable::Alternatives(choices) => {
+                    for choice in choices {
+                        let branch = self.substitute_value_at(
+                            Value::from_callable(choice),
+                            target_level,
+                            arguments,
+                        );
+                        if value.carries_provenance() {
+                            value.union(branch);
+                        } else {
+                            value = branch;
+                        }
+                    }
+                }
                 Callable::Parameter {
                     level,
                     index,
                     projection,
                 } if level == target_level => {
+                    if arguments
+                        .get(index)
+                        .and_then(Option::as_ref)
+                        .is_some_and(|argument| self.projection_absent(argument, &projection))
+                    {
+                        return value;
+                    }
                     if let Some(mut replacement) = arguments
                         .get(index)
                         .and_then(Option::as_ref)
-                        .cloned()
-                        .and_then(|argument| self.project_path(argument, &projection))
+                        .and_then(|argument| self.project_borrowed_path(argument, &projection))
                     {
                         shift_value_levels(&mut replacement, target_level, 0);
-                        value.field_names.clone_from(&replacement.field_names);
-                        value.union(replacement);
+                        value.union_replacement(replacement);
                     } else if index >= arguments.len() {
                         // Only an absent argument keeps the original binder.
                         // A supplied opaque value or failed projection must

@@ -84,6 +84,17 @@ suite("TextMate grammars", () => {
     assertScoped(tokens, "export", "storage.modifier.export");
     assertScoped(tokens, "get", "entity.name.function");
     assertScoped(tokens, "source id", "variable.parameter");
+    // An exported function can be named `string`.
+    const primitive = tokenize(grammar, "export string text = text");
+    assertScoped(primitive, "string", "entity.name.function");
+    assertScoped(primitive, "string", "meta.export.binding");
+    assertScoped(primitive, "text", "variable.parameter");
+    // Parameter and return type positions retain their primitive scope.
+    assertEveryScoped(
+      tokenize(grammar, "oobMessage : (string, int) -> string"),
+      "string",
+      "support.type.primitive",
+    );
   });
 
   // `mut counter = 0` is a mutable binding, not a function named `mut`.

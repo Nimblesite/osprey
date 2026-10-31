@@ -1,8 +1,26 @@
 //! Effect row provenance.
 use super::{
-    BTreeSet, CallArguments, Callable, KnownCallable, ParameterUse, Projection, Requirements,
-    Summary, Value, MAX_PROVENANCE_DEPTH, MAX_PROVENANCE_NODES,
+    Callable, KnownCallable, ParameterUse, Projection, Summary, Value, MAX_PROVENANCE_DEPTH,
+    MAX_PROVENANCE_NODES,
 };
+
+#[cfg(test)]
+#[path = "sorted_join_tests.rs"]
+mod sorted_join_tests;
+#[cfg(test)]
+pub(super) use sorted_join_tests::{measured as measured_counter, record as record_counter};
+#[cfg(test)]
+pub(super) use sorted_join_tests::{measured_clones, CloneProbe};
+
+pub(super) fn map_alternatives(choices: &mut Vec<Callable>, mut visit: impl FnMut(&mut Value)) {
+    for choice in choices.iter_mut() {
+        let mut branch = Value::from_callable(std::mem::replace(choice, Callable::Unknown));
+        visit(&mut branch);
+        *choice = branch.callable.unwrap_or(Callable::Unknown);
+    }
+    choices.sort();
+    choices.dedup();
+}
 
 pub(super) fn map_projection_values(
     projection: &mut [Projection],
@@ -83,6 +101,13 @@ pub(super) fn merge_boxed_value(slot: &mut Option<Box<Value>>, incoming: Value) 
     }
 }
 
+/// How much of the provenance depth one call-shaped nesting spends: a value
+/// stored inside the arguments of a `Returned`/`Method` step is the result of
+/// a symbolic call fed into another, and a recursion through a parameter's
+/// function field produces one more such layer per fixed-point sweep. Four
+/// layers reach the depth limit, so the sweep count stays bounded.
+const CALL_NESTING_STEP: usize = MAX_PROVENANCE_DEPTH / 4;
+
 pub(super) fn widen_value(value: Value, depth: usize) -> Value {
     widen_value_budget(value, depth, MAX_PROVENANCE_NODES)
 }
@@ -122,6 +147,15 @@ pub(super) fn widen_callable(
     deferred: &mut Summary,
 ) -> Callable {
     match callable {
+        Callable::Alternatives(choices) => {
+            let child_budget = budget / choices.len().max(1);
+            bounded_alternatives(
+                choices
+                    .into_iter()
+                    .map(|choice| widen_callable(choice, depth + 1, child_budget, deferred))
+                    .collect(),
+            )
+        }
         Callable::Known(mut known) => {
             known.summary.widen_at_budget(depth, budget);
             widen_payload(&mut known.returned, depth, budget);
@@ -133,7 +167,8 @@ pub(super) fn widen_callable(
             mut projection,
         } if level < MAX_PROVENANCE_DEPTH && projection.len() < MAX_PROVENANCE_DEPTH => {
             map_projection_values(&mut projection, |value| {
-                *value = widen_value_budget(value.clone(), depth + 1, budget);
+                *value =
+                    widen_value_budget(std::mem::take(value), depth + CALL_NESTING_STEP, budget);
             });
             Callable::Parameter {
                 level,
@@ -170,6 +205,12 @@ pub(super) fn terminal_value(mut value: Value) -> Value {
 
 pub(super) fn terminal_callable(callable: Callable, deferred: &mut Summary) -> Callable {
     match callable {
+        Callable::Alternatives(choices) => bounded_alternatives(
+            choices
+                .into_iter()
+                .map(|choice| terminal_callable(choice, deferred))
+                .collect(),
+        ),
         Callable::Known(mut known) => {
             known.summary.widen_at(MAX_PROVENANCE_DEPTH);
             known.returned = known.returned.map(|_| Box::new(Value::unknown_callable()));
@@ -214,6 +255,11 @@ pub(super) fn shift_summary_levels(summary: &mut Summary, amount: usize) {
 pub(super) fn shift_value_levels(value: &mut Value, amount: usize, minimum_level: usize) {
     if let Some(callable) = &mut value.callable {
         match callable {
+            Callable::Alternatives(choices) => {
+                map_alternatives(choices, |branch| {
+                    shift_value_levels(branch, amount, minimum_level);
+                });
+            }
             Callable::Parameter {
                 level, projection, ..
             } => {
@@ -239,34 +285,6 @@ pub(super) fn shift_value_levels(value: &mut Value, amount: usize, minimum_level
     shift_summary_from(&mut value.deferred, amount, minimum_level);
 }
 
-pub(super) fn callable_summary(callable: &Callable) -> Summary {
-    match callable {
-        Callable::Known(known) => known.summary.clone(),
-        Callable::Unknown => Summary {
-            unresolved_dynamic_call: true,
-            ..Summary::default()
-        },
-        Callable::Parameter {
-            level,
-            index,
-            projection,
-        } => Summary {
-            required: Requirements::new(),
-            runtime_builtins: BTreeSet::new(),
-            parameter_uses: [ParameterUse {
-                level: *level,
-                index: *index,
-                projection: projection.clone(),
-                arguments: CallArguments::default(),
-                scopes: Vec::new(),
-            }]
-            .into_iter()
-            .collect(),
-            unresolved_dynamic_call: false,
-        },
-    }
-}
-
 pub(super) fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
     let Some(existing) = slot.take() else {
         *slot = Some(incoming);
@@ -276,112 +294,114 @@ pub(super) fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
         *slot = Some(existing);
         return;
     }
-    if let Some(merged) = merged_projection(&existing, &incoming) {
-        *slot = Some(merged);
-        return;
-    }
-    *slot = Some(synthetic_join(&existing, &incoming));
+    *slot = Some(match (existing, incoming) {
+        (Callable::Known(mut left), Callable::Known(right)) if same_signature(&left, &right) => {
+            if let Some(returned) = right.returned {
+                merge_boxed_value(&mut left.returned, *returned);
+            }
+            Callable::Known(left)
+        }
+        // A common-prefix Deep loses concrete fields and includes unselected
+        // siblings. Keep each exact projection until the existing bounds apply.
+        (existing, incoming) => joined_alternatives(existing, incoming),
+    });
 }
 
-/// The synthetic callable of a join neither side of which can summarise the
-/// other: it carries both sides' summaries and returned values, so invoking
-/// it still accounts for every alternative. Implements [EFFECTS-PROVENANCE].
-fn synthetic_join(existing: &Callable, incoming: &Callable) -> Callable {
-    let mut summary = callable_summary(existing);
-    summary.union(callable_summary(incoming));
-    let (parameters, returned) = joined_shapes(existing, incoming);
+/// Two known closures that take the same parameters and perform the same
+/// row differ only in what they return, and calling either yields one of
+/// those returns: one closure returning their union says exactly as much.
+/// Kept as alternatives instead, a recursive spine's shallower unfoldings
+/// would each survive the join as a closure returning nothing callable.
+fn same_signature(left: &KnownCallable, right: &KnownCallable) -> bool {
+    left.parameters == right.parameters && left.summary == right.summary
+}
+
+fn joined_alternatives(existing: Callable, incoming: Callable) -> Callable {
+    let choices = match (existing, incoming) {
+        (Callable::Alternatives(left), Callable::Alternatives(right)) => {
+            merge_sorted_choices(left, right)
+        }
+        (Callable::Alternatives(choices), choice) | (choice, Callable::Alternatives(choices)) => {
+            insert_sorted_choice(choices, choice)
+        }
+        (left, right) => return bounded_alternatives(vec![left, right]),
+    };
+    bound_canonical_choices(choices)
+}
+
+// Producers and in-place transforms canonicalize Alternatives. Preserve that
+// order without re-sorting every growing prefix; overflow still runs per join.
+fn insert_sorted_choice(mut choices: Vec<Callable>, incoming: Callable) -> Vec<Callable> {
+    if let Err(position) = choices.binary_search_by(|choice| compare_choices(choice, &incoming)) {
+        choices.insert(position, incoming);
+    }
+    choices
+}
+
+fn merge_sorted_choices(left: Vec<Callable>, right: Vec<Callable>) -> Vec<Callable> {
+    let mut left = left.into_iter().peekable();
+    let mut right = right.into_iter().peekable();
+    std::iter::from_fn(|| match (left.peek(), right.peek()) {
+        (Some(a), Some(b)) => match compare_choices(a, b) {
+            std::cmp::Ordering::Less => left.next(),
+            std::cmp::Ordering::Equal => {
+                let _ = right.next();
+                left.next()
+            }
+            std::cmp::Ordering::Greater => right.next(),
+        },
+        (Some(_), None) => left.next(),
+        (None, _) => right.next(),
+    })
+    .collect()
+}
+
+fn bounded_alternatives(mut choices: Vec<Callable>) -> Callable {
+    choices.sort_by(compare_choices);
+    choices.dedup();
+    bound_canonical_choices(choices)
+}
+
+fn bound_canonical_choices(choices: Vec<Callable>) -> Callable {
+    if choices.len() <= MAX_PROVENANCE_NODES {
+        return Callable::Alternatives(choices);
+    }
+    let mut known = Summary::default();
+    for choice in choices {
+        collect_known_effects(&choice, &mut known);
+    }
+    Callable::Alternatives(vec![known_effects_callable(known), Callable::Unknown])
+}
+
+fn known_effects_callable(summary: Summary) -> Callable {
     Callable::Known(Box::new(KnownCallable {
-        parameters,
+        parameters: Vec::new(),
         summary,
-        returned: returned.map(Box::new),
+        returned: Some(Box::new(Value::unknown_value())),
     }))
 }
 
-/// The shared parameters and merged returned values of the joined callables.
-fn joined_shapes(existing: &Callable, incoming: &Callable) -> (Vec<String>, Option<Value>) {
-    let mut parameters = Vec::new();
-    let mut returned = None;
-    for callable in [existing, incoming] {
-        if let Callable::Known(known) = callable {
-            if parameters.is_empty() || parameters == known.parameters {
-                parameters.clone_from(&known.parameters);
-            }
-            if let Some(value) = known.returned.as_deref().cloned() {
-                merge_optional_value(&mut returned, value);
+fn collect_known_effects(callable: &Callable, summary: &mut Summary) {
+    match callable {
+        Callable::Known(known) => {
+            summary
+                .required
+                .extend(known.summary.required.iter().cloned());
+            summary
+                .runtime_builtins
+                .extend(known.summary.runtime_builtins.iter().cloned());
+        }
+        Callable::Alternatives(choices) => {
+            for choice in choices {
+                collect_known_effects(choice, summary);
             }
         }
-    }
-    (parameters, returned)
-}
-
-/// Both sides project the same parameter of the same scope: alternatives over
-/// one aggregate, not independent callables.
-fn same_parameter<'a>(
-    existing: &'a Callable,
-    incoming: &'a Callable,
-) -> Option<(usize, usize, &'a [Projection], &'a [Projection])> {
-    match (existing, incoming) {
-        (
-            Callable::Parameter {
-                level,
-                index,
-                projection,
-            },
-            Callable::Parameter {
-                level: other_level,
-                index: other_index,
-                projection: other,
-            },
-        ) if level == other_level && index == other_index => {
-            Some((*level, *index, projection, other))
-        }
-        _ => None,
+        Callable::Parameter { .. } | Callable::Unknown => {}
     }
 }
 
-/// Two projections of the SAME parameter are control-flow alternatives over
-/// one aggregate (a union's arms, a recursion's levels). Summarise them as
-/// their common prefix plus one `Deep` step: every callable either alternative
-/// could reach is stored below that prefix, so the merge stays sound and
-/// finite where tracking both paths would grow one level per fixed-point
-/// iteration. Implements [EFFECTS-PROVENANCE].
-fn merged_projection(existing: &Callable, incoming: &Callable) -> Option<Callable> {
-    let (level, index, left, right) = same_parameter(existing, incoming)?;
-    let prefix = common_prefix(left, right);
-    (tails_deep_summarizable(left, prefix) && tails_deep_summarizable(right, prefix)).then(|| {
-        Callable::Parameter {
-            level,
-            index,
-            projection: common_deep_summary(left, prefix),
-        }
-    })
-}
-
-/// A tail a `Deep` step can summarise: structural steps traverse stored data,
-/// and `Deep` itself is already the summary. A call-shaped step (`Method`,
-/// `Returned`, `Handled`) produces a callable no storage path reaches, so
-/// summarising across one would drop its provenance.
-fn tails_deep_summarizable(path: &[Projection], prefix: usize) -> bool {
-    path.iter()
-        .skip(prefix)
-        .all(|part| part.is_structural() || matches!(part, Projection::Deep))
-}
-
-/// The length of the common prefix of two paths.
-fn common_prefix(left: &[Projection], right: &[Projection]) -> usize {
-    left.iter()
-        .zip(right.iter())
-        .take_while(|(left, right)| left == right)
-        .count()
-}
-
-/// The common structural prefix of two paths followed by one `Deep` step: the
-/// finite summary of every callable stored below it. Implements
-/// [EFFECTS-PROVENANCE].
-fn common_deep_summary(left: &[Projection], prefix: usize) -> Vec<Projection> {
-    left.iter()
-        .take(prefix)
-        .cloned()
-        .chain([Projection::Deep])
-        .collect()
+fn compare_choices(left: &Callable, right: &Callable) -> std::cmp::Ordering {
+    #[cfg(test)]
+    sorted_join_tests::record_comparison();
+    left.cmp(right)
 }

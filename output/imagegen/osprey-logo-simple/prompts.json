@@ -1,0 +1,13 @@
+{
+  "mode": "built-in imagegen",
+  "prompts": [
+    {
+      "name": "banking",
+      "prompt": "Radically simplify this referenced osprey into a professional, exceptionally elegant minimalist logo. Keep its asymmetric banking flight pose, left-facing hooked head, one wing high and one wing extended sideways. This is a logo, not an illustration. Reduce detail by 98 percent. One solid flat cyan #77d7f4 silhouette on perfectly uniform dark navy #0c1325. Use only 2 or 3 broad negative-space cuts total to articulate wings and distinctive osprey eye stripe. Smooth confident curves, graceful long angular osprey wings, compact head with modest hooked beak. At most THREE broad primary feather tips per wing, no other individual feathers. Short simple tail. No feet. No wireframe, mesh, fine lines, texture, glow, gradients, shading, realism rendering, tiny eye dot, outlines, wordmark, border or decorative elements. Retain anatomically plausible osprey proportions but ruthlessly simplify geometry to something recognisable at 24px and drawable from memory. Avoid sports team eagle mascot style. Single centered mark occupying 70 percent of square canvas, generous margin. Premium restrained timeless identity."
+    },
+    {
+      "name": "hover",
+      "prompt": "Radically simplify this referenced osprey into a professional, exceptionally elegant minimalist logo. Keep its front-facing hovering pose, broad upward swept wings and small central head and tail. This is a logo, not an illustration. Reduce detail by 98 percent. One solid flat cyan #77d7f4 silhouette on perfectly uniform dark navy #0c1325. Use only 2 or 3 broad negative-space cuts total to articulate wings and distinctive osprey eye stripe. Smooth confident curves, graceful long angular osprey wings, compact head with modest hooked beak. At most THREE broad primary feather tips per wing, no other individual feathers. Short simple tail. No feet. No wireframe, mesh, fine lines, texture, glow, gradients, shading, realism rendering, tiny eye dot, outlines, wordmark, border or decorative elements. Retain anatomically plausible osprey proportions but ruthlessly simplify geometry to something recognisable at 24px and drawable from memory. Avoid sports team eagle mascot style. Single centered mark occupying 70 percent of square canvas, generous margin. Premium restrained timeless identity."
+    }
+  ]
+}

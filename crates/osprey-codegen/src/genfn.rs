@@ -25,11 +25,44 @@ pub(crate) fn try_inline(
     let Some((params, body, _)) = cg.fn_defs.get(name).cloned() else {
         return Ok(None);
     };
-    match (crate::monofn::calls_itself(name, &body), rest.is_empty()) {
+    let value = match (crate::monofn::calls_itself(name, &body), rest.is_empty()) {
         (true, true) => specialize_at(cg, name, &params, &body, args, named),
         (true, false) => Ok(None),
         (false, _) => expand_call(cg, name, &params, &body, args, named, rest),
+    }?;
+    Ok(value.map(|value| checked_return(cg, name, rest, value)))
+}
+
+/// A whole call's value carries the return type the checker resolved for
+/// `name` when that type is concrete and the lowered value has none of its
+/// own — concrete as the ABI sees it, so an open `Result` error channel,
+/// which is always a message, does not count ([`crate::types::abi_shape_concrete`]).
+/// An inlined body that ends in a phi over a constructed `Success` and a
+/// mutually recursive specialisation merges to a bare `Result` block, and a
+/// field read off its payload — a field two records declare — was then
+/// quarantined although the checker had named the record
+/// ([TYPE-FIELD-ACCESS-NON-RECORD], [TYPE-FN-GENERIC]). A partial
+/// application (`rest` non-empty) returns a function, not this type.
+fn checked_return(
+    cg: &Codegen,
+    name: &str,
+    rest: &[crate::curry::ArgGroup<'_>],
+    mut value: Value,
+) -> Value {
+    if !rest.is_empty() || value.inferred_type.is_some() {
+        return value;
     }
+    let Some(ty) = cg.prog.return_type(name) else {
+        return value;
+    };
+    if !crate::types::abi_shape_concrete(ty) {
+        return value;
+    }
+    if value.result_inner.is_some() && value.payload_owner.is_none() {
+        value.payload_owner = crate::types::result_payload_owner(&cg.prog, ty);
+    }
+    value.inferred_type = Some(ty.clone());
+    value
 }
 
 /// Mutual recursion closes on the symbol registered before its body is lowered.
@@ -101,6 +134,10 @@ fn closed_first_order(ty: &osprey_types::Type) -> bool {
     use osprey_types::Type;
     match ty {
         Type::Var(_) | Type::Fun { .. } => false,
+        // Error always carries a string; its phantom type cannot expand IR.
+        Type::Con { name, args } if name == osprey_types::names::RESULT => {
+            args.first().is_none_or(closed_first_order)
+        }
         Type::Con { name, .. }
             if name == osprey_types::names::FIBER || name == osprey_types::names::CHANNEL =>
         {
@@ -208,7 +245,7 @@ fn relaid_placeholder(
 /// One inlined-call argument, already lowered in the caller's scope: either the
 /// callee a bare name stands for (so the parameter stays callable) or a value
 /// paired with the function type to register for it.
-enum InlineArg {
+pub(crate) enum InlineArg {
     Alias(String),
     Value(Box<Value>, Option<osprey_types::Type>),
 }
@@ -243,6 +280,9 @@ fn lower_inline_arg(
     a: &Expr,
     declared: Option<&osprey_types::Type>,
 ) -> Result<InlineArg> {
+    if let Some(value) = crate::closure::adapted_argument(cg, a, declared)? {
+        return Ok(value);
+    }
     if let Some(callee) = alias_target(cg, a) {
         return Ok(InlineArg::Alias(callee));
     }
@@ -372,4 +412,70 @@ pub(crate) fn try_indirect(
     };
     let exprs = crate::expr::arg_exprs(args, named);
     crate::closure::cell_call_exprs(cg, &handle.operand, &sig, &exprs).map(Some)
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use osprey_types::{names, Type};
+
+    #[test]
+    fn first_order_result_sharing_ignores_the_phantom_error_channel() {
+        let result = Type::con(names::RESULT, vec![Type::con("Term", vec![]), Type::Var(0)]);
+        assert!(super::closed_first_order(&result));
+    }
+
+    #[test]
+    fn result_sharing_still_requires_a_concrete_first_order_success_value() {
+        let unresolved = Type::con(names::RESULT, vec![Type::Var(0), Type::Var(1)]);
+        let closure = Type::Fun {
+            params: vec![],
+            ret: Box::new(Type::con(names::INT, vec![])),
+        };
+        let higher_order = Type::con(names::RESULT, vec![closure, Type::Var(0)]);
+        let fiber = Type::con(names::FIBER, vec![Type::con(names::STRING, vec![])]);
+        assert!(!super::closed_first_order(&unresolved));
+        assert!(!super::closed_first_order(&higher_order));
+        assert!(!super::closed_first_order(&fiber));
+    }
+    pub(crate) fn fanout_helpers() -> String {
+        use std::fmt::Write;
+        (1..=8).fold(String::new(), |mut source, depth| {
+            let previous = if depth == 1 {
+                "leaf".into()
+            } else {
+                format!("l{}", depth - 1)
+            };
+            writeln!(
+                source,
+                "fn l{depth}(x) = \"${{{previous}(x)}}${{{previous}(x)}}\""
+            )
+            .expect("in-memory source");
+            source
+        })
+    }
+
+    #[test]
+    fn result_fanout_shares_after_budget_and_preserves_higher_order_calls() {
+        let source = format!(
+            "fn leaf(x) = x\n{}fn checked(x) = Success {{ value: trim(x) }}\nfn apply(f, x) = f(x)\nlet warm = l8(\"z\")\nlet a = checked(\" one \")\nlet b = checked(\" two \")\nlet c = apply(|x| => x + \"!\", \"three\")\nprint(\"${{warm}} ${{a ?: \"error\"}} ${{b ?: \"error\"}} ${{c}}\")\n",
+            fanout_helpers()
+        );
+        let parsed = osprey_syntax::parse_program_for_path("result-fanout.osp", &source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let ir = crate::compile_program(&parsed.program).expect("Result fanout must compile");
+        let definitions = symbol_lines(&ir, "define ", "@checked$mono");
+        let calls = symbol_lines(&ir, "call ", "@checked$mono");
+        assert_eq!(definitions, 1, "one shared checked body: {ir}");
+        assert_eq!(calls, 2, "both calls reuse the same checked body: {ir}");
+        assert!(
+            !ir.contains("@apply$mono"),
+            "higher-order aliases remain inline: {ir}"
+        );
+    }
+
+    fn symbol_lines(ir: &str, operation: &str, symbol: &str) -> usize {
+        ir.lines()
+            .filter(|line| line.contains(operation) && line.contains(symbol))
+            .count()
+    }
 }

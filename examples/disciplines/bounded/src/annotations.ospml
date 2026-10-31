@@ -1,0 +1,112 @@
+namespace bounded
+
+import bounded::Arguments
+import bounded::Chars
+import bounded::Intervals
+import bounded::Words
+
+(** Reading `// @bound` annotations and the definition lines they precede. *)
+module Annotations
+    (** The comment that opens a bound annotation. *)
+    annotationPrefix = "// @bound "
+
+    (** The separator between a parameter and its interval. *)
+    annotationJoin = " in "
+
+    (** The separator between an interval's two endpoints. *)
+    rangeJoin = ".."
+
+    (** The keyword a declaration line may open with. *)
+    exportPrefix = "export "
+
+    (** The annotation on `text`, when the line is one. *)
+    export of text = match startsWith (trim text) annotationPrefix
+        true => parse (drop (trim text, length annotationPrefix))
+        false => Words::NotAnnotation
+
+    (** The function declaration on `text`, when the line is one. *)
+    export definitionOf text = declared (Chars::indent text, drop (text, Chars::indent text))
+
+    (** Every definition of the module and the lines that annotated them. *)
+    export collect source = gathered (lines source, 1, [], [], [])
+
+    parse (text) = match split (text, annotationJoin)
+        Success parts => withInterval parts
+        Error _ => Words::NotAnnotation
+
+    withInterval (parts) = match parts
+        [param, range] => ranged (param, range)
+        _ => Words::NotAnnotation
+
+    ranged (param, range) = match split (range, rangeJoin)
+        Success bounds => withNumbers (param, bounds)
+        Error _ => Words::NotAnnotation
+
+    withNumbers (param, bounds) = match bounds
+        [lo, hi] => measured (param, lo, hi)
+        _ => Words::NotAnnotation
+
+    measured (param, lo, hi) = match parseInt (trim lo)
+        Error _ => Words::NotAnnotation
+        Success low => match parseInt (trim hi)
+            Error _ => Words::NotAnnotation
+            Success high => formed (param, Words::Bound(lo = low, hi = high))
+
+    formed (param, bound) = match isEmpty (trim param) || bound.lo > bound.hi
+        true => Words::NotAnnotation
+        false => Words::IsAnnotation (Words::Annotation(param = trim param, bound = bound))
+
+    declared (indent, leading) = match startsWith leading exportPrefix
+        true => headered (indent, indent + length exportPrefix, drop (leading, length exportPrefix))
+        false => headered (indent, indent, leading)
+
+    headered (indent, at, body) = described (indent, at, body, word (body, 0))
+
+    described (indent, at, body, name) = match isEmpty name
+        true => Words::NotHeader
+        false => shaped (Words::Header(name = name, indent = indent, at = at, params = []), trimStart (drop (body, length name)))
+
+    shaped (header, rest) = match startsWith rest "("
+        true => flat (header, rest)
+        false => curried (header, rest)
+
+    flat (header, rest) = closed (header, rest, Intervals::matching (rest, 0, 0))
+
+    closed (header, rest, close) = match close < 0
+        true => Words::NotHeader
+        false => assigned (header(params = Arguments::at (substring (rest, 1, close) ?: "")), drop (rest, close + 1))
+
+    curried (header, rest) = match indexOf rest "="
+        Error _ => Words::NotHeader
+        Success position => withParameters (header, words (substring (rest, 0, position) ?: ""), rest)
+
+    withParameters (header, params, rest) = match isEmpty params
+        true => Words::NotHeader
+        false => assigned (header(params = params), rest)
+
+    assigned (header, rest) = match contains rest "="
+        true => Words::IsHeader header
+        false => Words::NotHeader
+
+    word (text, index) = match Chars::identifier (Chars::at (text, index))
+        true => Chars::at (text, index) + word (text, index + 1)
+        false => ""
+
+    gathered (lines, number, pending, definitions, marks) = match lines
+        [] => Words::Readings(definitions = definitions, annotations = marks)
+        [text, ...rest] => annotated (text, rest, number, pending, definitions, marks)
+
+    annotated (text, rest, number, pending, definitions, marks) = match definitionOf text
+        Words::IsHeader header => gathered (rest, number + 1, [], listAppend (definitions, defined (header, number, pending)), marks)
+        Words::NotHeader => comment (text, rest, number, pending, definitions, marks)
+
+    comment (text, rest, number, pending, definitions, marks) = match of text
+        Words::IsAnnotation annotation => gathered (rest, number + 1, listAppend (pending, annotation), definitions, listAppend (marks, number))
+        Words::NotAnnotation => gathered (rest, number + 1, pending, definitions, marks)
+
+    defined (header, number, pending) =
+        Words::Definition(header = header, line = number, bounds = boundMap pending)
+
+    boundMap (annotations) = foldList (annotations, [=>], addBound)
+
+    addBound (bounds, annotation) = mapSet (bounds, annotation.param, annotation.bound)

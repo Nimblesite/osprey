@@ -118,9 +118,14 @@
     ],
     "commands": [
       {
+        "command": "osprey.workbench.open",
+        "title": "Osprey: Open Workbench"
+      },
+      {
         "command": "osprey.packages.open",
         "title": "Manage Packages",
-        "category": "Osprey"
+        "category": "Osprey",
+        "icon": "$(package)"
       },
       {
         "command": "osprey.compile",
@@ -374,6 +379,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "osprey.packages.open",
+          "when": "view == ospreyDebugView || view == osprey.profiler.processes",
+          "group": "navigation@0"
+        },
         {
           "command": "osprey.profiler.profileCurrentFileCpu",
           "when": "view == osprey.profiler.processes && !osprey.profiler.cpuBusy",
@@ -657,6 +667,12 @@
           "scope": "machine",
           "description": "Absolute path to osprey-pkg. Defaults to the client bundled with this extension."
         },
+        "osprey.packages.appPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Path to a compiled package workspace WASM application. Empty uses the bundled application."
+        },
         "osprey.profiler.sampleRate": {
           "type": "number",
           "default": 100,
@@ -783,7 +799,7 @@
   },
   "scripts": {
     "sync-icon": "node scripts/sync-icon.mjs",
-    "vscode:prepublish": "node scripts/verify-package-client.mjs && npm run sync-icon && npm run compile && node scripts/verify-package-workspace.mjs",
+    "vscode:prepublish": "npm run sync-icon && npm run compile && node scripts/verify-package-client.mjs && node scripts/verify-package-workspace.mjs",
     "precompile": "npm run sync-icon && node scripts/sync-profiler-contributions.mjs --check",
     "sync-profiler": "node scripts/sync-profiler-contributions.mjs",
     "compile": "tsc -b",

@@ -3,15 +3,15 @@
 // construct an action.
 namespace ui
 
-(** Host facts for one dispatch: Unix seconds, the local UTC offset in seconds, the host's platform, the person's home folder and the launch arguments. *)
+(** Host facts for one dispatch: Unix seconds, the local UTC offset in seconds, the host's platform name (`macos` or `ios`, say), the person's home folder and the launch arguments. `Symbols::platform` reads a name as the typed `Platform` when a host-neutral decision is needed. *)
 type Context =
     now : int
     offset : int
-    platform : Platform
+    platform : string
     home : string
     arguments : List<string>
 
-(** What reaches the application's `update`: a control's action and value, a capability's completion or a lifecycle phase. *)
+(** What reaches the application's `update`: a control's action and value, a capability's completion a lifecycle phase or a display frame. *)
 type Message A =
     Act
         act : A
@@ -27,6 +27,15 @@ type Message A =
     Resized
         resizer : A
         resized : int
+    Placed
+        placer : A
+        placed : int
+    Stroked
+        stroker : A
+        stroked : Stroke
+    Lassoed
+        lassoer : A
+        lassoed : List<int>
     Completed
         ticket : string
         outcome : Result<Json, Error>
@@ -81,12 +90,25 @@ module Events
         true => Success(value = Doc::field (doc, "result"))
         false => Error(message = Doc::text (doc, "error"))
 
+    numeric value = match value
+        JsonInt _ => true
+        JsonFloat _ => true
+        _ => false
+
+    boolean value = match jsonBool value
+        Success _ => true
+        Error _ => false
+
+    framed doc = match numeric (Doc::field (doc, "elapsed")) && Doc::decimal (doc, "elapsed") >= 0.0
+        true => Success(value = Tick(tickElapsed = Doc::decimal (doc, "elapsed")))
+        false => Error(message = "Invalid frame elapsed time")
+
     body (doc, kind) = match kind
         "ui" => Success(value = Control(eventRegion = Doc::text (doc, "region"), eventRevision = Doc::number (doc, "revision"), eventOrdinal = Doc::number (doc, "ordinal"), eventValue = Doc::field (doc, "value")))
         "ui-edit" => Success(value = PreviousControl(priorState = Doc::text (doc, "prior"), editRegion = Doc::text (doc, "region"), editRevision = Doc::number (doc, "revision"), editOrdinal = Doc::number (doc, "ordinal"), editValue = Doc::field (doc, "value")))
         "completed" => Success(value = Finished(doneTicket = Doc::text (doc, "ticket"), doneOutcome = outcome doc))
         "lifecycle" => Success(value = Lifecycle(lifecyclePhase = Doc::text (doc, "phase")))
-        "frame" => Success(value = Tick(tickElapsed = Doc::decimal (doc, "elapsed")))
+        "frame" => framed doc
         _ => Error(message = "Unknown event kind: ${kind}")
 
     // The host bounds event size before the call; malformed text is rejected, never guessed.
@@ -99,6 +121,19 @@ module Events
 
     mismatch kind = Error(message = "A ${kind} control sent a value of the wrong kind")
 
+    optionalShift value = match Doc::has (value, "shift")
+        true => boolean (Doc::field (value, "shift"))
+        false => true
+
+    positionOrKey value = match Doc::has (value, "key")
+        true => match jsonText (Doc::field (value, "key"))
+            Success _ => true
+            Error _ => false
+        false => numeric (Doc::field (value, "x")) && numeric (Doc::field (value, "y")) && optionalShift value
+
+    validScene value = boolean (Doc::field (value, "down")) && positionOrKey value
+
+    // Validate the shape first, so missing fields never invent a pointer at zero.
     // A scene value names a key or a pointer position; `down` says pressed or released.
     input value = match Doc::has (value, "key")
         true => Key(keyName = Doc::text (value, "key"), keyDown = Doc::flag (value, "down"))
@@ -122,20 +157,65 @@ module Events
         SizeInput action => match value
             JsonInt points => Success(value = Resized(resizer = action, resized = Splitters::clamp points))
             _ => mismatch "splitter"
-        SceneInput action => match value
-            JsonObject _ => Success(value = Controlled(control = action, input = input value))
-            _ => mismatch "scene"
+        PlaceInput action => match value
+            JsonInt offset => Success(value = Placed(placer = action, placed = Pick::either (offset < 0, 0, offset)))
+            _ => mismatch "cursor"
+        StrokeInput action => Strokes::bind (action, value)
+        LassoInput action => Strokes::lasso (action, value)
+        SceneInput action => match validScene value
+            true => Success(value = Controlled(control = action, input = input value))
+            false => mismatch "scene"
+
+(** Decodes the board's stroke and lasso values ([UI-COMPONENTS-BOARD]); a malformed stroke is refused, never guessed. *)
+module Strokes
+    coordinate (pair, at) = jsonInt (jsonIndex pair at ?: JsonNull) ?: (0 - 1)
+
+    point pair = Point(pointX = coordinate (pair, 0), pointY = coordinate (pair, 1))
+
+    validPoint pair = match pair
+        JsonArray values => length values == 2 && (point pair).pointX >= 0 && (point pair).pointY >= 0
+        _ => false
+
+    validNumber (value, key, least) = match jsonInt (Doc::field (value, key))
+        Success number => number >= least
+        Error _ => false
+
+    (** The stroke a host sent: `points` as `[x, y]` pairs, `width` and `at`; an error when a point is not a pair of non-negative integers. *)
+    export decode value =
+        points = Doc::items (Doc::field (value, "points"))
+        match Lists::any (points, \pair => validPoint pair == false) || isEmpty points || validNumber (value, "width", 1) == false || validNumber (value, "at", 0) == false
+            true => Error(message = "A board control sent a malformed stroke")
+            false => Success(value = Stroke(strokePoints = mapList (points, \pair => point pair), strokeWidth = Doc::number (value, "width"), strokeAt = Doc::number (value, "at")))
+
+    (** The `Stroked` message for a stroke value delivered to `action`. *)
+    export bind (action, value) = match decode value
+        Success stroke => Success(value = Stroked(stroker = action, stroked = stroke))
+        Error problem => Error(message = problem)
+
+    index item = jsonInt item ?: (0 - 1)
+
+    (** The `Lassoed` message for an array of stroke indices delivered to `action`; any other value is refused. *)
+    export lasso (action, value) = match value
+        JsonArray items => enclosed (action, mapList (items, \item => index item))
+        _ => Error(message = "A board control sent a lasso that is not a list of strokes")
+
+    enclosed (action, indices) = match Lists::any (indices, \at => at < 0)
+        true => Error(message = "A board control sent a lasso that is not a list of strokes")
+        false => Success(value = Lassoed(lassoer = action, lassoed = indices))
 
 (** Takes a message apart for the application's `update`. Osprey cannot yet match a constructor declared in another namespace, so applications fold over messages here. *)
 module Messages
-    (** Calls the handler for `message`: a tap, a text or choice value, a toggle, a splitter's width, a completion, a lifecycle phase, a display frame's elapsed seconds or a scene's key or pointer input. *)
-    export route<A, R> : (Message<A>, (A) -> R, (A, string) -> R, (A, bool) -> R, (A, int) -> R, (string, Result<Json, Error>) -> R, (string) -> R, (float) -> R, (A, Input) -> R) -> R !e
-    route (message, tapped, typed, toggled, sized, completed, phased, framed, controlled) = match message
+    (** Calls the handler for `message`: a tap, a text or choice value, a toggle, a splitter's width or a cursor's offset, a completion, a lifecycle phase, a board stroke or lasso, a display frame's elapsed seconds or a scene's key or pointer input. *)
+    export route<A, R> : (Message<A>, (A) -> R, (A, string) -> R, (A, bool) -> R, (A, int) -> R, (string, Result<Json, Error>) -> R, (string) -> R, (A, Stroke) -> R, (A, List<int>) -> R, (float) -> R, (A, Input) -> R) -> R !e
+    route (message, tapped, typed, toggled, sized, completed, phased, stroked, lassoed, framed, controlled) = match message
         Act action => tapped action
         Entered action text => typed (action, text)
         Chose action key => typed (action, key)
         Switched action flag => toggled (action, flag)
         Resized action points => sized (action, points)
+        Placed action offset => sized (action, offset)
+        Stroked action stroke => stroked (action, stroke)
+        Lassoed action indices => lassoed (action, indices)
         Completed ticket outcome => completed (ticket, outcome)
         Phase phase => phased phase
         Frame elapsed => framed elapsed

@@ -13,7 +13,7 @@ for @osprey/tokenizers.
 """
 from tokenizers.Unicode import is_chinese_char, is_control, is_whitespace, lowercase, strip_base
 
-__all__ = ["Norm", "norm_of", "norm_text", "bert_normalize", "replace_space", "prepend_cp"]
+__all__ = ["Norm", "norm_of", "norm_text", "bert_normalize", "replace_space", "prepend_cp", "empty_norm", "append_norm", "char_at", "start_at", "end_at"]
 
 
 class Norm:
@@ -21,6 +21,26 @@ class Norm:
     chars: list[int]
     starts: list[int]
     ends: list[int]
+
+
+def empty_norm():
+    return Norm(chars=[], starts=[], ends=[])
+
+
+def append_norm(cur, cp, s, e):
+    return Norm(chars=listAppend(cur.chars, cp), starts=listAppend(cur.starts, s), ends=listAppend(cur.ends, e))
+
+
+def char_at(n, i):
+    return unwrap_or(listGet(n.chars, i), 0)
+
+
+def start_at(n, i):
+    return unwrap_or(listGet(n.starts, i), 0)
+
+
+def end_at(n, i):
+    return unwrap_or(listGet(n.ends, i), 0)
 
 
 def norm_of(s):
@@ -49,44 +69,44 @@ def cps_text(cps):
 def norm_expand(n, f):
     """Apply f (codepoint -> list of codepoints) to every char; each output
     codepoint inherits the input char's original byte range."""
-    return fold(range(len(n.chars)), Norm(chars=[], starts=[], ends=[]), lambda acc, i: expand_one(acc, n, i, f))
+    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: expand_one(acc, n, i, f))
 
 
 def expand_one(acc, n, i, f):
-    cp = unwrap_or(listGet(n.chars, i), 0)
-    s = unwrap_or(listGet(n.starts, i), 0)
-    e = unwrap_or(listGet(n.ends, i), 0)
+    cp = char_at(n, i)
+    s = start_at(n, i)
+    e = end_at(n, i)
     outs = f(cp)
-    return fold(range(len(outs)), acc, lambda a2, k: Norm(chars=listAppend(a2.chars, unwrap_or(listGet(outs, k), 0)), starts=listAppend(a2.starts, s), ends=listAppend(a2.ends, e)))
+    return fold(range(len(outs)), acc, lambda a2, k: append_norm(a2, unwrap_or(listGet(outs, k), 0), s, e))
 
 
 def clean_text(n):
     """Drop NUL, U+FFFD and control characters; map every whitespace to space."""
-    return fold(range(len(n.chars)), Norm(chars=[], starts=[], ends=[]), lambda acc, i: clean_one(acc, n, i))
+    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: clean_one(acc, n, i))
 
 
 def clean_one(acc, n, i):
-    cp = unwrap_or(listGet(n.chars, i), 0)
-    s = unwrap_or(listGet(n.starts, i), 0)
-    e = unwrap_or(listGet(n.ends, i), 0)
+    cp = char_at(n, i)
+    s = start_at(n, i)
+    e = end_at(n, i)
     if cp == 0 or cp == 65533 or is_control(cp):
         return acc
     elif is_whitespace(cp):
-        return Norm(chars=listAppend(acc.chars, 32), starts=listAppend(acc.starts, s), ends=listAppend(acc.ends, e))
+        return append_norm(acc, 32, s, e)
     else:
-        return Norm(chars=listAppend(acc.chars, cp), starts=listAppend(acc.starts, s), ends=listAppend(acc.ends, e))
+        return append_norm(acc, cp, s, e)
 
 
 def handle_chinese(n):
     """Put a space on each side of every CJK character, all three chars sharing
     the original char's byte range."""
-    return fold(range(len(n.chars)), Norm(chars=[], starts=[], ends=[]), lambda acc, i: chinese_one(acc, n, i))
+    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: chinese_one(acc, n, i))
 
 
 def chinese_one(acc, n, i):
-    cp = unwrap_or(listGet(n.chars, i), 0)
-    s = unwrap_or(listGet(n.starts, i), 0)
-    e = unwrap_or(listGet(n.ends, i), 0)
+    cp = char_at(n, i)
+    s = start_at(n, i)
+    e = end_at(n, i)
     if is_chinese_char(cp):
         return Norm(
             chars=listAppend(listAppend(listAppend(acc.chars, 32), cp), 32),
@@ -94,7 +114,7 @@ def chinese_one(acc, n, i):
             ends=listAppend(listAppend(listAppend(acc.ends, e), e), e),
         )
     else:
-        return Norm(chars=listAppend(acc.chars, cp), starts=listAppend(acc.starts, s), ends=listAppend(acc.ends, e))
+        return append_norm(acc, cp, s, e)
 
 
 def strip_accents_norm(n):

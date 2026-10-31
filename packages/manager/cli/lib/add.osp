@@ -15,7 +15,7 @@ import registry::Names
 /// `osprey-pkg add <key-or-path> [--epoch N] [--registry <base-url>] [--project <dir>]`.
 /// `add @scope/name` chooses the key's newest epoch (or the lineage `--epoch N`
 /// names) and the newest ordinal in it as the floor, writes the dependency
-/// line under `[dependencies]`, and relocks atomically; exact digests go only
+/// line under `[dependencies]`, and relocks; exact digests go only
 /// to the lock ([PACKAGE-API], plan 0020 Phase 4). `add <path>` takes the key
 /// from the checkout's `[package]`, writes the dependency with the published
 /// baseline's ordinal as the floor (zero and epoch 1 when nothing is
@@ -58,7 +58,7 @@ module Add {
     fn ordinalOfId(id: Identity::ReleaseId) = id.ordinal
 
     fn parsedEpoch(word) = match parseInt(word) {
-        Success { value } => Success { value: value }
+        Success { value } => if value > 0 { Success { value: value } } else { Error { message: usageCode } }
         Error => Error { message: usageCode }
     }
 
@@ -112,10 +112,10 @@ module Add {
         Success { value } => newestIn(listing, keyOf(req), value)
     }
 
-    fn epochFor(req, baseline) = Maybe::fold(baseline, parseInt(epochWordOf(req)) ?: 1, epochOfId)
+    fn epochFor(req, baseline) = Maybe::fold(baseline,
+        if epochWordOf(req) == "" { Success { value: 1 } } else { parsedEpoch(epochWordOf(req)) },
+        fn(id) => Success { value: epochOfId(id) })
     fn floorFor(baseline) = Maybe::fold(baseline, 0, ordinalOfId)
-
-    fn writeBack(path, text) = if text == "" { Success { value: 0 } } else { perform Host::Files.write(path, text) }
 
     fn withRestoreNote(report, result) = match result {
         Error { message } => failed(listAppend(linesOf(report), "${restoreCode} ${message}"))
@@ -125,8 +125,8 @@ module Add {
     /// Write back the manifest and the release lock after a failed development relock.
     fn restored(req, previousText, previousLock, report) = {
         let s = settingsIn(req)
-        let manifest = writeBack(Project::manifestPathAt(projectOf(s)), previousText)
-        let lock = writeBack(Project::lockPathAt(projectOf(s)), previousLock)
+        let manifest = perform Host::Files.write(Project::manifestPathAt(projectOf(s)), previousText)
+        let lock = Host::restore(Project::lockPathAt(projectOf(s)), previousLock)
         withRestoreNote(withRestoreNote(report, manifest), lock)
     }
 
@@ -137,25 +137,32 @@ module Add {
         if statusOf(local) == 0 { Reports::success(listConcat(linesOf(released), linesOf(local))) } else { restored(req, previousText, previousLock, local) }
     }
 
-    fn writtenOnly(s, text, line, note) = match perform Host::Files.write(Project::manifestPathAt(projectOf(s)), ManifestEdit::withEdge(text, line)) {
-        Error { message } => failed([message])
-        Success => Reports::success(listAppend(note, "development-only: nothing published for this key"))
-    }
-
-    fn releasedFor(req, text, line, note, baseline) = if Maybe::isPresent(baseline) {
-        Transaction::commit(settingsIn(req), text, ManifestEdit::withEdge(text, line), note)
-    } else {
-        writtenOnly(settingsIn(req), text, line, note)
-    }
-
-    /// The dependency line is written; with a baseline the release lock is
-    /// recomputed too, without one the dependency stays development-only.
-    fn declaredLocal(req, path, text, baseline) = {
-        let epoch = epochFor(req, baseline)
-        let line = ManifestEdit::edgeLine(keyOf(req), epoch, floorFor(baseline))
-        let previousLock = perform Host::Files.read(Project::lockPathAt(projectOf(settingsIn(req)))) ?: ""
-        let released = releasedFor(req, text, line, ["added ${Names::display(keyOf(req))} e${epoch}.r${floorFor(baseline)} from ${path}"], baseline)
+    fn declaredPublishedWith(req, path, text, line, note, previousLock) = {
+        let released = Transaction::commit(settingsIn(req), text, ManifestEdit::withEdge(text, line), note)
         if statusOf(released) == 0 { mappedLocal(req, path, text, previousLock, released) } else { released }
+    }
+
+    fn declaredPublished(req, path, text, line, note) = match Host::snapshot(Project::lockPathAt(projectOf(settingsIn(req)))) {
+        Error { message } => failed([message])
+        Success { value } => declaredPublishedWith(req, path, text, line, note, value)
+    }
+
+    /// Published keys retain their release baseline; an unpublished key's
+    /// proposed manifest is visible only to development resolution until commit.
+    fn declaredLocalAt(req, path, text, baseline, epoch) = {
+        let s = settingsIn(req)
+        let line = ManifestEdit::edgeLine(keyOf(req), epoch, floorFor(baseline))
+        let note = ["added ${Names::display(keyOf(req))} e${epoch}.r${floorFor(baseline)} from ${path}"]
+        if Maybe::isPresent(baseline) { declaredPublished(req, path, text, line, note) } else {
+            Transaction::commitLocalManifest(projectOf(s), text, ManifestEdit::withEdge(text, line),
+                listAppend(note, "development-only: nothing published for this key"),
+                fn() => Use::mapLocal(baseOf(s), projectOf(s), keyOf(req), path, epochWordOf(req)))
+        }
+    }
+
+    fn declaredLocal(req, path, text, baseline) = match epochFor(req, baseline) {
+        Error => usageReport()
+        Success { value } => declaredLocalAt(req, path, text, baseline, value)
     }
 
     fn withLocalListing(req, path, text) = match Listing::fetch(baseOf(settingsIn(req))) {

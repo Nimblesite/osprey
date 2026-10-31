@@ -1,0 +1,13 @@
+# The suite is the checker program itself: every case exercises the marker
+# rewrite, the diagnostic parser and the protocol encoding the discipline runs
+# in production, with no second copy of that logic to drift from it. The
+# compiler builds one file per checker, so the checker is the entry here too and
+# its `main` runs the cases when no request line arrives on standard input.
+[project]
+name = "passthrough-tests"
+source_roots = ["../src/checker.ospml"]
+default_namespace = "passthrough"
+entry = "../src/checker.ospml"
+
+[modules]
+allow_wildcard_imports = false

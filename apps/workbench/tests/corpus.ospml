@@ -1,0 +1,132 @@
+// [WORKBENCH-FORMULA] generated corpus: exhaustive round trips and proof that
+// every parenthesis written by `show` is needed to preserve the formula.
+namespace workbenchtests
+
+import workbench::Formulas
+
+(** The generated formula cases of [WORKBENCH-VERIFICATION]. *)
+module CorpusCases
+    atoms () = [workbench::Var "p", workbench::Var "q", workbench::Bot]
+
+    connectives (left, right) = [workbench::And left right, workbench::Or left right, workbench::Imp left right, workbench::Iff left right]
+
+    // Every connective over every pair drawn from `lefts` and `rights`.
+    binaries (lefts, rights) = foldList (lefts, [], \(outer, left) => foldList (rights, outer, \(inner, right) => listConcat (inner, connectives (left, right))))
+
+    // Depth 1: the atoms, their negations, every connective over two atoms, and one binder.
+    shallow () =
+        base = atoms ()
+        listConcat (listConcat (base, mapList (base, \formula => workbench::Not formula)), listConcat (binaries (base, base), mapList (base, \formula => workbench::Forall ["p"] formula)))
+
+    // Depth 2 wraps each depth-1 formula once and pairs it with an atom on either side, which
+    // puts every connective under every other connective on both sides, the cases that need parentheses.
+    (** The 1,215 generated formulas shared by the writer and typesetting properties. *)
+    export corpus () =
+        inner = shallow ()
+        base = atoms ()
+        wrapped = listConcat (mapList (inner, \formula => workbench::Not formula), mapList (inner, \formula => workbench::Forall ["p", "q"] formula))
+        listConcat (listConcat (inner, wrapped), listConcat (binaries (inner, base), binaries (base, inner)))
+
+    sameNamesAt (left, right, at) = match at >= length left
+        true => true
+        false => (listGet left at ?: "") == (listGet right at ?: "") && sameNamesAt (left, right, satAdd at 1)
+
+    sameNames (left, right) = length left == length right && sameNamesAt (left, right, 0)
+
+    sameVar (name, other) = match other
+        workbench::Var found => name == found
+        _ => false
+
+    sameTop other = match other
+        workbench::Top => true
+        _ => false
+
+    sameBot other = match other
+        workbench::Bot => true
+        _ => false
+
+    sameNot (inner, other) = match other
+        workbench::Not found => same (inner, found)
+        _ => false
+
+    sameAnd (left, right, other) = match other
+        workbench::And foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
+        _ => false
+
+    sameOr (left, right, other) = match other
+        workbench::Or foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
+        _ => false
+
+    sameImp (left, right, other) = match other
+        workbench::Imp foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
+        _ => false
+
+    sameIff (left, right, other) = match other
+        workbench::Iff foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
+        _ => false
+
+    sameForall (names, inner, other) = match other
+        workbench::Forall foundNames foundInner => sameNames (names, foundNames) && same (inner, foundInner)
+        _ => false
+
+    // Structural equality, deliberately independent of both `Formulas::equal` and `show`.
+    same (a, b) = match a
+        workbench::Var name => sameVar (name, b)
+        workbench::Top => sameTop b
+        workbench::Bot => sameBot b
+        workbench::Not inner => sameNot (inner, b)
+        workbench::And left right => sameAnd (left, right, b)
+        workbench::Or left right => sameOr (left, right, b)
+        workbench::Imp left right => sameImp (left, right, b)
+        workbench::Iff left right => sameIff (left, right, b)
+        workbench::Forall names inner => sameForall (names, inner, b)
+
+    readsSame (text, formula) = match Formulas::read text
+        workbench::Read found => same (formula, found)
+        workbench::Faulted _ => false
+
+    roundTripBad () = filterList (corpus (), \formula => !readsSame (Formulas::show formula, formula))
+
+    summary failures = "${length failures}: ${listGet failures 0 ?: ""}"
+
+    (** [WORKBENCH-FORMULA]: every corpus formula reads back structurally unchanged after `show`. *)
+    export roundTrip () = expect (summary (mapList (roundTripBad (), \formula => Formulas::show formula)), "0: ")
+
+    (** [WORKBENCH-FORMULA]: the corpus has exactly the hand-derived number of formulas. *)
+    export generatedCount () =
+        // Depth 1: 3 atoms + 3 negations + 4 * 3 * 3 binaries + 3 binders = 45.
+        // Depth 2: 45 + 45 negations + 45 binders + 4 * 45 * 3 on each side = 1215.
+        expect (length (shallow ()), 45)
+        expect (length (corpus ()), 1215)
+
+    closing (text, at, depth) = match at >= length text
+        true => satSub 0 1
+        false => match byteAt (text, at) ?: 0
+            40 => closing (text, satAdd at 1, satAdd depth 1)
+            41 => match depth == 1
+                true => at
+                false => closing (text, satAdd at 1, satSub depth 1)
+            _ => closing (text, satAdd at 1, depth)
+
+    withoutPair (text, open, close) = take (text, open) + (substring (text, satAdd open 1, close) ?: "") + drop (text, satAdd close 1)
+
+    checkedPair (formula, text, open, close) = match close < 0
+        true => text + " [unbalanced]"
+        false =>
+            reduced = withoutPair (text, open, close)
+            match readsSame (reduced, formula)
+                true => reduced
+                false => redundantFrom (formula, text, satAdd open 1)
+
+    redundantFrom (formula, text, at) = match at >= length text
+        true => ""
+        false => match (byteAt (text, at) ?: 0) == 40
+            true => checkedPair (formula, text, at, closing (text, satAdd at 1, 1))
+            false => redundantFrom (formula, text, satAdd at 1)
+
+    redundant formula = redundantFrom (formula, Formulas::show formula, 0)
+
+    minimalityBad () = filterList (corpus (), \formula => redundant formula != "")
+
+    (** [WORKBENCH-FORMULA]: removing any one matching parenthesis pair from generated output fails to read or changes the formula. *)
+    export minimalParentheses () = expect (summary (mapList (minimalityBad (), \formula => Formulas::show formula + " => " + redundant formula)), "0: ")

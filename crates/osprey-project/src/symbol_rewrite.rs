@@ -2,9 +2,26 @@
 
 use crate::model::{DeclKind, SymbolKey};
 use crate::resolve::{Context, Resolver};
-use osprey_ast::Expr;
+use osprey_ast::{Expr, FieldAssignment, Stmt};
 
 impl Resolver<'_> {
+    /// Updates need a bound base even when a module constant is substituted.
+    /// Implements [TYPE-RECORD-UPDATE] [MODULES-INIT].
+    pub(crate) fn rewrite_record_update(&mut self, expression: &mut Expr, context: &Context) {
+        let Expr::Update { record, fields } = expression else {
+            return;
+        };
+        let Some(key) = self.resolve_value_key(record, context) else {
+            return;
+        };
+        let mut base = Expr::Identifier(record.clone());
+        self.replace_symbol_expression(&mut base, &key, context);
+        match base {
+            Expr::Identifier(name) => *record = name,
+            value => *expression = bound_record_update(value, std::mem::take(fields)),
+        }
+    }
+
     pub(crate) fn replace_symbol_expression(
         &mut self,
         expression: &mut Expr,
@@ -73,5 +90,25 @@ impl Resolver<'_> {
         } else if let Some(value) = self.constant_value(key) {
             *expression = value;
         }
+    }
+}
+
+fn bound_record_update(value: Expr, fields: Vec<FieldAssignment>) -> Expr {
+    // Each generated block scopes this unspellable name independently.
+    let name = osprey_ast::generated_name("recordUpdate", 0);
+    Expr::Block {
+        statements: vec![Stmt::Let {
+            name: name.clone(),
+            mutable: false,
+            ty: None,
+            value,
+            doc: None,
+            position: None,
+        }],
+        value: Some(Box::new(Expr::Update {
+            record: name,
+            fields,
+        })),
+        position: None,
     }
 }

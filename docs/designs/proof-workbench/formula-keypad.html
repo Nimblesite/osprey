@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof Workbench — Formula keypad design review</title>
+<link rel="stylesheet" href="../../../apps/workbench/assets/workbench-fonts.css">
+<style>
+:root{--ui:"Geist",system-ui,sans-serif;--serif:"STIX Two Text",Georgia,serif;--math:"STIX Two Math","STIX Two Text",serif;color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:#E9ECE7;color:#242923;font:14px/1.6 var(--ui)}
+main{max-width:1180px;margin:0 auto;padding:48px 28px 72px}
+.eyebrow{margin:0;font:500 12px/1.5 var(--ui);letter-spacing:1.6px;text-transform:uppercase;color:#56615B}
+h1,h2,h3,p{margin:0}
+.review-head{max-width:820px;padding-bottom:28px;border-bottom:1px solid #D7DDD5}
+.review-head h1{margin-top:14px;font:400 48px/1.06 var(--serif);letter-spacing:-1.2px}
+.lede{margin-top:14px;max-width:700px;font:17px/1.65 var(--serif);color:#56615B}
+.facts{display:flex;flex-wrap:wrap;gap:8px 18px;margin:20px 0 0;padding:0;list-style:none;font-size:12px;color:#56615B}
+.facts li+li::before{content:"·";margin-right:8px;color:#D7DDD5}
+.review-note{margin-top:20px;padding:10px 0 10px 14px;border-left:2px solid #36635C;max-width:760px;font-size:13px;line-height:1.65}
+.view{margin-top:38px}
+.view-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 18px;margin-bottom:10px}
+.view-head h2{font:400 24px/1.2 var(--serif)}
+.view-head p{font-size:12px;color:#56615B}
+.paper{--canvas:#FAFAF7;--inset:#F0F2ED;--surface:#FFF;--primary:#242923;--secondary:#56615B;--accent:#36635C;--outline:#727C74;--divider:#D7DDD5;--selection:#E4ECE5;color-scheme:light}
+.slate{--canvas:#202723;--inset:#191F1C;--surface:#29322D;--primary:#ECEDE5;--secondary:#B7C0B7;--accent:#A6C5BB;--outline:#7D8C80;--divider:#465348;--selection:#34473E;color-scheme:dark}
+.lesson{overflow:hidden;border:1px solid var(--divider);border-radius:6px;background:var(--canvas);color:var(--primary)}
+.lesson-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:18px 32px 15px;border-bottom:1px solid var(--divider);font-size:12px;color:var(--secondary)}
+.back{color:var(--accent);font-weight:500}
+.lesson-body{max-width:960px;margin:0 auto;padding:30px 44px 44px}
+.lesson-meta{font:500 12px/1.5 var(--ui);letter-spacing:1.4px;text-transform:uppercase;color:var(--secondary)}
+.lesson-title{margin-top:8px;font:400 34px/1.15 var(--serif);letter-spacing:-.6px}
+.lesson-summary{margin-top:8px;max-width:64ch;font:15px/1.65 var(--serif);color:var(--secondary)}
+.challenge{margin-top:26px;padding:26px 30px 28px;border:1px solid var(--divider);border-radius:6px;background:var(--surface)}
+.challenge .eyebrow{color:var(--secondary)}
+.prompt{margin-top:10px;font:400 21px/1.5 var(--serif)}
+.given{margin-top:4px;font-size:12px;color:var(--secondary)}
+.field-block{margin-top:20px}
+.field-label{display:block;margin-bottom:2px;font-size:12px;color:var(--secondary)}
+.field{display:flex;align-items:center;gap:.18em;min-height:54px;margin:0 -10px;padding:8px 10px;border-bottom:1px solid var(--divider);border-radius:2px;font:400 28px/1.2 var(--math)}
+.field.is-focused,.field:focus-visible{border-bottom-color:var(--accent);outline:2px solid var(--accent);outline-offset:3px}
+.var{font-family:var(--serif);font-style:italic}
+.op{padding:0}
+.caret{width:2px;height:25px;margin-left:3px;border-radius:1px;background:var(--accent)}
+.keypad{margin-top:14px;padding:12px 14px 11px;border-radius:6px;background:var(--inset)}
+.keypad-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;font-size:12px;color:var(--secondary)}
+.keypad-help{color:var(--secondary)}
+.keypad-groups{display:flex;flex-wrap:wrap;gap:12px 18px;margin-top:8px}
+.keygroup{display:flex;flex-direction:column;gap:5px}
+.keygroup-label{font:500 11px/1.4 var(--ui);letter-spacing:.2px;color:var(--secondary)}
+.keys{display:flex;flex-wrap:wrap;gap:6px}
+.key{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:46px;height:52px;padding:0 6px;border:1px solid var(--outline);border-radius:5px;background:var(--surface);color:var(--primary);font:400 20px/1 var(--math);cursor:pointer}
+.key:hover:not(:disabled){background:var(--selection)}
+.key:disabled{opacity:.42;cursor:default}
+.key:focus-visible,.action:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.key-name{font:500 10.5px/1.2 var(--ui);letter-spacing:.1px;color:var(--secondary);white-space:nowrap}
+.key-var{font:italic 21px/1 var(--serif)}
+.key-arrow{min-width:90px;border-color:var(--accent);background:var(--selection)}
+.key-arrow .key-name{color:var(--accent)}
+.keypad-note{margin-top:9px;font-size:12px;line-height:1.5;color:var(--secondary)}
+.shortcuts{margin-top:7px;font-size:12px;line-height:1.6;color:var(--secondary)}
+.shortcuts code{padding:1px 4px;border:1px solid var(--divider);border-radius:3px;background:var(--surface);color:var(--primary);font:500 11px/1.4 var(--ui)}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:20px}
+.action{min-height:44px;padding:0 16px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--primary);font:500 13px/1 var(--ui);cursor:pointer}
+.action:hover{background:var(--inset)}
+.action-primary{background:var(--accent);color:var(--canvas)}
+.action-primary:hover{background:var(--accent)}
+.status{margin-left:auto;font-size:12px;color:var(--secondary)}
+.phone-frame{max-width:390px;margin:0 auto}
+.phone-frame .lesson-top{padding:15px 18px 12px}
+.phone-frame .lesson-body{padding:22px 18px 28px}
+.phone-frame .lesson-title{font-size:27px}
+.phone-frame .lesson-summary{font-size:14px}
+.phone-frame .challenge{padding:20px}
+.phone-frame .prompt{font-size:19px}
+.phone-frame .field{font-size:25px}
+.phone-frame .keypad{padding:11px 12px 10px}
+.phone-frame .keys{gap:5px}
+.phone-frame .key{padding:0 5px}
+.phone-frame .key-arrow{min-width:80px}
+.phone-frame .action{padding:0 12px}
+.phone-frame .status{margin-left:0;flex-basis:100%}
+.review-foot{margin-top:44px;padding-top:18px;border-top:1px solid #D7DDD5;font-size:12px;line-height:1.7;color:#56615B}
+.review-foot a{color:#36635C;text-underline-offset:3px}
+@media(max-width:760px){
+main{padding:30px 16px 48px}
+.review-head h1{font-size:37px}
+.lesson-top{padding:15px 20px 13px}
+.lesson-body{padding:24px 20px 28px}
+.challenge{padding:22px 20px 24px}
+.status{margin-left:0;flex-basis:100%}
+}
+@media(max-width:520px){
+.lesson-body{padding:20px 16px 24px}
+.lesson-title{font-size:28px}
+.field{font-size:25px}
+.keypad-groups{gap:10px 14px}
+.key{min-width:44px;height:50px}
+.key-arrow{min-width:88px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main>
+<header class="review-head">
+<p class="eyebrow">Proof Workbench · Design review</p>
+<h1>Formula keypad</h1>
+<p class="lede">A visible symbol keyboard immediately below the lesson’s <strong>Your formula</strong> field. The implication arrow is a wide, named key, so finding it does not depend on knowing Unicode or a shortcut.</p>
+<ul class="facts"><li>Paper &amp; Slate tokens</li><li>STIX Two Math · STIX Two Text · Geist</li><li>44 px minimum targets</li><li>Light, Slate and narrow views</li></ul>
+<p class="review-note"><strong>Static design review.</strong> This page does not edit, submit or check a formula. It shows the intended presentation and key states; the runtime contract is in <a href="formula-keypad.md">formula-keypad.md</a>. No proof verdict is claimed here.</p>
+</header>
+
+<section class="view" aria-labelledby="paper-title">
+<div class="view-head"><h2 id="paper-title">Paper · light appearance</h2><p>Focus stays in the formula; the arrow keeps its emphasis below it.</p></div>
+<div class="lesson paper">
+<div class="lesson-top"><span class="back">← All lessons</span><span>Lesson 1 · What is a proof?</span></div>
+<div class="lesson-body">
+<p class="lesson-meta">Stage 1 · 5 minutes</p>
+<h3 class="lesson-title">What is a proof?</h3>
+<p class="lesson-summary">A claim becomes a checked proof when allowed steps lead from its assumptions to its conclusion.</p>
+<article class="challenge" aria-labelledby="paper-prompt">
+<p class="eyebrow">Write it</p>
+<p class="prompt" id="paper-prompt">Write the claim that p implies itself.</p>
+<p class="given">Use only p.</p>
+<div class="field-block">
+<span class="field-label" id="paper-field-label">Your formula</span>
+<div class="field is-focused" role="textbox" aria-readonly="true" aria-labelledby="paper-field-label" tabindex="0">
+<span class="var">p</span> <span class="op">→</span> <span class="var">p</span><span class="caret" aria-hidden="true"></span>
+</div>
+</div>
+<div class="keypad" role="group" aria-label="Insert a formula symbol" aria-describedby="paper-keypad-help paper-keypad-note">
+<div class="keypad-head"><span>Insert a symbol</span><span class="keypad-help" id="paper-keypad-help">Click, or Tab then Enter</span></div>
+<div class="keypad-groups">
+<div class="keygroup" role="group" aria-label="Variables">
+<span class="keygroup-label">Variables</span>
+<div class="keys">
+<button class="key key-var" type="button" title="Proposition p" aria-label="Insert proposition p">p</button>
+<button class="key key-var" type="button" title="Proposition q — not declared in this challenge" aria-label="Proposition q, unavailable in this challenge" disabled>q</button>
+</div>
+</div>
+<div class="keygroup" role="group" aria-label="Connectives">
+<span class="keygroup-label">Connectives</span>
+<div class="keys">
+<button class="key key-arrow" type="button" title="Implies — if A then B" aria-label="Insert implies, if A then B">→<span class="key-name">Implies</span></button>
+<button class="key" type="button" title="Not — the negation of a proposition" aria-label="Insert not, negation">¬<span class="key-name">Not</span></button>
+<button class="key" type="button" title="And — both propositions hold" aria-label="Insert and, conjunction">∧<span class="key-name">And</span></button>
+<button class="key" type="button" title="Or — at least one proposition holds" aria-label="Insert or, disjunction">∨<span class="key-name">Or</span></button>
+<button class="key" type="button" title="If and only if — each direction implies the other" aria-label="Insert if and only if">↔<span class="key-name">Both ways</span></button>
+</div>
+</div>
+<div class="keygroup" role="group" aria-label="Grouping">
+<span class="keygroup-label">Grouping</span>
+<div class="keys">
+<button class="key" type="button" title="Open bracket — group an expression" aria-label="Insert open bracket">(</button>
+<button class="key" type="button" title="Close bracket — close a group" aria-label="Insert close bracket">)</button>
+</div>
+</div>
+</div>
+<p class="keypad-note" id="paper-keypad-note">Only variables this challenge declares are enabled. q appears in lessons that declare p and q.</p>
+<p class="shortcuts">Prefer typing? <code>implies</code> <code>and</code> <code>or</code> <code>not</code> <code>iff</code> also work. Never required.</p>
+</div>
+<div class="actions">
+<button class="action action-primary" type="button">Submit</button>
+<button class="action" type="button">Hint</button>
+<button class="action" type="button">Open in the workbench</button>
+<span class="status">Nothing is checked until you submit.</span>
+</div>
+</article>
+</div>
+</div>
+</section>
+
+<section class="view" aria-labelledby="slate-title">
+<div class="view-head"><h2 id="slate-title">Slate · dark appearance</h2><p>The same tokens and geometry; the keypad never becomes a separate dark surface.</p></div>
+<div class="lesson slate">
+<div class="lesson-top"><span class="back">← All lessons</span><span>Lesson 1 · What is a proof?</span></div>
+<div class="lesson-body">
+<p class="lesson-meta">Stage 1 · 5 minutes</p>
+<h3 class="lesson-title">What is a proof?</h3>
+<p class="lesson-summary">A claim becomes a checked proof when allowed steps lead from its assumptions to its conclusion.</p>
+<article class="challenge" aria-labelledby="slate-prompt">
+<p class="eyebrow">Write it</p>
+<p class="prompt" id="slate-prompt">Write the claim that p implies itself.</p>
+<p class="given">Use only p.</p>
+<div class="field-block">
+<span class="field-label" id="slate-field-label">Your formula</span>
+<div class="field is-focused" role="textbox" aria-readonly="true" aria-labelledby="slate-field-label" tabindex="0">
+<span class="var">p</span> <span class="op">→</span> <span class="var">p</span><span class="caret" aria-hidden="true"></span>
+</div>
+</div>
+<div class="keypad" role="group" aria-label="Insert a formula symbol" aria-describedby="slate-keypad-help slate-keypad-note">
+<div class="keypad-head"><span>Insert a symbol</span><span class="keypad-help" id="slate-keypad-help">Click, or Tab then Enter</span></div>
+<div class="keypad-groups">
+<div class="keygroup" role="group" aria-label="Variables">
+<span class="keygroup-label">Variables</span>
+<div class="keys">
+<button class="key key-var" type="button" title="Proposition p" aria-label="Insert proposition p">p</button>
+<button class="key key-var" type="button" title="Proposition q — not declared in this challenge" aria-label="Proposition q, unavailable in this challenge" disabled>q</button>
+</div>
+</div>
+<div class="keygroup" role="group" aria-label="Connectives">
+<span class="keygroup-label">Connectives</span>
+<div class="keys">
+<button class="key key-arrow" type="button" title="Implies — if A then B" aria-label="Insert implies, if A then B">→<span class="key-name">Implies</span></button>
+<button class="key" type="button" title="Not — the negation of a proposition" aria-label="Insert not, negation">¬<span class="key-name">Not</span></button>
+<button class="key" type="button" title="And — both propositions hold" aria-label="Insert and, conjunction">∧<span class="key-name">And</span></button>
+<button class="key" type="button" title="Or — at least one proposition holds" aria-label="Insert or, disjunction">∨<span class="key-name">Or</span></button>
+<button class="key" type="button" title="If and only if — each direction implies the other" aria-label="Insert if and only if">↔<span class="key-name">Both ways</span></button>
+</div>
+</div>
+<div class="keygroup" role="group" aria-label="Grouping">
+<span class="keygroup-label">Grouping</span>
+<div class="keys">
+<button class="key" type="button" title="Open bracket — group an expression" aria-label="Insert open bracket">(</button>
+<button class="key" type="button" title="Close bracket — close a group" aria-label="Insert close bracket">)</button>
+</div>
+</div>
+</div>
+<p class="keypad-note" id="slate-keypad-note">Only variables this challenge declares are enabled. q appears in lessons that declare p and q.</p>
+<p class="shortcuts">Prefer typing? <code>implies</code> <code>and</code> <code>or</code> <code>not</code> <code>iff</code> also work. Never required.</p>
+</div>
+<div class="actions">
+<button class="action action-primary" type="button">Submit</button>
+<button class="action" type="button">Hint</button>
+<button class="action" type="button">Open in the workbench</button>
+<span class="status">Nothing is checked until you submit.</span>
+</div>
+</article>
+</div>
+</div>
+</section>
+
+<section class="view" aria-labelledby="phone-title">
+<div class="view-head"><h2 id="phone-title">Narrow · phone width · p and q</h2><p>Both declared variables are enabled; groups wrap under the field and the arrow stays first.</p></div>
+<div class="lesson paper phone-frame">
+<div class="lesson-top"><span class="back">← All lessons</span><span>Lesson 2</span></div>
+<div class="lesson-body">
+<p class="lesson-meta">Stage 2 · 7 minutes</p>
+<h3 class="lesson-title">And, the other way around</h3>
+<p class="lesson-summary">Build a complete proof that p and q give q and p by assuming, taking apart, rebuilding, and finishing.</p>
+<article class="challenge" aria-labelledby="phone-prompt">
+<p class="eyebrow">Write it</p>
+<p class="prompt" id="phone-prompt">Write the conclusion with q on the left and p on the right. That exact order matters to the kernel here.</p>
+<p class="given">Use only p, q.</p>
+<div class="field-block">
+<span class="field-label" id="phone-field-label">Your formula</span>
+<div class="field is-focused" role="textbox" aria-readonly="true" aria-labelledby="phone-field-label" tabindex="0">
+<span class="var">q</span> <span class="op">∧</span> <span class="var">p</span><span class="caret" aria-hidden="true"></span>
+</div>
+</div>
+<div class="keypad" role="group" aria-label="Insert a formula symbol" aria-describedby="phone-keypad-help phone-keypad-note">
+<div class="keypad-head"><span>Insert a symbol</span><span class="keypad-help" id="phone-keypad-help">Click, or Tab then Enter</span></div>
+<div class="keypad-groups">
+<div class="keygroup" role="group" aria-label="Variables">
+<span class="keygroup-label">Variables</span>
+<div class="keys">
+<button class="key key-var" type="button" title="Proposition p" aria-label="Insert proposition p">p</button>
+<button class="key key-var" type="button" title="Proposition q" aria-label="Insert proposition q">q</button>
+</div>
+</div>
+<div class="keygroup" role="group" aria-label="Connectives">
+<span class="keygroup-label">Connectives</span>
+<div class="keys">
+<button class="key key-arrow" type="button" title="Implies — if A then B" aria-label="Insert implies, if A then B">→<span class="key-name">Implies</span></button>
+<button class="key" type="button" title="Not — the negation of a proposition" aria-label="Insert not, negation">¬<span class="key-name">Not</span></button>
+<button class="key" type="button" title="And — both propositions hold" aria-label="Insert and, conjunction">∧<span class="key-name">And</span></button>
+<button class="key" type="button" title="Or — at least one proposition holds" aria-label="Insert or, disjunction">∨<span class="key-name">Or</span></button>
+<button class="key" type="button" title="If and only if — each direction implies the other" aria-label="Insert if and only if">↔<span class="key-name">Both ways</span></button>
+</div>
+</div>
+<div class="keygroup" role="group" aria-label="Grouping">
+<span class="keygroup-label">Grouping</span>
+<div class="keys">
+<button class="key" type="button" title="Open bracket — group an expression" aria-label="Insert open bracket">(</button>
+<button class="key" type="button" title="Close bracket — close a group" aria-label="Insert close bracket">)</button>
+</div>
+</div>
+</div>
+<p class="keypad-note" id="phone-keypad-note">Both p and q are declared in this challenge. Each inserts at the caret.</p>
+<p class="shortcuts">Prefer typing? <code>implies</code> <code>and</code> <code>or</code> <code>not</code> <code>iff</code> also work. Never required.</p>
+</div>
+<div class="actions">
+<button class="action action-primary" type="button">Submit</button>
+<button class="action" type="button">Hint</button>
+<button class="action" type="button">Open in the workbench</button>
+<span class="status">Nothing is checked until you submit.</span>
+</div>
+</article>
+</div>
+</div>
+</section>
+
+<footer class="review-foot">
+<p>Static review board. Real behaviour, including caret insertion, disabled variables and feedback, is specified in <a href="formula-keypad.md">formula-keypad.md</a>. Fonts are local: STIX Two Text and STIX Two Math (SIL OFL, <a href="../../../apps/workbench/assets/fonts/STIX-Two-Text-LICENSE.txt">text licence</a>, <a href="../../../apps/workbench/assets/fonts/STIX-Two-Math-LICENSE.txt">math licence</a>) and Geist (SIL OFL, <a href="../../../apps/workbench/assets/fonts/Geist-LICENSE.txt">licence</a>) from <code>apps/workbench/assets/fonts</code>.</p>
+</footer>
+</main>
+</body>
+</html>
