@@ -149,6 +149,9 @@
       "system_runtime": {
         "language": "c"
       },
+      "system_process_posix": {
+        "language": "c"
+      },
       "file_runtime": {
         "language": "c"
       },

@@ -22,13 +22,14 @@ from package_coverage_test_support import (
 
 
 class PackageThresholdTests(CoverageTestCase):
-    def test_extracted_arc_headers_preserve_the_library_threshold(self):
+    def test_extracted_runtime_headers_preserve_the_library_threshold(self):
         gates = json.loads((ROOT / "coverage-thresholds.json").read_text())["projects"]["c_runtime"]
         headers = list((ROOT / "compiler/runtime").glob("memory_arc_*.h"))
         self.assertTrue(headers)
-        for header in headers:
+        for header in headers + [ROOT / "compiler/runtime/system_process_posix.h"]:
             self.assertIn(header.stem, gates)
-            self.assertGreaterEqual(gates[header.stem].get("threshold", 90), gates["memory_arc"]["threshold"])
+            baseline = gates["memory_arc"]["threshold"] if header.stem.startswith("memory_arc_") else gates["system_runtime"].get("threshold", 90)
+            self.assertGreaterEqual(gates[header.stem].get("threshold", 90), baseline)
 
     def test_threshold_configuration_has_no_measurements(self):
         config = json.loads((ROOT / "coverage-thresholds.json").read_text())

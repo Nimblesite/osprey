@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -355,7 +356,56 @@ static void test_signalled_child_reports_minus_one(void) {
   cleanup_process(pid);
 }
 
-int main(void) {
+static bool buffered_child_finished;
+
+static void assert_buffered_stream(const char *data, char terminal) {
+  char expected[3073];
+  memset(expected, ' ', sizeof(expected) - 2);
+  expected[sizeof(expected) - 2] = terminal;
+  expected[sizeof(expected) - 1] = '\0';
+  assert(strcmp(data, expected) == 0);
+}
+
+static void await_buffered_child(void) {
+  // Leave the exited child waitable: the monitor must reap it itself.
+  siginfo_t info;
+  int result;
+  do {
+    result = waitid(P_ALL, 0, &info, WEXITED | WNOWAIT);
+  } while (result < 0 && errno == EINTR);
+  assert(result == 0);
+  buffered_child_finished = true;
+}
+
+static void buffered_output_handler(int64_t pid, int64_t event, char *data) {
+  if (!buffered_child_finished)
+    await_buffered_child();
+  assert(g_capture.exit_events == 0);
+  if (event == 3) {
+    assert_buffered_stream(g_capture.out, 'O');
+    assert_buffered_stream(g_capture.err, 'E');
+  }
+  capture_handler(pid, event, data);
+}
+
+static void test_exit_drains_buffered_output(void) {
+  capture_reset();
+  buffered_child_finished = false;
+  int64_t pid = spawn_process_with_handler(
+      "printf '%3072s' O; printf '%3072s' E >&2; exit 7",
+      buffered_output_handler);
+  assert(pid > 0);
+  assert(await_process(pid) == 7);
+  assert(g_capture.exit_events == 1);
+  assert(g_capture.exit_code == 7);
+  cleanup_process(pid);
+}
+
+int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--buffered-output-only") == 0) {
+    test_exit_drains_buffered_output();
+    return 0;
+  }
   printf("Running System Runtime Tests...\n\n");
 
   // FIRST: the injected-failure seams need a process with exactly one thread
@@ -373,6 +423,7 @@ int main(void) {
   test_process_argument_rejection();
   test_legacy_spawn_process();
   test_signalled_child_reports_minus_one();
+  test_exit_drains_buffered_output();
   // LAST: exhausts the process-id space for the rest of this process.
   run_descriptor_exhaustion_tests();
 
