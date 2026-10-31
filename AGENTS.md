@@ -5,7 +5,7 @@
 ## Workflow
 - ❌ subagents, linked worktrees, git hooks (delete them). Primary checkout only; git = commit/push.
 - **pi agents — exact ids only:** `kimi-coding/k3.1-pro-highspeed`, `zai/glm-5.3`, `zai/glm-5.3-flash`, `deepseek/deepseek-flash`. `pi auth check --model <id>` first; out of credit → tell user, switch model.
-- **Tokens:** check file size before reading, grep first, smallest diff. deslop `find-similar` before writing, `top-offenders` after.
+- **Tokens:** check file size before reading, grep first, smallest diff.
 - **Entry points = commented make targets.** Answer usage questions from `make help`. Demo findings with a verified finding first; label clean controls and engine limitations.
 
 ## Correctness
@@ -33,6 +33,7 @@ Three phases, each once — ❌ mixing them:
 - `dependabot-upgrades` = permanent staging. ❌ delete, retarget or change its process without user authorization.
 
 ## Code
+- 🐛 **Duplication and superfluous code are bugs** — copies, parallel versions, dead code, unused imports, stale comments. Fix on sight. Run [deslop](https://deslop.live/docs/for-ai/) routinely: `find-similar` before writing, `top-offenders` after.
 - Files < 500 LOC, functions < 20 LOC. FP: pure functions, named constants, ❌ placeholders.
 - **Rust:** ❌ `panic!`/`unwrap()` outside quarantine → `Result` + match. Run `make ci` often; let clippy auto-fix.
 - **Osprey:** immutable types, expressions over statements, effects for abstraction, ML-style minimal brackets. Best function = one pure expression. One interpolated print, ❌ consecutive prints.
