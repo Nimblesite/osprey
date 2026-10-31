@@ -2,8 +2,6 @@
 
 **Osprey is in stabilization mode.** Finish and harden existing features until tests prove them complete; nothing new until then.
 
-🛑 **GC and ARC are the only memory backends we pursue.** No work, tests or benchmarks on the default backend; remove it from tests and benches as you go. Memory management stays pluggable.
-
 ## Workflow
 - **No subagents, no linked worktrees, no git hooks.** Work in the primary checkout; delete any hooks. Git is basic commit/push only.
 - **pi agents use only these exact ids:** `kimi-coding/k3.1-pro-highspeed`, `zai/glm-5.3`, `zai/glm-5.3-flash`, `deepseek/deepseek-flash`. Run `pi auth check --model <id>` first; if one is out of credit, tell the user and switch to another.
@@ -17,7 +15,7 @@
 - **Silent failures:** in Osprey, make them typed errors; in Rust/C compiler and runtime code, quarantine with a commented panic that never surfaces in Osprey. Add a failing test and report it.
 
 ## Tests
-- Unit tests live in each crate. `tests/` programs run through `crates/run_test_corpus.sh` under each backend and wasm32 (`OSPREY_TARGET=wasm32`), matching the sibling `.expectedoutput` byte-for-byte; an ML twin shares its Default twin's golden.
+- Unit tests live in each crate. `tests/` programs run through `crates/run_test_corpus.sh` under GC, ARC and wasm32 (`OSPREY_TARGET=wasm32`), matching the sibling `.expectedoutput` byte-for-byte; an ML twin shares its Default twin's golden.
 - `examples/failscompilation/` holds programs the compiler must reject.
 - Expand existing tests and examples rather than adding files; mix many constructs per program.
 - `coverage-thresholds.json` only goes up.
@@ -61,4 +59,5 @@ Run `make help` and read the [`Makefile`](Makefile) first; a new feature adds it
 - `crates/` — the compiler pipeline: tree-sitter parse (`osprey-syntax`, grammar in `tree-sitter-osprey/`) → AST (`osprey-ast`) → Hindley-Milner inference (`osprey-types`) → LLVM IR (`osprey-codegen`) → CLI (`osprey-cli`, the `osprey` binary); `osprey-runtime-sys` links the C runtime.
 - `compiler/runtime/` — pure-C runtime (fibers, HTTP/WebSocket, system ops), compiled with hardening flags (`-D_FORTIFY_SOURCE=2`, `-fstack-protector-strong`), all warnings as errors. Performance-critical code stays C.
 - A language change follows that same path, then lands a regression program in `tests/regressions/` plus a rejection case in `examples/failscompilation/`.
+- **Memory management is pluggable, but only GC and ARC are supported.** Never build, test or bench the default backend; remove it from tests and benches as you touch them.
 - **Package manager** backend is Osprey + Supabase, never Rust. Prefer SQL triggers and functions; put APIs that must sit beside Supabase on GCP.
