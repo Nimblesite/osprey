@@ -32,7 +32,7 @@ module LearnViews
         current = shelf ()
         Ui::column (listConcat ([Ui::styled ("Lessons", ui::Title, ui::Primary), status current], catalogueEntries current))
 
-    catalogueEntries current = listAppend (mapList (current.entries, \entry => listed (entry, (perform Signal<Achieved>.read ()).doneKeys))) (Ui::section ("Explore the workbench", "A sample sketch with a proof checked by the kernel.", [Ui::button ("Open conjunction example", "arrow.right", StartExample)]))
+    catalogueEntries current = listAppend (mapList (current.entries, \entry => listed (entry, (perform Signal<Achieved>.read ()).doneKeys))) (Ui::section ("Explore the workbench", "A conjunction proof checked by the kernel.", [Ui::button ("Open conjunction example", "arrow.right", StartExample)]))
 
     status current = match isEmpty current.shelfProblem
         false => Ui::badge (current.shelfProblem, "exclamationmark.triangle", ui::Caution)

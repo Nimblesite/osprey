@@ -27,7 +27,6 @@ The application lives at [`apps/workbench/`](../../../apps/workbench/README.md),
 | `src/imported.ospml`, `src/proofterm.ospml` | `ImportedProofs`, `ProofTerms` | Checking a bundled export and presenting a checked statement as a `Math` tree ([WORKBENCH-LIBRARY]) |
 | `src/theme.ospml` | `Palettes` | The `paper` and `chalk` themes ([WORKBENCH-DESIGN-COLOUR]) |
 | `src/lesson.ospml`, `src/judge.ospml`, `src/tutor.ospml`, `lessons/` | `Lessons`, `Judge`, `Tutor` | Learn mode ([spec 0052](0052-WorkbenchLessons.md)) |
-| `src/board.ospml` | `Boards` | Legacy saved board data; no drawing UI ([WORKBENCH-BOARD]) |
 | `src/library.ospml` | `Library` | Search over the checked environment by name and shape ([WORKBENCH-LIBRARY]) |
 | `src/app.ospml` | `App` | The store, `update`, the regions and the theme ([WORKBENCH-STORE], [WORKBENCH-REGIONS]) |
 | `src/main.ospml` | entry | `Runtime::start` and `Runtime::dispatch` for native hosts; `Webview::respond` for VS Code and the browser |
@@ -72,9 +71,9 @@ A stale verdict is withdrawn on every edit to the declaration. The saved file ne
 
 `@osprey/native` has one content component, `Math`, carrying a typed layout tree (`Sym`, `Num`, `Seq`, `Sup`, `Sub`, `Frac`, `Root`, `Binder`, `Op`, `Paren`, `Big`); application code never writes TeX, MathML or HTML. The goal pane and the reading view build the tree from Lean's pretty-printed goals and statements through `ProofTerms`, and from a checked kernel term where one exists. Hosts lay the tree out with STIX Two Math or Latin Modern Math (system face as fallback) with journal spacing; the browser and VS Code hosts render MathML; every node is readable to assistive technology. The editor itself shows Lean source in a monospace face with Lean's semantic token colours.
 
-## Legacy board compatibility [WORKBENCH-BOARD]
+## Mathematical input [WORKBENCH-BOARD]
 
-The freehand board and handwriting workflow were withdrawn on 30 October 2026. Existing saved workspaces keep their strokes, notes and framing when opened and saved again; nothing draws them. Generic drawing and `Recognise` capabilities in `@osprey/native` remain independent SDK APIs.
+The Workbench uses typed mathematics, with no drawing surface, handwriting workflow, drawing state or saved ink codec. Workspace format 2 stores only the document title and mathematical source; version 1 and files containing drawing data are explicitly refused without changing the current document or verdicts. Generic drawing and `Recognise` capabilities in `@osprey/native` remain independent SDK APIs.
 
 ## Library [WORKBENCH-LIBRARY]
 
@@ -87,7 +86,6 @@ The freehand board and handwriting workflow were withdrawn on 30 October 2026. E
 | `Text` | host | the `.lean` text and cursor |
 | `Diagnostics` | session | Lean's diagnostics, declaration ranges and goal at the cursor, with their revision |
 | `Verdicts` | session | verdict per declaration with its revision |
-| `Board` | host | legacy saved strokes, notes and framing |
 | `Library` | host | the environment and the current query |
 | `Layout` | session | edit/read mode, open panes, splitter widths and theme |
 
@@ -148,8 +146,8 @@ Application-owned semantic tokens, sent through `@osprey/native`; a host does no
 | `caution` | `#795719` | `#E6C077` | Pending or limited operation, always explained |
 | `danger` | `#9A3935` | `#F0A69B` | Rejected declaration or Lean error |
 | `dangerSurface` | `#F6E8E3` | `#453330` | Restrained diagnostic emphasis |
-| `board` | `#202723` | `#202723` | Legacy board surface token |
-| `chalk` | `#ECEDE5` | `#ECEDE5` | Legacy stroke token |
+| `board` | `#202723` | `#202723` | Dark mathematical surface token |
+| `chalk` | `#ECEDE5` | `#ECEDE5` | High-contrast foreground token |
 
 Minimum measured contrast across `canvas`, `inset` and `surface`: primary text 13.15:1 Paper / 11.21:1 Slate; secondary 5.72:1 / 7.07:1; accent 6.02:1 / 7.13:1; semantic text at least 5.84:1 / 6.69:1; control outline 3.84:1 / 3.74:1. The suite tests the exact token pairs it renders. Decorative dividers are never the sole boundary of a control.
 
@@ -197,7 +195,7 @@ Every service the workbench uses is a capability of [PROOF-TOOLS](../language/00
 - no toolchain: every badge `Unchecked`, the reason shown, open and save still work;
 - a keystroke refreshes exactly `document` and `goal`;
 - the chalk and paper themes pass contrast on the exact pairs rendered;
-- a nonempty legacy board survives open/save byte for byte;
+- a source-only version 2 workspace survives open/save, while obsolete versions and drawing data are explicitly refused;
 - `ProofTerms` presents `Nat.add_comm` with standard notation and refuses it for a same-named custom relation;
 - no module, test, golden or lesson contains the deleted formats (a grep gate over `apps/workbench/`).
 

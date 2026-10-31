@@ -18,7 +18,6 @@ import workbench::LearnViews
 import workbench::Palettes
 import workbench::Lessons
 import workbench::Blocks
-import workbench::Boards
 
 (** The signal identities each region depends on, compared slice by slice ([UI-SIGNALS]). *)
 module Changes
@@ -52,7 +51,7 @@ module Changes
         ReadingPage => true
         _ => false
 
-    layoutJson layout = JsonArray [JsonBool (learning layout.mode), JsonBool (reading layout.mode), JsonBool layout.paperFirst, JsonBool layout.goalOpen, JsonBool layout.generatedOpen, JsonBool layout.libraryOpen, JsonInt layout.sideWidth, JsonBool layout.slate, JsonBool layout.guided, JsonBool layout.boardFocused, JsonString layout.previewText, JsonBool layout.previewSample, JsonString layout.noticeText, JsonBool layout.noticeBad]
+    layoutJson layout = JsonArray [JsonBool (learning layout.mode), JsonBool (reading layout.mode), JsonBool layout.paperFirst, JsonBool layout.goalOpen, JsonBool layout.generatedOpen, JsonBool layout.libraryOpen, JsonInt layout.sideWidth, JsonBool layout.slate, JsonBool layout.guided, JsonString layout.noticeText, JsonBool layout.noticeBad]
 
     // The focused challenge is not shown, so it is not compared: focusing one never refreshes a region.
     shelfJson shelf = JsonArray [JsonString shelf.openSlug, JsonString shelf.openSource, JsonString shelf.shelfProblem, JsonArray (mapList (shelf.entries, \entry => JsonArray [JsonString entry.entrySlug, JsonString entry.entryTitle, JsonString entry.entryFault]))]
@@ -74,11 +73,11 @@ module Changes
 
 (** The workbench application: start, dispatch and the host boundary ([WORKBENCH-STORE]). *)
 module App
-    // At start the board's metadata slice is written, and the catalogue and the learner's progress are asked for; the lessons follow the catalogue.
+    // Start requests the catalogue and learner progress; lessons follow the catalogue.
     initial (slate, _) =
         fresh = Benches::fresh ()
         layout = fresh.layout
-        ui::Step(stepStore = fresh(layout = layout(slate = slate)), requests = [Shelves::catalogue (), Shelves::progress ()], writes = [Boards::metadataWrite ("board", Boards::empty ())])
+        ui::Step(stepStore = fresh(layout = layout(slate = slate)), requests = [Shelves::catalogue (), Shelves::progress ()], writes = [])
 
     // [LESSONS-VERIFICATION]: named callbacks retain precise compiler-derived dependencies.
     challengeRegion (before, current, frames, id) =

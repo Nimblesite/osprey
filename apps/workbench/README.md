@@ -2,7 +2,7 @@
 
 Write a supported logical statement and its proof steps, inspect the changing hypotheses and goals, and see the Osprey kernel accept a complete proof or refuse an invalid one. The mathematical document accepts typed working; formula keys help enter symbols in lesson exercises. Free-form text remains unchecked until supported sentences can be read. Generated source is available on request.
 
-The freehand drawing interface is being retired because neither host has a verified mathematical handwriting workflow. Legacy saved board data remains readable and is preserved when saving again. The shared native SDK's drawing APIs remain available to other applications; their presence does not establish Workbench formula recognition. Fresh native and VSIX acceptance of this retirement is still required.
+Freehand drawing and handwriting recognition have been removed. Workspace format 2 stores the mathematical document title and source; obsolete versions and drawing data are explicitly refused. The shared native SDK's drawing APIs remain available to other applications; their presence does not establish Workbench formula recognition. Fresh native and VSIX acceptance of this retirement is still required.
 
 Contract: [spec 0051](../../docs/specs/applications/0051-ProofWorkbench.md). Delivery: [plan 0042](../../docs/plans/0042-proof-workbench.md). Status: **proof-language modules implemented; application and hosts in progress.** The app elaborates supported steps into terms and calls the shared Osprey kernel directly. A Checked badge requires the kernel to accept the statement and proof. The separate generated-text-to-Lean workflow is not the source of that verdict; incomplete generated proofs retain explicit holes. See [spec 0049](../../docs/specs/language/0049-DependentTypesAndProofs.md).
 
@@ -43,7 +43,6 @@ The browser and native app share the Osprey application built on `@osprey/native
 | `src/goals.ospml` | Hypotheses and goal after each step; what a failing step expected and found |
 | `src/emit.ospml` | Read-only generated proof text, including holes for unfinished steps |
 | `src/verdict.ospml` | Elaborating supported steps and asking the shared kernel for a verdict |
-| `src/board.ospml` | Validation and preservation of legacy saved board data |
 | `src/shelf.ospml`, `src/learnview.ospml` | Lesson catalogue and guided exercises |
 | `src/app.ospml`, `src/main.ospml` | The store, `update`, regions and host entry points over [`@osprey/native`](../../packages/native/README.md) |
 | `tests/` | Fixture-driven suite; `tests/golden/` holds the generated files |

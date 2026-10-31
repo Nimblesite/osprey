@@ -114,7 +114,7 @@ module Layouts
     (** The layout after a tap on a mode, surface or pane control. *)
     export tapped (layout, action) = match action
         DismissNotice => layout(noticeText = "", noticeBad = false)
-        LeaveExample => layout(guided = false, previewText = "", previewSample = false)
+        LeaveExample => layout(guided = false)
         ToggleTheme => layout(slate = !layout.slate)
         ToWork => layout(mode = Working)
         ToLearn => layout(mode = Learning)
@@ -204,20 +204,10 @@ module Update
         Widen => Runtime::step (bench(layout = Layouts::widened (bench.layout, number)))
         _ => Runtime::step bench
 
-    (** What a retired board control reports ([WORKBENCH-BOARD]). *)
-    retiredInk = "Drawing is no longer available. Type the transcription into the document or the answer."
-
-    (** A retired stroke or lasso: a visible note, no slice write, no recognition request, no math change. *)
-    refusedInk bench = Runtime::step (Workspaces::notice (bench, retiredInk, false))
-
-    stroked (bench, _, _) = refusedInk bench
-
-    lassoed (bench, _, _) = refusedInk bench
-
     switched (bench, action, open) = match action
         ToggleProofLibraries => Runtime::step (BundledLibraries::expanded (bench, open))
         ToggleProofSource => Runtime::step (ProofLibraries::expanded (bench, open))
         _ => Runtime::step (bench(layout = Layouts::switched (bench.layout, action, open)))
 
     (** The next store, requests and slice writes for `message` ([WORKBENCH-STORE]). *)
-    export apply (_, bench, message) = Messages::route (message, \action => tapped (bench, action), \(action, text) => typed (bench, action, text), \(action, open) => switched (bench, action, open), \(action, number) => sized (bench, action, number), \(ticket, outcome) => Completions::completed (bench, ticket, outcome), \_ => Runtime::step bench, \(action, stroke) => stroked (bench, action, stroke), \(action, indices) => lassoed (bench, action, indices), \_ => Runtime::step bench, \(_, _) => Runtime::step bench)
+    export apply (_, bench, message) = Messages::route (message, \action => tapped (bench, action), \(action, text) => typed (bench, action, text), \(action, open) => switched (bench, action, open), \(action, number) => sized (bench, action, number), \(ticket, outcome) => Completions::completed (bench, ticket, outcome), \_ => Runtime::step bench, \(_, _) => Runtime::step bench, \(_, _) => Runtime::step bench, \_ => Runtime::step bench, \(_, _) => Runtime::step bench)

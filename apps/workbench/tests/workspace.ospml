@@ -1,0 +1,106 @@
+// [WORKBENCH-BOARD] [WORKBENCH-FILES]: actual document save/open flows retain no drawing state.
+namespace workbenchtests
+
+import workbench::Benches
+import workbench::Workspaces
+import ui::Doc
+import workbenchtests::Drive
+
+(** Current document persistence and mathematical editing through the real application. *)
+module WorkspaceCases
+    (** The workbench exposes mathematical text entry, without an unsupported ink surface. *)
+    export mathematicalWorkspaceOnly () =
+        first = Drive::started ()
+        forEachList (["root", "board"], \key => withoutInk (Drive::node (first, key)))
+        expect (Doc::text (Drive::node (first, "board"), "kind"), "")
+        editor = Drive::findLabel ("Argument & calculations", Drive::node (first, "document"))
+        expect (Doc::has (editor, "event"), true)
+        typed = Drive::post (first, Drive::control ("document", Drive::revision (first, "document"), Doc::number (editor, "event"), Drive::quoted "p → p"))
+        expect (Doc::text (Drive::stored typed, "text"), "p → p")
+        staleDocumentControl (first, typed)
+        framed = Drive::post (typed, "{\"kind\":\"frame\",\"elapsed\":0.016}")
+        expect (Doc::text (Drive::stored framed, "notice"), Doc::text (Drive::stored typed, "notice"))
+        expect (Doc::text (Drive::stored framed, "text"), "p → p")
+        expect (Drive::tickets framed, "")
+
+    staleDocumentControl (issued, current) =
+        event = Drive::labelled (current, issued, "document", "Argument & calculations", Drive::quoted "p → q")
+        expect (Doc::number (Doc::parse event, "revision"), Drive::revision (issued, "document"))
+        refused = Drive::post (current, event)
+        expect (Doc::write (Drive::stored refused), Doc::write (Drive::stored current))
+        expect (length (Doc::texts (refused, "diagnostics")) > 0, true)
+
+    withoutInk node =
+        forEachList (["board", "canvas"], \kind => expect (Doc::text (Drive::findNode (kind, node), "kind"), ""))
+        forEachList (["Draw", "Pan board", "Undo", "Clear", "Preview sample transcription", "Transcribe selection"], \label => expect (Doc::has (Drive::findLabel (label, node), "event"), false))
+
+
+    export withoutDrawing stored = forEachList (["strokes", "lassoing", "clearing", "ink", "inks", "scale", "panX", "panY", "notes", "notesVisible", "panMode", "boardFocused", "preview", "samplePreview"], \key => expect (Doc::has (stored, key), false))
+
+    export opened envelope = match Workspaces::encode (Benches::restore (Drive::stored envelope))
+        Error problem =>
+            FixtureFiles::report problem
+            envelope
+        Success source => openSource (envelope, source)
+
+    openSource (envelope, source) =
+        asked = Drive::activate (envelope, envelope, "heading", "Open workspace")
+        Drive::postHeld (asked, Drive::done ("workspace:opened", "{\"path\":\"working.json\"}"), JsonObject [Doc::str ("workspace:import", source)])
+
+    written () =
+        first = Drive::started ()
+        named = Drive::post (first, Drive::labelled (first, first, "document", "Solution title", Drive::quoted "Conjunction proof"))
+        AppCases::typed (named, WorkflowCases::savedSource ())
+
+    export roundTrip () =
+        first = written ()
+        expect (AppCases::check first, "checked at -1")
+        saved = Drive::activate (first, first, "heading", "Save")
+        expect (Drive::tickets saved, "workspace:saved")
+        source = Doc::text (Drive::hostSlices [saved], "workspace:saved")
+        doc = Doc::parse source
+        expect (Doc::number (doc, "version"), 2)
+        expect (Doc::text (doc, "title"), "Conjunction proof")
+        expect (Doc::text (doc, "text"), Doc::text (Drive::stored first, "text"))
+        expect (Doc::has (doc, "board") || Doc::has (doc, "checks"), false)
+        restored = openSource (AppCases::typed (Drive::started (), "Unrelated working."), source)
+        expect (Doc::text (Drive::stored restored, "text"), Doc::text (Drive::stored first, "text"))
+        expect (Doc::text (Drive::stored restored, "title"), "Conjunction proof")
+        expect (AppCases::check restored, "checked at -1")
+        expect (Doc::text (Drive::stored restored, "notice"), "Workspace opened. Supported statements have been checked again.")
+        expect (Doc::flag (Drive::stored restored, "noticeBad"), false)
+        expect (Drive::written restored, "")
+        expect (Drive::tickets restored, "")
+        withoutDrawing (Drive::stored restored)
+
+    export versions () = forEachList (["0", "1", "3", "-1", "2.0", "2.5", "\"2\"", "null"], \version => refused ("{\"version\":" + version + ",\"title\":\"Old\",\"text\":\"p → p\"}", "version"))
+
+    export drawingData () = forEachList (["null", "{}", "[]", "\"ink\""], \board => forEachList ([1, 2], \version => refused ("{\"version\":" + toString version + ",\"title\":\"Old\",\"text\":\"p → p\",\"board\":" + board + "}", "drawing")))
+
+    export malformed () =
+        forEachList (["not JSON", "{", "["], \source => refused (source, "JSON"))
+        forEachList (["{}", "[]", "{\"version\":2,\"title\":\"Wrong\",\"text\":42}"], \source => refused (source, "written working"))
+        refused ("{\"version\":2,\"text\":\"p → p\"}", "title")
+
+    refused (source, message) =
+        before = written ()
+        after = openSource (before, source)
+        expect (Doc::flag (Drive::stored after, "noticeBad"), true)
+        expect (AppCases::has (Doc::text (Drive::stored after, "notice"), message), true)
+        expect (Doc::text (Drive::stored after, "text"), Doc::text (Drive::stored before, "text"))
+        expect (Doc::text (Drive::stored after, "title"), Doc::text (Drive::stored before, "title"))
+        expect (Doc::number (Drive::stored after, "caret"), Doc::number (Drive::stored before, "caret"))
+        expect (Doc::write (Doc::field (Drive::stored after, "checks")), Doc::write (Doc::field (Drive::stored before, "checks")))
+        expect (Drive::written after, "")
+        expect (Drive::tickets after, "")
+        withoutDrawing (Drive::stored after)
+
+    export sliceIsolation () =
+        first = written ()
+        saved = Drive::postHeld (first, Drive::labelled (first, first, "heading", "Save", "null"), JsonObject [Doc::str ("board", "malformed unrelated slice")])
+        expect (Drive::tickets saved, "workspace:saved")
+        doc = Doc::parse (Doc::text (Drive::hostSlices [saved], "workspace:saved"))
+        expect (Doc::number (doc, "version"), 2)
+        expect (Doc::text (doc, "text"), Doc::text (Drive::stored first, "text"))
+        expect (Doc::has (doc, "board"), false)
+        withoutDrawing (Drive::stored saved)

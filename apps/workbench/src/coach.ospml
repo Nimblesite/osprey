@@ -91,13 +91,12 @@ module Coach
     (** Back to the catalogue. *)
     export close bench = bench(shelf = hidden bench.shelf)
 
-(** The host's completions: lessons, progress and a late legacy ink answer ([LESSONS-FILES], [UI-EFFECTS-RECOGNISE]). *)
+(** The host's lesson, progress and file completions ([LESSONS-FILES]). *)
 module Completions
     problem (shelf, said) = shelf(shelfProblem = said)
 
     listed (shelf, entries) = shelf(entries = entries, shelfProblem = "")
 
-    // Only the current ink ticket is refused visibly; a completion for an older one changes nothing.
     failed (bench, ticket, said) = match startsWith ticket "workspace:"
         true => Runtime::step (Workspaces::notice (bench, "The workspace operation failed: " + said, true))
         false => match ticket == "proof:opened"
@@ -108,18 +107,7 @@ module Completions
 
     failedLesson (bench, ticket, said) = match ticket == Shelves::catalogueKey || ticket == Shelves::textsKey
         true => Runtime::step (bench(shelf = problem (bench.shelf, "The lessons could not be loaded: " + said)))
-        false => match pendingInk (bench, ticket)
-            true => retiredInk (bench, "The strokes could not be read: " + said)
-            false => unsaved (bench, ticket, said)
-
-    pendingInk (bench, ticket) = ticket == bench.sketch.inkTicket && !isEmpty ticket
-
-    consumed bench =
-        sketch = bench.sketch
-        bench(sketch = sketch(inkTicket = ""))
-
-    // A late legacy ink answer clears its pending ticket and is reported; no draft or lesson answer is overwritten.
-    retiredInk (bench, said) = Runtime::step (Workspaces::notice (consumed bench, "Handwriting is no longer available. " + said, false))
+        false => unsaved (bench, ticket, said)
 
     // A missing progress file is no progress; a progress write that failed is said, so work is never lost silently.
     unsaved (bench, ticket, said) = match ticket == Shelves::savedKey
@@ -148,18 +136,13 @@ module Completions
             true => ProofLibraries::completed (bench, result)
             false => match BundledLibraries::handles ticket
                 true => BundledLibraries::completed (bench, ticket)
-                false => succeededLesson (bench, ticket, result)
+                false => succeededLesson (bench, ticket)
 
-    succeededLesson (bench, ticket, result) = match ticket
+    succeededLesson (bench, ticket) = match ticket
         "lessons:catalogue" => catalogued bench
         "lessons:texts" => gathered bench
         "lessons:progress" => progressed bench
-        _ => unrecognised (bench, ticket, result)
-
-    (** A retired ink ticket is cleared and reported; an unrelated ticket changes nothing. *)
-    unrecognised (bench, ticket, _) = match pendingInk (bench, ticket)
-        true => retiredInk (bench, "The transcription was discarded.")
-        false => Runtime::step bench
+        _ => Runtime::step bench
 
     (** The store after the host completed `ticket` with `outcome`. *)
     export completed (bench, ticket, outcome) = match outcome

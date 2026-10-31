@@ -29,20 +29,6 @@ type Check =
 type Reviewed =
     checks : List<Check>
 
-(** The retired board as saved data keeps it: the stroke count, lasso and clear flags, the last recognition ticket, the frame and its notes. Kept so saved workspaces still open and re-save ([WORKBENCH-BOARD]). *)
-type Sketch =
-    strokeTotal : int
-    lassoing : bool
-    clearing : bool
-    inkTicket : string
-    inkCount : int
-    boardScale : int
-    boardPanX : int
-    boardPanY : int
-    boardNotes : string
-    notesVisible : bool
-    panMode : bool
-
 (** Which surface and panes are shown, and the side column's width ([WORKBENCH-STORE]). *)
 type Layout =
     mode : Mode
@@ -53,9 +39,6 @@ type Layout =
     sideWidth : int
     slate : bool
     guided : bool
-    boardFocused : bool
-    previewText : string
-    previewSample : bool
     noticeText : string
     noticeBad : bool
 
@@ -95,7 +78,6 @@ type ImportedState =
 type Bench =
     draft : Draft
     verdicts : Reviewed
-    sketch : Sketch
     layout : Layout
     shelf : Shelf
     tutor : Tutor
@@ -108,8 +90,8 @@ type Act = Rename | Edit | Place | NextProofLine | InsertExample | SelectStep | 
 
 (** Creates, saves and restores the store. *)
 module Benches
-    (** An empty document, no verdicts, a legacy board record, the mathematical document layout and no lessons yet. *)
-    export fresh () = Bench(draft = Draft(draftTitle = "Untitled solution", draftText = "", caret = 0, selectedStep = -1), verdicts = Reviewed(checks = []), sketch = Sketch(strokeTotal = 0, lassoing = true, clearing = false, inkTicket = "", inkCount = 0, boardScale = 100, boardPanX = 0, boardPanY = 0, boardNotes = "", notesVisible = false, panMode = false), layout = Layout(mode = Working, paperFirst = true, goalOpen = true, generatedOpen = false, libraryOpen = false, sideWidth = 430, slate = false, guided = false, boardFocused = false, previewText = "", previewSample = false, noticeText = "", noticeBad = false), shelf = Shelf(entries = [], openSlug = "", openSource = "", focused = "", shelfProblem = ""), tutor = Tutors::empty (), exampleBackup = JsonNull, imports = emptyImports ())
+    (** An empty mathematical document, no verdicts and no lessons yet. *)
+    export fresh () = Bench(draft = Draft(draftTitle = "Untitled solution", draftText = "", caret = 0, selectedStep = -1), verdicts = Reviewed(checks = []), layout = Layout(mode = Working, paperFirst = true, goalOpen = true, generatedOpen = false, libraryOpen = false, sideWidth = 430, slate = false, guided = false, noticeText = "", noticeBad = false), shelf = Shelf(entries = [], openSlug = "", openSource = "", focused = "", shelfProblem = ""), tutor = Tutors::empty (), exampleBackup = JsonNull, imports = emptyImports ())
 
     flag (key, value) = JsonMember key (JsonBool value)
 
@@ -123,7 +105,7 @@ module Benches
         _ => false
 
     (** The saved store: every slice, because small slices round-trip through the host with each event ([UI-STORE]). *)
-    export save bench = JsonObject [Doc::str ("title", bench.draft.draftTitle), Doc::str ("text", bench.draft.draftText), Doc::num ("caret", bench.draft.caret), Doc::num ("selectedStep", bench.draft.selectedStep), Doc::num ("strokes", bench.sketch.strokeTotal), flag ("lassoing", bench.sketch.lassoing), flag ("clearing", bench.sketch.clearing), Doc::str ("ink", bench.sketch.inkTicket), Doc::num ("inks", bench.sketch.inkCount), Doc::num ("scale", bench.sketch.boardScale), Doc::num ("panX", bench.sketch.boardPanX), Doc::num ("panY", bench.sketch.boardPanY), Doc::str ("notes", bench.sketch.boardNotes), flag ("notesVisible", bench.sketch.notesVisible), flag ("panMode", bench.sketch.panMode), Doc::str ("problem", bench.shelf.shelfProblem), flag ("learning", learning bench.layout), flag ("reading", reading bench.layout), flag ("paper", bench.layout.paperFirst), flag ("goal", bench.layout.goalOpen), flag ("generated", bench.layout.generatedOpen), flag ("library", bench.layout.libraryOpen), Doc::num ("width", bench.layout.sideWidth), flag ("slate", bench.layout.slate), flag ("guided", bench.layout.guided), flag ("boardFocused", bench.layout.boardFocused), Doc::str ("preview", bench.layout.previewText), flag ("samplePreview", bench.layout.previewSample), Doc::str ("notice", bench.layout.noticeText), flag ("noticeBad", bench.layout.noticeBad), Doc::str ("lesson", bench.shelf.openSlug), Doc::str ("source", bench.shelf.openSource), Doc::str ("focused", bench.shelf.focused), JsonMember "entries" (JsonArray (mapList (bench.shelf.entries, \entry => entryJson entry))), JsonMember "imports" (importsJson bench.imports), JsonMember "exampleBackup" bench.exampleBackup, JsonMember "tutor" (Tries::save bench.tutor), JsonMember "checks" (JsonArray (mapList (bench.verdicts.checks, \check => checkJson check)))]
+    export save bench = JsonObject [Doc::str ("title", bench.draft.draftTitle), Doc::str ("text", bench.draft.draftText), Doc::num ("caret", bench.draft.caret), Doc::num ("selectedStep", bench.draft.selectedStep), Doc::str ("problem", bench.shelf.shelfProblem), flag ("learning", learning bench.layout), flag ("reading", reading bench.layout), flag ("paper", bench.layout.paperFirst), flag ("goal", bench.layout.goalOpen), flag ("generated", bench.layout.generatedOpen), flag ("library", bench.layout.libraryOpen), Doc::num ("width", bench.layout.sideWidth), flag ("slate", bench.layout.slate), flag ("guided", bench.layout.guided), Doc::str ("notice", bench.layout.noticeText), flag ("noticeBad", bench.layout.noticeBad), Doc::str ("lesson", bench.shelf.openSlug), Doc::str ("source", bench.shelf.openSource), Doc::str ("focused", bench.shelf.focused), JsonMember "entries" (JsonArray (mapList (bench.shelf.entries, \entry => entryJson entry))), JsonMember "imports" (importsJson bench.imports), JsonMember "exampleBackup" bench.exampleBackup, JsonMember "tutor" (Tries::save bench.tutor), JsonMember "checks" (JsonArray (mapList (bench.verdicts.checks, \check => checkJson check)))]
 
     entryJson entry = JsonObject [Doc::str ("slug", entry.entrySlug), Doc::str ("title", entry.entryTitle), Doc::str ("summary", entry.entrySummary), Doc::num ("stage", entry.entryStage), Doc::num ("minutes", entry.entryMinutes), JsonMember "challenges" (Doc::strings entry.entryChallenges), Doc::str ("fault", entry.entryFault)]
 
@@ -140,16 +122,11 @@ module Benches
             false => Working
 
     (** The store saved by `save`. *)
-    export restore doc = Bench(draft = Draft(draftTitle = titleOf doc, draftText = Doc::text (doc, "text"), caret = Doc::number (doc, "caret"), selectedStep = selectedOf doc), verdicts = Reviewed(checks = mapList (Doc::items (Doc::field (doc, "checks")), \item => checkOf item)), sketch = Sketch(strokeTotal = Doc::number (doc, "strokes"), lassoing = Doc::flag (doc, "lassoing"), clearing = Doc::flag (doc, "clearing"), inkTicket = Doc::text (doc, "ink"), inkCount = Doc::number (doc, "inks"), boardScale = scaleOf doc, boardPanX = Doc::number (doc, "panX"), boardPanY = Doc::number (doc, "panY"), boardNotes = Doc::text (doc, "notes"), notesVisible = Doc::flag (doc, "notesVisible"), panMode = Doc::flag (doc, "panMode")), layout = Layout(mode = modeOf doc, paperFirst = Doc::flag (doc, "paper"), goalOpen = Doc::flag (doc, "goal"), generatedOpen = Doc::flag (doc, "generated"), libraryOpen = Doc::flag (doc, "library"), sideWidth = Doc::number (doc, "width"), slate = Doc::flag (doc, "slate"), guided = Doc::flag (doc, "guided"), boardFocused = Doc::flag (doc, "boardFocused"), previewText = Doc::text (doc, "preview"), previewSample = Doc::flag (doc, "samplePreview"), noticeText = Doc::text (doc, "notice"), noticeBad = Doc::flag (doc, "noticeBad")), shelf = Shelf(entries = mapList (Doc::items (Doc::field (doc, "entries")), \item => entryOf item), openSlug = Doc::text (doc, "lesson"), openSource = Doc::text (doc, "source"), focused = Doc::text (doc, "focused"), shelfProblem = Doc::text (doc, "problem")), tutor = Tries::restore (Doc::field (doc, "tutor")), exampleBackup = Doc::field (doc, "exampleBackup"), imports = importsOf (Doc::field (doc, "imports")))
+    export restore doc = Bench(draft = Draft(draftTitle = titleOf doc, draftText = Doc::text (doc, "text"), caret = Doc::number (doc, "caret"), selectedStep = selectedOf doc), verdicts = Reviewed(checks = mapList (Doc::items (Doc::field (doc, "checks")), \item => checkOf item)), layout = Layout(mode = modeOf doc, paperFirst = Doc::flag (doc, "paper"), goalOpen = Doc::flag (doc, "goal"), generatedOpen = Doc::flag (doc, "generated"), libraryOpen = Doc::flag (doc, "library"), sideWidth = Doc::number (doc, "width"), slate = Doc::flag (doc, "slate"), guided = Doc::flag (doc, "guided"), noticeText = Doc::text (doc, "notice"), noticeBad = Doc::flag (doc, "noticeBad")), shelf = Shelf(entries = mapList (Doc::items (Doc::field (doc, "entries")), \item => entryOf item), openSlug = Doc::text (doc, "lesson"), openSource = Doc::text (doc, "source"), focused = Doc::text (doc, "focused"), shelfProblem = Doc::text (doc, "problem")), tutor = Tries::restore (Doc::field (doc, "tutor")), exampleBackup = Doc::field (doc, "exampleBackup"), imports = importsOf (Doc::field (doc, "imports")))
 
     titleOf doc = match isEmpty (Doc::text (doc, "title"))
         true => "Untitled solution"
         false => Doc::text (doc, "title")
-
-
-    scaleOf doc = match Doc::number (doc, "scale") >= 25 && Doc::number (doc, "scale") <= 400
-        true => Doc::number (doc, "scale")
-        false => 100
 
 
     selectedOf doc = match jsonInt (Doc::field (doc, "selectedStep"))

@@ -26,11 +26,11 @@ ok 25 - precedence and grouping read as the formula table says
 ok 26 - a malformed formula names the column and what was expected
 ok 27 - formula equality is structural
 ok 28 - formula layouts preserve grouping and binder scope
-ok 29 - clearing a board requires confirmation and preserves notes and framing
-ok 30 - undo removes only the last stroke and is total on an empty board
-ok 31 - saved boards retain strokes notes and framing without restoring confirmation
-ok 32 - invalid saved boards are refused without invented values
-ok 33 - board runtime slices retain framing and write each stroke separately
+ok 29 - workspace documents save and reopen without drawing data
+ok 30 - unsupported workspace versions are refused without changing the document
+ok 31 - drawing workspace data is explicitly refused without a compatibility bridge
+ok 32 - malformed workspace fields preserve the current document and verdicts
+ok 33 - workspace saves ignore unrelated host slices
 ok 34 - workbench exposes typed mathematics without freehand drawing
 ok 35 - every written form of the step table reads to its step
 ok 36 - the ten near-misses of the step table stay unknown
@@ -88,7 +88,7 @@ ok 87 - starting the app draws every region and requests lessons and progress
 ok 88 - typing redraws only the document goal and source regions
 ok 89 - kernel verdicts mark the actual proof line
 ok 90 - the paper fills the content viewport with no authored board height
-ok 91 - a saved working's legacy strokes arrive as host slices while the retired board writes nothing
+ok 91 - unregistered drawing controls cannot change a reopened mathematical document
 ok 92 - the retired board requests no recognition and a stray reply changes nothing
 ok 93 - catalogue loading restores saved learner progress
 ok 94 - editing a lesson answer redraws only its challenge
@@ -100,7 +100,7 @@ ok 99 - unsupported wording stays neutral and unchecked through the app
 ok 100 - naming and reading preserve free form working without an editor
 ok 101 - returning from a guided example restores the complete original working
 ok 102 - lessons retain one natural scrolling page around all challenges
-ok 103 - the retired board draws no tools while a saved working keeps its strokes notes and framing
+ok 103 - mathematical documents reopen without drawing controls or retained ink state
 ok 104 - Source Read and Proof transitions preserve one mathematical document
 ok 105 - the real example walkthrough inserts its step and returns the working unmarked
 ok 106 - no ink review exists so a stray completion approves no statement

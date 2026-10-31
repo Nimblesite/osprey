@@ -126,7 +126,7 @@ module ImportedFlowCases
 
     export inspectionLayout () =
         initial = Drive::started ()
-        before = asked (AppCases::stroked (AppCases::typed (initial, "Keep this free-form argument.")), initial)
+        before = asked (AppCases::reopened (AppCases::typed (initial, "Keep this free-form argument.")), initial)
         expect (Doc::text (Drive::findNamed ("proof-library-inspection", Drive::node (before, "root")), "kind"), "")
         after = loaded (before, Fixtures::idImp ())
         root = Drive::node (after, "root")
@@ -136,7 +136,7 @@ module ImportedFlowCases
         expect (Doc::text (Drive::findNode ("aside", Drive::node (closed, "root")), "kind"), "aside")
         expect (Doc::write (current closed), Doc::write (current after))
         expect (Doc::text (Drive::stored closed, "text"), "Keep this free-form argument.")
-        expect (Doc::number (Drive::stored closed, "strokes"), 1)
+        WorkspaceCases::withoutDrawing (Drive::stored closed)
         reopened = Drive::activate (closed, closed, "root", "Notation")
         expect (Doc::text (Drive::findNamed ("proof-library-inspection", Drive::node (reopened, "root")), "kind"), "framed")
         expect (Doc::text (Drive::stored reopened, "text"), Doc::text (Drive::stored before, "text"))

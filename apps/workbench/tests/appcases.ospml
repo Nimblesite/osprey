@@ -18,12 +18,13 @@ module AppCases
         Success found => Doc::text (found, "tone") + " at ${Doc::number (found, "line")}"
         Error _ => "none"
 
-    (** [WORKBENCH-STORE] Start draws every fixed region of the mathematical workspace, still writes the saved working's legacy board metadata, and asks for the catalogue and the progress. *)
+    (** [WORKBENCH-STORE] Start draws the mathematical workspace and requests lessons and progress without retaining retired drawing state or writing board metadata. *)
     export start () =
         first = Drive::started ()
         expect (Drive::keys first, "root,heading,document,goal,generated,library,library-actions,catalogue,lesson")
         expect (Drive::tickets first, "lessons:catalogue,lessons:progress")
-        expect (Drive::written first, "board")
+        expect (Drive::written first, "")
+        WorkspaceCases::withoutDrawing (Drive::stored first)
         hostTheme ("dark", true)
         hostTheme ("light", false)
         hostTheme ("", false)
@@ -63,28 +64,21 @@ module AppCases
 
     (** A stroke value an old board host could still send; the retired region must refuse it. *)
     stroke () = "{\"points\":[[1,2],[30,40]],\"width\":2,\"at\":5}"
-    (** [WORKBENCH-BOARD] [WORKBENCH-FILES] A legacy working opens through the real host flow, so its saved strokes, notes and framing reach the session while the current title and text are preserved. *)
-    export stroked envelope =
-        asked = Drive::activate (envelope, envelope, "heading", "Open workspace")
-        match BoardCases::legacySource envelope
-            Success source => Drive::postHeld (asked, Drive::done ("workspace:opened", "{\"path\":\"legacy-working.json\"}"), JsonObject [Doc::str ("workspace:import", source)])
-            Error problem =>
-                FixtureFiles::report ("Legacy workspace fixture did not encode: " + problem)
-                Drive::post (asked, Drive::failed ("workspace:opened", problem))
+    (** [WORKBENCH-FILES] The current document reopens through the real host file flow. *)
+    export reopened envelope = WorkspaceCases::opened envelope
 
-    (** [WORKBENCH-BOARD] A saved working's strokes arrive as host slices under their stable indices, and a stroke aimed at the retired board writes no slice, draws nothing and changes no document. *)
-    export strokes () =
-        loaded = stroked (typed (Drive::started (), "Theorem t. For all p, p → p."))
-        expect (Drive::written loaded, "board,board:0")
-        expect (Doc::number (Drive::stored loaded, "strokes"), 1)
-        expect (Doc::text (Drive::stored loaded, "notes"), "Check the order of the conjunction.")
+    (** [WORKBENCH-BOARD] An unregistered drawing control writes no slice, draws nothing and changes no document. *)
+    export absentControls () =
+        loaded = reopened (typed (Drive::started (), "Theorem t. For all p, p → p."))
+        expect (Drive::written loaded, "")
+        WorkspaceCases::withoutDrawing (Drive::stored loaded)
         expect (Doc::text (Drive::stored loaded, "text"), "Theorem t. For all p, p → p.")
         refused = Drive::post (loaded, Drive::control ("board", Drive::revision (loaded, "board"), 0, stroke ()))
         expect (Drive::keys refused, "")
         expect (Drive::written refused, "")
         expect (Drive::tickets refused, "")
         expect (diagnostics refused, "Stale control: region board revision 0 is not current")
-        expect (Doc::number (Drive::stored refused, "strokes"), 1)
+        WorkspaceCases::withoutDrawing (Drive::stored refused)
         expect (Doc::text (Drive::stored refused, "text"), "Theorem t. For all p, p → p.")
 
     (** The diagnostics a host was told about, so a refusal is visible rather than silent. *)
@@ -102,8 +96,8 @@ module AppCases
         replied = Drive::post (asked, Drive::done ("ink:1", "{\"text\":\"Theorem t. For all p, p → p.\"}"))
         expect (Drive::keys replied, "")
         expect (Doc::text (Drive::stored replied, "text"), "Theorem t. For all p, p → p.")
-        expect (Doc::text (Drive::stored replied, "preview"), "")
-        expect (Doc::flag (Drive::stored replied, "samplePreview"), false)
+        expect (Doc::has (Drive::stored replied, "preview"), false)
+        expect (Doc::has (Drive::stored replied, "samplePreview"), false)
 
     (** [LESSONS-FILES] [LESSONS-PROGRESS] The catalogue's lessons are read and listed; saved progress is restored. *)
     export loading () =
@@ -289,15 +283,15 @@ module AppCases
 module WorkflowCases
     stored envelope = Drive::stored envelope
 
-    (** The guided conjunction example, opened from a working that already owns saved legacy strokes. *)
+    (** The guided conjunction example, opened from a saved mathematical document. *)
     export example () =
-        openExample (AppCases::stroked (Drive::loaded ()))
+        openExample (AppCases::reopened (Drive::loaded ()))
 
     openExample working =
         learning = Drive::activate (working, working, "root", "Examples")
         Drive::activate (learning, learning, "catalogue", "Open conjunction example")
 
-    (** [WORKBENCH-BOARD] The retired board draws no region and no drawing control; the paper fills the page, and a saved working keeps its strokes, notes and framing through the real Open flow. *)
+    (** [WORKBENCH-BOARD] The paper fills the page without drawing controls, and a current mathematical document reopens through the real file flow. *)
     export boardTools () =
         first = Drive::started ()
         expect (Doc::text (Drive::node (first, "board"), "kind"), "")
@@ -307,13 +301,8 @@ module WorkflowCases
         savedWorking ()
 
     savedWorking () =
-        restored = AppCases::stroked (AppCases::typed (Drive::started (), "Keep this calculation."))
-        expect (Doc::number (stored restored, "strokes"), 1)
-        expect (Doc::text (stored restored, "notes"), "Check the order of the conjunction.")
-        expect (Doc::number (stored restored, "panX"), 40)
-        expect (Doc::number (stored restored, "panY"), -12)
-        expect (Doc::number (stored restored, "scale"), 150)
-        expect (Doc::flag (stored restored, "clearing"), false)
+        restored = AppCases::reopened (AppCases::typed (Drive::started (), "Keep this calculation."))
+        WorkspaceCases::withoutDrawing (stored restored)
         expect (Doc::text (stored restored, "text"), "Keep this calculation.")
 
     (** The accepted sample names its canonical step and inserts it through its own control. *)
@@ -370,7 +359,7 @@ module WorkflowCases
         expect (Doc::text (after, "text"), "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\n")
         expect (Doc::number (after, "selectedStep"), -1)
         expect (startsWith (AppCases::check restarted, "checked"), false)
-        expect (Doc::number (after, "strokes"), 1)
+        WorkspaceCases::withoutDrawing (after)
         expect (structuralEquals (Doc::field (before, "exampleBackup")) (Doc::field (after, "exampleBackup")), true)
         returned = Drive::activate (restarted, restarted, "root", "Return to working")
         expect (Doc::flag (stored returned, "guided"), false)
@@ -431,20 +420,20 @@ module WorkflowCases
         expect (Drive::keys replied, "")
         expect (Drive::written replied, "")
         expect (Doc::text (stored replied, "text"), "Use symmetry here.")
-        expect (Doc::text (stored replied, "preview"), "")
-        expect (Doc::flag (stored replied, "samplePreview"), false)
+        expect (Doc::has (stored replied, "preview"), false)
+        expect (Doc::has (stored replied, "samplePreview"), false)
         empty = Drive::post (written, Drive::done ("ink:1", "{\"text\":\"\"}"))
         expect (Doc::text (stored empty, "text"), "Use symmetry here.")
         expect (isEmpty (Doc::text (stored empty, "notice")), true)
 
-    savedSource () = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp."
+    export savedSource () = "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp."
 
     saving () =
         first = Drive::started ()
         named = Drive::post (first, Drive::labelled (first, first, "document", "Solution title", Drive::quoted "My argument"))
-        drawn = AppCases::stroked named
-        written = AppCases::typed (drawn, savedSource ())
-        requested = Drive::postHeld (written, Drive::labelled (written, written, "heading", "Save", "null"), Drive::hostSlices [first, drawn])
+        opened = AppCases::reopened named
+        written = AppCases::typed (opened, savedSource ())
+        requested = Drive::postHeld (written, Drive::labelled (written, written, "heading", "Save", "null"), Drive::hostSlices [first, opened])
         expect (Drive::tickets requested, "workspace:saved")
         requested
 
@@ -455,6 +444,8 @@ module WorkflowCases
         expect (Doc::text (saved, "title"), "My argument")
         expect (Doc::text (saved, "text"), savedSource ())
         expect (Doc::has (saved, "checks"), false)
+        expect (Doc::has (saved, "board"), false)
+        expect (Doc::number (saved, "version"), 2)
         cancelled = Drive::post (requested, Drive::done ("workspace:saved", "{\"cancelled\":true}"))
         expect (Doc::text (stored requested, "notice"), "Workspace opened. Supported statements have been checked again.")
         expect (Doc::text (stored cancelled, "notice"), Doc::text (stored requested, "notice"))
@@ -463,7 +454,7 @@ module WorkflowCases
         expect (Doc::text (stored completed, "notice"), "Workspace saved.")
         loaded = reopened source
         expect (Doc::text (stored loaded, "text"), savedSource ())
-        expect (Doc::number (stored loaded, "strokes"), 1)
+        WorkspaceCases::withoutDrawing (stored loaded)
         expect (AppCases::check loaded, "checked at -1")
         exported loaded
 

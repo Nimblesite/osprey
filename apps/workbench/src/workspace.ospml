@@ -1,4 +1,4 @@
-// Implements [WORKBENCH-STORE]: portable working contains source and strokes, never a cached proof verdict.
+// Implements [WORKBENCH-STORE]: portable working contains source and title, never a cached proof verdict.
 namespace workbench
 
 import proof::CachedImports
@@ -11,7 +11,6 @@ import ui::Lists
 import ui::Doc
 import ui::Requests
 import ui::Runtime
-import workbench::Boards
 import workbench::Reviews
 import workbench::Statements
 import workbench::Steps
@@ -24,18 +23,11 @@ module Workspaces
 
     messaged (layout, text, bad) = layout(noticeText = text, noticeBad = bad)
 
-    boardSource bench =
-        metadata = Doc::parse (perform ui::Slices.fetch "board")
-        strokes = mapList (toList (range (0, bench.sketch.strokeTotal)), \index => Doc::parse (perform ui::Slices.fetch ("board:${index}")))
-        JsonObject (listAppend (Doc::members metadata) (JsonMember "strokes" (JsonArray strokes)))
+    export encode bench = jsonEncode (JsonObject [Doc::num ("version", 2), Doc::str ("title", bench.draft.draftTitle), Doc::str ("text", bench.draft.draftText)])
 
-    export encode (bench, board) = jsonEncode (JsonObject [Doc::num ("version", 1), Doc::str ("title", bench.draft.draftTitle), Doc::str ("text", bench.draft.draftText), JsonMember "board" (Boards::encode board)])
-
-    export save bench = match Boards::read (Doc::write (boardSource bench))
+    export save bench = match encode bench
         Error problem => Runtime::step (notice (bench, problem, true))
-        Success board => match encode (bench, board)
-            Error problem => Runtime::step (notice (bench, problem, true))
-            Success source => saving (bench, "workspace:saved", "solution.proof.json", source)
+        Success source => saving (bench, "workspace:saved", "solution.proof.json", source)
 
     saving (bench, ticket, name, source) = ui::Step(stepStore = bench, requests = [Requests::ask (ticket, ui::SaveFile(suggested = name, exportSlice = ticket))], writes = [Requests::write (ticket, source)])
 
@@ -49,27 +41,29 @@ module Workspaces
 
     export decode source = match jsonDecode source
         Error _ => Error(message = "The workspace is not valid JSON.")
-        Success doc => validated doc
+        Success doc => match Doc::has (doc, "board")
+            true => Error(message = "Workspaces containing drawing data are unsupported.")
+            false => validated doc
+
+    supportedVersion doc = match Doc::field (doc, "version")
+        JsonInt version => version == 2
+        _ => false
 
     validated doc = match jsonText (Doc::field (doc, "text"))
         Error _ => Error(message = "The workspace is missing its written working.")
-        Success source => match Doc::number (doc, "version") == 1 && length source <= 1048576
+        Success source => match supportedVersion doc && length source <= 1048576
             false => Error(message = "The workspace version or document size is unsupported.")
             true => match jsonText (Doc::field (doc, "title"))
                 Error _ => Error(message = "The workspace is missing its title.")
-                Success title => match Boards::read (Doc::write (Doc::field (doc, "board")))
-                    Error problem => Error(message = problem)
-                    Success board => Success(value = { title = title, source = source, board = board })
+                Success title => Success(value = { title = title, source = source })
 
-    restoredLayout layout = layout(guided = false, previewText = "", previewSample = false, mode = Working, noticeText = "Workspace opened. Supported statements have been checked again.", noticeBad = false)
+    restoredLayout layout = layout(guided = false, mode = Working, noticeText = "Workspace opened. Supported statements have been checked again.", noticeBad = false)
 
-    restoredSketch (sketch, board) = sketch(strokeTotal = length board.boardStrokes, clearing = false, inkTicket = "", inkCount = 0, boardScale = board.boardZoom, boardPanX = board.boardPanX, boardPanY = board.boardPanY, boardNotes = board.boardNotes, notesVisible = false, panMode = false)
-
-    restored (bench, saved) = bench(draft = Draft(draftTitle = saved.title, draftText = saved.source, caret = length saved.source, selectedStep = -1), verdicts = Reviewed(checks = Reviews::review saved.source), sketch = restoredSketch (bench.sketch, saved.board), layout = restoredLayout bench.layout)
+    restored (bench, saved) = bench(draft = Draft(draftTitle = saved.title, draftText = saved.source, caret = length saved.source, selectedStep = -1), verdicts = Reviewed(checks = Reviews::review saved.source), layout = restoredLayout bench.layout)
 
     export opened bench = match decode (perform ui::Slices.fetch "workspace:import")
         Error problem => Runtime::step (notice (bench, problem, true))
-        Success saved => ui::Step(stepStore = restored (bench, saved), requests = [], writes = Boards::sliceWrites ("board", saved.board))
+        Success saved => Runtime::step (restored (bench, saved))
 
     export completed (bench, ticket, result) = match Doc::flag (result, "cancelled")
         true => Runtime::step bench

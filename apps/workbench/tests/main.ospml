@@ -9,7 +9,7 @@ import workbenchtests::CorpusCases
 import workbenchtests::GoalCases
 import workbenchtests::EmitCases
 import workbenchtests::StatementCases
-import workbenchtests::BoardCases
+import workbenchtests::WorkspaceCases
 import workbenchtests::ThemeCases
 import workbenchtests::TypesetCases
 import workbenchtests::VerdictCases
@@ -54,12 +54,12 @@ test ("precedence and grouping read as the formula table says", FixtureFiles::ch
 test ("a malformed formula names the column and what was expected", FixtureFiles::checked (FixtureFiles::unit FormulaCases::faults))
 test ("formula equality is structural", FixtureFiles::checked FormulaCases::equality)
 test ("formula layouts preserve grouping and binder scope", FixtureFiles::checked FormulaCases::typesetting)
-test ("clearing a board requires confirmation and preserves notes and framing", FixtureFiles::checked (FixtureFiles::unit BoardCases::clearing))
-test ("undo removes only the last stroke and is total on an empty board", FixtureFiles::checked (FixtureFiles::unit BoardCases::undoing))
-test ("saved boards retain strokes notes and framing without restoring confirmation", FixtureFiles::checked (FixtureFiles::unit BoardCases::reopening))
-test ("invalid saved boards are refused without invented values", FixtureFiles::checked (FixtureFiles::unit BoardCases::malformed))
-test ("board runtime slices retain framing and write each stroke separately", FixtureFiles::checked (FixtureFiles::unit BoardCases::slices))
-test ("workbench exposes typed mathematics without freehand drawing", FixtureFiles::checked (FixtureFiles::unit BoardCases::mathematicalWorkspaceOnly))
+test ("workspace documents save and reopen without drawing data", FixtureFiles::checked (FixtureFiles::unit WorkspaceCases::roundTrip))
+test ("unsupported workspace versions are refused without changing the document", FixtureFiles::checked (FixtureFiles::unit WorkspaceCases::versions))
+test ("drawing workspace data is explicitly refused without a compatibility bridge", FixtureFiles::checked (FixtureFiles::unit WorkspaceCases::drawingData))
+test ("malformed workspace fields preserve the current document and verdicts", FixtureFiles::checked (FixtureFiles::unit WorkspaceCases::malformed))
+test ("workspace saves ignore unrelated host slices", FixtureFiles::checked (FixtureFiles::unit WorkspaceCases::sliceIsolation))
+test ("workbench exposes typed mathematics without freehand drawing", FixtureFiles::checked (FixtureFiles::unit WorkspaceCases::mathematicalWorkspaceOnly))
 
 test ("every written form of the step table reads to its step", FixtureFiles::checked (FixtureFiles::unit StepCases::written))
 test ("the ten near-misses of the step table stay unknown", FixtureFiles::checked (FixtureFiles::unit StepCases::nearMisses))
@@ -123,7 +123,7 @@ test ("starting the app draws every region and requests lessons and progress", F
 test ("typing redraws only the document goal and source regions", FixtureFiles::checked (FixtureFiles::unit AppCases::keystroke))
 test ("kernel verdicts mark the actual proof line", FixtureFiles::checked (FixtureFiles::unit AppCases::underline))
 test ("the paper fills the content viewport with no authored board height", FixtureFiles::checked (FixtureFiles::unit AppCases::paperViewport))
-test ("a saved working's legacy strokes arrive as host slices while the retired board writes nothing", FixtureFiles::checked (FixtureFiles::unit AppCases::strokes))
+test ("unregistered drawing controls cannot change a reopened mathematical document", FixtureFiles::checked (FixtureFiles::unit AppCases::absentControls))
 test ("the retired board requests no recognition and a stray reply changes nothing", FixtureFiles::checked (FixtureFiles::unit AppCases::lasso))
 test ("catalogue loading restores saved learner progress", FixtureFiles::checked (FixtureFiles::unit AppCases::loading))
 test ("editing a lesson answer redraws only its challenge", FixtureFiles::checked (FixtureFiles::unit AppCases::challenge))
@@ -136,7 +136,7 @@ test ("naming and reading preserve free form working without an editor", Fixture
 test ("returning from a guided example restores the complete original working", FixtureFiles::checked (FixtureFiles::unit AppCases::exampleRoundTrip))
 test ("lessons retain one natural scrolling page around all challenges", FixtureFiles::checked (FixtureFiles::unit AppCases::lessonPageScroll))
 
-test ("the retired board draws no tools while a saved working keeps its strokes notes and framing", FixtureFiles::checked (FixtureFiles::unit WorkflowCases::boardTools))
+test ("mathematical documents reopen without drawing controls or retained ink state", FixtureFiles::checked (FixtureFiles::unit WorkflowCases::boardTools))
 test ("Source Read and Proof transitions preserve one mathematical document", FixtureFiles::checked (FixtureFiles::unit WorkflowCases::sourceModes))
 test ("the real example walkthrough inserts its step and returns the working unmarked", FixtureFiles::checked (FixtureFiles::unit WorkflowCases::sampleReview))
 test ("no ink review exists so a stray completion approves no statement", FixtureFiles::checked (FixtureFiles::unit WorkflowCases::inkReview))
