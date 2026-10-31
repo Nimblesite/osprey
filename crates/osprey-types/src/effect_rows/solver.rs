@@ -147,7 +147,8 @@ pub(super) fn file_scope_env(
 }
 
 /// Least fixed point over every function's row and return provenance:
-/// recursive and forward calls only add requirements.
+/// recursive and forward calls only add requirements. Each sweep analyses
+/// only the functions whose inputs moved ([`super::worklist`]).
 pub(super) fn converge(
     index: &Index<'_>,
     instances: &Instances,
@@ -155,38 +156,81 @@ pub(super) fn converge(
     rows: &mut Vec<Summary>,
     returns: &mut Vec<Option<Value>>,
 ) {
+    let solve = Solve {
+        index,
+        instances,
+        statements,
+    };
     let mut history = ReturnHistory::new(super::recursion::recursive_functions(index));
-    loop {
+    let mut reads = vec![BTreeSet::new(); index.functions.len()];
+    let mut dirty: BTreeSet<usize> = (0..index.functions.len()).collect();
+    while !dirty.is_empty() {
+        dirty = solve.sweep(&dirty, (rows, returns), &mut history, &mut reads);
+    }
+}
+
+/// The program one fixed point solves.
+struct Solve<'a> {
+    index: &'a Index<'a>,
+    instances: &'a Instances,
+    statements: &'a [Stmt],
+}
+
+impl Solve<'_> {
+    /// Re-analyse `dirty` against the current state, then write the new state
+    /// back and return the functions the next sweep must re-analyse.
+    fn sweep(
+        &self,
+        dirty: &BTreeSet<usize>,
+        (rows, returns): (&mut Vec<Summary>, &mut Vec<Option<Value>>),
+        history: &mut ReturnHistory,
+        reads: &mut [BTreeSet<usize>],
+    ) -> BTreeSet<usize> {
+        let (index, instances) = (self.index, self.instances);
+        let (file_scope, file_reads) = super::worklist::recording(|| {
+            file_scope_env(index, instances, self.statements, rows, returns)
+        });
         let analyzer = Analyzer {
             index,
             rows,
             returns,
             instances,
-            file_scope: file_scope_env(index, instances, statements, rows, returns),
+            file_scope,
         };
-        let mut next = rows.clone();
-        let mut next_returns = returns.clone();
-        let changed = index
-            .functions
-            .iter()
-            .enumerate()
-            .fold(false, |changed, (id, function)| {
-                advance_function(
-                    &analyzer,
-                    id,
-                    function,
-                    &mut next,
-                    &mut next_returns,
-                    &mut history,
-                ) || changed
+        let mut next = (rows.clone(), returns.clone());
+        let moved = self.advance(&analyzer, dirty, &mut next, history, reads);
+        // `analyzer` borrows `rows`/`returns`; its last use is the advance
+        // above, so the borrow has ended by the time the new state is written.
+        (*rows, *returns) = next;
+        super::worklist::affected(&moved, &file_reads, reads)
+    }
+
+    /// Advance each dirty function one iteration, recording what it read;
+    /// returns the functions that moved.
+    fn advance(
+        &self,
+        analyzer: &Analyzer<'_>,
+        dirty: &BTreeSet<usize>,
+        (rows, returns): &mut (Vec<Summary>, Vec<Option<Value>>),
+        history: &mut ReturnHistory,
+        reads: &mut [BTreeSet<usize>],
+    ) -> BTreeSet<usize> {
+        let mut moved = BTreeSet::new();
+        for &id in dirty {
+            let Some(function) = self.index.functions.get(id) else {
+                continue;
+            };
+            let (changed, read) = super::worklist::recording(|| {
+                advance_function(analyzer, id, function, rows, returns, history)
             });
-        // `analyzer` borrows `rows`/`returns`; its last use is the fold above,
-        // so the borrow has ended by the time the new state is written back.
-        *rows = next;
-        *returns = next_returns;
-        if !changed {
-            return;
+            if let Some(slot) = reads.get_mut(id) {
+                *slot = read;
+            }
+            if changed {
+                let _ = moved.insert(id);
+            }
         }
+        moved
     }
 }
 

@@ -82,6 +82,7 @@ impl Analyzer<'_> {
     }
 
     pub(super) fn function_value(&self, id: usize) -> Value {
+        super::worklist::record_read(id);
         let parameters = self
             .index
             .functions

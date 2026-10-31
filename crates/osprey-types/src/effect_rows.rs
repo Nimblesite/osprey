@@ -65,6 +65,7 @@ mod validate_handlers;
 use validate_handlers::validate_handler_arms;
 mod reachability;
 mod recursion;
+mod worklist;
 use reachability::{fibered_operation, operation_pairs, walk_children};
 
 use crate::error::TypeError;
