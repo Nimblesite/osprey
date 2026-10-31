@@ -248,6 +248,36 @@ fn twenty_acyclic_pure_callback_relays_remain_accepted() {
     crate::effect_rows_tests::assert_accepted(&source);
 }
 
+#[test]
+fn cyclic_reference_graph_preserves_finite_callback_spines() {
+    for depth in [20, 30] {
+        crate::effect_rows_tests::assert_accepted(&cyclic_spine_source(depth, "7"));
+    }
+}
+
+#[test]
+fn callback_record_survives_a_cyclic_reference_graph() {
+    for depth in [20, 30] {
+        let spine = cyclic_spine_source(depth, "Packet{callback:fn()=>7}");
+        let source =
+            format!("type Packet={{callback:fn()->int}}\n{spine}let result=answer.callback()\n");
+        crate::effect_rows_tests::assert_accepted(&source);
+    }
+}
+
+fn cyclic_spine_source(depth: usize, leaf: &str) -> String {
+    let relays = relay_definitions(depth - 1, |index| {
+        format!("fn spine{index}(stop)=fn()=>spine{}(true)", index + 1)
+    });
+    let last = depth - 1;
+    let calls = "()".repeat(last);
+    format!(
+        "effect Alarm {{ring:fn()->int}}\nfn finish(callback)=0\n{relays}\nfn spine{last}(stop)={{\n\
+         let ignored=if stop {{0}} else {{finish(spine0(true))}}\n{leaf}\n}}\n\
+         let answer=spine0(true){calls}\n"
+    )
+}
+
 fn relay_definitions(depth: usize, body: impl Fn(usize) -> String) -> String {
     (0..depth).map(body).collect::<Vec<_>>().join("\n")
 }

@@ -175,7 +175,7 @@ impl Analyzer<'_> {
                 env,
             ));
         }
-        if let Some(callee) = self.callable(function, scope, env) {
+        if let Some(callee) = self.call_effects_callable(function, scope, env) {
             let arguments =
                 self.callsite_arguments(function, arguments, named_arguments, scope, env);
             out.union(self.invoke_with_arguments(callee, arguments));

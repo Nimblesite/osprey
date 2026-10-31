@@ -453,3 +453,35 @@ fn type_applied_named_forwarding_keeps_the_alarm_latent() {
         &["unhandled effect operations", "Alarm.ring"],
     );
 }
+
+#[cfg(test)]
+pub(in crate::effect_rows) fn assert_model_metadata_matches(
+    before: &super::Instances,
+    after: &super::Instances,
+) {
+    assert_eq!(before.expression_types, after.expression_types);
+    assert_eq!(before.signal_queries, after.signal_queries);
+    assert_eq!(before.handler_inference, after.handler_inference);
+    assert_eq!(before.field_row_violations, after.field_row_violations);
+    assert_eq!(before.methods, after.methods);
+}
+
+#[cfg(test)]
+pub(in crate::effect_rows) fn assert_metadata_written(after: &super::Instances) {
+    assert!(
+        !after.signal_queries.borrow().is_empty(),
+        "the real query must be recorded"
+    );
+    assert!(
+        after
+            .handler_inference
+            .borrow()
+            .values()
+            .any(|values| !values.is_empty()),
+        "the actual handler must infer an instance"
+    );
+    assert!(
+        !after.field_row_violations.borrow().is_empty(),
+        "the actual bad field must be refused"
+    );
+}

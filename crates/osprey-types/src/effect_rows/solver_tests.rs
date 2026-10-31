@@ -3,6 +3,9 @@ use super::super::model_values::{
     measure_snapshot_step, snapshot_function, snapshot_row, snapshot_value, with_snapshot_analyzer,
 };
 use super::{ReturnHistory, Value};
+use crate::effect_rows::expr_args::{
+    assert_metadata_written, assert_model_metadata_matches as assert_lambda_metadata,
+};
 use crate::effect_rows::field_rows::tests::{analyzer, fixture_function_values};
 use crate::effect_rows::{
     expression_site, Analyzer, Callable, CallableEnv, Expr, Index, Instances, KnownCallable,
@@ -323,14 +326,6 @@ fn seed_oracle_metadata(instances: &mut Instances, site: usize) {
         .insert((0, 0), [vec!["Alarm".to_owned()]].into_iter().collect());
 }
 
-fn assert_lambda_metadata(before: &Instances, after: &Instances) {
-    assert_eq!(before.expression_types, after.expression_types);
-    assert_eq!(before.signal_queries, after.signal_queries);
-    assert_eq!(before.handler_inference, after.handler_inference);
-    assert_eq!(before.field_row_violations, after.field_row_violations);
-    assert_eq!(before.methods, after.methods);
-}
-
 fn original_lambda_value(
     analyzer: &Analyzer<'_>,
     expression: &Expr,
@@ -460,23 +455,4 @@ fn assert_actual_metadata_writes(index: &Index<'_>, expression: &Expr) {
     let after = compare_lambda_model(index, expression, &env, &before);
     assert_metadata_written(&before);
     assert_metadata_written(&after);
-}
-
-fn assert_metadata_written(after: &Instances) {
-    assert!(
-        !after.signal_queries.borrow().is_empty(),
-        "the real query must be recorded"
-    );
-    assert!(
-        after
-            .handler_inference
-            .borrow()
-            .values()
-            .any(|values| !values.is_empty()),
-        "the actual handler must infer an instance"
-    );
-    assert!(
-        !after.field_row_violations.borrow().is_empty(),
-        "the actual bad field must be refused"
-    );
 }

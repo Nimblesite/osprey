@@ -35,13 +35,16 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<Callable> {
-        self.value(expression, scope, env).and_then(|value| {
-            if value.performed.is_empty() {
-                value.callable
-            } else {
-                Some(Callable::Unknown)
-            }
-        })
+        self.value(expression, scope, env)
+            .and_then(Self::callable_from_value)
+    }
+
+    pub(super) fn callable_from_value(value: Value) -> Option<Callable> {
+        if value.performed.is_empty() {
+            value.callable
+        } else {
+            Some(Callable::Unknown)
+        }
     }
 
     pub(super) fn channel_payload(channel: Value, env: &CallableEnv) -> Option<Value> {
@@ -60,12 +63,21 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<Value> {
+        self.value_with_raw(expression, env, || self.raw_value(expression, scope, env))
+    }
+
+    pub(super) fn value_with_raw(
+        &self,
+        expression: &Expr,
+        env: &CallableEnv,
+        raw: impl FnOnce() -> Option<Value>,
+    ) -> Option<Value> {
         #[cfg(test)]
         super::field_rows::tests::record_value_visit(expression);
         let empty_case = self.empty_case(expression, env);
         let value = self
             .scalar_lookup(expression, empty_case)
-            .or_else(|| osprey_ast::with_stack(|| self.raw_value(expression, scope, env)))
+            .or_else(|| osprey_ast::with_stack(raw))
             .or_else(|| empty_case.map(|_| Value::default()))
             .or_else(|| self.scalar_shape(expression))
             .or_else(|| self.typed_unknown(expression))?;

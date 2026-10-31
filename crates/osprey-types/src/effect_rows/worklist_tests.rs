@@ -1,6 +1,15 @@
 //! A sweep re-analyses exactly the functions whose inputs moved.
 use super::{affected, record_read, recording};
-use crate::effect_rows::{Analyzer, CallableEnv, Index, Instances, Summary};
+use crate::effect_rows::expr_args::{assert_metadata_written, assert_model_metadata_matches};
+use crate::effect_rows::field_rows::tests::analyzer as empty_analyzer;
+use crate::effect_rows::recursion::recursive_functions;
+use crate::effect_rows::solver::{
+    advance_function, clear_verdicts, converge, file_scope_env, ReturnHistory,
+};
+use crate::effect_rows::{
+    Analyzer, Callable, CallableEnv, Index, Instances, Requirement, Summary, Value,
+};
+use osprey_ast::Stmt;
 use std::collections::BTreeSet;
 
 fn set(ids: &[usize]) -> BTreeSet<usize> {
@@ -38,26 +47,266 @@ fn a_moved_function_the_file_scope_read_reanalyses_everything() {
 fn naming_a_function_records_its_read() {
     let parsed = osprey_syntax::parse_program("fn leaf()=7\nfn caller()=leaf()\n");
     let index = Index::collect(&parsed.program);
-    let position = |name: &str| {
-        let found = index
-            .functions
-            .iter()
-            .position(|function| function.name == name);
-        found.unwrap_or_else(|| panic!("fixture declares {name}"))
-    };
-    let (leaf, caller) = (position("leaf"), position("caller"));
+    let (leaf, caller) = (function_id(&index, "leaf"), function_id(&index, "caller"));
     let count = index.functions.len();
-    let (rows, returns) = (vec![Summary::default(); count], vec![None; count]);
+    let state = (vec![Summary::default(); count], vec![None; count]);
     let instances = Instances::default();
-    let analyzer = Analyzer {
-        index: &index,
-        rows: &rows,
-        returns: &returns,
-        instances: &instances,
-        file_scope: CallableEnv::default(),
-    };
+    let analyzer = context(&index, &instances, &state, CallableEnv::default());
     let caller_body = index.functions.get(caller).map(|function| function.body);
     let body = caller_body.unwrap_or_else(|| panic!("caller has a body"));
     let read = recording(|| analyzer.expression(body, &[], &CallableEnv::default())).1;
     assert!(read.contains(&leaf), "caller's analysis read {read:?}");
+}
+
+type SolverState = (Vec<Summary>, Vec<Option<Value>>);
+type SolverPass = fn(&Index<'_>, &Instances, &[Stmt], &mut SolverState);
+
+fn context<'a>(
+    index: &'a Index<'a>,
+    instances: &'a Instances,
+    state: &'a SolverState,
+    file_scope: CallableEnv,
+) -> Analyzer<'a> {
+    Analyzer {
+        rows: &state.0,
+        returns: &state.1,
+        file_scope,
+        ..empty_analyzer(index, instances)
+    }
+}
+
+const ALIAS_PROGRAM: &str = "effect Alarm {ring:fn()->int}\n\
+type Control={press:fn()->int![]}\n\
+fn leaf() ![] = {\nperform Alarm.ring()\n7\n}\n\
+let alias=leaf\n\
+fn main()={\n\
+let deps=signalDependencies(fn()=>alias())\n\
+let bad=Control{press:fn()=>perform Alarm.ring()}\n\
+alias()\nhandle Alarm {ring=>7}\nperform Alarm.ring()\n}\n";
+
+fn function_id(index: &Index<'_>, name: &str) -> usize {
+    index
+        .functions
+        .iter()
+        .position(|function| function.name == name)
+        .unwrap_or_else(|| panic!("the fixture declares {name}"))
+}
+
+fn seeded_instances() -> Instances {
+    let mut instances = Instances::default();
+    let _ = instances.argument_types.insert(Vec::new(), Vec::new());
+    instances
+}
+
+fn model(
+    index: &Index<'_>,
+    instances: &Instances,
+    statements: &[Stmt],
+    pass: SolverPass,
+) -> SolverState {
+    let count = index.functions.len();
+    let mut state = (vec![Summary::default(); count], vec![None; count]);
+    pass(index, instances, statements, &mut state);
+    clear_verdicts(&mut state.0, &mut state.1);
+    pass(index, instances, statements, &mut state);
+    state
+}
+
+fn worklist_pass(
+    index: &Index<'_>,
+    instances: &Instances,
+    statements: &[Stmt],
+    state: &mut SolverState,
+) {
+    converge(index, instances, statements, &mut state.0, &mut state.1);
+}
+
+// Keep the old all-function Jacobi schedule as the independent reference;
+// both schedules use the same transfer functions and return-history policy.
+fn whole_pass(
+    index: &Index<'_>,
+    instances: &Instances,
+    statements: &[Stmt],
+    state: &mut SolverState,
+) {
+    let mut history = ReturnHistory::new(recursive_functions(index));
+    while reference_step(index, instances, statements, state, &mut history) {}
+}
+
+fn reference_step(
+    index: &Index<'_>,
+    instances: &Instances,
+    statements: &[Stmt],
+    state: &mut SolverState,
+    history: &mut ReturnHistory,
+) -> bool {
+    let file_scope = file_scope_env(index, instances, statements, &state.0, &state.1);
+    let analyzer = context(index, instances, state, file_scope);
+    let mut next = (state.0.clone(), state.1.clone());
+    let moved = advance_all(&analyzer, &mut next, history);
+    *state = next;
+    moved
+}
+
+fn advance_all(
+    analyzer: &Analyzer<'_>,
+    next: &mut SolverState,
+    history: &mut ReturnHistory,
+) -> bool {
+    let mut moved = false;
+    for (id, function) in analyzer.index.functions.iter().enumerate() {
+        moved |= advance_function(analyzer, id, function, &mut next.0, &mut next.1, history);
+    }
+    moved
+}
+
+fn requires_ring(summary: &Summary) -> bool {
+    summary
+        .required
+        .contains(&Requirement::new("Alarm", "ring", Vec::new()))
+}
+
+fn assert_signal_written(instances: &Instances) {
+    assert!(
+        instances.signal_queries.borrow().values().any(|query| {
+            query
+                .operations
+                .iter()
+                .any(|operation| operation == "Alarm.ring")
+        }),
+        "the real alias query must retain its effect"
+    );
+}
+
+fn compare_metadata(worklist: &Instances, whole: &Instances) {
+    assert_signal_written(worklist);
+    assert_signal_written(whole);
+    assert_metadata_written(worklist);
+    assert_metadata_written(whole);
+    assert_model_metadata_matches(worklist, whole);
+}
+
+fn with_program(source: &str, run: impl FnOnce(&Index<'_>, &[Stmt])) {
+    let parsed = osprey_syntax::parse_program(source);
+    assert_eq!(parsed.errors, []);
+    let index = Index::collect(&parsed.program);
+    run(&index, &parsed.program.statements);
+}
+
+fn compare_models(source: &str, check: impl FnOnce(&Index<'_>, &SolverState)) {
+    with_program(source, |index, statements| {
+        let worklist = seeded_instances();
+        let whole = worklist.clone();
+        let actual = model(index, &worklist, statements, worklist_pass);
+        let expected = model(index, &whole, statements, whole_pass);
+        assert_eq!(
+            actual, expected,
+            "complete rows and returned values must match"
+        );
+        compare_metadata(&worklist, &whole);
+        check(index, &actual);
+    });
+}
+
+fn assert_alias_effect(index: &Index<'_>, state: &SolverState) {
+    let leaf = function_id(index, "leaf");
+    let main = function_id(index, "main");
+    assert!(state.0.get(leaf).is_some_and(requires_ring));
+    assert!(state.0.get(main).is_some_and(requires_ring));
+    assert!(state.1.get(leaf).is_some_and(Option::is_some));
+}
+
+#[test]
+fn worklist_matches_full_sweeps_with_actual_metadata_and_a_file_alias() {
+    compare_models(ALIAS_PROGRAM, assert_alias_effect);
+}
+
+fn assert_callback_payload(index: &Index<'_>, state: &SolverState) {
+    let parcel = function_id(index, "parcel");
+    let callback = state
+        .1
+        .get(parcel)
+        .and_then(Option::as_ref)
+        .and_then(|value| value.fields.get("callback"))
+        .and_then(|value| value.callable.as_ref());
+    assert!(
+        matches!(callback, Some(Callable::Known(known)) if requires_ring(&known.summary)),
+        "the complete returned record must retain its effectful callback"
+    );
+}
+
+#[test]
+fn worklist_matches_full_sweeps_for_returned_callback_records() {
+    let source = format!("{ALIAS_PROGRAM}fn parcel()={{callback:fn()=>perform Alarm.ring()}}\n");
+    compare_models(&source, assert_callback_payload);
+}
+
+#[test]
+fn worklist_matches_full_sweeps_for_mutually_recursive_callback_records() {
+    let payload = "type Packet={next:fn()->Packet,callback:fn()->int}\n\
+        fn parcel()=Packet{next:fn()=>relay(),callback:fn()=>perform Alarm.ring()}\n\
+        fn relay()=parcel()\n";
+    compare_models(
+        &format!("{ALIAS_PROGRAM}{payload}"),
+        assert_callback_payload,
+    );
+}
+
+fn function_reads(analyzer: &Analyzer<'_>) -> Vec<BTreeSet<usize>> {
+    analyzer
+        .index
+        .functions
+        .iter()
+        .map(|function| {
+            recording(|| {
+                let _ = analyzer.function_body(function);
+                let _ = analyzer.function_return(function);
+            })
+            .1
+        })
+        .collect()
+}
+
+fn assert_alias_route(
+    index: &Index<'_>,
+    instances: &Instances,
+    statements: &[Stmt],
+    state: &SolverState,
+) {
+    let (file_scope, file_reads) =
+        recording(|| file_scope_env(index, instances, statements, &state.0, &state.1));
+    let leaf = function_id(index, "leaf");
+    let analyzer = context(index, instances, state, file_scope);
+    let reads = function_reads(&analyzer);
+    assert_eq!(file_reads, set(&[leaf]));
+    assert_eq!(reads, vec![BTreeSet::new(); index.functions.len()]);
+    assert_invalidation(leaf, &file_reads, &reads);
+}
+
+fn assert_invalidation(leaf: usize, file_reads: &BTreeSet<usize>, reads: &[BTreeSet<usize>]) {
+    assert_eq!(
+        affected(&set(&[leaf]), file_reads, reads),
+        (0..reads.len()).collect()
+    );
+    assert_eq!(
+        affected(&set(&[leaf]), &BTreeSet::new(), reads),
+        set(&[leaf])
+    );
+}
+
+#[test]
+fn the_actual_file_alias_invalidates_all_of_its_readers() {
+    with_program(ALIAS_PROGRAM, |index, statements| {
+        let instances = seeded_instances();
+        let state = model(index, &instances, statements, worklist_pass);
+        assert_alias_route(index, &instances, statements, &state);
+    });
+}
+
+#[test]
+fn the_alias_oracle_retains_the_actual_rejection_diagnostics() {
+    crate::effect_rows_tests::assert_rejected_with(
+        ALIAS_PROGRAM,
+        &["outside its declared row", "Alarm.ring"],
+    );
 }
