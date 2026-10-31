@@ -65,8 +65,8 @@ Inputs are the machine's whole state besides the layers' current states, like Ri
 Layers run in parallel, as Rive's state machine layers do; each has exactly one current state. A **settle** follows each change of inputs:
 
 1. For each layer in document order, the first transition whose `from` is the current state (or `*`, unless the target is already current) and whose `when` holds moves the layer to `to`, and the entered state's `enter` requests are collected in order.
-2. Step 1 repeats until no transition fires. More than 32 rounds is an error naming the layers still moving, so a cycle is reported rather than spun.
-3. Triggers are cleared.
+2. Triggers are cleared after the first round, so a trigger fires one transition per layer, as a Rive trigger does.
+3. Step 1 repeats until no transition fires. More than 32 rounds is reported as a fault, so a cycle is reported rather than spun.
 
 A request is `{"request": name, "with": [input names]}`. The adapter receives its name and the inputs' values at the moment of entry, does the work, and reports the results by setting inputs. A request never names a host capability; the adapter decides how to do it.
 
@@ -84,9 +84,11 @@ A request is `{"request": name, "with": [input names]}`. The adapter receives it
 The view is one node template in the protocol's vocabulary: `stack`, `text`, `label`, `badge`, `button`, `picker`, `toggle`, `meter`, `progress`, `image`, `spacer`, `divider`, `framed`, `scene` (the disc, with `rotate` bound to an input) and `empty`. Its members are the matching `Ui` constructor's arguments. Every node may also carry:
 
 - `"when": condition`: a node whose condition fails is left out, along with its children.
-- `"{{name}}"` inside any string member: the input's value, with a filter: `{{position|clock}}` is `m:ss`, `{{volume|percent}}` is a whole percentage, and `{{file|title}}` is a file's base name without its extension.
+- `"{{name}}"` inside any string member: the input's value, with a filter: `{{position|clock}}` is `m:ss` and `{{volume|percent}}` is a whole percentage. Anything else, such as a track title, is an input the adapter sets.
 - `"enabled": condition` on controls.
-- `"on"`: the listener. `{"fire": t}` fires a trigger; `{"set": n}` sets an input from the control's value: the choice key of a picker, a toggle's flag or a button's literal `"value"`.
+- `"on"`: the listener. `{"fire": t}` fires a trigger; `{"set": n}` sets an input from the control's value: the choice key of a picker, a toggle's flag or a button's literal `"value"`. With both, the input is set first and then the trigger fires, so one press can choose a value and ask for it.
+
+A `scene` draws `shapes`: `{"shape": "disc", "x", "y", "radius"}` or a rectangle `{"x", "y", "w", "h", "angle", "turn"}` centred on its position and rotated by `angle + turn` radians. Each takes a `colour` (`#RRGGBB`, or `@token` from the chosen skin), an `alpha` from 0 to 1 and a `depth`; any number may be a `{{template}}`, so a rectangle can turn with an input.
 
 Each control's binding is the framework's ordinary typed binding, so ordinals, staleness and kind checks are exactly [UI-EVENTS]. Regions remain keyed by the template's top-level children.
 

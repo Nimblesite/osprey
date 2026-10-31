@@ -1,0 +1,213 @@
+// The casting player's adapter ([UI-MACHINE-TEST]): the machine document is
+// the whole interface, and this module only answers its requests with the
+// Python-flavor @osprey/chromecast port and feeds the device's facts back in
+// as inputs. Every byte to a device is a `chromecast::Wire` effect, so the
+// tests answer it with an in-memory Cast device.
+namespace casting
+
+import ui::Runtime
+import ui::Requests
+import ui::Machines
+import ui::Doc
+import chromecast::Discovery
+import chromecast::Media
+import chromecast::Player
+import chromecast::Session
+
+(** The interface: the running machine, the only slice the view reads. *)
+type Screen =
+    screenMachine : ui::Machine
+
+(** The cast behind the interface: whether a player is live, the player, the devices found, the frame clock in milliseconds and when the player was last polled. *)
+type Connection =
+    linked : bool
+    player : chromecast::Player::Player
+    devices : List<chromecast::Discovery::Device>
+    clock : int
+    polled : int
+
+(** The whole application store. *)
+type Store =
+    screen : Screen
+    link : Connection
+
+(** A store and the capability requests one round of machine requests made. *)
+type Served =
+    servedStore : Store
+    servedAsks : List<ui::Request>
+
+(** Answers the machine's requests with @osprey/chromecast and feeds the results back as inputs. *)
+module Link
+    (** Runs `work` with integer faults resolved: an overflow keeps the wrapped result and a division by zero its dividend. The player's arithmetic is clocks, counters and request ids, none near the limits. *)
+    export guarded work =
+        handle Arith
+            overflow _ _ _ wrapped => wrapped
+            divideByZero _ dividend => dividend
+            remainderByZero _ => 0
+        work ()
+
+    (** How far the disc turns in a second while playing, in radians: one revolution in 24 seconds. *)
+    export turnPerSecond = 0.2617993878
+
+    (** How often the live player is polled, in milliseconds. *)
+    export pollMs = 100
+
+    (** The browse that finds Cast devices, run by the host so the window never waits. *)
+    export browse = ui::Run(executable = "/usr/bin/perl", arguments = ["-e", "alarm 3; exec @ARGV", "/usr/bin/dns-sd", "-Z", "_googlecast._tcp", "local"], timeout = 5000, outputLimit = 65536, plist = false, runSlice = "cast-browse")
+
+    (** The single-file picker for audio the device can play. *)
+    export choose = ui::ChooseFile(types = ["mp3"], chosenLimit = 0, chosenSlice = "")
+
+    (** A store around a loaded machine, with no player and no devices. *)
+    export store machine = Store(screen = Screen(screenMachine = machine), link = Connection(linked = false, player = Player::idle (), devices = [], clock = 0, polled = 0))
+
+    machineOf store = store.screen.screenMachine
+
+    relinked (store, linked, player, polled) =
+        l = store.link
+        store(link = Connection(linked = linked, player = player, devices = l.devices, clock = l.clock, polled = polled))
+
+    withDevices (store, devices) =
+        l = store.link
+        store(link = Connection(linked = l.linked, player = l.player, devices = devices, clock = l.clock, polled = l.polled))
+
+    withClock (store, now) =
+        l = store.link
+        store(link = Connection(linked = l.linked, player = l.player, devices = l.devices, clock = now, polled = l.polled))
+
+    fed (store, facts) = store(screen = Screen(screenMachine = Machines::feed (machineOf store, facts)))
+
+    fact (name, value) = Machines::fact (name, value)
+
+    failed (store, message) = fed (store, [fact ("error", JsonString message)])
+
+    asked (store, asks) = Served(servedStore = store, servedAsks = asks)
+
+    // The input `name` of a request, as the machine held it at entry.
+    given (ask, name) = match ui::Lists::find (ask.askInputs, \k => k.knobName == name)
+        Success k => k.knobValue
+        Error _ => JsonNull
+
+    givenText (ask, name) = jsonText (given (ask, name)) ?: ""
+
+    // A number input, or a picker's choice key read as a number.
+    givenNumber (ask, name) = match given (ask, name)
+        JsonString text => parseFloat text ?: 0.0
+        other => jsonFloat other ?: 0.0
+
+    // A control's result: the next player, or the failure as the `error` input.
+    commanded (store, result) = match result
+        Success next => asked (relinked (store, store.link.linked, next, store.link.polled), [])
+        Error problem => asked (failed (store, problem), [])
+
+    started (store, result) = match result
+        Success next => asked (fed (relinked (store, true, next, store.link.clock), [fact ("connected", JsonBool true), fact ("error", JsonString ""), fact ("ended", JsonString "")]), [])
+        Error problem => asked (failed (store, problem), [])
+
+    start (store, ask) = match ui::Lists::find (store.link.devices, \d => d.name == givenText (ask, "receiver"))
+        Success device => started (store, Player::begin (device, givenText (ask, "file"), store.link.clock))
+        Error _ => asked (failed (store, "choose a receiver first"), [])
+
+    live (store, act) = match store.link.linked
+        true => commanded (store, act store.link.player)
+        false => asked (failed (store, "nothing is casting"), [])
+
+    // One request the machine made.
+    answer (store, ask) = match ask.askName
+        "cast.discover" => asked (fed (store, [fact ("searched", JsonBool false)]), [Requests::ask ("discover", browse)])
+        "cast.choose" => asked (store, [Requests::ask ("choose", choose)])
+        "cast.start" => start (store, ask)
+        "cast.pause" => live (store, \p => Player::pause p)
+        "cast.resume" => live (store, \p => Player::play p)
+        "cast.stop" => live (store, \p => Player::stop p)
+        "cast.finished" => asked (fed (store, [fact ("ended", JsonString ""), fact ("player", JsonString "")]), [])
+        "cast.seek" => live (store, \p => Player::seek (p, ui::Pick::either (givenNumber (ask, "position") + givenNumber (ask, "skip") < 0.0, 0.0, givenNumber (ask, "position") + givenNumber (ask, "skip"))))
+        "cast.volume" => live (store, \p => Player::volume (p, givenNumber (ask, "wantVolume")))
+        "cast.rate" => live (store, \p => Player::rate (p, givenNumber (ask, "wantRate")))
+        _ => asked (failed (store, "the machine asked for an unknown request ${ask.askName}"), [])
+
+    served (out, ask) =
+        next = answer (out.servedStore, ask)
+        Served(servedStore = next.servedStore, servedAsks = listConcat out.servedAsks next.servedAsks)
+
+    // Answers requests until none are left: an answer may feed inputs that make more.
+    draining (store, asks, left) = match length (Machines::requests (machineOf store)) == 0 || left <= 0
+        true => asked (store, asks)
+        false =>
+            pending = Machines::requests (machineOf store)
+            cleared = store(screen = Screen(screenMachine = Machines::taken (machineOf store)))
+            out = foldList (pending, asked (cleared, []), \(acc, ask) => served (acc, ask))
+            draining (out.servedStore, listConcat asks out.servedAsks, satSub left 1)
+
+    (** The store after answering every pending machine request, as a framework step. *)
+    export settled store =
+        out = draining (store, [], 8)
+        Runtime::asking (out.servedStore, out.servedAsks)
+
+    (** A control's lever pulled with its value, then the requests answered. *)
+    export pulled (store, lever, value) = settled (store(screen = Screen(screenMachine = Machines::pull (machineOf store, lever, value))))
+
+    // ---- completions ----
+
+    receiver d = JsonObject [Doc::str ("key", d.name), Doc::str ("label", d.name)]
+
+    discovered (store, text) =
+        devices = Discovery::browse text
+        first = listGet devices 0 ?: chromecast::Discovery::Device(name = "", host = "", port = 0)
+        chosen = Machines::text (machineOf store, "receiver")
+        keep = ui::Lists::any (devices, \d => d.name == chosen)
+        settled (fed (withDevices (store, devices), [fact ("searched", JsonBool true), fact ("receivers", JsonArray (mapList (devices, receiver))), fact ("receiver", JsonString (ui::Pick::either (keep, chosen, first.name)))]))
+
+    picked (store, doc) = match Doc::flag (doc, "cancelled")
+        true => Runtime::step store
+        false => settled (fed (store, [fact ("file", JsonString (Doc::text (doc, "path"))), fact ("title", JsonString (Media::title (Doc::text (doc, "path"))))]))
+
+    (** A capability's completion: the device browse or the file picker. *)
+    export completed (store, ticket, outcome) = match outcome
+        Error problem => settled (failed (store, problem))
+        Success doc => match ticket
+            "discover" => discovered (store, perform ui::Slices.fetch "cast-browse")
+            "choose" => picked (store, doc)
+            _ => Runtime::step store
+
+    // ---- the frame clock ----
+
+    facts (p, now) = [
+        fact ("player", JsonString p.player_state),
+        fact ("position", JsonFloat (Player::elapsed (p, now))),
+        fact ("duration", JsonFloat p.duration),
+        fact ("volume", JsonFloat (ui::Pick::either (p.volume < 0.0, 1.0, p.volume))),
+        fact ("rate", JsonFloat p.rate),
+        fact ("ended", JsonString (ui::Pick::either (startsWith p.ending "ERROR", "", p.ending))),
+        fact ("canPause", JsonBool (bitAnd p.commands 1 == 1)),
+        fact ("canSeek", JsonBool (bitAnd p.commands 2 == 2)),
+        fact ("connected", JsonBool (p.phase != "ended")),
+    ]
+
+    // A refused cast is an error; a finished one is not.
+    refused p = ui::Pick::either (startsWith p.ending "ERROR", [fact ("error", JsonString p.ending)], [])
+
+    finished (store, p) = match p.phase == "ended"
+        true =>
+            _ended = Player::end p
+            relinked (store, false, p, store.link.polled)
+        false => relinked (store, true, p, store.link.polled)
+
+    polled (store, now) = match Player::poll (store.link.player, now, 1)
+        Success p => settled (fed (finished (store, p), listConcat (facts (p, now)) (refused p)))
+        Error problem =>
+            _ended = Player::end store.link.player
+            settled (fed (relinked (store, false, store.link.player, store.link.polled), [fact ("connected", JsonBool false), fact ("error", JsonString "Connection lost: ${problem}")]))
+
+    spun (store, seconds) = match Machines::text (machineOf store, "player") == "PLAYING"
+        true => fed (store, [fact ("spin", JsonFloat (Machines::number (machineOf store, "spin") + seconds * turnPerSecond))])
+        false => store
+
+    (** A display frame: advances the clock, turns the disc while playing and polls the live player every `pollMs`. *)
+    export ticked (store, seconds) =
+        now = satAdd store.link.clock (floatToInt (seconds * 1000.0) ?: 0)
+        clocked = withClock (store, now)
+        due = clocked.link.linked && now - clocked.link.polled >= pollMs
+        match due
+            true => polled (spun (relinked (clocked, true, clocked.link.player, now), seconds), now)
+            false => Runtime::step clocked

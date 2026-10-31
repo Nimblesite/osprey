@@ -1,0 +1,279 @@
+// Implements [UI-MACHINE]: an interface as data. A machine document holds
+// inputs, parallel state-machine layers, a view template and skins, as a
+// Rive file does; this module validates it, settles its layers when inputs
+// change and collects the requests the entered states make.
+namespace ui
+
+(** One input of a machine: its name, its declared type (`bool`, `number`, `text`, `trigger` or `list`) and its value ([UI-MACHINE-INPUTS]). *)
+type Knob =
+    knobName : string
+    knobType : string
+    knobValue : Json
+
+(** The state a layer is in ([UI-MACHINE-LAYERS]). *)
+type Current =
+    currentLayer : string
+    currentState : string
+
+(** A request an entered state made: its name and the inputs it named, with their values at entry. *)
+type Ask =
+    askName : string
+    askInputs : List<Knob>
+
+(** A running machine: its document, inputs, each layer's state, the requests not yet taken and the last fault, "" when none. *)
+type Machine =
+    machineDoc : Json
+    knobs : List<Knob>
+    currents : List<Current>
+    asks : List<Ask>
+    machineFault : string
+
+(** What a machine's controls deliver ([UI-MACHINE-VIEW]): fire a trigger, or set an input from the control's value or to a literal and then fire `…Fire` unless it is "". *)
+type Lever =
+    Fire
+        fireName : string
+    Assign
+        assignName : string
+        assignFire : string
+    Put
+        putName : string
+        putValue : Json
+        putFire : string
+
+(** A layer's move in one settle round, and whether it moved. *)
+type Moved =
+    movedMachine : Machine
+    moved : bool
+
+(** Loads, drives and reads machine documents ([UI-MACHINE]). *)
+module Machines
+    (** The input types a document may declare. *)
+    export kinds = ["bool", "number", "text", "trigger", "list"]
+
+    (** How many settle rounds may pass before a machine is reported as cycling. *)
+    export rounds = 32
+
+    numeric value = match value
+        JsonFloat f => f
+        JsonInt i => toFloat i
+        _ => 0.0
+
+    isNumber value = match value
+        JsonFloat _ => true
+        JsonInt _ => true
+        _ => false
+
+    fits (kind, value) = match value
+        JsonBool _ => kind == "bool" || kind == "trigger"
+        JsonString _ => kind == "text"
+        JsonArray _ => kind == "list"
+        _ => kind == "number" && isNumber value
+
+    normal (kind, value) = Pick::either (kind == "number", JsonFloat (numeric value), value)
+
+    blank kind = match kind
+        "bool" => JsonBool false
+        "trigger" => JsonBool false
+        "number" => JsonFloat 0.0
+        "list" => JsonArray []
+        _ => JsonString ""
+
+    (** The value of input `name`, or `JsonNull` when there is none. *)
+    export value (machine, name) = match Lists::find (machine.knobs, \k => k.knobName == name)
+        Success k => k.knobValue
+        Error _ => JsonNull
+
+    (** Input `name` as text: a string as itself, a number or flag written out. *)
+    export text (machine, name) = match value (machine, name)
+        JsonString s => s
+        JsonNull => ""
+        other => Doc::write other
+
+    (** Input `name` as a float, 0 when it is not a number. *)
+    export number (machine, name) = numeric (value (machine, name))
+
+    (** Input `name` as a flag, false when it is not one. *)
+    export flag (machine, name) = jsonBool (value (machine, name)) ?: false
+
+    (** The state layer `layer` is in, "" when there is no such layer. *)
+    export current (machine, layer) = match Lists::find (machine.currents, \c => c.currentLayer == layer)
+        Success c => c.currentState
+        Error _ => ""
+
+    faulted (machine, fault) = machine(machineFault = fault)
+
+    replaced (machine, name, kind, given) = machine(knobs = mapList (machine.knobs, \k => Pick::either (k.knobName == name, Knob(knobName = name, knobType = kind, knobValue = normal (kind, given)), k)))
+
+    (** Sets input `name` without settling; a missing input or a value of the wrong type leaves the machine as it was and records a fault. *)
+    export put (machine, name, given) = match Lists::find (machine.knobs, \k => k.knobName == name)
+        Error _ => faulted (machine, "no input named \"${name}\"")
+        Success k => match fits (k.knobType, given)
+            true => replaced (machine, name, k.knobType, given)
+            false => faulted (machine, "input \"${name}\" is a ${k.knobType}")
+
+    // ---- conditions [UI-MACHINE-WHEN] ----
+
+    conditionKind c = (Lists::find (["all", "any", "not", "fired", "state", "input"], \key => Doc::has (c, key))) ?: ""
+
+    comparison c = (Lists::find (["eq", "ne", "lt", "gt"], \key => Doc::has (c, key))) ?: ""
+
+    same (a, b) = match isNumber a && isNumber b
+        true => numeric a == numeric b
+        false => Doc::write a == Doc::write b
+
+    compared (machine, c) =
+        held = value (machine, Doc::text (c, "input"))
+        match comparison c
+            "eq" => same (held, Doc::field (c, "eq"))
+            "ne" => same (held, Doc::field (c, "ne")) == false
+            "lt" => numeric held < numeric (Doc::field (c, "lt"))
+            "gt" => numeric held > numeric (Doc::field (c, "gt"))
+            _ => false
+
+    (** Whether condition `c` holds; an absent condition (`JsonNull`) always holds. *)
+    export holds (machine, c) = match conditionKind c
+        "all" => Lists::all (Doc::items (Doc::field (c, "all")), \x => holds (machine, x))
+        "any" => Lists::any (Doc::items (Doc::field (c, "any")), \x => holds (machine, x))
+        "not" => holds (machine, Doc::field (c, "not")) == false
+        "fired" => flag (machine, Doc::text (c, "fired"))
+        "state" => Lists::any (Doc::texts (c, "in"), \name => name == current (machine, Doc::text (c, "state")))
+        "input" => compared (machine, c)
+        _ => c == JsonNull
+
+    // ---- layers and settling [UI-MACHINE-LAYERS] ----
+
+    layers machine = Doc::items (Doc::field (machine.machineDoc, "layers"))
+
+    ask (machine, request) = Ask(askName = Doc::text (request, "request"), askInputs = filterList (machine.knobs, \k => Lists::any (Doc::texts (request, "with"), \name => name == k.knobName)))
+
+    entered (machine, layer, target) =
+        name = Doc::text (layer, "name")
+        moved = machine(currents = mapList (machine.currents, \c => Pick::either (c.currentLayer == name, Current(currentLayer = name, currentState = target), c)))
+        requests = Doc::items (Doc::field (Doc::field (Doc::field (layer, "states"), target), "enter"))
+        moved(asks = listConcat moved.asks (mapList (requests, \r => ask (moved, r))))
+
+    eligible (machine, current, t) =
+        from = Doc::text (t, "from")
+        (from == current || from == "*") && Doc::text (t, "to") != current && holds (machine, Doc::field (t, "when"))
+
+    stepLayer (round, layer) =
+        machine = round.movedMachine
+        current = current (machine, Doc::text (layer, "name"))
+        match Lists::find (Doc::items (Doc::field (layer, "transitions")), \t => eligible (machine, current, t))
+            Success t => Moved(movedMachine = entered (machine, layer, Doc::text (t, "to")), moved = true)
+            Error _ => round
+
+    unfire machine = machine(knobs = mapList (machine.knobs, \k => Pick::either (k.knobType == "trigger", k(knobValue = JsonBool false), k)))
+
+    round machine = foldList (layers machine, Moved(movedMachine = machine, moved = false), \(r, layer) => stepLayer (r, layer))
+
+    settling (machine, left) = match left <= 0
+        true => faulted (machine, "the machine is still moving after ${toString rounds} rounds")
+        false =>
+            next = round machine
+            match next.moved
+                true => settling (next.movedMachine, satSub left 1)
+                false => next.movedMachine
+
+    (** Moves every layer until no transition fires, collecting the entered states' requests. Triggers are seen by the first round only, as a Rive trigger fires once. *)
+    export settle machine =
+        first = round machine
+        match first.moved
+            true => settling (unfire first.movedMachine, satSub rounds 1)
+            false => unfire first.movedMachine
+
+    (** Sets several inputs, then settles once: what an adapter does with a batch of domain facts. *)
+    export feed (machine, inputs) = settle (foldList (inputs, machine, \(m, k) => put (m, k.knobName, k.knobValue)))
+
+    (** A fact for `feed`. *)
+    export fact (name, given) = Knob(knobName = name, knobType = "", knobValue = given)
+
+    (** A control's lever pulled with the control's value (`JsonNull` for a button), then settled. *)
+    export pull (machine, lever, given) = settle (pulled (machine, lever, given))
+
+    fired (machine, name) = Pick::either (name == "", machine, put (machine, name, JsonBool true))
+
+    pulled (machine, lever, given) = match lever
+        Fire name => put (machine, name, JsonBool true)
+        Assign name trigger => fired (put (machine, name, given), trigger)
+        Put name literal trigger => fired (put (machine, name, literal), trigger)
+
+    (** The requests made since the last `taken`, oldest first. *)
+    export requests machine = machine.asks
+
+    (** The machine with its requests taken. *)
+    export taken machine = machine(asks = [])
+
+    // ---- loading [UI-MACHINE-DOC] ----
+
+    knobOf (name, spec) =
+        kind = Doc::text (spec, "type")
+        Knob(knobName = name, knobType = kind, knobValue = normal (kind, Pick::either (Doc::has (spec, "value"), Doc::field (spec, "value"), blank kind)))
+
+    inputProblems spec = match spec
+        JsonMember name body => match Lists::any (kinds, \k => k == Doc::text (body, "type"))
+            false => ["inputs.${name}.type: expected one of ${join kinds ", "}"]
+            true => match Doc::has (body, "value") && fits (Doc::text (body, "type"), Doc::field (body, "value")) == false
+                true => ["inputs.${name}.value: not a ${Doc::text (body, "type")}"]
+                false => []
+        _ => []
+
+    memberName m = match m
+        JsonMember name _ => name
+        _ => ""
+
+    stateNames layer = mapList (Doc::members (Doc::field (layer, "states")), memberName)
+
+    known (names, name) = Lists::any (names, \n => n == name)
+
+    transitionProblems (at, names, t) =
+        to = Doc::text (t, "to")
+        from = Doc::text (t, "from")
+        bad = listConcat (Pick::either (known (names, to), [], ["${at}.to: no state named \"${to}\""])) (Pick::either (from == "*" || known (names, from), [], ["${at}.from: no state named \"${from}\""]))
+        bad
+
+    layerProblems (index, layer) =
+        at = "layers[${toString index}]"
+        names = stateNames layer
+        initial = Doc::text (layer, "initial")
+        start = Pick::either (known (names, initial), [], ["${at}.initial: no state named \"${initial}\""])
+        moves = Doc::items (Doc::field (layer, "transitions"))
+        listConcat start (Lists::flatten (mapList (toList (range (0, length moves)), \i => transitionProblems ("${at}.transitions[${toString i}]", names, listGet moves i ?: JsonNull))))
+
+    (** Every fault in a document, each naming its JSON path; none means it loads. *)
+    export problems doc =
+        schema = Pick::either (Doc::number (doc, "schema") == 1, [], ["schema: expected 1"])
+        inputs = Lists::flatten (mapList (Doc::members (Doc::field (doc, "inputs")), inputProblems))
+        layered = Doc::items (Doc::field (doc, "layers"))
+        moves = Lists::flatten (mapList (toList (range (0, length layered)), \i => layerProblems (i, listGet layered i ?: JsonNull)))
+        listConcat (listConcat schema inputs) (listConcat moves (Templates::problems (doc, "view", Doc::field (doc, "view"))))
+
+    memberKnob m = match m
+        JsonMember name spec => knobOf (name, spec)
+        _ => knobOf ("", JsonNull)
+
+    begin doc =
+        knobs = mapList (Doc::members (Doc::field (doc, "inputs")), memberKnob)
+        layered = Doc::items (Doc::field (doc, "layers"))
+        currents = mapList (layered, \layer => Current(currentLayer = Doc::text (layer, "name"), currentState = Doc::text (layer, "initial")))
+        fresh = Machine(machineDoc = doc, knobs = knobs, currents = currents, asks = [], machineFault = "")
+        foldList (layered, fresh, \(m, layer) => entered (m, layer, Doc::text (layer, "initial")))
+
+    (** A machine that only shows `problem`, for a document that would not load. *)
+    export faulty problem = Machine(machineDoc = JsonObject [JsonMember "view" (JsonObject [Doc::str ("kind", "empty"), Doc::str ("symbol", "warning"), Doc::str ("text", "This interface could not load"), Doc::str ("detail", problem)])], knobs = [], currents = [], asks = [], machineFault = problem)
+
+    (** A machine's changing part as JSON, for signal comparison: every input, every layer's state and the fault. *)
+    export encode machine = JsonObject [
+        JsonMember "inputs" (JsonObject (mapList (machine.knobs, \k => JsonMember k.knobName k.knobValue))),
+        JsonMember "states" (JsonObject (mapList (machine.currents, \c => Doc::str (c.currentLayer, c.currentState)))),
+        Doc::str ("fault", machine.machineFault),
+    ]
+
+    (** A machine from document text, settled from its initial states; an error lists every problem. *)
+    export load source = match jsonDecode source
+        Error _ => Error(message = "the machine document is not JSON")
+        Success doc =>
+            found = problems doc
+            match length found == 0
+                true => Success(value = settle (begin doc))
+                false => Error(message = join found "\n")

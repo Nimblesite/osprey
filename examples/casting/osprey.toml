@@ -1,0 +1,9 @@
+[project]
+name = "casting"
+source_roots = ["main.ospml", "src", "../../packages/native/src", "../../packages/chromecast/src"]
+python_sources = ["../../packages/chromecast/src/hex.py", "../../packages/chromecast/src/protocol.py", "../../packages/chromecast/src/wire.py", "../../packages/chromecast/src/discovery.py", "../../packages/chromecast/src/session.py", "../../packages/chromecast/src/media.py", "../../packages/chromecast/src/player.py", "../../packages/chromecast/src/cast.py"]
+default_namespace = "app"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

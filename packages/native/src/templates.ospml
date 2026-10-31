@@ -1,0 +1,203 @@
+// Implements [UI-MACHINE-VIEW] and [UI-MACHINE-SKINS]: a machine's view is a
+// node template in the protocol's own vocabulary, filled from the inputs and
+// rendered to ordinary typed nodes, so every host draws it unchanged.
+namespace ui
+
+(** Renders and checks machine view templates and skins ([UI-MACHINE-VIEW]). *)
+module Templates
+    (** Every node kind a template may use, with the members each accepts besides `kind`, `when` and `children`. *)
+    export members kind = match kind
+        "stack" => ["axis"]
+        "text" => ["text", "role", "tone"]
+        "label" => ["text", "symbol"]
+        "badge" => ["text", "symbol", "tone"]
+        "button" => ["text", "symbol", "role", "enabled", "on"]
+        "picker" => ["text", "choices", "selected", "on"]
+        "toggle" => ["text", "value", "on"]
+        "meter" => ["text", "amount", "total", "tone"]
+        "progress" => ["text", "detail"]
+        "image" => ["source", "alt", "width", "height"]
+        "empty" => ["symbol", "text", "detail"]
+        "framed" => ["width", "height", "radius", "gap", "fill", "ink", "line", "padding", "align", "cross", "grow", "shadow"]
+        "scene" => ["width", "height", "shapes", "on"]
+        "spacer" => []
+        "divider" => []
+        _ => ["?"]
+
+    structural = ["kind", "when", "children"]
+
+    memberName m = match m
+        JsonMember name _ => name
+        _ => ""
+
+    (** Every fault in the template at `at`, each naming its JSON path. *)
+    export problems (doc, at, node) =
+        kind = Doc::text (node, "kind")
+        allowed = members kind
+        unknown = filterList (mapList (Doc::members node, memberName), \name => Lists::any (listConcat structural allowed, \a => a == name) == false)
+        own = match Lists::any (allowed, \a => a == "?")
+            true => ["${at}.kind: no node kind \"${kind}\""]
+            false => mapList (unknown, \name => "${at}.${name}: not a member of ${kind}")
+        children = Doc::items (Doc::field (node, "children"))
+        listConcat own (listConcat (leverProblems (doc, at, node)) (Lists::flatten (mapList (toList (range (0, length children)), \i => problems (doc, "${at}.children[${toString i}]", listGet children i ?: JsonNull)))))
+
+    leverProblems (doc, at, node) =
+        on = Doc::field (node, "on")
+        named = filterList ([Doc::text (on, "set"), Doc::text (on, "fire")], \n => n != "")
+        missing = filterList (named, \n => Doc::has (Doc::field (doc, "inputs"), n) == false)
+        mapList (missing, \n => "${at}.on: no input named \"${n}\"")
+
+    // ---- filling strings ----
+
+    pad2 n = padStart (toString n) 2 "0" ?: toString n
+
+    clock seconds =
+        total = floatToInt (floor seconds) ?: 0
+        minutes = intDiv total 60
+        "${toString minutes}:${pad2 (satSub total (satMul minutes 60))}"
+
+    percent fraction = toString (floatToInt (round (fraction * 100.0)) ?: 0)
+
+    filtered (machine, name, filter) = match filter
+        "clock" => clock (Machines::number (machine, name))
+        "percent" => percent (Machines::number (machine, name))
+        _ => Machines::text (machine, name)
+
+    piece (machine, part) =
+        sides = split part "}}" ?: [part]
+        expr = split (listGet sides 0 ?: "") "|" ?: []
+        rest = join (Lists::slice (sides, 1, length sides)) "}}"
+        "${filtered (machine, listGet expr 0 ?: "", listGet expr 1 ?: "")}${rest}"
+
+    (** `{{name}}` and `{{name|filter}}` in `text` replaced by inputs; the filters are `clock` (m:ss) and `percent`. *)
+    export fill (machine, text) =
+        parts = split text "{{" ?: [text]
+        foldList (Lists::slice (parts, 1, length parts), listGet parts 0 ?: "", \(out, part) => out + piece (machine, part))
+
+    textOf (machine, node, key) = fill (machine, Doc::text (node, key))
+
+    numberOf (machine, node, key) = match Doc::field (node, key)
+        JsonString s => parseFloat (fill (machine, s)) ?: 0.0
+        other => jsonFloat other ?: toFloat (jsonInt other ?: 0)
+
+    intOf (machine, node, key) = floatToInt (round (numberOf (machine, node, key))) ?: 0
+
+    // ---- typed members ----
+
+    role name = match name
+        "display" => Display
+        "large" => Large
+        "title" => Title
+        "heading" => Heading
+        "lead" => Lead
+        "headline" => Headline
+        "callout" => Callout
+        "caption" => Caption
+        "eyebrow" => Eyebrow
+        "mono" => Mono
+        _ => Body
+
+    tone name = match name
+        "secondary" => Secondary
+        "accent" => Accent
+        "good" => Good
+        "caution" => Caution
+        "danger" => Danger
+        _ => Primary
+
+    buttonRole name = match name
+        "prominent" => Prominent
+        "destructive" => Destructive
+        "filled" => Filled
+        _ => Plain
+
+    lever node =
+        on = Doc::field (node, "on")
+        match Doc::has (on, "set")
+            false => Fire(fireName = Doc::text (on, "fire"))
+            true => match Doc::has (on, "value")
+                true => Put(putName = Doc::text (on, "set"), putValue = Doc::field (on, "value"), putFire = Doc::text (on, "fire"))
+                false => Assign(assignName = Doc::text (on, "set"), assignFire = Doc::text (on, "fire"))
+
+    choices (machine, node) = mapList (Doc::items (Machines::value (machine, Doc::text (node, "choices"))), \c => Ui::choice (Doc::text (c, "key"), Doc::text (c, "label")))
+
+    enabled (machine, node) = Machines::holds (machine, Doc::field (node, "enabled"))
+
+    // ---- skins [UI-MACHINE-SKINS] ----
+
+    skinsOf machine = Doc::members (Doc::field (machine.machineDoc, "skins"))
+
+    skinBody m = match m
+        JsonMember _ body => body
+        _ => JsonNull
+
+    (** The chosen skin's body: the one the `skin` input names, else the first. *)
+    export skin machine = match Lists::find (skinsOf machine, \m => memberName m == Machines::text (machine, "skin"))
+        Success m => skinBody m
+        Error _ => match listGet (skinsOf machine) 0
+            Success m => skinBody m
+            Error _ => JsonNull
+
+    (** The chosen skin's tokens as a theme, each the same in both appearances unless it gives `light` and `dark`. *)
+    export theme machine = Theme(tokens = mapList (Doc::members (Doc::field (skin machine, "tokens")), token), spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 180)
+
+    paired (name, body) = match jsonText body
+        Success hex => Token(tokenName = name, tokenLight = hex, tokenDark = hex)
+        Error _ => Token(tokenName = name, tokenLight = Doc::text (body, "light"), tokenDark = Doc::text (body, "dark"))
+
+    token m = match m
+        JsonMember name body => paired (name, body)
+        _ => Token(tokenName = "", tokenLight = "", tokenDark = "")
+
+    // ---- scenes ----
+
+    digit code = indexOf "0123456789ABCDEF" (toUpperCase code) ?: 0
+
+    byte (hex, at) = satAdd (satMul (digit (substring hex at (satAdd at 1) ?: "0")) 16) (digit (substring hex (satAdd at 1) (satAdd at 2) ?: "0"))
+
+    // A `#RRGGBB` colour, or `@token` from the chosen skin, packed with an alpha from 0 to 1.
+    colour (machine, shape) =
+        named = Doc::text (shape, "colour")
+        hex = Pick::either (startsWith named "@", Doc::text (Doc::field (skin machine, "tokens"), drop named 1), named)
+        Scenes::rgba (byte (hex, 1), byte (hex, 3), byte (hex, 5), floatToInt (round (Pick::either (Doc::has (shape, "alpha"), numberOf (machine, shape, "alpha"), 1.0) * 255.0)) ?: 255)
+
+    primitive (machine, shape) =
+        at = \key => numberOf (machine, shape, key)
+        depth = floatToInt (at "depth") ?: 0
+        match Doc::text (shape, "shape")
+            "disc" => Scenes::disc (at "x", at "y", at "radius", colour (machine, shape), depth)
+            _ => Scenes::rect (at "x", at "y", at "w", at "h", at "angle" + at "turn", colour (machine, shape), depth)
+
+    // ---- nodes ----
+
+    frameStyle (machine, node) =
+        style = Frames::plain
+        pad = intOf (machine, node, "padding")
+        style(frameWidth = intOf (machine, node, "width"), frameHeight = intOf (machine, node, "height"), frameRadius = intOf (machine, node, "radius"), frameGap = intOf (machine, node, "gap"), frameFill = Doc::text (node, "fill"), frameInk = Doc::text (node, "ink"), frameLine = Doc::text (node, "line"), frameTop = pad, frameRight = pad, frameBottom = pad, frameLeft = pad, frameAlign = Doc::text (node, "align"), frameCross = Doc::text (node, "cross"), frameGrow = Doc::flag (node, "grow"), frameShadow = Doc::text (node, "shadow"))
+
+    childrenOf (machine, node) = Lists::flatten (mapList (Doc::items (Doc::field (node, "children")), \child => render (machine, child)))
+
+    built (machine, node) = match Doc::text (node, "kind")
+        "stack" => Pick::either (Doc::text (node, "axis") == "horizontal", Ui::row (childrenOf (machine, node)), Ui::column (childrenOf (machine, node)))
+        "text" => Ui::styled (textOf (machine, node, "text"), role (Doc::text (node, "role")), tone (Doc::text (node, "tone")))
+        "label" => Ui::label (textOf (machine, node, "text"), Doc::text (node, "symbol"))
+        "badge" => Ui::badge (textOf (machine, node, "text"), Doc::text (node, "symbol"), tone (Doc::text (node, "tone")))
+        "button" => Ui::action (textOf (machine, node, "text"), Doc::text (node, "symbol"), buttonRole (Doc::text (node, "role")), enabled (machine, node), lever node)
+        "picker" => Ui::picker (textOf (machine, node, "text"), choices (machine, node), textOf (machine, node, "selected"), lever node)
+        "toggle" => Ui::toggle (textOf (machine, node, "text"), Machines::flag (machine, Doc::text (node, "value")), lever node)
+        "meter" => Ui::meter (textOf (machine, node, "text"), intOf (machine, node, "amount"), intOf (machine, node, "total"), tone (Doc::text (node, "tone")))
+        "progress" => Progress(label = textOf (machine, node, "text"), detail = textOf (machine, node, "detail"))
+        "image" => Ui::image (textOf (machine, node, "source"), textOf (machine, node, "alt"), intOf (machine, node, "width"), intOf (machine, node, "height"))
+        "empty" => Ui::empty (Doc::text (node, "symbol"), textOf (machine, node, "text"), textOf (machine, node, "detail"))
+        "framed" => Ui::framed (frameStyle (machine, node), Ui::column (childrenOf (machine, node)))
+        "scene" => Ui::scene (numberOf (machine, node, "width"), numberOf (machine, node, "height"), [], mapList (Doc::items (Doc::field (node, "shapes")), \shape => primitive (machine, shape)), lever node)
+        "divider" => Divider
+        _ => Spacer
+
+    (** The node a template renders to with the machine's inputs, or none when its `when` fails. *)
+    export render (machine, node) = match Machines::holds (machine, Doc::field (node, "when"))
+        true => [built (machine, node)]
+        false => []
+
+    (** The machine's whole view in its chosen skin. *)
+    export view machine = Ui::themed (theme machine, Ui::column (render (machine, Doc::field (machine.machineDoc, "view"))))

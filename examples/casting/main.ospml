@@ -1,0 +1,32 @@
+// The casting player's C boundary for the GPUI host ([GPUI-HOST-BOUNDARY], [UI-RESIDENT]). The
+// session stays in this library between calls, and every device byte goes through the
+// @osprey/chromecast port's real `Wire.Native` handler.
+
+import ui::Runtime
+import casting::App
+
+extern native_slice (key : string) -> string
+
+(** Hands the session the framework returned to the cell below. *)
+effect Keep
+    keep : ui::Session<casting::Store> => Unit
+
+mut live = Runtime::idle (casting::Link::store (ui::Machines::faulty ""))
+
+keeping (done : ui::Resident<casting::Store>) =
+    perform Keep.keep done.residentSession
+    done.residentEnvelope
+
+start source =
+    handle Keep
+        keep session => live := session
+    handle ui::Slices
+        fetch key => native_slice key
+    casting::Link::guarded (\() => chromecast::Wire::Native (\() => keeping (Runtime::begin (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), App::theme ()))))
+
+dispatch (_saved : string, event) =
+    handle Keep
+        keep session => live := session
+    handle ui::Slices
+        fetch key => native_slice key
+    casting::Link::guarded (\() => chromecast::Wire::Native (\() => keeping (Runtime::proceed (live, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes)))))
