@@ -20,6 +20,9 @@ The compiler at `target/summary-final-release/osprey` has SHA-256 `758cb181dced5
 | Independent CLI accept/reject, diagnostic and runtime controls | Separate matrices of 90, 150 and 70 passing cases |
 | Native GC and ARC differential corpora | 287 matching goldens, 20 alternate GPU cases and six doctests per backend; zero ARC leaks |
 | WebAssembly differential corpus | 215 matching goldens, 72 pinned unsupported cases, zero leaks, 20 alternate GPU cases and six doctests |
+| Actual Workbench WASM build | Passed in 768.103 seconds; 88 source/runtime inputs unchanged; 1,389,547-byte artifact validated |
+| Workbench development host, browser and visual checks | 74 passing checks against the actual final WASM; 148 source/asset inputs unchanged |
+| CLI launcher integration regressions | Three passing cases, independently confirmed after the pi run |
 | Process demonstration after the canonical runtime rebuild | Four matching goldens: Default/ML with GC/ARC |
 | Package coverage policy regressions | 42 passing tests |
 | Canonical macOS ABI and persistent globals | Passed, including GPUI exports and Storage/Counter controls |
@@ -28,6 +31,6 @@ The isolated analyzer and retained-cache tests are necessary to measure copies, 
 
 ## Remaining acceptance
 
-Require the current Workbench producer's actual exit and artifact, complete project coverage, browser/native acceptance and every required GitHub check on the final pushed head. Preserve the coverage producer-status guard: the earlier cancelled build left producer jobs skipped, which correctly failed that guard before any numeric coverage result existed. Windows failures remain with their assigned owner.
+The final Workbench WASM has SHA-256 `45f67bb9a8521b90a11a8511f24a3596e5dce427c3ef99613fdc6b1aa55301c9`. Its development-host checks do not establish installed VSIX or native application acceptance. Require complete project coverage, native/installed acceptance and every required GitHub check on the final pushed head. Preserve the coverage producer-status guard: the earlier cancelled build left producer jobs skipped, which correctly failed that guard before any numeric coverage result existed. Windows failures remain with their assigned owner.
 
 After a green merge, recheck published versions and release the next stable minor using the established release workflow. Require a fresh audit of the exact tag SHA, successful publication/deployment channels, `release-complete` and verified published assets. A running build or an older green head is insufficient evidence.
