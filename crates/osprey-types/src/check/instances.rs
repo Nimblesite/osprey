@@ -99,6 +99,7 @@ pub(super) fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Ins
     let mut instances = crate::effect_rows::Instances {
         signatures: super::publish::resolved_signatures(checker, crate::ctx::InferCtx::expose),
         expression_types: resolved_expression_types(checker).into(),
+        data_types: crate::effect_rows::data_types(&checker.ctors),
         methods: checker.methods.clone(),
         non_callable_call_error: checker
             .errors

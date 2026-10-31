@@ -64,6 +64,8 @@ use gpu::{gpu_kernel_slot, validate_gpu_kernel};
 mod validate_handlers;
 use validate_handlers::validate_handler_arms;
 mod reachability;
+mod data_shapes;
+pub(crate) use data_shapes::data_types;
 mod recursion;
 mod worklist;
 use reachability::{fibered_operation, operation_pairs, walk_children};
@@ -85,6 +87,9 @@ pub(crate) struct Instances {
     pub(crate) signatures: HashMap<String, (Vec<crate::ty::Type>, crate::ty::Type)>,
     pub(crate) signal_queries: RefCell<HashMap<usize, crate::EffectRequirements>>,
     pub(crate) expression_types: RefCell<HashMap<usize, crate::ty::Type>>,
+    /// Declared types no value of which can hold a function, with their field
+    /// names ([`data_shapes::data_types`]).
+    pub(crate) data_types: HashMap<String, BTreeSet<String>>,
     pub(crate) methods: crate::methods::Targets,
     /// A type error already proved a call target is not callable. It cannot
     /// also be an effectful dynamic callable in the accepted-program proof.

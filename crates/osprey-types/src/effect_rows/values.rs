@@ -138,12 +138,16 @@ impl Analyzer<'_> {
         value
     }
 
+    /// The whole provenance of `expression` when its type alone decides it: a
+    /// scalar, or a value of a type that can never hold a function
+    /// ([`super::data_shapes`]).
     pub(super) fn scalar_shape(&self, expression: &Expr) -> Option<Value> {
         let types = self.instances.expression_types.borrow();
         let ty = types.get(&expression_site(expression))?;
-        scalar_type(ty)
-            .then(|| super::value_shapes::value_shape(ty))
-            .flatten()
+        if scalar_type(ty) {
+            return super::value_shapes::value_shape(ty);
+        }
+        super::data_shapes::data_shape(ty, &self.instances.data_types)
     }
 
     fn empty_case(&self, expression: &Expr, env: &CallableEnv) -> Option<EmptyCase> {
