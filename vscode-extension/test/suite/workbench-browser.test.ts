@@ -6,7 +6,7 @@ import * as sinon from "sinon";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import { ColorThemeKind, commands, Uri, window } from "vscode";
 import * as Wasi from "../../client/src/osprey-ui/wasi";
-import { COMMAND, assertNoFreehandInk, mathematics, viewport, phoneSourceGeometry, capture, lesson, withWorkbench, staleWorkbenchAction, pendingWorkbenchUpdate, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, rejectReimportedProof, saveWorking, reopenWorking, preserveLegacyWorking, writeLegacyWorkspace, exportWorking, comparisonState } from "./workbench-browser-kit";
+import { COMMAND, assertNoFreehandInk, mathematics, viewport, phoneSourceGeometry, capture, lesson, withWorkbench, staleWorkbenchAction, pendingWorkbenchUpdate, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, rejectReimportedProof, saveWorking, reopenWorking, rejectRetiredWorking, exportWorking, comparisonState } from "./workbench-browser-kit";
 
 suite("workbench VSIX browser", () => {
   teardown(() => sinon.restore());
@@ -200,14 +200,13 @@ suite("workbench VSIX browser", () => {
       await withWorkbench(async frame => { await saveWorking(frame, saved); await reopenWorking(frame, saved); await exportWorking(frame, exported); }, "failure-documents");
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
-  test("shared Osprey preserves legacy board data when a typed document is reopened and saved", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-workbench-legacy-"));
-    const legacy = path.join(root, "legacy.json"), saved = path.join(root, "preserved.json");
-    writeLegacyWorkspace(legacy);
-    sinon.stub(window, "showOpenDialog").resolves([Uri.file(legacy)]);
+  test("shared Osprey refuses retired drawing files and preserves the checked document", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-workbench-retired-"));
+    const retired = path.join(root, "retired.json"), saved = path.join(root, "current.json");
+    sinon.stub(window, "showOpenDialog").resolves([Uri.file(retired)]);
     sinon.stub(window, "showSaveDialog").resolves(Uri.file(saved));
     try {
-      await withWorkbench(async frame => preserveLegacyWorking(frame, saved), "failure-legacy-board-data");
+      await withWorkbench(async frame => rejectRetiredWorking(frame, retired, saved), "failure-retired-board-refusal");
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 

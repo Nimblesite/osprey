@@ -373,6 +373,11 @@ export async function rejectReimportedProof(frame: Frame, source: string, execut
 async function writeWorkspace(frame: Frame, file: string, title: string, text: string) {
   await frame.getByRole("textbox", { name: "Solution title", exact: true }).fill(title);
   await frame.getByRole("textbox", { name: "Argument & calculations", exact: true }).fill(text);
+  return saveWorkspace(frame, file);
+}
+
+async function saveWorkspace(frame: Frame, file: string) {
+  fs.rmSync(file, { force: true });
   await frame.getByRole("button", { name: "Save", exact: true }).click();
   await waitFor(() => fs.existsSync(file), Boolean, 3000, "real Osprey SaveFile writes the chosen file");
   return JSON.parse(fs.readFileSync(file, "utf8"));
@@ -380,11 +385,10 @@ async function writeWorkspace(frame: Frame, file: string, title: string, text: s
 
 export async function saveWorking(frame: Frame, file: string): Promise<void> {
   const saved = await writeWorkspace(frame, file, "Saved experiment", WORKING);
-  assert.deepStrictEqual(Object.keys(saved).sort(), ["board", "text", "title", "version"]);
-  assert.strictEqual(saved.version, 1);
+  assert.deepStrictEqual(Object.keys(saved).sort(), ["text", "title", "version"]);
+  assert.strictEqual(saved.version, 2);
   assert.strictEqual(saved.title, "Saved experiment");
   assert.strictEqual(saved.text, WORKING);
-  assert.strictEqual(saved.board.strokes.length, 0, "a new typed save must not invent freehand strokes");
 }
 
 async function openWorkspaceTo(frame: Frame, title: string): Promise<void> {
@@ -396,22 +400,26 @@ async function openWorkspaceTo(frame: Frame, title: string): Promise<void> {
 }
 
 export async function reopenWorking(frame: Frame, file: string): Promise<void> {
+  await frame.getByRole("textbox", { name: "Solution title", exact: true }).fill("Changed title since saving");
   await frame.getByRole("textbox", { name: "Argument & calculations", exact: true }).fill("Changed since saving");
   await openWorkspaceTo(frame, "Saved experiment");
   assert.strictEqual(JSON.parse(fs.readFileSync(file, "utf8")).text, WORKING);
 }
 
-const LEGACY_BOARD = { version: 1, notes: "Legacy board notes", size: { width: 1536, height: 1024 }, view: { x: 0, y: 0, scale: 100 }, strokes: [{ points: [[10, 20], [80, 90]], width: 4, at: 1 }] };
+const RETIRED_BOARD = { version: 1, notes: "Retired drawing notes", size: { width: 1536, height: 1024 }, view: { x: 0, y: 0, scale: 100 }, strokes: [{ points: [[10, 20], [80, 90]], width: 4, at: 1 }] };
 
-export function writeLegacyWorkspace(file: string): void {
-  fs.writeFileSync(file, JSON.stringify({ version: 1, title: "Legacy experiment", text: WORKING, board: LEGACY_BOARD }));
-}
-
-export async function preserveLegacyWorking(frame: Frame, saved: string): Promise<void> {
-  await openWorkspaceTo(frame, "Legacy experiment");
-  const reopened = await writeWorkspace(frame, saved, "Legacy experiment", WORKING);
-  assert.deepStrictEqual(reopened.board.strokes, LEGACY_BOARD.strokes, "opening a legacy workspace then saving must retain its existing board data");
-  assert.strictEqual(reopened.board.notes, "Legacy board notes");
+export async function rejectRetiredWorking(frame: Frame, file: string, saved: string): Promise<void> {
+  await writeWorkspace(frame, saved, "Current experiment", ARGUMENT);
+  await frame.getByText("Checked", { exact: true }).waitFor();
+  for (const version of [1, 2]) {
+    fs.writeFileSync(file, JSON.stringify({ version, title: "Retired experiment", text: WORKING, board: RETIRED_BOARD }));
+    await frame.getByRole("button", { name: "Open workspace", exact: true }).click();
+    await frame.getByText("Workspaces containing drawing data are unsupported.", { exact: true }).waitFor();
+    await frame.getByText("Checked", { exact: true }).waitFor();
+    await assertNoFreehandInk(frame);
+    await frame.getByRole("button", { name: "Dismiss message", exact: true }).click();
+    assert.deepStrictEqual(await saveWorkspace(frame, saved), { version: 2, title: "Current experiment", text: ARGUMENT });
+  }
 }
 
 export async function exportWorking(frame: Frame, file: string): Promise<void> {
