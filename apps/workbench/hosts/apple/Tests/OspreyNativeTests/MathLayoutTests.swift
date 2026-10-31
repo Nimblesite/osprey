@@ -52,15 +52,19 @@ final class MathLayoutTests: XCTestCase {
     @MainActor
     func testLongPickerOptionsRemainInsideTheMathematicalPane() throws {
         let name = String(repeating: "Namespace.Nested.", count: 15) + "theorem"
-        let view = PickerView(label: "Theorem", choices: [Choice(key: "proof", label: name)], selected: "proof", choose: { _ in })
-            .frame(width: 300, height: 60)
-        let (host, window) = TestResources.hosted(view, width: 300, height: 60)
-        defer { window.close() }
-        let popup = try XCTUnwrap(descendants(host).compactMap { $0 as? NSPopUpButton }.first)
-        let bounds = popup.convert(popup.bounds, to: host)
-        XCTAssertGreaterThanOrEqual(bounds.minX, 0, "The picker must not expand into the adjacent working board")
-        XCTAssertLessThanOrEqual(bounds.maxX, 300, "The selected theorem must not push its control past the pane")
-        XCTAssertEqual(popup.selectedItem?.title, name, "The menu must retain the complete mathematical name")
+        for width in [CGFloat(160), 300] {
+            for size in [ControlSize.mini, .small, .regular, .large] {
+                let view = PickerView(label: "Theorem", choices: [Choice(key: "proof", label: name)], selected: "proof", choose: { _ in })
+                    .controlSize(size).frame(width: width, height: 60)
+                let (host, window) = TestResources.hosted(view, width: width, height: 60)
+                defer { window.close() }
+                let popup = try XCTUnwrap(descendants(host).compactMap { $0 as? NSPopUpButton }.first)
+                let bounds = popup.convert(popup.bounds, to: host)
+                XCTAssertGreaterThanOrEqual(bounds.minX, 0, "The picker must not expand into the adjacent working board")
+                XCTAssertLessThanOrEqual(bounds.maxX, width, "The selected theorem must not push its control past the pane")
+                XCTAssertEqual(popup.selectedItem?.title, name, "The menu must retain the complete mathematical name")
+            }
+        }
     }
 
     @MainActor

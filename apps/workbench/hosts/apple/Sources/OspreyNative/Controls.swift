@@ -299,13 +299,28 @@ struct PickerView: View {
     let choose: (String) -> Void
     @Environment(\.ospreyTheme) private var theme
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.controlSize) private var controlSize
 
     var body: some View {
+        let insets = bezelInsets
         Picker(label, selection: Binding.sending(selected) { choose($0) }) {
             ForEach(choices, id: \.key) { choice in
                 Text(choice.label).foregroundColor(theme.named("primary", dark: scheme == .dark) ?? .primary).tag(choice.key)
             }
         }
+        // Implements [UI-COMPONENTS]: native bezel bounds must stay inside the authored pane.
+        .padding(.leading, max(0, insets.left)).padding(.trailing, max(0, insets.right))
+    }
+
+    private var bezelInsets: NSEdgeInsets {
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        switch controlSize {
+        case .mini: popup.controlSize = .mini
+        case .small: popup.controlSize = .small
+        case .regular: popup.controlSize = .regular
+        default: popup.controlSize = .large
+        }
+        return popup.alignmentRectInsets
     }
 }
 
