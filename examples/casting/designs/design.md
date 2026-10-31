@@ -14,7 +14,7 @@ This document specifies intended behaviour, not implemented functionality. The i
 - [x] Define skins without replacing native widgets.
 - [x] Reserve a future video viewport.
 - [x] Request peer feedback through TMC.
-- [ ] Incorporate peer feedback when received.
+- [x] Incorporate initial native-host peer feedback and record delivery gaps.
 - [ ] Verify the eventual implementation through native E2E journeys below.
 
 ## Visual directions [CAST-DESIGN-SKINS]
@@ -102,7 +102,7 @@ Scrubbing previews a time locally and sends a seek on release; the acknowledged 
 
 ## Skins are data [CAST-DESIGN-SKIN-CONTRACT]
 
-Bundle the three initial skins. A skin supplies an ID, display name, schema version, semantic palette, bundled artwork and an approved decorative-motion preset. It cannot provide code, network resources, custom controls, arbitrary layout, hit regions or accessibility labels. Do not build a skin marketplace or importer in this first scope.
+Bundle the three initial skins. A skin supplies an ID, display name, schema version, semantic palette, bundled artwork and an approved motion/visualizer preset (see [CAST-DESIGN-VISUALIZER]). It cannot provide code, network resources, custom controls, arbitrary layout, hit regions or accessibility labels. Do not build a skin marketplace or importer in this first scope.
 
 Changing skin keeps the track, receiver, time, volume, speed, focus and playback state. Apply colour atomically and crossfade artwork for 180 ms; never reload media. Persist the selected skin locally. On an invalid skin, use a validated bundled fallback and disclose that the chosen skin could not load. Unknown schema versions are rejected rather than partly applied.
 
@@ -121,6 +121,26 @@ Support OS light/dark preferences through validated variants, with an explicit u
 
 Use platform animation facilities. No bouncing transport buttons, sound effects, animated text or fabricated spectrum readings. Stop decorative rendering when the window is hidden or minimized. Reduced motion presents final states immediately and replaces continuous decoration with a static image. A waveform is decorative unless sourced from actual audio data.
 
+## Music-reactive visuals [CAST-DESIGN-VISUALIZER]
+
+Make the luminous bulb/disc feel alive: gently expand its halo with measured loudness, let bass energy subtly swell its body, and let higher-frequency energy add a restrained shimmer. Keep its centre fixed and cap scale changes around 3%; avoid full-window brightness pulses. Use a quick attack (about 50 ms) and slower release (about 250 ms) as initial tuning targets, not evidence of synchronization. Silence returns it to a quiet resting shape.
+
+Offer a small native Visualizer menu: **Glow**, **Spectrum**, **Ribbon**, and **Off**. Glow is the default bulb treatment; Spectrum uses 16–32 smooth frequency bands with restrained peak decay; Ribbon turns measured energy into a flowing line. These are visualizations, not audio equalizer controls: they do not alter the sound. Skins supply colours and approved presets; visualizer choice stays independent of skin. Keep all effects inside the media stage, behind no controls, and stop them when video occupies it.
+
+### Casting timing [CAST-DESIGN-VISUALIZER-SYNC]
+
+Proposed approach: analyze the selected local file without playing it through local speakers, then render timestamped loudness and frequency summaries at the receiver's estimated media position. Prefer bounded background analysis and a small rolling cache; visualization must never delay casting or require decoding the whole file before Play. Decode failure leaves audio casting available and reports that reactive visuals are unavailable.
+
+A receiver-position sample plus a local monotonic clock can drive interpolation only while playback is confirmed. Account for the confirmed playback rate, re-anchor on fresh samples, freeze during buffering or pause, and discard old analysis/timing on seek, replacement or receiver change. Smooth small timing corrections; reset large jumps instead of showing unrelated beats. Never advance from the time the sender issued Play alone.
+
+This is an engineering proposal: reported receiver position does not establish exact audible timing at the speaker. Device buffering, status delay and the downstream audio path must be measured. Define an acceptable timing budget through listening tests across receivers before calling the result synchronized. Until timestamp/rate observations and analysis are available and validated, use a quiet decorative drift, not fake beat pulses or spectrum bars. Expose “Ambient” versus “Music-reactive · approximate” in the visualizer menu; stale or unreliable timing falls back to Ambient with a brief explanation. Off is always available.
+
+Build in stages: static/ambient artwork first; measured Glow once local analysis and receiver timing work; Spectrum and Ribbon reuse the same analysis timeline after that. No microphone permission, second audible playback stream, or receiver-side visualizer is implied. A future receiver-side renderer is separate work, not a prerequisite for the player.
+
+### Motion and resource limits [CAST-DESIGN-VISUALIZER-ACCESS]
+
+Reduced motion or high contrast uses static artwork; avoid flashes and large-area luminance changes in every mode. Suspend analysis/rendering when not needed, bound memory and CPU, start with a 30 fps decorative rendering target, and lower the rate under load. Actual audio transport takes priority. No per-frame accessibility announcements: announce mode and meaningful playback state changes only.
+
 ## Future video slot [CAST-DESIGN-VIDEO]
 
 Reserve the media stage now; do not add inactive video buttons or claim video support. Later the same slot can host a native video surface in place of the audio illustration, with aspect-fit letterboxing and no cropping. Skins never tint, filter, mask or draw over decoded video or captions.
@@ -137,10 +157,12 @@ Future native E2E tests should cite the relevant IDs above and exercise complete
 - [CAST-DESIGN-NATIVE]: Cast, pause, resume, seek, stop and replay on supported receivers; verify acknowledgement, unsupported controls, rejected commands and reconnect without false success.
 - [CAST-DESIGN-SKIN-CONTRACT]: Change all three skins while playing and paused; retain focus, output, time and rate; test invalid schema, restart persistence, high contrast and reduced motion.
 - [CAST-DESIGN-LAYOUT]: Resize desktop windows and use maximum text scaling; verify full keyboard traversal, accessible names/values and no clipped controls with VoiceOver and Narrator.
+- [CAST-DESIGN-VISUALIZER-SYNC]: Use known impulses, silence, bass-heavy and quiet tracks; exercise buffering, seeks, stale status, rate changes, receiver switches and decode failures. Compare visible pulses with actual receiver sound; verify Ambient fallback, resource bounds and no local audio leakage.
+- [CAST-DESIGN-VISUALIZER-ACCESS]: Check every skin and visualizer with reduced motion, high contrast, hidden windows and video active; assert static/off behaviour and no transport interruption.
 - [CAST-DESIGN-VIDEO]: When implemented, replace artwork with portrait and landscape video; assert aspect preservation, captions, native fullscreen, receiver-only state and platform capability handling.
 
 ## Provenance and review [CAST-DESIGN-REVIEW]
 
 Created with the built-in image generation tool. Exact generation prompts are in [prompts.md](prompts.md). The three PNG files are visual references, not production widget assets. Original generations remain in the Codex image archive; these project copies are authoritative for this proposal.
 
-Peer review requested through TMC from the other active agent. Feedback is pending; no peer endorsement is claimed.
+TMC peer feedback from `claude-chromecast`: Sherbet was preferred for the initial build. The agent reports that the current native surface has no Slider node or drag/drop support; available composition uses `Scene` for the disc, `Picker` for receiver/speed, `ChooseFile` for opening, and theme tokens for skins. A Meter plus seek buttons and volume buttons was proposed as an interim implementation. These are reported integration gaps, not a replacement for the requested slider and drop experience or verified completion. Keep those requirements open until native support and E2E evidence exist. Reactive analysis and casting synchronization are also unimplemented design targets.
