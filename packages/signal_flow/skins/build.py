@@ -10,17 +10,19 @@ Run with Pillow and NumPy:
     python3 packages/signal_flow/skins/build.py
 """
 import json
+import math
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
 
-from spec import ROLES, SKINS
+from spec import RATES, ROLES, SKINS, WAVES
 
 HERE = Path(__file__).resolve().parent
 DESIGNS = HERE.parent / "design"
 DOCUMENT = HERE.parent / "signal_flow.machine.json"
 SUPER = 4
+ZOOM = 0.75
 
 
 def rgb(hex_colour):
@@ -130,6 +132,12 @@ def slider(key, name, x0, x1, cy, fill, knob, when=None):
     return parts + [disc(at, cy, inner, knob, 6, when)]
 
 
+def bound(skin, role):
+    """The input a node's parameter sets: its own role unless the parameter names another."""
+    param = skin["params"].get(role, ())
+    return param[3] if len(param) > 3 else role
+
+
 def node_shapes(key, skin):
     out = []
     for role, n in zip(ROLES, skin["nodes"]):
@@ -141,8 +149,8 @@ def node_shapes(key, skin):
         out.append(shape("rounded", on(role, False), **rect, colour="@canvas", alpha=0.6, depth=3))
         out += toggle(skin, f"{role}On", *n["toggle"])
         out += ports(skin, n)
-    for name, x0, x1, cy, fill, knob in skin["sliders"]:
-        out += slider(key, name, x0, x1, cy, fill, knob)
+    for role, x0, x1, cy, fill, knob in skin["sliders"]:
+        out += slider(key, bound(skin, role), x0, x1, cy, fill, knob)
     out += [text(*t[:5], anchor=t[5], weight=t[6]) for t in skin["texts"]]
     for role, x, cy in skin["health"]:
         out += [disc(x, cy, 6, f"@{{{{{role}Health}}}}", 6), text(f"{{{{{role}Health}}}}", x + 14, cy, 14, "ink")]
@@ -187,18 +195,51 @@ def parameter(key, skin, role, when):
     lx, ly, lsize = ins["param"]
     if role not in skin["params"]:
         return [text("No parameters", lx, ly, lsize, "muted", when=when)]
-    label, value, note = skin["params"][role]
+    label, value, note = skin["params"][role][:3]
     vx, vy, vsize, anchor = ins["value"]
     bx0, by0, bx1, by1 = ins["box"]
     box = dict(x=bx0, y=by0, w=bx1 - bx0, h=by1 - by0, radius=6)
     out = [shape("rounded", when, **box, colour="@fill", depth=5), shape("rounded", when, **box, stroke=1, colour="@line", depth=5),
            text(label, lx, ly, lsize, "ink", weight=600 if key == "topology" else 400, when=when),
            text(value, vx, vy, vsize, "ink", anchor, when=when)]
-    out += slider(key, role, *ins["slider"], "accent", "accent" if key != "notation" else "knob", when)
+    out += slider(key, bound(skin, role), *ins["slider"], "accent", "accent" if key != "notation" else "knob", when)
     if isinstance(note, tuple):
         out += [text(note[0], ins["slider"][0], ins["range"], 15, "muted", when=when), text(note[1], ins["slider"][1], ins["range"], 15, "muted", 2, when=when)]
     elif note:
         out.append(text(note, 1245, ins["note"][1], ins["note"][2], "muted", when=when))
+    return out
+
+
+def inspector_header(key, skin, i, role, n, when):
+    """The selected node's icon, name, kind and switches."""
+    ins = skin["inspector"]
+    cx, cy, w, h = ins["icon"]
+    tx, ty, tsize = ins["title"]
+    out = [shape("sprite", when, index=i + 1, x=cx, y=cy, w=w, h=h, depth=5),
+           text(n["name"], tx, ty, tsize, "ink", weight=700 if key != "notation" else 400, when=when)]
+    if "kind" in ins:
+        out.append(text(n["kind"], ins["kind"][0], ins["kind"][1], ins["kind"][2], "muted", when=when))
+    if "label" in ins:
+        out.append(text(n["name"], *ins["label"], "ink", when=when))
+    out += toggle(skin, f"{role}On", *ins["toggle"], when=when)
+    if "enabled" in ins:
+        out += toggle(skin, f"{role}On", *ins["enabled"], when=when)
+    if "bypass" in ins:
+        out += toggle(skin, f"{role}On", *ins["bypass"], when=when, inverse=True)
+    return out
+
+
+def inspector_links(key, skin, role, when):
+    """The selected node's connections and, where the design shows one, its health."""
+    ins = skin["inspector"]
+    links = skin["links"][role]
+    out = [text(f"Connections ({len(links)})", *ins["count"], "ink", weight=600, when=when)] if "count" in ins else []
+    y0, step = ins["rows"]
+    for j, link in enumerate(links):
+        out += link_row(key, skin, link, round(y0 + j * step, 1), when)
+    if "status" in ins:
+        sx, sy, _ = ins["status"]
+        out += [disc(sx, sy, 6, f"@{{{{{role}Health}}}}", 6, when), text(f"{{{{{role}Health}}}}", sx + 15, sy, 16, "ink", when=when)]
     return out
 
 
@@ -207,52 +248,120 @@ def inspector(key, skin):
     out = []
     for i, (role, n) in enumerate(zip(ROLES, skin["nodes"])):
         when = chosen(role)
-        cx, cy, w, h = ins["icon"]
-        out.append(shape("sprite", when, index=i + 1, x=cx, y=cy, w=w, h=h, depth=5))
-        tx, ty, tsize = ins["title"]
-        out.append(text(n["name"], tx, ty, tsize, "ink", weight=700 if key != "notation" else 400, when=when))
-        if "kind" in ins:
-            out.append(text(n["kind"], ins["kind"][0], ins["kind"][1], ins["kind"][2], "muted", when=when))
-        if "label" in ins:
-            out.append(text(n["name"], *ins["label"], "ink", when=when))
-        out += toggle(skin, f"{role}On", *ins["toggle"], when=when)
-        if "enabled" in ins:
-            out += toggle(skin, f"{role}On", *ins["enabled"], when=when)
-        if "bypass" in ins:
-            out += toggle(skin, f"{role}On", *ins["bypass"], when=when, inverse=True)
-        out += parameter(key, skin, role, when)
-        links = skin["links"][role]
-        if "count" in ins:
-            out.append(text(f"Connections ({len(links)})", *ins["count"], "ink", weight=600, when=when))
-        y0, step = ins["rows"]
-        for j, link in enumerate(links):
-            out += link_row(key, skin, link, round(y0 + j * step, 1), when)
-        if "status" in ins:
-            sx, sy, ty2 = ins["status"]
-            out += [disc(sx, sy, 6, f"@{{{{{role}Health}}}}", 6, when), text(f"{{{{{role}Health}}}}", sx + 15, sy, 16, "ink", when=when)]
+        out += inspector_header(key, skin, i, role, n, when) + parameter(key, skin, role, when) + inspector_links(key, skin, role, when)
     if "status" in ins:
         out.append(text("{{level|fixed:0:1000:0}} r/s", ins["status"][0] - 5, ins["status"][2], 16, "ink"))
     return out
 
 
-# ---- the skin menu ----
+# ---- menus ----
 
 MENU_ROW = 40
 
 
-def menu_shapes(skin):
-    x0, _, _, y1 = skin["menu"]
-    open_ = {"state": "menu", "in": ["skins"]}
-    top = y1 + 4
-    rows = len(SKINS)
+def menus(skin):
+    """Every drop-down: the skin menu under the logo and each chooser under its box, as (list, chosen, box, row)."""
+    x0, y0, _, y1 = skin["menu"]
+    out = [("skins", "skin", (x0, y0, x0 + 210, y1), MENU_ROW)]
+    return out + [(lst, name, box, 30) for name, (_, lst, _, box) in skin.get("choosers", {}).items()]
+
+
+def menu_shapes(lst, chosen_, box, row):
+    x0, _, x1, y1 = box
+    open_ = {"state": "menu", "in": [lst]}
+    top, w = y1 + 4, x1 - x0
+    rows = len(choices(lst))
+    middle = top + 4 + row / 2
     return [
-        shape("rounded", open_, x=x0, y=top, w=210, h=rows * MENU_ROW + 8, radius=10, colour="@panel", depth=8),
-        shape("rounded", open_, x=x0, y=top, w=210, h=rows * MENU_ROW + 8, radius=10, stroke=1, colour="@border", alpha=0.5, depth=8),
-        {**text("{{item.label}}", x0 + 18, top + 4 + MENU_ROW / 2, 15, "ink", when=open_), "x": x0 + 18, "y": round(top + 4 + MENU_ROW / 2 - 9, 1),
-         "each": {"in": "skins", "dy": MENU_ROW}, "depth": 9},
-        {**text("✓", x0 + 190, top + 4 + MENU_ROW / 2, 15, "accent", 2), "y": round(top + 4 + MENU_ROW / 2 - 9, 1),
-         "each": {"in": "skins", "dy": MENU_ROW}, "when": {"all": [open_, {"input": "skin", "eq": "{{item.key}}"}]}, "depth": 9},
+        shape("rounded", open_, x=x0, y=top, w=w, h=rows * row + 8, radius=10, colour="@panel", depth=8),
+        shape("rounded", open_, x=x0, y=top, w=w, h=rows * row + 8, radius=10, stroke=1, colour="@border", alpha=0.5, depth=8),
+        {**text("{{item.label}}", x0 + 18, middle, 15, "ink", when=open_), "each": {"in": lst, "dy": row}, "depth": 9},
+        {**text("✓", x1 - 20, middle, 15, "accent", 2), "each": {"in": lst, "dy": row},
+         "when": {"all": [open_, {"input": chosen_, "eq": "{{item.key}}"}]}, "depth": 9},
     ]
+
+
+def choices(lst):
+    return {"skins": SKINS, "rates": RATES, "waves": WAVES}[lst]
+
+
+# ---- live traces ----
+
+def polyline(points, colour, when=None, stroke=2.5):
+    return shape("polyline", when, points=points, stroke=stroke, colour=f"@{colour}", depth=6)
+
+
+def wave(name, phase):
+    turn = phase % 1.0
+    return {"Sine": math.sin(2 * math.pi * turn), "Triangle": 1 - 4 * abs(turn - 0.5), "Saw": 2 * turn - 1,
+            "Square": 1.0 if turn < 0.5 else -1.0}[name]
+
+
+def sampled(x0, x1, step=1.5):
+    n = int((x1 - x0) / step)
+    return [x0 + (x1 - x0) * i / n for i in range(n + 1)]
+
+
+def response(u, q=2.0):
+    """A resonant two-pole low-pass's gain in decibels at `u` times its cutoff."""
+    return -10 * math.log10((1 - u * u) ** 2 + (u / q) ** 2)
+
+
+def lfo_traces(x0, x1, cy, amp):
+    """The LFO's sine at each rate, 1.25 cycles shown per hertz."""
+    return [polyline([[round(x, 1), round(cy - amp * math.sin(2 * math.pi * 1.25 * hz * (x - x0) / (x1 - x0)), 1)] for x in sampled(x0, x1)],
+                     "mod", {"input": "rate", "eq": rate}) for rate, hz in RATES.items()]
+
+
+def oscillator_traces(x0, x1, cy, amp):
+    """Two and a half cycles of each wave."""
+    return [polyline([[round(x, 1), round(cy - amp * wave(name, 2.5 * (x - x0) / (x1 - x0)), 1)] for x in sampled(x0, x1, 1)],
+                     "mon", {"input": "wave", "eq": name}) for name in WAVES]
+
+
+def filter_traces(x0, x1, top, bottom, steps=24):
+    """The response over three decades, drawn for each of `steps` cutoff bands, +8 dB at the top to -24 dB at the bottom."""
+    out = []
+    for k in range(steps):
+        cut = x0 + (x1 - x0) * (k + 0.5) / steps
+        db = lambda x: max(-24.0, min(8.0, response(10 ** ((x - cut) * 3 / (x1 - x0)))))
+        band = {"all": [{"input": "process", "gt": -1 if k == 0 else round(k / steps - 1e-9, 9)},
+                        {"input": "process", "lt": 2 if k == steps - 1 else round((k + 1) / steps - 1e-9, 9)}]}
+        out.append(polyline([[round(x, 1), round(top + (8 - db(x)) / 32 * (bottom - top), 1)] for x in sampled(x0, x1)], "curve", band))
+    return out
+
+
+def scope_traces(x0, x1, cy, amp):
+    """Four cycles of the wave, its height the monitored level."""
+    return [polyline([[round(x, 1), f"{{{{monitored|scale:{round(-amp * wave(name, 4 * (x - x0) / (x1 - x0)), 2)}:{cy}}}}}"] for x in sampled(x0, x1, 2)],
+                     "mon", {"input": "wave", "eq": name}, 2) for name in WAVES]
+
+
+def traces(skin):
+    """The LFO at its rate, the oscillator's wave, the filter's response at its cutoff and the scope's output."""
+    spec = skin.get("traces")
+    if not spec:
+        return []
+    return lfo_traces(*spec["lfo"]) + oscillator_traces(*spec["oscillator"]) + filter_traces(*spec["filter"]) + scope_traces(*spec["scope"])
+
+
+def meters(skin):
+    """Two rows of bars, each lit once the delivered level passes its share, green through amber."""
+    spec = skin.get("meters")
+    if not spec:
+        return []
+    ramp = [(0x4F, 0xD1, 0xA0), (0xF5, 0xE0, 0x5A), (0xFB, 0x86, 0x48)]
+    out = []
+    for i in range(spec["bars"]):
+        t = i / (spec["bars"] - 1)
+        a, b = (ramp[0], ramp[1]) if t < 0.6 else (ramp[1], ramp[2])
+        f = t / 0.6 if t < 0.6 else (t - 0.6) / 0.4
+        lit = "#" + "".join(f"{round(a[c] + (b[c] - a[c]) * f):02X}" for c in range(3))
+        x = round(spec["x"] + i * spec["step"], 1)
+        for cy in spec["rows"]:
+            out.append(shape("rounded", x=x, y=cy - 6, w=2.4, h=12, radius=1, colour="@track", depth=5))
+            out.append(shape("rounded", {"input": "delivered", "gt": round(i / spec["bars"], 4)}, x=x, y=cy - 6, w=2.4, h=12, radius=1, colour=lit, depth=6))
+    return out
 
 
 # ---- listeners ----
@@ -280,46 +389,68 @@ def slide(role, label, x0, x1, cy, when=None):
     return area((x0 - 10, cy - 12, x1 + 10, cy + 12), "slider", label, None, when, slide={"set": role, "min": 0, "max": 1, "fire": "changed", "of": role})
 
 
-def listeners(skin):
-    x0, _, _, y1 = skin["menu"]
-    open_ = {"state": "menu", "in": ["skins"]}
-    out = [{**area((x0, y1 + 8, x0 + 210, y1 + 8 + MENU_ROW), "menuitem", "{{item.label}}", {"set": "skin", "value": "{{item.key}}", "fire": "chooseSkin"}, open_),
-            "each": {"in": "skins", "dy": MENU_ROW}},
-           area(skin["menu"], "popup", f"Skin: {skin['name']}", {"fire": "toggleSkins"}),
-           area((0, 0, 1536, skin["height"]), "none", "", {"fire": "dismiss"}, {"not": {"state": "menu", "in": ["closed"]}}),
-           area(skin["undo"], "button", "Undo", {"fire": "undo"}, {"input": "canUndo", "eq": True})]
+def menu_items(lst, chosen_, box, row):
+    x0, _, x1, y1 = box
+    return {**area((x0, y1 + 8, x1, y1 + 8 + row), "menuitem", "{{item.label}}", {"set": chosen_, "value": "{{item.key}}", "fire": chooser(lst, "choose")},
+                   {"state": "menu", "in": [lst]}), "each": {"in": lst, "dy": row}}
+
+
+def chooser(lst, verb):
+    """The trigger that opens (`toggle`) or settles (`choose`) a list's menu: toggleSkins, chooseSkin, toggleRates, chooseRate."""
+    return verb + lst[0].upper() + (lst[1:] if verb == "toggle" else lst[1:-1])
+
+
+def header_listeners(skin):
+    """The menus, choosers, the dismissing backdrop and the history buttons."""
+    out = [menu_items(*m) for m in menus(skin)]
+    out.append(area(skin["menu"], "popup", f"Skin: {skin['name']}", {"fire": "toggleSkins"}))
+    for name, (label, lst, _, box) in skin.get("choosers", {}).items():
+        out.append(area(box, "popup", f"{label}: {{{{{name}}}}}", {"fire": chooser(lst, "toggle")}))
+    out += [area((0, 0, 1536, skin["height"]), "none", "", {"fire": "dismiss"}, {"not": {"state": "menu", "in": ["closed"]}}),
+            area(skin["undo"], "button", "Undo", {"fire": "undo"}, {"input": "canUndo", "eq": True})]
     if skin["redo"]:
         out.append(area(skin["redo"], "button", "Redo", {"fire": "redo"}, {"input": "canRedo", "eq": True}))
+    return out
+
+
+def inspector_listeners(skin, role, n):
+    ins = skin["inspector"]
+    out = []
+    for key in ("toggle", "enabled", "bypass"):
+        if key in ins:
+            prefix = "Inspector: " if key == "toggle" else f"Inspector {key}: "
+            out += switch(n["name"], role, toggle_rect(*ins[key]), prefix, chosen(role))
+    if role in skin["params"]:
+        out.append(slide(bound(skin, role), f"Inspector: {skin['params'][role][0]}", *ins["slider"], chosen(role)))
+    return out
+
+
+def listeners(skin):
+    out = header_listeners(skin)
     names = dict(zip(ROLES, (n["name"] for n in skin["nodes"])))
     for role, n in zip(ROLES, skin["nodes"]):
         out += switch(n["name"], role, toggle_rect(*n["toggle"]))
     for role, sx0, sx1, cy, _, _ in skin["sliders"]:
-        out.append(slide(role, f"{names[role]} {skin['params'][role][0]}", sx0, sx1, cy))
-    ins = skin["inspector"]
+        out.append(slide(bound(skin, role), f"{names[role]} {skin['params'][role][0]}", sx0, sx1, cy))
     for role, n in zip(ROLES, skin["nodes"]):
-        for key in ("toggle", "enabled", "bypass"):
-            if key in ins:
-                prefix = "Inspector: " if key == "toggle" else f"Inspector {key}: "
-                out += switch(n["name"], role, toggle_rect(*ins[key]), prefix, chosen(role))
-        if role in skin["params"]:
-            out.append(slide(role, f"Inspector: {skin['params'][role][0]}", *ins["slider"], chosen(role)))
-    for role, n in zip(ROLES, skin["nodes"]):
-        out.append(area(n["rect"], "button", f"Select {n['name']}", {"set": "selected", "value": role}))
-    return out
+        out += inspector_listeners(skin, role, n)
+    return out + [area(n["rect"], "button", f"Select {n['name']}", {"set": "selected", "value": role}) for role, n in zip(ROLES, skin["nodes"])]
 
 
 def canvas(key, skin):
     atlas = [f"{{{{assets}}}}/skins/{key}/backdrop.png"] + [f"{{{{assets}}}}/skins/{key}/icon-{role}.png" for role in ROLES]
     backdrop = shape("sprite", index=0, x=768, y=skin["height"] / 2, w=1536, h=skin["height"], depth=0)
-    shapes = [backdrop] + node_shapes(key, skin) + inspector(key, skin) + menu_shapes(skin)
-    return {"width": 1536, "height": skin["height"], "atlas": atlas, "shapes": shapes, "listeners": listeners(skin)}
+    shapes = [backdrop] + node_shapes(key, skin) + traces(skin) + meters(skin) + inspector(key, skin)
+    shapes += [s for m in menus(skin) for s in menu_shapes(*m)]
+    return {"width": 1536, "height": skin["height"], "zoom": ZOOM, "atlas": atlas, "shapes": shapes, "listeners": listeners(skin)}
 
 
 def main():
     doc = json.loads(DOCUMENT.read_text())
     for key, skin in SKINS.items():
         slice_skin(key, skin)
-    doc["skins"] = {key: {"name": skin["name"], "motion": "none", "tokens": skin["tokens"], "canvas": canvas(key, skin)} for key, skin in SKINS.items()}
+    doc["skins"] = {key: {"name": skin["name"], "motion": "none", "tokens": {**skin["tokens"], "background": skin["tokens"]["canvas"]}, "canvas": canvas(key, skin)}
+                    for key, skin in SKINS.items()}
     DOCUMENT.write_text(written(doc) + "\n")
 
 

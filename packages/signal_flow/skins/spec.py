@@ -8,6 +8,11 @@ redraws them live. Each skin's connections are (dot token, port, direction, peer
 
 ROLES = ["control", "source", "process", "output", "monitor"]
 
+# The LFO's rates as note lengths at 120 bpm, in hertz, and the oscillator's waves.
+RATES = {"1/1": 0.5, "1/2": 1.0, "1/4": 2.0, "1/8": 4.0, "1/16": 8.0}
+
+WAVES = ["Sine", "Triangle", "Saw", "Square"]
+
 HEALTH = {"Healthy": "#0E9F63", "Degraded": "#F59E0B", "Offline": "#E5484D", "Bypassed": "#8A94A6"}
 
 
@@ -137,7 +142,7 @@ PRISM = {
     "tokens": {"canvas": "#100D21", "fill": "#181832", "panel": "#111022", "ink": "#F1F0FF", "muted": "#9C99C8",
                "accent": "#FB8648", "track": "#2E2C51", "knob": "#FFE2DF", "mod": "#BB7BF8", "sig": "#FD8146",
                "mon": "#61ECDD", "modText": "#D9B8FF", "border": "#4A4790", "port": "#1A1530", "line": "#25233F",
-               "switchOff": "#2A2848", "knobOff": "#C1C0E7", **HEALTH},
+               "switchOff": "#2A2848", "knobOff": "#C1C0E7", "curve": "#F7BE5C", **HEALTH},
     "port": {"r": 10, "ring": 3, "core": 0},
     "nodes": [
         node("LFO", "Modulator", (482, 90, 728, 232), (668, 111, 34, 18), (494, 98, 527, 125), [(606, 239, "mod")]),
@@ -146,11 +151,17 @@ PRISM = {
         node("Master", "Output", (893, 349, 1177, 524), (1115, 372, 34, 18), (907, 358, 941, 389), [(894, 438, "sig")]),
         node("Scope", "Monitor", (482, 618, 736, 772), (674, 640, 34, 18), (495, 628, 531, 657), [(607, 614, "mon")]),
     ],
-    "sliders": [("process", 538, 650, 490, "accent", "accent")],
+    "sliders": [("process", 538, 650, 490, "accent", "accent"), ("output", 968, 1075, 487, "accent", "accent")],
     "texts": [("+{{control|percent}}%", 649, 292, 14, "modText", 1, 400), ("{{process|expo:1:0.02:20}} kHz", 699, 491, 14, "ink", 1, 400),
-              ("{{delivered|fixed:1:12:-12}} dB", 1124, 496, 14, "ink", 1, 400)],
+              ("{{volume|fixed:1:24:-24}} dB", 1124, 496, 14, "ink", 1, 400),
+              ("{{rate}}", 582, 208, 14, "ink", 0, 400), ("{{wave}}", 140, 492, 14, "ink", 0, 400),
+              ("{{delivered|fixed:1:24:-24}}", 1157, 419, 14, "ink", 2, 400), ("{{delivered|fixed:1:24:-24}}", 1157, 447, 14, "ink", 2, 400)],
     "health": [],
-    "erase": [(1094, 485, 1156, 507), (628, 281, 671, 303), (530, 479, 657, 501), (668, 481, 731, 501), (1228, 106, 1482, 172),
+    "erase": [(1094, 485, 1156, 507), (628, 281, 671, 303), (530, 479, 657, 501), (668, 481, 731, 501), (1228, 106, 1524, 172),
+              (938, 10, 1082, 56), (1220, 10, 1416, 56), (692, 98, 720, 122), (274, 364, 306, 390), (710, 358, 744, 384),
+              (1140, 362, 1168, 384), (695, 628, 727, 652), (499, 135, 713, 183), (578, 198, 640, 218), (60, 404, 295, 465),
+              (134, 480, 206, 508), (522, 397, 693, 465), (972, 407, 1162, 459), (958, 472, 1084, 508), (499, 665, 719, 721),
+              (492, 730, 756, 764),
               (1462, 178, 1524, 212), (1462, 220, 1524, 254), (1229, 324, 1305, 349), (1392, 318, 1524, 355),
               (1226, 354, 1524, 381), (1226, 386, 1526, 409), (1229, 484, 1500, 619)],
     "inspector": {
@@ -159,7 +170,11 @@ PRISM = {
         "rows": (497, 36), "dir": 1322, "arrow": 1374, "peer": 1400,
     },
     "params": {"control": ("Depth", "+{{control|percent}}%", ("0%", "100%")),
-               "process": ("Cutoff", "{{process|expo:1:0.02:20}} kHz", ("20 Hz", "20 kHz"))},
+               "process": ("Cutoff", "{{process|expo:1:0.02:20}} kHz", ("20 Hz", "20 kHz")),
+               "output": ("Level", "{{volume|fixed:1:24:-24}} dB", ("-24 dB", "0 dB"), "volume")},
+    "choosers": {"rate": ("LFO Rate", "rates", "Rates", (571, 194, 715, 222)), "wave": ("Oscillator Wave", "waves", "Waves", (128, 478, 298, 506))},
+    "traces": {"lfo": (500, 712, 159, 16), "oscillator": (62, 292, 433, 19), "filter": (524, 691, 400, 465), "scope": (502, 716, 692, 24)},
+    "meters": {"x": 976, "step": 4.6, "bars": 30, "rows": (419, 447)},
     "links": {
         "control": [("mod", "CUTOFF", "Out", "Filter", "")],
         "source": [("sig", "AUDIO", "Out", "Filter", "")],

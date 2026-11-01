@@ -213,6 +213,7 @@ type Node A =
     Scene
         sceneWidth : float
         sceneHeight : float
+        sceneZoom : float
         atlas : List<string>
         primitives : List<Primitive>
         play : A
@@ -469,10 +470,14 @@ module Ui
 
     editorNode (label, value, inline, cursor, epoch, marks, edit, place) = Editor(editorLabel = label, editorValue = value, editorInline = inline, cursor = cursor, editorFocusEpoch = epoch, marks = marks, edit = edit, place = place)
 
-    (** [UI-SCENE] A surface `width` by `height` units that the host scales to fit, drawn from `primitives` with sprites taken from `atlas` by index. Keys and pointer positions in scene units reach `play` as `Controlled` messages. *)
+    (** [UI-SCENE] A surface `width` by `height` units drawn one unit to one pixel from its region's top left, from `primitives` with sprites taken from `atlas` by index. Keys and pointer positions in scene units reach `play` as `Controlled` messages. *)
     export scene<A> : (float, float, List<string>, List<Primitive>, A) -> Node<A>
-    scene (width, height, atlas, primitives, play) = Scene(sceneWidth = width, sceneHeight = height, atlas = atlas, primitives = primitives, play = play, streamedCount = 0)
+    scene (width, height, atlas, primitives, play) = zoomed (1.0, width, height, atlas, primitives, play)
 
-    (** [UI-SCENE] A scene in window pixels: no unit space, no letterbox, origin at the window's top left, as a canvas that paints in window coordinates. *)
+    (** [UI-SCENE] A scene drawn at a fixed `zoom` in window pixels per unit, whatever the window's size: a mock drawn at twice the size shows crisply at `0.5`. *)
+    export zoomed<A> : (float, float, float, List<string>, List<Primitive>, A) -> Node<A>
+    zoomed (zoom, width, height, atlas, primitives, play) = Scene(sceneWidth = width, sceneHeight = height, sceneZoom = zoom, atlas = atlas, primitives = primitives, play = play, streamedCount = 0)
+
+    (** [UI-SCENE] A scene in window pixels: no unit space, origin at the window's top left, as a canvas that paints in window coordinates. *)
     export canvas<A> : (List<Primitive>, A) -> Node<A>
-    canvas (primitives, play) = Scene(sceneWidth = 0.0, sceneHeight = 0.0, atlas = [], primitives = primitives, play = play, streamedCount = 0)
+    canvas (primitives, play) = zoomed (1.0, 0.0, 0.0, [], primitives, play)

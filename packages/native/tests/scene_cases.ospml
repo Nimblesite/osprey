@@ -36,7 +36,11 @@ sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     expect (Doc::text (scene, "kind"), "scene")
     expect (Doc::decimal (scene, "width"), 320.0)
     expect (Doc::decimal (scene, "height"), 200.0)
+    expect (Doc::decimal (scene, "zoom"), 1.0)
     expect (join (Doc::texts (scene, "atlas")) ",", "bird,hawk")
+    zoomed = listGet (Encode::walk ([], Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed))).nodes 0 ?: JsonNull
+    expect (Doc::decimal (zoomed, "zoom"), 0.75)
+    expect (Doc::decimal (zoomed, "width"), 1536.0)
     expect (length shapes, 5)
     expect (codeAt (shapes, 0), 0)
     expect (arityAt (shapes, 0), 8)

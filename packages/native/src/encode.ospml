@@ -241,8 +241,8 @@ module Encode
         false => [real moveX, real moveY, real scale]
 
     // `streamed` counts the rects, discs and sprites a resident session sent outside the envelope ([UI-SCENE-STREAM]).
-    scene<A> : (List<Binding<A>>, float, float, List<string>, List<Primitive>, A, int) -> Walked<A>
-    scene (bindings, width, height, atlas, primitives, action, sent) = bound (bindings, SceneInput(action = action), "scene", [JsonMember "width" (real width), JsonMember "height" (real height), JsonMember "atlas" (Doc::strings atlas), JsonMember "shapes" (JsonArray (mapList (primitives, \primitive => JsonArray (numbers primitive)))), num "streamed" sent])
+    scene<A> : (List<Binding<A>>, float, float, float, List<string>, List<Primitive>, A, int) -> Walked<A>
+    scene (bindings, width, height, zoom, atlas, primitives, action, sent) = bound (bindings, SceneInput(action = action), "scene", [JsonMember "width" (real width), JsonMember "height" (real height), JsonMember "zoom" (real zoom), JsonMember "atlas" (Doc::strings atlas), JsonMember "shapes" (JsonArray (mapList (primitives, \primitive => JsonArray (numbers primitive)))), num "streamed" sent])
 
     // Exhaustive: a new component cannot be encoded by accident as something else.
     (** Encodes `node` and collects its bindings after `bindings`, depth first, so each control's ordinal is the index of its binding. *)
@@ -288,4 +288,4 @@ module Encode
         Video source poster captions alt seconds => leaf (bindings, "video", [str "source" source, str "poster" poster, str "captions" captions, str "alt" alt, num "seconds" seconds])
         Editor label value inline cursor epoch marks edit place => editor (bindings, label, value, inline, cursor, epoch, marks, edit, place)
         Board slice count lassoing backdrop panning camera pan stroke lasso => board (bindings, slice, count, lassoing, backdrop, panning, camera, pan, stroke, lasso)
-        Scene width height atlas primitives action sent => scene (bindings, width, height, atlas, primitives, action, sent)
+        Scene width height zoom atlas primitives action sent => scene (bindings, width, height, zoom, atlas, primitives, action, sent)
