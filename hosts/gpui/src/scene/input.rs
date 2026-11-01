@@ -21,6 +21,7 @@ pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyE
         .get(&key)
         .map_or(decoded.zoom, |t| t.scale);
     let access = super::access::overlay(&handle, &binding, &decoded.access, scale);
+    let binding_for_paint = binding.clone();
     let surface = div()
         .id(render::control_id(ctx, ordinal))
         .relative()
@@ -40,7 +41,7 @@ pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyE
         )
         .on_mouse_move(mouse_move(handle.clone(), binding, key));
     surface
-        .child(paint::canvas(ctx, handle, decoded))
+        .child(paint::canvas(ctx, handle, binding_for_paint, decoded))
         .children(access)
         .into_any_element()
 }
@@ -206,6 +207,28 @@ fn reset_hover(key: &str, window: &mut Window, cx: &mut Context<HostView>) {
     let key = key.to_owned();
     cx.on_next_frame(window, move |view, _, _| {
         view.scene_hover.remove(&key);
+    });
+}
+
+/// Tells the application its scene's region is now `width` by `height` scene units, on the next
+/// frame rather than from inside a paint.
+pub(super) fn viewed(
+    binding: &Binding,
+    (width, height): (f32, f32),
+    window: &mut Window,
+    cx: &mut Context<HostView>,
+) {
+    let binding = binding.clone();
+    cx.on_next_frame(window, move |view, window, cx| {
+        let value = json!({"width": width, "height": height});
+        let event = events::control(
+            now(),
+            &binding.region,
+            current(view, &binding),
+            binding.ordinal,
+            value,
+        );
+        view.dispatch(event, window, cx);
     });
 }
 

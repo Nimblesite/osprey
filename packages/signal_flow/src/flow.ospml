@@ -113,5 +113,5 @@ module Flow
         facts = listConcat [fact ("assets", Values::text folder)] (ui::Pick::either (skin == "", [], [fact ("skin", Values::text skin)]))
         fed (store, facts)
 
-    (** A canvas pointer event: a press grips the listener under it, a drag moves a node or slider, and the release acts once ([UI-MACHINE-DRAG]); keys change nothing. *)
-    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down)))))
+    (** A canvas pointer event: a press grips the listener under it, a drag moves a node or slider, and the release acts once ([UI-MACHINE-DRAG]); the region's size gives the canvas room; keys change nothing. *)
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down)))), \(w, h) => Runtime::step (store(screen = Screen(screenMachine = Canvases::viewed (machineOf store, w, h)))))

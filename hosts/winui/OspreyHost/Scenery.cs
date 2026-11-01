@@ -41,6 +41,7 @@ sealed class SceneView
     readonly Pool<ShapePath> paths;
     Action<object?> emit = _ => { };
     Scene? shown;
+    (double, double) viewed;
     bool hovered;
 
     public SceneView(Action<string> report)
@@ -94,6 +95,18 @@ sealed class SceneView
         var scale = scene.Zoom > 0 ? scene.Zoom : Math.Min(holder.ActualWidth / scene.Width, holder.ActualHeight / scene.Height);
         canvas.Clip = sized ? new RectangleGeometry { Rect = new Rect(0, 0, scene.Width, scene.Height) } : null;
         canvas.RenderTransform = sized ? new ScaleTransform { ScaleX = scale, ScaleY = scale } : null;
+        Viewed(sized ? (holder.ActualWidth / scale, holder.ActualHeight / scale) : viewed);
+    }
+
+    // Tells the application its region's size in scene units when it changes, after this frame's drawing.
+    void Viewed((double Width, double Height) size)
+    {
+        if (size == viewed || !double.IsFinite(size.Width) || size.Width <= 0)
+        {
+            return;
+        }
+        viewed = size;
+        holder.DispatcherQueue.TryEnqueue(() => emit(new ViewInput(size.Width, size.Height)));
     }
 
     UIElement Draw(SceneShape shape) => shape switch

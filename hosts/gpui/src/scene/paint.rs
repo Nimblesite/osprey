@@ -7,12 +7,13 @@ use gpui_kit::*;
 
 use super::{Decoded, Outline, Paint, Shape, Step, Tint, Transform};
 use crate::host::HostView;
-use crate::render::Ctx;
+use crate::render::{Binding, Ctx};
 
 /// Builds the one-shot prepaint/paint pair with decoded data moved, not reparsed.
 pub(super) fn canvas(
     ctx: &mut Ctx,
     handle: Entity<HostView>,
+    binding: Binding,
     decoded: Decoded,
 ) -> impl IntoElement {
     let key = ctx.key.clone();
@@ -20,8 +21,11 @@ pub(super) fn canvas(
     gpui_kit::canvas(
         move |bounds, window, cx| {
             let transform = Transform::new(bounds, &decoded);
-            let images = prepaint_handle.update(cx, |view, _| {
-                view.scene_transforms.insert(key, transform);
+            let images = prepaint_handle.update(cx, |view, cx| {
+                let before = view.scene_transforms.insert(key, transform);
+                if decoded.width > 0. && before.map(|t| t.viewed) != Some(transform.viewed) {
+                    super::input::viewed(&binding, transform.viewed, window, cx);
+                }
                 let images = sprites(view, &decoded);
                 for old in view.sprites.released() {
                     // A turned copy no longer drawn leaves GPUI's atlas; failing to is harmless.
