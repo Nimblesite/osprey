@@ -253,7 +253,9 @@ fn start() -> Result<(Regions, Vec<Request>), String> {
 
 /// Opens the native window; this is the only permitted infallible window-open boundary.
 fn open(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) {
-    gpui_kit::application().run(move |cx| {
+    let application = gpui_kit::application();
+    application.on_open_urls(|urls| opened().extend(urls));
+    application.run(move |cx| {
         gpui_kit::init(cx);
         gpui_kit::open_window(options(), cx, move |window, cx| {
             Theme::sync_system_appearance(Some(window), cx);
@@ -280,6 +282,23 @@ fn new_view(
     let mut view = HostView::new(regions, pending, bench);
     view.dispatch(events::lifecycle(now(), "active"), window, cx);
     view
+}
+
+/// Files Finder asked the application to open and no frame has delivered yet ([GPUI-HOST-OPEN]).
+static OPENED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn opened() -> std::sync::MutexGuard<'static, Vec<String>> {
+    OPENED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Delivers each file Finder opened as the lifecycle phase `open:<path>`; a `file://` URL is
+/// turned back into its path ([GPUI-HOST-OPEN]).
+pub fn deliver_opened(view: &mut HostView, window: &mut Window, cx: &mut Context<HostView>) {
+    let urls = std::mem::take(&mut *opened());
+    for url in urls {
+        let path = url.strip_prefix("file://").map_or(url.clone(), events::unescaped);
+        view.dispatch(events::lifecycle(now(), &format!("open:{path}")), window, cx);
+    }
 }
 
 /// Whether the application draws the whole window itself (`OSPREY_GPUI_CHROME=bare`): no host

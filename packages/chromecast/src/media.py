@@ -10,7 +10,7 @@ the interface that routes to the device ([FFI-FILE-SERVER]) through the
 
 from chromecast import Wire
 
-__all__ = ["Served", "base_name", "title", "media_url", "unserve"]
+__all__ = ["Served", "title", "media_url", "unserve"]
 
 
 class Served:
@@ -20,7 +20,6 @@ class Served:
 
 
 def base_name(path):
-    """The last `/`-separated part of a path."""
     parts = unwrap_or(split(path, "/"), [path])
     return unwrap_or(listGet(parts, len(parts) - 1), path)
 

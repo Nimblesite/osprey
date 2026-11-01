@@ -43,7 +43,7 @@ module App
         Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))
 
     (** Routes every framework message: controls pull the machine's levers, completions and frames go to the adapter. *)
-    export update (_, store, message) = Messages::route (message, \lever => Link::pulled (store, lever, JsonNull), \(lever, text) => Link::pulled (store, lever, JsonString text), \(lever, on) => Link::pulled (store, lever, JsonBool on), \(_, _) => Runtime::step store, \(ticket, outcome) => Link::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \seconds => Link::ticked (store, seconds), \(_, input) => Link::pointed (store, input))
+    export update (_, store, message) = Messages::route (message, \lever => Link::pulled (store, lever, JsonNull), \(lever, text) => Link::pulled (store, lever, JsonString text), \(lever, on) => Link::pulled (store, lever, JsonBool on), \(_, _) => Runtime::step store, \(ticket, outcome) => Link::completed (store, ticket, outcome), \phase => Link::phased (store, phase), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \seconds => Link::ticked (store, seconds), \(_, input) => Link::pointed (store, input))
 
     screenSlice () = perform Signal<Screen>.read ()
 

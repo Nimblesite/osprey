@@ -6,6 +6,7 @@
 
 import ui::Doc
 import ui::Runtime
+import ui::Templates
 import casting::App
 import chromecast::Protocol
 
@@ -153,6 +154,11 @@ started () =
     reset ()
     hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"midnight\"]}", App::initial, App::regions, App::theme ())))
 
+// The canvas session: the Sherbet artboard, driven only by pointer events ([UI-MACHINE-CANVAS]).
+drawn () =
+    reset ()
+    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"sherbet\"]}", App::initial, App::regions, App::theme ())))
+
 post event = hosted (\() => kept (Runtime::proceed (live, event, App::update, App::regions)))
 
 // ---- reading the rendered view ----
@@ -186,6 +192,34 @@ enabledOf label = Doc::flag (control label, "enabled")
 
 requested kind = length (filterList (walked ([], Doc::field (sight.sightEnvelope, "requests")), \r => Doc::text (r, "kind") == kind)) > 0
 
+// ---- the canvas's accessibility tree [UI-MACHINE-A11Y] ----
+
+machine () = live.sessionStore.screen.screenMachine
+
+(** Every accessible element's label, in hit order, `|`-separated. *)
+labels () = join (mapList (Templates::semantics (machine ()), \e => Doc::text (e, "label"))) "|"
+
+element label = listGet (filterList (Templates::semantics (machine ()), \e => Doc::text (e, "label") == label)) 0 ?: JsonNull
+
+offers label = match Doc::has (element label, "role")
+    true => true
+    false =>
+        print "# not offered: ${label}; the tree offers ${labels ()}"
+        false
+
+// The strings the artboard letters, `|`-separated.
+isLettering s = (jsonInt (jsonIndex s 0 ?: JsonNull) ?: 0) == 6
+
+letterOf s = jsonText (jsonIndex s 1 ?: JsonNull) ?: ""
+
+lettered () = join (mapList (filterList (Doc::items (Doc::field (sight.sightRoot, "shapes")), isLettering), letterOf)) "|"
+
+letters text = match ui::Lists::any (split (lettered ()) "|" ?: [], \t => t == text)
+    true => true
+    false =>
+        print "# not lettered: ${text}; the artboard letters ${lettered ()}"
+        false
+
 // ---- host events ----
 
 stamp () = toString sight.sightNow
@@ -195,6 +229,20 @@ press label = post "{\"kind\":\"ui\",\"region\":\"root\",\"revision\":${toString
 choose (label, key) = post "{\"kind\":\"ui\",\"region\":\"root\",\"revision\":${toString sight.sightRevision},\"ordinal\":${toString (ordinal label)},\"value\":\"${key}\",\"now\":${stamp ()}}"
 
 complete (ticket, result) = post "{\"kind\":\"completed\",\"ticket\":\"${ticket}\",\"ok\":true,\"result\":${result},\"now\":${stamp ()}}"
+
+pointer (x, y, down) = post "{\"kind\":\"ui\",\"region\":\"root\",\"revision\":${toString sight.sightRevision},\"ordinal\":${toString (Doc::number (sight.sightRoot, "event"))},\"value\":{\"x\":${toString x},\"y\":${toString y},\"down\":${toString down}},\"now\":${stamp ()}}"
+
+// A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
+tapAt (label, fraction) =
+    e = element label
+    x = Doc::decimal (e, "x") + Doc::decimal (e, "w") * fraction
+    y = Doc::decimal (e, "y") + Doc::decimal (e, "h") / 2.0
+    pointer (x, y, true)
+    pointer (x, y, false)
+
+tap label = tapAt (label, 0.5)
+
+opened path = post "{\"kind\":\"lifecycle\",\"phase\":\"open:${path}\",\"now\":${stamp ()}}"
 
 frame seconds = post "{\"kind\":\"frame\",\"elapsed\":${seconds},\"now\":${stamp ()}}"
 
@@ -218,6 +266,11 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     picked "/music/Sunroom.mp3"
     expect (shows "Sunroom", true)
     expect (enabledOf "Play", true)
+    opened "/music/Bullshit Jobs - Track 003.mp3"
+    expect (shows "Bullshit Jobs - Track 003", true)
+    expect (enabledOf "Play", true)
+    opened "/music/Sunroom.mp3"
+    expect (shows "Sunroom", true)
     press "Play"
     expect (heardTypes (), "CONNECT LAUNCH ")
     expect (shows "Connecting to Living Room TV…", true)
@@ -281,3 +334,68 @@ test ("no TVs found offers another search, and an unreachable TV shows why", \()
     expect (shows "living-room.local:8009: connection refused or timed out", true)
     expect (shows "Play", true)
     expect (length (filterList (nodes (), \n => Doc::text (n, "tone") == "danger")), 1)))
+
+test ("the canvas: every control is reached by its accessible label, through pointer events alone", \() => bench (\() =>
+    drawn ()
+    expect (letters "Looking for TVs…", true)
+    expect (labels (), "Receiver: |Play|Open file…")
+    discovered ()
+    expect (letters "Living Room TV", true)
+    expect (letters "Choose an audio file", true)
+    expect (labels (), "Receiver: Living Room TV|Play|Open file…")
+    tap "Play"
+    expect (requested "choose-file", false)
+    expect (heardTypes (), "")
+    tap "Open file…"
+    expect (requested "choose-file", true)
+    picked "/music/Sunroom.mp3"
+    expect (letters "Sunroom", true)
+    expect (letters "Ready", true)
+    tap "Play"
+    expect (heardTypes (), "CONNECT LAUNCH ")
+    expect (letters "Connecting…", true)
+    frame "0.2"
+    frame "0.2"
+    expect (letters "Playing", true)
+    expect (labels (), "Receiver: Living Room TV|Speed: 1×|Pause|Stop|Open file…|Position|Volume")
+    expect (Doc::decimal (element "Volume", "value"), 1.0)
+    tap "Pause"
+    frame "0.2"
+    expect (letters "Paused", true)
+    expect (offers "Resume", true)
+    tap "Resume"
+    frame "0.2"
+    expect (letters "Playing", true)
+    tapAt ("Volume", 0.5)
+    frame "0.2"
+    expect (Doc::decimal (element "Volume", "value"), 0.5)
+    tapAt ("Position", 0.25)
+    frame "0.2"
+    expect (letters "00:50", true)
+    expect (Doc::decimal (element "Position", "value"), 50.0)
+    tap "Speed: 1×"
+    expect (labels (), "0.75×|1×|1.25×|1.5×|2×|Receiver: Living Room TV|Speed: 1×|Pause|Stop|Open file…|Position|Volume")
+    tap "1.5×"
+    frame "0.2"
+    expect (labels (), "Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    expect (letters "1.5×", true)
+    tap "Receiver: Living Room TV"
+    expect (labels (), "Living Room TV|Kitchen|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    expect (letters "✓", true)
+    pointer (10.0, 10.0, true)
+    pointer (10.0, 10.0, false)
+    expect (labels (), "Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    tap "Receiver: Living Room TV"
+    tap "Kitchen"
+    expect (letters "Kitchen", true)
+    expect (labels (), "Receiver: Kitchen|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD PAUSE PLAY SET_VOLUME SEEK SET_PLAYBACK_RATE ")
+    tap "Stop"
+    frame "0.2"
+    expect (letters "Finished", true)
+    expect (labels (), "Receiver: Kitchen|Play|Open file…")
+    unplug ()
+    tap "Play"
+    expect (letters "kitchen.local:8009: connection refused or t…", true)
+    opened "/music/A very long name that will not fit on the title line at all.mp3"
+    expect (letters "A very long name that will no…", true)))

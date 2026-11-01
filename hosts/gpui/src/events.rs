@@ -40,6 +40,27 @@ pub fn frame(now: i64, elapsed: f64) -> String {
     format!("{{\"kind\":\"frame\",\"now\":{now},\"elapsed\":{elapsed:?}}}")
 }
 
+/// A URL's path with its percent escapes decoded, so `My%20Song.mp3` is the file's name.
+pub fn unescaped(path: &str) -> String {
+    let bytes = path.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let escaped = bytes.get(i + 1..i + 3).and_then(|hex| std::str::from_utf8(hex).ok());
+        match (bytes[i], escaped.and_then(|hex| u8::from_str_radix(hex, 16).ok())) {
+            (b'%', Some(byte)) => {
+                out.push(byte);
+                i += 3;
+            }
+            (byte, _) => {
+                out.push(byte);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// A lifecycle phase, such as the window becoming visible.
 pub fn lifecycle(now: i64, phase: &str) -> String {
     format!(

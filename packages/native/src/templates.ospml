@@ -337,8 +337,9 @@ module Templates
 
     described machine = filterList (live machine, \area => Doc::text (area, "role") != "none")
 
+    // A slider's value: the input its `of` names, the one it shows, else the one it sets.
     slider (machine, area) = match Doc::has (area, "slide")
-        true => [JsonMember "value" (Machines::value (machine, Doc::text (Doc::field (area, "slide"), "set")))]
+        true => [JsonMember "value" (Machines::value (machine, Doc::text (Doc::field (area, "slide"), Pick::either (Doc::has (Doc::field (area, "slide"), "of"), "of", "set"))))]
         false => []
 
     element (machine, area) = JsonObject (listConcat [Doc::str ("role", Doc::text (area, "role")), Doc::str ("label", textOf (machine, area, "label")), JsonMember "x" (JsonFloat (numberOf (machine, area, "x"))), JsonMember "y" (JsonFloat (numberOf (machine, area, "y"))), JsonMember "w" (JsonFloat (numberOf (machine, area, "w"))), JsonMember "h" (JsonFloat (numberOf (machine, area, "h")))] (slider (machine, area)))

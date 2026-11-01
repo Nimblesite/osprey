@@ -164,9 +164,6 @@
   "assets": {
    "type": "text"
   },
-  "name": {
-   "type": "text"
-  },
   "seekTo": {
    "type": "number"
   },
@@ -1080,7 +1077,7 @@
      },
      {
       "shape": "text",
-      "text": "{{name|fit:30}}",
+      "text": "{{title|fit:30}}",
       "x": 434.5,
       "y": 591.5,
       "size": 46,
@@ -1761,7 +1758,15 @@
        "fire": "play"
       },
       "role": "button",
-      "label": "Play"
+      "label": "Play",
+      "when": {
+       "state": "playback",
+       "in": [
+        "stopped",
+        "ended",
+        "failed"
+       ]
+      }
      },
      {
       "x": 563,
@@ -1801,7 +1806,8 @@
        "set": "seekTo",
        "min": 0,
        "max": "{{duration}}",
-       "fire": "seekAbsolute"
+       "fire": "seekAbsolute",
+       "of": "position"
       },
       "when": {
        "state": "playback",
@@ -1822,7 +1828,8 @@
        "set": "wantVolume",
        "min": 0,
        "max": 1,
-       "fire": "chooseVolume"
+       "fire": "chooseVolume",
+       "of": "volume"
       },
       "when": {
        "state": "playback",

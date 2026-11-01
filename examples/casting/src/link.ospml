@@ -151,12 +151,17 @@ module Link
     export pulled (store, lever, value) = settled (store(screen = Screen(screenMachine = Machines::pull (machineOf store, lever, value))))
 
     // The file facts for a chosen or opened MP3.
-    fileFacts path = [fact ("file", JsonString path), fact ("title", JsonString (Media::title path)), fact ("name", JsonString (Media::base_name path))]
+    fileFacts path = [fact ("file", JsonString path), fact ("title", JsonString (Media::title path))]
 
     (** The store as launched: the canvas artwork's folder as `assets`, a `--skin` when given and an MP3 the app was opened with. *)
     export launched (store, folder, skin, path) =
         skinned = listConcat [fact ("assets", JsonString folder)] (ui::Pick::either (skin == "", [], [fact ("skin", JsonString skin)]))
         fed (store, listConcat skinned (ui::Pick::either (path == "", [], fileFacts path)))
+
+    (** A lifecycle phase: `open:<path>` is an MP3 Finder opened while the app runs, loaded as the file ([GPUI-HOST-OPEN]); other phases change nothing. *)
+    export phased (store, phase) = match startsWith phase "open:"
+        true => settled (fed (store, fileFacts (drop phase 5)))
+        false => Runtime::step store
 
     released (store, x, y) = settled (store(screen = Screen(screenMachine = Templates::released (machineOf store, x, y))))
 
