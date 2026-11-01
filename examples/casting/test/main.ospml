@@ -167,6 +167,11 @@ drawn () =
 
 post event = hosted (\() => kept (Runtime::proceed (driven.drivenSession, event, App::update, App::regions)))
 
+// A Windows launch, whose host names its own browse helper with `--browse` ([CAST-DESIGN-NATIVE]).
+helped () =
+    reset ()
+    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"windows\",\"arguments\":[\"--skin\",\"midnight\",\"--browse\",\"C:/Apps/casting/cast-browse.exe\"]}", App::initial, App::regions, App::theme ())))
+
 // ---- reading the rendered view ----
 
 seen () = driven.drivenSeen
@@ -180,6 +185,11 @@ enabledOf label = (control label).controlEnabled
 selected label = (control label).controlSelected
 
 requested kind = Views::requested (seen (), kind)
+
+// The executable and arguments the device browse runs, space-separated.
+browser () = match driven.drivenSession.sessionStore.finder
+    ui::Run executable arguments _ _ _ _ => join (listConcat [executable] arguments) " "
+    _ => ""
 
 // ---- the canvas's accessibility tree [UI-MACHINE-A11Y] ----
 
@@ -287,6 +297,17 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     finishTrack ()
     frame 0.2
     expect (shows "Finished", true)))
+
+test ("a Windows launch finds the TVs with the helper `--browse` names, a Mac launch with dns-sd", \() => bench (\() =>
+    helped ()
+    expect (browser (), "C:/Apps/casting/cast-browse.exe")
+    expect (shows "Looking for TVs…", true)
+    expect (requested "run", true)
+    discovered ()
+    expect (selected "Receiver", "Living Room TV")
+    expect (length (control "Receiver").controlChoices, 2)
+    started ()
+    expect (browser (), "/usr/bin/perl -e alarm 3; exec @ARGV /usr/bin/dns-sd -Z _googlecast._tcp local")))
 
 test ("skins change the palette, never the controls", \() => bench (\() =>
     started ()

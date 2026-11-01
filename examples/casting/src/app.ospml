@@ -31,11 +31,12 @@ module App
         Success machine => Link::store machine
         Error problem => Link::store (MachineDocs::faulty problem)
 
-    (** Loads the document, applies `--skin` and an opened MP3, starts the frame clock and answers the initial states' requests. *)
+    (** Loads the document, applies `--skin`, `--browse` and an opened MP3, starts the frame clock and answers the initial states' requests. *)
     export initial context =
         path = documentPath context.arguments
         launched = Link::launched (loaded (readFile path ?: ""), MachineDocs::folder path, after (context.arguments, "--skin", ""), opened context.arguments)
-        first = Link::settled launched
+        found = launched(finder = Link::browse (after (context.arguments, "--browse", "")))
+        first = Link::settled found
         Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))
 
     (** Routes every framework message: controls pull the machine's levers, completions and frames go to the adapter. *)

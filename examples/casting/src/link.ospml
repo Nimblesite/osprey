@@ -30,10 +30,11 @@ type Connection =
     clock : int
     polled : int
 
-(** The whole application store. *)
+(** The whole application store: the interface, the cast and the browse that finds devices. *)
 type Store =
     screen : Screen
     link : Connection
+    finder : ui::Capability
 
 (** A store and the capability requests one round of machine requests made. *)
 type Served =
@@ -48,14 +49,19 @@ module Link
     (** How often the live player is polled, in milliseconds. *)
     export pollMs = 100
 
-    (** The browse that finds Cast devices, run by the host so the window never waits. *)
-    export browse = ui::Run(executable = "/usr/bin/perl", arguments = ["-e", "alarm 3; exec @ARGV", "/usr/bin/dns-sd", "-Z", "_googlecast._tcp", "local"], timeout = 5000, outputLimit = 65536, plist = false, runSlice = "cast-browse")
+    // A browse the host runs, so the window never waits.
+    browsed (executable, arguments) = ui::Run(executable = executable, arguments = arguments, timeout = 5000, outputLimit = 65536, plist = false, runSlice = "cast-browse")
+
+    (** The browse that finds Cast devices: `helper`, a program that prints `dns-sd -Z` lines and stops by itself (Windows has no dns-sd), or with "" dns-sd stopped after three seconds. *)
+    export browse helper = match helper
+        "" => browsed ("/usr/bin/perl", ["-e", "alarm 3; exec @ARGV", "/usr/bin/dns-sd", "-Z", "_googlecast._tcp", "local"])
+        _ => browsed (helper, [])
 
     (** The single-file picker for audio the device can play. *)
     export choose = ui::ChooseFile(types = ["mp3"], chosenLimit = 0, chosenSlice = "")
 
     (** A store around a loaded machine, with no player and no devices. *)
-    export store machine = Store(screen = Screen(screenMachine = machine), link = Connection(linked = false, player = Player::idle (), devices = [], clock = 0, polled = 0))
+    export store machine = Store(screen = Screen(screenMachine = machine), link = Connection(linked = false, player = Player::idle (), devices = [], clock = 0, polled = 0), finder = browse "")
 
     machineOf store = store.screen.screenMachine
 
@@ -98,7 +104,7 @@ module Link
 
     // One request the machine made.
     answer (store, ask) = match ask.askName
-        "cast.discover" => asked (fed (store, [fact ("searched", Values::flag false)]), [Requests::ask ("discover", browse)])
+        "cast.discover" => asked (fed (store, [fact ("searched", Values::flag false)]), [Requests::ask ("discover", store.finder)])
         "cast.choose" => asked (store, [Requests::ask ("choose", choose)])
         "cast.start" => start (store, ask)
         "cast.pause" => live (store, \p => Player::pause p)
