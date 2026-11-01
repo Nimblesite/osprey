@@ -45,6 +45,9 @@ test("specification links resolve across subject folders and duplicate URLs are 
   expect(() => resolveLink("../../../../outside", file, pages)).toThrow("Link escapes repository");
   const spec = { file, section: { slug: "platforms", title: "Platform integration" } };
   expect(() => pagesFrom([spec, spec])).toThrow("Duplicate specification URL");
+  const { cleanContent } = require("../scripts/copy-spec.js");
+  const prose = "Apply `f[int](value)` like [iOS](../compiler/iOSCodegen.md).\n```python\nPrice[int](...)\n```";
+  expect(cleanContent(prose, file, pages)).toBe("Apply `f[int](value)` like [iOS](/spec/ioscodegen/).\n```python\nPrice[int](...)\n```");
 });
 
 test("specifications separate the language from hosts, tools and applications", async ({ page }) => {
