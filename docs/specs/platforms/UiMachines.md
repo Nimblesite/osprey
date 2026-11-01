@@ -98,7 +98,7 @@ Each control's binding is the framework's ordinary typed binding, so ordinals, s
 
 ## Canvas skins [UI-MACHINE-CANVAS]
 
-A skin may carry `"canvas": {"width", "height", "atlas": [image paths relative to the `assets` input], "shapes": [...], "listeners": [...]}`. When the chosen skin has a canvas, the whole view is one scene drawn from the canvas instead of the native view template. Units are the artboard's own mock pixels; the host scales the artboard to the window.
+A skin may carry `"canvas": {"width", "height", "atlas": [image paths relative to the `assets` input], "shapes": [...], "listeners": [...]}`. When the chosen skin has a canvas, the whole view is one scene drawn from the canvas instead of the native view template. Units are the artboard's own mock pixels, drawn at the canvas's fixed `zoom` (default 1) window pixels per unit from the region's top left; resizing the window only reveals more or less of it.
 
 | Shape | Members and form |
 | --- | --- |
@@ -108,8 +108,14 @@ A skin may carry `"canvas": {"width", "height", "atlas": [image paths relative t
 | `triangle` | `x`, `y`, `w`, `h`, `colour`, `alpha`, `depth` |
 | `disc` | `x`, `y`, `radius`, `colour`, `alpha`, `depth` |
 | `turned` | `x`, `y`, `w`, `h`, `angle`, `turn`, `colour`, `alpha`, `depth`; a sprite rotated by an input, used for the spinning disc |
+| `polyline` | `points` as `[[x, y], ...]`, `stroke`, `colour`, `alpha`, `depth`; a line through the points |
+| `cable` | `points` as two ends `[[x1, y1], [x2, y2]]`, `stroke`, `colour`, `depth`, optional `dash` and arrow `size`; a curve that leaves and enters along whichever axis its ends are further apart on, dashed `dash` on and off, with an arrowhead at its middle |
 
-Every shape takes `when` and templated numbers. Listeners are hit areas `{"x","y","w","h","when","on"}` with the same `on` lever as view controls, or `"slide": {"set", "min", "max", "fire", "of"}` for a slider whose pointer position across the area sets the input between `min` and `max`; `of` names the input the slider shows, used by the accessibility tree. A release inside the first listener in document order whose area holds the point and whose `when` holds acts. The host sends pointer events in scene units.
+Every shape takes `when` and templated numbers. A templated number may fill to several numbers separated by spaces, which add: `"{{sourceX}} 314"` is 314 moved by the `sourceX` input. Listeners are hit areas `{"x","y","w","h","when","on"}` with the same `on` lever as view controls, or `"slide": {"set", "min", "max", "fire", "of"}` for a slider whose pointer position across the area sets the input between `min` and `max`; `of` names the input the slider shows, used by the accessibility tree. The host sends pointer events in scene units, each pressed or not ([UI-MACHINE-DRAG]).
+
+### Dragging [UI-MACHINE-DRAG]
+
+A press grips the first listener in document order whose area holds the point and whose `when` holds. The release then acts on the listener under it, once. A move with nothing pressed is a hover and changes nothing. A listener with `"drag": {"x": numberInput, "y": numberInput}` drags those inputs: once the pointer has moved more than 4 units from the press, each move sets them so the grabbed point stays under the pointer, and the release leaves them there without acting. A press that stays within 4 units is still a click. A slider follows the pointer without firing while held, and its release sets it once more and fires. `Canvases::holding` and `Canvases::sliding` tell an adapter that the pointer is down, so it can wait for the release before reacting.
 
 ## Repeated shapes and listeners [UI-MACHINE-EACH]
 
@@ -161,11 +167,11 @@ Because a machine is data, a test drives it without a host: load the document, s
 
 ### Skins [UI-MACHINE-FLOW-SKINS]
 
-The four skins, Topology, Notation, Paper and Prism, are canvases sliced from the designs in `packages/signal_flow/design/` by `skins/build.py`. Each backdrop is its mock with every live part painted out. The canvas then draws the switches, sliders, values, health rows, selection ring, bypass dimming, ports and the whole inspector from the inputs. The title opens a menu of the four skins. Changing skin keeps every input, state and the undo history.
+The four skins, Topology, Notation, Paper and Prism, are canvases sliced from the designs in `packages/signal_flow/design/` by `skins/build.py`. Each backdrop is its mock with every live part painted out. The canvas then draws the switches, sliders, values, health rows, selection ring, bypass dimming, ports and the whole inspector from the inputs. The title opens a menu of the four skins. Changing skin keeps every input, state and the undo history. In Prism every node is its own sprite, cut from the mock with its port labels, over a graph rebuilt from whole grid periods of empty canvas. Pressing a node's body drags it: its sprite, controls, listeners and both ends of each `cable` follow its `<role>X` and `<role>Y` offset inputs.
 
 ### Prism synth [UI-MACHINE-FLOW-SYNTH]
 
-[examples/synth](../../../examples/synth/README.md) plays the Prism skin as a synthesiser. The Oscillator is a 220 Hz sine. The LFO sweeps the Filter's cutoff (20 × 1000^process Hz) by up to depth × 2 octaves each way at 2 Hz. The Filter is a two-pole low-pass, and the Master gates the output. Each sample is a pure function of the patch and its index, rendered at 11 025 Hz as an 8-bit mono WAV. An update that changes the patch returns a `run` request that writes the clip and plays it. A silent patch, selection, menus and skin changes return none.
+[examples/synth](../../../examples/synth/README.md) plays the Prism skin as a synthesiser. The Oscillator is a 220 Hz sine, triangle, saw or square, chosen by its Wave menu. The LFO sweeps the Filter's cutoff (20 × 1000^process Hz) by up to depth × 2 octaves each way, at the rate its Rate menu names as a note length at 120 bpm. The Filter is a two-pole low-pass, and the Master gates the output and scales it by its Level. Each sample is a pure function of the patch and its index, rendered at 11 025 Hz as an 8-bit mono WAV. An update that changes the patch returns a `run` request that writes the clip and plays it. A silent patch, selection, menus, skin changes, node drags and a held slider return none; a slider's release plays once. The app opens as a bare window, 1152 by 621 points with the traffic lights in the Prism header, under the Prism icon.
 
 ## Later
 
