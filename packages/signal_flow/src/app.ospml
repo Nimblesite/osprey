@@ -25,15 +25,10 @@ module App
         Success machine => Flow::store machine
         Error problem => Flow::store (MachineDocs::faulty problem)
 
-    // The folder the document sits in, where its canvas artwork lives.
-    folder path =
-        parts = split path "/" ?: [path]
-        join (ui::Lists::slice (parts, 0, satSub (length parts) 1)) "/"
-
     (** Loads the document in `skin` unless `--skin` names another, and answers the initial states' requests; an application built on the editor picks its own skin. *)
     export opened (context, skin) =
         path = documentPath context.arguments
-        Flow::settled (Flow::launched (loaded (readFile path ?: ""), folder path, after (context.arguments, "--skin", skin)))
+        Flow::settled (Flow::launched (loaded (readFile path ?: ""), MachineDocs::folder path, after (context.arguments, "--skin", skin)))
 
     (** Loads the document, applies `--skin` and answers the initial states' requests. *)
     export initial context = opened (context, "")

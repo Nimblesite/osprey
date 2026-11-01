@@ -67,7 +67,10 @@ sealed class Session
     public bool Choose(ListViewItem row) => renderer.Choose(row);
 
     /// <summary>Presses and releases a key in the scene on screen.</summary>
-    public bool Press(string key) => renderer.Press(key);
+    public bool Press(string key) => renderer.InScene(scene => scene.Press(key));
+
+    /// <summary>Clicks the scene on screen at a point in its units.</summary>
+    public bool Tap(double x, double y) => renderer.InScene(scene => scene.Tap(x, y));
 
     /// <summary>A control's value under the binding the framework issued.</summary>
     void Control(string region, long revision, long ordinal, object? value) =>

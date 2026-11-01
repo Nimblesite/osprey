@@ -53,6 +53,9 @@ sealed class HostWindow : Window
     /// <summary>Presses and releases a key in the scene on screen; false when no scene is drawn.</summary>
     public bool Press(string key) => session?.Press(key) ?? false;
 
+    /// <summary>Clicks the scene on screen at a point in its units; false when no scene is drawn.</summary>
+    public bool Tap(double x, double y) => session?.Tap(x, y) ?? false;
+
     /// <summary>
     /// Shows the window at its own size beyond every screen, without activating it and out of the
     /// task switcher [WINUI-HOST-SELF-TEST]. It is still composed, so it draws and captures as a

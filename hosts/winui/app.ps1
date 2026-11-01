@@ -50,7 +50,7 @@ function Publish-Host {
 }
 
 function Write-Package {
-    foreach ($file in $entry.files) { Copy-Item (Join-Path $source $file) (Join-Path $layout 'app') -Force }
+    foreach ($file in $entry.files) { Copy-Item (Join-Path $source $file) (Join-Path $layout 'app') -Recurse -Force }
     Set-Content (Join-Path $layout 'app\arguments.txt') -Value @($entry.arguments) -Encoding utf8
     Write-Logo (Join-Path $layout 'logo.png') $entry.name
     $capabilities = foreach ($name in $entry.capabilities) {
@@ -90,7 +90,8 @@ function Test-Package([string] $Family) {
     $inside = Join-Path $env:LOCALAPPDATA "Packages\$Family\LocalState\self-test"
     $shots = Join-Path $repo "target\winui-shots\$App"
     Remove-Item $inside, $shots -Recurse -Force -ErrorAction SilentlyContinue
-    $arguments = @{ Exe = $alias; Dll = (Join-Path $layout 'app\app.dll'); Script = (Join-Path $layout 'app\self-test.json'); Shots = $inside }
+    $launch = @($entry.arguments | ForEach-Object { $_.Replace('{app}', (Join-Path $layout 'app')) })
+    $arguments = @{ Exe = $alias; Dll = (Join-Path $layout 'app\app.dll'); Script = (Join-Path $layout 'app\self-test.json'); Shots = $inside; Arguments = $launch }
     try { & (Join-Path $PSScriptRoot 'self-test.ps1') @arguments -Headless:$Headless }
     finally { Copy-Item $inside $shots -Recurse -Force -ErrorAction SilentlyContinue }
     & (Join-Path $PSScriptRoot 'goldens.ps1') -Shots $shots -Goldens (Join-Path $source 'goldens\windows') -Update:$Update

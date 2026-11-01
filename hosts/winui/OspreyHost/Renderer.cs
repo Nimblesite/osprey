@@ -96,7 +96,7 @@ sealed partial class Renderer
         var key = $"{scope.Region}#{Envelopes.Number(node, "event")}";
         if (!scenes.TryGetValue(key, out var view))
         {
-            view = new SceneView();
+            view = new SceneView(problem => report([problem]));
             scenes[key] = view;
         }
         Detach(view.Element);
@@ -138,14 +138,14 @@ sealed partial class Renderer
         }
     }
 
-    /// <summary>Presses and releases a key in the first scene drawn, as its keyboard would; false when none is.</summary>
-    public bool Press(string key)
+    /// <summary>Acts on the first scene drawn, as its keyboard or pointer would; false when none is.</summary>
+    public bool InScene(Action<SceneView> act)
     {
         if (scenes.Values.FirstOrDefault() is not { } scene)
         {
             return false;
         }
-        scene.Press(key);
+        act(scene);
         return true;
     }
 

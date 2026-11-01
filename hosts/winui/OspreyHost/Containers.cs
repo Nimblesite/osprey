@@ -43,10 +43,55 @@ sealed partial class Renderer
     {
         "slot" => regions.Find(Text(node, "key")) is { } region && Fills(region.Node, depth + 1),
         "stack" => Text(node, "axis") != "horizontal" && Items(node, "children", child => child).Any(child => Fills(child, depth + 1)),
+        "themed" => node.TryGetProperty("body", out var body) && Fills(body, depth + 1),
         var kind => Fillers.Contains(kind),
     };
 
     GridLength Room(JsonElement node) => Fills(node) ? Rest : GridLength.Auto;
+
+    /// <summary>
+    /// The body with a theme of its own [UI-COMPONENTS], [UI-MACHINE-SKINS]: on its <c>background</c>
+    /// token, in its <c>text</c> ink, which the body's words inherit, and with the light or dark
+    /// appearance that suits that background, so the stock controls inside stay legible on it.
+    /// </summary>
+    UIElement Themed(Scope scope, JsonElement node)
+    {
+        if (!node.TryGetProperty("theme", out var theme) || theme.ValueKind != JsonValueKind.Object || !node.TryGetProperty("body", out var body))
+        {
+            return Refused("A themed node needs a theme and a body");
+        }
+        var dark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+        var fill = Token(theme, "background", dark);
+        var inner = new ContentControl
+        {
+            Content = Draw(scope, body),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+            RequestedTheme = fill is { } colour && Luminance(colour) < 0.5 ? ElementTheme.Dark : ElementTheme.Light,
+        };
+        if (Token(theme, "text", dark) is { } ink)
+        {
+            inner.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(ink);
+        }
+        var border = new Border { Child = inner, Padding = new Thickness(Gap(1) * 3) };
+        if (fill is { } background)
+        {
+            border.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(background);
+        }
+        return border;
+    }
+
+    /// <summary>The colour of the theme's token called <paramref name="name"/> in this appearance, or null when it has none.</summary>
+    static Windows.UI.Color? Token(JsonElement theme, string name, bool dark) =>
+        Items(theme, "tokens", token => token).Where(token => Text(token, "name") == name)
+            .Select(token => Hex(Text(token, dark ? "dark" : "light"))).FirstOrDefault(colour => colour is not null);
+
+    static Windows.UI.Color? Hex(string text) =>
+        text is ['#', .. var digits] && digits.Length == 6 && uint.TryParse(digits, System.Globalization.NumberStyles.HexNumber, null, out var rgb)
+            ? Windows.UI.Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb)
+            : null;
+
+    static double Luminance(Windows.UI.Color colour) => (0.2126 * colour.R + 0.7152 * colour.G + 0.0722 * colour.B) / 255;
 
     // A slot's row in a column, kept so that drawing the slot's region settles the row again.
     void Remember(JsonElement child, RowDefinition? row)

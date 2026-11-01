@@ -21,6 +21,9 @@ public sealed record SpriteShape(int Atlas, double X, double Y, double W, double
 public sealed record GlyphsShape(string Text, double X, double Y, double Size, uint Colour, double Depth) : Shape(Depth);
 
 /// <summary>A vector path, filled or stroked with a paint, after its own move and scale.</summary>
+/// <summary>Text in the system font at a weight, its left edge, centre or right edge (anchor 0, 1 or 2) at x and the top of its line at y.</summary>
+public sealed record LetteringShape(string Text, double X, double Y, double Size, uint Colour, double Depth, int Anchor, double Weight) : Shape(Depth);
+
 public sealed record PathShape(IReadOnlyList<PathStep> Steps, Outline Outline, Paint Paint, (double X, double Y, double Scale)? Moved, double Depth) : Shape(Depth);
 
 /// <summary>One path-builder command in scene units.</summary>
@@ -109,6 +112,7 @@ public static class SceneDecoder
             3 => Exactly(values, 9, () => new SpriteShape((int)Whole(values[1]), Real(values[2]), Real(values[3]), Real(values[4]), Real(values[5]), Real(values[6]), Colour(values[7]), Real(values[8]))),
             4 => Exactly(values, 7, () => new GlyphsShape(Line(values[1]), Real(values[2]), Real(values[3]), Real(values[4]), Colour(values[5]), Real(values[6]))),
             5 => Exactly(values, 6, () => Path(values)),
+            6 => Exactly(values, 9, () => Lettering(values)),
             var code => throw new HostException($"Unknown shape code {code}"),
         };
     }
@@ -194,6 +198,14 @@ public static class SceneDecoder
 
     static IReadOnlyList<JsonElement> Values(JsonElement item, string what) =>
         item.ValueKind == JsonValueKind.Array ? [.. item.EnumerateArray()] : throw new HostException($"{what} is not an array");
+
+    static LetteringShape Lettering(IReadOnlyList<JsonElement> values)
+    {
+        var anchor = Whole(values[7]);
+        return anchor is >= 0 and <= 2
+            ? new LetteringShape(Line(values[1]), Real(values[2]), Real(values[3]), Real(values[4]), Colour(values[5]), Real(values[6]), (int)anchor, Real(values[8]))
+            : throw new HostException($"A lettering anchor is 0, 1 or 2, not {anchor}");
+    }
 
     static long Code(IReadOnlyList<JsonElement> values) => values.Count > 0 ? Whole(values[0]) : throw new HostException("A scene primitive is empty");
 

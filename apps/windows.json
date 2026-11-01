@@ -8,7 +8,9 @@
       "name": "Flock",
       "description": "Herd the flock into the pen.",
       "capabilities": [],
-      "files": ["self-test.json"],
+      "files": [
+        "self-test.json"
+      ],
       "arguments": []
     },
     "painting": {
@@ -16,8 +18,25 @@
       "name": "Painting",
       "description": "Draw with the mouse, solid or dashed.",
       "capabilities": [],
-      "files": ["self-test.json"],
+      "files": [
+        "self-test.json"
+      ],
       "arguments": []
+    },
+    "signal-flow": {
+      "source": "packages/signal_flow/app",
+      "name": "Signal flow",
+      "description": "Edit a signal path whose whole interface is data.",
+      "capabilities": [],
+      "files": [
+        "self-test.json",
+        "../signal_flow.machine.json",
+        "../skins"
+      ],
+      "arguments": [
+        "--machine",
+        "{app}\\signal_flow.machine.json"
+      ]
     }
   }
 }
