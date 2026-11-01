@@ -33,7 +33,7 @@ sealed partial class HostApplication(Launch launch) : Application, IXamlMetadata
         }
         if (launch is { Script: { } script, Shots: { } shots })
         {
-            _ = Tested(new SelfTest(window, script, shots));
+            _ = Tested(new SelfTest(window, script, shots, onScreen: !launch.Headless));
         }
     }
 

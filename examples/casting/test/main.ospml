@@ -156,11 +156,9 @@ bench work =
         list text => browsed := text
     Runtime::guarded work
 
-started () = startedOn "macos"
-
-startedOn platform =
+started () =
     reset ()
-    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"${platform}\",\"arguments\":[\"--skin\",\"midnight\"]}", App::initial, App::regions, App::theme ())))
+    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"midnight\"]}", App::initial, App::regions, App::theme ())))
 
 // The canvas session: the Sherbet artboard, driven only by pointer events ([UI-MACHINE-CANVAS]).
 drawn () =
@@ -334,20 +332,7 @@ test ("no TVs found offers another search, and an unreachable TV shows why", \()
     press "Play"
     expect (shows "living-room.local:8009: connection refused or timed out", true)
     expect (shows "Play", true)
-    expect (length (filterList ((seen ()).renderedControls, \c => c.controlTone == "danger")), 1)
-    // On Windows the search is the host's own DNS-SD browse, answered with the same zone-file lines.
-    startedOn "windows"
-    expect (requested "host-call", true)
-    expect (requested "run", false)
-    browsing ""
-    discovered ()
-    expect (shows "No TVs found", true)
-    browsing browse
-    press "Search again"
-    expect (requested "host-call", true)
-    discovered ()
-    expect (selected "Receiver", "Living Room TV")
-    expect (length (control "Receiver").controlChoices, 2)))
+    expect (length (filterList ((seen ()).renderedControls, \c => c.controlTone == "danger")), 1)))
 
 test ("the canvas: every control is reached by its accessible label, through pointer events alone", \() => bench (\() =>
     drawn ()

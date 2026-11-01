@@ -89,7 +89,16 @@ function Write-Logo([string] $Path, [string] $Name) {
 
 function Register-Package {
     Write-Host "==> registering Osprey.$App in its AppContainer"
-    Add-AppxPackage -Register (Join-Path $layout 'AppxManifest.xml') -ForceUpdateFromAnyVersion -ForceApplicationShutdown
+    $manifest = Join-Path $layout 'AppxManifest.xml'
+    try { Add-AppxPackage -Register $manifest -ForceUpdateFromAnyVersion -ForceApplicationShutdown }
+    catch {
+        # 0x80073CFB: Windows will not register a changed manifest over a development package of the
+        # same version, so the old registration goes first; its LocalState (the app's store) is kept.
+        if ("$_" -notmatch '0x80073CFB') { throw }
+        Write-Host "==> replacing the earlier registration of Osprey.$App"
+        Get-AppxPackage "Osprey.$App" | Remove-AppxPackage -PreserveApplicationData
+        Add-AppxPackage -Register $manifest -ForceUpdateFromAnyVersion -ForceApplicationShutdown
+    }
     (Get-AppxPackage "Osprey.$App").PackageFamilyName
 }
 

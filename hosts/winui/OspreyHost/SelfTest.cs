@@ -18,10 +18,11 @@ namespace Osprey.Host.WinUI;
 /// <c>choose</c> a row, <c>type</c> into a field, <c>key</c> to press a key in a scene, <c>tap</c>
 /// to click a scene at an x and y in its units,
 /// <c>frames</c> to let the steady clock run that many 1/60 s frames, <c>sleep</c> for seconds,
-/// and <c>shot</c> to save the window as a PNG.
+/// and <c>shot</c> to save the window as a PNG; on screen, <c>shot</c> also saves the window's client
+/// area as the screen shows it, which the goldens check too.
 /// Any diagnostic the window shows fails the test.
 /// </summary>
-sealed class SelfTest(HostWindow window, string script, string shots)
+sealed class SelfTest(HostWindow window, string script, string shots, bool onScreen)
 {
     static readonly TimeSpan Patience = TimeSpan.FromSeconds(90);
     static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(100);
@@ -117,6 +118,10 @@ sealed class SelfTest(HostWindow window, string script, string shots)
         if (window.Content is { } content)
         {
             await Capture.Content(content, Path.Combine(shots, $"{name}-content.png"));
+        }
+        if (onScreen)
+        {
+            await Capture.Screen(window.Handle, Path.Combine(shots, $"{name}-screen.png"));
         }
     }
 

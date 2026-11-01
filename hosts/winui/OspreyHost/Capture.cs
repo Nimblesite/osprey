@@ -8,11 +8,15 @@ namespace Osprey.Host.WinUI;
 
 /// <summary>
 /// What the window shows, saved as PNG for the self-test [WINUI-HOST-SELF-TEST]: the whole window as
-/// Windows composes it, Mica included, and the XAML content alone as WinUI renders it.
+/// Windows composes it, Mica included, the XAML content alone as WinUI renders it, and the window's
+/// client area as the screen shows it.
 /// </summary>
 static partial class Capture
 {
     const uint RenderFullContent = 2;
+    const uint SourceCopy = 0x00CC0020;
+    const uint CaptureLayered = 0x40000000;
+    const string ContentSite = "Microsoft.UI.Content.DesktopChildSiteBridge";
     const uint RgbColours = 0;
     const ushort BitsPerPixel = 32;
     const double Dpi = 96;
@@ -58,6 +62,25 @@ static partial class Capture
         await Save(path, BitmapAlphaMode.Premultiplied, target.PixelWidth, target.PixelHeight, pixels.ToArray());
     }
 
+    /// <summary>
+    /// The XAML content's area copied from the screen, saved to <paramref name="path"/>: what a person
+    /// looking at the window sees, after Windows has composed it with everything on the desktop. The
+    /// area is the window WinUI hosts the content in, which lines up with the content's own picture.
+    /// </summary>
+    public static async Task Screen(nint window, string path)
+    {
+        var site = FindWindowEx(window, 0, ContentSite, null);
+        GetWindowRect(site == 0 ? window : site, out var bounds);
+        var (width, height) = (bounds.Right - bounds.Left, bounds.Bottom - bounds.Top);
+        var pixels = Copied(width, height, context =>
+        {
+            var screen = GetDC(0);
+            try { BitBlt(context, 0, 0, width, height, screen, bounds.Left, bounds.Top, SourceCopy | CaptureLayered); }
+            finally { ReleaseDC(0, screen); }
+        });
+        await Save(path, BitmapAlphaMode.Ignore, width, height, pixels);
+    }
+
     static async Task Save(string path, BitmapAlphaMode alpha, int width, int height, byte[] pixels)
     {
         using var file = File.Create(path);
@@ -70,16 +93,22 @@ static partial class Capture
     {
         GetWindowRect(window, out var bounds);
         var (width, height) = (bounds.Right - bounds.Left, bounds.Bottom - bounds.Top);
+        return (width, height, Copied(width, height, context => PrintWindow(window, context, RenderFullContent)));
+    }
+
+    // The pixels <paramref name="draw"/> leaves in a width by height bitmap, top row first.
+    static byte[] Copied(int width, int height, Action<nint> draw)
+    {
         var header = new BitmapHeader { Size = (uint)Marshal.SizeOf<BitmapHeader>(), Width = width, Height = -height, Planes = 1, BitCount = BitsPerPixel };
         var context = CreateCompatibleDC(0);
         var bitmap = CreateDIBSection(context, header, RgbColours, out var bits, 0, 0);
         var previous = SelectObject(context, bitmap);
         try
         {
-            PrintWindow(window, context, RenderFullContent);
+            draw(context);
             var pixels = new byte[width * height * 4];
             Marshal.Copy(bits, pixels, 0, pixels.Length);
-            return (width, height, pixels);
+            return pixels;
         }
         finally
         {
@@ -96,6 +125,19 @@ static partial class Capture
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool PrintWindow(nint window, nint context, uint flags);
+
+    [LibraryImport("user32.dll", EntryPoint = "FindWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint FindWindowEx(nint parent, nint after, string? className, string? title);
+
+    [LibraryImport("user32.dll")]
+    private static partial nint GetDC(nint window);
+
+    [LibraryImport("user32.dll")]
+    private static partial int ReleaseDC(nint window, nint context);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool BitBlt(nint target, int x, int y, int width, int height, nint source, int fromX, int fromY, uint operation);
 
     [LibraryImport("gdi32.dll")]
     private static partial nint CreateCompatibleDC(nint context);

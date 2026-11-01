@@ -28,17 +28,20 @@ pub(super) fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
 /// TLS session, file server and media render, which live in that archive [FFI-TLS-CLIENT]
 /// [FFI-FILE-SERVER] [FFI-MEDIA-RENDER].
 pub(crate) fn uses_http(ir: &str) -> bool {
-    [
-        "@http",
-        "@websocket",
-        "@osprey_tls_",
-        "@osprey_net_",
-        "@osprey_file_server_",
-        "@osprey_media_",
-    ]
-    .iter()
-    .any(|spelling| ir.contains(spelling))
+    ["http", "websocket"]
+        .iter()
+        .chain(&HTTP_RUNTIME_EXTERNS)
+        .any(|prefix| ir.contains(&format!("@{prefix}")))
 }
+
+/// The prefixes of the `extern fn`s the HTTP archive itself defines, so a program that declares
+/// one links it from the archive rather than asking a host for it.
+pub(crate) const HTTP_RUNTIME_EXTERNS: [&str; 4] = [
+    "osprey_tls_",
+    "osprey_net_",
+    "osprey_file_server_",
+    "osprey_media_",
+];
 
 fn runtime_archive(http: bool, memory: &str) -> Option<String> {
     let name = if http { "http" } else { "fiber" };

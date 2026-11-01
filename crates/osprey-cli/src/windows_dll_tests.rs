@@ -37,6 +37,33 @@ fn imports_become_slots_the_host_binds() {
     );
 }
 
+/// [WINUI-HOST-IMPORTS] An import the DLL's own runtime archive defines, such as the TLS session
+/// or the file server [FFI-TLS-CLIENT] [FFI-FILE-SERVER], stays a link-time declaration: the
+/// archive is linked into the DLL, and no host answers it.
+#[test]
+fn runtime_imports_link_from_the_archive_not_the_host() {
+    let source = "extern fn osprey_tls_close(handle: int) -> int
+        extern fn osprey_media_render(audio: string) -> string
+        extern fn host_slice(key: string) -> string
+        fn main() = print(toString(osprey_tls_close(1)) + osprey_media_render(\"a\") + host_slice(\"x\"))
+";
+    let (dll, slotted, _) = adapted(source);
+    let names: Vec<&str> = slotted.iter().map(|i| i.symbol.as_str()).collect();
+    assert_eq!(names, ["host_slice"]);
+    for runtime in ["osprey_tls_close", "osprey_media_render"] {
+        assert!(
+            dll.lines()
+                .any(|line| line.starts_with("declare ") && line.contains(&format!("@{runtime}("))),
+            "`{runtime}` should stay a declaration the archive defines:
+{dll}"
+        );
+        assert!(
+            !dll.contains(&format!("@osprey_import_{runtime}(")),
+            "{dll}"
+        );
+    }
+}
+
 /// A slot keeps the C bool convention the import adapter calls it with.
 #[test]
 fn bool_slots_keep_the_c_bool_convention() {
