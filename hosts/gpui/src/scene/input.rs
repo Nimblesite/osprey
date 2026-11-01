@@ -14,7 +14,13 @@ pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyE
     let binding = render::binding(ctx, ordinal);
     let focus = scene_focus(ctx);
     let key = ctx.key.clone();
-    let access = super::access::overlay(&handle, &binding, &decoded.access, decoded.zoom);
+    // A fitted scene's scale is the one its last frame was painted at.
+    let scale = ctx
+        .view
+        .scene_transforms
+        .get(&key)
+        .map_or(decoded.zoom, |t| t.scale);
+    let access = super::access::overlay(&handle, &binding, &decoded.access, scale);
     let surface = div()
         .id(render::control_id(ctx, ordinal))
         .relative()

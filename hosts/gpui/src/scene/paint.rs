@@ -19,7 +19,7 @@ pub(super) fn canvas(
     let prepaint_handle = handle.clone();
     gpui_kit::canvas(
         move |bounds, window, cx| {
-            let transform = Transform::new(bounds, decoded.width, decoded.zoom);
+            let transform = Transform::new(bounds, &decoded);
             let images = prepaint_handle.update(cx, |view, _| {
                 view.scene_transforms.insert(key, transform);
                 let images = sprites(view, &decoded);
@@ -68,10 +68,13 @@ fn paint(
     for (run, layered) in runs(shapes) {
         let start = run.start;
         let each = |window: &mut Window, cx: &mut App| {
-            shapes[run.clone()].iter().enumerate().try_for_each(|(offset, item)| {
-                let image = images.get(start + offset).cloned().flatten();
-                paint_shape(item, image, transform, window, cx)
-            })
+            shapes[run.clone()]
+                .iter()
+                .enumerate()
+                .try_for_each(|(offset, item)| {
+                    let image = images.get(start + offset).cloned().flatten();
+                    paint_shape(item, image, transform, window, cx)
+                })
         };
         if layered {
             let bounds = window.content_mask().bounds;
@@ -209,7 +212,15 @@ fn paint_shape(
             anchor,
             weight,
             ..
-        } => paint_lettering(text, (*x, *y, *size), *colour, (*anchor, *weight), transform, window, cx)?,
+        } => paint_lettering(
+            text,
+            (*x, *y, *size),
+            *colour,
+            (*anchor, *weight),
+            transform,
+            window,
+            cx,
+        )?,
         Shape::Path {
             steps,
             outline,

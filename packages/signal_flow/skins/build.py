@@ -24,7 +24,7 @@ HERE = Path(__file__).resolve().parent
 DESIGNS = HERE.parent / "design"
 DOCUMENT = HERE.parent / "signal_flow.machine.json"
 SUPER = 4
-ZOOM = 0.75
+ZOOM = 0  # fits the window, so a larger window shows a larger canvas
 
 
 def rgb(hex_colour):

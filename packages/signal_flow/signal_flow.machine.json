@@ -613,7 +613,7 @@
    "canvas": {
     "width": 1536,
     "height": 793,
-    "zoom": 0.75,
+    "zoom": 0,
     "atlas": [
      "{{assets}}/skins/topology/backdrop.png",
      "{{assets}}/skins/topology/icon-control.png",
@@ -899,7 +899,7 @@
    "canvas": {
     "width": 1536,
     "height": 858,
-    "zoom": 0.75,
+    "zoom": 0,
     "atlas": [
      "{{assets}}/skins/notation/backdrop.png",
      "{{assets}}/skins/notation/icon-control.png",
@@ -1134,7 +1134,7 @@
    "canvas": {
     "width": 1536,
     "height": 808,
-    "zoom": 0.75,
+    "zoom": 0,
     "atlas": [
      "{{assets}}/skins/paper/backdrop.png",
      "{{assets}}/skins/paper/icon-control.png",
@@ -1373,7 +1373,7 @@
    "canvas": {
     "width": 1536,
     "height": "{{keys|scale:180:828}}",
-    "zoom": 0.75,
+    "zoom": 0,
     "atlas": [
      "{{assets}}/skins/prism/backdrop.png",
      "{{assets}}/skins/prism/icon-control.png",

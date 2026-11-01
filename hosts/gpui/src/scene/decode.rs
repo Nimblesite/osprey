@@ -22,10 +22,7 @@ pub(super) fn decode(
     }
     let zoom = match node.get("zoom") {
         None => 1.,
-        Some(value) => dimension(Some(value), "zoom").and_then(|z| match z > 0. {
-            true => Ok(z),
-            false => Err("scene zoom must be positive".to_owned()),
-        })?,
+        Some(value) => dimension(Some(value), "zoom")?,
     };
     let mut shapes = render::list(node, "shapes")
         .iter()
@@ -37,7 +34,11 @@ pub(super) fn decode(
     shapes.sort_by(|left, right| left.depth().total_cmp(&right.depth()));
     let atlas = render::list(node, "atlas")
         .iter()
-        .map(|path| path.as_str().map(str::to_owned).ok_or("an atlas entry is not a path"))
+        .map(|path| {
+            path.as_str()
+                .map(str::to_owned)
+                .ok_or("an atlas entry is not a path")
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let has_rotation = shapes.iter().any(rotated);
     let has_sprites = shapes
@@ -46,6 +47,7 @@ pub(super) fn decode(
     Ok(Decoded {
         revision,
         width,
+        height,
         zoom,
         shapes: Arc::new(shapes),
         atlas: Arc::new(atlas),
@@ -199,10 +201,20 @@ fn glyphs(v: &[Value]) -> Result<Shape, String> {
 /// Decodes an anchored, weighted text run: text, x y size colour depth anchor weight.
 fn lettering(v: &[Value]) -> Result<Shape, String> {
     arity(v, 9)?;
-    let Shape::Glyphs { text, x, y, size, colour, depth } = glyphs(&v[..7])? else {
+    let Shape::Glyphs {
+        text,
+        x,
+        y,
+        size,
+        colour,
+        depth,
+    } = glyphs(&v[..7])?
+    else {
         return Err("lettering is not a glyph run".to_owned());
     };
-    let anchor = u8::try_from(integer(v, 7)?).ok().filter(|anchor| *anchor <= 2);
+    let anchor = u8::try_from(integer(v, 7)?)
+        .ok()
+        .filter(|anchor| *anchor <= 2);
     Ok(Shape::Lettering {
         text,
         x,

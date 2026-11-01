@@ -288,7 +288,9 @@ fn new_view(
 static OPENED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 fn opened() -> std::sync::MutexGuard<'static, Vec<String>> {
-    OPENED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    OPENED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Delivers each file Finder opened as the lifecycle phase `open:<path>`; a `file://` URL is
@@ -296,8 +298,14 @@ fn opened() -> std::sync::MutexGuard<'static, Vec<String>> {
 pub fn deliver_opened(view: &mut HostView, window: &mut Window, cx: &mut Context<HostView>) {
     let urls = std::mem::take(&mut *opened());
     for url in urls {
-        let path = url.strip_prefix("file://").map_or(url.clone(), events::unescaped);
-        view.dispatch(events::lifecycle(now(), &format!("open:{path}")), window, cx);
+        let path = url
+            .strip_prefix("file://")
+            .map_or(url.clone(), events::unescaped);
+        view.dispatch(
+            events::lifecycle(now(), &format!("open:{path}")),
+            window,
+            cx,
+        );
     }
 }
 
@@ -312,7 +320,10 @@ pub fn bare() -> bool {
 fn lights() -> Option<Point<Pixels>> {
     let requested = std::env::var("OSPREY_GPUI_LIGHTS").ok()?;
     let (x, y) = requested.split_once(',')?;
-    Some(point(px(x.trim().parse().ok()?), px(y.trim().parse().ok()?)))
+    Some(point(
+        px(x.trim().parse().ok()?),
+        px(y.trim().parse().ok()?),
+    ))
 }
 
 /// The fixed native window dimensions and title, `OSPREY_GPUI_TITLE` or "Osprey".

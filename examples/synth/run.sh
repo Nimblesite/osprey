@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the Prism synth into the GPUI host, bundles it as "Prism Synth.app" with the Prism logo as
-# its Dock icon, and opens it: the signal-flow editor's Prism skin, playing each edit.
+# its Dock icon, and opens it: the signal-flow editor's Prism skin over a keyboard that plays it, fitted to the window.
 #   run.sh            build, bundle and open
 #   run.sh --bundle   build and bundle only; prints the bundle's path
 set -euo pipefail

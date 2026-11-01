@@ -40,6 +40,7 @@ sealed class SceneView
     readonly Pool<TextBlock> glyphs;
     readonly Pool<ShapePath> paths;
     Action<object?> emit = _ => { };
+    Scene? shown;
     bool hovered;
 
     public SceneView(Action<string> report)
@@ -56,6 +57,7 @@ sealed class SceneView
         canvas.PointerReleased += (_, args) => Pointed(args, down: false);
         holder.KeyDown += (_, args) => Keyed(args, down: true);
         holder.KeyUp += (_, args) => Keyed(args, down: false);
+        holder.SizeChanged += (_, _) => { if (shown is { } scene) { Fitted(scene); } };
         CompositionTarget.Rendering += (_, _) => hovered = false;
     }
 
@@ -83,12 +85,15 @@ sealed class SceneView
     }
 
     // A scene with a size is drawn at its fixed zoom from the region's top left and clipped to itself,
-    // so a larger window shows more canvas and resizes nothing; one without is in window pixels.
+    // so a larger window shows more canvas and resizes nothing, or with zoom 0 as large as fits the
+    // region whole; one without a size is in window pixels.
     void Fitted(Scene scene)
     {
+        shown = scene;
         var sized = scene.Width > 0;
+        var scale = scene.Zoom > 0 ? scene.Zoom : Math.Min(holder.ActualWidth / scene.Width, holder.ActualHeight / scene.Height);
         canvas.Clip = sized ? new RectangleGeometry { Rect = new Rect(0, 0, scene.Width, scene.Height) } : null;
-        canvas.RenderTransform = sized ? new ScaleTransform { ScaleX = scene.Zoom, ScaleY = scene.Zoom } : null;
+        canvas.RenderTransform = sized ? new ScaleTransform { ScaleX = scale, ScaleY = scale } : null;
     }
 
     UIElement Draw(SceneShape shape) => shape switch

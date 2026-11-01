@@ -19,7 +19,8 @@ mod paint;
 pub struct Decoded {
     pub revision: u64,
     width: f32,
-    /// Window pixels per scene unit, whatever the window's size.
+    height: f32,
+    /// Window pixels per scene unit, whatever the window's size; 0 fits the scene to its region.
     zoom: f32,
     shapes: Arc<Vec<Shape>>,
     /// The sprite images the scene names, by atlas index ([UI-SCENE]).
@@ -156,7 +157,7 @@ impl Shape {
     }
 }
 
-/// The scene's fixed zoom and top-left origin, shared by painting and pointer input.
+/// The scene's zoom and top-left origin, shared by painting and pointer input.
 #[derive(Clone, Copy)]
 pub struct Transform {
     origin: Point<Pixels>,
@@ -165,12 +166,23 @@ pub struct Transform {
 
 impl Transform {
     /// Places the scene's origin at the region's top left at its fixed `zoom`, so a larger window
-    /// shows more of the canvas and never resizes what is on it. A zero-sized scene is in window
-    /// pixels, so its origin is the window's.
-    fn new(bounds: Bounds<Pixels>, width: f32, zoom: f32) -> Self {
-        match width == 0. {
-            true => Self { origin: Point::default(), scale: 1. },
-            false => Self { origin: bounds.origin, scale: zoom },
+    /// shows more of the canvas and never resizes what is on it, or with zoom 0 as large as fits the
+    /// region whole. A zero-sized scene is in window pixels, so its origin is the window's.
+    fn new(bounds: Bounds<Pixels>, decoded: &Decoded) -> Self {
+        let fitted = f32::from(bounds.size.width) / decoded.width;
+        match (decoded.width == 0., decoded.zoom == 0.) {
+            (true, _) => Self {
+                origin: Point::default(),
+                scale: 1.,
+            },
+            (false, true) => Self {
+                origin: bounds.origin,
+                scale: fitted.min(f32::from(bounds.size.height) / decoded.height),
+            },
+            (false, false) => Self {
+                origin: bounds.origin,
+                scale: decoded.zoom,
+            },
         }
     }
 
@@ -243,9 +255,51 @@ fn diagnostics(view: &mut HostView, decoded: &Decoded) {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode, Shape};
+    use super::{decode, Shape, Transform};
     use crate::ffi::Streamed;
+    use gpui_kit::{bounds, point, px, size};
     use serde_json::Value;
+
+    /// Zoom 0 grows and shrinks the scene to fit its region whole; a fixed zoom ignores the region
+    /// and a window-pixel scene stays in window pixels, and pointer input maps back through each.
+    #[test]
+    fn zoom_zero_fits_the_region_and_a_fixed_zoom_does_not() {
+        let region = |w: f32, h: f32| bounds(point(px(10.), px(20.)), size(px(w), px(h)));
+        let scene =
+            |json: &str| decode::decode(&serde_json::from_str(json).unwrap(), 1, &[]).unwrap();
+        let fit = scene(r#"{"width":200,"height":100,"zoom":0,"shapes":[]}"#);
+        let fixed = scene(r#"{"width":200,"height":100,"zoom":0.75,"shapes":[]}"#);
+        let pixels = scene(r#"{"width":0,"height":0,"shapes":[]}"#);
+        let cases = [
+            (&fit, 400., 400., 2.),
+            (&fit, 400., 100., 1.),
+            (&fit, 100., 900., 0.5),
+            (&fixed, 400., 400., 0.75),
+            (&fixed, 100., 50., 0.75),
+            (&pixels, 400., 400., 1.),
+        ];
+        for (decoded, w, h, scale) in cases {
+            let transform = Transform::new(region(w, h), decoded);
+            assert_eq!(transform.scale, scale);
+            let corner = transform.point(200., 100.);
+            let origin = if decoded.width == 0. {
+                (0., 0.)
+            } else {
+                (10., 20.)
+            };
+            assert_eq!(
+                corner,
+                point(px(origin.0 + 200. * scale), px(origin.1 + 100. * scale))
+            );
+            assert_eq!(transform.scene(corner), (200., 100.));
+        }
+        assert!(decode::decode(
+            &serde_json::from_str(r#"{"width":2,"height":2,"zoom":-1,"shapes":[]}"#).unwrap(),
+            1,
+            &[]
+        )
+        .is_err());
+    }
 
     /// Streamed shapes follow the node's own at equal depth and sort by depth with them ([UI-SCENE-STREAM]).
     #[test]

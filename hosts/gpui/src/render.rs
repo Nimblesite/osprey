@@ -131,7 +131,11 @@ fn container(ctx: &mut Ctx, kind: &str, node: &Value) -> AnyElement {
 /// Draws `body` with `theme` scoped to it, on its `background` token in its `text` ink
 /// ([UI-COMPONENTS], [UI-MACHINE-SKINS]); a malformed theme is refused visibly.
 fn themed(ctx: &mut Ctx, node: &Value) -> AnyElement {
-    let theme = match node.get("theme").cloned().map(serde_json::from_value::<Theme>) {
+    let theme = match node
+        .get("theme")
+        .cloned()
+        .map(serde_json::from_value::<Theme>)
+    {
         Some(Ok(theme)) => theme,
         _ => return broken(ctx, "themed node without a valid theme".to_owned()),
     };
@@ -155,18 +159,34 @@ fn themed(ctx: &mut Ctx, node: &Value) -> AnyElement {
 /// Draws a labelled bar filled to `value` of `total` in the node's tone
 /// ([UI-COMPONENTS-METER]); the framework already clamped both.
 fn meter(ctx: &mut Ctx, node: &Value) -> AnyElement {
-    let total = node.get("total").and_then(Value::as_i64).unwrap_or(1).max(1) as f32;
-    let value = node.get("value").and_then(Value::as_i64).unwrap_or(0).max(0) as f32;
+    let total = node
+        .get("total")
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+        .max(1) as f32;
+    let value = node
+        .get("value")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        .max(0) as f32;
     let fill = tint(ctx, string(node, "tone"), ctx.cx.theme().accent);
     let track = tint(ctx, "secondary", ctx.cx.theme().muted).opacity(0.25);
     div()
-        .id(SharedString::from(control_id(ctx, 0) + ":" + string(node, "label")))
+        .id(SharedString::from(
+            control_id(ctx, 0) + ":" + string(node, "label"),
+        ))
         .flex_grow(1.)
         .min_w(px(120.))
         .h(px(6.))
         .rounded_full()
         .bg(track)
-        .child(div().h_full().rounded_full().bg(fill).w(relative((value / total).min(1.))))
+        .child(
+            div()
+                .h_full()
+                .rounded_full()
+                .bg(fill)
+                .w(relative((value / total).min(1.))),
+        )
         .into_any_element()
 }
 
@@ -375,10 +395,7 @@ pub(super) fn tint(ctx: &Ctx, name: &str, fallback: Hsla) -> Hsla {
 
 /// Reads the second framework spacing token.
 pub(super) fn gap(ctx: &Ctx) -> Pixels {
-    let value = ctx
-        .theme()
-        .and_then(|theme| theme.spacing.get(1))
-        .copied();
+    let value = ctx.theme().and_then(|theme| theme.spacing.get(1)).copied();
     px(value.unwrap_or(8).max(0) as f32)
 }
 

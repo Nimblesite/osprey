@@ -98,7 +98,7 @@ Each control's binding is the framework's ordinary typed binding, so ordinals, s
 
 ## Canvas skins [UI-MACHINE-CANVAS]
 
-A skin may carry `"canvas": {"width", "height", "atlas": [image paths relative to the `assets` input], "shapes": [...], "listeners": [...]}`. When the chosen skin has a canvas, the whole view is one scene drawn from the canvas instead of the native view template. Units are the artboard's own mock pixels, drawn at the canvas's fixed `zoom` (default 1) window pixels per unit from the region's top left; resizing the window only reveals more or less of it.
+A skin may carry `"canvas": {"width", "height", "atlas": [image paths relative to the `assets` input], "shapes": [...], "listeners": [...]}`. When the chosen skin has a canvas, the whole view is one scene drawn from the canvas instead of the native view template. Units are the artboard's own mock pixels, drawn at the canvas's fixed `zoom` (default 1) window pixels per unit from the region's top left; resizing the window only reveals more or less of it. A `zoom` of 0 fits the canvas to the window whole, so it grows and shrinks with it, as the signal-flow skins do.
 
 | Shape | Members and form |
 | --- | --- |

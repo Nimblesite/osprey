@@ -46,8 +46,13 @@ pub fn unescaped(path: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        let escaped = bytes.get(i + 1..i + 3).and_then(|hex| std::str::from_utf8(hex).ok());
-        match (bytes[i], escaped.and_then(|hex| u8::from_str_radix(hex, 16).ok())) {
+        let escaped = bytes
+            .get(i + 1..i + 3)
+            .and_then(|hex| std::str::from_utf8(hex).ok());
+        match (
+            bytes[i],
+            escaped.and_then(|hex| u8::from_str_radix(hex, 16).ok()),
+        ) {
             (b'%', Some(byte)) => {
                 out.push(byte);
                 i += 3;
