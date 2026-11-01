@@ -1,7 +1,7 @@
 # Deslop duplication gate
 # Single source of truth for this repo's code-duplication budget. Committed,
 # PR-reviewed, ratcheted DOWN only — never up without a written justification.
-# The REQUIRED `ci` job installs the latest Deslop CLI and exits non-zero —
+# The REQUIRED `ci` job installs the pinned Deslop CLI (scripts/install-deslop.sh) and exits non-zero —
 # FAILING THE BUILD — when measured duplication exceeds the ceiling below. Deslop parses
 # Rust/C#/Python/Dart, so this gates the Rust workspace (the C runtime is out
 # of scope here).

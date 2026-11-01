@@ -40,6 +40,8 @@ sealed class SceneView
     readonly Pool<Polyline> strips;
     readonly Pool<TextBlock> glyphs;
     readonly Pool<ShapePath> paths;
+    // The highest ZIndex XAML accepts; it refuses anything above it.
+    const int TopmostZ = 1000000;
     readonly List<FrameworkElement> elements = [];
     IReadOnlyList<Accessible> announced = [];
     Action<object?> emit = _ => { };
@@ -115,7 +117,7 @@ sealed class SceneView
             AutomationProperties.SetName(element, item.Label);
             Canvas.SetLeft(element, item.X);
             Canvas.SetTop(element, item.Y);
-            Canvas.SetZIndex(element, int.MaxValue);
+            Canvas.SetZIndex(element, TopmostZ);
             canvas.Children.Add(element);
             elements.Add(element);
         }
@@ -131,7 +133,7 @@ sealed class SceneView
     Slider SliderFor(Accessible item)
     {
         var span = item.Max - item.Min;
-        var slider = new Slider { IsTabStop = false, Minimum = item.Min, Maximum = item.Max, StepFrequency = span / 1000, Value = item.Value };
+        var slider = new Slider { IsTabStop = false, Minimum = item.Min, Maximum = item.Max, StepFrequency = span > 0 ? span / 1000 : 1, Value = item.Value };
         slider.ValueChanged += (_, args) => Later(() => Tap(item.X + (item.W * (args.NewValue - item.Min) / span), item.Y + (item.H / 2)));
         return slider;
     }

@@ -221,7 +221,7 @@ jobs:
 
       # The local and hosted gates install the latest release and read the same
       # committed threshold. A failed download or breached ceiling fails CI.
-      - name: Install latest Deslop
+      - name: Install the pinned Deslop
         run: bash scripts/install-deslop.sh
         env:
           GITHUB_TOKEN: ${{ github.token }}
