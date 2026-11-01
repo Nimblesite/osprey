@@ -34,11 +34,19 @@ function Invoke-Checked([string] $What, [scriptblock] $Run) {
 function Build-Application {
     Invoke-Checked 'building the compiler' { cargo build --release -p osprey-cli --manifest-path (Join-Path $repo 'Cargo.toml') }
     $env:MSYSTEM = 'UCRT64'; $env:CHERE_INVOKING = '1'
-    Invoke-Checked 'building the MinGW runtime' { & (Join-Path $Msys 'usr\bin\bash.exe') -lc "cd '$($repo -replace '\\','/')' && make _runtime CC=gcc AR=ar" }
+    $unix = $repo -replace '\\','/'
+    Invoke-Checked 'building the MinGW runtime' { & (Join-Path $Msys 'usr\bin\bash.exe') -lc "cd '$unix' && make _runtime CC=gcc AR=ar" }
+    New-Item -ItemType Directory -Force (Join-Path $layout 'app') | Out-Null
+    # A helper the application runs, such as casting's device browse, is one C file built beside it.
+    foreach ($helper in @($entry.helpers | Where-Object { $_ })) {
+        $exe = [IO.Path]::GetFileNameWithoutExtension($helper.source) + '.exe'
+        $libraries = @($helper.libraries | ForEach-Object { "-l$_" }) -join ' '
+        $out = (Join-Path $layout "app\$exe") -replace '\\','/'
+        Invoke-Checked "building $exe" { & (Join-Path $Msys 'usr\bin\bash.exe') -lc "cd '$unix/$($entry.source)' && gcc -O2 -Wall -Wextra -Werror '$($helper.source)' -o '$out' $libraries" }
+    }
     Remove-Item Env:MSYSTEM, Env:CHERE_INVOKING
     $env:OSPREY_CC = Join-Path $Msys 'ucrt64\bin\clang.exe'
     $env:OSPREY_AR = Join-Path $Msys 'ucrt64\bin\llvm-ar.exe'
-    New-Item -ItemType Directory -Force (Join-Path $layout 'app') | Out-Null
     Invoke-Checked "building $App" { & (Join-Path $repo 'target\release\osprey.exe') build $source --target=windows-x64 --no-warnings -o (Join-Path $layout 'app\app.dll') }
 }
 

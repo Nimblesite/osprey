@@ -6,7 +6,7 @@ APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/hosts/winui/app.ps1
 # HEADLESS=-Headless draws the self-tests' windows off screen; by default they are on screen.
 HEADLESS ?=
 
-.PHONY: storage flock painting signal-flow probe test
+.PHONY: storage flock painting signal-flow probe casting test
 
 ## storage: Open Osprey Storage, where your disk space goes folder by folder, in its sandbox.
 ##          It reads the whole drive once Settings > Privacy & security > File system allows it.
@@ -28,6 +28,11 @@ signal-flow:
 ## probe: Open the hosts' probe application (counter, note, load) in its sandbox.
 probe:
 	$(APP_PS1) -App probe
+
+## casting: Open the casting player in its sandbox: it finds Cast devices on the private network
+##          with its DnsServiceBrowse helper and plays an MP3 on one. Needs MSYS2's OpenSSL.
+casting:
+	$(APP_PS1) -App casting
 
 ## test: Every app's self-test in a real window inside its sandbox (HEADLESS=-Headless: off
 ##       screen), each picture compared with the goldens in <app>/goldens/windows.

@@ -60,6 +60,32 @@
         "self-test.json"
       ],
       "arguments": []
+    },
+    "casting": {
+      "source": "examples/casting",
+      "name": "Casting",
+      "description": "Play an audio file on a TV, with a turning disc and a visualiser.",
+      "capabilities": [
+        "privateNetworkClientServer"
+      ],
+      "files": [
+        "player.machine.json",
+        "skins"
+      ],
+      "helpers": [
+        {
+          "source": "windows/cast-browse.c",
+          "libraries": [
+            "dnsapi"
+          ]
+        }
+      ],
+      "arguments": [
+        "--machine",
+        "{app}\\player.machine.json",
+        "--browse",
+        "{app}\\cast-browse.exe"
+      ]
     }
   }
 }
