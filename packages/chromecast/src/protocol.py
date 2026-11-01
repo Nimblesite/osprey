@@ -223,9 +223,9 @@ def stop(session_id, request_id):
     return "{\"type\": \"STOP\", \"sessionId\": " + quote(session_id) + ", \"requestId\": " + toString(request_id) + "}"
 
 
-def load(url, title, request_id):
-    """LOAD a buffered audio/mpeg stream and start playing it from the top."""
-    media = "{\"contentId\": " + quote(url) + ", \"contentType\": \"audio/mpeg\", \"streamType\": \"BUFFERED\", \"metadata\": {\"metadataType\": 3, \"title\": " + quote(title) + "}}"
+def load(url, content_type, title, request_id):
+    """LOAD a buffered stream of `content_type` and start playing it from the top."""
+    media = "{\"contentId\": " + quote(url) + ", \"contentType\": " + quote(content_type) + ", \"streamType\": \"BUFFERED\", \"metadata\": {\"metadataType\": 3, \"title\": " + quote(title) + "}}"
     return "{\"type\": \"LOAD\", \"requestId\": " + toString(request_id) + ", \"autoplay\": true, \"currentTime\": 0, \"media\": " + media + "}"
 
 

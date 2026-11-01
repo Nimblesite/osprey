@@ -54,6 +54,16 @@ def osprey_file_server_stop(port: int) -> int:
     ...
 
 
+@extern
+def osprey_media_render(audio: str) -> str:
+    ...
+
+
+@extern
+def osprey_media_unrender(folder: str) -> int:
+    ...
+
+
 @effect
 class Wire:
     """The sender's I/O. `dial` returns a session handle of at least 1, or a
@@ -62,8 +72,12 @@ class Wire:
     arrive within `timeout_ms`; `status` says why the last read or write on
     a handle ended (0 ok, 1 timed out, 2 closed, 3 failed, -1 unknown);
     `close` ends a session. `route` is the local address that reaches a host,
-    "" if none; `serve` serves a file at `/media` on that address and returns
-    its port or a negative reason; `unserve` stops it (0, or -1)."""
+    "" if none; `serve` serves a file at `/media`, or a folder's files by
+    name, on that address and returns its port or a negative reason;
+    `unserve` stops it (0, or -1). `render` turns an audio file into a
+    visualiser video as HLS and returns the folder holding `media.m3u8`, ""
+    when it cannot ([FFI-MEDIA-RENDER]); `unrender` stops that render and
+    deletes the folder (0, or -1)."""
     def dial(host: str, port: int, timeout_ms: int) -> int: ...
     def write(handle: int, hex: str) -> int: ...
     def read(handle: int, count: int, timeout_ms: int) -> str: ...
@@ -72,6 +86,8 @@ class Wire:
     def route(host: str) -> str: ...
     def serve(path: str, content_type: str, address: str) -> int: ...
     def unserve(port: int) -> int: ...
+    def render(audio: str) -> str: ...
+    def unrender(folder: str) -> int: ...
 
 
 @handler(Wire)
@@ -101,3 +117,9 @@ class Native:
 
     def unserve(port):
         return osprey_file_server_stop(port)
+
+    def render(audio):
+        return osprey_media_render(audio)
+
+    def unrender(folder):
+        return osprey_media_unrender(folder)

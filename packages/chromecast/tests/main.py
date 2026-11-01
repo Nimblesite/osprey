@@ -39,7 +39,7 @@ def varint_cases():
 def built():
     """The messages the sender builds, in the oracle's MESSAGES order."""
     first = [Protocol.connect(), Protocol.ping(), Protocol.pong(), Protocol.launch(1), Protocol.get_status(1), Protocol.stop("7E0C-1F2A", 2), Protocol.connect()]
-    loads = [Protocol.load("http://192.168.1.20:5123/media", "Blue Monday", 2), Protocol.load("http://10.0.0.5:8000/media", "Say \"hi\" \\ bye", 2)]
+    loads = [Protocol.load("http://192.168.1.20:5123/media", "audio/mpeg", "Blue Monday", 2), Protocol.load("http://10.0.0.5:8000/media.m3u8", "application/x-mpegURL", "Say \"hi\" \\ bye", 2)]
     controls = [Protocol.media("PAUSE", "1", "", 3), Protocol.media("PLAY", "1", "", 4), Protocol.media("STOP", "1", "", 5), Protocol.media("SEEK", "1", "\"currentTime\": 30.5", 6), Protocol.media("SET_PLAYBACK_RATE", "1", "\"playbackRate\": 1.5", 7), Protocol.set_volume(0.25, 8)]
     return listConcat(listConcat(first, loads), controls)
 

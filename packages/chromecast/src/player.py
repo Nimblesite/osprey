@@ -33,8 +33,7 @@ class Player:
     time `heard_at`; `beat_at` is when the last PING went out. `commands` is
     the device's supported-commands bitmask (1 pause, 2 seek)."""
     session: Session.Session
-    port: int
-    url: str
+    served: Media.Served
     title: str
     phase: str
     ending: str
@@ -55,7 +54,7 @@ class Player:
 def idle() -> Player:
     """A player with nothing cast: ended, on no session, serving nothing.
     A UI holds one until `begin` returns a live player."""
-    return Player(session=Session.Session(handle=0), port=0, url="", title="", phase="ended", ending="", transport="", media_session="", player_state="", lines=[], position=0.0, duration=0.0, rate=1.0, volume=-1.0, commands=0, heard_at=0, beat_at=0, request=0)
+    return Player(session=Session.Session(handle=0), served=Media.NOTHING, title="", phase="ended", ending="", transport="", media_session="", player_state="", lines=[], position=0.0, duration=0.0, rate=1.0, volume=-1.0, commands=0, heard_at=0, beat_at=0, request=0)
 
 
 def number(text, otherwise):
@@ -64,7 +63,7 @@ def number(text, otherwise):
 
 
 def launched(session, served, path, now) -> Player:
-    return Player(session=session, port=served.port, url=served.url, title=Media.title(path), phase="launching", ending="", transport="", media_session="", player_state="", lines=[], position=0.0, duration=0.0, rate=1.0, volume=-1.0, commands=0, heard_at=now, beat_at=now, request=3)
+    return Player(session=session, served=served, title=Media.title(path), phase="launching", ending="", transport="", media_session="", player_state="", lines=[], position=0.0, duration=0.0, rate=1.0, volume=-1.0, commands=0, heard_at=now, beat_at=now, request=3)
 
 
 def dialed(device, served, path, now) -> Result[Player, str]:
@@ -76,10 +75,10 @@ def dialed(device, served, path, now) -> Result[Player, str]:
                     return Success(value=launched(session, served, path, now))
                 case Error(message=failure):
                     _closed = Session.close(session)
-                    _stopped = Media.unserve(served.port)
+                    _stopped = Media.unserve(served)
                     return Error(message=failure)
         case Error(message=failure):
-            _stopped = Media.unserve(served.port)
+            _stopped = Media.unserve(served)
             return Error(message=failure)
 
 
@@ -97,7 +96,7 @@ def loading(player, transport) -> Result[Player, str]:
     """CONNECTs to the receiver's transport and LOADs the served file."""
     match Session.write(player.session, transport, "tp.connection", Protocol.connect()):
         case Success():
-            match Session.write(player.session, transport, "media", Protocol.load(player.url, player.title, 2)):
+            match Session.write(player.session, transport, "media", Protocol.load(player.served.url, player.served.content_type, player.title, 2)):
                 case Success():
                     return Success(value=update(player, phase="loading", transport=transport))
                 case Error(message=failure):
@@ -244,4 +243,4 @@ def end(player):
     """Closes the session and stops serving the file; the device keeps
     playing whatever it has buffered unless it was stopped first."""
     _closed = Session.close(player.session)
-    return Media.unserve(player.port)
+    return Media.unserve(player.served)

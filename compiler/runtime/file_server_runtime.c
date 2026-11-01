@@ -9,6 +9,12 @@
 // 404 and any other method with 405. A player that seeks (a Chromecast does)
 // opens several connections, so each accepted connection is its own thread.
 //
+// A folder is served too ([FFI-FILE-SERVER-FOLDER]): `/<name>` answers the
+// file of that name in it, typed by its extension, and a name that does not
+// exist yet is waited for, up to FS_WAIT seconds, because a renderer may
+// still be writing it ([FFI-MEDIA-RENDER]). Names with a slash or a leading
+// dot are refused, so nothing outside the folder is reachable.
+//
 // `osprey_file_server_start` binds port 0 on the given address and returns
 // the port chosen; `osprey_file_server_stop` closes the listener and joins
 // the accept thread. Connections in flight finish on their own.
@@ -19,7 +25,7 @@
 #include <stdatomic.h>
 #include <sys/stat.h>
 
-enum { FS_SERVERS = 16, FS_CHUNK = 65536, FS_REQUEST = 8192 };
+enum { FS_SERVERS = 16, FS_CHUNK = 65536, FS_REQUEST = 8192, FS_WAIT = 120 };
 
 typedef struct {
   int listen_fd;
@@ -30,7 +36,15 @@ typedef struct {
   char *path;
   char *content_type;
   int64_t size;
+  bool folder;
 } FileServer;
+
+// One file a request resolved to: its path, type and size.
+typedef struct {
+  char path[1280];
+  const char *content_type;
+  int64_t size;
+} Served;
 
 typedef struct {
   FileServer *server;
@@ -114,8 +128,8 @@ static void send_status(int fd, const char *status, const char *extra) {
 
 // Streams bytes [start, end] of the file in FS_CHUNK pieces, stopping at the
 // first failed send: a player that seeks away closes its old connection.
-static void send_body(int fd, const FileServer *server, int64_t start, int64_t end) {
-  FILE *file = fopen(server->path, "rb");
+static void send_body(int fd, const Served *served, int64_t start, int64_t end) {
+  FILE *file = fopen(served->path, "rb");
   if (!file || fseeko(file, (off_t)start, SEEK_SET) != 0) {
     if (file) {
       fclose(file);
@@ -145,7 +159,7 @@ static void send_body(int fd, const FileServer *server, int64_t start, int64_t e
 
 // Answers a GET or HEAD for the media: 200 for the whole file, 206 for a
 // satisfiable range, 416 for one past the end.
-static void serve_media(int fd, const FileServer *server, const char *request, bool head) {
+static void serve_media(int fd, const Served *server, const char *request, bool head) {
   int64_t start = 0;
   int64_t end = server->size - 1;
   bool ranged = range_header(request, &start, &end);
@@ -175,20 +189,59 @@ static void serve_media(int fd, const FileServer *server, const char *request, b
   }
 }
 
+// The type a folder's file is served as, by its extension.
+static const char *folder_type(const char *name) {
+  const char *dot = strrchr(name, '.');
+  if (dot && strcmp(dot, ".m3u8") == 0) {
+    return "application/vnd.apple.mpegurl";
+  }
+  if (dot && strcmp(dot, ".ts") == 0) {
+    return "video/mp2t";
+  }
+  return "application/octet-stream";
+}
+
+// Resolves a request path to the file it serves: the one file at `/media`, or
+// a folder's `/<name>` once that file exists. False answers 404.
+static bool resolve(const FileServer *server, const char *path, Served *served) {
+  if (!server->folder) {
+    snprintf(served->path, sizeof served->path, "%s", server->path);
+    served->content_type = server->content_type;
+    served->size = server->size;
+    return strcmp(path, "/media") == 0;
+  }
+  const char *name = path + 1;
+  if (path[0] != '/' || name[0] == '\0' || name[0] == '.' || strchr(name, '/')) {
+    return false;
+  }
+  snprintf(served->path, sizeof served->path, "%s/%s", server->path, name);
+  served->content_type = folder_type(name);
+  struct stat info;
+  for (int waited = 0; stat(served->path, &info) != 0; waited++) {
+    if (waited >= FS_WAIT * 10 || atomic_load(&server->stopping)) {
+      return false;
+    }
+    usleep(100000);
+  }
+  served->size = (int64_t)info.st_size;
+  return S_ISREG(info.st_mode);
+}
+
 static void *connection_thread(void *arg) {
   Connection *connection = arg;
   char request[FS_REQUEST];
   char method[16];
   char path[1024];
+  Served served;
   read_request(connection->fd, request, sizeof request);
   if (!request_line(request, method, sizeof method, path, sizeof path)) {
     send_status(connection->fd, "400 Bad Request", "");
   } else if (strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0) {
     send_status(connection->fd, "405 Method Not Allowed", "Allow: GET, HEAD\r\n");
-  } else if (strcmp(path, "/media") != 0) {
+  } else if (!resolve(connection->server, path, &served)) {
     send_status(connection->fd, "404 Not Found", "");
   } else {
-    serve_media(connection->fd, connection->server, request, strcmp(method, "HEAD") == 0);
+    serve_media(connection->fd, &served, request, strcmp(method, "HEAD") == 0);
   }
   close(connection->fd);
   free(connection);
@@ -266,7 +319,7 @@ static void release_server(FileServer *server) {
 }
 
 // osprey_file_server_start serves `path` as `content_type` on a fresh port of
-// `address` and returns that port. Negative reasons: -1 bad argument, -2 the
+// `address` and returns that port; a folder `path` serves its files by name. Negative reasons: -1 bad argument, -2 the
 // file cannot be read, -3 no server slot, -4 the address cannot be bound,
 // -5 the accept thread did not start.
 int64_t osprey_file_server_start(char *path, char *content_type, char *address) {
@@ -274,7 +327,7 @@ int64_t osprey_file_server_start(char *path, char *content_type, char *address) 
   if (!path || !content_type || !address) {
     return -1;
   }
-  if (stat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
+  if (stat(path, &info) != 0 || !(S_ISREG(info.st_mode) || S_ISDIR(info.st_mode))) {
     return -2;
   }
   pthread_mutex_lock(&fs_mutex);
@@ -287,6 +340,7 @@ int64_t osprey_file_server_start(char *path, char *content_type, char *address) 
   server->path = strdup(path);
   server->content_type = strdup(content_type);
   server->size = (int64_t)info.st_size;
+  server->folder = S_ISDIR(info.st_mode);
   server->listen_fd = listen_on(address, &server->port);
   if (server->listen_fd < 0 || !server->path || !server->content_type) {
     release_server(server);

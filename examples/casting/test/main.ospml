@@ -12,7 +12,7 @@ import chromecast::Protocol
 
 // ---- the device ----
 
-(** The in-memory device: bytes queued for the sender, the message types it heard, its last read's status, its player and whether it can be reached. *)
+(** The in-memory device: bytes queued for the sender, the message types it heard, its last read's status, its player, whether it can be reached, the folder a render makes ("" when the sender cannot render) and the content type the last LOAD named. *)
 type Fake =
     fakeInbox : string
     fakeSaid : string
@@ -24,6 +24,8 @@ type Fake =
     fakePlaying : string
     fakeReason : string
     fakeReachable : bool
+    fakeRender : string
+    fakeLoaded : string
 
 (** What the test last saw: the envelope, the root region's node and revision, the host clock and the browse text the host returns. *)
 type Sight =
@@ -39,7 +41,7 @@ effect Bench
     see : Sight => Unit
     keep : ui::Session<casting::Store> => Unit
 
-fresh () = Fake(fakeInbox = "", fakeSaid = "", fakeOut = "", fakeRead = 0, fakePosition = 0.0, fakeVolume = 1.0, fakeRate = 1.0, fakePlaying = "IDLE", fakeReason = "", fakeReachable = true)
+fresh () = Fake(fakeInbox = "", fakeSaid = "", fakeOut = "", fakeRead = 0, fakePosition = 0.0, fakeVolume = 1.0, fakeRate = 1.0, fakePlaying = "IDLE", fakeReason = "", fakeReachable = true, fakeRender = "", fakeLoaded = "")
 
 browse = "Living\\032Room\\032TV._googlecast._tcp SRV 0 0 8009 living-room.local. ;\nLiving\\032Room\\032TV._googlecast._tcp TXT \"id=1\" \"fn=Living Room TV\"\nKitchen._googlecast._tcp SRV 0 0 8009 kitchen.local. ;\nKitchen._googlecast._tcp TXT \"fn=Kitchen\"\n"
 
@@ -66,7 +68,7 @@ becomes (f, next) =
 
 answer (f, kind, doc) = match kind
     "LAUNCH" => queued (f, framed ("receiver", receiverStatus f))
-    "LOAD" => becomes (becomes (f, "BUFFERING"), "PLAYING")
+    "LOAD" => becomes (becomes (f(fakeLoaded = Doc::text (Doc::field (doc, "media"), "contentType")), "BUFFERING"), "PLAYING")
     "PAUSE" => becomes (f, "PAUSED")
     "PLAY" => becomes (f, "PLAYING")
     "SEEK" => becomes (f(fakePosition = Doc::decimal (doc, "currentTime")), f.fakePlaying)
@@ -108,6 +110,8 @@ onDevice work =
         route _ => "192.168.1.20"
         serve _ _ _ => 5123
         unserve _ => 0
+        render _ => fake.fakeRender
+        unrender _ => 0
     work ()
 
 (** The message types the sender wrote, space-separated, in order. *)
@@ -118,6 +122,8 @@ reset () =
     perform Bench.see (sight(sightBrowse = browse, sightRoot = JsonNull, sightRevision = 0))
 
 unplug () = perform Bench.rig (fake(fakeReachable = false))
+
+rendering folder = perform Bench.rig (fake(fakeRender = folder))
 
 finishTrack () = perform Bench.rig (becomes (fake(fakeReason = "FINISHED", fakePosition = 200.0), "IDLE"))
 
@@ -276,6 +282,7 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     expect (shows "Connecting to Living Room TV…", true)
     frame "0.2"
     expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD ")
+    expect (fake.fakeLoaded, "audio/mpeg")
     frame "0.2"
     expect (shows "Playing on Living Room TV", true)
     expect (shows "Pause", true)
@@ -351,11 +358,13 @@ test ("the canvas: every control is reached by its accessible label, through poi
     picked "/music/Sunroom.mp3"
     expect (letters "Sunroom", true)
     expect (letters "Ready", true)
+    rendering "/tmp/osprey-cast.test"
     tap "Play"
     expect (heardTypes (), "CONNECT LAUNCH ")
     expect (letters "Connecting…", true)
     frame "0.2"
     frame "0.2"
+    expect (fake.fakeLoaded, "application/x-mpegURL")
     expect (letters "Playing", true)
     expect (labels (), "Receiver: Living Room TV|Speed: 1×|Pause|Stop|Open file…|Position|Volume")
     expect (Doc::decimal (element "Volume", "value"), 1.0)

@@ -138,7 +138,7 @@ def player_case(l, k):
 
 def stale_player(handle):
     """A player whose session is gone."""
-    return Player.Player(session=Session.Session(handle=handle), port=-5, url="", title="", phase="playing", ending="", transport="web-0", media_session="", player_state="PLAYING", lines=[], position=10.0, duration=12.0, rate=2.0, volume=1.0, commands=0, heard_at=0, beat_at=0, request=3)
+    return Player.Player(session=Session.Session(handle=handle), served=Media.Served(url="", port=-5, folder="", content_type="audio/mpeg"), title="", phase="playing", ending="", transport="web-0", media_session="", player_state="PLAYING", lines=[], position=10.0, duration=12.0, rate=2.0, volume=1.0, commands=0, heard_at=0, beat_at=0, request=3)
 
 
 def elapsed_cases():
@@ -199,7 +199,7 @@ def serve_cases(l):
             client = httpCreateClient(f"http://127.0.0.1:{served.port}", 5000)
             body = unwrap_or(body_of(httpGetResponse(client, "/media", "")), "")
             _closed = httpCloseClient(client)
-            return [Check.truth("serve.record", structuralEquals(served, Media.Served(url=served.url, port=served.port)), "served record differs"), Check.equal("serve.url", served.url, f"http://127.0.0.1:{served.port}/media"), Check.equal("serve.body", body, "ID3 scripted audio"), Check.equal("serve.unserve", Media.unserve(served.port), 0), Check.equal("serve.unserve.again", Media.unserve(served.port), -1)]
+            return [Check.truth("serve.record", structuralEquals(served, Media.Served(url=served.url, port=served.port, folder="", content_type="audio/mpeg")), "served record differs"), Check.equal("serve.url", served.url, f"http://127.0.0.1:{served.port}/media"), Check.equal("serve.body", body, "ID3 scripted audio"), Check.equal("serve.unserve", Media.unserve(served), 0), Check.equal("serve.unserve.again", Media.unserve(served), -1)]
         case Error(message=message):
             return [Check.failed("serve.url", message)]
 
