@@ -1,55 +1,58 @@
 WEBVTT
 
-00:00.500 --> 00:07.562
-Computer use agents look at screenshots and guess where to click. Browser agents read the page's accessibility tree instead.
+00:00.500 --> 00:04.319
+There are two ways for software to use an interface it did not write.
 
-00:07.912 --> 00:15.868
-Osprey's UI machines give every native control a role and a label, so tests and agents can find the Play button by name, and press it.
+00:05.069 --> 00:09.776
+It can look at pixels: take a screenshot, guess where the Play button is, and click there.
 
-00:17.068 --> 00:20.625
-Every control in an Osprey UI machine carries a role and a label.
+00:09.976 --> 00:18.483
+Or it can read the accessibility tree: every control's role and label. The button labelled Play survives a redesign that moves it.
 
-00:20.975 --> 00:29.088
-The framework turns them into an accessibility tree: each live control with its role, its label, its bounds, and a slider's value.
+00:19.233 --> 00:27.564
+In Osprey, an interface written as a UI machine produces its own tree. Every hit area on this player names its role and its label.
 
-00:30.288 --> 00:33.166
-The test reads the labels on offer, then taps them.
+00:28.314 --> 00:34.580
+Semantics turns the live controls into the tree: role, filled-in label, bounds, and a slider's value.
 
-00:33.516 --> 00:40.265
-A tap is a real pointer press and release at the centre of the control's bounds, so a misplaced hit area fails the test.
+00:34.780 --> 00:41.835
+Act operates a control by label, the way a screen reader or an agent would. An unknown label changes nothing.
 
-00:40.615 --> 00:49.738
-Tap at half way along the volume slider, and the volume becomes one half. Tap a quarter along the position, and the canvas letters read zero zero fifty.
+00:42.585 --> 00:48.160
+A test taps by label, and a tap is a real pointer press and release at the control's bounds.
 
-00:50.938 --> 00:52.759
-The kit is three small modules.
+00:48.360 --> 00:53.358
+If a hit area is misplaced or covered, the test fails, just as a user's click would.
 
-00:53.109 --> 01:03.782
-Views reads the rendered view and the canvas lettering. Semantics reads the accessibility tree and works out pointer positions. Events builds the same event JSON a real host sends.
+00:54.108 --> 00:58.943
+Read it as a user would. Before a file is chosen, Play sends nothing to the TV.
 
-01:04.982 --> 01:11.180
-The tests drive the application's real exported boundary, the same two functions the desktop host calls.
+00:59.143 --> 01:02.664
+Open a file, press Play, and the player connects and launches.
 
-01:11.530 --> 01:18.180
-The outside world sits behind effects, so a handler supplies a fake TV, and every run is deterministic.
+01:02.864 --> 01:06.539
+Tap halfway along the volume slider, and the volume is a half.
 
-01:18.530 --> 01:23.103
-The same labels an AI agent would use to operate the app are the labels the tests use.
+01:06.739 --> 01:10.803
+Tap a quarter along a two hundred second track, and it shows fifty seconds.
 
-01:24.303 --> 01:27.639
-An agent operating this app needs no vision and no coordinates.
+01:11.553 --> 01:22.385
+The test drives the app's real start and dispatch, with no window, and a handler plays the TV. The second journey switches skins: the pixels change, the labels must not.
 
-01:27.989 --> 01:36.491
-It reads the controls that are live right now, picks one by name, and acts. Templates.act sets a slider, or presses anything else.
+01:22.585 --> 01:25.379
+All four journeys pass, the same way every run.
 
-01:36.841 --> 01:40.287
-The labels it uses are the labels the tests prove on every build.
+01:26.129 --> 01:34.167
+The GPUI desktop host maps the same tree to AccessKit, and turns a screen reader's click into the same pointer events.
 
-01:41.487 --> 01:48.533
-Two things are not done yet. The tree is not mapped to the platform screen reader, so VoiceOver does not read the player today.
+01:34.367 --> 01:37.821
+So the app cannot tell a screen reader or an agent from a hand.
 
-01:48.883 --> 01:55.864
-And there is no ready-made server that exposes a running app's tree to an outside agent. Semantics and act are the pieces it would call.
+01:38.571 --> 01:48.238
+An agent needs no vision. It reads a short list of what can be done right now, picks one by name, and acts. And the labels it uses are tested on every build.
 
-01:57.064 --> 02:03.245
-Osprey is actively evolving. Read the UI test kit's README, and run the casting tests yourself.
+01:48.988 --> 01:59.435
+What is not done yet. There is no ready-made MCP server for agents. The tree comes from UI machines only, and only the GPUI host maps it today.
+
+02:00.185 --> 02:06.119
+Build Osprey, and run the casting journeys. Osprey is actively evolving. Try it on your projects.

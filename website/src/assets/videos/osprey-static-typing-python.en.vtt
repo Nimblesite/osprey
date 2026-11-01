@@ -1,40 +1,43 @@
 WEBVTT
 
-00:00.500 --> 00:07.560
+00:00.500 --> 00:07.676
 Static typing checks every value's type before a program runs. Dynamic typing checks as each line executes.
 
-00:07.910 --> 00:14.891
-Osprey's Python flavor keeps def, lambda and f strings, infers every type, and checks it at compile time.
+00:07.876 --> 00:14.608
+Osprey's Python flavor keeps def, lambda and f-strings, infers every type, and checks it at compile time.
 
-00:16.091 --> 00:18.260
-This function has no annotations.
+00:15.358 --> 00:23.786
+This function has no annotations. The compiler works out that host is a string, because endsWith takes one, and that label returns a string.
 
-00:18.610 --> 00:28.198
-The compiler works out that host is a string, because endsWith takes one, and that label returns a string. It runs, and prints Kitchen (kitchen.local).
+00:23.986 --> 00:25.704
+Main calls it with two strings.
 
-00:29.398 --> 00:34.785
-Pass the port number by mistake, and the build stops, with the line and the two types that disagree.
+00:26.454 --> 00:29.287
+It runs, and prints Kitchen, kitchen.local.
 
-00:35.135 --> 00:41.083
-In CPython, the same mistake surfaces as an exception when that line runs, if it ever runs.
+00:30.037 --> 00:31.760
+Pass the port number by mistake.
 
-00:42.283 --> 00:48.103
-To test this on a real program, I ported a stdlib-only Chromecast sender to Python flavor.
+00:31.960 --> 00:40.570
+The build stops, with the line and the two types that disagree. In CPython, that mistake surfaces only when the line runs, if it ever does.
 
-00:48.453 --> 00:54.910
-Where the original raised a key error for a missing TV, the port returns a result, and every caller must handle it.
+00:41.320 --> 00:46.076
+To test this on a real program, I ported a Chromecast sender to Python flavor.
 
-00:56.110 --> 01:00.637
-The original's pure functions run under CPython and write the expected results.
+00:46.276 --> 00:53.134
+Where the original raised a KeyError for a missing TV, the port returns a result, and every caller must handle it.
 
-01:00.987 --> 01:07.498
-The port is checked against all 251, then driven over real TLS against a scripted device.
+00:53.884 --> 00:58.485
+That's twelve hundred lines, and more than half its functions carry no annotation at all.
 
-01:08.698 --> 01:17.301
-Python flavor is Osprey, not CPython. An arbitrary Python program does not run unchanged, and porting means rewriting in this style.
+00:59.235 --> 01:06.185
+The original's functions run under CPython and write the expected results. The port must match every one of them.
 
-01:17.651 --> 01:21.450
-To call real Python libraries, use Osprey's Python interop.
+01:06.385 --> 01:08.951
+Two hundred and fifty two checks, none failed.
 
-01:22.650 --> 01:29.689
+01:09.701 --> 01:20.484
+Python flavor is Osprey, not CPython. An arbitrary Python program does not run unchanged. To call real Python libraries, use Osprey's Python interop.
+
+01:21.234 --> 01:27.960
 Install Osprey, run the sample, then pass it a number. Osprey is actively evolving. Try it on your projects.

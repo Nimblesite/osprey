@@ -1,46 +1,37 @@
 WEBVTT
 
-00:00.500 --> 00:09.989
-A Mac has no Cast button. Chrome casts a browser tab, and a phone casts from an app, but neither plays an MP3 from your Mac on the TV with proper controls.
+00:00.500 --> 00:10.399
+A Mac has no Cast button. Chrome casts a browser tab, but it won't play an MP3 from your Mac on the TV with proper controls. This native player does.
 
-00:10.339 --> 00:11.742
-This native player does.
+00:11.149 --> 00:18.622
+It finds every Chromecast and Google TV on your network by name. Open an MP3, pick a TV, and press play.
 
-00:12.942 --> 00:16.974
-It finds every Chromecast and Google TV on your network, by name.
+00:18.822 --> 00:29.537
+Pause, seek, volume and speed all work, and the controls show what the TV reports. With ffmpeg installed, the TV shows a moving spectrum of the music.
 
-00:17.324 --> 00:26.424
-Open an MP3, pick a TV, and press play. Pause, seek, volume and speed all work, and the controls show what the TV reports.
-
-00:26.774 --> 00:32.025
-With ffmpeg installed, the TV shows a moving spectrum of the music instead of a still picture.
-
-00:33.225 --> 00:35.864
+00:30.287 --> 00:33.126
 A Chromecast never receives your file directly.
 
-00:36.214 --> 00:44.037
-The player discovers TVs with macOS's own dns-sd, opens a TLS session, and launches the default media receiver.
+00:33.326 --> 00:45.418
+The player finds TVs, opens a TLS session, and launches the default media receiver. Then it serves the file over HTTP from your Mac, and tells the TV where to fetch it.
 
-00:44.387 --> 00:49.473
-Then it serves the file from a small web server on your Mac, and tells the TV where to fetch it.
+00:46.168 --> 00:52.654
+Discovery uses the dns-sd tool that macOS already ships. Nothing extra to install.
 
-00:50.673 --> 00:54.282
-The whole interface is one data file of state machines and skins.
+00:53.404 --> 01:02.708
+The whole interface is one data file of state machines and skins. The only code is this adapter, which answers each request with the Chromecast package.
 
-00:54.632 --> 01:03.326
-The only code is this adapter, which answers each request with the Chromecast package. An unknown request becomes an error on screen, never a silent no-op.
+01:02.908 --> 01:07.328
+An unknown request becomes an error on screen, never a silent no-op.
 
-01:04.526 --> 01:13.214
-Every byte goes through one algebraic effect. In the tests, a handler plays the TV, so four end-to-end journeys run with no window and no network.
+01:08.078 --> 01:17.157
+Every byte goes through one algebraic effect. In the tests, a handler plays the TV, so four whole journeys run with no window and no network.
 
-01:13.564 --> 01:17.904
-The package was also checked by hand on a real Chromecast and a real Google TV.
+01:17.357 --> 01:18.421
+All four pass.
 
-01:19.104 --> 01:22.160
-Build it from source, and run the casting example.
+01:19.171 --> 01:27.144
+What to know first. It plays MP3 files only, it runs on macOS, and it does not verify the TV's certificate.
 
-01:22.510 --> 01:26.809
-It plays MP3 files only, and it has been tested on macOS.
-
-01:27.159 --> 01:31.123
-Osprey is actively evolving. Try it, and tell us what breaks.
+01:27.894 --> 01:34.702
+Build Osprey, then open the player. Osprey is actively evolving. Try it on your projects, and tell us what breaks.

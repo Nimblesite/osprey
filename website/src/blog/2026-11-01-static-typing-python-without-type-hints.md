@@ -91,11 +91,12 @@ A port is only useful if it does what the original did. The original's pure func
 
 ```text
 ok varint.encode.0
-ok message.frame.0
-ok parse.namespace.0
-ok launch.kind.0
+ok varint.encode.1
+ok varint.encode.2
 ...
-251 passed, 0 failed
+ok fail.no_route
+ok fail.no_file
+252 passed, 0 failed
 ```
 
 All of the sender's I/O goes through one algebraic effect, `Wire`, so the tests swap the network for a fake TV with a handler. Types catch the wrong value; effects make the outside world replaceable.

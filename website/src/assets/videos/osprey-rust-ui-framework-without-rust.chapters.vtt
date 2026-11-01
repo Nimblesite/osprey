@@ -1,22 +1,28 @@
 WEBVTT
 
-00:00.000 --> 00:25.365
-What is GPUI
+00:00.000 --> 00:09.041
+Rust UI without Rust
 
-00:25.365 --> 00:45.465
-Among Rust UI frameworks
+00:09.041 --> 00:20.184
+Drawn by GPUI
 
-00:45.465 --> 01:02.889
-Layers and transitions
+00:20.184 --> 00:40.295
+Where it sits
 
-01:02.889 --> 01:16.086
-Skins and canvas
+00:40.295 --> 00:56.107
+Layers in parallel
 
-01:16.086 --> 01:25.614
-The adapter
+00:56.107 --> 01:05.372
+One adapter
 
-01:25.614 --> 01:40.250
-Validated on load
+01:05.372 --> 01:16.302
+Refused on load
 
-01:40.250 --> 01:50.272
+01:16.302 --> 01:25.078
+Refused on load
+
+01:25.078 --> 01:34.387
+What to know
+
+01:34.387 --> 01:44.227
 Try it

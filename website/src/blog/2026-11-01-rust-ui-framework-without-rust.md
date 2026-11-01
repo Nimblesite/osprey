@@ -59,8 +59,8 @@ The application code that remains answers the document's requests and feeds fact
 answer (store, ask) = match ask.askName
     "cast.start" => start (store, ask)
     "cast.pause" => live (store, \p => Player::pause p)
-    "cast.seekTo" => live (store, \p => Player::seek (p, givenNumber (ask, "seekTo")))
-    "cast.volume" => live (store, \p => Player::volume (p, givenNumber (ask, "wantVolume")))
+    "cast.seekTo" => live (store, \p => Player::seek (p, Machines::askedNumber (ask, "seekTo")))
+    "cast.volume" => live (store, \p => Player::volume (p, Machines::askedNumber (ask, "wantVolume")))
     _ => asked (failed (store, "the machine asked for an unknown request ${ask.askName}"), [])
 ```
 
@@ -84,6 +84,6 @@ make build && make _runtime_macos
 bash examples/casting/run.sh
 ```
 
-What to know first. The casting player runs in the GPUI host on macOS today. The document becomes ordinary Osprey Native views, which the WinUI, VS Code and Apple hosts also draw, but only the GPUI host has run this player. The two skins without a canvas, Midnight Mint and Poolside Pop, still need layout work, so the player opens in Sherbet Signal. Mapping the accessibility tree to the platform's screen reader is specified but not yet implemented.
+What to know first. The casting player runs in the GPUI host on macOS today. The document becomes ordinary Osprey Native views, which the WinUI, VS Code and Apple hosts also draw, but only the GPUI host has run this player. The two skins without a canvas, Midnight Mint and Poolside Pop, still need layout work, so the player opens in Sherbet Signal. The GPUI host maps the accessibility tree to AccessKit, so the platform's screen reader sees every labelled control; the other hosts do not map it yet.
 
 The format is defined in the [UI machines spec](https://github.com/Nimblesite/osprey/blob/main/docs/specs/platforms/UiMachines.md), and [`@osprey/native`](https://github.com/Nimblesite/osprey/tree/main/packages/native) holds the interpreter. Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.

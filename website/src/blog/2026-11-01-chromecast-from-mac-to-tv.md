@@ -49,7 +49,7 @@ answer (store, ask) = match ask.askName
     "cast.start" => start (store, ask)
     "cast.pause" => live (store, \p => Player::pause p)
     "cast.resume" => live (store, \p => Player::play p)
-    "cast.volume" => live (store, \p => Player::volume (p, givenNumber (ask, "wantVolume")))
+    "cast.volume" => live (store, \p => Player::volume (p, Machines::askedNumber (ask, "wantVolume")))
     _ => asked (failed (store, "the machine asked for an unknown request ${ask.askName}"), [])
 ```
 

@@ -1,19 +1,25 @@
 WEBVTT
 
-00:00.000 --> 00:12.442
-No Cast button on a Mac
+00:00.000 --> 00:10.799
+Chromecast from a Mac
 
-00:12.442 --> 00:32.725
-What it does
+00:10.799 --> 00:29.937
+The player
 
-00:32.725 --> 00:50.173
+00:29.937 --> 00:45.818
 How casting works
 
-00:50.173 --> 01:04.026
-Built from a state machine
+00:45.818 --> 00:53.054
+How casting works
 
-01:04.026 --> 01:18.604
-Tested without a TV
+00:53.054 --> 01:07.728
+One adapter
 
-01:18.604 --> 01:31.823
+01:07.728 --> 01:18.821
+Tested with no TV
+
+01:18.821 --> 01:27.544
+What to know
+
+01:27.544 --> 01:36.902
 Try it

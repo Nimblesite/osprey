@@ -1,22 +1,28 @@
 WEBVTT
 
-00:00.000 --> 00:15.591
-Static vs dynamic
+00:00.000 --> 00:15.008
+Static typing, no hints
 
-00:15.591 --> 00:28.898
+00:15.008 --> 00:26.104
 Inferred, not written
 
-00:28.898 --> 00:41.783
-Caught at compile time
+00:26.104 --> 00:29.687
+Inferred, not written
 
-00:41.783 --> 00:55.610
+00:29.687 --> 00:40.970
+Caught before it runs
+
+00:40.970 --> 00:53.534
 A real port
 
-00:55.610 --> 01:08.198
-Checked against the original
+00:53.534 --> 00:58.885
+A real port
 
-01:08.198 --> 01:22.150
-What it is not
+00:58.885 --> 01:09.351
+Checked against CPython
 
-01:22.150 --> 01:30.389
+01:09.351 --> 01:20.884
+Not CPython
+
+01:20.884 --> 01:30.160
 Try it

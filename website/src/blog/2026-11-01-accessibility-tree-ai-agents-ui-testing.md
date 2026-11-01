@@ -35,9 +35,9 @@ Every control in a UI machine declares a role and a label. Labels are templates,
 ```
 {% endraw %}
 
-`Templates::semantics` turns the live controls into the tree: role, filled-in label, bounds and, for a slider, its current value. While a track plays, the player's tree reads `Receiver: Living Room TV`, `Speed: 1×`, `Pause`, `Stop`, `Open file…`, `Position` and `Volume`, and the volume slider reports its level. A control that is not live, such as the menu rows while the menu is closed, is not in the tree, so nothing can press it.
+`Canvases::semantics` turns the live controls into the tree: role, filled-in label, bounds and, for a slider, its current value. While a track plays, the player's tree reads `Receiver: Living Room TV`, `Speed: 1×`, `Pause`, `Stop`, `Open file…`, `Position` and `Volume`, and the volume slider reports its level. A control that is not live, such as the menu rows while the menu is closed, is not in the tree, so nothing can press it.
 
-`Templates::act (machine, "Play", 0.5)` operates a control by label, the way a screen reader or an agent would. A slider is set that fraction of the way across; anything else is pressed. An unknown label changes nothing.
+`Canvases::act (machine, "Play", 0.5)` operates a control by label, the way a screen reader or an agent would. A slider is set that fraction of the way across; anything else is pressed. An unknown label changes nothing.
 
 ## UI tests that read like the user's journey
 
@@ -53,7 +53,7 @@ expect (letters "Sunroom", true)
 tap "Play"
 expect (heardTypes (), "CONNECT LAUNCH ")
 tapAt ("Volume", 0.5)
-expect (Doc::decimal (element "Volume", "value"), 0.5)
+expect (valueOf "Volume", 0.5)
 tapAt ("Position", 0.25)
 expect (letters "00:50", true)
 ```
@@ -79,13 +79,17 @@ ok 4 - the canvas: every control is reached by its accessible label, through poi
 
 The second journey switches skins and checks that the controls are still offered by label. A screenshot comparison cannot express that: the pixels change, the meaning must not.
 
+## The same tree reaches screen readers
+
+The tests read the tree from the envelope the app sends its host, so they read exactly what the host gets. The GPUI desktop host lays one invisible AccessKit element over the canvas for each entry, with its role, label and, for a slider, its value and range ([`access.rs`](https://github.com/Nimblesite/osprey/blob/main/hosts/gpui/src/scene/access.rs)). A screen reader's click becomes a pointer press and release at the element's centre, and setting a slider lands at that value along it, so the app cannot tell a screen reader or an agent from a hand.
+
 ## Why this suits AI agents
 
 An agent operating this app does not need vision or coordinates. It reads a short list of what can be done right now (`Pause`, `Stop`, `Volume` at 0.5), picks one by name, and acts. The labels the agent uses are the labels the tests already prove work, so an agent's view of the app is tested on every build. Disabled or hidden controls are absent from the tree, so the agent cannot try them.
 
 ## What is not done yet
 
-- **Platform accessibility.** The tree is specified to map to each platform's accessibility API (NSAccessibility on macOS, UI Automation on Windows, AT-SPI on Linux) through AccessKit. That host mapping is not implemented yet, so VoiceOver does not read the player today. Tests and agents use the tree in process.
+- **Other hosts.** The GPUI host maps the tree to AccessKit, which announces it through NSAccessibility on macOS, UI Automation on Windows and AT-SPI on Linux. The WinUI, VS Code and Apple hosts do not map it yet.
 - **No agent server.** There is no ready-made MCP server that exposes a running app's tree to an external agent. `semantics` and `act` are the pieces such a server would call.
 - **UI machines only.** The tree comes from UI machine documents. Interfaces written directly as Osprey view code do not produce it.
 
