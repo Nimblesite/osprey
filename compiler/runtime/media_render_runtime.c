@@ -75,6 +75,7 @@ static double probe_duration(const char *path) {
   posix_spawn_file_actions_init(&actions);
   posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
   posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+  posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
   const char *const args[] = {"ffprobe", "-v", "error", "-show_entries", "format=duration",
                               "-of", "default=nw=1:nk=1", path, NULL};
   pid_t pid = spawn(args, &actions);

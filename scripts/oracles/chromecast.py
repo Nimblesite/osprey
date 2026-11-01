@@ -123,7 +123,7 @@ MESSAGES = [
         "contentId": "http://192.168.1.20:5123/media", "contentType": "audio/mpeg", "streamType": "BUFFERED",
         "metadata": {"metadataType": 3, "title": "Blue Monday"}}}),
     ("web-7", "media", {"type": "LOAD", "requestId": 2, "autoplay": True, "currentTime": 0, "media": {
-        "contentId": "http://10.0.0.5:8000/media", "contentType": "audio/mpeg", "streamType": "BUFFERED",
+        "contentId": "http://10.0.0.5:8000/media.m3u8", "contentType": "application/x-mpegURL", "streamType": "BUFFERED",
         "metadata": {"metadataType": 3, "title": "Say \"hi\" \\ bye"}}}),
     # Media controls the reference CLI lacks; the payloads follow the CAST v2 media namespace.
     ("web-7", "media", {"type": "PAUSE", "mediaSessionId": 1, "requestId": 3}),
