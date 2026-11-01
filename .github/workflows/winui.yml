@@ -43,6 +43,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The apps' skins and the screenshot goldens are LFS pictures; the rest of the repo's stay unpulled.
+      - name: Pull the apps' LFS pictures
+        run: git lfs install --local && git lfs pull --include="examples/**,hosts/**,packages/**"
+
       # The C runtime is built with MinGW (as in ci-windows.yml), and the UCRT64 clang links the
       # application DLL against it.
       - uses: msys2/setup-msys2@v2

@@ -82,5 +82,7 @@ tests/regressions/http/http_response_handle.test.osp HTTP builtin `httpResponseB
 tests/regressions/http/http_response_handle.test.ospml HTTP builtin `httpResponseBody`
 tests/regressions/http/http_server_example.test.osp HTTP builtin `httpCreateServer`
 tests/regressions/http/http_server_example.test.ospml HTTP builtin `httpCreateServer`
+tests/regressions/http/net_local_address.test.osp link directive `// @link: ssl`
+tests/regressions/http/net_local_address.test.ospml link directive `// @link: ssl`
 tests/regressions/http/tui_repo_table.test.osp HTTP builtin `httpResponseBody`
 tests/regressions/http/tui_repo_table.test.ospml HTTP builtin `httpResponseBody`

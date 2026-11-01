@@ -30,20 +30,26 @@ function Invoke-Checked([string] $What, [scriptblock] $Run) {
     if ($LASTEXITCODE -ne 0) { throw "$What failed with exit code $LASTEXITCODE" }
 }
 
-# The compiler, the runtime archives it links against and the application's DLL, built into the package.
-function Build-Application {
-    Invoke-Checked 'building the compiler' { cargo build --release -p osprey-cli --manifest-path (Join-Path $repo 'Cargo.toml') }
+# A helper the application runs, such as casting's device browse, is one C file built beside it.
+function Build-Helpers {
+    New-Item -ItemType Directory -Force (Join-Path $layout 'app') | Out-Null
     $env:MSYSTEM = 'UCRT64'; $env:CHERE_INVOKING = '1'
     $unix = $repo -replace '\\','/'
-    Invoke-Checked 'building the MinGW runtime' { & (Join-Path $Msys 'usr\bin\bash.exe') -lc "cd '$unix' && make _runtime CC=gcc AR=ar" }
-    New-Item -ItemType Directory -Force (Join-Path $layout 'app') | Out-Null
-    # A helper the application runs, such as casting's device browse, is one C file built beside it.
     foreach ($helper in @($entry.helpers | Where-Object { $_ })) {
         $exe = [IO.Path]::GetFileNameWithoutExtension($helper.source) + '.exe'
         $libraries = @($helper.libraries | ForEach-Object { "-l$_" }) -join ' '
         $out = (Join-Path $layout "app\$exe") -replace '\\','/'
         Invoke-Checked "building $exe" { & (Join-Path $Msys 'usr\bin\bash.exe') -lc "cd '$unix/$($entry.source)' && gcc -O2 -Wall -Wextra -Werror '$($helper.source)' -o '$out' $libraries" }
     }
+    Remove-Item Env:MSYSTEM, Env:CHERE_INVOKING
+}
+
+# The compiler, the runtime archives it links against and the application's DLL, built into the package.
+function Build-Application {
+    Invoke-Checked 'building the compiler' { cargo build --release -p osprey-cli --manifest-path (Join-Path $repo 'Cargo.toml') }
+    $env:MSYSTEM = 'UCRT64'; $env:CHERE_INVOKING = '1'
+    $unix = $repo -replace '\\','/'
+    Invoke-Checked 'building the MinGW runtime' { & (Join-Path $Msys 'usr\bin\bash.exe') -lc "cd '$unix' && make _runtime CC=gcc AR=ar" }
     Remove-Item Env:MSYSTEM, Env:CHERE_INVOKING
     $env:OSPREY_CC = Join-Path $Msys 'ucrt64\bin\clang.exe'
     $env:OSPREY_AR = Join-Path $Msys 'ucrt64\bin\llvm-ar.exe'
@@ -122,8 +128,8 @@ function Test-Package([string] $Family) {
     & (Join-Path $PSScriptRoot 'goldens.ps1') -Shots $shots -Goldens (Join-Path $source 'goldens\windows') -Update:$Update
 }
 
+Build-Helpers
 if ($Dll) {
-    New-Item -ItemType Directory -Force (Join-Path $layout 'app') | Out-Null
     Copy-Item $Dll (Join-Path $layout 'app\app.dll') -Force
 } else {
     Build-Application
