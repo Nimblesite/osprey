@@ -113,6 +113,8 @@ Each scene keeps its elements between frames and reuses them, so a frame that mo
 
 `hosts/winui/goldens.ps1` compares every content picture with the golden of the same name in `<app>/goldens/windows/<percent>`, where the percent is the display scale the self-test wrote to `scale.txt`: WinUI draws at the display's scale, so a picture taken at 150% is held only to goldens taken at 150%. A pixel differs when a channel is off by more than 24, and a picture fails when more than 0.2% of its pixels differ, its size differs or it has no golden. A self-test on screen is held to the same goldens a second time, through the pictures taken from the screen. Every pixel is compared with the golden drawn over the backdrop, which is the screen's mean colour where the golden is clear, since the Mica backdrop follows the wallpaper. The two are lined up within 8 pixels, since WinUI's content picture can reach a few pixels past the area the content is laid out in. So a run on screen checks what a person sees, not only what WinUI renders. Under `-Headless` the window is off every screen and only the content is compared. `-Update` rewrites the goldens for the display's scale from the content pictures.
 
+A `live.json` beside a scale's goldens lists `[x, y, width, height]` rectangles of the golden that show the machine rather than the app, and those pixels are not compared. Storage's holds the disk bar and the used and available figures of the C drive, since they change as the disk fills; the rest of that card is still compared.
+
 ## Verification [WINUI-HOST-VERIFICATION]
 
 ```sh

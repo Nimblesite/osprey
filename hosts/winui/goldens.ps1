@@ -10,6 +10,8 @@
 # screen shows the Mica backdrop, which follows the wallpaper, so the backdrop is taken from the screen
 # itself. The two are lined up within a few pixels, since the content's picture can reach a little past
 # the area it is laid out in. So what a person sees is checked too.
+# A live.json beside a scale's goldens lists [x, y, width, height] rectangles of the golden that show the
+# machine rather than the app, such as how full its disk is. Those pixels are not compared; -Update keeps the file.
 #   goldens.ps1 -Shots <folder> -Goldens <folder> [-Update] [-Tolerance 24] [-Fraction 0.002]
 param(
     [Parameter(Mandatory)] [string] $Shots,
@@ -32,13 +34,25 @@ if ($Update) {
     return
 }
 
-Add-Type -ReferencedAssemblies System.Drawing.Common, System.Drawing.Primitives, System.Private.Windows.GdiPlus, System.Private.Windows.Core -TypeDefinition @'
+Add-Type -ReferencedAssemblies System.Collections, System.Drawing.Common, System.Drawing.Primitives, System.Private.Windows.GdiPlus, System.Private.Windows.Core -TypeDefinition @'
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
 public static class GoldenCompare
 {
+    // The rectangles of the golden that are not compared, four numbers each: x, y, width, height.
+    public static int[] Live = new int[0];
+
+    static bool IsLive(int x, int y)
+    {
+        for (var r = 0; r < Live.Length; r += 4)
+        {
+            if (x >= Live[r] && y >= Live[r + 1] && x < Live[r] + Live[r + 2] && y < Live[r + 1] + Live[r + 3]) return true;
+        }
+        return false;
+    }
+
     // The count of pixels that differ by more than tolerance in any channel, with each one painted
     // red in the diff and the rest faded; -1 when the sizes differ.
     // The pixels of a picture of the screen that differ from the golden drawn over the backdrop, at the
@@ -56,17 +70,27 @@ public static class GoldenCompare
         if (System.Math.Abs(a.Width - b.Width) > Slack || System.Math.Abs(a.Height - b.Height) > Slack) return -1;
         var screen = Pixels(a);
         var right = Pixels(b);
-        var (best, bestX, bestY) = (long.MaxValue, 0, 0);
+        // Only the golden's opaque pixels decide the offset, and every one counts, as a mostly clear
+        // golden has few. The nearest offsets go first, so a tie keeps the smaller shift and a clearly
+        // wrong offset stops as soon as it cannot win.
+        var opaque = new System.Collections.Generic.List<int>();
+        for (var i = 0; i < right.Length; i++)
+        {
+            if (Opaque(right[i]) && !IsLive(i % b.Width, i / b.Width)) opaque.Add(i);
+        }
+        var offsets = new System.Collections.Generic.List<(int X, int Y)>();
         for (var dy = -Slack; dy <= Slack; dy++)
-        for (var dx = -Slack; dx <= Slack; dx++)
+        for (var dx = -Slack; dx <= Slack; dx++) offsets.Add((dx, dy));
+        offsets.Sort((p, q) => (System.Math.Abs(p.X) + System.Math.Abs(p.Y)).CompareTo(System.Math.Abs(q.X) + System.Math.Abs(q.Y)));
+        var (best, bestX, bestY) = (long.MaxValue, 0, 0);
+        foreach (var (dx, dy) in offsets)
         {
             var count = 0L;
-            // Every third pixel each way is plenty to find the offset.
-            for (var y = System.Math.Max(0, -dy); y < a.Height && y + dy < b.Height; y += 3)
-            for (var x = System.Math.Max(0, -dx); x < a.Width && x + dx < b.Width; x += 3)
+            foreach (var i in opaque)
             {
-                var g = right[(y + dy) * b.Width + x + dx];
-                if (Opaque(g) && Off(screen[y * a.Width + x] | unchecked((int)0xFF000000), g, tolerance)) count++;
+                var (x, y) = (i % b.Width - dx, i / b.Width - dy);
+                if (x < 0 || y < 0 || x >= a.Width || y >= a.Height) continue;
+                if (Off(screen[y * a.Width + x] | unchecked((int)0xFF000000), right[i], tolerance) && ++count >= best) break;
             }
             if (count < best) (best, bestX, bestY) = (count, dx, dy);
         }
@@ -79,7 +103,7 @@ public static class GoldenCompare
             var (gx, gy) = (x + bestX, y + bestY);
             var i = y * a.Width + x;
             var inside = gx >= 0 && gy >= 0 && gx < b.Width && gy < b.Height;
-            var off = inside && !Near(screen[i] | unchecked((int)0xFF000000), right, b.Width, b.Height, gx, gy, tolerance, backdrop);
+            var off = inside && !IsLive(gx, gy) && !Near(screen[i] | unchecked((int)0xFF000000), right, b.Width, b.Height, gx, gy, tolerance, backdrop);
             total += inside ? 1 : 0;
             differing += off ? 1 : 0;
             marked[i] = off ? unchecked((int)0xFFFF0000) : (screen[i] & 0x00FFFFFF) | 0x30000000;
@@ -147,7 +171,7 @@ public static class GoldenCompare
         long count = 0;
         for (var i = 0; i < left.Length; i++)
         {
-            var off = !Near(left[i], right, a.Width, a.Height, i % a.Width, i / a.Width, tolerance, null);
+            var off = !IsLive(i % a.Width, i / a.Width) && !Near(left[i], right, a.Width, a.Height, i % a.Width, i / a.Width, tolerance, null);
             count += off ? 1 : 0;
             marked[i] = off ? unchecked((int)0xFFFF0000) : (left[i] & 0x00FFFFFF) | 0x30000000;
         }
@@ -175,6 +199,8 @@ public static class GoldenCompare
 }
 '@
 
+$live = Join-Path $Goldens 'live.json'
+if (Test-Path $live) { [GoldenCompare]::Live = [int[]] @(Get-Content $live -Raw | ConvertFrom-Json | ForEach-Object { $_ }) }
 $failed = @()
 foreach ($picture in $pictures) {
     $name = $picture.Name -replace '-content\.png$', ''
