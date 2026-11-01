@@ -37,6 +37,19 @@
         "--machine",
         "{app}\\signal_flow.machine.json"
       ]
+    },
+    "storage": {
+      "source": "examples/storage",
+      "name": "Storage",
+      "description": "See where your disk space goes, folder by folder.",
+      "capabilities": [
+        "broadFileSystemAccess"
+      ],
+      "files": [
+        "self-test.json"
+      ],
+      "arguments": [],
+      "fixture": "fixture.ps1"
     }
   }
 }

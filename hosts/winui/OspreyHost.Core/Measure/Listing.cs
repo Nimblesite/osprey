@@ -48,9 +48,20 @@ internal static unsafe class Listing
     const int BufferSize = 64 * 1024;
     const int FileIdInfoSize = 24;
 
+    // In a sandbox every open goes through the broker, which knows what the person granted.
+    static readonly bool Brokered = Sandbox.InAppContainer();
+
     /// <summary>Opens a folder for listing without following a link at its end.</summary>
-    public static SafeFileHandle Open(string path) =>
-        Native.CreateFile(Paths.Long(path), Native.ListDirectory, Native.ShareAll, 0, Native.OpenExisting, Native.BackupSemantics | Native.OpenReparsePoint, 0);
+    public static SafeFileHandle Open(string path)
+    {
+        const uint flags = Native.BackupSemantics | Native.OpenReparsePoint;
+        if (!Brokered)
+        {
+            return Native.CreateFile(Paths.Long(path), Native.ListDirectory, Native.ShareAll, 0, Native.OpenExisting, flags, 0);
+        }
+        var parameters = new Native.OpenParameters { Size = (uint)sizeof(Native.OpenParameters), Flags = flags };
+        return Native.CreateFileFromApp(Paths.Long(path), Native.ListDirectory, Native.ShareAll, Native.OpenExisting, &parameters);
+    }
 
     /// <summary>A new buffer for listing folders, reused folder after folder.</summary>
     public static byte[] Buffer() => new byte[BufferSize];
