@@ -159,15 +159,19 @@ sealed partial class Renderer
 
     UIElement Heading(Scope scope, JsonElement node)
     {
-        var heading = new Grid { ColumnSpacing = Gap(3) };
-        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var titles = Column([Words(Text(node, "title"), "title"), Words(Text(node, "subtitle"), "body", "secondary")], 0);
-        var commands = Toolbar(scope, node);
-        Grid.SetColumn(commands, 1);
-        heading.Children.Add(titles);
-        heading.Children.Add(commands);
-        return heading;
+        // The title above its commands, as a Windows 11 page lays them out, so neither crowds the other out.
+        var titles = Column([OneLine(Words(Text(node, "title"), "title")), OneLine(Words(Text(node, "subtitle"), "body", "secondary"))], 0);
+        return Column([titles, Toolbar(scope, node)], 1);
+    }
+
+    // A heading keeps to one line, as File Explorer's does, trimmed with an ellipsis when the window
+    // is too narrow for it, and shows the whole text in its tooltip.
+    static TextBlock OneLine(TextBlock words)
+    {
+        words.TextWrapping = TextWrapping.NoWrap;
+        words.TextTrimming = TextTrimming.CharacterEllipsis;
+        ToolTipService.SetToolTip(words, words.Text);
+        return words;
     }
 
     // A page scrolls as a whole unless a child fills, or is a slot that may fill once its region is drawn.

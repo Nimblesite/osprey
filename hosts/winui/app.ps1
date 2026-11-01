@@ -5,11 +5,13 @@
 # compares every picture with the goldens in <source>/goldens/windows.
 #   app.ps1 -App flock                               open Flock
 #   app.ps1 -App flock -Test [-Headless] [-Update]   self-test, off screen with -Headless; -Update rewrites the goldens
+#   app.ps1 -App flock -Dll <flock.dll>              package a DLL already built instead of building one
 param(
     [Parameter(Mandatory)] [string] $App,
     [switch] $Test,
     [switch] $Headless,
     [switch] $Update,
+    [string] $Dll = '',
     [string] $Msys = $(if ($env:MSYS2_ROOT) { $env:MSYS2_ROOT } else { 'C:\msys64' })
 )
 $ErrorActionPreference = 'Stop'
@@ -91,13 +93,24 @@ function Test-Package([string] $Family) {
     $shots = Join-Path $repo "target\winui-shots\$App"
     Remove-Item $inside, $shots -Recurse -Force -ErrorAction SilentlyContinue
     $launch = @($entry.arguments | ForEach-Object { $_.Replace('{app}', (Join-Path $layout 'app')) })
+    # A fixture the self-test opens is built in LocalState too, the one folder the sandbox may always read.
+    if ($entry.fixture) {
+        $tree = Join-Path $env:LOCALAPPDATA "Packages\$Family\LocalState\fixture"
+        & (Join-Path $source $entry.fixture) -Tree $tree
+        $launch += $tree
+    }
     $arguments = @{ Exe = $alias; Dll = (Join-Path $layout 'app\app.dll'); Script = (Join-Path $layout 'app\self-test.json'); Shots = $inside; Arguments = $launch }
     try { & (Join-Path $PSScriptRoot 'self-test.ps1') @arguments -Headless:$Headless }
     finally { Copy-Item $inside $shots -Recurse -Force -ErrorAction SilentlyContinue }
     & (Join-Path $PSScriptRoot 'goldens.ps1') -Shots $shots -Goldens (Join-Path $source 'goldens\windows') -Update:$Update
 }
 
-Build-Application
+if ($Dll) {
+    New-Item -ItemType Directory -Force (Join-Path $layout 'app') | Out-Null
+    Copy-Item $Dll (Join-Path $layout 'app\app.dll') -Force
+} else {
+    Build-Application
+}
 Publish-Host
 Write-Package
 $family = Register-Package

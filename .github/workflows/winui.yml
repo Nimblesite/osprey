@@ -4,8 +4,9 @@ name: WinUI host
 # compile Storage to a windows-x64 DLL, then run the WinUI host's tests and publish the host with
 # Native AOT. The tests drive the real DLL boundary, the envelope, the region store, the
 # capabilities and the folder walk, and guard coverage, no XAML and host neutrality. No test opens
-# a window. Then Osprey Storage runs in a real window on the runner's desktop, driven by its
-# self-test script, and the pictures of each step are kept as an artifact.
+# a window. Then every app runs as its own sandboxed MSIX package in a real window on the runner's
+# desktop, driven by its self-test script, and each picture is compared with the app's screenshot
+# goldens (plan 0046); the pictures and any diffs are kept as an artifact.
 #
 # ci.yml calls this workflow on every pull request, and its root `ci` job, the required check,
 # needs both jobs here. A PR that changes no code skips the host at the job level, which reports
@@ -104,10 +105,12 @@ jobs:
         run: |
           set -euo pipefail
           ./target/release/osprey.exe test examples/storage/test
-          mkdir -p examples/storage/build examples/gpui/flock/build examples/gpui/painting/build
+          ./target/release/osprey.exe test packages/signal_flow/tests
+          mkdir -p examples/storage/build examples/gpui/flock/build examples/gpui/painting/build packages/signal_flow/app/build
           ./target/release/osprey.exe build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll
           ./target/release/osprey.exe build examples/gpui/flock --target=windows-x64 --no-warnings -o examples/gpui/flock/build/flock.dll
           ./target/release/osprey.exe build examples/gpui/painting --target=windows-x64 --no-warnings -o examples/gpui/painting/build/painting.dll
+          ./target/release/osprey.exe build packages/signal_flow/app --target=windows-x64 --no-warnings -o packages/signal_flow/app/build/signal-flow.dll
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -149,9 +152,19 @@ jobs:
         shell: pwsh
         run: examples/graphics/pictures.ps1 -Shots "${{ runner.temp }}/self-test/graphics"
 
-      # Windows Error Reporting keeps a full dump of a host that crashes, and the script prints the
-      # debugger's analysis of it; the dumps stay on the runner.
-      - name: Osprey Storage in a real window
+      # Each app is its own MSIX package in an AppContainer [WINUI-HOST-SANDBOX], registered as a loose
+      # layout, which Developer Mode allows without signing.
+      - name: Developer Mode for loose packages
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name AllowDevelopmentWithoutDevLicense -Value 1 -PropertyType DWord -Force | Out-Null
+
+      # Every app in a real window on the runner's desktop, inside its sandbox, driven by its
+      # self-test; each picture of the window's content is compared with the app's goldens and a
+      # diff picture is kept for any that differs. Windows Error Reporting keeps a crashed host's dump.
+      - name: Every app sandboxed in a real window, against its screenshot goldens
         if: ${{ !cancelled() }}
         shell: pwsh
         run: |
@@ -161,11 +174,19 @@ jobs:
           New-Item -Path $key -Force | Out-Null
           New-ItemProperty -Path $key -Name DumpFolder -Value $dumps -PropertyType ExpandString -Force | Out-Null
           New-ItemProperty -Path $key -Name DumpType -Value 2 -PropertyType DWord -Force | Out-Null
-          examples/storage/self-test.ps1 `
-            -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe `
-            -Dll examples/storage/build/storage.dll `
-            -Shots "${{ runner.temp }}/self-test/storage" `
-            -Dumps $dumps
+          $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $apps = [ordered]@{
+            storage = 'examples/storage/build/storage.dll'
+            flock = 'examples/gpui/flock/build/flock.dll'
+            painting = 'examples/gpui/painting/build/painting.dll'
+            'signal-flow' = 'packages/signal_flow/app/build/signal-flow.dll'
+          }
+          $failed = @()
+          foreach ($app in $apps.Keys) {
+            "== $app"
+            try { hosts/winui/app.ps1 -App $app -Dll $apps[$app] -Test } catch { $_; $failed += $app }
+          }
+          if ($failed) { throw "Self-tests or goldens failed: $($failed -join ', ')" }
 
       # The whole system drive, as a person would first measure it: the walk meets folders it may not
       # read and may stop at its two-minute deadline, then Users opens from its row.
@@ -182,32 +203,12 @@ jobs:
           -Arguments 'C:\'
           -Seconds 480
 
-      - name: Flock in a real window
-        if: ${{ !cancelled() }}
-        shell: pwsh
-        run: >-
-          hosts/winui/self-test.ps1
-          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
-          -Dll examples/gpui/flock/build/flock.dll
-          -Script examples/gpui/flock/self-test.json
-          -Shots "${{ runner.temp }}/self-test/flock"
-          -Dumps "${{ runner.temp }}/dumps"
-
-      - name: Painting in a real window
-        if: ${{ !cancelled() }}
-        shell: pwsh
-        run: >-
-          hosts/winui/self-test.ps1
-          -Exe hosts/winui/OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe
-          -Dll examples/gpui/painting/build/painting.dll
-          -Script examples/gpui/painting/self-test.json
-          -Shots "${{ runner.temp }}/self-test/painting"
-          -Dumps "${{ runner.temp }}/dumps"
-
       - name: Keep the window's pictures
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: winui-self-test
-          path: ${{ runner.temp }}/self-test
+          path: |
+            ${{ runner.temp }}/self-test
+            target/winui-shots
           if-no-files-found: warn

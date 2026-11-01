@@ -3,8 +3,15 @@
 # PATH; hosts/winui/app.ps1 builds and registers each. macOS: apps/macos.
 ROOT ?= ../..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/hosts/winui/app.ps1
+# HEADLESS=-Headless draws the self-tests' windows off screen; by default they are on screen.
+HEADLESS ?=
 
-.PHONY: flock painting signal-flow test
+.PHONY: storage flock painting signal-flow test
+
+## storage: Open Osprey Storage, where your disk space goes folder by folder, in its sandbox.
+##          It reads the whole drive once Settings > Privacy & security > File system allows it.
+storage:
+	$(APP_PS1) -App storage
 
 ## flock: Open Flock, the boids herding game, in its sandbox.
 flock:
@@ -14,13 +21,14 @@ flock:
 painting:
 	$(APP_PS1) -App painting
 
-## signal-flow: Open the signal-flow editor, a UI machine, in its sandbox.
+## signal-flow: Open the signal-flow editor, a UI machine with four canvas skins, in its sandbox.
 signal-flow:
 	$(APP_PS1) -App signal-flow
 
-## test: Flock's, Painting's and Signal flow's self-tests, off screen inside their sandboxes,
-##       each picture compared with the goldens in <app>/goldens/windows.
+## test: Every app's self-test in a real window inside its sandbox (HEADLESS=-Headless: off
+##       screen), each picture compared with the goldens in <app>/goldens/windows.
 test:
-	$(APP_PS1) -App flock -Test -Headless
-	$(APP_PS1) -App painting -Test -Headless
-	$(APP_PS1) -App signal-flow -Test -Headless
+	$(APP_PS1) -App storage -Test $(HEADLESS)
+	$(APP_PS1) -App flock -Test $(HEADLESS)
+	$(APP_PS1) -App painting -Test $(HEADLESS)
+	$(APP_PS1) -App signal-flow -Test $(HEADLESS)
