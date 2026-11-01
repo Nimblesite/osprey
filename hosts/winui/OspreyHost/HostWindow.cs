@@ -45,6 +45,9 @@ sealed partial class HostWindow : Window
     /// <summary>Every diagnostic shown since the window opened.</summary>
     public IReadOnlyList<string> Problems => reported;
 
+    /// <summary>Physical pixels per window unit on the window's display: 1.5 at 150%.</summary>
+    public double Scale => GetDpiForWindow(Handle) / 96.0;
+
     /// <summary>The window's handle, for capturing what it shows.</summary>
     public nint Handle => Win32Interop.GetWindowFromWindowId(AppWindow.Id);
 
@@ -75,11 +78,12 @@ sealed partial class HostWindow : Window
         AppWindow.Show(activateWindow: false);
     }
 
-    // The window opens at its own size, or smaller on a screen that cannot hold it, centred.
+    // The window opens at its own size in window units, scaled to the display, or smaller on a screen
+    // that cannot hold it, centred.
     void Fit()
     {
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-        var size = new SizeInt32(Math.Min(Width, area.Width), Math.Min(Height, area.Height));
+        var size = new SizeInt32(Math.Min((int)(Width * Scale), area.Width), Math.Min((int)(Height * Scale), area.Height));
         AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width - size.Width) / 2, area.Y + (area.Height - size.Height) / 2, size.Width, size.Height));
     }
 
@@ -87,8 +91,7 @@ sealed partial class HostWindow : Window
     // window units scaled to the display, as the GPUI host opens a bare canvas, centred again.
     void Fit(double width, double height)
     {
-        var scale = GetDpiForWindow(Handle) / 96.0;
-        AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(width * scale), (int)Math.Ceiling(height * scale)));
+        AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(width * Scale), (int)Math.Ceiling(height * Scale)));
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         AppWindow.Move(new PointInt32(area.X + (area.Width - AppWindow.Size.Width) / 2, area.Y + (area.Height - AppWindow.Size.Height) / 2));
     }

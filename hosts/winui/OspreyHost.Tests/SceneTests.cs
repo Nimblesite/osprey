@@ -24,6 +24,15 @@ public sealed class SceneTests
         ], scene.Shapes, ShapeComparer.Instance);
     }
 
+    /// <summary>[WINUI-HOST-SCENE] A sized scene opens its window at its units times its zoom; a zoom-0 scene fills whatever window it is in, so it asks for none.</summary>
+    [Fact]
+    public void OnlyASceneWithAZoomOpensItsWindowAtItsSize()
+    {
+        Assert.Equal((217.0, 278.5), Decode("""{"width":434,"height":557,"zoom":0.5,"shapes":[]}""").Opening);
+        Assert.Null(Decode("""{"width":1728,"height":893,"zoom":0,"shapes":[]}""").Opening);
+        Assert.Null(Decode("""{"width":0,"height":0,"shapes":[]}""").Opening);
+    }
+
     [Fact]
     public void StreamedShapesFollowTheNodesOwnAtEqualDepth()
     {

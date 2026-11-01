@@ -8,6 +8,7 @@ GPUI's `examples/painting.rs` (gpui-pre 0.3.10) ported to Osprey and run in the 
 
 ```sh
 examples/gpui/painting/run.sh
+make -C apps/windows painting          # Windows: sandboxed on the WinUI host
 ```
 
 Drag to draw. Hold Shift to draw a straight line from where the drag began. **Dashed** switches every line to a four-on, two-off dash, and **Solid** switches back. **Clear** removes your lines.

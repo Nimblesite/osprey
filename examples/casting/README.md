@@ -6,9 +6,10 @@ A native player that casts a local MP3 to a Chromecast or Google TV. Its whole i
 
 ```sh
 make -C apps/macos casting          # builds what it needs and opens the player in the GPUI host
+make -C apps/windows casting        # Windows: the same player in its sandbox, on the WinUI host
 ```
 
-`run.sh` compiles the app to a C archive and links it, with the TLS and media-server runtime and OpenSSL, into the GPUI host. The host runs `dns-sd` to find TVs and opens the file picker, so the window never waits on the network. Each frame polls the TV for at most a millisecond.
+On macOS `run.sh` compiles the app to a C archive and links it, with the TLS and media-server runtime and OpenSSL, into the GPUI host. On Windows, `hosts/winui/app.ps1` builds the app as a DLL with the same runtime and OpenSSL linked in, and packages it with `windows/cast-browse.c`, a DnsServiceBrowse helper that prints the lines `dns-sd` would. The host runs `dns-sd`, or the helper `--browse` names, to find TVs and opens the file picker, so the window never waits on the network. Each frame polls the TV for at most a millisecond.
 
 ## How it fits together
 
@@ -23,6 +24,7 @@ make -C apps/macos casting          # builds what it needs and opens the player 
 
 ```sh
 ./target/release/osprey examples/casting/test --run
+make -C apps/windows test           # Windows: also drives the player in a real window, against the screenshots in goldens/windows
 ```
 
 The reusable label-driven harness lives in [@osprey/uitest](../../packages/uitest/README.md). The tests drive the framework's real resident `start`/`dispatch` boundary with host-shaped events. They press the controls the rendered view issued, by label. An in-memory Cast device answers the port's `Wire` effect: it parses every frame the sender writes and replies as a Default Media Receiver does. The journeys cover discovery, opening a file, play, pause, resume, seek, volume, speed, stop, replay, the track finishing, skins, no TVs found and an unreachable TV.

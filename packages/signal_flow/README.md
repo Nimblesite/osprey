@@ -15,6 +15,7 @@ On the canvas you can switch any node off (bypass it), drag the control and proc
 
 ```sh
 make -C apps/macos signal-flow                    # or: bash packages/signal_flow/app/run.sh
+make -C apps/windows signal-flow                  # Windows: the WinUI sandbox
 ```
 
 Pass `--skin notation` (or `paper`, `prism`) after the script to start in another skin.

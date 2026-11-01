@@ -66,7 +66,15 @@ public sealed record SolidPaint(Tint Tint) : Paint;
 public sealed record LinearPaint(double Angle, Tint From, double FromAt, Tint To, double ToAt, bool Oklab) : Paint;
 
 /// <summary>One decoded scene: its unit space (zero for window pixels), its zoom in pixels per unit (0 fits it to its region), its atlas and its shapes, back to front.</summary>
-public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes);
+public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes)
+{
+    /// <summary>
+    /// The size, in window units, of the window an application that is this one scene opens at: its
+    /// units times its zoom. A scene of window pixels or at zoom 0 fits whatever region holds it, so it
+    /// asks for no size.
+    /// </summary>
+    public (double Width, double Height)? Opening => Width > 0 && Height > 0 && Zoom > 0 ? (Width * Zoom, Height * Zoom) : null;
+}
 
 /// <summary>
 /// Decodes a scene node and the primitives streamed for it [UI-SCENE-STREAM] into shapes ordered

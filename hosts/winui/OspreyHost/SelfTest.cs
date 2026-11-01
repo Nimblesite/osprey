@@ -34,6 +34,8 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     public async Task<int> Run()
     {
         Directory.CreateDirectory(shots);
+        // The pictures are drawn at the display's scale, so their goldens are kept per scale [WINUI-HOST-GOLDENS].
+        File.WriteAllText(Path.Combine(shots, "scale.txt"), $"{Math.Round(window.Scale * 100)}");
         string? failure;
         try
         {
