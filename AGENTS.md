@@ -62,5 +62,5 @@ Three phases, each once — ❌ mixing them:
 - `crates/` pipeline: tree-sitter parse (`osprey-syntax`, grammar `tree-sitter-osprey/`) → AST (`osprey-ast`) → HM inference (`osprey-types`) → LLVM IR (`osprey-codegen`) → CLI (`osprey-cli`, `osprey` binary); `osprey-runtime-sys` links the C runtime.
 - `compiler/runtime/`: pure-C runtime (fibers, HTTP/WebSocket, system ops); hardened (`-D_FORTIFY_SOURCE=2`, `-fstack-protector-strong`), warnings = errors. Perf-critical code stays C.
 - Language change → same path, plus a regression in `tests/regressions/` and a rejection in `examples/failscompilation/`.
-- **Memory:** pluggable, but only GC and ARC. ❌ build, test or bench the default backend; remove it from tests/benches as you touch them.
+- **Memory:** pluggable; GC and ARC implemented. Compile-time ownership ([plan 0045](docs/plans/0045-compile-time-ownership.md)) will replace `none` — not in active work. ❌ build, test or bench `none`; remove it from tests/benches as you touch them.
 - **Package manager:** backend is Osprey + Supabase, ❌ Rust. Prefer SQL triggers/functions; APIs that must sit beside Supabase go on GCP.
