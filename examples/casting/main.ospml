@@ -33,7 +33,7 @@ start source =
         fetch key => native_slice key
     handle ui::SceneStream
         shape primitive => streamed := shipped primitive
-    casting::Link::guarded (\() => chromecast::Wire::Native (\() => keeping (Runtime::begin (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), App::theme ()))))
+    Runtime::guarded (\() => chromecast::Wire::Native (\() => keeping (Runtime::begin (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), App::theme ()))))
 
 dispatch (_saved : string, event) =
     handle Keep
@@ -42,4 +42,4 @@ dispatch (_saved : string, event) =
         fetch key => native_slice key
     handle ui::SceneStream
         shape primitive => streamed := shipped primitive
-    casting::Link::guarded (\() => chromecast::Wire::Native (\() => keeping (Runtime::proceed (live, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes)))))
+    Runtime::guarded (\() => chromecast::Wire::Native (\() => keeping (Runtime::proceed (live, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes)))))

@@ -1,0 +1,8 @@
+[project]
+name = "signal_flow"
+source_roots = ["main.ospml", "../src", "../../native/src", "../../graphics/src"]
+default_namespace = "app"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

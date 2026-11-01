@@ -1,0 +1,54 @@
+// The signal-flow editor's application callbacks ([UI-MACHINE], [UI-STORE]):
+// this module loads the document and routes framework messages to the adapter.
+namespace signalflow
+
+import ui::Runtime
+import ui::Messages
+import ui::Machines
+import ui::Templates
+import ui::Keyed
+import signalflow::Flow
+
+(** The application exported through the two-function C boundary. *)
+module App
+    // The launch argument after `flag`, or `otherwise`.
+    after (arguments, flag, otherwise) =
+        at = ui::Lists::position (arguments, \a => a == flag)
+        ui::Pick::either (at >= 0, listGet arguments (satAdd at 1) ?: otherwise, otherwise)
+
+    (** The document the interface is read from: `--machine <path>` among the launch arguments, else the repository copy. *)
+    export documentPath arguments = after (arguments, "--machine", "packages/signal_flow/signal_flow.machine.json")
+
+    (** The store from a machine document's text: a refused document shows its problems in place of the editor. *)
+    export loaded source = match Machines::load source
+        Success machine => Flow::store machine
+        Error problem => Flow::store (Machines::faulty problem)
+
+    // The folder the document sits in, where its canvas artwork lives.
+    folder path =
+        parts = split path "/" ?: [path]
+        join (ui::Lists::slice (parts, 0, satSub (length parts) 1)) "/"
+
+    (** Loads the document, applies `--skin` and answers the initial states' requests. *)
+    export initial context =
+        path = documentPath context.arguments
+        launched = Flow::launched (loaded (readFile path ?: ""), folder path, after (context.arguments, "--skin", ""))
+        Flow::settled launched
+
+    (** Routes every framework message: controls pull the machine's levers and canvas releases hit its listeners. *)
+    export update (_, store, message) = Messages::route (message, \lever => Flow::pulled (store, lever, JsonNull), \(lever, text) => Flow::pulled (store, lever, JsonString text), \(lever, on) => Flow::pulled (store, lever, JsonBool on), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, input) => Flow::pointed (store, input))
+
+    screenSlice () = perform Signal<Screen>.read ()
+
+    (** The whole editor: the machine's view in its chosen skin. *)
+    export root () = Templates::view (screenSlice ()).screenMachine
+
+    (** Rebuilds the editor whenever the machine changes. *)
+    export regions (before, store, frames, _) =
+        handle static Signal<Screen>
+            read => store.screen
+        changed = signalChanges before.screen store.screen (\s => Machines::encode s.screenMachine) (signalDependencies screenSlice)
+        [Keyed::region (frames, "root", changed, root)]
+
+    (** The first skin's colours; a skin change re-themes the view in place. *)
+    export theme () = Templates::theme (Machines::faulty "")

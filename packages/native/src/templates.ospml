@@ -75,7 +75,17 @@ module Templates
             "scale" => toString (value * argument (parts, 1) + argument (parts, 2))
             "count" => toString (toFloat (length (Doc::items (Machines::value (machine, name)))) * argument (parts, 1) + argument (parts, 2))
             "fit" => fitted (Machines::text (machine, name), parts)
+            "fixed" => fixed (value * Pick::either (length parts > 2, argument (parts, 2), 1.0) + argument (parts, 3), floatToInt (argument (parts, 1)) ?: 0)
             _ => Machines::text (machine, name)
+
+    // `value` with exactly `digits` decimals, as `fixed:digits:k:offset` writes value × k + offset.
+    fixed (value, digits) =
+        scale = foldList (toList (range (0, digits)), 1, \(acc, _) => satMul acc 10)
+        units = floatToInt (round (value * toFloat scale)) ?: 0
+        whole = Pick::either (units < 0, 0 - units, units)
+        sign = Pick::either (units < 0, "-", "")
+        fraction = padStart (toString (satSub whole (satMul (intDiv whole scale) scale))) digits "0" ?: ""
+        Pick::either (digits <= 0, "${sign}${toString whole}", "${sign}${toString (intDiv whole scale)}.${fraction}")
 
     // `fit:n` keeps the first n characters of a text input, ending with an ellipsis when cut.
     fitted (text, parts) =
@@ -180,8 +190,10 @@ module Templates
 
     byte (hex, at) = satAdd (satMul (digit (substring hex at (satAdd at 1) ?: "0")) 16) (digit (substring hex (satAdd at 1) (satAdd at 2) ?: "0"))
 
-    // A `#RRGGBB` colour as written, or the chosen skin's `@token`.
-    skinned (machine, named) = Pick::either (startsWith named "@", Doc::text (Doc::field (skin machine, "tokens"), drop named 1), named)
+    // A `#RRGGBB` colour as written, or the chosen skin's `@token`; either may be a `{{template}}`.
+    skinned (machine, written) =
+        named = fill (machine, written)
+        Pick::either (startsWith named "@", Doc::text (Doc::field (skin machine, "tokens"), drop named 1), named)
 
     // A `#RRGGBB` colour, or `@token` from the chosen skin, packed with an alpha from 0 to 1.
     colour (machine, shape) =
@@ -202,12 +214,17 @@ module Templates
         hex = skinned (machine, Doc::text (shape, "colour"))
         Scenes::hex (satAdd (satMul (byte (hex, 1)) 65536) (satAdd (satMul (byte (hex, 3)) 256) (byte (hex, 5))), Pick::either (Doc::has (shape, "alpha"), numberOf (machine, shape, "alpha"), 1.0))
 
-    // A rectangle with rounded corners of `radius`, as a filled path.
+    // A rectangle with rounded corners of `radius`, as a filled path or, with `stroke`, its outline.
     rounded (machine, shape, x, y, w, h, r, depth) =
         right = x + w
         bottom = y + h
         steps = [MoveTo(toX = x + r, toY = y), LineTo(toX = right - r, toY = y), CurveTo(toX = right, toY = y + r, ctrlX = right, ctrlY = y), LineTo(toX = right, toY = bottom - r), CurveTo(toX = right - r, toY = bottom, ctrlX = right, ctrlY = bottom), LineTo(toX = x + r, toY = bottom), CurveTo(toX = x, toY = bottom - r, ctrlX = x, ctrlY = bottom), LineTo(toX = x, toY = y + r), CurveTo(toX = x + r, toY = y, ctrlX = x, ctrlY = y), Close]
-        Scenes::path (steps, Fill, Solid(tint = paint (machine, shape)), depth)
+        Scenes::path (steps, outline (machine, shape), Solid(tint = paint (machine, shape)), depth)
+
+    // Filled, or a line `stroke` wide when the shape gives one.
+    outline (machine, shape) = match Doc::has (shape, "stroke")
+        true => Line(width = numberOf (machine, shape, "stroke"), dashes = [], bevel = false)
+        false => Fill
 
     // A triangle pointing right inside the box at x, y of w by h.
     triangle (machine, shape, x, y, w, h, depth) = Scenes::path ([Polygon(corners = [x, y, x + w, y + h / 2.0, x, y + h], closed = true)], Fill, Solid(tint = paint (machine, shape)), depth)

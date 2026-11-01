@@ -1,0 +1,117 @@
+// The signal-flow editor's adapter ([UI-MACHINE-FLOW]): the document is the whole
+// interface, while this module evaluates its signal path and keeps undo history.
+namespace signalflow
+
+import ui::Runtime
+import ui::Machines
+import ui::Templates
+import ui::Inputs
+
+(** The interface: the running machine, the only slice the view reads. *)
+type Screen =
+    screenMachine : ui::Machine
+
+(** The running interface and its snapshots, newest first in each history. *)
+type Store =
+    screen : Screen
+    past : List<List<ui::Knob>>
+    future : List<List<ui::Knob>>
+
+(** Evaluates the signal-flow document and answers its history requests. *)
+module Flow
+    (** A store around a loaded machine, with empty undo and redo histories. *)
+    export store machine = Store(screen = Screen(screenMachine = machine), past = [], future = [])
+
+    machineOf store = store.screen.screenMachine
+
+    fed (store, facts) = store(screen = Screen(screenMachine = Machines::feed (machineOf store, facts)))
+
+    fact (name, value) = Machines::fact (name, value)
+
+    signalOf machine = ui::Pick::either (Machines::flag (machine, "sourceOn"), 1.0, 0.0)
+
+    levelOf machine =
+        m = ui::Pick::either (Machines::flag (machine, "controlOn"), Machines::number (machine, "control"), 1.0)
+        signalOf machine * ui::Pick::either (Machines::flag (machine, "processOn"), Machines::number (machine, "process") * m, 1.0)
+
+    switched on = ui::Pick::either (on, "Healthy", "Bypassed")
+
+    processHealth machine =
+        ui::Pick::either (Machines::flag (machine, "processOn") == false, "Bypassed", ui::Pick::either (signalOf machine == 0.0, "Offline", ui::Pick::either (levelOf machine < 0.25, "Degraded", "Healthy")))
+
+    deliveryHealth (machine, name) =
+        ui::Pick::either (Machines::flag (machine, name) == false, "Bypassed", ui::Pick::either (levelOf machine == 0.0, "Offline", "Healthy"))
+
+    signalFacts machine =
+        level = levelOf machine
+        signal = signalOf machine
+        delivered = ui::Pick::either (Machines::flag (machine, "outputOn"), level, 0.0)
+        monitored = ui::Pick::either (Machines::flag (machine, "monitorOn"), level, 0.0)
+        [fact ("signal", JsonFloat signal), fact ("level", JsonFloat level), fact ("delivered", JsonFloat delivered), fact ("monitored", JsonFloat monitored)]
+
+    healthFacts machine = [
+        fact ("controlHealth", JsonString (switched (Machines::flag (machine, "controlOn")))),
+        fact ("sourceHealth", JsonString (switched (Machines::flag (machine, "sourceOn")))),
+        fact ("processHealth", JsonString (processHealth machine)),
+        fact ("outputHealth", JsonString (deliveryHealth (machine, "outputOn"))),
+        fact ("monitorHealth", JsonString (deliveryHealth (machine, "monitorOn"))),
+    ]
+
+    historyFacts store = [fact ("canUndo", JsonBool (length store.past > 1)), fact ("canRedo", JsonBool (length store.future > 0))]
+
+    evaluated store =
+        machine = machineOf store
+        fed (store, listConcat (listConcat (signalFacts machine) (healthFacts machine)) (historyFacts store))
+
+    recorded (store, ask) =
+        snapshot = mapList (ask.askInputs, \k => fact (k.knobName, k.knobValue))
+        evaluated (store(past = listConcat [snapshot] store.past, future = []))
+
+    rest values = ui::Lists::slice (values, 1, length values)
+
+    undone store = match listGet store.past 0
+        Error _ => store
+        Success current => match listGet store.past 1
+            Error _ => store
+            Success previous =>
+                next = store(past = rest store.past, future = listConcat [current] store.future)
+                evaluated (fed (next, previous))
+
+    redone store = match listGet store.future 0
+        Error _ => store
+        Success next =>
+            restored = store(past = listConcat [next] store.past, future = rest store.future)
+            evaluated (fed (restored, next))
+
+    answer (store, ask) = match ask.askName
+        "flow.record" => recorded (store, ask)
+        "flow.undo" => undone store
+        "flow.redo" => redone store
+        _ => store
+
+    draining (store, left) = match length (Machines::requests (machineOf store)) == 0 || left <= 0
+        true => store
+        false =>
+            pending = Machines::requests (machineOf store)
+            cleared = store(screen = Screen(screenMachine = Machines::taken (machineOf store)))
+            draining (foldList (pending, cleared, answer), satSub left 1)
+
+    (** The store after answering every pending machine request, as a framework step. *)
+    export settled store = Runtime::asking (draining (store, 8), [])
+
+    (** A control's lever pulled with its value, then the requests answered. *)
+    export pulled (store, lever, value) = settled (store(screen = Screen(screenMachine = Machines::pull (machineOf store, lever, value))))
+
+    (** The store as launched: the canvas artwork's folder as `assets` and a `--skin` when given. *)
+    export launched (store, folder, skin) =
+        facts = listConcat [fact ("assets", JsonString folder)] (ui::Pick::either (skin == "", [], [fact ("skin", JsonString skin)]))
+        fed (store, facts)
+
+    released (store, x, y) = settled (store(screen = Screen(screenMachine = Templates::released (machineOf store, x, y))))
+
+    (** A canvas pointer event: a release acts on the listener under it ([UI-MACHINE-CANVAS]); other input changes nothing. *)
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pressed (store, x, y, down))
+
+    pressed (store, x, y, down) = match down
+        true => Runtime::step store
+        false => released (store, x, y)

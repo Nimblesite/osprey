@@ -157,7 +157,7 @@ bench work =
         rig f => fake := f
         see s => sight := s
         keep session => live := session
-    casting::Link::guarded work
+    Runtime::guarded work
 
 started () =
     reset ()

@@ -40,14 +40,6 @@ type Served =
 
 (** Answers the machine's requests with @osprey/chromecast and feeds the results back as inputs. *)
 module Link
-    (** Runs `work` with integer faults resolved: an overflow keeps the wrapped result and a division by zero its dividend. The player's arithmetic is clocks, counters and request ids, none near the limits. *)
-    export guarded work =
-        handle Arith
-            overflow _ _ _ wrapped => wrapped
-            divideByZero _ dividend => dividend
-            remainderByZero _ => 0
-        work ()
-
     (** How far the disc turns in a second while playing, in radians: one revolution in 24 seconds. *)
     export turnPerSecond = 0.2617993878
 

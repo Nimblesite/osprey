@@ -1,0 +1,13 @@
+[project]
+name = "signal_flow"
+source_roots = ["src", "../native/src", "../graphics/src"]
+default_namespace = "signalflow"
+
+[package]
+name = "@osprey/signal_flow"
+license = "MIT"
+summary = "A signal-flow graph editor as a UI machine: four canvas skins drawn from the designs, an evaluating adapter and undo"
+keywords = ["desktop", "native", "reactive", "signals", "ui"]
+
+[modules]
+allow_wildcard_imports = false

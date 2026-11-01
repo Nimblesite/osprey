@@ -84,11 +84,11 @@ A request is `{"request": name, "with": [input names]}`. The adapter receives it
 The view is one node template in the protocol's vocabulary: `stack`, `text`, `label`, `badge`, `button`, `picker`, `toggle`, `meter`, `progress`, `image`, `spacer`, `divider`, `framed`, `scene` (the disc, with `rotate` bound to an input) and `empty`. Its members are the matching `Ui` constructor's arguments. Every node may also carry:
 
 - `"when": condition`: a node whose condition fails is left out, along with its children.
-- `"{{name}}"` inside any string member: the input's value, with a filter: `{{position|clock}}` is `mm:ss`, `{{volume|percent}}` a whole percentage, `{{rate|short}}` a number without a trailing `.0`, `{{position|over:duration:610:129}}` position ÷ duration × 610 + 129, and `{{volume|scale:302:99}}` volume × 302 + 99. The last two place canvas shapes. `{{title|fit:30}}` cuts the text to at most 30 characters, replacing the last with an ellipsis when cut. `{{receivers|count:56:16}}` is the list input's length × 56 + 16, used to size a menu panel. Anything else, such as a track title, is an input the adapter sets.
+- `"{{name}}"` inside any string member: the input's value, with a filter: `{{position|clock}}` is `mm:ss`, `{{volume|percent}}` a whole percentage, `{{rate|short}}` a number without a trailing `.0`, `{{position|over:duration:610:129}}` position ÷ duration × 610 + 129, and `{{volume|scale:302:99}}` volume × 302 + 99. The last two place canvas shapes. `{{title|fit:30}}` cuts the text to at most 30 characters, replacing the last with an ellipsis when cut. `{{receivers|count:56:16}}` is the list input's length × 56 + 16, used to size a menu panel. `{{level|fixed:0:1000:0}}` writes level × 1000 + 0 with exactly 0 decimals; `{{control|fixed:2}}` writes 0.7 as `0.70`. Anything else, such as a track title, is an input the adapter sets.
 - `"enabled": condition` on controls.
 - `"on"`: the listener. `{"fire": t}` fires a trigger; `{"set": n}` sets an input from the control's value: the choice key of a picker, a toggle's flag or a button's literal `"value"`. With both, the input is set first and then the trigger fires, so one press can choose a value and ask for it.
 
-A `scene` draws `shapes`: `{"shape": "disc", "x", "y", "radius"}` or a rectangle `{"x", "y", "w", "h", "angle", "turn"}` centred on its position and rotated by `angle + turn` radians, drawn as a filled polygon so every host can turn it. Each takes a `colour` (`#RRGGBB`, or `@token` from the chosen skin), an `alpha` from 0 to 1 and a `depth`; any number may be a `{{template}}`, so a rectangle can turn with an input.
+A `scene` draws `shapes`: `{"shape": "disc", "x", "y", "radius"}` or a rectangle `{"x", "y", "w", "h", "angle", "turn"}` centred on its position and rotated by `angle + turn` radians, drawn as a filled polygon so every host can turn it. Each takes a `colour` (`#RRGGBB`, or `@token` from the chosen skin, either of which may be a `{{template}}`, so `@{{processHealth}}` picks the token an input names), an `alpha` from 0 to 1 and a `depth`; any number may be a `{{template}}`, so a rectangle can turn with an input.
 
 Each control's binding is the framework's ordinary typed binding, so ordinals, staleness and kind checks are exactly [UI-EVENTS]. Regions remain keyed by the template's top-level children.
 
@@ -104,7 +104,7 @@ A skin may carry `"canvas": {"width", "height", "atlas": [image paths relative t
 | --- | --- |
 | `sprite` | `index`, `x`, `y`, `w`, `h`, `angle`, `alpha`, `depth`; an atlas image |
 | `text` | `text`, `x`, `y`, `size`, `colour`, `anchor`, `weight`, `depth`; system-font lettering with the top of the line at `y`, anchored 0 left, 1 centre or 2 right |
-| `rounded` | `x`, `y`, `w`, `h`, `radius`, `colour`, `alpha`, `depth`; a rounded rectangle |
+| `rounded` | `x`, `y`, `w`, `h`, `radius`, `colour`, `alpha`, `depth`, optional `stroke`; a rounded rectangle, filled, or outlined `stroke` wide |
 | `triangle` | `x`, `y`, `w`, `h`, `colour`, `alpha`, `depth` |
 | `disc` | `x`, `y`, `radius`, `colour`, `alpha`, `depth` |
 | `turned` | `x`, `y`, `w`, `h`, `angle`, `turn`, `colour`, `alpha`, `depth`; a sprite rotated by an input, used for the spinning disc |
@@ -152,6 +152,14 @@ A file the platform asks the application to open (Finder, a document association
 ## Testing [UI-MACHINE-TEST]
 
 Because a machine is data, a test drives it without a host: load the document, set inputs or fire listeners as a host event would, and assert the states, the requests and the rendered nodes. The adapter's domain work runs under effects, so tests answer them with doubles. [examples/casting](../../../examples/casting/README.md) is the reference application: its adapter calls `@osprey/chromecast`, whose `Wire` effect a test answers with an in-memory Cast device. `examples/casting/test/main.ospml` drives the Sherbet canvas through pointer events alone, locating every control by its accessible label from `semantics`, and asserts the lettered text of the artboard and the labels offered in each state.
+
+## Signal flow [UI-MACHINE-FLOW]
+
+[`@osprey/signal_flow`](../../../packages/signal_flow/README.md) is a signal-flow graph editor written as one machine document. Five nodes in fixed roles (control, source, process, output and monitor) are joined by three signal connections and one modulation connection. Each node has an `<role>On` switch, and the control and process nodes each have a parameter from 0 to 1. Pressing a node selects it into the inspector. The adapter answers `flow.record`, `flow.undo` and `flow.redo`. It evaluates the path after every change and feeds back `level`, `delivered`, `monitored`, each node's health (`Healthy`, `Degraded`, `Offline` or `Bypassed`) and `canUndo`/`canRedo`. A bypassed process passes its input through unchanged.
+
+### Skins [UI-MACHINE-FLOW-SKINS]
+
+The four skins, Topology, Notation, Paper and Prism, are canvases sliced from the designs in `packages/signal_flow/design/` by `skins/build.py`. Each backdrop is its mock with every live part painted out. The canvas then draws the switches, sliders, values, health rows, selection ring, bypass dimming, ports and the whole inspector from the inputs. The title opens a menu of the four skins. Changing skin keeps every input, state and the undo history.
 
 ## Later
 
