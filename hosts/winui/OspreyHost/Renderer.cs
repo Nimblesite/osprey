@@ -144,7 +144,7 @@ sealed partial class Renderer
     /// </summary>
     public (double Width, double Height)? CanvasSize() =>
         regions.Find(RegionStore.Root) is { } root && Envelopes.Text(root.Node, "kind") == "scene"
-            ? SceneDecoder.Decode(root.Node, []).Opening
+            ? SceneDecoder.Opening(root.Node)
             : null;
 
     /// <summary>Acts on the first scene drawn, as its keyboard or pointer would; false when none is.</summary>

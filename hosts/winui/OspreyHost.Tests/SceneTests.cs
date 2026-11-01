@@ -31,6 +31,8 @@ public sealed class SceneTests
         Assert.Equal((217.0, 278.5), Decode("""{"width":434,"height":557,"zoom":0.5,"shapes":[]}""").Opening);
         Assert.Null(Decode("""{"width":1728,"height":893,"zoom":0,"shapes":[]}""").Opening);
         Assert.Null(Decode("""{"width":0,"height":0,"shapes":[]}""").Opening);
+        Assert.Equal((217.0, 278.5), SceneDecoder.Opening(JsonDocument.Parse("""{"width":434,"height":557,"zoom":0.5,"shapes":[]}""").RootElement.Clone()));
+        Assert.Null(SceneDecoder.Opening(JsonDocument.Parse("""{"width":10,"height":10,"zoom":-1,"shapes":[]}""").RootElement.Clone()));
     }
 
     [Fact]
@@ -73,7 +75,12 @@ public sealed class SceneTests
     [InlineData("""{"width":10,"height":10,"shapes":[[2,3,0,0,1,1,255,1,0]]}""")]
     [InlineData("""{"width":10,"height":10,"shapes":[[4,"two\nlines",0,0,12,255,0]]}""")]
     [InlineData("""{"width":10,"height":10,"shapes":[[1,0,0,1,-1,0]]}""")]
-    public void AMalformedSceneIsRefused(string node) => Assert.Throws<HostException>(() => Decode(node));
+    public void AMalformedSceneIsRefused(string node)
+    {
+        Assert.Throws<HostException>(() => Decode(node));
+        // As the whole application, it opens no size of its own; it draws its refusal in the usual window.
+        Assert.Null(SceneDecoder.Opening(JsonDocument.Parse(node).RootElement.Clone()));
+    }
 
     [Fact]
     public void AStreamedCodeOutsideRectDiscAndSpriteIsRefused() =>

@@ -101,6 +101,22 @@ public static class SceneDecoder
         return new Scene(width, height, zoom, Envelopes.Items(node, "atlas", item => item.GetString() ?? ""), [.. shapes.OrderBy(shape => shape.Depth)]);
     }
 
+    /// <summary>
+    /// The <see cref="Scene.Opening"/> of the scene <paramref name="node"/> describes, or null when it is
+    /// malformed: the scene itself then draws its refusal, so the window opens at its usual size.
+    /// </summary>
+    public static (double Width, double Height)? Opening(JsonElement node)
+    {
+        try
+        {
+            return Decode(node, []).Opening;
+        }
+        catch (HostException)
+        {
+            return null;
+        }
+    }
+
     static Shape Stream(Streamed item) => item.Code switch
     {
         0 => new RectShape(item.A, item.B, item.C, item.D, item.E, Colour(item.Colour), item.Depth),
