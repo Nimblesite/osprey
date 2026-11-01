@@ -20,7 +20,7 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-The classifier compares the tag with its predecessor using [`.github/release-scope.json`](../.github/release-scope.json). It determines which artifacts and channels the tag requires:
+The classifier compares the tag with the newest earlier tag whose release run succeeded (a failed or cancelled release shipped nothing, so it is never a baseline) using [`.github/release-scope.json`](../.github/release-scope.json). It determines which artifacts and channels the tag requires:
 
 | Changed surface | Release work |
 | --- | --- |
