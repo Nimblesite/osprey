@@ -49,8 +49,13 @@ target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build packages/manager/api --quiet --no-warnings -o $@
 
-LOCAL_REGISTRY_SOURCES := $(shell git ls-files packages | grep -v '^packages/manager/')
-target/local-registry.stamp: target/osprey-pkg scripts/stage-local-registry.sh $(LOCAL_REGISTRY_SOURCES)
+#
+# Second expansion lists the sources only when the stamp is built: every other
+# target, such as the MSYS shell's `_runtime` where git is not on the PATH, runs
+# no git.
+.SECONDEXPANSION:
+LOCAL_REGISTRY_SOURCES = $(shell git ls-files packages | grep -v '^packages/manager/')
+target/local-registry.stamp: target/osprey-pkg scripts/stage-local-registry.sh $$(LOCAL_REGISTRY_SOURCES)
 	scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
 	@touch $@
 
