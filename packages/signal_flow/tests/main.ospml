@@ -1,0 +1,357 @@
+// Signal-flow end to end ([UI-MACHINE], [UI-MACHINE-TEST], [UI-MACHINE-CANVAS]):
+// the real document and adapter, driven entirely by pointer events aimed through
+// each canvas control's accessible label, with its inputs, states and lettering read back.
+
+import ui::Doc
+import ui::Runtime
+import ui::Templates
+import ui::Machines
+import uitest::Events
+import uitest::Semantics
+import uitest::Views
+import signalflow::App
+
+(** The rendered root and revision, plus the clock used for host events. *)
+type Sight =
+    sightRoot : Json
+    sightRevision : int
+    sightNow : int
+
+(** The bench's only writes: retain the live session and the latest rendered sight. *)
+effect Bench
+    keep : ui::Session<signalflow::Store> => Unit
+    see : Sight => Unit
+
+mut sight = Sight(sightRoot = JsonNull, sightRevision = 0, sightNow = 1)
+mut live = Runtime::idle (signalflow::Flow::store (Machines::faulty ""))
+
+latest (s, patch) = match Doc::text (patch, "key") == "root"
+    true => s(sightRoot = Doc::field (patch, "node"), sightRevision = Doc::number (patch, "revision"))
+    false => s
+
+kept (resident : ui::Resident<signalflow::Store>) =
+    perform Bench.keep resident.residentSession
+    envelope = Doc::parse resident.residentEnvelope
+    perform Bench.see (foldList (Doc::items (Doc::field (envelope, "patches")), sight(sightNow = sight.sightNow + 1), \(s, patch) => latest (s, patch)))
+
+hosted work =
+    handle ui::Slices
+        fetch _ => ""
+    handle ui::SceneStream
+        shape _ => 0
+    work ()
+
+bench work =
+    handle Bench
+        keep session => live := session
+        see s => sight := s
+    Runtime::guarded work
+
+begun skin =
+    perform Bench.see (Sight(sightRoot = JsonNull, sightRevision = 0, sightNow = 1))
+    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"${skin}\"]}", App::initial, App::regions, App::theme ())))
+
+post event = hosted (\() => kept (Runtime::proceed (live, event, App::update, App::regions)))
+
+pointer (x, y, down) = post (Events::pointer (sight.sightRevision, Doc::number (sight.sightRoot, "event"), x, y, down, sight.sightNow))
+
+// A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
+tapAt (label, fraction) =
+    at = Semantics::point (element label, fraction)
+    pointer (at.pointX, at.pointY, true)
+    pointer (at.pointX, at.pointY, false)
+
+tap label = tapAt (label, 0.5)
+
+machine () = live.sessionStore.screen.screenMachine
+
+elements () = Templates::semantics (machine ())
+
+labels () = Semantics::labels (elements ())
+
+element label = Semantics::element (elements (), label)
+
+offers label = match Semantics::offered (elements (), label)
+    true => true
+    false =>
+        print "# not offered: ${label}; the tree offers ${labels ()}"
+        false
+
+lettered () = Views::lettered sight.sightRoot
+
+letters text = match ui::Lists::any (split (lettered ()) "|" ?: [], \t => t == text)
+    true => true
+    false =>
+        print "# not lettered: ${text}; the artboard letters ${lettered ()}"
+        false
+
+offered label = expect (offers label, true)
+
+missing label = expect (Semantics::offered (elements (), label), false)
+
+flag (name, expected) = expect (Machines::flag (machine (), name), expected)
+
+knobText (name, expected) = expect (Machines::text (machine (), name), expected)
+
+knobNumber (name, expected) =
+    actual = Machines::number (machine (), name)
+    expect (actual - expected < 0.000001 && expected - actual < 0.000001, true)
+
+layer (name, expected) = expect (Machines::current (machine (), name), expected)
+
+topologyInitial () =
+    expect (labels (), "Skin: Topology|Bypass Policy|Bypass Client|Bypass Gateway|Bypass Service|Bypass Telemetry|Policy Threshold|Gateway Rate limit|Inspector: Bypass Gateway|Inspector: Rate limit|Select Policy|Select Client|Select Gateway|Select Service|Select Telemetry")
+    expect (letters "70%", true)
+    expect (letters "490 r/s", true)
+    expect (letters "Healthy", true)
+    expect (letters "Gateway", true)
+    expect (letters "Connections (4)", true)
+    knobText ("skin", "topology")
+    knobText ("selected", "process")
+    knobNumber ("control", 0.7)
+    knobNumber ("process", 0.7)
+    knobNumber ("level", 0.49)
+    layer ("commands", "idle")
+    layer ("menu", "closed")
+    flag ("canUndo", false)
+    flag ("canRedo", false)
+
+topologyBypass () =
+    tap "Bypass Gateway"
+    flag ("processOn", false)
+    knobText ("processHealth", "Bypassed")
+    knobNumber ("process", 0.7)
+    knobNumber ("level", 1.0)
+    expect (letters "1000 r/s", true)
+    offered "Undo"
+    tapAt ("Gateway Rate limit", 0.25)
+    knobNumber ("process", 0.25)
+    flag ("processOn", false)
+    knobText ("processHealth", "Bypassed")
+    knobNumber ("level", 1.0)
+    expect (letters "25%", true)
+    expect (Doc::decimal (element "Gateway Rate limit", "value"), 0.25)
+
+topologyUndo () =
+    tap "Undo"
+    knobNumber ("process", 0.7)
+    flag ("processOn", false)
+    expect (letters "70%", true)
+    tap "Undo"
+    knobNumber ("process", 0.7)
+    flag ("processOn", true)
+    knobText ("processHealth", "Healthy")
+    knobNumber ("level", 0.49)
+    flag ("canUndo", false)
+    flag ("canRedo", true)
+
+topologyRedo () =
+    tap "Redo"
+    flag ("processOn", false)
+    knobNumber ("process", 0.7)
+    knobNumber ("level", 1.0)
+    offered "Enable Gateway"
+    tap "Enable Gateway"
+    flag ("processOn", true)
+    knobNumber ("level", 0.49)
+
+topologySelection () =
+    tap "Select Client"
+    knobText ("selected", "source")
+    expect (letters "Client", true)
+    expect (letters "Connections (1)", true)
+    expect (letters "No parameters", true)
+    offered "Inspector: Bypass Client"
+    missing "Inspector: Rate limit"
+    tap "Select Telemetry"
+    knobText ("selected", "monitor")
+    expect (letters "Telemetry", true)
+    expect (letters "Connections (1)", true)
+    expect (letters "No parameters", true)
+    offered "Inspector: Bypass Telemetry"
+    tap "Select Policy"
+    knobText ("selected", "control")
+    expect (letters "Policy", true)
+    expect (letters "Connections (1)", true)
+    offered "Inspector: Threshold"
+    offered "Inspector: Bypass Policy"
+
+topologySignal () =
+    tapAt ("Inspector: Threshold", 0.5)
+    knobNumber ("control", 0.5)
+    knobNumber ("level", 0.35)
+    expect (letters "350 r/s", true)
+    tap "Bypass Client"
+    flag ("sourceOn", false)
+    knobText ("sourceHealth", "Bypassed")
+    knobText ("processHealth", "Offline")
+    knobText ("outputHealth", "Offline")
+    knobText ("monitorHealth", "Offline")
+    knobNumber ("level", 0.0)
+    expect (letters "0 r/s", true)
+    tap "Enable Client"
+    flag ("sourceOn", true)
+    knobText ("processHealth", "Healthy")
+    tapAt ("Gateway Rate limit", 0.2)
+    knobNumber ("process", 0.2)
+    knobNumber ("level", 0.1)
+    knobText ("processHealth", "Degraded")
+    expect (letters "100 r/s", true)
+
+menuOpened () =
+    begun "topology"
+    tapAt ("Policy Threshold", 0.6)
+    tap "Select Client"
+    knobNumber ("control", 0.6)
+    knobNumber ("process", 0.7)
+    knobText ("selected", "source")
+    flag ("canUndo", true)
+    tap "Skin: Topology"
+    layer ("menu", "skins")
+    expect (take (labels ()) 29, "Topology|Notation|Paper|Prism")
+    offered "Topology"
+    offered "Notation"
+    offered "Paper"
+    offered "Prism"
+
+menuChoice () =
+    pointer (1400.0, 700.0, true)
+    pointer (1400.0, 700.0, false)
+    layer ("menu", "closed")
+    missing "Topology"
+    tap "Skin: Topology"
+    tap "Prism"
+    knobText ("skin", "prism")
+    layer ("menu", "closed")
+    layer ("commands", "idle")
+    expect (take (labels ()) 11, "Skin: Prism")
+    knobNumber ("control", 0.6)
+    knobNumber ("process", 0.7)
+    knobText ("selected", "source")
+    flag ("canUndo", true)
+    flag ("canRedo", false)
+    expect (letters "+60%", true)
+    expect (letters "14.0 kHz", true)
+
+menuCycle () =
+    tap "Skin: Prism"
+    tap "Notation"
+    knobText ("skin", "notation")
+    layer ("menu", "closed")
+    expect (letters "0.60", true)
+    expect (letters "H(s)", true)
+    tap "Skin: Notation"
+    tap "Paper"
+    knobText ("skin", "paper")
+    layer ("menu", "closed")
+    expect (letters "0.60", true)
+    expect (letters "Transform.in", true)
+    knobNumber ("control", 0.6)
+    knobNumber ("process", 0.7)
+    knobText ("selected", "source")
+    flag ("canUndo", true)
+
+freshSkin skin =
+    begun skin
+    knobText ("skin", skin)
+    knobText ("selected", "process")
+    layer ("commands", "idle")
+    layer ("menu", "closed")
+    knobNumber ("control", 0.7)
+    knobNumber ("process", 0.7)
+    flag ("canUndo", false)
+    flag ("canRedo", false)
+
+exercise (name, role) =
+    tapAt ("Select ${name}", 0.1)
+    knobText ("selected", role)
+    offered "Inspector: Bypass ${name}"
+    tap "Bypass ${name}"
+    flag ("${role}On", false)
+    knobText ("${role}Health", "Bypassed")
+    offered "Enable ${name}"
+    offered "Inspector: Enable ${name}"
+    tap "Enable ${name}"
+    flag ("${role}On", true)
+    knobText ("${role}Health", "Healthy")
+    offered "Inspector: Bypass ${name}"
+
+skinJourney (skin, control, source, process, output, monitor) =
+    freshSkin skin
+    exercise (control, "control")
+    exercise (source, "source")
+    exercise (process, "process")
+    exercise (output, "output")
+    exercise (monitor, "monitor")
+
+notationInspector () =
+    begun "notation"
+    knobText ("selected", "process")
+    offered "Inspector enabled: Bypass H(s)"
+    offered "Inspector: Cutoff  ωc"
+    tap "Inspector enabled: Bypass H(s)"
+    flag ("processOn", false)
+    knobText ("processHealth", "Bypassed")
+    offered "Inspector enabled: Enable H(s)"
+    tap "Inspector enabled: Enable H(s)"
+    flag ("processOn", true)
+    knobText ("processHealth", "Healthy")
+    tapAt ("Inspector: Cutoff  ωc", 0.5)
+    knobNumber ("process", 0.5)
+    knobNumber ("level", 0.35)
+    expect (letters "0.50", true)
+
+prismInspector () =
+    begun "prism"
+    knobText ("selected", "process")
+    offered "Inspector bypass: Bypass Filter"
+    tap "Inspector bypass: Bypass Filter"
+    flag ("processOn", false)
+    knobText ("processHealth", "Bypassed")
+    offered "Inspector bypass: Enable Filter"
+    missing "Inspector bypass: Bypass Filter"
+    offered "Inspector: Enable Filter"
+    tap "Inspector bypass: Enable Filter"
+    flag ("processOn", true)
+    knobText ("processHealth", "Healthy")
+    tapAt ("Filter Cutoff", 0.5)
+    knobNumber ("process", 0.5)
+    knobNumber ("level", 0.35)
+    expect (letters "10.0 kHz", true)
+    expect (letters "+70%", true)
+    expect (letters "-7.8 dB", true)
+    tap "Bypass Master"
+    knobText ("outputHealth", "Bypassed")
+    knobNumber ("delivered", 0.0)
+    expect (letters "-12.0 dB", true)
+    tap "Undo"
+    flag ("outputOn", true)
+    expect (letters "-7.8 dB", true)
+    offered "Redo"
+    tap "Redo"
+    flag ("outputOn", false)
+    missing "Redo"
+
+test ("topology: pointer editing, history, inspectors and signal health", \() => bench (\() =>
+    begun "topology"
+    topologyInitial ()
+    topologyBypass ()
+    topologyUndo ()
+    topologyRedo ()
+    topologySelection ()
+    topologySignal ()))
+
+test ("the skin menu dismisses, switches skins and preserves the session", \() => bench (\() =>
+    menuOpened ()
+    menuChoice ()
+    menuCycle ()))
+
+test ("every skin: every node selects, bypasses, enables and tracks its inspector", \() => bench (\() =>
+    skinJourney ("topology", "Policy", "Client", "Gateway", "Service", "Telemetry")
+    skinJourney ("notation", "k", "x(t)", "H(s)", "y(t)", "Scope")
+    skinJourney ("paper", "Parameter", "Source", "Transform", "Output", "Monitor")
+    skinJourney ("prism", "LFO", "Oscillator", "Filter", "Master", "Scope")))
+
+test ("notation and prism inspector switches and parameter lettering", \() => bench (\() =>
+    notationInspector ()
+    prismInspector ()))

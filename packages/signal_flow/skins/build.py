@@ -265,13 +265,11 @@ def area(rect, role, label, on_, when=None, **extra):
     return {**out, "when": when} if when else out
 
 
-def switch(name, role, rect, prefix="", when=None, inverse=False):
-    """The two listeners of a switch: pressing it while on turns `role`On off, and while off turns it on."""
+def switch(name, role, rect, prefix="", when=None):
+    """The two listeners of a switch, each labelled by what pressing it does: bypass the node while on, enable it while off."""
     flag = f"{role}On"
-    lit = "Bypass" if not inverse else "Enable"
-    dark = "Enable" if not inverse else "Bypass"
-    return [area(rect, "button", f"{prefix}{lit} {name}", {"set": flag, "value": False, "fire": "changed"}, both(when, on(role, True))),
-            area(rect, "button", f"{prefix}{dark} {name}", {"set": flag, "value": True, "fire": "changed"}, both(when, on(role, False)))]
+    return [area(rect, "button", f"{prefix}Bypass {name}", {"set": flag, "value": False, "fire": "changed"}, both(when, on(role, True))),
+            area(rect, "button", f"{prefix}Enable {name}", {"set": flag, "value": True, "fire": "changed"}, both(when, on(role, False)))]
 
 
 def toggle_rect(cx, cy, w, h):
@@ -299,10 +297,10 @@ def listeners(skin):
         out.append(slide(role, f"{names[role]} {skin['params'][role][0]}", sx0, sx1, cy))
     ins = skin["inspector"]
     for role, n in zip(ROLES, skin["nodes"]):
-        for key, inverse in (("toggle", False), ("enabled", False), ("bypass", True)):
+        for key in ("toggle", "enabled", "bypass"):
             if key in ins:
                 prefix = "Inspector: " if key == "toggle" else f"Inspector {key}: "
-                out += switch(n["name"], role, toggle_rect(*ins[key]), prefix, chosen(role), inverse)
+                out += switch(n["name"], role, toggle_rect(*ins[key]), prefix, chosen(role))
         if role in skin["params"]:
             out.append(slide(role, f"Inspector: {skin['params'][role][0]}", *ins["slider"], chosen(role)))
     for role, n in zip(ROLES, skin["nodes"]):
@@ -322,7 +320,21 @@ def main():
     for key, skin in SKINS.items():
         slice_skin(key, skin)
     doc["skins"] = {key: {"name": skin["name"], "motion": "none", "tokens": skin["tokens"], "canvas": canvas(key, skin)} for key, skin in SKINS.items()}
-    DOCUMENT.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
+    DOCUMENT.write_text(written(doc) + "\n")
+
+
+def written(doc):
+    """The document indented, with each canvas shape and listener on one line so diffs stay readable."""
+    lines = {}
+    for skin in doc["skins"].values():
+        for key in ("shapes", "listeners"):
+            items = skin["canvas"][key]
+            skin["canvas"][key] = f"@{len(lines)}"
+            lines[skin["canvas"][key]] = "[\n" + ",\n".join(json.dumps(item, ensure_ascii=False) for item in items) + "\n]"
+    text = json.dumps(doc, indent=1, ensure_ascii=False)
+    for marker, block in lines.items():
+        text = text.replace(f'"{marker}"', block)
+    return text
 
 
 if __name__ == "__main__":

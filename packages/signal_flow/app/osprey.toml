@@ -1,6 +1,6 @@
 [project]
 name = "signal_flow"
-source_roots = ["main.ospml", "../src", "../../native/src", "../../graphics/src"]
+source_roots = ["main.ospml", "../src", "../../native/src", "../../graphics/src", "../../json/src"]
 default_namespace = "app"
 entry = "main.ospml"
 
