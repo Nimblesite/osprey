@@ -173,7 +173,9 @@ module Link
 
     (** A capability's completion: the device browse or the file picker. *)
     export completed (store, ticket, outcome) = match outcome
-        Error problem => settled (failed (store, problem))
+        Error problem => match ticket
+            "discover" => settled (failed (fed (store, [fact ("searched", Values::flag true)]), problem))
+            _ => settled (failed (store, problem))
         Success doc => match ticket
             "discover" => discovered (store, perform ui::Slices.fetch "cast-browse")
             "choose" => picked (store, doc)

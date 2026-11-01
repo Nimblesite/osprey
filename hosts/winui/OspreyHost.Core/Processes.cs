@@ -22,7 +22,7 @@ public static class Processes
         {
             return await Launched(ticket, executable, request);
         }
-        catch (Exception problem) when (problem is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+        catch (Exception problem) when (problem is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or AggregateException)
         {
             return Completion.Failed(ticket, problem.Message);
         }

@@ -326,6 +326,12 @@ test ("no TVs found offers another search, and an unreachable TV shows why", \()
     browsing browse
     press "Search again"
     expect (shows "Looking for TVs…", true)
+    post "{\"kind\":\"completed\",\"ticket\":\"discover\",\"ok\":false,\"error\":\"browse ran past its deadline\",\"now\":2}"
+    expect (shows "browse ran past its deadline", true)
+    expect (shows "Looking for TVs…", false)
+    expect (shows "No TVs found", true)
+    press "Search again"
+    expect (shows "Looking for TVs…", true)
     discovered ()
     picked "/music/Sunroom.mp3"
     unplug ()

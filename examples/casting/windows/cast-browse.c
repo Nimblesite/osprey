@@ -134,8 +134,23 @@ static VOID WINAPI browsed(DWORD status, PVOID context, PDNS_RECORD records) {
   }
 }
 
+// The browse's deadline, kept on its own thread: DnsServiceBrowse and its cancel can block on a
+// machine with no multicast route, and the host's run must still end with the lines found so far.
+static DWORD WINAPI stop_browsing(LPVOID unused) {
+  (void)unused;
+  Sleep(BROWSE_MS);
+  // A resolve still running is abandoned: the lock keeps a line from being cut short.
+  EnterCriticalSection(&lock);
+  fflush(stdout);
+  ExitProcess(0);
+}
+
 int main(void) {
   InitializeCriticalSection(&lock);
+  if (CreateThread(NULL, 0, stop_browsing, NULL, 0, NULL) == NULL) {
+    fprintf(stderr, "CreateThread failed: %lu\n", GetLastError());
+    return 1;
+  }
   DNS_SERVICE_BROWSE_REQUEST request = {0};
   DNS_SERVICE_CANCEL browsing = {0};
   request.Version = DNS_QUERY_REQUEST_VERSION1;
@@ -146,10 +161,6 @@ int main(void) {
     fprintf(stderr, "DnsServiceBrowse failed: %ld\n", (long)status);
     return 1;
   }
-  Sleep(BROWSE_MS);
-  DnsServiceBrowseCancel(&browsing);
-  // A resolve still running is abandoned: the lock keeps a line from being cut short.
-  EnterCriticalSection(&lock);
-  fflush(stdout);
-  ExitProcess(0);
+  Sleep(INFINITE);
+  return 0;
 }
