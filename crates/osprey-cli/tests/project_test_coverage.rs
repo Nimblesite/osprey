@@ -373,7 +373,16 @@ fn branch_project() -> Result<PathBuf, Box<dyn std::error::Error>> {
 fn assert_branch_rows(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
     let (_, report) = covered_run(root, memory)?;
     let lines = file_lines(&report, "reader.py");
-    for row in [(5, 1), (6, 1), (7, 1), (9, 0), (10, 0), (11, 0), (15, 1), (17, 0)] {
+    for row in [
+        (5, 1),
+        (6, 1),
+        (7, 1),
+        (9, 0),
+        (10, 0),
+        (11, 0),
+        (15, 1),
+        (17, 0),
+    ] {
         assert!(
             lines.contains(&row),
             "missing branch/return {row:?}: {lines:?}"
