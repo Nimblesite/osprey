@@ -7,7 +7,11 @@ public sealed class CapabilitiesTests
 {
     static JsonElement Request(Action<Utf8JsonWriter> members) => JsonDocument.Parse(Json.Object(members)).RootElement.Clone();
 
-    static Capabilities Host(string? chosen = null) => new(() => Task.FromResult(chosen), new Store(Path.Combine(Path.GetTempPath(), "osprey-store-unused")));
+    static Capabilities Host(string? chosen = null, List<string>? asked = null) => new(new Pickers(() => Task.FromResult(chosen), types =>
+    {
+        asked?.AddRange(types);
+        return Task.FromResult(chosen);
+    }), new Store(Path.Combine(Path.GetTempPath(), "osprey-store-unused")));
 
     [Fact]
     public async Task AKindThisHostDoesNotAnswerFailsByName()
@@ -34,6 +38,61 @@ public sealed class CapabilitiesTests
         var done = await Host(null).Answer(Request(writer => { writer.WriteString("ticket", "choose"); writer.WriteString("kind", "choose-folder"); }));
         using var result = JsonDocument.Parse(done.Result);
         Assert.Equal(("", true), (Envelopes.Text(result.RootElement, "path"), Envelopes.Flag(result.RootElement, "cancelled")));
+    }
+
+    [Fact]
+    public async Task AChosenFileComesBackWithItsPathAndThePickerOffersOnlyTheTypesAsked()
+    {
+        var asked = new List<string>();
+        var done = await Host("D:\\Music\\Sunroom.mp3", asked).Answer(Request(writer =>
+        {
+            writer.WriteString("ticket", "choose");
+            writer.WriteString("kind", "choose-file");
+            writer.WriteStartArray("types");
+            writer.WriteStringValue("mp3");
+            writer.WriteEndArray();
+            writer.WriteNumber("limit", 0);
+            writer.WriteString("slice", "");
+        }));
+        using var result = JsonDocument.Parse(done.Result);
+        Assert.Equal(("choose", "D:\\Music\\Sunroom.mp3", false), (done.Ticket, Envelopes.Text(result.RootElement, "path"), Envelopes.Flag(result.RootElement, "cancelled")));
+        Assert.Equal(["mp3"], asked);
+        var dismissed = await Host(null).Answer(Request(writer => { writer.WriteString("ticket", "choose"); writer.WriteString("kind", "choose-file"); }));
+        using var nothing = JsonDocument.Parse(dismissed.Result);
+        Assert.True(Envelopes.Flag(nothing.RootElement, "cancelled"));
+    }
+
+    static JsonElement Run(string executable, long timeout, long limit, params string[] arguments) => Request(writer =>
+    {
+        writer.WriteString("ticket", "run");
+        writer.WriteString("kind", "run");
+        writer.WriteString("executable", executable);
+        writer.WriteStartArray("arguments");
+        foreach (var argument in arguments)
+        {
+            writer.WriteStringValue(argument);
+        }
+        writer.WriteEndArray();
+        writer.WriteNumber("timeout", timeout);
+        writer.WriteNumber("limit", limit);
+        writer.WriteString("slice", "out");
+    });
+
+    [Fact]
+    public async Task ARunWritesItsStdoutToTheSliceAndReportsItsStatus()
+    {
+        var shell = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var done = await Host().Answer(Run(shell, 10_000, 65_536, "/c", "echo _googlecast._tcp SRV& exit 3"));
+        using var result = JsonDocument.Parse(done.Result);
+        Assert.Equal((true, 3L), (done.Ok, Envelopes.Number(result.RootElement, "status")));
+        Assert.Equal("out", done.Writes[0].Key);
+        Assert.StartsWith("_googlecast._tcp SRV", done.Writes[0].Text, StringComparison.Ordinal);
+        var relative = await Host().Answer(Run("cmd.exe", 10_000, 65_536));
+        Assert.Equal((false, "Executable must be an absolute path"), (relative.Ok, relative.Error));
+        var late = await Host().Answer(Run(shell, 200, 65_536, "/c", "ping -n 30 127.0.0.1"));
+        Assert.Contains("deadline", late.Error, StringComparison.Ordinal);
+        var loud = await Host().Answer(Run(shell, 10_000, 4, "/c", "echo more than four bytes"));
+        Assert.Equal((false, "The output passed its limit"), (loud.Ok, loud.Error));
     }
 
     [Fact]

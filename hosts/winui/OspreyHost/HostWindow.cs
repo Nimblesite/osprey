@@ -88,7 +88,7 @@ sealed class HostWindow : Window
     {
         try
         {
-            var opened = new Session(Library.Open(library), Store.RootFor(library), root, DispatcherQueue, Report, Pick) { Steady = steady };
+            var opened = new Session(Library.Open(library), Store.RootFor(library), root, DispatcherQueue, Report, new Pickers(Pick, PickFile)) { Steady = steady };
             opened.Begin(arguments);
             return opened;
         }
@@ -116,6 +116,17 @@ sealed class HostWindow : Window
     {
         var picker = new Microsoft.Windows.Storage.Pickers.FolderPicker(AppWindow.Id);
         var picked = await picker.PickSingleFolderAsync();
+        return picked?.Path;
+    }
+
+    async Task<string?> PickFile(IReadOnlyList<string> types)
+    {
+        var picker = new Microsoft.Windows.Storage.Pickers.FileOpenPicker(AppWindow.Id);
+        foreach (var type in types)
+        {
+            picker.FileTypeFilter.Add("." + type.TrimStart('.'));
+        }
+        var picked = await picker.PickSingleFileAsync();
         return picked?.Path;
     }
 }

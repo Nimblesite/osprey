@@ -38,7 +38,7 @@ sealed class Session
     /// <summary>The frames granted and not yet sent.</summary>
     public long Owed => owed;
 
-    public Session(Library library, string store, Border root, DispatcherQueue queue, Action<IReadOnlyList<string>> report, Func<Task<string?>> pick)
+    public Session(Library library, string store, Border root, DispatcherQueue queue, Action<IReadOnlyList<string>> report, Pickers pick)
     {
         this.library = library;
         this.queue = queue;
