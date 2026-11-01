@@ -16,7 +16,7 @@ namespace Osprey.Host.WinUI;
 
 /// <summary>
 /// One scene on screen [WINUI-HOST-SCENE]: its shapes drawn with WinUI's own shapes on a canvas in
-/// the scene's unit space, one unit to one pixel from the region's top left. The elements live between frames and are reused, so a frame that moves a
+/// the scene's unit space at its fixed zoom from the region's top left. The elements live between frames and are reused, so a frame that moves a
 /// thousand discs only moves them. Keys and the pointer reach the scene's binding in scene units.
 /// </summary>
 sealed class SceneView
@@ -77,10 +77,14 @@ sealed class SceneView
         }
     }
 
-    // A scene with a size is drawn one unit to one pixel from the region's top left and clipped to
-    // itself, so a larger window shows more canvas and resizes nothing; one without is in window pixels.
-    void Fitted(Scene scene) =>
-        canvas.Clip = scene.Width > 0 ? new RectangleGeometry { Rect = new Rect(0, 0, scene.Width, scene.Height) } : null;
+    // A scene with a size is drawn at its fixed zoom from the region's top left and clipped to itself,
+    // so a larger window shows more canvas and resizes nothing; one without is in window pixels.
+    void Fitted(Scene scene)
+    {
+        var sized = scene.Width > 0;
+        canvas.Clip = sized ? new RectangleGeometry { Rect = new Rect(0, 0, scene.Width, scene.Height) } : null;
+        canvas.RenderTransform = sized ? new ScaleTransform { ScaleX = scene.Zoom, ScaleY = scene.Zoom } : null;
+    }
 
     UIElement Draw(SceneShape shape) => shape switch
     {

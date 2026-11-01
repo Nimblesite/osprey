@@ -12,7 +12,7 @@ public sealed class SceneTests
     public void EveryPrimitiveDecodesAndEqualDepthsKeepTheirOrder()
     {
         var scene = Decode("""{"width":100,"height":50,"atlas":["bird.png","hawk.png"],"shapes":[[4,"hello",1,2,12,287454020,8],[0,10,20,30,40,0.5,4278190335,2],[1,5,6,7,16711935,1],[2,2,0,1,2,3,255,2.5,4],[3,1,8,9,10,11,-0.5,4294967295,2]]}""");
-        Assert.Equal((100.0, 50.0), (scene.Width, scene.Height));
+        Assert.Equal((100.0, 50.0, 1.0), (scene.Width, scene.Height, scene.Zoom));
         Assert.Equal(["bird.png", "hawk.png"], scene.Atlas);
         Assert.Equal<Shape>(
         [

@@ -20,6 +20,13 @@ pub(super) fn decode(
     if (width == 0.) != (height == 0.) {
         return Err("a window-pixel scene has zero width and zero height".to_owned());
     }
+    let zoom = match node.get("zoom") {
+        None => 1.,
+        Some(value) => dimension(Some(value), "zoom").and_then(|z| match z > 0. {
+            true => Ok(z),
+            false => Err("scene zoom must be positive".to_owned()),
+        })?,
+    };
     let mut shapes = render::list(node, "shapes")
         .iter()
         .map(shape)
@@ -39,6 +46,7 @@ pub(super) fn decode(
     Ok(Decoded {
         revision,
         width,
+        zoom,
         shapes: Arc::new(shapes),
         atlas: Arc::new(atlas),
         has_rotation,

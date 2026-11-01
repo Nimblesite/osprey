@@ -18,6 +18,8 @@ mod paint;
 pub struct Decoded {
     pub revision: u64,
     width: f32,
+    /// Window pixels per scene unit, whatever the window's size.
+    zoom: f32,
     shapes: Arc<Vec<Shape>>,
     /// The sprite images the scene names, by atlas index ([UI-SCENE]).
     atlas: Arc<Vec<String>>,
@@ -25,7 +27,7 @@ pub struct Decoded {
     has_sprites: bool,
 }
 
-/// A primitive in scene units; the painter applies the shared origin.
+/// A primitive in scene units; the painter applies the shared transform.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
     Rect {
@@ -151,35 +153,41 @@ impl Shape {
     }
 }
 
-/// The origin shared by painting and pointer input; one scene unit is one window pixel.
+/// The scene's fixed zoom and top-left origin, shared by painting and pointer input.
 #[derive(Clone, Copy)]
 pub struct Transform {
     origin: Point<Pixels>,
+    scale: f32,
 }
 
 impl Transform {
-    /// Places the scene's origin at the region's top left, one unit to one window pixel: a larger
-    /// window shows more of the canvas and never resizes what is on it. A zero-sized scene is in
-    /// window pixels, so its origin is the window's.
-    fn new(bounds: Bounds<Pixels>, width: f32) -> Self {
-        let origin = if width == 0. { Point::default() } else { bounds.origin };
-        Self { origin }
+    /// Places the scene's origin at the region's top left at its fixed `zoom`, so a larger window
+    /// shows more of the canvas and never resizes what is on it. A zero-sized scene is in window
+    /// pixels, so its origin is the window's.
+    fn new(bounds: Bounds<Pixels>, width: f32, zoom: f32) -> Self {
+        match width == 0. {
+            true => Self { origin: Point::default(), scale: 1. },
+            false => Self { origin: bounds.origin, scale: zoom },
+        }
     }
 
     /// Whether scene units are window pixels, so paths need no extra transform.
     fn identity(self) -> bool {
-        self.origin == Point::default()
+        self.scale == 1. && self.origin == Point::default()
     }
 
     /// Converts one scene-space point to window pixels.
     fn point(self, x: f32, y: f32) -> Point<Pixels> {
-        self.origin + point(px(x), px(y))
+        self.origin + point(px(x * self.scale), px(y * self.scale))
     }
 
     /// Converts one window-space pointer position to scene units.
     fn scene(self, position: Point<Pixels>) -> (f64, f64) {
         let relative = position - self.origin;
-        (f64::from(relative.x), f64::from(relative.y))
+        (
+            f64::from(relative.x) / f64::from(self.scale),
+            f64::from(relative.y) / f64::from(self.scale),
+        )
     }
 }
 

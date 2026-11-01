@@ -62,8 +62,8 @@ public sealed record SolidPaint(Tint Tint) : Paint;
 /// <summary>A gradient from one tint at <paramref name="FromAt"/> to another at <paramref name="ToAt"/>, blended in Oklab when asked.</summary>
 public sealed record LinearPaint(double Angle, Tint From, double FromAt, Tint To, double ToAt, bool Oklab) : Paint;
 
-/// <summary>One decoded scene: its unit space (zero for window pixels), its atlas and its shapes, back to front.</summary>
-public sealed record Scene(double Width, double Height, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes);
+/// <summary>One decoded scene: its unit space (zero for window pixels), its fixed zoom in pixels per unit, its atlas and its shapes, back to front.</summary>
+public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes);
 
 /// <summary>
 /// Decodes a scene node and the primitives streamed for it [UI-SCENE-STREAM] into shapes ordered
@@ -81,8 +81,13 @@ public static class SceneDecoder
         {
             throw new HostException("A window-pixel scene has zero width and zero height");
         }
+        var zoom = node.TryGetProperty("zoom", out var given) ? Real(given, "zoom") : 1;
+        if (zoom <= 0)
+        {
+            throw new HostException("A scene's zoom must be positive");
+        }
         var shapes = Envelopes.Items(node, "shapes", Shape).Concat(streamed.Select(Stream));
-        return new Scene(width, height, Envelopes.Items(node, "atlas", item => item.GetString() ?? ""), [.. shapes.OrderBy(shape => shape.Depth)]);
+        return new Scene(width, height, zoom, Envelopes.Items(node, "atlas", item => item.GetString() ?? ""), [.. shapes.OrderBy(shape => shape.Depth)]);
     }
 
     static Shape Stream(Streamed item) => item.Code switch
