@@ -160,7 +160,7 @@ type Tree = Leaf | Node(Tree, Tree)
 let tree = Node(Node(Leaf, Leaf), Leaf)
 
 fn size(tree) -> int = match tree {
-    Leaf          => Success { value: 1 }
+    Leaf          => 1
     Node(left, _) => 1 + size(left)
 }
 ```

@@ -57,7 +57,7 @@ pub(crate) fn stages_of(cg: &Codegen, iterator: &Value) -> Vec<IterOp> {
 pub(crate) fn reject_escape(cg: &Codegen, value: &Value) -> Result<()> {
     if cg.iter_stages.contains_key(&value.operand) {
         return Err(CodegenError::unsupported(
-            "a `map`/`filter` pipeline leaving the function that built it (consume it with `forEach` or `fold` first)",
+            "a `map`/`filter` pipeline leaving the function that built it (collect it with `toList`, or consume it with `forEach` or `fold`, first)",
         ));
     }
     Ok(())

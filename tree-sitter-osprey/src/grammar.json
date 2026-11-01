@@ -2700,11 +2700,7 @@
               },
               {
                 "type": "STRING",
-                "value": "?"
-              },
-              {
-                "type": "STRING",
-                "value": ":"
+                "value": "?:"
               },
               {
                 "type": "FIELD",
