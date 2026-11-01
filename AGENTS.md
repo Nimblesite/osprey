@@ -48,6 +48,7 @@ Three phases, each once — ❌ mixing them:
     escape s = escapeControls (replace s "\"" "\\\"" ?: "") 1
 ```
 
+- **Osprey: JSON and database access stay at the edges** — decode into typed records in one boundary module (via `@osprey/json`'s `Doc`) or behind an effect; ❌ `Json` values, `JsonInt`/`jsonIndex` matching or SQL in business logic.
 - **Website:** CSS ≤ 1.8k LOC, `prose`-prefixed classes, ❌ Tailwind.
 
 ## Documentation
