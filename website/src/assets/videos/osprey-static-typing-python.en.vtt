@@ -1,0 +1,40 @@
+WEBVTT
+
+00:00.500 --> 00:07.560
+Static typing checks every value's type before a program runs. Dynamic typing checks as each line executes.
+
+00:07.910 --> 00:14.891
+Osprey's Python flavor keeps def, lambda and f strings, infers every type, and checks it at compile time.
+
+00:16.091 --> 00:18.260
+This function has no annotations.
+
+00:18.610 --> 00:28.198
+The compiler works out that host is a string, because endsWith takes one, and that label returns a string. It runs, and prints Kitchen (kitchen.local).
+
+00:29.398 --> 00:34.785
+Pass the port number by mistake, and the build stops, with the line and the two types that disagree.
+
+00:35.135 --> 00:41.083
+In CPython, the same mistake surfaces as an exception when that line runs, if it ever runs.
+
+00:42.283 --> 00:48.103
+To test this on a real program, I ported a stdlib-only Chromecast sender to Python flavor.
+
+00:48.453 --> 00:54.910
+Where the original raised a key error for a missing TV, the port returns a result, and every caller must handle it.
+
+00:56.110 --> 01:00.637
+The original's pure functions run under CPython and write the expected results.
+
+01:00.987 --> 01:07.498
+The port is checked against all 251, then driven over real TLS against a scripted device.
+
+01:08.698 --> 01:17.301
+Python flavor is Osprey, not CPython. An arbitrary Python program does not run unchanged, and porting means rewriting in this style.
+
+01:17.651 --> 01:21.450
+To call real Python libraries, use Osprey's Python interop.
+
+01:22.650 --> 01:29.689
+Install Osprey, run the sample, then pass it a number. Osprey is actively evolving. Try it on your projects.

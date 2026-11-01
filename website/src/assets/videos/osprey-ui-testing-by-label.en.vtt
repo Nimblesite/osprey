@@ -1,0 +1,55 @@
+WEBVTT
+
+00:00.500 --> 00:07.562
+Computer use agents look at screenshots and guess where to click. Browser agents read the page's accessibility tree instead.
+
+00:07.912 --> 00:15.868
+Osprey's UI machines give every native control a role and a label, so tests and agents can find the Play button by name, and press it.
+
+00:17.068 --> 00:20.625
+Every control in an Osprey UI machine carries a role and a label.
+
+00:20.975 --> 00:29.088
+The framework turns them into an accessibility tree: each live control with its role, its label, its bounds, and a slider's value.
+
+00:30.288 --> 00:33.166
+The test reads the labels on offer, then taps them.
+
+00:33.516 --> 00:40.265
+A tap is a real pointer press and release at the centre of the control's bounds, so a misplaced hit area fails the test.
+
+00:40.615 --> 00:49.738
+Tap at half way along the volume slider, and the volume becomes one half. Tap a quarter along the position, and the canvas letters read zero zero fifty.
+
+00:50.938 --> 00:52.759
+The kit is three small modules.
+
+00:53.109 --> 01:03.782
+Views reads the rendered view and the canvas lettering. Semantics reads the accessibility tree and works out pointer positions. Events builds the same event JSON a real host sends.
+
+01:04.982 --> 01:11.180
+The tests drive the application's real exported boundary, the same two functions the desktop host calls.
+
+01:11.530 --> 01:18.180
+The outside world sits behind effects, so a handler supplies a fake TV, and every run is deterministic.
+
+01:18.530 --> 01:23.103
+The same labels an AI agent would use to operate the app are the labels the tests use.
+
+01:24.303 --> 01:27.639
+An agent operating this app needs no vision and no coordinates.
+
+01:27.989 --> 01:36.491
+It reads the controls that are live right now, picks one by name, and acts. Templates.act sets a slider, or presses anything else.
+
+01:36.841 --> 01:40.287
+The labels it uses are the labels the tests prove on every build.
+
+01:41.487 --> 01:48.533
+Two things are not done yet. The tree is not mapped to the platform screen reader, so VoiceOver does not read the player today.
+
+01:48.883 --> 01:55.864
+And there is no ready-made server that exposes a running app's tree to an outside agent. Semantics and act are the pieces it would call.
+
+01:57.064 --> 02:03.245
+Osprey is actively evolving. Read the UI test kit's README, and run the casting tests yourself.

@@ -1,0 +1,49 @@
+WEBVTT
+
+00:00.500 --> 00:07.574
+GPUI is the GPU-rendered Rust UI framework behind the Zed editor. It expects you to write your interface in Rust.
+
+00:07.924 --> 00:13.244
+With Osprey's UI machines, a GPUI app's whole interface is one data file instead.
+
+00:14.444 --> 00:17.299
+This casting player runs in a GPUI window.
+
+00:17.649 --> 00:24.665
+Every pixel comes from player.machine.json: its inputs, its state machines, its view and its skins.
+
+00:25.865 --> 00:35.332
+egui redraws Rust code every frame. Slint has its own markup language. Tauri puts a web front end in a web view. GPUI uses Rust views.
+
+00:35.682 --> 00:44.765
+A UI machine writes every state down, and names every transition, so the interface can be checked, tested without a window, and reskinned without code.
+
+00:45.965 --> 00:50.470
+The player has four layers: receivers, playback, commands and menu.
+
+00:50.820 --> 00:57.882
+Entering connecting requests cast.start with the file and the receiver. When the TV reports playing, the layer moves to playing.
+
+00:58.232 --> 01:02.189
+The document never says how the work is done. It holds no code at all.
+
+01:03.389 --> 01:06.876
+A skin can carry a canvas, drawn from an image atlas.
+
+01:07.226 --> 01:15.386
+This hit area is stamped once per TV found, and exists only while the receivers menu is open. Switching skins keeps every input and state.
+
+01:16.586 --> 01:22.320
+The Osprey code that remains answers each request, and feeds what the TV reports back in as inputs.
+
+01:22.670 --> 01:24.914
+It never decides what the screen shows.
+
+01:26.114 --> 01:33.693
+The whole document is validated when it loads. A transition to a misspelled state is refused, with its exact JSON path.
+
+01:34.043 --> 01:39.550
+A cycle is reported instead of spinning, and a refused document shows its problems in place of the app.
+
+01:40.750 --> 01:49.572
+The player runs in the GPUI host on macOS today. Osprey is actively evolving. Try it on your projects, and read the UI machines spec.
