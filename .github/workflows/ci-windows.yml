@@ -174,7 +174,8 @@ jobs:
           OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=arc
 
       # The UI test framework's suite and the casting and signal-flow apps it drives by accessible
-      # label alone, with no host or window. [UI-MACHINE-TEST]
+      # label alone, with no host or window. [UI-MACHINE-TEST] The runtime is already built; CC and AR
+      # stay off the command line because make would export them to cargo's MSVC build of tree-sitter.
       - name: UI tests by accessible label
         shell: msys2 {0}
-        run: make ui-test CC=gcc AR=ar BIN=target/release/osprey.exe
+        run: make ui-test BIN=target/release/osprey.exe
