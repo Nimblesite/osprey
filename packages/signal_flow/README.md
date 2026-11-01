@@ -14,7 +14,7 @@ On the canvas you can switch any node off (bypass it), drag the control and proc
 ## Run
 
 ```sh
-make -C apps gpui-signal-flow                      # or: bash packages/signal_flow/app/run.sh
+make -C apps/macos signal-flow                    # or: bash packages/signal_flow/app/run.sh
 ```
 
 Pass `--skin notation` (or `paper`, `prism`) after the script to start in another skin.

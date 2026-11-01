@@ -5,8 +5,7 @@ A native player that casts a local MP3 to a Chromecast or Google TV. Its whole i
 ## Run
 
 ```sh
-make _runtime_macos                 # once, or after runtime changes
-bash examples/casting/run.sh        # opens the player in the GPUI host
+make -C apps/macos casting          # builds what it needs and opens the player in the GPUI host
 ```
 
 `run.sh` compiles the app to a C archive and links it, with the TLS and media-server runtime and OpenSSL, into the GPUI host. The host runs `dns-sd` to find TVs and opens the file picker, so the window never waits on the network. Each frame polls the TV for at most a millisecond.

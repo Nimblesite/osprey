@@ -23,7 +23,7 @@
 - 💯 coverage aim per package/project; `coverage-thresholds.json` only goes ⬆️.
 
 ## Apps
-- **One folder, every app:** [`apps/Makefile`](apps/Makefile) has one target per app. `make -C apps <app>` builds whatever it needs and opens the app on the host OS. ❌ app targets in the root Makefile.
+- **One folder, every app:** [`apps/Makefile`](apps/Makefile) has one target per app; desktop apps have one per OS in [`apps/macos`](apps/macos/Makefile) and [`apps/windows`](apps/windows/Makefile). `make -C apps[/<os>] <app>` builds whatever it needs and opens the app. ❌ app targets in the root Makefile.
 - **Every app has a working Windows version.** It uses WinUI from the latest Windows App SDK (❌ WPF, WinForms, raw Win32 windows). The GPUI examples run on the WinUI host there.
 - **Sandboxed by default:** on Windows each app is its own MSIX package in an AppContainer (`uap10:TrustLevel="appContainer"`) that declares only the capabilities it uses. An app that cannot be sandboxed says why in its README.
 - **Automated app tests run headless or with a window.** Both modes take screenshots and compare them with committed goldens. They are part of the required `CI` check.

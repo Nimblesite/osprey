@@ -1,9 +1,9 @@
-# Every app: open it, build it, test it. Each target runs its recipe in the root Makefile, where it is the
+# Every app: open it, build it, test it. The desktop apps are per OS, in apps/macos and apps/windows. Each target runs its recipe in the root Makefile, where it is the
 # private `_` target of the same name; `make help` at the root lists these too.
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ..
 
-.PHONY: python-app-ports bank bank-web bank-test bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test run-mac-hd gpui-flock gpui-painting gpui-signal-flow gpui-synth casting gpui-probe gpui-bench gpui-compare gpui-test mobile-ios mobile-ios-test mobile-domain-test mobile-test android android-test bank-mobile-domain-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-test workbench-native-test workbench-render-review
+.PHONY: python-app-ports bank bank-web bank-test bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test mobile-ios mobile-ios-test mobile-domain-test mobile-test android android-test bank-mobile-domain-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-test workbench-native-test workbench-render-review
 
 ## python-app-ports: Verify the classifier, vector search and text evaluation ports.
 python-app-ports:
@@ -82,55 +82,6 @@ macos:
 ##             The storage domain suite runs natively, so it needs `_runtime`.
 macos-test:
 	$(MAKE) -C $(ROOT) _macos-test
-
-## run-mac-hd: Rebuild the compiler, the Mac runtime and the Osprey Storage
-##             app, then open it: where your disk space goes, folder by folder.
-run-mac-hd:
-	$(MAKE) -C $(ROOT) _run-mac-hd
-
-## gpui-flock: Build the compiler and Mac runtime, then open Flock, the boids
-##             herding game, in the GPUI host. [GPUI-HOST-SCENE]
-gpui-flock:
-	$(MAKE) -C $(ROOT) _gpui-flock
-
-## gpui-painting: Open the Osprey port of GPUI's painting example.
-gpui-painting:
-	$(MAKE) -C $(ROOT) _gpui-painting
-
-## gpui-signal-flow: Open the signal-flow editor, a UI machine with the four
-##                   canvas skins of packages/signal_flow. [UI-MACHINE-FLOW]
-gpui-signal-flow:
-	$(MAKE) -C $(ROOT) _gpui-signal-flow
-
-## gpui-synth: Open the Prism synth: the signal-flow editor's Prism skin playing
-##             each edit through the speakers. [UI-MACHINE-FLOW-SYNTH]
-gpui-synth:
-	$(MAKE) -C $(ROOT) _gpui-synth
-
-## casting:      Open the casting player: pick a file or stream and cast it to a
-##          TV found on the network, with the HLS visualiser. [CAST-DESIGN-NATIVE]
-casting:
-	$(MAKE) -C $(ROOT) _casting
-
-## gpui-probe: Open the GPUI host's probe application (counter, note, load).
-gpui-probe:
-	$(MAKE) -C $(ROOT) _gpui-probe
-
-## gpui-bench: Run Flock for 20 seconds and print fps, dispatch, paint and
-##             envelope size. Keep the window in front.
-gpui-bench:
-	$(MAKE) -C $(ROOT) _gpui-bench
-
-## gpui-compare: Pixel-diff the painting port against GPUI's original, with and
-##               without synthetic strokes. Needs Screen Recording and
-##               Accessibility permission for the terminal.
-gpui-compare:
-	$(MAKE) -C $(ROOT) _gpui-compare
-
-## gpui-test: The native and signal-flow packages, the synth, Flock and painting suites, the host's unit
-##            tests and clippy, and the probe and Flock recorded-event smokes.
-gpui-test:
-	$(MAKE) -C $(ROOT) _gpui-test
 
 ## mobile-ios: see the root Makefile's `_mobile-ios`.
 mobile-ios:

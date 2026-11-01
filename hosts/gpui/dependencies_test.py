@@ -158,7 +158,7 @@ class BackportTests(unittest.TestCase):
                 self.stage()
 
     def test_gpui_make_target_stages_before_host_cargo(self):
-        commands = make_commands("gpui-test")
+        commands = make_commands("_gpui-test")
         stage = "python3 hosts/gpui/dependencies.py"
         host = "cd hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings"
         self.assertIn(stage, commands)
@@ -167,7 +167,7 @@ class BackportTests(unittest.TestCase):
 
     def test_build_and_release_entrypoints_gate_stager_regressions(self):
         guard = "python3 hosts/gpui/dependencies_test.py"
-        for target in ("audit", "gpui-test"):
+        for target in ("audit", "_gpui-test"):
             with self.subTest(target=target):
                 commands = make_commands(target)
                 self.assertIn(guard, commands)

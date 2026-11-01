@@ -15,7 +15,7 @@ Every edit that changes the sound renders one second of it in Osprey, as an 8-bi
 ## Run
 
 ```sh
-make gpui-synth                       # or: bash examples/synth/run.sh
+make -C apps/macos synth             # or: bash examples/synth/run.sh
 ```
 
 ## Test

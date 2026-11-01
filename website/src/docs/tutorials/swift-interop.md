@@ -36,7 +36,7 @@ Clone the repository and run the app from its root:
 ```sh
 git clone https://github.com/Nimblesite/osprey.git
 cd osprey
-make -C apps run-mac-hd                    # build the compiler, the Mac runtime and the app, then open it
+make -C apps/macos storage                 # build the compiler, the Mac runtime and the app, then open it
 examples/macos/run.sh ios-sim      # build the same app and launch it in the iPhone simulator
 ```
 
