@@ -96,6 +96,19 @@ extern fn osprey_file_server_stop(port: int) -> int
 
 `osprey_file_server_start` binds a fresh port on `address` and returns it, or `-1` bad argument, `-2` the path is not a readable regular file, `-3` all 16 servers in use, `-4` the address cannot be bound, `-5` no accept thread. The file is served at `/media` only, one thread per connection. GET returns `200` with the whole file, or `206` with `Content-Range` for `Range: bytes=start-` or `bytes=start-end` (an end past the file is clamped). A start past the end gives `416`. HEAD sends headers only. Any other path gives `404`, any other method `405`, and a malformed request line `400`. `osprey_file_server_stop` returns `0`, or `-1` when no server runs on that port.
 
+`[FFI-FILE-SERVER-FOLDER]` When `path` is a folder, the server serves the files in it by name: `/<name>` answers that file, typed by its extension (`.m3u8` as `application/vnd.apple.mpegurl`, `.ts` as `video/mp2t`, anything else as `application/octet-stream`). Ranges, HEAD and the status codes are the same as for one file. A name containing a slash or starting with a dot gives `404`, so nothing outside the folder can be reached. A name that does not exist yet is waited for, for up to 120 seconds, because a renderer may still be writing it. Stopping the server ends the wait.
+
+## Visualiser Render [FFI-MEDIA-RENDER]
+
+A Cast receiver shows still artwork for audio. A sender that wants the TV to move with the music sends video instead, rendered by the same archive:
+
+```osprey
+extern fn osprey_media_render(audio: string) -> string
+extern fn osprey_media_unrender(folder: string) -> int
+```
+
+`osprey_media_render` makes a fresh `osprey-cast.*` folder under `TMPDIR` and at once writes `media.m3u8`: a complete VOD playlist of 4-second segments, computed from the duration `ffprobe` reports, so the receiver knows the whole length and can seek straight away. It then starts `ffmpeg` in the background. ffmpeg draws a constant-Q spectrum of the audio at 1280×720 and 30 fps and cuts `segNNNNN.ts` files on exactly those 4-second keyframes, each written under a temporary name and renamed when it is complete. A [FFI-FILE-SERVER-FOLDER] server on the folder waits for a segment that is not there yet. Rendering runs far faster than playback, so the wait happens only after a seek far ahead. Render returns the folder, or `""` when the file does not exist, ffmpeg or ffprobe is not on the `PATH`, or the platform has no `posix_spawn` (Windows). The sender then casts the audio as it is. `osprey_media_unrender` stops ffmpeg and deletes the folder, returning `0`, or `-1` for a folder that no render made. `compiler/runtime/net_runtime_tests.c` serves a folder over loopback, and `@osprey/chromecast` reaches both functions through its `Wire` effect.
+
 ## Databases Are Libraries [FFI-NO-DB-BUILTINS]
 
 Database access is not compiler surface. Database drivers use `extern fn`
