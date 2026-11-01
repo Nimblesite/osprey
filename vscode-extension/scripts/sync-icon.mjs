@@ -22,10 +22,20 @@ if (!existsSync(SOURCE)) {
 // pointer in its place, which the Marketplace rejects as an icon after every
 // other channel has already published it — so refuse it here, at build time.
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-if (!readFileSync(SOURCE).subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+const png = readFileSync(SOURCE);
+if (!png.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
   console.error(
     `sync-icon: ${SOURCE} is not a PNG (a Git LFS pointer?) — run \`git lfs pull --include=website/src/assets/images/logo.png\``,
   );
+  process.exit(1);
+}
+
+// The Marketplace rejects icons over 1024×1024, again only after every other
+// channel has published. The IHDR chunk holds width and height at bytes 16–23.
+const MAX_ICON_PX = 1024;
+const [width, height] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+if (width > MAX_ICON_PX || height > MAX_ICON_PX) {
+  console.error(`sync-icon: ${SOURCE} is ${width}×${height}; the Marketplace allows at most ${MAX_ICON_PX}×${MAX_ICON_PX}`);
   process.exit(1);
 }
 
