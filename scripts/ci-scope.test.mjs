@@ -90,7 +90,7 @@ test('extension source fixtures have the WASI linker and sysroot before coverage
 // LFS-stored too, so each job fetches exactly the paths its bundle stages.
 test('LFS fetches cover every workbench source asset the bundle stages', () => {
   const required = ['website/src/assets/images/logo.png', 'vscode-extension/media/package-tour.gif',
-    'vscode-extension/media/language-tour.gif', 'apps/workbench/assets/**', 'apps/workbench/lessons/media/**']
+    'vscode-extension/media/showcase.gif', 'apps/workbench/assets/**', 'apps/workbench/lessons/media/**']
   for (const [name, file] of [['test-extension', '.github/workflows/ci.yml'], ['vsix', '.github/workflows/release.yml']]) {
     const include = job(name, file).match(/git lfs pull --include="([^"]+)"/)?.[1] ?? ''
     for (const path of required) assert.ok(include.split(',').includes(path), `${name}: LFS fetch omits ${path}`)

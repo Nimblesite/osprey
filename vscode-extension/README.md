@@ -7,10 +7,10 @@
 **Safe, elegant, fast.** Osprey is a functional language built for safety, elegance and performance: algebraic effects and `Result` instead of panics, inferred types that say more with less text, and native LLVM compilation.
 
 <p align="center">
-  <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/vscode-extension/media/language-tour.gif" alt="Osprey tour: a function requests storage through an effect, a disk handler saves the draft, an offline handler simulates failure, the same code in Python flavor, and a GPT-2 port whose Tensor handler chooses CPU or GPU" width="960" />
+  <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/vscode-extension/media/showcase.gif" alt="Apps built with Osprey: Flock, a herding game, and Painting on the GPU; Prism Synth, a signal-flow synth whose scope changes from sine to saw to square; Casting, a Chromecast player switching TVs; and the Proof Workbench stepping through a proof the kernel checks" width="960" />
 </p>
 
-One function requests storage. One handler writes the file; another simulates being offline. The function stays the same. [Try Osprey in your browser](https://ospreylang.dev/playground/) or read the [effects guide](https://ospreylang.dev/docs/algebraic-effects/).
+Real apps written in Osprey, on the desktop and the GPU: a herding game, a GPU painting demo, a synth that plays every edit, a Chromecast player and the proof Workbench. [Watch the full showcase](https://ospreylang.dev/#targets), [try Osprey in your browser](https://ospreylang.dev/playground/) or read the [effects guide](https://ospreylang.dev/docs/algebraic-effects/).
 
 > **Actively evolving.** Osprey is being used to build real applications. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.
 
