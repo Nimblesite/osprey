@@ -146,7 +146,8 @@ separate handler-object hierarchy when an ordinary closure is sufficient.
    handled effect's name. Retrying one operation must not replay later work.
 7. **Prove target and tooling support.** Run accepted programs on native and
    wasm with the same answers; reject missing target capabilities before
-   linking. Add logical continuation/handler-instance traces and LSP views of
+   linking. Add logical continuation/handler-instance traces ([MULTI-TRACE],
+   [DEBUGGER-EFFECT-TRACE]; not built: no debug build or DAP view carries one) and LSP views of
    required operations, possible handlers and replay boundaries. No backend
    may silently weaken multiplicity or cleanup guarantees.
 

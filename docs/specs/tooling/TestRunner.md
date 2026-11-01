@@ -11,7 +11,7 @@ Runs test files and aggregates results. `path` (default `.`) is a single file
 `[TESTING-PROJECT-SUITE]`), or a directory searched recursively for
 `[TESTING-FILE-CONVENTION]` files in sorted order. Hidden, `target`, and
 `node_modules` directories are skipped; symlinks are not followed. Each file
-runs like `osprey <file> --run --no-warnings`, with its TAP output under a
+runs like `osprey <file> --run --quiet --no-warnings`, with its TAP output under a
 `# file: <path>` header. A suite is executed, not reviewed: the warning pass
 re-infers the whole program once per annotation site, which on a large
 project costs minutes per suite, and its output never reaches a suite's
