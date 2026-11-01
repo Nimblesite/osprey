@@ -98,5 +98,7 @@ tests/regressions/http/http_response_handle.test.osp HTTP needs sockets: `http_c
 tests/regressions/http/http_response_handle.test.ospml HTTP needs sockets: `http_create_server` is outside the module
 tests/regressions/http/http_server_example.test.osp HTTP needs sockets: `http_create_server` is outside the module
 tests/regressions/http/http_server_example.test.ospml HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/http/net_local_address.test.osp `osprey_net_local_address` is native code outside the module (not in the portable runtime)
+tests/regressions/http/net_local_address.test.ospml `osprey_net_local_address` is native code outside the module (not in the portable runtime)
 tests/regressions/http/tui_repo_table.test.osp HTTP needs sockets: `http_create_server` is outside the module
 tests/regressions/http/tui_repo_table.test.ospml HTTP needs sockets: `http_create_server` is outside the module
