@@ -199,6 +199,8 @@ PRISM = {
     "badge": (2, (43, 58, 22), "+{{control|percent}}%"),
     # The keyboard deck under the graph, shown while an application with a voice sets `keys`.
     "keys": True,
+    # A larger window gives the graph more grid; the inspector, legend and deck keep their size at its edges.
+    "room": True,
 }
 
 SKINS = {"topology": TOPOLOGY, "notation": NOTATION, "paper": PAPER, "prism": PRISM}

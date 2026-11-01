@@ -167,7 +167,7 @@ Because a machine is data, a test drives it without a host: load the document, s
 
 ### Skins [UI-MACHINE-FLOW-SKINS]
 
-The four skins, Topology, Notation, Paper and Prism, are canvases sliced from the designs in `packages/signal_flow/design/` by `skins/build.py`. Each backdrop is its mock with every live part painted out. The canvas then draws the switches, sliders, values, health rows, selection ring, bypass dimming, ports and the whole inspector from the inputs. The title opens a menu of the four skins. Changing skin keeps every input, state and the undo history. In Prism every node is its own sprite, cut from the mock with its port labels, over a graph rebuilt from whole grid periods of empty canvas. Pressing a node's body drags it: its sprite, controls, listeners and both ends of each `cable` follow its `<role>X` and `<role>Y` offset inputs.
+The four skins, Topology, Notation, Paper and Prism, are canvases sliced from the designs in `packages/signal_flow/design/` by `scripts/signal-flow-skins/build.py`. Each backdrop is its mock with every live part painted out. The canvas then draws the switches, sliders, values, health rows, selection ring, bypass dimming, ports and the whole inspector from the inputs. The title opens a menu of the four skins. Changing skin keeps every input, state and the undo history. In Prism every node is its own sprite, cut from the mock with its port labels, over a graph rebuilt from whole grid periods of empty canvas. Pressing a node's body drags it: its sprite, controls, listeners and both ends of each `cable` follow its `<role>X` and `<role>Y` offset inputs.
 
 ### Prism synth [UI-MACHINE-FLOW-SYNTH]
 

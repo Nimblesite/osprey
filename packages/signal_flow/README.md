@@ -22,10 +22,10 @@ Pass `--skin notation` (or `paper`, `prism`) after the script to start in anothe
 
 ## Skins
 
-`skins/spec.py` records where every live part sits in each design, in mock pixels. `skins/build.py` slices each mock into `skins/<skin>/backdrop.png`, with the live parts painted out and the selection ring redrawn as a plain border, plus one icon per node. It then rewrites the document's `skins` with the shapes and listeners that draw those parts from the inputs. Rebuild after changing a design or the spec. It needs Pillow and NumPy:
+`scripts/signal-flow-skins/spec.py` records where every live part sits in each design, in mock pixels. `scripts/signal-flow-skins/build.py` slices each mock into `skins/<skin>/backdrop.png`, with the live parts painted out and the selection ring redrawn as a plain border, plus one icon per node. It then rewrites the document's `skins` with the shapes and listeners that draw those parts from the inputs. Rebuild after changing a design or the spec. It needs Pillow and NumPy:
 
 ```sh
-python3 packages/signal_flow/skins/build.py
+python3 scripts/signal-flow-skins/build.py
 ```
 
 ## Test

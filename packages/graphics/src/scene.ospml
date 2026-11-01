@@ -154,15 +154,9 @@ module Scenes
     export hex (value, alpha) =
         handle Arith
             divideByZero _ dividend => dividend
-        Rgb(red = toFloat (channel (value, 65536)) / 255.0, green = toFloat (channel (value, 256)) / 255.0, blue = toFloat (channel (value, 1)) / 255.0, alpha = alpha)
+        Rgb(red = toFloat (channel (value, 16)) / 255.0, green = toFloat (channel (value, 8)) / 255.0, blue = toFloat (channel (value, 0)) / 255.0, alpha = alpha)
 
-    channel (value, place) =
-        handle Arith
-            divideByZero _ dividend => dividend
-            overflow _ _ _ _ => 0
-            remainderByZero _ => 0
-        shifted = intDiv value place
-        satSub shifted (satMul (intDiv shifted 256) 256)
+    channel (value, shift) = bitAnd (shiftRight value shift) 255
 
     (** A colour packed as `0xRRGGBBAA` from channels 0 to 255. *)
     export rgba (r, g, b, a) = satAdd (satMul (satAdd (satMul (satAdd (satMul r 256) g) 256) b) 256) a
