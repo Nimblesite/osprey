@@ -49,7 +49,7 @@ endif
 COVERAGE_THRESHOLDS_FILE ?= coverage-thresholds.json
 
 # The folder Makefiles `make help` lists after the root's own targets.
-MAKE_FOLDERS ?= apps apps/macos apps/windows packages tests/hunt vscode-extension website benchmarks examples/proof
+MAKE_FOLDERS ?= apps apps/macos apps/windows apps/windows/tests packages tests/hunt vscode-extension website benchmarks examples/proof
 
 # Toolchain / paths. BIN: the built CLI. RTB: C-runtime archive output dir
 # (osprey searches compiler/bin at --run time).

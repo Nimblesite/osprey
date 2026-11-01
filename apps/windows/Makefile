@@ -34,12 +34,8 @@ probe:
 casting:
 	$(APP_PS1) -App casting
 
-## test: Every app's self-test in a real window inside its sandbox (HEADLESS=-Headless: off
-##       screen), each picture compared with the goldens in <app>/goldens/windows.
+## test: Every app's self-test in a real window inside its sandbox, each picture compared with its
+##       goldens and with what the screen shows (HEADLESS=-Headless: off screen). One app, or the
+##       headless run: apps/windows/tests.
 test:
-	$(APP_PS1) -App storage -Test $(HEADLESS)
-	$(APP_PS1) -App flock -Test $(HEADLESS)
-	$(APP_PS1) -App painting -Test $(HEADLESS)
-	$(APP_PS1) -App signal-flow -Test $(HEADLESS)
-	$(APP_PS1) -App probe -Test $(HEADLESS)
-	$(APP_PS1) -App casting -Test $(HEADLESS)
+	$(MAKE) -C tests full HEADLESS=$(HEADLESS)
