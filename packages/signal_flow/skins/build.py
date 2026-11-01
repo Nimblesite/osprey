@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import drag
+import keys
 from spec import RATES, ROLES, SKINS, WAVES
 from traces import meters, shape, traces
 
@@ -398,11 +399,15 @@ def canvas(key, skin):
     backdrop = shape("sprite", index=0, x=768, y=skin["height"] / 2, w=1536, h=skin["height"], depth=0)
     shapes = node_shapes(key, skin) + traces(skin) + meters(skin) + inspector(key, skin)
     shapes += [s for m in menus(skin) for s in menu_shapes(*m)]
+    found = listeners(skin)
+    height = skin["height"]
     if "cables" in skin:
         atlas += [f"{{{{assets}}}}/skins/{key}/node-{role}.png" for role in ROLES]
         shapes = drag.cables(skin) + drag.badge(skin) + drag.nodes(skin, 1 + len(ROLES)) + [drag.followed(skin, s) for s in shapes]
+    if skin.get("keys"):
+        shapes, found, height = shapes + keys.shapes(1536), keys.listeners() + found, keys.height(height)
     shapes = [backdrop] + shapes
-    return {"width": 1536, "height": skin["height"], "zoom": ZOOM, "atlas": atlas, "shapes": shapes, "listeners": listeners(skin)}
+    return {"width": 1536, "height": height, "zoom": ZOOM, "atlas": atlas, "shapes": shapes, "listeners": found}
 
 
 def main():
@@ -410,7 +415,8 @@ def main():
     for key, skin in SKINS.items():
         slice_skin(key, skin)
     logo()
-    doc["inputs"].update(drag.offsets())
+    doc["inputs"].update({**drag.offsets(), **keys.inputs()})
+    doc["layers"] = [layer for layer in doc["layers"] if layer["name"] != "keys"] + [keys.layer()]
     doc["skins"] = {key: {"name": skin["name"], "motion": "none", "tokens": {**skin["tokens"], "background": skin["tokens"]["canvas"]}, "canvas": canvas(key, skin)}
                     for key, skin in SKINS.items()}
     DOCUMENT.write_text(written(doc) + "\n")

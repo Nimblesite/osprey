@@ -230,6 +230,21 @@
   "monitorY": {
    "type": "number",
    "value": 0
+  },
+  "keys": {
+   "type": "number",
+   "value": 0
+  },
+  "note": {
+   "type": "text",
+   "value": "A3"
+  },
+  "hertz": {
+   "type": "number",
+   "value": 220
+  },
+  "strike": {
+   "type": "trigger"
   }
  },
  "layers": [
@@ -434,6 +449,38 @@
      "when": {
       "fired": "toggleWaves"
      }
+    }
+   ]
+  },
+  {
+   "name": "keys",
+   "initial": "resting",
+   "states": {
+    "resting": {
+     "enter": []
+    },
+    "struck": {
+     "enter": [
+      {
+       "request": "synth.strike",
+       "with": [
+        "note"
+       ]
+      }
+     ]
+    }
+   },
+   "transitions": [
+    {
+     "from": "*",
+     "to": "struck",
+     "when": {
+      "fired": "strike"
+     }
+    },
+    {
+     "from": "struck",
+     "to": "resting"
     }
    ]
   }
@@ -1314,6 +1361,9 @@
     "switchOff": "#2A2848",
     "knobOff": "#C1C0E7",
     "curve": "#F7BE5C",
+    "keyWhite": "#E7E5FB",
+    "keyBlack": "#1D1A38",
+    "keyInk": "#4A4790",
     "Healthy": "#0E9F63",
     "Degraded": "#F59E0B",
     "Offline": "#E5484D",
@@ -1322,7 +1372,7 @@
    },
    "canvas": {
     "width": 1536,
-    "height": 828,
+    "height": "{{keys|scale:180:828}}",
     "zoom": 0.75,
     "atlas": [
      "{{assets}}/skins/prism/backdrop.png",
@@ -1411,7 +1461,7 @@
 {"shape": "text", "text": "{{process|expo:1:0.02:20}} kHz", "x": "{{processX}} 699", "y": "{{processY}} 482.6", "size": 14, "colour": "@ink", "anchor": 1, "weight": 400, "depth": 6},
 {"shape": "text", "text": "{{volume|fixed:1:24:-24}} dB", "x": "{{outputX}} 1124", "y": "{{outputY}} 487.6", "size": 14, "colour": "@ink", "anchor": 1, "weight": 400, "depth": 6},
 {"shape": "text", "text": "{{rate}}", "x": "{{controlX}} 582", "y": "{{controlY}} 199.6", "size": 14, "colour": "@ink", "anchor": 0, "weight": 400, "depth": 6},
-{"shape": "text", "text": "{{wave}}", "x": "{{sourceX}} 140", "y": "{{sourceY}} 483.6", "size": 14, "colour": "@ink", "anchor": 0, "weight": 400, "depth": 6},
+{"shape": "text", "text": "{{wave}}", "x": "{{sourceX}} 140", "y": "{{sourceY}} 489.6", "size": 14, "colour": "@ink", "anchor": 0, "weight": 400, "depth": 6},
 {"shape": "text", "text": "{{delivered|fixed:1:24:-24}}", "x": "{{outputX}} 1157", "y": "{{outputY}} 410.6", "size": 14, "colour": "@ink", "anchor": 2, "weight": 400, "depth": 6},
 {"shape": "text", "text": "{{delivered|fixed:1:24:-24}}", "x": "{{outputX}} 1157", "y": "{{outputY}} 438.6", "size": 14, "colour": "@ink", "anchor": 2, "weight": 400, "depth": 6},
 {"shape": "polyline", "points": [["{{controlX}} 500.0", "{{controlY}} 159.0"], ["{{controlX}} 501.5", "{{controlY}} 158.6"], ["{{controlX}} 503.0", "{{controlY}} 158.1"], ["{{controlX}} 504.5", "{{controlY}} 157.7"], ["{{controlX}} 506.0", "{{controlY}} 157.2"], ["{{controlX}} 507.5", "{{controlY}} 156.8"], ["{{controlX}} 509.0", "{{controlY}} 156.3"], ["{{controlX}} 510.5", "{{controlY}} 155.9"], ["{{controlX}} 512.0", "{{controlY}} 155.5"], ["{{controlX}} 513.5", "{{controlY}} 155.0"], ["{{controlX}} 515.0", "{{controlY}} 154.6"], ["{{controlX}} 516.5", "{{controlY}} 154.2"], ["{{controlX}} 518.0", "{{controlY}} 153.8"], ["{{controlX}} 519.5", "{{controlY}} 153.3"], ["{{controlX}} 521.0", "{{controlY}} 152.9"], ["{{controlX}} 522.6", "{{controlY}} 152.5"], ["{{controlX}} 524.1", "{{controlY}} 152.1"], ["{{controlX}} 525.6", "{{controlY}} 151.7"], ["{{controlX}} 527.1", "{{controlY}} 151.3"], ["{{controlX}} 528.6", "{{controlY}} 150.9"], ["{{controlX}} 530.1", "{{controlY}} 150.5"], ["{{controlX}} 531.6", "{{controlY}} 150.2"], ["{{controlX}} 533.1", "{{controlY}} 149.8"], ["{{controlX}} 534.6", "{{controlY}} 149.4"], ["{{controlX}} 536.1", "{{controlY}} 149.1"], ["{{controlX}} 537.6", "{{controlY}} 148.7"], ["{{controlX}} 539.1", "{{controlY}} 148.4"], ["{{controlX}} 540.6", "{{controlY}} 148.1"], ["{{controlX}} 542.1", "{{controlY}} 147.7"], ["{{controlX}} 543.6", "{{controlY}} 147.4"], ["{{controlX}} 545.1", "{{controlY}} 147.1"], ["{{controlX}} 546.6", "{{controlY}} 146.8"], ["{{controlX}} 548.1", "{{controlY}} 146.6"], ["{{controlX}} 549.6", "{{controlY}} 146.3"], ["{{controlX}} 551.1", "{{controlY}} 146.0"], ["{{controlX}} 552.6", "{{controlY}} 145.8"], ["{{controlX}} 554.1", "{{controlY}} 145.5"], ["{{controlX}} 555.6", "{{controlY}} 145.3"], ["{{controlX}} 557.1", "{{controlY}} 145.1"], ["{{controlX}} 558.6", "{{controlY}} 144.8"], ["{{controlX}} 560.1", "{{controlY}} 144.6"], ["{{controlX}} 561.6", "{{controlY}} 144.4"], ["{{controlX}} 563.1", "{{controlY}} 144.3"], ["{{controlX}} 564.7", "{{controlY}} 144.1"], ["{{controlX}} 566.2", "{{controlY}} 143.9"], ["{{controlX}} 567.7", "{{controlY}} 143.8"], ["{{controlX}} 569.2", "{{controlY}} 143.7"], ["{{controlX}} 570.7", "{{controlY}} 143.5"], ["{{controlX}} 572.2", "{{controlY}} 143.4"], ["{{controlX}} 573.7", "{{controlY}} 143.3"], ["{{controlX}} 575.2", "{{controlY}} 143.3"], ["{{controlX}} 576.7", "{{controlY}} 143.2"], ["{{controlX}} 578.2", "{{controlY}} 143.1"], ["{{controlX}} 579.7", "{{controlY}} 143.1"], ["{{controlX}} 581.2", "{{controlY}} 143.0"], ["{{controlX}} 582.7", "{{controlY}} 143.0"], ["{{controlX}} 584.2", "{{controlY}} 143.0"], ["{{controlX}} 585.7", "{{controlY}} 143.0"], ["{{controlX}} 587.2", "{{controlY}} 143.0"], ["{{controlX}} 588.7", "{{controlY}} 143.0"], ["{{controlX}} 590.2", "{{controlY}} 143.1"], ["{{controlX}} 591.7", "{{controlY}} 143.1"], ["{{controlX}} 593.2", "{{controlY}} 143.2"], ["{{controlX}} 594.7", "{{controlY}} 143.3"], ["{{controlX}} 596.2", "{{controlY}} 143.4"], ["{{controlX}} 597.7", "{{controlY}} 143.5"], ["{{controlX}} 599.2", "{{controlY}} 143.6"], ["{{controlX}} 600.7", "{{controlY}} 143.7"], ["{{controlX}} 602.2", "{{controlY}} 143.8"], ["{{controlX}} 603.7", "{{controlY}} 144.0"], ["{{controlX}} 605.2", "{{controlY}} 144.1"], ["{{controlX}} 606.8", "{{controlY}} 144.3"], ["{{controlX}} 608.3", "{{controlY}} 144.5"], ["{{controlX}} 609.8", "{{controlY}} 144.7"], ["{{controlX}} 611.3", "{{controlY}} 144.9"], ["{{controlX}} 612.8", "{{controlY}} 145.1"], ["{{controlX}} 614.3", "{{controlY}} 145.3"], ["{{controlX}} 615.8", "{{controlY}} 145.6"], ["{{controlX}} 617.3", "{{controlY}} 145.8"], ["{{controlX}} 618.8", "{{controlY}} 146.1"], ["{{controlX}} 620.3", "{{controlY}} 146.3"], ["{{controlX}} 621.8", "{{controlY}} 146.6"], ["{{controlX}} 623.3", "{{controlY}} 146.9"], ["{{controlX}} 624.8", "{{controlY}} 147.2"], ["{{controlX}} 626.3", "{{controlY}} 147.5"], ["{{controlX}} 627.8", "{{controlY}} 147.8"], ["{{controlX}} 629.3", "{{controlY}} 148.1"], ["{{controlX}} 630.8", "{{controlY}} 148.5"], ["{{controlX}} 632.3", "{{controlY}} 148.8"], ["{{controlX}} 633.8", "{{controlY}} 149.2"], ["{{controlX}} 635.3", "{{controlY}} 149.5"], ["{{controlX}} 636.8", "{{controlY}} 149.9"], ["{{controlX}} 638.3", "{{controlY}} 150.2"], ["{{controlX}} 639.8", "{{controlY}} 150.6"], ["{{controlX}} 641.3", "{{controlY}} 151.0"], ["{{controlX}} 642.8", "{{controlY}} 151.4"], ["{{controlX}} 644.3", "{{controlY}} 151.8"], ["{{controlX}} 645.8", "{{controlY}} 152.2"], ["{{controlX}} 647.3", "{{controlY}} 152.6"], ["{{controlX}} 648.9", "{{controlY}} 153.0"], ["{{controlX}} 650.4", "{{controlY}} 153.4"], ["{{controlX}} 651.9", "{{controlY}} 153.8"], ["{{controlX}} 653.4", "{{controlY}} 154.3"], ["{{controlX}} 654.9", "{{controlY}} 154.7"], ["{{controlX}} 656.4", "{{controlY}} 155.1"], ["{{controlX}} 657.9", "{{controlY}} 155.6"], ["{{controlX}} 659.4", "{{controlY}} 156.0"], ["{{controlX}} 660.9", "{{controlY}} 156.4"], ["{{controlX}} 662.4", "{{controlY}} 156.9"], ["{{controlX}} 663.9", "{{controlY}} 157.3"], ["{{controlX}} 665.4", "{{controlY}} 157.8"], ["{{controlX}} 666.9", "{{controlY}} 158.2"], ["{{controlX}} 668.4", "{{controlY}} 158.6"], ["{{controlX}} 669.9", "{{controlY}} 159.1"], ["{{controlX}} 671.4", "{{controlY}} 159.5"], ["{{controlX}} 672.9", "{{controlY}} 160.0"], ["{{controlX}} 674.4", "{{controlY}} 160.4"], ["{{controlX}} 675.9", "{{controlY}} 160.9"], ["{{controlX}} 677.4", "{{controlY}} 161.3"], ["{{controlX}} 678.9", "{{controlY}} 161.7"], ["{{controlX}} 680.4", "{{controlY}} 162.2"], ["{{controlX}} 681.9", "{{controlY}} 162.6"], ["{{controlX}} 683.4", "{{controlY}} 163.1"], ["{{controlX}} 684.9", "{{controlY}} 163.5"], ["{{controlX}} 686.4", "{{controlY}} 163.9"], ["{{controlX}} 687.9", "{{controlY}} 164.3"], ["{{controlX}} 689.4", "{{controlY}} 164.8"], ["{{controlX}} 691.0", "{{controlY}} 165.2"], ["{{controlX}} 692.5", "{{controlY}} 165.6"], ["{{controlX}} 694.0", "{{controlY}} 166.0"], ["{{controlX}} 695.5", "{{controlY}} 166.4"], ["{{controlX}} 697.0", "{{controlY}} 166.8"], ["{{controlX}} 698.5", "{{controlY}} 167.2"], ["{{controlX}} 700.0", "{{controlY}} 167.5"], ["{{controlX}} 701.5", "{{controlY}} 167.9"], ["{{controlX}} 703.0", "{{controlY}} 168.3"], ["{{controlX}} 704.5", "{{controlY}} 168.6"], ["{{controlX}} 706.0", "{{controlY}} 169.0"], ["{{controlX}} 707.5", "{{controlY}} 169.3"], ["{{controlX}} 709.0", "{{controlY}} 169.7"], ["{{controlX}} 710.5", "{{controlY}} 170.0"], ["{{controlX}} 712.0", "{{controlY}} 170.3"]], "stroke": 2.5, "colour": "@mod", "depth": 6, "when": {"input": "rate", "eq": "1/1"}},
@@ -1698,18 +1748,161 @@
 {"shape": "rounded", "x": "{{controlX}} 571", "y": "{{controlY}} 226", "w": 144, "h": 158, "radius": 10, "stroke": 1, "colour": "@border", "alpha": 0.5, "depth": 8, "when": {"state": "menu", "in": ["rates"]}},
 {"shape": "text", "text": "{{item.label}}", "x": "{{controlX}} 589", "y": "{{controlY}} 236.0", "size": 15, "colour": "@ink", "anchor": 0, "weight": 400, "depth": 9, "when": {"state": "menu", "in": ["rates"]}, "each": {"in": "rates", "dy": 30}},
 {"shape": "text", "text": "✓", "x": "{{controlX}} 695", "y": "{{controlY}} 236.0", "size": 15, "colour": "@accent", "anchor": 2, "weight": 400, "depth": 9, "each": {"in": "rates", "dy": 30}, "when": {"all": [{"state": "menu", "in": ["rates"]}, {"input": "rate", "eq": "{{item.key}}"}]}},
-{"shape": "rounded", "x": "{{sourceX}} 128", "y": "{{sourceY}} 510", "w": 170, "h": 128, "radius": 10, "colour": "@panel", "depth": 8, "when": {"state": "menu", "in": ["waves"]}},
-{"shape": "rounded", "x": "{{sourceX}} 128", "y": "{{sourceY}} 510", "w": 170, "h": 128, "radius": 10, "stroke": 1, "colour": "@border", "alpha": 0.5, "depth": 8, "when": {"state": "menu", "in": ["waves"]}},
-{"shape": "text", "text": "{{item.label}}", "x": "{{sourceX}} 146", "y": "{{sourceY}} 520.0", "size": 15, "colour": "@ink", "anchor": 0, "weight": 400, "depth": 9, "when": {"state": "menu", "in": ["waves"]}, "each": {"in": "waves", "dy": 30}},
-{"shape": "text", "text": "✓", "x": "{{sourceX}} 278", "y": "{{sourceY}} 520.0", "size": 15, "colour": "@accent", "anchor": 2, "weight": 400, "depth": 9, "each": {"in": "waves", "dy": 30}, "when": {"all": [{"state": "menu", "in": ["waves"]}, {"input": "wave", "eq": "{{item.key}}"}]}}
+{"shape": "rounded", "x": "{{sourceX}} 128", "y": "{{sourceY}} 516", "w": 170, "h": 128, "radius": 10, "colour": "@panel", "depth": 8, "when": {"state": "menu", "in": ["waves"]}},
+{"shape": "rounded", "x": "{{sourceX}} 128", "y": "{{sourceY}} 516", "w": 170, "h": 128, "radius": 10, "stroke": 1, "colour": "@border", "alpha": 0.5, "depth": 8, "when": {"state": "menu", "in": ["waves"]}},
+{"shape": "text", "text": "{{item.label}}", "x": "{{sourceX}} 146", "y": "{{sourceY}} 526.0", "size": 15, "colour": "@ink", "anchor": 0, "weight": 400, "depth": 9, "when": {"state": "menu", "in": ["waves"]}, "each": {"in": "waves", "dy": 30}},
+{"shape": "text", "text": "✓", "x": "{{sourceX}} 278", "y": "{{sourceY}} 526.0", "size": 15, "colour": "@accent", "anchor": 2, "weight": 400, "depth": 9, "each": {"in": "waves", "dy": 30}, "when": {"all": [{"state": "menu", "in": ["waves"]}, {"input": "wave", "eq": "{{item.key}}"}]}},
+{"shape": "rounded", "x": 0, "y": 828, "w": 1536, "h": 180, "radius": 0, "colour": "@panel", "depth": 1, "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 0, "y": 828, "w": 1536, "h": 1, "radius": 0, "colour": "@line", "depth": 1, "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 32, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 32, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "C3"}]}},
+{"shape": "rounded", "x": 29, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "C3"}]}},
+{"shape": "rounded", "x": 32, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 96, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 96, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "D3"}]}},
+{"shape": "rounded", "x": 93, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "D3"}]}},
+{"shape": "rounded", "x": 96, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 160, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 160, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "E3"}]}},
+{"shape": "rounded", "x": 157, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "E3"}]}},
+{"shape": "rounded", "x": 160, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 224, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 224, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "F3"}]}},
+{"shape": "rounded", "x": 221, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "F3"}]}},
+{"shape": "rounded", "x": 224, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 288, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 288, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "G3"}]}},
+{"shape": "rounded", "x": 285, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "G3"}]}},
+{"shape": "rounded", "x": 288, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 352, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 352, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "A3"}]}},
+{"shape": "rounded", "x": 349, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "A3"}]}},
+{"shape": "rounded", "x": 352, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 416, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 416, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "B3"}]}},
+{"shape": "rounded", "x": 413, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "B3"}]}},
+{"shape": "rounded", "x": 416, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 480, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 480, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "C4"}]}},
+{"shape": "rounded", "x": 477, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "C4"}]}},
+{"shape": "rounded", "x": 480, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 544, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 544, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "D4"}]}},
+{"shape": "rounded", "x": 541, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "D4"}]}},
+{"shape": "rounded", "x": 544, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 608, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 608, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "E4"}]}},
+{"shape": "rounded", "x": 605, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "E4"}]}},
+{"shape": "rounded", "x": 608, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 672, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 672, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "F4"}]}},
+{"shape": "rounded", "x": 669, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "F4"}]}},
+{"shape": "rounded", "x": 672, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 736, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 736, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "G4"}]}},
+{"shape": "rounded", "x": 733, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "G4"}]}},
+{"shape": "rounded", "x": 736, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 800, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 800, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "A4"}]}},
+{"shape": "rounded", "x": 797, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "A4"}]}},
+{"shape": "rounded", "x": 800, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 864, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@keyWhite", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 864, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "B4"}]}},
+{"shape": "rounded", "x": 861, "y": 863, "w": 66, "h": 130, "radius": 9, "depth": 5, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "B4"}]}},
+{"shape": "rounded", "x": 864, "y": 866, "w": 60, "h": 124, "radius": 6, "depth": 5, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "C3", "x": 62.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "D3", "x": 126.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "E3", "x": 190.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "F3", "x": 254.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "G3", "x": 318.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "A3", "x": 382.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "B3", "x": 446.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "C4", "x": 510.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "D4", "x": 574.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "E4", "x": 638.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "F4", "x": 702.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "G4", "x": 766.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "A4", "x": 830.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "B4", "x": 894.0, "y": 968, "size": 12, "colour": "@keyInk", "anchor": 1, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 75.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 75.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "C#3"}]}},
+{"shape": "rounded", "x": 72.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "C#3"}]}},
+{"shape": "rounded", "x": 75.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 139.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 139.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "D#3"}]}},
+{"shape": "rounded", "x": 136.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "D#3"}]}},
+{"shape": "rounded", "x": 139.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 267.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 267.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "F#3"}]}},
+{"shape": "rounded", "x": 264.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "F#3"}]}},
+{"shape": "rounded", "x": 267.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 331.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 331.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "G#3"}]}},
+{"shape": "rounded", "x": 328.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "G#3"}]}},
+{"shape": "rounded", "x": 331.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 395.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 395.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "A#3"}]}},
+{"shape": "rounded", "x": 392.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "A#3"}]}},
+{"shape": "rounded", "x": 395.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 523.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 523.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "C#4"}]}},
+{"shape": "rounded", "x": 520.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "C#4"}]}},
+{"shape": "rounded", "x": 523.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 587.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 587.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "D#4"}]}},
+{"shape": "rounded", "x": 584.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "D#4"}]}},
+{"shape": "rounded", "x": 587.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 715.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 715.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "F#4"}]}},
+{"shape": "rounded", "x": 712.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "F#4"}]}},
+{"shape": "rounded", "x": 715.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 779.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 779.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "G#4"}]}},
+{"shape": "rounded", "x": 776.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "G#4"}]}},
+{"shape": "rounded", "x": 779.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 843.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@keyBlack", "when": {"input": "keys", "eq": 1}},
+{"shape": "rounded", "x": 843.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "colour": "@accent", "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "A#4"}]}},
+{"shape": "rounded", "x": 840.0, "y": 863, "w": 44.0, "h": 84, "radius": 9, "depth": 7, "stroke": 4, "colour": "@accent", "alpha": 0.35, "when": {"all": [{"input": "keys", "eq": 1}, {"input": "note", "eq": "A#4"}]}},
+{"shape": "rounded", "x": 843.0, "y": 866, "w": 38.0, "h": 78, "radius": 6, "depth": 7, "stroke": 1, "colour": "@border", "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "KEYBOARD", "x": 32, "y": 840, "size": 12, "colour": "@muted", "anchor": 0, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "NOW PLAYING", "x": 980, "y": 872, "size": 12, "colour": "@muted", "anchor": 0, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "{{note}}", "x": 980, "y": 892, "size": 44, "colour": "@ink", "anchor": 0, "weight": 700, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "{{hertz|fixed:1:1:0}} Hz", "x": 980, "y": 950, "size": 18, "colour": "@accent", "anchor": 0, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "Click a key to play the patch.", "x": 1180, "y": 880, "size": 17, "colour": "@ink", "anchor": 0, "weight": 600, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "Switches, sliders and menus", "x": 1180, "y": 912, "size": 14, "colour": "@muted", "anchor": 0, "weight": 400, "depth": 6, "when": {"input": "keys", "eq": 1}},
+{"shape": "text", "text": "shape the sound; only keys play it.", "x": 1180, "y": 934, "size": 14, "colour": "@muted", "anchor": 0, "weight": 400, "depth": 6, "when": {"input": "keys", "eq": 1}}
 ],
     "listeners": [
+{"x": 75.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play C#3", "on": {"set": "note", "value": "C#3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 139.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play D#3", "on": {"set": "note", "value": "D#3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 267.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play F#3", "on": {"set": "note", "value": "F#3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 331.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play G#3", "on": {"set": "note", "value": "G#3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 395.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play A#3", "on": {"set": "note", "value": "A#3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 523.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play C#4", "on": {"set": "note", "value": "C#4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 587.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play D#4", "on": {"set": "note", "value": "D#4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 715.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play F#4", "on": {"set": "note", "value": "F#4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 779.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play G#4", "on": {"set": "note", "value": "G#4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 843.0, "y": 866, "w": 38.0, "h": 78, "role": "button", "label": "Play A#4", "on": {"set": "note", "value": "A#4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 32, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play C3", "on": {"set": "note", "value": "C3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 96, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play D3", "on": {"set": "note", "value": "D3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 160, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play E3", "on": {"set": "note", "value": "E3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 224, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play F3", "on": {"set": "note", "value": "F3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 288, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play G3", "on": {"set": "note", "value": "G3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 352, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play A3", "on": {"set": "note", "value": "A3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 416, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play B3", "on": {"set": "note", "value": "B3", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 480, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play C4", "on": {"set": "note", "value": "C4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 544, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play D4", "on": {"set": "note", "value": "D4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 608, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play E4", "on": {"set": "note", "value": "E4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 672, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play F4", "on": {"set": "note", "value": "F4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 736, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play G4", "on": {"set": "note", "value": "G4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 800, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play A4", "on": {"set": "note", "value": "A4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
+{"x": 864, "y": 866, "w": 60, "h": 124, "role": "button", "label": "Play B4", "on": {"set": "note", "value": "B4", "fire": "strike"}, "when": {"input": "keys", "eq": 1}},
 {"x": 115, "y": 66, "w": 210, "h": 40, "role": "menuitem", "label": "{{item.label}}", "on": {"set": "skin", "value": "{{item.key}}", "fire": "chooseSkin"}, "when": {"state": "menu", "in": ["skins"]}, "each": {"in": "skins", "dy": 40}},
 {"x": "{{controlX}} 571", "y": "{{controlY}} 230", "w": 144, "h": 30, "role": "menuitem", "label": "{{item.label}}", "on": {"set": "rate", "value": "{{item.key}}", "fire": "chooseRate"}, "when": {"state": "menu", "in": ["rates"]}, "each": {"in": "rates", "dy": 30}},
-{"x": "{{sourceX}} 128", "y": "{{sourceY}} 514", "w": 170, "h": 30, "role": "menuitem", "label": "{{item.label}}", "on": {"set": "wave", "value": "{{item.key}}", "fire": "chooseWave"}, "when": {"state": "menu", "in": ["waves"]}, "each": {"in": "waves", "dy": 30}},
+{"x": "{{sourceX}} 128", "y": "{{sourceY}} 520", "w": 170, "h": 30, "role": "menuitem", "label": "{{item.label}}", "on": {"set": "wave", "value": "{{item.key}}", "fire": "chooseWave"}, "when": {"state": "menu", "in": ["waves"]}, "each": {"in": "waves", "dy": 30}},
 {"x": 115, "y": 8, "w": 150, "h": 50, "role": "popup", "label": "Skin: Prism", "on": {"fire": "toggleSkins"}},
 {"x": "{{controlX}} 571", "y": "{{controlY}} 194", "w": 144, "h": 28, "role": "popup", "label": "LFO Rate: {{rate}}", "on": {"fire": "toggleRates"}},
-{"x": "{{sourceX}} 128", "y": "{{sourceY}} 478", "w": 170, "h": 28, "role": "popup", "label": "Oscillator Wave: {{wave}}", "on": {"fire": "toggleWaves"}},
+{"x": "{{sourceX}} 128", "y": "{{sourceY}} 484", "w": 170, "h": 28, "role": "popup", "label": "Oscillator Wave: {{wave}}", "on": {"fire": "toggleWaves"}},
 {"x": 0, "y": 0, "w": 1536, "h": 828, "role": "none", "label": "", "on": {"fire": "dismiss"}, "when": {"not": {"state": "menu", "in": ["closed"]}}},
 {"x": 1108, "y": 15, "w": 40, "h": 37, "role": "button", "label": "Undo", "on": {"fire": "undo"}, "when": {"input": "canUndo", "eq": true}},
 {"x": 1160, "y": 15, "w": 40, "h": 37, "role": "button", "label": "Redo", "on": {"fire": "redo"}, "when": {"input": "canRedo", "eq": true}},

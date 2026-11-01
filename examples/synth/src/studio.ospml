@@ -1,28 +1,38 @@
 // The Prism synth's application ([UI-MACHINE-FLOW-SYNTH]): the signal-flow
-// editor from @osprey/signal_flow in its Prism skin, which plays the patch
-// again whenever an edit changes how it sounds.
+// editor from @osprey/signal_flow in its Prism skin with the keyboard deck
+// shown. Only a struck key plays; the controls shape the sound silently.
 namespace synth
 
 import ui::Runtime
+import ui::Machines
+import ui::Values
 import synth::Synth
 
-(** The editor's callbacks with a voice added. *)
+(** The editor's callbacks with a keyboard and a voice added. *)
 module Studio
-    patchOf store = Synth::patch (machineOf store)
-
-    sounded step = Runtime::asking (step.stepStore, listConcat step.requests (Synth::played (patchOf step.stepStore)))
-
     machineOf store = store.screen.screenMachine
 
-    // A step that changed the patch, or let go of a slider, plays it; a held pointer, selection, menus, skins and moved nodes stay quiet.
-    voiced (before, step) =
-        changed = Synth::describe (patchOf before) != Synth::describe (patchOf step.stepStore) || ui::Canvases::sliding (machineOf before)
-        match changed && !ui::Canvases::holding (machineOf step.stepStore)
-            true => sounded step
-            false => step
+    // The step with its machine replaced.
+    remade (step, machine) =
+        store = step.stepStore
+        step(stepStore = store(screen = signalflow::Screen(screenMachine = machine)))
 
-    (** Opens the editor in the Prism skin, unless `--skin` names another, and plays the first patch. *)
-    export initial context = sounded (signalflow::App::opened (context, "prism"))
+    struck machine = ui::Lists::any (Machines::requests machine, \ask => ask.askName == "synth.strike")
 
-    (** The editor's update, then the patch played when it changed. *)
-    export update (context, store, message) = voiced (store, signalflow::App::update (context, store, message))
+    // The struck key's request taken, its pitch shown, and the patch played at it.
+    sounded step =
+        patch = Synth::patch (machineOf step.stepStore)
+        heard = remade (step, Machines::feed (Machines::taken (machineOf step.stepStore), [Machines::fact ("hertz", Values::number patch.pitch)]))
+        Runtime::asking (heard.stepStore, listConcat heard.requests (Synth::played patch))
+
+    voiced step = match struck (machineOf step.stepStore)
+        true => sounded step
+        false => step
+
+    (** Opens the editor in the Prism skin, unless `--skin` names another, with the keyboard deck shown and nothing played. *)
+    export initial context =
+        step = signalflow::App::opened (context, "prism")
+        remade (step, Machines::feed (machineOf step.stepStore, [Machines::fact ("keys", Values::number 1.0)]))
+
+    (** The editor's update; a struck key plays the patch at its pitch. *)
+    export update (context, store, message) = voiced (signalflow::App::update (context, store, message))

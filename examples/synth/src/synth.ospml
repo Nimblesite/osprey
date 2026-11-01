@@ -7,8 +7,9 @@ namespace synth
 import ui::Machines
 import ui::Requests
 
-(** What the graph asks the speakers for: whether the oscillator, filter and master are on, the oscillator's wave, the filter's cutoff in hertz, the LFO's sweep depth from 0 to 1 and rate in hertz, and the master level from 0 to 1. *)
+(** What the graph asks the speakers for: the struck key's pitch in hertz, whether the oscillator, filter and master are on, the oscillator's wave, the filter's cutoff in hertz, the LFO's sweep depth from 0 to 1 and rate in hertz, and the master level from 0 to 1. *)
 type Patch =
+    pitch : float
     sounding : bool
     filtered : bool
     wave : string
@@ -23,8 +24,18 @@ module Synth
     (** Samples per second. *)
     export rate = 11025
 
-    (** The oscillator's pitch in hertz: A3. *)
-    export pitch = 220.0
+    // Semitones above C of each natural note.
+    naturals = ["C", "D", "E", "F", "G", "A", "B"]
+
+    steps = [0, 2, 4, 5, 7, 9, 11]
+
+    (** A key's pitch in equal temperament from its name, as the keyboard sets `note`: "A3" is 220 Hz, "C#4" is 277.18 Hz. *)
+    export frequency note =
+        sharp = contains note "#"
+        semitone = listGet steps (ui::Lists::position (naturals, \n => n == take note 1)) ?: 9
+        octave = parseFloat (drop note (ui::Pick::either (sharp, 2, 1))) ?: 3.0
+        midi = 12.0 * (octave + 1.0) + toFloat semitone + ui::Pick::either (sharp, 1.0, 0.0)
+        440.0 * pow (2.0, (midi - 69.0) / 12.0)
 
     (** How many octaves the LFO sweeps the cutoff each way at full depth. *)
     export octaves = 2.0
@@ -43,10 +54,10 @@ module Synth
         _ => 2.0
 
     (** The patch the machine's inputs describe: the Prism skin's Filter cutoff sweeps 20 Hz to 20 kHz, as its `expo:1:0.02:20` readout shows. *)
-    export patch machine = Patch(sounding = Machines::flag (machine, "sourceOn"), filtered = Machines::flag (machine, "processOn"), wave = Machines::text (machine, "wave"), cutoff = 20.0 * pow (1000.0, Machines::number (machine, "process")), depth = ui::Pick::either (Machines::flag (machine, "controlOn"), Machines::number (machine, "control"), 0.0), lfo = hertz (Machines::text (machine, "rate")), audible = Machines::flag (machine, "outputOn"), volume = Machines::number (machine, "volume"))
+    export patch machine = Patch(pitch = frequency (Machines::text (machine, "note")), sounding = Machines::flag (machine, "sourceOn"), filtered = Machines::flag (machine, "processOn"), wave = Machines::text (machine, "wave"), cutoff = 20.0 * pow (1000.0, Machines::number (machine, "process")), depth = ui::Pick::either (Machines::flag (machine, "controlOn"), Machines::number (machine, "control"), 0.0), lfo = hertz (Machines::text (machine, "rate")), audible = Machines::flag (machine, "outputOn"), volume = Machines::number (machine, "volume"))
 
     (** A patch written out, so two patches compare by what they sound like. *)
-    export describe p = "${toString p.sounding} ${toString p.filtered} ${p.wave} ${toString p.cutoff} ${toString p.depth} ${toString p.lfo} ${toString p.audible} ${toString p.volume}"
+    export describe p = "${toString p.pitch} ${toString p.sounding} ${toString p.filtered} ${p.wave} ${toString p.cutoff} ${toString p.depth} ${toString p.lfo} ${toString p.audible} ${toString p.volume}"
 
     (** Whether a patch makes no sound at all. *)
     export silent p = p.sounding == false || p.audible == false || p.volume <= 0.0
@@ -54,8 +65,8 @@ module Synth
     // The cutoff at sample `n`, swept by the LFO.
     swept (p, n) = p.cutoff * pow (2.0, p.depth * octaves * sin (tau * p.lfo * toFloat n / toFloat rate))
 
-    // A two-pole Butterworth low-pass's gain at the oscillator's pitch.
-    passed (p, n) = ui::Pick::either (p.filtered, 1.0 / sqrt (1.0 + pow (pitch / swept (p, n), 4.0)), 1.0)
+    // A two-pole Butterworth low-pass's gain at the key's pitch.
+    passed (p, n) = ui::Pick::either (p.filtered, 1.0 / sqrt (1.0 + pow (p.pitch / swept (p, n), 4.0)), 1.0)
 
     (** The wave from -1 to 1 at `turns` cycles, as the Oscillator draws it. *)
     export shaped (wave, turns) =
@@ -67,7 +78,7 @@ module Synth
             _ => sin (tau * t)
 
     (** Sample `n` from -1 to 1. *)
-    export sample (p, n) = ui::Pick::either (silent p, 0.0, p.volume * passed (p, n) * shaped (p.wave, pitch * toFloat n / toFloat rate))
+    export sample (p, n) = ui::Pick::either (silent p, 0.0, p.volume * passed (p, n) * shaped (p.wave, p.pitch * toFloat n / toFloat rate))
 
     (** One second of the patch as unsigned 8-bit samples centred on 128. *)
     export samples p = mapList (toList (range (0, rate)), \n => satAdd 128 (floatToInt (round (sample (p, n) * 100.0)) ?: 0))

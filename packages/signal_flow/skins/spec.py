@@ -142,7 +142,8 @@ PRISM = {
     "tokens": {"canvas": "#100D21", "fill": "#181832", "panel": "#111022", "ink": "#F1F0FF", "muted": "#9C99C8",
                "accent": "#FB8648", "track": "#2E2C51", "knob": "#FFE2DF", "mod": "#BB7BF8", "sig": "#FD8146",
                "mon": "#61ECDD", "modText": "#D9B8FF", "border": "#4A4790", "port": "#1A1530", "line": "#25233F",
-               "switchOff": "#2A2848", "knobOff": "#C1C0E7", "curve": "#F7BE5C", **HEALTH},
+               "switchOff": "#2A2848", "knobOff": "#C1C0E7", "curve": "#F7BE5C", "keyWhite": "#E7E5FB", "keyBlack": "#1D1A38",
+               "keyInk": "#4A4790", **HEALTH},
     "port": {"r": 10, "ring": 3, "core": 0},
     "nodes": [
         node("LFO", "Modulator", (482, 90, 728, 232), (668, 111, 34, 18), (494, 98, 527, 125), [(606, 239, "mod")]),
@@ -154,7 +155,7 @@ PRISM = {
     "sliders": [("process", 538, 650, 490, "accent", "accent"), ("output", 968, 1075, 487, "accent", "accent")],
     "texts": [("{{process|expo:1:0.02:20}} kHz", 699, 491, 14, "ink", 1, 400),
               ("{{volume|fixed:1:24:-24}} dB", 1124, 496, 14, "ink", 1, 400),
-              ("{{rate}}", 582, 208, 14, "ink", 0, 400), ("{{wave}}", 140, 492, 14, "ink", 0, 400),
+              ("{{rate}}", 582, 208, 14, "ink", 0, 400), ("{{wave}}", 140, 498, 14, "ink", 0, 400),
               ("{{delivered|fixed:1:24:-24}}", 1157, 419, 14, "ink", 2, 400), ("{{delivered|fixed:1:24:-24}}", 1157, 447, 14, "ink", 2, 400)],
     "health": [],
     "erase": [(1094, 485, 1156, 507), (628, 281, 671, 303), (530, 479, 657, 501), (668, 481, 731, 501), (1228, 106, 1524, 172),
@@ -172,7 +173,7 @@ PRISM = {
     "params": {"control": ("Depth", "+{{control|percent}}%", ("0%", "100%")),
                "process": ("Cutoff", "{{process|expo:1:0.02:20}} kHz", ("20 Hz", "20 kHz")),
                "output": ("Level", "{{volume|fixed:1:24:-24}} dB", ("-24 dB", "0 dB"), "volume")},
-    "choosers": {"rate": ("LFO Rate", "rates", "Rates", (571, 194, 715, 222)), "wave": ("Oscillator Wave", "waves", "Waves", (128, 478, 298, 506))},
+    "choosers": {"rate": ("LFO Rate", "rates", "Rates", (571, 194, 715, 222)), "wave": ("Oscillator Wave", "waves", "Waves", (128, 484, 298, 512))},
     "traces": {"lfo": (500, 712, 159, 16), "oscillator": (62, 292, 433, 19), "filter": (524, 691, 400, 465), "scope": (502, 716, 692, 24)},
     "meters": {"x": 976, "step": 4.6, "bars": 30, "rows": (419, 447)},
     "links": {
@@ -196,6 +197,8 @@ PRISM = {
     "wires": [(314, 418, 461, 458), (753, 418, 894, 458), (584, 239, 630, 345), (585, 521, 629, 614), (608, 272, 692, 314)],
     "graph": (0, 66, 1209, 789), "grid": (25.43, 25.11),
     "badge": (2, (43, 58, 22), "+{{control|percent}}%"),
+    # The keyboard deck under the graph, shown while an application with a voice sets `keys`.
+    "keys": True,
 }
 
 SKINS = {"topology": TOPOLOGY, "notation": NOTATION, "paper": PAPER, "prism": PRISM}

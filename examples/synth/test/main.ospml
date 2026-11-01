@@ -1,7 +1,7 @@
 // The Prism synth end to end ([UI-MACHINE-FLOW-SYNTH]): its voice is checked
 // directly, then the real editor is driven by pointer events aimed through each
-// control's accessible label, and every host playback request is compared with
-// the patch that produced it.
+// control's accessible label. Every control is silent; every struck key's host
+// playback request is compared with the patch, at the key's pitch, that made it.
 
 import ui::Doc
 import ui::Runtime
@@ -128,14 +128,28 @@ quietPatch before =
     expect (runCount (), 0)
     expect (described (), before)
 
-// A play request whose clip differs from `before`'s.
-replayed (before, expectedPeak) =
+// An edit that changes the patch and plays nothing.
+quietEdit before =
+    expect (runCount (), 0)
+    expect (described () == before, false)
+
+// A key struck: it lights, the readout shows it, and the patch plays at its pitch.
+struck (name, hertz) =
+    tap "Play ${name}"
+    knobText ("note", name)
+    near ((currentPatch ()).pitch, hertz)
+    knobNumber ("hertz", (currentPatch ()).pitch)
+    expect (letters name, true)
+    expect (runCount (), 1)
+    expect (argument 2, currentWav ())
+
+sounds (name, expectedPeak) =
+    struck (name, Synth::frequency name)
     played expectedPeak
-    expect (argument 2 == before, false)
 
 // ---- the voice, without an editor ----
 
-patch (wave, process, depth, lfo, volume) = synth::Patch(sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
+patch (wave, process, depth, lfo, volume) = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
 
 defaultPatch () = patch ("Sine", 0.7, 0.7, 2.0, 0.75)
 
@@ -170,6 +184,13 @@ shapes () =
     near (Synth::hertz "1/4", 2.0)
     near (Synth::hertz "1/8", 4.0)
     near (Synth::hertz "1/16", 8.0)
+    near (Synth::frequency "A3", 220.0)
+    near (Synth::frequency "A4", 440.0)
+    near (Synth::frequency "C3", 130.8128)
+    near (Synth::frequency "C4", 261.6256)
+    near (Synth::frequency "C#4", 277.1826)
+    near (Synth::frequency "F#3", 184.9972)
+    near (Synth::frequency "B4", 493.8833)
 
 voiceCases () =
     voiceCase (defaultPatch (), 75)
@@ -194,6 +215,8 @@ descriptionsDiffer () =
     expect (Synth::describe (patch ("Sine", 0.7, 0.7, 8.0, 0.75)) == base, false)
     expect (Synth::describe (patch ("Sine", 0.7, 0.7, 2.0, 0.5)) == base, false)
     expect (Synth::describe (d(filtered = false)) == base, false)
+    expect (Synth::describe (d(pitch = 440.0)) == base, false)
+    expect (Synth::wav (Synth::samples (d(pitch = 440.0))) == Synth::wav (Synth::samples d), false)
     expect (Synth::wav (Synth::samples (patch ("Square", 0.1, 0.7, 2.0, 0.75))) == Synth::wav (Synth::samples (patch ("Saw", 0.1, 0.7, 2.0, 0.75))), false)
     expect (Synth::wav (Synth::samples (patch ("Sine", 0.1, 0.7, 0.5, 0.75))) == Synth::wav (Synth::samples (patch ("Sine", 0.1, 0.7, 8.0, 0.75))), false)
 
@@ -213,104 +236,169 @@ launchAndCutoff () =
     knobText ("wave", "Sine")
     knobText ("rate", "1/4")
     knobNumber ("volume", 0.75)
-    played 75
+    knobNumber ("keys", 1.0)
+    knobText ("note", "A3")
+    expect (runCount (), 0)
+    expect (letters "Click a key to play the patch.", true)
+    expect (letters "220.0 Hz", true)
+    offered "Play C3"
+    offered "Play C#3"
+    offered "Play B4"
+    sounds ("A3", 75)
+    expect (letters "220.0 Hz", true)
+    before = described ()
     tapAt ("Filter Cutoff", 0.1)
     knobNumber ("process", 0.1)
-    played 17
+    quietEdit before
     expect (letters "0.0 kHz", true)
+    sounds ("A3", 17)
 
 filterHistory () =
     tap "Bypass LFO"
     flag ("controlOn", false)
-    played 2
+    expect (runCount (), 0)
+    sounds ("A3", 2)
     tap "Bypass Filter"
     flag ("processOn", false)
-    played 75
+    expect (runCount (), 0)
+    sounds ("A3", 75)
     tap "Undo"
     flag ("processOn", true)
-    played 2
+    expect (runCount (), 0)
+    sounds ("A3", 2)
     tap "Undo"
     flag ("controlOn", true)
-    played 17
+    expect (runCount (), 0)
+    sounds ("A3", 17)
+    knobText ("note", "A3")
+
+// Every key of both octaves plays at its own pitch, the same key twice plays twice, and the readout follows.
+keyboard () =
+    tap "Bypass Filter"
+    tap "Bypass LFO"
+    sounds ("A3", 75)
+    sounds ("A3", 75)
+    a3 = argument 2
+    sounds ("A4", 75)
+    expect (argument 2 == a3, false)
+    expect (letters "440.0 Hz", true)
+    struck ("C3", 130.8128)
+    struck ("C#3", 138.5913)
+    struck ("F#3", 184.9972)
+    struck ("C4", 261.6256)
+    expect (letters "261.6 Hz", true)
+    struck ("D#4", 311.127)
+    struck ("B4", 493.8833)
+    expect (letters "493.9 Hz", true)
+    sounds ("A3", 75)
+    expect (argument 2, a3)
+    tap "Undo"
+    knobText ("note", "A3")
+    flag ("controlOn", true)
+    expect (runCount (), 0)
 
 // Each wave from the Oscillator's chooser plays its own clip at the filtered peak.
 waves () =
+    sounds ("A3", 17)
+    sine = argument 2
     tap "Oscillator Wave: Sine"
     layer ("menu", "waves")
     expect (runCount (), 0)
-    before = argument 2
     tap "Square"
     knobText ("wave", "Square")
-    played 17
+    expect (runCount (), 0)
+    sounds ("A3", 17)
     square = argument 2
+    expect (square == sine, false)
     tap "Oscillator Wave: Square"
     tap "Saw"
     knobText ("wave", "Saw")
-    replayed (square, 17)
+    expect (runCount (), 0)
+    sounds ("A3", 17)
+    expect (argument 2 == square, false)
     tap "Oscillator Wave: Saw"
     tap "Triangle"
     knobText ("wave", "Triangle")
-    played 17
+    expect (runCount (), 0)
     tap "Undo"
     knobText ("wave", "Saw")
-    played 17
+    expect (runCount (), 0)
+    sounds ("A3", 17)
     expect (letters "Saw", true)
 
 // Each LFO rate sweeps the cutoff at its own speed, so the clip changes.
 rates () =
+    sounds ("A3", 17)
+    clip = argument 2
     tap "LFO Rate: 1/4"
     layer ("menu", "rates")
-    clip = argument 2
     tap "1/16"
     knobText ("rate", "1/16")
     near ((currentPatch ()).lfo, 8.0)
-    played 17
+    expect (runCount (), 0)
+    sounds ("A3", 17)
     fast = argument 2
+    expect (fast == clip, false)
     tap "LFO Rate: 1/16"
     tap "1/1"
     near ((currentPatch ()).lfo, 0.5)
-    replayed (fast, 17)
+    expect (runCount (), 0)
+    sounds ("A3", 17)
+    expect (argument 2 == fast, false)
     tap "Undo"
     knobText ("rate", "1/16")
-    played 17
+    expect (runCount (), 0)
+    sounds ("A3", 17)
     expect (argument 2, fast)
 
 // The Master Level slider scales the clip; the inspector's slider is the same control.
 levels () =
     tapAt ("Filter Cutoff", 0.7)
-    played 75
+    expect (runCount (), 0)
+    sounds ("A3", 75)
     tapAt ("Master Level", 1.0)
     knobNumber ("volume", 1.0)
-    played 100
+    expect (runCount (), 0)
+    sounds ("A3", 100)
     expect (letters "0.0 dB", true)
     tap "Select Master"
     expect (runCount (), 0)
     tapAt ("Inspector: Level", 0.5)
     knobNumber ("volume", 0.5)
-    played 50
+    expect (runCount (), 0)
+    sounds ("A3", 50)
     expect (letters "-12.0 dB", true)
     before = described ()
     tapAt ("Master Level", 0.0)
     knobNumber ("volume", 0.0)
+    quietEdit before
+    tap "Play A3"
     expect (runCount (), 0)
-    expect (described () == before, false)
+    knobText ("note", "A3")
     tap "Undo"
     knobNumber ("volume", 0.5)
-    played 50
+    expect (runCount (), 0)
+    sounds ("A3", 50)
 
 muteHistory () =
     before = described ()
     tap "Bypass Oscillator"
     muted (before, "sourceOn")
+    tap "Play C4"
+    expect (runCount (), 0)
     tap "Enable Oscillator"
     flag ("sourceOn", true)
-    played 50
+    expect (runCount (), 0)
+    sounds ("A3", 50)
     tap "Bypass Master"
     expect (runCount (), 0)
     flag ("outputOn", false)
+    tap "Play A3"
+    expect (runCount (), 0)
     tap "Undo"
     flag ("outputOn", true)
-    played 50
+    expect (runCount (), 0)
+    sounds ("A3", 50)
 
 muted (before, name) =
     expect (runCount (), 0)
@@ -371,8 +459,8 @@ quietDrag before =
     quietPatch before
     knobNumber ("sourceY", 30.0)
 
-// A slider dragged across is silent while held, then plays its final level once on release.
-slidOnce () =
+// A slider dragged across and let go is silent throughout; the next key plays its final level.
+slidQuietly () =
     low = Semantics::point (element "Master Level", 0.2)
     high = Semantics::point (element "Master Level", 0.6)
     pointer (low.pointX, low.pointY, true)
@@ -381,9 +469,23 @@ slidOnce () =
     expect (runCount (), 0)
     knobNumber ("volume", 0.6)
     pointer (high.pointX, high.pointY, false)
-    expect (runCount (), 1)
-    expect (argument 2, currentWav ())
+    expect (runCount (), 0)
     knobNumber ("volume", 0.6)
+    sounds ("A3", 60)
+
+// A key is struck on release: pressing it, or hovering over it, plays nothing.
+keyPress () =
+    at = Semantics::point (element "Play E3", 0.5)
+    pointer (at.pointX, at.pointY, false)
+    expect (runCount (), 0)
+    pointer (at.pointX, at.pointY, true)
+    expect (runCount (), 0)
+    knobText ("note", "A3")
+    pointer (at.pointX, at.pointY, false)
+    expect (runCount (), 1)
+    knobText ("note", "E3")
+    pointer (at.pointX, at.pointY, false)
+    expect (runCount (), 0)
 
 test ("the voice renders each wave, rate and level, exact silence and a PCM WAV header", \() => Runtime::guarded (\() =>
     shapes ()
@@ -396,12 +498,13 @@ windowBackground () = match ui::Themes::named (App::theme "prism", "background")
     Success token => expect (token.tokenDark, "#100D21")
     Error _ => expect ("no background token", "#100D21")
 
-test ("launch, cutoff, bypasses and undo play exactly the current patch", \() => bench (\() =>
+test ("launch is silent; bypasses and undo are silent; each key plays exactly the current patch at its pitch", \() => bench (\() =>
     windowBackground ()
     launchAndCutoff ()
-    filterHistory ()))
+    filterHistory ()
+    keyboard ()))
 
-test ("every wave, LFO rate and master level plays its own clip and undoes", \() => bench (\() =>
+test ("every wave, LFO rate and master level is silent, then a key plays its own clip, and undoes", \() => bench (\() =>
     begun ()
     tapAt ("Filter Cutoff", 0.1)
     waves ()
@@ -409,11 +512,12 @@ test ("every wave, LFO rate and master level plays its own clip and undoes", \()
     levels ()
     muteHistory ()))
 
-test ("menus, skin changes, node selections and drags stay quiet; a slider drag plays once", \() => bench (\() =>
+test ("menus, skin changes, node selections, node and slider drags stay quiet; a key plays on release", \() => bench (\() =>
     begun ()
-    played 75
+    expect (runCount (), 0)
     before = described ()
     quietMenu before
     quietSelections before
     quietDrag before
-    slidOnce ()))
+    slidQuietly ()
+    keyPress ()))

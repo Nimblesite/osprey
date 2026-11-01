@@ -90,14 +90,19 @@ module Flow
         "flow.redo" => redone store
         _ => store
 
-    draining (store, left) = match length (Machines::requests (machineOf store)) == 0 || left <= 0
-        true => store
-        false =>
-            pending = Machines::requests (machineOf store)
-            cleared = store(screen = Screen(screenMachine = Machines::taken (machineOf store)))
-            draining (foldList (pending, cleared, answer), satSub left 1)
+    ours ask = startsWith ask.askName "flow."
 
-    (** The store after answering every pending machine request, as a framework step. *)
+    // The editor's own requests answered; any other request stays on the machine for the application built on it.
+    draining (store, left) =
+        pending = Machines::requests (machineOf store)
+        match ui::Lists::any (pending, ours) == false || left <= 0
+            true => store
+            false =>
+                machine = Machines::taken (machineOf store)
+                cleared = store(screen = Screen(screenMachine = machine(asks = filterList (pending, \ask => ours ask == false))))
+                draining (foldList (filterList (pending, ours), cleared, answer), satSub left 1)
+
+    (** The store after answering every pending `flow.` request, as a framework step. *)
     export settled store = Runtime::asking (draining (store, 8), [])
 
     (** A control's lever pulled with its value, then the requests answered. *)
