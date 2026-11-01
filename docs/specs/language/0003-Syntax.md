@@ -239,7 +239,7 @@ let zero = fn() => 0
 The pipe-delimited form requires at least one parameter because `||` is the
 logical-OR token.
 
-### Call-site type arguments [TYPE-GENERICS-APPLY]
+### Call-site type arguments [SYNTAX-TYPE-ARGUMENTS]
 
 A call may carry an explicit type-argument list between the callee and its
 arguments. The list is recognised only when the `<` immediately follows the
