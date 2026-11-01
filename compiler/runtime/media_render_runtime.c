@@ -47,9 +47,12 @@ int64_t osprey_media_unrender(char *folder) {
 #include <sys/wait.h>
 #include <unistd.h>
 
+#if !(defined(__GLIBC__) && defined(_GNU_SOURCE))
 extern char **environ;
+#endif
 
-enum { MR_SEGMENT = 4, MR_PATH = 1024 };
+// MR_FILE holds the folder (under MR_PATH) and a file name inside it.
+enum { MR_SEGMENT = 4, MR_PATH = 1024, MR_FILE = MR_PATH + 32 };
 
 static const char *MR_FILTER =
     "[0:a]showcqt=s=1280x720:fps=30:axis=0:bar_g=2:sono_g=3:count=2,format=yuv420p[v]";
@@ -114,7 +117,7 @@ static double probe_duration(const char *path) {
 
 // The VOD playlist for `seconds` of media in MR_SEGMENT-second segments.
 static bool write_playlist(const char *folder, double seconds) {
-  char path[MR_PATH];
+  char path[MR_FILE];
   snprintf(path, sizeof path, "%s/media.m3u8", folder);
   FILE *file = fopen(path, "w");
   if (!file) {
@@ -136,8 +139,8 @@ static bool write_playlist(const char *folder, double seconds) {
 
 // Starts ffmpeg rendering `audio` into `folder`; its pid, or 0.
 static pid_t start_ffmpeg(const char *audio, const char *folder) {
-  char segments[MR_PATH];
-  char own[MR_PATH];
+  char segments[MR_FILE];
+  char own[MR_FILE];
   snprintf(segments, sizeof segments, "%s/seg%%05d.ts", folder);
   snprintf(own, sizeof own, "%s/ffmpeg.m3u8", folder);
   const char *const args[] = {"ffmpeg", "-nostdin", "-loglevel", "error", "-i", audio,
@@ -156,7 +159,7 @@ static pid_t start_ffmpeg(const char *audio, const char *folder) {
 }
 
 static void write_pid(const char *folder, pid_t pid) {
-  char path[MR_PATH];
+  char path[MR_FILE];
   snprintf(path, sizeof path, "%s/pid", folder);
   FILE *file = fopen(path, "w");
   if (file) {
@@ -188,7 +191,7 @@ char *osprey_media_render(char *audio) {
 }
 
 static void stop_renderer(const char *folder) {
-  char path[MR_PATH];
+  char path[MR_FILE];
   snprintf(path, sizeof path, "%s/pid", folder);
   FILE *file = fopen(path, "r");
   long pid = 0;
