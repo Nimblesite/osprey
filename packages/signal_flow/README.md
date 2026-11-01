@@ -1,4 +1,4 @@
-# @osprey/signal_flow
+# @osprey/signal-flow
 
 A signal-flow graph editor whose whole interface is data ([UI-MACHINE-FLOW](../../docs/specs/platforms/UiMachines.md)). [signal_flow.machine.json](signal_flow.machine.json) holds the inputs, the `commands` and `menu` layers, a native fallback view and four canvas skins. `ui::Machines` and `ui::Templates` in [@osprey/native](../native/README.md) play it on any host. The only code is the adapter, [src/flow.ospml](src/flow.ospml). It evaluates the signal path and keeps the undo history.
 

@@ -1,5 +1,5 @@
 // The Prism synth's application ([UI-MACHINE-FLOW-SYNTH]): the signal-flow
-// editor from @osprey/signal_flow in its Prism skin with the keyboard deck
+// editor from @osprey/signal-flow in its Prism skin with the keyboard deck
 // shown. Only a struck key plays; the controls shape the sound silently.
 namespace synth
 

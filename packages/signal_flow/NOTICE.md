@@ -1,4 +1,4 @@
-# @osprey/signal_flow: licensing and upstream acknowledgement
+# @osprey/signal-flow: licensing and upstream acknowledgement
 
 The Osprey implementation is provided under the normal [MIT license](LICENSE), Copyright (c) 2026 NIMBLESITE PTY LTD, Australia, retaining the earlier Christian Findlay notice. This does not claim ownership of any third-party material identified below.
 

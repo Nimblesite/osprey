@@ -1,6 +1,6 @@
 # Prism synth
 
-A sample application on [@osprey/signal_flow](../../packages/signal_flow/README.md): the signal-flow editor in its Prism skin with a keyboard deck, wired to a real voice ([UI-MACHINE-FLOW-SYNTH](../../docs/specs/platforms/UiMachines.md)). The graph's five nodes are the synth:
+A sample application on [@osprey/signal-flow](../../packages/signal_flow/README.md): the signal-flow editor in its Prism skin with a keyboard deck, wired to a real voice ([UI-MACHINE-FLOW-SYNTH](../../docs/specs/platforms/UiMachines.md)). The graph's five nodes are the synth:
 
 | Node | What it does to the sound |
 | --- | --- |
