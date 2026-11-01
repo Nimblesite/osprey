@@ -349,10 +349,9 @@ _package-checks: build
 _package-coverage-record:
 	python3 scripts/package_coverage.py --record-measurements
 
-VSIX_E2E_GREP := package |direct dependency reports|serialized per-project mutation|command registration|sidebar Manage Packages button|package workspace|compiled SDK renderer E2E|workbench document host wiring$(if $(WORKBENCH_VISUAL),|workbench VSIX browser|workbench VSIX visual comparison,)
 .PHONY: _vsix-e2e
 _vsix-e2e: $(EXT_NODE_DEPS)
-	OSPREY_TEST_GREP='$(VSIX_E2E_GREP)' npm test --prefix $(EXT_DIR)
+	OSPREY_TEST_GREP='package |direct dependency reports|serialized per-project mutation|command registration|sidebar Manage Packages button|package workspace|compiled SDK renderer E2E|workbench document host wiring$(if $(WORKBENCH_VISUAL),|workbench VSIX browser|workbench VSIX visual comparison,)' npm test --prefix $(EXT_DIR)
 
 .PHONY: _hunt-demo
 _hunt-demo:
@@ -467,9 +466,8 @@ _gpui-test: _runtime_macos _runtime
 
 # Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
 # real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
-GPUI_SMOKES := hosts/gpui examples/gpui/flock examples/gpui/painting packages/signal_flow/app examples/synth examples/casting
 _gpui-smoke:
-	for app in $(GPUI_SMOKES); do OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --smoke || exit 1; done
+	for app in hosts/gpui examples/gpui/flock examples/gpui/painting packages/signal_flow/app examples/synth examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --smoke || exit 1; done
 
 _macos-test: _macos _runtime
 	$(MAKE) _test_macos

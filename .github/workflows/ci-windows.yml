@@ -178,4 +178,4 @@ jobs:
       # stay off the command line because make would export them to cargo's MSVC build of tree-sitter.
       - name: UI tests by accessible label
         shell: msys2 {0}
-        run: make ui-test BIN=target/release/osprey.exe
+        run: make _ui-test BIN=target/release/osprey.exe

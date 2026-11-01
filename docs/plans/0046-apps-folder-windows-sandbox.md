@@ -59,7 +59,7 @@ Rules: [AGENTS.md § Apps](../../AGENTS.md#apps). Hosts: WinUI ([spec 0048](../s
    - DLLs that use TLS link static OpenSSL.
    - `apps/windows.json` has the casting entry, and `app.ps1` builds its helper.
 
-   Not yet run on Windows. The `make ui-test` step is in `ci-windows.yml`.
+   Not yet run on Windows. The `make _ui-test` step is in `ci-windows.yml`.
 6. **Counter, Inbox and Workbench on Osprey Native.** Counter, then Inbox (plan 0039 phase 4), then Workbench on the WinUI host.
 7. **Bank and GPT-2 sandboxed.** Both are launched in an AppContainer.
 

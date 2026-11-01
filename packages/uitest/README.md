@@ -23,4 +23,4 @@ tapAt (label, fraction) =
     post (Drive::pointer (driven, p.pointX, p.pointY, false))
 ```
 
-`make ui-test` runs the suites built on it: `packages/uitest/tests`, `examples/casting/test` and `packages/signal_flow/tests`.
+`make _ui-test` runs the suites built on it: `packages/uitest/tests`, `examples/casting/test` and `packages/signal_flow/tests`.
