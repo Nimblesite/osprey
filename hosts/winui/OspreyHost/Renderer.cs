@@ -138,6 +138,16 @@ sealed partial class Renderer
         }
     }
 
+    /// <summary>
+    /// The size, in window units, of a sized scene that is the whole application, as a bare canvas
+    /// such as a skinned player is; null when the root region is anything else.
+    /// </summary>
+    public (double Width, double Height)? CanvasSize() =>
+        regions.Find(RegionStore.Root) is { } root && Envelopes.Text(root.Node, "kind") == "scene"
+            && SceneDecoder.Decode(root.Node, []) is { Width: > 0 } scene
+            ? (scene.Width * scene.Zoom, scene.Height * scene.Zoom)
+            : null;
+
     /// <summary>Acts on the first scene drawn, as its keyboard or pointer would; false when none is.</summary>
     public bool InScene(Action<SceneView> act)
     {
