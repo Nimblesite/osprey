@@ -9,7 +9,7 @@ author: "Christian Findlay"
 readingTime: 7
 image: /assets/images/blog/rust-ui-framework-without-rust.png
 imageWebp: /assets/images/blog/rust-ui-framework-without-rust.webp
-imageAlt: "The casting player in a GPUI window next to the state machine document that draws it"
+imageAlt: "Floating application panels above a copper state-machine sculpture."
 ---
 
 **GPUI** is the UI framework the [Zed](https://zed.dev) code editor is built on. It is written in Rust, it renders everything on the GPU, and it is fast enough to hold an editor at the display's refresh rate. Like most Rust UI frameworks, it expects you to write your interface in Rust.

@@ -9,7 +9,7 @@ author: "Christian Findlay"
 readingTime: 6
 image: /assets/images/blog/chromecast-from-mac.png
 imageWebp: /assets/images/blog/chromecast-from-mac.webp
-imageAlt: "The Osprey casting player beside the steps it takes to cast from a Mac: discover, connect over TLS, launch the receiver, serve the file, load it, and the TV reports PLAYING"
+imageAlt: "A colorful ribbon of music flowing from a laptop to a television."
 ---
 
 A Mac has no Cast button. Chrome can cast a browser tab, and a phone can cast from an app, but neither will take an MP3 from your Mac and play it on the TV with proper controls. So I wrote a small native player that does just that. It runs on macOS, finds every Chromecast and Google TV on your network, and plays a local audio file on whichever one you pick.

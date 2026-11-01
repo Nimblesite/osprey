@@ -9,7 +9,7 @@ author: "Christian Findlay"
 readingTime: 7
 image: /assets/images/blog/accessibility-tree-ui-testing.png
 imageWebp: /assets/images/blog/accessibility-tree-ui-testing.webp
-imageAlt: "The casting player beside its accessibility tree: popup Receiver, button Play, button Open file, slider Position, slider Volume"
+imageAlt: "A luminous glass tree with colorful control-shaped leaves and a golden selection arc."
 ---
 
 There are two ways for software to use an interface it did not write. It can look at pixels: take a screenshot, guess where the Play button is, and click there. That is how computer-use agents operate desktop apps, and how screenshot-based UI tests work. Or it can read the **accessibility tree**: the list of controls a screen reader announces, each with a **role** (button, slider, menu item), a **label** ("Play") and a position. Browser agents built on Playwright work this way, and so do the most reliable web UI tests, because "the button labelled Play" survives a redesign that moves it.

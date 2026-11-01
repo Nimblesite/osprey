@@ -9,7 +9,7 @@ author: "Christian Findlay"
 readingTime: 7
 image: /assets/images/blog/static-typing-python.png
 imageWebp: /assets/images/blog/static-typing-python.webp
-imageAlt: "Python-flavor Osprey source beside the compiler's error: bad.py line 8, type mismatch: cannot unify string with int"
+imageAlt: "Blue and gold ribbons passing through a prism into interlocking geometric blocks."
 ---
 
 **Static typing** means every value's type is checked before the program runs. **Dynamic typing** means types are checked as each line executes. Python is dynamic: pass a number where a function expects text and you find out when that line runs, perhaps in production. Type hints with a checker such as mypy, pyright or ty add a static check on top, but only as far as you write the hints, and the interpreter ignores them at run time.
