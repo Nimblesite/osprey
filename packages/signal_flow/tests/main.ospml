@@ -6,28 +6,17 @@ import ui::Runtime
 import ui::Canvases
 import ui::MachineDocs
 import ui::Machines
-import uitest::Events
-import uitest::Read
+import uitest::Drive
 import uitest::Semantics
-import uitest::Views
 import signalflow::App
 
-(** The decoded view, plus the clock used for host events. *)
-type Sight =
-    sightSeen : uitest::Rendered
-    sightNow : int
-
-(** The bench's only writes: retain the live session and the latest rendered sight. *)
+(** The bench's only write: the driven session. *)
 effect Bench
-    keep : ui::Session<signalflow::Store> => Unit
-    see : Sight => Unit
+    drive : uitest::Driven<signalflow::Store> => Unit
 
-mut sight = Sight(sightSeen = Read::blank (), sightNow = 1)
-mut live = Runtime::idle (signalflow::Flow::store (MachineDocs::faulty ""))
+mut driven = Drive::idle (Runtime::idle (signalflow::Flow::store (MachineDocs::faulty "")))
 
-kept (resident : ui::Resident<signalflow::Store>) =
-    perform Bench.keep resident.residentSession
-    perform Bench.see (sight(sightSeen = Read::envelope (sight.sightSeen, resident.residentEnvelope), sightNow = sight.sightNow + 1))
+kept (resident : ui::Resident<signalflow::Store>) = perform Bench.drive (Drive::moved (driven, resident))
 
 hosted work =
     handle ui::Slices
@@ -38,17 +27,16 @@ hosted work =
 
 bench work =
     handle Bench
-        keep session => live := session
-        see s => sight := s
+        drive d => driven := d
     Runtime::guarded work
 
 begun skin =
-    perform Bench.see (Sight(sightSeen = Read::blank (), sightNow = 1))
+    perform Bench.drive (Drive::idle driven.drivenSession)
     hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"${skin}\"]}", App::initial, App::regions, App::theme ())))
 
-post event = hosted (\() => kept (Runtime::proceed (live, event, App::update, App::regions)))
+post event = hosted (\() => kept (Runtime::proceed (driven.drivenSession, event, App::update, App::regions)))
 
-pointer (x, y, down) = post (Events::pointer (sight.sightSeen.renderedRevision, sight.sightSeen.renderedOrdinal, x, y, down, sight.sightNow))
+pointer (x, y, down) = post (Drive::pointer (driven, x, y, down))
 
 // A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
 tapAt (label, fraction) =
@@ -58,7 +46,7 @@ tapAt (label, fraction) =
 
 tap label = tapAt (label, 0.5)
 
-machine () = live.sessionStore.screen.screenMachine
+machine () = driven.drivenSession.sessionStore.screen.screenMachine
 
 elements () = Canvases::semantics (machine ())
 
@@ -66,17 +54,9 @@ labels () = Semantics::labels (elements ())
 
 element label = Semantics::element (elements (), label)
 
-offers label = match Semantics::offered (elements (), label)
-    true => true
-    false =>
-        print "# not offered: ${label}; the tree offers ${labels ()}"
-        false
+offers label = Drive::offers (elements (), label)
 
-letters text = match Views::letters (sight.sightSeen, text)
-    true => true
-    false =>
-        print "# not lettered: ${text}; the artboard letters ${Views::lettered sight.sightSeen}"
-        false
+letters text = Drive::letters (driven, text)
 
 offered label = expect (offers label, true)
 

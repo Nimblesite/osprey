@@ -7,9 +7,8 @@
 import ui::Doc
 import ui::Runtime
 import ui::Canvases
-import uitest::Events
+import uitest::Drive
 import uitest::Semantics
-import uitest::Read
 import uitest::Views
 import casting::App
 import chromecast::Protocol
@@ -31,25 +30,19 @@ type Fake =
     fakeRender : string
     fakeLoaded : string
 
-(** What the test last saw: the decoded view, the host clock and the browse text the host returns. *)
-type Sight =
-    sightSeen : uitest::Rendered
-    sightNow : int
-    sightBrowse : string
-
-(** Changes the bench: the device, the sight and the kept session; only these arms write the cells. *)
+(** Changes the bench: the device, the driven session and the browse text the host returns; only these arms write the cells. *)
 effect Bench
     rig : Fake => Unit
-    see : Sight => Unit
-    keep : ui::Session<casting::Store> => Unit
+    drive : uitest::Driven<casting::Store> => Unit
+    list : string => Unit
 
 fresh () = Fake(fakeInbox = "", fakeSaid = "", fakeOut = "", fakeRead = 0, fakePosition = 0.0, fakeVolume = 1.0, fakeRate = 1.0, fakePlaying = "IDLE", fakeReason = "", fakeReachable = true, fakeRender = "", fakeLoaded = "")
 
 browse = "Living\\032Room\\032TV._googlecast._tcp SRV 0 0 8009 living-room.local. ;\nLiving\\032Room\\032TV._googlecast._tcp TXT \"id=1\" \"fn=Living Room TV\"\nKitchen._googlecast._tcp SRV 0 0 8009 kitchen.local. ;\nKitchen._googlecast._tcp TXT \"fn=Kitchen\"\n"
 
 mut fake = fresh ()
-mut sight = Sight(sightSeen = Read::blank (), sightNow = 1, sightBrowse = browse)
-mut live = Runtime::idle (casting::Link::store (ui::MachineDocs::faulty ""))
+mut browsed = browse
+mut driven = Drive::idle (Runtime::idle (casting::Link::store (ui::MachineDocs::faulty "")))
 
 framed (ns, json) = Protocol::frame ("receiver-0", ns, json)
 
@@ -132,7 +125,8 @@ heardTypes () = fake.fakeSaid
 
 reset () =
     perform Bench.rig (fresh ())
-    perform Bench.see (sight(sightBrowse = browse, sightSeen = Read::blank ()))
+    perform Bench.list browse
+    perform Bench.drive (Drive::idle driven.drivenSession)
 
 unplug () = perform Bench.rig (fake(fakeReachable = false))
 
@@ -140,18 +134,16 @@ rendering folder = perform Bench.rig (fake(fakeRender = folder))
 
 finishTrack () = perform Bench.rig (becomes (fake(fakeReason = "FINISHED", fakePosition = 200.0), "IDLE"))
 
-browsing text = perform Bench.see (sight(sightBrowse = text))
+browsing text = perform Bench.list text
 
 // ---- the session ----
 
-kept (resident : ui::Resident<casting::Store>) =
-    perform Bench.keep resident.residentSession
-    perform Bench.see (sight(sightSeen = Read::envelope (sight.sightSeen, resident.residentEnvelope), sightNow = sight.sightNow + 1))
+kept (resident : ui::Resident<casting::Store>) = perform Bench.drive (Drive::moved (driven, resident))
 
 // Every host-side effect a session needs: the Cast device, host-held slices and the scene stream.
 hosted work =
     handle ui::Slices
-        fetch _ => sight.sightBrowse
+        fetch _ => browsed
     handle ui::SceneStream
         shape _ => 0
     onDevice work
@@ -160,8 +152,8 @@ hosted work =
 bench work =
     handle Bench
         rig f => fake := f
-        see s => sight := s
-        keep session => live := session
+        drive d => driven := d
+        list text => browsed := text
     Runtime::guarded work
 
 started () =
@@ -173,23 +165,15 @@ drawn () =
     reset ()
     hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"sherbet\"]}", App::initial, App::regions, App::theme ())))
 
-post event = hosted (\() => kept (Runtime::proceed (live, event, App::update, App::regions)))
+post event = hosted (\() => kept (Runtime::proceed (driven.drivenSession, event, App::update, App::regions)))
 
 // ---- reading the rendered view ----
 
-seen () = sight.sightSeen
+seen () = driven.drivenSeen
 
-texts () = Views::texts (seen ())
-
-shows label = match Views::shows (seen (), label)
-    true => true
-    false =>
-        print "# not shown: ${label}; the view shows ${texts ()}"
-        false
+shows label = Drive::shows (driven, label)
 
 control label = Views::control (seen (), label)
-
-ordinal label = (control label).controlOrdinal
 
 enabledOf label = (control label).controlEnabled
 
@@ -199,7 +183,7 @@ requested kind = Views::requested (seen (), kind)
 
 // ---- the canvas's accessibility tree [UI-MACHINE-A11Y] ----
 
-machine () = live.sessionStore.screen.screenMachine
+machine () = driven.drivenSession.sessionStore.screen.screenMachine
 
 (** Every accessible element's label, in hit order, `|`-separated. *)
 elements () = Canvases::semantics (machine ())
@@ -210,27 +194,17 @@ element label = Semantics::element (elements (), label)
 
 valueOf label = Semantics::value (elements (), label)
 
-offers label = match Semantics::offered (elements (), label)
-    true => true
-    false =>
-        print "# not offered: ${label}; the tree offers ${labels ()}"
-        false
+offers label = Drive::offers (elements (), label)
 
-letters text = match Views::letters (seen (), text)
-    true => true
-    false =>
-        print "# not lettered: ${text}; the artboard letters ${Views::lettered (seen ())}"
-        false
+letters text = Drive::letters (driven, text)
 
 // ---- host events ----
 
-stamp () = sight.sightNow
+press label = post (Drive::press (driven, label))
 
-press label = post (Events::press ((seen ()).renderedRevision, ordinal label, stamp ()))
+choose (label, key) = post (Drive::choose (driven, label, key))
 
-choose (label, key) = post (Events::choose ((seen ()).renderedRevision, ordinal label, key, stamp ()))
-
-pointer (x, y, down) = post (Events::pointer ((seen ()).renderedRevision, (seen ()).renderedOrdinal, x, y, down, stamp ()))
+pointer (x, y, down) = post (Drive::pointer (driven, x, y, down))
 
 // A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
 tapAt (label, fraction) =
@@ -240,13 +214,13 @@ tapAt (label, fraction) =
 
 tap label = tapAt (label, 0.5)
 
-opened path = post (Events::open (path, stamp ()))
+opened path = post (Drive::opened (driven, path))
 
-frame seconds = post (Events::frame (seconds, stamp ()))
+frame seconds = post (Drive::frame (driven, seconds))
 
-discovered () = post (Events::ran ("discover", 0, "", stamp ()))
+discovered () = post (Drive::ran (driven, "discover", 0, ""))
 
-picked path = post (Events::chosen ("choose", path, stamp ()))
+picked path = post (Drive::chosen (driven, "choose", path))
 
 test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and speed, stop and replay", \() => bench (\() =>
     started ()
