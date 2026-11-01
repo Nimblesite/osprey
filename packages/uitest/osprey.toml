@@ -1,0 +1,13 @@
+[project]
+name = "uitest"
+source_roots = ["src"]
+default_namespace = "uitest"
+
+[package]
+name = "@osprey/uitest"
+license = "MIT"
+summary = "Label-driven UI testing for Osprey Native apps without a host or window"
+keywords = ["native", "testing", "ui", "accessibility"]
+
+[modules]
+allow_wildcard_imports = false

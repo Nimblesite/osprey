@@ -7,6 +7,9 @@
 import ui::Doc
 import ui::Runtime
 import ui::Templates
+import uitest::Events
+import uitest::Semantics
+import uitest::Views
 import casting::App
 import chromecast::Protocol
 
@@ -169,20 +172,11 @@ post event = hosted (\() => kept (Runtime::proceed (live, event, App::update, Ap
 
 // ---- reading the rendered view ----
 
-walked (out, doc) = match doc
-    JsonObject members => foldList (members, listAppend out doc, \(acc, m) => member (acc, m))
-    JsonArray items => foldList (items, out, \(acc, item) => walked (acc, item))
-    _ => out
+nodes () = Views::nodes sight.sightRoot
 
-member (acc, m) = match m
-    JsonMember _ value => walked (acc, value)
-    _ => acc
+labelled label = Views::labelled (sight.sightRoot, label)
 
-nodes () = walked ([], sight.sightRoot)
-
-labelled label = filterList (nodes (), \n => Doc::text (n, "label") == label || Doc::text (n, "text") == label || Doc::text (n, "title") == label)
-
-texts () = join (filterList (mapList (nodes (), \n => "${Doc::text (n, "label")}${Doc::text (n, "text")}${Doc::text (n, "title")}"), \t => t != "")) "|"
+texts () = Views::texts sight.sightRoot
 
 shows label = match length (labelled label) > 0
     true => true
@@ -190,35 +184,31 @@ shows label = match length (labelled label) > 0
         print "# not shown: ${label}; the view shows ${texts ()}"
         false
 
-control label = listGet (labelled label) 0 ?: JsonNull
+control label = Views::control (sight.sightRoot, label)
 
 ordinal label = Doc::number (control label, "event")
 
 enabledOf label = Doc::flag (control label, "enabled")
 
-requested kind = length (filterList (walked ([], Doc::field (sight.sightEnvelope, "requests")), \r => Doc::text (r, "kind") == kind)) > 0
+requested kind = Views::requested (sight.sightEnvelope, kind)
 
 // ---- the canvas's accessibility tree [UI-MACHINE-A11Y] ----
 
 machine () = live.sessionStore.screen.screenMachine
 
 (** Every accessible element's label, in hit order, `|`-separated. *)
-labels () = join (mapList (Templates::semantics (machine ()), \e => Doc::text (e, "label"))) "|"
+labels () = Semantics::labels (Templates::semantics (machine ()))
 
-element label = listGet (filterList (Templates::semantics (machine ()), \e => Doc::text (e, "label") == label)) 0 ?: JsonNull
+element label = Semantics::element (Templates::semantics (machine ()), label)
 
-offers label = match Doc::has (element label, "role")
+offers label = match Semantics::offered (Templates::semantics (machine ()), label)
     true => true
     false =>
         print "# not offered: ${label}; the tree offers ${labels ()}"
         false
 
 // The strings the artboard letters, `|`-separated.
-isLettering s = (jsonInt (jsonIndex s 0 ?: JsonNull) ?: 0) == 6
-
-letterOf s = jsonText (jsonIndex s 1 ?: JsonNull) ?: ""
-
-lettered () = join (mapList (filterList (Doc::items (Doc::field (sight.sightRoot, "shapes")), isLettering), letterOf)) "|"
+lettered () = Views::lettered sight.sightRoot
 
 letters text = match ui::Lists::any (split (lettered ()) "|" ?: [], \t => t == text)
     true => true
@@ -230,27 +220,25 @@ letters text = match ui::Lists::any (split (lettered ()) "|" ?: [], \t => t == t
 
 stamp () = toString sight.sightNow
 
-press label = post "{\"kind\":\"ui\",\"region\":\"root\",\"revision\":${toString sight.sightRevision},\"ordinal\":${toString (ordinal label)},\"value\":null,\"now\":${stamp ()}}"
+press label = post (Events::press (sight.sightRevision, ordinal label, stamp ()))
 
-choose (label, key) = post "{\"kind\":\"ui\",\"region\":\"root\",\"revision\":${toString sight.sightRevision},\"ordinal\":${toString (ordinal label)},\"value\":\"${key}\",\"now\":${stamp ()}}"
+choose (label, key) = post (Events::choose (sight.sightRevision, ordinal label, key, stamp ()))
 
-complete (ticket, result) = post "{\"kind\":\"completed\",\"ticket\":\"${ticket}\",\"ok\":true,\"result\":${result},\"now\":${stamp ()}}"
+complete (ticket, result) = post (Events::complete (ticket, result, stamp ()))
 
-pointer (x, y, down) = post "{\"kind\":\"ui\",\"region\":\"root\",\"revision\":${toString sight.sightRevision},\"ordinal\":${toString (Doc::number (sight.sightRoot, "event"))},\"value\":{\"x\":${toString x},\"y\":${toString y},\"down\":${toString down}},\"now\":${stamp ()}}"
+pointer (x, y, down) = post (Events::pointer (sight.sightRevision, Doc::number (sight.sightRoot, "event"), x, y, down, stamp ()))
 
 // A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
 tapAt (label, fraction) =
-    e = element label
-    x = Doc::decimal (e, "x") + Doc::decimal (e, "w") * fraction
-    y = Doc::decimal (e, "y") + Doc::decimal (e, "h") / 2.0
-    pointer (x, y, true)
-    pointer (x, y, false)
+    p = Semantics::point (element label, fraction)
+    pointer (p.pointX, p.pointY, true)
+    pointer (p.pointX, p.pointY, false)
 
 tap label = tapAt (label, 0.5)
 
-opened path = post "{\"kind\":\"lifecycle\",\"phase\":\"open:${path}\",\"now\":${stamp ()}}"
+opened path = post (Events::open (path, stamp ()))
 
-frame seconds = post "{\"kind\":\"frame\",\"elapsed\":${seconds},\"now\":${stamp ()}}"
+frame seconds = post (Events::frame (seconds, stamp ()))
 
 discovered () = complete ("discover", "{\"status\":0,\"stderr\":\"\"}")
 

@@ -1,0 +1,24 @@
+// Pure readers and geometry for a native canvas accessibility tree.
+namespace uitest
+
+import ui::Doc
+
+(** A point in the canvas's coordinate space ([UI-MACHINE-A11Y]). *)
+type Point =
+    pointX : float
+    pointY : float
+
+(** Reads the JSON elements returned by `ui::Templates::semantics` ([UI-MACHINE-A11Y]). *)
+module Semantics
+    (** Every accessible element's label, in hit order, joined with `|` ([UI-MACHINE-A11Y]). *)
+    export labels elements = join (mapList (elements, \e => Doc::text (e, "label"))) "|"
+
+    (** The first accessible element labelled `label`, or `JsonNull` when none is offered ([UI-MACHINE-A11Y]). *)
+    export element (elements, label) = listGet (filterList (elements, \e => Doc::text (e, "label") == label)) 0 ?: JsonNull
+
+    (** Whether an accessible element labelled `label` is offered ([UI-MACHINE-A11Y]). *)
+    export offered (elements, label) = Doc::has (element (elements, label), "role")
+
+    (** The point `fraction` across an element's bounds and halfway down it ([UI-MACHINE-A11Y]). *)
+    export point (e, fraction) =
+        Point(pointX = Doc::decimal (e, "x") + Doc::decimal (e, "w") * fraction, pointY = Doc::decimal (e, "y") + Doc::decimal (e, "h") / 2.0)

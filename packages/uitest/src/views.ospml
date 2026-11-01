@@ -1,0 +1,39 @@
+// Pure readers for rendered native views and their canvas lettering.
+namespace uitest
+
+import ui::Doc
+
+(** Reads rendered view JSON without an application, session or host. *)
+module Views
+    walked (out, doc) = match doc
+        JsonObject members => foldList (members, listAppend out doc, \(acc, m) => member (acc, m))
+        JsonArray items => foldList (items, out, \(acc, item) => walked (acc, item))
+        _ => out
+
+    member (acc, m) = match m
+        JsonMember _ value => walked (acc, value)
+        _ => acc
+
+    (** Every JSON node in the rendered `root`, including the root, in document order. *)
+    export nodes root = walked ([], root)
+
+    (** Every rendered node whose accessible `label`, visible `text` or `title` equals `label`. *)
+    export labelled (root, label) = filterList (nodes root, \n => Doc::text (n, "label") == label || Doc::text (n, "text") == label || Doc::text (n, "title") == label)
+
+    (** The first rendered node matching `label`, or `JsonNull` when none does. *)
+    export control (root, label) = listGet (labelled (root, label)) 0 ?: JsonNull
+
+    textOf n = "${Doc::text (n, "label")}${Doc::text (n, "text")}${Doc::text (n, "title")}"
+
+    (** All nonempty labels, text and titles in `root`, joined with `|`. *)
+    export texts root = join (filterList (mapList (nodes root, textOf), \t => t != "")) "|"
+
+    (** Whether the render `envelope` contains a request of `kind`. *)
+    export requested (envelope, kind) = length (filterList (nodes (Doc::field (envelope, "requests")), \r => Doc::text (r, "kind") == kind)) > 0
+
+    isLettering s = (jsonInt (jsonIndex s 0 ?: JsonNull) ?: 0) == 6
+
+    letterOf s = jsonText (jsonIndex s 1 ?: JsonNull) ?: ""
+
+    (** The strings lettered by a canvas `root`, joined with `|` ([UI-MACHINE-A11Y]). Shape code 6 denotes lettering and shape index 1 holds its text. *)
+    export lettered root = join (mapList (filterList (Doc::items (Doc::field (root, "shapes")), isLettering), letterOf)) "|"

@@ -1,0 +1,25 @@
+// Host-shaped event JSON builders for deterministic native UI tests.
+namespace uitest
+
+(** Builds the host event strings accepted by `ui::Runtime::proceed` ([UI-EVENTS]). *)
+module Events
+    (** A control press at `ordinal`, against `revision` at host time `now` ([UI-EVENTS]). *)
+    export press (revision, ordinal, now) = "{\"kind\":\"ui\",\"region\":\"root\",\"revision\":${toString revision},\"ordinal\":${toString ordinal},\"value\":null,\"now\":${toString now}}"
+
+    (** A choice of `key` at `ordinal`, against `revision` at host time `now` ([UI-EVENTS]). *)
+    export choose (revision, ordinal, key, now) = "{\"kind\":\"ui\",\"region\":\"root\",\"revision\":${toString revision},\"ordinal\":${toString ordinal},\"value\":\"${key}\",\"now\":${toString now}}"
+
+    (** A pointer event at `x`, `y`, with `down` state, at `ordinal` against `revision` ([UI-EVENTS]). *)
+    export pointer (revision, ordinal, x, y, down, now) = "{\"kind\":\"ui\",\"region\":\"root\",\"revision\":${toString revision},\"ordinal\":${toString ordinal},\"value\":{\"x\":${toString x},\"y\":${toString y},\"down\":${toString down}},\"now\":${toString now}}"
+
+    (** A successful completion of `ticket` with JSON `result` at host time `now` ([UI-EVENTS]). *)
+    export complete (ticket, result, now) = "{\"kind\":\"completed\",\"ticket\":\"${ticket}\",\"ok\":true,\"result\":${result},\"now\":${toString now}}"
+
+    (** A frame whose `elapsed` text is a number of seconds, at host time `now` ([UI-EVENTS]). *)
+    export frame (elapsed, now) = "{\"kind\":\"frame\",\"elapsed\":${elapsed},\"now\":${toString now}}"
+
+    (** A lifecycle `phase` at host time `now`, including `open:<path>` ([UI-EVENTS]). *)
+    export lifecycle (phase, now) = "{\"kind\":\"lifecycle\",\"phase\":\"${phase}\",\"now\":${toString now}}"
+
+    (** A lifecycle event asking the application to open `path` ([UI-EVENTS]). *)
+    export open (path, now) = lifecycle ("open:${path}", now)
