@@ -81,8 +81,11 @@ pub(crate) fn build_with_memory(
     let sysroot = wasi_sysroot().map_err(|e| fail(&e))?;
     let libdir = lib_dir(&sysroot).map_err(|e| fail(&e))?;
     let lib = runtime_lib(memory);
-    let archive = find_runtime_lib(lib)
-        .ok_or_else(|| fail(&format!("{lib} not found — run `make -C website wasm` to build it")))?;
+    let archive = find_runtime_lib(lib).ok_or_else(|| {
+        fail(&format!(
+            "{lib} not found — run `make -C website wasm` to build it"
+        ))
+    })?;
     let obj = compile_object(&scratch_stem(path), &ir)?;
     link(&obj, &archive, &libdir, out, web_dispatch)
 }

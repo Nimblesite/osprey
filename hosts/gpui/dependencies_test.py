@@ -173,9 +173,10 @@ class BackportTests(unittest.TestCase):
                 self.assertIn(guard, commands)
                 self.assertLess(commands.index(guard), len(commands) - 1)
         script = (source.HERE / "run.sh").read_text()
-        guard = 'python3 "$here/dependencies_test.py"'
-        self.assertIn(guard, script)
-        self.assertLess(script.index(guard), script.index('"$compiler" "$app"'))
+        stage = 'python3 "$here/dependencies.py"'
+        self.assertNotIn("dependencies_test.py", script)
+        self.assertIn(stage, script)
+        self.assertLess(script.index(stage), script.index('"$compiler" "$app"'))
 
     def test_both_workspace_overrides_must_match_the_full_pinned_inventory(self):
         manifests = [self.root / "host.toml", self.root / "reference.toml"]

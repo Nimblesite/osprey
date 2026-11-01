@@ -14,8 +14,14 @@ extern "C" {
 // from one host thread. [IOS-TARGET-ENTRY]
 int32_t osprey_main(void);
 
-// Exports: Osprey functions the host may call. A returned string belongs
-// to the Osprey runtime; copy it before the next call into the library.
+// Version 1 copies borrowed import strings before returning from the import.
+int32_t osprey_host_abi_version(void);
+// Returned strings remain valid until their Osprey reference is released once.
+// Never use libc free on that pointer. [IOS-HOST-ABI]
+void osprey_release_string(const char *value);
+
+// Exports copy borrowed string inputs before calling Osprey. The callee may
+// retain or return the owned copy; host input buffers may be reused on return.
 // fn app::start(source: string) -> string
 const char *osprey_app_start(const char *source);
 // fn app::dispatch(saved: string, event: string) -> string
