@@ -357,6 +357,34 @@ quietSelections before =
     quietSelection ("Master", "output", before)
     quietSelection ("Scope", "monitor", before)
 
+// Pressing, dragging, dropping and hovering over a node move it and stay silent.
+quietDrag before =
+    body = Semantics::point (element "Select Oscillator", 0.5)
+    pointer (body.pointX, body.pointY, true)
+    quietPatch before
+    pointer (body.pointX + 80.0, body.pointY + 30.0, true)
+    quietPatch before
+    knobNumber ("sourceX", 80.0)
+    pointer (body.pointX + 80.0, body.pointY + 30.0, false)
+    quietPatch before
+    pointer (body.pointX, body.pointY, false)
+    quietPatch before
+    knobNumber ("sourceY", 30.0)
+
+// A slider dragged across is silent while held, then plays its final level once on release.
+slidOnce () =
+    low = Semantics::point (element "Master Level", 0.2)
+    high = Semantics::point (element "Master Level", 0.6)
+    pointer (low.pointX, low.pointY, true)
+    expect (runCount (), 0)
+    pointer (high.pointX, high.pointY, true)
+    expect (runCount (), 0)
+    knobNumber ("volume", 0.6)
+    pointer (high.pointX, high.pointY, false)
+    expect (runCount (), 1)
+    expect (argument 2, currentWav ())
+    knobNumber ("volume", 0.6)
+
 test ("the voice renders each wave, rate and level, exact silence and a PCM WAV header", \() => Runtime::guarded (\() =>
     shapes ()
     voiceCases ()
@@ -381,9 +409,11 @@ test ("every wave, LFO rate and master level plays its own clip and undoes", \()
     levels ()
     muteHistory ()))
 
-test ("menus, skin changes and every node selection stay quiet", \() => bench (\() =>
+test ("menus, skin changes, node selections and drags stay quiet; a slider drag plays once", \() => bench (\() =>
     begun ()
     played 75
     before = described ()
     quietMenu before
-    quietSelections before))
+    quietSelections before
+    quietDrag before
+    slidOnce ()))

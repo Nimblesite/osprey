@@ -108,11 +108,5 @@ module Flow
         facts = listConcat [fact ("assets", Values::text folder)] (ui::Pick::either (skin == "", [], [fact ("skin", Values::text skin)]))
         fed (store, facts)
 
-    released (store, x, y) = settled (store(screen = Screen(screenMachine = Canvases::released (machineOf store, x, y))))
-
-    (** A canvas pointer event: a release acts on the listener under it ([UI-MACHINE-CANVAS]); other input changes nothing. *)
-    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pressed (store, x, y, down))
-
-    pressed (store, x, y, down) = match down
-        true => Runtime::step store
-        false => released (store, x, y)
+    (** A canvas pointer event: a press grips the listener under it, a drag moves a node or slider, and the release acts once ([UI-MACHINE-DRAG]); keys change nothing. *)
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down)))))

@@ -10,13 +10,14 @@ Run with Pillow and NumPy:
     python3 packages/signal_flow/skins/build.py
 """
 import json
-import math
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
 
+import drag
 from spec import RATES, ROLES, SKINS, WAVES
+from traces import meters, shape, traces
 
 HERE = Path(__file__).resolve().parent
 DESIGNS = HERE.parent / "design"
@@ -72,7 +73,43 @@ def slice_skin(key, skin):
         fill_rows(px, int(cx - w / 2 - 4), int(cy - h / 2 - 4), int(cx + w / 2 + 4), int(cy + h / 2 + 4))
     for x0, y0, x1, y1 in skin["erase"]:
         fill_rows(px, x0, y0, x1, y1)
+    if "shift" in skin:
+        (x0, y0, x1, y1), dx = skin["shift"]
+        px[y0:y1, x0 + dx:x1 + dx] = px[y0:y1, x0:x1].copy()
+        px[y0:y1, x0:x0 + dx] = px[y0:y1, x0 + dx + 4:x0 + dx + 5]
+    if "cables" in skin:
+        drag.cut(key, skin, px, folder)
     Image.fromarray(np.clip(px, 0, 255).astype(np.uint8)[:skin["height"]]).save(folder / "backdrop.png", optimize=True)
+
+
+# ---- the Prism logo ----
+
+LOGO = [(0.0, "#F59AC5"), (0.12, "#E256C9"), (0.3, "#B36AF7"), (0.45, "#559FFB"), (0.62, "#5AE2D7"), (0.75, "#8EE07A"),
+        (0.88, "#F69369"), (1.0, "#F59AC5")]
+
+
+def conic(size, cx, cy):
+    """LOGO's colours swept clockwise from the top around (cx, cy)."""
+    ys, xs = np.mgrid[0:size, 0:size]
+    turn = (np.arctan2(xs - cx, cy - ys) / (2 * np.pi)) % 1.0
+    stops = np.array([t for t, _ in LOGO])
+    colours = np.array([rgb(c) for _, c in LOGO], dtype=np.float64)
+    return np.stack([np.interp(turn, stops, colours[:, c]) for c in range(3)], axis=-1)
+
+
+def logo(size=1024):
+    """The Prism mark as a macOS app icon: the header's rainbow triangle on its dark tile, drawn large rather than scaled up."""
+    s = size * SUPER
+    tile = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(tile)
+    inset, radius = s * 0.098, s * 0.18
+    draw.rounded_rectangle([inset, inset, s - inset, s - inset], radius, fill=rgb("#211F3E"), outline=rgb("#4A4790"), width=int(s * 0.012))
+    corners = [(s * 0.5, s * 0.27), (s * 0.73, s * 0.69), (s * 0.27, s * 0.69)]
+    mask = Image.new("L", (s, s), 0)
+    ImageDraw.Draw(mask).line(corners + corners[:2], fill=255, width=int(s * 0.085), joint="curve")
+    cx, cy = s * 0.5, sum(y for _, y in corners) / 3
+    tile.paste(Image.fromarray(conic(s, cx, cy).astype(np.uint8)), (0, 0), mask)
+    tile.resize((size, size), Image.LANCZOS).save(HERE / "prism" / "logo.png", optimize=True)
 
 
 # ---- shapes ----
@@ -88,11 +125,6 @@ def chosen(role):
 def both(*conditions):
     live = [c for c in conditions if c]
     return live[0] if len(live) == 1 else {"all": live}
-
-
-def shape(kind, when=None, **members):
-    out = {"shape": kind, **members}
-    return {**out, "when": when} if when else out
 
 
 def text(words, x, cy, size, colour, anchor=0, weight=400, when=None):
@@ -144,8 +176,8 @@ def node_shapes(key, skin):
         x0, y0, x1, y1 = n["rect"]
         rect = dict(x=x0, y=y0, w=x1 - x0, h=y1 - y0, radius=skin["radius"])
         if skin.get("glow"):
-            out.append(shape("rounded", chosen(role), **rect, stroke=8, colour="@accent", alpha=0.22, depth=2))
-        out.append(shape("rounded", chosen(role), **rect, stroke=skin["ring"], colour="@accent", depth=2))
+            out.append(shape("rounded", chosen(role), **rect, stroke=8, colour="@accent", alpha=0.22, depth=3))
+        out.append(shape("rounded", chosen(role), **rect, stroke=skin["ring"], colour="@accent", depth=3))
         out.append(shape("rounded", on(role, False), **rect, colour="@canvas", alpha=0.6, depth=3))
         out += toggle(skin, f"{role}On", *n["toggle"])
         out += ports(skin, n)
@@ -285,85 +317,6 @@ def choices(lst):
     return {"skins": SKINS, "rates": RATES, "waves": WAVES}[lst]
 
 
-# ---- live traces ----
-
-def polyline(points, colour, when=None, stroke=2.5):
-    return shape("polyline", when, points=points, stroke=stroke, colour=f"@{colour}", depth=6)
-
-
-def wave(name, phase):
-    turn = phase % 1.0
-    return {"Sine": math.sin(2 * math.pi * turn), "Triangle": 1 - 4 * abs(turn - 0.5), "Saw": 2 * turn - 1,
-            "Square": 1.0 if turn < 0.5 else -1.0}[name]
-
-
-def sampled(x0, x1, step=1.5):
-    n = int((x1 - x0) / step)
-    return [x0 + (x1 - x0) * i / n for i in range(n + 1)]
-
-
-def response(u, q=2.0):
-    """A resonant two-pole low-pass's gain in decibels at `u` times its cutoff."""
-    return -10 * math.log10((1 - u * u) ** 2 + (u / q) ** 2)
-
-
-def lfo_traces(x0, x1, cy, amp):
-    """The LFO's sine at each rate, 1.25 cycles shown per hertz."""
-    return [polyline([[round(x, 1), round(cy - amp * math.sin(2 * math.pi * 1.25 * hz * (x - x0) / (x1 - x0)), 1)] for x in sampled(x0, x1)],
-                     "mod", {"input": "rate", "eq": rate}) for rate, hz in RATES.items()]
-
-
-def oscillator_traces(x0, x1, cy, amp):
-    """Two and a half cycles of each wave."""
-    return [polyline([[round(x, 1), round(cy - amp * wave(name, 2.5 * (x - x0) / (x1 - x0)), 1)] for x in sampled(x0, x1, 1)],
-                     "mon", {"input": "wave", "eq": name}) for name in WAVES]
-
-
-def filter_traces(x0, x1, top, bottom, steps=24):
-    """The response over three decades, drawn for each of `steps` cutoff bands, +8 dB at the top to -24 dB at the bottom."""
-    out = []
-    for k in range(steps):
-        cut = x0 + (x1 - x0) * (k + 0.5) / steps
-        db = lambda x: max(-24.0, min(8.0, response(10 ** ((x - cut) * 3 / (x1 - x0)))))
-        band = {"all": [{"input": "process", "gt": -1 if k == 0 else round(k / steps - 1e-9, 9)},
-                        {"input": "process", "lt": 2 if k == steps - 1 else round((k + 1) / steps - 1e-9, 9)}]}
-        out.append(polyline([[round(x, 1), round(top + (8 - db(x)) / 32 * (bottom - top), 1)] for x in sampled(x0, x1)], "curve", band))
-    return out
-
-
-def scope_traces(x0, x1, cy, amp):
-    """Four cycles of the wave, its height the monitored level."""
-    return [polyline([[round(x, 1), f"{{{{monitored|scale:{round(-amp * wave(name, 4 * (x - x0) / (x1 - x0)), 2)}:{cy}}}}}"] for x in sampled(x0, x1, 2)],
-                     "mon", {"input": "wave", "eq": name}, 2) for name in WAVES]
-
-
-def traces(skin):
-    """The LFO at its rate, the oscillator's wave, the filter's response at its cutoff and the scope's output."""
-    spec = skin.get("traces")
-    if not spec:
-        return []
-    return lfo_traces(*spec["lfo"]) + oscillator_traces(*spec["oscillator"]) + filter_traces(*spec["filter"]) + scope_traces(*spec["scope"])
-
-
-def meters(skin):
-    """Two rows of bars, each lit once the delivered level passes its share, green through amber."""
-    spec = skin.get("meters")
-    if not spec:
-        return []
-    ramp = [(0x4F, 0xD1, 0xA0), (0xF5, 0xE0, 0x5A), (0xFB, 0x86, 0x48)]
-    out = []
-    for i in range(spec["bars"]):
-        t = i / (spec["bars"] - 1)
-        a, b = (ramp[0], ramp[1]) if t < 0.6 else (ramp[1], ramp[2])
-        f = t / 0.6 if t < 0.6 else (t - 0.6) / 0.4
-        lit = "#" + "".join(f"{round(a[c] + (b[c] - a[c]) * f):02X}" for c in range(3))
-        x = round(spec["x"] + i * spec["step"], 1)
-        for cy in spec["rows"]:
-            out.append(shape("rounded", x=x, y=cy - 6, w=2.4, h=12, radius=1, colour="@track", depth=5))
-            out.append(shape("rounded", {"input": "delivered", "gt": round(i / spec["bars"], 4)}, x=x, y=cy - 6, w=2.4, h=12, radius=1, colour=lit, depth=6))
-    return out
-
-
 # ---- listeners ----
 
 def area(rect, role, label, on_, when=None, **extra):
@@ -434,14 +387,21 @@ def listeners(skin):
         out.append(slide(bound(skin, role), f"{names[role]} {skin['params'][role][0]}", sx0, sx1, cy))
     for role, n in zip(ROLES, skin["nodes"]):
         out += inspector_listeners(skin, role, n)
-    return out + [area(n["rect"], "button", f"Select {n['name']}", {"set": "selected", "value": role}) for role, n in zip(ROLES, skin["nodes"])]
+    picks = [area(n["rect"], "button", f"Select {n['name']}", {"set": "selected", "value": role}) for role, n in zip(ROLES, skin["nodes"])]
+    if "cables" not in skin:
+        return out + picks
+    return [drag.followed(skin, a) for a in out] + [drag.followed(skin, drag.grabbed(a, role)) for a, role in zip(picks, ROLES)]
 
 
 def canvas(key, skin):
     atlas = [f"{{{{assets}}}}/skins/{key}/backdrop.png"] + [f"{{{{assets}}}}/skins/{key}/icon-{role}.png" for role in ROLES]
     backdrop = shape("sprite", index=0, x=768, y=skin["height"] / 2, w=1536, h=skin["height"], depth=0)
-    shapes = [backdrop] + node_shapes(key, skin) + traces(skin) + meters(skin) + inspector(key, skin)
+    shapes = node_shapes(key, skin) + traces(skin) + meters(skin) + inspector(key, skin)
     shapes += [s for m in menus(skin) for s in menu_shapes(*m)]
+    if "cables" in skin:
+        atlas += [f"{{{{assets}}}}/skins/{key}/node-{role}.png" for role in ROLES]
+        shapes = drag.cables(skin) + drag.badge(skin) + drag.nodes(skin, 1 + len(ROLES)) + [drag.followed(skin, s) for s in shapes]
+    shapes = [backdrop] + shapes
     return {"width": 1536, "height": skin["height"], "zoom": ZOOM, "atlas": atlas, "shapes": shapes, "listeners": listeners(skin)}
 
 
@@ -449,6 +409,8 @@ def main():
     doc = json.loads(DOCUMENT.read_text())
     for key, skin in SKINS.items():
         slice_skin(key, skin)
+    logo()
+    doc["inputs"].update(drag.offsets())
     doc["skins"] = {key: {"name": skin["name"], "motion": "none", "tokens": {**skin["tokens"], "background": skin["tokens"]["canvas"]}, "canvas": canvas(key, skin)}
                     for key, skin in SKINS.items()}
     DOCUMENT.write_text(written(doc) + "\n")

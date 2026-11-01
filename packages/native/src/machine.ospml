@@ -37,7 +37,26 @@ type Lever =
         putValue : Value
         putFire : string
 
-(** A running machine: its inputs, each layer's state, the requests not yet taken, the last fault ("" when none), its layers, view template and skins. *)
+(** A drag in progress ([UI-MACHINE-DRAG]): the two inputs it moves, the pointer's offset from them, where it was pressed and whether it has left the slop. *)
+type Grab =
+    grabX : string
+    grabY : string
+    offsetX : float
+    offsetY : float
+    pressX : float
+    pressY : float
+    travelled : bool
+
+(** The pointer's hold on a canvas ([UI-MACHINE-DRAG]): none, pressed where its release acts, dragging, or sliding a slider. *)
+type Grip =
+    Loose
+    Holding
+    Moving
+        moving : Grab
+    Sliding
+        slidArea : Area
+
+(** A running machine: its inputs, each layer's state, the requests not yet taken, the last fault ("" when none), its layers, view template, skins and the pointer's grip on its canvas. *)
 type Machine =
     knobs : List<Knob>
     currents : List<Current>
@@ -46,6 +65,7 @@ type Machine =
     machineLayers : List<MachineLayer>
     machineView : Template
     machineSkins : List<Skin>
+    machineGrip : Grip
 
 (** A layer's move in one settle round, and whether it moved. *)
 type Moved =

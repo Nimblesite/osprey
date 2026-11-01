@@ -8,14 +8,18 @@ import synth::Synth
 
 (** The editor's callbacks with a voice added. *)
 module Studio
-    patchOf store = Synth::patch store.screen.screenMachine
+    patchOf store = Synth::patch (machineOf store)
 
     sounded step = Runtime::asking (step.stepStore, listConcat step.requests (Synth::played (patchOf step.stepStore)))
 
-    // A step that changed the patch plays it; selection, menus and skins stay quiet.
-    voiced (before, step) = match Synth::describe (patchOf before) == Synth::describe (patchOf step.stepStore)
-        true => step
-        false => sounded step
+    machineOf store = store.screen.screenMachine
+
+    // A step that changed the patch, or let go of a slider, plays it; a held pointer, selection, menus, skins and moved nodes stay quiet.
+    voiced (before, step) =
+        changed = Synth::describe (patchOf before) != Synth::describe (patchOf step.stepStore) || ui::Canvases::sliding (machineOf before)
+        match changed && !ui::Canvases::holding (machineOf step.stepStore)
+            true => sounded step
+            false => step
 
     (** Opens the editor in the Prism skin, unless `--skin` names another, and plays the first patch. *)
     export initial context = sounded (signalflow::App::opened (context, "prism"))

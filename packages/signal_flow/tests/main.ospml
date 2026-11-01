@@ -3,6 +3,7 @@
 // each canvas control's accessible label, with its inputs, states and lettering read back.
 
 import ui::Runtime
+import ui::Streams
 import ui::Canvases
 import ui::MachineDocs
 import ui::Machines
@@ -18,11 +19,18 @@ mut driven = Drive::idle (Runtime::idle (signalflow::Flow::store (MachineDocs::f
 
 kept (resident : ui::Resident<signalflow::Store>) = perform Bench.drive (Drive::moved (driven, resident))
 
+// Every sprite the renders streamed, as atlas index, x and y, latest last: the host's view of where each node is.
+mut sprites = [[0.0]]
+
+streamedSprite primitive = match Streams::code primitive == 3
+    true => [[toFloat (Streams::index primitive), Streams::value (primitive, 0), Streams::value (primitive, 1)]]
+    false => []
+
 hosted work =
     handle ui::Slices
         fetch _ => ""
     handle ui::SceneStream
-        shape _ => 0
+        shape primitive => sprites := listConcat sprites (streamedSprite primitive)
     work ()
 
 bench work =
@@ -442,3 +450,11 @@ test ("prism: every chooser, slider, switch and the history drive the patch", \(
     prismWaves ()
     prismLevels ()
     prismParameters ()))
+
+test ("prism: nodes drag with their cables, controls and sprites; clicks, hovers and slider drags act once", \() => bench (\() =>
+    begun "prism"
+    hovering ()
+    filterDrag ()
+    movedControls ()
+    scopeDrag ()
+    sliderDrag ()))

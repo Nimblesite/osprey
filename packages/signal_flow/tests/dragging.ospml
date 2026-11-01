@@ -1,0 +1,135 @@
+// Dragging the Prism skin's nodes ([UI-MACHINE-DRAG]): a press on a node's body grabs it, the
+// drag moves its sprite, controls and hit areas and both ends of its cables, and the release
+// leaves it there without selecting; a press that stays inside the slop is still a click, a
+// hover never presses anything, and a slider follows the pointer, firing once on release.
+namespace signalflowtests
+
+import ui::Canvases
+import ui::Machines
+import uitest::Semantics
+
+near (actual, expected) = expect (actual - expected < 0.01 && expected - actual < 0.01, true)
+
+// The four cables as rendered, each x1, y1, x2, y2: oscillator→filter, filter→master, LFO→filter, filter→scope.
+cable index = listGet driven.drivenSeen.renderedCurves index ?: []
+
+cableIs (index, expected) =
+    actual = cable index
+    expect (length actual, 4)
+    near (listGet actual 0 ?: 0.0, listGet expected 0 ?: 1.0)
+    near (listGet actual 1 ?: 0.0, listGet expected 1 ?: 1.0)
+    near (listGet actual 2 ?: 0.0, listGet expected 2 ?: 1.0)
+    near (listGet actual 3 ?: 0.0, listGet expected 3 ?: 1.0)
+
+// Where the host was last told to draw the sprite at atlas `index`.
+spriteAt index =
+    drawn = filterList (sprites, \s => (listGet s 0 ?: 0.0) == toFloat index)
+    listGet drawn (satSub (length drawn) 1) ?: []
+
+// A node's sprite: atlas entries 6 to 10 after the backdrop and the five inspector icons.
+nodeSprite role = spriteAt (6 + (ui::Lists::position (["control", "source", "process", "output", "monitor"], \r => r == role)))
+
+spriteMoved (before, after, dx, dy) =
+    near ((listGet after 1 ?: 0.0) - (listGet before 1 ?: 0.0), dx)
+    near ((listGet after 2 ?: 0.0) - (listGet before 2 ?: 0.0), dy)
+
+leftOf label = (element label).accessLeft
+
+topOf label = (element label).accessTop
+
+// A press at x, y, then each step of the way to x + dx, y + dy, then the release there.
+drag (x, y, dx, dy) =
+    pointer (x, y, true)
+    pointer (x + dx / 4.0, y + dy / 4.0, true)
+    pointer (x + dx / 2.0, y + dy / 2.0, true)
+    pointer (x + dx, y + dy, true)
+    pointer (x + dx, y + dy, false)
+
+// Hovering over a switch, a slider and a node's body, with no button down, changes nothing at all.
+hovering () =
+    at = Semantics::point (element "Bypass Oscillator", 0.5)
+    pointer (at.pointX, at.pointY, false)
+    pointer (at.pointX + 1.0, at.pointY, false)
+    pointer (at.pointX, at.pointY, false)
+    flag ("sourceOn", true)
+    slider = Semantics::point (element "Filter Cutoff", 0.9)
+    pointer (slider.pointX, slider.pointY, false)
+    knobNumber ("process", 0.7)
+    pointer (300.0, 600.0, false)
+    knobText ("selected", "process")
+    flag ("canUndo", false)
+    expect (Canvases::holding (machine ()), false)
+
+filterDrag () =
+    cableIs (0, [314.0, 438.0, 461.0, 438.0])
+    cableIs (1, [753.0, 438.0, 894.0, 438.0])
+    cableIs (2, [606.0, 239.0, 606.0, 345.0])
+    cableIs (3, [607.0, 521.0, 607.0, 614.0])
+    sprite = nodeSprite "process"
+    bypass = leftOf "Bypass Filter"
+    body = Semantics::point (element "Select Filter", 0.5)
+    pointer (body.pointX, body.pointY, true)
+    expect (Canvases::holding (machine ()), true)
+    pointer (body.pointX + 2.0, body.pointY + 1.0, true)
+    knobNumber ("processX", 0.0)
+    pointer (body.pointX + 100.0, body.pointY + 50.0, true)
+    knobNumber ("processX", 100.0)
+    knobNumber ("processY", 50.0)
+    cableIs (0, [314.0, 438.0, 561.0, 488.0])
+    pointer (body.pointX + 100.0, body.pointY + 50.0, false)
+    expect (Canvases::holding (machine ()), false)
+    knobText ("selected", "process")
+    cableIs (1, [853.0, 488.0, 894.0, 438.0])
+    cableIs (2, [606.0, 239.0, 706.0, 395.0])
+    cableIs (3, [707.0, 571.0, 607.0, 614.0])
+    spriteMoved (sprite, nodeSprite "process", 100.0, 50.0)
+    near (leftOf "Bypass Filter" - bypass, 100.0)
+    expect (letters "+70%", true)
+    flag ("canUndo", false)
+
+// The moved Filter's switch, slider and body answer where they now are; a press that stays put still selects.
+movedControls () =
+    tap "Bypass Filter"
+    flag ("processOn", false)
+    tap "Enable Filter"
+    flag ("processOn", true)
+    tapAt ("Filter Cutoff", 0.25)
+    knobNumber ("process", 0.25)
+    tap "Select Master"
+    knobText ("selected", "output")
+    tap "Select Filter"
+    knobText ("selected", "process")
+    tap "Select Oscillator"
+    knobText ("selected", "source")
+    knobNumber ("sourceX", 0.0)
+
+scopeDrag () =
+    scope = nodeSprite "monitor"
+    top = topOf "Bypass Scope"
+    body = Semantics::point (element "Select Scope", 0.5)
+    drag (body.pointX, body.pointY, -150.0, 40.0)
+    knobNumber ("monitorX", -150.0)
+    knobNumber ("monitorY", 40.0)
+    cableIs (3, [707.0, 571.0, 457.0, 654.0])
+    spriteMoved (scope, nodeSprite "monitor", -150.0, 40.0)
+    near (topOf "Bypass Scope" - top, 40.0)
+    knobText ("selected", "source")
+    drag (body.pointX - 150.0, body.pointY + 40.0, 150.0, -40.0)
+    knobNumber ("monitorX", 0.0)
+    cableIs (3, [707.0, 571.0, 607.0, 614.0])
+
+// The master's level follows the pointer while held without recording, then the release records it once.
+sliderDrag () =
+    low = Semantics::point (element "Master Level", 0.1)
+    high = Semantics::point (element "Master Level", 0.9)
+    pointer (low.pointX, low.pointY, true)
+    expect (Canvases::sliding (machine ()), true)
+    pointer ((low.pointX + high.pointX) / 2.0, low.pointY, true)
+    knobNumber ("volume", 0.5)
+    pointer (high.pointX, high.pointY, true)
+    knobNumber ("volume", 0.9)
+    pointer (high.pointX, high.pointY, false)
+    expect (Canvases::sliding (machine ()), false)
+    knobNumber ("volume", 0.9)
+    tap "Undo"
+    knobNumber ("volume", 0.75)

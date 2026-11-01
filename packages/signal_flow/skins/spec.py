@@ -152,7 +152,7 @@ PRISM = {
         node("Scope", "Monitor", (482, 618, 736, 772), (674, 640, 34, 18), (495, 628, 531, 657), [(607, 614, "mon")]),
     ],
     "sliders": [("process", 538, 650, 490, "accent", "accent"), ("output", 968, 1075, 487, "accent", "accent")],
-    "texts": [("+{{control|percent}}%", 649, 292, 14, "modText", 1, 400), ("{{process|expo:1:0.02:20}} kHz", 699, 491, 14, "ink", 1, 400),
+    "texts": [("{{process|expo:1:0.02:20}} kHz", 699, 491, 14, "ink", 1, 400),
               ("{{volume|fixed:1:24:-24}} dB", 1124, 496, 14, "ink", 1, 400),
               ("{{rate}}", 582, 208, 14, "ink", 0, 400), ("{{wave}}", 140, 492, 14, "ink", 0, 400),
               ("{{delivered|fixed:1:24:-24}}", 1157, 419, 14, "ink", 2, 400), ("{{delivered|fixed:1:24:-24}}", 1157, 447, 14, "ink", 2, 400)],
@@ -183,7 +183,19 @@ PRISM = {
         "output": [("sig", "AUDIO", "In", "Filter", "")],
         "monitor": [("mon", "AUDIO", "In", "Filter", "")],
     },
-    "menu": (15, 8, 165, 58), "undo": (1108, 15, 1148, 52), "redo": (1160, 15, 1200, 52),
+    "menu": (95, 8, 245, 58), "undo": (1108, 15, 1148, 52), "redo": (1160, 15, 1200, 52),
+    # The logo and title moved right of the window's traffic lights, as (box, distance).
+    "shift": ((0, 2, 240, 62), 80),
+    # Dragging: each connection as (from role, port, to role, port, kind); the port labels drawn outside
+    # their cards; the cable runs and badge cleared from the graph; the graph's bounds and grid period;
+    # and the badge as (cable, (offset from the cable's middle, width, height), text).
+    "cables": [("source", 0, "process", 1, "sig"), ("process", 2, "output", 0, "sig"), ("control", 0, "process", 0, "mod"),
+               ("process", 3, "monitor", 0, "mon")],
+    "labels": {"source": [(318, 410, 366, 430)], "control": [(618, 236, 656, 256)],
+               "process": [(620, 326, 678, 344), (618, 522, 668, 542)], "monitor": [(620, 596, 670, 616)]},
+    "wires": [(314, 418, 461, 458), (753, 418, 894, 458), (584, 239, 630, 345), (585, 521, 629, 614), (608, 272, 692, 314)],
+    "graph": (0, 66, 1209, 789), "grid": (25.43, 25.11),
+    "badge": (2, (43, 58, 22), "+{{control|percent}}%"),
 }
 
 SKINS = {"topology": TOPOLOGY, "notation": NOTATION, "paper": PAPER, "prism": PRISM}

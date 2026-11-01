@@ -68,10 +68,10 @@ module Templates
         parts = split text "{{" ?: [text]
         foldList (Lists::slice (parts, 1, length parts), listGet parts 0 ?: "", \(out, part) => out + piece (machine, part))
 
-    (** A measure's number: as written, or its `{{template}}` filled and read; 0 when that is not a number. *)
+    (** A measure's number: as written, or its `{{template}}` filled and read as numbers separated by spaces, which add, so `{{dx}} 140` is 140 moved by `dx`; a part that is not a number counts 0. *)
     export measure (machine, m) = match m
         Fixed x => x
-        Templated text => parseFloat (fill (machine, text)) ?: 0.0
+        Templated text => foldList (filterList (split (fill (machine, text)) " " ?: [], \part => part != ""), 0.0, \(sum, part) => sum + (parseFloat part ?: 0.0))
 
     whole (machine, m) = floatToInt (round (measure (machine, m))) ?: 0
 
@@ -112,7 +112,7 @@ module Templates
         Pictured => Ui::image (fill (machine, node.tplSource), fill (machine, node.tplAlt), whole (machine, node.tplWidth), whole (machine, node.tplHeight))
         Blank => Ui::empty (node.tplSymbol, said (machine, node), fill (machine, node.tplDetail))
         Framing => Ui::framed (frameStyle (machine, node), Ui::column (childrenOf (machine, node)))
-        Drawn => Ui::scene (measure (machine, node.tplWidth), measure (machine, node.tplHeight), [], mapList (node.tplMarks, \m => Canvases::primitive (machine, m)), node.tplLever)
+        Drawn => Ui::scene (measure (machine, node.tplWidth), measure (machine, node.tplHeight), [], Lists::flatten (mapList (node.tplMarks, \m => Canvases::primitives (machine, m))), node.tplLever)
         Divided => Divider
         Spaced => Spacer
 
