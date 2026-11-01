@@ -2,15 +2,25 @@ ok 1 - the canvas use case: accessible controls, geometry, sliders, repeated men
 ok 2 - native views are found by what they say, and every host event keeps its wire contract
 ok 3 - a broken document is refused with every problem named by its path
 # not lettered: Missing lettering; the artboard letters Hello|Choice 
-# not offered: Dismiss; the tree offers Menu|Press|Level
+# not offered: Dismiss; the tree offers:
+popup "Menu"
+button "Press"
+slider "Level" value 0.25 of 0.0 to 1.0
 # not lettered: Hello; the artboard letters Pressed|Choice 
-# not offered: One; the tree offers Menu|Press|Level
-# not offered: Three; the tree offers Menu|Press|Level
+# not offered: One; the tree offers:
+popup "Menu"
+button "Press"
+slider "Level" value 0.75 of 0.0 to 1.0
+# not offered: Three; the tree offers:
+popup "Menu"
+button "Press"
+slider "Level" value 0.75 of 0.0 to 1.0
 ok 4 - a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read
 # not shown: Missing control; the view shows Native|Native action|Pick|One|Two|Three
 # not shown: Native; the view shows Pressed|Native action|Pick|One|Two|Three
 # not shown: one; the view shows Pressed|Native action|three|Pick|One|Two|Three
 # not shown: Pressed; the view shows Native|Native action|Pick|One|Two|Three
 ok 5 - native controls are pressed and repeatedly chosen through Drive, including successful and explained failed lookups
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 6 - the accessibility tree reads clearly to an agent: roles, values and ranges, where an activation lands, and what makes it unclear
+1..6
+# tests=6 passed=6 failed=0 skipped=0

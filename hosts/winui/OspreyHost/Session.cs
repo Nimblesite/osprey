@@ -72,8 +72,8 @@ sealed class Session
     /// <summary>Presses and releases a key in the scene on screen.</summary>
     public bool Press(string key) => renderer.InScene(scene => scene.Press(key));
 
-    /// <summary>Clicks the scene on screen at a point in its units.</summary>
-    public bool Tap(double x, double y) => renderer.InScene(scene => scene.Tap(x, y));
+    /// <summary>Drags the scene element a screen reader announces as <paramref name="label"/> by a distance in scene units.</summary>
+    public bool Drag(string label, double dx, double dy) => renderer.InScene(scene => scene.Drag(label, dx, dy));
 
     /// <summary>A control's value under the binding the framework issued.</summary>
     void Control(string region, long revision, long ordinal, object? value) =>
@@ -141,6 +141,7 @@ sealed class Session
             queue.TryEnqueue(() => Complete(Completion.Done(ticket, "null")));
             return;
         }
+        Progress.Note($"asked {ticket}: {Envelopes.Text(request, "kind")}");
         capabilities.Answer(request).ContinueWith(done => queue.TryEnqueue(() => Complete(done.IsCompletedSuccessfully
             ? done.Result
             : Completion.Failed(ticket, done.Exception?.GetBaseException().Message ?? "The request did not finish"))), TaskScheduler.Default);
@@ -189,6 +190,7 @@ sealed class Session
 
     void Complete(Completion completion)
     {
+        Progress.Note($"answered {completion.Ticket}: {(completion.Ok ? "ok" : completion.Error)}");
         foreach (var write in completion.Writes)
         {
             Slices.Put(write.Key, write.Text);

@@ -148,6 +148,18 @@ _test_bench_tools:
 	@echo "==> Bench tooling tests..."
 	python3 benchmarks/test_merge_results.py
 
+## _gpui-self-test: Every desktop app's self-test.json, the script the WinUI host runs in a real
+##                  window, on the GPUI host. Without a window by default; GPUI_WINDOW= opens one.
+##                  [UI-MACHINE-SELF-TEST]
+.PHONY: _gpui-self-test
+GPUI_WINDOW ?= --headless
+GPUI_SCRIPTED := hosts/gpui:hosts/gpui/probe examples/gpui/flock:examples/gpui/flock examples/gpui/painting:examples/gpui/painting packages/signal_flow/app:packages/signal_flow/app examples/casting:examples/casting
+_gpui-self-test:
+	for pair in $(GPUI_SCRIPTED); do \
+		app=$${pair%%:*}; script=$${pair##*:}; \
+		OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --self-test "$(CURDIR)/$$script/self-test.json" "$(CURDIR)/target/gpui-self-test/$$(basename $$script)" $(GPUI_WINDOW) || exit 1; \
+	done
+
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible
 ##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]
 .PHONY: _ui-test

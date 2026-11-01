@@ -1285,8 +1285,27 @@
       "weight": 400,
       "depth": 4,
       "when": {
-       "input": "receiver",
-       "eq": ""
+       "state": "receivers",
+       "in": [
+        "searching"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "No TVs found",
+      "x": 328,
+      "y": 733.0,
+      "size": 24,
+      "colour": "#6C626A",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 4,
+      "when": {
+       "state": "receivers",
+       "in": [
+        "none"
+       ]
       }
      },
      {
@@ -1675,7 +1694,26 @@
        "fire": "toggleReceivers"
       },
       "role": "popup",
-      "label": "Receiver: {{receiver}}"
+      "label": "Receiver: {{receiver}}",
+      "when": {
+       "input": "receiver",
+       "ne": ""
+      }
+     },
+     {
+      "x": 255,
+      "y": 717,
+      "w": 356,
+      "h": 57,
+      "on": {
+       "fire": "toggleReceivers"
+      },
+      "role": "popup",
+      "label": "Receiver: none",
+      "when": {
+       "input": "receiver",
+       "eq": ""
+      }
      },
      {
       "x": 524,

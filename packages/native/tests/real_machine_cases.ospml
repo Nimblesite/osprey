@@ -104,7 +104,7 @@ realCanvasRoomAndSliders () =
 
 realPlayerJourney () =
     player = playerMachine ()
-    expect (nativeLabels player, "Receiver: |Play|Open file…")
+    expect (nativeLabels player, "Receiver: none|Play|Open file…")
     expect (nativeLetters (player, "Looking for TVs…"), true)
     forEachList (["sherbet", "midnight", "poolside"], \skin =>
         machine = realSkinned (player, skin)

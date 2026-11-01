@@ -245,7 +245,7 @@ module Encode
     scene (bindings, width, height, zoom, atlas, primitives, action, sent, access) = bound (bindings, SceneInput(action = action), "scene", listConcat [JsonMember "width" (real width), JsonMember "height" (real height), JsonMember "zoom" (real zoom), JsonMember "atlas" (Doc::strings atlas), JsonMember "shapes" (JsonArray (mapList (primitives, \primitive => JsonArray (numbers primitive)))), num "streamed" sent] (Pick::either (length access == 0, [], [JsonMember "access" (JsonArray (mapList (access, accessible)))])))
 
     // [UI-MACHINE-A11Y] One element of a scene's accessibility tree as a host maps it.
-    accessible e = JsonObject [str "role" (Canvases::roleName e.accessRole), str "label" e.accessLabel, JsonMember "x" (real e.accessLeft), JsonMember "y" (real e.accessTop), JsonMember "w" (real e.accessWidth), JsonMember "h" (real e.accessHeight), JsonMember "value" (real e.accessValue), JsonMember "min" (real e.accessMin), JsonMember "max" (real e.accessMax)]
+    accessible e = JsonObject [str "role" (Canvases::roleName e.accessRole), str "label" e.accessLabel, JsonMember "x" (real e.accessLeft), JsonMember "y" (real e.accessTop), JsonMember "w" (real e.accessWidth), JsonMember "h" (real e.accessHeight), JsonMember "value" (real e.accessValue), JsonMember "min" (real e.accessMin), JsonMember "max" (real e.accessMax), JsonMember "movable" (JsonBool e.accessMovable)]
 
     // Exhaustive: a new component cannot be encoded by accident as something else.
     (** Encodes `node` and collects its bindings after `bindings`, depth first, so each control's ordinal is the index of its binding. *)

@@ -66,7 +66,10 @@ public sealed record SolidPaint(Tint Tint) : Paint;
 public sealed record LinearPaint(double Angle, Tint From, double FromAt, Tint To, double ToAt, bool Oklab) : Paint;
 
 /// <summary>One decoded scene: its unit space (zero for window pixels), its zoom in pixels per unit (0 fits it to its region), its atlas and its shapes, back to front.</summary>
-public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes)
+/// <summary>One element of a scene's accessibility tree [UI-MACHINE-A11Y]: bounds in scene units and, for a slider, its value and range.</summary>
+public sealed record Accessible(string Role, string Label, double X, double Y, double W, double H, double Value, double Min, double Max, bool Movable);
+
+public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes, IReadOnlyList<Accessible> Access)
 {
     /// <summary>
     /// The size, in window units, of the window an application that is this one scene opens at: its
@@ -98,8 +101,15 @@ public static class SceneDecoder
             throw new HostException("A scene's zoom must be zero or positive");
         }
         var shapes = Envelopes.Items(node, "shapes", Shape).Concat(streamed.Select(Stream));
-        return new Scene(width, height, zoom, Envelopes.Items(node, "atlas", item => item.GetString() ?? ""), [.. shapes.OrderBy(shape => shape.Depth)]);
+        return new Scene(width, height, zoom, Envelopes.Items(node, "atlas", item => item.GetString() ?? ""), [.. shapes.OrderBy(shape => shape.Depth)], [.. Envelopes.Items(node, "access", Announced).Where(item => item.Role != "none" && item.Label != "")]);
     }
+
+    static Accessible Announced(JsonElement item) => new(
+        Envelopes.Text(item, "role"), Envelopes.Text(item, "label"),
+        Measure(item, "x"), Measure(item, "y"), Measure(item, "w"), Measure(item, "h"),
+        Measure(item, "value"), Measure(item, "min"), Measure(item, "max"), Envelopes.Flag(item, "movable"));
+
+    static double Measure(JsonElement item, string name) => item.TryGetProperty(name, out var given) ? Real(given, name) : 0;
 
     /// <summary>
     /// The <see cref="Scene.Opening"/> of the scene <paramref name="node"/> describes, or null when it is

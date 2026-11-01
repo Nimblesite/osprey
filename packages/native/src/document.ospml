@@ -195,7 +195,7 @@ type Template =
     tplShadow : string
     tplMarks : List<Stamp>
 
-(** One element of a canvas's accessibility tree ([UI-MACHINE-A11Y]): role, filled label, bounds in scene units and, for a slider, its value and range. *)
+(** One element of a canvas's accessibility tree ([UI-MACHINE-A11Y]): role, filled label, bounds in scene units, for a slider its value and range, and whether a drag moves it. *)
 type Accessible =
     accessRole : AccessRole
     accessLabel : string
@@ -206,3 +206,4 @@ type Accessible =
     accessValue : float
     accessMin : float
     accessMax : float
+    accessMovable : bool

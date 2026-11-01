@@ -3,6 +3,8 @@
 # --target=macos on a Mac, linux-x64 or linux-arm64 on Linux, windows-x64 under Git Bash on Windows.
 #   run.sh            build and open the window
 #   run.sh --smoke    drive start/dispatch without a window and assert
+#   run.sh --self-test <script> <records> [--headless]
+#                     drive the app from its script, in a real window or with none
 #   run.sh --build    build only; the host is target/release/osprey-gpui, the application linked in
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)

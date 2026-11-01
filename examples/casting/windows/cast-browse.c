@@ -142,7 +142,9 @@ static DWORD WINAPI stop_browsing(LPVOID unused) {
   // A resolve still running is abandoned: the lock keeps a line from being cut short.
   EnterCriticalSection(&lock);
   fflush(stdout);
-  ExitProcess(0);
+  // Not ExitProcess: its DLL teardown can wait on the browse that is still blocked.
+  TerminateProcess(GetCurrentProcess(), 0);
+  return 0;
 }
 
 int main(void) {

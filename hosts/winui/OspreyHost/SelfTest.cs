@@ -15,11 +15,12 @@ namespace Osprey.Host.WinUI;
 /// the application, through the controls' own automation peers, and saves what the window shows.
 /// A script names only what a person sees: words on screen, a button's label, a row's text. Steps:
 /// <c>wait</c> and <c>gone</c> for words, <c>invoke</c> a button, <c>toggle</c> a switch,
-/// <c>choose</c> a row, <c>type</c> into a field, <c>key</c> to press a key in a scene, <c>tap</c>
-/// to click a scene at an x and y in its units,
+/// <c>choose</c> a row, <c>type</c> into a field, <c>set</c> a slider to a value, <c>drag</c> a scene
+/// element by a distance in its units, <c>key</c> to press a key in a scene,
 /// <c>frames</c> to let the steady clock run that many 1/60 s frames, <c>sleep</c> for seconds,
 /// and <c>shot</c> to save the window as a PNG; on screen, <c>shot</c> also saves the window's client
-/// area as the screen shows it, which the goldens check too.
+/// area as the screen shows it, which the goldens check too, and <c>&lt;name&gt;.access.txt</c>, the
+/// accessibility tree an agent reads [UI-MACHINE-SELF-TEST]. A failure writes that tree to the log.
 /// Any diagnostic the window shows fails the test.
 /// </summary>
 sealed class SelfTest(HostWindow window, string script, string shots, bool onScreen)
@@ -73,7 +74,7 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
             if (await Do(verb, words) is { } failure)
             {
                 await Shoot($"{index + 1:00}-failed");
-                return $"{named}: {failure}";
+                return $"{named}: {failure}{Environment.NewLine}the accessibility tree offers:{Environment.NewLine}{AccessTree()}";
             }
         }
         return null;
@@ -91,7 +92,8 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         "frames" => Framed(long.Parse(words[0], System.Globalization.CultureInfo.InvariantCulture)),
         "sleep" => Slept(double.Parse(words[0], System.Globalization.CultureInfo.InvariantCulture)),
         "key" => Task.FromResult(window.Press(words[0]) ? null : "no scene is drawn to take a key"),
-        "tap" => Task.FromResult(window.Tap(Number(words[0]), Number(words[1])) ? null : "no scene is drawn to take a click"),
+        "set" => Act(words[0], element => Set(element, Number(words[1]))),
+        "drag" => Act(words[0], _ => window.Drag(words[0], Number(words[1]), Number(words[2])) ? null : "no scene is drawn to take a drag"),
         _ => Task.FromResult<string?>($"there is no step called {verb}"),
     };
 
@@ -117,6 +119,7 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     {
         await Task.Delay(Settle);
         await Capture.Window(window.Handle, Path.Combine(shots, $"{name}.png"));
+        File.WriteAllText(Path.Combine(shots, $"{name}.access.txt"), AccessTree() + Environment.NewLine);
         if (window.Content is { } content)
         {
             await Capture.Content(content, Path.Combine(shots, $"{name}-content.png"));
@@ -150,6 +153,32 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         Button button => Invoked(() => new ButtonAutomationPeer(button).Invoke()),
         _ => "it is not a button",
     };
+
+    static string? Set(FrameworkElement element, double value) => Up<Slider>(element) is { } slider
+        ? Invoked(() => new SliderAutomationPeer(slider).SetValue(value))
+        : "it is not a slider";
+
+    // What UI Automation announces, in the words the GPUI host's tree uses: one line per thing to act on.
+    string AccessTree() => window.Content is { } root
+        ? string.Join(Environment.NewLine, Tree(root).OfType<FrameworkElement>().Where(Shown).Select(Announced).OfType<string>())
+        : "";
+
+    static string? Announced(FrameworkElement element)
+    {
+        var name = AutomationProperties.GetName(element);
+        return element switch
+        {
+            Slider slider => $"slider \"{name}\" value {slider.Value} of {slider.Minimum} to {slider.Maximum}",
+            ToggleSwitch toggle => $"toggle \"{toggle.Header ?? name}\"",
+            TextBox box => $"field \"{(name == "" ? box.Header : name)}\"",
+            AppBarButton bar => $"button \"{bar.Label}\"",
+            AppBarToggleButton bar => $"toggle \"{bar.Label}\"",
+            ButtonBase button when name != "" => $"button \"{name}\"",
+            ButtonBase { Content: string words } => $"button \"{words}\"",
+            ListViewItem row => $"row \"{string.Join(" ", Tree(row).OfType<TextBlock>().Select(text => text.Text))}\"",
+            _ => null,
+        };
+    }
 
     static string? Toggle(FrameworkElement element) => (Up<ToggleSwitch>(element), Up<AppBarToggleButton>(element)) switch
     {

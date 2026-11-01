@@ -318,3 +318,27 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
     expect (selected (), "")
     expect (Drive::shows (driven, "Native"), true)
     expect (Drive::shows (driven, "Pressed"), false)))
+
+spotted (role, label, x) = ui::Accessible(accessRole = role, accessLabel = label, accessLeft = x, accessTop = 10.0, accessWidth = 100.0, accessHeight = 20.0, accessValue = 0.5, accessMin = 0.0, accessMax = 1.0, accessMovable = false)
+
+test ("the accessibility tree reads clearly to an agent: roles, values and ranges, where an activation lands, and what makes it unclear", \() =>
+    play = spotted (ui::Pressable, "Play", 0.0)
+    volume = spotted (ui::Slidable, "Volume", 100.0)
+    menu = spotted (ui::Popup, "Speed: 1x", 200.0)
+    item = spotted (ui::MenuItem, "Kitchen", 300.0)
+    node = play(accessLabel = "Select Filter", accessMovable = true)
+    clear = [play, volume, menu, item, node]
+    expect (Semantics::announced play, "button \"Play\"")
+    expect (Semantics::announced volume, "slider \"Volume\" value 0.5 of 0.0 to 1.0")
+    expect (Semantics::announced menu, "popup \"Speed: 1x\"")
+    expect (Semantics::announced item, "menuitem \"Kitchen\"")
+    expect (Semantics::announced node, "button \"Select Filter\" movable")
+    expect (Semantics::outline [play, volume], "button \"Play\"\nslider \"Volume\" value 0.5 of 0.0 to 1.0")
+    expect (Semantics::unclear clear, "")
+    expect (Semantics::unclear [play, play], "twice: \"Play\"|twice: \"Play\"")
+    expect (Semantics::unclear [spotted (ui::Pressable, "", 0.0)], "unnamed: \"\"")
+    expect (Semantics::unclear [spotted (ui::Popup, "Receiver: ", 0.0)], "unnamed: \"Receiver: \"")
+    expect ((Semantics::spot (clear, "Volume", 0.25)).pointX, 125.0)
+    expect ((Semantics::spot (clear, "Volume", 0.25)).pointY, 20.0)
+    expect ((Semantics::spot (clear, "Play", 0.25)).pointX, 50.0)
+    expect ((Semantics::spot (clear, "Nope", 0.25)).pointX, 0.0))

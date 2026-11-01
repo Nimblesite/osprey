@@ -3,8 +3,6 @@
     { "wait": "Choose an audio file" },
     { "wait": "Ready" },
     { "gone": "Looking for TVs…" },
-    { "shot": "1-searched" },
-    { "tap": ["560", "1045"] },
-    { "shot": "2-speed" }
+    { "shot": "1-searched" }
   ]
 }

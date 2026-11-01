@@ -1,6 +1,7 @@
 using Microsoft.UI;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -39,6 +40,8 @@ sealed class SceneView
     readonly Pool<Polyline> strips;
     readonly Pool<TextBlock> glyphs;
     readonly Pool<ShapePath> paths;
+    readonly List<FrameworkElement> elements = [];
+    IReadOnlyList<Accessible> announced = [];
     Action<object?> emit = _ => { };
     Scene? shown;
     (double, double) viewed;
@@ -83,7 +86,58 @@ sealed class SceneView
         {
             pool.End();
         }
+        Announce(scene.Access);
     }
+
+    // A scene's accessibility tree [UI-MACHINE-A11Y] as real, invisible controls at each element's
+    // bounds, so UI Automation sees what the GPUI host's AccessKit overlay announces. A pointer never
+    // lands on them; an assistive action lands as the pointer press and release a hand would send, so
+    // the application cannot tell a screen reader or an agent from a hand.
+    void Announce(IReadOnlyList<Accessible> access)
+    {
+        if (access.SequenceEqual(announced))
+        {
+            return;
+        }
+        foreach (var old in elements)
+        {
+            canvas.Children.Remove(old);
+        }
+        elements.Clear();
+        announced = access;
+        foreach (var item in access)
+        {
+            FrameworkElement element = item.Role == "slider" ? SliderFor(item) : ButtonFor(item);
+            element.Width = item.W;
+            element.Height = item.H;
+            element.Opacity = 0;
+            element.IsHitTestVisible = false;
+            AutomationProperties.SetName(element, item.Label);
+            Canvas.SetLeft(element, item.X);
+            Canvas.SetTop(element, item.Y);
+            Canvas.SetZIndex(element, int.MaxValue);
+            canvas.Children.Add(element);
+            elements.Add(element);
+        }
+    }
+
+    Button ButtonFor(Accessible item)
+    {
+        var button = new Button { IsTabStop = false, MinWidth = 0, MinHeight = 0, Padding = new Thickness(0) };
+        button.Click += (_, _) => Later(() => Tap(item.X + (item.W / 2), item.Y + (item.H / 2)));
+        return button;
+    }
+
+    Slider SliderFor(Accessible item)
+    {
+        var span = item.Max - item.Min;
+        var slider = new Slider { IsTabStop = false, Minimum = item.Min, Maximum = item.Max, StepFrequency = span / 1000, Value = item.Value };
+        slider.ValueChanged += (_, args) => Later(() => Tap(item.X + (item.W * (args.NewValue - item.Min) / span), item.Y + (item.H / 2)));
+        return slider;
+    }
+
+    // After this event, since the envelope it brings can rebuild the control that raised it.
+    void Later(Action act) => holder.DispatcherQueue.TryEnqueue(() => act());
 
     // A scene with a size is drawn at its fixed zoom from the region's top left and clipped to itself,
     // so a larger window shows more canvas and resizes nothing, or with zoom 0 as large as fits the
@@ -292,11 +346,23 @@ sealed class SceneView
         emit(new KeyInput(key, false));
     }
 
-    /// <summary>Sends the pointer going down and up at a point in scene units, as one click there does.</summary>
-    public void Tap(double x, double y)
+    // The pointer going down and up at a point in scene units, as one click there does.
+    void Tap(double x, double y)
     {
         emit(new PointerInput(x, y, true, false));
         emit(new PointerInput(x, y, false, false));
+    }
+
+    /// <summary>Presses the element announced as <paramref name="label"/>, moves it by a distance in scene units and releases it, as a hand's drag does.</summary>
+    public void Drag(string label, double dx, double dy)
+    {
+        if (announced.FirstOrDefault(item => item.Label == label) is { } item)
+        {
+            var (x, y) = (item.X + (item.W / 2), item.Y + (item.H / 2));
+            emit(new PointerInput(x, y, true, false));
+            emit(new PointerInput(x + dx, y + dy, true, false));
+            emit(new PointerInput(x + dx, y + dy, false, false));
+        }
     }
 
     void Keyed(KeyRoutedEventArgs args, bool down)

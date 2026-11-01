@@ -56,7 +56,7 @@ module Read
 
     curves node = mapList (filterList (Doc::items (Doc::field (node, "shapes")), curved), \s => curve (Doc::at (s, 1)))
 
-    accessible e = ui::Accessible(accessRole = MachineDocs::roleOf (Doc::text (e, "role")), accessLabel = Doc::text (e, "label"), accessLeft = Doc::decimal (e, "x"), accessTop = Doc::decimal (e, "y"), accessWidth = Doc::decimal (e, "w"), accessHeight = Doc::decimal (e, "h"), accessValue = Doc::decimal (e, "value"), accessMin = Doc::decimal (e, "min"), accessMax = Doc::decimal (e, "max"))
+    accessible e = ui::Accessible(accessRole = MachineDocs::roleOf (Doc::text (e, "role")), accessLabel = Doc::text (e, "label"), accessLeft = Doc::decimal (e, "x"), accessTop = Doc::decimal (e, "y"), accessWidth = Doc::decimal (e, "w"), accessHeight = Doc::decimal (e, "h"), accessValue = Doc::decimal (e, "value"), accessMin = Doc::decimal (e, "min"), accessMax = Doc::decimal (e, "max"), accessMovable = Doc::flag (e, "movable"))
 
     seen (before, node, revision) = before(renderedControls = mapList (walked ([], node), control), renderedLetters = letters node, renderedCurves = curves node, renderedAccess = mapList (Doc::items (Doc::field (node, "access")), accessible), renderedRevision = revision, renderedOrdinal = Doc::number (node, "event"))
 

@@ -13,6 +13,7 @@ mod host;
 mod regions;
 mod render;
 mod scene;
+mod self_test;
 mod smoke;
 mod store;
 
@@ -61,6 +62,9 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--smoke") {
         std::process::exit(smoke::run());
+    }
+    if self_test::requested() == Some(true) {
+        std::process::exit(self_test::windowless());
     }
     std::process::exit(host::run());
 }

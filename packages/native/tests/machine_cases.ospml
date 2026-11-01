@@ -31,7 +31,7 @@ nativeLabels machine = join (mapList (nativeElements machine, \e => e.accessLabe
 
 nativeElement (machine, label) = match Lists::find (nativeElements machine, \e => e.accessLabel == label)
     Success element => element
-    Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0)
+    Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = false)
 
 nativeOffered (machine, label) = Lists::any (nativeElements machine, \e => e.accessLabel == label)
 

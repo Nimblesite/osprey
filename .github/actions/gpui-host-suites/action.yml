@@ -33,6 +33,17 @@ runs:
       shell: bash
       run: make _gpui-smoke
 
+    # [UI-MACHINE-SELF-TEST]: the scripts the WinUI host runs, by accessible label, without a window
+    # here; a Mac runner has a display, so there they run in the real window too.
+    - name: Every desktop app's self-test without a window
+      shell: bash
+      run: make _gpui-self-test
+
+    - name: Every desktop app's self-test in a real window
+      if: runner.os == 'macOS'
+      shell: bash
+      run: make _gpui-self-test GPUI_WINDOW=
+
     - name: Host tests and clippy
       shell: bash
       working-directory: hosts/gpui

@@ -281,7 +281,11 @@ module Canvases
 
     described machine = filterList (areas machine, \a => a.areaRole != Unannounced)
 
-    bare (machine, a) = Accessible(accessRole = a.areaRole, accessLabel = Templates::fill (machine, a.areaLabel), accessLeft = at (machine, a.areaX), accessTop = at (machine, a.areaY), accessWidth = at (machine, a.areaW), accessHeight = at (machine, a.areaH), accessValue = 0.0, accessMin = 0.0, accessMax = 0.0)
+    movable a = match a.areaDrag
+        Undragged => false
+        _ => true
+
+    bare (machine, a) = Accessible(accessRole = a.areaRole, accessLabel = Templates::fill (machine, a.areaLabel), accessLeft = at (machine, a.areaX), accessTop = at (machine, a.areaY), accessWidth = at (machine, a.areaW), accessHeight = at (machine, a.areaH), accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = movable a)
 
     // A slider also carries the input it shows and its range.
     element (machine, a) = match a.areaSlide

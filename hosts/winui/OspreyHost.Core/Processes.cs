@@ -35,18 +35,22 @@ public static class Processes
         {
             start.ArgumentList.Add(argument);
         }
-        using var child = Process.Start(start) ?? throw new InvalidOperationException($"{executable} did not start");
+        var child = Process.Start(start) ?? throw new InvalidOperationException($"{executable} did not start");
         using var deadline = new CancellationTokenSource(TimeSpan.FromMilliseconds(Math.Max(1, Envelopes.Number(request, "timeout"))));
         var stdout = child.StandardOutput.ReadToEndAsync(deadline.Token);
         var stderr = child.StandardError.ReadToEndAsync(deadline.Token);
         try
         {
             await child.WaitForExitAsync(deadline.Token);
-            return Finished(ticket, request, child.ExitCode, await stdout, await stderr);
+            var finished = Finished(ticket, request, child.ExitCode, await stdout.WaitAsync(deadline.Token), await stderr.WaitAsync(deadline.Token));
+            child.Dispose();
+            return finished;
         }
         catch (OperationCanceledException)
         {
             child.Kill(entireProcessTree: true);
+            // Closing a pipe a read is blocked on waits for that read, so the deadline's answer does not.
+            _ = Task.Run(child.Dispose);
             return Completion.Failed(ticket, $"{executable} ran past its deadline");
         }
     }

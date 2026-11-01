@@ -168,6 +168,12 @@ jobs:
           New-Item -Path $key -Force | Out-Null
           New-ItemProperty -Path $key -Name AllowDevelopmentWithoutDevLicense -Value 1 -PropertyType DWord -Force | Out-Null
 
+      # The runner's desktop is 1024 by 768, smaller than Signal Flow's window, and a golden on screen
+      # holds what the screen shows of the whole window.
+      - name: A desktop that holds every app's window
+        shell: pwsh
+        run: scripts/display-size.ps1 -Width 1920 -Height 1080
+
       # Every app in a real window on the runner's desktop, inside its sandbox, driven by its
       # self-test; each picture of the window's content is compared with the app's goldens and a
       # diff picture is kept for any that differs. Windows Error Reporting keeps a crashed host's dump.

@@ -466,3 +466,15 @@ test ("prism: a larger window moves the inspector, undo and legend to its edges 
     grown ()
     grownControls ()
     shrunk ()))
+
+clearly skin =
+    begun skin
+    expect (Semantics::unclear (elements ()), "")
+    expect (length (elements ()) > 5, true)
+
+test ("every skin's accessibility tree reads clearly to an agent, and a Prism node says a drag moves it", \() => bench (\() =>
+    forEachList (["topology", "notation", "paper", "prism"], clearly)
+    begun "topology"
+    expect (startsWith (Semantics::outline (elements ())) "popup \"Skin: Topology\"\n", true)
+    begun "prism"
+    expect (contains (Semantics::outline (elements ())) "button \"Select Filter\" movable", true)))

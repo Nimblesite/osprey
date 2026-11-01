@@ -53,5 +53,5 @@ module Drive
     (** Whether the canvas letters `text`; when not, prints what it does letter. *)
     export letters (d, text) = explained (Views::letters (d.drivenSeen, text), "not lettered: ${text}; the artboard letters ${Views::lettered d.drivenSeen}")
 
-    (** Whether the accessibility tree offers `label`; when not, prints what it offers. *)
-    export offers (elements, label) = explained (Semantics::offered (elements, label), "not offered: ${label}; the tree offers ${Semantics::labels elements}")
+    (** Whether the accessibility tree offers `label`; when not, prints the tree as an agent reads it. *)
+    export offers (elements, label) = explained (Semantics::offered (elements, label), "not offered: ${label}; the tree offers:\n${Semantics::outline elements}")

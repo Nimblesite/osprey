@@ -237,7 +237,7 @@ pub fn run() -> i32 {
 fn start() -> Result<(Regions, Vec<Request>), String> {
     Library::init()?;
     let home = crate::home()?;
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let arguments = crate::self_test::app_arguments();
     let context = events::start_context(
         now(),
         local_offset()?,
@@ -281,6 +281,15 @@ fn new_view(
     .detach();
     let mut view = HostView::new(regions, pending, bench);
     view.dispatch(events::lifecycle(now(), "active"), window, cx);
+    if crate::self_test::requested().is_some() {
+        match crate::self_test::load() {
+            Ok(run) => crate::self_test::in_window(run, window, cx),
+            Err(problem) => {
+                eprintln!("self-test failed: {problem}");
+                std::process::exit(1);
+            }
+        }
+    }
     view
 }
 

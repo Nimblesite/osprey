@@ -8,6 +8,25 @@ public sealed class SceneTests
 {
     static Scene Decode(string node, params Streamed[] streamed) => SceneDecoder.Decode(JsonDocument.Parse(node).RootElement.Clone(), streamed);
 
+    /// <summary>[UI-MACHINE-A11Y] What a scene announces reaches the host whole; a hit area, or an element with no name, is not announced.</summary>
+    [Fact]
+    public void ASceneCarriesItsAccessibilityTree()
+    {
+        var scene = Decode("""
+            {"width":100,"height":100,"zoom":1,"shapes":[],"access":[
+              {"role":"button","label":"Play","x":1,"y":2,"w":3,"h":4,"value":0,"min":0,"max":0,"movable":false},
+              {"role":"slider","label":"Volume","x":5,"y":6,"w":7,"h":8,"value":0.5,"min":0,"max":1,"movable":false},
+              {"role":"button","label":"Select Filter","x":9,"y":9,"w":9,"h":9,"value":0,"min":0,"max":0,"movable":true},
+              {"role":"none","label":"Close menu","x":0,"y":0,"w":100,"h":100,"value":0,"min":0,"max":0,"movable":false},
+              {"role":"button","label":"","x":0,"y":0,"w":1,"h":1,"value":0,"min":0,"max":0,"movable":false}
+            ]}
+            """);
+        Assert.Equal(["Play", "Volume", "Select Filter"], scene.Access.Select(item => item.Label));
+        Assert.Equal(new Accessible("slider", "Volume", 5, 6, 7, 8, 0.5, 0, 1, false), scene.Access[1]);
+        Assert.True(scene.Access[2].Movable);
+        Assert.Empty(Decode("""{"width":1,"height":1,"zoom":1,"shapes":[]}""").Access);
+    }
+
     [Fact]
     public void EveryPrimitiveDecodesAndEqualDepthsKeepTheirOrder()
     {

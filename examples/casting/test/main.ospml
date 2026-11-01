@@ -343,7 +343,7 @@ test ("no TVs found offers another search, and an unreachable TV shows why", \()
 test ("the canvas: every control is reached by its accessible label, through pointer events alone", \() => bench (\() =>
     drawn ()
     expect (letters "Looking for TVs…", true)
-    expect (labels (), "Receiver: |Play|Open file…")
+    expect (labels (), "Receiver: none|Play|Open file…")
     discovered ()
     expect (letters "Living Room TV", true)
     expect (letters "Choose an audio file", true)
@@ -414,3 +414,27 @@ test ("the canvas: every control is reached by its accessible label, through poi
     expect (letters "kitchen.local:8009: connection refused or t…", true)
     opened "/music/A very long name that will not fit on the title line at all.mp3"
     expect (letters "A very long name that will no…", true)))
+
+test ("the player's accessibility tree reads clearly to an agent while it searches, once it has found none and once it has found some, and the artboard letters which", \() => bench (\() =>
+    drawn ()
+    expect (Semantics::unclear (elements ()), "")
+    expect (offers "Receiver: none", true)
+    expect (offers "Open file…", true)
+    expect (letters "Looking for TVs…", true)
+    expect (letters "No TVs found", false)
+    post "{\"kind\":\"completed\",\"ticket\":\"discover\",\"ok\":false,\"error\":\"the browse failed\",\"now\":2}"
+    expect (letters "Looking for TVs…", false)
+    expect (letters "No TVs found", true)
+    expect (Semantics::unclear (elements ()), "")
+    drawn ()
+    browsing ""
+    discovered ()
+    expect (letters "Looking for TVs…", false)
+    expect (letters "No TVs found", true)
+    drawn ()
+    browsing browse
+    discovered ()
+    expect (letters "Looking for TVs…", false)
+    expect (letters "No TVs found", false)
+    expect (offers "Receiver: Living Room TV", true)
+    expect (Semantics::unclear (elements ()), "")))

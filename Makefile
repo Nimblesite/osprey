@@ -461,9 +461,10 @@ _gpui-test: _runtime_macos _runtime
 	for suite in packages/native/tests packages/signal_flow/tests examples/synth/test examples/gpui/flock/test examples/gpui/painting/test; do \
 		$(BIN) test $$suite || exit 1; \
 	done
+	$(MAKE) _gpui-smoke _gpui-self-test
 	cd hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings
-	$(MAKE) _gpui-smoke
 
+# [UI-MACHINE-SELF-TEST] the scripts run in `_gpui-self-test`.
 # Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
 # real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
 _gpui-smoke:
