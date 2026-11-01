@@ -91,7 +91,7 @@ jobs:
         run: npm ci
 
       - name: Build runtimes and website WebAssembly demo
-        run: make _runtime wasm-site
+        run: make _runtime && make -C website wasm-site
 
       - name: Build website (regenerates reference docs from the compiler)
         working-directory: ./website

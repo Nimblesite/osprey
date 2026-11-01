@@ -461,3 +461,8 @@ test ("prism: nodes drag with their cables, controls and sprites; clicks, hovers
     movedControls ()
     scopeDrag ()
     sliderDrag ()))
+
+test ("prism: a larger window moves the inspector, undo and legend to its edges at their size and leaves more grid; a smaller one spares none", \() => bench (\() =>
+    grown ()
+    grownControls ()
+    shrunk ()))

@@ -18,7 +18,7 @@ module App
         Draw => Runtime::step store
 
     controlled (store, action, input) = match action
-        Draw => Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, shift) => Drawing::pointer (store, x, y, down, shift))
+        Draw => Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, shift) => Drawing::pointer (store, x, y, down, shift), \(_, _) => Runtime::step store)
         _ => Runtime::step store
 
     (** Routes every framework message the port uses; the rest leave the store as it is. *)

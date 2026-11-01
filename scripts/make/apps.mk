@@ -149,9 +149,9 @@ _test_bench_tools:
 	python3 benchmarks/test_merge_results.py
 
 ## ui-test: The UI test framework's own suite and the apps it drives by accessible
-##          label alone, casting and signal flow, with no host or window. [UI-MACHINE-TEST]
+##          label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]
 .PHONY: ui-test
-UI_SUITES := packages/uitest/tests examples/casting/test packages/signal_flow/tests
+UI_SUITES := packages/uitest/tests examples/casting/test packages/signal_flow/tests examples/synth/test
 ui-test: _runtime
 	cargo build --release -p osprey-cli
 	for suite in $(UI_SUITES); do $(BIN) test $$suite || exit 1; done

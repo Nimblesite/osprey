@@ -17,6 +17,9 @@ module Events
     (** A pointer at `x`, `y`, pressed or released, on the scene at `ordinal`. *)
     export pointer (revision, ordinal, x, y, down, now) = control (revision, ordinal, JsonObject [Doc::dec ("x", x), Doc::dec ("y", y), Doc::bit ("down", down)], now)
 
+    (** The scene at `ordinal` measured at `width` by `height` scene units, as a host reports its region when it shows or resizes. *)
+    export viewed (revision, ordinal, width, height, now) = control (revision, ordinal, JsonObject [Doc::dec ("width", width), Doc::dec ("height", height)], now)
+
     completed (ticket, result, now) = Doc::write (JsonObject [Doc::str ("kind", "completed"), Doc::str ("ticket", ticket), Doc::bit ("ok", true), JsonMember "result" result, Doc::num ("now", now)])
 
     (** The file picker of request `ticket` answered with `path`. *)

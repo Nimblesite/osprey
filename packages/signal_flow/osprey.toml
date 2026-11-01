@@ -1,13 +1,18 @@
 [project]
 name = "signal_flow"
-source_roots = ["src", "../native/src", "../graphics/src", "../json/src"]
+source_roots = ["src"]
 default_namespace = "signalflow"
 
 [package]
-name = "@osprey/signal_flow"
+name = "@osprey/signal-flow"
 license = "MIT"
 summary = "A signal-flow graph editor as a UI machine: four canvas skins drawn from the designs, an evaluating adapter and undo"
 keywords = ["desktop", "native", "reactive", "signals", "ui"]
+
+[dependencies]
+"@osprey/graphics" = { epoch = 1, min_release = 1 }
+"@osprey/json" = { epoch = 1, min_release = 1 }
+"@osprey/native" = { epoch = 1, min_release = 1 }
 
 [modules]
 allow_wildcard_imports = false

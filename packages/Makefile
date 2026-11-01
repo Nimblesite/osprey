@@ -5,7 +5,7 @@ ROOT ?= ..
 
 .PHONY: package-coverage package-checks package-coverage-record registry-test registry-serve registry-serve-sample registry-blockers
 
-## package-coverage: per-package source coverage — collect, then gate all 19.
+## package-coverage: per-package source coverage — collect, then gate all 24.
 ##                   Reruns each packages/<name>/tests suite with `osprey test
 ##                   --coverage-json` and enforces every threshold under
 ##                   projects.packages (90% floor, one report per package).

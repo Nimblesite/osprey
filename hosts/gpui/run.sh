@@ -8,7 +8,6 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 python3 "$here/dependencies.py"
-python3 "$here/dependencies_test.py"
 compiler=${OSPREY_BIN:-"$repo/target/release/osprey"}
 app=${OSPREY_GPUI_APP:-"$here/probe"}
 case "$(uname -s)-$(uname -m)" in

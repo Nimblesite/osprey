@@ -1,0 +1,2 @@
+// A null send observes the start envelope: the player's idle screen, searching the network for TVs.
+{"send":null,"expect":{"regions":["root"],"text":{"region":"root","contains":"Choose an audio file"},"diagnostics":0}}

@@ -22,8 +22,8 @@ painting:
 signal-flow:
 	$(MAKE) -C $(ROOT) _gpui-signal-flow
 
-## synth: Open the Prism synth: the signal-flow editor's Prism skin playing each
-##        edit through the speakers. [UI-MACHINE-FLOW-SYNTH]
+## synth: Open the Prism synth: the signal-flow editor's Prism skin with a
+##        keyboard that plays the patch through the speakers. [UI-MACHINE-FLOW-SYNTH]
 synth:
 	$(MAKE) -C $(ROOT) _gpui-synth
 
