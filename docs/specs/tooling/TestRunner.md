@@ -200,8 +200,17 @@ no source claims stays under the suite's path.
 
 **`[TESTING-VSCODE]`** The extension's Testing API integration:
 
-- watches `**/*.test.{osp,ospml}` and obtains each file's child cases from
-  `osprey <file> --list-tests`;
+- finds `**/*.test.{osp,ospml}` outside `target/` and `node_modules/` and
+  obtains each file's child cases from `osprey <file> --list-tests`, several
+  files at once, each file at most once at a time with a change landing
+  mid-resolve queueing one more pass;
+- keeps the tree current without a manual step: a test file created or
+  changed re-resolves, a deleted one leaves the tree, any other `.osp`/`.ospml`
+  change re-resolves every test file of the same project (the nearest
+  `osprey.toml`, else the file's directory), and a rebuilt compiler binary
+  rescans the workspace;
+- answers the Testing view's Refresh with that same rescan, which also drops
+  items whose file is gone;
 - resolves the compiler from `osprey.server.compilerPath`, then the bundled
   platform binary, then `PATH`;
 - runs requested files with `osprey <file> --run`, using

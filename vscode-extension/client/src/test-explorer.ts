@@ -6,7 +6,7 @@
 // wiring, structured like debug-panel.ts.
 
 import { spawn, type ChildProcess } from "child_process";
-import { promises as fs } from "fs";
+import { existsSync, promises as fs } from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Readable } from "stream";
@@ -51,6 +51,9 @@ import {
 
 /** The discovery glob — both flavors ([TESTING-FILE-CONVENTION]). */
 export const TEST_FILE_GLOB = "**/*.test.{osp,ospml}";
+
+/** Every Osprey source: a module change can change the suites importing it. */
+const SOURCE_GLOB = "**/*.{osp,ospml}";
 
 const CONTROLLER_ID = "ospreyTests";
 const CONTROLLER_LABEL = "Osprey Tests";
@@ -338,22 +341,9 @@ export function removeTestFile(
 ): void {
   dropSkipWarnings(uri);
   const id = fileTestId(uri.toString());
-  const find = (
-    items: vscode.TestItemCollection,
-  ): vscode.TestItem | undefined => {
-    const direct = items.get(id);
-    if (direct !== undefined) {
-      return direct;
-    }
-    let found: vscode.TestItem | undefined;
-    items.forEach((item) => {
-      if (found === undefined && item.id.startsWith(DIRECTORY_ID_PREFIX)) {
-        found = find(item.children);
-      }
-    });
-    return found;
-  };
-  const item = find(controller.items);
+  const item = fileItems(controller.items).find(
+    (candidate) => candidate.id === id,
+  );
   if (item === undefined) {
     return;
   }
@@ -379,16 +369,123 @@ export function removeTestFile(
   }
 }
 
-/** Initial workspace scan. `findFiles` is injectable so tests can seed uris. */
+/** Every file-level item, however deep its directory nesting. */
+export function fileItems(items: vscode.TestItemCollection): vscode.TestItem[] {
+  const found: vscode.TestItem[] = [];
+  items.forEach((item) => {
+    if (item.id.startsWith(DIRECTORY_ID_PREFIX)) {
+      found.push(...fileItems(item.children));
+    } else {
+      found.push(item);
+    }
+  });
+  return found;
+}
+
+/** Build output holds copies of the suites; they never belong in the tree. */
+const BUILD_OUTPUT_GLOB = "**/{target,node_modules}/**";
+
+/** Whether `uri` lies under a build-output directory of its workspace. */
+export function isBuildOutput(uri: vscode.Uri): boolean {
+  return vscode.workspace
+    .asRelativePath(uri, false)
+    .split(/[\\/]+/)
+    .some((part) => part === "target" || part === "node_modules");
+}
+
+/** Whether `uri` names a test file ([TESTING-FILE-CONVENTION]). */
+export function isTestFile(uri: vscode.Uri): boolean {
+  return /\.test\.osp(ml)?$/.test(uri.fsPath);
+}
+
+/**
+ * The project a source file belongs to: the nearest directory holding an
+ * `osprey.toml`, or the file's own directory when no manifest encloses it.
+ */
+export function projectRootOf(uri: vscode.Uri): string {
+  const start = path.dirname(uri.fsPath);
+  for (let dir = start; ; dir = path.dirname(dir)) {
+    if (existsSync(path.join(dir, "osprey.toml"))) {
+      return dir;
+    }
+    if (path.dirname(dir) === dir) {
+      return start;
+    }
+  }
+}
+
+/** Parallel `--list-tests` processes; discovery is a parse, so cores bound it. */
+const DISCOVERY_WORKERS = Math.max(2, os.availableParallelism());
+
+/**
+ * Coalesced discovery: a file resolves at most once at a time, a change landing
+ * mid-resolve queues exactly one more pass, and at most `workers` resolves run
+ * together. `schedule` settles once the queue drains.
+ */
+export function makeDiscoveryQueue(
+  refresh: (uri: vscode.Uri) => Promise<unknown>,
+  workers: number = DISCOVERY_WORKERS,
+): (uris: readonly vscode.Uri[]) => Promise<void> {
+  const pending = new Map<string, vscode.Uri>();
+  const running = new Set<string>();
+  const drained: (() => void)[] = [];
+  const pump = (): void => {
+    for (const [key, uri] of pending) {
+      if (running.size >= workers) {
+        break;
+      }
+      if (!running.has(key)) {
+        pending.delete(key);
+        running.add(key);
+        void refresh(uri)
+          .catch(() => undefined)
+          .finally(() => {
+            running.delete(key);
+            pump();
+          });
+      }
+    }
+    if (running.size === 0 && pending.size === 0) {
+      for (const settle of drained.splice(0)) {
+        settle();
+      }
+    }
+  };
+  return (uris) => {
+    for (const uri of uris) {
+      pending.set(uri.toString(), uri);
+    }
+    const done = new Promise<void>((settle) => drained.push(settle));
+    pump();
+    return done;
+  };
+}
+
+/**
+ * Full workspace scan, also the Testing view's Refresh: resolves every test
+ * file outside build output and drops items whose file is gone from disk.
+ */
 export async function scanWorkspaceTestFiles(
   controller: vscode.TestController,
-  resolveCompiler: () => string,
+  schedule: (uris: readonly vscode.Uri[]) => Promise<void>,
   findFiles: (glob: string) => Thenable<vscode.Uri[]> = (glob) =>
-    vscode.workspace.findFiles(glob),
+    vscode.workspace.findFiles(glob, BUILD_OUTPUT_GLOB),
 ): Promise<void> {
-  for (const uri of await findFiles(TEST_FILE_GLOB)) {
-    await refreshTestFile(controller, uri, resolveCompiler());
+  const uris = (await findFiles(TEST_FILE_GLOB)).filter(
+    (uri) => !isBuildOutput(uri),
+  );
+  const found = new Set(uris.map((uri) => fileTestId(uri.toString())));
+  for (const item of fileItems(controller.items)) {
+    // A file the watcher added mid-scan is absent from `found` but on disk.
+    if (
+      !found.has(item.id) &&
+      item.uri !== undefined &&
+      !existsSync(item.uri.fsPath)
+    ) {
+      removeTestFile(controller, item.uri);
+    }
   }
+  await schedule(uris);
 }
 
 /**
@@ -900,24 +997,93 @@ export function makeCoverageHandler(
     );
 }
 
-/** The file-watcher callbacks (exported so they are directly testable). */
-export function makeWatcherHandlers(
+/**
+ * The tree's reactions (exported so they are directly testable): a test file
+ * created or changed re-resolves; deleted, it leaves the tree; any other source
+ * re-resolves every test file of its project, since a suite's cases depend on
+ * the modules it imports; `rescan` re-resolves the whole workspace.
+ */
+export function makeDiscovery(
   controller: vscode.TestController,
   resolveCompiler: () => string,
+  findFiles?: (glob: string) => Thenable<vscode.Uri[]>,
 ): {
-  refresh: (uri: vscode.Uri) => Promise<vscode.TestItem>;
-  remove: (uri: vscode.Uri) => void;
+  changed: (uri: vscode.Uri) => Promise<void>;
+  deleted: (uri: vscode.Uri) => Promise<void>;
+  rescan: () => Promise<void>;
 } {
-  return {
-    refresh: (uri) => refreshTestFile(controller, uri, resolveCompiler()),
-    remove: (uri) => removeTestFile(controller, uri),
+  const schedule = makeDiscoveryQueue((uri) =>
+    refreshTestFile(controller, uri, resolveCompiler()),
+  );
+  const project = (uri: vscode.Uri): Promise<void> => {
+    const root = projectRootOf(uri);
+    return schedule(
+      fileItems(controller.items)
+        .map((item) => item.uri)
+        .filter(
+          (file): file is vscode.Uri =>
+            file !== undefined && projectRootOf(file) === root,
+        ),
+    );
   };
+  const changed = (uri: vscode.Uri): Promise<void> =>
+    isBuildOutput(uri)
+      ? Promise.resolve()
+      : isTestFile(uri)
+        ? schedule([uri])
+        : project(uri);
+  return {
+    changed,
+    deleted: (uri) => {
+      if (isTestFile(uri)) {
+        removeTestFile(controller, uri);
+        return Promise.resolve();
+      }
+      return changed(uri);
+    },
+    rescan: () => scanWorkspaceTestFiles(controller, schedule, findFiles),
+  };
+}
+
+/** A rebuild writes the binary in bursts; one rescan follows the last write. */
+const REBUILD_SETTLE_MS = 750;
+
+/**
+ * Rescans after the compiler binary is rebuilt, since a new compiler may list
+ * different cases. A bare command name resolved through PATH has no file to
+ * watch.
+ */
+function watchCompiler(
+  compiler: string,
+  rescan: () => Promise<void>,
+): vscode.Disposable {
+  if (!path.isAbsolute(compiler)) {
+    return new vscode.Disposable(() => undefined);
+  }
+  const watcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(
+      vscode.Uri.file(path.dirname(compiler)),
+      path.basename(compiler),
+    ),
+  );
+  let timer: NodeJS.Timeout | undefined;
+  const rebuilt = (): void => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void rescan(), REBUILD_SETTLE_MS);
+  };
+  watcher.onDidCreate(rebuilt);
+  watcher.onDidChange(rebuilt);
+  return vscode.Disposable.from(
+    watcher,
+    new vscode.Disposable(() => clearTimeout(timer)),
+  );
 }
 
 /**
  * Register the Osprey Test Explorer: controller + default Run profile, initial
- * workspace scan, and a watcher that re-resolves changed/created test files
- * and drops deleted ones. `resolveCompiler` is the same resolution chain the
+ * workspace scan (also the Testing view's Refresh), a source watcher that
+ * re-resolves the suites a change can affect, and a compiler watcher that
+ * rescans after a rebuild. `resolveCompiler` is the same resolution chain the
  * LSP uses (setting → bundled → PATH). `controllerId` is overridable only so
  * tests can register disposable controllers beside the real one.
  */
@@ -948,15 +1114,17 @@ export function registerOspreyTestExplorer(
   );
   coverageProfile.loadDetailedCoverage = (_run, fileCoverage) =>
     Promise.resolve(detailedCoverage.get(fileCoverage) ?? []);
-  const handlers = makeWatcherHandlers(controller, resolveCompiler);
-  const watcher = vscode.workspace.createFileSystemWatcher(TEST_FILE_GLOB);
-  watcher.onDidCreate((uri) => void handlers.refresh(uri));
-  watcher.onDidChange((uri) => void handlers.refresh(uri));
-  watcher.onDidDelete(handlers.remove);
-  void scanWorkspaceTestFiles(controller, resolveCompiler);
+  const discovery = makeDiscovery(controller, resolveCompiler);
+  controller.refreshHandler = () => discovery.rescan();
+  const watcher = vscode.workspace.createFileSystemWatcher(SOURCE_GLOB);
+  watcher.onDidCreate((uri) => void discovery.changed(uri));
+  watcher.onDidChange((uri) => void discovery.changed(uri));
+  watcher.onDidDelete((uri) => void discovery.deleted(uri));
+  void discovery.rescan();
   context.subscriptions.push(
     controller,
     watcher,
+    watchCompiler(resolveCompiler(), discovery.rescan),
     new vscode.Disposable(() => {
       skipCollection?.dispose();
       skipCollection = undefined;
