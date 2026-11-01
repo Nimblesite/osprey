@@ -118,7 +118,8 @@ pub(crate) fn build(
     }
     crate::toolchain::validate_archive_output(out, target.platform()).map_err(|e| fail(&e))?;
     let (ir, header) = source(program, path, target, scope).map_err(|e| fail(&e))?;
-    let runtime = runtime_archive(cli, target)?;
+    let http = crate::linking::uses_http(&ir);
+    let runtime = runtime_archive(cli, target, http)?;
     let scratch = Scratch::new(path, target.name())?;
     let ll = scratch.path.join("app.ll");
     let obj = scratch.path.join("app.o");
@@ -139,8 +140,13 @@ pub(crate) fn build(
 }
 
 /// The native runtime this system's slice bundles, for the chosen memory backend.
-fn runtime_archive(cli: &Cli, target: Target) -> Result<String, ExitCode> {
-    let runtime_name = crate::linking::runtime_name("libfiber_runtime.a", &cli.memory);
+fn runtime_archive(cli: &Cli, target: Target, http: bool) -> Result<String, ExitCode> {
+    let base = if http {
+        "libhttp_runtime.a"
+    } else {
+        "libfiber_runtime.a"
+    };
+    let runtime_name = crate::linking::runtime_name(base, &cli.memory);
     let runtime = find_runtime_lib(&runtime_name).ok_or_else(|| {
         fail(&format!(
             "{runtime_name} not found; run `make` to build the {} runtime",
@@ -171,28 +177,47 @@ fn build_dll(
         .map_err(|e| fail(&e))?;
     let (ir, slotted) = ios_abi::windows_dll::adapt(&ir, &abi, true).map_err(|e| fail(&e))?;
     let header = ios_abi::windows_dll::header(&abi.exports, &slotted, path, target.name());
-    let runtime = runtime_archive(cli, target)?;
+    let http = crate::linking::uses_http(&ir);
+    let runtime = runtime_archive(cli, target, http)?;
     let scratch = Scratch::new(path, target.name())?;
     let ll = scratch.path.join("app.ll");
     let dll = scratch.path.join("app.dll");
     write(&ll, &ir)?;
     run_tool(
         &tool("OSPREY_CC", "clang"),
-        &dll_args(&ll, &runtime, &dll),
+        &dll_args(&ll, &runtime, &dll, http),
         HINT,
     )?;
     publish(&dll, out, &header)
 }
 
-/// One self-contained DLL: the runtime and winpthreads are linked statically, so it needs only
-/// what every Windows system has. [WINUI-HOST-DEPLOY]
-pub(crate) fn dll_args(ll: &Path, runtime: &str, dll: &Path) -> Vec<String> {
+/// The static OpenSSL a DLL with HTTP, TLS or the file server links, and the Windows libraries
+/// OpenSSL itself calls: certificates, the random source and the console. [FFI-TLS-CLIENT]
+const DLL_OPENSSL: [&str; 6] = [
+    "-lssl",
+    "-lcrypto",
+    "-lcrypt32",
+    "-lbcrypt",
+    "-lgdi32",
+    "-luser32",
+];
+
+/// One self-contained DLL: the runtime, winpthreads and, with `http`, OpenSSL are linked
+/// statically, so it needs only what every Windows system has. [WINUI-HOST-DEPLOY]
+pub(crate) fn dll_args(ll: &Path, runtime: &str, dll: &Path, http: bool) -> Vec<String> {
     let mut args: Vec<String> = ["-shared", "-O2", "-Wno-override-module"]
         .map(String::from)
         .to_vec();
     args.extend([ll.display().to_string(), runtime.to_owned()]);
-    args.extend(["-o".to_owned(), dll.display().to_string()]);
-    args.extend(["-static", "-lpthread", "-lws2_32"].map(String::from));
+    args.extend([
+        "-o".to_owned(),
+        dll.display().to_string(),
+        "-static".to_owned(),
+    ]);
+    if http {
+        args.extend(DLL_OPENSSL.map(String::from));
+    }
+    args.extend(["-lpthread", "-lws2_32"].map(String::from));
     args
 }
 
@@ -228,13 +253,15 @@ mod tests {
         assert!(!is_dll(Path::new("storage")));
     }
 
-    /// The DLL is self-contained: the runtime and winpthreads link statically beside Winsock.
+    /// The DLL is self-contained: the runtime and winpthreads link statically beside Winsock,
+    /// and OpenSSL with the Windows libraries it calls only when the program uses HTTP or TLS.
     #[test]
     fn the_dll_links_its_runtime_statically() {
         let args = dll_args(
             Path::new("app.ll"),
             "libfiber_runtime_gc.a",
             Path::new("app.dll"),
+            false,
         );
         let expected = [
             "-shared",
@@ -249,6 +276,17 @@ mod tests {
             "-lws2_32",
         ];
         assert_eq!(args, expected.map(String::from));
+        let tls = dll_args(
+            Path::new("app.ll"),
+            "libhttp_runtime.a",
+            Path::new("app.dll"),
+            true,
+        );
+        let at = |flag: &str| tls.iter().position(|a| a == flag);
+        assert_eq!(tls.get(4).map(String::as_str), Some("libhttp_runtime.a"));
+        assert!(at("-static") < at("-lssl") && at("-lssl") < at("-lcrypto"));
+        assert!(at("-lcrypto") < at("-lbcrypt") && at("-lbcrypt") < at("-lws2_32"));
+        assert!(!args.contains(&"-lssl".to_owned()));
     }
 
     /// Every desktop target spelling round-trips, and other targets are not desktop slices.
