@@ -16,8 +16,7 @@ namespace Osprey.Host.WinUI;
 
 /// <summary>
 /// One scene on screen [WINUI-HOST-SCENE]: its shapes drawn with WinUI's own shapes on a canvas in
-/// the scene's unit space, scaled uniformly to fit and letterboxed, or in window pixels when the
-/// scene has no size. The elements live between frames and are reused, so a frame that moves a
+/// the scene's unit space, one unit to one pixel from the region's top left. The elements live between frames and are reused, so a frame that moves a
 /// thousand discs only moves them. Keys and the pointer reach the scene's binding in scene units.
 /// </summary>
 sealed class SceneView
@@ -31,7 +30,6 @@ sealed class SceneView
         XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Disabled,
     };
     readonly Canvas canvas = new() { Background = new SolidColorBrush(Colors.Transparent) };
-    readonly Viewbox fit = new() { Stretch = Stretch.Uniform };
     readonly Dictionary<uint, SolidColorBrush> brushes = [];
     readonly Pool<Rectangle> rects;
     readonly Pool<Ellipse> discs;
@@ -79,26 +77,10 @@ sealed class SceneView
         }
     }
 
-    // A scene with a size is scaled whole into the room it has, clipped to itself; one without is in window pixels.
-    void Fitted(Scene scene)
-    {
-        var sized = scene.Width > 0;
-        canvas.Width = sized ? scene.Width : double.NaN;
-        canvas.Height = sized ? scene.Height : double.NaN;
-        canvas.Clip = sized ? new RectangleGeometry { Rect = new Rect(0, 0, scene.Width, scene.Height) } : null;
-        if (sized && !ReferenceEquals(fit.Child, canvas))
-        {
-            holder.Content = null;
-            fit.Child = canvas;
-            holder.Content = fit;
-        }
-        if (!sized && !ReferenceEquals(holder.Content, canvas))
-        {
-            holder.Content = null;
-            fit.Child = null;
-            holder.Content = canvas;
-        }
-    }
+    // A scene with a size is drawn one unit to one pixel from the region's top left and clipped to
+    // itself, so a larger window shows more canvas and resizes nothing; one without is in window pixels.
+    void Fitted(Scene scene) =>
+        canvas.Clip = scene.Width > 0 ? new RectangleGeometry { Rect = new Rect(0, 0, scene.Width, scene.Height) } : null;
 
     UIElement Draw(SceneShape shape) => shape switch
     {

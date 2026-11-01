@@ -19,7 +19,7 @@ pub(super) fn canvas(
     let prepaint_handle = handle.clone();
     gpui_kit::canvas(
         move |bounds, window, cx| {
-            let transform = Transform::new(bounds, decoded.width, decoded.height);
+            let transform = Transform::new(bounds, decoded.width);
             let images = prepaint_handle.update(cx, |view, _| {
                 view.scene_transforms.insert(key, transform);
                 let images = sprites(view, &decoded);
@@ -31,18 +31,11 @@ pub(super) fn canvas(
             });
             (decoded, transform, images)
         },
-        move |_, (decoded, transform, images), window, cx| {
+        move |bounds, (decoded, transform, images), window, cx| {
             let started = Instant::now();
-            // Shapes outside the scene (a ring around a dog at the edge) are clipped to the letterboxed field.
-            let field = Bounds {
-                origin: transform.origin,
-                size: size(
-                    px(decoded.width * transform.scale),
-                    px(decoded.height * transform.scale),
-                ),
-            };
-            // A window-pixel scene paints anywhere in the window, as a GPUI canvas does.
-            let mask = (decoded.width > 0.).then_some(ContentMask { bounds: field });
+            // A sized scene is clipped to its region; a window-pixel scene paints anywhere in the
+            // window, as a GPUI canvas does.
+            let mask = (decoded.width > 0.).then_some(ContentMask { bounds });
             let painted = window.with_content_mask(mask, |window| {
                 paint(&decoded.shapes, &images, transform, window, cx)
             });
@@ -164,13 +157,12 @@ fn paint_shape(
             colour,
             ..
         } => {
-            let scaled = radius * transform.scale;
             window.paint_quad(
                 fill(
                     centre(*x, *y, radius * 2., radius * 2., transform),
                     rgba(*colour),
                 )
-                .corner_radii(px(scaled)),
+                .corner_radii(px(*radius)),
             );
         }
         Shape::Strip {
@@ -232,7 +224,7 @@ fn paint_shape(
 fn centre(x: f32, y: f32, w: f32, h: f32, transform: Transform) -> Bounds<Pixels> {
     Bounds {
         origin: transform.point(x - w / 2., y - h / 2.),
-        size: size(px(w * transform.scale), px(h * transform.scale)),
+        size: size(px(w), px(h)),
     }
 }
 
@@ -260,7 +252,7 @@ fn paint_lettering(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<(), String> {
-    let scaled = px(size * transform.scale);
+    let size = px(size);
     let run = TextRun {
         len: text.len(),
         color: Hsla::from(rgba(colour)),
@@ -272,14 +264,14 @@ fn paint_lettering(
     };
     let line = window
         .text_system()
-        .shape_line(text.to_owned().into(), scaled, &[run], None);
+        .shape_line(text.to_owned().into(), size, &[run], None);
     let shift = line.width * (f32::from(anchor) / 2.);
     let at = transform.point(x, y) - point(shift, px(0.));
-    line.paint(at, scaled, TextAlign::Left, None, window, cx)
+    line.paint(at, size, TextAlign::Left, None, window, cx)
         .map_err(|problem| format!("scene lettering could not be painted: {problem}"))
 }
 
-/// Strokes a decoded polyline at the uniformly scaled width.
+/// Strokes a decoded polyline at its width.
 fn paint_strip(
     points: &[(f32, f32)],
     colour: u32,
@@ -290,7 +282,7 @@ fn paint_strip(
     if points.len() < 2 {
         return Ok(());
     }
-    let mut builder = PathBuilder::stroke(px(stroke * transform.scale));
+    let mut builder = PathBuilder::stroke(px(stroke));
     builder.move_to(transform.point(points[0].0, points[0].1));
     for (x, y) in &points[1..] {
         builder.line_to(transform.point(*x, *y));
@@ -302,7 +294,7 @@ fn paint_strip(
     Ok(())
 }
 
-/// Shapes and paints one coloured glyph run at its scaled position.
+/// Shapes and paints one coloured glyph run at its position.
 #[allow(clippy::too_many_arguments)]
 fn paint_glyphs(
     text: &str,
@@ -314,7 +306,7 @@ fn paint_glyphs(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<(), String> {
-    let scaled = px(size * transform.scale);
+    let size = px(size);
     let run = TextRun {
         len: text.len(),
         color: Hsla::from(rgba(colour)),
@@ -322,10 +314,10 @@ fn paint_glyphs(
     };
     let line = window
         .text_system()
-        .shape_line(text.to_owned().into(), scaled, &[run], None);
+        .shape_line(text.to_owned().into(), size, &[run], None);
     line.paint(
         transform.point(x, y),
-        scaled,
+        size,
         TextAlign::Left,
         None,
         window,
@@ -344,7 +336,7 @@ fn paint_path(
     transform: Transform,
     window: &mut Window,
 ) -> Result<(), String> {
-    let mut builder = builder(outline, transform.scale);
+    let mut builder = builder(outline);
     for step in steps {
         add(&mut builder, step);
     }
@@ -353,7 +345,6 @@ fn paint_path(
         builder.scale(scale);
     }
     if !transform.identity() {
-        builder.scale(transform.scale);
         builder.translate(transform.origin);
     }
     let path = builder
@@ -363,8 +354,8 @@ fn paint_path(
     Ok(())
 }
 
-/// Starts a fill or stroke builder; stroke widths and dashes scale with the scene, not the path.
-fn builder(outline: &Outline, scale: f32) -> PathBuilder {
+/// Starts a fill or stroke builder; stroke widths and dashes are not scaled with the path.
+fn builder(outline: &Outline) -> PathBuilder {
     match outline {
         Outline::Fill => PathBuilder::fill(),
         Outline::Stroke {
@@ -372,7 +363,7 @@ fn builder(outline: &Outline, scale: f32) -> PathBuilder {
             bevel,
             dashes,
         } => {
-            let width = px(width * scale);
+            let width = px(*width);
             let mut builder = match bevel {
                 true => PathBuilder::stroke(width).with_style(PathStyle::Stroke(
                     StrokeOptions::default()
@@ -382,7 +373,7 @@ fn builder(outline: &Outline, scale: f32) -> PathBuilder {
                 false => PathBuilder::stroke(width),
             };
             if !dashes.is_empty() {
-                let dashes: Vec<Pixels> = dashes.iter().map(|dash| px(dash * scale)).collect();
+                let dashes: Vec<Pixels> = dashes.iter().map(|dash| px(*dash)).collect();
                 builder = builder.dash_array(&dashes);
             }
             builder

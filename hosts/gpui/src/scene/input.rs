@@ -1,4 +1,4 @@
-//! Focus, filtered keys and letterbox-aware pointer events ([GPUI-HOST-SCENE]).
+//! Focus, filtered keys and pointer events in scene units ([GPUI-HOST-SCENE]).
 
 use gpui_kit::*;
 use serde_json::{json, Value};

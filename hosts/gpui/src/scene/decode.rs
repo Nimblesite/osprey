@@ -39,7 +39,6 @@ pub(super) fn decode(
     Ok(Decoded {
         revision,
         width,
-        height,
         shapes: Arc::new(shapes),
         atlas: Arc::new(atlas),
         has_rotation,
