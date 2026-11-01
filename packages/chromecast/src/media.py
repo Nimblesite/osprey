@@ -30,7 +30,8 @@ NOTHING = Served(url="", port=0, folder="", content_type="")
 
 
 def base_name(path):
-    parts = unwrap_or(split(path, "/"), [path])
+    """The last part of `path`, cut at a slash or a backslash as `ntpath.basename` cuts it."""
+    parts = unwrap_or(split(unwrap_or(replace(path, "\\", "/"), path), "/"), [path])
     return unwrap_or(listGet(parts, len(parts) - 1), path)
 
 

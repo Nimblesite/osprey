@@ -1388,11 +1388,11 @@
      {
       "shape": "text",
       "text": "{{rate|short}}×",
-      "x": 546,
+      "x": 554,
       "y": 1033.5,
       "size": 21.5,
       "colour": "#252333",
-      "anchor": 0,
+      "anchor": 1,
       "weight": 400,
       "depth": 4
      },

@@ -10,7 +10,7 @@ while the session under test writes its CONNECT, LAUNCH, LOAD, PING and
 PONG messages back. Each scenario gets its own random port and scratch
 directory, so the GC and ARC runs of this suite can overlap.
 """
-from chromecast import Cast, Discovery, Media, Player, Protocol, Session
+from chromecast import Cast, Discovery, Hex, Media, Player, Protocol, Session
 from chromecast_expected import Expected
 from testing import Check
 
@@ -40,9 +40,22 @@ def ignore(_pid, _kind, _text):
     return None
 
 
-def sh(command):
+def spawn_sh(script, command):
+    """Starts `command` under `sh` from the file `script`: a process runs in
+    `cmd.exe` on Windows and `sh` elsewhere, so the lab writes its POSIX
+    commands to a file rather than quoting them for either. MSYS must not
+    rewrite openssl's `/CN=device` subject as a path."""
+    written = writeFile(script, f"MSYS2_ARG_CONV_EXCL='*'; export MSYS2_ARG_CONV_EXCL\n{command}\n")
+    match written:
+        case Success():
+            return spawnProcess(f"sh {script}", ignore)
+        case Error(message=message):
+            return Error(message=message)
+
+
+def sh(script, command):
     """Runs a shell command to completion and returns its exit status."""
-    match spawnProcess(command, ignore):
+    match spawn_sh(script, command):
         case Success(value=pid):
             code = awaitProcess(pid)
             cleanupProcess(pid)
@@ -53,8 +66,9 @@ def sh(command):
 
 def lab():
     """A fresh lab with a self-signed device certificate."""
-    dir = f".osprey/scratch/chromecast-tests-{random()}"
-    made = sh(f"mkdir -p {dir} && openssl req -x509 -newkey rsa:2048 -nodes -keyout {dir}/k.pem -out {dir}/c.pem -days 1 -subj /CN=device >/dev/null 2>&1")
+    n = random()
+    dir = f".osprey/scratch/chromecast-tests-{n}"
+    made = sh(f".chromecast-lab-{n}.sh", f"mkdir -p {dir} && openssl req -x509 -newkey rsa:2048 -nodes -keyout {dir}/k.pem -out {dir}/c.pem -days 1 -subj /CN=device >/dev/null 2>&1; made=$?; rm -f \"$0\"; exit $made")
     return Lab(dir=dir if made == 0 else "", port=30000 + unwrap_or(randomBelow(20000), 0))
 
 
@@ -69,16 +83,25 @@ def device(l, k):
     return Discovery.Device(name="scripted", host="127.0.0.1", port=l.port + k)
 
 
+def octal(hex):
+    """The bytes of `hex` as `printf` octal escapes, which every `sh` writes back as bytes."""
+    return foldList(toList(range(0, Hex.byte_count(hex))), "", lambda acc, i: acc + octal_byte(Hex.byte_at(hex, i)))
+
+
+def octal_byte(b):
+    return f"\\{b // 64}{(b // 8) % 8}{b % 8}"
+
+
 def serve(l, k, frames, delay, accepts):
     """Starts scenario `k`'s device: after `delay` seconds it writes `frames`
     to each of `accepts` connections in turn. Returns its process handle."""
     file = f"{l.dir}/{k}.bin"
     hex = foldList(frames, "", lambda acc, i: acc + device_frame(i))
-    _written = sh(f"perl -e 'print pack(\"H*\", $ARGV[0])' '{hex}' > {file}")
+    _written = sh(f"{l.dir}/{k}-bytes.sh", f"printf '{octal(hex)}' > {file}")
     script = f"(sleep {delay}; cat {file}; sleep 3)"
     server = f"openssl s_server -quiet -naccept {accepts} -accept {l.port + k} -cert {l.dir}/c.pem -key {l.dir}/k.pem"
-    pid = unwrap_or(spawnProcess(f"{script} | {server} >/dev/null 2>&1", ignore), -1)
-    _ready = sh("sleep 1")
+    pid = unwrap_or(spawn_sh(f"{l.dir}/{k}-device.sh", f"{script} | {server} >/dev/null 2>&1"), -1)
+    _ready = sh(f"{l.dir}/{k}-ready.sh", "sleep 1")
     return pid
 
 
@@ -255,5 +278,5 @@ def cases():
     ]
     rest = listConcat(listConcat(listConcat(player_case(l, 7), elapsed_cases()), receiver_cases(l)), [quiet_case(l), closed_case(l)])
     all = listConcat(listConcat(first, rest), listConcat(listConcat(serve_cases(l), stale_cases()), failure_cases(l)))
-    _cleaned = sh(f"rm -rf {l.dir}")
+    _cleaned = sh(f".chromecast-lab-{l.port}.sh", f"rm -rf {l.dir}; rm -f \"$0\"")
     return all

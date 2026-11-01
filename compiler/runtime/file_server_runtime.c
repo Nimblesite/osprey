@@ -334,6 +334,7 @@ int64_t osprey_file_server_start(char *path, char *content_type, char *address) 
   if (stat(path, &info) != 0 || !(S_ISREG(info.st_mode) || S_ISDIR(info.st_mode))) {
     return -2;
   }
+  osprey_wsa_init();
   pthread_mutex_lock(&fs_mutex);
   FileServer *server = free_server();
   if (!server) {

@@ -72,6 +72,7 @@ static int tcp_dial(const char *host, int64_t port, int64_t timeout_ms) {
   if (!host || port < 1 || port > 65535) {
     return -1;
   }
+  osprey_wsa_init();
   struct hostent *server = gethostbyname(host);
   if (!server || server->h_addrtype != AF_INET) {
     return -2;
@@ -369,6 +370,7 @@ int64_t osprey_tls_close(int64_t handle) {
 // "" when the host does not resolve. A server that must be reachable from a
 // particular device binds here.
 char *osprey_net_local_address(char *host, int64_t port) {
+  osprey_wsa_init();
   struct hostent *server = host ? gethostbyname(host) : NULL;
   if (!server || server->h_addrtype != AF_INET || port < 1 || port > 65535) {
     return bytes_hex((const unsigned char *)"", 0);

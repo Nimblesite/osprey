@@ -18,7 +18,7 @@ Rules: [AGENTS.md § Apps](../../AGENTS.md#apps). Hosts: WinUI ([spec 0048](../s
 | Flock | `examples/gpui/flock` | WinUI host, unpackaged | MSIX AppContainer, no capabilities |
 | Painting | `examples/gpui/painting` | WinUI host, unpackaged | MSIX AppContainer, no capabilities |
 | Signal flow | `packages/signal_flow/app` | none (GPUI on macOS only) | WinUI host, MSIX AppContainer, no capabilities |
-| Casting | `examples/casting` | none (GPUI, `dns-sd`, Homebrew OpenSSL) | WinUI host, AppContainer with `privateNetworkClientServer`. Discovery uses `DnsServiceBrowse`, the file comes from the picker, and TLS uses the MinGW OpenSSL runtime |
+| Casting | `examples/casting` | none (GPUI, `dns-sd`, Homebrew OpenSSL) | WinUI host, AppContainer with `privateNetworkClientServer` and `internetClientServer`: Windows often classes a home Wi-Fi as Public, where only the second lets the app dial the TV and the TV fetch the file. Discovery uses `DnsServiceBrowse`, the file comes from the picker, and TLS uses the MinGW OpenSSL runtime |
 | Graphics scenes | `examples/graphics` | Raw Win32 window with Direct3D 12 | `OspreyHost.exe --scene` draws into a `SwapChainPanel` (plan 0040 phase 2). The Win32 window code is deleted. AppContainer |
 | Issue Inbox | `examples/mobile` | none (iOS, Android) | Osprey Native port (plan 0039 phase 4) on the WinUI host. AppContainer with `internetClient` |
 | iPhone counter | `examples/ios` | none (iOS) | Osprey Native port on the WinUI host. AppContainer, no capabilities |

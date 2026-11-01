@@ -12,7 +12,7 @@ writes tests/expected.py through the shared writer in scripts/oracles/expected_m
 """
 
 import json
-import os
+import ntpath
 import platform
 import re
 import struct
@@ -159,7 +159,10 @@ RECEIVED = [
               '"supportedMediaCommands":15,"media":{"duration":248.0}}],"type":"MEDIA_STATUS"}'),
 ]
 
-TITLE_PATHS = ["/Users/me/Music/Blue Monday.mp3", "song.flac", "/tmp/archive.tar.gz", "/tmp/noext", "/a/b/.hidden"]
+# Windows paths too: a Windows sender is handed C:\... paths, so the title is cut at either
+# separator, as ntpath cuts it.
+TITLE_PATHS = ["/Users/me/Music/Blue Monday.mp3", "song.flac", "/tmp/archive.tar.gz", "/tmp/noext", "/a/b/.hidden",
+               r"C:\Users\me\Music\Blue Monday.mp3", r"D:\mixed/dir\track.ogg", r"C:\a\.hidden"]
 
 # Sequences `media_steps` judges: indexes into RECEIVED.
 MEDIA_RUNS = [[6, 7, 7, 8], [6, 11], [7, 12], [0, 13, 7, 10, 9], [14, 7], [5, 1]]
@@ -191,7 +194,7 @@ def main():
     firsts = [st[0] if isinstance(st, list) and st else {} for st in statuses]
     media = [[str(f.get(key, "")) for key in ("mediaSessionId", "currentTime", "playbackRate", "supportedMediaCommands")]
              + [str(f.get("media", {}).get("duration", ""))] for f in firsts]
-    titles = [os.path.splitext(os.path.basename(path))[0] for path in TITLE_PATHS]
+    titles = [ntpath.splitext(ntpath.basename(path))[0] for path in TITLE_PATHS]
     runs = [media_steps([json.loads(RECEIVED[i][1]) for i in run]) for run in MEDIA_RUNS]
     devices = browse(BROWSE_TEXT)
     write(
