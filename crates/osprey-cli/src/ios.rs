@@ -104,7 +104,7 @@ impl Target {
     fn missing_runtime(self, memory: &str) -> String {
         let slice = self.slice();
         format!(
-            "{} not found — run `make {}` to build the {} runtime",
+            "{} not found — run `make -C apps {}` to build the {} runtime",
             self.runtime(memory),
             slice.goal,
             slice.platform
