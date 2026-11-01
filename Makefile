@@ -420,7 +420,7 @@ _run-mac-hd: _runtime_macos
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/macos/run.sh
 
-.PHONY: _gpui-flock _gpui-painting _gpui-probe _gpui-bench _gpui-compare _gpui-test _gpui-signal-flow _gpui-synth _gpui-casting
+.PHONY: _gpui-flock _gpui-painting _gpui-probe _gpui-bench _gpui-compare _gpui-test _gpui-signal-flow _gpui-synth _casting
 _gpui-flock: _runtime_macos
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/gpui/flock/run.sh
@@ -437,7 +437,7 @@ _gpui-synth: _runtime_macos
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/synth/run.sh
 
-_gpui-casting: _runtime_macos
+_casting: _runtime_macos
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/casting/run.sh
 

@@ -3,7 +3,7 @@
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ..
 
-.PHONY: python-app-ports bank bank-web bank-test bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test run-mac-hd gpui-flock gpui-painting gpui-signal-flow gpui-synth gpui-casting gpui-probe gpui-bench gpui-compare gpui-test mobile-ios mobile-ios-test mobile-domain-test mobile-test android android-test bank-mobile-domain-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-test workbench-native-test workbench-render-review
+.PHONY: python-app-ports bank bank-web bank-test bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test run-mac-hd gpui-flock gpui-painting gpui-signal-flow gpui-synth casting gpui-probe gpui-bench gpui-compare gpui-test mobile-ios mobile-ios-test mobile-domain-test mobile-test android android-test bank-mobile-domain-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-test workbench-native-test workbench-render-review
 
 ## python-app-ports: Verify the classifier, vector search and text evaluation ports.
 python-app-ports:
@@ -107,10 +107,10 @@ gpui-signal-flow:
 gpui-synth:
 	$(MAKE) -C $(ROOT) _gpui-synth
 
-## gpui-casting: Open the casting player: pick a file or stream and cast it to a
-##               TV found on the network, with the HLS visualiser. [CAST-DESIGN-NATIVE]
-gpui-casting:
-	$(MAKE) -C $(ROOT) _gpui-casting
+## casting:      Open the casting player: pick a file or stream and cast it to a
+##          TV found on the network, with the HLS visualiser. [CAST-DESIGN-NATIVE]
+casting:
+	$(MAKE) -C $(ROOT) _casting
 
 ## gpui-probe: Open the GPUI host's probe application (counter, note, load).
 gpui-probe:
