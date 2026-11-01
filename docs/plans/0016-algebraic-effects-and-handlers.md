@@ -136,6 +136,9 @@ separate handler-object hierarchy when an ordinary closure is sufficient.
    (`unimplemented_abort`, crates/osprey-types/src/multiplicity.rs) because
    abandoning a region does not yet unwind it; [MULTI-DECL-ABORT-RESULT] and
    [MULTI-HANDLE-ABORT-MODE] have no runnable case until it does.
+   ❓ Decide: `tree-sitter-osprey-ml/grammar.js` accepts a multiplicity without
+   `control` (`many op : …`), which the ML parser and [MULTI-DECL]'s `opDecl` reject —
+   tighten the editor grammar or keep it lenient.
 6. **Provide reusable continuations.** Use a representation that can preserve
    the captured remainder independently for each branch; a consumed pthread
    cannot provide it. Prefer explicit continuation frames/CPS with a portable
