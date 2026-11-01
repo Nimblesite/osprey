@@ -2,7 +2,7 @@
 
 Drive an Osprey Native app with no host and no window ([UI-MACHINE-TEST]). Find every control by its accessible label, as a screen reader or an AI agent would. Send host-shaped events and assert what the rendered view or canvas shows.
 
-- `Read` is the package's only JSON code. It decodes each envelope a session sends (`Read::envelope`), or a node tree (`Read::tree`), into a typed `Rendered`: `Control` records, canvas lettering, requests, the root's revision and its event ordinal.
+- `Read` is the package's only JSON code. It decodes each envelope a session sends (`Read::envelope`), or a node tree (`Read::tree`), into a typed `Rendered`: `Control` records, canvas lettering, the scene's `ui::Accessible` tree as the host receives it (`renderedAccess`), requests, the root's revision and its event ordinal.
 - `Views` finds controls by label, text or title and reads lettering and requests.
 - `Semantics` reads the typed `ui::Canvases::semantics` tree (`ui::Accessible`), with roles, values and pointer positions from accessible bounds.
 - `Events` encodes presses, choices, pointers, file-picker and process completions, frames and lifecycle phases as the event text `ui::Runtime::proceed` takes.

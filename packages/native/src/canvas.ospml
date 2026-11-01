@@ -34,22 +34,26 @@ module Canvases
         Assign name trigger => Assign(assignName = stamped (name, choice, i), assignFire = stamped (trigger, choice, i))
         Put name literal trigger => Put(putName = stamped (name, choice, i), putValue = stampedValue (literal, choice, i), putFire = stamped (trigger, choice, i))
 
-    // A numeric `x` or `y` moved `i` steps of the repeat; a templated one is kept as stamped.
+    // An `x` or `y` moved `i` steps of the repeat; a templated one gains the distance as one more added part.
     shifted (m, step, i) = match m
         Fixed x => Fixed(fixedAt = x + step * toFloat i)
-        templated => templated
+        Templated text => Templated(filledFrom = "${text} ${toString (step * toFloat i)}")
 
     stampedMark (m, dx, dy, choice, i) =
         at = \x => stampedMeasure (x, choice, i)
-        m(markX = shifted (at m.markX, dx, i), markY = shifted (at m.markY, dy, i), markW = at m.markW, markH = at m.markH, markRadius = at m.markRadius, markSize = at m.markSize, markAnchor = at m.markAnchor, markWeight = at m.markWeight, markIndex = at m.markIndex, markAngle = at m.markAngle, markTurn = at m.markTurn, markDepth = at m.markDepth, markAlpha = at m.markAlpha, markStroke = at m.markStroke, markPoints = mapList (m.markPoints, at), markColour = stamped (m.markColour, choice, i), markText = stamped (m.markText, choice, i), markWhen = stampedWhen (m.markWhen, choice, i), markEach = Once)
+        m(markX = shifted (at m.markX, dx, i), markY = shifted (at m.markY, dy, i), markW = at m.markW, markH = at m.markH, markRadius = at m.markRadius, markSize = at m.markSize, markAnchor = at m.markAnchor, markWeight = at m.markWeight, markIndex = at m.markIndex, markAngle = at m.markAngle, markTurn = at m.markTurn, markDepth = at m.markDepth, markAlpha = at m.markAlpha, markStroke = at m.markStroke, markDash = at m.markDash, markPoints = mapList (m.markPoints, at), markColour = stamped (m.markColour, choice, i), markText = stamped (m.markText, choice, i), markWhen = stampedWhen (m.markWhen, choice, i), markEach = Once)
 
     stampedSlide (slide, choice, i) = match slide
         Unslid => Unslid
         Slider low high set trigger shown => Slider(slideMin = stampedMeasure (low, choice, i), slideMax = stampedMeasure (high, choice, i), slideSet = stamped (set, choice, i), slideFire = stamped (trigger, choice, i), slideOf = stamped (shown, choice, i))
 
+    stampedDrag (drag, choice, i) = match drag
+        Undragged => Undragged
+        Dragger x y => Dragger(dragX = stamped (x, choice, i), dragY = stamped (y, choice, i))
+
     stampedArea (a, dx, dy, choice, i) =
         at = \x => stampedMeasure (x, choice, i)
-        a(areaX = shifted (at a.areaX, dx, i), areaY = shifted (at a.areaY, dy, i), areaW = at a.areaW, areaH = at a.areaH, areaLabel = stamped (a.areaLabel, choice, i), areaLever = stampedLever (a.areaLever, choice, i), areaSlide = stampedSlide (a.areaSlide, choice, i), areaWhen = stampedWhen (a.areaWhen, choice, i), areaEach = Once)
+        a(areaX = shifted (at a.areaX, dx, i), areaY = shifted (at a.areaY, dy, i), areaW = at a.areaW, areaH = at a.areaH, areaLabel = stamped (a.areaLabel, choice, i), areaLever = stampedLever (a.areaLever, choice, i), areaSlide = stampedSlide (a.areaSlide, choice, i), areaDrag = stampedDrag (a.areaDrag, choice, i), areaWhen = stampedWhen (a.areaWhen, choice, i), areaEach = Once)
 
     // An item once, or once per choice of its list input, each copy stamped and moved.
     copies (machine, repeat, item, stamp) = match repeat
@@ -116,8 +120,36 @@ module Canvases
     // A triangle pointing right inside the box at x, y of w by h.
     triangle (machine, m, x, y, w, h, depth) = Scenes::path ([Polygon(corners = [x, y, x + w, y + h / 2.0, x, y + h], closed = true)], Fill, Solid(tint = paint (machine, m)), depth)
 
-    (** The scene primitive a canvas shape draws with the machine's inputs. *)
-    export primitive (machine, m) =
+    // A filled arrowhead `size` long at x, y, pointing along dx, dy.
+    arrow (machine, m, x, y, dx, dy, size, depth) =
+        span = Pick::either (sqrt (dx * dx + dy * dy) > 0.0, sqrt (dx * dx + dy * dy), 1.0)
+        ux = dx / span * size / 2.0
+        uy = dy / span * size / 2.0
+        Scenes::path ([Polygon(corners = [x + ux, y + uy, x - ux - uy, y - uy + ux, x - ux + uy, y - uy - ux], closed = true)], Fill, Solid(tint = paint (machine, m)), depth)
+
+    // A cable between two ports, `ends` flattened as x1, y1, x2, y2: a curve leaving and entering along whichever axis
+    // they are further apart on, `stroke` wide, dashed `dash` on and off when given, with an arrow `size` long at its middle.
+    cable (machine, m, ends, depth) =
+        end = \i => listGet ends i ?: 0.0
+        dx = end 2 - end 0
+        dy = end 3 - end 1
+        across = abs dx >= abs dy
+        hx = Pick::either (across, dx / 2.0, 0.0)
+        hy = Pick::either (across, 0.0, dy / 2.0)
+        dash = Templates::measure (machine, m.markDash)
+        line = Line(width = Templates::measure (machine, m.markStroke), dashes = Pick::either (dash > 0.0, [dash, dash], []), bevel = false)
+        curve = Scenes::path ([MoveTo(toX = end 0, toY = end 1), CubicTo(toX = end 2, toY = end 3, ctrlAX = end 0 + hx, ctrlAY = end 1 + hy, ctrlBX = end 2 - hx, ctrlBY = end 3 - hy)], line, Solid(tint = paint (machine, m)), depth)
+        size = Templates::measure (machine, m.markSize)
+        match size > 0.0
+            true => [curve, arrow (machine, m, end 0 + dx / 2.0, end 1 + dy / 2.0, dx - hx, dy - hy, size, depth)]
+            false => [curve]
+
+    (** The scene primitives a canvas shape draws with the machine's inputs: one, or a cable's curve and arrow. *)
+    export primitives (machine, m) = match m.markFigure
+        CableFigure => cable (machine, m, mapList (m.markPoints, \x => Templates::measure (machine, x)), floatToInt (Templates::measure (machine, m.markDepth)) ?: 0)
+        _ => [primitive (machine, m)]
+
+    primitive (machine, m) =
         at = \x => Templates::measure (machine, x)
         depth = floatToInt (at m.markDepth) ?: 0
         match m.markFigure
@@ -127,10 +159,10 @@ module Canvases
             RoundedFigure => rounded (machine, m, at m.markX, at m.markY, at m.markW, at m.markH, at m.markRadius, depth)
             TriangleFigure => triangle (machine, m, at m.markX, at m.markY, at m.markW, at m.markH, depth)
             RectFigure => turned (machine, m, at m.markX, at m.markY, at m.markW, at m.markH, at m.markAngle + at m.markTurn, depth)
-            PolylineFigure => polyline (machine, m, mapList (m.markPoints, at), depth)
+            _ => polyline (machine, m, mapList (m.markPoints, at), depth)
 
-    (** A skin's artboard as one scene at its fixed `zoom`: its atlas, and every shape whose `when` holds, repeats expanded. *)
-    export artboard (machine, zoom, w, h, atlas, marks) = Ui::zoomed (Templates::measure (machine, zoom), Templates::measure (machine, w), Templates::measure (machine, h), mapList (atlas, \path => Templates::fill (machine, path)), mapList (filterList (marksOf (machine, marks), \m => Machines::holds (machine, m.markWhen)), \m => primitive (machine, m)), Fire(fireName = ""))
+    (** A skin's artboard as one scene at its fixed `zoom`: its atlas, every shape whose `when` holds, repeats expanded, and the accessibility tree a host announces. *)
+    export artboard (machine, zoom, w, h, atlas, marks) = Ui::described (Ui::zoomed (Templates::measure (machine, zoom), Templates::measure (machine, w), Templates::measure (machine, h), mapList (atlas, \path => Templates::fill (machine, path)), Lists::flatten (mapList (filterList (marksOf (machine, marks), \m => Machines::holds (machine, m.markWhen)), \m => primitives (machine, m))), Fire(fireName = "")), semantics machine)
 
     // ---- listeners ----
 
@@ -158,6 +190,62 @@ module Canvases
         Success a => listened (machine, a, x)
         Error _ => machine
 
+    // ---- dragging [UI-MACHINE-DRAG] ----
+
+    // How far, in canvas units, a press may wander and still be a click.
+    slop = 4.0
+
+    // A press on a drag listener grabs its inputs where the pointer is; on a slider it slides; anywhere else it holds for the release.
+    gripped (machine, a, x, y) = match a.areaDrag
+        Dragger ix iy => machine(machineGrip = Moving(moving = Grab(grabX = ix, grabY = iy, offsetX = x - Machines::number (machine, ix), offsetY = y - Machines::number (machine, iy), pressX = x, pressY = y, travelled = false)))
+        Undragged => match a.areaSlide
+            Slider _ _ _ _ _ => machine(machineGrip = Sliding(slidArea = a))
+            Unslid => machine(machineGrip = Holding)
+
+    pressed (machine, x, y) = match Lists::find (areas machine, \a => inside (machine, a, x, y))
+        Success a => gripped (machine, a, x, y)
+        Error _ => machine(machineGrip = Holding)
+
+    // A drag past the slop puts the grabbed point under the pointer; within it nothing moves yet.
+    dragged (machine, g, x, y) = match g.travelled || abs (x - g.pressX) + abs (y - g.pressY) > slop
+        false => machine
+        true => Machines::feed (machine(machineGrip = Moving(moving = g(travelled = true))), [Fact(factName = g.grabX, factValue = Values::number (x - g.offsetX)), Fact(factName = g.grabY, factValue = Values::number (y - g.offsetY))])
+
+    loose machine = machine(machineGrip = Loose)
+
+    // A slider follows the pointer without firing; its release sets it once more and fires.
+    slidTo (machine, a, x) = match a.areaSlide
+        Slider low high set _ _ => slid (machine, a, low, high, set, "", x)
+        Unslid => machine
+
+    // The release ends the grip: a hold acts where it lands, a drag that travelled stays put, one that did not is a click.
+    letGo (machine, x, y) = match machine.machineGrip
+        Loose => machine
+        Holding => released (loose machine, x, y)
+        Moving g => Pick::either (g.travelled, loose machine, released (loose machine, x, y))
+        Sliding a => listened (loose machine, a, x)
+
+    held (machine, x, y) = match machine.machineGrip
+        Loose => pressed (machine, x, y)
+        Holding => machine
+        Moving g => dragged (machine, g, x, y)
+        Sliding a => slidTo (machine, a, x)
+
+    (** A pointer at `x`, `y` on the canvas, pressed or not: a press grips what is under it, moves drag or slide it, and the release acts once. A move with nothing pressed is a hover and changes nothing. *)
+    export pointer (machine, x, y, down) = match down
+        true => held (machine, x, y)
+        false => letGo (machine, x, y)
+
+    (** Whether the pointer is holding the canvas, so a caller can wait for the release before acting on a change. *)
+    export holding machine = match machine.machineGrip
+        Loose => false
+        _ => true
+
+    (** Whether the pointer is sliding a slider, whose release settles a value the caller has seen change while held. *)
+    export sliding machine = match machine.machineGrip
+        Sliding _ => true
+        _ => false
+
     // ---- accessibility [UI-MACHINE-A11Y] ----
 
     (** A role's name as hosts and documents write it: `button`, `slider`, `popup`, `menuitem` or `none`. *)
@@ -170,12 +258,14 @@ module Canvases
 
     described machine = filterList (areas machine, \a => a.areaRole != Unannounced)
 
-    // A slider's value: the input it shows.
-    level (machine, a) = match a.areaSlide
-        Slider _ _ _ _ shown => Machines::number (machine, shown)
-        Unslid => 0.0
+    bare (machine, a) = Accessible(accessRole = a.areaRole, accessLabel = Templates::fill (machine, a.areaLabel), accessLeft = at (machine, a.areaX), accessTop = at (machine, a.areaY), accessWidth = at (machine, a.areaW), accessHeight = at (machine, a.areaH), accessValue = 0.0, accessMin = 0.0, accessMax = 0.0)
 
-    element (machine, a) = Accessible(accessRole = a.areaRole, accessLabel = Templates::fill (machine, a.areaLabel), accessLeft = at (machine, a.areaX), accessTop = at (machine, a.areaY), accessWidth = at (machine, a.areaW), accessHeight = at (machine, a.areaH), accessValue = level (machine, a))
+    // A slider also carries the input it shows and its range.
+    element (machine, a) = match a.areaSlide
+        Slider low high _ _ shown =>
+            e = bare (machine, a)
+            e(accessValue = Machines::number (machine, shown), accessMin = at (machine, low), accessMax = at (machine, high))
+        Unslid => bare (machine, a)
 
     (** The canvas's accessibility tree: each live listener's role, filled label, bounds and, for a slider, its value, in hit order. Hosts map it to the platform's accessibility API; agents and tests read it. *)
     export semantics machine = mapList (described machine, \a => element (machine, a))
