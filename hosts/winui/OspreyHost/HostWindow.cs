@@ -24,7 +24,7 @@ sealed class HostWindow : Window
     public HostWindow(string library, string[] arguments, bool steady)
     {
         Progress.Note("window created");
-        Title = Path.GetFileNameWithoutExtension(library);
+        Title = Sandbox.Name(library);
         SystemBackdrop = new MicaBackdrop();
         Progress.Note("backdrop set");
         Fit();

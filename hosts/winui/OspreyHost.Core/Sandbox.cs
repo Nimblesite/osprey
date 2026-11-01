@@ -33,6 +33,10 @@ public static partial class Sandbox
         return contained;
     }
 
+    /// <summary>The application's name: its package's display name, or its DLL's file name unpackaged.</summary>
+    public static string Name(string library) =>
+        Packaged() ? Windows.ApplicationModel.Package.Current.DisplayName : Path.GetFileNameWithoutExtension(library);
+
     /// <summary>One line naming where the host runs, for the self-test's trail.</summary>
     public static string Describe() =>
         (Packaged(), InAppContainer()) switch
