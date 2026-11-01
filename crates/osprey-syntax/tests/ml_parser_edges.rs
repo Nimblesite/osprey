@@ -358,11 +358,19 @@ fn the_result_default_lowers_to_an_exhaustive_result_match() {
 #[test]
 fn the_result_default_is_one_token_in_both_flavors() {
     for (flavor, joined, split) in [
-        (Flavor::Default, "let r = risky ?: 0\n", "let r = risky ? : 0\n"),
+        (
+            Flavor::Default,
+            "let r = risky ?: 0\n",
+            "let r = risky ? : 0\n",
+        ),
         (Flavor::Ml, "r = risky ?: 0\n", "r = risky ? : 0\n"),
     ] {
         let parsed = parse_program_with_flavor(joined, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor} rejected {joined}: {:?}", parsed.errors);
+        assert!(
+            parsed.errors.is_empty(),
+            "{flavor} rejected {joined}: {:?}",
+            parsed.errors
+        );
         assert!(
             !parse_program_with_flavor(split, flavor).errors.is_empty(),
             "{flavor} accepted {split}"
