@@ -22,7 +22,7 @@ if ($Update) {
     return
 }
 
-Add-Type -ReferencedAssemblies System.Drawing.Common, System.Drawing.Primitives -TypeDefinition @'
+Add-Type -ReferencedAssemblies System.Drawing.Common, System.Drawing.Primitives, System.Private.Windows.GdiPlus, System.Private.Windows.Core -TypeDefinition @'
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
