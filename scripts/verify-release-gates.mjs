@@ -28,13 +28,7 @@ const GATE_CONDITION = 'if: always()'
 //
 // The set is compared exactly. An entry matching nothing fails too — a stale
 // exemption is a hole with nobody looking at it.
-const REVIEWED_TOLERANCES = [
-  {
-    file: 'release-change-detection.yml',
-    fragment: 'prev="$(git describe',
-    reason: 'first release has no previous tag: the empty result selects the publish-everything branch',
-  },
-]
+const REVIEWED_TOLERANCES = []
 
 const SWALLOWS = [
   { pattern: /continue-on-error/, name: 'continue-on-error' },
