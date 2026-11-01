@@ -42,3 +42,4 @@ test:
 	$(APP_PS1) -App painting -Test $(HEADLESS)
 	$(APP_PS1) -App signal-flow -Test $(HEADLESS)
 	$(APP_PS1) -App probe -Test $(HEADLESS)
+	$(APP_PS1) -App casting -Test $(HEADLESS)

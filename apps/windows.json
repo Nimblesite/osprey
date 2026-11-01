@@ -69,6 +69,7 @@
         "privateNetworkClientServer"
       ],
       "files": [
+        "self-test.json",
         "player.machine.json",
         "skins"
       ],

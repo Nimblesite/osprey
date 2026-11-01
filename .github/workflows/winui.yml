@@ -106,12 +106,13 @@ jobs:
           set -euo pipefail
           ./target/release/osprey.exe test examples/storage/test
           ./target/release/osprey.exe test packages/signal_flow/tests
-          mkdir -p examples/storage/build examples/gpui/flock/build examples/gpui/painting/build packages/signal_flow/app/build hosts/gpui/probe/build
+          mkdir -p examples/storage/build examples/gpui/flock/build examples/gpui/painting/build packages/signal_flow/app/build hosts/gpui/probe/build examples/casting/build
           ./target/release/osprey.exe build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll
           ./target/release/osprey.exe build examples/gpui/flock --target=windows-x64 --no-warnings -o examples/gpui/flock/build/flock.dll
           ./target/release/osprey.exe build examples/gpui/painting --target=windows-x64 --no-warnings -o examples/gpui/painting/build/painting.dll
           ./target/release/osprey.exe build packages/signal_flow/app --target=windows-x64 --no-warnings -o packages/signal_flow/app/build/signal-flow.dll
           ./target/release/osprey.exe build hosts/gpui/probe --target=windows-x64 --no-warnings -o hosts/gpui/probe/build/probe.dll
+          ./target/release/osprey.exe build examples/casting --target=windows-x64 --no-warnings -o examples/casting/build/casting.dll
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -182,6 +183,7 @@ jobs:
             painting = 'examples/gpui/painting/build/painting.dll'
             'signal-flow' = 'packages/signal_flow/app/build/signal-flow.dll'
             probe = 'hosts/gpui/probe/build/probe.dll'
+            casting = 'examples/casting/build/casting.dll'
           }
           $failed = @()
           foreach ($app in $apps.Keys) {

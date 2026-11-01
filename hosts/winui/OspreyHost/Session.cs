@@ -66,6 +66,9 @@ sealed class Session
     /// <summary>Chooses a row as a click on it would.</summary>
     public bool Choose(ListViewItem row) => renderer.Choose(row);
 
+    /// <summary>The window-unit size of the application when it is one sized scene, else null.</summary>
+    public (double Width, double Height)? CanvasSize() => renderer.CanvasSize();
+
     /// <summary>Presses and releases a key in the scene on screen.</summary>
     public bool Press(string key) => renderer.InScene(scene => scene.Press(key));
 

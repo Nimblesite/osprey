@@ -11,7 +11,7 @@ namespace Osprey.Host.WinUI;
 /// The one window [WINUI-HOST-THIN]: Mica behind the application's root region, and an info bar
 /// that shows every diagnostic the framework or this host reports, so nothing fails silently.
 /// </summary>
-sealed class HostWindow : Window
+sealed partial class HostWindow : Window
 {
     const int Width = 1180;
     const int Height = 780;
@@ -28,10 +28,17 @@ sealed class HostWindow : Window
         SystemBackdrop = new MicaBackdrop();
         Progress.Note("backdrop set");
         Fit();
-        var root = new Border();
+        // Under test the content ignores the real pointer [WINUI-HOST-SELF-TEST]: the script acts through
+        // automation peers and scene events, and a person's mouse passing over the window would
+        // otherwise leave hover states in its pictures.
+        var root = new Border { IsHitTestVisible = !steady };
         Content = Layout(root);
         Progress.Note("content set");
         session = Started(library, arguments, root, steady);
+        if (session?.CanvasSize() is { } canvas)
+        {
+            Fit(canvas.Width, canvas.Height);
+        }
         Progress.Note(session is null ? "application not started" : "application started");
     }
 
@@ -64,7 +71,7 @@ sealed class HostWindow : Window
     public void ShowOffScreen()
     {
         AppWindow.IsShownInSwitchers = false;
-        AppWindow.MoveAndResize(new RectInt32(OffScreen, OffScreen, Width, Height));
+        AppWindow.Move(new PointInt32(OffScreen, OffScreen));
         AppWindow.Show(activateWindow: false);
     }
 
@@ -75,6 +82,19 @@ sealed class HostWindow : Window
         var size = new SizeInt32(Math.Min(Width, area.Width), Math.Min(Height, area.Height));
         AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width - size.Width) / 2, area.Y + (area.Height - size.Height) / 2, size.Width, size.Height));
     }
+
+    // An application that is one sized scene opens with exactly that scene in its client area, in
+    // window units scaled to the display, as the GPUI host opens a bare canvas, centred again.
+    void Fit(double width, double height)
+    {
+        var scale = GetDpiForWindow(Handle) / 96.0;
+        AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(width * scale), (int)Math.Ceiling(height * scale)));
+        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        AppWindow.Move(new PointInt32(area.X + (area.Width - AppWindow.Size.Width) / 2, area.Y + (area.Height - AppWindow.Size.Height) / 2));
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    private static partial uint GetDpiForWindow(nint window);
 
     Grid Layout(Border root)
     {
@@ -112,21 +132,33 @@ sealed class HostWindow : Window
         System.Diagnostics.Debug.WriteLine(problems.Message);
     }
 
+    /// <summary>
+    /// One file of <paramref name="types"/>, chosen in Windows' own picker, or null when cancelled. A
+    /// sandboxed app reads only what it was granted through the picker's broker, so the chosen file
+    /// is copied into its LocalState and that copy's path is returned [WINUI-HOST-SANDBOX].
+    /// </summary>
+    async Task<string?> PickFile(IReadOnlyList<string> types)
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, Handle);
+        foreach (var type in types.DefaultIfEmpty("*"))
+        {
+            picker.FileTypeFilter.Add(type == "*" ? type : "." + type.TrimStart('.'));
+        }
+        var picked = await picker.PickSingleFileAsync();
+        if (picked is null || !Sandbox.InAppContainer())
+        {
+            return picked?.Path;
+        }
+        var chosen = await Windows.Storage.ApplicationData.Current.LocalFolder.CreateFolderAsync("chosen", Windows.Storage.CreationCollisionOption.OpenIfExists);
+        var copy = await picked.CopyAsync(chosen, picked.Name, Windows.Storage.NameCollisionOption.ReplaceExisting);
+        return copy.Path;
+    }
+
     async Task<string?> Pick()
     {
         var picker = new Microsoft.Windows.Storage.Pickers.FolderPicker(AppWindow.Id);
         var picked = await picker.PickSingleFolderAsync();
-        return picked?.Path;
-    }
-
-    async Task<string?> PickFile(IReadOnlyList<string> types)
-    {
-        var picker = new Microsoft.Windows.Storage.Pickers.FileOpenPicker(AppWindow.Id);
-        foreach (var type in types)
-        {
-            picker.FileTypeFilter.Add("." + type.TrimStart('.'));
-        }
-        var picked = await picker.PickSingleFileAsync();
         return picked?.Path;
     }
 }
