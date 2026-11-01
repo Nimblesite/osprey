@@ -20,5 +20,6 @@ Finish the casting app, the UI toolkit it runs on with full accessibility, and t
 - [x] Casting: open files, MP3 association, TLS deadline fix, HLS visualiser
 - [x] `make -C apps/macos casting`; desktop apps split into `apps/macos` and `apps/windows`
 - [ ] Cast to a real TV and record the result here
-- [ ] Windows: the WinUI host runs UI machines, then casting with `DnsServiceBrowse`, the MinGW TLS and file-server runtime and `privateNetworkClientServer` (plan 0046 step 5), then `make -C apps/windows casting`
+- [x] Windows: the WinUI host runs UI machines; signal flow is a sandboxed package with a self-test (`make -C apps/windows signal-flow`, `make -C apps/windows test`)
+- [ ] Windows casting with `DnsServiceBrowse`, the MinGW TLS and file-server runtime and `privateNetworkClientServer` (plan 0046 step 5), then `make -C apps/windows casting`
 - [ ] `make ui-test` on the Windows CI runner
