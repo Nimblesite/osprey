@@ -259,17 +259,20 @@ static bool pending_prepare(TlsSession *session, int64_t count) {
 }
 
 // Classifies a failed SSL_read: a socket deadline is a timeout, a clean or
-// abrupt close is closed, anything else failed.
-static int64_t read_outcome(SSL *ssl, int n) {
+// abrupt close is closed, anything else failed. `saved` is errno as the read
+// left it, taken before SSL_get_error can disturb it: a blocking socket whose
+// deadline passed wants more input (SSL_ERROR_WANT_READ) or reports EAGAIN,
+// and neither means the peer went away.
+static int64_t read_outcome(SSL *ssl, int n, int saved) {
   int reason = SSL_get_error(ssl, n);
   if (reason == SSL_ERROR_ZERO_RETURN) {
     return TLS_CLOSED;
   }
-  if (reason == SSL_ERROR_SYSCALL || reason == SSL_ERROR_WANT_READ) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      return TLS_TIMEOUT;
-    }
-    return n == 0 || errno == 0 ? TLS_CLOSED : TLS_FAILED;
+  if (reason == SSL_ERROR_WANT_READ || saved == EAGAIN || saved == EWOULDBLOCK) {
+    return TLS_TIMEOUT;
+  }
+  if (reason == SSL_ERROR_SYSCALL) {
+    return n == 0 || saved == 0 ? TLS_CLOSED : TLS_FAILED;
   }
   return TLS_FAILED;
 }
@@ -278,9 +281,11 @@ static int64_t read_outcome(SSL *ssl, int n) {
 static int64_t fill_pending(TlsSession *session, int64_t count) {
   while (session->pending_len < count) {
     int want = (int)(count - session->pending_len);
+    errno = 0;
     int n = SSL_read(session->ssl, session->pending + session->pending_len, want);
+    int saved = errno;
     if (n <= 0) {
-      return read_outcome(session->ssl, n);
+      return read_outcome(session->ssl, n, saved);
     }
     session->pending_len += n;
   }

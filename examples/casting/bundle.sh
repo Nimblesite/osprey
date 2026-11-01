@@ -67,20 +67,22 @@ cat > "$app/Contents/Info.plist" <<'EOF'
 </plist>
 EOF
 
-# Refresh Launch Services and claim public.mp3 for all roles.
+# Refresh Launch Services and make Casting the default MP3 application: Finder's "Open" and
+# double-click then launch it, and a running Casting receives the file as `open:<path>`.
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 "$lsregister" -f "$app"
-if command -v duti >/dev/null 2>&1; then
-    duti -s dev.ospreylang.casting public.mp3 all
-else
-    swift_file=$(mktemp)
-    cat > "$swift_file" <<'EOF'
-import CoreServices
-import CoreFoundation
-let status = LSSetDefaultRoleHandlerForContentType("public.mp3" as CFString, .all, "dev.ospreylang.casting" as CFString)
-print("LSSetDefaultRoleHandlerForContentType returned \(status)")
+swift_file=$(mktemp).swift
+cat > "$swift_file" <<'EOF'
+import AppKit
+import UniformTypeIdentifiers
+let done = DispatchSemaphore(value: 0)
+NSWorkspace.shared.setDefaultApplication(at: URL(fileURLWithPath: CommandLine.arguments[1]), toOpen: .mp3) { error in
+    print(error.map { "could not claim MP3: \($0)" } ?? "Casting opens MP3 files")
+    done.signal()
+}
+_ = done.wait(timeout: .now() + 30)
 EOF
-    swift "$swift_file"
-fi
+swift "$swift_file" "$app"
+rm -f "$swift_file"
 
 echo "$app"

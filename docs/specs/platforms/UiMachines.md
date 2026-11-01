@@ -84,7 +84,7 @@ A request is `{"request": name, "with": [input names]}`. The adapter receives it
 The view is one node template in the protocol's vocabulary: `stack`, `text`, `label`, `badge`, `button`, `picker`, `toggle`, `meter`, `progress`, `image`, `spacer`, `divider`, `framed`, `scene` (the disc, with `rotate` bound to an input) and `empty`. Its members are the matching `Ui` constructor's arguments. Every node may also carry:
 
 - `"when": condition`: a node whose condition fails is left out, along with its children.
-- `"{{name}}"` inside any string member: the input's value, with a filter: `{{position|clock}}` is `mm:ss`, `{{volume|percent}}` a whole percentage, `{{rate|short}}` a number without a trailing `.0`, `{{position|over:duration:610:129}}` position ÷ duration × 610 + 129, and `{{volume|scale:302:99}}` volume × 302 + 99. The last two place canvas shapes. Anything else, such as a track title, is an input the adapter sets.
+- `"{{name}}"` inside any string member: the input's value, with a filter: `{{position|clock}}` is `mm:ss`, `{{volume|percent}}` a whole percentage, `{{rate|short}}` a number without a trailing `.0`, `{{position|over:duration:610:129}}` position ÷ duration × 610 + 129, and `{{volume|scale:302:99}}` volume × 302 + 99. The last two place canvas shapes. `{{title|fit:30}}` cuts the text to at most 30 characters, replacing the last with an ellipsis when cut. `{{receivers|count:56:16}}` is the list input's length × 56 + 16, used to size a menu panel. Anything else, such as a track title, is an input the adapter sets.
 - `"enabled": condition` on controls.
 - `"on"`: the listener. `{"fire": t}` fires a trigger; `{"set": n}` sets an input from the control's value: the choice key of a picker, a toggle's flag or a button's literal `"value"`. With both, the input is set first and then the trigger fires, so one press can choose a value and ask for it.
 
@@ -94,11 +94,64 @@ Each control's binding is the framework's ordinary typed binding, so ordinals, s
 
 ## Skins [UI-MACHINE-SKINS]
 
-`"skins": {"sherbet": {"name": "Sherbet Signal", "tokens": {...}, "motion": "disc"}}` maps a skin id to [UI-THEME] tokens and a motion preset. The text input `skin` chooses the skin. An unknown skin falls back to the first skin and sets the text input `skinFault`. A skin is only colours and motion, never layout, controls or labels, so swapping it keeps every input and state.
+`"skins": {"sherbet": {"name": "Sherbet Signal", "tokens": {...}, "motion": "disc"}}` maps a skin id to [UI-THEME] tokens and a motion preset. The text input `skin` chooses the skin. An unknown skin falls back to the first skin and sets the text input `skinFault`. A skin without a canvas is only colours and motion, never layout, controls or labels. Swapping any skin keeps every input and state.
+
+## Canvas skins [UI-MACHINE-CANVAS]
+
+A skin may carry `"canvas": {"width", "height", "atlas": [image paths relative to the `assets` input], "shapes": [...], "listeners": [...]}`. When the chosen skin has a canvas, the whole view is one scene drawn from the canvas instead of the native view template. Units are the artboard's own mock pixels; the host scales the artboard to the window.
+
+| Shape | Members and form |
+| --- | --- |
+| `sprite` | `index`, `x`, `y`, `w`, `h`, `angle`, `alpha`, `depth`; an atlas image |
+| `text` | `text`, `x`, `y`, `size`, `colour`, `anchor`, `weight`, `depth`; system-font lettering with the top of the line at `y`, anchored 0 left, 1 centre or 2 right |
+| `rounded` | `x`, `y`, `w`, `h`, `radius`, `colour`, `alpha`, `depth`; a rounded rectangle |
+| `triangle` | `x`, `y`, `w`, `h`, `colour`, `alpha`, `depth` |
+| `disc` | `x`, `y`, `radius`, `colour`, `alpha`, `depth` |
+| `turned` | `x`, `y`, `w`, `h`, `angle`, `turn`, `colour`, `alpha`, `depth`; a sprite rotated by an input, used for the spinning disc |
+
+Every shape takes `when` and templated numbers. Listeners are hit areas `{"x","y","w","h","when","on"}` with the same `on` lever as view controls, or `"slide": {"set", "min", "max", "fire", "of"}` for a slider whose pointer position across the area sets the input between `min` and `max`; `of` names the input the slider shows, used by the accessibility tree. A release inside the first listener in document order whose area holds the point and whose `when` holds acts. The host sends pointer events in scene units.
+
+## Repeated shapes and listeners [UI-MACHINE-EACH]
+
+A shape or listener with `"each": {"in": listInput, "dx": n, "dy": n}` is stamped once per item of the list input. `{{item.key}}`, `{{item.label}}` and `{{item.index}}` are replaced inside every string member, and numeric `x` and `y` are offset by index × `dx` and index × `dy`. The casting player's receiver menu row is:
+
+```json
+{
+  "x": 263, "y": 790, "w": 340, "h": 56,
+  "each": { "in": "receivers", "dy": 56 },
+  "role": "menuitem",
+  "label": "{{item.label}}",
+  "on": { "set": "receiver", "value": "{{item.key}}", "fire": "chooseReceiver" },
+  "when": { "state": "menu", "in": ["receivers"] }
+}
+```
+
+## Menus [UI-MACHINE-MENU]
+
+The casting player's dropdowns use a `menu` layer with states `closed`, `receivers` and `rates`. Popup listeners fire toggle triggers. Row listeners repeated with `each` set the input and fire a choose trigger, which also closes the menu. A full-canvas dismiss listener with `role: none` fires `dismiss` whenever the menu is not closed; its document order leaves the row and popup hit areas ahead of it.
+
+```json
+[
+  { "from": "receivers", "to": "closed", "when": { "any": [{ "fired": "toggleReceivers" }, { "fired": "chooseReceiver" }, { "fired": "dismiss" }] } },
+  { "from": "rates", "to": "closed", "when": { "any": [{ "fired": "toggleRates" }, { "fired": "chooseRate" }, { "fired": "dismiss" }] } },
+  { "from": "*", "to": "receivers", "when": { "fired": "toggleReceivers" } },
+  { "from": "*", "to": "rates", "when": { "fired": "toggleRates" } }
+]
+```
+
+## Accessibility [UI-MACHINE-A11Y]
+
+Every listener carries `role` (`button`, `slider`, `popup`, `menuitem`, or `none` for a hit area that is not announced) and a templated `label`. `Templates::semantics machine` is the accessibility tree: a JSON list, in hit order, of every live listener with role ≠ `none` as `{role, label, x, y, w, h}`, plus `value` for a slider (the `of` input).
+
+`Templates::act (machine, label, fraction)` activates the element with that label as a screen reader or an AI agent would: a slider is set `fraction` of the way across, anything else is pressed, and an unknown label changes nothing. Hosts map the tree to the platform's accessibility API (AccessKit: NSAccessibility on macOS, UI Automation on Windows, AT-SPI on Linux). This host mapping is specified here and is not yet implemented. Tests and agents read and act on the tree without a host.
+
+## Opened files [UI-MACHINE-OPEN]
+
+A file the platform asks the application to open (Finder, a document association) arrives as the lifecycle phase `open:<path>`; the application's adapter decides what to do with it. The GPUI host collects `on_open_urls` and delivers each on the next frame.
 
 ## Testing [UI-MACHINE-TEST]
 
-Because a machine is data, a test drives it without a host: load the document, set inputs or fire listeners as a host event would, and assert the states, the requests and the rendered nodes. The adapter's domain work runs under effects, so tests answer them with doubles. [examples/casting](../../../examples/casting/README.md) is the reference application: its adapter calls `@osprey/chromecast`, whose `Wire` effect a test answers with an in-memory Cast device.
+Because a machine is data, a test drives it without a host: load the document, set inputs or fire listeners as a host event would, and assert the states, the requests and the rendered nodes. The adapter's domain work runs under effects, so tests answer them with doubles. [examples/casting](../../../examples/casting/README.md) is the reference application: its adapter calls `@osprey/chromecast`, whose `Wire` effect a test answers with an in-memory Cast device. `examples/casting/test/main.ospml` drives the Sherbet canvas through pointer events alone, locating every control by its accessible label from `semantics`, and asserts the lettered text of the artboard and the labels offered in each state.
 
 ## Later
 
