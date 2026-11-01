@@ -20,9 +20,17 @@ sealed partial class HostApplication(Launch launch) : Application, IXamlMetadata
         Progress.Note("launched");
         Resources.MergedDictionaries.Add(new XamlControlsResources());
         Progress.Note("control styles loaded");
-        window = new HostWindow(launch.Library, launch.Arguments);
-        window.Activate();
-        Progress.Note("window activated");
+        window = new HostWindow(launch.Library, launch.Arguments, steady: launch.Script is not null);
+        if (launch.Headless)
+        {
+            window.ShowOffScreen();
+            Progress.Note("window shown off screen");
+        }
+        else
+        {
+            window.Activate();
+            Progress.Note("window activated");
+        }
         if (launch is { Script: { } script, Shots: { } shots })
         {
             _ = Tested(new SelfTest(window, script, shots));

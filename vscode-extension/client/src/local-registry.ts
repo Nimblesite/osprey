@@ -2,7 +2,7 @@
 // the bundled Osprey folder-registry server (`osprey-registry`) over the
 // bundled snapshot of the repository's packages, so packages can be added
 // before the hosted registry exists. The server is the same Osprey program
-// `make registry-serve` runs; this module only writes its one-file
+// `make -C packages registry-serve` runs; this module only writes its one-file
 // configuration, owns the child process and answers "is it up?" through
 // `GET /v1/health`. When the package manager is opened against a loopback
 // registry that does not answer, the user is asked whether to start it.
@@ -130,7 +130,7 @@ export class LocalRegistry {
     for (const [what, file] of [["server", layout.executable], ["package snapshot", layout.root]] as const) {
       if (!this.deps.exists(file)) {
         // Windows builds do not bundle the server yet: its tree walk shells out to POSIX `find`.
-        const remedy = process.platform === "win32" ? "This build does not bundle the local registry on Windows yet; run make registry-serve under WSL" : "Run make _vsix_bundle";
+        const remedy = process.platform === "win32" ? "This build does not bundle the local registry on Windows yet; run make -C packages registry-serve under WSL" : "Run make _vsix_bundle";
         this.deps.error(`The local registry ${what} is missing: ${file}. ${remedy}, or set osprey.packages.localRegistry.${what === "server" ? "serverPath" : "root"}.`);
         return false;
       }

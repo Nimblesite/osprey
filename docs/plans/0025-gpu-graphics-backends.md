@@ -44,7 +44,7 @@ Pixel-for-pixel identity across platforms is **not** claimed and must not be. Th
 - **Authored grade lives in Osprey, not the shader.** An offscreen A/B render at matched uniforms was byte-identical when the grade moved out of the shader; that is the bar stage 5 inherits.
 - **The shared ABI header**, `ospgfx_abi.h`: platform-neutral C11, imported into Swift on macOS, compiled on Windows by MinGW (MSVC unverified) and on Linux by the frame-path test. The bridges' slot store, extent/scale validation and tick arithmetic are its inline helpers; each bridge keeps only the platform-specific wrapper (a store into the scene's uniforms in Swift, a direct pointer on Windows).
 - **The drift guard**: ten tests across `graphics_scenes.rs` (scene structure, Kali grade, fragment entries, bidirectional constant sets, cbuffer guard), `graphics_scenes/abi.rs` (header as canonical declaration, both mirrors, both bridges include-and-restate-nothing, one C ABI, host slot ranges) and `graphics_scenes/frame.rs` (the D3D12 frame functions compiled with clang `-Wall -Wextra -Werror` against the real header and stubbed SDK calls, every injected failure path asserted). An earlier mutation check of the pre-header structure detected 11/11 deliberate mutations; the post-header structure was re-checked on 2026-10-12 against the mutations listed under Landmines.
-- **`make graphics SCENE=…` splits by `$(OS)`**: macOS builds the scene's Swift host with `scripts/macos-host.sh`; Windows builds the D3D12 DLL, whose recipe depends on `ospgfx_abi.h`. `make graphics-smoke` renders each macOS scene for a fixed frame count.
+- **`make -C apps graphics SCENE=…` splits by `$(OS)`**: macOS builds the scene's Swift host with `scripts/macos-host.sh`; Windows builds the D3D12 DLL, whose recipe depends on `ospgfx_abi.h`. `make -C apps graphics-smoke` renders each macOS scene for a fixed frame count.
 
 ## What Windows has verified
 
@@ -62,7 +62,7 @@ Each stage keeps `make ci` green and must not change a single byte of `base/base
 
 ### Stage 1 — Metal backend and the shared-library invariant ✅
 
-Landed. Acceptance: `make graphics SCENE=kali|opal|character` opens a window and renders; the drift guard passes; the derived-constant and uniform-layout tests fail when either library drifts.
+Landed. Acceptance: `make -C apps graphics SCENE=kali|opal|character` opens a window and renders; the drift guard passes; the derived-constant and uniform-layout tests fail when either library drifts.
 
 ### Stage 2 — verify the D3D12 backend — DONE IN SOFTWARE, HARDWARE PENDING
 
@@ -103,7 +103,7 @@ Gate: one scene's fragment body written as an Osprey kernel, compiled to the pla
 - **`ospgfx_abi.h` helpers are `static inline`.** clang suppresses `-Wunused-function` for them only when the header is *included*; pasting its text into a main file (as the frame test once did) fails `-Werror`. Include it with `-I`, never inline it.
 - **The bridge is split to stay under the 500-LOC cap.** The Win32 window is its own file; split again before `_setup.c` nears the cap, not after.
 - **`GFX_WARN` is `-Wall -Werror`.** The bridge compiles cleanly on Windows, so a new warning fails the build.
-- **Windows `make graphics` requires the MSYS2 UCRT64 shell.** Native PowerShell gets a one-line pointer to the README instead of a broken recipe.
+- **Windows `make -C apps graphics` requires the MSYS2 UCRT64 shell.** Native PowerShell gets a one-line pointer to the README instead of a broken recipe.
 - **A shader error is otherwise invisible** — the bridge compiles the library at run time, so a typo surfaces as a window that refuses to open. `make _graphics-shader` turns that into a build failure and *skips quietly* when the toolchain is absent. A silent skip is not a pass.
 - **Mutations the post-header drift guard must keep catching** (re-run after touching it): `OSP_GFX_SLOTS` changed in the header alone; `#define OSP_GFX_SLOTS` reintroduced in a bridge; a screaming-snake constant added to one shader library only; `OSP_GFX_API` dropped from one D3D12 export; `float res[2];` dropped from the header.
 
@@ -116,7 +116,7 @@ Gate: one scene's fragment body written as an Osprey kernel, compiled to the pla
 - [x] `base/base.osp` as the single host; three one-file scene projects.
 - [x] Authored grade moved from the shader into Osprey, A/B render byte-identical at matched uniforms.
 - [x] Drift guard, mutation-checked.
-- [x] `make graphics SCENE=…` with an up-front `xcrun metal` shader check.
+- [x] `make -C apps graphics SCENE=…` with an up-front `xcrun metal` shader check.
 - [x] **One ABI declaration** (`ospgfx_abi.h`) included by both bridges; bridges restate nothing; the frame-path test compiles the real header; both Makefile recipes depend on it.
 - [x] **Drift guard structural and bidirectional (branch review P2.9):** constant sets compared both ways with an explicit, exact HLSL-only whitelist; uniform-layout checks derived from the header; ABI checks split into `graphics_scenes/abi.rs`.
 

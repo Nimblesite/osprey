@@ -107,7 +107,7 @@ osprey hunt ./my-project --out ./hunt-results --input-bytes 4
 
 Exit status is `0` when there is no failing finding, `1` for a native reproduction, any finding with replay disabled, or a compilation failure, and `2` for usage or toolchain errors. Skipped findings and incomplete paths can coexist with status `0`; automation that needs full exploration must inspect the report as well as the exit code.
 
-From the repository, `make hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds the prerequisites and wraps a single run. `make hunt-corpus` sweeps the test and example corpus; it is not currently a required CI check.
+From the repository, `make -C tests/hunt hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds the prerequisites and wraps a single run. `make -C tests/hunt hunt-corpus` sweeps the test and example corpus; it is not currently a required CI check.
 
 ## Qualify a quick corpus
 
@@ -134,7 +134,7 @@ This reruns every listed program under the recorded limits and returns a nonzero
 ## Verify deliberate crash detection
 
 ```sh
-make hunt-crashes
+make -C tests/hunt hunt-crashes
 ```
 
 The gate covers fifteen planted input cases: stdin, parsing, checked arithmetic, lists, maps, closures, recursion, unions, record invariants, JSON, file input, invalid C free, C double free, ML flavor and Python flavor. Each runs independently within ten seconds. Every expected class, source location, concrete input, file payload and native signal must match. Each case must also have a normal symbolic path, and benign stdin `Z` must finish normally with the exact expected output. Missing findings, unfinished analysis, tool errors, skipped replay and KLEE-only findings fail the gate.

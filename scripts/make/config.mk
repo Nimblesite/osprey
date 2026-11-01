@@ -7,8 +7,8 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install bench bench-osprey wasm wasm-site wasm-serve bank bank-web bank-test bank-e2e hawk hawk-install graphics graphics-smoke gpt2 gpt2-train \
-	registry-test registry-serve registry-serve-sample registry-blockers vsix-rebuild-reinstall \
+.PHONY: build test lint fmt clean ci setup run install _bench _bench-osprey _wasm _wasm-site _wasm-serve _bank _bank-web _bank-test _bank-e2e hawk hawk-install _gpt2 _gpt2-train \
+	_registry-test _registry-serve _registry-serve-sample _registry-blockers _vsix-rebuild-reinstall \
 	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
 	_runtime_klee _test_hunt_mock \
@@ -47,6 +47,9 @@ endif
 # ---------------------------------------------------------------------------
 # Coverage — single source of truth is coverage-thresholds.json.
 COVERAGE_THRESHOLDS_FILE ?= coverage-thresholds.json
+
+# The folder Makefiles `make help` lists after the root's own targets.
+MAKE_FOLDERS ?= apps packages tests/hunt vscode-extension website benchmarks examples/proof
 
 # Toolchain / paths. BIN: the built CLI. RTB: C-runtime archive output dir
 # (osprey searches compiler/bin at --run time).
@@ -187,7 +190,7 @@ NATIVE_RUNTIME_INPUTS ?= $(filter-out compiler/runtime/%_tests.c compiler/runtim
 NATIVE_RUNTIME_INPUTS += $(wildcard compiler/runtime/*.m compiler/runtime/*.metal)
 NATIVE_RUNTIME_ARCHIVES ?= compiler/bin/libfiber_runtime.a compiler/bin/libhttp_runtime.a compiler/bin/libfiber_runtime_gc.a compiler/bin/libhttp_runtime_gc.a compiler/bin/libfiber_runtime_arc.a compiler/bin/libhttp_runtime_arc.a compiler/lib/libfiber_runtime.a compiler/lib/libhttp_runtime.a compiler/lib/libfiber_runtime_gc.a compiler/lib/libhttp_runtime_gc.a compiler/lib/libfiber_runtime_arc.a compiler/lib/libhttp_runtime_arc.a
 
-# WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make wasm`.
+# WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make -C website wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)
 # to a wasm archive osprey links with `--target=wasm32`. See docs/specs/0022.
 WASM_LLVM_BIN ?= $(shell for d in /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin; do [ -x "$$d/clang" ] && { echo "$$d"; break; }; done)
@@ -270,6 +273,6 @@ HUNT_MOCK_HOST_CFLAGS ?= -nostdinc -isystem $(shell $(CC) -print-file-name=inclu
 # Symbols KLEE itself defines, so the closed-module check [SYMEX-MOCK-CLOSED]
 # accepts them: its intrinsics, UBSan handlers, allocator and `--libc=klee`.
 KLEE_PROVIDED := ^(klee_|__ubsan_handle_|__assert_fail$$|abort$$|atexit$$|exit$$|_exit$$|calloc$$|free$$|malloc$$|realloc$$|mem(cmp|cpy|move|set|chr)$$|str(len|cmp|ncmp|chr|rchr|cpy|ncpy|cat|tol|toul)$$|to(lower|upper)$$|atoi$$)
-# `make wasm-serve` static-host dir + port for the in-browser example.
+# `make -C website wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080

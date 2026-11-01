@@ -236,7 +236,7 @@ _test_hunt:
 	  python3 scripts/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
 	done; done; exit $$fail
 
-# No skip path: run by hand (`make hunt-crashes`), it must detect and natively
+# No skip path: run by hand (`make -C tests/hunt hunt-crashes`), it must detect and natively
 # reproduce every planted failure.
 .PHONY: _test_hunt_crashes
 _test_hunt_crashes:
@@ -401,7 +401,7 @@ _tui: build
 # _gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
 #            on the host backend [GPU-BACKEND-HOST]; the raster suite uses
 #            gpuScan/gpuFilter, which have no device form yet, so a selected
-#            device would decline it. For pixels on the actual GPU, see `make graphics`.
+#            device would decline it. For pixels on the actual GPU, see `make -C apps graphics`.
 #            FLAVOR=ml renders the ML twin, which prints byte-identical output.
 _gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"

@@ -10,7 +10,7 @@
 //!   2. clang lowers the IR to a wasm object — `-c` only, because stock
 //!      Homebrew/apt LLVM does not ship a wasm compiler-rt archive;
 //!   3. `wasm-ld` links `crt1-command.o` + that object + the portable wasm
-//!      runtime archive (`libosprey_runtime_wasm.a`, `make wasm`) + libc. The
+//!      runtime archive (`libosprey_runtime_wasm.a`, `make -C website wasm`) + libc. The
 //!      runtime supplies the standard `__multi3` helper used when LLVM lowers
 //!      checked i64 multiplication through a widened intermediate.
 //!
@@ -31,7 +31,7 @@ use std::process::{Command, ExitCode};
 /// The canonical wasm target triple (the modern spelling of `wasm32-wasi`).
 /// Implements [WASM-TARGET-TRIPLE].
 const TRIPLE: &str = "wasm32-wasip1";
-/// The `--memory=none` malloc-passthrough C runtime, built by `make wasm`.
+/// The `--memory=none` malloc-passthrough C runtime, built by `make -C website wasm`.
 /// Implements [WASM-TARGET-RUNTIME].
 const RUNTIME_LIB_NONE: &str = "libosprey_runtime_wasm.a";
 /// The ARC runtime twin `--memory=arc` links: same portable unit set with the
@@ -82,7 +82,7 @@ pub(crate) fn build_with_memory(
     let libdir = lib_dir(&sysroot).map_err(|e| fail(&e))?;
     let lib = runtime_lib(memory);
     let archive = find_runtime_lib(lib)
-        .ok_or_else(|| fail(&format!("{lib} not found — run `make wasm` to build it")))?;
+        .ok_or_else(|| fail(&format!("{lib} not found — run `make -C website wasm` to build it")))?;
     let obj = compile_object(&scratch_stem(path), &ir)?;
     link(&obj, &archive, &libdir, out, web_dispatch)
 }

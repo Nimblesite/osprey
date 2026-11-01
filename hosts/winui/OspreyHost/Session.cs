@@ -26,6 +26,17 @@ sealed class Session
     bool applying;
     bool animating;
     TimeSpan? lastFrame;
+    long owed;
+
+    /// <summary>
+    /// A steady clock [WINUI-HOST-SELF-TEST] sends only the frames a self-test grants, each exactly
+    /// 1/60 s, so the scene stands still between steps and a picture taken after a given number of
+    /// frames is the same on every run and every machine.
+    /// </summary>
+    public bool Steady { get; init; }
+
+    /// <summary>The frames granted and not yet sent.</summary>
+    public long Owed => owed;
 
     public Session(Library library, string store, Border root, DispatcherQueue queue, Action<IReadOnlyList<string>> report, Func<Task<string?>> pick)
     {
@@ -43,6 +54,13 @@ sealed class Session
         var offset = (long)TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow).TotalSeconds;
         Guarded(() => Apply(library.Start(Events.Context(Events.Now(), offset, home, arguments))));
         Send(Events.Lifecycle(Events.Now(), "active"));
+    }
+
+    /// <summary>Grants the steady clock <paramref name="frames"/> more frames; false when the clock is not running.</summary>
+    public bool Grant(long frames)
+    {
+        owed += animating ? frames : 0;
+        return animating;
     }
 
     /// <summary>Chooses a row as a click on it would.</summary>
@@ -147,8 +165,14 @@ sealed class Session
 
     void Tick(object? sender, object args)
     {
-        if (applying)
+        if (applying || (Steady && owed == 0))
         {
+            return;
+        }
+        if (Steady)
+        {
+            owed--;
+            Send(Events.Frame(Events.Now(), FirstFrame));
             return;
         }
         var now = clock.Elapsed;

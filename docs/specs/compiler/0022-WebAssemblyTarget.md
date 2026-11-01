@@ -134,7 +134,7 @@ ordinary wasm linear memory.
 ## Verification
 
 - `cargo test -p osprey-cli wasm::tests`
-- `make wasm`
+- `make -C website wasm`
 - `wasm-validate examples/wasm/build/hello.wasm`
 - `node scripts/wasm-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput`
 - `node scripts/wasm-browser-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput`

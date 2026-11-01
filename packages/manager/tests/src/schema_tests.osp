@@ -3,7 +3,7 @@ namespace registry_tests;
 /// `schemas/package-registry.td` is the canonical typeDiagram model and spec
 /// 0031 renders the same block; this keeps the two byte-identical so neither
 /// can drift. Implements the schema rule of [PACKAGE-TYPES]. Runs from the
-/// repository root, where `make registry-test` runs it.
+/// repository root, where `make -C packages registry-test` runs it.
 module SchemaTests {
     let specPath = "docs/specs/ecosystem/0031-PackageDomainModel.md"
     let schemaPath = "schemas/package-registry.td"

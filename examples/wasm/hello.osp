@@ -16,9 +16,9 @@ fn printExact(work) = {
 // Osprey -> WebAssembly demo. [WASM-TARGET]
 //
 // Build:  osprey examples/wasm/hello.osp --target=wasm32 --compile
-//         (or `make wasm`, which drops hello.wasm in examples/wasm/build/)
+//         (or `make -C website wasm`, which drops hello.wasm in examples/wasm/build/)
 // Run:    wasmtime hello.wasm        # or `osprey hello.osp --target=wasm32 --run`
-//         make wasm-serve            # serves index.html + opens the browser
+//         make -C website wasm-serve            # serves index.html + opens the browser
 //
 // One screen, the wasm-safe heart of the language: algebraic effects (the same
 // pure logic run in two different worlds), union types + exhaustive pattern

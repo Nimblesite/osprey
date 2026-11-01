@@ -42,7 +42,7 @@ target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 
 # The local package registry ([PACKAGE-LOCAL-REGISTRY]): the Osprey folder-
 # registry server, and the repository's own packages published into a folder
-# registry with `publish --folder`. `make registry-serve` serves that tree and
+# registry with `publish --folder`. `make -C packages registry-serve` serves that tree and
 # the extension bundles both, so anyone can grab packages before the hosted
 # registry exists. The stamp sits outside the tree, where a stray file would be
 # refused by the catalog walk.

@@ -54,7 +54,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          # 24 because `make wasm-site` runs the modules under `node:wasi`,
+          # 24 because `make -C website wasm-site` runs the modules under `node:wasi`,
           # whose cached memory backing store goes stale on `memory.grow`
           # before Node 24 — see the comment on the ci.yml wasm job.
           node-version: "24"

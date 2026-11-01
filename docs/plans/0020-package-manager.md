@@ -1,6 +1,6 @@
 # Plan 0020 — Package Registry and Manager
 
-**Status:** in progress. The folder registry, verified fetching, deterministic resolution, folder locks, local overrides, folder publication and uv integration are implemented under [`packages/manager/`](../../packages/manager/README.md). `make registry-test` exercises fixtures, manifests, the client, core/API suites and a loopback consumer. Real compiler checks on 25 October 2026 passed all eight build forms across Default and Python flavors: bare build, run, relative project path and absolute project path from another directory. Derived manifests now live in the selected project's `.osprey/build/` with manifest-relative source paths. The second-machine probe remains open.
+**Status:** in progress. The folder registry, verified fetching, deterministic resolution, folder locks, local overrides, folder publication and uv integration are implemented under [`packages/manager/`](../../packages/manager/README.md). `make -C packages registry-test` exercises fixtures, manifests, the client, core/API suites and a loopback consumer. Real compiler checks on 25 October 2026 passed all eight build forms across Default and Python flavors: bare build, run, relative project path and absolute project path from another directory. Derived manifests now live in the selected project's `.osprey/build/` with manifest-relative source paths. The second-machine probe remains open.
 
 Crash-safe activation, canonical build-plan/release artifacts, authenticated public publishing, the hosted package website and the trust plane remain delivery work. Current filesystem handlers use POSIX shell commands; cross-platform acceptance remains open. Checked-off items below record specific delivered subsets, not completion of every requirement in their phase.
 
@@ -106,8 +106,8 @@ every item lands with tests.
       endpoint with the Osprey HTTP client, and assert the bodies byte for byte.
       `packages/manager/e2e` builds and starts the server on `127.0.0.1:18797` and
       compares status, ETag and body of every endpoint with the pure `Router`.
-- [x] `make registry-serve-sample` starts the server over the sample registry.
-- [x] Local registry `[PACKAGE-LOCAL-REGISTRY]`: `make registry-serve` publishes the
+- [x] `make -C packages registry-serve-sample` starts the server over the sample registry.
+- [x] Local registry `[PACKAGE-LOCAL-REGISTRY]`: `make -C packages registry-serve` publishes the
       repository's own `packages/*` into `target/local-registry` with
       `publish --folder` and serves it on `127.0.0.1:8787`. All 19 packages
       stage. The VS Code extension bundles the server and the staged
@@ -141,7 +141,7 @@ every item lands with tests.
 - [x] Reject a tampered bundle, a wrong key, a missing release, and an
       unreachable registry, each with a stable code and a test.
 - [x] A consumer project builds against a fetched package: the end-to-end
-      demo of the exit criterion, run on loopback by `make registry-test`.
+      demo of the exit criterion, run on loopback by `make -C packages registry-test`.
       `packages/manager/e2e` fetches every release by name, epoch and digest, checks the
       installed bytes, then builds and runs `e2e/consumer/` against the fetched
       `@demo/report`, `@demo/maths` and `@demo/greeting` sources.
@@ -155,7 +155,7 @@ every item lands with tests.
       `0.0.0.0` from an automated session was refused by its permission policy,
       so this stays a manual step.
 
-Registry suites run through `make registry-test` only until the package system
+Registry suites run through `make -C packages registry-test` only until the package system
 stabilises. Wiring them into `make test` and CI is deferred to the last phase
 of this plan, "Deferred — CI integration".
 
@@ -199,14 +199,14 @@ of this plan, "Deferred — CI integration".
       `fixtures/time/datetimes.json`, `fixtures/order/lists.json` (104 cases over
       `registry::SetOrder`), `vectors/dsse.json`, and
       `fixtures/canonical/relations.json` for omissions and staging.
-- [x] Run schema/fixture validation as a fail-fast stage of `make registry-test`, covering every suite and fixture. Joining `make test` is deferred to "Deferred — CI integration". `packages/manager/fixture-check` runs first: data-only fixtures, strict JSON, defined spec citations, complete indexes, and every value named in `fixtures/schema-map.json` valid against `schemas/package-registry.td` and in canonical list order; it also rejects undefined spec citations in registry source.
+- [x] Run schema/fixture validation as a fail-fast stage of `make -C packages registry-test`, covering every suite and fixture. Joining `make test` is deferred to "Deferred — CI integration". `packages/manager/fixture-check` runs first: data-only fixtures, strict JSON, defined spec citations, complete indexes, and every value named in `fixtures/schema-map.json` valid against `schemas/package-registry.td` and in canonical list order; it also rejects undefined spec citations in registry source.
 
 Exit gate: the package application and test harness compile from Osprey source without a package-specific host or launcher in another language, and every serialized form and security state transition has a reviewed, byte-exact fixture before storage or API code exists.
 
 ### Phase 1 — Manifest and canonical identity
 
 The TOML parser and manifest validators live in `packages/manager/manifest/` with
-their own test project, `packages/manager/manifest/tests` (`make registry-test` runs
+their own test project, `packages/manager/manifest/tests` (`make -C packages registry-test` runs
 it). They stay out of the shared core because of type-check cost, measured
 with `--check` on the assembled `packages/manager/tests` program: 38 s wall (307 s CPU)
 without the parser, 115 s (662 s CPU) with it. Only the parser-free

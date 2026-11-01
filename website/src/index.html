@@ -120,7 +120,7 @@ date: "git Last Modified"
         <div class="code-toolbar"><span>examples/gpt2/python/model.py</span><span>Python flavor</span></div>
         <pre class="language-python"><code class="language-python"># osprey: flavor=python
 {{ gpuExample | escape }}</code></pre>
-        <div class="code-result"><span aria-hidden="true">↳</span><samp>make gpt2 FLAVOR=python BACKEND=gpu</samp><span class="result-label">TRY IT</span></div>
+        <div class="code-result"><span aria-hidden="true">↳</span><samp>make -C apps gpt2 FLAVOR=python BACKEND=gpu</samp><span class="result-label">TRY IT</span></div>
       </div>
     </div>
     <p class="support-note">Python flavor is Osprey source; porting requires adapting Python’s dynamic behavior. Shared tensor storage across Python interop is planned. GPU kernels are not fused; speed depends on the workload and backend. <a href="https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/README.md">Measurements and source →</a></p>

@@ -25,7 +25,7 @@ These projects compose sibling modules through explicit `source_roots`. Registry
 
 ## Run a registry
 
-`make registry-serve` serves the repository's own packages ([PACKAGE-LOCAL-REGISTRY](../../docs/specs/ecosystem/0029-PackageManagement.md)). It builds `target/osprey-pkg` and `target/osprey-registry`, publishes every `packages/*` that declares a `[package]` into `target/local-registry` with `publish --folder` ([`scripts/stage-local-registry.sh`](../../scripts/stage-local-registry.sh)) and serves that tree on `http://127.0.0.1:8787`. The VS Code extension bundles the same server and tree; its **Start Local Package Registry** command, `osprey.toml` explorer action and status-bar item run it, and opening the package manager against a silent loopback registry offers to start it.
+`make -C packages registry-serve` serves the repository's own packages ([PACKAGE-LOCAL-REGISTRY](../../docs/specs/ecosystem/0029-PackageManagement.md)). It builds `target/osprey-pkg` and `target/osprey-registry`, publishes every `packages/*` that declares a `[package]` into `target/local-registry` with `publish --folder` ([`scripts/stage-local-registry.sh`](../../scripts/stage-local-registry.sh)) and serves that tree on `http://127.0.0.1:8787`. The VS Code extension bundles the same server and tree; its **Start Local Package Registry** command, `osprey.toml` explorer action and status-bar item run it, and opening the package manager against a silent loopback registry offers to start it.
 
 All 19 packages stage. A package that binds a raw native function is refused while staging (`source.unclassified-builtin`), as capability confinement requires.
 
@@ -34,7 +34,7 @@ To try the `@demo` sample registry and the e2e consumer instead:
 ```sh
 make build
 ./target/release/osprey build packages/manager/cli -o target/osprey-pkg
-make registry-serve-sample
+make -C packages registry-serve-sample
 ```
 
 The server reads `sample-registry/` and listens on `http://127.0.0.1:8787`. Leave it running. In another terminal:
@@ -60,8 +60,8 @@ The catalog is loaded at startup; restart the server after folder publication. C
 ## Verification
 
 ```sh
-make registry-test
-make registry-blockers
+make -C packages registry-test
+make -C packages registry-blockers
 ```
 
 `registry-test` runs fixture validation, manifest, client, core/API and loopback suites. `registry-blockers` deliberately asserts capabilities that are not delivered; it is expected to fail. `blockers/src/main.osp` includes binary reads and a historical million-element fallback/pipeline reproducer. A probe's current result must be measured before calling it a present compiler crash.

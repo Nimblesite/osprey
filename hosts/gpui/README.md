@@ -6,7 +6,7 @@ Rust is only the seam. It never interprets an action, holds application state or
 
 ## Build and run
 
-From the repository root, once: on an Apple silicon Mac with Xcode, `make macos` (the Mac ARC runtime, with the Metal adapter, and the compiler); on Linux, `make _runtime` and `cargo build --release -p osprey-cli` with clang, llvm-ar and GPUI's system libraries (see `.github/workflows/gpui.yml`); on Windows, the same under MSYS2 UCRT64 with `OSPREY_CC`/`OSPREY_AR` set to its clang and llvm-ar, and the host built by MSYS2's own Rust (`mingw-w64-ucrt-x86_64-rust`) ahead of rustup's on `PATH`. Its build scripts run as GNU programs and everything links one UCRT; rustup's Rust with the GNU target builds GPUI's resource script as an MSVC library and links msvcrt beside the runtime's UCRT. `run.sh --build` builds without running, for a host started some other way.
+From the repository root, once: on an Apple silicon Mac with Xcode, `make -C apps macos` (the Mac ARC runtime, with the Metal adapter, and the compiler); on Linux, `make _runtime` and `cargo build --release -p osprey-cli` with clang, llvm-ar and GPUI's system libraries (see `.github/workflows/gpui.yml`); on Windows, the same under MSYS2 UCRT64 with `OSPREY_CC`/`OSPREY_AR` set to its clang and llvm-ar, and the host built by MSYS2's own Rust (`mingw-w64-ucrt-x86_64-rust`) ahead of rustup's on `PATH`. Its build scripts run as GNU programs and everything links one UCRT; rustup's Rust with the GNU target builds GPUI's resource script as an MSVC library and links msvcrt beside the runtime's UCRT. `run.sh --build` builds without running, for a host started some other way.
 
 Then:
 
@@ -19,7 +19,7 @@ hosts/gpui/run.sh --smoke       # start, tap Add, assert "Count 1" through the r
 
 `python3 hosts/gpui/dependencies.py` stages the dependency backports declared in [dependencies.json](dependencies.json). It verifies each published archive, applies the exact preimages in [patches/](patches/), and checks the complete resulting source tree. Both this host and the Painting reference must declare the same inventory. A successful run prints `GPUI dependency source integrity: N backports PASS`, where `N` equals the inventory size. Within each declared cached crate, modified, missing or additional source files and symlinks are refused. Invalid package paths and mismatched workspace overrides are also refused; unrelated sibling cache directories are outside this inventory. `run.sh` and `make audit` run this check automatically.
 
-`python3 hosts/gpui/dependencies_test.py` checks the staging and refusal contracts, including concurrent staging and verification of the winning source tree. `run.sh`, `make gpui-test` and `make audit` run these guards before building or scanning. Dependency repairs must also pass the unchanged repository audit and host/rendering checks; staging verifies source identity, while the two workspace lockfiles describe the dependencies scanned by `make audit`.
+`python3 hosts/gpui/dependencies_test.py` checks the staging and refusal contracts, including concurrent staging and verification of the winning source tree. `run.sh`, `make -C apps gpui-test` and `make audit` run these guards before building or scanning. Dependency repairs must also pass the unchanged repository audit and host/rendering checks; staging verifies source identity, while the two workspace lockfiles describe the dependencies scanned by `make audit`.
 
 ## Layout
 

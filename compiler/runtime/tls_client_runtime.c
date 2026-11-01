@@ -52,12 +52,19 @@ static void close_fd(int fd) {
   }
 }
 
+// Winsock takes a socket deadline as a DWORD of milliseconds, BSD sockets as a timeval.
 static void socket_deadline(int fd, int64_t timeout_ms) {
+#ifdef _WIN32
+  DWORD ms = (DWORD)timeout_ms;
+  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&ms, sizeof ms);
+  setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&ms, sizeof ms);
+#else
   struct timeval tv;
   tv.tv_sec = (time_t)(timeout_ms / 1000);
   tv.tv_usec = (suseconds_t)((timeout_ms % 1000) * 1000);
   setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof tv);
+#endif
 }
 
 // A connected TCP socket to host:port, or a negative reason.
@@ -258,6 +265,24 @@ static bool pending_prepare(TlsSession *session, int64_t count) {
   return session->pending != NULL;
 }
 
+// The error a failed socket read left: errno, or on Windows the Winsock error,
+// whose deadline and would-block codes read as EAGAIN.
+static void clear_socket_error(void) {
+#ifdef _WIN32
+  WSASetLastError(0);
+#endif
+  errno = 0;
+}
+
+static int socket_error(void) {
+#ifdef _WIN32
+  int error = WSAGetLastError();
+  return error == WSAETIMEDOUT || error == WSAEWOULDBLOCK ? EAGAIN : error;
+#else
+  return errno;
+#endif
+}
+
 // Classifies a failed SSL_read: a socket deadline is a timeout, a clean or
 // abrupt close is closed, anything else failed. `saved` is errno as the read
 // left it, taken before SSL_get_error can disturb it: a blocking socket whose
@@ -281,9 +306,9 @@ static int64_t read_outcome(SSL *ssl, int n, int saved) {
 static int64_t fill_pending(TlsSession *session, int64_t count) {
   while (session->pending_len < count) {
     int want = (int)(count - session->pending_len);
-    errno = 0;
+    clear_socket_error();
     int n = SSL_read(session->ssl, session->pending + session->pending_len, want);
-    int saved = errno;
+    int saved = socket_error();
     if (n <= 0) {
       return read_outcome(session->ssl, n, saved);
     }

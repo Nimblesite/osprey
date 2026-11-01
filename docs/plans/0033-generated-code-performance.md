@@ -64,7 +64,7 @@ Timing on `ubuntu-latest` is too noisy to gate on and the Mac runners are slower
 - [x] `rust-checked` benchmark column (`benchmarks/run.sh`, `benchmarks/report.py`, `benchmarks/README.md`).
 - [x] `optimised_ir` oracle and the red linkage test in `crates/osprey-cli/src/tests/execution.rs`.
 - [x] Phase 3 linkage change behind `CodegenOptions`; the red test goes green; profiler, `--symbols`, iOS, Android, Python and wasm web ABI tests re-run.
-- [ ] Re-run `make bench` after Phase 3 and update `website/src/benchmarks.md` from the recorded data.
+- [ ] Re-run `make -C benchmarks bench` after Phase 3 and update `website/src/benchmarks.md` from the recorded data.
 - [ ] Phase 4 cold slow path with its oracle test.
 - [ ] Phase 5 decision recorded in spec 0037.
 - [ ] Phase 6 cachegrind job, thresholds file, entry in `scripts/verify-branch-protection.mjs`.
