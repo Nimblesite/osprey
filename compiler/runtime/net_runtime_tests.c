@@ -407,13 +407,13 @@ static void test_file_server_refusals(void) {
 static void test_file_server_start_failures(void) {
   char type[] = "audio/mpeg";
   char missing[] = "/tmp/osprey-net-tests-missing.bin";
-  char directory[] = "/tmp";
+  char device[] = "/dev/null";
   char bad_address[] = "not-an-address";
   assert(osprey_file_server_start(NULL, type, LOOPBACK) == -1);
   assert(osprey_file_server_start(media_path, NULL, LOOPBACK) == -1);
   assert(osprey_file_server_start(media_path, type, NULL) == -1);
   assert(osprey_file_server_start(missing, type, LOOPBACK) == -2);
-  assert(osprey_file_server_start(directory, type, LOOPBACK) == -2);
+  assert(osprey_file_server_start(device, type, LOOPBACK) == -2);
   assert(osprey_file_server_start(media_path, type, bad_address) == -4);
   int64_t ports[16];
   for (int i = 0; i < 16; i++) {
@@ -451,6 +451,93 @@ static void test_file_server_closes_with_the_player(void) {
   assert(osprey_file_server_stop(port) == 0);
 }
 
+// [FFI-FILE-SERVER-FOLDER] A folder serves its files by name, typed by
+// extension; a name that is not there yet is waited for until it appears or
+// the server stops; names that could leave the folder are refused at once.
+typedef struct {
+  int port;
+  const char *request;
+  Reply reply;
+} PendingFetch;
+
+static void *fetch_thread(void *arg) {
+  PendingFetch *pending = arg;
+  fetch(pending->port, pending->request, &pending->reply);
+  return NULL;
+}
+
+static void write_text(const char *folder, const char *name, const char *text) {
+  char path[512];
+  snprintf(path, sizeof path, "%s/%s", folder, name);
+  FILE *file = fopen(path, "w");
+  assert(file != NULL);
+  assert(fputs(text, file) >= 0);
+  fclose(file);
+}
+
+static void test_file_server_folder(void) {
+  char folder[] = "/tmp/osprey-net-folder.XXXXXX";
+  assert(mkdtemp(folder) != NULL);
+  write_text(folder, "media.m3u8", "#EXTM3U\n");
+  write_text(folder, "seg00000.ts", "segment-zero");
+  write_text(folder, "cover.jpg", "jpeg");
+  char type[] = "ignored/for-folders";
+  int64_t port = osprey_file_server_start(folder, type, LOOPBACK);
+  assert(port > 0);
+  Reply reply;
+  fetch((int)port, "GET /media.m3u8 HTTP/1.1\r\n\r\n", &reply);
+  assert(reply.status == 200);
+  assert(strstr(reply.headers, "Content-Type: application/vnd.apple.mpegurl\r\n") != NULL);
+  // A Cast receiver is a web page: it fetches HLS by XHR, which needs CORS.
+  assert(strstr(reply.headers, "Access-Control-Allow-Origin: *\r\n") != NULL);
+  assert(reply.body_len == 8 && memcmp(reply.body, "#EXTM3U\n", 8) == 0);
+  free(reply.body);
+  fetch((int)port, "GET /seg00000.ts HTTP/1.1\r\nRange: bytes=8-\r\n\r\n", &reply);
+  assert(reply.status == 206);
+  assert(strstr(reply.headers, "Content-Type: video/mp2t\r\n") != NULL);
+  assert(strstr(reply.headers, "Access-Control-Allow-Origin: *\r\n") != NULL);
+  assert(reply.body_len == 4 && memcmp(reply.body, "zero", 4) == 0);
+  free(reply.body);
+  fetch((int)port, "HEAD /cover.jpg HTTP/1.1\r\n\r\n", &reply);
+  assert(reply.status == 200);
+  assert(strstr(reply.headers, "Content-Type: application/octet-stream\r\n") != NULL);
+  assert(strstr(reply.headers, "Content-Length: 4\r\n") != NULL);
+  assert(reply.body_len == 0);
+  free(reply.body);
+  const char *refused[] = {"GET / HTTP/1.1\r\n\r\n", "GET /.hidden HTTP/1.1\r\n\r\n",
+                           "GET /../etc/passwd HTTP/1.1\r\n\r\n", "GET /sub/seg.ts HTTP/1.1\r\n\r\n"};
+  for (size_t i = 0; i < sizeof refused / sizeof refused[0]; i++) {
+    fetch((int)port, refused[i], &reply);
+    assert(reply.status == 404);
+    free(reply.body);
+  }
+  // A segment the renderer has not written yet is served once it appears.
+  PendingFetch late = {(int)port, "GET /seg00001.ts HTTP/1.1\r\n\r\n", {0}};
+  pthread_t thread;
+  assert(pthread_create(&thread, NULL, fetch_thread, &late) == 0);
+  usleep(300000);
+  write_text(folder, "seg00001.ts", "segment-one");
+  assert(pthread_join(thread, NULL) == 0);
+  assert(late.reply.status == 200);
+  assert(late.reply.body_len == 11 && memcmp(late.reply.body, "segment-one", 11) == 0);
+  free(late.reply.body);
+  // Stopping the server releases a request still waiting for its file.
+  PendingFetch never = {(int)port, "GET /seg00009.ts HTTP/1.1\r\n\r\n", {0}};
+  assert(pthread_create(&thread, NULL, fetch_thread, &never) == 0);
+  usleep(300000);
+  assert(osprey_file_server_stop(port) == 0);
+  assert(pthread_join(thread, NULL) == 0);
+  assert(never.reply.status == 404);
+  free(never.reply.body);
+  const char *names[] = {"media.m3u8", "seg00000.ts", "seg00001.ts", "cover.jpg"};
+  for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s", folder, names[i]);
+    assert(unlink(path) == 0);
+  }
+  assert(rmdir(folder) == 0);
+}
+
 int main(void) {
   signal(SIGPIPE, SIG_IGN);
   EVP_PKEY *key = test_key();
@@ -475,6 +562,7 @@ int main(void) {
   test_file_server_refusals();
   test_file_server_start_failures();
   test_file_server_closes_with_the_player();
+  test_file_server_folder();
   unlink(media_path);
   printf("✅ network runtime tests passed\n");
   return 0;

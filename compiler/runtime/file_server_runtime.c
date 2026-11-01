@@ -160,7 +160,8 @@ static void send_body(int fd, const Served *served, int64_t start, int64_t end) 
 }
 
 // Answers a GET or HEAD for the media: 200 for the whole file, 206 for a
-// satisfiable range, 416 for one past the end.
+// satisfiable range, 416 for one past the end. Any origin may read it: a Cast
+// receiver is a web page that fetches an HLS playlist and its segments by XHR.
 static void serve_media(int fd, const Served *server, const char *request, bool head) {
   int64_t start = 0;
   int64_t end = server->size - 1;
@@ -181,7 +182,8 @@ static void serve_media(int fd, const Served *server, const char *request, bool 
   }
   char headers[512];
   snprintf(headers, sizeof headers,
-           "HTTP/1.1 %s\r\nContent-Type: %s\r\nAccept-Ranges: bytes\r\n%sContent-Length: "
+           "HTTP/1.1 %s\r\nContent-Type: %s\r\nAccept-Ranges: bytes\r\n"
+           "Access-Control-Allow-Origin: *\r\n%sContent-Length: "
            "%lld\r\nConnection: close\r\n\r\n",
            ranged ? "206 Partial Content" : "200 OK", server->content_type, range_line,
            (long long)(end - start + 1));

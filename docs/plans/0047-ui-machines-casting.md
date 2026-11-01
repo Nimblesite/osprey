@@ -19,7 +19,7 @@ Finish the casting app, the UI toolkit it runs on with full accessibility, and t
 - [x] `make ui-test` and the CI step run the framework, casting and signal-flow suites
 - [x] Casting: open files, MP3 association, TLS deadline fix, HLS visualiser
 - [x] `make -C apps/macos casting`; desktop apps split into `apps/macos` and `apps/windows`
-- [ ] Cast to a real TV and record the result here
+- [x] Cast to a real TV and record the result here: 2026-11-01, "Family room TV" (Chromecast Ultra), `packages/chromecast/live` through `Wire.Native`, the player the casting app runs: the HLS visualiser played, paused, resumed, sought, kept its volume and finished, 7 of 7. The first run found the receiver refusing the media because the file server sent no CORS header; it now sends `Access-Control-Allow-Origin: *` ([FFI-FILE-SERVER-FOLDER])
 - [x] Windows: the WinUI host runs UI machines; signal flow is a sandboxed package with a self-test (`make -C apps/windows signal-flow`, `make -C apps/windows test`)
 - [ ] Windows casting with `DnsServiceBrowse`, the MinGW TLS and file-server runtime and `privateNetworkClientServer` (plan 0046 step 5), then `make -C apps/windows casting`
 - [ ] `make ui-test` on the Windows CI runner: the step is in ci-windows.yml; tick once a PR run passes
