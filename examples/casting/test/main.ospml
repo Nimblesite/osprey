@@ -6,9 +6,10 @@
 
 import ui::Doc
 import ui::Runtime
-import ui::Templates
+import ui::Canvases
 import uitest::Events
 import uitest::Semantics
+import uitest::Read
 import uitest::Views
 import casting::App
 import chromecast::Protocol
@@ -30,11 +31,9 @@ type Fake =
     fakeRender : string
     fakeLoaded : string
 
-(** What the test last saw: the envelope, the root region's node and revision, the host clock and the browse text the host returns. *)
+(** What the test last saw: the decoded view, the host clock and the browse text the host returns. *)
 type Sight =
-    sightEnvelope : Json
-    sightRoot : Json
-    sightRevision : int
+    sightSeen : uitest::Rendered
     sightNow : int
     sightBrowse : string
 
@@ -49,8 +48,8 @@ fresh () = Fake(fakeInbox = "", fakeSaid = "", fakeOut = "", fakeRead = 0, fakeP
 browse = "Living\\032Room\\032TV._googlecast._tcp SRV 0 0 8009 living-room.local. ;\nLiving\\032Room\\032TV._googlecast._tcp TXT \"id=1\" \"fn=Living Room TV\"\nKitchen._googlecast._tcp SRV 0 0 8009 kitchen.local. ;\nKitchen._googlecast._tcp TXT \"fn=Kitchen\"\n"
 
 mut fake = fresh ()
-mut sight = Sight(sightEnvelope = JsonNull, sightRoot = JsonNull, sightRevision = 0, sightNow = 1, sightBrowse = browse)
-mut live = Runtime::idle (casting::Link::store (ui::Machines::faulty ""))
+mut sight = Sight(sightSeen = Read::blank (), sightNow = 1, sightBrowse = browse)
+mut live = Runtime::idle (casting::Link::store (ui::MachineDocs::faulty ""))
 
 framed (ns, json) = Protocol::frame ("receiver-0", ns, json)
 
@@ -69,15 +68,27 @@ becomes (f, next) =
     moved = f(fakePlaying = next)
     queued (moved, framed ("media", mediaStatus moved))
 
-answer (f, kind, doc) = match kind
+(** One message the sender wrote, decoded once at the device's wire: its type and the fields the device acts on. *)
+type Said =
+    saidType : string
+    saidContent : string
+    saidTime : float
+    saidRate : float
+    saidLevel : float
+
+said hex =
+    doc = Doc::parse (Protocol::parse (drop hex 8)).payload
+    Said(saidType = Doc::text (doc, "type"), saidContent = Doc::text (Doc::field (doc, "media"), "contentType"), saidTime = Doc::decimal (doc, "currentTime"), saidRate = Doc::decimal (doc, "playbackRate"), saidLevel = Doc::decimal (Doc::field (doc, "volume"), "level"))
+
+answer (f, message) = match message.saidType
     "LAUNCH" => queued (f, framed ("receiver", receiverStatus f))
-    "LOAD" => becomes (becomes (f(fakeLoaded = Doc::text (Doc::field (doc, "media"), "contentType")), "BUFFERING"), "PLAYING")
+    "LOAD" => becomes (becomes (f(fakeLoaded = message.saidContent), "BUFFERING"), "PLAYING")
     "PAUSE" => becomes (f, "PAUSED")
     "PLAY" => becomes (f, "PLAYING")
-    "SEEK" => becomes (f(fakePosition = Doc::decimal (doc, "currentTime")), f.fakePlaying)
-    "SET_PLAYBACK_RATE" => becomes (f(fakeRate = Doc::decimal (doc, "playbackRate")), f.fakePlaying)
+    "SEEK" => becomes (f(fakePosition = message.saidTime), f.fakePlaying)
+    "SET_PLAYBACK_RATE" => becomes (f(fakeRate = message.saidRate), f.fakePlaying)
     "SET_VOLUME" =>
-        turned = f(fakeVolume = Doc::decimal (Doc::field (doc, "volume"), "level"))
+        turned = f(fakeVolume = message.saidLevel)
         queued (turned, framed ("receiver", receiverStatus turned))
     "STOP" => becomes (f(fakeReason = "CANCELLED"), "IDLE")
     "PING" => queued (f, framed ("tp.heartbeat", "{\"type\":\"PONG\"}"))
@@ -85,9 +96,8 @@ answer (f, kind, doc) = match kind
 
 // The device hears one frame the sender wrote and queues its answer.
 heard (f, hex) =
-    doc = Doc::parse (Protocol::parse (drop hex 8)).payload
-    kind = Doc::text (doc, "type")
-    answer (f(fakeSaid = "${f.fakeSaid}${kind} "), kind, doc)
+    message = said hex
+    answer (f(fakeSaid = "${f.fakeSaid}${message.saidType} "), message)
 
 // The device hands over `count` queued bytes, or times out when fewer are queued.
 taken (f, count) = match length f.fakeInbox >= count * 2
@@ -122,7 +132,7 @@ heardTypes () = fake.fakeSaid
 
 reset () =
     perform Bench.rig (fresh ())
-    perform Bench.see (sight(sightBrowse = browse, sightRoot = JsonNull, sightRevision = 0))
+    perform Bench.see (sight(sightBrowse = browse, sightSeen = Read::blank ()))
 
 unplug () = perform Bench.rig (fake(fakeReachable = false))
 
@@ -134,14 +144,9 @@ browsing text = perform Bench.see (sight(sightBrowse = text))
 
 // ---- the session ----
 
-latest (s, patch) = match Doc::text (patch, "key") == "root"
-    true => s(sightRoot = Doc::field (patch, "node"), sightRevision = Doc::number (patch, "revision"))
-    false => s
-
 kept (resident : ui::Resident<casting::Store>) =
     perform Bench.keep resident.residentSession
-    envelope = Doc::parse resident.residentEnvelope
-    perform Bench.see (foldList (Doc::items (Doc::field (envelope, "patches")), sight(sightEnvelope = envelope, sightNow = sight.sightNow + 1), \(s, patch) => latest (s, patch)))
+    perform Bench.see (sight(sightSeen = Read::envelope (sight.sightSeen, resident.residentEnvelope), sightNow = sight.sightNow + 1))
 
 // Every host-side effect a session needs: the Cast device, host-held slices and the scene stream.
 hosted work =
@@ -172,61 +177,60 @@ post event = hosted (\() => kept (Runtime::proceed (live, event, App::update, Ap
 
 // ---- reading the rendered view ----
 
-nodes () = Views::nodes sight.sightRoot
+seen () = sight.sightSeen
 
-labelled label = Views::labelled (sight.sightRoot, label)
+texts () = Views::texts (seen ())
 
-texts () = Views::texts sight.sightRoot
-
-shows label = match length (labelled label) > 0
+shows label = match Views::shows (seen (), label)
     true => true
     false =>
         print "# not shown: ${label}; the view shows ${texts ()}"
         false
 
-control label = Views::control (sight.sightRoot, label)
+control label = Views::control (seen (), label)
 
-ordinal label = Doc::number (control label, "event")
+ordinal label = (control label).controlOrdinal
 
-enabledOf label = Doc::flag (control label, "enabled")
+enabledOf label = (control label).controlEnabled
 
-requested kind = Views::requested (sight.sightEnvelope, kind)
+selected label = (control label).controlSelected
+
+requested kind = Views::requested (seen (), kind)
 
 // ---- the canvas's accessibility tree [UI-MACHINE-A11Y] ----
 
 machine () = live.sessionStore.screen.screenMachine
 
 (** Every accessible element's label, in hit order, `|`-separated. *)
-labels () = Semantics::labels (Templates::semantics (machine ()))
+elements () = Canvases::semantics (machine ())
 
-element label = Semantics::element (Templates::semantics (machine ()), label)
+labels () = Semantics::labels (elements ())
 
-offers label = match Semantics::offered (Templates::semantics (machine ()), label)
+element label = Semantics::element (elements (), label)
+
+valueOf label = Semantics::value (elements (), label)
+
+offers label = match Semantics::offered (elements (), label)
     true => true
     false =>
         print "# not offered: ${label}; the tree offers ${labels ()}"
         false
 
-// The strings the artboard letters, `|`-separated.
-lettered () = Views::lettered sight.sightRoot
-
-letters text = match ui::Lists::any (split (lettered ()) "|" ?: [], \t => t == text)
+letters text = match Views::letters (seen (), text)
     true => true
     false =>
-        print "# not lettered: ${text}; the artboard letters ${lettered ()}"
+        print "# not lettered: ${text}; the artboard letters ${Views::lettered (seen ())}"
         false
 
 // ---- host events ----
 
-stamp () = toString sight.sightNow
+stamp () = sight.sightNow
 
-press label = post (Events::press (sight.sightRevision, ordinal label, stamp ()))
+press label = post (Events::press ((seen ()).renderedRevision, ordinal label, stamp ()))
 
-choose (label, key) = post (Events::choose (sight.sightRevision, ordinal label, key, stamp ()))
+choose (label, key) = post (Events::choose ((seen ()).renderedRevision, ordinal label, key, stamp ()))
 
-complete (ticket, result) = post (Events::complete (ticket, result, stamp ()))
-
-pointer (x, y, down) = post (Events::pointer (sight.sightRevision, Doc::number (sight.sightRoot, "event"), x, y, down, stamp ()))
+pointer (x, y, down) = post (Events::pointer ((seen ()).renderedRevision, (seen ()).renderedOrdinal, x, y, down, stamp ()))
 
 // A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
 tapAt (label, fraction) =
@@ -240,9 +244,9 @@ opened path = post (Events::open (path, stamp ()))
 
 frame seconds = post (Events::frame (seconds, stamp ()))
 
-discovered () = complete ("discover", "{\"status\":0,\"stderr\":\"\"}")
+discovered () = post (Events::ran ("discover", 0, "", stamp ()))
 
-picked path = complete ("choose", "{\"path\":\"${path}\",\"cancelled\":false}")
+picked path = post (Events::chosen ("choose", path, stamp ()))
 
 test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and speed, stop and replay", \() => bench (\() =>
     started ()
@@ -252,8 +256,8 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     expect (requested "animate", true)
     discovered ()
     expect (shows "Receiver", true)
-    expect (Doc::text (control "Receiver", "selected"), "Living Room TV")
-    expect (length (Doc::items (Doc::field (control "Receiver", "choices"))), 2)
+    expect (selected "Receiver", "Living Room TV")
+    expect (length (control "Receiver").controlChoices, 2)
     expect (enabledOf "Play", false)
     press "Open file…"
     expect (requested "choose-file", true)
@@ -268,51 +272,51 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     press "Play"
     expect (heardTypes (), "CONNECT LAUNCH ")
     expect (shows "Connecting to Living Room TV…", true)
-    frame "0.2"
+    frame 0.2
     expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD ")
     expect (fake.fakeLoaded, "audio/mpeg")
-    frame "0.2"
+    frame 0.2
     expect (shows "Playing on Living Room TV", true)
     expect (shows "Pause", true)
     expect (shows "03:20", true)
     expect (enabledOf "Back 10 seconds", true)
     press "Pause"
-    frame "0.2"
+    frame 0.2
     expect (shows "Paused", true)
     expect (shows "Resume", true)
     press "Resume"
-    frame "0.2"
+    frame 0.2
     expect (shows "Playing on Living Room TV", true)
     press "Forward 10 seconds"
-    frame "0.2"
+    frame 0.2
     expect (shows "00:10", true)
     choose ("Volume 100%", "0.5")
-    frame "0.2"
+    frame 0.2
     expect (shows "Volume 50%", true)
     choose ("Speed", "1.5")
-    frame "0.2"
-    expect (Doc::text (control "Speed", "selected"), "1.5")
+    frame 0.2
+    expect (selected "Speed", "1.5")
     expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD PAUSE PLAY SEEK SET_VOLUME SET_PLAYBACK_RATE ")
     press "Stop"
-    frame "0.2"
+    frame 0.2
     expect (shows "Finished", true)
     expect (shows "Play", true)
     press "Play"
-    frame "0.2"
-    frame "0.2"
+    frame 0.2
+    frame 0.2
     expect (shows "Playing on Living Room TV", true)
     finishTrack ()
-    frame "0.2"
+    frame 0.2
     expect (shows "Finished", true)))
 
 test ("skins change the palette, never the controls", \() => bench (\() =>
     started ()
     discovered ()
     choose ("Skin", "midnight")
-    expect (Doc::text (control "Skin", "selected"), "midnight")
+    expect (selected "Skin", "midnight")
     expect (shows "Open file…", true)
     choose ("Skin", "poolside")
-    expect (Doc::text (control "Skin", "selected"), "poolside")))
+    expect (selected "Skin", "poolside")))
 
 test ("no TVs found offers another search, and an unreachable TV shows why", \() => bench (\() =>
     started ()
@@ -328,7 +332,7 @@ test ("no TVs found offers another search, and an unreachable TV shows why", \()
     press "Play"
     expect (shows "living-room.local:8009: connection refused or timed out", true)
     expect (shows "Play", true)
-    expect (length (filterList (nodes (), \n => Doc::text (n, "tone") == "danger")), 1)))
+    expect (length (filterList ((seen ()).renderedControls, \c => c.controlTone == "danger")), 1)))
 
 test ("the canvas: every control is reached by its accessible label, through pointer events alone", \() => bench (\() =>
     drawn ()
@@ -350,30 +354,30 @@ test ("the canvas: every control is reached by its accessible label, through poi
     tap "Play"
     expect (heardTypes (), "CONNECT LAUNCH ")
     expect (letters "Connecting…", true)
-    frame "0.2"
-    frame "0.2"
+    frame 0.2
+    frame 0.2
     expect (fake.fakeLoaded, "application/x-mpegURL")
     expect (letters "Playing", true)
     expect (labels (), "Receiver: Living Room TV|Speed: 1×|Pause|Stop|Open file…|Position|Volume")
-    expect (Doc::decimal (element "Volume", "value"), 1.0)
+    expect (valueOf "Volume", 1.0)
     tap "Pause"
-    frame "0.2"
+    frame 0.2
     expect (letters "Paused", true)
     expect (offers "Resume", true)
     tap "Resume"
-    frame "0.2"
+    frame 0.2
     expect (letters "Playing", true)
     tapAt ("Volume", 0.5)
-    frame "0.2"
-    expect (Doc::decimal (element "Volume", "value"), 0.5)
+    frame 0.2
+    expect (valueOf "Volume", 0.5)
     tapAt ("Position", 0.25)
-    frame "0.2"
+    frame 0.2
     expect (letters "00:50", true)
-    expect (Doc::decimal (element "Position", "value"), 50.0)
+    expect (valueOf "Position", 50.0)
     tap "Speed: 1×"
     expect (labels (), "0.75×|1×|1.25×|1.5×|2×|Receiver: Living Room TV|Speed: 1×|Pause|Stop|Open file…|Position|Volume")
     tap "1.5×"
-    frame "0.2"
+    frame 0.2
     expect (labels (), "Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
     expect (letters "1.5×", true)
     tap "Receiver: Living Room TV"
@@ -388,7 +392,7 @@ test ("the canvas: every control is reached by its accessible label, through poi
     expect (labels (), "Receiver: Kitchen|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
     expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD PAUSE PLAY SET_VOLUME SEEK SET_PLAYBACK_RATE ")
     tap "Stop"
-    frame "0.2"
+    frame 0.2
     expect (letters "Finished", true)
     expect (labels (), "Receiver: Kitchen|Play|Open file…")
     unplug ()

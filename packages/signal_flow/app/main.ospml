@@ -14,7 +14,7 @@ extern native_shape (code : int) (index : int) (a : float) (b : float) (c : floa
 effect Keep
     keep : ui::Session<signalflow::Store> => Unit
 
-mut live = Runtime::idle (signalflow::Flow::store (ui::Machines::faulty ""))
+mut live = Runtime::idle (signalflow::Flow::store (ui::MachineDocs::faulty ""))
 
 mut streamed = 0
 

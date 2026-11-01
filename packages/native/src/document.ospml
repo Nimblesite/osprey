@@ -1,0 +1,197 @@
+// Implements [UI-MACHINE-DOC]: a machine document as typed values. The JSON
+// is read once, by `MachineDocs::load`; settling, rendering and accessibility
+// work on these records and never see JSON.
+namespace ui
+
+(** The type an input declares ([UI-MACHINE-INPUTS]). *)
+type InputKind = IsBool | IsNumber | IsText | IsTrigger | IsList
+
+(** An input's value: a flag, a number, a text, a list of choices, or nothing yet. *)
+type Value =
+    Unset
+    Flag
+        valueFlag : bool
+    Amount
+        valueAmount : float
+    Words
+        valueWords : string
+    Choices
+        valueChoices : List<Choice>
+
+(** A comparison of an input with a literal ([UI-MACHINE-WHEN]). *)
+type Comparison = Equal | Unequal | Below | Above
+
+(** When something holds ([UI-MACHINE-WHEN]): always, every one, any one, not, a fired trigger, a layer in one of some states, or an input compared with a literal. *)
+type Condition =
+    Always
+    AllOf
+        allOf : List<Condition>
+    AnyOf
+        anyOf : List<Condition>
+    Negated
+        negated : Condition
+    Fired
+        firedName : string
+    InState
+        inLayer : string
+        inStates : List<string>
+    Compared
+        comparedInput : string
+        comparedBy : Comparison
+        comparedWith : Value
+
+(** A request a state makes on entry and the inputs it carries. *)
+type Entry =
+    entryRequest : string
+    entryWith : List<string>
+
+(** One state of a layer and the requests entering it makes. *)
+type StateSpec =
+    phaseName : string
+    phaseEnter : List<Entry>
+
+(** A move from a state (`*` for any) to another when a condition holds. *)
+type Transition =
+    moveFrom : string
+    moveTo : string
+    moveWhen : Condition
+
+(** A parallel state machine ([UI-MACHINE-LAYERS]). *)
+type MachineLayer =
+    layerName : string
+    layerInitial : string
+    layerPhases : List<StateSpec>
+    layerMoves : List<Transition>
+
+(** A number as written, or a `{{template}}` filled from the inputs when drawn. *)
+type Measure =
+    Fixed
+        fixedAt : float
+    Templated
+        filledFrom : string
+
+(** Whether an item is drawn once, or once per choice of a list input, `dx`, `dy` apart ([UI-MACHINE-EACH]). *)
+type Repeat =
+    Once
+    Each
+        eachIn : string
+        eachDx : float
+        eachDy : float
+
+(** The figure a canvas shape draws ([UI-MACHINE-CANVAS]). *)
+type Figure = DiscFigure | TextFigure | SpriteFigure | RoundedFigure | TriangleFigure | RectFigure | PolylineFigure
+
+(** One canvas shape: its figure, geometry, colour, text and when it is drawn. *)
+type Stamp =
+    markFigure : Figure
+    markX : Measure
+    markY : Measure
+    markW : Measure
+    markH : Measure
+    markRadius : Measure
+    markSize : Measure
+    markAnchor : Measure
+    markWeight : Measure
+    markIndex : Measure
+    markAngle : Measure
+    markTurn : Measure
+    markDepth : Measure
+    markAlpha : Measure
+    markStroke : Measure
+    markStroked : bool
+    markPoints : List<Measure>
+    markColour : string
+    markText : string
+    markWhen : Condition
+    markEach : Repeat
+
+(** What a canvas listener is to assistive technology ([UI-MACHINE-A11Y]); `Unannounced` is a hit area only. *)
+type AccessRole = Pressable | Slidable | Popup | MenuItem | Unannounced
+
+(** A slider's range and the input it sets, shows (`of`) and fires. *)
+type Slide =
+    Unslid
+    Slider
+        slideMin : Measure
+        slideMax : Measure
+        slideSet : string
+        slideFire : string
+        slideOf : string
+
+(** A canvas hit area: its bounds, role, label, lever and, for a slider, its range. *)
+type Area =
+    areaX : Measure
+    areaY : Measure
+    areaW : Measure
+    areaH : Measure
+    areaRole : AccessRole
+    areaLabel : string
+    areaLever : Lever
+    areaSlide : Slide
+    areaWhen : Condition
+    areaEach : Repeat
+
+(** A skin's drawn artboard, or none when the skin themes native controls. *)
+type Artwork =
+    Unboarded
+    Boarded
+        boardWidth : Measure
+        boardHeight : Measure
+        boardZoom : Measure
+        boardAtlas : List<string>
+        boardMarks : List<Stamp>
+        boardAreas : List<Area>
+
+(** A named look ([UI-MACHINE-SKINS]): its colour tokens and, optionally, a canvas artboard. *)
+type Skin =
+    skinName : string
+    skinTokens : List<Token>
+    skinBoard : Artwork
+
+(** The node kinds a view template draws ([UI-MACHINE-VIEW]). *)
+type Sort = Stacked | Worded | Labelled | Badged | Pressed | Picked | Toggled | Metered | Progressing | Pictured | Blank | Framing | Drawn | Spaced | Divided
+
+(** A view template node, its members decoded; text members are `{{templates}}` filled when rendered. *)
+type Template =
+    tplSort : Sort
+    tplWhen : Condition
+    tplChildren : List<Template>
+    tplText : string
+    tplSymbol : string
+    tplTextRole : TextRole
+    tplButtonRole : ButtonRole
+    tplTone : Tone
+    tplAxis : Axis
+    tplEnabled : Condition
+    tplLever : Lever
+    tplChoices : string
+    tplSelected : string
+    tplValue : string
+    tplAmount : Measure
+    tplTotal : Measure
+    tplDetail : string
+    tplSource : string
+    tplAlt : string
+    tplWidth : Measure
+    tplHeight : Measure
+    tplRadius : Measure
+    tplGap : Measure
+    tplPadding : Measure
+    tplFill : string
+    tplInk : string
+    tplLine : string
+    tplAlign : string
+    tplCross : string
+    tplGrow : bool
+    tplShadow : string
+    tplMarks : List<Stamp>
+
+(** One element of a canvas's accessibility tree ([UI-MACHINE-A11Y]): role, filled label, bounds and, for a slider, its value. *)
+type Accessible =
+    accessRole : AccessRole
+    accessLabel : string
+    accessLeft : float
+    accessTop : float
+    accessWidth : float
+    accessHeight : float
+    accessValue : float

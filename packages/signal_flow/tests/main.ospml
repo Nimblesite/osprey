@@ -2,19 +2,19 @@
 // the real document and adapter, driven entirely by pointer events aimed through
 // each canvas control's accessible label, with its inputs, states and lettering read back.
 
-import ui::Doc
 import ui::Runtime
-import ui::Templates
+import ui::Canvases
+import ui::MachineDocs
 import ui::Machines
 import uitest::Events
+import uitest::Read
 import uitest::Semantics
 import uitest::Views
 import signalflow::App
 
-(** The rendered root and revision, plus the clock used for host events. *)
+(** The decoded view, plus the clock used for host events. *)
 type Sight =
-    sightRoot : Json
-    sightRevision : int
+    sightSeen : uitest::Rendered
     sightNow : int
 
 (** The bench's only writes: retain the live session and the latest rendered sight. *)
@@ -22,17 +22,12 @@ effect Bench
     keep : ui::Session<signalflow::Store> => Unit
     see : Sight => Unit
 
-mut sight = Sight(sightRoot = JsonNull, sightRevision = 0, sightNow = 1)
-mut live = Runtime::idle (signalflow::Flow::store (Machines::faulty ""))
-
-latest (s, patch) = match Doc::text (patch, "key") == "root"
-    true => s(sightRoot = Doc::field (patch, "node"), sightRevision = Doc::number (patch, "revision"))
-    false => s
+mut sight = Sight(sightSeen = Read::blank (), sightNow = 1)
+mut live = Runtime::idle (signalflow::Flow::store (MachineDocs::faulty ""))
 
 kept (resident : ui::Resident<signalflow::Store>) =
     perform Bench.keep resident.residentSession
-    envelope = Doc::parse resident.residentEnvelope
-    perform Bench.see (foldList (Doc::items (Doc::field (envelope, "patches")), sight(sightNow = sight.sightNow + 1), \(s, patch) => latest (s, patch)))
+    perform Bench.see (sight(sightSeen = Read::envelope (sight.sightSeen, resident.residentEnvelope), sightNow = sight.sightNow + 1))
 
 hosted work =
     handle ui::Slices
@@ -48,12 +43,12 @@ bench work =
     Runtime::guarded work
 
 begun skin =
-    perform Bench.see (Sight(sightRoot = JsonNull, sightRevision = 0, sightNow = 1))
+    perform Bench.see (Sight(sightSeen = Read::blank (), sightNow = 1))
     hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"${skin}\"]}", App::initial, App::regions, App::theme ())))
 
 post event = hosted (\() => kept (Runtime::proceed (live, event, App::update, App::regions)))
 
-pointer (x, y, down) = post (Events::pointer (sight.sightRevision, Doc::number (sight.sightRoot, "event"), x, y, down, sight.sightNow))
+pointer (x, y, down) = post (Events::pointer (sight.sightSeen.renderedRevision, sight.sightSeen.renderedOrdinal, x, y, down, sight.sightNow))
 
 // A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
 tapAt (label, fraction) =
@@ -65,7 +60,7 @@ tap label = tapAt (label, 0.5)
 
 machine () = live.sessionStore.screen.screenMachine
 
-elements () = Templates::semantics (machine ())
+elements () = Canvases::semantics (machine ())
 
 labels () = Semantics::labels (elements ())
 
@@ -77,12 +72,10 @@ offers label = match Semantics::offered (elements (), label)
         print "# not offered: ${label}; the tree offers ${labels ()}"
         false
 
-lettered () = Views::lettered sight.sightRoot
-
-letters text = match ui::Lists::any (split (lettered ()) "|" ?: [], \t => t == text)
+letters text = match Views::letters (sight.sightSeen, text)
     true => true
     false =>
-        print "# not lettered: ${text}; the artboard letters ${lettered ()}"
+        print "# not lettered: ${text}; the artboard letters ${Views::lettered sight.sightSeen}"
         false
 
 offered label = expect (offers label, true)
@@ -130,7 +123,7 @@ topologyBypass () =
     knobText ("processHealth", "Bypassed")
     knobNumber ("level", 1.0)
     expect (letters "25%", true)
-    expect (Doc::decimal (element "Gateway Rate limit", "value"), 0.25)
+    expect (Semantics::value (elements (), "Gateway Rate limit"), 0.25)
 
 topologyUndo () =
     tap "Undo"
@@ -317,20 +310,127 @@ prismInspector () =
     tapAt ("Filter Cutoff", 0.5)
     knobNumber ("process", 0.5)
     knobNumber ("level", 0.35)
+    knobNumber ("delivered", 0.2625)
     expect (letters "0.6 kHz", true)
     expect (letters "+70%", true)
-    expect (letters "-7.8 dB", true)
+    expect (letters "-6.0 dB", true)
+    expect (letters "-17.7", true)
     tap "Bypass Master"
     knobText ("outputHealth", "Bypassed")
     knobNumber ("delivered", 0.0)
-    expect (letters "-12.0 dB", true)
+    expect (letters "-24.0", true)
     tap "Undo"
     flag ("outputOn", true)
-    expect (letters "-7.8 dB", true)
+    expect (letters "-17.7", true)
     offered "Redo"
     tap "Redo"
     flag ("outputOn", false)
     missing "Redo"
+
+prismInitial () =
+    begun "prism"
+    expect (labels (), "Skin: Prism|LFO Rate: 1/4|Oscillator Wave: Sine|Bypass LFO|Bypass Oscillator|Bypass Filter|Bypass Master|Bypass Scope|Filter Cutoff|Master Level|Inspector: Bypass Filter|Inspector bypass: Bypass Filter|Inspector: Cutoff|Select LFO|Select Oscillator|Select Filter|Select Master|Select Scope")
+    knobText ("rate", "1/4")
+    knobText ("wave", "Sine")
+    knobNumber ("volume", 0.75)
+    knobNumber ("delivered", 0.3675)
+    expect (letters "1/4", true)
+    expect (letters "Sine", true)
+    expect (letters "-6.0 dB", true)
+    expect (letters "2.5 kHz", true)
+    expect (letters "-15.2", true)
+    layer ("menu", "closed")
+
+// Opens a chooser, checks its choices lead the tree, picks `choice` and checks it took and was recorded.
+chosen (popup, menu, knob, choices, choice, after) =
+    tap popup
+    layer ("menu", menu)
+    expect (take (labels ()) (length choices), choices)
+    tap choice
+    layer ("menu", "closed")
+    knobText (knob, choice)
+    offered after
+    expect (letters choice, true)
+    flag ("canUndo", true)
+
+prismRates () =
+    chosen ("LFO Rate: 1/4", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/16", "LFO Rate: 1/16")
+    chosen ("LFO Rate: 1/16", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/1", "LFO Rate: 1/1")
+    chosen ("LFO Rate: 1/1", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/8", "LFO Rate: 1/8")
+    tap "Undo"
+    knobText ("rate", "1/1")
+    offered "LFO Rate: 1/1"
+    tap "Redo"
+    knobText ("rate", "1/8")
+    tap "LFO Rate: 1/8"
+    layer ("menu", "rates")
+    pointer (900.0, 700.0, true)
+    pointer (900.0, 700.0, false)
+    layer ("menu", "closed")
+    knobText ("rate", "1/8")
+    missing "1/16"
+
+prismWaves () =
+    chosen ("Oscillator Wave: Sine", "waves", "wave", "Sine|Triangle|Saw|Square", "Triangle", "Oscillator Wave: Triangle")
+    chosen ("Oscillator Wave: Triangle", "waves", "wave", "Sine|Triangle|Saw|Square", "Saw", "Oscillator Wave: Saw")
+    chosen ("Oscillator Wave: Saw", "waves", "wave", "Sine|Triangle|Saw|Square", "Square", "Oscillator Wave: Square")
+    tap "Oscillator Wave: Square"
+    layer ("menu", "waves")
+    tap "LFO Rate: 1/8"
+    layer ("menu", "rates")
+    offered "1/2"
+    missing "Triangle"
+    tap "LFO Rate: 1/8"
+    layer ("menu", "closed")
+    knobText ("wave", "Square")
+    tap "Undo"
+    knobText ("wave", "Saw")
+    expect (letters "Saw", true)
+
+prismLevels () =
+    tapAt ("Master Level", 1.0)
+    knobNumber ("volume", 1.0)
+    knobNumber ("delivered", 0.49)
+    expect (letters "0.0 dB", true)
+    expect (letters "-12.2", true)
+    tapAt ("Master Level", 0.0)
+    knobNumber ("volume", 0.0)
+    knobNumber ("delivered", 0.0)
+    expect (letters "-24.0 dB", true)
+    tap "Select Master"
+    knobText ("selected", "output")
+    offered "Inspector: Level"
+    missing "Inspector: Cutoff"
+    expect (letters "Level", true)
+    tapAt ("Inspector: Level", 0.5)
+    knobNumber ("volume", 0.5)
+    knobNumber ("delivered", 0.245)
+    expect (letters "-12.0 dB", true)
+    tap "Undo"
+    knobNumber ("volume", 0.0)
+    tap "Redo"
+    knobNumber ("volume", 0.5)
+
+prismParameters () =
+    tap "Select LFO"
+    knobText ("selected", "control")
+    offered "Inspector: Depth"
+    tapAt ("Inspector: Depth", 0.3)
+    knobNumber ("control", 0.3)
+    knobNumber ("level", 0.21)
+    expect (letters "+30%", true)
+    tap "Select Filter"
+    tapAt ("Inspector: Cutoff", 1.0)
+    knobNumber ("process", 1.0)
+    expect (letters "20.0 kHz", true)
+    tapAt ("Filter Cutoff", 0.0)
+    knobNumber ("process", 0.0)
+    knobText ("processHealth", "Degraded")
+    tap "Select Oscillator"
+    expect (letters "No parameters", true)
+    tap "Select Scope"
+    expect (letters "No parameters", true)
+    missing "Inspector: Level"
 
 test ("topology: pointer editing, history, inspectors and signal health", \() => bench (\() =>
     begun "topology"
@@ -355,3 +455,10 @@ test ("every skin: every node selects, bypasses, enables and tracks its inspecto
 test ("notation and prism inspector switches and parameter lettering", \() => bench (\() =>
     notationInspector ()
     prismInspector ()))
+
+test ("prism: every chooser, slider, switch and the history drive the patch", \() => bench (\() =>
+    prismInitial ()
+    prismRates ()
+    prismWaves ()
+    prismLevels ()
+    prismParameters ()))

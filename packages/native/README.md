@@ -43,8 +43,11 @@ flowchart LR
 | `src/reactive.ospml` | The `Slices` effect for host-held slices, `Keyed::region` and `Signals::written` ([UI-SIGNALS], [UI-REGIONS]) |
 | `src/theme.ospml` | `Theme`, `Token`, `Contrast` (WCAG 2 luminance and ratio) and `Themes` ([UI-THEME]) |
 | `src/runtime.ospml` | `Runtime::start` and `Runtime::dispatch`: the session, the envelope and the serialized update ([UI-STORE], [UI-PROTOCOL]); `Runtime::begin` and `Runtime::proceed` for a resident session ([UI-RESIDENT]) |
-| `src/machine.ospml` | `Machines`: state machine documents (inputs, parallel layers, transitions, requests) loaded, validated and settled ([UI-MACHINE](../../docs/specs/platforms/UiMachines.md)) |
+| `src/document.ospml` | The typed machine document: `Value`, `Condition`, `MachineLayer`, `Template`, `Stamp`, `Area`, `Skin` and `Accessible` ([UI-MACHINE-DOC]) |
+| `src/machine_doc.ospml` | `MachineDocs`: the JSON edge of a machine, which checks a document, decodes it once and encodes machine state for signals ([UI-MACHINE-DOC]) |
+| `src/machine.ospml` | `Machines` and `Values`: typed inputs, parallel layers, transitions and requests settled ([UI-MACHINE](../../docs/specs/platforms/UiMachines.md)) |
 | `src/templates.ospml` | `Templates`: a machine's node template and skins rendered to ordinary nodes ([UI-MACHINE-VIEW]) |
+| `src/canvas.ospml` | `Canvases`: canvas artboards drawn as scene primitives, listeners hit-tested and the `Accessible` tree with `act` ([UI-MACHINE-CANVAS], [UI-MACHINE-A11Y]) |
 | `src/stream.ospml` | The `SceneStream` effect and `Streams`: a resident session's rects, discs and sprites sent to the host outside the envelope ([UI-SCENE-STREAM]) |
 | `tests/` | The package's suite: a two-slice probe application driven through the real `start`/`dispatch` path, plus encoding, ordinal, splitter, request, document, theme and list cases |
 

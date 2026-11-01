@@ -4,7 +4,8 @@ namespace signalflow
 
 import ui::Runtime
 import ui::Messages
-import ui::Machines
+import ui::MachineDocs
+import ui::Values
 import ui::Templates
 import ui::Keyed
 import signalflow::Flow
@@ -20,9 +21,9 @@ module App
     export documentPath arguments = after (arguments, "--machine", "packages/signal_flow/signal_flow.machine.json")
 
     (** The store from a machine document's text: a refused document shows its problems in place of the editor. *)
-    export loaded source = match Machines::load source
+    export loaded source = match MachineDocs::load source
         Success machine => Flow::store machine
-        Error problem => Flow::store (Machines::faulty problem)
+        Error problem => Flow::store (MachineDocs::faulty problem)
 
     // The folder the document sits in, where its canvas artwork lives.
     folder path =
@@ -38,7 +39,7 @@ module App
     export initial context = opened (context, "")
 
     (** Routes every framework message: controls pull the machine's levers and canvas releases hit its listeners. *)
-    export update (_, store, message) = Messages::route (message, \lever => Flow::pulled (store, lever, JsonNull), \(lever, text) => Flow::pulled (store, lever, JsonString text), \(lever, on) => Flow::pulled (store, lever, JsonBool on), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, input) => Flow::pointed (store, input))
+    export update (_, store, message) = Messages::route (message, \lever => Flow::pulled (store, lever, Values::none ()), \(lever, text) => Flow::pulled (store, lever, Values::text text), \(lever, on) => Flow::pulled (store, lever, Values::flag on), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, input) => Flow::pointed (store, input))
 
     screenSlice () = perform Signal<Screen>.read ()
 
@@ -49,8 +50,8 @@ module App
     export regions (before, store, frames, _) =
         handle static Signal<Screen>
             read => store.screen
-        changed = signalChanges before.screen store.screen (\s => Machines::encode s.screenMachine) (signalDependencies screenSlice)
+        changed = signalChanges before.screen store.screen (\s => MachineDocs::snapshot s.screenMachine) (signalDependencies screenSlice)
         [Keyed::region (frames, "root", changed, root)]
 
     (** The first skin's colours; a skin change re-themes the view in place. *)
-    export theme () = Templates::theme (Machines::faulty "")
+    export theme () = Templates::theme (MachineDocs::faulty "")

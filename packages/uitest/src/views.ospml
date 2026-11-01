@@ -1,39 +1,28 @@
-// Pure readers for rendered native views and their canvas lettering.
+// Readers for a rendered native view ([UI-MACHINE-TEST]): controls found by
+// what a person or an agent reads on them, never by position.
 namespace uitest
 
-import ui::Doc
+import ui::Lists
 
-(** Reads rendered view JSON without an application, session or host. *)
+(** Finds rendered controls by their label, text or title, and the canvas's lettering. *)
 module Views
-    walked (out, doc) = match doc
-        JsonObject members => foldList (members, listAppend out doc, \(acc, m) => member (acc, m))
-        JsonArray items => foldList (items, out, \(acc, item) => walked (acc, item))
-        _ => out
+    (** Every rendered node whose accessible label, visible text or title is `label`. *)
+    export labelled (seen, label) = filterList (seen.renderedControls, \c => c.controlLabel == label || c.controlText == label || c.controlTitle == label)
 
-    member (acc, m) = match m
-        JsonMember _ value => walked (acc, value)
-        _ => acc
+    (** The first rendered node matching `label`, or an empty one with no kind when none does. *)
+    export control (seen, label) = listGet (labelled (seen, label)) 0 ?: Control(controlKind = "", controlLabel = "", controlText = "", controlTitle = "", controlTone = "", controlSelected = "", controlOrdinal = -1, controlEnabled = false, controlChoices = [])
 
-    (** Every JSON node in the rendered `root`, including the root, in document order. *)
-    export nodes root = walked ([], root)
+    (** Whether any rendered node matches `label`. *)
+    export shows (seen, label) = length (labelled (seen, label)) > 0
 
-    (** Every rendered node whose accessible `label`, visible `text` or `title` equals `label`. *)
-    export labelled (root, label) = filterList (nodes root, \n => Doc::text (n, "label") == label || Doc::text (n, "text") == label || Doc::text (n, "title") == label)
+    (** Every nonempty label, text and title in the view, `|`-separated, for a failure message. *)
+    export texts seen = join (filterList (mapList (seen.renderedControls, \c => "${c.controlLabel}${c.controlText}${c.controlTitle}"), \t => t != "")) "|"
 
-    (** The first rendered node matching `label`, or `JsonNull` when none does. *)
-    export control (root, label) = listGet (labelled (root, label)) 0 ?: JsonNull
+    (** Whether the last envelope made a request of `kind`. *)
+    export requested (seen, kind) = Lists::any (seen.renderedRequests, \k => k == kind)
 
-    textOf n = "${Doc::text (n, "label")}${Doc::text (n, "text")}${Doc::text (n, "title")}"
+    (** The strings the canvas letters, `|`-separated. *)
+    export lettered seen = join seen.renderedLetters "|"
 
-    (** All nonempty labels, text and titles in `root`, joined with `|`. *)
-    export texts root = join (filterList (mapList (nodes root, textOf), \t => t != "")) "|"
-
-    (** Whether the render `envelope` contains a request of `kind`. *)
-    export requested (envelope, kind) = length (filterList (nodes (Doc::field (envelope, "requests")), \r => Doc::text (r, "kind") == kind)) > 0
-
-    isLettering s = (jsonInt (jsonIndex s 0 ?: JsonNull) ?: 0) == 6
-
-    letterOf s = jsonText (jsonIndex s 1 ?: JsonNull) ?: ""
-
-    (** The strings lettered by a canvas `root`, joined with `|` ([UI-MACHINE-A11Y]). Shape code 6 denotes lettering and shape index 1 holds its text. *)
-    export lettered root = join (mapList (filterList (Doc::items (Doc::field (root, "shapes")), isLettering), letterOf)) "|"
+    (** Whether the canvas letters `text` exactly. *)
+    export letters (seen, text) = Lists::any (seen.renderedLetters, \t => t == text)

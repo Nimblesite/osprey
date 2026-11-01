@@ -4,7 +4,8 @@ namespace signalflow
 
 import ui::Runtime
 import ui::Machines
-import ui::Templates
+import ui::Canvases
+import ui::Values
 import ui::Inputs
 
 (** The interface: the running machine, the only slice the view reads. *)
@@ -14,8 +15,8 @@ type Screen =
 (** The running interface and its snapshots, newest first in each history. *)
 type Store =
     screen : Screen
-    past : List<List<ui::Knob>>
-    future : List<List<ui::Knob>>
+    past : List<List<ui::Fact>>
+    future : List<List<ui::Fact>>
 
 (** Evaluates the signal-flow document and answers its history requests. *)
 module Flow
@@ -45,19 +46,19 @@ module Flow
     signalFacts machine =
         level = levelOf machine
         signal = signalOf machine
-        delivered = ui::Pick::either (Machines::flag (machine, "outputOn"), level, 0.0)
+        delivered = ui::Pick::either (Machines::flag (machine, "outputOn"), level * Machines::number (machine, "volume"), 0.0)
         monitored = ui::Pick::either (Machines::flag (machine, "monitorOn"), level, 0.0)
-        [fact ("signal", JsonFloat signal), fact ("level", JsonFloat level), fact ("delivered", JsonFloat delivered), fact ("monitored", JsonFloat monitored)]
+        [fact ("signal", Values::number signal), fact ("level", Values::number level), fact ("delivered", Values::number delivered), fact ("monitored", Values::number monitored)]
 
     healthFacts machine = [
-        fact ("controlHealth", JsonString (switched (Machines::flag (machine, "controlOn")))),
-        fact ("sourceHealth", JsonString (switched (Machines::flag (machine, "sourceOn")))),
-        fact ("processHealth", JsonString (processHealth machine)),
-        fact ("outputHealth", JsonString (deliveryHealth (machine, "outputOn"))),
-        fact ("monitorHealth", JsonString (deliveryHealth (machine, "monitorOn"))),
+        fact ("controlHealth", Values::text (switched (Machines::flag (machine, "controlOn")))),
+        fact ("sourceHealth", Values::text (switched (Machines::flag (machine, "sourceOn")))),
+        fact ("processHealth", Values::text (processHealth machine)),
+        fact ("outputHealth", Values::text (deliveryHealth (machine, "outputOn"))),
+        fact ("monitorHealth", Values::text (deliveryHealth (machine, "monitorOn"))),
     ]
 
-    historyFacts store = [fact ("canUndo", JsonBool (length store.past > 1)), fact ("canRedo", JsonBool (length store.future > 0))]
+    historyFacts store = [fact ("canUndo", Values::flag (length store.past > 1)), fact ("canRedo", Values::flag (length store.future > 0))]
 
     evaluated store =
         machine = machineOf store
@@ -104,10 +105,10 @@ module Flow
 
     (** The store as launched: the canvas artwork's folder as `assets` and a `--skin` when given. *)
     export launched (store, folder, skin) =
-        facts = listConcat [fact ("assets", JsonString folder)] (ui::Pick::either (skin == "", [], [fact ("skin", JsonString skin)]))
+        facts = listConcat [fact ("assets", Values::text folder)] (ui::Pick::either (skin == "", [], [fact ("skin", Values::text skin)]))
         fed (store, facts)
 
-    released (store, x, y) = settled (store(screen = Screen(screenMachine = Templates::released (machineOf store, x, y))))
+    released (store, x, y) = settled (store(screen = Screen(screenMachine = Canvases::released (machineOf store, x, y))))
 
     (** A canvas pointer event: a release acts on the listener under it ([UI-MACHINE-CANVAS]); other input changes nothing. *)
     export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pressed (store, x, y, down))

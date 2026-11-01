@@ -2,17 +2,17 @@
 
 Spec · 1 November 2026 · [UI-MACHINE]
 
-An Osprey Native interface can be **data, not code**: one machine document holds the inputs, the state machines, the view and the skins. A designer ships one file and every platform plays it. The document is JSON, and `ui::Machines` in [`@osprey/native`](../../../packages/native/README.md) interprets it. The interpreter turns the document and its current inputs into ordinary `Node` trees, so every host that speaks [UI-PROTOCOL] (GPUI, WinUI, VS Code, Apple, Android) renders a machine with no change. The application code that remains is a small adapter: it feeds domain facts in as inputs and answers the requests a state makes.
+An Osprey Native interface can be **data, not code**: one machine document holds the inputs, the state machines, the view and the skins. A designer ships one file and every platform plays it. The document is JSON. In [`@osprey/native`](../../../packages/native/README.md), `ui::MachineDocs::load` checks it and decodes it once into typed records (`Value`, `Condition`, `MachineLayer`, `Template`, `Stamp`, `Area`, `Skin`). `ui::Machines` settles those records and `ui::Templates` and `ui::Canvases` render them, and nothing past the decoder reads JSON. The interpreter turns the document and its current inputs into ordinary `Node` trees, so every host that speaks [UI-PROTOCOL] (GPUI, WinUI, VS Code, Apple, Android) renders a machine with no change. The application code that remains is a small adapter: it feeds domain facts in as inputs and answers the requests a state makes.
 
 ```mermaid
 flowchart LR
-    D[player.machine.json] --> M[Machines::load]
+    D[player.machine.json] --> M[MachineDocs::load]
     H[Host event] --> L[Listener: fire / set input]
     L --> S[Machines::settle]
     A[Adapter: domain facts] -->|set inputs| S
     S --> R[Requests from entered states]
     R --> A
-    S --> V[Machines::view -> Node]
+    S --> V[Templates::view -> Node]
     V --> P[Ordinary keyed patches to any host]
 ```
 
@@ -141,9 +141,9 @@ The casting player's dropdowns use a `menu` layer with states `closed`, `receive
 
 ## Accessibility [UI-MACHINE-A11Y]
 
-Every listener carries `role` (`button`, `slider`, `popup`, `menuitem`, or `none` for a hit area that is not announced) and a templated `label`. `Templates::semantics machine` is the accessibility tree: a JSON list, in hit order, of every live listener with role ≠ `none` as `{role, label, x, y, w, h}`, plus `value` for a slider (the `of` input).
+Every listener carries `role` (`button`, `slider`, `popup`, `menuitem`, or `none` for a hit area that is not announced) and a templated `label`. `Canvases::semantics machine` is the accessibility tree: a typed `Accessible` list, in hit order, of every live listener whose role is not `none`. Each element has `accessRole`, the filled `accessLabel`, its bounds and, for a slider, `accessValue` (the `of` input). `Canvases::roleName` gives the role's name for a host.
 
-`Templates::act (machine, label, fraction)` activates the element with that label as a screen reader or an AI agent would: a slider is set `fraction` of the way across, anything else is pressed, and an unknown label changes nothing. Hosts map the tree to the platform's accessibility API (AccessKit: NSAccessibility on macOS, UI Automation on Windows, AT-SPI on Linux). This host mapping is specified here and is not yet implemented. Tests and agents read and act on the tree without a host.
+`Canvases::act (machine, label, fraction)` activates the element with that label as a screen reader or an AI agent would: a slider is set `fraction` of the way across, anything else is pressed, and an unknown label changes nothing. Hosts map the tree to the platform's accessibility API (AccessKit: NSAccessibility on macOS, UI Automation on Windows, AT-SPI on Linux). This host mapping is specified here and is not yet implemented. Tests and agents read and act on the tree without a host.
 
 ## Opened files [UI-MACHINE-OPEN]
 
@@ -153,6 +153,8 @@ A file the platform asks the application to open (Finder, a document association
 
 Because a machine is data, a test drives it without a host: load the document, set inputs or fire listeners as a host event would, and assert the states, the requests and the rendered nodes. The adapter's domain work runs under effects, so tests answer them with doubles. [examples/casting](../../../examples/casting/README.md) is the reference application: its adapter calls `@osprey/chromecast`, whose `Wire` effect a test answers with an in-memory Cast device. `examples/casting/test/main.ospml` drives the Sherbet canvas through pointer events alone, locating every control by its accessible label from `semantics`, and asserts the lettered text of the artboard and the labels offered in each state.
 
+[`@osprey/uitest`](../../../packages/uitest/README.md) is the framework those tests use. `Read` is its only JSON code: it decodes each envelope a session sends into a typed `Rendered` view of `Control` records, canvas lettering and requests. `Views` finds controls by label, text or title. `Semantics` reads the `Accessible` tree and computes pointer positions. `Events` encodes presses, choices, pointers, completions, frames and lifecycle phases as host event text. Its own suite (`packages/uitest/tests`), the casting suite and the signal-flow suite run under `make ui-test`.
+
 ## Signal flow [UI-MACHINE-FLOW]
 
 [`@osprey/signal_flow`](../../../packages/signal_flow/README.md) is a signal-flow graph editor written as one machine document. Five nodes in fixed roles (control, source, process, output and monitor) are joined by three signal connections and one modulation connection. Each node has an `<role>On` switch, and the control and process nodes each have a parameter from 0 to 1. Pressing a node selects it into the inspector. The adapter answers `flow.record`, `flow.undo` and `flow.redo`. It evaluates the path after every change and feeds back `level`, `delivered`, `monitored`, each node's health (`Healthy`, `Degraded`, `Offline` or `Bypassed`) and `canUndo`/`canRedo`. A bypassed process passes its input through unchanged.
@@ -160,6 +162,10 @@ Because a machine is data, a test drives it without a host: load the document, s
 ### Skins [UI-MACHINE-FLOW-SKINS]
 
 The four skins, Topology, Notation, Paper and Prism, are canvases sliced from the designs in `packages/signal_flow/design/` by `skins/build.py`. Each backdrop is its mock with every live part painted out. The canvas then draws the switches, sliders, values, health rows, selection ring, bypass dimming, ports and the whole inspector from the inputs. The title opens a menu of the four skins. Changing skin keeps every input, state and the undo history.
+
+### Prism synth [UI-MACHINE-FLOW-SYNTH]
+
+[examples/synth](../../../examples/synth/README.md) plays the Prism skin as a synthesiser. The Oscillator is a 220 Hz sine. The LFO sweeps the Filter's cutoff (20 × 1000^process Hz) by up to depth × 2 octaves each way at 2 Hz. The Filter is a two-pole low-pass, and the Master gates the output. Each sample is a pure function of the patch and its index, rendered at 11 025 Hz as an 8-bit mono WAV. An update that changes the patch returns a `run` request that writes the clip and plays it. A silent patch, selection, menus and skin changes return none.
 
 ## Later
 

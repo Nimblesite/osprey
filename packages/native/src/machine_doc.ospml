@@ -1,0 +1,297 @@
+// Implements [UI-MACHINE-DOC]: the JSON edge of a UI machine. A document is
+// checked, then decoded once into the typed records of `document.ospml`; a
+// machine's changing part is encoded back for signal comparison. Nothing
+// past this module reads or writes JSON.
+namespace ui
+
+(** Loads machine documents and encodes machine state ([UI-MACHINE-DOC]). *)
+module MachineDocs
+    // ---- checking ----
+
+    (** The input types a document may declare. *)
+    export kinds = ["bool", "number", "text", "trigger", "list"]
+
+    (** Every node kind a template may use, with the members each accepts besides `kind`, `when` and `children`. *)
+    export members kind = match kind
+        "stack" => ["axis"]
+        "text" => ["text", "role", "tone"]
+        "label" => ["text", "symbol"]
+        "badge" => ["text", "symbol", "tone"]
+        "button" => ["text", "symbol", "role", "enabled", "on"]
+        "picker" => ["text", "choices", "selected", "on"]
+        "toggle" => ["text", "value", "on"]
+        "meter" => ["text", "amount", "total", "tone"]
+        "progress" => ["text", "detail"]
+        "image" => ["source", "alt", "width", "height"]
+        "empty" => ["symbol", "text", "detail"]
+        "framed" => ["width", "height", "radius", "gap", "fill", "ink", "line", "padding", "align", "cross", "grow", "shadow"]
+        "scene" => ["width", "height", "shapes", "on"]
+        "spacer" => []
+        "divider" => []
+        _ => ["?"]
+
+    structural = ["kind", "when", "children"]
+
+    known (names, name) = Lists::any (names, \n => n == name)
+
+    jsonFits (kind, given) = Doc::kind given == Pick::either (kind == "trigger", "bool", kind)
+
+    leverProblems (doc, at, node) =
+        on = Doc::field (node, "on")
+        named = filterList ([Doc::text (on, "set"), Doc::text (on, "fire")], \n => n != "")
+        mapList (filterList (named, \n => Doc::has (Doc::field (doc, "inputs"), n) == false), \n => "${at}.on: no input named \"${n}\"")
+
+    indexed (at, items, check) = Lists::flatten (mapList (toList (range (0, length items)), \i => check ("${at}[${toString i}]", listGet items i ?: JsonNull)))
+
+    (** Every fault in the view template at `at`, each naming its JSON path. *)
+    export viewProblems (doc, at, node) =
+        kind = Doc::text (node, "kind")
+        allowed = members kind
+        own = match known (allowed, "?")
+            true => ["${at}.kind: no node kind \"${kind}\""]
+            false => mapList (filterList (Doc::keys node, \name => known (listConcat structural allowed, name) == false), \name => "${at}.${name}: not a member of ${kind}")
+        listConcat own (listConcat (leverProblems (doc, at, node)) (indexed ("${at}.children", Doc::items (Doc::field (node, "children")), \(path, child) => viewProblems (doc, path, child))))
+
+    inputProblems (inputs, name) =
+        body = Doc::field (inputs, name)
+        kind = Doc::text (body, "type")
+        match known (kinds, kind)
+            false => ["inputs.${name}.type: expected one of ${join kinds ", "}"]
+            true => Pick::either (Doc::has (body, "value") && jsonFits (kind, Doc::field (body, "value")) == false, ["inputs.${name}.value: not a ${kind}"], [])
+
+    transitionProblems (names, at, t) =
+        to = Doc::text (t, "to")
+        from = Doc::text (t, "from")
+        listConcat (Pick::either (known (names, to), [], ["${at}.to: no state named \"${to}\""])) (Pick::either (from == "*" || known (names, from), [], ["${at}.from: no state named \"${from}\""]))
+
+    layerProblems (at, layer) =
+        names = Doc::keys (Doc::field (layer, "states"))
+        initial = Doc::text (layer, "initial")
+        start = Pick::either (known (names, initial), [], ["${at}.initial: no state named \"${initial}\""])
+        listConcat start (indexed ("${at}.transitions", Doc::items (Doc::field (layer, "transitions")), \(path, t) => transitionProblems (names, path, t)))
+
+    (** Every fault in a document, each naming its JSON path; none means it loads. *)
+    export problems doc =
+        schema = Pick::either (Doc::number (doc, "schema") == 1, [], ["schema: expected 1"])
+        inputs = Lists::flatten (mapList (Doc::keys (Doc::field (doc, "inputs")), \name => inputProblems (Doc::field (doc, "inputs"), name)))
+        layered = indexed ("layers", Doc::items (Doc::field (doc, "layers")), layerProblems)
+        listConcat (listConcat schema inputs) (listConcat layered (viewProblems (doc, "view", Doc::field (doc, "view"))))
+
+    // ---- values and conditions ----
+
+    (** A declared input type by name; an unknown name reads as text. *)
+    export kindOf name = match name
+        "bool" => IsBool
+        "number" => IsNumber
+        "trigger" => IsTrigger
+        "list" => IsList
+        _ => IsText
+
+    (** An input type's name as a document writes it. *)
+    export kindName kind = match kind
+        IsBool => "bool"
+        IsNumber => "number"
+        IsTrigger => "trigger"
+        IsList => "list"
+        IsText => "text"
+
+    choiceOf c = Ui::choice (Doc::text (c, "key"), Doc::text (c, "label"))
+
+    // A literal as the value it reads as: a flag, number, text or list of choices; anything else is unset.
+    literal j = match Doc::kind j
+        "bool" => Values::flag (jsonBool j ?: false)
+        "number" => Values::number (Doc::real j)
+        "text" => Values::text (jsonText j ?: "")
+        "list" => Values::list (mapList (Doc::items j, choiceOf))
+        _ => Unset
+
+    comparisonOf c = (Lists::find (["eq", "ne", "lt", "gt"], \key => Doc::has (c, key))) ?: ""
+
+    compared (c, by, key) = Compared(comparedInput = Doc::text (c, "input"), comparedBy = by, comparedWith = literal (Doc::field (c, key)))
+
+    comparing c = match comparisonOf c
+        "eq" => compared (c, Equal, "eq")
+        "ne" => compared (c, Unequal, "ne")
+        "lt" => compared (c, Below, "lt")
+        "gt" => compared (c, Above, "gt")
+        _ => AnyOf(anyOf = [])
+
+    // A `when`: absent always holds; an unknown form never does.
+    condition c = match (Lists::find (["all", "any", "not", "fired", "state", "input"], \key => Doc::has (c, key))) ?: ""
+        "all" => AllOf(allOf = mapList (Doc::items (Doc::field (c, "all")), condition))
+        "any" => AnyOf(anyOf = mapList (Doc::items (Doc::field (c, "any")), condition))
+        "not" => Negated(negated = condition (Doc::field (c, "not")))
+        "fired" => Fired(firedName = Doc::text (c, "fired"))
+        "state" => InState(inLayer = Doc::text (c, "state"), inStates = Doc::texts (c, "in"))
+        "input" => comparing c
+        _ => Pick::either (Doc::kind c == "null", Always, AnyOf(anyOf = []))
+
+    lever node =
+        on = Doc::field (node, "on")
+        match Doc::has (on, "set")
+            false => Fire(fireName = Doc::text (on, "fire"))
+            true => match Doc::has (on, "value")
+                true => Put(putName = Doc::text (on, "set"), putValue = literal (Doc::field (on, "value")), putFire = Doc::text (on, "fire"))
+                false => Assign(assignName = Doc::text (on, "set"), assignFire = Doc::text (on, "fire"))
+
+    // ---- templates, shapes and listeners ----
+
+    measured (doc, key, otherwise) = match Doc::kind (Doc::field (doc, key))
+        "text" => Templated(filledFrom = Doc::text (doc, key))
+        "number" => Fixed(fixedAt = Doc::real (Doc::field (doc, key)))
+        _ => Fixed(fixedAt = otherwise)
+
+    at (doc, key) = measured (doc, key, 0.0)
+
+    // One coordinate of a polyline point: a number, or a `{{template}}`.
+    point value = match Doc::kind value
+        "text" => Templated(filledFrom = Doc::string value)
+        _ => Fixed(fixedAt = Doc::real value)
+
+    repeat item = match Doc::has (item, "each")
+        false => Once
+        true => Each(eachIn = Doc::text (Doc::field (item, "each"), "in"), eachDx = Doc::decimal (Doc::field (item, "each"), "dx"), eachDy = Doc::decimal (Doc::field (item, "each"), "dy"))
+
+    figure name = match name
+        "disc" => DiscFigure
+        "text" => TextFigure
+        "sprite" => SpriteFigure
+        "rounded" => RoundedFigure
+        "triangle" => TriangleFigure
+        "polyline" => PolylineFigure
+        _ => RectFigure
+
+    mark s = Stamp(markFigure = figure (Doc::text (s, "shape")), markX = at (s, "x"), markY = at (s, "y"), markW = at (s, "w"), markH = at (s, "h"), markRadius = at (s, "radius"), markSize = at (s, "size"), markAnchor = at (s, "anchor"), markWeight = measured (s, "weight", 400.0), markIndex = at (s, "index"), markAngle = at (s, "angle"), markTurn = at (s, "turn"), markDepth = at (s, "depth"), markAlpha = measured (s, "alpha", 1.0), markStroke = at (s, "stroke"), markStroked = Doc::has (s, "stroke"), markPoints = Lists::flatten (mapList (Doc::items (Doc::field (s, "points")), \p => mapList (Doc::items p, point))), markColour = Doc::text (s, "colour"), markText = Doc::text (s, "text"), markWhen = condition (Doc::field (s, "when")), markEach = repeat s)
+
+    accessRole name = match name
+        "slider" => Slidable
+        "popup" => Popup
+        "menuitem" => MenuItem
+        "none" => Unannounced
+        _ => Pressable
+
+    slide a = match Doc::has (a, "slide")
+        false => Unslid
+        true =>
+            s = Doc::field (a, "slide")
+            Slider(slideMin = at (s, "min"), slideMax = at (s, "max"), slideSet = Doc::text (s, "set"), slideFire = Doc::text (s, "fire"), slideOf = Doc::text (s, Pick::either (Doc::has (s, "of"), "of", "set")))
+
+    area a = Area(areaX = at (a, "x"), areaY = at (a, "y"), areaW = at (a, "w"), areaH = at (a, "h"), areaRole = accessRole (Doc::text (a, "role")), areaLabel = Doc::text (a, "label"), areaLever = lever a, areaSlide = slide a, areaWhen = condition (Doc::field (a, "when")), areaEach = repeat a)
+
+    sortOf kind = match kind
+        "stack" => Stacked
+        "text" => Worded
+        "label" => Labelled
+        "badge" => Badged
+        "button" => Pressed
+        "picker" => Picked
+        "toggle" => Toggled
+        "meter" => Metered
+        "progress" => Progressing
+        "image" => Pictured
+        "empty" => Blank
+        "framed" => Framing
+        "scene" => Drawn
+        "divider" => Divided
+        _ => Spaced
+
+    textRole name = match name
+        "display" => Display
+        "large" => Large
+        "title" => Title
+        "heading" => Heading
+        "lead" => Lead
+        "headline" => Headline
+        "callout" => Callout
+        "caption" => Caption
+        "eyebrow" => Eyebrow
+        "mono" => Mono
+        _ => Body
+
+    tone name = match name
+        "secondary" => Secondary
+        "accent" => Accent
+        "good" => Good
+        "caution" => Caution
+        "danger" => Danger
+        _ => Primary
+
+    buttonRole name = match name
+        "prominent" => Prominent
+        "destructive" => Destructive
+        "filled" => Filled
+        _ => Plain
+
+    template n =
+        bare = Templates::bare (sortOf (Doc::text (n, "kind")))
+        role = Doc::text (n, "role")
+        bare(tplWhen = condition (Doc::field (n, "when")), tplChildren = mapList (Doc::items (Doc::field (n, "children")), template), tplText = Doc::text (n, "text"), tplSymbol = Doc::text (n, "symbol"), tplTextRole = textRole role, tplButtonRole = buttonRole role, tplTone = tone (Doc::text (n, "tone")), tplAxis = Pick::either (Doc::text (n, "axis") == "horizontal", Horizontal, Vertical), tplEnabled = condition (Doc::field (n, "enabled")), tplLever = lever n, tplChoices = Doc::text (n, "choices"), tplSelected = Doc::text (n, "selected"), tplValue = Doc::text (n, "value"), tplAmount = at (n, "amount"), tplTotal = at (n, "total"), tplDetail = Doc::text (n, "detail"), tplSource = Doc::text (n, "source"), tplAlt = Doc::text (n, "alt"), tplWidth = at (n, "width"), tplHeight = at (n, "height"), tplRadius = at (n, "radius"), tplGap = at (n, "gap"), tplPadding = at (n, "padding"), tplFill = Doc::text (n, "fill"), tplInk = Doc::text (n, "ink"), tplLine = Doc::text (n, "line"), tplAlign = Doc::text (n, "align"), tplCross = Doc::text (n, "cross"), tplGrow = Doc::flag (n, "grow"), tplShadow = Doc::text (n, "shadow"), tplMarks = mapList (Doc::items (Doc::field (n, "shapes")), mark))
+
+    // ---- skins, layers and inputs ----
+
+    // A token written once for both appearances, or as `light` and `dark`.
+    token (tokens, name) =
+        body = Doc::field (tokens, name)
+        match jsonText body
+            Success hex => Token(tokenName = name, tokenLight = hex, tokenDark = hex)
+            Error _ => Token(tokenName = name, tokenLight = Doc::text (body, "light"), tokenDark = Doc::text (body, "dark"))
+
+    board body = match Doc::kind (Doc::field (body, "canvas"))
+        "object" =>
+            c = Doc::field (body, "canvas")
+            Boarded(boardWidth = at (c, "width"), boardHeight = at (c, "height"), boardZoom = measured (c, "zoom", 1.0), boardAtlas = Doc::texts (c, "atlas"), boardMarks = mapList (Doc::items (Doc::field (c, "shapes")), mark), boardAreas = mapList (Doc::items (Doc::field (c, "listeners")), area))
+        _ => Unboarded
+
+    skin (skins, name) =
+        body = Doc::field (skins, name)
+        tokens = Doc::field (body, "tokens")
+        Skin(skinName = name, skinTokens = mapList (Doc::keys tokens, \t => token (tokens, t)), skinBoard = board body)
+
+    entry e = Entry(entryRequest = Doc::text (e, "request"), entryWith = Doc::texts (e, "with"))
+
+    layer l =
+        states = Doc::field (l, "states")
+        phases = mapList (Doc::keys states, \name => StateSpec(phaseName = name, phaseEnter = mapList (Doc::items (Doc::field (Doc::field (states, name), "enter")), entry)))
+        moves = mapList (Doc::items (Doc::field (l, "transitions")), \t => Transition(moveFrom = Doc::text (t, "from"), moveTo = Doc::text (t, "to"), moveWhen = condition (Doc::field (t, "when"))))
+        MachineLayer(layerName = Doc::text (l, "name"), layerInitial = Doc::text (l, "initial"), layerPhases = phases, layerMoves = moves)
+
+    knob (inputs, name) =
+        spec = Doc::field (inputs, name)
+        kind = kindOf (Doc::text (spec, "type"))
+        Knob(knobName = name, knobType = kind, knobValue = Pick::either (Doc::has (spec, "value"), literal (Doc::field (spec, "value")), Machines::blank kind))
+
+    decoded doc =
+        inputs = Doc::field (doc, "inputs")
+        layers = mapList (Doc::items (Doc::field (doc, "layers")), layer)
+        skins = Doc::field (doc, "skins")
+        Machine(knobs = mapList (Doc::keys inputs, \name => knob (inputs, name)), currents = mapList (layers, \l => Current(currentLayer = l.layerName, currentState = l.layerInitial)), asks = [], machineFault = "", machineLayers = layers, machineView = template (Doc::field (doc, "view")), machineSkins = mapList (Doc::keys skins, \name => skin (skins, name)))
+
+    (** A machine from document text, settled from its initial states; an error lists every problem. *)
+    export load source = match jsonDecode source
+        Error _ => Error(message = "the machine document is not JSON")
+        Success doc =>
+            found = problems doc
+            match length found == 0
+                true => Success(value = Machines::begin (decoded doc))
+                false => Error(message = join found "\n")
+
+    (** A machine that only shows `problem`, for a document that would not load. *)
+    export faulty problem =
+        empty = Templates::bare Blank
+        Machine(knobs = [], currents = [], asks = [], machineFault = problem, machineLayers = [], machineView = empty(tplSymbol = "warning", tplText = "This interface could not load", tplDetail = problem), machineSkins = [])
+
+    // ---- encoding ----
+
+    json given = match given
+        Unset => JsonNull
+        Flag b => JsonBool b
+        Amount x => JsonFloat x
+        Words s => JsonString s
+        Choices cs => JsonArray (mapList (cs, \c => JsonObject [Doc::str ("key", c.choiceKey), Doc::str ("label", c.choiceLabel)]))
+
+    (** A machine's changing part as JSON, for signal comparison: every input, every layer's state and the fault. *)
+    export snapshot machine = JsonObject [
+        JsonMember "inputs" (JsonObject (mapList (machine.knobs, \k => JsonMember k.knobName (json k.knobValue)))),
+        JsonMember "states" (JsonObject (mapList (machine.currents, \c => Doc::str (c.currentLayer, c.currentState)))),
+        Doc::str ("fault", machine.machineFault),
+    ]

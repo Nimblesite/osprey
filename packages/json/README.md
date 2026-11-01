@@ -7,9 +7,9 @@ The one layer for reading and building Osprey's built-in `Json` value ([BUILTIN-
 | `Doc::parse`, `Doc::write` | Text to `Json` (`JsonNull` when it is not JSON) and back |
 | `Doc::field`, `Doc::has` | An object member, and whether it is there |
 | `Doc::text`, `Doc::number`, `Doc::decimal`, `Doc::flag` | A member as a string, integer, float or boolean, with an empty default |
-| `Doc::items`, `Doc::members`, `Doc::texts` | An array's elements, an object's members, an array of strings |
+| `Doc::items`, `Doc::at`, `Doc::members`, `Doc::keys`, `Doc::texts`, `Doc::string` | An array's elements, an object's members and their names, an array of strings, a string value |
 | `Doc::kind`, `Doc::real` | What a value is (`null`, `bool`, `number`, `text`, `list`, `object`), and a number as a float |
-| `Doc::str`, `Doc::num`, `Doc::bit`, `Doc::strings` | Members and arrays for building a document |
+| `Doc::str`, `Doc::num`, `Doc::dec`, `Doc::bit`, `Doc::strings` | Members and arrays for building a document |
 
 Every reader is total: it reads a missing or mistyped member as its empty value. That suits trusted state such as a UI machine document. Validate hostile input with the built-in `Result` readers (`jsonText`, `jsonInt`, `jsonField`) instead.
 

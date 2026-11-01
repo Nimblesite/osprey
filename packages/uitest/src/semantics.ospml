@@ -1,24 +1,33 @@
-// Pure readers and geometry for a native canvas accessibility tree.
+// Readers and geometry over a canvas's typed accessibility tree, as
+// `ui::Canvases::semantics` builds it ([UI-MACHINE-A11Y]).
 namespace uitest
 
-import ui::Doc
+import ui::Canvases
+import ui::Lists
 
 (** A point in the canvas's coordinate space ([UI-MACHINE-A11Y]). *)
 type Point =
     pointX : float
     pointY : float
 
-(** Reads the JSON elements returned by `ui::Templates::semantics` ([UI-MACHINE-A11Y]). *)
+(** Finds accessible elements by label, as a screen reader or agent does ([UI-MACHINE-A11Y]). *)
 module Semantics
-    (** Every accessible element's label, in hit order, joined with `|` ([UI-MACHINE-A11Y]). *)
-    export labels elements = join (mapList (elements, \e => Doc::text (e, "label"))) "|"
+    (** Every element's label, in hit order, `|`-separated. *)
+    export labels elements = join (mapList (elements, \e => e.accessLabel)) "|"
 
-    (** The first accessible element labelled `label`, or `JsonNull` when none is offered ([UI-MACHINE-A11Y]). *)
-    export element (elements, label) = listGet (filterList (elements, \e => Doc::text (e, "label") == label)) 0 ?: JsonNull
+    (** Whether an element labelled `label` is offered. *)
+    export offered (elements, label) = Lists::any (elements, \e => e.accessLabel == label)
 
-    (** Whether an accessible element labelled `label` is offered ([UI-MACHINE-A11Y]). *)
-    export offered (elements, label) = Doc::has (element (elements, label), "role")
+    (** The first element labelled `label`, or `Unannounced` with no bounds when none is offered. *)
+    export element (elements, label) = match Lists::find (elements, \e => e.accessLabel == label)
+        Success e => e
+        Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0)
 
-    (** The point `fraction` across an element's bounds and halfway down it ([UI-MACHINE-A11Y]). *)
-    export point (e, fraction) =
-        Point(pointX = Doc::decimal (e, "x") + Doc::decimal (e, "w") * fraction, pointY = Doc::decimal (e, "y") + Doc::decimal (e, "h") / 2.0)
+    (** The role of the element labelled `label`, as hosts name it (`button`, `slider`, `popup`, `menuitem`, `none`). *)
+    export role (elements, label) = Canvases::roleName (element (elements, label)).accessRole
+
+    (** The value of the slider labelled `label`; 0 for anything else. *)
+    export value (elements, label) = (element (elements, label)).accessValue
+
+    (** The point `fraction` across an element's bounds and halfway down it. *)
+    export point (e, fraction) = Point(pointX = e.accessLeft + e.accessWidth * fraction, pointY = e.accessTop + e.accessHeight / 2.0)

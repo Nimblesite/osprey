@@ -51,6 +51,18 @@ module Doc
         JsonObject values => values
         _ => []
 
+    (** The element at `index` of an array, or `JsonNull` when there is none. *)
+    export at (doc, index) = jsonIndex doc index ?: JsonNull
+
+    (** A string value's text, or "" when `value` is not a string. *)
+    export string value = jsonText value ?: ""
+
+    (** The member names of an object, in document order; none when `doc` is not an object. *)
+    export keys doc = mapList (members doc, named)
+
+    named m = match m
+        JsonMember name _ => name
+
     (** The array member `key` as strings; an element that is not a string reads as an empty string. *)
     export texts (doc, key) = mapList (items (field (doc, key)), \item => jsonText item ?: "")
 
@@ -59,6 +71,9 @@ module Doc
 
     (** An integer member for building an object. *)
     export num (key, value) = JsonMember key (JsonInt value)
+
+    (** A float member for building an object. *)
+    export dec (key, value) = JsonMember key (JsonFloat value)
 
     (** A boolean member for building an object. *)
     export bit (key, value) = JsonMember key (JsonBool value)

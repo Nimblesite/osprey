@@ -7,7 +7,8 @@ namespace casting
 import ui::Runtime
 import ui::Requests
 import ui::Messages
-import ui::Machines
+import ui::MachineDocs
+import ui::Values
 import ui::Templates
 import ui::Keyed
 import casting::Link
@@ -26,9 +27,9 @@ module App
     opened arguments = after (arguments, "--open", (listGet (filterList (arguments, \a => endsWith (toLowerCase a) ".mp3")) 0) ?: "")
 
     (** The store from a machine document's text: a refused document shows its problems in place of the player. *)
-    export loaded source = match Machines::load source
+    export loaded source = match MachineDocs::load source
         Success machine => Link::store machine
-        Error problem => Link::store (Machines::faulty problem)
+        Error problem => Link::store (MachineDocs::faulty problem)
 
     // The folder the document sits in, where its canvas artwork lives.
     folder path =
@@ -43,7 +44,7 @@ module App
         Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))
 
     (** Routes every framework message: controls pull the machine's levers, completions and frames go to the adapter. *)
-    export update (_, store, message) = Messages::route (message, \lever => Link::pulled (store, lever, JsonNull), \(lever, text) => Link::pulled (store, lever, JsonString text), \(lever, on) => Link::pulled (store, lever, JsonBool on), \(_, _) => Runtime::step store, \(ticket, outcome) => Link::completed (store, ticket, outcome), \phase => Link::phased (store, phase), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \seconds => Link::ticked (store, seconds), \(_, input) => Link::pointed (store, input))
+    export update (_, store, message) = Messages::route (message, \lever => Link::pulled (store, lever, Values::none ()), \(lever, text) => Link::pulled (store, lever, Values::text text), \(lever, on) => Link::pulled (store, lever, Values::flag on), \(_, _) => Runtime::step store, \(ticket, outcome) => Link::completed (store, ticket, outcome), \phase => Link::phased (store, phase), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \seconds => Link::ticked (store, seconds), \(_, input) => Link::pointed (store, input))
 
     screenSlice () = perform Signal<Screen>.read ()
 
@@ -54,8 +55,8 @@ module App
     export regions (before, store, frames, _) =
         handle static Signal<Screen>
             read => store.screen
-        changed = signalChanges before.screen store.screen (\s => Machines::encode s.screenMachine) (signalDependencies screenSlice)
+        changed = signalChanges before.screen store.screen (\s => MachineDocs::snapshot s.screenMachine) (signalDependencies screenSlice)
         [Keyed::region (frames, "root", changed, root)]
 
     (** The first skin's colours; a skin change re-themes the view in place. *)
-    export theme () = Templates::theme (Machines::faulty "")
+    export theme () = Templates::theme (MachineDocs::faulty "")

@@ -1,0 +1,186 @@
+// Implements [UI-MACHINE-CANVAS], [UI-MACHINE-EACH] and [UI-MACHINE-A11Y]: a
+// skin's artboard drawn as scene primitives, its listeners hit-tested, and
+// the accessibility tree hosts, agents and tests read.
+namespace ui
+
+(** Draws canvas artboards, routes their pointers and describes them to assistive technology ([UI-MACHINE-CANVAS]). *)
+module Canvases
+    // ---- repeats [UI-MACHINE-EACH] ----
+
+    swapped (text, token, value) = join (split text token ?: [text]) value
+
+    // `text` with `{{item.key}}`, `{{item.label}}` and `{{item.index}}` replaced by one choice of a list input.
+    stamped (text, choice, i) = swapped (swapped (swapped (text, "{{item.key}}", choice.choiceKey), "{{item.label}}", choice.choiceLabel), "{{item.index}}", toString i)
+
+    stampedMeasure (m, choice, i) = match m
+        Templated text => Templated(filledFrom = stamped (text, choice, i))
+        fixed => fixed
+
+    stampedValue (v, choice, i) = match v
+        Words text => Values::text (stamped (text, choice, i))
+        other => other
+
+    stampedWhen (c, choice, i) = match c
+        AllOf cs => AllOf(allOf = mapList (cs, \x => stampedWhen (x, choice, i)))
+        AnyOf cs => AnyOf(anyOf = mapList (cs, \x => stampedWhen (x, choice, i)))
+        Negated inner => Negated(negated = stampedWhen (inner, choice, i))
+        Fired name => Fired(firedName = stamped (name, choice, i))
+        InState layer names => InState(inLayer = stamped (layer, choice, i), inStates = mapList (names, \n => stamped (n, choice, i)))
+        Compared input by literal => Compared(comparedInput = stamped (input, choice, i), comparedBy = by, comparedWith = stampedValue (literal, choice, i))
+        Always => Always
+
+    stampedLever (lever, choice, i) = match lever
+        Fire name => Fire(fireName = stamped (name, choice, i))
+        Assign name trigger => Assign(assignName = stamped (name, choice, i), assignFire = stamped (trigger, choice, i))
+        Put name literal trigger => Put(putName = stamped (name, choice, i), putValue = stampedValue (literal, choice, i), putFire = stamped (trigger, choice, i))
+
+    // A numeric `x` or `y` moved `i` steps of the repeat; a templated one is kept as stamped.
+    shifted (m, step, i) = match m
+        Fixed x => Fixed(fixedAt = x + step * toFloat i)
+        templated => templated
+
+    stampedMark (m, dx, dy, choice, i) =
+        at = \x => stampedMeasure (x, choice, i)
+        m(markX = shifted (at m.markX, dx, i), markY = shifted (at m.markY, dy, i), markW = at m.markW, markH = at m.markH, markRadius = at m.markRadius, markSize = at m.markSize, markAnchor = at m.markAnchor, markWeight = at m.markWeight, markIndex = at m.markIndex, markAngle = at m.markAngle, markTurn = at m.markTurn, markDepth = at m.markDepth, markAlpha = at m.markAlpha, markStroke = at m.markStroke, markPoints = mapList (m.markPoints, at), markColour = stamped (m.markColour, choice, i), markText = stamped (m.markText, choice, i), markWhen = stampedWhen (m.markWhen, choice, i), markEach = Once)
+
+    stampedSlide (slide, choice, i) = match slide
+        Unslid => Unslid
+        Slider low high set trigger shown => Slider(slideMin = stampedMeasure (low, choice, i), slideMax = stampedMeasure (high, choice, i), slideSet = stamped (set, choice, i), slideFire = stamped (trigger, choice, i), slideOf = stamped (shown, choice, i))
+
+    stampedArea (a, dx, dy, choice, i) =
+        at = \x => stampedMeasure (x, choice, i)
+        a(areaX = shifted (at a.areaX, dx, i), areaY = shifted (at a.areaY, dy, i), areaW = at a.areaW, areaH = at a.areaH, areaLabel = stamped (a.areaLabel, choice, i), areaLever = stampedLever (a.areaLever, choice, i), areaSlide = stampedSlide (a.areaSlide, choice, i), areaWhen = stampedWhen (a.areaWhen, choice, i), areaEach = Once)
+
+    // An item once, or once per choice of its list input, each copy stamped and moved.
+    copies (machine, repeat, item, stamp) = match repeat
+        Once => [item]
+        Each list dx dy =>
+            choices = Machines::choicesOf (machine, list)
+            mapList (toList (range (0, length choices)), \i => stamp (item, dx, dy, listGet choices i ?: Ui::choice ("", ""), i))
+
+    marksOf (machine, marks) = Lists::flatten (mapList (marks, \m => copies (machine, m.markEach, m, stampedMark)))
+
+    areasOf (machine, areas) = Lists::flatten (mapList (areas, \a => copies (machine, a.areaEach, a, stampedArea)))
+
+    // ---- shapes [UI-MACHINE-CANVAS] ----
+
+    digit code = indexOf "0123456789ABCDEF" (toUpperCase code) ?: 0
+
+    byte (hex, at) = satAdd (satMul (digit (substring hex at (satAdd at 1) ?: "0")) 16) (digit (substring hex (satAdd at 1) (satAdd at 2) ?: "0"))
+
+    // A `#RRGGBB` colour as written, or the chosen skin's `@token`; either may be a `{{template}}`.
+    skinned (machine, written) =
+        named = Templates::fill (machine, written)
+        match startsWith named "@"
+            false => named
+            true => match Lists::find ((Templates::skin machine).skinTokens, \t => t.tokenName == drop named 1)
+                Success t => t.tokenLight
+                Error _ => ""
+
+    paint (machine, m) =
+        hex = skinned (machine, m.markColour)
+        Scenes::hex (satAdd (satMul (byte (hex, 1)) 65536) (satAdd (satMul (byte (hex, 3)) 256) (byte (hex, 5))), Templates::measure (machine, m.markAlpha))
+
+    // A colour packed with an alpha from 0 to 1.
+    colour (machine, m) =
+        hex = skinned (machine, m.markColour)
+        Scenes::rgba (byte (hex, 1), byte (hex, 3), byte (hex, 5), floatToInt (round (Templates::measure (machine, m.markAlpha) * 255.0)) ?: 255)
+
+    // A corner of a w by h rectangle centred on x, y, turned by `angle` radians.
+    corner (x, y, dx, dy, angle) = [x + dx * cos angle - dy * sin angle, y + dx * sin angle + dy * cos angle]
+
+    // A turned rectangle as a filled polygon, which every host draws, rather than a rect's angle.
+    turned (machine, m, x, y, w, h, angle, depth) =
+        hw = w / 2.0
+        hh = h / 2.0
+        corners = Lists::flatten [corner (x, y, 0.0 - hw, 0.0 - hh, angle), corner (x, y, hw, 0.0 - hh, angle), corner (x, y, hw, hh, angle), corner (x, y, 0.0 - hw, hh, angle)]
+        Scenes::path ([Polygon(corners = corners, closed = true)], Fill, Solid(tint = paint (machine, m)), depth)
+
+    // Filled, or a line `stroke` wide when the shape gives one.
+    outline (machine, m) = Pick::either (m.markStroked, Line(width = Templates::measure (machine, m.markStroke), dashes = [], bevel = false), Fill)
+
+    // A rectangle with rounded corners of `radius`, as a filled path or, with `stroke`, its outline.
+    rounded (machine, m, x, y, w, h, r, depth) =
+        right = x + w
+        bottom = y + h
+        steps = [MoveTo(toX = x + r, toY = y), LineTo(toX = right - r, toY = y), CurveTo(toX = right, toY = y + r, ctrlX = right, ctrlY = y), LineTo(toX = right, toY = bottom - r), CurveTo(toX = right - r, toY = bottom, ctrlX = right, ctrlY = bottom), LineTo(toX = x + r, toY = bottom), CurveTo(toX = x, toY = bottom - r, ctrlX = x, ctrlY = bottom), LineTo(toX = x, toY = y + r), CurveTo(toX = x + r, toY = y, ctrlX = x, ctrlY = y), Close]
+        Scenes::path (steps, outline (machine, m), Solid(tint = paint (machine, m)), depth)
+
+    // A line through `points`, flattened x, y pairs, `stroke` wide.
+    polyline (machine, m, points, depth) =
+        x = \i => listGet points (satMul i 2) ?: 0.0
+        y = \i => listGet points (satAdd (satMul i 2) 1) ?: 0.0
+        steps = mapList (toList (range (0, intDiv (length points) 2)), \i => Pick::either (i == 0, MoveTo(toX = x i, toY = y i), LineTo(toX = x i, toY = y i)))
+        Scenes::path (steps, Line(width = Templates::measure (machine, m.markStroke), dashes = [], bevel = false), Solid(tint = paint (machine, m)), depth)
+
+    // A triangle pointing right inside the box at x, y of w by h.
+    triangle (machine, m, x, y, w, h, depth) = Scenes::path ([Polygon(corners = [x, y, x + w, y + h / 2.0, x, y + h], closed = true)], Fill, Solid(tint = paint (machine, m)), depth)
+
+    (** The scene primitive a canvas shape draws with the machine's inputs. *)
+    export primitive (machine, m) =
+        at = \x => Templates::measure (machine, x)
+        depth = floatToInt (at m.markDepth) ?: 0
+        match m.markFigure
+            DiscFigure => Scenes::disc (at m.markX, at m.markY, at m.markRadius, colour (machine, m), depth)
+            TextFigure => Scenes::lettering (Templates::fill (machine, m.markText), at m.markX, at m.markY, at m.markSize, colour (machine, m), floatToInt (at m.markAnchor) ?: 0, at m.markWeight, depth)
+            SpriteFigure => Scenes::sprite (floatToInt (at m.markIndex) ?: 0, at m.markX, at m.markY, at m.markW, at m.markH, at m.markAngle, Scenes::rgba (255, 255, 255, 255), depth)
+            RoundedFigure => rounded (machine, m, at m.markX, at m.markY, at m.markW, at m.markH, at m.markRadius, depth)
+            TriangleFigure => triangle (machine, m, at m.markX, at m.markY, at m.markW, at m.markH, depth)
+            RectFigure => turned (machine, m, at m.markX, at m.markY, at m.markW, at m.markH, at m.markAngle + at m.markTurn, depth)
+            PolylineFigure => polyline (machine, m, mapList (m.markPoints, at), depth)
+
+    (** A skin's artboard as one scene at its fixed `zoom`: its atlas, and every shape whose `when` holds, repeats expanded. *)
+    export artboard (machine, zoom, w, h, atlas, marks) = Ui::zoomed (Templates::measure (machine, zoom), Templates::measure (machine, w), Templates::measure (machine, h), mapList (atlas, \path => Templates::fill (machine, path)), mapList (filterList (marksOf (machine, marks), \m => Machines::holds (machine, m.markWhen)), \m => primitive (machine, m)), Fire(fireName = ""))
+
+    // ---- listeners ----
+
+    areas machine = match (Templates::skin machine).skinBoard
+        Boarded _ _ _ _ _ found => filterList (areasOf (machine, found), \a => Machines::holds (machine, a.areaWhen))
+        Unboarded => []
+
+    at (machine, m) = Templates::measure (machine, m)
+
+    inside (machine, a, x, y) = x >= at (machine, a.areaX) && x <= at (machine, a.areaX) + at (machine, a.areaW) && y >= at (machine, a.areaY) && y <= at (machine, a.areaY) + at (machine, a.areaH)
+
+    // A slider listener: the fraction across its area, mapped from `min` to `max`.
+    slid (machine, a, low, high, set, trigger, x) =
+        across = (x - at (machine, a.areaX)) / Pick::either (at (machine, a.areaW) > 0.0, at (machine, a.areaW), 1.0)
+        value = at (machine, low) + (at (machine, high) - at (machine, low)) * Pick::either (across < 0.0, 0.0, Pick::either (across > 1.0, 1.0, across))
+        given = Pick::either (Machines::textual (machine, set), Values::text (toString value), Values::number value)
+        Machines::pull (machine, Assign(assignName = set, assignFire = trigger), given)
+
+    listened (machine, a, x) = match a.areaSlide
+        Slider low high set trigger _ => slid (machine, a, low, high, set, trigger, x)
+        Unslid => Machines::pull (machine, a.areaLever, Unset)
+
+    (** A pointer released at `x`, `y` on the canvas: the first listener whose area holds it acts; elsewhere nothing happens. *)
+    export released (machine, x, y) = match Lists::find (areas machine, \a => inside (machine, a, x, y))
+        Success a => listened (machine, a, x)
+        Error _ => machine
+
+    // ---- accessibility [UI-MACHINE-A11Y] ----
+
+    (** A role's name as hosts and documents write it: `button`, `slider`, `popup`, `menuitem` or `none`. *)
+    export roleName role = match role
+        Pressable => "button"
+        Slidable => "slider"
+        Popup => "popup"
+        MenuItem => "menuitem"
+        Unannounced => "none"
+
+    described machine = filterList (areas machine, \a => a.areaRole != Unannounced)
+
+    // A slider's value: the input it shows.
+    level (machine, a) = match a.areaSlide
+        Slider _ _ _ _ shown => Machines::number (machine, shown)
+        Unslid => 0.0
+
+    element (machine, a) = Accessible(accessRole = a.areaRole, accessLabel = Templates::fill (machine, a.areaLabel), accessLeft = at (machine, a.areaX), accessTop = at (machine, a.areaY), accessWidth = at (machine, a.areaW), accessHeight = at (machine, a.areaH), accessValue = level (machine, a))
+
+    (** The canvas's accessibility tree: each live listener's role, filled label, bounds and, for a slider, its value, in hit order. Hosts map it to the platform's accessibility API; agents and tests read it. *)
+    export semantics machine = mapList (described machine, \a => element (machine, a))
+
+    (** The listener labelled `label` activated as a screen reader or agent would: a slider is set `fraction` of the way across, anything else pressed. An unknown label changes nothing. *)
+    export act (machine, label, fraction) = match Lists::find (described machine, \a => Templates::fill (machine, a.areaLabel) == label)
+        Success a => listened (machine, a, at (machine, a.areaX) + at (machine, a.areaW) * fraction)
+        Error _ => machine

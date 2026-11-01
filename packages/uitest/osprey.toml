@@ -1,6 +1,6 @@
 [project]
 name = "uitest"
-source_roots = ["src"]
+source_roots = ["src", "../native/src", "../graphics/src", "../json/src"]
 default_namespace = "uitest"
 
 [package]
