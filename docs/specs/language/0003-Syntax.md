@@ -159,7 +159,7 @@ A positional payload is declared, constructed, and matched in slot order:
 type Tree = Leaf | Node(Tree, Tree)
 let tree = Node(Node(Leaf, Leaf), Leaf)
 
-fn size(tree) -> int = match tree {
+fn size(tree) = match tree {
     Leaf          => 1
     Node(left, _) => 1 + size(left)
 }
