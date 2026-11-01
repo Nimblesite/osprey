@@ -4,7 +4,7 @@
 # Every packages/<dir>/osprey.toml that declares a [package] name is published
 # with the package client's `publish --folder`, so each release is checked and
 # digested exactly as the server will check it. The result is the tree the local
-# registry serves (`make registry-serve`) and the VS Code extension bundles.
+# registry serves (`make -C packages registry-serve`) and the VS Code extension bundles.
 #
 # Usage: scripts/stage-local-registry.sh <osprey-pkg> <registry-root>
 set -euo pipefail

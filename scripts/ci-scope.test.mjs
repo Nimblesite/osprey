@@ -106,7 +106,7 @@ test('the required macOS gate builds and tests the native Workbench host', () =>
   assert.doesNotMatch(step, /continue-on-error/)
   assert.match(apple, /^    runs-on: macos-15$/m)
   assert.match(apple, /^ {10}lfs: true$/m)
-  assert.match(apple, /^ {8}run: make ios-test macos-test mobile-ios-test bank-ios-test$/m)
+  assert.match(apple, /^ {8}run: make -C apps ios-test macos-test mobile-ios-test bank-ios-test$/m)
   assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
 })
 

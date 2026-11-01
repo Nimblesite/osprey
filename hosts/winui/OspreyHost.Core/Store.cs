@@ -5,7 +5,8 @@ namespace Osprey.Host;
 
 /// <summary>
 /// The application's private store [WINUI-HOST-CAPABILITIES]: files under one folder per
-/// application, <c>%APPDATA%\Osprey\&lt;app&gt;</c> as the GPUI host keeps them. Names are relative
+/// application, <c>%APPDATA%\Osprey\&lt;app&gt;</c> as the GPUI host keeps them, or the package's
+/// LocalState in a packaged host, the one folder its sandbox may write [WINUI-HOST-SANDBOX]. Names are relative
 /// and never leave that folder; a read is bounded and UTF-8, and a write replaces its entry whole.
 /// </summary>
 public sealed class Store(string root)
@@ -14,7 +15,9 @@ public sealed class Store(string root)
 
     /// <summary>The store folder for the application compiled into <paramref name="library"/>.</summary>
     public static string RootFor(string library) =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Osprey", Path.GetFileNameWithoutExtension(library));
+        Sandbox.Packaged()
+            ? Path.Combine(Windows.Storage.ApplicationData.Current.LocalFolder.Path, "store")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Osprey", Path.GetFileNameWithoutExtension(library));
 
     /// <summary>Answers one store request; anything outside the store or the protocol fails with a reason.</summary>
     public Completion Answer(string ticket, JsonElement request)

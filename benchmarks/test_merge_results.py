@@ -298,7 +298,7 @@ class HarnessPublicationTests(unittest.TestCase):
     def test_osprey_only_run_never_republishes_an_older_runs_export(self) -> None:
         # `results/hf/` is untracked, so it outlives the results.json it was
         # merged into. A newer results.json (another machine, a merged branch)
-        # must survive `make bench-osprey`, whether or not the run re-measures
+        # must survive `make -C benchmarks bench-osprey`, whether or not the run re-measures
         # the case whose stale export is lying around.
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

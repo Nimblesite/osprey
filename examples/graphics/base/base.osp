@@ -50,7 +50,7 @@ module SceneBase {
 
     /// Every scene shares one Metal library and differs by which fragment entry
     /// it names. The path is relative to the repository root, which is where
-    /// `make graphics` runs the compiler from.
+    /// `make -C apps graphics` runs the compiler from.
     fn shaderPath() = "examples/graphics/base.metal"
 
     /// Slots 0..7 carry motion, in 4096ths, rewritten every frame. Slots 8..20

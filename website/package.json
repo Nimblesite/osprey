@@ -14,7 +14,7 @@
     "generate-docs": "bash scripts/generate-docs.sh && npm run add-ml-twins",
     "add-ml-twins": "python3 scripts/add-ml-twins.py",
     "update-playground": "node scripts/update-playground.js",
-    "build:wasm": "cd .. && make wasm-site",
+    "build:wasm": "cd .. && make -C website wasm-site",
     "clean": "rm -rf _site",
     "pretest": "make -C .. _runtime wasm-site",
     "test": "playwright test",

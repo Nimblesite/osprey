@@ -116,7 +116,7 @@ Exit: Linux and Windows smoke runs green in CI. Met on 2026-10-28.
 ## Commands (to exist by the end of Phase 2)
 
 ```sh
-make macos
+make -C apps macos
 hosts/gpui/run.sh --smoke              # the probe through the real boundary, no window
 hosts/gpui/bench                       # framework-only per-frame cost, see hosts/gpui/README.md
 examples/gpui/flock/run.sh            # build and open

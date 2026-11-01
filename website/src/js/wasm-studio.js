@@ -164,7 +164,7 @@ async function boot() {
   try {
     await Promise.all([runOsprey(), initPrism()]);
   } catch (err) {
-    setBanner("warn", `Could not run the Osprey module: <code>${esc(err.message || err)}</code>. Build assets with <code>make wasm-site</code>.`);
+    setBanner("warn", `Could not run the Osprey module: <code>${esc(err.message || err)}</code>. Build assets with <code>make -C website wasm-site</code>.`);
     return;
   }
 

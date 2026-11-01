@@ -16,7 +16,24 @@
 // `osprey_media_unrender` stops ffmpeg and deletes the folder. Without
 // ffmpeg and ffprobe on the PATH, render returns "" and a sender casts the
 // audio as it is.
+//
+// On Windows the casting app runs in an AppContainer ([WINUI-HOST-SANDBOX]),
+// which cannot start ffmpeg, so render always returns "" there.
 
+#ifdef _WIN32
+#include <stdint.h>
+#include <string.h>
+
+char *osprey_media_render(char *audio) {
+  (void)audio;
+  return strdup("");
+}
+
+int64_t osprey_media_unrender(char *folder) {
+  (void)folder;
+  return -1;
+}
+#else
 #include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -208,3 +225,4 @@ int64_t osprey_media_unrender(char *folder) {
   closedir(dir);
   return rmdir(folder) == 0 ? 0 : -1;
 }
+#endif

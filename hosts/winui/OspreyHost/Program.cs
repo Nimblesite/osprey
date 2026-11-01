@@ -13,7 +13,7 @@ static class Program
     [STAThread]
     static int Main(string[] args)
     {
-        if (Launch.Parse(args) is not { } launch)
+        if (Launch.Parse(Launch.Packaged(args, AppContext.BaseDirectory)) is not { } launch)
         {
             Console.Error.WriteLine(Launch.Usage);
             return 2;
@@ -26,6 +26,7 @@ static class Program
         {
             return Refused(launch, missing);
         }
+        Progress.Note(Sandbox.Describe());
         Progress.Note("desktop visible");
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(started =>

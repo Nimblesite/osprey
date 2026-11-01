@@ -19,11 +19,13 @@
 // the port chosen; `osprey_file_server_stop` closes the listener and joins
 // the accept thread. Connections in flight finish on their own.
 
-#include "http_shared.h"
-#include "socket_safety.h"
-
+// System headers first: on Windows http_shared.h maps close() to closesocket(),
+// which would rename the CRT's own close() declaration.
 #include <stdatomic.h>
 #include <sys/stat.h>
+
+#include "http_shared.h"
+#include "socket_safety.h"
 
 enum { FS_SERVERS = 16, FS_CHUNK = 65536, FS_REQUEST = 8192, FS_WAIT = 120 };
 

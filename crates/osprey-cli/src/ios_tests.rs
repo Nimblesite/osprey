@@ -171,9 +171,9 @@ fn a_missing_runtime_names_the_make_goal_that_builds_it() {
     assert_eq!(
         TARGETS.map(|target| target.missing_runtime("arc")),
         [
-            "libosprey_runtime_ios_arc.a not found — run `make ios` to build the iOS runtime",
-            "libosprey_runtime_ios_sim_arc.a not found — run `make ios` to build the iOS runtime",
-            "libosprey_runtime_macos_arc.a not found — run `make macos` to build the macOS runtime",
+            "libosprey_runtime_ios_arc.a not found — run `make -C apps ios` to build the iOS runtime",
+            "libosprey_runtime_ios_sim_arc.a not found — run `make -C apps ios` to build the iOS runtime",
+            "libosprey_runtime_macos_arc.a not found — run `make -C apps macos` to build the macOS runtime",
         ]
     );
 }

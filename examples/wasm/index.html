@@ -16,10 +16,10 @@
      two surface syntaxes, one result.
 
      IMPORTANT: serve over HTTP — browsers block fetch() of the .wasm and ES
-     modules from file://. After `make wasm`:
+     modules from file://. After `make -C website wasm`:
          cd examples/wasm && python3 -m http.server 8080
          open http://localhost:8080/
-     (`make wasm-serve` does both.)
+     (`make -C website wasm-serve` does both.)
 -->
 <html lang="en">
   <head>
@@ -233,7 +233,7 @@ ORDER BY revenue DESC;</textarea>
         "This page must be served over HTTP, not opened from disk\n" +
         "(browsers block loading the .wasm and JS modules over file://).\n\n" +
         "  cd examples/wasm && python3 -m http.server 8080\n" +
-        "then open http://localhost:8080/   (or: make wasm-serve)";
+        "then open http://localhost:8080/   (or: make -C website wasm-serve)";
 
       // ---- minimal, injection-safe syntax highlighter (osprey + sql) ----
       const OSP_RE = /(\/\/[^\n]*)|("(?:[^"\\]|\\.)*")|\b(fn|let|mut|type|match|effect|handle|in|perform|resume|import|return|true|false)\b|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d+)\b|(:=|=>|->|\|>|>=|<=|==|!=|[=+\-*/%<>!])/g;
@@ -474,7 +474,7 @@ ORDER BY revenue DESC;</textarea>
         try {
           await loadFlavor("osp");
         } catch (e) {
-          setBanner("warn", `Could not run the Osprey module: <code>${esc(e.message || e)}</code>. Build it first from the repo root: <code>make wasm</code>.`);
+          setBanner("warn", `Could not run the Osprey module: <code>${esc(e.message || e)}</code>. Build it first from the repo root: <code>make -C website wasm</code>.`);
           return;
         }
         renderSource();

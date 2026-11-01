@@ -40,7 +40,7 @@ Integers, booleans, strings, shapes and token ids compare exactly. Floats compar
 
 ## The suite — [PORT-SUITE]
 
-`crates/osprey-cli/tests/python_packages.rs` discovers every library with both `packages/<name>/osprey.toml` and `packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `packages/manager/` and run through `make registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
+`crates/osprey-cli/tests/python_packages.rs` discovers every library with both `packages/<name>/osprey.toml` and `packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `packages/manager/` and run through `make -C packages registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
 
 - exit successfully;
 - print exactly `expected_output.txt`: one `ok <case>` line per assertion and a final `N passed, 0 failed`;
@@ -52,7 +52,7 @@ Every name a module's `__all__` exports must be spelled somewhere in the suite's
 
 ## Individual source coverage — `[PKG-COVERAGE-GATE]`
 
-Every library has its own entry in `coverage-thresholds.json` under `projects.packages`, with a threshold of at least 90%. `make package-coverage` collects and checks each suite independently. A package's numerator and denominator include only its own `src/` lines reported by the compiler; tests, helpers and other packages cannot increase its result. This is source line coverage, not branch coverage or proof of correctness.
+Every library has its own entry in `coverage-thresholds.json` under `projects.packages`, with a threshold of at least 90%. `make -C packages package-coverage` collects and checks each suite independently. A package's numerator and denominator include only its own `src/` lines reported by the compiler; tests, helpers and other packages cannot increase its result. This is source line coverage, not branch coverage or proof of correctness.
 
 `scripts/package_coverage.py` requires a successful suite execution, a positive assertion count, zero failures and byte-for-byte matching `tests/expected_output.txt`. It rejects missing reports, omitted executable source files, malformed counts and results below the package's threshold. Collection binds the report to hashes of its source, suite, manifests and golden, so changed inputs or altered evidence require a new run. A failing suite remains a failure even when its measured coverage exceeds 90%.
 

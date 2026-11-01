@@ -1,7 +1,7 @@
 # osprey: flavor=python
 """Greedy text generation with the trained GPT-2 model, in the Python flavor.
 
-`make gpt2 FLAVOR=python PROMPT="..."` downloads the published weights into
+`make -C apps gpt2 FLAVOR=python PROMPT="..."` downloads the published weights into
 examples/gpt2/weights and runs this project. Three lines of stdin: the prompt,
 the number of tokens to generate (default 20), and the interpretation to run
 the model under: `gpu` for the GPU surface (its products on the device

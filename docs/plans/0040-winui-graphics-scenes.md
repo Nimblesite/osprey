@@ -58,13 +58,13 @@ Done on 2026-10-28, on GitHub's `windows-latest` runner rather than this machine
 ### Phase 2 — the WinUI window
 
 1. Add a scene mode to the plan 0038 executable: `OspreyHost.exe --scene <scene.dll>`. The window holds a `SwapChainPanel` that fills it, with Mica on the title bar and an info bar showing the scene, the adapter and frames per second.
-2. Implement decisions 2 to 5 in the bridge and the host. On Windows, `make graphics SCENE=kali` builds the scene DLL, the bridge and the host, then opens the window.
+2. Implement decisions 2 to 5 in the bridge and the host. On Windows, `make -C apps graphics SCENE=kali` builds the scene DLL, the bridge and the host, then opens the window.
 3. Extend the frame-path test in `crates/osprey-cli/tests/graphics_scenes/frame.rs`. It stubs `CreateSwapChainForComposition` and the host callbacks, and its injected-failure cases cover the new path: a failed attach, a closed window and a resize.
 4. Add the thread test from decision 4.
 
 ### Phase 3 — smoke and CI
 
-1. On Windows, `OSPREY_GFX_FRAMES=120 make graphics-smoke` renders each scene for 120 frames, captures the panel and fails if the frame is a single colour. That catches the "renders black" class of shader and packing errors.
+1. On Windows, `OSPREY_GFX_FRAMES=120 make -C apps graphics-smoke` renders each scene for 120 frames, captures the panel and fails if the frame is a single colour. That catches the "renders black" class of shader and packing errors.
 2. Delete the Win32 window path (decision 3), and update the README's layout table and plan 0025's status.
 3. Add the graphics job to `.github/workflows/winui.yml`. It runs `fxc` on every entry point, builds the bridge with warnings fatal, runs the drift guard and runs the 120-frame WARP smoke of all three scenes. `winui.yml` already does all but the drift guard, with a 10-frame smoke and a picture of each window, and without the single-colour check.
 
@@ -77,7 +77,7 @@ Done on 2026-10-28, on GitHub's `windows-latest` runner rather than this machine
 ## Commands (to exist by the end of phase 3)
 
 ```sh
-make graphics SCENE=kali                          # Windows: scene DLL, bridge, WinUI host, window
-OSPREY_GFX_FRAMES=120 make graphics-smoke         # every scene, 120 frames, single-colour frame check
+make -C apps graphics SCENE=kali                          # Windows: scene DLL, bridge, WinUI host, window
+OSPREY_GFX_FRAMES=120 make -C apps graphics-smoke         # every scene, 120 frames, single-colour frame check
 cargo test --profile ci -p osprey-cli graphics_scenes   # drift guard and frame path, every system
 ```

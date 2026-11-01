@@ -46,6 +46,7 @@
  * socket runtime's whole-second poll/shutdown loops compile. windows.h above
  * provides Sleep + DWORD; only the HTTP/WebSocket TUs see this. */
 #define sleep(seconds) Sleep((DWORD)(seconds) * 1000U)
+#define usleep(microseconds) Sleep((DWORD)((microseconds) / 1000U))
 
 /* Initialise Winsock once per process. Implemented (and auto-run via a
  * constructor) in http_shared.c. Safe to call repeatedly. */

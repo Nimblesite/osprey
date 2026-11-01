@@ -559,7 +559,7 @@ own packages:
   passes the same source, capability and digest checks the server applies. A
   package that fails them, such as one with a raw `extern` declaration under
   `[PACKAGE-CAPABILITY-CONFINEMENT]`, is reported and not staged.
-  `scripts/stage-local-registry.sh` does this and `make registry-serve` serves
+  `scripts/stage-local-registry.sh` does this and `make -C packages registry-serve` serves
   the result on `http://127.0.0.1:8787`, the client's default registry.
 - **Editor.** The VS Code extension bundles the server (`osprey-registry`) and
   the staged root (`bin/<platform>/registry/`). Its *Start Local Package

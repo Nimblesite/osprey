@@ -2,14 +2,14 @@
   "steps": [
     { "wait": "Round 1" },
     { "wait": "PEN" },
-    { "sleep": "3" },
+    { "frames": "180" },
     { "shot": "1-flying" },
     { "invoke": "Pause" },
     { "wait": "Paused" },
     { "shot": "2-paused" },
     { "key": "p" },
     { "gone": "Paused" },
-    { "sleep": "2" },
+    { "frames": "120" },
     { "shot": "3-resumed" }
   ]
 }

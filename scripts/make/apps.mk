@@ -1,5 +1,5 @@
-# Graphics: settings and the platform hosts behind `make graphics` and
-# `make graphics-smoke`, which the root Makefile documents.
+# Graphics: settings and the platform hosts behind `make -C apps graphics` and
+# `make -C apps graphics-smoke`, which the root Makefile documents.
 GFX_DIR := examples/graphics
 GFX_WARN ?= -Wall -Werror
 SCENE ?= kali
@@ -28,7 +28,7 @@ GFX_OUT := target/gfx
 ifeq ($(MSYSTEM),)
 # Native PowerShell has neither bash for the recipes below nor a MinGW cc.
 _graphics _graphics-shader _graphics-smoke:
-	@Write-Host "make graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
+	@Write-Host "make -C apps graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
 else
 $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h $(GFX_DIR)/ospgfx_abi.h
 	@echo "==> building Osprey -> Direct3D 12 graphics bridge"

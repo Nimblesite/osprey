@@ -16,7 +16,7 @@ The source is in [`examples/macos/`](https://github.com/Nimblesite/osprey/tree/m
 ## 1. Run it
 
 ```sh
-make run-mac-hd                    # rebuild the compiler, the Mac runtime and the app, then open it
+make -C apps run-mac-hd                    # rebuild the compiler, the Mac runtime and the app, then open it
 examples/macos/run.sh ios-sim      # build and launch it in the iPhone simulator
 ```
 

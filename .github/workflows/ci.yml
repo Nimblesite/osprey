@@ -991,8 +991,8 @@ jobs:
           target: google_apis
           arch: x86_64
           script: |
-            make android-test
-            make bank-android-test
+            make -C apps android-test
+            make -C apps bank-android-test
             examples/projects/modules/mobile/android/gradlew -p examples/projects/modules/mobile/android --console=plain :app:lintDebug
             cd examples/mobile/android && ./gradlew --console=plain :app:lintDebug
 
@@ -1072,7 +1072,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: iOS and macOS builds, ABI, goldens and app persistence
-        run: make ios-test macos-test mobile-ios-test bank-ios-test
+        run: make -C apps ios-test macos-test mobile-ios-test bank-ios-test
 
       - name: Native Workbench host and rendering regressions
         env:

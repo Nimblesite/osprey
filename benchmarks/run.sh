@@ -14,7 +14,7 @@
 # two rendered reports are TRACKED — only bin/ and hf/ are gitignored.
 #
 # Usage: run.sh [name-filter]
-#   BENCH_PARTIAL=1              Osprey columns only (`make bench-osprey`): times
+#   BENCH_PARTIAL=1              Osprey columns only (`make -C benchmarks bench-osprey`): times
 #                                the Osprey backends in a temp dir and merges
 #                                them into benchmarks/results/, leaving every
 #                                other language's recorded numbers untouched.
@@ -157,7 +157,7 @@ json_row() {
 }
 
 if [[ "$PARTIAL" == 1 && ! -f "$OUT/raw.jsonl" ]]; then
-  echo "FATAL: bench-osprey needs existing results at $OUT; run 'make bench' first." >&2
+  echo "FATAL: bench-osprey needs existing results at $OUT; run 'make -C benchmarks bench' first." >&2
   exit 1
 fi
 mkdir -p "$TMP" "$BINDIR" "$HFDIR"; : > "$RAW"

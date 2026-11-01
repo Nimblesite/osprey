@@ -2,7 +2,9 @@
 # the application's DLL, drives the window with a self-test script and keeps a PNG of the window
 # after each named step. Run it from a desktop session; a Windows service session has no desktop.
 #   self-test.ps1 -Exe <OspreyHost.exe> -Dll <app.dll> -Script <steps.json> -Shots <folder>
-#                 [-Dumps <folder>] [-Arguments <launch arguments>] [-Seconds <limit>]
+#                 [-Dumps <folder>] [-Arguments <launch arguments>] [-Seconds <limit>] [-Headless]
+# -Exe may be a packaged application's execution alias, which runs it in its AppContainer.
+# -Headless draws the window off screen without activating it; by default the window is on screen.
 # When the host fails it prints the trail the host left and keeps a picture of the desktop, and,
 # given the folder Windows Error Reporting writes OspreyHost.exe's crash dumps to, the debugger's
 # analysis of each dump.
@@ -13,7 +15,8 @@ param(
     [Parameter(Mandatory)] [string] $Shots,
     [string] $Dumps = '',
     [string[]] $Arguments = @(),
-    [int] $Seconds = 300
+    [int] $Seconds = 300,
+    [switch] $Headless
 )
 $ErrorActionPreference = 'Stop'
 $Exe = (Resolve-Path $Exe).Path
@@ -53,7 +56,7 @@ function Show-Failure {
 function Format-Argument([string] $Text) {
     '"' + ($Text -replace '(\\+)$', '$1$1') + '"'
 }
-$quoted = @('--self-test', $Script, $Shots, $Dll) + $Arguments | ForEach-Object { Format-Argument $_ }
+$quoted = @(if ($Headless) { '--headless' }) + @('--self-test', $Script, $Shots, $Dll) + $Arguments | ForEach-Object { Format-Argument $_ }
 $run = Start-Process -FilePath $Exe -ArgumentList $quoted -PassThru
 $null = $run.Handle  # keeps the exit code readable after a timed wait
 if (-not $run.WaitForExit($Seconds * 1000)) {

@@ -15,12 +15,13 @@ sealed class HostWindow : Window
 {
     const int Width = 1180;
     const int Height = 780;
+    const int OffScreen = -20000;
 
     readonly InfoBar problems = new() { Severity = InfoBarSeverity.Error, IsOpen = false, Title = "Osprey" };
     readonly List<string> reported = [];
     readonly Session? session;
 
-    public HostWindow(string library, string[] arguments)
+    public HostWindow(string library, string[] arguments, bool steady)
     {
         Progress.Note("window created");
         Title = Path.GetFileNameWithoutExtension(library);
@@ -30,7 +31,7 @@ sealed class HostWindow : Window
         var root = new Border();
         Content = Layout(root);
         Progress.Note("content set");
-        session = Started(library, arguments, root);
+        session = Started(library, arguments, root, steady);
         Progress.Note(session is null ? "application not started" : "application started");
     }
 
@@ -43,8 +44,26 @@ sealed class HostWindow : Window
     /// <summary>Chooses <paramref name="row"/> as a click on it would; false when its list takes no choice.</summary>
     public bool Choose(ListViewItem row) => session?.Choose(row) ?? false;
 
+    /// <summary>Lets the steady clock send <paramref name="frames"/> more frames; false when nothing animates.</summary>
+    public bool Grant(long frames) => session?.Grant(frames) ?? false;
+
+    /// <summary>The frames granted and not yet sent.</summary>
+    public long Owed => session?.Owed ?? 0;
+
     /// <summary>Presses and releases a key in the scene on screen; false when no scene is drawn.</summary>
     public bool Press(string key) => session?.Press(key) ?? false;
+
+    /// <summary>
+    /// Shows the window at its own size beyond every screen, without activating it and out of the
+    /// task switcher [WINUI-HOST-SELF-TEST]. It is still composed, so it draws and captures as a
+    /// window on screen does, at the size a screen of any resolution would not change.
+    /// </summary>
+    public void ShowOffScreen()
+    {
+        AppWindow.IsShownInSwitchers = false;
+        AppWindow.MoveAndResize(new RectInt32(OffScreen, OffScreen, Width, Height));
+        AppWindow.Show(activateWindow: false);
+    }
 
     // The window opens at its own size, or smaller on a screen that cannot hold it, centred.
     void Fit()
@@ -62,11 +81,11 @@ sealed class HostWindow : Window
         return grid;
     }
 
-    Session? Started(string library, string[] arguments, Border root)
+    Session? Started(string library, string[] arguments, Border root, bool steady)
     {
         try
         {
-            var opened = new Session(Library.Open(library), Store.RootFor(library), root, DispatcherQueue, Report, Pick);
+            var opened = new Session(Library.Open(library), Store.RootFor(library), root, DispatcherQueue, Report, Pick) { Steady = steady };
             opened.Begin(arguments);
             return opened;
         }

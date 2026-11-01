@@ -16,7 +16,8 @@ namespace Osprey.Host.WinUI;
 /// A script names only what a person sees: words on screen, a button's label, a row's text. Steps:
 /// <c>wait</c> and <c>gone</c> for words, <c>invoke</c> a button, <c>toggle</c> a switch,
 /// <c>choose</c> a row, <c>type</c> into a field, <c>key</c> to press a key in a scene,
-/// <c>sleep</c> for seconds while a scene animates, and <c>shot</c> to save the window as a PNG.
+/// <c>frames</c> to let the steady clock run that many 1/60 s frames, <c>sleep</c> for seconds,
+/// and <c>shot</c> to save the window as a PNG.
 /// Any diagnostic the window shows fails the test.
 /// </summary>
 sealed class SelfTest(HostWindow window, string script, string shots)
@@ -83,10 +84,15 @@ sealed class SelfTest(HostWindow window, string script, string shots)
         "choose" => Chosen(words[0]),
         "type" => Act(words[0], element => Type(element, words[1])),
         "shot" => Shot(words[0]),
+        "frames" => Framed(long.Parse(words[0], System.Globalization.CultureInfo.InvariantCulture)),
         "sleep" => Slept(double.Parse(words[0], System.Globalization.CultureInfo.InvariantCulture)),
         "key" => Task.FromResult(window.Press(words[0]) ? null : "no scene is drawn to take a key"),
         _ => Task.FromResult<string?>($"there is no step called {verb}"),
     };
+
+    Task<string?> Framed(long frames) => window.Grant(frames)
+        ? Until(() => window.Owed == 0, $"{window.Owed} of {frames} frames were not drawn")
+        : Task.FromResult<string?>("nothing animates, so no frames run");
 
     static async Task<string?> Slept(double seconds)
     {
