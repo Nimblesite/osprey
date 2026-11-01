@@ -991,6 +991,7 @@
    },
    "canvas": {
     "width": 868,
+    "zoom": 0.5,
     "height": 1113,
     "atlas": [
      "{{assets}}/skins/sherbet/backdrop.png",
