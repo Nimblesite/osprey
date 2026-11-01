@@ -29,11 +29,13 @@ module App
         parts = split path "/" ?: [path]
         join (ui::Lists::slice (parts, 0, satSub (length parts) 1)) "/"
 
-    (** Loads the document, applies `--skin` and answers the initial states' requests. *)
-    export initial context =
+    (** Loads the document in `skin` unless `--skin` names another, and answers the initial states' requests; an application built on the editor picks its own skin. *)
+    export opened (context, skin) =
         path = documentPath context.arguments
-        launched = Flow::launched (loaded (readFile path ?: ""), folder path, after (context.arguments, "--skin", ""))
-        Flow::settled launched
+        Flow::settled (Flow::launched (loaded (readFile path ?: ""), folder path, after (context.arguments, "--skin", skin)))
+
+    (** Loads the document, applies `--skin` and answers the initial states' requests. *)
+    export initial context = opened (context, "")
 
     (** Routes every framework message: controls pull the machine's levers and canvas releases hit its listeners. *)
     export update (_, store, message) = Messages::route (message, \lever => Flow::pulled (store, lever, JsonNull), \(lever, text) => Flow::pulled (store, lever, JsonString text), \(lever, on) => Flow::pulled (store, lever, JsonBool on), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, input) => Flow::pointed (store, input))

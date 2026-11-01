@@ -76,9 +76,10 @@ module Templates
             "count" => toString (toFloat (length (Doc::items (Machines::value (machine, name)))) * argument (parts, 1) + argument (parts, 2))
             "fit" => fitted (Machines::text (machine, name), parts)
             "fixed" => fixed (value * Pick::either (length parts > 2, argument (parts, 2), 1.0) + argument (parts, 3), floatToInt (argument (parts, 1)) ?: 0)
+            "expo" => fixed (argument (parts, 2) * pow (argument (parts, 3) / Pick::either (argument (parts, 2) > 0.0, argument (parts, 2), 1.0), value), floatToInt (argument (parts, 1)) ?: 0)
             _ => Machines::text (machine, name)
 
-    // `value` with exactly `digits` decimals, as `fixed:digits:k:offset` writes value × k + offset.
+    // `value` with exactly `digits` decimals, as `fixed:digits:k:offset` writes value × k + offset and `expo:digits:low:high` writes low × (high ÷ low)^value.
     fixed (value, digits) =
         scale = foldList (toList (range (0, digits)), 1, \(acc, _) => satMul acc 10)
         units = floatToInt (round (value * toFloat scale)) ?: 0

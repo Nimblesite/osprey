@@ -231,7 +231,7 @@ menuChoice () =
     flag ("canUndo", true)
     flag ("canRedo", false)
     expect (letters "+60%", true)
-    expect (letters "14.0 kHz", true)
+    expect (letters "2.5 kHz", true)
 
 menuCycle () =
     tap "Skin: Prism"
@@ -317,7 +317,7 @@ prismInspector () =
     tapAt ("Filter Cutoff", 0.5)
     knobNumber ("process", 0.5)
     knobNumber ("level", 0.35)
-    expect (letters "10.0 kHz", true)
+    expect (letters "0.6 kHz", true)
     expect (letters "+70%", true)
     expect (letters "-7.8 dB", true)
     tap "Bypass Master"

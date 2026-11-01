@@ -147,7 +147,7 @@ PRISM = {
         node("Scope", "Monitor", (482, 618, 736, 772), (674, 640, 34, 18), (495, 628, 531, 657), [(607, 614, "mon")]),
     ],
     "sliders": [("process", 538, 650, 490, "accent", "accent")],
-    "texts": [("+{{control|percent}}%", 649, 292, 14, "modText", 1, 400), ("{{process|fixed:1:20:0}} kHz", 699, 491, 14, "ink", 1, 400),
+    "texts": [("+{{control|percent}}%", 649, 292, 14, "modText", 1, 400), ("{{process|expo:1:0.02:20}} kHz", 699, 491, 14, "ink", 1, 400),
               ("{{delivered|fixed:1:12:-12}} dB", 1124, 496, 14, "ink", 1, 400)],
     "health": [],
     "erase": [(1094, 485, 1156, 507), (628, 281, 671, 303), (530, 479, 657, 501), (668, 481, 731, 501), (1228, 106, 1482, 172),
@@ -159,7 +159,7 @@ PRISM = {
         "rows": (497, 36), "dir": 1322, "arrow": 1374, "peer": 1400,
     },
     "params": {"control": ("Depth", "+{{control|percent}}%", ("0%", "100%")),
-               "process": ("Cutoff", "{{process|fixed:1:20:0}} kHz", ("0 kHz", "20 kHz"))},
+               "process": ("Cutoff", "{{process|expo:1:0.02:20}} kHz", ("20 Hz", "20 kHz"))},
     "links": {
         "control": [("mod", "CUTOFF", "Out", "Filter", "")],
         "source": [("sig", "AUDIO", "Out", "Filter", "")],
