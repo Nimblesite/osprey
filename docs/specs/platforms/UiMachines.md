@@ -2,7 +2,7 @@
 
 Spec · 1 November 2026 · [UI-MACHINE]
 
-An Osprey Native interface can be **data, not code**: one machine document holds the inputs, the state machines, the view and the skins. It takes its cues from Rive, where a designer ships one file with artboards, state machines and inputs, and every platform's runtime plays it. Here the document is JSON, and `ui::Machines` in [`@osprey/native`](../../../packages/native/README.md) interprets it. The interpreter turns the document and its current inputs into ordinary `Node` trees, so every host that speaks [UI-PROTOCOL] (GPUI, WinUI, VS Code, Apple, Android) renders a machine with no change. The application code that remains is a small adapter: it feeds domain facts in as inputs and answers the requests a state makes.
+An Osprey Native interface can be **data, not code**: one machine document holds the inputs, the state machines, the view and the skins. A designer ships one file and every platform plays it. The document is JSON, and `ui::Machines` in [`@osprey/native`](../../../packages/native/README.md) interprets it. The interpreter turns the document and its current inputs into ordinary `Node` trees, so every host that speaks [UI-PROTOCOL] (GPUI, WinUI, VS Code, Apple, Android) renders a machine with no change. The application code that remains is a small adapter: it feeds domain facts in as inputs and answers the requests a state makes.
 
 ```mermaid
 flowchart LR
@@ -33,7 +33,7 @@ flowchart LR
 
 ## Inputs [UI-MACHINE-INPUTS]
 
-Inputs are the machine's whole state besides the layers' current states, like Rive's inputs and view-model properties.
+Inputs are the machine's whole state besides the layers' current states.
 
 | Type | Value | Notes |
 | --- | --- | --- |
@@ -62,10 +62,10 @@ Inputs are the machine's whole state besides the layers' current states, like Ri
 }
 ```
 
-Layers run in parallel, as Rive's state machine layers do; each has exactly one current state. A **settle** follows each change of inputs:
+Layers run in parallel; each has exactly one current state. A **settle** follows each change of inputs:
 
 1. For each layer in document order, the first transition whose `from` is the current state (or `*`, unless the target is already current) and whose `when` holds moves the layer to `to`, and the entered state's `enter` requests are collected in order.
-2. Triggers are cleared after the first round, so a trigger fires one transition per layer, as a Rive trigger does.
+2. Triggers are cleared after the first round, so a trigger fires at most one transition per layer.
 3. Step 1 repeats until no transition fires. More than 32 rounds is reported as a fault, so a cycle is reported rather than spun.
 
 A request is `{"request": name, "with": [input names]}`. The adapter receives its name and the inputs' values at the moment of entry, does the work, and reports the results by setting inputs. A request never names a host capability; the adapter decides how to do it.

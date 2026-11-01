@@ -1,6 +1,6 @@
 // Implements [UI-MACHINE]: an interface as data. A machine document holds
-// inputs, parallel state-machine layers, a view template and skins, as a
-// Rive file does; this module validates it, settles its layers when inputs
+// inputs, parallel state-machine layers, a view template and skins; this
+// module validates it, settles its layers when inputs
 // change and collects the requests the entered states make.
 namespace ui
 
@@ -180,7 +180,7 @@ module Machines
                 true => settling (next.movedMachine, satSub left 1)
                 false => next.movedMachine
 
-    (** Moves every layer until no transition fires, collecting the entered states' requests. Triggers are seen by the first round only, as a Rive trigger fires once. *)
+    (** Moves every layer until no transition fires, collecting the entered states' requests. Triggers are seen by the first round only, so each fires once. *)
     export settle machine =
         first = round machine
         match first.moved
