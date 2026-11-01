@@ -7,7 +7,7 @@ move. `icon-<role>.png` is each node's icon for the inspector. The live parts ar
 canvas shapes and listeners bound to the machine's inputs, replacing the document's `skins`.
 Run with Pillow and NumPy:
 
-    python3 packages/signal_flow/skins/build.py
+    python3 scripts/signal-flow-skins/build.py
 """
 import json
 from pathlib import Path
@@ -17,14 +17,16 @@ from PIL import Image, ImageDraw
 
 import drag
 import keys
+import room
 from spec import RATES, ROLES, SKINS, WAVES
 from traces import meters, shape, traces
 
-HERE = Path(__file__).resolve().parent
-DESIGNS = HERE.parent / "design"
-DOCUMENT = HERE.parent / "signal_flow.machine.json"
+PACKAGE = Path(__file__).resolve().parents[2] / "packages" / "signal_flow"
+HERE = PACKAGE / "skins"
+DESIGNS = PACKAGE / "design"
+DOCUMENT = PACKAGE / "signal_flow.machine.json"
 SUPER = 4
-ZOOM = 0  # fits the window, so a larger window shows a larger canvas
+ZOOM = 0.75
 
 
 def rgb(hex_colour):
@@ -80,6 +82,9 @@ def slice_skin(key, skin):
         px[y0:y1, x0:x0 + dx] = px[y0:y1, x0 + dx + 4:x0 + dx + 5]
     if "cables" in skin:
         drag.cut(key, skin, px, folder)
+    if skin.get("room"):
+        room.cut(skin, px[:skin["height"]], folder)
+        return
     Image.fromarray(np.clip(px, 0, 255).astype(np.uint8)[:skin["height"]]).save(folder / "backdrop.png", optimize=True)
 
 
@@ -395,8 +400,9 @@ def listeners(skin):
 
 
 def canvas(key, skin):
-    atlas = [f"{{{{assets}}}}/skins/{key}/backdrop.png"] + [f"{{{{assets}}}}/skins/{key}/icon-{role}.png" for role in ROLES]
-    backdrop = shape("sprite", index=0, x=768, y=skin["height"] / 2, w=1536, h=skin["height"], depth=0)
+    ground = "grid" if skin.get("room") else "backdrop"
+    atlas = [f"{{{{assets}}}}/skins/{key}/{ground}.png"] + [f"{{{{assets}}}}/skins/{key}/icon-{role}.png" for role in ROLES]
+    backdrop = [shape("sprite", index=0, x=768, y=skin["height"] / 2, w=1536, h=skin["height"], depth=0)]
     shapes = node_shapes(key, skin) + traces(skin) + meters(skin) + inspector(key, skin)
     shapes += [s for m in menus(skin) for s in menu_shapes(*m)]
     found = listeners(skin)
@@ -405,8 +411,12 @@ def canvas(key, skin):
         atlas += [f"{{{{assets}}}}/skins/{key}/node-{role}.png" for role in ROLES]
         shapes = drag.cables(skin) + drag.badge(skin) + drag.nodes(skin, 1 + len(ROLES)) + [drag.followed(skin, s) for s in shapes]
     if skin.get("keys"):
-        shapes, found, height = shapes + keys.shapes(1536), keys.listeners() + found, keys.height(height)
-    shapes = [backdrop] + shapes
+        shapes, found, height = shapes + keys.shapes(f"{room.WIDE} 1536"), keys.listeners() + found, keys.height(height)
+    if skin.get("room"):
+        backdrop = room.backdrop(skin, len(atlas))
+        atlas += room.atlas(key)
+        shapes, found = [room.pinned(skin, s) for s in shapes], [room.pinned(skin, a) for a in found]
+    shapes = backdrop + shapes
     return {"width": 1536, "height": height, "zoom": ZOOM, "atlas": atlas, "shapes": shapes, "listeners": found}
 
 
@@ -415,7 +425,7 @@ def main():
     for key, skin in SKINS.items():
         slice_skin(key, skin)
     logo()
-    doc["inputs"].update({**drag.offsets(), **keys.inputs()})
+    doc["inputs"].update({**drag.offsets(), **keys.inputs(), **room.inputs()})
     doc["layers"] = [layer for layer in doc["layers"] if layer["name"] != "keys"] + [keys.layer()]
     doc["skins"] = {key: {"name": skin["name"], "motion": "none", "tokens": {**skin["tokens"], "background": skin["tokens"]["canvas"]}, "canvas": canvas(key, skin)}
                     for key, skin in SKINS.items()}

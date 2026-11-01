@@ -162,6 +162,8 @@ impl Shape {
 pub struct Transform {
     origin: Point<Pixels>,
     scale: f32,
+    /// The region's width and height in scene units, which the application is told when they change.
+    viewed: (f32, f32),
 }
 
 impl Transform {
@@ -169,19 +171,21 @@ impl Transform {
     /// shows more of the canvas and never resizes what is on it, or with zoom 0 as large as fits the
     /// region whole. A zero-sized scene is in window pixels, so its origin is the window's.
     fn new(bounds: Bounds<Pixels>, decoded: &Decoded) -> Self {
-        let fitted = f32::from(bounds.size.width) / decoded.width;
-        match (decoded.width == 0., decoded.zoom == 0.) {
-            (true, _) => Self {
+        let (width, height) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+        let scale = match decoded.zoom == 0. {
+            true => (width / decoded.width).min(height / decoded.height),
+            false => decoded.zoom,
+        };
+        match decoded.width == 0. {
+            true => Self {
                 origin: Point::default(),
                 scale: 1.,
+                viewed: (width, height),
             },
-            (false, true) => Self {
+            false => Self {
                 origin: bounds.origin,
-                scale: fitted.min(f32::from(bounds.size.height) / decoded.height),
-            },
-            (false, false) => Self {
-                origin: bounds.origin,
-                scale: decoded.zoom,
+                scale,
+                viewed: (width / scale, height / scale),
             },
         }
     }
@@ -292,6 +296,7 @@ mod tests {
                 point(px(origin.0 + 200. * scale), px(origin.1 + 100. * scale))
             );
             assert_eq!(transform.scene(corner), (200., 100.));
+            assert_eq!(transform.viewed, (w / transform.scale, h / transform.scale));
         }
         assert!(decode::decode(
             &serde_json::from_str(r#"{"width":2,"height":2,"zoom":-1,"shapes":[]}"#).unwrap(),

@@ -161,8 +161,31 @@ module Canvases
             RectFigure => turned (machine, m, at m.markX, at m.markY, at m.markW, at m.markH, at m.markAngle + at m.markTurn, depth)
             _ => polyline (machine, m, mapList (m.markPoints, at), depth)
 
-    (** A skin's artboard as one scene at its fixed `zoom`: its atlas, every shape whose `when` holds, repeats expanded, and the accessibility tree a host announces. *)
-    export artboard (machine, zoom, w, h, atlas, marks) = Ui::described (Ui::zoomed (Templates::measure (machine, zoom), Templates::measure (machine, w), Templates::measure (machine, h), mapList (atlas, \path => Templates::fill (machine, path)), Lists::flatten (mapList (filterList (marksOf (machine, marks), \m => Machines::holds (machine, m.markWhen)), \m => primitives (machine, m))), Fire(fireName = "")), semantics machine)
+    (** A skin's artboard as one scene at its fixed `zoom`, grown by the room its region spares: its atlas, every shape whose `when` holds, repeats expanded, and the accessibility tree a host announces. *)
+    export artboard (given, zoom, w, h, atlas, marks) =
+        machine = roomy given
+        width = Templates::measure (machine, w) + Machines::number (machine, "spareWidth")
+        height = Templates::measure (machine, h) + Machines::number (machine, "spareHeight")
+        drawn = Lists::flatten (mapList (filterList (marksOf (machine, marks), \m => Machines::holds (machine, m.markWhen)), \m => primitives (machine, m)))
+        Ui::described (Ui::zoomed (Templates::measure (machine, zoom), width, height, mapList (atlas, \path => Templates::fill (machine, path)), drawn, Fire(fireName = "")), semantics machine)
+
+    // ---- room [UI-MACHINE-CANVAS] ----
+
+    room (machine, name, x) = match Machines::value (machine, name)
+        Unset => machine
+        _ => Machines::put (machine, name, Values::number x)
+
+    beyond (shown, drawn) = Pick::either (shown > drawn, shown - drawn, 0.0)
+
+    (** The machine with `spareWidth` and `spareHeight`, where it declares them, set to how far its region outgrows the chosen skin's canvas, so a skin can pin shapes to the region's right and bottom. *)
+    export roomy machine = match (Templates::skin machine).skinBoard
+        Boarded w h _ _ _ _ =>
+            wide = room (machine, "spareWidth", beyond (Machines::number (machine, "viewWidth"), Templates::measure (machine, w)))
+            room (wide, "spareHeight", beyond (Machines::number (machine, "viewHeight"), Templates::measure (machine, h)))
+        Unboarded => machine
+
+    (** The canvas's region measured at `width` by `height` scene units, kept as `viewWidth` and `viewHeight` where the machine declares them. *)
+    export viewed (machine, width, height) = roomy (room (room (machine, "viewWidth", width), "viewHeight", height))
 
     // ---- listeners ----
 
@@ -233,8 +256,8 @@ module Canvases
 
     (** A pointer at `x`, `y` on the canvas, pressed or not: a press grips what is under it, moves drag or slide it, and the release acts once. A move with nothing pressed is a hover and changes nothing. *)
     export pointer (machine, x, y, down) = match down
-        true => held (machine, x, y)
-        false => letGo (machine, x, y)
+        true => held (roomy machine, x, y)
+        false => letGo (roomy machine, x, y)
 
     (** Whether the pointer is holding the canvas, so a caller can wait for the release before acting on a change. *)
     export holding machine = match machine.machineGrip
@@ -268,9 +291,15 @@ module Canvases
         Unslid => bare (machine, a)
 
     (** The canvas's accessibility tree: each live listener's role, filled label, bounds and, for a slider, its value, in hit order. Hosts map it to the platform's accessibility API; agents and tests read it. *)
-    export semantics machine = mapList (described machine, \a => element (machine, a))
+    export semantics given =
+        machine = roomy given
+        mapList (described machine, \a => element (machine, a))
 
     (** The listener labelled `label` activated as a screen reader or agent would: a slider is set `fraction` of the way across, anything else pressed. An unknown label changes nothing. *)
-    export act (machine, label, fraction) = match Lists::find (described machine, \a => Templates::fill (machine, a.areaLabel) == label)
+    export act (given, label, fraction) =
+        machine = roomy given
+        acted (machine, label, fraction)
+
+    acted (machine, label, fraction) = match Lists::find (described machine, \a => Templates::fill (machine, a.areaLabel) == label)
         Success a => listened (machine, a, at (machine, a.areaX) + at (machine, a.areaW) * fraction)
         Error _ => machine

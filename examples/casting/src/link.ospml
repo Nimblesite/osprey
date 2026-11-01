@@ -154,7 +154,7 @@ module Link
     pointer (store, x, y, down) = settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down))))
 
     (** A canvas pointer event ([UI-MACHINE-CANVAS]): a press grips, a drag slides, the release acts once on the listener under it, and a hover changes nothing; keys change nothing. *)
-    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pointer (store, x, y, down))
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pointer (store, x, y, down), \(_, _) => Runtime::step store)
 
     // ---- completions ----
 

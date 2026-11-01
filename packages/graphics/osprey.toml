@@ -7,7 +7,7 @@ default_namespace = "ui"
 name = "@osprey/graphics"
 license = "MIT"
 summary = "Core graphics primitives for Osprey: rectangles, discs, strips, sprites, lettering and paths in a scene's own units, with packed colours"
-keywords = ["graphics", "scene", "primitives", "canvas", "ui"]
+keywords = ["canvas", "graphics", "primitives", "scene", "ui"]
 
 [modules]
 allow_wildcard_imports = false

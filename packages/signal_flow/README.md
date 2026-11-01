@@ -1,4 +1,4 @@
-# @osprey/signal_flow
+# @osprey/signal-flow
 
 A signal-flow graph editor whose whole interface is data ([UI-MACHINE-FLOW](../../docs/specs/platforms/UiMachines.md)). [signal_flow.machine.json](signal_flow.machine.json) holds the inputs, the `commands` and `menu` layers, a native fallback view and four canvas skins. `ui::Machines` and `ui::Templates` in [@osprey/native](../native/README.md) play it on any host. The only code is the adapter, [src/flow.ospml](src/flow.ospml). It evaluates the signal path and keeps the undo history.
 
@@ -22,10 +22,10 @@ Pass `--skin notation` (or `paper`, `prism`) after the script to start in anothe
 
 ## Skins
 
-`skins/spec.py` records where every live part sits in each design, in mock pixels. `skins/build.py` slices each mock into `skins/<skin>/backdrop.png`, with the live parts painted out and the selection ring redrawn as a plain border, plus one icon per node. It then rewrites the document's `skins` with the shapes and listeners that draw those parts from the inputs. Rebuild after changing a design or the spec. It needs Pillow and NumPy:
+`scripts/signal-flow-skins/spec.py` records where every live part sits in each design, in mock pixels. `scripts/signal-flow-skins/build.py` slices each mock into `skins/<skin>/backdrop.png`, with the live parts painted out and the selection ring redrawn as a plain border, plus one icon per node. It then rewrites the document's `skins` with the shapes and listeners that draw those parts from the inputs. Rebuild after changing a design or the spec. It needs Pillow and NumPy:
 
 ```sh
-python3 packages/signal_flow/skins/build.py
+python3 scripts/signal-flow-skins/build.py
 ```
 
 ## Test

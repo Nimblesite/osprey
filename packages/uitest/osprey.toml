@@ -1,13 +1,18 @@
 [project]
 name = "uitest"
-source_roots = ["src", "../native/src", "../graphics/src", "../json/src"]
+source_roots = ["src"]
 default_namespace = "uitest"
 
 [package]
 name = "@osprey/uitest"
 license = "MIT"
 summary = "Label-driven UI testing for Osprey Native apps without a host or window"
-keywords = ["native", "testing", "ui", "accessibility"]
+keywords = ["accessibility", "native", "testing", "ui"]
+
+[dependencies]
+"@osprey/graphics" = { epoch = 1, min_release = 1 }
+"@osprey/json" = { epoch = 1, min_release = 1 }
+"@osprey/native" = { epoch = 1, min_release = 1 }
 
 [modules]
 allow_wildcard_imports = false

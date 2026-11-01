@@ -1,6 +1,6 @@
 # Prism synth
 
-A sample application on [@osprey/signal_flow](../../packages/signal_flow/README.md): the signal-flow editor in its Prism skin with a keyboard deck, wired to a real voice ([UI-MACHINE-FLOW-SYNTH](../../docs/specs/platforms/UiMachines.md)). The graph's five nodes are the synth:
+A sample application on [@osprey/signal-flow](../../packages/signal_flow/README.md): the signal-flow editor in its Prism skin with a keyboard deck, wired to a real voice ([UI-MACHINE-FLOW-SYNTH](../../docs/specs/platforms/UiMachines.md)). The graph's five nodes are the synth:
 
 | Node | What it does to the sound |
 | --- | --- |
@@ -24,4 +24,6 @@ make -C apps/macos synth             # or: bash examples/synth/run.sh
 ./target/release/osprey test examples/synth/test
 ```
 
-The tests check the voice sample by sample: peaks for each patch and the WAV header. Then they drive the Prism canvas by accessible label and check that every key asks the host to play exactly the clip its patch renders at its pitch, and that every control asks for nothing.
+Resizing the window never resizes a control: the inspector stays at the right edge, the keyboard at the bottom, and the graph between them gains grid.
+
+The tests check the voice sample by sample: peaks for each patch and the WAV header. Then they drive the Prism canvas by accessible label and check that every key asks the host to play exactly the clip its patch renders at its pitch, that every control asks for nothing, and that a larger window moves the keyboard and inspector to its edges with their keys still playing.

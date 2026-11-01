@@ -57,7 +57,8 @@
     "symbol": "",
     "on": { "set": "caption", "value": "Pressed" }
    },
-   { "kind": "label", "text": "{{selected}}", "symbol": "" }
+   { "kind": "label", "text": "{{selected}}", "symbol": "" },
+   { "kind": "picker", "text": "Pick", "choices": "choices", "selected": "{{selected}}", "on": { "set": "selected" } }
   ]
  },
  "skins": {
@@ -70,6 +71,13 @@
     "height": 400,
     "atlas": [],
     "shapes": [
+     {
+      "shape": "cable",
+      "points": [[10, 20], [110, 80]],
+      "stroke": 2,
+      "colour": "#252333",
+      "depth": 0
+     },
      {
       "shape": "text",
       "text": "{{caption}}",

@@ -52,7 +52,14 @@ Rules: [AGENTS.md § Apps](../../AGENTS.md#apps). Hosts: WinUI ([spec 0048](../s
 2. **Sandboxed packages for the apps that already run on WinUI.** Storage, Flock and Painting: the package script, the packaged host (decisions 2 to 5) and `make -C apps <app>` on Windows. Add AppContainer checks to the host's tests: the process token is an AppContainer, a write outside the package fails, and the store writes to LocalState.
 3. **Screenshot goldens in CI.** Add golden comparison and the headless mode. Commit goldens for Storage, Flock and Painting. `winui.yml` runs the packaged apps, compares their shots with the goldens and uploads the diffs. It is called from `ci.yml`, so the root `CI` job gates on it.
 4. **Graphics in WinUI.** Plan 0040 phases 2 and 3.
-5. **Signal flow and Casting on Windows.** Signal flow first; it needs only the WinUI host. Casting needs mDNS discovery, the file picker, the MinGW TLS and file-server runtime, and the private-network capability.
+5. **Signal flow and Casting on Windows.** Signal flow first; it needs only the WinUI host. Casting runs as its table row says. Built as of 2026-11-01:
+   - The file server and TLS client compile under MinGW. Media render returns "" there, so a Windows sender casts plain audio.
+   - The WinUI host answers `run` and `choose-file` (`Processes`, a `FileOpenPicker`).
+   - `--browse` names `examples/casting/windows/cast-browse.c`, which prints the dns-sd lines `Discovery.browse` reads.
+   - DLLs that use TLS link static OpenSSL.
+   - `apps/windows.json` has the casting entry, and `app.ps1` builds its helper.
+
+   Not yet run on Windows. The `make ui-test` step is in `ci-windows.yml`.
 6. **Counter, Inbox and Workbench on Osprey Native.** Counter, then Inbox (plan 0039 phase 4), then Workbench on the WinUI host.
 7. **Bank and GPT-2 sandboxed.** Both are launched in an AppContainer.
 

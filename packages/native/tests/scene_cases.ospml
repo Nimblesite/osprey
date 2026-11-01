@@ -64,7 +64,7 @@ sceneCaseColoursPackAsRrggbbaa () =
     expect (Scenes::rgba (1, 2, 3, 4), 16909060)
     expect (Scenes::rgb (255, 255, 255), 4294967295)
 
-controlled value = Messages::route (Events::bind (ui::SceneInput(action = Typed), value) ?: ui::Act(act = Load), \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, input) => Inputs::route (input, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}"))
+controlled value = Messages::route (Events::bind (ui::SceneInput(action = Typed), value) ?: ui::Act(act = Load), \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, input) => Inputs::route (input, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}"))
 
 // [UI-SCENE]: a scene's binding delivers keys and pointer positions and refuses anything else.
 stepCode (steps, index) = jsonInt (jsonIndex (listGet steps index ?: JsonNull) 0 ?: JsonNull) ?: 0 - 1
@@ -95,13 +95,15 @@ sceneCaseAPathEncodesItsStepsOutlinePaint () =
     expect (Doc::write (jsonIndex stroked 3 ?: JsonNull), "[0,[0,1.0,0.0,0.0,0.5]]")
     expect (Doc::write (jsonIndex stroked 4 ?: JsonNull), "[10.0,200.0,0.9]")
 
-(** a scene binding delivers keys and pointer positions in scene units. *)
+(** a scene binding delivers keys, pointer positions and its region's size in scene units. *)
 sceneCaseASceneBindingDeliversKeysAndPointer () =
     expect (controlled (JsonObject [Doc::str ("key", "ArrowLeft"), Doc::bit ("down", true)]), "key ArrowLeft true")
     expect (controlled (JsonObject [JsonMember "x" (JsonFloat 12.5), JsonMember "y" (JsonInt 3), Doc::bit ("down", false)]), "pointer 12.5 3.0 false false")
     expect (controlled (JsonObject [JsonMember "x" (JsonFloat 1.0), JsonMember "y" (JsonFloat 2.0), Doc::bit ("down", true), Doc::bit ("shift", true)]), "pointer 1.0 2.0 true true")
+    expect (controlled (JsonObject [JsonMember "width" (JsonFloat 1536.0), JsonMember "height" (JsonInt 1008)]), "viewed 1536.0 1008.0")
+    expect (controlled (JsonObject [JsonMember "width" (JsonFloat 0.5), JsonMember "height" (JsonFloat 2.25), Doc::bit ("down", true)]), "viewed 0.5 2.25")
     expect (controlled (JsonString "left"), "tap")
-    forEachList ([JsonObject [], JsonObject [Doc::str ("key", "ArrowLeft")], JsonObject [Doc::num ("key", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::str ("down", "false")], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::bit ("down", true), Doc::str ("shift", "false")]], \value =>
+    forEachList ([JsonObject [], JsonObject [Doc::str ("key", "ArrowLeft")], JsonObject [Doc::num ("key", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::str ("down", "false")], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::bit ("down", true), Doc::str ("shift", "false")], JsonObject [Doc::num ("width", 4)], JsonObject [Doc::str ("width", "wide"), Doc::num ("height", 2)]], \value =>
         expect (boundAs (ui::SceneInput(action = Typed), value), "A scene control sent a value of the wrong kind"))
 
 framed : ui::Message<Act> -> float

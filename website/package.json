@@ -16,7 +16,7 @@
     "update-playground": "node scripts/update-playground.js",
     "build:wasm": "cd .. && make -C website wasm-site",
     "clean": "rm -rf _site",
-    "pretest": "make -C .. _runtime wasm-site",
+    "pretest": "make -C .. _runtime && make wasm-site",
     "test": "playwright test",
     "test:e2e": "npm test --",
     "test:headed": "npm test -- --headed",

@@ -26,6 +26,9 @@ module Drive
     (** A pointer at `x`, `y` on the root canvas, pressed or released. *)
     export pointer (d, x, y, down) = Events::pointer (d.drivenSeen.renderedRevision, d.drivenSeen.renderedOrdinal, x, y, down, d.drivenNow)
 
+    (** The scene's region measured at `width` by `height` scene units, as the host reports it on showing or resizing. *)
+    export viewed (d, width, height) = Events::viewed (d.drivenSeen.renderedRevision, d.drivenSeen.renderedOrdinal, width, height, d.drivenNow)
+
     (** A display frame `seconds` after the last. *)
     export frame (d, seconds) = Events::frame (seconds, d.drivenNow)
 

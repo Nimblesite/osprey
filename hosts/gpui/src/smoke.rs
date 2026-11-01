@@ -181,6 +181,11 @@ fn completion(now: i64, request: &Request) -> Result<String, String> {
             &request.ticket,
             "no such store entry",
         )),
+        "run" => Ok(events::completed_err(
+            now,
+            &request.ticket,
+            "the smoke run starts no processes",
+        )),
         kind => Err(format!(
             "unsupported capability {} under {}",
             kind, request.ticket

@@ -1,6 +1,6 @@
 [project]
 name = "native"
-source_roots = ["src", "../graphics/src", "../json/src"]
+source_roots = ["src"]
 default_namespace = "ui"
 
 [package]
@@ -8,6 +8,10 @@ name = "@osprey/native"
 license = "MIT"
 summary = "Osprey Native: a centralized store, signals, keyed regions, typed components, bindings and capability effects for native application hosts"
 keywords = ["desktop", "native", "reactive", "signals", "ui"]
+
+[dependencies]
+"@osprey/graphics" = { epoch = 1, min_release = 1 }
+"@osprey/json" = { epoch = 1, min_release = 1 }
 
 [modules]
 allow_wildcard_imports = false

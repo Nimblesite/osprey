@@ -147,86 +147,6 @@ sounds (name, expectedPeak) =
     struck (name, Synth::frequency name)
     played expectedPeak
 
-// ---- the voice, without an editor ----
-
-patch (wave, process, depth, lfo, volume) = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
-
-defaultPatch () = patch ("Sine", 0.7, 0.7, 2.0, 0.75)
-
-voiceCase (p, expectedPeak) =
-    samples = Synth::samples p
-    expect (length samples, Synth::rate)
-    nearPeak (p, expectedPeak)
-    expect (length (Synth::played p), 1)
-
-silentCase p =
-    samples = Synth::samples p
-    expect (length samples, Synth::rate)
-    expect (Synth::peak samples, 0)
-    expect (ui::Lists::all (samples, \sample => sample == 128), true)
-    expect (length (Synth::played p), 0)
-
-near (actual, expected) = expect (actual - expected < 0.0001 && expected - actual < 0.0001, true)
-
-shapes () =
-    near (Synth::shaped ("Sine", 0.25), 1.0)
-    near (Synth::shaped ("Sine", 0.75), -1.0)
-    near (Synth::shaped ("Triangle", 0.0), -1.0)
-    near (Synth::shaped ("Triangle", 0.5), 1.0)
-    near (Synth::shaped ("Triangle", 0.25), 0.0)
-    near (Synth::shaped ("Saw", 0.0), -1.0)
-    near (Synth::shaped ("Saw", 0.75), 0.5)
-    near (Synth::shaped ("Square", 0.2), 1.0)
-    near (Synth::shaped ("Square", 0.7), -1.0)
-    near (Synth::shaped ("Sine", 1.25), 1.0)
-    near (Synth::hertz "1/1", 0.5)
-    near (Synth::hertz "1/2", 1.0)
-    near (Synth::hertz "1/4", 2.0)
-    near (Synth::hertz "1/8", 4.0)
-    near (Synth::hertz "1/16", 8.0)
-    near (Synth::frequency "A3", 220.0)
-    near (Synth::frequency "A4", 440.0)
-    near (Synth::frequency "C3", 130.8128)
-    near (Synth::frequency "C4", 261.6256)
-    near (Synth::frequency "C#4", 277.1826)
-    near (Synth::frequency "F#3", 184.9972)
-    near (Synth::frequency "B4", 493.8833)
-
-voiceCases () =
-    voiceCase (defaultPatch (), 75)
-    voiceCase (patch ("Sine", 0.1, 0.7, 2.0, 0.75), 17)
-    voiceCase (patch ("Sine", 0.1, 0.0, 2.0, 0.75), 2)
-    voiceCase (patch ("Sine", 0.7, 0.7, 2.0, 1.0), 100)
-    voiceCase (patch ("Sine", 0.7, 0.7, 2.0, 0.5), 50)
-    voiceCase (patch ("Square", 0.7, 0.7, 2.0, 0.75), 75)
-    voiceCase (patch ("Saw", 0.1, 0.7, 8.0, 0.75), 17)
-    d = defaultPatch ()
-    silentCase (d(sounding = false))
-    silentCase (d(audible = false))
-    silentCase (patch ("Sine", 0.7, 0.7, 2.0, 0.0))
-
-// Every field of a patch changes what it sounds like.
-descriptionsDiffer () =
-    d = defaultPatch ()
-    base = Synth::describe d
-    expect (Synth::describe (patch ("Saw", 0.7, 0.7, 2.0, 0.75)) == base, false)
-    expect (Synth::describe (patch ("Sine", 0.1, 0.7, 2.0, 0.75)) == base, false)
-    expect (Synth::describe (patch ("Sine", 0.7, 0.3, 2.0, 0.75)) == base, false)
-    expect (Synth::describe (patch ("Sine", 0.7, 0.7, 8.0, 0.75)) == base, false)
-    expect (Synth::describe (patch ("Sine", 0.7, 0.7, 2.0, 0.5)) == base, false)
-    expect (Synth::describe (d(filtered = false)) == base, false)
-    expect (Synth::describe (d(pitch = 440.0)) == base, false)
-    expect (Synth::wav (Synth::samples (d(pitch = 440.0))) == Synth::wav (Synth::samples d), false)
-    expect (Synth::wav (Synth::samples (patch ("Square", 0.1, 0.7, 2.0, 0.75))) == Synth::wav (Synth::samples (patch ("Saw", 0.1, 0.7, 2.0, 0.75))), false)
-    expect (Synth::wav (Synth::samples (patch ("Sine", 0.1, 0.7, 0.5, 0.75))) == Synth::wav (Synth::samples (patch ("Sine", 0.1, 0.7, 8.0, 0.75))), false)
-
-wavCase () =
-    clip = Synth::wav (Synth::samples (defaultPatch ()))
-    expect (length clip, (44 + Synth::rate) * 2)
-    expect (startsWith clip "52494646352B000057415645666D7420", true)
-    expect (contains clip "112B0000112B0000", true)
-    expect (take (drop clip 72) 16, "64617461112B0000")
-
 // ---- launch, editing and history through the Prism skin ----
 
 launchAndCutoff () =
@@ -521,3 +441,6 @@ test ("menus, skin changes, node selections, node and slider drags stay quiet; a
     quietDrag before
     slidQuietly ()
     keyPress ()))
+
+test ("a larger window drops the keyboard and moves the inspector at their size, and the keys still play", \() => bench (\() =>
+    roomyKeys ()))

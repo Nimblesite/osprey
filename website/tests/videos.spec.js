@@ -158,7 +158,7 @@ for (const width of [390, 1440]) {
     await expect(player).toBeVisible();
     await expect(player).toHaveAttribute("poster", "/assets/videos/osprey-showcase-poster.jpg");
     await expect(player.locator("source")).toHaveAttribute("src", "/assets/videos/osprey-showcase.mp4");
-    await expect(player).toHaveAttribute("aria-label", /web, Android, iPhone, macOS/);
+    await expect(player).toHaveAttribute("aria-label", /web, Android, iPhone, macOS, Windows/);
     await player.evaluate((video) => video.play());
     await expect.poll(() => player.evaluate((video) => video.currentTime)).toBeGreaterThan(0.5);
     expect(await player.evaluate((video) => video.videoWidth)).toBe(1920);

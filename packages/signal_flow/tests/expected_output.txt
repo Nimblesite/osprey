@@ -1,0 +1,9 @@
+ok 1 - topology: pointer editing, history, inspectors and signal health
+ok 2 - the skin menu dismisses, switches skins and preserves the session
+ok 3 - every skin: every node selects, bypasses, enables and tracks its inspector
+ok 4 - notation and prism inspector switches and parameter lettering
+ok 5 - prism: every chooser, slider, switch and the history drive the patch
+ok 6 - prism: nodes drag with their cables, controls and sprites; clicks, hovers and slider drags act once
+ok 7 - prism: a larger window moves the inspector, undo and legend to its edges at their size and leaves more grid; a smaller one spares none
+1..7
+# tests=7 passed=7 failed=0 skipped=0

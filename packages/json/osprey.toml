@@ -7,7 +7,7 @@ default_namespace = "ui"
 name = "@osprey/json"
 license = "MIT"
 summary = "Total readers and member builders over Osprey's built-in Json value"
-keywords = ["json", "doc", "ui"]
+keywords = ["doc", "json", "ui"]
 
 [modules]
 allow_wildcard_imports = false
