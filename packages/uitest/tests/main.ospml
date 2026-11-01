@@ -4,11 +4,15 @@
 
 import ui::Canvases
 import ui::Doc
+import ui::Inputs
+import ui::Keyed
 import ui::MachineDocs
 import ui::Machines
+import ui::Messages
 import ui::Runtime
 import ui::Templates
 import ui::Values
+import uitest::Drive
 import uitest::Events
 import uitest::Read
 import uitest::Semantics
@@ -104,7 +108,7 @@ test ("native views are found by what they say, and every host event keeps its w
     expect ((Views::control (shown, "Native action")).controlKind, "button")
     expect ((Views::control (shown, "Missing")).controlKind, "")
     expect (Views::shows (shown, "Missing"), false)
-    expect (Views::texts shown, "Native|Native action|two")
+    expect (Views::texts shown, "Native|Native action|two|Pick|One|Two|Three")
     expect (Views::lettered shown, "")
     asked = Read::envelope (Read::blank (), "{\"requests\":[{\"kind\":\"run\"},{\"kind\":\"animate\"}]}")
     expect (Views::requested (asked, "run"), true)
@@ -147,3 +151,170 @@ test ("a broken document is refused with every problem named by its path", \() =
     faulty = MachineDocs::faulty "boom"
     expect (faulty.machineFault, "boom")
     expect (Views::texts (seen faulty), "This interface could not load")))
+
+// The same fixture as a resident application: its machine is the store, its
+// ordinary template is the root region and every host event comes from Drive.
+effect Bench
+    drive : uitest::Driven<ui::Machine> => Unit
+
+mut driven = Drive::idle (Runtime::idle (MachineDocs::faulty ""))
+
+kept (resident : ui::Resident<ui::Machine>) = perform Bench.drive (Drive::moved (driven, resident))
+
+fixture () = match MachineDocs::load (readFile "packages/uitest/tests/fixture.machine.json" ?: "")
+    Success machine => machine
+    Error problem => MachineDocs::faulty problem
+
+initial context =
+    skin = listGet context.arguments 1 ?: "tiny"
+    caption = ui::Pick::either (skin == "plain", "Native", "Hello")
+    Runtime::step (Machines::feed (fixture (), [Machines::fact ("skin", Values::text skin), Machines::fact ("caption", Values::text caption)]))
+
+pulled (machine, lever, value) = Runtime::step (Machines::pull (machine, lever, value))
+
+pointed (machine, input) = Inputs::route (input, \(_, _) => Runtime::step machine, \(x, y, down, _) => Runtime::step (Canvases::pointer (machine, x, y, down)), \(width, height) => Runtime::step (Canvases::viewed (machine, width, height)))
+
+update (_, machine, message) = Messages::route (message, \lever => pulled (machine, lever, Values::none ()), \(lever, text) => pulled (machine, lever, Values::text text), \(lever, on) => pulled (machine, lever, Values::flag on), \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, _) => Runtime::step machine, \(_, _) => Runtime::step machine, \_ => Runtime::step machine, \(_, input) => pointed (machine, input))
+
+machineSlice () = perform Signal<ui::Machine>.read ()
+
+root () = Templates::view (machineSlice ())
+
+regions (before, after, frames, _) =
+    handle static Signal<ui::Machine>
+        read => after
+    changed = signalChanges before after MachineDocs::snapshot (signalDependencies machineSlice)
+    [Keyed::region (frames, "root", changed, root)]
+
+hosted work =
+    handle ui::Slices
+        fetch _ => ""
+    handle ui::SceneStream
+        shape _ => 0
+    work ()
+
+bench work =
+    handle Bench
+        drive d => driven := d
+    Runtime::guarded work
+
+begun skin =
+    perform Bench.drive (Drive::idle driven.drivenSession)
+    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"${skin}\"]}", initial, regions, Templates::theme (fixture ()))))
+
+post event = hosted (\() => kept (Runtime::proceed (driven.drivenSession, event, update, regions)))
+
+press label = post (Drive::press (driven, label))
+
+choose (label, key) = post (Drive::choose (driven, label, key))
+
+pointer (x, y, down) = post (Drive::pointer (driven, x, y, down))
+
+viewed (width, height) = post (Drive::viewed (driven, width, height))
+
+elements () = driven.drivenSeen.renderedAccess
+
+elementAt label = Semantics::element (elements (), label)
+
+tapAt (label, fraction) =
+    p = Semantics::point (elementAt label, fraction)
+    pointer (p.pointX, p.pointY, true)
+    pointer (p.pointX, p.pointY, false)
+
+tap label = tapAt (label, 0.5)
+
+level () = Semantics::value (elements (), "Level")
+
+selected () = (Views::control (driven.drivenSeen, "Pick")).controlSelected
+
+test ("a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read", \() => bench (\() =>
+    begun "tiny"
+    expect (driven.drivenNow, 2)
+    expect (driven.drivenSeen.renderedRevision, 1)
+    expect (length driven.drivenSeen.renderedCurves, 1)
+    curve = listGet driven.drivenSeen.renderedCurves 0 ?: []
+    expect (listGet curve 0 ?: 0.0, 10.0)
+    expect (listGet curve 1 ?: 0.0, 20.0)
+    expect (listGet curve 2 ?: 0.0, 110.0)
+    expect (listGet curve 3 ?: 0.0, 80.0)
+    expect (Drive::letters (driven, "Hello"), true)
+    expect (Drive::letters (driven, "Choice "), true)
+    expect (Drive::letters (driven, "Missing lettering"), false)
+    expect (Drive::offers (elements (), "Menu"), true)
+    expect (Drive::offers (elements (), "Level"), true)
+    expect (Drive::offers (elements (), "Dismiss"), false)
+    tap "Press"
+    expect (Drive::letters (driven, "Pressed"), true)
+    expect (Drive::letters (driven, "Hello"), false)
+    tapAt ("Level", 0.0)
+    expect (level (), 0.0)
+    tapAt ("Level", 0.5)
+    expect (level (), 0.5)
+    tapAt ("Level", 1.0)
+    expect (level (), 1.0)
+    tapAt ("Level", 0.75)
+    expect (level (), 0.75)
+    tap "Menu"
+    expect (Drive::offers (elements (), "One"), true)
+    expect (Drive::offers (elements (), "Two"), true)
+    expect (Drive::offers (elements (), "Three"), true)
+    expect (Drive::letters (driven, "One"), true)
+    expect (Drive::letters (driven, "Two"), true)
+    expect (Drive::letters (driven, "Three"), true)
+    tap "Two"
+    expect (Drive::offers (elements (), "One"), false)
+    expect (Drive::letters (driven, "Choice two"), true)
+    expect (level (), 0.75)
+    tap "Menu"
+    pointer (5.0, 5.0, true)
+    pointer (5.0, 5.0, false)
+    expect (Drive::offers (elements (), "Three"), false)
+    expect (Drive::letters (driven, "Choice two"), true)
+    viewed (400.0, 400.0)
+    viewed (800.0, 600.0)
+    expect (Drive::letters (driven, "Choice two"), true)
+    post (Drive::frame (driven, 0.25))
+    expect (driven.drivenSession.sessionStore.machineFault, "")
+    post (Drive::chosen (driven, "choose", "/music/a \"b\".mp3"))
+    expect (Drive::letters (driven, "Choice two"), true)
+    post (Drive::chosen (driven, "choose", "/music/second.mp3"))
+    post (Drive::ran (driven, "discover", 0, ""))
+    post (Drive::ran (driven, "discover", 2, "no route"))
+    expect (level (), 0.75)
+    post (Drive::opened (driven, "/music/opened.mp3"))
+    expect (Drive::letters (driven, "Choice two"), true)
+    expect (driven.drivenNow > 20, true)
+    expect (driven.drivenSession.sessionContext.platform, "macos")))
+
+test ("native controls are pressed and repeatedly chosen through Drive, including successful and explained failed lookups", \() => bench (\() =>
+    begun "plain"
+    expect (Drive::shows (driven, "Native"), true)
+    expect (Drive::shows (driven, "Native action"), true)
+    expect (Drive::shows (driven, "Pick"), true)
+    expect (Drive::shows (driven, "Missing control"), false)
+    expect (selected (), "")
+    press "Native action"
+    expect (Drive::shows (driven, "Pressed"), true)
+    expect (Drive::shows (driven, "Native"), false)
+    choose ("Pick", "one")
+    expect (selected (), "one")
+    expect (Drive::shows (driven, "one"), true)
+    choose ("Pick", "three")
+    expect (selected (), "three")
+    expect (Drive::shows (driven, "three"), true)
+    expect (Drive::shows (driven, "one"), false)
+    choose ("Pick", "two")
+    expect (selected (), "two")
+    expect (Drive::shows (driven, "two"), true)
+    expect (Drive::shows (driven, "Pressed"), true)
+    post (Drive::frame (driven, 0.5))
+    post (Drive::opened (driven, "/tmp/native.mp3"))
+    post (Drive::chosen (driven, "choose", "/tmp/chosen.mp3"))
+    post (Drive::ran (driven, "run", 1, "failed"))
+    expect (selected (), "two")
+    expect (Drive::shows (driven, "Pressed"), true)
+    begun "plain"
+    expect (driven.drivenNow, 2)
+    expect (selected (), "")
+    expect (Drive::shows (driven, "Native"), true)
+    expect (Drive::shows (driven, "Pressed"), false)))

@@ -326,6 +326,22 @@
       "vscode": {
         "language": "osprey",
         "threshold": 100.0
+      },
+      "graphics": {
+        "language": "osprey",
+        "threshold": 92.0
+      },
+      "json": {
+        "language": "osprey",
+        "threshold": 100.0
+      },
+      "signal_flow": {
+        "language": "osprey",
+        "threshold": 91.0
+      },
+      "uitest": {
+        "language": "osprey",
+        "threshold": 100.0
       }
     },
     "apps": {
