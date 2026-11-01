@@ -79,7 +79,7 @@ type Repeat =
         eachDy : float
 
 (** The figure a canvas shape draws ([UI-MACHINE-CANVAS]). *)
-type Figure = DiscFigure | TextFigure | SpriteFigure | RoundedFigure | TriangleFigure | RectFigure | PolylineFigure
+type Figure = DiscFigure | TextFigure | SpriteFigure | RoundedFigure | TriangleFigure | RectFigure | PolylineFigure | CableFigure
 
 (** One canvas shape: its figure, geometry, colour, text and when it is drawn. *)
 type Stamp =
@@ -98,6 +98,7 @@ type Stamp =
     markDepth : Measure
     markAlpha : Measure
     markStroke : Measure
+    markDash : Measure
     markStroked : bool
     markPoints : List<Measure>
     markColour : string
@@ -118,7 +119,14 @@ type Slide =
         slideFire : string
         slideOf : string
 
-(** A canvas hit area: its bounds, role, label, lever and, for a slider, its range. *)
+(** Whether a listener moves two number inputs as the pointer drags it ([UI-MACHINE-DRAG]). *)
+type Drag =
+    Undragged
+    Dragger
+        dragX : string
+        dragY : string
+
+(** A canvas hit area: its bounds, role, label, lever, for a slider its range, and for a drag the inputs it moves. *)
 type Area =
     areaX : Measure
     areaY : Measure
@@ -128,6 +136,7 @@ type Area =
     areaLabel : string
     areaLever : Lever
     areaSlide : Slide
+    areaDrag : Drag
     areaWhen : Condition
     areaEach : Repeat
 
@@ -186,7 +195,7 @@ type Template =
     tplShadow : string
     tplMarks : List<Stamp>
 
-(** One element of a canvas's accessibility tree ([UI-MACHINE-A11Y]): role, filled label, bounds and, for a slider, its value. *)
+(** One element of a canvas's accessibility tree ([UI-MACHINE-A11Y]): role, filled label, bounds in scene units and, for a slider, its value and range. *)
 type Accessible =
     accessRole : AccessRole
     accessLabel : string
@@ -195,3 +204,5 @@ type Accessible =
     accessWidth : float
     accessHeight : float
     accessValue : float
+    accessMin : float
+    accessMax : float

@@ -14,8 +14,10 @@ pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyE
     let binding = render::binding(ctx, ordinal);
     let focus = scene_focus(ctx);
     let key = ctx.key.clone();
+    let access = super::access::overlay(&handle, &binding, &decoded.access, decoded.zoom);
     let surface = div()
         .id(render::control_id(ctx, ordinal))
+        .relative()
         .w_full()
         .flex_grow(1.)
         .min_h(px(320.))
@@ -33,6 +35,7 @@ pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyE
         .on_mouse_move(mouse_move(handle.clone(), binding, key));
     surface
         .child(paint::canvas(ctx, handle, decoded))
+        .children(access)
         .into_any_element()
 }
 
@@ -201,7 +204,7 @@ fn reset_hover(key: &str, window: &mut Window, cx: &mut Context<HostView>) {
 }
 
 /// A scene re-renders every frame, so input targets the region's live revision; its binding ordinal is stable.
-fn current(view: &HostView, binding: &Binding) -> u64 {
+pub(super) fn current(view: &HostView, binding: &Binding) -> u64 {
     view.regions
         .get(&binding.region)
         .map_or(binding.revision, |region| region.revision)

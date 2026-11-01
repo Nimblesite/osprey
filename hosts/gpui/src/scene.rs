@@ -8,6 +8,7 @@ use serde_json::Value;
 use crate::host::HostView;
 use crate::render::{self, Ctx};
 
+pub mod access;
 pub mod atlas;
 mod decode;
 mod input;
@@ -25,6 +26,8 @@ pub struct Decoded {
     atlas: Arc<Vec<String>>,
     has_rotation: bool,
     has_sprites: bool,
+    /// The accessibility tree a host announces over the scene ([UI-MACHINE-A11Y]).
+    access: Arc<Vec<access::Access>>,
 }
 
 /// A primitive in scene units; the painter applies the shared transform.

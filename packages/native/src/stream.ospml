@@ -26,10 +26,10 @@ module Streams
         true => shipped primitive
         false => false
 
-    scene<A> : (float, float, float, List<string>, List<Primitive>, A) -> Node<A> ![SceneStream | e]
-    scene (width, height, zoom, atlas, primitives, play) =
+    scene<A> : (float, float, float, List<string>, List<Primitive>, A, List<Accessible>) -> Node<A> ![SceneStream | e]
+    scene (width, height, zoom, atlas, primitives, play, access) =
         sent = filterList (primitives, \primitive => dispatched primitive)
-        Scene(sceneWidth = width, sceneHeight = height, sceneZoom = zoom, atlas = atlas, primitives = filterList (primitives, \primitive => streamed primitive == false), play = play, streamedCount = length sent)
+        Scene(sceneWidth = width, sceneHeight = height, sceneZoom = zoom, atlas = atlas, primitives = filterList (primitives, \primitive => streamed primitive == false), play = play, streamedCount = length sent, sceneAccess = access)
 
     many<A> : List<Node<A>> -> List<Node<A>> ![SceneStream | e]
     many children = mapList (children, \child => split child)
@@ -43,7 +43,7 @@ module Streams
     (** `node` with every scene's rects, discs and sprites streamed through `SceneStream`, depth first in the order the encoder walks it, and each scene left with its other primitives and the count it streamed. *)
     export split<A> : Node<A> -> Node<A> ![SceneStream | e]
     split node = match node
-        Scene width height zoom atlas primitives play _ => scene (width, height, zoom, atlas, primitives, play)
+        Scene width height zoom atlas primitives play _ access => scene (width, height, zoom, atlas, primitives, play, access)
         Stack direction children => Stack(axis = direction, children = many children)
         Section title footer children => Section(title = title, footer = footer, children = many children)
         Screen title subtitle toolbar children => Screen(title = title, subtitle = subtitle, toolbar = many toolbar, children = many children)

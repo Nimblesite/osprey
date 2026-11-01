@@ -191,7 +191,7 @@ impl Render for HostView {
     /// Draws the root region above the host-only diagnostic strip.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         clock::schedule(self, window, cx);
-        let framed = !bare();
+        let framed = !flush();
         div()
             .size_full()
             .flex()
@@ -305,7 +305,17 @@ pub fn deliver_opened(view: &mut HostView, window: &mut Window, cx: &mut Context
 /// padding or frame-time strip, and a transparent title bar its canvas runs under, with the
 /// traffic lights where `OSPREY_GPUI_LIGHTS=x,y` puts them ([UI-MACHINE-CANVAS]).
 pub fn bare() -> bool {
-    std::env::var("OSPREY_GPUI_CHROME").is_ok_and(|chrome| chrome == "bare")
+    chrome() == "bare"
+}
+
+/// Whether the application's view meets the window edges (`OSPREY_GPUI_CHROME=bare` or `flush`):
+/// no host padding or frame-time strip; `flush` keeps the system title bar.
+pub fn flush() -> bool {
+    matches!(chrome().as_str(), "bare" | "flush")
+}
+
+fn chrome() -> String {
+    std::env::var("OSPREY_GPUI_CHROME").unwrap_or_default()
 }
 
 /// The traffic lights' origin for a bare window, `OSPREY_GPUI_LIGHTS=x,y` in points.

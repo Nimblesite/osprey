@@ -21,7 +21,7 @@ module Semantics
     (** The first element labelled `label`, or `Unannounced` with no bounds when none is offered. *)
     export element (elements, label) = match Lists::find (elements, \e => e.accessLabel == label)
         Success e => e
-        Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0)
+        Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0)
 
     (** The role of the element labelled `label`, as hosts name it (`button`, `slider`, `popup`, `menuitem`, `none`). *)
     export role (elements, label) = Canvases::roleName (element (elements, label)).accessRole

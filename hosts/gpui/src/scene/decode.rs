@@ -51,6 +51,7 @@ pub(super) fn decode(
         atlas: Arc::new(atlas),
         has_rotation,
         has_sprites,
+        access: Arc::new(super::access::decode(node)),
     })
 }
 

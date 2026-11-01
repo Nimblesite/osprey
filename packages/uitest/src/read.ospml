@@ -4,6 +4,7 @@
 namespace uitest
 
 import ui::Doc
+import ui::MachineDocs
 import ui::Pick
 
 (** One rendered node: its kind, accessible label, text, title, tone, selected key, event ordinal, whether it is enabled and its choices' keys. *)
@@ -18,10 +19,11 @@ type Control =
     controlEnabled : bool
     controlChoices : List<string>
 
-(** What a host last saw: the root region's nodes and canvas lettering, the requests made, the root's revision and its own event ordinal. *)
+(** What a host last saw: the root region's nodes, canvas lettering and accessibility tree, the requests made, the root's revision and its own event ordinal. *)
 type Rendered =
     renderedControls : List<Control>
     renderedLetters : List<string>
+    renderedAccess : List<ui::Accessible>
     renderedRequests : List<string>
     renderedRevision : int
     renderedOrdinal : int
@@ -29,7 +31,7 @@ type Rendered =
 (** Decodes what a native session sends its host ([UI-PROTOCOL]). *)
 module Read
     (** Nothing seen yet. *)
-    export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedRequests = [], renderedRevision = 0, renderedOrdinal = 0)
+    export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedAccess = [], renderedRequests = [], renderedRevision = 0, renderedOrdinal = 0)
 
     // Every object in `doc`, itself first, in document order.
     walked (out, doc) = match Doc::kind doc
@@ -44,7 +46,9 @@ module Read
 
     letters node = mapList (filterList (Doc::items (Doc::field (node, "shapes")), \s => Doc::real (Doc::at (s, 0)) == toFloat lettering), \s => Doc::string (Doc::at (s, 1)))
 
-    seen (before, node, revision) = before(renderedControls = mapList (walked ([], node), control), renderedLetters = letters node, renderedRevision = revision, renderedOrdinal = Doc::number (node, "event"))
+    accessible e = ui::Accessible(accessRole = MachineDocs::roleOf (Doc::text (e, "role")), accessLabel = Doc::text (e, "label"), accessLeft = Doc::decimal (e, "x"), accessTop = Doc::decimal (e, "y"), accessWidth = Doc::decimal (e, "w"), accessHeight = Doc::decimal (e, "h"), accessValue = Doc::decimal (e, "value"), accessMin = Doc::decimal (e, "min"), accessMax = Doc::decimal (e, "max"))
+
+    seen (before, node, revision) = before(renderedControls = mapList (walked ([], node), control), renderedLetters = letters node, renderedAccess = mapList (Doc::items (Doc::field (node, "access")), accessible), renderedRevision = revision, renderedOrdinal = Doc::number (node, "event"))
 
     (** A rendered root node as JSON (`ui::Runtime::tree`), read as a host would. *)
     export tree node = seen (blank (), node, 0)
