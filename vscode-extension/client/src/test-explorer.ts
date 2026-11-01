@@ -1012,8 +1012,11 @@ export function makeDiscovery(
   deleted: (uri: vscode.Uri) => Promise<void>;
   rescan: () => Promise<void>;
 } {
+  // A file deleted while its discovery waited in the queue stays out of the tree.
   const schedule = makeDiscoveryQueue((uri) =>
-    refreshTestFile(controller, uri, resolveCompiler()),
+    existsSync(uri.fsPath)
+      ? refreshTestFile(controller, uri, resolveCompiler())
+      : Promise.resolve(removeTestFile(controller, uri)),
   );
   const project = (uri: vscode.Uri): Promise<void> => {
     const root = projectRootOf(uri);

@@ -354,6 +354,12 @@ suite("Osprey Test Explorer", () => {
       await discovery.deleted(suiteUri);
       assert.strictEqual(suiteItem(), undefined);
       assert.strictEqual(controller.items.size, 0);
+
+      // A discovery queued before the file went away does not bring it back.
+      fs.rmSync(suitePath);
+      await discovery.changed(suiteUri);
+      assert.strictEqual(suiteItem(), undefined);
+      assert.strictEqual(controller.items.size, 0);
       fs.rmSync(projectDir, { recursive: true, force: true });
     });
 
