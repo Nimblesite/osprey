@@ -437,7 +437,7 @@ _gpui-synth: _runtime_macos
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/synth/run.sh
 
-_casting: _runtime_macos
+_casting: _runtime_macos _runtime
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/casting/run.sh
 
