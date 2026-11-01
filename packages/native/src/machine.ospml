@@ -53,23 +53,9 @@ module Machines
     (** How many settle rounds may pass before a machine is reported as cycling. *)
     export rounds = 32
 
-    numeric value = match value
-        JsonFloat f => f
-        JsonInt i => toFloat i
-        _ => 0.0
+    fits (kind, value) = Doc::kind value == Pick::either (kind == "trigger", "bool", kind)
 
-    isNumber value = match value
-        JsonFloat _ => true
-        JsonInt _ => true
-        _ => false
-
-    fits (kind, value) = match value
-        JsonBool _ => kind == "bool" || kind == "trigger"
-        JsonString _ => kind == "text"
-        JsonArray _ => kind == "list"
-        _ => kind == "number" && isNumber value
-
-    normal (kind, value) = Pick::either (kind == "number", JsonFloat (numeric value), value)
+    normal (kind, value) = Pick::either (kind == "number", JsonFloat (Doc::real value), value)
 
     blank kind = match kind
         "bool" => JsonBool false
@@ -95,7 +81,7 @@ module Machines
         Error _ => ""
 
     (** Input `name` as a float, 0 when it is not a number. *)
-    export number (machine, name) = numeric (value (machine, name))
+    export number (machine, name) = Doc::real (value (machine, name))
 
     (** Input `name` as a flag, false when it is not one. *)
     export flag (machine, name) = jsonBool (value (machine, name)) ?: false
@@ -122,8 +108,8 @@ module Machines
 
     comparison c = (Lists::find (["eq", "ne", "lt", "gt"], \key => Doc::has (c, key))) ?: ""
 
-    same (a, b) = match isNumber a && isNumber b
-        true => numeric a == numeric b
+    same (a, b) = match Doc::kind a == "number" && Doc::kind b == "number"
+        true => Doc::real a == Doc::real b
         false => Doc::write a == Doc::write b
 
     compared (machine, c) =
@@ -131,8 +117,8 @@ module Machines
         match comparison c
             "eq" => same (held, Doc::field (c, "eq"))
             "ne" => same (held, Doc::field (c, "ne")) == false
-            "lt" => numeric held < numeric (Doc::field (c, "lt"))
-            "gt" => numeric held > numeric (Doc::field (c, "gt"))
+            "lt" => Doc::real held < Doc::real (Doc::field (c, "lt"))
+            "gt" => Doc::real held > Doc::real (Doc::field (c, "gt"))
             _ => false
 
     (** Whether condition `c` holds; an absent condition (`JsonNull`) always holds. *)

@@ -32,14 +32,14 @@ flowchart LR
 | Path | Contents |
 | --- | --- |
 | `src/base.ospml` | `Pick::either` and `Lists`: a stable comparator sort, slices, flattening, distinctness, positions and `find`, `any`, `all` over Osprey's built-in list functions |
-| `src/doc.ospml` | `Doc`: total readers and member builders over the built-in `Json`, for the framework's own trusted state |
 | `src/math.ospml` | `Math` and `Maths::encode`/`Maths::decode`: typed mathematical layout trees and their protocol round trip ([UI-COMPONENTS-MATH]) |
 | `src/symbol.ospml` | `Symbol` (semantic icons), `Platform` and `Symbols` ([UI-COMPONENTS-SYMBOLS], [UI-CONTEXT-PLATFORM]) |
 | `src/node.ospml` | `Node<A>`, `Tab<A>`, `Row<A>`, `Binding<A>`, the tone, role, side and axis unions, `Splitters` and the `Ui` constructors ([UI-COMPONENTS]) |
 | `src/encode.ospml` | `Encode::walk`: one depth-first walk that encodes a region and collects its bindings in ordinal order ([UI-PROTOCOL]) |
 | `src/message.ospml` | `Message<A>`, `Input`, `Events::bind`, `Messages::route` and `Inputs::route`: typed delivery of taps, text, flags, choices, sizes, completions, lifecycle, frames and scene input ([UI-EVENTS], [UI-SCENE]) |
 | `src/capability.ospml` | `Capability`, `Request`, `SliceWrite` and `Requests` ([UI-EFFECTS]) |
-| `src/scene.ospml` | `Scenes`: scene primitives and packed colours ([UI-SCENE]) |
+| [`../graphics`](../graphics/README.md) | `Scenes`: scene primitives and packed colours ([UI-SCENE]), in their own package, `@osprey/graphics` |
+| [`../json`](../json/README.md) | `Doc`: total readers, kind checks and member builders over the built-in `Json`, in their own package, `@osprey/json` |
 | `src/reactive.ospml` | The `Slices` effect for host-held slices, `Keyed::region` and `Signals::written` ([UI-SIGNALS], [UI-REGIONS]) |
 | `src/theme.ospml` | `Theme`, `Token`, `Contrast` (WCAG 2 luminance and ratio) and `Themes` ([UI-THEME]) |
 | `src/runtime.ospml` | `Runtime::start` and `Runtime::dispatch`: the session, the envelope and the serialized update ([UI-STORE], [UI-PROTOCOL]); `Runtime::begin` and `Runtime::proceed` for a resident session ([UI-RESIDENT]) |

@@ -23,10 +23,23 @@ module Doc
     export number (doc, key) = jsonInt (field (doc, key)) ?: 0
 
     (** The float member `key`; an integer member reads as its float, and an absent or non-numeric one as 0. *)
-    export decimal (doc, key) = jsonFloat (field (doc, key)) ?: toFloat (jsonInt (field (doc, key)) ?: 0)
+    export decimal (doc, key) = real (field (doc, key))
 
     (** The boolean member `key`, or false when it is absent or not a boolean. *)
     export flag (doc, key) = jsonBool (field (doc, key)) ?: false
+
+    (** What `value` is: "null", "bool", "number" (an integer or a float), "text", "list" or "object". *)
+    export kind value = match value
+        JsonNull => "null"
+        JsonBool _ => "bool"
+        JsonInt _ => "number"
+        JsonFloat _ => "number"
+        JsonString _ => "text"
+        JsonArray _ => "list"
+        JsonObject _ => "object"
+
+    (** A number as a float, an integer widened; anything else reads as 0. *)
+    export real value = jsonFloat value ?: toFloat (jsonInt value ?: 0)
 
     (** The elements of an array, or none when `doc` is not an array. *)
     export items doc = match doc

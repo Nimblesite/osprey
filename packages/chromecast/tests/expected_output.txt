@@ -242,6 +242,7 @@ ok stale.pause
 ok stale.volume
 ok stale.write
 ok stale.end
+ok stale.unserve.nothing
 ok stale.quiet_ms
 ok fail.resolve
 ok fail.refused
@@ -249,4 +250,4 @@ ok fail.stop_all
 ok fail.start
 ok fail.no_route
 ok fail.no_file
-251 passed, 0 failed
+252 passed, 0 failed

@@ -1,6 +1,6 @@
 [project]
 name = "native"
-source_roots = ["src"]
+source_roots = ["src", "../graphics/src", "../json/src"]
 default_namespace = "ui"
 
 [package]

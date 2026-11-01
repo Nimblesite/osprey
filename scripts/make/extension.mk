@@ -32,11 +32,11 @@ REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp
 target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build packages/manager/cli --quiet --no-warnings -o $@
 
-PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/native/src packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
+PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/native/src packages/graphics/src packages/json/src packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
 target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
 	$(BIN) build packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
-WORKBENCH_SOURCES := apps/workbench/osprey.toml $(shell find apps/workbench/src examples/proof/kernel/src packages/native/src packages/vscode/src -type f -name '*.ospml')
+WORKBENCH_SOURCES := apps/workbench/osprey.toml $(shell find apps/workbench/src examples/proof/kernel/src packages/native/src packages/graphics/src packages/json/src packages/vscode/src -type f -name '*.ospml')
 target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 	$(BIN) build apps/workbench --target=wasm32 --quiet --no-warnings -o $@
 

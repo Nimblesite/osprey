@@ -224,6 +224,7 @@ def stale_cases():
         Check.equal("stale.volume", outcome(Player.volume(stale, 0.5), lambda p: p.phase), "error send failed (-1)"),
         Check.equal("stale.write", outcome(Session.write(stale.session, "receiver-0", "receiver", Protocol.ping()), lambda _u: "sent"), "error send failed (-1)"),
         Check.equal("stale.end", Player.end(stale), -1),
+        Check.equal("stale.unserve.nothing", Media.unserve(Media.NOTHING), -1),
         Check.equal("stale.quiet_ms", Session.QUIET_MS, 10000),
     ]
 
