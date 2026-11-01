@@ -14,23 +14,36 @@ import casting::Link
 
 (** The application exported through the two-function C boundary. *)
 module App
+    // The launch argument after `flag`, or `otherwise`.
+    after (arguments, flag, otherwise) =
+        at = ui::Lists::position (arguments, \a => a == flag)
+        ui::Pick::either (at >= 0, listGet arguments (satAdd at 1) ?: otherwise, otherwise)
+
     (** The document the interface is read from: `--machine <path>` among the launch arguments, else the repository copy. *)
-    export documentPath arguments =
-        at = ui::Lists::position (arguments, \a => a == "--machine")
-        ui::Pick::either (at >= 0, listGet arguments (satAdd at 1) ?: "", "examples/casting/player.machine.json")
+    export documentPath arguments = after (arguments, "--machine", "examples/casting/player.machine.json")
+
+    // An MP3 the app was opened with: `--open <path>`, or a bare path ending in .mp3, as Finder passes one.
+    opened arguments = after (arguments, "--open", (listGet (filterList (arguments, \a => endsWith (toLowerCase a) ".mp3")) 0) ?: "")
 
     (** The store from a machine document's text: a refused document shows its problems in place of the player. *)
     export loaded source = match Machines::load source
         Success machine => Link::store machine
         Error problem => Link::store (Machines::faulty problem)
 
-    (** Loads the document, starts the frame clock and answers the requests of the initial states. *)
+    // The folder the document sits in, where its canvas artwork lives.
+    folder path =
+        parts = split path "/" ?: [path]
+        join (ui::Lists::slice (parts, 0, satSub (length parts) 1)) "/"
+
+    (** Loads the document, applies `--skin` and an opened MP3, starts the frame clock and answers the initial states' requests. *)
     export initial context =
-        first = Link::settled (loaded (readFile (documentPath context.arguments) ?: ""))
+        path = documentPath context.arguments
+        launched = Link::launched (loaded (readFile path ?: ""), folder path, after (context.arguments, "--skin", ""), opened context.arguments)
+        first = Link::settled launched
         Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))
 
     (** Routes every framework message: controls pull the machine's levers, completions and frames go to the adapter. *)
-    export update (_, store, message) = Messages::route (message, \lever => Link::pulled (store, lever, JsonNull), \(lever, text) => Link::pulled (store, lever, JsonString text), \(lever, on) => Link::pulled (store, lever, JsonBool on), \(_, _) => Runtime::step store, \(ticket, outcome) => Link::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \seconds => Link::ticked (store, seconds), \(_, _) => Runtime::step store)
+    export update (_, store, message) = Messages::route (message, \lever => Link::pulled (store, lever, JsonNull), \(lever, text) => Link::pulled (store, lever, JsonString text), \(lever, on) => Link::pulled (store, lever, JsonBool on), \(_, _) => Runtime::step store, \(ticket, outcome) => Link::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \seconds => Link::ticked (store, seconds), \(_, input) => Link::pointed (store, input))
 
     screenSlice () = perform Signal<Screen>.read ()
 

@@ -410,7 +410,8 @@ pub(super) fn unbound(ctx: &mut Ctx) -> AnyElement {
 /// Renders the collapsible host diagnostic strip, newest messages last.
 pub fn diagnostics(view: &mut HostView, cx: &mut Context<HostView>) -> AnyElement {
     let messages = diagnostic_messages(view);
-    if messages.is_empty() && !view.animating {
+    let metrics = view.animating && !crate::host::bare();
+    if messages.is_empty() && !metrics {
         return div().into_any_element();
     }
     let expanded = !view.collapsed;
@@ -425,7 +426,7 @@ pub fn diagnostics(view: &mut HostView, cx: &mut Context<HostView>) -> AnyElemen
         let recent = messages[messages.len().saturating_sub(6)..].to_vec();
         strip = strip.children(diagnostic_lines(recent, cx));
     }
-    if view.animating {
+    if metrics {
         strip = strip.child(div().text_sm().child(format!(
             "fps {} dispatch {:.3} paint {:.3} frame {:.3} envelope {}",
             view.fps, view.dispatch_ms, view.paint_ms, view.frame_ms, view.envelope_bytes

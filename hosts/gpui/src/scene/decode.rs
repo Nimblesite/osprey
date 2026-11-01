@@ -28,6 +28,10 @@ pub(super) fn decode(
         shapes.push(streamed_shape(item)?);
     }
     shapes.sort_by(|left, right| left.depth().total_cmp(&right.depth()));
+    let atlas = render::list(node, "atlas")
+        .iter()
+        .map(|path| path.as_str().map(str::to_owned).ok_or("an atlas entry is not a path"))
+        .collect::<Result<Vec<_>, _>>()?;
     let has_rotation = shapes.iter().any(rotated);
     let has_sprites = shapes
         .iter()
@@ -37,6 +41,7 @@ pub(super) fn decode(
         width,
         height,
         shapes: Arc::new(shapes),
+        atlas: Arc::new(atlas),
         has_rotation,
         has_sprites,
     })
@@ -81,9 +86,9 @@ fn streamed_shape(item: &Streamed) -> Result<Shape, String> {
     }
 }
 
-/// Whether this primitive carries a nonzero, currently undrawn angle.
+/// Whether this primitive carries a nonzero, currently undrawn angle; sprites turn.
 fn rotated(item: &Shape) -> bool {
-    matches!(item, Shape::Rect { angle, .. } | Shape::Sprite { angle, .. } if *angle != 0.)
+    matches!(item, Shape::Rect { angle, .. } if *angle != 0.)
 }
 
 /// Decodes one tagged JSON primitive without interpreting its application meaning.
@@ -96,6 +101,7 @@ fn shape(value: &Value) -> Result<Shape, String> {
         Some(3) => sprite(values),
         Some(4) => glyphs(values),
         Some(5) => path(values),
+        Some(6) => lettering(values),
         code => Err(format!("unknown shape code {code:?}")),
     }
 }
@@ -179,6 +185,25 @@ fn glyphs(v: &[Value]) -> Result<Shape, String> {
         size: number(v, 4)?,
         colour: colour(v, 5)?,
         depth: number(v, 6)?,
+    })
+}
+
+/// Decodes an anchored, weighted text run: text, x y size colour depth anchor weight.
+fn lettering(v: &[Value]) -> Result<Shape, String> {
+    arity(v, 9)?;
+    let Shape::Glyphs { text, x, y, size, colour, depth } = glyphs(&v[..7])? else {
+        return Err("lettering is not a glyph run".to_owned());
+    };
+    let anchor = u8::try_from(integer(v, 7)?).ok().filter(|anchor| *anchor <= 2);
+    Ok(Shape::Lettering {
+        text,
+        x,
+        y,
+        size,
+        colour,
+        depth,
+        anchor: anchor.ok_or("lettering anchor is not 0, 1 or 2")?,
+        weight: number(v, 8)?,
     })
 }
 

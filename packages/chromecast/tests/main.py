@@ -138,7 +138,8 @@ def browse_detail_cases(devices):
 
 def title_cases():
     """The media title is the base name without its extension."""
-    return each("title", len(Expected.TITLE), lambda name, i: Check.equal(name, Media.title(at(Expected.TITLE_PATH, i)), at(Expected.TITLE, i)))
+    titles = each("title", len(Expected.TITLE), lambda name, i: Check.equal(name, Media.title(at(Expected.TITLE_PATH, i)), at(Expected.TITLE, i)))
+    return listAppend(titles, Check.equal("title.base_name", Media.base_name("/Users/me/Music/Blue Monday.mp3"), "Blue Monday.mp3"))
 
 
 def hex_cases():

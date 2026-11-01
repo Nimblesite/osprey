@@ -40,6 +40,15 @@ type Primitive =
         size : float
         color : int
         depth : int
+    Lettering
+        letters : string
+        x : float
+        y : float
+        size : float
+        color : int
+        depth : int
+        anchor : int
+        weight : float
     Path
         steps : List<PathStep>
         outline : Outline
@@ -131,6 +140,9 @@ module Scenes
 
     (** `text` with its baseline starting at `x`, `y`, `size` units tall. *)
     export glyphs (text, x, y, size, color, depth) = Glyphs(glyphs = text, x = x, y = y, size = size, color = color, depth = depth)
+
+    (** A text run in the system font at `weight` (400 regular, 600 semibold), with its left edge (`anchor` 0), centre (1) or right edge (2) at x and the top of its line at y ([UI-MACHINE-CANVAS]). *)
+    export lettering (text, x, y, size, color, anchor, weight, depth) = Lettering(letters = text, x = x, y = y, size = size, color = color, depth = depth, anchor = anchor, weight = weight)
 
     (** A filled (`Fill`) or line-drawn (`Line`) path built from `steps`, painted with `paint`, with no transform. *)
     export path (steps, outline, paint, depth) = Path(steps = steps, outline = outline, paint = paint, moveX = 0.0, moveY = 0.0, scale = 1.0, depth = depth)

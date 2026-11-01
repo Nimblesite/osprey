@@ -151,7 +151,7 @@ bench work =
 
 started () =
     reset ()
-    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}", App::initial, App::regions, App::theme ())))
+    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"midnight\"]}", App::initial, App::regions, App::theme ())))
 
 post event = hosted (\() => kept (Runtime::proceed (live, event, App::update, App::regions)))
 
@@ -226,7 +226,7 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     frame "0.2"
     expect (shows "Playing on Living Room TV", true)
     expect (shows "Pause", true)
-    expect (shows "3:20", true)
+    expect (shows "03:20", true)
     expect (enabledOf "Back 10 seconds", true)
     press "Pause"
     frame "0.2"
@@ -237,7 +237,7 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     expect (shows "Playing on Living Room TV", true)
     press "Forward 10 seconds"
     frame "0.2"
-    expect (shows "0:10", true)
+    expect (shows "00:10", true)
     choose ("Volume 100%", "0.5")
     frame "0.2"
     expect (shows "Volume 50%", true)

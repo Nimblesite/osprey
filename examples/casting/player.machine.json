@@ -1,182 +1,1873 @@
 {
-  "schema": 1,
-  "name": "casting-player",
-  "inputs": {
-    "skin": { "type": "text", "value": "sherbet" },
-    "skins": { "type": "list", "value": [
-      { "key": "sherbet", "label": "Sherbet Signal" },
-      { "key": "midnight", "label": "Midnight Mint" },
-      { "key": "poolside", "label": "Poolside Pop" }
-    ] },
-    "receivers": { "type": "list" },
-    "receiver": { "type": "text" },
-    "searched": { "type": "bool" },
-    "file": { "type": "text" },
-    "title": { "type": "text" },
-    "player": { "type": "text" },
-    "connected": { "type": "bool" },
-    "position": { "type": "number" },
-    "duration": { "type": "number" },
-    "volume": { "type": "number", "value": 1 },
-    "rate": { "type": "number", "value": 1 },
-    "canPause": { "type": "bool" },
-    "canSeek": { "type": "bool" },
-    "ended": { "type": "text" },
-    "error": { "type": "text" },
-    "spin": { "type": "number" },
-    "skip": { "type": "number" },
-    "wantVolume": { "type": "text", "value": "1" },
-    "volumes": { "type": "list", "value": [
-      { "key": "0", "label": "Muted" }, { "key": "0.25", "label": "25%" }, { "key": "0.5", "label": "50%" },
-      { "key": "0.75", "label": "75%" }, { "key": "1", "label": "100%" }
-    ] },
-    "wantRate": { "type": "text", "value": "1" },
-    "rates": { "type": "list", "value": [
-      { "key": "0.75", "label": "0.75×" }, { "key": "1", "label": "1×" }, { "key": "1.25", "label": "1.25×" },
-      { "key": "1.5", "label": "1.5×" }, { "key": "2", "label": "2×" }
-    ] },
-    "open": { "type": "trigger" },
-    "refresh": { "type": "trigger" },
-    "play": { "type": "trigger" },
-    "pause": { "type": "trigger" },
-    "resume": { "type": "trigger" },
-    "stop": { "type": "trigger" },
-    "seek": { "type": "trigger" },
-    "chooseVolume": { "type": "trigger" },
-    "chooseRate": { "type": "trigger" }
-  },
-  "layers": [
-    {
-      "name": "receivers",
-      "initial": "searching",
-      "states": {
-        "searching": { "enter": [{ "request": "cast.discover" }] },
-        "found": {},
-        "none": {}
-      },
-      "transitions": [
-        { "from": "searching", "to": "found", "when": { "input": "receiver", "ne": "" } },
-        { "from": "searching", "to": "none", "when": { "all": [{ "input": "searched", "eq": true }, { "input": "receiver", "eq": "" }] } },
-        { "from": "*", "to": "searching", "when": { "fired": "refresh" } }
-      ]
-    },
-    {
-      "name": "playback",
-      "initial": "stopped",
-      "states": {
-        "stopped": {},
-        "connecting": { "enter": [{ "request": "cast.start", "with": ["file", "receiver"] }] },
-        "playing": {},
-        "paused": {},
-        "ended": { "enter": [{ "request": "cast.finished" }] },
-        "failed": {}
-      },
-      "transitions": [
-        { "from": "*", "to": "connecting", "when": { "all": [{ "fired": "play" }, { "input": "file", "ne": "" }, { "input": "receiver", "ne": "" }, { "state": "playback", "in": ["stopped", "ended", "failed"] }] } },
-        { "from": "*", "to": "failed", "when": { "input": "error", "ne": "" } },
-        { "from": "connecting", "to": "playing", "when": { "any": [{ "input": "player", "eq": "PLAYING" }, { "input": "player", "eq": "BUFFERING" }] } },
-        { "from": "playing", "to": "paused", "when": { "input": "player", "eq": "PAUSED" } },
-        { "from": "paused", "to": "playing", "when": { "input": "player", "eq": "PLAYING" } },
-        { "from": "*", "to": "ended", "when": { "all": [{ "input": "ended", "ne": "" }, { "state": "playback", "in": ["connecting", "playing", "paused"] }] } }
-      ]
-    },
-    {
-      "name": "commands",
-      "initial": "idle",
-      "states": {
-        "idle": {},
-        "opening": { "enter": [{ "request": "cast.choose" }] },
-        "pausing": { "enter": [{ "request": "cast.pause" }] },
-        "resuming": { "enter": [{ "request": "cast.resume" }] },
-        "stopping": { "enter": [{ "request": "cast.stop" }] },
-        "seeking": { "enter": [{ "request": "cast.seek", "with": ["position", "skip"] }] },
-        "turning": { "enter": [{ "request": "cast.volume", "with": ["wantVolume"] }] },
-        "pacing": { "enter": [{ "request": "cast.rate", "with": ["wantRate"] }] }
-      },
-      "transitions": [
-        { "from": "idle", "to": "opening", "when": { "fired": "open" } },
-        { "from": "idle", "to": "pausing", "when": { "fired": "pause" } },
-        { "from": "idle", "to": "resuming", "when": { "fired": "resume" } },
-        { "from": "idle", "to": "stopping", "when": { "fired": "stop" } },
-        { "from": "idle", "to": "seeking", "when": { "fired": "seek" } },
-        { "from": "idle", "to": "turning", "when": { "fired": "chooseVolume" } },
-        { "from": "idle", "to": "pacing", "when": { "fired": "chooseRate" } },
-        { "from": "*", "to": "idle" }
-      ]
-    }
-  ],
-  "view": {
-    "kind": "stack", "axis": "vertical",
-    "children": [
-      {
-        "kind": "scene", "width": 320, "height": 180,
-        "shapes": [
-          { "shape": "disc", "x": 160, "y": 90, "radius": 84, "colour": "@decor1", "depth": 0 },
-          { "x": 160, "y": 90, "w": 150, "h": 46, "angle": "{{spin}}", "turn": 0, "colour": "@decor2", "alpha": 0.8, "depth": 1 },
-          { "x": 160, "y": 90, "w": 150, "h": 46, "angle": "{{spin}}", "turn": 1.0471975512, "colour": "@decor3", "alpha": 0.8, "depth": 1 },
-          { "x": 160, "y": 90, "w": 150, "h": 46, "angle": "{{spin}}", "turn": 2.0943951024, "colour": "@decor1", "alpha": 0.6, "depth": 1 },
-          { "shape": "disc", "x": 160, "y": 90, "radius": 18, "colour": "@decor2", "depth": 2 },
-          { "shape": "disc", "x": 160, "y": 90, "radius": 4, "colour": "#FFFFFF", "depth": 3 }
-        ]
-      },
-      { "kind": "text", "text": "{{title}}", "role": "title", "when": { "input": "file", "ne": "" } },
-      { "kind": "empty", "symbol": "document", "text": "Choose an audio file", "detail": "Open an MP3 to cast it to a TV.", "when": { "input": "file", "eq": "" } },
-      { "kind": "progress", "text": "Connecting to {{receiver}}…", "detail": "", "when": { "state": "playback", "in": ["connecting"] } },
-      { "kind": "badge", "text": "Playing on {{receiver}}", "symbol": "play", "tone": "accent", "when": { "state": "playback", "in": ["playing"] } },
-      { "kind": "badge", "text": "Paused", "symbol": "pause", "tone": "secondary", "when": { "state": "playback", "in": ["paused"] } },
-      { "kind": "badge", "text": "Finished", "symbol": "check", "tone": "good", "when": { "state": "playback", "in": ["ended"] } },
-      { "kind": "text", "text": "{{error}}", "role": "callout", "tone": "danger", "when": { "state": "playback", "in": ["failed"] } },
-      {
-        "kind": "stack", "axis": "horizontal",
-        "children": [
-          { "kind": "progress", "text": "Looking for TVs…", "detail": "", "when": { "state": "receivers", "in": ["searching"] } },
-          { "kind": "picker", "text": "Receiver", "choices": "receivers", "selected": "{{receiver}}", "on": { "set": "receiver" }, "when": { "state": "receivers", "in": ["found"] } },
-          { "kind": "text", "text": "No TVs found", "role": "callout", "tone": "caution", "when": { "state": "receivers", "in": ["none"] } },
-          { "kind": "button", "text": "Search again", "symbol": "refresh", "on": { "set": "searched", "value": false, "fire": "refresh" }, "when": { "state": "receivers", "in": ["found", "none"] } }
-        ]
-      },
-      {
-        "kind": "stack", "axis": "horizontal", "when": { "state": "playback", "in": ["playing", "paused"] },
-        "children": [
-          { "kind": "text", "text": "{{position|clock}}", "role": "caption", "tone": "secondary" },
-          { "kind": "meter", "text": "Position", "amount": "{{position}}", "total": "{{duration}}", "tone": "accent" },
-          { "kind": "text", "text": "{{duration|clock}}", "role": "caption", "tone": "secondary" }
-        ]
-      },
-      {
-        "kind": "stack", "axis": "horizontal",
-        "children": [
-          { "kind": "button", "text": "Back 10 seconds", "symbol": "", "on": { "set": "skip", "value": -10, "fire": "seek" }, "enabled": { "input": "canSeek", "eq": true }, "when": { "state": "playback", "in": ["playing", "paused"] } },
-          { "kind": "button", "text": "Play", "symbol": "play", "role": "prominent", "on": { "set": "error", "value": "", "fire": "play" }, "enabled": { "all": [{ "input": "file", "ne": "" }, { "input": "receiver", "ne": "" }] }, "when": { "state": "playback", "in": ["stopped", "ended", "failed"] } },
-          { "kind": "button", "text": "Pause", "symbol": "pause", "role": "prominent", "on": { "fire": "pause" }, "enabled": { "input": "canPause", "eq": true }, "when": { "state": "playback", "in": ["playing"] } },
-          { "kind": "button", "text": "Resume", "symbol": "play", "role": "prominent", "on": { "fire": "resume" }, "when": { "state": "playback", "in": ["paused"] } },
-          { "kind": "button", "text": "Stop", "symbol": "stop", "on": { "fire": "stop" }, "when": { "state": "playback", "in": ["playing", "paused"] } },
-          { "kind": "button", "text": "Forward 10 seconds", "symbol": "", "on": { "set": "skip", "value": 10, "fire": "seek" }, "enabled": { "input": "canSeek", "eq": true }, "when": { "state": "playback", "in": ["playing", "paused"] } }
-        ]
-      },
-      {
-        "kind": "stack", "axis": "horizontal",
-        "children": [
-          { "kind": "picker", "text": "Volume {{volume|percent}}%", "choices": "volumes", "selected": "{{wantVolume}}", "on": { "set": "wantVolume", "fire": "chooseVolume" }, "when": { "state": "playback", "in": ["playing", "paused"] } },
-          { "kind": "picker", "text": "Speed", "choices": "rates", "selected": "{{wantRate}}", "on": { "set": "wantRate", "fire": "chooseRate" }, "when": { "state": "playback", "in": ["playing", "paused"] } },
-          { "kind": "button", "text": "Open file…", "symbol": "folder", "on": { "fire": "open" } }
-        ]
-      },
-      { "kind": "picker", "text": "Skin", "choices": "skins", "selected": "{{skin}}", "on": { "set": "skin" } }
-    ]
+ "schema": 1,
+ "name": "casting-player",
+ "inputs": {
+  "skin": {
+   "type": "text",
+   "value": "sherbet"
   },
   "skins": {
-    "sherbet": { "name": "Sherbet Signal", "motion": "disc", "tokens": {
-      "background": "#FFF8EF", "text": "#252333", "secondary": "#625968", "accent": "#A83D22",
-      "good": "#2E7D4F", "caution": "#9A5B00", "danger": "#B3261E",
-      "decor1": "#FFAA86", "decor2": "#D8C3EF", "decor3": "#FFE4A1" } },
-    "midnight": { "name": "Midnight Mint", "motion": "disc", "tokens": {
-      "background": "#10192B", "text": "#F4F7FF", "secondary": "#BAC6D9", "accent": "#A8EED4",
-      "good": "#7FE0B0", "caution": "#FFC97A", "danger": "#FF8A80",
-      "decor1": "#B4A5FF", "decor2": "#70B9C4", "decor3": "#A8EED4" } },
-    "poolside": { "name": "Poolside Pop", "motion": "disc", "tokens": {
-      "background": "#D9EEFF", "text": "#102958", "secondary": "#36557A", "accent": "#174EC6",
-      "good": "#1E6B45", "caution": "#8A5300", "danger": "#B3261E",
-      "decor1": "#FF7828", "decor2": "#FFD44F", "decor3": "#174EC6" } }
+   "type": "list",
+   "value": [
+    {
+     "key": "sherbet",
+     "label": "Sherbet Signal"
+    },
+    {
+     "key": "midnight",
+     "label": "Midnight Mint"
+    },
+    {
+     "key": "poolside",
+     "label": "Poolside Pop"
+    }
+   ]
+  },
+  "receivers": {
+   "type": "list"
+  },
+  "receiver": {
+   "type": "text"
+  },
+  "searched": {
+   "type": "bool"
+  },
+  "file": {
+   "type": "text"
+  },
+  "title": {
+   "type": "text"
+  },
+  "player": {
+   "type": "text"
+  },
+  "connected": {
+   "type": "bool"
+  },
+  "position": {
+   "type": "number"
+  },
+  "duration": {
+   "type": "number"
+  },
+  "volume": {
+   "type": "number",
+   "value": 1
+  },
+  "rate": {
+   "type": "number",
+   "value": 1
+  },
+  "canPause": {
+   "type": "bool"
+  },
+  "canSeek": {
+   "type": "bool"
+  },
+  "ended": {
+   "type": "text"
+  },
+  "error": {
+   "type": "text"
+  },
+  "spin": {
+   "type": "number"
+  },
+  "skip": {
+   "type": "number"
+  },
+  "wantVolume": {
+   "type": "text",
+   "value": "1"
+  },
+  "volumes": {
+   "type": "list",
+   "value": [
+    {
+     "key": "0",
+     "label": "Muted"
+    },
+    {
+     "key": "0.25",
+     "label": "25%"
+    },
+    {
+     "key": "0.5",
+     "label": "50%"
+    },
+    {
+     "key": "0.75",
+     "label": "75%"
+    },
+    {
+     "key": "1",
+     "label": "100%"
+    }
+   ]
+  },
+  "wantRate": {
+   "type": "text",
+   "value": "1"
+  },
+  "rates": {
+   "type": "list",
+   "value": [
+    {
+     "key": "0.75",
+     "label": "0.75×"
+    },
+    {
+     "key": "1",
+     "label": "1×"
+    },
+    {
+     "key": "1.25",
+     "label": "1.25×"
+    },
+    {
+     "key": "1.5",
+     "label": "1.5×"
+    },
+    {
+     "key": "2",
+     "label": "2×"
+    }
+   ]
+  },
+  "open": {
+   "type": "trigger"
+  },
+  "refresh": {
+   "type": "trigger"
+  },
+  "play": {
+   "type": "trigger"
+  },
+  "pause": {
+   "type": "trigger"
+  },
+  "resume": {
+   "type": "trigger"
+  },
+  "stop": {
+   "type": "trigger"
+  },
+  "seek": {
+   "type": "trigger"
+  },
+  "chooseVolume": {
+   "type": "trigger"
+  },
+  "chooseRate": {
+   "type": "trigger"
+  },
+  "assets": {
+   "type": "text"
+  },
+  "name": {
+   "type": "text"
+  },
+  "seekTo": {
+   "type": "number"
+  },
+  "seekAbsolute": {
+   "type": "trigger"
+  },
+  "toggleReceivers": {
+   "type": "trigger"
+  },
+  "toggleRates": {
+   "type": "trigger"
+  },
+  "chooseReceiver": {
+   "type": "trigger"
+  },
+  "dismiss": {
+   "type": "trigger"
   }
+ },
+ "layers": [
+  {
+   "name": "receivers",
+   "initial": "searching",
+   "states": {
+    "searching": {
+     "enter": [
+      {
+       "request": "cast.discover"
+      }
+     ]
+    },
+    "found": {},
+    "none": {}
+   },
+   "transitions": [
+    {
+     "from": "searching",
+     "to": "found",
+     "when": {
+      "input": "receiver",
+      "ne": ""
+     }
+    },
+    {
+     "from": "searching",
+     "to": "none",
+     "when": {
+      "all": [
+       {
+        "input": "searched",
+        "eq": true
+       },
+       {
+        "input": "receiver",
+        "eq": ""
+       }
+      ]
+     }
+    },
+    {
+     "from": "*",
+     "to": "searching",
+     "when": {
+      "fired": "refresh"
+     }
+    }
+   ]
+  },
+  {
+   "name": "playback",
+   "initial": "stopped",
+   "states": {
+    "stopped": {},
+    "connecting": {
+     "enter": [
+      {
+       "request": "cast.start",
+       "with": [
+        "file",
+        "receiver"
+       ]
+      }
+     ]
+    },
+    "playing": {},
+    "paused": {},
+    "ended": {
+     "enter": [
+      {
+       "request": "cast.finished"
+      }
+     ]
+    },
+    "failed": {}
+   },
+   "transitions": [
+    {
+     "from": "*",
+     "to": "connecting",
+     "when": {
+      "all": [
+       {
+        "fired": "play"
+       },
+       {
+        "input": "file",
+        "ne": ""
+       },
+       {
+        "input": "receiver",
+        "ne": ""
+       },
+       {
+        "state": "playback",
+        "in": [
+         "stopped",
+         "ended",
+         "failed"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "from": "*",
+     "to": "failed",
+     "when": {
+      "input": "error",
+      "ne": ""
+     }
+    },
+    {
+     "from": "connecting",
+     "to": "playing",
+     "when": {
+      "any": [
+       {
+        "input": "player",
+        "eq": "PLAYING"
+       },
+       {
+        "input": "player",
+        "eq": "BUFFERING"
+       }
+      ]
+     }
+    },
+    {
+     "from": "playing",
+     "to": "paused",
+     "when": {
+      "input": "player",
+      "eq": "PAUSED"
+     }
+    },
+    {
+     "from": "paused",
+     "to": "playing",
+     "when": {
+      "input": "player",
+      "eq": "PLAYING"
+     }
+    },
+    {
+     "from": "*",
+     "to": "ended",
+     "when": {
+      "all": [
+       {
+        "input": "ended",
+        "ne": ""
+       },
+       {
+        "state": "playback",
+        "in": [
+         "connecting",
+         "playing",
+         "paused"
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "commands",
+   "initial": "idle",
+   "states": {
+    "idle": {},
+    "opening": {
+     "enter": [
+      {
+       "request": "cast.choose"
+      }
+     ]
+    },
+    "pausing": {
+     "enter": [
+      {
+       "request": "cast.pause"
+      }
+     ]
+    },
+    "resuming": {
+     "enter": [
+      {
+       "request": "cast.resume"
+      }
+     ]
+    },
+    "stopping": {
+     "enter": [
+      {
+       "request": "cast.stop"
+      }
+     ]
+    },
+    "seeking": {
+     "enter": [
+      {
+       "request": "cast.seek",
+       "with": [
+        "position",
+        "skip"
+       ]
+      }
+     ]
+    },
+    "turning": {
+     "enter": [
+      {
+       "request": "cast.volume",
+       "with": [
+        "wantVolume"
+       ]
+      }
+     ]
+    },
+    "pacing": {
+     "enter": [
+      {
+       "request": "cast.rate",
+       "with": [
+        "wantRate"
+       ]
+      }
+     ]
+    },
+    "jumping": {
+     "enter": [
+      {
+       "request": "cast.seekTo",
+       "with": [
+        "seekTo"
+       ]
+      }
+     ]
+    }
+   },
+   "transitions": [
+    {
+     "from": "idle",
+     "to": "jumping",
+     "when": {
+      "fired": "seekAbsolute"
+     }
+    },
+    {
+     "from": "idle",
+     "to": "opening",
+     "when": {
+      "fired": "open"
+     }
+    },
+    {
+     "from": "idle",
+     "to": "pausing",
+     "when": {
+      "fired": "pause"
+     }
+    },
+    {
+     "from": "idle",
+     "to": "resuming",
+     "when": {
+      "fired": "resume"
+     }
+    },
+    {
+     "from": "idle",
+     "to": "stopping",
+     "when": {
+      "fired": "stop"
+     }
+    },
+    {
+     "from": "idle",
+     "to": "seeking",
+     "when": {
+      "fired": "seek"
+     }
+    },
+    {
+     "from": "idle",
+     "to": "turning",
+     "when": {
+      "fired": "chooseVolume"
+     }
+    },
+    {
+     "from": "idle",
+     "to": "pacing",
+     "when": {
+      "fired": "chooseRate"
+     }
+    },
+    {
+     "from": "*",
+     "to": "idle"
+    }
+   ]
+  },
+  {
+   "name": "menu",
+   "initial": "closed",
+   "states": {
+    "closed": {},
+    "receivers": {},
+    "rates": {}
+   },
+   "transitions": [
+    {
+     "from": "receivers",
+     "to": "closed",
+     "when": {
+      "any": [
+       {
+        "fired": "toggleReceivers"
+       },
+       {
+        "fired": "chooseReceiver"
+       },
+       {
+        "fired": "dismiss"
+       }
+      ]
+     }
+    },
+    {
+     "from": "rates",
+     "to": "closed",
+     "when": {
+      "any": [
+       {
+        "fired": "toggleRates"
+       },
+       {
+        "fired": "chooseRate"
+       },
+       {
+        "fired": "dismiss"
+       }
+      ]
+     }
+    },
+    {
+     "from": "*",
+     "to": "receivers",
+     "when": {
+      "fired": "toggleReceivers"
+     }
+    },
+    {
+     "from": "*",
+     "to": "rates",
+     "when": {
+      "fired": "toggleRates"
+     }
+    }
+   ]
+  }
+ ],
+ "view": {
+  "kind": "stack",
+  "axis": "vertical",
+  "children": [
+   {
+    "kind": "scene",
+    "width": 320,
+    "height": 180,
+    "shapes": [
+     {
+      "shape": "disc",
+      "x": 160,
+      "y": 90,
+      "radius": 84,
+      "colour": "@decor1",
+      "depth": 0
+     },
+     {
+      "x": 160,
+      "y": 90,
+      "w": 150,
+      "h": 46,
+      "angle": "{{spin}}",
+      "turn": 0,
+      "colour": "@decor2",
+      "alpha": 0.8,
+      "depth": 1
+     },
+     {
+      "x": 160,
+      "y": 90,
+      "w": 150,
+      "h": 46,
+      "angle": "{{spin}}",
+      "turn": 1.0471975512,
+      "colour": "@decor3",
+      "alpha": 0.8,
+      "depth": 1
+     },
+     {
+      "x": 160,
+      "y": 90,
+      "w": 150,
+      "h": 46,
+      "angle": "{{spin}}",
+      "turn": 2.0943951024,
+      "colour": "@decor1",
+      "alpha": 0.6,
+      "depth": 1
+     },
+     {
+      "shape": "disc",
+      "x": 160,
+      "y": 90,
+      "radius": 18,
+      "colour": "@decor2",
+      "depth": 2
+     },
+     {
+      "shape": "disc",
+      "x": 160,
+      "y": 90,
+      "radius": 4,
+      "colour": "#FFFFFF",
+      "depth": 3
+     }
+    ]
+   },
+   {
+    "kind": "text",
+    "text": "{{title}}",
+    "role": "title",
+    "when": {
+     "input": "file",
+     "ne": ""
+    }
+   },
+   {
+    "kind": "empty",
+    "symbol": "document",
+    "text": "Choose an audio file",
+    "detail": "Open an MP3 to cast it to a TV.",
+    "when": {
+     "input": "file",
+     "eq": ""
+    }
+   },
+   {
+    "kind": "progress",
+    "text": "Connecting to {{receiver}}…",
+    "detail": "",
+    "when": {
+     "state": "playback",
+     "in": [
+      "connecting"
+     ]
+    }
+   },
+   {
+    "kind": "badge",
+    "text": "Playing on {{receiver}}",
+    "symbol": "play",
+    "tone": "accent",
+    "when": {
+     "state": "playback",
+     "in": [
+      "playing"
+     ]
+    }
+   },
+   {
+    "kind": "badge",
+    "text": "Paused",
+    "symbol": "pause",
+    "tone": "secondary",
+    "when": {
+     "state": "playback",
+     "in": [
+      "paused"
+     ]
+    }
+   },
+   {
+    "kind": "badge",
+    "text": "Finished",
+    "symbol": "check",
+    "tone": "good",
+    "when": {
+     "state": "playback",
+     "in": [
+      "ended"
+     ]
+    }
+   },
+   {
+    "kind": "text",
+    "text": "{{error}}",
+    "role": "callout",
+    "tone": "danger",
+    "when": {
+     "state": "playback",
+     "in": [
+      "failed"
+     ]
+    }
+   },
+   {
+    "kind": "stack",
+    "axis": "horizontal",
+    "children": [
+     {
+      "kind": "progress",
+      "text": "Looking for TVs…",
+      "detail": "",
+      "when": {
+       "state": "receivers",
+       "in": [
+        "searching"
+       ]
+      }
+     },
+     {
+      "kind": "picker",
+      "text": "Receiver",
+      "choices": "receivers",
+      "selected": "{{receiver}}",
+      "on": {
+       "set": "receiver"
+      },
+      "when": {
+       "state": "receivers",
+       "in": [
+        "found"
+       ]
+      }
+     },
+     {
+      "kind": "text",
+      "text": "No TVs found",
+      "role": "callout",
+      "tone": "caution",
+      "when": {
+       "state": "receivers",
+       "in": [
+        "none"
+       ]
+      }
+     },
+     {
+      "kind": "button",
+      "text": "Search again",
+      "symbol": "refresh",
+      "on": {
+       "set": "searched",
+       "value": false,
+       "fire": "refresh"
+      },
+      "when": {
+       "state": "receivers",
+       "in": [
+        "found",
+        "none"
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "kind": "stack",
+    "axis": "horizontal",
+    "when": {
+     "state": "playback",
+     "in": [
+      "playing",
+      "paused"
+     ]
+    },
+    "children": [
+     {
+      "kind": "text",
+      "text": "{{position|clock}}",
+      "role": "caption",
+      "tone": "secondary"
+     },
+     {
+      "kind": "meter",
+      "text": "Position",
+      "amount": "{{position}}",
+      "total": "{{duration}}",
+      "tone": "accent"
+     },
+     {
+      "kind": "text",
+      "text": "{{duration|clock}}",
+      "role": "caption",
+      "tone": "secondary"
+     }
+    ]
+   },
+   {
+    "kind": "stack",
+    "axis": "horizontal",
+    "children": [
+     {
+      "kind": "button",
+      "text": "Back 10 seconds",
+      "symbol": "",
+      "on": {
+       "set": "skip",
+       "value": -10,
+       "fire": "seek"
+      },
+      "enabled": {
+       "input": "canSeek",
+       "eq": true
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      }
+     },
+     {
+      "kind": "button",
+      "text": "Play",
+      "symbol": "play",
+      "role": "prominent",
+      "on": {
+       "set": "error",
+       "value": "",
+       "fire": "play"
+      },
+      "enabled": {
+       "all": [
+        {
+         "input": "file",
+         "ne": ""
+        },
+        {
+         "input": "receiver",
+         "ne": ""
+        }
+       ]
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "stopped",
+        "ended",
+        "failed"
+       ]
+      }
+     },
+     {
+      "kind": "button",
+      "text": "Pause",
+      "symbol": "pause",
+      "role": "prominent",
+      "on": {
+       "fire": "pause"
+      },
+      "enabled": {
+       "input": "canPause",
+       "eq": true
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing"
+       ]
+      }
+     },
+     {
+      "kind": "button",
+      "text": "Resume",
+      "symbol": "play",
+      "role": "prominent",
+      "on": {
+       "fire": "resume"
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "paused"
+       ]
+      }
+     },
+     {
+      "kind": "button",
+      "text": "Stop",
+      "symbol": "stop",
+      "on": {
+       "fire": "stop"
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      }
+     },
+     {
+      "kind": "button",
+      "text": "Forward 10 seconds",
+      "symbol": "",
+      "on": {
+       "set": "skip",
+       "value": 10,
+       "fire": "seek"
+      },
+      "enabled": {
+       "input": "canSeek",
+       "eq": true
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "kind": "stack",
+    "axis": "horizontal",
+    "children": [
+     {
+      "kind": "picker",
+      "text": "Volume {{volume|percent}}%",
+      "choices": "volumes",
+      "selected": "{{wantVolume}}",
+      "on": {
+       "set": "wantVolume",
+       "fire": "chooseVolume"
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      }
+     },
+     {
+      "kind": "picker",
+      "text": "Speed",
+      "choices": "rates",
+      "selected": "{{wantRate}}",
+      "on": {
+       "set": "wantRate",
+       "fire": "chooseRate"
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      }
+     },
+     {
+      "kind": "button",
+      "text": "Open file…",
+      "symbol": "folder",
+      "on": {
+       "fire": "open"
+      }
+     }
+    ]
+   },
+   {
+    "kind": "picker",
+    "text": "Skin",
+    "choices": "skins",
+    "selected": "{{skin}}",
+    "on": {
+     "set": "skin"
+    }
+   }
+  ]
+ },
+ "skins": {
+  "sherbet": {
+   "name": "Sherbet Signal",
+   "motion": "disc",
+   "tokens": {
+    "background": "#FFF8EF",
+    "text": "#252333",
+    "secondary": "#625968",
+    "accent": "#A83D22",
+    "good": "#2E7D4F",
+    "caution": "#9A5B00",
+    "danger": "#B3261E",
+    "decor1": "#FFAA86",
+    "decor2": "#D8C3EF",
+    "decor3": "#FFE4A1"
+   },
+   "canvas": {
+    "width": 868,
+    "height": 1113,
+    "atlas": [
+     "{{assets}}/skins/sherbet/backdrop.png",
+     "{{assets}}/skins/sherbet/disc.png",
+     "{{assets}}/skins/sherbet/transport.png"
+    ],
+    "shapes": [
+     {
+      "shape": "sprite",
+      "index": 0,
+      "x": 434,
+      "y": 556.5,
+      "w": 868,
+      "h": 1113,
+      "depth": 0
+     },
+     {
+      "shape": "sprite",
+      "index": 1,
+      "x": 431,
+      "y": 307,
+      "w": 492,
+      "h": 492,
+      "angle": "{{spin}}",
+      "depth": 1
+     },
+     {
+      "shape": "sprite",
+      "index": 2,
+      "x": 433,
+      "y": 930,
+      "w": 156,
+      "h": 156,
+      "depth": 1
+     },
+     {
+      "shape": "rounded",
+      "x": 418,
+      "y": 910,
+      "w": 11,
+      "h": 42,
+      "radius": 3,
+      "colour": "#FFFFFF",
+      "depth": 3,
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing"
+       ]
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": 438,
+      "y": 910,
+      "w": 11,
+      "h": 42,
+      "radius": 3,
+      "colour": "#FFFFFF",
+      "depth": 3,
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing"
+       ]
+      }
+     },
+     {
+      "shape": "triangle",
+      "x": 422,
+      "y": 908,
+      "w": 34,
+      "h": 44,
+      "colour": "#FFFFFF",
+      "depth": 3,
+      "when": {
+       "not": {
+        "state": "playback",
+        "in": [
+         "playing"
+        ]
+       }
+      }
+     },
+     {
+      "shape": "text",
+      "text": "{{name|fit:30}}",
+      "x": 434.5,
+      "y": 591.5,
+      "size": 46,
+      "colour": "#252333",
+      "anchor": 1,
+      "weight": 500,
+      "depth": 4,
+      "when": {
+       "input": "file",
+       "ne": ""
+      }
+     },
+     {
+      "shape": "text",
+      "text": "Choose an audio file",
+      "x": 434.5,
+      "y": 591.5,
+      "size": 46,
+      "colour": "#252333",
+      "anchor": 1,
+      "weight": 500,
+      "depth": 4,
+      "when": {
+       "input": "file",
+       "eq": ""
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": 371,
+      "y": 669,
+      "w": 4,
+      "h": 11,
+      "radius": 2,
+      "colour": "#FD957B",
+      "depth": 3,
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": 381,
+      "y": 663,
+      "w": 5,
+      "h": 17,
+      "radius": 2.5,
+      "colour": "#FD957B",
+      "depth": 3,
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": 392,
+      "y": 659,
+      "w": 5,
+      "h": 21,
+      "radius": 2.5,
+      "colour": "#FD957B",
+      "depth": 3,
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "Playing",
+      "x": 416,
+      "y": 659.0,
+      "size": 24,
+      "colour": "#6C626A",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 4,
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "Paused",
+      "x": 416,
+      "y": 659.0,
+      "size": 24,
+      "colour": "#6C626A",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 4,
+      "when": {
+       "state": "playback",
+       "in": [
+        "paused"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "Connecting…",
+      "x": 434,
+      "y": 659.0,
+      "size": 24,
+      "colour": "#6C626A",
+      "anchor": 1,
+      "weight": 400,
+      "depth": 4,
+      "when": {
+       "state": "playback",
+       "in": [
+        "connecting"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "Finished",
+      "x": 434,
+      "y": 659.0,
+      "size": 24,
+      "colour": "#6C626A",
+      "anchor": 1,
+      "weight": 400,
+      "depth": 4,
+      "when": {
+       "state": "playback",
+       "in": [
+        "ended"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "Ready",
+      "x": 434,
+      "y": 659.0,
+      "size": 24,
+      "colour": "#6C626A",
+      "anchor": 1,
+      "weight": 400,
+      "depth": 4,
+      "when": {
+       "state": "playback",
+       "in": [
+        "stopped"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "{{error|fit:44}}",
+      "x": 434,
+      "y": 659.0,
+      "size": 24,
+      "colour": "#D9654A",
+      "anchor": 1,
+      "weight": 400,
+      "depth": 4,
+      "when": {
+       "state": "playback",
+       "in": [
+        "failed"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "{{receiver|fit:22}}",
+      "x": 328,
+      "y": 733.0,
+      "size": 24,
+      "colour": "#252333",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 4,
+      "when": {
+       "input": "receiver",
+       "ne": ""
+      }
+     },
+     {
+      "shape": "text",
+      "text": "Looking for TVs…",
+      "x": 328,
+      "y": 733.0,
+      "size": 24,
+      "colour": "#6C626A",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 4,
+      "when": {
+       "input": "receiver",
+       "eq": ""
+      }
+     },
+     {
+      "shape": "text",
+      "text": "{{position|clock}}",
+      "x": 43,
+      "y": 816.5,
+      "size": 21,
+      "colour": "#6C626A",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 4
+     },
+     {
+      "shape": "text",
+      "text": "{{duration|clock}}",
+      "x": 826,
+      "y": 816.5,
+      "size": 21,
+      "colour": "#6C626A",
+      "anchor": 2,
+      "weight": 400,
+      "depth": 4
+     },
+     {
+      "shape": "rounded",
+      "x": 129,
+      "y": 822,
+      "w": 610,
+      "h": 10,
+      "radius": 5,
+      "colour": "#D8D2CF",
+      "depth": 2
+     },
+     {
+      "shape": "rounded",
+      "x": 129,
+      "y": 822,
+      "w": "{{position|over:duration:610}}",
+      "h": 10,
+      "radius": 5,
+      "colour": "#FD957B",
+      "depth": 2
+     },
+     {
+      "shape": "disc",
+      "x": "{{position|over:duration:610:129}}",
+      "y": 828,
+      "radius": 14,
+      "colour": "#5A3A2A",
+      "depth": 3,
+      "alpha": 0.12
+     },
+     {
+      "shape": "disc",
+      "x": "{{position|over:duration:610:129}}",
+      "y": 826.5,
+      "radius": 13,
+      "colour": "#FFFFFF",
+      "depth": 3
+     },
+     {
+      "shape": "rounded",
+      "x": 99,
+      "y": 1040,
+      "w": 302,
+      "h": 10,
+      "radius": 5,
+      "colour": "#D8D2CF",
+      "depth": 2
+     },
+     {
+      "shape": "rounded",
+      "x": 99,
+      "y": 1040,
+      "w": "{{volume|scale:302}}",
+      "h": 10,
+      "radius": 5,
+      "colour": "#FD957B",
+      "depth": 2
+     },
+     {
+      "shape": "disc",
+      "x": "{{volume|scale:302:99}}",
+      "y": 1046,
+      "radius": 13,
+      "colour": "#5A3A2A",
+      "depth": 3,
+      "alpha": 0.12
+     },
+     {
+      "shape": "disc",
+      "x": "{{volume|scale:302:99}}",
+      "y": 1044.5,
+      "radius": 12,
+      "colour": "#FFFFFF",
+      "depth": 3
+     },
+     {
+      "shape": "text",
+      "text": "{{rate|short}}×",
+      "x": 546,
+      "y": 1033.5,
+      "size": 21.5,
+      "colour": "#252333",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 4
+     },
+     {
+      "shape": "rounded",
+      "x": 255,
+      "y": 786,
+      "w": 356,
+      "h": "{{receivers|count:56:16}}",
+      "radius": 18,
+      "colour": "#5A3A2A",
+      "alpha": 0.1,
+      "depth": 6,
+      "when": {
+       "state": "menu",
+       "in": [
+        "receivers"
+       ]
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": 255,
+      "y": 782,
+      "w": 356,
+      "h": "{{receivers|count:56:16}}",
+      "radius": 18,
+      "colour": "#FFFDFB",
+      "depth": 7,
+      "when": {
+       "state": "menu",
+       "in": [
+        "receivers"
+       ]
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": 263,
+      "y": 790,
+      "w": 340,
+      "h": 56,
+      "radius": 12,
+      "colour": "#FDE3D8",
+      "depth": 8,
+      "each": {
+       "in": "receivers",
+       "dy": 56
+      },
+      "when": {
+       "all": [
+        {
+         "state": "menu",
+         "in": [
+          "receivers"
+         ]
+        },
+        {
+         "input": "receiver",
+         "eq": "{{item.key}}"
+        }
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "{{item.label}}",
+      "x": 283,
+      "y": 803.12,
+      "size": 24,
+      "colour": "#252333",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 9,
+      "each": {
+       "in": "receivers",
+       "dy": 56
+      },
+      "when": {
+       "state": "menu",
+       "in": [
+        "receivers"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "✓",
+      "x": 583,
+      "y": 803.12,
+      "size": 24,
+      "colour": "#E8775A",
+      "anchor": 2,
+      "weight": 600,
+      "depth": 9,
+      "each": {
+       "in": "receivers",
+       "dy": 56
+      },
+      "when": {
+       "all": [
+        {
+         "state": "menu",
+         "in": [
+          "receivers"
+         ]
+        },
+        {
+         "input": "receiver",
+         "eq": "{{item.key}}"
+        }
+       ]
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": 500,
+      "y": 761,
+      "w": 141,
+      "h": "{{rates|count:48:16}}",
+      "radius": 18,
+      "colour": "#5A3A2A",
+      "alpha": 0.1,
+      "depth": 6,
+      "when": {
+       "state": "menu",
+       "in": [
+        "rates"
+       ]
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": 500,
+      "y": 757,
+      "w": 141,
+      "h": "{{rates|count:48:16}}",
+      "radius": 18,
+      "colour": "#FFFDFB",
+      "depth": 7,
+      "when": {
+       "state": "menu",
+       "in": [
+        "rates"
+       ]
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": 508,
+      "y": 765,
+      "w": 125,
+      "h": 48,
+      "radius": 12,
+      "colour": "#FDE3D8",
+      "depth": 8,
+      "each": {
+       "in": "rates",
+       "dy": 48
+      },
+      "when": {
+       "all": [
+        {
+         "state": "menu",
+         "in": [
+          "rates"
+         ]
+        },
+        {
+         "input": "wantRate",
+         "eq": "{{item.key}}"
+        }
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "{{item.label}}",
+      "x": 528,
+      "y": 775.67,
+      "size": 21.5,
+      "colour": "#252333",
+      "anchor": 0,
+      "weight": 400,
+      "depth": 9,
+      "each": {
+       "in": "rates",
+       "dy": 48
+      },
+      "when": {
+       "state": "menu",
+       "in": [
+        "rates"
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "✓",
+      "x": 613,
+      "y": 775.67,
+      "size": 21.5,
+      "colour": "#E8775A",
+      "anchor": 2,
+      "weight": 600,
+      "depth": 9,
+      "each": {
+       "in": "rates",
+       "dy": 48
+      },
+      "when": {
+       "all": [
+        {
+         "state": "menu",
+         "in": [
+          "rates"
+         ]
+        },
+        {
+         "input": "wantRate",
+         "eq": "{{item.key}}"
+        }
+       ]
+      }
+     }
+    ],
+    "listeners": [
+     {
+      "x": 263,
+      "y": 790,
+      "w": 340,
+      "h": 56,
+      "each": {
+       "in": "receivers",
+       "dy": 56
+      },
+      "role": "menuitem",
+      "label": "{{item.label}}",
+      "on": {
+       "set": "receiver",
+       "value": "{{item.key}}",
+       "fire": "chooseReceiver"
+      },
+      "when": {
+       "state": "menu",
+       "in": [
+        "receivers"
+       ]
+      }
+     },
+     {
+      "x": 508,
+      "y": 765,
+      "w": 125,
+      "h": 48,
+      "each": {
+       "in": "rates",
+       "dy": 48
+      },
+      "role": "menuitem",
+      "label": "{{item.label}}",
+      "on": {
+       "set": "wantRate",
+       "value": "{{item.key}}",
+       "fire": "chooseRate"
+      },
+      "when": {
+       "state": "menu",
+       "in": [
+        "rates"
+       ]
+      }
+     },
+     {
+      "x": 255,
+      "y": 717,
+      "w": 356,
+      "h": 57,
+      "on": {
+       "fire": "toggleReceivers"
+      },
+      "role": "popup",
+      "label": "Receiver: {{receiver}}"
+     },
+     {
+      "x": 524,
+      "y": 1021,
+      "w": 93,
+      "h": 45,
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      },
+      "on": {
+       "fire": "toggleRates"
+      },
+      "role": "popup",
+      "label": "Speed: {{rate|short}}×"
+     },
+     {
+      "x": 0,
+      "y": 0,
+      "w": 868,
+      "h": 1113,
+      "role": "none",
+      "label": "Close menu",
+      "on": {
+       "fire": "dismiss"
+      },
+      "when": {
+       "not": {
+        "state": "menu",
+        "in": [
+         "closed"
+        ]
+       }
+      }
+     },
+     {
+      "x": 371,
+      "y": 868,
+      "w": 124,
+      "h": 124,
+      "on": {
+       "fire": "pause"
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing"
+       ]
+      },
+      "role": "button",
+      "label": "Pause"
+     },
+     {
+      "x": 371,
+      "y": 868,
+      "w": 124,
+      "h": 124,
+      "on": {
+       "fire": "resume"
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "paused"
+       ]
+      },
+      "role": "button",
+      "label": "Resume"
+     },
+     {
+      "x": 371,
+      "y": 868,
+      "w": 124,
+      "h": 124,
+      "on": {
+       "set": "error",
+       "value": "",
+       "fire": "play"
+      },
+      "role": "button",
+      "label": "Play"
+     },
+     {
+      "x": 563,
+      "y": 893,
+      "w": 78,
+      "h": 74,
+      "on": {
+       "fire": "stop"
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      },
+      "role": "button",
+      "label": "Stop"
+     },
+     {
+      "x": 657,
+      "y": 1007,
+      "w": 172,
+      "h": 43,
+      "on": {
+       "fire": "open"
+      },
+      "role": "button",
+      "label": "Open file…"
+     },
+     {
+      "x": 129,
+      "y": 805,
+      "w": 610,
+      "h": 45,
+      "slide": {
+       "set": "seekTo",
+       "min": 0,
+       "max": "{{duration}}",
+       "fire": "seekAbsolute"
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      },
+      "role": "slider",
+      "label": "Position"
+     },
+     {
+      "x": 99,
+      "y": 1025,
+      "w": 302,
+      "h": 40,
+      "slide": {
+       "set": "wantVolume",
+       "min": 0,
+       "max": 1,
+       "fire": "chooseVolume"
+      },
+      "when": {
+       "state": "playback",
+       "in": [
+        "playing",
+        "paused"
+       ]
+      },
+      "role": "slider",
+      "label": "Volume"
+     }
+    ]
+   }
+  },
+  "midnight": {
+   "name": "Midnight Mint",
+   "motion": "disc",
+   "tokens": {
+    "background": "#10192B",
+    "text": "#F4F7FF",
+    "secondary": "#BAC6D9",
+    "accent": "#A8EED4",
+    "good": "#7FE0B0",
+    "caution": "#FFC97A",
+    "danger": "#FF8A80",
+    "decor1": "#B4A5FF",
+    "decor2": "#70B9C4",
+    "decor3": "#A8EED4"
+   }
+  },
+  "poolside": {
+   "name": "Poolside Pop",
+   "motion": "disc",
+   "tokens": {
+    "background": "#D9EEFF",
+    "text": "#102958",
+    "secondary": "#36557A",
+    "accent": "#174EC6",
+    "good": "#1E6B45",
+    "caution": "#8A5300",
+    "danger": "#B3261E",
+    "decor1": "#FF7828",
+    "decor2": "#FFD44F",
+    "decor3": "#174EC6"
+   }
+  }
+ }
 }

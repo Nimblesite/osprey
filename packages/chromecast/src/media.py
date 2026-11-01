@@ -10,7 +10,7 @@ the interface that routes to the device ([FFI-FILE-SERVER]) through the
 
 from chromecast import Wire
 
-__all__ = ["Served", "title", "media_url", "unserve"]
+__all__ = ["Served", "base_name", "title", "media_url", "unserve"]
 
 
 class Served:

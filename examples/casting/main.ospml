@@ -1,18 +1,26 @@
 // The casting player's C boundary for the GPUI host ([GPUI-HOST-BOUNDARY], [UI-RESIDENT]). The
-// session stays in this library between calls, the disc travels in the envelope rather than the
-// scene stream, and every device byte goes through the
+// session stays in this library between calls, the canvas's rects, discs and sprites go to the host
+// one call at a time ([UI-SCENE-STREAM]), and every device byte goes through the
 // @osprey/chromecast port's real `Wire.Native` handler.
 
 import ui::Runtime
 import casting::App
+import ui::Streams
 
 extern native_slice (key : string) -> string
+
+extern native_shape (code : int) (index : int) (a : float) (b : float) (c : float) (d : float) (e : float) (tint : int) (layer : int) -> int
 
 (** Hands the session the framework returned to the cell below. *)
 effect Keep
     keep : ui::Session<casting::Store> => Unit
 
 mut live = Runtime::idle (casting::Link::store (ui::Machines::faulty ""))
+
+mut streamed = 0
+
+// [UI-SCENE-STREAM] Each streamed rect, disc or sprite goes straight to the host.
+shipped primitive = native_shape (Streams::code primitive, Streams::index primitive, Streams::value (primitive, 0), Streams::value (primitive, 1), Streams::value (primitive, 2), Streams::value (primitive, 3), Streams::value (primitive, 4), Streams::colour primitive, Streams::depth primitive)
 
 keeping (done : ui::Resident<casting::Store>) =
     perform Keep.keep done.residentSession
@@ -24,7 +32,7 @@ start source =
     handle ui::Slices
         fetch key => native_slice key
     handle ui::SceneStream
-        shape _ => 0
+        shape primitive => streamed := shipped primitive
     casting::Link::guarded (\() => chromecast::Wire::Native (\() => keeping (Runtime::begin (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), App::theme ()))))
 
 dispatch (_saved : string, event) =
@@ -33,5 +41,5 @@ dispatch (_saved : string, event) =
     handle ui::Slices
         fetch key => native_slice key
     handle ui::SceneStream
-        shape _ => 0
+        shape primitive => streamed := shipped primitive
     casting::Link::guarded (\() => chromecast::Wire::Native (\() => keeping (Runtime::proceed (live, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes)))))

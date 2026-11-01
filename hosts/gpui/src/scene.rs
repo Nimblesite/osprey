@@ -8,6 +8,7 @@ use serde_json::Value;
 use crate::host::HostView;
 use crate::render::{self, Ctx};
 
+pub mod atlas;
 mod decode;
 mod input;
 mod paint;
@@ -19,6 +20,8 @@ pub struct Decoded {
     width: f32,
     height: f32,
     shapes: Arc<Vec<Shape>>,
+    /// The sprite images the scene names, by atlas index ([UI-SCENE]).
+    atlas: Arc<Vec<String>>,
     has_rotation: bool,
     has_sprites: bool,
 }
@@ -72,6 +75,17 @@ pub enum Shape {
         paint: Paint,
         transform: Option<(f32, f32, f32)>,
         depth: f32,
+    },
+    /// A text run in the system font at a weight, anchored at its left (0), centre (1) or right (2).
+    Lettering {
+        text: String,
+        x: f32,
+        y: f32,
+        size: f32,
+        colour: u32,
+        depth: f32,
+        anchor: u8,
+        weight: f32,
     },
 }
 
@@ -132,6 +146,7 @@ impl Shape {
             | Self::Strip { depth, .. }
             | Self::Sprite { depth, .. }
             | Self::Glyphs { depth, .. }
+            | Self::Lettering { depth, .. }
             | Self::Path { depth, .. } => depth,
         }
     }
@@ -227,8 +242,8 @@ fn diagnostics(view: &mut HostView, decoded: &Decoded) {
     if decoded.has_rotation {
         view.diagnose_once("scene rotation is not drawn yet".to_owned());
     }
-    if decoded.has_sprites {
-        view.diagnose_once("sprites draw as quads; the atlas is not loaded".to_owned());
+    if decoded.has_sprites && decoded.atlas.is_empty() {
+        view.diagnose_once("sprites draw as quads; the scene names no atlas".to_owned());
     }
 }
 

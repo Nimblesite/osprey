@@ -89,6 +89,11 @@ module Machines
         JsonNull => ""
         other => Doc::write other
 
+    (** The declared type of input `name`, "" when there is none. *)
+    export kindOf (machine, name) = match Lists::find (machine.knobs, \k => k.knobName == name)
+        Success k => k.knobType
+        Error _ => ""
+
     (** Input `name` as a float, 0 when it is not a number. *)
     export number (machine, name) = numeric (value (machine, name))
 

@@ -84,7 +84,7 @@ A request is `{"request": name, "with": [input names]}`. The adapter receives it
 The view is one node template in the protocol's vocabulary: `stack`, `text`, `label`, `badge`, `button`, `picker`, `toggle`, `meter`, `progress`, `image`, `spacer`, `divider`, `framed`, `scene` (the disc, with `rotate` bound to an input) and `empty`. Its members are the matching `Ui` constructor's arguments. Every node may also carry:
 
 - `"when": condition`: a node whose condition fails is left out, along with its children.
-- `"{{name}}"` inside any string member: the input's value, with a filter: `{{position|clock}}` is `m:ss` and `{{volume|percent}}` is a whole percentage. Anything else, such as a track title, is an input the adapter sets.
+- `"{{name}}"` inside any string member: the input's value, with a filter: `{{position|clock}}` is `mm:ss`, `{{volume|percent}}` a whole percentage, `{{rate|short}}` a number without a trailing `.0`, `{{position|over:duration:610:129}}` position ÷ duration × 610 + 129, and `{{volume|scale:302:99}}` volume × 302 + 99. The last two place canvas shapes. Anything else, such as a track title, is an input the adapter sets.
 - `"enabled": condition` on controls.
 - `"on"`: the listener. `{"fire": t}` fires a trigger; `{"set": n}` sets an input from the control's value: the choice key of a picker, a toggle's flag or a button's literal `"value"`. With both, the input is set first and then the trigger fires, so one press can choose a value and ask for it.
 

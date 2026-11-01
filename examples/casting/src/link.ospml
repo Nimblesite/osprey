@@ -8,6 +8,8 @@ namespace casting
 import ui::Runtime
 import ui::Requests
 import ui::Machines
+import ui::Templates
+import ui::Inputs
 import ui::Doc
 import chromecast::Discovery
 import chromecast::Media
@@ -121,6 +123,7 @@ module Link
         "cast.resume" => live (store, \p => Player::play p)
         "cast.stop" => live (store, \p => Player::stop p)
         "cast.finished" => asked (fed (store, [fact ("ended", JsonString ""), fact ("player", JsonString "")]), [])
+        "cast.seekTo" => live (store, \p => Player::seek (p, givenNumber (ask, "seekTo")))
         "cast.seek" => live (store, \p => Player::seek (p, ui::Pick::either (givenNumber (ask, "position") + givenNumber (ask, "skip") < 0.0, 0.0, givenNumber (ask, "position") + givenNumber (ask, "skip"))))
         "cast.volume" => live (store, \p => Player::volume (p, givenNumber (ask, "wantVolume")))
         "cast.rate" => live (store, \p => Player::rate (p, givenNumber (ask, "wantRate")))
@@ -147,6 +150,23 @@ module Link
     (** A control's lever pulled with its value, then the requests answered. *)
     export pulled (store, lever, value) = settled (store(screen = Screen(screenMachine = Machines::pull (machineOf store, lever, value))))
 
+    // The file facts for a chosen or opened MP3.
+    fileFacts path = [fact ("file", JsonString path), fact ("title", JsonString (Media::title path)), fact ("name", JsonString (Media::base_name path))]
+
+    (** The store as launched: the canvas artwork's folder as `assets`, a `--skin` when given and an MP3 the app was opened with. *)
+    export launched (store, folder, skin, path) =
+        skinned = listConcat [fact ("assets", JsonString folder)] (ui::Pick::either (skin == "", [], [fact ("skin", JsonString skin)]))
+        fed (store, listConcat skinned (ui::Pick::either (path == "", [], fileFacts path)))
+
+    released (store, x, y) = settled (store(screen = Screen(screenMachine = Templates::released (machineOf store, x, y))))
+
+    (** A canvas pointer event: a release acts on the listener under it ([UI-MACHINE-CANVAS]); presses, drags and keys change nothing. *)
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pressed (store, x, y, down))
+
+    pressed (store, x, y, down) = match down
+        true => Runtime::step store
+        false => released (store, x, y)
+
     // ---- completions ----
 
     receiver d = JsonObject [Doc::str ("key", d.name), Doc::str ("label", d.name)]
@@ -160,7 +180,7 @@ module Link
 
     picked (store, doc) = match Doc::flag (doc, "cancelled")
         true => Runtime::step store
-        false => settled (fed (store, [fact ("file", JsonString (Doc::text (doc, "path"))), fact ("title", JsonString (Media::title (Doc::text (doc, "path"))))]))
+        false => settled (fed (store, fileFacts (Doc::text (doc, "path"))))
 
     (** A capability's completion: the device browse or the file picker. *)
     export completed (store, ticket, outcome) = match outcome
