@@ -420,7 +420,7 @@ _run-mac-hd: _runtime_macos
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/macos/run.sh
 
-.PHONY: _gpui-flock _gpui-painting _gpui-probe _gpui-bench _gpui-compare _gpui-test _gpui-signal-flow _gpui-synth _casting
+.PHONY: _gpui-flock _gpui-painting _gpui-probe _gpui-bench _gpui-compare _gpui-test _gpui-smoke _gpui-signal-flow _gpui-synth _casting
 _gpui-flock: _runtime_macos
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/gpui/flock/run.sh
@@ -462,8 +462,13 @@ _gpui-test: _runtime_macos _runtime
 		$(BIN) test $$suite || exit 1; \
 	done
 	cd hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash hosts/gpui/run.sh --smoke
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/gpui/flock/run.sh --smoke
+	$(MAKE) _gpui-smoke
+
+# Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
+# real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
+GPUI_SMOKES := hosts/gpui examples/gpui/flock examples/gpui/painting packages/signal_flow/app examples/synth examples/casting
+_gpui-smoke:
+	for app in $(GPUI_SMOKES); do OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --smoke || exit 1; done
 
 _macos-test: _macos _runtime
 	$(MAKE) _test_macos
