@@ -267,6 +267,7 @@ setup: $(EXT_NODE_DEPS) $(WEBCOMPILER_NODE_DEPS) $(WEBSITE_NODE_DEPS)
 	rustup component add rustfmt clippy llvm-tools-preview
 	command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install cargo-llvm-cov
 	bash scripts/install-deslop.sh
+	node scripts/link-skills.mjs
 	@echo "==> Setup complete. Run 'make ci' to validate."
 
 ## help: List every public target with its usage and expected result.

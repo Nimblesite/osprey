@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -81,6 +82,50 @@ test('a link left behind by a removed skill is removed', () => {
   assert.deepEqual(problems(root), ['.claude/skills/spec-check is not in .agents/skills: move it there'])
   assert.deepEqual(linkSkills(root), [])
   assert.throws(() => lstatSync(join(root, LINKS, 'spec-check')), { code: 'ENOENT' })
+  rmSync(root, { recursive: true })
+})
+
+// A commit whose links this clone checked out as text files, as Git does with core.symlinks=false.
+function stubbedClone() {
+  const root = repo()
+  const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout.trim()
+  git('init', '-q')
+  git('config', 'core.symlinks', 'false')
+  git('config', 'core.autocrlf', 'false')
+  git('config', 'user.name', 'test')
+  git('config', 'user.email', 'test@example.com')
+  mkdirSync(join(root, 'other'))
+  writeFileSync(join(root, 'other', 'target'), 'bytes\n')
+  const stubs = { '.claude/skills/fix-bug': '../../.agents/skills/fix-bug', '.claude/skills/spec-check': '../../.agents/skills/spec-check', 'other/link': 'target' }
+  git('add', '.agents', 'other/target')
+  for (const [path, target] of Object.entries(stubs)) {
+    writeFileSync(join(root, path), target)
+    git('update-index', '--add', '--cacheinfo', `120000,${git('hash-object', '-w', path)},${path}`)
+  }
+  git('commit', '-q', '-m', 'links')
+  return { root, git }
+}
+
+const onWindows = { skip: process.platform !== 'win32' }
+
+test('a clone that can make symlinks is switched to them, and Git sees no change', onWindows, () => {
+  const { root, git } = stubbedClone()
+  assert.deepEqual(linkSkills(root), [])
+  assert.match(skillThroughLink(root, 'fix-bug'), /name: fix-bug/)
+  assert.equal(git('config', '--bool', 'core.symlinks'), 'true')
+  assert.equal(git('status', '--porcelain'), '')
+  assert.equal(git('ls-files', '-v').split('\n').filter((line) => line.startsWith('S')).length, 0)
+  assert.equal(readlinkSync(join(root, 'other', 'link')), 'target')
+  assert.equal(git('ls-files', '-s', '.claude/skills/fix-bug').split(' ')[0], '120000')
+  rmSync(root, { recursive: true })
+})
+
+test('a link file someone edited is left as it is when the clone is switched', onWindows, () => {
+  const { root, git } = stubbedClone()
+  writeFileSync(join(root, 'other', 'link'), 'edited by hand')
+  assert.deepEqual(linkSkills(root), [])
+  assert.equal(readFileSync(join(root, 'other', 'link'), 'utf8'), 'edited by hand')
+  assert.notEqual(git('status', '--porcelain'), '')
   rmSync(root, { recursive: true })
 })
 

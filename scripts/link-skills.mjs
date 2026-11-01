@@ -1,10 +1,13 @@
 // One copy of each skill, for every agent. The skill lives in
 // .agents/skills/<name>, the cross-client location (agentskills.io), and
 // .claude/skills/<name> is a relative link to it, because Claude Code reads
-// only .claude/skills. Git stores the links; a Windows checkout without
-// symlink support leaves each one as a text file holding its target, and
-// running this script turns them back into links (junctions if symlinks are
-// refused). `--check` only reports. Usage: node link-skills.mjs [--check] [root]
+// only .claude/skills. Git stores the links; a Windows clone made without
+// symlink support has core.symlinks=false and leaves each one as a text file
+// holding its target. Running this script turns them back into links. Where
+// Windows allows symlinks (Developer Mode) it also sets core.symlinks=true and
+// restores the clone's other links, so the clone then behaves as on macOS and
+// Linux; where it refuses them the links are junctions Git is told to ignore.
+// `--check` only reports. Usage: node link-skills.mjs [--check] [root]
 import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -49,20 +52,42 @@ export function problems(root) {
 }
 
 // Relative and with forward slashes, so the same link works from any clone on any OS.
+// Returns whether it is a symlink, which is what Git stores, rather than a junction.
 function link(root, name) {
   const path = join(root, LINKS, name)
   try { symlinkSync(`../../${SOURCE}/${name}`, path, 'dir') } catch (error) {
     if (process.platform !== 'win32' || error.code !== 'EPERM') throw error
     symlinkSync(resolve(root, SOURCE, name), path, 'junction')
+    return false
   }
+  return true
 }
 
-// A checkout without symlinks expects a text file where the link now is; keep git quiet about it.
-function hideFromGit(root, names) {
+const git = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+const lines = (result) => result.stdout?.split(/\r?\n/).filter(Boolean) ?? []
+
+// The links Git tracks that this clone checked out as text files, as they were committed.
+function untouchedStubs(root) {
+  const tracked = lines(git(root, 'ls-files', '-s')).filter((line) => line.startsWith('120000 ')).map((line) => line.split('\t')[1])
+  const edited = lines(git(root, 'diff', '--name-only'))
+  return tracked.filter((path) => lstatOf(join(root, path))?.isFile() && !edited.includes(path))
+}
+
+// A clone with core.symlinks=false expects a text file where each link now is. With symlinks Git
+// can be told the truth, and its other links restored; with junctions it can only be kept quiet.
+function tellGit(root, names, symlinks) {
   if (process.platform !== 'win32' || names.length === 0) return
-  const symlinks = spawnSync('git', ['config', '--bool', 'core.symlinks'], { cwd: root, encoding: 'utf8' })
-  if (symlinks.stdout?.trim() === 'true') return
-  spawnSync('git', ['update-index', '--skip-worktree', '--', ...names.map((name) => `${LINKS}/${name}`)], { cwd: root, stdio: 'inherit' })
+  if (git(root, 'config', '--bool', 'core.symlinks').stdout?.trim() === 'true') return
+  const paths = names.map((name) => `${LINKS}/${name}`)
+  if (!symlinks) {
+    git(root, 'update-index', '--skip-worktree', '--', ...paths)
+    return
+  }
+  const stubs = untouchedStubs(root)
+  git(root, 'config', 'core.symlinks', 'true')
+  git(root, 'update-index', '--no-skip-worktree', '--', ...paths)
+  if (stubs.length > 0) git(root, 'checkout', '--', ...stubs)
+  git(root, 'update-index', '--refresh')
 }
 
 // Makes every link, removes links to skills that are gone, and returns what it must not touch:
@@ -74,8 +99,8 @@ export function linkSkills(root) {
   const stale = strays(root, names).filter((name) => isLink(join(root, LINKS, name)))
   for (const name of [...fixable, ...stale]) rmSync(join(root, LINKS, name), { force: true })
   mkdirSync(join(root, LINKS), { recursive: true })
-  for (const name of fixable) link(root, name)
-  hideFromGit(root, stubs)
+  const symlinks = fixable.map((name) => link(root, name)).every(Boolean)
+  tellGit(root, stubs, symlinks)
   return problems(root)
 }
 
