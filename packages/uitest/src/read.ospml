@@ -1,0 +1,58 @@
+// The JSON edge of @osprey/uitest ([UI-MACHINE-TEST]): a host envelope or a
+// rendered node tree decoded once into typed records. Nothing past this
+// module reads JSON.
+namespace uitest
+
+import ui::Doc
+import ui::Pick
+
+(** One rendered node: its kind, accessible label, text, title, tone, selected key, event ordinal, whether it is enabled and its choices' keys. *)
+type Control =
+    controlKind : string
+    controlLabel : string
+    controlText : string
+    controlTitle : string
+    controlTone : string
+    controlSelected : string
+    controlOrdinal : int
+    controlEnabled : bool
+    controlChoices : List<string>
+
+(** What a host last saw: the root region's nodes and canvas lettering, the requests made, the root's revision and its own event ordinal. *)
+type Rendered =
+    renderedControls : List<Control>
+    renderedLetters : List<string>
+    renderedRequests : List<string>
+    renderedRevision : int
+    renderedOrdinal : int
+
+(** Decodes what a native session sends its host ([UI-PROTOCOL]). *)
+module Read
+    (** Nothing seen yet. *)
+    export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedRequests = [], renderedRevision = 0, renderedOrdinal = 0)
+
+    // Every object in `doc`, itself first, in document order.
+    walked (out, doc) = match Doc::kind doc
+        "object" => foldList (Doc::keys doc, listAppend out doc, \(acc, key) => walked (acc, Doc::field (doc, key)))
+        "list" => foldList (Doc::items doc, out, walked)
+        _ => out
+
+    control n = Control(controlKind = Doc::text (n, "kind"), controlLabel = Doc::text (n, "label"), controlText = Doc::text (n, "text"), controlTitle = Doc::text (n, "title"), controlTone = Doc::text (n, "tone"), controlSelected = Doc::text (n, "selected"), controlOrdinal = Doc::number (n, "event"), controlEnabled = Doc::flag (n, "enabled"), controlChoices = mapList (Doc::items (Doc::field (n, "choices")), \c => Doc::text (c, "key")))
+
+    // Shape code 6 is lettering; its text is the shape's second element ([UI-SCENE]).
+    lettering = 6
+
+    letters node = mapList (filterList (Doc::items (Doc::field (node, "shapes")), \s => Doc::real (Doc::at (s, 0)) == toFloat lettering), \s => Doc::string (Doc::at (s, 1)))
+
+    seen (before, node, revision) = before(renderedControls = mapList (walked ([], node), control), renderedLetters = letters node, renderedRevision = revision, renderedOrdinal = Doc::number (node, "event"))
+
+    (** A rendered root node as JSON (`ui::Runtime::tree`), read as a host would. *)
+    export tree node = seen (blank (), node, 0)
+
+    patched (before, patch) = Pick::either (Doc::text (patch, "key") == "root", seen (before, Doc::field (patch, "node"), Doc::number (patch, "revision")), before)
+
+    (** A session's envelope text after `before`: a root patch replaces the view, and the requests are the envelope's own. *)
+    export envelope (before, text) =
+        doc = Doc::parse text
+        asked = before(renderedRequests = mapList (walked ([], Doc::field (doc, "requests")), \r => Doc::text (r, "kind")))
+        foldList (Doc::items (Doc::field (doc, "patches")), asked, patched)
