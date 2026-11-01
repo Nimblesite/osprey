@@ -1,7 +1,7 @@
 name: GPUI host suites
 description: >-
   On a Mac or Linux runner whose compiler and runtime are built: the native framework suite, the
-  example suites, the GPUI host's tests, clippy and smoke run, and Flock's recorded-event smoke run.
+  UI test framework suites, the example suites, the GPUI host's tests, clippy and smoke run, and Flock's recorded-event smoke run.
   Each GPUI job names its own system, so the checks are pinned by name; the suites they share live here.
 runs:
   using: composite
@@ -9,6 +9,14 @@ runs:
     - name: Native framework suite
       shell: bash
       run: ./target/release/osprey test packages/native/tests
+
+    # [UI-MACHINE-TEST]: the same suites as `make ui-test`.
+    - name: UI test framework suites
+      shell: bash
+      run: |
+        ./target/release/osprey test packages/uitest/tests
+        ./target/release/osprey test examples/casting/test
+        ./target/release/osprey test packages/signal_flow/tests
 
     - name: Example suites
       shell: bash
