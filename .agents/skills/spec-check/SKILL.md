@@ -28,6 +28,7 @@ Use judgment. Usually it is obvious:
 - **Code is wrong:** a sound spec is contradicted by the code. Fix the code, writing a failing test first.
 - **Tests or docs are stale:** fix them to match the correct behavior.
 - **Missing links:** add the spec ID to a comment in the implementing code and to the tests.
+- **Unclear:** if you can't tell which side is right, change nothing. Flag it with ❓ in the report and ask the user to decide.
 
 ## 4. Keep specs tight
 
@@ -35,4 +36,4 @@ When you edit a spec, keep it short, focused, and easy for a person to read. Sta
 
 ## 5. Report
 
-List each discrepancy, the side you changed and why, and any gaps left unimplemented.
+List each discrepancy, the side you changed and why, and any gaps left unimplemented. End with the ❓ items, each with the options, so the user can decide.
