@@ -410,7 +410,7 @@ pub(super) fn unbound(ctx: &mut Ctx) -> AnyElement {
 /// Renders the collapsible host diagnostic strip, newest messages last.
 pub fn diagnostics(view: &mut HostView, cx: &mut Context<HostView>) -> AnyElement {
     let messages = diagnostic_messages(view);
-    let metrics = view.animating && !crate::host::bare();
+    let metrics = view.animating && !crate::host::flush();
     if messages.is_empty() && !metrics {
         return div().into_any_element();
     }

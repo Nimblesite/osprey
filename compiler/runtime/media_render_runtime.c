@@ -15,22 +15,41 @@
 //
 // `osprey_media_unrender` stops ffmpeg and deletes the folder. Without
 // ffmpeg and ffprobe on the PATH, render returns "" and a sender casts the
-// audio as it is.
+// audio as it is. Windows has no posix_spawn, so there render always takes
+// that path.
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _WIN32
+
+char *osprey_media_render(char *audio) {
+  (void)audio;
+  return strdup("");
+}
+
+int64_t osprey_media_unrender(char *folder) {
+  (void)folder;
+  return -1;
+}
+
+#else
 
 #include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <spawn.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+// glibc declares environ under _GNU_SOURCE; Apple's headers never do.
+#ifdef __APPLE__
 extern char **environ;
+#endif
 
 enum { MR_SEGMENT = 4, MR_PATH = 1024 };
 
@@ -40,6 +59,13 @@ static const char *MR_FILTER =
 int64_t osprey_media_unrender(char *folder);
 
 static char *mr_copy(const char *text) { return strdup(text ? text : ""); }
+
+// `folder/name` into `path`; false when it does not fit, so a long folder can
+// never make a truncated path that names some other file.
+static bool mr_path(char path[MR_PATH], const char *folder, const char *name) {
+  int length = snprintf(path, MR_PATH, "%s/%s", folder, name);
+  return length >= 0 && length < MR_PATH;
+}
 
 // Spawns `args` (NULL-terminated) from the PATH with `actions`; its pid, or 0.
 // posix_spawnp takes mutable strings, so the arguments are copied first.
@@ -98,8 +124,7 @@ static double probe_duration(const char *path) {
 // The VOD playlist for `seconds` of media in MR_SEGMENT-second segments.
 static bool write_playlist(const char *folder, double seconds) {
   char path[MR_PATH];
-  snprintf(path, sizeof path, "%s/media.m3u8", folder);
-  FILE *file = fopen(path, "w");
+  FILE *file = mr_path(path, folder, "media.m3u8") ? fopen(path, "w") : NULL;
   if (!file) {
     return false;
   }
@@ -121,8 +146,9 @@ static bool write_playlist(const char *folder, double seconds) {
 static pid_t start_ffmpeg(const char *audio, const char *folder) {
   char segments[MR_PATH];
   char own[MR_PATH];
-  snprintf(segments, sizeof segments, "%s/seg%%05d.ts", folder);
-  snprintf(own, sizeof own, "%s/ffmpeg.m3u8", folder);
+  if (!mr_path(segments, folder, "seg%05d.ts") || !mr_path(own, folder, "ffmpeg.m3u8")) {
+    return 0;
+  }
   const char *const args[] = {"ffmpeg", "-nostdin", "-loglevel", "error", "-i", audio,
                   "-filter_complex", MR_FILTER, "-map", "[v]", "-map", "0:a",
                   "-c:v", "libx264", "-preset", "veryfast",
@@ -140,8 +166,7 @@ static pid_t start_ffmpeg(const char *audio, const char *folder) {
 
 static void write_pid(const char *folder, pid_t pid) {
   char path[MR_PATH];
-  snprintf(path, sizeof path, "%s/pid", folder);
-  FILE *file = fopen(path, "w");
+  FILE *file = mr_path(path, folder, "pid") ? fopen(path, "w") : NULL;
   if (file) {
     fprintf(file, "%ld\n", (long)pid);
     fclose(file);
@@ -153,9 +178,9 @@ static void write_pid(const char *folder, pid_t pid) {
 char *osprey_media_render(char *audio) {
   const char *tmp = getenv("TMPDIR");
   char folder[MR_PATH];
-  snprintf(folder, sizeof folder, "%s/osprey-cast.XXXXXX", tmp && *tmp ? tmp : "/tmp");
   struct stat info;
-  if (!audio || stat(audio, &info) != 0 || !mkdtemp(folder)) {
+  if (!audio || stat(audio, &info) != 0 ||
+      !mr_path(folder, tmp && *tmp ? tmp : "/tmp", "osprey-cast.XXXXXX") || !mkdtemp(folder)) {
     return mr_copy("");
   }
   double seconds = probe_duration(audio);
@@ -172,8 +197,7 @@ char *osprey_media_render(char *audio) {
 
 static void stop_renderer(const char *folder) {
   char path[MR_PATH];
-  snprintf(path, sizeof path, "%s/pid", folder);
-  FILE *file = fopen(path, "r");
+  FILE *file = mr_path(path, folder, "pid") ? fopen(path, "r") : NULL;
   long pid = 0;
   if (file) {
     if (fscanf(file, "%ld", &pid) != 1) {
@@ -200,11 +224,12 @@ int64_t osprey_media_unrender(char *folder) {
   }
   char path[MR_PATH];
   for (struct dirent *entry = readdir(dir); entry; entry = readdir(dir)) {
-    if (entry->d_name[0] != '.') {
-      snprintf(path, sizeof path, "%s/%s", folder, entry->d_name);
+    if (entry->d_name[0] != '.' && mr_path(path, folder, entry->d_name)) {
       unlink(path);
     }
   }
   closedir(dir);
   return rmdir(folder) == 0 ? 0 : -1;
 }
+
+#endif

@@ -75,6 +75,36 @@ def slice_skin(key, skin):
     Image.fromarray(np.clip(px, 0, 255).astype(np.uint8)[:skin["height"]]).save(folder / "backdrop.png", optimize=True)
 
 
+# ---- the Prism logo ----
+
+LOGO = [(0.0, "#F59AC5"), (0.12, "#E256C9"), (0.3, "#B36AF7"), (0.45, "#559FFB"), (0.62, "#5AE2D7"), (0.75, "#8EE07A"),
+        (0.88, "#F69369"), (1.0, "#F59AC5")]
+
+
+def conic(size, cx, cy):
+    """LOGO's colours swept clockwise from the top around (cx, cy)."""
+    ys, xs = np.mgrid[0:size, 0:size]
+    turn = (np.arctan2(xs - cx, cy - ys) / (2 * np.pi)) % 1.0
+    stops = np.array([t for t, _ in LOGO])
+    colours = np.array([rgb(c) for _, c in LOGO], dtype=np.float64)
+    return np.stack([np.interp(turn, stops, colours[:, c]) for c in range(3)], axis=-1)
+
+
+def logo(size=1024):
+    """The Prism mark as a macOS app icon: the header's rainbow triangle on its dark tile, drawn large rather than scaled up."""
+    s = size * SUPER
+    tile = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(tile)
+    inset, radius = s * 0.098, s * 0.18
+    draw.rounded_rectangle([inset, inset, s - inset, s - inset], radius, fill=rgb("#211F3E"), outline=rgb("#4A4790"), width=int(s * 0.012))
+    corners = [(s * 0.5, s * 0.27), (s * 0.73, s * 0.69), (s * 0.27, s * 0.69)]
+    mask = Image.new("L", (s, s), 0)
+    ImageDraw.Draw(mask).line(corners + corners[:2], fill=255, width=int(s * 0.085), joint="curve")
+    cx, cy = s * 0.5, sum(y for _, y in corners) / 3
+    tile.paste(Image.fromarray(conic(s, cx, cy).astype(np.uint8)), (0, 0), mask)
+    tile.resize((size, size), Image.LANCZOS).save(HERE / "prism" / "logo.png", optimize=True)
+
+
 # ---- shapes ----
 
 def on(role, flag=True):
@@ -449,6 +479,7 @@ def main():
     doc = json.loads(DOCUMENT.read_text())
     for key, skin in SKINS.items():
         slice_skin(key, skin)
+    logo()
     doc["skins"] = {key: {"name": skin["name"], "motion": "none", "tokens": {**skin["tokens"], "background": skin["tokens"]["canvas"]}, "canvas": canvas(key, skin)}
                     for key, skin in SKINS.items()}
     DOCUMENT.write_text(written(doc) + "\n")

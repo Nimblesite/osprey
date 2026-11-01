@@ -159,11 +159,13 @@ module MachineDocs
         "rounded" => RoundedFigure
         "triangle" => TriangleFigure
         "polyline" => PolylineFigure
+        "cable" => CableFigure
         _ => RectFigure
 
-    mark s = Stamp(markFigure = figure (Doc::text (s, "shape")), markX = at (s, "x"), markY = at (s, "y"), markW = at (s, "w"), markH = at (s, "h"), markRadius = at (s, "radius"), markSize = at (s, "size"), markAnchor = at (s, "anchor"), markWeight = measured (s, "weight", 400.0), markIndex = at (s, "index"), markAngle = at (s, "angle"), markTurn = at (s, "turn"), markDepth = at (s, "depth"), markAlpha = measured (s, "alpha", 1.0), markStroke = at (s, "stroke"), markStroked = Doc::has (s, "stroke"), markPoints = Lists::flatten (mapList (Doc::items (Doc::field (s, "points")), \p => mapList (Doc::items p, point))), markColour = Doc::text (s, "colour"), markText = Doc::text (s, "text"), markWhen = condition (Doc::field (s, "when")), markEach = repeat s)
+    mark s = Stamp(markFigure = figure (Doc::text (s, "shape")), markX = at (s, "x"), markY = at (s, "y"), markW = at (s, "w"), markH = at (s, "h"), markRadius = at (s, "radius"), markSize = at (s, "size"), markAnchor = at (s, "anchor"), markWeight = measured (s, "weight", 400.0), markIndex = at (s, "index"), markAngle = at (s, "angle"), markTurn = at (s, "turn"), markDepth = at (s, "depth"), markAlpha = measured (s, "alpha", 1.0), markStroke = at (s, "stroke"), markDash = at (s, "dash"), markStroked = Doc::has (s, "stroke"), markPoints = Lists::flatten (mapList (Doc::items (Doc::field (s, "points")), \p => mapList (Doc::items p, point))), markColour = Doc::text (s, "colour"), markText = Doc::text (s, "text"), markWhen = condition (Doc::field (s, "when")), markEach = repeat s)
 
-    accessRole name = match name
+    (** A listener role by the name documents and hosts write; an unknown name is a button. *)
+    export roleOf name = match name
         "slider" => Slidable
         "popup" => Popup
         "menuitem" => MenuItem
@@ -176,7 +178,11 @@ module MachineDocs
             s = Doc::field (a, "slide")
             Slider(slideMin = at (s, "min"), slideMax = at (s, "max"), slideSet = Doc::text (s, "set"), slideFire = Doc::text (s, "fire"), slideOf = Doc::text (s, Pick::either (Doc::has (s, "of"), "of", "set")))
 
-    area a = Area(areaX = at (a, "x"), areaY = at (a, "y"), areaW = at (a, "w"), areaH = at (a, "h"), areaRole = accessRole (Doc::text (a, "role")), areaLabel = Doc::text (a, "label"), areaLever = lever a, areaSlide = slide a, areaWhen = condition (Doc::field (a, "when")), areaEach = repeat a)
+    drag a = match Doc::has (a, "drag")
+        false => Undragged
+        true => Dragger(dragX = Doc::text (Doc::field (a, "drag"), "x"), dragY = Doc::text (Doc::field (a, "drag"), "y"))
+
+    area a = Area(areaX = at (a, "x"), areaY = at (a, "y"), areaW = at (a, "w"), areaH = at (a, "h"), areaRole = roleOf (Doc::text (a, "role")), areaLabel = Doc::text (a, "label"), areaLever = lever a, areaSlide = slide a, areaDrag = drag a, areaWhen = condition (Doc::field (a, "when")), areaEach = repeat a)
 
     sortOf kind = match kind
         "stack" => Stacked
@@ -264,7 +270,7 @@ module MachineDocs
         inputs = Doc::field (doc, "inputs")
         layers = mapList (Doc::items (Doc::field (doc, "layers")), layer)
         skins = Doc::field (doc, "skins")
-        Machine(knobs = mapList (Doc::keys inputs, \name => knob (inputs, name)), currents = mapList (layers, \l => Current(currentLayer = l.layerName, currentState = l.layerInitial)), asks = [], machineFault = "", machineLayers = layers, machineView = template (Doc::field (doc, "view")), machineSkins = mapList (Doc::keys skins, \name => skin (skins, name)))
+        Machine(knobs = mapList (Doc::keys inputs, \name => knob (inputs, name)), currents = mapList (layers, \l => Current(currentLayer = l.layerName, currentState = l.layerInitial)), asks = [], machineFault = "", machineLayers = layers, machineView = template (Doc::field (doc, "view")), machineSkins = mapList (Doc::keys skins, \name => skin (skins, name)), machineGrip = Loose)
 
     (** A machine from document text, settled from its initial states; an error lists every problem. *)
     export load source = match jsonDecode source
@@ -278,7 +284,7 @@ module MachineDocs
     (** A machine that only shows `problem`, for a document that would not load. *)
     export faulty problem =
         empty = Templates::bare Blank
-        Machine(knobs = [], currents = [], asks = [], machineFault = problem, machineLayers = [], machineView = empty(tplSymbol = "warning", tplText = "This interface could not load", tplDetail = problem), machineSkins = [])
+        Machine(knobs = [], currents = [], asks = [], machineFault = problem, machineLayers = [], machineView = empty(tplSymbol = "warning", tplText = "This interface could not load", tplDetail = problem), machineSkins = [], machineGrip = Loose)
 
     // ---- encoding ----
 

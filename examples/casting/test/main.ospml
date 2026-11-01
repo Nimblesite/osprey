@@ -186,7 +186,7 @@ requested kind = Views::requested (seen (), kind)
 machine () = driven.drivenSession.sessionStore.screen.screenMachine
 
 (** Every accessible element's label, in hit order, `|`-separated. *)
-elements () = Canvases::semantics (machine ())
+elements () = (seen ()).renderedAccess
 
 labels () = Semantics::labels (elements ())
 
@@ -334,6 +334,12 @@ test ("the canvas: every control is reached by its accessible label, through poi
     expect (letters "Playing", true)
     expect (labels (), "Receiver: Living Room TV|Speed: 1×|Pause|Stop|Open file…|Position|Volume")
     expect (valueOf "Volume", 1.0)
+    expect ((element "Volume").accessMin, 0.0)
+    expect ((element "Volume").accessMax, 1.0)
+    expect ((element "Position").accessMax, 200.0)
+    expect (Semantics::role (elements (), "Position"), "slider")
+    expect (Semantics::role (elements (), "Pause"), "button")
+    expect ((element "Volume").accessWidth, 302.0)
     tap "Pause"
     frame 0.2
     expect (letters "Paused", true)

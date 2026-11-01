@@ -35,7 +35,10 @@ impl Sprites {
             .entry(path.to_owned())
             .or_insert_with(|| load(path))
             .clone()?;
-        let made = Arc::new(render(turn(&source, step as f32 / STEPS * std::f32::consts::TAU)));
+        let made = Arc::new(render(turn(
+            &source,
+            step as f32 / STEPS * std::f32::consts::TAU,
+        )));
         self.turned.push((key, made.clone()));
         if self.turned.len() > KEPT {
             let (_, old) = self.turned.remove(0);
@@ -68,7 +71,11 @@ pub fn turn(source: &RgbaImage, angle: f32) -> RgbaImage {
     RgbaImage::from_fn(w, h, |x, y| {
         let dx = x as f32 + 0.5 - cx;
         let dy = y as f32 + 0.5 - cy;
-        sample(source, cos * dx + sin * dy + cx - 0.5, -sin * dx + cos * dy + cy - 0.5)
+        sample(
+            source,
+            cos * dx + sin * dy + cx - 0.5,
+            -sin * dx + cos * dy + cy - 0.5,
+        )
     })
 }
 
@@ -103,7 +110,8 @@ fn render(mut pixels: RgbaImage) -> RenderImage {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{turn, Sprites};
+    use image::RgbaImage;
 
     /// A half turn moves the top-left pixel to the bottom-right and keeps the size.
     #[test]
@@ -120,7 +128,10 @@ mod tests {
     #[test]
     fn a_missing_sprite_is_an_error_naming_its_path() {
         let mut sprites = Sprites::default();
-        let problem = sprites.image("/no/such/sprite.png", 0.).err().unwrap_or_default();
+        let problem = sprites
+            .image("/no/such/sprite.png", 0.)
+            .err()
+            .unwrap_or_default();
         assert!(problem.contains("/no/such/sprite.png"));
         assert!(sprites.sources.contains_key("/no/such/sprite.png"));
     }
