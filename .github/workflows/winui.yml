@@ -46,6 +46,7 @@ jobs:
       # The C runtime is built with MinGW (as in ci-windows.yml), and the UCRT64 clang links the
       # application DLL against it.
       - uses: msys2/setup-msys2@v2
+        id: msys2
         with:
           msystem: UCRT64
           path-type: inherit
@@ -152,7 +153,7 @@ jobs:
       - name: Pictures of the graphics scenes
         if: ${{ !cancelled() }}
         shell: pwsh
-        run: examples/graphics/pictures.ps1 -Shots "${{ runner.temp }}/self-test/graphics"
+        run: examples/graphics/pictures.ps1 -Shots "${{ runner.temp }}/self-test/graphics" -Msys "${{ steps.msys2.outputs.msys2-location }}"
 
       # Each app is its own MSIX package in an AppContainer [WINUI-HOST-SANDBOX], registered as a loose
       # layout, which Developer Mode allows without signing.
@@ -169,6 +170,9 @@ jobs:
       - name: Every app sandboxed in a real window, against its screenshot goldens
         if: ${{ !cancelled() }}
         shell: pwsh
+        env:
+          # Casting's cast-browse helper compiles with the MinGW above, not the runner's own C:\msys64.
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           $dumps = "${{ runner.temp }}/dumps"
           New-Item -ItemType Directory -Force $dumps | Out-Null
