@@ -10,7 +10,7 @@ runs:
       shell: bash
       run: ./target/release/osprey test packages/native/tests
 
-    # [UI-MACHINE-TEST]: the same suites as `make ui-test`.
+    # [UI-MACHINE-TEST]: the same suites as `make _ui-test`.
     - name: UI test framework suites
       shell: bash
       run: |
