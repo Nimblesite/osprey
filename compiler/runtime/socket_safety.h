@@ -79,4 +79,14 @@ static inline bool osp_socket_timed_out(int error) {
 #endif
 }
 
+// Whether a socket error means the peer went away without closing, as a device
+// that loses power or a process that is killed does.
+static inline bool osp_socket_reset(int error) {
+#ifdef _WIN32
+  return error == WSAECONNRESET || error == WSAECONNABORTED;
+#else
+  return error == ECONNRESET || error == ECONNABORTED;
+#endif
+}
+
 #endif

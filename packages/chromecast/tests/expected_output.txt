@@ -201,6 +201,9 @@ ok title.1
 ok title.2
 ok title.3
 ok title.4
+ok title.5
+ok title.6
+ok title.7
 ok title.count
 ok hex.of_text
 ok hex.to_text
@@ -250,4 +253,4 @@ ok fail.stop_all
 ok fail.start
 ok fail.no_route
 ok fail.no_file
-252 passed, 0 failed
+255 passed, 0 failed
