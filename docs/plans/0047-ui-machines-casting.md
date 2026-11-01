@@ -22,4 +22,4 @@ Finish the casting app, the UI toolkit it runs on with full accessibility, and t
 - [ ] Cast to a real TV and record the result here
 - [x] Windows: the WinUI host runs UI machines; signal flow is a sandboxed package with a self-test (`make -C apps/windows signal-flow`, `make -C apps/windows test`)
 - [ ] Windows casting with `DnsServiceBrowse`, the MinGW TLS and file-server runtime and `privateNetworkClientServer` (plan 0046 step 5), then `make -C apps/windows casting`
-- [ ] `make ui-test` on the Windows CI runner
+- [ ] `make ui-test` on the Windows CI runner: the step is in ci-windows.yml; tick once a PR run passes
