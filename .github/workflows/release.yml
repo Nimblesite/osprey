@@ -14,7 +14,7 @@ name: Release
 # the tag and stamped into every artifact. Source stays at 0.0.0-dev.
 #
 # Cost gate: the `scope` job diffs this tag against the
-# previous one and gates the rest, so a website/benchmark-only tag deploys the
+# last tag whose release succeeded and gates the rest, so a website/benchmark-only tag deploys the
 # site without rebuilding the macOS/Windows binary matrix or republishing
 # brew/scoop/VSIX/Marketplace. Ruleset: .github/release-scope.json.
 #
@@ -43,7 +43,7 @@ jobs:
       contents: read
 
   # --------------------------------------------------------------------------
-  # Release scope (COST GATE) — diff this tag against the previous release tag and
+  # Release scope (COST GATE) — diff this tag against the last released tag and
   # decide which surfaces must publish, so the expensive macOS/Windows build matrix
   # only runs when the artifact it produces actually changed. Ruleset lives in
   # .github/release-scope.json:
@@ -57,6 +57,7 @@ jobs:
     uses: ./.github/workflows/release-change-detection.yml
     permissions:
       contents: read
+      actions: read
     with:
       # Pinned Shipwright commit from which the classifier is installed.
       shipwright_rev: 78f1455f27e8bfefc96e757a3eab23289be0e3f7

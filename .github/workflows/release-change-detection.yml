@@ -1,6 +1,6 @@
 # release-change-detection.yml — Shipwright-shipped reusable workflow.
 #
-# COST CONTROL. Diff the pushed release tag against the previous release tag and
+# COST CONTROL. Diff the pushed release tag against the last successfully released tag and
 # decide which surfaces must publish, so the expensive macOS/Windows build matrix
 # only runs when the artifact it produces actually changed.
 # Rules:
@@ -9,7 +9,7 @@
 #                            new tag version), publish that surface, skip the rest
 #   - website only        -> deploy the site, skip the whole matrix
 #   - unclassified path   -> full release, fail-safe
-#   - first release / nothing matched -> full release
+#   - no released tag yet / nothing matched -> full release
 #
 # Single-version contract: a tag stamps one version and host activation-verify is
 # onMismatch:error, so a published VSIX/JetBrains plugin MUST bundle binaries built
@@ -32,8 +32,13 @@ on:
         description: "FULL 40-char commit SHA of Nimblesite/Shipwright to install shipwright-release-scope from. Pin it (SWR-SEC-ACTION-PINNING); the shipwright-compliance skill fills this in on rollout."
         required: true
         type: string
+      release_workflow:
+        description: "Workflow file whose successful tag runs mark a tag as released."
+        required: false
+        type: string
+        default: release.yml
       tag_match:
-        description: "glob used to find the previous release tag (git describe --match)."
+        description: "glob used to find the previous release tag (git tag --list)."
         required: false
         type: string
         default: "v[0-9]*"
@@ -57,9 +62,10 @@ on:
         description: "The previous release tag the diff was taken against ('' on the first release)."
         value: ${{ jobs.scope.outputs.previous_tag }}
 
-# SWR-SEC-TOKEN-PRIVILEGE: read-only; this job only reads git history.
+# SWR-SEC-TOKEN-PRIVILEGE: read-only; this job reads git history and run results.
 permissions:
   contents: read
+  actions: read
 
 jobs:
   scope:
@@ -80,14 +86,25 @@ jobs:
           fetch-depth: 0            # full history + tags for the tag-to-tag diff
           persist-credentials: false
 
+      # The baseline is the newest earlier tag whose release run SUCCEEDED, not
+      # merely the newest earlier tag. A tag whose release failed or was
+      # cancelled shipped nothing, so diffing against it drops its changes from
+      # every channel: v0.27.0's macOS leg was cancelled, v0.28.0 then diffed
+      # against it, classified as "nothing changed" and published nothing.
       - name: Resolve previous release tag
         id: prev
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           current="${GITHUB_REF_NAME}"
-          # Newest release tag strictly older than the current tag on this history.
-          prev="$(git describe --tags --abbrev=0 --match '${{ inputs.tag_match }}' "${current}^" 2>/dev/null || true)"
+          released="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow "${{ inputs.release_workflow }}" \
+            --event push --status success --limit 1000 --json headBranch --jq '.[].headBranch')"
+          prev=""
+          for tag in $(git tag --merged "${current}^" --list '${{ inputs.tag_match }}' --sort=-v:refname); do
+            if grep -qxF "${tag}" <<<"${released}"; then prev="${tag}"; break; fi
+          done
           echo "previous_tag=${prev}" >> "$GITHUB_OUTPUT"
           echo "Previous tag: ${prev:-<none>}; current: ${current}"
 
