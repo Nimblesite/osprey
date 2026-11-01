@@ -145,14 +145,10 @@ module Link
         true => settled (fed (store, fileFacts (drop phase 5)))
         false => Runtime::step store
 
-    released (store, x, y) = settled (store(screen = Screen(screenMachine = Canvases::released (machineOf store, x, y))))
+    pointer (store, x, y, down) = settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down))))
 
-    (** A canvas pointer event: a release acts on the listener under it ([UI-MACHINE-CANVAS]); presses, drags and keys change nothing. *)
-    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pressed (store, x, y, down))
-
-    pressed (store, x, y, down) = match down
-        true => Runtime::step store
-        false => released (store, x, y)
+    (** A canvas pointer event ([UI-MACHINE-CANVAS]): a press grips, a drag slides, the release acts once on the listener under it, and a hover changes nothing; keys change nothing. *)
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pointer (store, x, y, down))
 
     // ---- completions ----
 
