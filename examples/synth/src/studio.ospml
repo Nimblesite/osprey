@@ -1,0 +1,24 @@
+// The Prism synth's application ([UI-MACHINE-FLOW-SYNTH]): the signal-flow
+// editor from @osprey/signal_flow in its Prism skin, which plays the patch
+// again whenever an edit changes how it sounds.
+namespace synth
+
+import ui::Runtime
+import synth::Synth
+
+(** The editor's callbacks with a voice added. *)
+module Studio
+    patchOf store = Synth::patch store.screen.screenMachine
+
+    sounded step = Runtime::asking (step.stepStore, listConcat step.requests (Synth::played (patchOf step.stepStore)))
+
+    // A step that changed the patch plays it; selection, menus and skins stay quiet.
+    voiced (before, step) = match Synth::describe (patchOf before) == Synth::describe (patchOf step.stepStore)
+        true => step
+        false => sounded step
+
+    (** Opens the editor in the Prism skin, unless `--skin` names another, and plays the first patch. *)
+    export initial context = sounded (signalflow::App::opened (context, "prism"))
+
+    (** The editor's update, then the patch played when it changed. *)
+    export update (context, store, message) = voiced (store, signalflow::App::update (context, store, message))

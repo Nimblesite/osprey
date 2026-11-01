@@ -567,7 +567,7 @@ run-mac-hd: _runtime_macos
 
 ## gpui-flock: Build the compiler and Mac runtime, then open Flock, the boids
 ##             herding game, in the GPUI host. [GPUI-HOST-SCENE]
-.PHONY: gpui-flock gpui-painting gpui-probe gpui-bench gpui-compare gpui-test gpui-signal-flow
+.PHONY: gpui-flock gpui-painting gpui-probe gpui-bench gpui-compare gpui-test gpui-signal-flow gpui-synth
 gpui-flock: _runtime_macos
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/gpui/flock/run.sh
@@ -582,6 +582,12 @@ gpui-painting: _runtime_macos
 gpui-signal-flow: _runtime_macos
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash packages/signal_flow/app/run.sh
+
+## gpui-synth: Open the Prism synth: the signal-flow editor's Prism skin playing
+##             each edit through the speakers. [UI-MACHINE-FLOW-SYNTH]
+gpui-synth: _runtime_macos
+	cargo build --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/synth/run.sh
 
 ## gpui-probe: Open the GPUI host's probe application (counter, note, load).
 gpui-probe: _runtime_macos
@@ -602,13 +608,13 @@ gpui-compare: _runtime_macos
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/gpui/painting/reference/compare.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/gpui/painting/reference/compare.sh --draw
 
-## gpui-test: The native and signal-flow packages, Flock and painting suites, the host's unit
+## gpui-test: The native and signal-flow packages, the synth, Flock and painting suites, the host's unit
 ##            tests and clippy, and the probe and Flock recorded-event smokes.
 gpui-test: _runtime_macos _runtime
 	python3 hosts/gpui/dependencies.py
 	python3 hosts/gpui/dependencies_test.py
 	cargo build --release -p osprey-cli
-	for suite in packages/native/tests packages/signal_flow/tests examples/gpui/flock/test examples/gpui/painting/test; do \
+	for suite in packages/native/tests packages/signal_flow/tests examples/synth/test examples/gpui/flock/test examples/gpui/painting/test; do \
 		$(BIN) test $$suite || exit 1; \
 	done
 	cd hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings

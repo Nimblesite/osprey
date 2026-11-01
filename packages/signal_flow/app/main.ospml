@@ -32,7 +32,7 @@ start source =
         fetch key => native_slice key
     handle ui::SceneStream
         shape primitive => streamed := shipped primitive
-    Runtime::guarded (\() => keeping (Runtime::begin (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), App::theme ())))
+    Runtime::guarded (\() => keeping (Runtime::begin (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), App::theme (""))))
 
 dispatch (_saved : string, event) =
     handle Keep

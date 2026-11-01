@@ -32,7 +32,7 @@ bench work =
 
 begun skin =
     perform Bench.drive (Drive::idle driven.drivenSession)
-    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"${skin}\"]}", App::initial, App::regions, App::theme ())))
+    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"${skin}\"]}", App::initial, App::regions, App::theme skin)))
 
 post event = hosted (\() => kept (Runtime::proceed (driven.drivenSession, event, App::update, App::regions)))
 

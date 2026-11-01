@@ -1,0 +1,389 @@
+// The Prism synth end to end ([UI-MACHINE-FLOW-SYNTH]): its voice is checked
+// directly, then the real editor is driven by pointer events aimed through each
+// control's accessible label, and every host playback request is compared with
+// the patch that produced it.
+
+import ui::Doc
+import ui::Runtime
+import ui::Canvases
+import ui::MachineDocs
+import ui::Machines
+import uitest::Events
+import uitest::Read
+import uitest::Semantics
+import uitest::Views
+import signalflow::App
+import synth::Studio
+import synth::Synth
+
+(** The decoded view, the latest envelope's text and the clock used for host events. *)
+type Sight =
+    sightSeen : uitest::Rendered
+    sightEnvelope : string
+    sightNow : int
+
+(** The bench's only writes: retain the live session and the latest rendered sight. *)
+effect Bench
+    keep : ui::Session<signalflow::Store> => Unit
+    see : Sight => Unit
+
+mut sight = Sight(sightSeen = Read::blank (), sightEnvelope = "", sightNow = 1)
+mut live = Runtime::idle (signalflow::Flow::store (MachineDocs::faulty ""))
+
+kept (resident : ui::Resident<signalflow::Store>) =
+    perform Bench.keep resident.residentSession
+    perform Bench.see (sight(sightSeen = Read::envelope (sight.sightSeen, resident.residentEnvelope), sightEnvelope = resident.residentEnvelope, sightNow = sight.sightNow + 1))
+
+hosted work =
+    handle ui::Slices
+        fetch _ => ""
+    handle ui::SceneStream
+        shape _ => 0
+    work ()
+
+bench work =
+    handle Bench
+        keep session => live := session
+        see s => sight := s
+    Runtime::guarded work
+
+begun () =
+    perform Bench.see (Sight(sightSeen = Read::blank (), sightEnvelope = "", sightNow = 1))
+    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}", Studio::initial, App::regions, App::theme "prism")))
+
+post event = hosted (\() => kept (Runtime::proceed (live, event, Studio::update, App::regions)))
+
+pointer (x, y, down) = post (Events::pointer (sight.sightSeen.renderedRevision, sight.sightSeen.renderedOrdinal, x, y, down, sight.sightNow))
+
+tapAt (label, fraction) =
+    at = Semantics::point (element label, fraction)
+    pointer (at.pointX, at.pointY, true)
+    pointer (at.pointX, at.pointY, false)
+
+tap label = tapAt (label, 0.5)
+
+machine () = live.sessionStore.screen.screenMachine
+
+currentPatch () = Synth::patch (machine ())
+
+described () = Synth::describe (currentPatch ())
+
+elements () = Canvases::semantics (machine ())
+
+labels () = Semantics::labels (elements ())
+
+element label = Semantics::element (elements (), label)
+
+offers label = match Semantics::offered (elements (), label)
+    true => true
+    false =>
+        print "# not offered: ${label}; the tree offers ${labels ()}"
+        false
+
+offered label = expect (offers label, true)
+
+letters text = match Views::letters (sight.sightSeen, text)
+    true => true
+    false =>
+        print "# not lettered: ${text}; the artboard letters ${Views::lettered sight.sightSeen}"
+        false
+
+flag (name, expected) = expect (Machines::flag (machine (), name), expected)
+
+knobText (name, expected) = expect (Machines::text (machine (), name), expected)
+
+knobNumber (name, expected) =
+    actual = Machines::number (machine (), name)
+    expect (actual - expected < 0.000001 && expected - actual < 0.000001, true)
+
+layer (name, expected) = expect (Machines::current (machine (), name), expected)
+
+// ---- the host requests in the latest envelope, read at the boundary ----
+
+runRequests () = filterList (Doc::items (Doc::field (Doc::parse sight.sightEnvelope, "requests")), \request => Doc::text (request, "kind") == "run")
+
+runCount () = length (runRequests ())
+
+request () = listGet (runRequests ()) 0 ?: JsonNull
+
+arguments () = Doc::texts (request (), "arguments")
+
+argument index = listGet (arguments ()) index ?: ""
+
+currentWav () = Synth::wav (Synth::samples (currentPatch ()))
+
+nearPeak (patch, expected) = expect (abs (Synth::peak (Synth::samples patch) - expected) <= 1, true)
+
+played expectedPeak =
+    expect (runCount (), 1)
+    expect (Doc::text (request (), "ticket"), "play")
+    expect (Doc::text (request (), "executable"), "/usr/bin/perl")
+    expect (length (arguments ()), 4)
+    expect (argument 0, "-e")
+    expect (argument 2, currentWav ())
+    expect (argument 3, Synth::clipPath)
+    nearPeak (currentPatch (), expectedPeak)
+
+quietPatch before =
+    expect (runCount (), 0)
+    expect (described (), before)
+
+// A play request whose clip differs from `before`'s.
+replayed (before, expectedPeak) =
+    played expectedPeak
+    expect (argument 2 == before, false)
+
+// ---- the voice, without an editor ----
+
+patch (wave, process, depth, lfo, volume) = synth::Patch(sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
+
+defaultPatch () = patch ("Sine", 0.7, 0.7, 2.0, 0.75)
+
+voiceCase (p, expectedPeak) =
+    samples = Synth::samples p
+    expect (length samples, Synth::rate)
+    nearPeak (p, expectedPeak)
+    expect (length (Synth::played p), 1)
+
+silentCase p =
+    samples = Synth::samples p
+    expect (length samples, Synth::rate)
+    expect (Synth::peak samples, 0)
+    expect (ui::Lists::all (samples, \sample => sample == 128), true)
+    expect (length (Synth::played p), 0)
+
+near (actual, expected) = expect (actual - expected < 0.0001 && expected - actual < 0.0001, true)
+
+shapes () =
+    near (Synth::shaped ("Sine", 0.25), 1.0)
+    near (Synth::shaped ("Sine", 0.75), -1.0)
+    near (Synth::shaped ("Triangle", 0.0), -1.0)
+    near (Synth::shaped ("Triangle", 0.5), 1.0)
+    near (Synth::shaped ("Triangle", 0.25), 0.0)
+    near (Synth::shaped ("Saw", 0.0), -1.0)
+    near (Synth::shaped ("Saw", 0.75), 0.5)
+    near (Synth::shaped ("Square", 0.2), 1.0)
+    near (Synth::shaped ("Square", 0.7), -1.0)
+    near (Synth::shaped ("Sine", 1.25), 1.0)
+    near (Synth::hertz "1/1", 0.5)
+    near (Synth::hertz "1/2", 1.0)
+    near (Synth::hertz "1/4", 2.0)
+    near (Synth::hertz "1/8", 4.0)
+    near (Synth::hertz "1/16", 8.0)
+
+voiceCases () =
+    voiceCase (defaultPatch (), 75)
+    voiceCase (patch ("Sine", 0.1, 0.7, 2.0, 0.75), 17)
+    voiceCase (patch ("Sine", 0.1, 0.0, 2.0, 0.75), 2)
+    voiceCase (patch ("Sine", 0.7, 0.7, 2.0, 1.0), 100)
+    voiceCase (patch ("Sine", 0.7, 0.7, 2.0, 0.5), 50)
+    voiceCase (patch ("Square", 0.7, 0.7, 2.0, 0.75), 75)
+    voiceCase (patch ("Saw", 0.1, 0.7, 8.0, 0.75), 17)
+    d = defaultPatch ()
+    silentCase (d(sounding = false))
+    silentCase (d(audible = false))
+    silentCase (patch ("Sine", 0.7, 0.7, 2.0, 0.0))
+
+// Every field of a patch changes what it sounds like.
+descriptionsDiffer () =
+    d = defaultPatch ()
+    base = Synth::describe d
+    expect (Synth::describe (patch ("Saw", 0.7, 0.7, 2.0, 0.75)) == base, false)
+    expect (Synth::describe (patch ("Sine", 0.1, 0.7, 2.0, 0.75)) == base, false)
+    expect (Synth::describe (patch ("Sine", 0.7, 0.3, 2.0, 0.75)) == base, false)
+    expect (Synth::describe (patch ("Sine", 0.7, 0.7, 8.0, 0.75)) == base, false)
+    expect (Synth::describe (patch ("Sine", 0.7, 0.7, 2.0, 0.5)) == base, false)
+    expect (Synth::describe (d(filtered = false)) == base, false)
+    expect (Synth::wav (Synth::samples (patch ("Square", 0.1, 0.7, 2.0, 0.75))) == Synth::wav (Synth::samples (patch ("Saw", 0.1, 0.7, 2.0, 0.75))), false)
+    expect (Synth::wav (Synth::samples (patch ("Sine", 0.1, 0.7, 0.5, 0.75))) == Synth::wav (Synth::samples (patch ("Sine", 0.1, 0.7, 8.0, 0.75))), false)
+
+wavCase () =
+    clip = Synth::wav (Synth::samples (defaultPatch ()))
+    expect (length clip, (44 + Synth::rate) * 2)
+    expect (startsWith clip "52494646352B000057415645666D7420", true)
+    expect (contains clip "112B0000112B0000", true)
+    expect (take (drop clip 72) 16, "64617461112B0000")
+
+// ---- launch, editing and history through the Prism skin ----
+
+launchAndCutoff () =
+    begun ()
+    offered "Skin: Prism"
+    knobText ("selected", "process")
+    knobText ("wave", "Sine")
+    knobText ("rate", "1/4")
+    knobNumber ("volume", 0.75)
+    played 75
+    tapAt ("Filter Cutoff", 0.1)
+    knobNumber ("process", 0.1)
+    played 17
+    expect (letters "0.0 kHz", true)
+
+filterHistory () =
+    tap "Bypass LFO"
+    flag ("controlOn", false)
+    played 2
+    tap "Bypass Filter"
+    flag ("processOn", false)
+    played 75
+    tap "Undo"
+    flag ("processOn", true)
+    played 2
+    tap "Undo"
+    flag ("controlOn", true)
+    played 17
+
+// Each wave from the Oscillator's chooser plays its own clip at the filtered peak.
+waves () =
+    tap "Oscillator Wave: Sine"
+    layer ("menu", "waves")
+    expect (runCount (), 0)
+    before = argument 2
+    tap "Square"
+    knobText ("wave", "Square")
+    played 17
+    square = argument 2
+    tap "Oscillator Wave: Square"
+    tap "Saw"
+    knobText ("wave", "Saw")
+    replayed (square, 17)
+    tap "Oscillator Wave: Saw"
+    tap "Triangle"
+    knobText ("wave", "Triangle")
+    played 17
+    tap "Undo"
+    knobText ("wave", "Saw")
+    played 17
+    expect (letters "Saw", true)
+
+// Each LFO rate sweeps the cutoff at its own speed, so the clip changes.
+rates () =
+    tap "LFO Rate: 1/4"
+    layer ("menu", "rates")
+    clip = argument 2
+    tap "1/16"
+    knobText ("rate", "1/16")
+    near ((currentPatch ()).lfo, 8.0)
+    played 17
+    fast = argument 2
+    tap "LFO Rate: 1/16"
+    tap "1/1"
+    near ((currentPatch ()).lfo, 0.5)
+    replayed (fast, 17)
+    tap "Undo"
+    knobText ("rate", "1/16")
+    played 17
+    expect (argument 2, fast)
+
+// The Master Level slider scales the clip; the inspector's slider is the same control.
+levels () =
+    tapAt ("Filter Cutoff", 0.7)
+    played 75
+    tapAt ("Master Level", 1.0)
+    knobNumber ("volume", 1.0)
+    played 100
+    expect (letters "0.0 dB", true)
+    tap "Select Master"
+    expect (runCount (), 0)
+    tapAt ("Inspector: Level", 0.5)
+    knobNumber ("volume", 0.5)
+    played 50
+    expect (letters "-12.0 dB", true)
+    before = described ()
+    tapAt ("Master Level", 0.0)
+    knobNumber ("volume", 0.0)
+    expect (runCount (), 0)
+    expect (described () == before, false)
+    tap "Undo"
+    knobNumber ("volume", 0.5)
+    played 50
+
+muteHistory () =
+    before = described ()
+    tap "Bypass Oscillator"
+    muted (before, "sourceOn")
+    tap "Enable Oscillator"
+    flag ("sourceOn", true)
+    played 50
+    tap "Bypass Master"
+    expect (runCount (), 0)
+    flag ("outputOn", false)
+    tap "Undo"
+    flag ("outputOn", true)
+    played 50
+
+muted (before, name) =
+    expect (runCount (), 0)
+    flag (name, false)
+    expect (described () == before, false)
+
+// ---- menus, skins and selection never ask the voice to play ----
+
+quietMenu before =
+    tap "Skin: Prism"
+    quietPatch before
+    layer ("menu", "skins")
+    pointer (1400.0, 700.0, true)
+    pointer (1400.0, 700.0, false)
+    quietPatch before
+    layer ("menu", "closed")
+    tap "Skin: Prism"
+    quietPatch before
+    tap "Topology"
+    quietPatch before
+    knobText ("skin", "topology")
+    tap "Skin: Topology"
+    quietPatch before
+    tap "Prism"
+    quietPatch before
+    knobText ("skin", "prism")
+    tap "Oscillator Wave: Sine"
+    quietPatch before
+    pointer (900.0, 700.0, true)
+    pointer (900.0, 700.0, false)
+    quietPatch before
+    layer ("menu", "closed")
+
+quietSelection (name, role, before) =
+    tap "Select ${name}"
+    quietPatch before
+    knobText ("selected", role)
+    offered "Inspector: Bypass ${name}"
+
+quietSelections before =
+    quietSelection ("LFO", "control", before)
+    quietSelection ("Oscillator", "source", before)
+    quietSelection ("Filter", "process", before)
+    quietSelection ("Master", "output", before)
+    quietSelection ("Scope", "monitor", before)
+
+test ("the voice renders each wave, rate and level, exact silence and a PCM WAV header", \() => Runtime::guarded (\() =>
+    shapes ()
+    voiceCases ()
+    descriptionsDiffer ()
+    wavCase ()))
+
+// The window paints Prism's own background around the canvas, never the host's black.
+windowBackground () = match ui::Themes::named (App::theme "prism", "background")
+    Success token => expect (token.tokenDark, "#100D21")
+    Error _ => expect ("no background token", "#100D21")
+
+test ("launch, cutoff, bypasses and undo play exactly the current patch", \() => bench (\() =>
+    windowBackground ()
+    launchAndCutoff ()
+    filterHistory ()))
+
+test ("every wave, LFO rate and master level plays its own clip and undoes", \() => bench (\() =>
+    begun ()
+    tapAt ("Filter Cutoff", 0.1)
+    waves ()
+    rates ()
+    levels ()
+    muteHistory ()))
+
+test ("menus, skin changes and every node selection stay quiet", \() => bench (\() =>
+    begun ()
+    played 75
+    before = described ()
+    quietMenu before
+    quietSelections before))

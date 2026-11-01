@@ -53,5 +53,7 @@ module App
         changed = signalChanges before.screen store.screen (\s => MachineDocs::snapshot s.screenMachine) (signalDependencies screenSlice)
         [Keyed::region (frames, "root", changed, root)]
 
-    (** The first skin's colours; a skin change re-themes the view in place. *)
-    export theme () = Templates::theme (MachineDocs::faulty "")
+    (** The repository document's colours in `skin`, or its default skin when empty: the window paints its background around the view. *)
+    export theme skin =
+        store = Flow::launched (loaded (readFile (documentPath []) ?: ""), "", skin)
+        Templates::theme store.screen.screenMachine
