@@ -50,6 +50,16 @@
       ],
       "arguments": [],
       "fixture": "fixture.ps1"
+    },
+    "probe": {
+      "source": "hosts/gpui/probe",
+      "name": "Probe",
+      "description": "The host probe: a counter, a note kept in the store, and a load.",
+      "capabilities": [],
+      "files": [
+        "self-test.json"
+      ],
+      "arguments": []
     }
   }
 }

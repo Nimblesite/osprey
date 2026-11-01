@@ -1,0 +1,16 @@
+{
+  "steps": [
+    { "wait": "Count 0" },
+    { "wait": "Load" },
+    { "shot": "1-started" },
+    { "invoke": "Add" },
+    { "wait": "Count 1" },
+    { "invoke": "Add" },
+    { "wait": "Count 2" },
+    { "type": ["Note", "kept in the sandbox's store"] },
+    { "shot": "2-counted-and-typed" },
+    { "invoke": "Load" },
+    { "wait": "Count 2" },
+    { "shot": "3-loaded" }
+  ]
+}
