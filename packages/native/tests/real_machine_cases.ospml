@@ -1,0 +1,152 @@
+// Real machine documents driven without their applications: the native package
+// owns loading, settling, rendering, pointer geometry and accessibility.
+namespace uitests
+
+import ui::Canvases
+import ui::Doc
+import ui::Encode
+import ui::MachineDocs
+import ui::Machines
+import ui::Runtime
+import ui::Templates
+import ui::Values
+
+realMachine path = match MachineDocs::load (readFile path ?: "")
+    Success machine => machine
+    Error problem =>
+        expect ("${path} loads: ${problem}", "${path} loads")
+        MachineDocs::faulty problem
+
+signalMachine () = realMachine "packages/signal_flow/signal_flow.machine.json"
+
+playerMachine () = realMachine "examples/casting/player.machine.json"
+
+realSkinned (machine, skin) = nativeFeed (machine, "skin", skin)
+
+realPointer (machine, point, down) = Canvases::pointer (machine, point.nativeX, point.nativeY, down)
+
+realTap (machine, label) = Canvases::act (machine, label, 0.5)
+
+realDocumentSkins () =
+    initial = signalMachine ()
+    expect (Machines::text (initial, "skin"), "topology")
+    expect (Machines::current (initial, "commands"), "idle")
+    expect (nativeLabels initial, "Skin: Topology|Bypass Policy|Bypass Client|Bypass Gateway|Bypass Service|Bypass Telemetry|Policy Threshold|Gateway Rate limit|Inspector: Bypass Gateway|Inspector: Rate limit|Select Policy|Select Client|Select Gateway|Select Service|Select Telemetry")
+    expect (nativeLetters (initial, "70%"), true)
+    expect (nativeLetters (initial, "0 r/s"), true)
+    topology = realSkinned (initial, "topology")
+    notation = realSkinned (initial, "notation")
+    paper = realSkinned (initial, "paper")
+    prism = realSkinned (initial, "prism")
+    forEachList ([topology, notation, paper, prism], \machine =>
+        expect (length (Encode::walk ([], Templates::view machine)).nodes, 1)
+        expect (length (Canvases::semantics machine) > 10, true)
+        expect (machine.machineFault, ""))
+    expect (nativeLetters (notation, "0.70"), true)
+    expect (nativeLetters (paper, "Transform"), true)
+    expect (nativeLetters (prism, "2.5 kHz"), true)
+    expect (nativeLetters (prism, "-24.0"), true)
+
+realCanvasEdits () =
+    prism = realSkinned (signalMachine (), "prism")
+    bypassed = realTap (prism, "Bypass Filter")
+    expect (Machines::flag (bypassed, "processOn"), false)
+    enabled = realTap (bypassed, "Enable Filter")
+    expect (Machines::flag (enabled, "processOn"), true)
+    lowered = Canvases::act (enabled, "Filter Cutoff", 0.25)
+    expect (Machines::number (lowered, "process"), 0.25)
+    expect (nativeValue (lowered, "Filter Cutoff"), 0.25)
+    opened = realTap (lowered, "LFO Rate: 1/4")
+    expect (Machines::current (opened, "menu"), "rates")
+    expect (nativeRole (opened, "1/16"), "menuitem")
+    chosen = realTap (opened, "1/16")
+    expect (Machines::current (chosen, "menu"), "closed")
+    expect (Machines::text (chosen, "rate"), "1/16")
+    dismissed = realTap (chosen, "Oscillator Wave: Sine")
+    outside = Canvases::released (dismissed, 1400.0, 700.0)
+    expect (Machines::current (outside, "menu"), "closed")
+    expect (Machines::text (outside, "wave"), "Sine")
+    body = nativePoint (nativeElement (outside, "Select Filter"), 0.5)
+    pressed = realPointer (outside, body, true)
+    expect (Canvases::holding pressed, true)
+    expect (Canvases::sliding pressed, false)
+    near = realPointer (pressed, NativePoint(nativeX = body.nativeX + 2.0, nativeY = body.nativeY + 1.0), true)
+    expect (Machines::number (near, "processX"), 0.0)
+    movedPoint = NativePoint(nativeX = body.nativeX + 100.0, nativeY = body.nativeY + 50.0)
+    moved = realPointer (near, movedPoint, true)
+    expect (Machines::number (moved, "processX"), 100.0)
+    expect (Machines::number (moved, "processY"), 50.0)
+    dropped = realPointer (moved, movedPoint, false)
+    expect (Canvases::holding dropped, false)
+    expect (Machines::text (dropped, "selected"), "process")
+    hovered = realPointer (dropped, body, false)
+    expect (Doc::write (MachineDocs::snapshot hovered), Doc::write (MachineDocs::snapshot dropped))
+
+realCanvasRoomAndSliders () =
+    prism = realSkinned (signalMachine (), "prism")
+    grown = Canvases::viewed (prism, 1936.0, 1128.0)
+    expect (Machines::number (grown, "viewWidth"), 1936.0)
+    expect (Machines::number (grown, "viewHeight"), 1128.0)
+    expect (Machines::number (grown, "spareWidth"), 400.0)
+    expect (Machines::number (grown, "spareHeight"), 300.0)
+    shrunk = Canvases::viewed (grown, 1000.0, 600.0)
+    expect (Machines::number (shrunk, "spareWidth"), 0.0)
+    expect (Machines::number (shrunk, "spareHeight"), 0.0)
+    slider = nativePoint (nativeElement (shrunk, "Master Level"), 0.1)
+    pressed = realPointer (shrunk, slider, true)
+    expect (Canvases::sliding pressed, true)
+    high = nativePoint (nativeElement (pressed, "Master Level"), 0.9)
+    sliding = realPointer (pressed, high, true)
+    expect (abs (Machines::number (sliding, "volume") - 0.9) < 0.000001, true)
+    released = realPointer (sliding, high, false)
+    expect (Canvases::sliding released, false)
+    expect (abs (Machines::number (released, "volume") - 0.9) < 0.000001, true)
+
+realPlayerJourney () =
+    player = playerMachine ()
+    expect (nativeLabels player, "Receiver: |Play|Open file…")
+    expect (nativeLetters (player, "Looking for TVs…"), true)
+    forEachList (["sherbet", "midnight", "poolside"], \skin =>
+        machine = realSkinned (player, skin)
+        expect (length (Encode::walk ([], Templates::view machine)).nodes, 1)
+        expect (machine.machineFault, ""))
+    native = realSkinned (player, "midnight")
+    expect (nativeShows (native, "Looking for TVs…"), true)
+    expect (nativeShows (native, "Choose an audio file"), true)
+    ready = Machines::feed (native, [
+        Machines::fact ("receiver", Values::text "Living Room TV"),
+        Machines::fact ("file", Values::text "/music/demo.mp3"),
+        Machines::fact ("title", Values::text "A very long track name that will not fit on one line at all.mp3"),
+    ])
+    expect (Machines::current (ready, "receivers"), "found")
+    connecting = Machines::pull (ready, ui::Fire(fireName = "play"), Values::none ())
+    expect (Machines::current (connecting, "playback"), "connecting")
+    expect (length (Machines::requests connecting) > 0, true)
+    fed = Machines::feed (Machines::taken connecting, [
+        Machines::fact ("player", Values::text "PLAYING"),
+        Machines::fact ("position", Values::number 50.0),
+        Machines::fact ("duration", Values::number 200.0),
+        Machines::fact ("volume", Values::number 0.5),
+        Machines::fact ("rate", Values::number 1.5),
+    ])
+    expect (Machines::current (fed, "playback"), "playing")
+    expect (length (Machines::requests fed), 0)
+    expect (nativeShows (fed, "00:50"), true)
+    expect (nativeShows (fed, "03:20"), true)
+    expect (nativeShows (fed, "Volume 50%"), true)
+    expect (nativeShows (fed, "1.5×"), true)
+    expect (nativeShows (fed, "A very long track name that will not fit on one line at all.mp3"), true)
+    canvas = realSkinned (fed, "sherbet")
+    expect (nativeLetters (canvas, "A very long track name that w…"), true)
+    expect (nativeLetters (canvas, "00:50"), true)
+    expect (nativeLetters (canvas, "03:20"), true)
+    rates = realTap (canvas, "Speed: 1.5×")
+    expect (nativeLabels rates, "0.75×|1×|1.25×|1.5×|2×|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    receivers = realTap (canvas, "Receiver: Living Room TV")
+    expect (Machines::current (receivers, "menu"), "receivers")
+
+realDocumentCases () = Runtime::guarded (\() =>
+    realDocumentSkins ()
+    realCanvasEdits ()
+    realCanvasRoomAndSliders ()
+    realPlayerJourney ())

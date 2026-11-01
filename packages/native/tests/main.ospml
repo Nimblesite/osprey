@@ -497,3 +497,9 @@ test ("inline text retains mathematical emphasis and semantic source colours wit
     expect (length walked.bindings, 0)
     branded = listGet (Encode::walk ([], Ui::column [ui::Brand, Ui::button ("Continue", "", Increment)])).nodes 0 ?: JsonNull
     expect (Doc::text (listGet (Doc::items (Doc::field (branded, "children"))) 0 ?: JsonNull, "kind"), "brand"))
+
+test ("machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", \() => machineCaseCanvasUseCase ())
+test ("native machine views render ordinary controls and preserve every host value kind", \() => machineCaseNativeViews ())
+test ("broken machine documents name every JSON path and faulty machines remain renderable", \() => machineCaseBrokenDocuments ())
+test ("real machine documents render every skin and drive pointers sliders drags menus room and native lettering", \() => realDocumentCases ())
+test ("machine edge cases cover every template variant fault cycle request payload and pointer state", \() => completeMachineCases ())

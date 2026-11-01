@@ -1,0 +1,163 @@
+// Machine documents end to end: load the typed document once, then drive its
+// canvas through accessibility, pointer and native-control use cases.
+namespace uitests
+
+import ui::Canvases
+import ui::Doc
+import ui::Encode
+import ui::Lists
+import ui::MachineDocs
+import ui::Machines
+import ui::Runtime
+import ui::Templates
+import ui::Values
+
+
+type NativePoint =
+    nativeX : float
+    nativeY : float
+
+nativeLoaded work = match MachineDocs::load (readFile "packages/native/tests/fixture.machine.json" ?: "")
+    Success machine => work machine
+    Error problem => expect ("fixture loads: ${problem}", "fixture loads")
+
+withNativeFixture work = Runtime::guarded (\() => nativeLoaded work)
+
+nativeTree machine = listGet (Encode::walk ([], Templates::view machine)).nodes 0 ?: JsonNull
+
+nativeElements machine = Canvases::semantics machine
+
+nativeLabels machine = join (mapList (nativeElements machine, \e => e.accessLabel)) "|"
+
+nativeElement (machine, label) = match Lists::find (nativeElements machine, \e => e.accessLabel == label)
+    Success element => element
+    Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0)
+
+nativeOffered (machine, label) = Lists::any (nativeElements machine, \e => e.accessLabel == label)
+
+nativeRole (machine, label) = Canvases::roleName (nativeElement (machine, label)).accessRole
+
+nativeValue (machine, label) = (nativeElement (machine, label)).accessValue
+
+nativePoint (element, fraction) = NativePoint(nativeX = element.accessLeft + element.accessWidth * fraction, nativeY = element.accessTop + element.accessHeight / 2.0)
+
+nativeReleaseAt (machine, label, fraction) =
+    point = nativePoint (nativeElement (machine, label), fraction)
+    Canvases::released (machine, point.nativeX, point.nativeY)
+
+nativeWalk (out, doc) = match Doc::kind doc
+    "object" => foldList (Doc::keys doc, listAppend out doc, \(acc, key) => nativeWalk (acc, Doc::field (doc, key)))
+    "list" => foldList (Doc::items doc, listAppend out doc, nativeWalk)
+    _ => out
+
+nativeTextNodes machine = filterList (nativeWalk ([], nativeTree machine), \node => Doc::text (node, "text") != "" || Doc::text (node, "label") != "" || Doc::text (node, "title") != "")
+
+nativeShows (machine, text) = Lists::any (nativeTextNodes machine, \node => Doc::text (node, "text") == text || Doc::text (node, "label") == text || Doc::text (node, "title") == text)
+
+nativeLetterNodes machine = filterList (nativeWalk ([], nativeTree machine), \node => Doc::kind node == "list" && Doc::real (Doc::at (node, 0)) == 6.0)
+
+nativeLettering machine = join (mapList (nativeLetterNodes machine, \node => Doc::string (Doc::at (node, 1)))) "|"
+
+nativeLetters (machine, text) = Lists::any (nativeLetterNodes machine, \node => Doc::string (Doc::at (node, 1)) == text)
+
+nativeFeed (machine, name, text) = Machines::feed (machine, [Machines::fact (name, Values::text text)])
+
+nativeLever binding = match binding
+    ui::Tap lever => lever
+    ui::TextInput lever => lever
+    ui::FlagInput lever => lever
+    ui::ChoiceInput lever => lever
+    _ => ui::Fire(fireName = "")
+
+machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
+    expect (nativeLabels fresh, "Menu|Press|Level")
+    expect (nativeOffered (fresh, "Menu"), true)
+    expect (nativeOffered (fresh, "Dismiss"), false)
+    expect (nativeRole (fresh, "Menu"), "popup")
+    expect (nativeRole (fresh, "Press"), "button")
+    expect (nativeRole (fresh, "Level"), "slider")
+    expect (nativeRole (fresh, "Missing"), "none")
+    expect (nativeValue (fresh, "Level"), 0.25)
+    expect (nativeLetters (fresh, "Hello"), true)
+    slider = nativeElement (fresh, "Level")
+    start = nativePoint (slider, 0.0)
+    middle = nativePoint (slider, 0.5)
+    end = nativePoint (slider, 1.0)
+    expect (start.nativeX, 20.0)
+    expect (start.nativeY, 315.0)
+    expect (middle.nativeX, 120.0)
+    expect (middle.nativeY, 315.0)
+    expect (end.nativeX, 220.0)
+    expect (end.nativeY, 315.0)
+    pressed = Canvases::act (fresh, "Press", 0.5)
+    expect (nativeLetters (pressed, "Pressed"), true)
+    expect (nativeLetters (pressed, "Hello"), false)
+    zero = Canvases::act (pressed, "Level", 0.0)
+    expect (nativeValue (zero, "Level"), 0.0)
+    half = Canvases::act (zero, "Level", 0.5)
+    expect (nativeValue (half, "Level"), 0.5)
+    full = Canvases::act (half, "Level", 1.0)
+    expect (nativeValue (full, "Level"), 1.0)
+    released = nativeReleaseAt (full, "Level", 0.75)
+    expect (nativeValue (released, "Level"), 0.75)
+    opened = Canvases::act (released, "Menu", 0.5)
+    expect (nativeLabels opened, "One|Two|Three|Menu|Press|Level")
+    expect (nativeOffered (opened, "Dismiss"), false)
+    expect (nativeRole (opened, "One"), "menuitem")
+    forEachList (["One", "Two", "Three"], \label => expect (nativeLetters (opened, label), true))
+    dismissed = Canvases::released (opened, 5.0, 5.0)
+    expect (nativeLabels dismissed, "Menu|Press|Level")
+    reopened = Canvases::act (dismissed, "Menu", 0.5)
+    chosen = Canvases::act (reopened, "Two", 0.5)
+    expect (nativeLabels chosen, "Menu|Press|Level")
+    expect (nativeLetters (chosen, "Choice two"), true)
+    updated = nativeFeed (chosen, "caption", "Updated")
+    expect (nativeLetters (updated, "Updated"), true)
+    expect (nativeLetters (updated, "Pressed"), false)
+    again = nativeFeed (updated, "caption", "Second input")
+    expect (nativeLetters (again, "Second input"), true)
+    expect (nativeLetters (again, "Updated"), false)
+    expect (nativeValue (again, "Level"), 0.75)
+    unchanged = Canvases::act (again, "Missing", 0.5)
+    expect (structuralEquals (MachineDocs::snapshot unchanged, MachineDocs::snapshot again), true))
+
+machineCaseNativeViews () = withNativeFixture (\fresh =>
+    native = Machines::feed (fresh, [Machines::fact ("skin", Values::text "plain"), Machines::fact ("caption", Values::text "Native"), Machines::fact ("selected", Values::text "two")])
+    walked = Encode::walk ([], Templates::view native)
+    expect (length walked.bindings, 2)
+    expect (nativeShows (native, "Native"), true)
+    expect (nativeShows (native, "Native action"), true)
+    expect (nativeShows (native, "Pick"), true)
+    expect (nativeShows (native, "Missing"), false)
+    pressed = Machines::pull (native, nativeLever (listGet walked.bindings 0 ?: ui::Tap(action = ui::Fire(fireName = ""))), Values::none ())
+    expect (Machines::text (pressed, "caption"), "Pressed")
+    chosen = Machines::pull (pressed, nativeLever (listGet walked.bindings 1 ?: ui::Tap(action = ui::Fire(fireName = ""))), Values::text "three")
+    expect (Machines::text (chosen, "selected"), "three")
+    expect (nativeShows (chosen, "three"), true)
+    expect (nativeShows (chosen, "two"), false)
+    expect (length (Machines::choicesOf (chosen, "choices")), 3)
+    expect (Machines::textual (chosen, "caption"), true)
+    expect (Machines::textual (chosen, "level"), false)
+    expect (Machines::number (chosen, "level"), 0.25)
+    expect (Machines::number (chosen, "caption"), 0.0)
+    expect (Machines::flag (chosen, "missing"), false)
+    expect (Machines::text (chosen, "level"), "0.25")
+    expect (Machines::text (chosen, "toggleMenu"), "false")
+    expect (Machines::text (chosen, "choices"), "")
+    expect (Machines::current (chosen, "menu"), "closed")
+    expect (Machines::current (chosen, "missing"), ""))
+
+machineCaseBrokenDocuments () = Runtime::guarded (\() =>
+    refused = match MachineDocs::load "not json"
+        Success _ => "loaded"
+        Error problem => problem
+    expect (refused, "the machine document is not JSON")
+    broken = "{\"schema\":2,\"inputs\":{\"a\":{\"type\":\"colour\"},\"b\":{\"type\":\"number\",\"value\":\"x\"}},\"layers\":[{\"name\":\"l\",\"initial\":\"gone\",\"states\":{\"s\":{}},\"transitions\":[{\"from\":\"q\",\"to\":\"s\"}]}],\"view\":{\"kind\":\"button\",\"colour\":\"red\",\"on\":{\"fire\":\"nope\"},\"children\":[{\"kind\":\"widget\"}]}}"
+    expect (join (MachineDocs::problems (Doc::parse broken)) "\n", join ["schema: expected 1", "inputs.a.type: expected one of bool, number, text, trigger, list", "inputs.b.value: not a number", "layers[0].initial: no state named \"gone\"", "layers[0].transitions[0].from: no state named \"q\"", "view.colour: not a member of button", "view.on: no input named \"nope\"", "view.children[0].kind: no node kind \"widget\""] "\n")
+    faulty = MachineDocs::faulty "boom"
+    expect (faulty.machineFault, "boom")
+    expect (nativeShows (faulty, "This interface could not load"), true)
+    expect (Doc::text (MachineDocs::snapshot faulty, "fault"), "boom")
+    expect (MachineDocs::folder "C:\\Program Files\\Osprey\\app\\demo.machine.json", "C:/Program Files/Osprey/app")
+    expect (MachineDocs::folder "/opt/osprey/demo.machine.json", "/opt/osprey")
+    expect (MachineDocs::folder "demo.machine.json", ""))
