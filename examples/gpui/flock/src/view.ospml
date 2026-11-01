@@ -51,8 +51,8 @@ module View
     // Ground, birds, hawks and the dog share one flat primitive list ordered by depth.
     sceneShapes world = listConcat (ground ()) (listConcat (mapList (world.birds, birdShape)) (listConcat (foldList (world.hawks, [], \(out, hawk) => listConcat out (hawkShapes hawk))) (dogShapes world.player)))
 
-    (** The 320 by 200 field; every primitive is drawn, so no atlas is needed. *)
-    export field () = Ui::scene (320.0, 200.0, [], sceneShapes (worldSlice ()), Play)
+    (** The 320 by 200 field, fitted to its region whole; every primitive is drawn, so no atlas is needed. *)
+    export field () = Ui::zoomed (0.0, 320.0, 200.0, [], sceneShapes (worldSlice ()), Play)
 
     pauseLabel paused = match paused
         true => "Resume"
