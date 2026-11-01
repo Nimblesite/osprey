@@ -92,6 +92,22 @@ def octal_byte(b):
     return f"\\{b // 64}{(b // 8) % 8}{b % 8}"
 
 
+def windows_device(tls, posix, file, frames, accepts):
+    """The device's command on Windows, where `s_server` takes a piped stdin as
+    always ready, reads it before the handshake and drops a connection at its
+    end, so it shakes hands only when input arrives. A device with nothing to
+    say answers `-WWW`, which never reads stdin and is silent until a GET, and
+    goes away by being stopped. A second connection is shaken hands with by a
+    few bytes more, ticking until the first has gone: a device's write to it is
+    what ends it."""
+    if len(frames) == 0:
+        return f"openssl s_server -WWW {tls} >/dev/null 2>&1 & device=$!; sleep 2; kill $device"
+    elif accepts > 1:
+        return f"(cat {file}; for tick in 1 2 3 4 5; do sleep 1; printf x; done) | openssl s_server -quiet {tls} >/dev/null 2>&1"
+    else:
+        return posix
+
+
 def serve(l, k, frames, delay, accepts):
     """Starts scenario `k`'s device: after `delay` seconds it writes `frames`
     to each of `accepts` connections in turn. Returns its process handle."""
@@ -99,8 +115,10 @@ def serve(l, k, frames, delay, accepts):
     hex = foldList(frames, "", lambda acc, i: acc + device_frame(i))
     _written = sh(f"{l.dir}/{k}-bytes.sh", f"printf '{octal(hex)}' > {file}")
     script = f"(sleep {delay}; cat {file}; sleep 3)"
-    server = f"openssl s_server -quiet -naccept {accepts} -accept {l.port + k} -cert {l.dir}/c.pem -key {l.dir}/k.pem"
-    pid = unwrap_or(spawn_sh(f"{l.dir}/{k}-device.sh", f"{script} | {server} >/dev/null 2>&1"), -1)
+    tls = f"-naccept {accepts} -accept {l.port + k} -cert {l.dir}/c.pem -key {l.dir}/k.pem"
+    posix = f"{script} | openssl s_server -quiet {tls} >/dev/null 2>&1"
+    windows = windows_device(tls, posix, file, frames, accepts)
+    pid = unwrap_or(spawn_sh(f"{l.dir}/{k}-device.sh", f"case \"$(uname -s)\" in MINGW*|MSYS*) {windows} ;; *) {posix} ;; esac"), -1)
     _ready = sh(f"{l.dir}/{k}-ready.sh", "sleep 1")
     return pid
 

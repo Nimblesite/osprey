@@ -265,7 +265,7 @@ static int64_t read_outcome(SSL *ssl, int n, int saved) {
     return TLS_TIMEOUT;
   }
   if (reason == SSL_ERROR_SYSCALL) {
-    return n == 0 || saved == 0 ? TLS_CLOSED : TLS_FAILED;
+    return n == 0 || saved == 0 || osp_socket_reset(saved) ? TLS_CLOSED : TLS_FAILED;
   }
   return TLS_FAILED;
 }
