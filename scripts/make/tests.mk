@@ -82,8 +82,8 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   test_file_runtime tensor_list_tests \
   test_http_length_validation http_server_send_tests http_server_request_tests \
   fiber_runtime_tests http_runtime_tests http_shared_tests \
-  websocket_runtime_tests net_runtime_tests profiler_runtime_tests profiler_stream_tests \
-  coverage_runtime_tests
+  websocket_runtime_tests net_runtime_tests media_render_runtime_tests \
+  profiler_runtime_tests profiler_stream_tests coverage_runtime_tests
 C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
 C_LIBS_memory_gc_stack_root_tests = -pthread
 C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc.c
@@ -167,6 +167,8 @@ C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
 C_FLAGS_net_runtime_tests = $(OSSL_CFLAGS)
 C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_net_runtime_tests = -pthread $(OSSL_LIBS)
+# Owns media_render_runtime.c: real posix_spawnp calls against fake tools.
+C_SRC_media_render_runtime_tests = runtime/media_render_runtime_tests.c runtime/media_render_runtime.c
 C_PROFILE_profiler_runtime_tests = $(PROF_T)
 C_SRC_profiler_runtime_tests = runtime/profiler_runtime_tests.c runtime/profiler_walk_tests.c runtime/profiler_spec_tests.c $(PROF_SRC)
 C_LIBS_profiler_runtime_tests = -pthread

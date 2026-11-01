@@ -239,6 +239,10 @@
       },
       "file_server_runtime": {
         "language": "c"
+      },
+      "media_render_runtime": {
+        "threshold": 95,
+        "language": "c"
       }
     },
     "editor": {
