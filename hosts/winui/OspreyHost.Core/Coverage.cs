@@ -14,6 +14,7 @@ public static class Coverage
         "text", "stack", "section", "screen", "split", "layer", "context-menu", "aside", "tabs", "slot",
         "pair", "badge", "label", "icon", "link", "spacer", "divider", "segments", "empty", "progress",
         "meter", "swatch", "rows", "button", "field", "toggle", "picker", "disclosure", "alert", "scene",
+        "themed",
     ];
 
     /// <summary>
@@ -22,7 +23,7 @@ public static class Coverage
     /// </summary>
     public static IReadOnlyList<string> Refused { get; } =
     [
-        "rich-text", "framed", "themed", "dialog", "evidence", "brand", "math", "image", "video",
+        "rich-text", "framed", "dialog", "evidence", "brand", "math", "image", "video",
         "editor", "board",
     ];
 

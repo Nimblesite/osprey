@@ -96,6 +96,9 @@ topologyInitial () =
     layer ("menu", "closed")
     flag ("canUndo", false)
     flag ("canRedo", false)
+    expect (MachineDocs::folder "C:\\Program Files\\Osprey\\app\\signal_flow.machine.json", "C:/Program Files/Osprey/app")
+    expect (MachineDocs::folder "/opt/osprey/signal_flow.machine.json", "/opt/osprey")
+    expect (MachineDocs::folder "signal_flow.machine.json", "")
 
 topologyBypass () =
     tap "Bypass Gateway"

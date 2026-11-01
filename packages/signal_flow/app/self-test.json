@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "wait": "490 r/s" },
+    { "wait": "Connections (4)" },
+    { "shot": "1-topology" },
+    { "tap": ["727", "366"] },
+    { "wait": "Bypassed" },
+    { "wait": "1000 r/s" },
+    { "shot": "2-gateway-bypassed" },
+    { "tap": ["1152", "30"] },
+    { "wait": "490 r/s" },
+    { "gone": "Bypassed" },
+    { "shot": "3-undone" },
+    { "tap": ["600", "441"] },
+    { "wait": "25%" },
+    { "shot": "4-rate-limit" },
+    { "tap": ["122", "30"] },
+    { "shot": "5-skin-menu" }
+  ]
+}

@@ -31,6 +31,9 @@ sealed class SceneView
     };
     readonly Canvas canvas = new() { Background = new SolidColorBrush(Colors.Transparent) };
     readonly Dictionary<uint, SolidColorBrush> brushes = [];
+    readonly Dictionary<string, ImageBrush?> atlas = [];
+    readonly Action<string> report;
+    IReadOnlyList<string> sources = [];
     readonly Pool<Rectangle> rects;
     readonly Pool<Ellipse> discs;
     readonly Pool<Polyline> strips;
@@ -39,8 +42,9 @@ sealed class SceneView
     Action<object?> emit = _ => { };
     bool hovered;
 
-    public SceneView()
+    public SceneView(Action<string> report)
     {
+        this.report = report;
         rects = new(canvas);
         discs = new(canvas);
         strips = new(canvas);
@@ -62,6 +66,7 @@ sealed class SceneView
     public void Show(Scene scene, Action<object?> send)
     {
         emit = send;
+        sources = scene.Atlas;
         Fitted(scene);
         foreach (var pool in new IPool[] { rects, discs, strips, glyphs, paths })
         {
@@ -89,10 +94,11 @@ sealed class SceneView
     UIElement Draw(SceneShape shape) => shape switch
     {
         RectShape rect => Quad(rects.Next(), rect.X, rect.Y, rect.W, rect.H, rect.Angle, Brush(rect.Colour)),
-        SpriteShape sprite => Quad(rects.Next(), sprite.X, sprite.Y, sprite.W, sprite.H, sprite.Angle, Brush(Sprite(sprite))),
+        SpriteShape sprite => Quad(rects.Next(), sprite.X, sprite.Y, sprite.W, sprite.H, sprite.Angle, (Brush?)Image(sprite) ?? Brush(Sprite(sprite))),
         DiscShape disc => Disc(discs.Next(), disc),
         StripShape strip => Strip(strips.Next(), strip),
         GlyphsShape text => Glyphs(glyphs.Next(), text),
+        LetteringShape text => Lettering(glyphs.Next(), text),
         PathShape path => Painted(paths.Next(), path),
         _ => throw new HostException($"This host cannot draw a {shape.GetType().Name}"),
     };
@@ -108,7 +114,42 @@ sealed class SceneView
         return quad;
     }
 
-    // Sprites draw as tinted quads, as the GPUI host draws them, until the atlas is loaded.
+    /// <summary>
+    /// The sprite's atlas image filling its quad, as the GPUI host draws it [UI-SCENE], decoded once
+    /// per path from a stream, which the sandbox allows for a file in its own package. A scene with
+    /// no atlas draws the tinted quad; a path that cannot be read is reported and drawn tinted.
+    /// </summary>
+    ImageBrush? Image(SpriteShape sprite)
+    {
+        if (sprite.Atlas < 0 || sprite.Atlas >= sources.Count)
+        {
+            return null;
+        }
+        var path = sources[sprite.Atlas];
+        if (atlas.TryGetValue(path, out var brush))
+        {
+            return brush;
+        }
+        try
+        {
+            var picture = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+            using (var file = File.OpenRead(path))
+            {
+                using var memory = new MemoryStream();
+                file.CopyTo(memory);
+                memory.Position = 0;
+                picture.SetSource(System.IO.WindowsRuntimeStreamExtensions.AsRandomAccessStream(memory));
+            }
+            return atlas[path] = new ImageBrush { ImageSource = picture, Stretch = Stretch.Fill };
+        }
+        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException)
+        {
+            report($"The sprite image {path} could not be read: {problem.Message}");
+            return atlas[path] = null;
+        }
+    }
+
+    // A scene without an atlas draws its sprites as tinted quads, as the GPUI host does.
     static uint Sprite(SpriteShape sprite) => sprite.Tint != 0xFFFFFFFF ? sprite.Tint : sprite.Atlas switch
     {
         0 => 0x87CEEBFF,
@@ -143,8 +184,22 @@ sealed class SceneView
     {
         block.Text = text.Text;
         block.FontSize = Math.Max(1, text.Size);
+        block.FontWeight = Microsoft.UI.Text.FontWeights.Normal;
         block.Foreground = Brush(text.Colour);
         Canvas.SetLeft(block, text.X);
+        Canvas.SetTop(block, text.Y);
+        return block;
+    }
+
+    // Lettering's anchor moves its measured line left by none, half or all of its width.
+    TextBlock Lettering(TextBlock block, LetteringShape text)
+    {
+        block.Text = text.Text;
+        block.FontSize = Math.Max(1, text.Size);
+        block.FontWeight = new Windows.UI.Text.FontWeight { Weight = (ushort)Math.Clamp(text.Weight, 1, 999) };
+        block.Foreground = Brush(text.Colour);
+        block.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(block, text.X - (block.DesiredSize.Width * text.Anchor / 2));
         Canvas.SetTop(block, text.Y);
         return block;
     }
@@ -217,6 +272,13 @@ sealed class SceneView
     {
         emit(new KeyInput(key, true));
         emit(new KeyInput(key, false));
+    }
+
+    /// <summary>Sends the pointer going down and up at a point in scene units, as one click there does.</summary>
+    public void Tap(double x, double y)
+    {
+        emit(new PointerInput(x, y, true, false));
+        emit(new PointerInput(x, y, false, false));
     }
 
     void Keyed(KeyRoutedEventArgs args, bool down)

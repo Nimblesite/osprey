@@ -31,15 +31,10 @@ module App
         Success machine => Link::store machine
         Error problem => Link::store (MachineDocs::faulty problem)
 
-    // The folder the document sits in, where its canvas artwork lives.
-    folder path =
-        parts = split path "/" ?: [path]
-        join (ui::Lists::slice (parts, 0, satSub (length parts) 1)) "/"
-
     (** Loads the document, applies `--skin` and an opened MP3, starts the frame clock and answers the initial states' requests. *)
     export initial context =
         path = documentPath context.arguments
-        launched = Link::launched (loaded (readFile path ?: ""), folder path, after (context.arguments, "--skin", ""), opened context.arguments)
+        launched = Link::launched (loaded (readFile path ?: ""), MachineDocs::folder path, after (context.arguments, "--skin", ""), opened context.arguments)
         first = Link::settled launched
         Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))
 
