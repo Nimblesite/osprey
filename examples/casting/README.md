@@ -24,7 +24,7 @@ On macOS `run.sh` compiles the app to a C archive and links it, with the TLS and
 
 ```sh
 ./target/release/osprey examples/casting/test --run
-make -C apps/windows test           # Windows: also drives the player in a real window, against the screenshots in goldens/windows
+make -C apps/windows/tests casting  # Windows: also drives the player in a real window, against the screenshots in goldens/windows
 ```
 
 The reusable label-driven harness lives in [@osprey/uitest](../../packages/uitest/README.md). The tests drive the framework's real resident `start`/`dispatch` boundary with host-shaped events. They press the controls the rendered view issued, by label. An in-memory Cast device answers the port's `Wire` effect: it parses every frame the sender writes and replies as a Default Media Receiver does. The journeys cover discovery, opening a file, play, pause, resume, seek, volume, speed, stop, replay, the track finishing, skins, no TVs found and an unreachable TV.

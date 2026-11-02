@@ -1,12 +1,11 @@
 # The desktop apps on Windows, each its own MSIX package in an AppContainer on the WinUI host
 # [WINUI-HOST-SANDBOX], as ../windows.json describes them. Run from PowerShell with GNU make on the
 # PATH; hosts/winui/app.ps1 builds and registers each. macOS: apps/macos.
+# Each app's tests: apps/windows/tests, and with no host at all, apps/tests.
 ROOT ?= ../..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/hosts/winui/app.ps1
-# HEADLESS=-Headless draws the self-tests' windows off screen; by default they are on screen.
-HEADLESS ?=
 
-.PHONY: storage flock painting signal-flow probe casting test
+.PHONY: storage flock painting signal-flow probe casting
 
 ## storage: Open Osprey Storage, where your disk space goes folder by folder, in its sandbox.
 ##          It reads the whole drive once Settings > Privacy & security > File system allows it.
@@ -33,9 +32,3 @@ probe:
 ##          with its DnsServiceBrowse helper and plays an MP3 on one. Needs MSYS2's OpenSSL.
 casting:
 	$(APP_PS1) -App casting
-
-## test: Every app's self-test in a real window inside its sandbox, each picture compared with its
-##       goldens and with what the screen shows (HEADLESS=-Headless: off screen). One app, or the
-##       headless run: apps/windows/tests.
-test:
-	$(MAKE) -C tests full HEADLESS=$(HEADLESS)
