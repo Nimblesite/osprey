@@ -53,7 +53,7 @@ The order puts small, isolated fixes first. 4 comes before 5 because both change
 
 ### 5. Handle exhaustion [CONCURRENCY-HANDLE-LIMITS]
 
-- [ ] Replace `fibers[1000]`, `channels[1000]` and `execution_queue[1000]` with growable storage, separate counters for fibers and channels, and one bounds check in place of the nine scattered `>= 1000` tests
+- [ ] Replace `fibers[1000]`, `channels[1000]` and `execution_queue[1000]` with growable storage, separate counters for fibers and channels, and one bounds check in place of the scattered `1000` tests
 - [ ] Spec and language: `Channel(capacity)` returns `Result<Channel<T>, Error>` and `spawn` returns `Result<Fiber<T>, Error>`, covering a bad capacity, an allocation failure and `pthread_create` failing
 - [ ] Remove `channel_create_checked`'s `abort()`, and replace the `SIGABRT` death test in `fiber_runtime_tests.c` with typed-error assertions
 - [ ] Migrate all callers across `tests/`, `examples/`, `packages/`, the Book and the website, as #213 did; about 31 Osprey files construct channels today
