@@ -19,6 +19,7 @@ Each package's `NOTICE.md` acknowledges the original repositories and comparison
 | [native](native/NOTICE.md) | Original Osprey framework | MIT |
 | [signal_flow](signal_flow/NOTICE.md) | Original Osprey signal-flow editor and designs | MIT |
 | [numpy](numpy/NOTICE.md) | NumPy 2.5.4 | None identified; MIT Osprey implementation |
+| [pydantic_ai](pydantic_ai/NOTICE.md) | Pydantic Services Inc., pydantic-ai 2.46.0 | None identified; MIT Osprey implementation |
 | [re](re/NOTICE.md) | CPython 3.12.13 re behavior | Derived Unicode property/case tables in `src/tables.py` |
 | [rouge_score](rouge_score/NOTICE.md) | Google rouge-score 0.1.2 and NLTK Porter behavior | None identified; MIT Osprey implementation |
 | [sacrebleu](sacrebleu/NOTICE.md) | SacreBLEU 2.6.0 | None identified; MIT Osprey implementation |

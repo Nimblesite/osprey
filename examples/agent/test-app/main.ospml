@@ -1,0 +1,219 @@
+// Osprey Agent's real update path with scripted completions: typing, the whole
+// model and tool loop, Stop, a stale answer, failures, new conversations and a
+// restart, with no network and no window ([NATIVE-APPS-ALL], [UI-EFFECTS]).
+namespace agentapptests
+
+import ui::Doc
+import ui::Requests
+import ui::Runtime
+import agent::Engine
+import agentapp::App
+import agentapp::Model
+import agentapptests::Drive
+
+context now = ui::Context(now = now, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project", "/keys/env"])
+
+toolReply = "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Looking.\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"a.py\\\"}\"}},{\"id\":\"c2\",\"type\":\"function\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"a.py\\\",\\\"content\\\":\\\"x\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}"
+
+textReply = "{\"id\":\"r2\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Done.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":3,\"total_tokens\":23}}"
+
+ok status = Success(value = JsonObject [Doc::num ("status", status)])
+
+// Each test runs under the arithmetic policy the application's C boundary uses.
+testing (name, body) = test (name, \() => Runtime::guarded body)
+
+(** Steps the application's real `update` with messages a host would deliver. *)
+module Drive
+    (** One message, with `slice` as every host-held slice it reads. *)
+    export deliver (store, message, slice) =
+        handle ui::Slices
+            fetch _ => slice
+        App::update (context 100, store, message)
+
+    (** The store at launch, with its key loaded. *)
+    export started () = (deliver ((App::initial (context 100)).stepStore, ui::Completed(ticket = "env", outcome = ok 0), "DEEPSEEKKEY=sk-test\n")).stepStore
+
+    (** The person types `text`. *)
+    export typing (store, text) = deliver (store, ui::Entered(entry = agentapp::Typed, entered = text), "")
+
+    (** The completion of what the open conversation waits on. *)
+    export answering (store, outcome, slice) = deliver (store, ui::Completed(ticket = (Model::active store).chatTicket, outcome = outcome), slice)
+
+    (** A step's requests as the host receives them. *)
+    export asked step = mapList (step.requests, \request => Requests::encode request)
+
+    (** The kinds of a step's requests, joined. *)
+    export kinds step = join (mapList (asked step, \request => Doc::text (request, "kind")), ",")
+
+testing ("launch asks for the conversations and the key file, and starts empty", \() =>
+    first = App::initial (context 100)
+    expect (Drive::kinds first, "run,store-read")
+    expect (length first.stepStore.chats, 1)
+    expect ((Model::active first.stepStore).chatFolder, "/work/project")
+    expect (first.stepStore.settings.apiKey, "")
+    expect ((Drive::started ()).settings.apiKey, "sk-test"))
+
+testing ("typing keeps the draft and sends nothing", \() =>
+    step = Drive::typing (Drive::started (), "half a thou")
+    expect (step.stepStore.draft.draftText, "half a thou")
+    expect (Drive::kinds step, ""))
+
+testing ("Return sends the words to the model with the key, and clears the composer", \() =>
+    step = Drive::typing (Drive::started (), "Fix the bug\n")
+    chat = Model::active step.stepStore
+    request = listGet (Drive::asked step) 0 ?: JsonNull
+    expect (Drive::kinds step, "http")
+    expect (Doc::text (request, "url"), Engine::DEEPSEEK_URL)
+    expect (Doc::text (request, "method"), "POST")
+    expectTrue (contains (Doc::text (request, "body")) "Fix the bug")
+    expectTrue (contains (Doc::write request) "Bearer sk-test")
+    expect (chat.chatStage, "thinking")
+    expect (chat.chatTitle, "Fix the bug")
+    expect (step.stepStore.draft.draftText, ""))
+
+testing ("without a key nothing is sent and the words are kept", \() =>
+    launched = (App::initial (context 100)).stepStore
+    step = Drive::typing (launched, "Fix it\n")
+    expect (Drive::kinds step, "")
+    expect (step.stepStore.draft.draftText, "Fix it")
+    expect ((Model::active step.stepStore).chatStage, "idle"))
+
+testing ("words alone or a busy conversation send nothing", \() =>
+    expect (Drive::kinds (Drive::typing (Drive::started (), "   \n")), "")
+    busy = (Drive::typing (Drive::started (), "One\n")).stepStore
+    expect (Drive::kinds (Drive::typing (busy, "Two\n")), ""))
+
+testing ("a whole turn: model, each tool in order, model again, then saved without the key", \() =>
+    opened = (Drive::typing (Drive::started (), "Fix the bug\n")).stepStore
+    calling = Drive::answering (opened, ok 200, toolReply)
+    expect (Drive::kinds calling, "run")
+    expect ((Model::active calling.stepStore).chatStage, "tools")
+    expect ((Model::active calling.stepStore).chatCall, "c1")
+    expect (Doc::text (listGet (Drive::asked calling) 0 ?: JsonNull, "executable"), "/bin/sh")
+    second = Drive::answering (calling.stepStore, ok 0, "print(1)")
+    expect (Drive::kinds second, "run")
+    expect ((Model::active second.stepStore).chatCall, "c2")
+    expect (length (Model::active second.stepStore).chatResults, 1)
+    back = Drive::answering (second.stepStore, ok 0, "wrote a.py")
+    expect (Drive::kinds back, "http")
+    expect (length (Model::active back.stepStore).chatResults, 0)
+    expectTrue (contains (Doc::text (listGet (Drive::asked back) 0 ?: JsonNull, "body")) "wrote a.py")
+    done = Drive::answering (back.stepStore, ok 200, textReply)
+    chat = Model::active done.stepStore
+    expect (Drive::kinds done, "store-write")
+    expect (chat.chatStage, "idle")
+    expect ((Engine::usage_of chat.chatHistory).totalRequests, 2)
+    expect ((Engine::usage_of chat.chatHistory).totalInput, 30)
+    expect (join (Engine::files_changed chat.chatHistory, ","), "a.py")
+    file = (listGet done.writes 0 ?: Requests::write ("", "")).sliceText
+    expectTrue (contains file "Done.")
+    expectFalse (contains file "sk-test"))
+
+testing ("Stop cancels what runs and answers each owed call, so the next turn is accepted", \() =>
+    opened = (Drive::typing (Drive::started (), "Go\n")).stepStore
+    calling = (Drive::answering (opened, ok 200, toolReply)).stepStore
+    ticket = (Model::active calling).chatTicket
+    stopped = Drive::deliver (calling, ui::Act(act = agentapp::StopTurn), "")
+    chat = Model::active stopped.stepStore
+    expect (Drive::kinds stopped, "cancel,store-write")
+    expect (chat.chatStage, "idle")
+    expect (length (Model::pendingCalls chat), 0)
+    late = Drive::deliver (stopped.stepStore, ui::Completed(ticket = ticket, outcome = ok 0), "late")
+    expect (Drive::kinds late, "")
+    expect (Drive::kinds (Drive::typing (stopped.stepStore, "Again\n")), "http"))
+
+testing ("a refused request or a lost connection shows why, and Try again resends", \() =>
+    opened = (Drive::typing (Drive::started (), "Go\n")).stepStore
+    limited = Drive::answering (opened, ok 429, "{\"error\":\"busy\"}")
+    expect ((Model::active limited.stepStore).chatStage, "failed")
+    expectTrue (contains (Model::active limited.stepStore).chatProblem "status_code: 429")
+    lost = Drive::answering (opened, Error(message = "offline"), "")
+    expect ((Model::active lost.stepStore).chatProblem, "offline")
+    expect (Drive::kinds (Drive::deliver (lost.stepStore, ui::Act(act = agentapp::Retry), "")), "http"))
+
+testing ("a failed tool tells the model and the turn goes on", \() =>
+    opened = (Drive::typing (Drive::started (), "Go\n")).stepStore
+    calling = (Drive::answering (opened, ok 200, toolReply)).stepStore
+    second = Drive::answering (calling, Error(message = "Timed out after 5 ms"), "")
+    expectTrue (contains (listGet (Model::active second.stepStore).chatResults 0 ?: Engine::ToolResult(resultId = "", resultName = "", resultContent = "")).resultContent "Timed out")
+    expect (Drive::kinds second, "run"))
+
+testing ("new conversations, switching and the model choice stay per conversation", \() =>
+    first = (Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)).stepStore
+    fresh = (Drive::deliver (first, ui::Act(act = agentapp::NewChat), "")).stepStore
+    expect (length fresh.chats, 2)
+    expect ((Model::active fresh).chatTitle, "New chat")
+    again = (Drive::deliver (fresh, ui::Act(act = agentapp::NewChat), "")).stepStore
+    expect (length again.chats, 2)
+    chosen = (Drive::deliver (again, ui::Chose(chooser = agentapp::PickModel, chosen = "deepseek-reasoner"), "")).stepStore
+    expect ((Model::active chosen).chatModel, "deepseek-reasoner")
+    other = listGet chosen.chats 1 ?: Model::active chosen
+    back = (Drive::deliver (chosen, ui::Chose(chooser = agentapp::PickChat, chosen = other.chatId), "")).stepStore
+    expect ((Model::active back).chatTitle, "One")
+    expect ((Model::active back).chatModel, "deepseek-chat"))
+
+testing ("a restart restores conversations with distinct identities and fresh tickets", \() =>
+    first = Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)
+    file = (listGet first.writes 0 ?: Requests::write ("", "")).sliceText
+    relaunched = (App::initial (ui::Context(now = 200, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project"]))).stepStore
+    restored = (Drive::deliver (relaunched, ui::Completed(ticket = "chats", outcome = Success(value = JsonObject [Doc::bit ("found", true)])), file)).stepStore
+    ids = mapList (restored.chats, \chat => chat.chatId)
+    expect (length ids, 2)
+    expectFalse ((listGet ids 0 ?: "") == (listGet ids 1 ?: ""))
+    expect ((Model::active restored).chatTitle, "New chat")
+    expect ((listGet restored.chats 1 ?: Model::active restored).chatTitle, "One")
+    expectTrue (restored.ticketCount >= first.stepStore.ticketCount))
+
+testing ("a turn cut off by quitting answers what it owed, so the restored conversation can go on", \() =>
+    calling = (Drive::answering ((Drive::typing (Drive::started (), "Go\n")).stepStore, ok 200, toolReply)).stepStore
+    file = (listGet (Model::persisting calling).writes 0 ?: Requests::write ("", "")).sliceText
+    fresh = (App::initial (ui::Context(now = 200, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project"]))).stepStore
+    restored = (Drive::deliver (fresh, ui::Completed(ticket = "chats", outcome = Success(value = JsonObject [Doc::bit ("found", true)])), file)).stepStore
+    old = listGet restored.chats 1 ?: Model::active restored
+    expect (length (Model::pendingCalls old), 0)
+    expect (old.chatStage, "idle")
+    keyed = (Drive::deliver (restored, ui::Chose(chooser = agentapp::PickChat, chosen = old.chatId), "")).stepStore
+    settings = keyed.settings
+    next = Drive::typing (keyed(settings = settings(apiKey = "sk-test")), "Again\n")
+    expect (Drive::kinds next, "http")
+    expectTrue (contains (Doc::text (listGet (Drive::asked next) 0 ?: JsonNull, "body")) "before it ran"))
+
+testing ("a first message the model refused is kept and is not reused as a new chat", \() =>
+    opened = (Drive::typing (Drive::started (), "Keep these words\n")).stepStore
+    refused = Drive::answering (opened, ok 429, "{\"error\":\"busy\"}")
+    file = (listGet refused.writes 0 ?: Requests::write ("", "")).sliceText
+    expectTrue (contains file "Keep these words")
+    expect (length (Drive::deliver (refused.stepStore, ui::Act(act = agentapp::NewChat), "")).stepStore.chats, 2))
+
+testing ("a key file arriving late never replaces a key the person pasted", \() =>
+    launched = (App::initial (context 100)).stepStore
+    settings = launched.settings
+    pasted = launched(settings = settings(apiKey = "sk-pasted"))
+    late = Drive::deliver (pasted, ui::Completed(ticket = "env", outcome = ok 0), "DEEPSEEKKEY=sk-file\n")
+    expect (late.stepStore.settings.apiKey, "sk-pasted"))
+
+testing ("a failed save is shown and the next good save clears it", \() =>
+    done = Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)
+    ticket = (listGet (Drive::asked done) 0 ?: JsonNull)
+    failed = Drive::deliver (done.stepStore, ui::Completed(ticket = Doc::text (ticket, "ticket"), outcome = Error(message = "disk full")), "")
+    expectTrue (contains failed.stepStore.settings.saveProblem "disk full")
+    cleared = Drive::deliver (failed.stepStore, ui::Completed(ticket = Doc::text (ticket, "ticket"), outcome = ok 0), "")
+    expect (cleared.stepStore.settings.saveProblem, ""))
+
+testing ("saves run one at a time and the newest state is written last", \() =>
+    first = Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)
+    expect (Drive::kinds first, "store-write")
+    ticket = Doc::text (listGet (Drive::asked first) 0 ?: JsonNull, "ticket")
+    second = Model::persisting first.stepStore
+    expect (Drive::kinds second, "")
+    changed = second.stepStore
+    chat = Model::active changed
+    renamed = Model::putChat (changed, chat(chatTitle = "Newest"))
+    ended = Drive::deliver (renamed, ui::Completed(ticket = ticket, outcome = ok 0), "")
+    expect (Drive::kinds ended, "store-write")
+    expectTrue (contains (listGet ended.writes 0 ?: Requests::write ("", "")).sliceText "Newest")
+    expect (Drive::kinds (Drive::deliver (ended.stepStore, ui::Completed(ticket = ticket, outcome = ok 0), "")), ""))
+
+testing ("the session document restores the store it saved", \() =>
+    calling = (Drive::answering ((Drive::typing (Drive::started (), "Go\n")).stepStore, ok 200, toolReply)).stepStore
+    expect (Doc::write (App::save (App::restore (App::save calling))), Doc::write (App::save calling)))

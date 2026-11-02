@@ -1,0 +1,188 @@
+// Implements [UI-STORE]: Osprey Agent's store and its session document. The
+// conversations' history stays in pydantic-ai's wire form, so a saved file reads
+// back with `ModelMessagesTypeAdapter`'s shape. The API key is never written to
+// the conversations file.
+namespace agentapp
+
+import ui::Doc
+import ui::Lists
+import ui::Pick
+import ui::Requests
+import ui::Runtime
+import agent::Engine
+
+(** Every control's action ([UI-EVENTS]). *)
+type AgentAction =
+    NewChat
+    OpenFolder
+    SendDraft
+    StopTurn
+    Retry
+    TogglePanel
+    SaveKey
+    Suggest
+        suggestion : string
+    Typed
+    TypedKey
+    PickChat
+    PickModel
+    ResizePanel
+    ToggleSteps
+        stepsKey : string
+
+(** One conversation: its identity, title, project folder and model, the history in wire form, what it is doing (`idle`, `thinking`, `tools` or `failed`), the ticket it waits on, the call running, the answers gathered this round and the last failure. *)
+type Chat =
+    chatId : string
+    chatTitle : string
+    chatFolder : string
+    chatModel : string
+    chatHistory : Json
+    chatStage : string
+    chatTicket : string
+    chatCall : string
+    chatResults : List<Engine::ToolResult>
+    chatProblem : string
+    chatStarted : int
+
+(** The conversations, as one signal. *)
+type Chats =
+    chatList : List<Chat>
+
+(** The composer's words. *)
+type Draft =
+    draftText : string
+
+(** What the person is looking at: the open conversation, the inspector and the disclosures they opened. *)
+type Panel =
+    panelActive : string
+    panelOpen : bool
+    panelWidth : int
+    panelExpanded : List<string>
+
+(** Host facts and the key. *)
+type Settings =
+    platform : string
+    homeFolder : string
+    apiKey : string
+    keyDraft : string
+    saveProblem : string
+    saving : bool
+    saveAgain : bool
+
+(** Osprey Agent's whole store. *)
+type Store =
+    chats : List<Chat>
+    draft : Draft
+    panel : Panel
+    settings : Settings
+    ticketCount : int
+    clock : int
+
+(** Reading and writing the store. *)
+module Model
+    (** The default model. *)
+    export defaultModel = "deepseek-chat"
+
+    (** The conversation `id` in `folder`, empty. *)
+    export blank (id, folder, now) = Chat(chatId = id, chatTitle = "New chat", chatFolder = folder, chatModel = defaultModel, chatHistory = Engine::new_history (), chatStage = "idle", chatTicket = "", chatCall = "", chatResults = [], chatProblem = "", chatStarted = now)
+
+    (** The store at launch: one empty conversation in `folder`. *)
+    export launched (system, home, folder, now) = Store(chats = [blank ("launch${now}", folder, now)], draft = Draft(draftText = ""), panel = Panel(panelActive = "launch${now}", panelOpen = true, panelWidth = 288, panelExpanded = []), settings = Settings(platform = system, homeFolder = home, apiKey = "", keyDraft = "", saveProblem = "", saving = false, saveAgain = false), ticketCount = 2, clock = now)
+
+    (** The open conversation. *)
+    export active store = Lists::find (store.chats, \chat => chat.chatId == store.panel.panelActive) ?: (listGet store.chats 0 ?: blank ("c0", store.settings.homeFolder, store.clock))
+
+    (** `chat` in the store, replacing the conversation with its id. *)
+    export putChat (store, chat) = store(chats = mapList (store.chats, \other => Pick::either (other.chatId == chat.chatId, chat, other)))
+
+    (** Opens a new conversation in `folder`, unless the open one is still empty in that folder. *)
+    export opening (store, folder) =
+        id = "c${store.ticketCount}"
+        panel = store.panel
+        current = active store
+        match Engine::has_turns current.chatHistory == false && current.chatFolder == folder && Busy::idle current
+            true => store
+            false => store(chats = listPrepend store.chats (blank (id, folder, store.clock)), ticketCount = satAdd store.ticketCount 1, panel = panel(panelActive = id), draft = Draft(draftText = ""))
+
+    (** Whether a conversation is waiting on the model or a tool. *)
+    export busy chat = Busy::idle chat == false
+
+    (** The calls of the last response still owed an answer, in order. *)
+    export pendingCalls chat = Engine::pending (chat.chatHistory, chat.chatResults)
+
+    (** The call with `id` in the last response. *)
+    export callNamed (chat, id) = Lists::find (Engine::last_calls chat.chatHistory, \call => call.callId == id) ?: Engine::ToolCall(callId = id, callName = "", callArgs = "{}")
+
+    (** The value of the DeepSeek key in dotenv text, empty when absent. *)
+    export keyIn text =
+        lines = split text "\n" ?: []
+        named = filterList (lines, \line => startsWith line "DEEPSEEKKEY=" || startsWith line "DEEPSEEK_API_KEY=")
+        hit = listGet named 0 ?: ""
+        trim (drop hit ((indexOf hit "=" ?: -1) + 1))
+
+    (** The capability reading a small text file: `Run` is the one every desktop host answers. *)
+    export readText (system, path) = match system == "windows"
+        true => ui::Run(executable = "C:\\Windows\\System32\\cmd.exe", arguments = ["/d", "/c", "type", path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = "env")
+        false => ui::Run(executable = "/bin/cat", arguments = [path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = "env")
+
+    resultJson result = JsonObject [Doc::str ("id", result.resultId), Doc::str ("name", result.resultName), Doc::str ("content", result.resultContent)]
+
+    resultOf doc = Engine::ToolResult(resultId = Doc::text (doc, "id"), resultName = Doc::text (doc, "name"), resultContent = Doc::text (doc, "content"))
+
+    chatJson chat = JsonObject [Doc::str ("id", chat.chatId), Doc::str ("title", chat.chatTitle), Doc::str ("folder", chat.chatFolder), Doc::str ("model", chat.chatModel), JsonMember "history" chat.chatHistory, Doc::str ("stage", chat.chatStage), Doc::str ("ticket", chat.chatTicket), Doc::str ("call", chat.chatCall), JsonMember "results" (JsonArray (mapList (chat.chatResults, \result => resultJson result))), Doc::str ("problem", chat.chatProblem), Doc::num ("started", chat.chatStarted)]
+
+    chatOf doc = Chat(chatId = Doc::text (doc, "id"), chatTitle = Doc::text (doc, "title"), chatFolder = Doc::text (doc, "folder"), chatModel = Doc::text (doc, "model"), chatHistory = Doc::field (doc, "history"), chatStage = Doc::text (doc, "stage"), chatTicket = Doc::text (doc, "ticket"), chatCall = Doc::text (doc, "call"), chatResults = mapList (Doc::items (Doc::field (doc, "results")), \item => resultOf item), chatProblem = Doc::text (doc, "problem"), chatStarted = Doc::number (doc, "started"))
+
+    (** The conversations signal's encoding, for change detection. *)
+    export chatsJson chats = JsonArray (mapList (chats.chatList, \chat => chatJson chat))
+
+    (** The draft signal's encoding. *)
+    export draftJson draft = JsonString draft.draftText
+
+    (** The panel signal's encoding. *)
+    export panelJson panel = JsonObject [Doc::str ("active", panel.panelActive), Doc::bit ("open", panel.panelOpen), Doc::num ("width", panel.panelWidth), JsonMember "expanded" (Doc::strings panel.panelExpanded)]
+
+    (** The settings signal's encoding. *)
+    export settingsJson settings = JsonObject [Doc::str ("platform", settings.platform), Doc::str ("home", settings.homeFolder), Doc::str ("key", settings.apiKey), Doc::str ("keyDraft", settings.keyDraft)]
+
+    (** The store as the session document, which lives only in this process. *)
+    export storeJson store = JsonObject [JsonMember "chats" (JsonArray (mapList (store.chats, \chat => chatJson chat))), Doc::str ("draft", store.draft.draftText), JsonMember "panel" (panelJson store.panel), JsonMember "settings" (settingsJson store.settings), Doc::num ("tickets", store.ticketCount), Doc::num ("clock", store.clock)]
+
+    (** The store from its session document. *)
+    export storeOf doc =
+        panel = Doc::field (doc, "panel")
+        settings = Doc::field (doc, "settings")
+        Store(chats = mapList (Doc::items (Doc::field (doc, "chats")), \item => chatOf item), draft = Draft(draftText = Doc::text (doc, "draft")), panel = Panel(panelActive = Doc::text (panel, "active"), panelOpen = Doc::flag (panel, "open"), panelWidth = Doc::number (panel, "width"), panelExpanded = Doc::texts (panel, "expanded")), settings = Settings(platform = Doc::text (settings, "platform"), homeFolder = Doc::text (settings, "home"), apiKey = Doc::text (settings, "key"), keyDraft = Doc::text (settings, "keyDraft"), saveProblem = "", saving = false, saveAgain = false), ticketCount = Doc::number (doc, "tickets"), clock = Doc::number (doc, "clock"))
+
+    // A conversation with no words in it is not worth keeping.
+    kept chat = Engine::has_turns chat.chatHistory
+
+    fileJson store = JsonObject [JsonMember "chats" (JsonArray (mapList (filterList (store.chats, \chat => kept chat), \chat => chatJson chat))), Doc::num ("tickets", store.ticketCount)]
+
+    (** The conversations written to the app's private store: never the key. One write runs at a time, so an older one cannot land after a newer one; a change during a write is saved when it ends. *)
+    export persisting store =
+        settings = store.settings
+        match settings.saving
+            true => ui::Step(stepStore = store(settings = settings(saveAgain = true)), requests = [], writes = [])
+            false => ui::Step(stepStore = store(settings = settings(saving = true, saveAgain = false)), requests = [Requests::ask ("save:${store.ticketCount}", ui::StoreWrite(writeName = "chats.json", writeSlice = "chats-file"))], writes = [Requests::write ("chats-file", Doc::write (fileJson store))])
+
+    (** `chat` at rest, with each call still owed an answer told it was stopped, because a model refuses a history with an unanswered call. *)
+    export halted chat =
+        owed = pendingCalls chat
+        answered = listConcat chat.chatResults (mapList (owed, \call => Engine::ToolResult(resultId = call.callId, resultName = call.callName, resultContent = "Stopped before it ran.")))
+        history = Pick::either (length answered > 0, Engine::add_returns (chat.chatHistory, answered), chat.chatHistory)
+        chat(chatHistory = history, chatResults = [], chatStage = "idle", chatTicket = "", chatCall = "")
+
+    // A turn interrupted by quitting cannot resume: its ticket died with the process.
+    settled chat = Pick::either (Busy::idle chat, chat, halted chat)
+
+    (** The conversations read back from `text`, after the empty one launch opened. *)
+    export restored (store, text) =
+        doc = Doc::parse text
+        old = mapList (Doc::items (Doc::field (doc, "chats")), \item => settled (chatOf item))
+        store(chats = listConcat store.chats old, ticketCount = Pick::either (Doc::number (doc, "tickets") > store.ticketCount, Doc::number (doc, "tickets"), store.ticketCount))
+
+(** Whether a conversation is at rest. *)
+module Busy
+    (** At rest: nothing asked of the model or a tool. *)
+    export idle chat = chat.chatStage == "idle" || chat.chatStage == "failed"

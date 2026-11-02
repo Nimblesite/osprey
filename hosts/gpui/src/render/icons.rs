@@ -33,6 +33,11 @@ pub(crate) fn icon_name(name: &str) -> Option<IconName> {
         "person" => Some(IconName::User),
         "cursor" => Some(IconName::Inspector),
         "chevron" => Some(IconName::ChevronRight),
+        "send" => Some(IconName::ArrowUp),
+        "terminal" => Some(IconName::Inspector),
+        "edit" => Some(IconName::Replace),
+        "panel" => Some(IconName::PanelRight),
+        "sparkle" => Some(IconName::Star),
         _ => None,
     }
 }

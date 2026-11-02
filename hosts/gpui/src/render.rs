@@ -520,11 +520,11 @@ mod tests {
     use super::icon_name;
 
     /// Every `Symbols::name` in packages/native/src/symbol.ospml ([UI-COMPONENTS-SYMBOLS]).
-    const SYMBOLS: [&str; 28] = [
+    const SYMBOLS: [&str; 33] = [
         "add", "delete", "dismiss", "check", "warning", "info", "question", "search", "settings",
         "star", "play", "pause", "stop", "refresh", "folder", "document", "package", "inbox",
         "globe", "external", "lock", "shield", "branch", "tag", "clock", "person", "cursor",
-        "chevron",
+        "chevron", "send", "terminal", "edit", "panel", "sparkle",
     ];
 
     #[test]

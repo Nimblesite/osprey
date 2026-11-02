@@ -1,0 +1,369 @@
+// Implements [UI-COMPONENTS] for Osprey Agent. The layout is the conversation
+// shape of a modern coding agent: conversations in a vibrant sidebar, a centred
+// reading column with work folded into disclosures, a floating composer and an
+// inspector. Everything here is host-neutral nodes, frames and theme tokens, so
+// each host draws the same application with its own controls.
+namespace agentapp
+
+import ui::Doc
+import ui::Frames
+import ui::Lists
+import ui::Pick
+import ui::Symbols
+import ui::Ui
+import agent::Engine
+import agent::Transcript
+import agentapp::Model
+
+(** Frame recipes: this application's whole visual language. *)
+module Look
+    (** The width of the reading column. *)
+    export column = 760
+
+    (** A frame with only the given fill. *)
+    export filled fill =
+        style = Frames::plain
+        style(frameFill = fill)
+
+    (** Prose at the reading size. *)
+    export prose =
+        style = Frames::plain
+        style(frameTextSize = 14, frameLineHeight = 22.0, frameGap = 10)
+
+    (** A card: a surface, a hairline and rounded corners, with its padding. *)
+    export card (fill, vertical, horizontal, radius) =
+        style = Frames::inset (vertical, horizontal, vertical, horizontal)
+        style(frameFill = fill, frameLine = "line", frameRadius = radius, frameGap = 8)
+
+    (** Text at `size` in the `ink` token. *)
+    export sized (size, ink) =
+        style = Frames::plain
+        style(frameTextSize = size, frameInk = ink, frameHug = true)
+
+    (** Monospaced text at `size`. *)
+    export mono (size, ink) =
+        style = Frames::plain
+        style(frameFont = "mono", frameTextSize = size, frameLineHeight = Pick::either (size > 12, 20.0, 18.0), frameInk = ink)
+
+    (** A row of children at `gap` apart, filling its width. *)
+    export gapped gap =
+        style = Frames::plain
+        style(frameGap = gap)
+
+(** How long ago, in the fewest words. *)
+module Ago
+    (** `then` read from `now`, both Unix seconds. *)
+    export text (now, then) =
+        seconds = satSub now then
+        minutes = intDiv seconds 60
+        hours = intDiv minutes 60
+        days = intDiv hours 24
+        match seconds < 60
+            true => "now"
+            false => match minutes < 60
+                true => "${minutes}m"
+                false => match hours < 24
+                    true => "${hours}h"
+                    false => "${days}d"
+
+(** Each block of an answer as nodes. *)
+module Blocks
+    // A span's run: `code` and `strong` carry their emphasis to the host.
+    run span = match span.spanKind
+        "code" => Ui::emphasised (span.spanText, "codeInk", "code")
+        "strong" => Ui::emphasised (span.spanText, "", "strong")
+        "em" => Ui::run (span.spanText, "", true)
+        _ => Ui::run (span.spanText, "", false)
+
+    runs spans = mapList (spans, \span => run span)
+
+    paragraph (spans, prefix) = Ui::rich (listConcat (Pick::either (prefix == "", [], [Ui::run (prefix, "secondary", false)])) (runs spans), ui::Body)
+
+    heading block =
+        size = match block.blockLevel
+            1 => 20
+            2 => 17
+            _ => 15
+        style = Frames::inset (6, 0, 0, 0)
+        Ui::framed (style(frameTextSize = size, frameLineHeight = toFloat size + 8.0), Ui::rich (runs block.blockSpans, ui::Heading))
+
+    listed (spans, prefix) =
+        style = Frames::inset (0, 0, 0, 6)
+        Ui::framed (style, paragraph (spans, prefix))
+
+    quote block =
+        style = Frames::inset (2, 0, 2, 12)
+        Ui::framed (style(frameLine = "line", frameLineEdge = "left", frameInk = "secondary"), paragraph (block.blockSpans, ""))
+
+    code block =
+        head = Ui::framed (Look::sized (11, "secondary"), Ui::text (Pick::either (block.blockLanguage == "", "code", block.blockLanguage)))
+        body = Ui::framed (Look::mono (12, "primary"), Ui::text block.blockCode)
+        Ui::framed (Look::card ("codeFill", 12, 14, 10), Ui::column [head, body])
+
+    cell (spans, header) =
+        style = Frames::inset (7, 10, 7, 10)
+        Ui::framed (style(frameGrow = true, frameTextSize = 13, frameLineHeight = 19.0), Ui::rich (runs (mapList (spans, \span => span)), Pick::either (header, ui::Headline, ui::Body)))
+
+    tableRow (cells, header) =
+        style = Frames::plain
+        Ui::framed (style(frameGap = 1, frameFill = Pick::either (header, "raised", ""), frameLine = Pick::either (header, "", "line"), frameLineEdge = "top"), Ui::row (mapList (cells, \one => cell (one, header))))
+
+    table block =
+        style = Look::card ("surface", 0, 0, 10)
+        rows = range (0, length block.blockRows) |> fold [] (\(acc, i) => listAppend acc (tableRow (listGet block.blockRows i ?: [], i == 0)))
+        Ui::framed (style(frameGap = 1), Ui::column rows)
+
+    (** One Markdown block. *)
+    export node block = match block.blockKind
+        "heading" => heading block
+        "bullet" => listed (block.blockSpans, "•  ")
+        "numbered" => listed (block.blockSpans, "${block.blockLevel}.  ")
+        "quote" => quote block
+        "code" => code block
+        "table" => table block
+        _ => paragraph (block.blockSpans, "")
+
+(** The transcript's items as nodes. *)
+module Items
+    user item =
+        bubble = Look::card ("bubble", 10, 14, 16)
+        outer = Frames::inset (10, 0, 2, 96)
+        Ui::framed (outer(frameCross = "end"), Ui::framed (bubble(frameLine = "", frameHug = true, frameTextSize = 14, frameLineHeight = 21.0), Ui::text item.itemText))
+
+    answer item = Ui::framed (Look::prose, Ui::column (mapList (item.itemBlocks, \block => Blocks::node block)))
+
+    thought (expanded, item) =
+        key = item.itemKey
+        body = Ui::framed (Look::sized (13, "secondary"), Ui::text item.itemText)
+        Ui::framed (Look::sized (13, "secondary"), Ui::disclosure ("Thought", listContains expanded key, ToggleSteps(stepsKey = key), [body]))
+
+    verb tool = match tool
+        "write_file" => "Edit"
+        "read_file" => "Read"
+        "list_files" => "List"
+        _ => "$"
+
+    symbol tool = match tool
+        "write_file" => Symbols::name ui::Edit
+        "read_file" => Symbols::name ui::Document
+        "list_files" => Symbols::name ui::Folder
+        _ => Symbols::name ui::Terminal
+
+    status step = match step.stepDone
+        false => Ui::badge ("Running", Symbols::name ui::Clock, ui::Caution)
+        true => match step.stepFailed
+            true => Ui::badge ("Failed", Symbols::name ui::Warning, ui::Danger)
+            false => Ui::badge ("Done", Symbols::name ui::Check, ui::Good)
+
+    // At most this many lines of a tool's output are drawn; the model saw all of it.
+    shownLines () = 28
+
+    shown output =
+        lines = split output "\n" ?: []
+        match length lines > shownLines ()
+            true => join (Lists::slice (lines, 0, shownLines ()), "\n") + "\n… ${length lines - shownLines ()} more lines"
+            false => output
+
+    step item =
+        headInk = Look::mono (12, "primary")
+        title = Ui::framed (headInk(frameHug = true), Ui::text "${verb item.stepTool} ${item.stepSummary}")
+        head = Ui::row [Ui::framed (Look::sized (12, "secondary"), Ui::icon (symbol item.stepTool)), title, ui::Spacer, status item]
+        lines = Ui::framed (Look::mono (12, "secondary"), Ui::text (shown (trim item.stepOutput)))
+        Ui::framed (Look::card ("codeFill", 10, 12, 10), Ui::column (Pick::either (trim item.stepOutput == "", [head], [head, lines])))
+
+    tools (expanded, item) =
+        key = item.itemKey
+        Ui::framed (Look::gapped 8, Ui::disclosure (Transcript::step_title item.itemSteps, listContains expanded key, ToggleSteps(stepsKey = key), mapList (item.itemSteps, \one => step one)))
+
+    (** One transcript item. *)
+    export node (expanded, item) = match item.itemKind
+        "user" => user item
+        "thought" => thought (expanded, item)
+        "tools" => tools (expanded, item)
+        _ => answer item
+
+(** The regions of the window. *)
+module View
+    chatsNow () = (perform Signal<Chats>.read ()).chatList
+
+    panelNow () = perform Signal<Panel>.read ()
+
+    settingsNow () = perform Signal<Settings>.read ()
+
+    draftNow () = (perform Signal<Draft>.read ()).draftText
+
+    activeChat () =
+        panel = panelNow ()
+        chats = chatsNow ()
+        Lists::find (chats, \chat => chat.chatId == panel.panelActive) ?: (listGet chats 0 ?: Model::blank ("c0", "", 0))
+
+    folderName path =
+        parts = split path "/" ?: []
+        last = listGet parts (length parts - 1) ?: path
+        Pick::either (last == "", path, last)
+
+    (** The window: the sidebar beside the conversation and, when open, the inspector. *)
+    export root () =
+        panel = panelNow ()
+        base1 = Look::filled "canvas"
+        base2 = Frames::plain
+        conversation = Ui::framed (base1(frameGrow = true), Ui::column [Ui::slot "header", Ui::framed (base2(frameGrow = true), Ui::slot "transcript"), Ui::slot "composer"])
+        detail = match panel.panelOpen
+            true => Ui::boundedAside (conversation, ui::Trailing, Ui::slot "inspector", panel.panelWidth, 220, 420, 480, ResizePanel)
+            false => conversation
+        Ui::split [Ui::slot "sidebar", detail]
+
+    chatRow chat =
+        now = chat.chatStarted
+        busy = Model::busy chat
+        note = Pick::either (busy, "Working…", Pick::either (chat.chatStage == "failed", "Stopped by an error", chat.chatModel))
+        base3 = Frames::plain
+        words = Ui::column [Ui::framed (base3(frameHug = true, frameTextSize = 13), Ui::text chat.chatTitle), Ui::framed (Look::sized (11, Pick::either (busy, "accent", "secondary")), Ui::text note)]
+        base4 = Look::gapped 2
+        Ui::entry (chat.chatId, Pick::either (busy, Symbols::name ui::Clock, Symbols::name ui::Sparkle), folderName chat.chatFolder, Ui::framed (base4(frameTop = 3, frameBottom = 3), words))
+
+    (** The conversations, grouped by project, under the actions that start one. *)
+    export sidebar () =
+        panel = panelNow ()
+        settings = settingsNow ()
+        quiet = Frames::inset (8, 10, 4, 10)
+        actions = Ui::framed (quiet(frameQuietControls = true, frameGap = 2, frameTop = 44), Ui::column [Ui::button ("New chat", Symbols::name ui::Edit, NewChat), Ui::button ("Open folder…", Symbols::name ui::Folder, OpenFolder)])
+        foot = Frames::inset (10, 16, 14, 16)
+        status = Pick::either (settings.apiKey == "", Ui::badge ("No API key", Symbols::name ui::Warning, ui::Caution), Ui::badge ("DeepSeek connected", Symbols::name ui::Check, ui::Good))
+        base5 = Frames::plain
+        Ui::column [actions, Ui::framed (base5(frameGrow = true), Ui::rows (mapList (chatsNow (), \chat => chatRow chat), panel.panelActive, PickChat)), Ui::framed (foot, status)]
+
+    (** The conversation's title bar. *)
+    export header () =
+        chat = activeChat ()
+        panel = panelNow ()
+        bar = Frames::inset (10, 12, 10, 24)
+        base6 = Frames::plain
+        titles = Ui::column [Ui::framed (base6(frameTextSize = 14, frameHug = true), Ui::styled (chat.chatTitle, ui::Headline, ui::Primary)), Ui::framed (Look::sized (11, "secondary"), Ui::text chat.chatFolder)]
+        base7 = Frames::plain
+        toggle = Ui::framed (base7(frameQuietControls = true, frameIconOnly = true, frameControlHeight = 28, frameSymbolSize = 14, frameHug = true), Ui::button (Pick::either (panel.panelOpen, "Hide inspector", "Show inspector"), Symbols::name ui::Panel, TogglePanel))
+        Ui::framed (bar(frameHeight = 56, frameLine = "line", frameLineEdge = "bottom", frameAlign = "center", frameGap = 2), Ui::row [titles, ui::Spacer, toggle])
+
+    suggestion (title, detail, prompt) =
+        base8 = Frames::plain
+        Ui::framed (Look::card ("surface", 2, 2, 12), Ui::framed (base8(frameQuietControls = true, frameControlHeight = 52, frameControlPadding = 12), Ui::button ("${title} — ${detail}", Symbols::name ui::Sparkle, Suggest(suggestion = prompt))))
+
+    welcome chat =
+        base9 = Frames::plain
+        big = Ui::framed (base9(frameTextSize = 28, frameHug = true), Ui::styled ("What should we build?", ui::Large, ui::Primary))
+        where = Ui::framed (Look::sized (13, "secondary"), Ui::text "Working in ${chat.chatFolder}")
+        base10 = Look::gapped 8
+        ideas = Ui::framed (base10(frameTop = 18), Ui::column [
+            suggestion ("Explain this project", "what it does and how it is laid out", "Explain this project: what it does and how it is laid out. Read what you need first."),
+            suggestion ("Run the tests", "and fix whatever fails", "Find how this project runs its tests, run them, and fix whatever fails."),
+            suggestion ("Review the last change", "for bugs", "Look at the most recent change in this project and review it for bugs."),
+        ])
+        base11 = Frames::inset (0, 0, 0, 0)
+        Ui::framed (base11(frameGrow = true, frameAlign = "center", frameGap = 6, frameCross = "stretch"), Ui::column [big, where, ideas])
+
+    working chat =
+        spaced = Frames::inset (2, 0, 2, 0)
+        look = spaced(frameTextSize = 13)
+        match chat.chatStage
+            "thinking" => [Ui::framed (look, ui::Progress(label = "Thinking", detail = ""))]
+            "tools" => [Ui::framed (look, ui::Progress(label = "Working", detail = ""))]
+            _ => []
+
+    trouble chat = match chat.chatStage == "failed"
+        false => []
+        true =>
+            card = Look::card ("surface", 12, 14, 12)
+            base14 = Frames::plain
+            words = Ui::framed (base14(frameInk = "danger", frameTextSize = 13), Ui::text chat.chatProblem)
+            base15 = Frames::plain
+            [Ui::framed (card(frameLine = "danger"), Ui::column [words, Ui::framed (base15(frameHug = true), Ui::button ("Try again", Symbols::name ui::Refresh, Retry))])]
+
+    saveTrouble () =
+        problem = (settingsNow ()).saveProblem
+        base = Frames::plain
+        Pick::either (problem == "", [], [Ui::framed (base(frameInk = "danger", frameTextSize = 13), Ui::text problem)])
+
+    // While a round of tools runs, its finished answers show before the round goes back to the model.
+    visibleHistory chat = Pick::either (length chat.chatResults > 0, Engine::add_returns (chat.chatHistory, chat.chatResults), chat.chatHistory)
+
+    (** The conversation in a centred reading column that follows new content. *)
+    export transcript () =
+        chat = activeChat ()
+        panel = panelNow ()
+        items = Transcript::items_of (visibleHistory chat)
+        reading = Look::gapped 18
+        body = match length items == 0
+            true => welcome chat
+            false => Ui::column (listConcat (mapList (items, \item => Items::node (panel.panelExpanded, item))) (listConcat (working chat) (listConcat (trouble chat) (saveTrouble ()))))
+        centred = Frames::inset (28, 24, 18, 24)
+        Ui::framed (centred(frameGrow = true, frameScrollY = length items > 0, frameAlign = Pick::either (length items > 0, "end", "center"), frameCross = "center"), Ui::framed (reading(frameWidth = Look::column, frameGrow = length items == 0), body))
+
+    modelChoices () = [Ui::choice ("deepseek-chat", "DeepSeek Chat"), Ui::choice ("deepseek-reasoner", "DeepSeek Reasoner")]
+
+    keyField settings = match settings.apiKey == ""
+        false => []
+        true =>
+            style = Frames::inset (8, 0, 0, 0)
+            base16 = Frames::plain
+            [Ui::framed (style(frameGap = 8), Ui::row [Ui::framed (base16(frameGrow = true), ui::Field(label = "", value = settings.keyDraft, prompt = "Paste your DeepSeek API key", secure = true, multiline = false, commit = ui::OnEdit, bind = TypedKey)), Ui::action ("Save key", "", ui::Filled, true, SaveKey)])]
+
+    primary (chat, words) = match Model::busy chat
+        true => Ui::action ("Stop", Symbols::name ui::Stop, ui::Filled, true, StopTurn)
+        false => Ui::action ("Send", Symbols::name ui::Send, ui::Filled, trim words != "", SendDraft)
+
+    (** The floating composer: the words, the model and the one action that matters. *)
+    export composer () =
+        chat = activeChat ()
+        settings = settingsNow ()
+        words = draftNow ()
+        base17 = Frames::plain
+        field = Ui::framed (base17(frameTextSize = 14, frameLineHeight = 21.0, frameQuietControls = true), ui::Field(label = "Message", value = words, prompt = "Ask Osprey to change something…", secure = false, multiline = true, commit = ui::OnEdit, bind = Typed))
+        base18 = Frames::plain
+        model = Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::picker ("Model", modelChoices (), chat.chatModel, PickModel))
+        place = Ui::framed (Look::sized (12, "secondary"), ui::Label(label = folderName chat.chatFolder, symbol = Symbols::name ui::Folder))
+        base19 = Frames::plain
+        sending = Ui::framed (base19(frameIconOnly = true, frameControlHeight = 30, frameSymbolSize = 13, frameHug = true), primary (chat, words))
+        controls = Ui::row [place, model, ui::Spacer, sending]
+        box = Look::card ("surface", 12, 14, 18)
+        outer = Frames::inset (0, 24, 18, 24)
+        inner = (Look::gapped 10)
+        Ui::framed (outer(frameCross = "center"), Ui::framed (box(frameWidth = Look::column, frameShadow = "floating"), Ui::framed (inner, Ui::column (listConcat [field, controls] (keyField settings)))))
+
+    fact (label, value) = Ui::pair (label, value)
+
+    heading text =
+        base20 = Frames::inset (10, 0, 0, 0)
+        Ui::framed (base20(frameHug = true), Ui::styled (text, ui::Eyebrow, ui::Secondary))
+
+    // The context window a DeepSeek chat model takes, for the meter.
+    contextTokens () = 128000
+
+    grouped n =
+        whole = toString n
+        match n >= 1000
+            true => "${intDiv n 1000}.${intDiv (n % 1000) 100}k"
+            false => whole
+
+    (** What this conversation has done: its environment, what it cost and the files it touched. *)
+    export inspector () =
+        chat = activeChat ()
+        usage = Engine::usage_of chat.chatHistory
+        files = Engine::files_changed chat.chatHistory
+        side = Frames::inset (58, 18, 18, 18)
+        fileLook = Frames::plain
+        changed = match length files == 0
+            true => [Ui::framed (Look::sized (12, "faint"), Ui::text "Nothing yet")]
+            false => mapList (files, \file => Ui::framed (fileLook(frameTextSize = 12), Ui::label (file, Symbols::name ui::Document)))
+        Ui::framed (side(frameFill = "inset", frameLine = "line", frameLineEdge = "left", frameGrow = true, frameGap = 8, frameTextSize = 12), Ui::column (listConcat [
+            heading "Environment",
+            fact ("Project", folderName chat.chatFolder),
+            fact ("Model", chat.chatModel),
+            fact ("Provider", "DeepSeek"),
+            heading "Usage",
+            Ui::meter ("Context ${grouped usage.lastInput} of ${grouped (contextTokens ())}", usage.lastInput, contextTokens (), ui::Accent),
+            fact ("Requests", toString usage.totalRequests),
+            fact ("Tool calls", toString usage.totalTools),
+            fact ("Tokens in", grouped usage.totalInput),
+            fact ("Tokens out", grouped usage.totalOutput),
+            heading "Files changed",
+        ] changed))

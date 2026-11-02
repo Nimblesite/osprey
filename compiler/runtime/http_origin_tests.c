@@ -7,6 +7,7 @@
 #include "http_shared.h"
 #include "socket_safety.h"
 
+#include <signal.h>
 #include <assert.h>
 #include <stdio.h>
 
@@ -189,6 +190,119 @@ void test_client_methods_and_body(void) {
   origin_stop(&origin);
   assert(strstr(origin.request, "DELETE /item HTTP/1.1\r\n") == origin.request);
   http_close_client(client_id);
+}
+
+// A request larger than any fixed buffer reaches the origin whole and exact:
+// model APIs take request bodies of megabytes, and nothing but the request may
+// leave the process [HTTP-STATUS-CLIENT].
+#define LARGE_REQUEST_BODY (512 * 1024)
+
+typedef struct {
+  int listen_fd;
+  char *request;
+  size_t capacity;
+} LargeOrigin;
+
+static void *large_origin_thread(void *arg) {
+  LargeOrigin *origin = (LargeOrigin *)arg;
+  int fd = accept(origin->listen_fd, NULL, NULL);
+  if (fd < 0) {
+    return NULL;
+  }
+  origin_read_request(fd, origin->request, origin->capacity);
+  const char *reply = "HTTP/1.1 204 No Content\r\n\r\n";
+  (void)osp_socket_send(fd, reply, strlen(reply));
+  close(fd);
+  return NULL;
+}
+
+static void *closing_origin_thread(void *arg) {
+  int fd = accept(*(int *)arg, NULL, NULL);
+  if (fd >= 0) {
+    close(fd);
+  }
+  return NULL;
+}
+
+// An origin that hangs up while a body is being sent is an error for the caller,
+// not a SIGPIPE that kills the process [HTTP-STATUS-CLIENT].
+void test_client_peer_closes_during_body(void) {
+#ifndef _WIN32
+  void (*previous)(int) = signal(SIGPIPE, SIG_DFL);
+  size_t size = 16 * 1024 * 1024;
+  char *body = malloc(size + 1);
+  assert(body != NULL);
+  memset(body, 'x', size);
+  body[size] = '\0';
+  int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+  assert(listen_fd >= 0);
+  int opt = 1;
+  assert(setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt,
+                    sizeof(opt)) == 0);
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(ORIGIN_PORT);
+  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  assert(bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+  assert(listen(listen_fd, 1) == 0);
+  pthread_t thread;
+  assert(pthread_create(&thread, NULL, closing_origin_thread, &listen_fd) == 0);
+  int64_t client_id = origin_client();
+  assert(http_post(client_id, (char *)(uintptr_t) "/gone", body,
+                   (char *)(uintptr_t) "") < 0);
+  assert(pthread_join(thread, NULL) == 0);
+  close(listen_fd);
+  http_close_client(client_id);
+  free(body);
+  signal(SIGPIPE, previous);
+#endif
+}
+
+void test_client_large_request_body(void) {
+  char *body = malloc(LARGE_REQUEST_BODY + 1);
+  assert(body != NULL);
+  for (size_t i = 0; i < LARGE_REQUEST_BODY; i++) {
+    body[i] = (char)('a' + (char)(i % 26));
+  }
+  body[LARGE_REQUEST_BODY] = '\0';
+  LargeOrigin origin;
+  origin.capacity = LARGE_REQUEST_BODY + MAX_HTTP_BUFFER;
+  origin.request = calloc(origin.capacity, 1);
+  assert(origin.request != NULL);
+  origin.listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+  assert(origin.listen_fd >= 0);
+  int opt = 1;
+  assert(setsockopt(origin.listen_fd, SOL_SOCKET, SO_REUSEADDR,
+                    (const char *)&opt, sizeof(opt)) == 0);
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(ORIGIN_PORT);
+  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  assert(bind(origin.listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+  assert(listen(origin.listen_fd, 1) == 0);
+  pthread_t thread;
+  assert(pthread_create(&thread, NULL, large_origin_thread, &origin) == 0);
+
+  int64_t client_id = origin_client();
+  assert(http_post(client_id, (char *)(uintptr_t) "/large", body,
+                   (char *)(uintptr_t) "X-Trace: 9") == 204);
+  assert(pthread_join(thread, NULL) == 0);
+  close(origin.listen_fd);
+  http_close_client(client_id);
+
+  char expected[64];
+  snprintf(expected, sizeof(expected), "Content-Length: %d\r\n\r\n",
+           LARGE_REQUEST_BODY);
+  const char *sent = strstr(origin.request, expected);
+  assert(sent != NULL);
+  assert(strstr(origin.request, "X-Trace: 9\r\n") != NULL);
+  sent += strlen(expected);
+  assert(strlen(sent) == LARGE_REQUEST_BODY);
+  assert(memcmp(sent, body, LARGE_REQUEST_BODY) == 0);
+  free(origin.request);
+  free(body);
 }
 
 // Transport failures each report their own code rather than a status
