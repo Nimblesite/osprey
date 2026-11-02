@@ -281,6 +281,29 @@ fn an_executable_drops_a_helper_once_it_is_inlined() {
     );
 }
 
+/// Plan 0033 phase 4: only the outlined cold fault functions reach the handler
+/// stack, so a checked operation adds one rarely taken branch to a hot function.
+#[test]
+fn a_checked_operation_keeps_its_slow_path_out_of_line() {
+    let module = optimised_ir(
+        "fn add(a, b) = a + b\nfn scale(a, b) = a * b\nfn total(n) = match n {\n 0 => 0\n _ => add(n, scale(total(n - 1), 2))\n}\nfn main() = {\n handle Arith { overflow op l r w => w  divideByZero o l => 0.0  remainderByZero o => 0 }\n print(toString(total(9)))\n}\n",
+    );
+    let functions = module.split("\ndefine ").skip(1).collect::<Vec<_>>();
+    assert!(functions.len() > 1, "{module}");
+    let reaching = functions
+        .iter()
+        .filter(|body| body.contains("@__osprey_handler_lookup"))
+        .collect::<Vec<_>>();
+    assert!(!reaching.is_empty(), "{module}");
+    for body in reaching {
+        assert!(
+            body.contains("osp.arith.fault."),
+            "hot function reaches handlers:\n{body}"
+        );
+    }
+    assert!(module.contains("cold"), "{module}");
+}
+
 // [PROF-CLI-RUN] end-to-end: `--profile` compiles with the profile
 // pipeline (two-step + dsymutil), runs under the in-runtime sampler, and
 // writes all four exports where `-o` points. POSIX-only by design.
