@@ -16,7 +16,7 @@ from pydantic_ai import Exceptions as E
 from pydantic_ai import Messages as M
 from pydantic_ai import Models
 from pydantic_ai import ModelsOpenai
-from pydantic_ai import Providers
+from pydantic_ai import ProvidersHttp
 from pydantic_ai import Tools
 from testing import Check
 
@@ -166,7 +166,7 @@ def suite():
         return [Check.failed("coding.key", "DEEPSEEKKEY missing from .env")]
     else:
         made = shell("/tmp", "mkdir -p " + ROOT)
-        model = ModelsOpenai.OpenAIChatModel("deepseek-chat", Providers.DeepSeekProvider(key), {})
+        model = ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider(key), {})
         return listConcat(listConcat(
             run_task(model, "bugfix", BUGFIX_SETUP, BUGFIX_TASK, BUGFIX_VERIFY, BUGFIX_EXTRA),
             run_task(model, "feature", FEATURE_SETUP, FEATURE_TASK, FEATURE_VERIFY, FEATURE_EXTRA)),

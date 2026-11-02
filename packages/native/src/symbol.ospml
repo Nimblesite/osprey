@@ -4,7 +4,7 @@
 namespace ui
 
 (** A semantic icon. The wire carries its lowercase name and each host draws it from its own icon set; `NoSymbol` draws nothing. *)
-type Symbol = NoSymbol | Add | Delete | Dismiss | Check | Warning | Info | Question | Search | Settings | Star | Play | Pause | Stop | Refresh | Folder | Document | Package | Inbox | Globe | External | Lock | Shield | Branch | Tag | Clock | Person | Cursor | Chevron
+type Symbol = NoSymbol | Add | Delete | Dismiss | Check | Warning | Info | Question | Search | Settings | Star | Play | Pause | Stop | Refresh | Folder | Document | Package | Inbox | Globe | External | Lock | Shield | Branch | Tag | Clock | Person | Cursor | Chevron | Send | Terminal | Edit | Panel | Sparkle
 
 (** The operating system a host runs on, from the start context; a name this framework does not know arrives as `OtherPlatform`. *)
 type Platform =
@@ -51,6 +51,11 @@ module Symbols
         Person => "person"
         Cursor => "cursor"
         Chevron => "chevron"
+        Send => "send"
+        Terminal => "terminal"
+        Edit => "edit"
+        Panel => "panel"
+        Sparkle => "sparkle"
 
     (** The platform a host named in its start context. *)
     export platform : string -> Platform

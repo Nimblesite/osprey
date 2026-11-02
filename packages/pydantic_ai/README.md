@@ -10,7 +10,8 @@ An Osprey Python-flavor port of the [pydantic-ai](https://github.com/pydantic/py
 | `Profiles` | `pydantic_ai.profiles` | `ModelProfile` as a JSON map, `merge_profile`, `openai_model_profile`, DeepSeek and Ollama profiles |
 | `Tools` | `pydantic_ai.tools` | `ToolDefinition`, `Tool` |
 | `Models` | `pydantic_ai.models` | `ModelRequestParameters`, `Model` |
-| `Providers` | `pydantic_ai.providers` | `OpenAIProvider`, `OllamaProvider`, `DeepSeekProvider` over the runtime HTTPS client, and `scripted` for tests |
+| `Providers` | `pydantic_ai.providers` | the `Provider` record and `scripted` for tests |
+| `ProvidersHttp` | `pydantic_ai.providers.*` | `OpenAIProvider`, `OllamaProvider`, `DeepSeekProvider` over the runtime HTTPS client |
 | `ModelsOpenai` | `pydantic_ai.models.openai` | `OpenAIChatModel`: message, tool and settings mapping to a Chat Completions request, response parsing, usage, finish reasons, thinking tags and fields |
 | `JsonSchema` | `pydantic_ai._json_schema`, `profiles.openai` | the OpenAI strict-mode schema transformer |
 | `ModelsTest` | `pydantic_ai.models.test` | `TestModel` with its schema-driven argument generator and usage estimate |

@@ -283,7 +283,10 @@ module Ui
     rich (runs, role) = RichText(textRuns = runs, richRole = role)
 
     (** A text run with a semantic ink token and explicit emphasis. *)
-    export run (text, ink, italic) = TextRun(runText = text, runInk = ink, runItalic = italic)
+    export run (text, ink, italic) = TextRun(runText = text, runInk = ink, runItalic = italic, runEmphasis = "")
+
+    (** A text run with explicit emphasis: `strong` for weight, `code` for an inline monospaced span. *)
+    export emphasised (text, ink, emphasis) = TextRun(runText = text, runInk = ink, runItalic = false, runEmphasis = emphasis)
 
     (** A scoped application-owned palette, inherited by the whole subtree. *)
     export themed<A> : (Theme, Node<A>) -> Node<A>

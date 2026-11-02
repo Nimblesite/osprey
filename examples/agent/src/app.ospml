@@ -1,0 +1,232 @@
+// Implements [NATIVE-APPS-ALL], [UI-STORE] and [UI-EFFECTS] for Osprey Agent: one
+// store, one action union and a pure update. A model request is an `Http`
+// capability and a tool is a `Run` capability, so the window stays live while
+// the agent works, on any host that answers them.
+namespace agentapp
+
+import ui::Doc
+import ui::Keyed
+import ui::Lists
+import ui::Messages
+import ui::Pick
+import ui::Requests
+import ui::Runtime
+import agent::Engine
+import agent::Transcript
+import agentapp::Model
+import agentapp::View
+
+(** Every step of a turn: starting one, each model answer and each tool's answer ([UI-EFFECTS]). *)
+module Turn
+    deadline () = 600000
+
+    responseLimit () = 16000000
+
+    toolDeadline () = 300000
+
+    toolLimit () = 8000000
+
+    (** The model request for `chat`'s next step, under a new ticket. *)
+    export asking (store, chat) =
+        ticket = "model:${chat.chatId}:${store.ticketCount}"
+        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${store.settings.apiKey}"), ui::Header(headerName = "Content-Type", headerValue = "application/json")], body = Engine::request_body (chat.chatHistory, chat.chatModel), responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
+        moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatStage = "thinking", chatTicket = ticket, chatProblem = ""))
+        Runtime::asking (moved, [request])
+
+    // The process for one call, under a ticket naming the call.
+    runCall (store, chat, call) =
+        ticket = "tool:${chat.chatId}:${store.ticketCount}"
+        command = Engine::tool_command (store.settings.platform, chat.chatFolder, call.callName, call.callArgs)
+        request = Requests::ask (ticket, ui::Run(executable = command.executable, arguments = command.arguments, timeout = toolDeadline (), outputLimit = toolLimit (), plist = false, runSlice = ticket))
+        moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatStage = "tools", chatTicket = ticket, chatCall = call.callId))
+        Runtime::asking (moved, [request])
+
+    // The next call still owed an answer, or the model again once none is.
+    advance (store, chat) = match Lists::find (Model::pendingCalls chat, \_ => true)
+        Success call => runCall (store, chat, call)
+        Error _ => match length chat.chatResults > 0
+            true => asking (store, chat(chatHistory = Engine::add_returns (chat.chatHistory, chat.chatResults), chatResults = []))
+            false => finished (store, chat)
+
+    // A turn over: the agent idle and the conversations kept.
+    finished (store, chat) =
+        moved = Model::putChat (store, chat(chatStage = "idle", chatTicket = "", chatCall = ""))
+        Model::persisting moved
+
+    failed (store, chat, problem) = Model::persisting (Model::putChat (store, chat(chatStage = "failed", chatTicket = "", chatCall = "", chatProblem = problem)))
+
+    (** A model answer: add the response and run what it asks for. *)
+    export modelAnswered (store, chat, ticket, outcome) = match outcome
+        Error problem => failed (store, chat, problem)
+        Success result =>
+            body = perform ui::Slices.fetch ticket
+            reply = Engine::accept (chat.chatHistory, chat.chatModel, Doc::number (result, "status"), body)
+            match reply.replyOk
+                false => failed (store, chat, reply.replyProblem)
+                true => advance (store, chat(chatHistory = reply.replyHistory, chatStage = "tools"))
+
+    (** A tool's answer: keep it and move on. *)
+    export toolAnswered (store, chat, ticket, outcome) =
+        call = Model::callNamed (chat, chat.chatCall)
+        output = match outcome
+            Success result => Engine::tool_result_text (call.callName, Doc::number (result, "status"), perform ui::Slices.fetch ticket, "")
+            Error problem => Engine::tool_result_text (call.callName, 1, "", problem)
+        advance (store, chat(chatResults = listAppend chat.chatResults (Engine::ToolResult(resultId = call.callId, resultName = call.callName, resultContent = output))))
+
+    (** Starts a turn in the active conversation with `text`, unless it is already working or the words are empty. *)
+    export submit (store, text) =
+        words = trim text
+        chat = Model::active store
+        match words == "" || Model::busy chat || store.settings.apiKey == ""
+            true => Runtime::step (store(draft = Draft(draftText = words)))
+            false =>
+                titled = Pick::either (length (Transcript::items_of chat.chatHistory) == 0, chat(chatTitle = Transcript::title_of words), chat)
+                opened = titled(chatHistory = Engine::add_user (chat.chatHistory, chat.chatFolder, words))
+                asking (store(draft = Draft(draftText = "")), opened)
+
+    (** Stops the turn: whatever was asked is cancelled, and each call still owed an answer is told so, because a model refuses a history with an unanswered call. *)
+    export stop store =
+        chat = Model::active store
+        owed = Model::pendingCalls chat
+        answered = listConcat chat.chatResults (mapList (owed, \call => Engine::ToolResult(resultId = call.callId, resultName = call.callName, resultContent = "Stopped by the person before it ran.")))
+        history = Pick::either (length answered > 0, Engine::add_returns (chat.chatHistory, answered), chat.chatHistory)
+        cancels = Pick::either (chat.chatTicket == "", [], [Requests::ask ("cancel:${store.ticketCount}", ui::Cancel(cancelled = chat.chatTicket))])
+        moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatHistory = history, chatResults = [], chatStage = "idle", chatTicket = "", chatCall = ""))
+        Runtime::asking (moved, cancels)
+
+(** How Osprey Agent answers each message: taps, text, choices, flags and completions. *)
+module Answers
+    (** Applies a tap. *)
+    export tapped (store, action) = match action
+        NewChat => Runtime::step (Model::opening (store, (Model::active store).chatFolder))
+        OpenFolder => Runtime::asking (store, [Requests::ask ("folder", ui::ChooseFolder)])
+        SendDraft => Turn::submit (store, store.draft.draftText)
+        StopTurn => Turn::stop store
+        Retry => Turn::asking (store, Model::active store)
+        TogglePanel =>
+            panel = store.panel
+            Runtime::step (store(panel = panel(panelOpen = panel.panelOpen == false)))
+        Suggest words => Turn::submit (store, words)
+        SaveKey =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(apiKey = trim settings.keyDraft, keyDraft = "")))
+        _ => Runtime::step store
+
+    (** Applies text or a choice: the composer's words, where a final newline sends; a conversation; a model. *)
+    export typed (store, action, text) = match action
+        Typed => match endsWith text "\n"
+            true => Turn::submit (store, text)
+            false => Runtime::step (store(draft = Draft(draftText = text)))
+        PickChat =>
+            panel = store.panel
+            Runtime::step (store(panel = panel(panelActive = text)))
+        PickModel =>
+            chat = Model::active store
+            Runtime::step (Model::putChat (store, chat(chatModel = text)))
+        TypedKey =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(keyDraft = text)))
+        _ => Runtime::step store
+
+    (** Applies a disclosure's flag. *)
+    export toggled (store, action, on) = match action
+        ToggleSteps key =>
+            panel = store.panel
+            others = filterList (panel.panelExpanded, \item => item != key)
+            Runtime::step (store(panel = panel(panelExpanded = Pick::either (on, listAppend others key, others))))
+        _ => Runtime::step store
+
+    (** Applies the inspector's new width. *)
+    export sized (store, action, points) = match action
+        ResizePanel =>
+            panel = store.panel
+            Runtime::step (store(panel = panel(panelWidth = points)))
+        _ => Runtime::step store
+
+    settingsLoaded (store, outcome) = match outcome
+        Error _ => Runtime::step store
+        Success _ =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(apiKey = Model::keyIn (perform ui::Slices.fetch "env"))))
+
+    chatsLoaded (store, outcome) = match outcome
+        Error _ => Runtime::step store
+        Success result => match Doc::flag (result, "found")
+            false => Runtime::step store
+            true => Runtime::step (Model::restored (store, perform ui::Slices.fetch "chats-file"))
+
+    folderChosen (store, outcome) = match outcome
+        Error _ => Runtime::step store
+        Success result => match Doc::text (result, "path") == ""
+            true => Runtime::step store
+            false => Runtime::step (Model::opening (store, Doc::text (result, "path")))
+
+    chatOf (store, ticket) = Lists::find (store.chats, \chat => chat.chatTicket == ticket)
+
+    (** Applies a completion: only the ticket a conversation is waiting on counts, so a stopped turn's late answer changes nothing. *)
+    export completed (store, ticket, outcome) = match ticket
+        "env" => settingsLoaded (store, outcome)
+        "chats" => chatsLoaded (store, outcome)
+        "folder" => folderChosen (store, outcome)
+        _ => match chatOf (store, ticket)
+            Error _ => Runtime::step store
+            Success chat => match startsWith ticket "model:"
+                true => Turn::modelAnswered (store, chat, ticket, outcome)
+                false => Turn::toolAnswered (store, chat, ticket, outcome)
+
+(** Osprey Agent as the framework runs it: launch, update, regions, the session document and the theme ([UI-STORE], [UI-REGIONS]). *)
+module App
+    (** The store at launch, with the conversations and the key asked for. The first launch argument names the project folder and the second a dotenv file. *)
+    export initial context =
+        home = context.home
+        folder = Pick::either ((listGet context.arguments 0 ?: "") == "", home, listGet context.arguments 0 ?: "")
+        store = Model::launched (context.platform, home, folder, context.now)
+        envFile = listGet context.arguments 1 ?: ""
+        env = Pick::either (envFile == "", [], [Requests::ask ("env", Model::readText (context.platform, envFile))])
+        Runtime::asking (store, listConcat env [Requests::ask ("chats", ui::StoreRead(readName = "chats.json", readLimit = 64000000, readSlice = "chats-file"))])
+
+    (** Applies one message: a tap, text or a choice, a flag, a splitter's width or a completion. *)
+    export update (context, before, message) =
+        store = before(clock = context.now)
+        Messages::route (message, \action => Answers::tapped (store, action), \(action, text) => Answers::typed (store, action, text), \(action, on) => Answers::toggled (store, action, on), \(action, points) => Answers::sized (store, action, points), \(ticket, outcome) => Answers::completed (store, ticket, outcome), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+
+    chatsSlice () = perform Signal<Chats>.read ()
+
+    draftSlice () = perform Signal<Draft>.read ()
+
+    panelSlice () = perform Signal<Panel>.read ()
+
+    settingsSlice () = perform Signal<Settings>.read ()
+
+    (** The regions: the window's split, the sidebar, the conversation's header and transcript, the composer and the inspector, each rebuilt only when a slice it read changed. *)
+    export regions (before, store, frames, _) =
+        chats = Chats(chatList = store.chats)
+        previous = Chats(chatList = before.chats)
+        handle static Signal<Chats>
+            read => chats
+        handle static Signal<Draft>
+            read => store.draft
+        handle static Signal<Panel>
+            read => store.panel
+        handle static Signal<Settings>
+            read => store.settings
+        changed = listConcat (signalChanges previous chats Model::chatsJson (signalDependencies chatsSlice)) (listConcat (signalChanges before.draft store.draft Model::draftJson (signalDependencies draftSlice)) (listConcat (signalChanges before.panel store.panel Model::panelJson (signalDependencies panelSlice)) (signalChanges before.settings store.settings Model::settingsJson (signalDependencies settingsSlice))))
+        [Keyed::region (frames, "root", changed, View::root), Keyed::region (frames, "sidebar", changed, View::sidebar), Keyed::region (frames, "header", changed, View::header), Keyed::region (frames, "transcript", changed, View::transcript), Keyed::region (frames, "composer", changed, View::composer), Keyed::region (frames, "inspector", changed, View::inspector)]
+
+    (** The store as the opaque session document. *)
+    export save store = Model::storeJson store
+
+    (** The store from a saved session document. *)
+    export restore doc = Model::storeOf doc
+
+    token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
+
+    (** Osprey Agent's colours in light and dark appearance, its spacing scale and its motion durations ([UI-THEME]). *)
+    export theme () = ui::Theme(tokens = [
+        token ("primary", "#17171A", "#EDEDF0"), token ("secondary", "#6B6B76", "#9B9BA6"), token ("faint", "#9A9AA5", "#65656F"),
+        token ("accent", "#4F46E5", "#8B8CFF"), token ("onAccent", "#FFFFFF", "#101018"),
+        token ("good", "#14804A", "#4CC38A"), token ("caution", "#A16207", "#F5B454"), token ("danger", "#C92A2A", "#F47C7C"),
+        token ("canvas", "#FBFBFC", "#141417"), token ("surface", "#FFFFFF", "#1E1E23"), token ("raised", "#F3F3F6", "#26262C"),
+        token ("bubble", "#EEEEF3", "#2A2A31"), token ("line", "#E4E4EA", "#2C2C33"), token ("inset", "#F6F6F9", "#18181C"),
+        token ("codeFill", "#F2F2F6", "#0E0E11"), token ("codeInk", "#5B45D6", "#C2B5FF"),
+    ], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)

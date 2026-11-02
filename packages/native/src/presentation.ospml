@@ -39,11 +39,12 @@ type FrameStyle =
     frameFlatRows : bool
     frameShadow : string
 
-(** One inline text run; its semantic colour and italics are authored by the application. *)
+(** One inline text run; its semantic colour, italics and emphasis (empty, `strong` or `code`) are authored by the application. *)
 type TextRun =
     runText : string
     runInk : string
     runItalic : bool
+    runEmphasis : string
 
 (** Pure frame values; hosts apply them without making application layout decisions. *)
 module Frames

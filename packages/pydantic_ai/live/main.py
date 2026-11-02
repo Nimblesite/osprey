@@ -21,7 +21,7 @@ from pydantic_ai import JsonUtil as J
 from pydantic_ai import Messages as M
 from pydantic_ai import Models
 from pydantic_ai import ModelsOpenai
-from pydantic_ai import Providers
+from pydantic_ai import ProvidersHttp
 from pydantic_ai import Tools
 from testing import Check
 
@@ -106,7 +106,7 @@ def judge(model, question, answer) -> str:
 
 
 def run_checks(key):
-    provider = Providers.DeepSeekProvider(key)
+    provider = ProvidersHttp.DeepSeekProvider(key)
     model = ModelsOpenai.OpenAIChatModel(MODEL_NAME, provider, {})
     agent = Agent.tool_plain(Agent.tool_plain(Agent.agent(model, "You are a precise assistant. Always use the tools to look up facts and to do arithmetic."), temperature_tool()), add_tool())
     match Agent.run_sync(agent, QUESTION, []):

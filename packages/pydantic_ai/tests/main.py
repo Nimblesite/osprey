@@ -19,6 +19,7 @@ from pydantic_ai import ModelsOpenai
 from pydantic_ai import ModelsTest
 from pydantic_ai import Profiles
 from pydantic_ai import Providers
+from pydantic_ai import ProvidersHttp
 from pydantic_ai import Settings
 from pydantic_ai import Tools
 from pydantic_ai import Usage
@@ -134,7 +135,7 @@ def history():
 
 
 def openai_model(name, profile):
-    return ModelsOpenai.OpenAIChatModel(name, Providers.OpenAIProvider("http://x/v1", "k"), profile)
+    return ModelsOpenai.OpenAIChatModel(name, ProvidersHttp.OpenAIProvider("http://x/v1", "k"), profile)
 
 
 def params_with(function_tools, allow_text, instruction_parts):
@@ -161,11 +162,11 @@ def scenario(i):
     elif name == "history":
         return Scenario(model=openai_model("gpt-4o", {}), messages=history(), settings={}, parameters=params_with(first_two(tools()), True, [M.InstructionPart(content="inst")]))
     elif name == "deepseek_history":
-        return Scenario(model=ModelsOpenai.OpenAIChatModel("deepseek-chat", Providers.DeepSeekProvider("k"), {}), messages=history(), settings={}, parameters=Models.with_tools(first_two(tools())))
+        return Scenario(model=ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider("k"), {}), messages=history(), settings={}, parameters=Models.with_tools(first_two(tools())))
     elif name == "o1_mini":
         return Scenario(model=openai_model("o1-mini", {}), messages=plain(), settings={"temperature": JsonFloat(0.5), "max_tokens": JsonInt(5), "openai_reasoning_effort": JsonString("low")}, parameters=Models.model_request_parameters())
     elif name == "ollama":
-        return Scenario(model=ModelsOpenai.OpenAIChatModel("llama3", Providers.OllamaProvider("http://localhost:11434/v1"), {}), messages=plain(), settings={}, parameters=Models.with_tools(last_two(tools())))
+        return Scenario(model=ModelsOpenai.OpenAIChatModel("llama3", ProvidersHttp.OllamaProvider("http://localhost:11434/v1"), {}), messages=plain(), settings={}, parameters=Models.with_tools(last_two(tools())))
     else:
         return Scenario(model=openai_model("gpt-4o", {}), messages=plain(), settings={}, parameters=params_with([unwrap_or(listGet(tools(), 0), Tools.tool_definition("", "", JsonNull()))], False, []))
 
@@ -195,7 +196,7 @@ def describe(response):
 
 def parse_case(i):
     provider = ats(Expected.REPLY_PROVIDERS, i)
-    model = ModelsOpenai.OpenAIChatModel("deepseek-chat", Providers.DeepSeekProvider("k"), {}) if provider == "deepseek" else openai_model("gpt-4o", {})
+    model = ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider("k"), {}) if provider == "deepseek" else openai_model("gpt-4o", {})
     expected_error = ats(Expected.PARSED_ERRORS, i)
     match ModelsOpenai.process_response(model.model_name, provider, model.profile, ats(Expected.REPLY_BODIES, i)):
         case E.Ok(value=response):

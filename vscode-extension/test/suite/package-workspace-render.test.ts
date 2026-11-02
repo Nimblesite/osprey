@@ -148,7 +148,7 @@ suite("package workspace renderer", () => {
 
   test("every framework symbol draws its own Codicon and a pair shows its label and value", () => {
     // Every `Symbols::name` in packages/native/src/symbol.ospml ([UI-COMPONENTS-SYMBOLS]).
-    const names = ["add", "delete", "dismiss", "check", "warning", "info", "question", "search", "settings", "star", "play", "pause", "stop", "refresh", "folder", "document", "package", "inbox", "globe", "external", "lock", "shield", "branch", "tag", "clock", "person", "cursor", "chevron"];
+    const names = ["add", "delete", "dismiss", "check", "warning", "info", "question", "search", "settings", "star", "play", "pause", "stop", "refresh", "folder", "document", "package", "inbox", "globe", "external", "lock", "shield", "branch", "tag", "clock", "person", "cursor", "chevron", "send", "terminal", "edit", "panel", "sparkle"];
     for (const name of names) {
       const html = renderWorkspace({ regions: regions({ kind: "icon", symbol: name }) });
       assert.ok(name === "info" || !html.includes("codicon-info\""), `${name} fell back to the info mark`);
