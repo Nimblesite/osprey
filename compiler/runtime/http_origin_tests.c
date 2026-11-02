@@ -7,6 +7,7 @@
 #include "http_shared.h"
 #include "socket_safety.h"
 
+#include <signal.h>
 #include <assert.h>
 #include <stdio.h>
 
@@ -213,6 +214,49 @@ static void *large_origin_thread(void *arg) {
   (void)osp_socket_send(fd, reply, strlen(reply));
   close(fd);
   return NULL;
+}
+
+static void *closing_origin_thread(void *arg) {
+  int fd = accept(*(int *)arg, NULL, NULL);
+  if (fd >= 0) {
+    close(fd);
+  }
+  return NULL;
+}
+
+// An origin that hangs up while a body is being sent is an error for the caller,
+// not a SIGPIPE that kills the process [HTTP-STATUS-CLIENT].
+void test_client_peer_closes_during_body(void) {
+#ifndef _WIN32
+  void (*previous)(int) = signal(SIGPIPE, SIG_DFL);
+  size_t size = 16 * 1024 * 1024;
+  char *body = malloc(size + 1);
+  assert(body != NULL);
+  memset(body, 'x', size);
+  body[size] = '\0';
+  int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+  assert(listen_fd >= 0);
+  int opt = 1;
+  assert(setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt,
+                    sizeof(opt)) == 0);
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(ORIGIN_PORT);
+  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  assert(bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
+  assert(listen(listen_fd, 1) == 0);
+  pthread_t thread;
+  assert(pthread_create(&thread, NULL, closing_origin_thread, &listen_fd) == 0);
+  int64_t client_id = origin_client();
+  assert(http_post(client_id, (char *)(uintptr_t) "/gone", body,
+                   (char *)(uintptr_t) "") < 0);
+  assert(pthread_join(thread, NULL) == 0);
+  close(listen_fd);
+  http_close_client(client_id);
+  free(body);
+  signal(SIGPIPE, previous);
+#endif
 }
 
 void test_client_large_request_body(void) {

@@ -89,7 +89,7 @@ static ssize_t transport_send(SSL *ssl, int sock, const char *buf, int len) {
   if (ssl) {
     return SSL_write(ssl, buf, len);
   }
-  return send(sock, buf, (size_t)len, 0);
+  return osp_socket_send(sock, buf, (size_t)len);
 }
 
 // Writes all of `buf`, however many short writes the transport makes of it.
@@ -178,6 +178,7 @@ int64_t http_perform(int64_t client_id, int64_t method, char *path,
   }
 
   osp_socket_deadline(sock, client->timeout);
+  (void)osp_socket_configure_no_sigpipe(sock); // TLS writes reach the socket too
 
   struct sockaddr_in server_addr;
   memset(&server_addr, 0, sizeof(server_addr));

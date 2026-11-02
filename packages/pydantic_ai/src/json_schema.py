@@ -38,7 +38,8 @@ class Transformed:
 
 def transform(schema) -> Transformed:
     """`OpenAIJsonSchemaTransformer(schema).walk()` plus `is_strict_compatible`."""
-    walked = handle(schema)
+    members = J.members_of(schema)
+    walked = handle(J.obj(without(members, ["$defs"])) if len(members) > 0 else schema)
     defs = J.object_at(schema, "$defs")
     if J.is_null(defs):
         return walked
@@ -61,7 +62,7 @@ def handle(schema):
     match schema:
         case JsonObject():
             type_ = J.text_at(schema, "type", "")
-            base = without(J.members_of(schema), ["$defs"])
+            base = J.members_of(schema)
             children = handle_object(base) if type_ == "object" else (handle_array(base) if type_ == "array" else handle_unions(base, True))
             unions = children if type_ == "" else handle_unions_of(children.schema, children.is_strict_compatible)
             return transform_node(unions.schema, unions.is_strict_compatible)

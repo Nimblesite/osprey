@@ -164,6 +164,56 @@ testing ("a restart restores conversations with distinct identities and fresh ti
     expect ((listGet restored.chats 1 ?: Model::active restored).chatTitle, "One")
     expectTrue (restored.ticketCount >= first.stepStore.ticketCount))
 
+testing ("a turn cut off by quitting answers what it owed, so the restored conversation can go on", \() =>
+    calling = (Drive::answering ((Drive::typing (Drive::started (), "Go\n")).stepStore, ok 200, toolReply)).stepStore
+    file = (listGet (Model::persisting calling).writes 0 ?: Requests::write ("", "")).sliceText
+    fresh = (App::initial (ui::Context(now = 200, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project"]))).stepStore
+    restored = (Drive::deliver (fresh, ui::Completed(ticket = "chats", outcome = Success(value = JsonObject [Doc::bit ("found", true)])), file)).stepStore
+    old = listGet restored.chats 1 ?: Model::active restored
+    expect (length (Model::pendingCalls old), 0)
+    expect (old.chatStage, "idle")
+    keyed = (Drive::deliver (restored, ui::Chose(chooser = agentapp::PickChat, chosen = old.chatId), "")).stepStore
+    settings = keyed.settings
+    next = Drive::typing (keyed(settings = settings(apiKey = "sk-test")), "Again\n")
+    expect (Drive::kinds next, "http")
+    expectTrue (contains (Doc::text (listGet (Drive::asked next) 0 ?: JsonNull, "body")) "before it ran"))
+
+testing ("a first message the model refused is kept and is not reused as a new chat", \() =>
+    opened = (Drive::typing (Drive::started (), "Keep these words\n")).stepStore
+    refused = Drive::answering (opened, ok 429, "{\"error\":\"busy\"}")
+    file = (listGet refused.writes 0 ?: Requests::write ("", "")).sliceText
+    expectTrue (contains file "Keep these words")
+    expect (length (Drive::deliver (refused.stepStore, ui::Act(act = agentapp::NewChat), "")).stepStore.chats, 2))
+
+testing ("a key file arriving late never replaces a key the person pasted", \() =>
+    launched = (App::initial (context 100)).stepStore
+    settings = launched.settings
+    pasted = launched(settings = settings(apiKey = "sk-pasted"))
+    late = Drive::deliver (pasted, ui::Completed(ticket = "env", outcome = ok 0), "DEEPSEEKKEY=sk-file\n")
+    expect (late.stepStore.settings.apiKey, "sk-pasted"))
+
+testing ("a failed save is shown and the next good save clears it", \() =>
+    done = Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)
+    ticket = (listGet (Drive::asked done) 0 ?: JsonNull)
+    failed = Drive::deliver (done.stepStore, ui::Completed(ticket = Doc::text (ticket, "ticket"), outcome = Error(message = "disk full")), "")
+    expectTrue (contains failed.stepStore.settings.saveProblem "disk full")
+    cleared = Drive::deliver (failed.stepStore, ui::Completed(ticket = Doc::text (ticket, "ticket"), outcome = ok 0), "")
+    expect (cleared.stepStore.settings.saveProblem, ""))
+
+testing ("saves run one at a time and the newest state is written last", \() =>
+    first = Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)
+    expect (Drive::kinds first, "store-write")
+    ticket = Doc::text (listGet (Drive::asked first) 0 ?: JsonNull, "ticket")
+    second = Model::persisting first.stepStore
+    expect (Drive::kinds second, "")
+    changed = second.stepStore
+    chat = Model::active changed
+    renamed = Model::putChat (changed, chat(chatTitle = "Newest"))
+    ended = Drive::deliver (renamed, ui::Completed(ticket = ticket, outcome = ok 0), "")
+    expect (Drive::kinds ended, "store-write")
+    expectTrue (contains (listGet ended.writes 0 ?: Requests::write ("", "")).sliceText "Newest")
+    expect (Drive::kinds (Drive::deliver (ended.stepStore, ui::Completed(ticket = ticket, outcome = ok 0), "")), ""))
+
 testing ("the session document restores the store it saved", \() =>
     calling = (Drive::answering ((Drive::typing (Drive::started (), "Go\n")).stepStore, ok 200, toolReply)).stepStore
     expect (Doc::write (App::save (App::restore (App::save calling))), Doc::write (App::save calling)))

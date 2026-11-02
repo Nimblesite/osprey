@@ -84,14 +84,11 @@ module Turn
                 opened = titled(chatHistory = Engine::add_user (chat.chatHistory, chat.chatFolder, words))
                 asking (store(draft = Draft(draftText = "")), opened)
 
-    (** Stops the turn: whatever was asked is cancelled, and each call still owed an answer is told so, because a model refuses a history with an unanswered call. *)
+    (** Stops the turn: whatever was asked is cancelled, and the conversation comes to rest. *)
     export stop store =
         chat = Model::active store
-        owed = Model::pendingCalls chat
-        answered = listConcat chat.chatResults (mapList (owed, \call => Engine::ToolResult(resultId = call.callId, resultName = call.callName, resultContent = "Stopped by the person before it ran.")))
-        history = Pick::either (length answered > 0, Engine::add_returns (chat.chatHistory, answered), chat.chatHistory)
         cancels = Pick::either (chat.chatTicket == "", [], [Requests::ask ("cancel:${store.ticketCount}", ui::Cancel(cancelled = chat.chatTicket))])
-        moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatHistory = history, chatResults = [], chatStage = "idle", chatTicket = "", chatCall = ""))
+        moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), Model::halted chat)
         saving = Model::persisting moved
         saving(requests = listConcat cancels saving.requests)
 
@@ -148,7 +145,10 @@ module Answers
         Error _ => Runtime::step store
         Success _ =>
             settings = store.settings
-            Runtime::step (store(settings = settings(apiKey = Model::keyIn (perform ui::Slices.fetch "env"))))
+            // A key pasted while the file was being read is the newer word.
+            match settings.apiKey == ""
+                true => Runtime::step (store(settings = settings(apiKey = Model::keyIn (perform ui::Slices.fetch "env"))))
+                false => Runtime::step store
 
     chatsLoaded (store, outcome) = match outcome
         Error _ => Runtime::step store
@@ -162,6 +162,15 @@ module Answers
             true => Runtime::step store
             false => Runtime::step (Model::opening (store, Doc::text (result, "path")))
 
+    // The write in flight ended: say if it failed, and write what changed meanwhile.
+    saved (store, outcome) =
+        settings = store.settings
+        problem = match outcome
+            Error reason => "Your conversations could not be saved: ${reason}"
+            Success _ => ""
+        settledStore = store(settings = settings(saving = false, saveAgain = false, saveProblem = problem))
+        Pick::either (settings.saveAgain, Model::persisting settledStore, Runtime::step settledStore)
+
     chatOf (store, ticket) = Lists::find (store.chats, \chat => chat.chatTicket == ticket)
 
     (** Applies a completion: only the ticket a conversation is waiting on counts, so a stopped turn's late answer changes nothing. *)
@@ -169,11 +178,13 @@ module Answers
         "env" => settingsLoaded (store, outcome)
         "chats" => chatsLoaded (store, outcome)
         "folder" => folderChosen (store, outcome)
-        _ => match chatOf (store, ticket)
-            Error _ => Runtime::step store
-            Success chat => match startsWith ticket "model:"
-                true => Turn::modelAnswered (store, chat, ticket, outcome)
-                false => Turn::toolAnswered (store, chat, ticket, outcome)
+        _ => match startsWith ticket "save:"
+            true => saved (store, outcome)
+            false => match chatOf (store, ticket)
+                Error _ => Runtime::step store
+                Success chat => match startsWith ticket "model:"
+                    true => Turn::modelAnswered (store, chat, ticket, outcome)
+                    false => Turn::toolAnswered (store, chat, ticket, outcome)
 
 (** Osprey Agent as the framework runs it: launch, update, regions, the session document and the theme ([UI-STORE], [UI-REGIONS]). *)
 module App

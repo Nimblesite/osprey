@@ -511,4 +511,8 @@ def validate_message(data) -> Result[ModelMessage, str]:
 
 def validate_messages(value) -> Result[list[ModelMessage], str]:
     """`ModelMessagesTypeAdapter.validate_python(payload)` from a JSON array."""
-    return collect(J.items_of(value), validate_message)
+    match value:
+        case JsonArray(items):
+            return collect(items, validate_message)
+        case _:
+            return Error(message="messages must be a JSON array")

@@ -13,9 +13,10 @@ agent:
 	$(MAKE) -C $(ROOT) build
 	bash $(ROOT)/examples/agent/run.sh "$(PROJECT)"
 
-## agent-test: Osprey Agent's offline suites: no network and no window.
+## agent-test: Osprey Agent's offline suites and its host's process adapter: no network and no window.
 agent-test:
 	bash $(ROOT)/examples/agent/run.sh --test
+	swift test --package-path $(ROOT)/hosts/swift/Tests
 
 ## python-app-ports: Verify the classifier, vector search and text evaluation ports.
 python-app-ports:

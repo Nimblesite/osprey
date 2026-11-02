@@ -202,7 +202,7 @@ def parse_case(i):
         case E.Ok(value=response):
             return Check.truth(f"parse[{i}]", expected_error == "" and structuralEquals(describe(response), atl(Expected.PARSED_REPLIES, i)), join(describe(response), " / "))
         case E.Failed(error=error):
-            return Check.truth(f"parse[{i}]", expected_error != "", E.message_of(error))
+            return Check.truth(f"parse[{i}]", expected_error != "" and contains(E.message_of(error), "Invalid response"), E.message_of(error))
 
 
 # ModelResponse.text, args, retries
@@ -508,6 +508,65 @@ def schema_cases():
     ]
 
 
+def review_cases():
+    no_message = ModelsOpenai.process_response("m", "openai", openai_model("gpt-4o", {}).profile, "{\"choices\":[{}]}")
+    override = J.encode(ModelsOpenai.completions_body("gpt-4o", openai_model("gpt-4o", {}).profile, plain(), {"extra_body": decode("{\"stream\":true,\"extra\":1}")}, Models.model_request_parameters()))
+    nested = JsonSchema.transform(decode("{\"type\":\"object\",\"properties\":{\"box\":{\"$defs\":{\"S\":{\"type\":\"string\"}},\"$ref\":\"#/properties/box/$defs/S\"}},\"required\":[\"box\"]}"))
+    return [
+        Check.truth("review.missing_message_refused", outcome_failed(no_message), "accepted a choice with no message"),
+        Check.truth("review.extra_body_replaces", contains(override, "\"stream\":true") and not contains(override, "\"stream\":false") and contains(override, "\"extra\":1"), override),
+        Check.equal("review.validate_refuses_object", error_text(M.validate_messages(decode("{}"))), "messages must be a JSON array"),
+        Check.truth("review.nested_defs_kept", contains(canon(nested.schema), "\"$defs\":{\"S\""), canon(nested.schema)),
+    ]
+
+
+def outcome_failed(outcome):
+    match outcome:
+        case E.Failed():
+            return True
+        case E.Ok():
+            return False
+
+
+def accessor_cases():
+    request = M.of_request(M.model_request([M.InstructionPart(content="be brief")]))
+    response = M.of_response(M.model_response([M.TextPart(content="hi")], "m"))
+    thinking = M.ThinkingPart(content="hm")
+    call = M.ToolCallPart(tool_name="f", args="{}", tool_call_id="c")
+    round_trip = M.validate_messages(M.dump_messages([request]))
+    numeric = M.validate_messages(decode("[{\"kind\":\"request\",\"parts\":[{\"part_kind\":\"tool-return\",\"tool_name\":\"f\",\"tool_call_id\":\"c\",\"content\":3},{\"part_kind\":\"tool-return\",\"tool_name\":\"g\",\"tool_call_id\":\"d\"}]}]"))
+    return [
+        Check.equal("access.call_id", M.generate_tool_call_id(7), "pyd_ai_7"),
+        same("access.is_response", [M.is_response(response), M.is_response(request)], [True, False]),
+        same("access.is_request", [M.is_request(request), M.is_request(response)], [True, False]),
+        same("access.request_parts", [len(M.request_parts(request)), len(M.request_parts(response))], [1, 0]),
+        same("access.response_parts", [len(M.response_parts(response)), len(M.response_parts(request))], [1, 0]),
+        same("access.has_calls", [M.has_tool_calls(M.model_response([call], "m")), M.has_tool_calls(M.model_response([thinking], "m"))], [True, False]),
+        Check.equal("access.non_call_fields", M.tool_name_of(thinking) + M.tool_call_id_of(thinking) + M.part_text(call), ""),
+        Check.equal("access.instruction_round_trip", error_text(round_trip), ""),
+        Check.truth("access.scalar_contents", contains(canon(M.dump_messages(unwrap_or(numeric, []))), "\"content\":\"3\"") and contains(canon(M.dump_messages(unwrap_or(numeric, []))), "\"content\":\"\""), "contents must read as text"),
+        Check.equal("access.bad_response_part", error_text(M.validate_messages(decode("[{\"kind\":\"response\",\"parts\":[{\"part_kind\":\"mystery\"}]}]"))), "unknown response part_kind: mystery"),
+        Check.truth("access.instruction_stays_off_the_messages", not contains(J.encode(ModelsOpenai.completions_body("gpt-4o", openai_model("gpt-4o", {}).profile, [request], {}, Models.model_request_parameters())), "be brief"), "instructions travel through the parameters"),
+        same("access.finish_reasons", [ModelsOpenai.map_finish_reason("function_call"), ModelsOpenai.map_finish_reason("mystery")], ["tool_call", ""]),
+        Check.equal("access.float_from_int", J.float_at(decode("{\"n\":2}"), "n", 0.0), 2.0),
+        Check.equal("access.json_makers", J.encode(J.jtext("a")) + J.encode(J.jint(3)), "\"a\"3"),
+    ]
+
+
+def schema_walk_cases():
+    defs = JsonSchema.transform(decode("{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"#/$defs/A\"}},\"required\":[\"a\"],\"$defs\":{\"A\":{\"type\":\"object\",\"title\":\"A\",\"properties\":{},\"required\":[]}}}"))
+    union = JsonSchema.transform(decode("{\"anyOf\":[{\"type\":\"string\",\"title\":\"S\"},{\"type\":\"integer\"}]}"))
+    prefix = JsonSchema.transform(decode("{\"type\":\"array\",\"prefixItems\":[{\"type\":\"string\",\"title\":\"P\"}]}"))
+    additional = JsonSchema.transform(decode("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":{\"type\":\"string\",\"title\":\"V\"}}"))
+    return [
+        Check.truth("walk.defs_kept_and_walked", contains(canon(defs.schema), "\"$defs\":{\"A\"") and not contains(canon(defs.schema), "\"title\":\"A\""), canon(defs.schema)),
+        Check.truth("walk.union_members", contains(canon(union.schema), "anyOf") and not contains(canon(union.schema), "\"title\""), canon(union.schema)),
+        Check.truth("walk.prefix_items", contains(canon(prefix.schema), "prefixItems") and not contains(canon(prefix.schema), "\"title\""), canon(prefix.schema)),
+        Check.equal("walk.additional_not_strict", additional.is_strict_compatible, False),
+        Check.truth("walk.additional_walked", not contains(canon(additional.schema), "\"title\""), canon(additional.schema)),
+    ]
+
+
 def suite():
     return concat([
         cases(len(Expected.SCENARIO_NAMES), body_case),
@@ -531,6 +590,9 @@ def suite():
         direct_cases(),
         exception_cases(),
         schema_cases(),
+        review_cases(),
+        accessor_cases(),
+        schema_walk_cases(),
     ])
 
 

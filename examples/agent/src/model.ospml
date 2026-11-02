@@ -65,6 +65,9 @@ type Settings =
     homeFolder : string
     apiKey : string
     keyDraft : string
+    saveProblem : string
+    saving : bool
+    saveAgain : bool
 
 (** Osprey Agent's whole store. *)
 type Store =
@@ -84,7 +87,7 @@ module Model
     export blank (id, folder, now) = Chat(chatId = id, chatTitle = "New chat", chatFolder = folder, chatModel = defaultModel, chatHistory = Engine::new_history (), chatStage = "idle", chatTicket = "", chatCall = "", chatResults = [], chatProblem = "", chatStarted = now)
 
     (** The store at launch: one empty conversation in `folder`. *)
-    export launched (system, home, folder, now) = Store(chats = [blank ("launch${now}", folder, now)], draft = Draft(draftText = ""), panel = Panel(panelActive = "launch${now}", panelOpen = true, panelWidth = 288, panelExpanded = []), settings = Settings(platform = system, homeFolder = home, apiKey = "", keyDraft = ""), ticketCount = 2, clock = now)
+    export launched (system, home, folder, now) = Store(chats = [blank ("launch${now}", folder, now)], draft = Draft(draftText = ""), panel = Panel(panelActive = "launch${now}", panelOpen = true, panelWidth = 288, panelExpanded = []), settings = Settings(platform = system, homeFolder = home, apiKey = "", keyDraft = "", saveProblem = "", saving = false, saveAgain = false), ticketCount = 2, clock = now)
 
     (** The open conversation. *)
     export active store = Lists::find (store.chats, \chat => chat.chatId == store.panel.panelActive) ?: (listGet store.chats 0 ?: blank ("c0", store.settings.homeFolder, store.clock))
@@ -97,7 +100,7 @@ module Model
         id = "c${store.ticketCount}"
         panel = store.panel
         current = active store
-        match (Engine::usage_of current.chatHistory).totalRequests == 0 && current.chatFolder == folder && Busy::idle current
+        match Engine::has_turns current.chatHistory == false && current.chatFolder == folder && Busy::idle current
             true => store
             false => store(chats = listPrepend store.chats (blank (id, folder, store.clock)), ticketCount = satAdd store.ticketCount 1, panel = panel(panelActive = id), draft = Draft(draftText = ""))
 
@@ -149,21 +152,29 @@ module Model
     export storeOf doc =
         panel = Doc::field (doc, "panel")
         settings = Doc::field (doc, "settings")
-        Store(chats = mapList (Doc::items (Doc::field (doc, "chats")), \item => chatOf item), draft = Draft(draftText = Doc::text (doc, "draft")), panel = Panel(panelActive = Doc::text (panel, "active"), panelOpen = Doc::flag (panel, "open"), panelWidth = Doc::number (panel, "width"), panelExpanded = Doc::texts (panel, "expanded")), settings = Settings(platform = Doc::text (settings, "platform"), homeFolder = Doc::text (settings, "home"), apiKey = Doc::text (settings, "key"), keyDraft = Doc::text (settings, "keyDraft")), ticketCount = Doc::number (doc, "tickets"), clock = Doc::number (doc, "clock"))
+        Store(chats = mapList (Doc::items (Doc::field (doc, "chats")), \item => chatOf item), draft = Draft(draftText = Doc::text (doc, "draft")), panel = Panel(panelActive = Doc::text (panel, "active"), panelOpen = Doc::flag (panel, "open"), panelWidth = Doc::number (panel, "width"), panelExpanded = Doc::texts (panel, "expanded")), settings = Settings(platform = Doc::text (settings, "platform"), homeFolder = Doc::text (settings, "home"), apiKey = Doc::text (settings, "key"), keyDraft = Doc::text (settings, "keyDraft"), saveProblem = "", saving = false, saveAgain = false), ticketCount = Doc::number (doc, "tickets"), clock = Doc::number (doc, "clock"))
 
     // A conversation with no words in it is not worth keeping.
-    kept chat = (Engine::usage_of chat.chatHistory).totalRequests > 0
+    kept chat = Engine::has_turns chat.chatHistory
 
     fileJson store = JsonObject [JsonMember "chats" (JsonArray (mapList (filterList (store.chats, \chat => kept chat), \chat => chatJson chat))), Doc::num ("tickets", store.ticketCount)]
 
-    (** The conversations written to the app's private store: never the key. *)
+    (** The conversations written to the app's private store: never the key. One write runs at a time, so an older one cannot land after a newer one; a change during a write is saved when it ends. *)
     export persisting store =
-        ui::Step(stepStore = store, requests = [Requests::ask ("save:${store.ticketCount}", ui::StoreWrite(writeName = "chats.json", writeSlice = "chats-file"))], writes = [Requests::write ("chats-file", Doc::write (fileJson store))])
+        settings = store.settings
+        match settings.saving
+            true => ui::Step(stepStore = store(settings = settings(saveAgain = true)), requests = [], writes = [])
+            false => ui::Step(stepStore = store(settings = settings(saving = true, saveAgain = false)), requests = [Requests::ask ("save:${store.ticketCount}", ui::StoreWrite(writeName = "chats.json", writeSlice = "chats-file"))], writes = [Requests::write ("chats-file", Doc::write (fileJson store))])
+
+    (** `chat` at rest, with each call still owed an answer told it was stopped, because a model refuses a history with an unanswered call. *)
+    export halted chat =
+        owed = pendingCalls chat
+        answered = listConcat chat.chatResults (mapList (owed, \call => Engine::ToolResult(resultId = call.callId, resultName = call.callName, resultContent = "Stopped before it ran.")))
+        history = Pick::either (length answered > 0, Engine::add_returns (chat.chatHistory, answered), chat.chatHistory)
+        chat(chatHistory = history, chatResults = [], chatStage = "idle", chatTicket = "", chatCall = "")
 
     // A turn interrupted by quitting cannot resume: its ticket died with the process.
-    settled chat = match Busy::idle chat
-        true => chat
-        false => chat(chatStage = "idle", chatTicket = "", chatCall = "", chatResults = [])
+    settled chat = Pick::either (Busy::idle chat, chat, halted chat)
 
     (** The conversations read back from `text`, after the empty one launch opened. *)
     export restored (store, text) =

@@ -109,4 +109,27 @@ ok schema.strict_flags
 ok schema.loose
 ok schema.strict
 ok schema.untyped_array
-111 passed, 0 failed
+ok review.missing_message_refused
+ok review.extra_body_replaces
+ok review.validate_refuses_object
+ok review.nested_defs_kept
+ok access.call_id
+ok access.is_response
+ok access.is_request
+ok access.request_parts
+ok access.response_parts
+ok access.has_calls
+ok access.non_call_fields
+ok access.instruction_round_trip
+ok access.scalar_contents
+ok access.bad_response_part
+ok access.instruction_stays_off_the_messages
+ok access.finish_reasons
+ok access.float_from_int
+ok access.json_makers
+ok walk.defs_kept_and_walked
+ok walk.union_members
+ok walk.prefix_items
+ok walk.additional_not_strict
+ok walk.additional_walked
+134 passed, 0 failed

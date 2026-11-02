@@ -244,7 +244,9 @@ def completions_body(model_name, profile, messages, settings, parameters) -> Jso
         listConcat(setting_member(settings, "seed", "seed"), sampling_members(settings) if sampling else []),
     ))
     with_effort = listConcat(members, reasoning_members(settings))
-    return J.obj(listConcat(with_effort, extra_body_members(settings)))
+    extra = extra_body_members(settings)
+    names = mapList(extra, lambda member: J.member_name(member))
+    return J.obj(listConcat(filterList(with_effort, lambda member: not listContains(names, J.member_name(member))), extra))
 
 
 def sampling_members(settings):
@@ -261,7 +263,7 @@ def reasoning_members(settings):
 
 
 def extra_body_members(settings):
-    """`extra_body`: its members are added to the request body."""
+    """`extra_body`: its members are added to the request body, and replace any of the same name."""
     return J.members_of(unwrap_or(mapGet(settings, "extra_body"), JsonNull()))
 
 
@@ -335,12 +337,11 @@ def process_response(model_name, provider_name, profile, body) -> E.Outcome[M.Mo
     """`_process_response`: the first choice's thinking, content and tool calls, usage, model and id."""
     match J.decode(body):
         case Success(value=data):
-            choices = J.list_at(data, "choices")
-            if len(choices) == 0:
+            choice = unwrap_or(listGet(J.list_at(data, "choices"), 0), JsonNull())
+            message = J.object_at(choice, "message")
+            if J.is_null(message):
                 return E.Failed(error=E.UnexpectedModelBehavior(message=f"Invalid response from {provider_name} chat completions endpoint, expected JSON data", body=body))
             else:
-                choice = unwrap_or(listGet(choices, 0), JsonNull())
-                message = J.object_at(choice, "message")
                 content = J.text_at(message, "content", "")
                 texts = split_thinking(content)
                 calls = mapList(J.list_at(message, "tool_calls"), map_tool_call_part)

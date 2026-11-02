@@ -153,7 +153,7 @@ def items_of(history):
 def title_of(text):
     """A conversation's title: its first line, cut to fit a sidebar."""
     first = trim(unwrap_or(listGet(unwrap_or(split(text, "\n"), [text]), 0), text))
-    return take(first, 42) + "…" if length(first) > 42 else first
+    return Engine.cut_text(first, 42) + "…" if length(first) > 42 else first
 
 
 def step_title(steps):
@@ -261,7 +261,7 @@ def read_line(reading, raw):
     elif startsWith(line, "- ") or startsWith(line, "* "):
         return adding(reading, block("bullet", 0, drop(line, 2)))
     elif ordered_number(line) > 0:
-        return adding(reading, block("numbered", ordered_number(line), drop(line, length(toString(ordered_number(line))) + 2)))
+        return adding(reading, block("numbered", ordered_number(line), drop(line, unwrap_or(indexOf(line, ". "), 0) + 2)))
     elif startsWith(line, "> "):
         return adding(reading, block("quote", 0, drop(line, 2)))
     else:

@@ -10,7 +10,7 @@ examples/agent/run.sh --test                    # the suite: no network, no wind
 
 ![Osprey Agent fixing a project and summing up its work](screenshot.png)
 
-Without a key, the composer asks for one. The key stays in memory and in the app's private support folder, and is never written to the conversations file. Conversations are saved after every turn.
+Without a key, the composer asks for one. The key stays in memory and in the app's private support folder, and is never written to the conversations file. Conversations are saved after every turn, one write at a time, and a failed save is shown in the conversation.
 
 ## The agent has real power
 
@@ -26,6 +26,7 @@ The tools run on your machine with your permissions. `run_command` runs whatever
 | `src/app.ospml` | The action union and update: every step of a turn as a capability and its completion |
 | `src/view.ospml` | The regions: sidebar, header, transcript, composer and inspector |
 | `test/` | Offline tests of the turn logic, the commands, failures and Markdown |
+| `../../hosts/swift/Tests/` | The SwiftUI host's process adapter: signals ignored, floods, background children and cancellation |
 | `test-app/` | The real update path with scripted completions: typing, the whole tool loop, Stop, failures, switching and a restart |
 | `drive/` | Drives the real window with real keystrokes and mouse events, for live testing |
 

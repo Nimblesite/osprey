@@ -24,7 +24,7 @@ from pydantic_ai import Tools
 __all__ = [
     "ToolCall", "ToolResult", "Reply", "Command", "new_history", "add_user", "add_returns", "request_body",
     "accept", "tool_command", "tool_summary", "tool_result_text", "url", "profile_of", "usage_of", "Totals",
-    "files_changed", "DEEPSEEK_URL", "pending", "last_calls",
+    "files_changed", "DEEPSEEK_URL", "pending", "last_calls", "OUTPUT_LIMIT", "cut_text", "has_turns",
 ]
 
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
@@ -74,6 +74,11 @@ class Totals:
 def new_history():
     """No messages yet."""
     return JsonArray([])
+
+
+def has_turns(history):
+    """Whether anything has been said in the conversation."""
+    return len(messages_of(history)) > 0
 
 
 def messages_of(history):
@@ -179,7 +184,7 @@ def windows_tool(workspace, name, args_text):
     if name == "list_files":
         return windows("Set-Location -LiteralPath $args[0]; Get-ChildItem -Recurse -File -Force | Where-Object { $_.FullName -notmatch '\\\\(\\.git|node_modules|__pycache__)\\\\' } | Select-Object -First 500 | ForEach-Object { Resolve-Path -Relative $_.FullName }", [workspace])
     elif name == "read_file":
-        return windows("Set-Location -LiteralPath $args[0]; Get-Content -LiteralPath $args[1] -Raw", [workspace, arg(args_text, "path")])
+        return windows("Set-Location -LiteralPath $args[0]; Get-Content -LiteralPath $args[1] -Raw -ErrorAction Stop", [workspace, arg(args_text, "path")])
     elif name == "write_file":
         return windows("Set-Location -LiteralPath $args[0]; $folder = Split-Path -Parent $args[1]; if ($folder) { New-Item -ItemType Directory -Force -Path $folder | Out-Null }; [IO.File]::WriteAllText((Join-Path (Get-Location) $args[1]), $args[2]); \"wrote $($args[1])\"", [workspace, arg(args_text, "path"), arg(args_text, "content")])
     elif name == "run_command":
@@ -203,9 +208,20 @@ def tool_summary(name, args_text):
         return arg(args_text, "path")
 
 
+def whole_characters(text, at):
+    """`at`, moved back off any UTF-8 continuation byte, so a cut never splits a character."""
+    byte = unwrap_or(byteAt(text, at), 0)
+    return whole_characters(text, at - 1) if at > 0 and byte >= 128 and byte < 192 else at
+
+
+def cut_text(text, limit):
+    """At most `limit` bytes of `text`, in whole characters."""
+    return take(text, whole_characters(text, limit))
+
+
 def tool_result_text(name, status, output, problem):
     """What the model sees: the output, cut to size, with the exit status for a command."""
-    cut = take(output, OUTPUT_LIMIT) + "\n[output cut at " + toString(OUTPUT_LIMIT) + " bytes]" if length(output) > OUTPUT_LIMIT else output
+    cut = cut_text(output, OUTPUT_LIMIT) + "\n[output cut at " + toString(OUTPUT_LIMIT) + " bytes]" if length(output) > OUTPUT_LIMIT else output
     if problem != "":
         return "The tool could not run: " + problem
     elif name == "run_command":
@@ -225,8 +241,17 @@ def usage_of(history):
     return foldList(M.responses(messages_of(history)), Totals(totalRequests=0, totalTools=0, totalInput=0, totalOutput=0, lastInput=0), totals_step)
 
 
-def write_paths(response):
-    writes = filterList(M.tool_calls(response), lambda part: M.tool_name_of(part) == "write_file")
+def written_id(part):
+    """The call a part reports as having written its file."""
+    match part:
+        case M.ToolReturnPart(content=content, tool_call_id=tool_call_id):
+            return tool_call_id if startsWith(content, "wrote ") else ""
+        case _:
+            return ""
+
+
+def write_paths(written, response):
+    writes = filterList(M.tool_calls(response), lambda part: M.tool_name_of(part) == "write_file" and listContains(written, M.tool_call_id_of(part)))
     return mapList(writes, lambda part: arg(M.args_as_json_str(part), "path"))
 
 
@@ -235,8 +260,10 @@ def distinct_step(acc, item):
 
 
 def files_changed(history):
-    """Every file the agent wrote in this conversation, once, in the order first written."""
-    return foldList(foldList(M.responses(messages_of(history)), [], lambda acc, response: listConcat(acc, write_paths(response))), [], distinct_step)
+    """Every file the agent wrote in this conversation, once, in the order first written. A write that failed or never ran changed nothing."""
+    messages = messages_of(history)
+    written = foldList(M.requests(messages), [], lambda acc, request: listConcat(acc, mapList(request.parts, written_id)))
+    return foldList(foldList(M.responses(messages), [], lambda acc, response: listConcat(acc, write_paths(written, response))), [], distinct_step)
 
 
 def last_calls(history):

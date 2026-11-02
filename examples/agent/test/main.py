@@ -19,6 +19,15 @@ def at(items, i, fallback):
     return unwrap_or(listGet(items, i), fallback)
 
 
+def repeat_text(text, count):
+    """`text` `count` times, by doubling, so the depth stays small."""
+    if count <= 0:
+        return ""
+    else:
+        half = repeat_text(text, count // 2)
+        return half + half + (text if count % 2 == 1 else "")
+
+
 def result(call_id, name, text):
     return Engine.ToolResult(resultId=call_id, resultName=name, resultContent=text)
 
@@ -54,6 +63,12 @@ def conversation_cases():
         Check.equal("usage.output", totals.totalOutput, 60),
         Check.equal("usage.last_input", totals.lastInput, 300),
         Check.equal("files.changed", join(Engine.files_changed(third.replyHistory), ","), "src/a.py"),
+        Check.equal("files.failed_write_not_changed", len(Engine.files_changed(Engine.add_returns(second.replyHistory, [result("c3", "write_file", "failed with status 1")]))), 0),
+        Check.equal("files.unanswered_write_not_changed", len(Engine.files_changed(second.replyHistory)), 0),
+        Check.equal("cut.title_keeps_characters", Transcript.title_of(repeat_text("a", 41) + "é" + "bbb"), repeat_text("a", 41) + "…"),
+        Check.equal("cut.output_keeps_characters", take(Engine.tool_result_text("read_file", 0, repeat_text("a", Engine.OUTPUT_LIMIT - 1) + "éz", ""), Engine.OUTPUT_LIMIT), repeat_text("a", Engine.OUTPUT_LIMIT - 1) + "\n"),
+        Check.equal("cut.whole_character_fits", Engine.cut_text("aé", 3), "aé"),
+        Check.equal("cut.nothing", Engine.cut_text("é", 1), ""),
         Check.equal("transcript.kinds", join(mapList(items, lambda i: i.itemKind), ","), "user,answer,tools,answer"),
         Check.equal("transcript.user", at(items, 0, tools).itemText, "Fix it"),
         Check.equal("transcript.rounds_merge", len(tools.itemSteps), 3),
@@ -111,6 +126,7 @@ def command_cases():
         Check.equal("command.run_value", at(run.arguments, 3, ""), "echo hi"),
         Check.truth("command.windows_powershell", endsWith(win.executable, "powershell.exe"), win.executable),
         Check.equal("command.windows_values", at(win.arguments, 5, ""), "src/a b.py"),
+        Check.truth("command.windows_read_reports_errors", contains(at(Engine.tool_command("windows", FOLDER, "read_file", args).arguments, 3, ""), "-ErrorAction Stop"), "read_file must fail on a missing file"),
         Check.truth("command.windows_run", contains(at(win_run.arguments, 3, ""), "cmd.exe"), at(win_run.arguments, 3, "")),
         Check.equal("command.unknown_tool", at(Engine.tool_command("linux", FOLDER, "nope", "{}").arguments, 2, ""), "nope"),
         Check.equal("summary.list", Engine.tool_summary("list_files", "{}"), "project files"),
@@ -135,6 +151,7 @@ def markdown_cases():
         Check.equal("md.kinds", kinds("# H\n\npara one\nstill one\n\n- a\n* b\n1. c\n12. d\n> q\n\n```\ncode\n```"), "heading,paragraph,bullet,bullet,numbered,numbered,quote,code"),
         Check.equal("md.heading_level", at(Transcript.blocks_of("### deep"), 0, Transcript.block("", 0, "")).blockLevel, 3),
         Check.equal("md.number", at(Transcript.blocks_of("12. twelve"), 0, Transcript.block("", 0, "")).blockLevel, 12),
+        Check.equal("md.zero_padded_number", span_text(at(Transcript.blocks_of("001. item"), 0, Transcript.block("", 0, "")).blockSpans), ":item"),
         Check.equal("md.paragraph_joins", span_text(at(Transcript.blocks_of("one\ntwo"), 0, Transcript.block("", 0, "")).blockSpans), ":one two"),
         Check.equal("md.code_language", code.blockLanguage, "python"),
         Check.equal("md.code_keeps_indent", code.blockCode, "x = 1\n  y = 2"),
