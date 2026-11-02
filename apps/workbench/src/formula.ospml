@@ -293,7 +293,7 @@ module Formulas
         Iff left right => layoutOp (left, "↔", right, { left = 1, right = 2 }, open)
         Forall names inner => ui::Binder "∀" (mapList (names, \name => ui::Sym name)) (layout (inner, true))
 
-    (** A typed mathematics tree with the same grouping as `show`; pass `show formula` as its accessible text to `Ui::math`. *)
+    (** A typed mathematics tree with the same grouping as `show`; pass `show formula` as its accessible text to `Maths::typeset`. *)
     export typeset formula = layout (formula, true)
 
     (** Structural equality of the AST: constructor, payload and binder order, never the displayed

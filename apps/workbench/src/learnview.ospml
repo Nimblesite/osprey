@@ -5,6 +5,9 @@
 namespace workbench
 
 import ui::Ui
+import ui::Editors
+import ui::Media
+import ui::Maths
 import ui::Lists
 import workbench::Lessons
 import workbench::Blocks
@@ -60,10 +63,10 @@ module LearnViews
     // Media paths are relative to the lessons folder; the hosts resolve them from the application's folder.
     shown block = match block
         Prose text => Ui::text text
-        Display formula => Ui::math (Formulas::typeset formula, Formulas::show formula)
-        Mathematics tree spoken => Ui::math (tree, spoken)
-        Picture still => Ui::image ("lessons/" + still.stillSource, still.stillAlt, still.stillWidth, still.stillHeight)
-        Clip film => Ui::video ("lessons/" + film.filmSource, "lessons/" + film.filmPoster, "lessons/" + film.filmCaptions, film.filmAlt, film.filmSeconds)
+        Display formula => Maths::typeset (Formulas::typeset formula, Formulas::show formula)
+        Mathematics tree spoken => Maths::typeset (tree, spoken)
+        Picture still => Media::image ("lessons/" + still.stillSource, still.stillAlt, still.stillWidth, still.stillHeight)
+        Clip film => Media::video ("lessons/" + film.filmSource, "lessons/" + film.filmPoster, "lessons/" + film.filmCaptions, film.filmAlt, film.filmSeconds)
         Exercise item => Ui::slot (regionKey ((shelf ()).openSlug, item.challengeId))
 
     (** The challenge `id` of the open lesson, or why there is none. *)
@@ -95,8 +98,8 @@ module LearnViews
 
     // A prove answer is an editor, so the kernel's refusal can underline the step it refused.
     answered (item, work) = match item.challengeTask
-        ProveTask _ => Ui::editor ("Your steps", work.attemptAnswer, length work.attemptAnswer, Feedback::underline work, Answer item.challengeId, Answer item.challengeId)
-        StateTask _ => Ui::column [Ui::caption "Your formula", Ui::focusedInlineEditor ("Your formula", work.attemptAnswer, Tutors::cursorOf work, Tutors::focusOf work, Answer item.challengeId, FormulaPlace item.challengeId)]
+        ProveTask _ => Editors::editor ("Your steps", work.attemptAnswer, length work.attemptAnswer, Feedback::underline work, Answer item.challengeId, Answer item.challengeId)
+        StateTask _ => Ui::column [Ui::caption "Your formula", Editors::focused ("Your formula", work.attemptAnswer, Tutors::cursorOf work, Tutors::focusOf work, Answer item.challengeId, FormulaPlace item.challengeId)]
         JudgeTask _ => Ui::picker ("Does the kernel accept this proof?", [Ui::choice ("checks", "It checks"), Ui::choice ("fails", "It fails")], Feedback::chosen work.attemptRuling, Pick item.challengeId)
 
 (** [LESSONS-STATE] The formula keypad: the challenge's permitted variables and the parser's supported symbols, each inserted at the answer's caret. *)
@@ -152,7 +155,7 @@ module Feedback
 
     lined (row, said) = match row < 0
         true => []
-        false => [Ui::mark (satAdd row 1, true, ui::Danger, "Refused", said)]
+        false => [Editors::mark (satAdd row 1, true, ui::Danger, "Refused", said)]
 
     (** The badge and the kernel's words for the last submission, nothing since the last edit. *)
     export marks work = listConcat (graded work.attemptMarking, revealed work)

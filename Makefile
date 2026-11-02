@@ -71,6 +71,15 @@ test: build
 	$(MAKE) _test_bench_tools
 
 .PHONY: _package-coverage _test_packages _coverage_check_packages
+# [PACKAGE-WORKSPACE] Every package checks on its own, as a consumer and the
+# editor see it. A package's tests list sibling source roots by hand, so they
+# stay green when the package's own manifest cannot resolve its dependencies.
+.PHONY: _check_packages
+_check_packages:
+	for manifest in packages/*/osprey.toml; do \
+		$(BIN) $${manifest%/osprey.toml} --check --quiet --no-warnings || exit 1; \
+	done
+
 _package-coverage: build
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages

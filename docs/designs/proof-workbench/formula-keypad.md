@@ -138,7 +138,7 @@ The HTML is a static review board, not an application implementation. It contain
 
 The production implementation belongs in the shared Osprey application and `@osprey/native`, not in a host-specific transplant of this HTML:
 
-- Reuse `Ui::inlineEditor` and the caret/cursor model from [`learnview.ospml`](../../../apps/workbench/src/learnview.ospml) and [`tutor.ospml`](../../../apps/workbench/src/tutor.ospml).
+- Reuse `Editors::inline` and the caret/cursor model from [`learnview.ospml`](../../../apps/workbench/src/learnview.ospml) and [`tutor.ospml`](../../../apps/workbench/src/tutor.ospml).
 - Keep the keypad immediately after the field, before `Feedback::marks` and `Feedback::controls`. The shared `posed` function now authors that order.
 - Build the key set from one ordered table containing symbol, visible name, tooltip and accepted-fragment membership. Do not duplicate symbols in the host or in lesson JSON. The notation table remains the spelling authority.
 - Keep the disabled-variable decision explicit and test it with a p-only and a p-and-q challenge.

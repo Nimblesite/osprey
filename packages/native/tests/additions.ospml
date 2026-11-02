@@ -2,6 +2,9 @@
 namespace uitests
 
 import ui::Ui
+import ui::Boards
+import ui::Editors
+import ui::Media
 import ui::Frames
     inset
     bar
@@ -41,12 +44,12 @@ module AdditionCases
         \_ => "frame",
         \(_, _) => "controlled")
 
-    editorNode () = listGet (Doc::items (Doc::field (listGet (Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::editor ("Proof", "one\ntwo", 3, [Ui::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])).nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
+    editorNode () = listGet (Doc::items (Doc::field (listGet (Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])).nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
 
     (** [UI-COMPONENTS-EDITOR]: text and cursor bindings follow the preceding button, and marks retain every field. *)
     export editorEncoding () =
         focusedEditorEncoding ()
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::editor ("Proof", "one\ntwo", 3, [Ui::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])
+        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])
         doc = editorNode ()
         mark = listGet (Doc::items (Doc::field (doc, "marks"))) 0 ?: JsonNull
         expect (Doc::text (doc, "kind"), "editor")
@@ -61,7 +64,7 @@ module AdditionCases
         expect ("${Doc::text (mark, "tone")}/${Doc::text (mark, "badge")}/${Doc::text (mark, "note")}", "danger/E/Expected a premise")
 
     focusedEditorEncoding () =
-        node = Ui::focusedInlineEditor ("Formula", "p→q", length "p→", 3, Typed, Load)
+        node = Editors::focused ("Formula", "p→q", length "p→", 3, Typed, Load)
         doc = listGet (Encode::walk ([], node)).nodes 0 ?: JsonNull
         expect (Doc::has (doc, "focusEpoch"), true)
         expect (Doc::number (doc, "focusEpoch"), 3)
@@ -82,7 +85,7 @@ module AdditionCases
 
     (** [UI-COMPONENTS-BOARD]: the board names its host slice and binds strokes before the lasso. *)
     export boardEncoding () =
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::illustratedBoard ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)])
+        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)])
         doc = listGet (Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
         expect (Doc::text (doc, "kind"), "board")
         expect (Doc::text (doc, "slice"), "proof/strokes")
@@ -160,14 +163,14 @@ module AdditionCases
         ui::Big "∫" (ui::Num "0") (ui::Num "1") (ui::Frac (ui::Sup (ui::Sym "x") (ui::Num "2")) (ui::Num "2")),
     ]
 
-    (** [UI-COMPONENTS-MATH] [LESSONS-FORMAT]: `Maths::decode` is the exact inverse of `Maths::encode` across every constructor, nesting included. *)
+    (** [UI-COMPONENTS-MATH]: `Maths::decode` is the exact inverse of `Maths::encode` across every constructor, nesting included. *)
     export mathRoundTrip () = forEachList (corpus (), \tree => expect (roundTrip tree, true))
 
     decodeError source = match Maths::decode (Doc::parse source)
         Success _ => "accepted"
         Error problem => problem
 
-    (** [UI-COMPONENTS-MATH] [LESSONS-FORMAT]: decoding refuses an unknown kind, a missing child, a non-array `items`, a non-object node and non-string text or symbol with the exact diagnostic. *)
+    (** [UI-COMPONENTS-MATH]: decoding refuses an unknown kind, a missing child, a non-array `items`, a non-object node and non-string text or symbol with the exact diagnostic. *)
     export mathRefusals () =
         expect (decodeError "{\"kind\":\"foo\"}", "a math node has the unknown kind `foo`")
         expect (decodeError "{\"kind\":\"root\"}", "a math node of kind `root` is missing its child `body`")
@@ -198,9 +201,9 @@ module AdditionCases
         expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `big` is missing its child `upper`")
         expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"},\"upper\":{\"kind\":\"num\",\"text\":\"2\"}}", "a math node of kind `big` is missing its child `body`")
 
-    (** [LESSONS-FRAMEWORK]: an image and a video encode as leaves with their media fields and take no control ordinal. *)
+    (** [UI-COMPONENTS-MEDIA]: an image and a video encode as leaves with their media fields and take no control ordinal. *)
     export mediaEncoding () =
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Ui::image ("media/a.jpg", "A chain", 1920, 1080), Ui::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)])
+        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Media::image ("media/a.jpg", "A chain", 1920, 1080), Media::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)])
         doc = listGet walked.nodes 0 ?: JsonNull
         children = Doc::items (Doc::field (doc, "children"))
         image = listGet children 1 ?: JsonNull
@@ -247,7 +250,7 @@ module AdditionCases
         expect (typography.frameHug, true)
 
     boardCamera () =
-        walked = Encode::walk ([], Ui::interactiveBoard ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load))
+        walked = Encode::walk ([], Boards::interactive ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load))
         node = listGet walked.nodes 0 ?: JsonNull
         expect (Doc::flag (node, "panning"), true)
         expect (Doc::text (node, "backdrop"), "chalk-study.png")
@@ -272,7 +275,7 @@ module AdditionCases
         inlineEditor ()
 
     inlineEditor () =
-        walked = Encode::walk ([], Ui::inlineEditor ("Next step", "From h.", 7, Typed, Load))
+        walked = Encode::walk ([], Editors::inline ("Next step", "From h.", 7, Typed, Load))
         node = listGet walked.nodes 0 ?: JsonNull
         expect (Doc::flag (node, "inline"), true)
         expect (Doc::number (node, "event"), 0)

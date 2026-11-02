@@ -716,6 +716,10 @@ reproducible byte for byte after metadata expiry, but is non-activatable until
 freshness is re-established. A known revocation blocks normal building and all
 activation; only isolated `--audit-revoked` reproduction may consume it.
 
+## Workspace packages `[PACKAGE-WORKSPACE]`
+
+A dependency with neither a local `path` nor an installed release under `.osprey/packages` resolves to the directory beside the package named by its key's last segment, when that directory's own `[package].name` declares exactly that key; its dependencies resolve the same way. `osprey --check`, `osprey build` and the language server all see that source, so a package in a workspace checks on its own without listing sibling source roots. It is development resolution only: the manifest keeps its epoch and minimum ordinal and release resolution never reads it. `make _check_packages` keeps every package in this repository clean.
+
 ## Python interop dependencies through uv `[PACKAGE-PYTHON-UV]`
 
 The Osprey resolver selects Osprey releases and nothing else. A package whose
