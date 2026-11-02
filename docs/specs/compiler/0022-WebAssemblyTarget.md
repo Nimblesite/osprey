@@ -13,8 +13,8 @@ stdout byte-for-byte to the same `.expectedoutput` golden the native run must
 match. Only an explicit compiler diagnostic that ``target `wasm32` does not support`` a named capability qualifies as `SKIP`; the excluded programs and their diagnostic reasons are pinned in `tests/WASM_UNPORTABLE.txt`. Unexpected linker errors fail, as do other build or runtime errors. CI requires
 `TEST_CORPUS_FAIL=0`, `TEST_CORPUS_GOLDEN_FAIL=0` and
 `TEST_CORPUS_GOLDEN_MISSING=0`, plus a golden floor so coverage cannot quietly
-shrink — currently 213 on wasm32 and 285 natively (`crates/run_test_corpus.sh`,
-`OSPREY_GOLDEN_MIN`). The floor ratchets up as goldens are added and is never
+shrink — currently 213 on wasm32 and 285 natively (`crates/run_test_corpus.sh`, with no
+override). The floor ratchets up as goldens are added and is never
 lowered to turn a red build green.
 
 The wasm runtime includes strings, persistent collections, JSON, file operations, random/input, test and coverage hooks, the effect-handler stack, profiler stubs, and the browser host bridge. It excludes fibers, sockets, HTTP/WebSocket, process APIs, terminal APIs, and general FFI. Effect semantics and capability requirements are defined in [Algebraic Effects](../language/0017-AlgebraicEffects.md); shipped backend support is tracked in [plan 0016](../../plans/0016-algebraic-effects-and-handlers.md). The compiler rejects unavailable capabilities before LLVM emission or linking.

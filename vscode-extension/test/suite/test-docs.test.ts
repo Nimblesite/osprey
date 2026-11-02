@@ -142,9 +142,7 @@ suite("Osprey test documentation and profiling", () => {
     }
 
     test("a documented case's whole doc becomes the TestItem description", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       assert.strictEqual(file.children.size, 3, "every case discovered");
@@ -162,9 +160,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("a summary-only case describes with its one line", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       assert.strictEqual(
@@ -174,9 +170,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("an undocumented case has no description", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       assert.strictEqual(
@@ -186,9 +180,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("a function's own doc does not leak onto the cases", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       for (const [, item] of file.children) {
@@ -201,9 +193,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("the range still marks the test( call, not the doc block", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       // DOC_FIXTURE declares the cases on 1-based lines 23, 26 and 28; the
@@ -224,9 +214,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("the full doc is stashed for the detail panel, section by section", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       const id = leaf(file, docUri, "documented case").id;
@@ -258,9 +246,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("an undocumented case records an empty doc, not a missing one", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       const doc = testDocFor(leaf(file, docUri, "undocumented case").id);
@@ -271,9 +257,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("the ML flavor's (** … *) blocks reach the same TestItems", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(mlDocUri);
       assert.strictEqual(file.children.size, 2);
@@ -296,9 +280,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("re-resolving a file after the doc is deleted drops the description", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const uri = writeFixture("edited-docs.test.osp", DOC_FIXTURE);
       const controller = newController();
@@ -320,9 +302,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("every discovered leaf is registered in the docs index", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       const ids = documentedTestIds();
@@ -336,9 +316,7 @@ suite("Osprey test documentation and profiling", () => {
 
   suite("documentation reaches run results", () => {
     test("a documented case's failure message leads with its documentation", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { controller, file } = await discovered(docFailUri);
       const sink = new RecordingSink();
@@ -373,9 +351,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("running a documented suite still reports every verdict", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { controller, file } = await discovered(docUri);
       const sink = new RecordingSink();
@@ -396,9 +372,7 @@ suite("Osprey test documentation and profiling", () => {
 
   suite("Show Test Documentation command", () => {
     test("a TestItem argument resolves to that case's documentation", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       const item = leaf(file, docUri, "documented case");
@@ -420,9 +394,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("a bare id string resolves the same way", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       const id = leaf(file, docUri, "summary only").id;
@@ -437,9 +409,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("an undocumented case still opens, explaining how to document it", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       const item = leaf(file, docUri, "undocumented case");
@@ -466,9 +436,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("resolveTargetId picks the nearest case at or above the cursor", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       const rich = leaf(file, docUri, "documented case").id;
@@ -524,9 +492,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("a TestItem argument wins over the cursor position", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { file } = await discovered(docUri);
       const bare = leaf(file, docUri, "undocumented case");
