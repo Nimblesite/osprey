@@ -1070,6 +1070,10 @@ jobs:
           sudo dmesg -T | grep -iE 'out of memory|oom|killed process|segfault|qemu|kvm' | tail -40
           free -h
           df -h /
+          ls -la /tmp/android-*/emu-crash-* 2>/dev/null
+          pgrep -a qemu
+          tail -40 "$HOME"/.android/avd/*.avd/*.log 2>/dev/null
+          echo "End of host state"
 
       - name: Install bank e2e dependencies
         run: npm ci
