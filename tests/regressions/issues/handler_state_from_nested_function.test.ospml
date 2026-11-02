@@ -1,0 +1,31 @@
+// #178: Handler-owned state updates when a nested function performs the effect.
+
+effect Bump
+    hit : string => int
+
+fire broken msg =
+    match broken
+        true => perform Bump.hit msg
+        false => 0
+
+runAll a b =
+    x = fire a "first"
+    y = fire b "second"
+    "done${x}${y}"
+
+audit a b =
+    mut count = 0
+    handle Bump
+        hit msg =>
+            count := count + 1
+            count
+    r = runAll a b
+    "${r} ${count}"
+
+work () =
+    handle Arith
+        overflow _ _ _ w => w
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print (audit true true)
+work ()

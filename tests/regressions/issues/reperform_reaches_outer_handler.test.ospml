@@ -1,0 +1,21 @@
+// #179: A handler arm performing its own effect reaches the enclosing handler.
+
+effect Log
+    write : string => int
+
+inner () =
+    a = perform Log.write "hello"
+    a
+
+outer () =
+    handle Log
+        write msg =>
+            print "outer ${msg}"
+            7
+    handle Log
+        write msg =>
+            print "inner ${msg}"
+            perform Log.write "again"
+    inner ()
+
+print "${outer ()}"

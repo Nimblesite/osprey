@@ -53,6 +53,9 @@ const ML_ONLY_STEMS: &[&str] = &[
     "mutual_recursion_generalized.test",
     "generic_recursion_through_fold.test",
     "record_update_list_literal.test",
+    "reperform_reaches_outer_handler.test",
+    "handler_state_from_nested_function.test",
+    "four_argument_curried_effects.test",
     // The pure `Verdict` testing model is ML-only by design [TESTING-VERDICT].
     "verdict.test",
     // A program that declares its own `Verdict` [TESTING-VERDICT-DECLARED].

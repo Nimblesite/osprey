@@ -1,0 +1,32 @@
+// #184: A four-argument curried function performs every effect its body reaches.
+
+effect Invalid
+    report : string => Unit
+
+flag (broken, msg) = match broken
+    true => perform Invalid.report msg
+    false =>
+        unchanged = broken
+
+validate name age score email =
+    flag (name == "", "name is empty")
+    flag (age < 0, "age is negative")
+    flag (score > 100, "score is high")
+    flag (contains email "@" == false, "email is invalid")
+    "done"
+
+audit name age score email =
+    mut count = 0
+    handle Invalid
+        report message =>
+            count := count + 1
+    r = validate name age score email
+    "${r} ${count}"
+
+work () =
+    handle Arith
+        overflow _ _ _ w => w
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+    print (audit "" (0 - 1) 200 "nope")
+work ()
