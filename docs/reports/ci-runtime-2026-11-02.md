@@ -213,3 +213,26 @@ All six instrumentation tests passed at 03:16:47. The next adb command, the firs
 The step passed on `c6782c6b`, `6119a002`, `13ffbced`, `d7360f5d` and `50fdef0a`, and failed on `80fcc980`, `e13285ae`, `a7eb9848` and `1609311f`. Both finished runs of the new shape are among the failures, which is too few to say whether the rate has changed.
 
 The cause inside the emulator is still unknown. Its own output says nothing at the moment it dies, so the next thing to capture is the guest's log.
+
+## Measured: the first green run
+
+Run [41382962612](https://github.com/Nimblesite/osprey/actions/runs/41382962612), commit `772d9c2b`: **green in 21.6 minutes of wall clock and 227 runner-minutes, down from 57 and 324**, with every job and every Integration step run. That is inside the 20 to 25 minute target.
+
+| Job | Minutes | Finished at |
+| --- | --- | --- |
+| Build | 5.1 | 5.6 |
+| Format & Analyse | 4.0 | 4.5 |
+| Proof kernel | 15.9 | 21.6 |
+| Rust: packages | 15.0 | 20.6 |
+| Apple: iOS | 14.3 | 19.9 |
+| Integration | 12.9 | 18.6 |
+| Package source coverage | 12.5 | 18.1 |
+| Apple: Talon Bank | 12.4 | 18.1 |
+| VS Code extension | 11.4 | 17.1 |
+| Rust: workbench | 11.2 | 16.9 |
+| GPUI Windows | 15.6 | 15.9 |
+| WinUI | 13.1 | 13.3 |
+| GPUI Linux host | 11.2 | 11.4 |
+| GPUI Mac | 8.0 | 8.3 |
+
+One green run is not a stable result. The longest job differs from run to run (Proof kernel took 11.2 minutes in the previous run and 15.9 in this one), and the Android emulator survived here without any change to it, so its death is still unexplained and can still turn a run red.
