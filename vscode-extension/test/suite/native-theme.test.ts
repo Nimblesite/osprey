@@ -7,6 +7,7 @@ import * as NativeRendering from "../../client/src/osprey-ui/render";
 import * as WebviewHtml from "../../client/src/osprey-ui/webview-html";
 import * as Wasi from "../../client/src/osprey-ui/wasi";
 import { withWorkbench } from "./workbench-browser-kit";
+import { COMMAND_MS } from "./profiler-kit";
 import { themeStyle } from "../../client/src/osprey-ui/theme";
 
 suite("native application theme", () => {
@@ -69,11 +70,13 @@ function observeGestureMessages(): void {
   });
 }
 
+// The title reaches the host only when the webview's 160 ms edit timer fires, and a
+// loaded CI runner can hold that timer back past a second.
 async function heldTitleRender(frame: Frame): Promise<void> {
   const awaitedAt = Date.now();
   try {
     await pollUntilResult({ fn: () => (NativeRendering.renderWorkspace as sinon.SinonSpy).getCalls().some(call =>
-      JSON.stringify([...call.args[0].regions]).includes("Keep held gesture")), until: Boolean, timeoutMs: 1000, description: "the real title command renders while the appearance button is pressed" });
+      JSON.stringify([...call.args[0].regions]).includes("Keep held gesture")), until: Boolean, timeoutMs: COMMAND_MS, description: "the real title command renders while the appearance button is pressed" });
   } catch (error) {
     const snapshot = await frame.evaluate(() => {
       const title = document.querySelector<HTMLInputElement>('input[aria-label="Solution title"]');
@@ -128,11 +131,11 @@ async function finishGesture(frame: Frame, end: GestureEnd, bounds: { x: number;
 async function assertGestureApplied(frame: Frame, end: GestureEnd): Promise<void> {
   const title = frame.getByRole("textbox", { name: "Solution title", exact: true });
   const theme = frame.getByRole("button", { name: "Switch appearance", exact: true });
-  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: 1000 });
+  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: COMMAND_MS });
   const actions = await gestureActions(frame);
   assert.strictEqual(actions.length, end === "commit" || end === "unrelated" ? 1 : 0, "the gesture must emit exactly its owned action");
   await theme.locator(end === "commit" || end === "unrelated" ? '[data-symbol="sun.max"]' : '[data-symbol="moon"]').waitFor();
-  await pollUntilResult({ fn: () => title.getAttribute("data-value"), until: value => value === "Keep held gesture", timeoutMs: 1000, description: "the frame renders the committed title while its button is held" });
+  await pollUntilResult({ fn: () => title.getAttribute("data-value"), until: value => value === "Keep held gesture", timeoutMs: COMMAND_MS, description: "the frame renders the committed title while its button is held" });
   assert.strictEqual(await title.inputValue(), "Keep held gesture");
   if (end === "fatal") {
     assert.strictEqual(await theme.getAttribute("data-event-revision"), await title.getAttribute("data-event-revision"), "fatal cancellation must leave the latest committed control binding usable");
