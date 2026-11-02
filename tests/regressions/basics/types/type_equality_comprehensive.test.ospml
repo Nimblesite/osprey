@@ -56,7 +56,7 @@ excl s = s + "!"
 ques s = s + "?"
 intToString x = toString x
 twoArgAdd (a, b) = a + b 
-threeArgAdd : int -> int -> int -> int
+threeArgAdd : (int, int, int) -> int
 threeArgAdd (a, b, c) = a + b + c 
 
 applyInt (f, x) = f x

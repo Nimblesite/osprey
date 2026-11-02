@@ -28,7 +28,7 @@ gt4 x = x > 4
 lt3 x = x < 3
 even x = (x % 2 ) == 0
 
-add : int -> int -> int
+add : (int, int) -> int
 add (a, b) = a + b 
 
 mul (a, b) = a * b 

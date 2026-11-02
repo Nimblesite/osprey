@@ -302,9 +302,8 @@ fn a_parenthesised_flat_function_type_is_a_valid_signature_slot() {
     // type_equality_comprehensive; both binding forms must keep the type.
     let curried =
         ml_ok("applyTwo : ((int, int) -> int) -> int -> int -> int\napplyTwo f a b = f (a, b)\n");
-    let flat = ml_ok(
-        "applyTwo : ((int, int) -> int) -> int -> int -> int\napplyTwo (f, a, b) = f (a, b)\n",
-    );
+    let flat =
+        ml_ok("applyTwo : (((int, int) -> int), int, int) -> int\napplyTwo (f, a, b) = f (a, b)\n");
     for stmts in [curried, flat] {
         match stmts.first() {
             Some(Stmt::Function { parameters, .. }) => {

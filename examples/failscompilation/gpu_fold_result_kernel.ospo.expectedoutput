@@ -1,1 +1,1 @@
-type mismatch: cannot unify int with Result<int, Error>
+3:3: type mismatch: cannot unify int with Result<int, Error>

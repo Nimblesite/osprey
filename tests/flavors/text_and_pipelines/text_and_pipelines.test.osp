@@ -80,8 +80,8 @@ fn stringsCase() = {
             stringShout(hello) == stringShout(stringGreet(name)),
             name + hello == "AdaHi Ada"
     ])
-    // A lambda parameter inside an interpolation stays code, whatever its first letter.
     let rows = [1, 2, 3]
+    // A lambda parameter inside an interpolation stays code, whatever its first letter.
     checkAll("lambdas inside interpolation", [
             "${length(filterList(rows, |row| => row > 1))} kept" == "2 kept",
             "${length(filterList(rows, |name| => name > 2))} kept" == "1 kept",

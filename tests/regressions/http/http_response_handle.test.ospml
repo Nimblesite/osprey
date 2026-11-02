@@ -5,7 +5,7 @@
 // literal `HttpResponse { status: 200, … }` becomes the inline call form
 // `HttpResponse(status = 200, …)`. Multi-line blocks become indented layout blocks.
 
-handleRequest : string -> string -> string -> string -> HttpResponse
+handleRequest : (string, string, string, string) -> HttpResponse
 handleRequest (_method, _path, _headers, _body) = HttpResponse(
     status = 200,
     headers = "X-Demo: hi\r\n",

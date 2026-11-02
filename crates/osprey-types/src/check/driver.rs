@@ -133,12 +133,13 @@ fn infer_checked_with_rejection(
 /// Collect declarations and type-check a program before either caller consumes
 /// diagnostics or publishes inferred backend metadata.
 /// One failure yields one diagnostic: each arm of a `match` meets the same bad
-/// scrutinee, and every arm's unify would otherwise repeat it.
+/// scrutinee, and every arm's unify would otherwise repeat it. Errors without a
+/// position stay, since nothing shows that they are the same failure.
 fn distinct(errors: Vec<TypeError>) -> Vec<TypeError> {
     let mut seen = Vec::with_capacity(errors.len());
     errors.into_iter().fold(Vec::new(), |mut kept, error| {
-        let key = (error.position, error.message.clone());
-        if !seen.contains(&key) {
+        let key = error.position.map(|at| (at, error.message.clone()));
+        if key.is_none() || !seen.contains(&key) {
             seen.push(key);
             kept.push(error);
         }

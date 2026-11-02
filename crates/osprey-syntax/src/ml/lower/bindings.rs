@@ -150,12 +150,19 @@ pub(in crate::ml) fn signature_mismatch(
             ));
         }
     }
+    let flat_binding_on_curried_spine =
+        uncurried && params.len() > 1 && !matches!(spine.first(), Some(MlType::Tuple(_)));
     let spine = expand_tuple_head(spine, params.len());
     if spine.len() <= params.len() {
         return Some(format!(
             "function `{name}` signature provides {} parameter types but the binding takes {}",
             spine.len().saturating_sub(1),
             params.len()
+        ));
+    }
+    if flat_binding_on_curried_spine {
+        return Some(format!(
+            "function `{name}`: a curried signature declares curried parameters; write `{name} a b … = …` or a parenthesised domain to match"
         ));
     }
     spine

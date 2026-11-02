@@ -1,0 +1,5 @@
+// osprey: flavor=ml
+// The ML path of function_value_interpolation.ospo.
+double : int -> int
+double x = x * 2
+print "f=${double}"

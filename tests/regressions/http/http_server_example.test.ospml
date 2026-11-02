@@ -11,7 +11,7 @@ print "Creating HTTP server on port 18080..."
 serverId = httpCreateServer 18080 "127.0.0.1"
 print "Server created with ID: ${serverId}"
 
-handleHttpRequest : string -> string -> string -> string -> HttpResponse
+handleHttpRequest : (string, string, string, string) -> HttpResponse
 handleHttpRequest (method, path, _headers, _body) =
     match method
         "GET" =>

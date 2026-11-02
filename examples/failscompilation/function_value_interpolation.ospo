@@ -1,0 +1,4 @@
+// [STRING-INTERPOLATION] A function has no printable rendering: interpolating one
+// printed its address, differently on every run.
+fn double(x: int) -> int = x * 2
+print("f=${double}")

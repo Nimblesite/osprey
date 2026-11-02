@@ -95,7 +95,7 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()
         ),
-        "interpolation" if !is_interpolatable(ty) && !matches!(ty, Type::Fun { .. }) => {
+        "interpolation" if !is_interpolatable(ty) => {
             Some(format!("cannot convert value for interpolation: {ty}"))
         }
         "length" | "isEmpty" if !is_sized(ty) => Some(format!(

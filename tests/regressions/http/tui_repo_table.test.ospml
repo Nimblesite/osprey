@@ -15,7 +15,7 @@ exactArithmetic work =
 // ML twin of tui_repo_table.osp. Exercises [HTTP-RESPONSE-HANDLE] and
 // [BUILTIN-JSON] with positional ML calls and layout blocks.
 
-handleRequest : string -> string -> string -> string -> HttpResponse
+handleRequest : (string, string, string, string) -> HttpResponse
 handleRequest (_method, _path, _headers, _body) = HttpResponse(
     status = 200,
     headers = "Content-Type: application/json",

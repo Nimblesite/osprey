@@ -351,6 +351,25 @@ mod tests {
     }
 
     #[test]
+    fn a_lambda_stays_code_while_text_and_nested_text_keep_their_escapes() {
+        for (raw, decoded) in [
+            ("${f(\\row => row)}", "${f(\\row => row)}"),
+            ("${f(\\n => n)}\\n", "${f(\\n => n)}\n"),
+            ("${f(\\row, x => row)}", "${f(\\row, x => row)}"),
+            ("${f (\"a\\tb\")}", "${f (\"a\tb\")}"),
+            (
+                "${\"in\\t${f(\\row => row)}\"}",
+                "${\"in\t${f(\\row => row)}\"}",
+            ),
+            ("${1\\n x => y}", "${1\n x => y}"),
+            ("${a\\tb}", "${a\tb}"),
+            ("no fragment \\row => x", "no fragment \row => x"),
+        ] {
+            assert_eq!(unquote(raw), decoded, "{raw}");
+        }
+    }
+
+    #[test]
     fn interpolation_splits_text_expr_text_and_handles_nested_braces() {
         let parts = lower_interpolation("\"v ${1 + 2} end\"", None, Flavor::Default, frag);
         assert_eq!(parts.len(), 3);
