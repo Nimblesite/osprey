@@ -44,6 +44,15 @@ use osprey_syntax::{parse_program_with_flavor, Flavor};
 /// in the headline `[FLAVOR-IR-EQUIV]` guarantee, warranted only when the ML
 /// program genuinely has no Default-flavor spelling.
 const ML_ONLY_STEMS: &[&str] = &[
+    // Reproductions of bugs reported in ML syntax, kept as reported.
+    "signal_refresh_call_argument.test",
+    "signal_refresh_field_on_call.test",
+    "shared_field_name_generic_records.test",
+    "static_handler_callback_parameter.test",
+    "closures_in_recursive_union.test",
+    "mutual_recursion_generalized.test",
+    "generic_recursion_through_fold.test",
+    "record_update_list_literal.test",
     // The pure `Verdict` testing model is ML-only by design [TESTING-VERDICT].
     "verdict.test",
     // A program that declares its own `Verdict` [TESTING-VERDICT-DECLARED].

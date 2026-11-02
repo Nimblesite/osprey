@@ -1,0 +1,6 @@
+// #287: A function that calls a later generic function is itself generalized.
+
+fn order(a, b) = if a < b { -1 } else { after(a, b) }
+fn after(a, b) = if a > b { 1 } else { 0 }
+print(toString(order(1, 2)))
+print(toString(order("a", "b")))
