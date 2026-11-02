@@ -20,6 +20,10 @@ function project(files: Record<string, string>): string {
   return root;
 }
 
+const fileEditors = () => vscode.window.visibleTextEditors
+  .filter((editor) => editor.document.uri.scheme === "file")
+  .map((editor) => editor.document.uri.fsPath);
+
 const MANIFEST = '[project]\nname = "demo"\nsource_roots = ["src"]\nentry = "src/main.ospml"\n';
 
 suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
@@ -137,10 +141,9 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
 
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     await openSource({ file: path.join(outside, "secret.osp"), line: 1, column: 0 }, [inside]);
-    assert.strictEqual(vscode.window.activeTextEditor, undefined, "an escape opens nothing");
+    assert.deepStrictEqual(fileEditors(), [], "an escape opens nothing");
     await openSource({ file: path.join(inside, "a.osp"), line: 1, column: 0 }, [inside]);
-    const opened = vscode.window.visibleTextEditors.map((editor) => editor.document.uri.fsPath);
-    assert.deepStrictEqual(opened, [path.join(inside, "a.osp")]);
+    assert.deepStrictEqual(fileEditors(), [path.join(inside, "a.osp")]);
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     fs.rmSync(inside, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
