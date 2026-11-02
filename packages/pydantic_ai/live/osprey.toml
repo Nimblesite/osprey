@@ -1,7 +1,7 @@
 [project]
 name = "pydantic_ai-live"
 source_roots = [".", "../src", "../../testing/src"]
-python_sources = ["../src/json_util.py", "../src/json_schema.py", "../src/exceptions.py", "../src/usage.py", "../src/tools.py", "../src/settings.py", "../src/profiles.py", "../src/messages.py", "../src/models.py", "../src/providers.py", "../src/providers_http.py", "../src/models_openai.py", "../src/models_test.py", "../src/direct.py", "../src/agent.py", "../../testing/src/check.py", "main.py"]
+python_sources = ["../src/json_util.py", "../src/json_schema.py", "../src/exceptions.py", "../src/usage.py", "../src/tools.py", "../src/settings.py", "../src/profiles.py", "../src/messages.py", "../src/models.py", "../src/providers.py", "../src/providers_http.py", "../src/models_openai.py", "../src/models_test.py", "../src/direct.py", "../src/agent.py", "../../testing/src/check.py", "support.py", "main.py"]
 default_namespace = "pydantic_ai_live"
 entry = "main.py"
 

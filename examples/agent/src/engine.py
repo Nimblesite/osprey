@@ -261,11 +261,7 @@ def return_id(part):
             return tool_call_id
         case M.RetryPromptPart(tool_call_id=tool_call_id):
             return tool_call_id
-        case M.SystemPromptPart():
-            return ""
-        case M.UserPromptPart():
-            return ""
-        case M.InstructionPart():
+        case _:
             return ""
 
 

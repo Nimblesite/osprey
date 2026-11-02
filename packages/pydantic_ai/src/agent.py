@@ -109,13 +109,7 @@ def is_tool_return(part):
     match part:
         case M.ToolReturnPart():
             return True
-        case M.RetryPromptPart():
-            return False
-        case M.SystemPromptPart():
-            return False
-        case M.UserPromptPart():
-            return False
-        case M.InstructionPart():
+        case _:
             return False
 
 

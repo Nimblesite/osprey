@@ -86,13 +86,7 @@ def is_instruction(part):
     match part:
         case M.InstructionPart():
             return True
-        case M.SystemPromptPart():
-            return False
-        case M.UserPromptPart():
-            return False
-        case M.ToolReturnPart():
-            return False
-        case M.RetryPromptPart():
+        case _:
             return False
 
 
@@ -113,9 +107,7 @@ def thinking_text(part):
     match part:
         case M.ThinkingPart(content=content):
             return content
-        case M.TextPart():
-            return ""
-        case M.ToolCallPart():
+        case _:
             return ""
 
 

@@ -15,26 +15,18 @@ output against the expected 31. Not part of the offline package matrix: it
 spends tokens and needs the network.
 """
 from pydantic_ai import Agent
-from pydantic_ai import Direct
 from pydantic_ai import Exceptions as E
 from pydantic_ai import JsonUtil as J
 from pydantic_ai import Messages as M
-from pydantic_ai import Models
 from pydantic_ai import ModelsOpenai
 from pydantic_ai import ProvidersHttp
 from pydantic_ai import Tools
+from pydantic_ai_live import Support
 from testing import Check
 
 MODEL_NAME = "deepseek-chat"
 QUESTION = "What is the current temperature in Paris in degrees Celsius, plus 10? Use the tools for both steps and answer with the final number only."
 EXPECTED = "31"
-
-
-def env_value(text, name):
-    """The value of `name=` in dotenv text, empty when absent."""
-    lines = unwrap_or(split(text, "\n"), [])
-    hits = filterList(lines, lambda line: startsWith(line, name + "="))
-    return trim(unwrap_or(replace(unwrap_or(listGet(hits, 0), ""), name + "=", ""), ""))
 
 
 def temperature_tool():
@@ -94,15 +86,10 @@ def is_return(part) -> bool:
             return False
 
 
-def judge(model, question, answer) -> str:
+def judge(model, question, answer):
     """The LLM oracle: PASS when the answer states the expected value, else FAIL."""
     prompt = f"You are grading an assistant. The question was: {question}\nThe expected final number is {EXPECTED}.\nThe assistant answered: {answer}\nDoes the assistant's answer state the number {EXPECTED} as its final result? Reply with exactly one word: PASS or FAIL."
-    request = M.ModelRequest(parts=[M.UserPromptPart(content=prompt)], instructions="")
-    match Direct.model_request(model, [M.of_request(request)], {"temperature": JsonFloat(0.0), "max_tokens": JsonInt(5)}, Models.model_request_parameters()):
-        case E.Ok(value=response):
-            return trim(M.text(response))
-        case E.Failed(error=error):
-            return f"judge failed: {E.message_of(error)}"
+    return Support.ask_judge(model, prompt)
 
 
 def run_checks(key):
@@ -133,7 +120,7 @@ def run_checks(key):
 
 
 def suite():
-    key = env_value(unwrap_or(readFile(".env"), ""), "DEEPSEEKKEY")
+    key = Support.env_value(unwrap_or(readFile(".env"), ""), "DEEPSEEKKEY")
     return [Check.failed("live.key", "DEEPSEEKKEY missing from .env")] if key == "" else run_checks(key)
 
 

@@ -66,11 +66,7 @@ def return_step(acc, part):
             return mapSet(acc, tool_call_id, content)
         case M.RetryPromptPart(content=content, tool_call_id=tool_call_id):
             return mapSet(acc, tool_call_id, content)
-        case M.SystemPromptPart():
-            return acc
-        case M.UserPromptPart():
-            return acc
-        case M.InstructionPart():
+        case _:
             return acc
 
 
@@ -88,9 +84,7 @@ def thought_text(part):
     match part:
         case M.ThinkingPart(content=content):
             return content
-        case M.TextPart():
-            return ""
-        case M.ToolCallPart():
+        case _:
             return ""
 
 
@@ -109,13 +103,7 @@ def user_text(part):
     match part:
         case M.UserPromptPart(content=content):
             return content
-        case M.SystemPromptPart():
-            return ""
-        case M.ToolReturnPart():
-            return ""
-        case M.RetryPromptPart():
-            return ""
-        case M.InstructionPart():
+        case _:
             return ""
 
 

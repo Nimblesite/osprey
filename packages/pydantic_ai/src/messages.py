@@ -224,9 +224,7 @@ def part_text(part) -> str:
     match part:
         case TextPart(content=content):
             return content
-        case ThinkingPart():
-            return ""
-        case ToolCallPart():
+        case _:
             return ""
 
 
@@ -235,21 +233,17 @@ def is_text(part) -> bool:
     match part:
         case TextPart():
             return True
-        case ThinkingPart():
-            return False
-        case ToolCallPart():
+        case _:
             return False
 
 
 def is_tool_call(part) -> bool:
     """Whether a response part is a `ToolCallPart`."""
     match part:
-        case TextPart():
-            return False
-        case ThinkingPart():
-            return False
         case ToolCallPart():
             return True
+        case _:
+            return False
 
 
 class TextFold:
@@ -288,33 +282,27 @@ def has_tool_calls(response) -> bool:
 def tool_name_of(part) -> str:
     """`ToolCallPart.tool_name`; empty for any other part."""
     match part:
-        case TextPart():
-            return ""
-        case ThinkingPart():
-            return ""
         case ToolCallPart(tool_name=tool_name):
             return tool_name
+        case _:
+            return ""
 
 
 def tool_call_id_of(part) -> str:
     """`ToolCallPart.tool_call_id`; empty for any other part."""
     match part:
-        case TextPart():
-            return ""
-        case ThinkingPart():
-            return ""
         case ToolCallPart(tool_call_id=tool_call_id):
             return tool_call_id
+        case _:
+            return ""
 
 
 def args_text(part):
     match part:
-        case TextPart():
-            return ""
-        case ThinkingPart():
-            return ""
         case ToolCallPart(args=args):
             return args
+        case _:
+            return ""
 
 
 def args_as_dict(part) -> dict[str, Json]:
@@ -350,13 +338,7 @@ def retry_model_response(part) -> str:
         case RetryPromptPart(content=content, tool_name=tool_name):
             description = f"Validation feedback:\n{content}" if tool_name == "" else content
             return f"{description}\n\nFix the errors and try again."
-        case SystemPromptPart():
-            return ""
-        case UserPromptPart():
-            return ""
-        case ToolReturnPart():
-            return ""
-        case InstructionPart():
+        case _:
             return ""
 
 
@@ -460,15 +442,7 @@ def content_text(value):
             return s
         case JsonNull():
             return ""
-        case JsonBool():
-            return J.encode(value)
-        case JsonInt():
-            return J.encode(value)
-        case JsonFloat():
-            return J.encode(value)
-        case JsonArray():
-            return J.encode(value)
-        case JsonObject():
+        case _:
             return J.encode(value)
 
 
@@ -480,28 +454,9 @@ def validate_response_part(value) -> Result[ModelResponsePart, str]:
     elif kind == "thinking":
         return Success(value=ThinkingPart(content=content))
     elif kind == "tool-call":
-        return Success(value=ToolCallPart(tool_name=J.text_at(value, "tool_name", ""), args=args_wire_text(J.object_at(value, "args")), tool_call_id=J.text_at(value, "tool_call_id", "")))
+        return Success(value=ToolCallPart(tool_name=J.text_at(value, "tool_name", ""), args=content_text(J.object_at(value, "args")), tool_call_id=J.text_at(value, "tool_call_id", "")))
     else:
         return Error(message=f"unknown response part_kind: {kind}")
-
-
-def args_wire_text(value):
-    """`args` dumped either as a JSON string or as an object (CPython allows both)."""
-    match value:
-        case JsonString(s):
-            return s
-        case JsonNull():
-            return ""
-        case JsonObject():
-            return J.encode(value)
-        case JsonBool():
-            return J.encode(value)
-        case JsonInt():
-            return J.encode(value)
-        case JsonFloat():
-            return J.encode(value)
-        case JsonArray():
-            return J.encode(value)
 
 
 def validate_usage(value) -> Usage.RequestUsage:
@@ -518,29 +473,12 @@ def validate_usage(value) -> Usage.RequestUsage:
     )
 
 
-def collect(items) -> Result[list[ModelRequestPart], str]:
-    """Every validated request part in order, or the first error."""
-    return foldList(items, Success(value=[]), lambda acc, item: collect_step(acc, validate_request_part(item)))
+def collect(items, validate):
+    """Every validated item in order, or the first error."""
+    return foldList(items, Success(value=[]), lambda acc, item: collect_step(acc, validate(item)))
 
 
 def collect_step(acc, r):
-    match acc:
-        case Success(value=items):
-            match r:
-                case Success(value=item):
-                    return Success(value=listAppend(items, item))
-                case Error(message=message):
-                    return Error(message=message)
-        case Error(message=message):
-            return Error(message=message)
-
-
-def collect_response(items) -> Result[list[ModelResponsePart], str]:
-    """Every validated response part in order, or the first error."""
-    return foldList(items, Success(value=[]), lambda acc, item: collect_response_step(acc, validate_response_part(item)))
-
-
-def collect_response_step(acc, r):
     match acc:
         case Success(value=items):
             match r:
@@ -556,13 +494,13 @@ def validate_message(data) -> Result[ModelMessage, str]:
     """One message from its `ModelMessagesTypeAdapter` JSON form."""
     kind = J.text_at(data, "kind", "")
     if kind == "request":
-        match collect(J.list_at(data, "parts")):
+        match collect(J.list_at(data, "parts"), validate_request_part):
             case Success(value=parts):
                 return Success(value=Request(request=ModelRequest(parts=parts, instructions=J.text_at(data, "instructions", ""))))
             case Error(message=message):
                 return Error(message=message)
     elif kind == "response":
-        match collect_response(J.list_at(data, "parts")):
+        match collect(J.list_at(data, "parts"), validate_response_part):
             case Success(value=parts):
                 return Success(value=Response(response=ModelResponse(parts=parts, usage=validate_usage(J.object_at(data, "usage")), model_name=J.text_at(data, "model_name", ""), provider_name=J.text_at(data, "provider_name", ""), provider_response_id=J.text_at(data, "provider_response_id", ""), finish_reason=J.text_at(data, "finish_reason", ""))))
             case Error(message=message):
@@ -573,16 +511,4 @@ def validate_message(data) -> Result[ModelMessage, str]:
 
 def validate_messages(value) -> Result[list[ModelMessage], str]:
     """`ModelMessagesTypeAdapter.validate_python(payload)` from a JSON array."""
-    return foldList(J.items_of(value), Success(value=[]), validate_messages_step)
-
-
-def validate_messages_step(acc, item):
-    match acc:
-        case Success(value=messages):
-            match validate_message(item):
-                case Success(value=message):
-                    return Success(value=listAppend(messages, message))
-                case Error(message=message):
-                    return Error(message=message)
-        case Error(message=message):
-            return Error(message=message)
+    return collect(J.items_of(value), validate_message)

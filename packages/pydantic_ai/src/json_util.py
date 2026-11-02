@@ -18,17 +18,7 @@ def is_null(value) -> bool:
     match value:
         case JsonNull():
             return True
-        case JsonBool():
-            return False
-        case JsonInt():
-            return False
-        case JsonFloat():
-            return False
-        case JsonString():
-            return False
-        case JsonArray():
-            return False
-        case JsonObject():
+        case _:
             return False
 
 
@@ -50,15 +40,7 @@ def float_at(value, name, fallback) -> float:
             return toFloat(i)
         case JsonFloat(f):
             return f
-        case JsonNull():
-            return fallback
-        case JsonBool():
-            return fallback
-        case JsonString():
-            return fallback
-        case JsonArray():
-            return fallback
-        case JsonObject():
+        case _:
             return fallback
 
 
@@ -72,17 +54,7 @@ def items_of(value) -> list[Json]:
     match value:
         case JsonArray(items):
             return items
-        case JsonNull():
-            return []
-        case JsonBool():
-            return []
-        case JsonInt():
-            return []
-        case JsonFloat():
-            return []
-        case JsonString():
-            return []
-        case JsonObject():
+        case _:
             return []
 
 
@@ -91,17 +63,7 @@ def members_of(value) -> list[JsonMember]:
     match value:
         case JsonObject(members):
             return members
-        case JsonNull():
-            return []
-        case JsonBool():
-            return []
-        case JsonInt():
-            return []
-        case JsonFloat():
-            return []
-        case JsonString():
-            return []
-        case JsonArray():
+        case _:
             return []
 
 

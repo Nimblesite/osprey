@@ -99,11 +99,5 @@ def status_code_of(error) -> int:
     match error:
         case ModelHTTPError(status_code=status_code):
             return status_code
-        case ModelAPIError():
-            return 0
-        case UserError():
-            return 0
-        case UnexpectedModelBehavior():
-            return 0
-        case UsageLimitExceeded():
+        case _:
             return 0

@@ -45,15 +45,7 @@ def setting_float(settings, key, fallback) -> float:
             return toFloat(i)
         case JsonFloat(f):
             return f
-        case JsonNull():
-            return fallback
-        case JsonBool():
-            return fallback
-        case JsonString():
-            return fallback
-        case JsonArray():
-            return fallback
-        case JsonObject():
+        case _:
             return fallback
 
 

@@ -54,13 +54,7 @@ def instruction_content(part):
     match part:
         case Messages.InstructionPart(content=content):
             return content
-        case Messages.SystemPromptPart():
-            return ""
-        case Messages.UserPromptPart():
-            return ""
-        case Messages.ToolReturnPart():
-            return ""
-        case Messages.RetryPromptPart():
+        case _:
             return ""
 
 

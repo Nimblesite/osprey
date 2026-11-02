@@ -65,17 +65,7 @@ def handle(schema):
             children = handle_object(base) if type_ == "object" else (handle_array(base) if type_ == "array" else handle_unions(base, True))
             unions = children if type_ == "" else handle_unions_of(children.schema, children.is_strict_compatible)
             return transform_node(unions.schema, unions.is_strict_compatible)
-        case JsonBool():
-            return Transformed(schema=schema, is_strict_compatible=True)
-        case JsonNull():
-            return Transformed(schema=schema, is_strict_compatible=True)
-        case JsonInt():
-            return Transformed(schema=schema, is_strict_compatible=True)
-        case JsonFloat():
-            return Transformed(schema=schema, is_strict_compatible=True)
-        case JsonString():
-            return Transformed(schema=schema, is_strict_compatible=True)
-        case JsonArray():
+        case _:
             return Transformed(schema=schema, is_strict_compatible=True)
 
 
@@ -113,17 +103,7 @@ def handle_object(members):
         case JsonObject():
             inner = handle(additional)
             return Transformed(schema=J.obj(listAppend(without(J.members_of(with_props), ["additionalProperties"]), J.member("additionalProperties", inner.schema))), is_strict_compatible=walked.is_strict_compatible and inner.is_strict_compatible)
-        case JsonBool():
-            return Transformed(schema=with_props, is_strict_compatible=walked.is_strict_compatible)
-        case JsonNull():
-            return Transformed(schema=with_props, is_strict_compatible=walked.is_strict_compatible)
-        case JsonInt():
-            return Transformed(schema=with_props, is_strict_compatible=walked.is_strict_compatible)
-        case JsonFloat():
-            return Transformed(schema=with_props, is_strict_compatible=walked.is_strict_compatible)
-        case JsonString():
-            return Transformed(schema=with_props, is_strict_compatible=walked.is_strict_compatible)
-        case JsonArray():
+        case _:
             return Transformed(schema=with_props, is_strict_compatible=walked.is_strict_compatible)
 
 
@@ -138,17 +118,7 @@ def handle_array(members) -> Transformed:
         case JsonObject():
             inner = handle(items)
             return Transformed(schema=J.obj(listAppend(without(J.members_of(with_prefix), ["items"]), J.member("items", inner.schema))), is_strict_compatible=walked_prefix.is_strict_compatible and inner.is_strict_compatible)
-        case JsonNull():
-            return Transformed(schema=with_prefix, is_strict_compatible=walked_prefix.is_strict_compatible)
-        case JsonBool():
-            return Transformed(schema=with_prefix, is_strict_compatible=walked_prefix.is_strict_compatible)
-        case JsonInt():
-            return Transformed(schema=with_prefix, is_strict_compatible=walked_prefix.is_strict_compatible)
-        case JsonFloat():
-            return Transformed(schema=with_prefix, is_strict_compatible=walked_prefix.is_strict_compatible)
-        case JsonString():
-            return Transformed(schema=with_prefix, is_strict_compatible=walked_prefix.is_strict_compatible)
-        case JsonArray():
+        case _:
             return Transformed(schema=with_prefix, is_strict_compatible=walked_prefix.is_strict_compatible)
 
 

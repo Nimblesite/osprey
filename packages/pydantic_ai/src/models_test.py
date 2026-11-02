@@ -77,13 +77,7 @@ def retry_name(part):
     match part:
         case M.RetryPromptPart(tool_name=tool_name):
             return tool_name
-        case M.SystemPromptPart():
-            return ""
-        case M.UserPromptPart():
-            return ""
-        case M.ToolReturnPart():
-            return ""
-        case M.InstructionPart():
+        case _:
             return ""
 
 
@@ -97,13 +91,7 @@ def return_member(part):
     match part:
         case M.ToolReturnPart(tool_name=tool_name, content=content):
             return J.member(tool_name, JsonString(content))
-        case M.SystemPromptPart():
-            return J.member("", JsonNull())
-        case M.UserPromptPart():
-            return J.member("", JsonNull())
-        case M.RetryPromptPart():
-            return J.member("", JsonNull())
-        case M.InstructionPart():
+        case _:
             return J.member("", JsonNull())
 
 
@@ -277,15 +265,7 @@ def gen_object(root, schema, seed) -> Gen:
         case JsonObject():
             extra = gen_any(root, additional, folded.seed)
             return Gen(value=J.obj(listAppend(folded.members, J.member("additionalProperty", extra.value))), seed=extra.seed)
-        case JsonNull():
-            return Gen(value=J.obj(folded.members), seed=folded.seed)
-        case JsonInt():
-            return Gen(value=J.obj(folded.members), seed=folded.seed)
-        case JsonFloat():
-            return Gen(value=J.obj(folded.members), seed=folded.seed)
-        case JsonString():
-            return Gen(value=J.obj(folded.members), seed=folded.seed)
-        case JsonArray():
+        case _:
             return Gen(value=J.obj(folded.members), seed=folded.seed)
 
 
