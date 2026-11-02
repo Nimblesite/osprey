@@ -25,6 +25,11 @@ program in place of returning an error. Source that binds a native function
 which panics, aborts or exits violates this rule wherever it appears,
 including published packages.
 
+`[ENTRY-EXIT-STATUS]` A program ends by returning. When a user-written `main`
+yields an `int`, that value is the process exit status, truncated by the
+operating system to its status width; any other `main` and a program without a
+`main` exit `0`. A failed test outranks `main`'s status ([TESTING-EXIT]).
+
 There is no implicit conversion from `Result<T, E>` to `T`. In particular,
 bindings and assignments, function arguments (including concurrency
 operations), comparisons, interpolation, function-value calls, and declared

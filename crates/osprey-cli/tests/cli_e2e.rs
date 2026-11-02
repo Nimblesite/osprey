@@ -1467,6 +1467,145 @@ fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
     );
 }
 
+/// A program ends by returning: `main`'s integer is its exit status in every
+/// flavor, and every other shape of program exits 0. [ENTRY-EXIT-STATUS]
+#[test]
+fn main_returning_an_integer_sets_the_exit_status_in_every_flavor() {
+    for (name, source, status, stdout) in [
+        (
+            "default_3",
+            "fn main() -> int = {\n print(\"failing\")\n 3\n}\n",
+            3,
+            "failing\n",
+        ),
+        ("default_0", "fn main() -> int = 0\n", 0, ""),
+        ("default_255", "fn main() = 255\n", 255, ""),
+        ("default_unit", "fn main() = print(\"fine\")\n", 0, "fine\n"),
+        ("default_string", "fn main() = \"text\"\n", 0, ""),
+        ("default_bool", "fn main() = true\n", 0, ""),
+        (
+            "default_script",
+            "print(\"script\")\nlet x = 4\nprint(\"${x}\")\n",
+            0,
+            "script\n4\n",
+        ),
+        (
+            "default_computed",
+            "fn fails(n) = n > 2\nfn main() = match fails(3) {\n true => 7\n false => 0\n}\n",
+            7,
+            "",
+        ),
+    ] {
+        let program = temp_osp(&format!("exit_status_{name}"), source);
+        let run = run_file(&program, &["--run", "--quiet", "--no-warnings"]);
+        assert_eq!(run.code, Some(status), "{name}: stderr={}", run.stderr);
+        assert_eq!(run.stdout, stdout, "{name}");
+    }
+    for (name, extension, source, status) in [
+        (
+            "ml",
+            "ospml",
+            "main () =\n    print \"failing\"\n    3\n",
+            3,
+        ),
+        ("ml_unit", "ospml", "main () = print \"fine\"\n", 0),
+        (
+            "python",
+            "py",
+            "# osprey: flavor=python\n\ndef main():\n    print(\"failing\")\n    return 3\n",
+            3,
+        ),
+        (
+            "python_none",
+            "py",
+            "# osprey: flavor=python\n\ndef main():\n    print(\"fine\")\n",
+            0,
+        ),
+    ] {
+        let directory =
+            std::env::temp_dir().join(format!("osprey_exit_{}_{name}", std::process::id()));
+        std::fs::create_dir_all(&directory).expect("create temp dir");
+        let program = directory.join(format!("exit.{extension}"));
+        std::fs::write(&program, source).expect("write source");
+        let run = run_file(&program, &["--run", "--quiet", "--no-warnings"]);
+        assert_eq!(run.code, Some(status), "{name}: stderr={}", run.stderr);
+        std::fs::remove_dir_all(&directory).expect("remove temp dir");
+    }
+    // A failed test outranks whatever `main` returned; a passing one defers to it.
+    let failed = temp_osp(
+        "exit_status_failed_test",
+        "fn main() = {\n test(\"no\", fn() => expect(1, 2))\n 0\n}\n",
+    );
+    assert_eq!(
+        run_file(&failed, &["--run", "--quiet", "--no-warnings"]).code,
+        Some(1)
+    );
+    let passed = temp_osp(
+        "exit_status_passed_test",
+        "fn main() = {\n test(\"yes\", fn() => expect(1, 1))\n 9\n}\n",
+    );
+    assert_eq!(
+        run_file(&passed, &["--run", "--quiet", "--no-warnings"]).code,
+        Some(9)
+    );
+}
+
+/// `--warnings-as-errors` keeps the warning text and fails; the default stays
+/// advisory, `--no-warnings` stays silent, and errors fail as ever.
+#[test]
+fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
+    let warned = temp_osp(
+        "strict_warned",
+        "fn choose(value, ignored) = value\nprint(choose(1, 2))\n",
+    );
+    let clean = temp_osp(
+        "strict_clean",
+        "fn shout(value) = \"${value}!\"\nprint(shout(\"x\"))\n",
+    );
+    let broken = temp_osp("strict_broken", "fn f() -> string = 1\nprint(f())\n");
+    for mode in ["--check", "--compile", "--run", "--llvm"] {
+        let advisory = run_file(&warned, &[mode]);
+        assert_eq!(advisory.code, Some(0), "{mode}: {}", advisory.stderr);
+        assert!(
+            advisory.stderr.contains("unused parameter `ignored`"),
+            "{mode}"
+        );
+
+        let strict = run_file(&warned, &[mode, "--warnings-as-errors"]);
+        assert_ne!(strict.code, Some(0), "{mode} must fail on a warning");
+        assert!(
+            strict.stderr.contains("unused parameter `ignored`"),
+            "{mode}: {}",
+            strict.stderr
+        );
+        assert!(
+            strict.stderr.contains("1 warning (unused-parameter)"),
+            "{mode}: {}",
+            strict.stderr
+        );
+        assert!(!strict.stdout.contains("ok ("), "{mode}: {}", strict.stdout);
+
+        let skipped = run_file(&warned, &[mode, "--no-warnings"]);
+        assert_eq!(skipped.code, Some(0), "{mode}: {}", skipped.stderr);
+        assert!(
+            !skipped.stderr.contains("warning"),
+            "{mode}: {}",
+            skipped.stderr
+        );
+
+        let fine = run_file(&clean, &[mode, "--warnings-as-errors"]);
+        assert_eq!(fine.code, Some(0), "{mode}: {}", fine.stderr);
+
+        let errors = run_file(&broken, &[mode, "--warnings-as-errors"]);
+        assert_ne!(errors.code, Some(0), "{mode}");
+        assert!(
+            errors.stderr.contains("cannot unify string with int"),
+            "{mode}: {}",
+            errors.stderr
+        );
+    }
+}
+
 #[test]
 fn bare_result_variants_compile_and_select_the_correct_arm() {
     for (index, source) in [

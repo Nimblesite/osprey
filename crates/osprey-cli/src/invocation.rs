@@ -5,10 +5,10 @@ use osprey_syntax::Flavor;
 
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
---symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings] [--debug] [--profile] [--flavor default|ml|python] \
+--symbols | --signature | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--no-warnings | --warnings-as-errors] [--debug] [--profile] [--flavor default|ml|python] \
 [--memory=gc|arc|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
-       osprey build [project] [--quiet] [--no-warnings] [--debug] [--memory=gc|arc|none] \
+       osprey build [project] [--quiet] [--no-warnings | --warnings-as-errors] [--debug] [--memory=gc|arc|none] \
 [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|linux-x64|linux-arm64|windows-x64|python] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
 [--coverage-json <path>] [--memory=gc|arc|none]\n\
@@ -39,13 +39,15 @@ impl MobileExports {
     }
 }
 
-/// Whether the warning pass runs. `--no-warnings` skips it, computation and
-/// all. `--quiet` never touches it: quiet silences progress, and a warning is
-/// a diagnostic, not progress.
+/// Whether the warning pass runs and whether its findings fail the invocation.
+/// `--no-warnings` skips it, computation and all; `--warnings-as-errors` prints
+/// the same text and then fails. `--quiet` never touches it: quiet silences
+/// progress, and a warning is a diagnostic, not progress.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Warnings {
     Report,
     Skip,
+    Deny,
 }
 
 /// The parsed invocation: source path, mode flag, and behaviour switches.
@@ -198,6 +200,7 @@ fn parse_option(
     match argument {
         "--quiet" => cli.quiet = true,
         "--no-warnings" => cli.warnings = Warnings::Skip,
+        "--warnings-as-errors" => cli.warnings = Warnings::Deny,
         "--debug" => cli.debug = true,
         "--profile" => cli.profile = true,
         "--entry-only" => cli.exports = MobileExports::EntryOnly,

@@ -203,10 +203,13 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
         let rest = top_level.get(i + 1..).unwrap_or(&[]);
         crate::arc::release_dead_after(&mut cg, rest, None);
     }
+    let mut exit_status = None;
     if let Some((body, position)) = user_main {
         cg.cov_hit(position);
         cg.cell_vars = crate::effects::captured_mut_vars(body);
-        let _ = cg.within_source_function("main", |cg| crate::expr::gen_body(cg, body))?;
+        let result = cg.within_source_function("main", |cg| crate::expr::gen_body(cg, body))?;
+        exit_status = (!library && result.ty == LType::I64 && result.osp_ty.is_none())
+            .then(|| cg.emit_reg(format!("trunc i64 {} to i32", result.operand)));
     }
     if !library {
         crate::globals::release_all(&mut cg);
@@ -228,11 +231,15 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
         cg.add_extern("declare void @channel_cleanup()");
         cg.emit("call void @channel_cleanup()");
     }
+    let status = exit_status.unwrap_or_else(|| "0".to_owned());
     if cg.lowered.testing {
+        // A failed test outranks `main`'s own status [ENTRY-EXIT-STATUS].
         let code = cg.call("i32", "osp_test_finalize", "", &[]);
-        cg.emit(format!("ret i32 {code}"));
+        let failed = cg.emit_reg(format!("icmp ne i32 {code}, 0"));
+        let chosen = cg.emit_reg(format!("select i1 {failed}, i32 {code}, i32 {status}"));
+        cg.emit(format!("ret i32 {chosen}"));
     } else {
-        cg.emit("ret i32 0");
+        cg.emit(format!("ret i32 {status}"));
     }
     cg.finish_function(LType::I32.as_str(), "main", &[]);
     crate::gpu_device::publish(&mut cg);
