@@ -123,7 +123,7 @@ pub struct ProgramTypes {
     /// bound to the written name. Implements [EFFECTS-INSTANCE].
     pub capabilities: HashMap<(u32, u32), String>,
     /// Explicit call substitutions, applied while specializing generic bodies.
-    pub applications: HashMap<(u32, u32), Arc<HashMap<VarId, Type>>>,
+    pub applications: crate::SiteApplications,
     /// Binder identity is part of the contract even when its spelling is omitted.
     pub(crate) declared_params: HashMap<String, HashMap<String, Type>>,
     pub(crate) call_bindings: Arc<HashMap<usize, HashMap<VarId, Type>>>,
@@ -231,7 +231,7 @@ impl ProgramTypes {
             .and_then(|p| self.applications.get(&(p.line, p.column)))
             .map_or_else(
                 || ty.clone(),
-                |bindings| crate::env::subst_vars(ty, bindings),
+                |bindings| crate::env::subst_vars(ty, &bindings),
             )
     }
 
@@ -250,18 +250,11 @@ impl ProgramTypes {
         let substitute = |ty: &mut Type| *ty = crate::env::subst_vars(ty, bindings);
         result.specialize_body(function, &substitute);
         result.specialize_operations(&substitute);
-        // Most call sites are already concrete and stay shared with every other specialization.
+        result.applications = self.applications.specialized(bindings);
         result
-            .applications
+            .declared_params
             .values_mut()
-            .filter(|bindings| bindings.values().any(crate::has_type_var))
-            .flat_map(|bindings| Arc::make_mut(bindings).values_mut())
-            .chain(
-                result
-                    .declared_params
-                    .values_mut()
-                    .flat_map(HashMap::values_mut),
-            )
+            .flat_map(HashMap::values_mut)
             .for_each(substitute);
         result
     }

@@ -159,12 +159,10 @@ pub(super) fn publish_program(
             .map(|(position, bindings)| {
                 (
                     (position.line, position.column),
-                    Arc::new(
-                        bindings
-                            .iter()
-                            .map(|(var, ty)| (*var, checker.ctx.apply(ty)))
-                            .collect(),
-                    ),
+                    bindings
+                        .iter()
+                        .map(|(var, ty)| (*var, checker.ctx.apply(ty)))
+                        .collect(),
                 )
             })
             .collect(),

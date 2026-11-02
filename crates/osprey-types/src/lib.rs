@@ -78,10 +78,14 @@ mod redundant;
 #[cfg(test)]
 mod redundant_contract_tests;
 mod redundant_sites;
+mod site_applications;
+pub use site_applications::SiteApplications;
 #[cfg(test)]
 mod redundant_tests;
 #[cfg(test)]
 mod redundant_window_tests;
+#[cfg(test)]
+mod site_applications_tests;
 mod staging;
 mod structural_equals;
 #[cfg(test)]
