@@ -1,0 +1,12 @@
+// Implements [UI-COMPONENTS-MEDIA]: application-authored stills and films.
+namespace ui
+
+(** Typed constructors for media; neither carries a binding ([UI-COMPONENTS-MEDIA]). *)
+module Media
+    (** A still picture with required alternative text, scaled to fit its width and keeping its aspect ratio; it carries no binding. *)
+    export image<A> : (string, string, int, int) -> Node<A>
+    image (source, alt, width, height) = Image(imageSource = source, imageAlt = alt, imageWidth = width, imageHeight = height)
+
+    (** A film the person starts, showing its poster and a play control until then; captions are on by default and it never autoplays, and it carries no binding. *)
+    export video<A> : (string, string, string, string, int) -> Node<A>
+    video (source, poster, captions, alt, seconds) = Video(videoSource = source, videoPoster = poster, videoCaptions = captions, videoAlt = alt, videoSeconds = seconds)

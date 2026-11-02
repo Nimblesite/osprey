@@ -8,7 +8,7 @@
     },
        "rust-analyzer.testExplorer": true,
     "rust-analyzer.linkedProjects": [
-        "/Users/christianfindlay/Documents/Code/osprey/Cargo.toml"
+        "Cargo.toml"
     ],
     "rust-analyzer.cargo.allTargets": true,
     "rust-analyzer.cargo.autoreload": true,

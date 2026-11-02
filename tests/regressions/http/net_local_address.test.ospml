@@ -1,0 +1,9 @@
+// @link: ssl
+// A program whose only network call is the route lookup still starts Winsock first: on Windows
+// nothing else pulls in the runtime's start-up, so the lookup found no route [FFI-TLS-CLIENT].
+
+extern osprey_net_local_address (host : string) (port : int) -> string
+
+routesToLoopback () = check "the loopback route" "127.0.0.1" (osprey_net_local_address "127.0.0.1" 9)
+
+test "the route to a host is found with no other network use" routesToLoopback

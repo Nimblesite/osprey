@@ -1,16 +1,15 @@
 name: GPUI host
 
-# Plan 0036 phase 4 ([GPUI-HOST-TARGETS], [GPUI-HOST-VERIFICATION]): on each desktop system, build
-# the CLI and its native runtime, compile the example applications for that system's desktop
-# target, build the GPUI host against them and run the host's tests and the recorded-event smoke
-# runs of the probe and Flock. The smoke runs open no window, so no display is needed; on Windows,
-# Flock and Painting then open in real windows on the runner's desktop and are pictured. The
-# frame-rate bench stays on a Mac with a display; hosted runners have none to pace frames.
+# Plan 0036 phase 4 ([GPUI-HOST-TARGETS], [GPUI-HOST-VERIFICATION]): Linux runs every native, UI
+# and example suite in one job and the host's tests, clippy and headless app checks in another. The
+# Mac runs every scripted app in a real window, clippy, and its archive and string-ownership tests.
+# Windows runs the probe smoke and opens Flock and Painting in real windows on the runner's desktop.
+# Linux compiles all six application archives once, in parallel, for its smoke and self-test runs.
+# The frame-rate bench stays on a Mac with a display; hosted runners have none to pace frames.
 #
 # ci.yml calls this workflow on every pull request, and its root `ci` job, the required check,
-# needs every job here. Each system is its own job, reporting under its own name; the Mac and
-# Linux jobs share their suites through .github/actions/gpui-host-suites. A PR that changes no code
-# skips the hosts at the job level, which reports as passing.
+# needs every job here. Each system is its own job, reporting under its own name. A PR that changes
+# no code skips the hosts at the job level, which reports as passing.
 on:
   workflow_dispatch:
   # ci.yml calls it on every pull request, and ci-windows.yml on a manual run, because a workflow
@@ -39,14 +38,13 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
 
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
+      # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
+      - name: Pull the apps' LFS pictures
+        run: git lfs install --local && git lfs pull --include="examples/**,hosts/**,packages/**"
 
       # Rust, clang/LLVM, the native C runtime archives and the release CLI.
       - name: Setup Osprey Compiler
@@ -56,21 +54,71 @@ jobs:
       - name: Mac app-library runtime
         run: make _runtime_macos
 
-      - uses: ./.github/actions/gpui-host-suites
+      - name: Cache GPUI host
+        uses: actions/cache@v6
+        with:
+          path: hosts/gpui/target
+          key: ${{ runner.os }}-gpui-host-${{ hashFiles('hosts/gpui/Cargo.lock', 'hosts/gpui/rust-toolchain*') }}
+          restore-keys: ${{ runner.os }}-gpui-host-
+
+      - name: Every desktop app's self-test in a real window
+        run: make _gpui-self-test GPUI_WINDOW=
+
+      - name: Host clippy
+        working-directory: hosts/gpui
+        run: cargo clippy --release -- -D warnings
+
+      - name: Mac archive and host string ownership
+        run: bash scripts/test-macos.sh
+        env:
+          OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
+
+  ubuntu-suites:
+    name: GPUI suites (ubuntu-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
+      - name: Pull the apps' LFS pictures
+        run: git lfs install --local && git lfs pull --include="examples/**,hosts/**,packages/**"
+
+      # Rust, clang/LLVM, the native C runtime archives and the release CLI.
+      - name: Setup Osprey Compiler
+        uses: ./.github/actions/setup-osprey-compiler
+
+      - name: Native framework suite
+        run: ./target/release/osprey test packages/native/tests
+
+      # [UI-MACHINE-TEST]: the same suites as `make _ui-test`.
+      - name: UI test framework suites
+        run: |
+          ./target/release/osprey test packages/uitest/tests
+          ./target/release/osprey test examples/casting/test
+          ./target/release/osprey test packages/signal_flow/tests
+          ./target/release/osprey test examples/synth/test
+
+      - name: Example suites
+        run: |
+          ./target/release/osprey test examples/gpui/flock/test
+          ./target/release/osprey test examples/gpui/painting/test
+          ./target/release/osprey test examples/storage/test
 
   ubuntu:
     name: GPUI host (ubuntu-latest)
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
 
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
+      # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
+      - name: Pull the apps' LFS pictures
+        run: git lfs install --local && git lfs pull --include="examples/**,hosts/**,packages/**"
 
       # Rust, clang/LLVM, the native C runtime archives and the release CLI.
       - name: Setup Osprey Compiler
@@ -83,18 +131,34 @@ jobs:
           sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev \
             libx11-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev libfreetype-dev libasound2-dev libzstd-dev
 
-      - uses: ./.github/actions/gpui-host-suites
+      - name: Cache GPUI host
+        uses: actions/cache@v6
+        with:
+          path: hosts/gpui/target
+          key: ${{ runner.os }}-gpui-host-${{ hashFiles('hosts/gpui/Cargo.lock', 'hosts/gpui/rust-toolchain*') }}
+          restore-keys: ${{ runner.os }}-gpui-host-
+
+      - name: Every desktop app's headless smoke and self-test
+        run: make _gpui-smoke _gpui-self-test
+
+      - name: Host tests and clippy
+        working-directory: hosts/gpui
+        run: |
+          cargo test --release
+          cargo clippy --release -- -D warnings
 
   windows:
     name: GPUI host (windows-latest)
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
+
+      # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
+      - name: Pull the apps' LFS pictures
+        run: git lfs install --local && git lfs pull --include="examples/**,hosts/**,packages/**"
 
       # The C runtime is built with MinGW (as in ci-windows.yml) and the host with MSYS2's UCRT64
       # Rust, so its build scripts run as GNU programs and the host, GPUI and the Osprey runtime all
@@ -121,9 +185,6 @@ jobs:
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
-
       - name: Build C runtime archives (MinGW)
         shell: msys2 {0}
         run: make _runtime CC=gcc AR=ar
@@ -138,11 +199,14 @@ jobs:
           echo "OSPREY_CC=$(cygpath -m /ucrt64/bin/clang.exe)" >> "$GITHUB_ENV"
           echo "OSPREY_AR=$(cygpath -m /ucrt64/bin/llvm-ar.exe)" >> "$GITHUB_ENV"
 
-      - name: Native framework suite
-        shell: msys2 {0}
-        run: ./target/release/osprey.exe test packages/native/tests
+      - name: Cache GPUI host
+        uses: actions/cache@v6
+        with:
+          path: hosts/gpui/target
+          key: ${{ runner.os }}-gpui-host-${{ hashFiles('hosts/gpui/Cargo.lock', 'hosts/gpui/rust-toolchain*') }}
+          restore-keys: ${{ runner.os }}-gpui-host-
 
-      - name: Host tests and smoke runs
+      - name: Probe smoke
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -150,8 +214,6 @@ jobs:
           cargo --version
           export OSPREY_BIN="$PWD/target/release/osprey.exe"
           bash hosts/gpui/run.sh --smoke
-          (cd hosts/gpui && cargo test --release)
-          bash examples/gpui/flock/run.sh --smoke
 
       # Flock and Painting in real windows on the runner's desktop: each is linked into the host and
       # pictured after it has drawn for a while. PowerShell starts the host from MSYS2's environment,

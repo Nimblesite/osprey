@@ -51,7 +51,7 @@ flockSlice () = perform Signal<Flock>.read ()
 
 frameJson value = JsonInt value.frame
 
-fieldView () = Ui::scene (320.0, 200.0, ["bird"], mapList ((flockSlice ()).birds, \b => Scenes::sprite (0, b.bx, b.by, 2.0, 2.0, atan2 b.vy b.vx, white (), 0)), Play)
+fieldView () = Ui::zoomed (0.0, 320.0, 200.0, ["bird"], mapList ((flockSlice ()).birds, \b => Scenes::sprite (0, b.bx, b.by, 2.0, 2.0, atan2 b.vy b.vx, white (), 0)), Play)
 
 regions (before, store, frames, _) =
     handle static Signal<Flock>

@@ -4,7 +4,7 @@
 use crate::workspace::{
     file_path, lexical, project_root, project_roots, same_path, uri_of, Sibling,
 };
-use lspkit_vfs::{DocumentUri, Vfs};
+use lspkit::vfs::{DocumentUri, Vfs};
 use osprey_project::{ProjectConfig, ProjectError, SourceFile};
 use osprey_syntax::Flavor;
 use std::collections::{BTreeMap, BTreeSet};

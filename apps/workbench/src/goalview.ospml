@@ -2,6 +2,7 @@
 namespace workbench
 
 import ui::Ui
+import ui::Maths
 import ui::Frames
     plain
 import workbench::WorkViews
@@ -105,9 +106,9 @@ module GoalViews
         Error _ => caption "No hypotheses."
         Success found => match found.statement.variables
             [] => caption "No hypotheses."
-            [first, ...rest] => Ui::framed (plain(frameName = "goal-hypotheses", frameGap = 12), Ui::column [micro "Propositions", Ui::framed (plain(frameCross = "start", frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Seq (foldList (rest, [ui::Sym first], \(nodes, name) => listConcat (nodes, [ui::Sym ",", ui::Sym name]))), join (found.statement.variables, ", ")))])
+            [first, ...rest] => Ui::framed (plain(frameName = "goal-hypotheses", frameGap = 12), Ui::column [micro "Propositions", Ui::framed (plain(frameCross = "start", frameTextSize = 25, frameMathScale = 1.08), Maths::typeset (ui::Seq (foldList (rest, [ui::Sym first], \(nodes, name) => listConcat (nodes, [ui::Sym ",", ui::Sym name]))), join (found.statement.variables, ", ")))])
 
-    hypothesis held = Ui::framed (plain(frameCross = "center", frameHug = !(WorkViews::layout ()).paperFirst, frameTextSize = 25, frameMathScale = 1.08), Ui::math (ui::Op (":", ui::Sym held.name, Formulas::typeset held.formula), held.name + ": " + Formulas::show held.formula))
+    hypothesis held = Ui::framed (plain(frameCross = "center", frameHug = !(WorkViews::layout ()).paperFirst, frameTextSize = 25, frameMathScale = 1.08), Maths::typeset (ui::Op (":", ui::Sym held.name, Formulas::typeset held.formula), held.name + ": " + Formulas::show held.formula))
 
     target formula = Ui::framed (plain(frameName = "goal-target", frameTop = WorkViews::documentSize (32, 18), frameGap = 13), Ui::column [micro "To show", Ui::framed (plain(frameCross = "center", frameTextSize = WorkViews::documentSize (42, 25), frameMathScale = 1.08), WorkViews::shown formula)])
 

@@ -1,0 +1,117 @@
+// The signal-flow editor's adapter ([UI-MACHINE-FLOW]): the document is the whole
+// interface, while this module evaluates its signal path and keeps undo history.
+namespace signalflow
+
+import ui::Runtime
+import ui::Machines
+import ui::Canvases
+import ui::Values
+import ui::Inputs
+
+(** The interface: the running machine, the only slice the view reads. *)
+type Screen =
+    screenMachine : ui::Machine
+
+(** The running interface and its snapshots, newest first in each history. *)
+type Store =
+    screen : Screen
+    past : List<List<ui::Fact>>
+    future : List<List<ui::Fact>>
+
+(** Evaluates the signal-flow document and answers its history requests. *)
+module Flow
+    (** A store around a loaded machine, with empty undo and redo histories. *)
+    export store machine = Store(screen = Screen(screenMachine = machine), past = [], future = [])
+
+    machineOf store = store.screen.screenMachine
+
+    fed (store, facts) = store(screen = Screen(screenMachine = Machines::feed (machineOf store, facts)))
+
+    fact (name, value) = Machines::fact (name, value)
+
+    signalOf machine = ui::Pick::either (Machines::flag (machine, "sourceOn"), 1.0, 0.0)
+
+    levelOf machine =
+        m = ui::Pick::either (Machines::flag (machine, "controlOn"), Machines::number (machine, "control"), 1.0)
+        signalOf machine * ui::Pick::either (Machines::flag (machine, "processOn"), Machines::number (machine, "process") * m, 1.0)
+
+    switched on = ui::Pick::either (on, "Healthy", "Bypassed")
+
+    processHealth machine =
+        ui::Pick::either (Machines::flag (machine, "processOn") == false, "Bypassed", ui::Pick::either (signalOf machine == 0.0, "Offline", ui::Pick::either (levelOf machine < 0.25, "Degraded", "Healthy")))
+
+    deliveryHealth (machine, name) =
+        ui::Pick::either (Machines::flag (machine, name) == false, "Bypassed", ui::Pick::either (levelOf machine == 0.0, "Offline", "Healthy"))
+
+    signalFacts machine =
+        level = levelOf machine
+        signal = signalOf machine
+        delivered = ui::Pick::either (Machines::flag (machine, "outputOn"), level * Machines::number (machine, "volume"), 0.0)
+        monitored = ui::Pick::either (Machines::flag (machine, "monitorOn"), level, 0.0)
+        [fact ("signal", Values::number signal), fact ("level", Values::number level), fact ("delivered", Values::number delivered), fact ("monitored", Values::number monitored)]
+
+    healthFacts machine = [
+        fact ("controlHealth", Values::text (switched (Machines::flag (machine, "controlOn")))),
+        fact ("sourceHealth", Values::text (switched (Machines::flag (machine, "sourceOn")))),
+        fact ("processHealth", Values::text (processHealth machine)),
+        fact ("outputHealth", Values::text (deliveryHealth (machine, "outputOn"))),
+        fact ("monitorHealth", Values::text (deliveryHealth (machine, "monitorOn"))),
+    ]
+
+    historyFacts store = [fact ("canUndo", Values::flag (length store.past > 1)), fact ("canRedo", Values::flag (length store.future > 0))]
+
+    evaluated store =
+        machine = machineOf store
+        fed (store, listConcat (listConcat (signalFacts machine) (healthFacts machine)) (historyFacts store))
+
+    recorded (store, ask) =
+        snapshot = mapList (ask.askInputs, \k => fact (k.knobName, k.knobValue))
+        evaluated (store(past = listConcat [snapshot] store.past, future = []))
+
+    rest values = ui::Lists::slice (values, 1, length values)
+
+    undone store = match listGet store.past 0
+        Error _ => store
+        Success current => match listGet store.past 1
+            Error _ => store
+            Success previous =>
+                next = store(past = rest store.past, future = listConcat [current] store.future)
+                evaluated (fed (next, previous))
+
+    redone store = match listGet store.future 0
+        Error _ => store
+        Success next =>
+            restored = store(past = listConcat [next] store.past, future = rest store.future)
+            evaluated (fed (restored, next))
+
+    answer (store, ask) = match ask.askName
+        "flow.record" => recorded (store, ask)
+        "flow.undo" => undone store
+        "flow.redo" => redone store
+        _ => store
+
+    ours ask = startsWith ask.askName "flow."
+
+    // The editor's own requests answered; any other request stays on the machine for the application built on it.
+    draining (store, left) =
+        pending = Machines::requests (machineOf store)
+        match ui::Lists::any (pending, ours) == false || left <= 0
+            true => store
+            false =>
+                machine = Machines::taken (machineOf store)
+                cleared = store(screen = Screen(screenMachine = machine(asks = filterList (pending, \ask => ours ask == false))))
+                draining (foldList (filterList (pending, ours), cleared, answer), satSub left 1)
+
+    (** The store after answering every pending `flow.` request, as a framework step. *)
+    export settled store = Runtime::asking (draining (store, 8), [])
+
+    (** A control's lever pulled with its value, then the requests answered. *)
+    export pulled (store, lever, value) = settled (store(screen = Screen(screenMachine = Machines::pull (machineOf store, lever, value))))
+
+    (** The store as launched: the canvas artwork's folder as `assets` and a `--skin` when given. *)
+    export launched (store, folder, skin) =
+        facts = listConcat [fact ("assets", Values::text folder)] (ui::Pick::either (skin == "", [], [fact ("skin", Values::text skin)]))
+        fed (store, facts)
+
+    (** A canvas pointer event: a press grips the listener under it, a drag moves a node or slider, and the release acts once ([UI-MACHINE-DRAG]); the region's size gives the canvas room; keys change nothing. *)
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down)))), \(w, h) => Runtime::step (store(screen = Screen(screenMachine = Canvases::viewed (machineOf store, w, h)))))

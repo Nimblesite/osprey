@@ -1,0 +1,8 @@
+{
+  "steps": [
+    { "wait": "Choose an audio file" },
+    { "wait": "Ready" },
+    { "gone": "Looking for TVs…" },
+    { "shot": "1-searched" }
+  ]
+}

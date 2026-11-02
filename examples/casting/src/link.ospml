@@ -1,0 +1,224 @@
+// The casting player's adapter ([UI-MACHINE-TEST]): the machine document is
+// the whole interface, and this module only answers its requests with the
+// Python-flavor @osprey/chromecast port and feeds the device's facts back in
+// as inputs. Every byte to a device is a `chromecast::Wire` effect, so the
+// tests answer it with an in-memory Cast device.
+namespace casting
+
+import ui::Runtime
+import ui::Requests
+import ui::Machines
+import ui::Canvases
+import ui::Values
+import ui::Ui
+import ui::Inputs
+import ui::Doc
+import chromecast::Discovery
+import chromecast::Media
+import chromecast::Player
+import chromecast::Session
+
+(** The interface: the running machine, the only slice the view reads. *)
+type Screen =
+    screenMachine : ui::Machine
+
+(** The cast behind the interface: whether a player is live, the player, the devices found, the frame clock in milliseconds and when the player was last polled. *)
+type Connection =
+    linked : bool
+    player : chromecast::Player::Player
+    devices : List<chromecast::Discovery::Device>
+    clock : int
+    polled : int
+
+(** The whole application store: the interface, the cast and the browse that finds devices. *)
+type Store =
+    screen : Screen
+    link : Connection
+    finder : ui::Capability
+
+(** A store and the capability requests one round of machine requests made. *)
+type Served =
+    servedStore : Store
+    servedAsks : List<ui::Request>
+
+(** Answers the machine's requests with @osprey/chromecast and feeds the results back as inputs. *)
+module Link
+    (** How far the disc turns in a second while playing, in radians: one revolution in 24 seconds. *)
+    export turnPerSecond = 0.2617993878
+
+    (** How often the live player is polled, in milliseconds. *)
+    export pollMs = 100
+
+    // A browse the host runs, so the window never waits.
+    browsed (executable, arguments) = ui::Run(executable = executable, arguments = arguments, timeout = 5000, outputLimit = 65536, plist = false, runSlice = "cast-browse")
+
+    (** The browse that finds Cast devices: `helper`, a program that prints `dns-sd -Z` lines and stops by itself (Windows has no dns-sd), or with "" dns-sd stopped after three seconds. *)
+    export browse helper = match helper
+        "" => browsed ("/usr/bin/perl", ["-e", "alarm 3; exec @ARGV", "/usr/bin/dns-sd", "-Z", "_googlecast._tcp", "local"])
+        _ => browsed (helper, [])
+
+    (** The single-file picker for audio the device can play. *)
+    export choose = ui::ChooseFile(types = ["mp3"], chosenLimit = 0, chosenSlice = "")
+
+    (** A store around a loaded machine, with no player and no devices. *)
+    export store machine = Store(screen = Screen(screenMachine = machine), link = Connection(linked = false, player = Player::idle (), devices = [], clock = 0, polled = 0), finder = browse "")
+
+    machineOf store = store.screen.screenMachine
+
+    relinked (store, linked, player, polled) =
+        l = store.link
+        store(link = Connection(linked = linked, player = player, devices = l.devices, clock = l.clock, polled = polled))
+
+    withDevices (store, devices) =
+        l = store.link
+        store(link = Connection(linked = l.linked, player = l.player, devices = devices, clock = l.clock, polled = l.polled))
+
+    withClock (store, now) =
+        l = store.link
+        store(link = Connection(linked = l.linked, player = l.player, devices = l.devices, clock = now, polled = l.polled))
+
+    fed (store, facts) = store(screen = Screen(screenMachine = Machines::feed (machineOf store, facts)))
+
+    fact (name, value) = Machines::fact (name, value)
+
+    failed (store, message) = fed (store, [fact ("error", Values::text message)])
+
+    asked (store, asks) = Served(servedStore = store, servedAsks = asks)
+
+    // A control's result: the next player, or the failure as the `error` input.
+    commanded (store, result) = match result
+        Success next => asked (relinked (store, store.link.linked, next, store.link.polled), [])
+        Error problem => asked (failed (store, problem), [])
+
+    started (store, result) = match result
+        Success next => asked (fed (relinked (store, true, next, store.link.clock), [fact ("connected", Values::flag true), fact ("error", Values::text ""), fact ("ended", Values::text "")]), [])
+        Error problem => asked (failed (store, problem), [])
+
+    start (store, ask) = match ui::Lists::find (store.link.devices, \d => d.name == Machines::askedText (ask, "receiver"))
+        Success device => started (store, Player::begin (device, Machines::askedText (ask, "file"), store.link.clock))
+        Error _ => asked (failed (store, "choose a receiver first"), [])
+
+    live (store, act) = match store.link.linked
+        true => commanded (store, act store.link.player)
+        false => asked (failed (store, "nothing is casting"), [])
+
+    // One request the machine made.
+    answer (store, ask) = match ask.askName
+        "cast.discover" => asked (fed (store, [fact ("searched", Values::flag false)]), [Requests::ask ("discover", store.finder)])
+        "cast.choose" => asked (store, [Requests::ask ("choose", choose)])
+        "cast.start" => start (store, ask)
+        "cast.pause" => live (store, \p => Player::pause p)
+        "cast.resume" => live (store, \p => Player::play p)
+        "cast.stop" => live (store, \p => Player::stop p)
+        "cast.finished" => asked (fed (store, [fact ("ended", Values::text ""), fact ("player", Values::text "")]), [])
+        "cast.seekTo" => live (store, \p => Player::seek (p, Machines::askedNumber (ask, "seekTo")))
+        "cast.seek" => live (store, \p => Player::seek (p, ui::Pick::either (Machines::askedNumber (ask, "position") + Machines::askedNumber (ask, "skip") < 0.0, 0.0, Machines::askedNumber (ask, "position") + Machines::askedNumber (ask, "skip"))))
+        "cast.volume" => live (store, \p => Player::volume (p, Machines::askedNumber (ask, "wantVolume")))
+        "cast.rate" => live (store, \p => Player::rate (p, Machines::askedNumber (ask, "wantRate")))
+        _ => asked (failed (store, "the machine asked for an unknown request ${ask.askName}"), [])
+
+    served (out, ask) =
+        next = answer (out.servedStore, ask)
+        Served(servedStore = next.servedStore, servedAsks = listConcat out.servedAsks next.servedAsks)
+
+    // Answers requests until none are left: an answer may feed inputs that make more.
+    draining (store, asks, left) = match length (Machines::requests (machineOf store)) == 0 || left <= 0
+        true => asked (store, asks)
+        false =>
+            pending = Machines::requests (machineOf store)
+            cleared = store(screen = Screen(screenMachine = Machines::taken (machineOf store)))
+            out = foldList (pending, asked (cleared, []), \(acc, ask) => served (acc, ask))
+            draining (out.servedStore, listConcat asks out.servedAsks, satSub left 1)
+
+    (** The store after answering every pending machine request, as a framework step. *)
+    export settled store =
+        out = draining (store, [], 8)
+        Runtime::asking (out.servedStore, out.servedAsks)
+
+    (** A control's lever pulled with its value, then the requests answered. *)
+    export pulled (store, lever, value) = settled (store(screen = Screen(screenMachine = Machines::pull (machineOf store, lever, value))))
+
+    // The file facts for a chosen or opened MP3.
+    fileFacts path = [fact ("file", Values::text path), fact ("title", Values::text (Media::title path))]
+
+    (** The store as launched: the canvas artwork's folder as `assets`, a `--skin` when given and an MP3 the app was opened with. *)
+    export launched (store, folder, skin, path) =
+        skinned = listConcat [fact ("assets", Values::text folder)] (ui::Pick::either (skin == "", [], [fact ("skin", Values::text skin)]))
+        fed (store, listConcat skinned (ui::Pick::either (path == "", [], fileFacts path)))
+
+    (** A lifecycle phase: `open:<path>` is an MP3 Finder opened while the app runs, loaded as the file ([GPUI-HOST-OPEN]); other phases change nothing. *)
+    export phased (store, phase) = match startsWith phase "open:"
+        true => settled (fed (store, fileFacts (drop phase 5)))
+        false => Runtime::step store
+
+    pointer (store, x, y, down) = settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down))))
+
+    (** A canvas pointer event ([UI-MACHINE-CANVAS]): a press grips, a drag slides, the release acts once on the listener under it, and a hover changes nothing; keys change nothing. *)
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pointer (store, x, y, down), \(_, _) => Runtime::step store)
+
+    // ---- completions ----
+
+    receiver d = Ui::choice (d.name, d.name)
+
+    discovered (store, text) =
+        devices = Discovery::browse text
+        first = listGet devices 0 ?: chromecast::Discovery::Device(name = "", host = "", port = 0)
+        chosen = Machines::text (machineOf store, "receiver")
+        keep = ui::Lists::any (devices, \d => d.name == chosen)
+        settled (fed (withDevices (store, devices), [fact ("searched", Values::flag true), fact ("receivers", Values::list (mapList (devices, receiver))), fact ("receiver", Values::text (ui::Pick::either (keep, chosen, first.name)))]))
+
+    picked (store, doc) = match Doc::flag (doc, "cancelled")
+        true => Runtime::step store
+        false => settled (fed (store, fileFacts (Doc::text (doc, "path"))))
+
+    (** A capability's completion: the device browse or the file picker. *)
+    export completed (store, ticket, outcome) = match outcome
+        Error problem => match ticket
+            "discover" => settled (failed (fed (store, [fact ("searched", Values::flag true)]), problem))
+            _ => settled (failed (store, problem))
+        Success doc => match ticket
+            "discover" => discovered (store, perform ui::Slices.fetch "cast-browse")
+            "choose" => picked (store, doc)
+            _ => Runtime::step store
+
+    // ---- the frame clock ----
+
+    facts (p, now) = [
+        fact ("player", Values::text p.player_state),
+        fact ("position", Values::number (Player::elapsed (p, now))),
+        fact ("duration", Values::number p.duration),
+        fact ("volume", Values::number (ui::Pick::either (p.volume < 0.0, 1.0, p.volume))),
+        fact ("rate", Values::number p.rate),
+        fact ("ended", Values::text (ui::Pick::either (startsWith p.ending "ERROR", "", p.ending))),
+        fact ("canPause", Values::flag (bitAnd p.commands 1 == 1)),
+        fact ("canSeek", Values::flag (bitAnd p.commands 2 == 2)),
+        fact ("connected", Values::flag (p.phase != "ended")),
+    ]
+
+    // A refused cast is an error; a finished one is not.
+    refused p = ui::Pick::either (startsWith p.ending "ERROR", [fact ("error", Values::text p.ending)], [])
+
+    finished (store, p) = match p.phase == "ended"
+        true =>
+            _ended = Player::end p
+            relinked (store, false, p, store.link.polled)
+        false => relinked (store, true, p, store.link.polled)
+
+    polled (store, now) = match Player::poll (store.link.player, now, 1)
+        Success p => settled (fed (finished (store, p), listConcat (facts (p, now)) (refused p)))
+        Error problem =>
+            _ended = Player::end store.link.player
+            settled (fed (relinked (store, false, store.link.player, store.link.polled), [fact ("connected", Values::flag false), fact ("error", Values::text "Connection lost: ${problem}")]))
+
+    spun (store, seconds) = match Machines::text (machineOf store, "player") == "PLAYING"
+        true => fed (store, [fact ("spin", Values::number (Machines::number (machineOf store, "spin") + seconds * turnPerSecond))])
+        false => store
+
+    (** A display frame: advances the clock, turns the disc while playing and polls the live player every `pollMs`. *)
+    export ticked (store, seconds) =
+        now = satAdd store.link.clock (floatToInt (seconds * 1000.0) ?: 0)
+        clocked = withClock (store, now)
+        due = clocked.link.linked && now - clocked.link.polled >= pollMs
+        match due
+            true => polled (spun (relinked (clocked, true, clocked.link.player, now), seconds), now)
+            false => Runtime::step clocked

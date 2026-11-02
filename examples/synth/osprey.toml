@@ -1,0 +1,8 @@
+[project]
+name = "synth"
+source_roots = ["main.ospml", "src", "../../packages/signal_flow/src", "../../packages/native/src", "../../packages/graphics/src", "../../packages/json/src"]
+default_namespace = "app"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

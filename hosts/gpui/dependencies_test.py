@@ -158,7 +158,7 @@ class BackportTests(unittest.TestCase):
                 self.stage()
 
     def test_gpui_make_target_stages_before_host_cargo(self):
-        commands = make_commands("gpui-test")
+        commands = make_commands("_gpui-test")
         stage = "python3 hosts/gpui/dependencies.py"
         host = "cd hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings"
         self.assertIn(stage, commands)
@@ -167,15 +167,16 @@ class BackportTests(unittest.TestCase):
 
     def test_build_and_release_entrypoints_gate_stager_regressions(self):
         guard = "python3 hosts/gpui/dependencies_test.py"
-        for target in ("audit", "gpui-test"):
+        for target in ("audit", "_gpui-test"):
             with self.subTest(target=target):
                 commands = make_commands(target)
                 self.assertIn(guard, commands)
                 self.assertLess(commands.index(guard), len(commands) - 1)
         script = (source.HERE / "run.sh").read_text()
-        guard = 'python3 "$here/dependencies_test.py"'
-        self.assertIn(guard, script)
-        self.assertLess(script.index(guard), script.index('"$compiler" "$app"'))
+        stage = 'python3 "$here/dependencies.py"'
+        self.assertNotIn("dependencies_test.py", script)
+        self.assertIn(stage, script)
+        self.assertLess(script.index(stage), script.index('"$compiler" "$app"'))
 
     def test_both_workspace_overrides_must_match_the_full_pinned_inventory(self):
         manifests = [self.root / "host.toml", self.root / "reference.toml"]

@@ -20,13 +20,17 @@ import {
   detailedCoverageFor,
   executeRunRequest,
   makeRunHandler,
-  makeWatcherHandlers,
+  makeDiscovery,
+  makeDiscoveryQueue,
+  fileItems,
+  isBuildOutput,
+  isTestFile,
+  projectRootOf,
   refreshTestFile,
   registerOspreyTestExplorer,
   removeTestFile,
   runCompiler,
   requestedItems,
-  scanWorkspaceTestFiles,
   testFileLabel,
 } from "../../client/src/test-explorer";
 import { resolveBuiltOsprey } from "./osprey-test-env";
@@ -101,11 +105,13 @@ suite("Osprey Test Explorer", () => {
   });
 
   suite("discovery", () => {
-    test("registerOspreyTestExplorer wires controller, run profile, and watcher", () => {
-      const controller = newController();
+    test("registerOspreyTestExplorer wires controller, refresh, and both watchers", () => {
+      const controller = newController(() => "/nonexistent/bin/osprey");
       assert.strictEqual(controller.label, "Osprey Tests");
       assert.ok(controller.id.startsWith("ospreyTests-spec-"));
-      assert.strictEqual(disposables.length, 3);
+      assert.strictEqual(typeof controller.refreshHandler, "function");
+      // controller, source watcher, compiler watcher, skip-warning cleanup
+      assert.strictEqual(disposables.length, 4);
     });
 
     test("testFileLabel outside a workspace is the basename", () => {
@@ -295,42 +301,173 @@ suite("Osprey Test Explorer", () => {
       assert.match(String(item.error), /ENOENT|nonexistent/);
     });
 
-    test("removeTestFile and the watcher handlers add and drop items", async () => {
+    test("discovery reacts to test files, modules, and build output", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(60000);
+      const projectDir = fs.mkdtempSync(path.join(fixtureDir, "project-"));
+      fs.writeFileSync(path.join(projectDir, "osprey.toml"), "");
+      const nested = path.join(projectDir, "test");
+      fs.mkdirSync(nested);
+      const suitePath = path.join(nested, "suite.test.osp");
+      fs.writeFileSync(suitePath, PASS_FIXTURE);
+      const suiteUri = vscode.Uri.file(suitePath);
+      const moduleUri = vscode.Uri.file(path.join(projectDir, "src.osp"));
+      const outsideUri = vscode.Uri.file(path.join(fixtureDir, "lone.osp"));
       const controller = newController();
-      const handlers = makeWatcherHandlers(
-        controller,
-        () => "/nonexistent/osprey-xyz",
+      const discovery = makeDiscovery(controller, () => compiler);
+      const suiteItem = (): vscode.TestItem | undefined =>
+        controller.items.get(fileTestId(suiteUri.toString()));
+
+      assert.strictEqual(projectRootOf(moduleUri), projectDir);
+      assert.strictEqual(projectRootOf(suiteUri), projectDir);
+      assert.strictEqual(projectRootOf(outsideUri), fixtureDir);
+      assert.ok(isTestFile(suiteUri));
+      assert.ok(isTestFile(mlUri));
+      assert.ok(!isTestFile(moduleUri));
+
+      await discovery.changed(suiteUri);
+      assert.strictEqual(suiteItem()?.children.size, 2);
+
+      // A module edit re-resolves its project's suites (here: a case added).
+      fs.writeFileSync(
+        suitePath,
+        `${PASS_FIXTURE}\ntest("third", fn() => {\n    expect(1, 1)\n})\n`,
       );
-      await handlers.refresh(passUri);
-      assert.ok(controller.items.get(fileTestId(passUri.toString())));
-      handlers.remove(passUri);
-      assert.strictEqual(
-        controller.items.get(fileTestId(passUri.toString())),
-        undefined,
+      await discovery.changed(moduleUri);
+      assert.strictEqual(suiteItem()?.children.size, 3);
+      assert.ok(
+        suiteItem()?.children.get(leafTestId(suiteUri.toString(), "third")),
       );
+
+      // A source outside the project leaves it alone.
+      fs.writeFileSync(suitePath, PASS_FIXTURE);
+      await discovery.changed(outsideUri);
+      assert.strictEqual(suiteItem()?.children.size, 3);
+
+      // A deleted module re-resolves the project too.
+      await discovery.deleted(moduleUri);
+      assert.strictEqual(suiteItem()?.children.size, 2);
+
+      // A deleted test file leaves the tree.
+      await discovery.deleted(suiteUri);
+      assert.strictEqual(suiteItem(), undefined);
+      assert.strictEqual(controller.items.size, 0);
+
+      // A discovery queued before the file went away does not bring it back.
+      fs.rmSync(suitePath);
+      await discovery.changed(suiteUri);
+      assert.strictEqual(suiteItem(), undefined);
+      assert.strictEqual(controller.items.size, 0);
+      fs.rmSync(projectDir, { recursive: true, force: true });
+    });
+
+    test("removeTestFile drops items and empty ancestors", async () => {
+      const controller = newController();
       await refreshTestFile(controller, passUri, "/nonexistent/osprey-xyz");
+      assert.strictEqual(fileItems(controller.items).length, 1);
+      removeTestFile(controller, passUri);
+      assert.strictEqual(controller.items.size, 0);
       removeTestFile(controller, passUri);
       assert.strictEqual(controller.items.size, 0);
     });
 
-    test("scanWorkspaceTestFiles seeds items from the finder", async function () {
+    test("the discovery queue coalesces, bounds, and drains", async () => {
+      const started: string[] = [];
+      const releases: (() => void)[] = [];
+      let peak = 0;
+      let live = 0;
+      const schedule = makeDiscoveryQueue((uri) => {
+        started.push(path.basename(uri.fsPath));
+        live += 1;
+        peak = Math.max(peak, live);
+        return new Promise<void>((release) =>
+          releases.push(() => {
+            live -= 1;
+            release();
+          }),
+        );
+      }, 2);
+      const settle = async (): Promise<void> => {
+        while (releases.length > 0) {
+          releases.shift()?.();
+          await new Promise((tick) => setImmediate(tick));
+        }
+      };
+      const drained = schedule([passUri, failUri, mlUri, passUri]);
+      // pass is already running; asking again queues exactly one more pass.
+      const again = schedule([passUri, passUri]);
+      assert.deepStrictEqual(started, ["pass.test.osp", "fail.test.osp"]);
+      await settle();
+      await Promise.all([drained, again]);
+      assert.deepStrictEqual(started, [
+        "pass.test.osp",
+        "fail.test.osp",
+        "ml.test.ospml",
+        "pass.test.osp",
+      ]);
+      assert.strictEqual(peak, 2);
+      assert.strictEqual(live, 0);
+      await schedule([]);
+
+      // A failing resolve neither stalls the queue nor rejects the drain.
+      const failing = makeDiscoveryQueue(() => Promise.reject(new Error("x")));
+      await failing([passUri, failUri]);
+    });
+
+    test("rescan resolves the workspace, skips build output, drops stale files", async function () {
       if (!compiler) {
         this.skip();
       }
       this.timeout(30000);
       const controller = newController();
-      await scanWorkspaceTestFiles(
-        controller,
-        () => compiler,
-        () => Promise.resolve([passUri]),
+      let found: vscode.Uri[] = [passUri, mlUri];
+      const discovery = makeDiscovery(controller, () => compiler, () =>
+        Promise.resolve(found),
       );
+      await discovery.rescan();
       assert.strictEqual(
         controller.items.get(fileTestId(passUri.toString()))?.children.size,
         2,
       );
-      const emptyHost = newController();
-      await scanWorkspaceTestFiles(emptyHost, () => compiler ?? "osprey");
-      assert.strictEqual(emptyHost.items.size, 0);
+      assert.ok(controller.items.get(fileTestId(mlUri.toString())));
+      const gone = writeFixture("gone.test.osp", PASS_FIXTURE);
+      found = [passUri, gone];
+      await discovery.rescan();
+      assert.strictEqual(fileItems(controller.items).length, 3);
+      fs.rmSync(gone.fsPath);
+      found = [passUri];
+      await discovery.rescan();
+      assert.deepStrictEqual(
+        fileItems(controller.items).map((item) => item.label),
+        ["pass.test.osp", "ml.test.ospml"],
+      );
+
+      // The refresh button runs the same rescan.
+      const viaButton = newController();
+      await viaButton.refreshHandler?.(new vscode.CancellationTokenSource().token);
+      assert.strictEqual(viaButton.items.size, 0);
+    });
+
+    test("build output never reaches the tree", async () => {
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (root !== undefined) {
+        const copy = vscode.Uri.joinPath(root, "target", "x", "a.test.osp");
+        const dep = vscode.Uri.joinPath(root, "node_modules", "a.test.osp");
+        const real = vscode.Uri.joinPath(root, "tests", "a.test.osp");
+        assert.ok(isBuildOutput(copy));
+        assert.ok(isBuildOutput(dep));
+        assert.ok(!isBuildOutput(real));
+      }
+      assert.ok(!isBuildOutput(passUri));
+      const controller = newController();
+      const discovery = makeDiscovery(controller, () => "/nonexistent/x");
+      const copyUri = vscode.Uri.file(
+        path.join(fixtureDir, "target", "copy.test.osp"),
+      );
+      await discovery.changed(copyUri);
+      assert.strictEqual(controller.items.size, 0);
     });
   });
 

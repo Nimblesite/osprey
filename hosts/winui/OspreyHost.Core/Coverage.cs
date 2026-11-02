@@ -14,6 +14,7 @@ public static class Coverage
         "text", "stack", "section", "screen", "split", "layer", "context-menu", "aside", "tabs", "slot",
         "pair", "badge", "label", "icon", "link", "spacer", "divider", "segments", "empty", "progress",
         "meter", "swatch", "rows", "button", "field", "toggle", "picker", "disclosure", "alert", "scene",
+        "themed",
     ];
 
     /// <summary>
@@ -22,7 +23,7 @@ public static class Coverage
     /// </summary>
     public static IReadOnlyList<string> Refused { get; } =
     [
-        "rich-text", "framed", "themed", "dialog", "evidence", "brand", "math", "image", "video",
+        "rich-text", "framed", "dialog", "evidence", "brand", "math", "image", "video",
         "editor", "board",
     ];
 
@@ -32,8 +33,8 @@ public static class Coverage
     /// <summary>Capability kinds this host refuses with an error completion, not yet answered (plan 0038 phase 4).</summary>
     public static IReadOnlyList<string> Unanswered { get; } =
     [
-        "run", "list-directories", "read-plists", "read-texts", "fingerprint", "http", "host-call",
-        "running-applications", "choose-file", "save-file", "open-settings", "recognise",
+        "list-directories", "read-plists", "read-texts", "fingerprint", "http", "host-call",
+        "running-applications", "save-file", "open-settings", "recognise",
     ];
 
     /// <summary>The visible diagnostic shown in place of a node kind this host does not draw.</summary>

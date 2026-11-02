@@ -1,6 +1,6 @@
 [project]
 name = "registry-editor"
-source_roots = ["../../native/src", "../../vscode/src", "../core/src/names.osp", "../core/src/order.osp", "src"]
+source_roots = ["../../native/src", "../../graphics/src", "../../json/src", "../../vscode/src", "../core/src/names.osp", "../core/src/order.osp", "src"]
 default_namespace = "registry_editor"
 entry = "src/main.ospml"
 

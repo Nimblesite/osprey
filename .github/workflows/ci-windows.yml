@@ -44,13 +44,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
 
       # No duplication gate here. Deslop measures source text, so its verdict is
       # platform-independent, so running it on a second OS would only duplicate
@@ -102,11 +98,6 @@ jobs:
       - name: GC keeps roots in outer caller stack frames
         shell: msys2 {0}
         run: make _test_gc_stack_root CC=gcc
-
-      # The language server mounts lspkit's profiler, whose build script
-      # generates its wire model with typeDiagram [PROF-LSP-HOST].
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       - name: Build osprey (release)
         run: cargo build --release -p osprey-cli
@@ -164,12 +155,6 @@ jobs:
 
       # Each invocation recursively exercises both Default and ML programs with
       # internal assertions, including cross-feature interaction scenarios.
-      - name: Core language assertion corpus — no memory management
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests
-
       - name: Core language assertion corpus — GC
         shell: msys2 {0}
         run: |

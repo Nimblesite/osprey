@@ -32,9 +32,9 @@ birdXAt (envelope, index) = at (listGet (birdsOf envelope) index ?: JsonNull, 0)
 
 requestKinds envelope = join (mapList (Doc::items (Doc::field (envelope, "requests")), \request => Doc::text (request, "kind"))) ","
 
-fieldShapes envelope =
-    patch = listGet (Doc::items (Doc::field (envelope, "patches"))) 0 ?: JsonNull
-    Doc::items (Doc::field (Doc::field (patch, "node"), "shapes"))
+fieldNode envelope = Doc::field (listGet (Doc::items (Doc::field (envelope, "patches"))) 0 ?: JsonNull, "node")
+
+fieldShapes envelope = Doc::items (Doc::field (fieldNode envelope, "shapes"))
 
 (** Starts and drives Flock through the actual serialized runtime boundary. *)
 module Probes
@@ -122,7 +122,11 @@ test ("the scene holds the ground, every bird, each hawk, the dog and the pen la
     started = Probes::started ()
     store = fixture ([bird (10.0, 20.0, 0.5, 0.1), bird (50.0, 60.0, 0.4, 0.2)], [hawk (180.0, 4.0)])
     after = Probes::postStore (started, store, frameEvent ())
-    expect (length (fieldShapes after), 11))
+    expect (length (fieldShapes after), 11)
+    // Zoom 0: the 320 by 200 field grows and shrinks with the window rather than sitting at one pixel a unit.
+    expect (Doc::decimal (fieldNode after, "zoom"), 0.0)
+    expect (Doc::decimal (fieldNode after, "width"), 320.0)
+    expect (Doc::decimal (fieldNode after, "height"), 200.0))
 
 test ("a completed scores read fills the best-score slice and drops zero rounds", \() =>
     started = Probes::started ()

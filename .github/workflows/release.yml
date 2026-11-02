@@ -70,10 +70,6 @@ jobs:
       version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v7
-        # vscode-extension's lockfile links the shared profiler UI from the
-        # lspkit submodule.
-        with:
-          submodules: true
       - uses: actions/setup-node@v7
         with:
           node-version: '20'
@@ -123,10 +119,6 @@ jobs:
             os: windows-latest
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
 
       # ---- Linux + macOS: toolchain + C archives + stamped binary -------------
       - name: Build (Linux/macOS)
@@ -157,12 +149,6 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-openssl
             mingw-w64-ucrt-x86_64-sqlite3
-      # The language server mounts lspkit's profiler, whose build script
-      # generates its wire model with typeDiagram [PROF-LSP-HOST]. The
-      # Linux/macOS leg gets it from setup-osprey-compiler.
-      - name: Install typeDiagram (Windows)
-        if: runner.os == 'Windows'
-        uses: ./.github/actions/typediagram
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
@@ -518,16 +504,13 @@ jobs:
           - { os: windows-latest, target: win32-x64,   artifact: win32-x64 }
     steps:
       - uses: actions/checkout@v7
-        # The extension links the shared profiler UI from the lspkit submodule.
-        with:
-          submodules: true
       # The extension icon is copied from this LFS-stored logo; without it the
       # VSIX carries an LFS pointer the Marketplace rejects. The workbench assets
       # and lessons media are staged verbatim into the bundle, and both README
       # editor GIFs must be real bytes for verify-readme.mjs.
       - name: Fetch extension icon, README media and workbench assets
         shell: bash
-        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,vscode-extension/media/language-tour.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,vscode-extension/media/showcase.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
       - uses: actions/setup-node@v7
         with: { node-version: '20' }
       - uses: actions/download-artifact@v8
@@ -571,15 +554,6 @@ jobs:
             for (const c of m.components) if (c.expectedVersion) c.expectedVersion=v;
             fs.writeFileSync("vscode-extension/shipwright.json", JSON.stringify(m,null,2)+"\n");
           '
-      # npm, not make: this matrix includes a Windows runner. Mirrors the
-      # $(PROFILER_UI_BUILT) rule in scripts/make/config.mk; keep the
-      # typediagram version equal to its TYPEDIAGRAM_VERSION.
-      - name: Build the shared profiler UI (lspkit submodule)
-        shell: bash
-        run: |
-          npm --prefix lspkit/packages/lsp-profiler-ui ci
-          (cd lspkit && npx --yes --package typediagram@0.11.0 -c 'node scripts/typediagram/generate.mjs')
-          npm --prefix lspkit/packages/lsp-profiler-ui run compile
       - name: Install deps + stamp package.json
         working-directory: vscode-extension
         run: |

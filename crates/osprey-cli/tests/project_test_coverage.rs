@@ -365,15 +365,24 @@ fn assert_handler_rows(report: &serde_json::Value) {
 
 fn branch_project() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let root = handler_project("python_branch_lines")?;
-    write(&root.join("framework/src/reader.py"), "# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Reader\n__all__ = [\"choose\", \"unused\"]\ndef choose(flag):\n    if flag:\n        return 1\n    else:\n        return 2\ndef unused():\n    return 99\n");
-    write(&root.join("tests/main.py"), "# osprey: flavor=python\nfrom fixture import Reader\ndef main():\n    print(Reader.choose(True))\n");
+    write(&root.join("framework/src/reader.py"), "# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Reader\n__all__ = [\"choose\", \"unused\", \"pick\"]\ndef choose(flag):\n    if flag:\n        return 1\n    else:\n        return 2\ndef unused():\n    return 99\ndef pick(r):\n    match r:\n        case Success(value=v):\n            return v\n        case Error(message=m):\n            return m\n");
+    write(&root.join("tests/main.py"), "# osprey: flavor=python\nfrom fixture import Reader\ndef main():\n    print(Reader.choose(True))\n    print(Reader.pick(Success(value=\"3\")))\n");
     Ok(root)
 }
 
 fn assert_branch_rows(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
     let (_, report) = covered_run(root, memory)?;
     let lines = file_lines(&report, "reader.py");
-    for row in [(5, 1), (6, 1), (7, 1), (9, 0), (10, 0), (11, 0)] {
+    for row in [
+        (5, 1),
+        (6, 1),
+        (7, 1),
+        (9, 0),
+        (10, 0),
+        (11, 0),
+        (15, 1),
+        (17, 0),
+    ] {
         assert!(
             lines.contains(&row),
             "missing branch/return {row:?}: {lines:?}"

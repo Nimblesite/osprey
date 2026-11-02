@@ -17,7 +17,7 @@
 mod tests {
     use crate::test_support::mentions_inference_name;
     use crate::test_support::symbols as symbols_of;
-    use lspkit_vfs::PositionEncoding;
+    use lspkit::vfs::PositionEncoding;
 
     const U16: PositionEncoding = PositionEncoding::Utf16;
 

@@ -1,0 +1,127 @@
+// Implements [UI-MACHINE-VIEW] and [UI-MACHINE-SKINS]: a machine's view is a
+// typed node template, filled from the inputs and rendered to ordinary typed
+// nodes, so every host draws it unchanged.
+namespace ui
+
+(** Renders machine view templates and skins ([UI-MACHINE-VIEW]). *)
+module Templates
+    // ---- filling strings ----
+
+    pad2 n = padStart (toString n) 2 "0" ?: toString n
+
+    clock seconds =
+        total = floatToInt (floor seconds) ?: 0
+        minutes = intDiv total 60
+        "${pad2 minutes}:${pad2 (satSub total (satMul minutes 60))}"
+
+    percent fraction = toString (floatToInt (round (fraction * 100.0)) ?: 0)
+
+    // A number written without a trailing ".0".
+    short value =
+        whole = floatToInt value ?: 0
+        Pick::either (toFloat whole == value, toString whole, toString value)
+
+    argument (parts, i) = parseFloat (listGet parts i ?: "0") ?: 0.0
+
+    // `over:other:k:offset` is name / other * k + offset (offset when other is 0); `scale:k:offset` is name * k + offset.
+    measured (machine, name, parts) =
+        value = Machines::number (machine, name)
+        match listGet parts 0 ?: ""
+            "over" =>
+                below = Machines::number (machine, listGet parts 1 ?: "")
+                toString (Pick::either (below > 0.0, value / Pick::either (below > 0.0, below, 1.0) * argument (parts, 2), 0.0) + argument (parts, 3))
+            "scale" => toString (value * argument (parts, 1) + argument (parts, 2))
+            "count" => toString (toFloat (length (Machines::choicesOf (machine, name))) * argument (parts, 1) + argument (parts, 2))
+            "fit" => fitted (Machines::text (machine, name), parts)
+            "fixed" => fixed (value * Pick::either (length parts > 2, argument (parts, 2), 1.0) + argument (parts, 3), floatToInt (argument (parts, 1)) ?: 0)
+            "expo" => fixed (argument (parts, 2) * pow (argument (parts, 3) / Pick::either (argument (parts, 2) > 0.0, argument (parts, 2), 1.0), value), floatToInt (argument (parts, 1)) ?: 0)
+            _ => Machines::text (machine, name)
+
+    // `value` with exactly `digits` decimals, as `fixed:digits:k:offset` writes value × k + offset and `expo:digits:low:high` writes low × (high ÷ low)^value.
+    fixed (value, digits) =
+        scale = foldList (toList (range (0, digits)), 1, \(acc, _) => satMul acc 10)
+        units = floatToInt (round (value * toFloat scale)) ?: 0
+        whole = Pick::either (units < 0, 0 - units, units)
+        sign = Pick::either (units < 0, "-", "")
+        fraction = padStart (toString (satSub whole (satMul (intDiv whole scale) scale))) digits "0" ?: ""
+        Pick::either (digits <= 0, "${sign}${toString whole}", "${sign}${toString (intDiv whole scale)}.${fraction}")
+
+    // `fit:n` keeps the first n characters of a text input, ending with an ellipsis when cut.
+    fitted (text, parts) =
+        most = floatToInt (argument (parts, 1)) ?: 0
+        Pick::either (length text <= most, text, "${substring text 0 (satSub most 1) ?: text}…")
+
+    filtered (machine, name, filter) = match filter
+        "clock" => clock (Machines::number (machine, name))
+        "percent" => percent (Machines::number (machine, name))
+        "short" => short (Machines::number (machine, name))
+        _ => measured (machine, name, split filter ":" ?: [])
+
+    piece (machine, part) =
+        sides = split part "}}" ?: [part]
+        expr = split (listGet sides 0 ?: "") "|" ?: []
+        rest = join (Lists::slice (sides, 1, length sides)) "}}"
+        "${filtered (machine, listGet expr 0 ?: "", listGet expr 1 ?: "")}${rest}"
+
+    (** `{{name}}` and `{{name|filter}}` in `text` replaced by inputs; the filters are `clock` (m:ss) and `percent`. *)
+    export fill (machine, text) =
+        parts = split text "{{" ?: [text]
+        foldList (Lists::slice (parts, 1, length parts), listGet parts 0 ?: "", \(out, part) => out + piece (machine, part))
+
+    (** A measure's number: as written, or its `{{template}}` filled and read as numbers separated by spaces, which add, so `{{dx}} 140` is 140 moved by `dx`; a part that is not a number counts 0. *)
+    export measure (machine, m) = match m
+        Fixed x => x
+        Templated text => foldList (filterList (split (fill (machine, text)) " " ?: [], \part => part != ""), 0.0, \(sum, part) => sum + (parseFloat part ?: 0.0))
+
+    whole (machine, m) = floatToInt (round (measure (machine, m))) ?: 0
+
+    (** A template of `sort` with every member empty: no text, no children, always shown. *)
+    export bare sort = Template(tplSort = sort, tplWhen = Always, tplChildren = [], tplText = "", tplSymbol = "", tplTextRole = Body, tplButtonRole = Plain, tplTone = Primary, tplAxis = Vertical, tplEnabled = Always, tplLever = Fire(fireName = ""), tplChoices = "", tplSelected = "", tplValue = "", tplAmount = Fixed(fixedAt = 0.0), tplTotal = Fixed(fixedAt = 0.0), tplDetail = "", tplSource = "", tplAlt = "", tplWidth = Fixed(fixedAt = 0.0), tplHeight = Fixed(fixedAt = 0.0), tplRadius = Fixed(fixedAt = 0.0), tplGap = Fixed(fixedAt = 0.0), tplPadding = Fixed(fixedAt = 0.0), tplFill = "", tplInk = "", tplLine = "", tplAlign = "", tplCross = "", tplGrow = false, tplShadow = "", tplMarks = [])
+
+    // ---- skins [UI-MACHINE-SKINS] ----
+
+    (** The chosen skin: the one the `skin` input names, else the first, else a plain one. *)
+    export skin machine = match Lists::find (machine.machineSkins, \s => s.skinName == Machines::text (machine, "skin"))
+        Success s => s
+        Error _ => listGet machine.machineSkins 0 ?: Skin(skinName = "", skinTokens = [], skinBoard = Unboarded)
+
+    (** The chosen skin's tokens as a theme. *)
+    export theme machine = Theme(tokens = (skin machine).skinTokens, spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 180)
+
+    // ---- nodes ----
+
+    frameStyle (machine, node) =
+        pad = whole (machine, node.tplPadding)
+        style = Frames::plain
+        style(frameWidth = whole (machine, node.tplWidth), frameHeight = whole (machine, node.tplHeight), frameRadius = whole (machine, node.tplRadius), frameGap = whole (machine, node.tplGap), frameFill = node.tplFill, frameInk = node.tplInk, frameLine = node.tplLine, frameTop = pad, frameRight = pad, frameBottom = pad, frameLeft = pad, frameAlign = node.tplAlign, frameCross = node.tplCross, frameGrow = node.tplGrow, frameShadow = node.tplShadow)
+
+    childrenOf (machine, node) = Lists::flatten (mapList (node.tplChildren, \child => render (machine, child)))
+
+    said (machine, node) = fill (machine, node.tplText)
+
+    built (machine, node) = match node.tplSort
+        Stacked => Pick::either (node.tplAxis == Horizontal, Ui::row (childrenOf (machine, node)), Ui::column (childrenOf (machine, node)))
+        Worded => Ui::styled (said (machine, node), node.tplTextRole, node.tplTone)
+        Labelled => Ui::label (said (machine, node), node.tplSymbol)
+        Badged => Ui::badge (said (machine, node), node.tplSymbol, node.tplTone)
+        Pressed => Ui::action (said (machine, node), node.tplSymbol, node.tplButtonRole, Machines::holds (machine, node.tplEnabled), node.tplLever)
+        Picked => Ui::picker (said (machine, node), Machines::choicesOf (machine, node.tplChoices), fill (machine, node.tplSelected), node.tplLever)
+        Toggled => Ui::toggle (said (machine, node), Machines::flag (machine, node.tplValue), node.tplLever)
+        Metered => Ui::meter (said (machine, node), whole (machine, node.tplAmount), whole (machine, node.tplTotal), node.tplTone)
+        Progressing => Progress(label = said (machine, node), detail = fill (machine, node.tplDetail))
+        Pictured => Media::image (fill (machine, node.tplSource), fill (machine, node.tplAlt), whole (machine, node.tplWidth), whole (machine, node.tplHeight))
+        Blank => Ui::empty (node.tplSymbol, said (machine, node), fill (machine, node.tplDetail))
+        Framing => Ui::framed (frameStyle (machine, node), Ui::column (childrenOf (machine, node)))
+        Drawn => Ui::scene (measure (machine, node.tplWidth), measure (machine, node.tplHeight), [], Lists::flatten (mapList (node.tplMarks, \m => Canvases::primitives (machine, m))), node.tplLever)
+        Divided => Divider
+        Spaced => Spacer
+
+    (** The node a template renders to with the machine's inputs, or none when its `when` fails. *)
+    export render (machine, node) = match Machines::holds (machine, node.tplWhen)
+        true => [built (machine, node)]
+        false => []
+
+    (** The machine's whole view in its chosen skin: the skin's canvas artboard when it has one, else the native view template themed by the skin. *)
+    export view machine = match (skin machine).skinBoard
+        Unboarded => Ui::themed (theme machine, Ui::column (render (machine, machine.machineView)))
+        Boarded w h zoom atlas marks _ => Canvases::artboard (machine, zoom, w, h, atlas, marks)

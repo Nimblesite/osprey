@@ -345,7 +345,15 @@ impl<'s> Lowerer<'s> {
 fn reserved(name: &str) -> bool {
     matches!(
         name,
-        "perform" | "resume" | "update" | "spawn" | "await_fiber" | "yield_fiber" | "send" | "recv"
+        "perform"
+            | "resume"
+            | "update"
+            | "unwrap_or"
+            | "spawn"
+            | "await_fiber"
+            | "yield_fiber"
+            | "send"
+            | "recv"
     )
 }
 

@@ -16,7 +16,7 @@ Before 2026-10-31 the workbench had its own English-sentence proof document (`Th
 
 ## Layout [WORKBENCH-LAYOUT]
 
-The application lives at [`apps/workbench/`](../../../apps/workbench/README.md), ML flavor, namespace `workbench`, source roots `["src", "../../packages/native/src"]`.
+The application lives at [`apps/workbench/`](../../../apps/workbench/README.md), ML flavor, namespace `workbench`, source roots `src`, the shared `@osprey/native`, `graphics`, `json` and `vscode` packages, and the proof kernel sources under `examples/proof/kernel/src/` ([`osprey.toml`](../../../apps/workbench/osprey.toml)).
 
 | Path | Module | Owns |
 | --- | --- | --- |

@@ -1,0 +1,82 @@
+// The Prism skin given room ([UI-MACHINE-CANVAS], [UI-MACHINE-FLOW-SKINS]): a window larger than
+// the design keeps every control its size, moves the inspector and the header's undo right and the
+// legend down by the room it spares, and leaves the graph's nodes where they were, so the room is
+// more grid; a window smaller than the design spares none.
+namespace signalflowtests
+
+import ui::Canvases
+import uitest::Drive
+import uitest::Semantics
+
+viewed (width, height) = post (Drive::viewed (driven, width, height))
+
+widthOf label = (element label).accessWidth
+
+// The backdrop's pieces: atlas entries 11 to 14 after the grid, the icons and the nodes.
+pieceAt name = spriteAt (11 + (ui::Lists::position (["header", "tools", "inspector", "legend"], \n => n == name)))
+
+// Where the inspector's switch, the filter's switch and the skin menu sit at the design size, and how wide the switch is.
+type Places =
+    inspector : float
+    inspectorTop : float
+    node : float
+    menu : float
+    switchWidth : float
+
+places () = Places(inspector = leftOf "Inspector bypass: Bypass Filter", inspectorTop = topOf "Inspector bypass: Bypass Filter", node = leftOf "Bypass Filter", menu = leftOf "Skin: Prism", switchWidth = widthOf "Inspector bypass: Bypass Filter")
+
+// The inspector `dx` right of the design, the node and menu where they were, nothing resized.
+placedBy (at, dx) =
+    near (leftOf "Inspector bypass: Bypass Filter" - at.inspector, dx)
+    near (topOf "Inspector bypass: Bypass Filter", at.inspectorTop)
+    near (widthOf "Inspector bypass: Bypass Filter", at.switchWidth)
+    near (leftOf "Bypass Filter", at.node)
+    near (leftOf "Skin: Prism", at.menu)
+
+grown () =
+    begun "prism"
+    at = places ()
+    knobNumber ("spareWidth", 0.0)
+    viewed (1936.0, 1128.0)
+    knobNumber ("viewWidth", 1936.0)
+    knobNumber ("viewHeight", 1128.0)
+    knobNumber ("spareWidth", 400.0)
+    knobNumber ("spareHeight", 300.0)
+    placedBy (at, 400.0)
+    near (listGet (pieceAt "inspector") 1 ?: 0.0, 1773.0)
+    near (listGet (pieceAt "tools") 1 ?: 0.0, 1708.0)
+    near (listGet (pieceAt "legend") 2 ?: 0.0, 1108.5)
+    near (listGet (pieceAt "header") 1 ?: 0.0, 540.0)
+    knobText ("selected", "process")
+
+// The moved inspector answers where it now is, and so does the undo it reveals in the header.
+grownControls () =
+    tap "Inspector bypass: Bypass Filter"
+    flag ("processOn", false)
+    tap "Inspector bypass: Enable Filter"
+    flag ("processOn", true)
+    near (leftOf "Undo", 1508.0)
+    tap "Undo"
+    flag ("processOn", false)
+    tap "Inspector bypass: Enable Filter"
+    flag ("processOn", true)
+    tapAt ("Filter Cutoff", 0.25)
+    knobNumber ("process", 0.25)
+    pointer (1600.0, 900.0, true)
+    pointer (1600.0, 900.0, false)
+    knobText ("selected", "process")
+
+// A window resized again moves the panels with it; one smaller than the design spares nothing.
+shrunk () =
+    at = places ()
+    viewed (1636.0, 900.0)
+    knobNumber ("spareWidth", 100.0)
+    knobNumber ("spareHeight", 72.0)
+    placedBy (at, -300.0)
+    viewed (1000.0, 600.0)
+    knobNumber ("spareWidth", 0.0)
+    knobNumber ("spareHeight", 0.0)
+    placedBy (at, -400.0)
+    viewed (1536.0, 828.0)
+    knobNumber ("spareWidth", 0.0)
+    near (listGet (pieceAt "inspector") 1 ?: 0.0, 1373.0)

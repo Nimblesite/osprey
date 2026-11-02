@@ -1,0 +1,11 @@
+ok 1 - parse reads complete documents and falls back to null for malformed input
+ok 2 - field and has distinguish absent members from present null and reject non-objects
+ok 3 - typed member readers return values only for their kinds and neutral values otherwise
+ok 4 - kind and real and string handle every JSON variant including numeric widening
+ok 5 - items and at traverse arrays totally across empty negative and out-of-range cases
+ok 6 - members and keys preserve object order and return none for other kinds
+ok 7 - texts maps arrays member-wise and substitutes empty strings for wrong element kinds
+ok 8 - member and array builders compose into exact compact JSON
+ok 9 - a realistic nested document survives reading rebuilding and writing without losing types
+1..9
+# tests=9 passed=9 failed=0 skipped=0

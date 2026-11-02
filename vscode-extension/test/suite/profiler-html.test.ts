@@ -45,10 +45,13 @@ const SUMMARY: ProfileSummary = {
 };
 
 /** The document the flame panel shows for `model` and `summary`. */
-const panelHtml = (summary: ProfileSummary = SUMMARY, model = buildFlameModel(DOC)): string =>
+const panelHtml = (summary: ProfileSummary = SUMMARY, model = buildFlameModel(DOC)): Promise<string> =>
   buildFlamegraphHtml(nativeProfileResult(model, summary));
 
-const html = panelHtml();
+let html = "";
+suiteSetup(async () => {
+  html = await panelHtml();
+});
 
 /** The document's CSP nonce, which its style and script must carry. */
 function nonceOf(document: string): string {
@@ -81,8 +84,8 @@ suite("flame panel document structure", () => {
     assertHardened(html, "the flame panel");
   });
 
-  test("every document gets a fresh nonce", () => {
-    assert.notStrictEqual(nonceOf(panelHtml()), nonceOf(panelHtml()));
+  test("every document gets a fresh nonce", async () => {
+    assert.notStrictEqual(nonceOf(await panelHtml()), nonceOf(await panelHtml()));
   });
 
   test("embeds the model as a JSON blob with < escaped", () => {
@@ -104,10 +107,10 @@ function chipsShowOnCpuShare(): void {
 // The model only builds fibers that produced samples ("alpha", "beta"); the
 // summary interleaves an idle zero-sample row. Chip indices must stay aligned
 // with model.fibers, or clicking "beta" selects the wrong fiber.
-function idleFibersShiftNoChip(): void {
+async function idleFibersShiftNoChip(): Promise<void> {
   const profile = DOC.profiles[0];
   const model = buildFlameModel({ shared: DOC.shared, profiles: [{ ...profile, name: "alpha" }, { ...profile, name: "beta" }] });
-  const withIdleRow = panelHtml({ ...SUMMARY, fibers: [
+  const withIdleRow = await panelHtml({ ...SUMMARY, fibers: [
     { id: 0, label: "alpha", samples: 80, oncpuSamples: 40 },
     { id: 1, label: "idle", samples: 0, oncpuSamples: 0 },
     { id: 2, label: "beta", samples: 20, oncpuSamples: 20 },
@@ -124,8 +127,8 @@ suite("flame panel header and fiber controls", () => {
   });
   test("per-fiber chips show on-CPU share; unsampled fibers get no chip", chipsShowOnCpuShare);
   test("a zero-sample fiber row between sampled ones does not shift chip indices", idleFibersShiftNoChip);
-  test("a fiber label is HTML-escaped in its chip", () => {
-    const hostile = panelHtml({ ...SUMMARY, fibers: [{ id: 0, label: 'fib<&>"osp', samples: 10, oncpuSamples: 5 }] });
+  test("a fiber label is HTML-escaped in its chip", async () => {
+    const hostile = await panelHtml({ ...SUMMARY, fibers: [{ id: 0, label: 'fib<&>"osp', samples: 10, oncpuSamples: 5 }] });
     assert.ok(hostile.includes('data-fiber="0">fib&lt;&amp;&gt;&quot;osp · 50% on-CPU'));
   });
   test("the fiber select lists each speedscope profile by name", () => {

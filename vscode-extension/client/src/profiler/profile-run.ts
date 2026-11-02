@@ -117,14 +117,14 @@ function appendProcessOutput(
   output.appendLine(`Profiler process exited with code ${result.exitCode}`);
 }
 
-function finishRun(
+async function finishRun(
   result: ExecResult,
   tmpDir: string,
   sourcePath: string,
   output: vscode.OutputChannel,
   heat: HeatDecorationManager,
   remember: (run: LastRun) => void,
-): boolean {
+): Promise<boolean> {
   const loaded = loadArtifacts(artifactPaths(tmpDir, sourcePath));
   if (!loaded.ok) {
     output.appendLine(loaded.error);
@@ -135,7 +135,7 @@ function finishRun(
   output.appendLine(formatSummaryHeader(loaded.value.summary));
   output.appendLine(`Profile artifacts kept in ${tmpDir}`);
   remember({ ...loaded.value, sourcePath, artifacts: artifactPaths(tmpDir, sourcePath) });
-  showFlamePanel(loaded.value.model, loaded.value.summary, sourcePath, artifactPaths(tmpDir, sourcePath));
+  await showFlamePanel(loaded.value.model, loaded.value.summary, sourcePath, artifactPaths(tmpDir, sourcePath));
   heat.apply(loaded.value.summary);
   return true;
 }
@@ -244,14 +244,14 @@ export function registerProfilerCommands(
         lastRun = run;
       }),
     ),
-    vscode.commands.registerCommand(ids.openLast, () => {
+    vscode.commands.registerCommand(ids.openLast, async () => {
       if (lastRun === undefined) {
         void vscode.window.showInformationMessage(
           'No profile captured yet — run "Osprey: Profile Current File" first.',
         );
         return false;
       }
-      showFlamePanel(lastRun.model, lastRun.summary, lastRun.sourcePath, lastRun.artifacts);
+      await showFlamePanel(lastRun.model, lastRun.summary, lastRun.sourcePath, lastRun.artifacts);
       return true;
     }),
   );

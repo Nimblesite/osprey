@@ -1,5 +1,5 @@
-# Graphics: settings and the platform hosts behind `make graphics` and
-# `make graphics-smoke`, which the root Makefile documents.
+# Graphics: settings and the platform hosts behind `make -C apps graphics` and
+# `make -C apps graphics-smoke`, which the root Makefile documents.
 GFX_DIR := examples/graphics
 GFX_WARN ?= -Wall -Werror
 SCENE ?= kali
@@ -28,7 +28,7 @@ GFX_OUT := target/gfx
 ifeq ($(MSYSTEM),)
 # Native PowerShell has neither bash for the recipes below nor a MinGW cc.
 _graphics _graphics-shader _graphics-smoke:
-	@Write-Host "make graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
+	@Write-Host "make -C apps graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
 else
 $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h $(GFX_DIR)/ospgfx_abi.h
 	@echo "==> building Osprey -> Direct3D 12 graphics bridge"
@@ -147,3 +147,23 @@ _website-build: $(WEBSITE_NODE_DEPS)
 _test_bench_tools:
 	@echo "==> Bench tooling tests..."
 	python3 benchmarks/test_merge_results.py
+
+## _gpui-self-test: Every desktop app's self-test.json, the script the WinUI host runs in a real
+##                  window, on the GPUI host. Without a window by default; GPUI_WINDOW= opens one.
+##                  [UI-MACHINE-SELF-TEST]
+.PHONY: _gpui-self-test
+GPUI_WINDOW ?= --headless
+GPUI_SCRIPTED := hosts/gpui:hosts/gpui/probe examples/gpui/flock:examples/gpui/flock examples/gpui/painting:examples/gpui/painting packages/signal_flow/app:packages/signal_flow/app examples/casting:examples/casting
+_gpui-self-test: _gpui-apps
+	for pair in $(GPUI_SCRIPTED); do \
+		app=$${pair%%:*}; script=$${pair##*:}; \
+		OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --self-test "$(CURDIR)/$$script/self-test.json" "$(CURDIR)/target/gpui-self-test/$$(basename $$script)" $(GPUI_WINDOW) || exit 1; \
+	done
+
+## _ui-test: The UI test framework's own suite and the apps it drives by accessible
+##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]
+.PHONY: _ui-test
+UI_SUITES := packages/uitest/tests examples/casting/test packages/signal_flow/tests examples/synth/test
+_ui-test: _runtime
+	cargo build --release -p osprey-cli
+	for suite in $(UI_SUITES); do $(BIN) test $$suite || exit 1; done

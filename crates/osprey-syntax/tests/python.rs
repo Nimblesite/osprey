@@ -40,6 +40,30 @@ fn python_routing_preserves_explicit_selection_and_marker_conflicts() {
         resolve_flavor(Some(python()), "model.osp", header),
         Ok(python())
     );
+    // [FLAVOR-SELECT]: only leading comments and blank lines may precede a
+    // marker, so a marker-shaped line after code is ordinary text, not a
+    // selection that contradicts the extension.
+    assert_eq!(
+        resolve_flavor(None, "notes.osp", "let x = 1\n// osprey: flavor=ml\n"),
+        Ok(Flavor::Default)
+    );
+    assert_eq!(
+        resolve_flavor(None, "model.txt", "x = 1\n# osprey: flavor=python\n"),
+        Ok(Flavor::Default)
+    );
+    assert_eq!(
+        resolve_flavor(None, "a.txt", "/// Doc.\n\n// osprey: flavor=ml\nx = 1\n"),
+        Ok(Flavor::Ml)
+    );
+    // Python markers use `#`; Default and ML keep `//`.
+    assert_eq!(
+        resolve_flavor(None, "a.txt", "# osprey: flavor=ml\n"),
+        Ok(Flavor::Default)
+    );
+    assert_eq!(
+        resolve_flavor(None, "a.txt", "// osprey: flavor=python\n"),
+        Ok(Flavor::Default)
+    );
 }
 
 #[test]
@@ -576,6 +600,37 @@ fn python_rejects_bindings_that_shadow_builtin_renames() {
             "missing shadow diagnostic: {:?}",
             parsed.errors
         );
+    }
+}
+
+#[test]
+fn python_rejects_rebinding_every_reserved_intrinsic() {
+    // [FLAVOR-PYTHON-EXPRESSIONS]: call sites dispatch these names to the
+    // frontend intrinsic first, so a user binding or `def` would never run.
+    for name in [
+        "perform",
+        "resume",
+        "update",
+        "unwrap_or",
+        "spawn",
+        "await_fiber",
+        "yield_fiber",
+        "send",
+        "recv",
+    ] {
+        for source in [
+            format!("{name} = 5\n"),
+            format!("def {name}(x):\n    return x\n"),
+        ] {
+            let parsed = parse(&source);
+            assert!(
+                parsed.errors.iter().any(
+                    |error| error.message == format!("`{name}` is a reserved Osprey intrinsic")
+                ),
+                "silently accepted {source}: {:?}",
+                parsed.errors
+            );
+        }
     }
 }
 

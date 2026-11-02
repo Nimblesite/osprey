@@ -4,6 +4,9 @@
 namespace workbench
 
 import ui::Ui
+import ui::Editors
+import ui::Media
+import ui::Maths
 import ui::Frames
     plain
     text
@@ -105,7 +108,7 @@ module WorkViews
 
     footer () = Ui::framed (plain(frameName = "app-footer", frameAlign = "center", frameFont = "sans", frameTextSize = 11, frameHeight = 43, frameLine = "divider", frameLineEdge = "top", frameLeft = 26, frameRight = 26), Ui::row [Ui::caption "Your working stays yours. Checked proofs are marked by the kernel.", ui::Spacer, Ui::link ("Built with Osprey", "https://ospreylang.dev/")])
 
-    about () = Ui::section ("Built with Osprey", "Explore the language behind the workbench.", [Ui::image ("osprey-logo.png", "Osprey", 64, 64), Ui::link ("Osprey website", "https://ospreylang.dev/"), Ui::link ("Language documentation", "https://ospreylang.dev/docs/"), Ui::link ("Workbench source", "https://github.com/Nimblesite/osprey/tree/main/apps/workbench")])
+    about () = Ui::section ("Built with Osprey", "Explore the language behind the workbench.", [Media::image ("osprey-logo.png", "Osprey", 64, 64), Ui::link ("Osprey website", "https://ospreylang.dev/"), Ui::link ("Language documentation", "https://ospreylang.dev/docs/"), Ui::link ("Workbench source", "https://github.com/Nimblesite/osprey/tree/main/apps/workbench")])
 
     surface current = match inspectingLibrary current
         true => librarySurface ()
@@ -179,7 +182,7 @@ module WorkViews
         true => check.checkHead
         false => check.checkLine
 
-    marked check = Ui::mark (satAdd (rowOf check) 1, check.checkLine >= 0, toneOf check.checkTone, badgeOf check.checkTone, check.checkNote)
+    marked check = Editors::mark (satAdd (rowOf check) 1, check.checkLine >= 0, toneOf check.checkTone, badgeOf check.checkTone, check.checkNote)
 
     (** [WORKBENCH-VERDICT] The document as an editor, each declaration marked with the kernel's verdict on its line. *)
     export document () =
@@ -197,7 +200,7 @@ module WorkViews
         false => solutionDocument text
         true => Ui::framed (plain(frameName = "solution-reading", frameGap = 24), Ui::column [Ui::styled ("YOUR SOLUTION", ui::Eyebrow, ui::Secondary), Ui::styled (text.draftTitle, ui::Display, ui::Primary), Ui::badge ("Unchecked", "", ui::Secondary), Ui::styled (text.draftText, ui::Lead, ui::Primary)])
 
-    solutionDocument text = Ui::framed (plain(frameName = "solution", frameGap = 24), Ui::column [Ui::styled ("YOUR SOLUTION", ui::Eyebrow, ui::Secondary), Ui::framed (plain(frameName = "solution-title"), Ui::field ("Solution title", text.draftTitle, "Untitled solution", Rename)), Ui::row [Ui::badge ("Unchecked", "", ui::Secondary), Ui::caption "Free-form working"], Ui::framed (plain(frameName = "solution-editor", frameHeight = 360, frameLine = "divider", frameRadius = 3), Ui::editor ("Argument & calculations", text.draftText, text.caret, mapList ((perform Signal<Reviewed>.read ()).checks, \check => marked check), Edit, Place)), Ui::caption "Your written working stays as you left it."])
+    solutionDocument text = Ui::framed (plain(frameName = "solution", frameGap = 24), Ui::column [Ui::styled ("YOUR SOLUTION", ui::Eyebrow, ui::Secondary), Ui::framed (plain(frameName = "solution-title"), Ui::field ("Solution title", text.draftTitle, "Untitled solution", Rename)), Ui::row [Ui::badge ("Unchecked", "", ui::Secondary), Ui::caption "Free-form working"], Ui::framed (plain(frameName = "solution-editor", frameHeight = 360, frameLine = "divider", frameRadius = 3), Editors::editor ("Argument & calculations", text.draftText, text.caret, mapList ((perform Signal<Reviewed>.read ()).checks, \check => marked check), Edit, Place)), Ui::caption "Your written working stays as you left it."])
 
     proofTitle statement = match statement.name == "and_swap"
         true => "Commutativity of conjunction"
@@ -256,7 +259,7 @@ module WorkViews
 
     stepEntry (draft, result) = match complete result && draft.selectedStep < 0
         true => Ui::framed (plain(frameName = "proof-completion", frameTop = 0, frameGap = 0, frameFont = "sans", frameTextSize = 13, frameLineHeight = 16.0), Ui::column [Ui::framed (plain(frameHug = true, frameInk = "accent", frameControlHeight = 34, frameTrailingSymbols = true, frameQuietControls = true, frameControlPadding = 0), Ui::button ("Start the example again", "arrow.right", RestartExample)), Ui::framed (plain(frameTop = 24), ui::Divider), Ui::framed (plain(frameTop = 16), Ui::caption "Draft goals complete. The kernel verdict is shown above.")])
-        false => Ui::framed (plain(frameTop = 0), Ui::framed (plain(frameName = "proof-step-editor", frameFont = "serif", frameTextSize = documentSize (24, 18), frameHeight = documentSize (56, 49), frameFill = entryFill result, frameLine = entryLine result, frameLineEdge = "bottom", frameLeft = 9, frameRight = 8, frameGap = 7, frameRadius = 3, frameAlign = "center"), Ui::row [Ui::framed (plain(frameWidth = 22, frameFont = "sans", frameTextSize = 13), Ui::caption (entryNumber draft)), Ui::inlineEditor ("Write the next step…", Drafts::editableText draft, Drafts::entryCaret draft, StepEdit, StepPlace), iconButton ("Continue proof", "arrow.right", NextProofLine)]))
+        false => Ui::framed (plain(frameTop = 0), Ui::framed (plain(frameName = "proof-step-editor", frameFont = "serif", frameTextSize = documentSize (24, 18), frameHeight = documentSize (56, 49), frameFill = entryFill result, frameLine = entryLine result, frameLineEdge = "bottom", frameLeft = 9, frameRight = 8, frameGap = 7, frameRadius = 3, frameAlign = "center"), Ui::row [Ui::framed (plain(frameWidth = 22, frameFont = "sans", frameTextSize = 13), Ui::caption (entryNumber draft)), Editors::inline ("Write the next step…", Drafts::editableText draft, Drafts::entryCaret draft, StepEdit, StepPlace), iconButton ("Continue proof", "arrow.right", NextProofLine)]))
 
     initialStepHelp (draft, found) = match (layout ()).guided && draft.selectedStep < 0 && isEmpty (Steps::sentences found.proof) && Formulas::show found.statement.claim == "p ∧ q → q ∧ p"
         false => Ui::column []
@@ -316,7 +319,7 @@ module WorkViews
 
     italicWord (word, names) = listContains (names, trim (replace (replace word "." "" ?: word) ":" "" ?: word))
 
-    export shown formula = Ui::math (Formulas::typeset formula, Formulas::show formula)
+    export shown formula = Maths::typeset (Formulas::typeset formula, Formulas::show formula)
 
     outcome found = match found
         Stuck failure => match failure

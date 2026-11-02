@@ -201,6 +201,14 @@ module Runtime
         JsonMember "theme" out.themeJson,
     ]))
 
+    (** Runs `work` with integer faults resolved for an application's C boundary: an overflow keeps the wrapped result and a division by zero its dividend. Interface arithmetic is counters, clocks and coordinates, none near the limits. *)
+    export guarded work =
+        handle Arith
+            overflow _ _ _ wrapped => wrapped
+            divideByZero _ dividend => dividend
+            remainderByZero _ => 0
+        work ()
+
     (** [UI-RESIDENT] A session holding `store` before `begin` has run, for the cell an application keeps its live session in. *)
     export idle<S> : S -> Session<S>
     idle store = Session(sessionContext = context JsonNull, sessionStore = store, sessionFrames = [])

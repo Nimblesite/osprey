@@ -13,7 +13,7 @@ const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
 const proofVideos = require("../src/_data/proofVideos.js");
 const proofWatch = (id) => `/docs/proofs/videos/${id}/`;
-const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/", "/docs/packages-in-vscode/", ...proofVideos.map(({ id }) => proofWatch(id))];
+const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/", "/docs/tutorials/chromecast-from-mac/", "/docs/tutorials/static-typing-python/", "/docs/tutorials/ui-testing-by-label/", "/docs/tutorials/rust-ui-framework-without-rust/", "/docs/packages-in-vscode/", ...proofVideos.map(({ id }) => proofWatch(id))];
 const read = (file) => fs.readFileSync(path.join(SITE, file), "utf8");
 const jsonLd = (html) =>
   [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
@@ -158,7 +158,7 @@ for (const width of [390, 1440]) {
     await expect(player).toBeVisible();
     await expect(player).toHaveAttribute("poster", "/assets/videos/osprey-showcase-poster.jpg");
     await expect(player.locator("source")).toHaveAttribute("src", "/assets/videos/osprey-showcase.mp4");
-    await expect(player).toHaveAttribute("aria-label", /web, Android, iPhone, macOS/);
+    await expect(player).toHaveAttribute("aria-label", /web, Android, iPhone, macOS, Windows/);
     await player.evaluate((video) => video.play());
     await expect.poll(() => player.evaluate((video) => video.currentTime)).toBeGreaterThan(0.5);
     expect(await player.evaluate((video) => video.videoWidth)).toBe(1920);

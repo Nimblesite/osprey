@@ -70,5 +70,10 @@ ok 69 - presentation frames explicitly disable viewport sizing by default
 ok 70 - presentation frames preserve exact dimensions and inner control provenance
 ok 71 - scoped themes and dialogs retain their inner controls and dismissal provenance
 ok 72 - inline text retains mathematical emphasis and semantic source colours without bindings
-1..72
-# tests=72 passed=72 failed=0 skipped=0
+ok 73 - machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering
+ok 74 - native machine views render ordinary controls and preserve every host value kind
+ok 75 - broken machine documents name every JSON path and faulty machines remain renderable
+ok 76 - real machine documents render every skin and drive pointers sliders drags menus room and native lettering
+ok 77 - machine edge cases cover every template variant fault cycle request payload and pointer state
+1..77
+# tests=77 passed=77 failed=0 skipped=0

@@ -8,7 +8,7 @@ Compiler and language rules are separate from integration tooling. See [Editor i
 
 ## Architecture `[LSP-ENGINE]`
 
-The server uses the [`lspkit`](https://github.com/Nimblesite/lspkit) crates from the pinned `lspkit/` submodule, sharing its maintained file-watcher dependencies. One `EngineApi` implementation owns the open-document state and supplies the analysis queries consumed by the stdio LSP server.
+The server uses the [`lspkit`](https://github.com/Nimblesite/lspkit) crates published on crates.io. One `EngineApi` implementation owns the open-document state and supplies the analysis queries consumed by the stdio LSP server.
 
 ```mermaid
 flowchart LR
@@ -19,8 +19,8 @@ flowchart LR
   subgraph server["crates/osprey-lsp"]
     lsp["osprey lsp"]
     engine["OspreyEngine<br/>lspkit::EngineApi"]
-    vfs["lspkit-vfs<br/>rope documents"]
-    live["lspkit-live<br/>Session / generation"]
+    vfs["lspkit::vfs<br/>rope documents"]
+    live["lspkit_server::live<br/>Session / generation"]
     syntax["osprey_syntax::parse_program"]
     types["osprey_types::check_program"]
 
@@ -41,15 +41,13 @@ Consumed crates:
 
 | Crate           | Used for                                                                                         |
 | --------------- | ------------------------------------------------------------------------------------------------ |
-| `lspkit`        | `EngineApi` trait + neutral types.                                                               |
-| `lspkit-server` | JSON-RPC framing, `Dispatcher`, and `DiagnosticsBus`/`DiagnosticsSink`.                         |
-| `lspkit-vfs`    | Open-document store, rope incremental edits, position measurement.                              |
-| `lspkit-live`   | `Session` generation counter + broadcast.                                                        |
+| `lspkit`        | `EngineApi` trait, neutral types, and `vfs`: the open-document store, rope incremental edits and position measurement. |
+| `lspkit-server` | JSON-RPC framing, `Dispatcher`, `DiagnosticsBus`/`DiagnosticsSink`, and `live`: the `Session` generation counter and broadcast. |
 
 ### Shared `lspkit` services `[LSP-REUSE-LSPKIT]`
 
 Editor-neutral functionality MUST NOT be re-implemented in `osprey-lsp`; it
-comes from `lspkit-*`. The remaining word-at-position, occurrence, and position
+comes from the `lspkit` crates. The remaining word-at-position, occurrence, and position
 measurement helpers are isolated in
 [`crates/osprey-lsp/src/text.rs`](../../../crates/osprey-lsp/src/text.rs).
 

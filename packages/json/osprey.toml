@@ -1,0 +1,13 @@
+[project]
+name = "json"
+source_roots = ["src"]
+default_namespace = "ui"
+
+[package]
+name = "@osprey/json"
+license = "MIT"
+summary = "Total readers and member builders over Osprey's built-in Json value"
+keywords = ["doc", "json", "ui"]
+
+[modules]
+allow_wildcard_imports = false

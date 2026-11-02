@@ -1,0 +1,72 @@
+// The JSON edge of @osprey/uitest ([UI-MACHINE-TEST]): a host envelope or a
+// rendered node tree decoded once into typed records. Nothing past this
+// module reads JSON.
+namespace uitest
+
+import ui::Doc
+import ui::MachineDocs
+import ui::Pick
+
+(** One rendered node: its kind, accessible label, text, title, tone, selected key, event ordinal, whether it is enabled and its choices' keys. *)
+type Control =
+    controlKind : string
+    controlLabel : string
+    controlText : string
+    controlTitle : string
+    controlTone : string
+    controlSelected : string
+    controlOrdinal : int
+    controlEnabled : bool
+    controlChoices : List<string>
+
+(** What a host last saw: the root region's nodes, canvas lettering, curves and accessibility tree, the requests made, the root's revision and its own event ordinal. *)
+type Rendered =
+    renderedControls : List<Control>
+    renderedLetters : List<string>
+    renderedCurves : List<List<float>>
+    renderedAccess : List<ui::Accessible>
+    renderedRequests : List<string>
+    renderedRevision : int
+    renderedOrdinal : int
+
+(** Decodes what a native session sends its host ([UI-PROTOCOL]). *)
+module Read
+    (** Nothing seen yet. *)
+    export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedCurves = [], renderedAccess = [], renderedRequests = [], renderedRevision = 0, renderedOrdinal = 0)
+
+    // Every object in `doc`, itself first, in document order.
+    walked (out, doc) = match Doc::kind doc
+        "object" => foldList (Doc::keys doc, listAppend out doc, \(acc, key) => walked (acc, Doc::field (doc, key)))
+        "list" => foldList (Doc::items doc, out, walked)
+        _ => out
+
+    control n = Control(controlKind = Doc::text (n, "kind"), controlLabel = Doc::text (n, "label"), controlText = Doc::text (n, "text"), controlTitle = Doc::text (n, "title"), controlTone = Doc::text (n, "tone"), controlSelected = Doc::text (n, "selected"), controlOrdinal = Doc::number (n, "event"), controlEnabled = Doc::flag (n, "enabled"), controlChoices = mapList (Doc::items (Doc::field (n, "choices")), \c => Doc::text (c, "key")))
+
+    // Shape code 6 is lettering; its text is the shape's second element ([UI-SCENE]).
+    lettering = 6
+
+    letters node = mapList (filterList (Doc::items (Doc::field (node, "shapes")), \s => Doc::real (Doc::at (s, 0)) == toFloat lettering), \s => Doc::string (Doc::at (s, 1)))
+
+    // Shape code 5 is a path; one that moves to a point and runs a cubic curve (step code 3) to another is a curve between them, read as x1, y1, x2, y2.
+    path = 5
+
+    curve steps = [Doc::real (Doc::at (Doc::at (steps, 0), 1)), Doc::real (Doc::at (Doc::at (steps, 0), 2)), Doc::real (Doc::at (Doc::at (steps, 1), 1)), Doc::real (Doc::at (Doc::at (steps, 1), 2))]
+
+    curved s = Doc::real (Doc::at (s, 0)) == toFloat path && Doc::real (Doc::at (Doc::at (Doc::at (s, 1), 1), 0)) == 3.0
+
+    curves node = mapList (filterList (Doc::items (Doc::field (node, "shapes")), curved), \s => curve (Doc::at (s, 1)))
+
+    accessible e = ui::Accessible(accessRole = MachineDocs::roleOf (Doc::text (e, "role")), accessLabel = Doc::text (e, "label"), accessLeft = Doc::decimal (e, "x"), accessTop = Doc::decimal (e, "y"), accessWidth = Doc::decimal (e, "w"), accessHeight = Doc::decimal (e, "h"), accessValue = Doc::decimal (e, "value"), accessMin = Doc::decimal (e, "min"), accessMax = Doc::decimal (e, "max"), accessMovable = Doc::flag (e, "movable"))
+
+    seen (before, node, revision) = before(renderedControls = mapList (walked ([], node), control), renderedLetters = letters node, renderedCurves = curves node, renderedAccess = mapList (Doc::items (Doc::field (node, "access")), accessible), renderedRevision = revision, renderedOrdinal = Doc::number (node, "event"))
+
+    (** A rendered root node as JSON (`ui::Runtime::tree`), read as a host would. *)
+    export tree node = seen (blank (), node, 0)
+
+    patched (before, patch) = Pick::either (Doc::text (patch, "key") == "root", seen (before, Doc::field (patch, "node"), Doc::number (patch, "revision")), before)
+
+    (** A session's envelope text after `before`: a root patch replaces the view, and the requests are the envelope's own. *)
+    export envelope (before, text) =
+        doc = Doc::parse text
+        asked = before(renderedRequests = mapList (walked ([], Doc::field (doc, "requests")), \r => Doc::text (r, "kind")))
+        foldList (Doc::items (Doc::field (doc, "patches")), asked, patched)

@@ -11,7 +11,7 @@ enum CaptionFailure: LocalizedError {
     var errorDescription: String? { if case let .invalid(message) = self { message } else { nil } }
 }
 
-// Implements [LESSONS-FRAMEWORK]: bundled WebVTT is timed against playback,
+// Implements [UI-COMPONENTS-MEDIA]: bundled WebVTT is timed against playback,
 // and malformed or missing captions prevent an uncaptioned silent fallback.
 enum FilmCaptions {
     static func load(_ path: String) throws -> [FilmCue] {

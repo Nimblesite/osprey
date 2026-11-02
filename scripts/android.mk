@@ -3,7 +3,7 @@ ANDROID_RT_SRC ?= $(MOBILE_RT_SRC)
 # Which slice the corpus runs on: the attached device or emulator decides.
 ANDROID_GOLDEN_TARGET ?= android
 
-.PHONY: _runtime_android _runtime_android_arm64 _runtime_android_x64 android android-test _test_android_goldens
+.PHONY: _runtime_android _runtime_android_arm64 _runtime_android_x64 _android _android-test _test_android_goldens
 _runtime_android: _runtime_android_arm64 _runtime_android_x64
 _runtime_android_arm64: _runtime_android_arm64_arc
 	@bash scripts/android-runtime.sh aarch64-linux-android26 $(RTB)/libosprey_runtime_android_arm64.a $(B) -- $(ANDROID_RT_SRC)

@@ -117,6 +117,20 @@ fn replay(script: &str) -> Result<usize, String> {
     Ok(steps.len())
 }
 
+/// A session started at the C boundary with its requests answered, for a windowless self-test.
+pub(crate) fn started() -> Result<Regions, String> {
+    let now = clock()?;
+    let mut regions = Regions::new();
+    settle(&mut regions, now, start(now)?, &Expect::default())?;
+    Ok(regions)
+}
+
+/// One event sent through the C boundary, its envelope applied and its requests answered.
+pub(crate) fn dispatched(regions: &mut Regions, event: &str) -> Result<(), String> {
+    let next = envelope::parse(&Library::dispatch(regions.state(), event)?)?;
+    settle(regions, clock()?, next, &Expect::default())
+}
+
 /// Performs the same pre-window C boundary calls as the probe smoke.
 fn start(now: i64) -> Result<Envelope, String> {
     Library::init()?;
@@ -180,6 +194,12 @@ fn completion(now: i64, request: &Request) -> Result<String, String> {
             now,
             &request.ticket,
             "no such store entry",
+        )),
+        // Nothing is started: the program printed nothing and succeeded.
+        "run" => Ok(events::completed_ok(
+            now,
+            &request.ticket,
+            serde_json::json!({"status": 0, "stderr": ""}),
         )),
         kind => Err(format!(
             "unsupported capability {} under {}",
@@ -421,7 +441,7 @@ fn wire(now: i64) -> Result<(), String> {
 /// home folder and the arguments the application was opened with.
 fn launch_context(now: i64) -> Result<String, String> {
     let home = crate::home()?;
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let arguments = crate::self_test::app_arguments();
     // The probe reads the platform and ignores the offset, so the smoke run
     // reports UTC rather than take a dependency to resolve local time.
     Ok(events::start_context(
@@ -474,7 +494,7 @@ fn has_text(node: &Value, text: &str, substring: bool) -> bool {
 
 /// Everything held inside a node, so a walk never depends on where a container
 /// keeps its children.
-fn children(node: &Value) -> impl Iterator<Item = &Value> {
+pub(crate) fn children(node: &Value) -> impl Iterator<Item = &Value> {
     let inside: Vec<&Value> = match node {
         Value::Object(members) => members.values().collect(),
         Value::Array(items) => items.iter().collect(),

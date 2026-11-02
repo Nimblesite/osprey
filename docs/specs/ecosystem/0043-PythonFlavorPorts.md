@@ -40,7 +40,7 @@ Integers, booleans, strings, shapes and token ids compare exactly. Floats compar
 
 ## The suite — [PORT-SUITE]
 
-`crates/osprey-cli/tests/python_packages.rs` discovers every library with both `packages/<name>/osprey.toml` and `packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `packages/manager/` and run through `make registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
+`crates/osprey-cli/tests/python_packages.rs` discovers every library with both `packages/<name>/osprey.toml` and `packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `packages/manager/` and run through `make -C packages registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
 
 - exit successfully;
 - print exactly `expected_output.txt`: one `ok <case>` line per assertion and a final `N passed, 0 failed`;
@@ -52,7 +52,7 @@ Every name a module's `__all__` exports must be spelled somewhere in the suite's
 
 ## Individual source coverage — `[PKG-COVERAGE-GATE]`
 
-Every library has its own entry in `coverage-thresholds.json` under `projects.packages`, with a threshold of at least 90%. `make package-coverage` collects and checks each suite independently. A package's numerator and denominator include only its own `src/` lines reported by the compiler; tests, helpers and other packages cannot increase its result. This is source line coverage, not branch coverage or proof of correctness.
+Every library has its own entry in `coverage-thresholds.json` under `projects.packages`, with a threshold of at least 90%. `make -C packages package-coverage` collects and checks each suite independently. A package's numerator and denominator include only its own `src/` lines reported by the compiler; tests, helpers and other packages cannot increase its result. This is source line coverage, not branch coverage or proof of correctness.
 
 `scripts/package_coverage.py` requires a successful suite execution, a positive assertion count, zero failures and byte-for-byte matching `tests/expected_output.txt`. It rejects missing reports, omitted executable source files, malformed counts and results below the package's threshold. Collection binds the report to hashes of its source, suite, manifests and golden, so changed inputs or altered evidence require a new run. A failing suite remains a failure even when its measured coverage exceeds 90%.
 
@@ -78,6 +78,7 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/micrograd` | Karpathy's micrograd `Value` engine (add, mul, pow, relu, tanh, exp, backward) and `nn` (Neuron, Layer, MLP) against micrograd 0.1.0 and torch (548 oracle assertions) | shipped |
 | `@osprey/tiktoken` | byte-level BPE encoding, decoding and training | in progress |
 | `@osprey/tokenizers` | Hugging Face WordPiece, Unigram and WordLevel models, BERT normalizer, pre-tokenizers, decoders and the BERT template post-processor against tokenizers 0.23.3 (1006 oracle assertions) | shipped |
+| `@osprey/chromecast` | a CAST v2 sender: dns-sd discovery, protobuf framing, a heartbeat-answering TLS session, LAUNCH/LOAD and the media-status loop, against the reference stdlib sender script (201 oracle and scripted-device assertions) | shipped |
 | `@osprey/einops` | `rearrange`, `reduce`, `repeat` patterns | in progress |
 | `@osprey/sacrebleu` | BLEU (every smoothing method, effective order, multiple references), chrF2 and chrF++, the `none`/`13a`/`char` tokenizers, against sacrebleu 2.6.0 (3084 oracle assertions) | shipped |
 | `@osprey/rouge-score` | `RougeScorer` for rouge1/2/L/Lsum, its tokenizer and nltk's Porter stemmer, against rouge-score 0.1.2 (1137 oracle assertions) | shipped |

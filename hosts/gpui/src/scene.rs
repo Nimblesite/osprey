@@ -8,6 +8,8 @@ use serde_json::Value;
 use crate::host::HostView;
 use crate::render::{self, Ctx};
 
+pub mod access;
+pub mod atlas;
 mod decode;
 mod input;
 mod paint;
@@ -18,12 +20,18 @@ pub struct Decoded {
     pub revision: u64,
     width: f32,
     height: f32,
+    /// Window pixels per scene unit, whatever the window's size; 0 fits the scene to its region.
+    zoom: f32,
     shapes: Arc<Vec<Shape>>,
+    /// The sprite images the scene names, by atlas index ([UI-SCENE]).
+    atlas: Arc<Vec<String>>,
     has_rotation: bool,
     has_sprites: bool,
+    /// The accessibility tree a host announces over the scene ([UI-MACHINE-A11Y]).
+    access: Arc<Vec<access::Access>>,
 }
 
-/// A primitive in scene units; the painter applies the shared letterbox transform.
+/// A primitive in scene units; the painter applies the shared transform.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
     Rect {
@@ -72,6 +80,17 @@ pub enum Shape {
         paint: Paint,
         transform: Option<(f32, f32, f32)>,
         depth: f32,
+    },
+    /// A text run in the system font at a weight, anchored at its left (0), centre (1) or right (2).
+    Lettering {
+        text: String,
+        x: f32,
+        y: f32,
+        size: f32,
+        colour: u32,
+        depth: f32,
+        anchor: u8,
+        weight: f32,
     },
 }
 
@@ -132,37 +151,43 @@ impl Shape {
             | Self::Strip { depth, .. }
             | Self::Sprite { depth, .. }
             | Self::Glyphs { depth, .. }
+            | Self::Lettering { depth, .. }
             | Self::Path { depth, .. } => depth,
         }
     }
 }
 
-/// The uniform scale and centred origin shared by painting and pointer input.
+/// The scene's zoom and top-left origin, shared by painting and pointer input.
 #[derive(Clone, Copy)]
 pub struct Transform {
     origin: Point<Pixels>,
     scale: f32,
+    /// The region's width and height in scene units, which the application is told when they change.
+    viewed: (f32, f32),
 }
 
 impl Transform {
-    /// Fits the complete scene inside `bounds`, leaving any excess as letterbox; a zero-sized
-    /// scene is in window pixels, so its origin is the window's and its scale is one.
-    fn new(bounds: Bounds<Pixels>, width: f32, height: f32) -> Self {
-        if width == 0. {
-            return Self {
+    /// Places the scene's origin at the region's top left at its fixed `zoom`, so a larger window
+    /// shows more of the canvas and never resizes what is on it, or with zoom 0 as large as fits the
+    /// region whole. A zero-sized scene is in window pixels, so its origin is the window's.
+    fn new(bounds: Bounds<Pixels>, decoded: &Decoded) -> Self {
+        let (width, height) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+        let scale = match decoded.zoom == 0. {
+            true => (width / decoded.width).min(height / decoded.height),
+            false => decoded.zoom,
+        };
+        match decoded.width == 0. {
+            true => Self {
                 origin: Point::default(),
                 scale: 1.,
-            };
+                viewed: (width, height),
+            },
+            false => Self {
+                origin: bounds.origin,
+                scale,
+                viewed: (width / scale, height / scale),
+            },
         }
-        let scale =
-            (f32::from(bounds.size.width) / width).min(f32::from(bounds.size.height) / height);
-        let used = size(px(width * scale), px(height * scale));
-        let origin = bounds.origin
-            + point(
-                (bounds.size.width - used.width) / 2.,
-                (bounds.size.height - used.height) / 2.,
-            );
-        Self { origin, scale }
     }
 
     /// Whether scene units are window pixels, so paths need no extra transform.
@@ -227,16 +252,59 @@ fn diagnostics(view: &mut HostView, decoded: &Decoded) {
     if decoded.has_rotation {
         view.diagnose_once("scene rotation is not drawn yet".to_owned());
     }
-    if decoded.has_sprites {
-        view.diagnose_once("sprites draw as quads; the atlas is not loaded".to_owned());
+    if decoded.has_sprites && decoded.atlas.is_empty() {
+        view.diagnose_once("sprites draw as quads; the scene names no atlas".to_owned());
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode, Shape};
+    use super::{decode, Shape, Transform};
     use crate::ffi::Streamed;
+    use gpui_kit::{bounds, point, px, size};
     use serde_json::Value;
+
+    /// Zoom 0 grows and shrinks the scene to fit its region whole; a fixed zoom ignores the region
+    /// and a window-pixel scene stays in window pixels, and pointer input maps back through each.
+    #[test]
+    fn zoom_zero_fits_the_region_and_a_fixed_zoom_does_not() {
+        let region = |w: f32, h: f32| bounds(point(px(10.), px(20.)), size(px(w), px(h)));
+        let scene =
+            |json: &str| decode::decode(&serde_json::from_str(json).unwrap(), 1, &[]).unwrap();
+        let fit = scene(r#"{"width":200,"height":100,"zoom":0,"shapes":[]}"#);
+        let fixed = scene(r#"{"width":200,"height":100,"zoom":0.75,"shapes":[]}"#);
+        let pixels = scene(r#"{"width":0,"height":0,"shapes":[]}"#);
+        let cases = [
+            (&fit, 400., 400., 2.),
+            (&fit, 400., 100., 1.),
+            (&fit, 100., 900., 0.5),
+            (&fixed, 400., 400., 0.75),
+            (&fixed, 100., 50., 0.75),
+            (&pixels, 400., 400., 1.),
+        ];
+        for (decoded, w, h, scale) in cases {
+            let transform = Transform::new(region(w, h), decoded);
+            assert_eq!(transform.scale, scale);
+            let corner = transform.point(200., 100.);
+            let origin = if decoded.width == 0. {
+                (0., 0.)
+            } else {
+                (10., 20.)
+            };
+            assert_eq!(
+                corner,
+                point(px(origin.0 + 200. * scale), px(origin.1 + 100. * scale))
+            );
+            assert_eq!(transform.scene(corner), (200., 100.));
+            assert_eq!(transform.viewed, (w / transform.scale, h / transform.scale));
+        }
+        assert!(decode::decode(
+            &serde_json::from_str(r#"{"width":2,"height":2,"zoom":-1,"shapes":[]}"#).unwrap(),
+            1,
+            &[]
+        )
+        .is_err());
+    }
 
     /// Streamed shapes follow the node's own at equal depth and sort by depth with them ([UI-SCENE-STREAM]).
     #[test]

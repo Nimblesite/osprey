@@ -57,7 +57,7 @@ export async function compileSdkWasm(source: string, timeout: number): Promise<W
   assert.ok(compiler, "the SDK E2E requires the built compiler");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "osp-sdk-probe-"));
   try {
-    const roots = JSON.stringify([".", ...["native", "vscode"].map((name) => path.resolve(extensionRoot, `../packages/${name}/src`))]);
+    const roots = JSON.stringify([".", ...["native", "graphics", "json", "vscode"].map((name) => path.resolve(extensionRoot, `../packages/${name}/src`))]);
     fs.writeFileSync(path.join(dir, "osprey.toml"), `[project]\nname = "sdk-probe"\nsource_roots = ${roots}\nentry = "main.ospml"\n`);
     fs.writeFileSync(path.join(dir, "main.ospml"), source);
     const wasm = path.join(dir, "probe.wasm");

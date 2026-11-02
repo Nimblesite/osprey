@@ -1,4 +1,4 @@
-// Implements [WORKBENCH-MATH] and [UI-COMPONENTS-MATH]: mechanical MathML
+// Implements [UI-COMPONENTS-MATH]: mechanical MathML
 // rendering of Osprey's typed layout tree. No parsing or proof decisions.
 import { escapeHtml } from "./html";
 import { record } from "./protocol";

@@ -1,0 +1,46 @@
+WEBVTT
+
+00:00.500 --> 00:08.641
+GPUI is the GPU rendered Rust UI framework behind the Zed editor. It expects you to write your interface in Rust.
+
+00:09.391 --> 00:14.523
+This casting player runs in a GPUI window, and contains no Rust of its own.
+
+00:14.723 --> 00:19.784
+Its whole interface is one data file: inputs, state machines, a view, and skins.
+
+00:20.534 --> 00:30.517
+egui redraws Rust code every frame. Slint has its own markup. Tauri puts a web front end in a web view. GPUI uses Rust views.
+
+00:30.717 --> 00:39.895
+A UI machine writes every state down and names every transition, so the interface can be checked, tested without a window, and reskinned without code.
+
+00:40.645 --> 00:45.566
+The player has four layers that run in parallel. Each has exactly one current state.
+
+00:45.766 --> 00:50.054
+Entering connecting requests cast.start, with the file and the receiver.
+
+00:50.254 --> 00:55.707
+When the TV reports playing, the layer moves itself. The document holds no code at all.
+
+00:56.457 --> 01:02.601
+The Osprey code that remains answers each request, and feeds what the TV reports back in as inputs.
+
+01:02.801 --> 01:04.972
+It never decides what the screen shows.
+
+01:05.722 --> 01:13.023
+The whole document is checked when it loads. A transition to a misspelled state is refused, with its exact JSON path.
+
+01:13.223 --> 01:15.902
+So is an initial state that does not exist.
+
+01:16.652 --> 01:24.678
+Nothing is partly applied. A cycle is reported instead of spinning, and a refused document shows its problems in place of the app.
+
+01:25.428 --> 01:33.987
+What to know first. The player runs in the GPUI host on macOS today, and the two skins without a canvas still need layout work.
+
+01:34.737 --> 01:42.027
+Build Osprey, and open the player. Osprey is actively evolving. Try it on your projects, and read the UI machines spec.

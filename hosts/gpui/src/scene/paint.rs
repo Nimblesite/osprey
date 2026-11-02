@@ -1,43 +1,48 @@
 //! Low-level GPUI painting for cached scene primitives ([GPUI-HOST-SCENE]).
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use gpui_kit::*;
 
 use super::{Decoded, Outline, Paint, Shape, Step, Tint, Transform};
 use crate::host::HostView;
-use crate::render::Ctx;
+use crate::render::{Binding, Ctx};
 
 /// Builds the one-shot prepaint/paint pair with decoded data moved, not reparsed.
 pub(super) fn canvas(
     ctx: &mut Ctx,
     handle: Entity<HostView>,
+    binding: Binding,
     decoded: Decoded,
 ) -> impl IntoElement {
     let key = ctx.key.clone();
     let prepaint_handle = handle.clone();
     gpui_kit::canvas(
-        move |bounds, _, cx| {
-            let transform = Transform::new(bounds, decoded.width, decoded.height);
-            prepaint_handle.update(cx, |view, _| {
-                view.scene_transforms.insert(key, transform);
+        move |bounds, window, cx| {
+            let transform = Transform::new(bounds, &decoded);
+            let images = prepaint_handle.update(cx, |view, cx| {
+                let before = view.scene_transforms.insert(key, transform);
+                if decoded.width > 0. && before.map(|t| t.viewed) != Some(transform.viewed) {
+                    super::input::viewed(&binding, transform.viewed, window, cx);
+                }
+                let images = sprites(view, &decoded);
+                for old in view.sprites.released() {
+                    // A turned copy no longer drawn leaves GPUI's atlas; failing to is harmless.
+                    let _released = window.drop_image(old);
+                }
+                images
             });
-            (decoded, transform)
+            (decoded, transform, images)
         },
-        move |_, (decoded, transform), window, cx| {
+        move |bounds, (decoded, transform, images), window, cx| {
             let started = Instant::now();
-            // Shapes outside the scene (a ring around a dog at the edge) are clipped to the letterboxed field.
-            let field = Bounds {
-                origin: transform.origin,
-                size: size(
-                    px(decoded.width * transform.scale),
-                    px(decoded.height * transform.scale),
-                ),
-            };
-            // A window-pixel scene paints anywhere in the window, as a GPUI canvas does.
-            let mask = (decoded.width > 0.).then_some(ContentMask { bounds: field });
-            let painted = window
-                .with_content_mask(mask, |window| paint(&decoded.shapes, transform, window, cx));
+            // A sized scene is clipped to its region; a window-pixel scene paints anywhere in the
+            // window, as a GPUI canvas does.
+            let mask = (decoded.width > 0.).then_some(ContentMask { bounds });
+            let painted = window.with_content_mask(mask, |window| {
+                paint(&decoded.shapes, &images, transform, window, cx)
+            });
             if let Err(problem) = painted {
                 handle.update(cx, |view, _| view.diagnose_once(problem));
             }
@@ -59,24 +64,54 @@ pub(super) fn canvas(
 /// glyphs keep their own draw orders, which GPUI's path batching depends on.
 fn paint(
     shapes: &[Shape],
+    images: &[Option<Arc<RenderImage>>],
     transform: Transform,
     window: &mut Window,
     cx: &mut App,
 ) -> Result<(), String> {
     for (run, layered) in runs(shapes) {
-        let run = &shapes[run];
+        let start = run.start;
+        let each = |window: &mut Window, cx: &mut App| {
+            shapes[run.clone()]
+                .iter()
+                .enumerate()
+                .try_for_each(|(offset, item)| {
+                    let image = images.get(start + offset).cloned().flatten();
+                    paint_shape(item, image, transform, window, cx)
+                })
+        };
         if layered {
             let bounds = window.content_mask().bounds;
-            window.paint_layer(bounds, |window| {
-                run.iter()
-                    .try_for_each(|item| paint_shape(item, transform, window, cx))
-            })?;
+            window.paint_layer(bounds, |window| each(window, cx))?;
         } else {
-            run.iter()
-                .try_for_each(|item| paint_shape(item, transform, window, cx))?;
+            each(window, cx)?;
         }
     }
     Ok(())
+}
+
+/// Each sprite's turned image from the scene's atlas, aligned with the shapes; a sprite whose
+/// image is missing draws its placeholder quad and reports the problem once.
+fn sprites(view: &mut HostView, decoded: &Decoded) -> Vec<Option<Arc<RenderImage>>> {
+    let mut problems = Vec::new();
+    let images = decoded
+        .shapes
+        .iter()
+        .map(|shape| match shape {
+            Shape::Sprite { atlas, angle, .. } => {
+                let path = decoded.atlas.get(*atlas)?;
+                view.sprites
+                    .image(path, *angle)
+                    .map_err(|problem| problems.push(problem))
+                    .ok()
+            }
+            _ => None,
+        })
+        .collect();
+    for problem in problems {
+        view.diagnose_once(problem);
+    }
+    images
 }
 
 /// Splits depth-sorted shapes into consecutive runs that together cover every shape once: a run of
@@ -113,6 +148,7 @@ fn quad_like(shape: &Shape) -> bool {
 /// Paints exactly one primitive with GPUI's low-level operations.
 fn paint_shape(
     shape: &Shape,
+    image: Option<Arc<RenderImage>>,
     transform: Transform,
     window: &mut Window,
     cx: &mut App,
@@ -151,10 +187,18 @@ fn paint_shape(
             h,
             tint,
             ..
-        } => window.paint_quad(fill(
-            centre(*x, *y, *w, *h, transform),
-            sprite_colour(*atlas, *tint),
-        )),
+        } => match image {
+            Some(image) => {
+                let bounds = centre(*x, *y, *w, *h, transform);
+                window
+                    .paint_image(bounds, bounds, Corners::default(), image, 0, false)
+                    .map_err(|problem| format!("a sprite could not be painted: {problem}"))?
+            }
+            None => window.paint_quad(fill(
+                centre(*x, *y, *w, *h, transform),
+                sprite_colour(*atlas, *tint),
+            )),
+        },
         Shape::Glyphs {
             text,
             x,
@@ -163,6 +207,24 @@ fn paint_shape(
             colour,
             ..
         } => paint_glyphs(text, *x, *y, *size, *colour, transform, window, cx)?,
+        Shape::Lettering {
+            text,
+            x,
+            y,
+            size,
+            colour,
+            anchor,
+            weight,
+            ..
+        } => paint_lettering(
+            text,
+            (*x, *y, *size),
+            *colour,
+            (*anchor, *weight),
+            transform,
+            window,
+            cx,
+        )?,
         Shape::Path {
             steps,
             outline,
@@ -193,6 +255,36 @@ fn sprite_colour(atlas: usize, tint: u32) -> Rgba {
         2 => rgb(0x55aa55),
         _ => rgb(0x888888),
     }
+}
+
+/// Shapes one text run in the system font at `weight` and paints it with its left edge, centre or
+/// right edge (`anchor` 0, 1 or 2) at x, the top of its line at y.
+fn paint_lettering(
+    text: &str,
+    (x, y, size): (f32, f32, f32),
+    colour: u32,
+    (anchor, weight): (u8, f32),
+    transform: Transform,
+    window: &mut Window,
+    cx: &mut App,
+) -> Result<(), String> {
+    let scaled = px(size * transform.scale);
+    let run = TextRun {
+        len: text.len(),
+        color: Hsla::from(rgba(colour)),
+        font: Font {
+            weight: FontWeight(weight),
+            ..font(".SystemUIFont")
+        },
+        ..Default::default()
+    };
+    let line = window
+        .text_system()
+        .shape_line(text.to_owned().into(), scaled, &[run], None);
+    let shift = line.width * (f32::from(anchor) / 2.);
+    let at = transform.point(x, y) - point(shift, px(0.));
+    line.paint(at, scaled, TextAlign::Left, None, window, cx)
+        .map_err(|problem| format!("scene lettering could not be painted: {problem}"))
 }
 
 /// Strokes a decoded polyline at the uniformly scaled width.

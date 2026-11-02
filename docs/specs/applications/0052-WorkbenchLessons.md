@@ -142,7 +142,7 @@ The `Tutor` slice holds, per challenge, the answer text, the choice, the attempt
 
 ## Framework additions [LESSONS-FRAMEWORK]
 
-`@osprey/native` gains `Image` (`source`, `alt`, `width`, `height`) and `Video` (`source`, `poster`, `captions`, `alt`, `seconds`; poster and play control first, captions on, never autoplays, length printed on the poster). Both encode as protocol nodes `"image"` and `"video"`; neither carries a binding. `Maths::decode` sits beside `Maths::encode`.
+Lessons draw their pictures and films with `@osprey/native`'s `Media` module ([UI-COMPONENTS-MEDIA](../../../packages/native/README.md#media-ui-components-media)) and read `math` blocks back with `Maths::decode` ([UI-COMPONENTS-MATH](../../../packages/native/README.md#typeset-mathematics-ui-components-math)). Neither module knows about lessons.
 
 ## The curriculum [LESSONS-CURRICULUM]
 

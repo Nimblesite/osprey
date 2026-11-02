@@ -1,7 +1,7 @@
 //! Undocumented exports as editor warnings. Implements [DOC-EXPORT-REQUIRED].
 
+use lspkit::vfs::PositionEncoding;
 use lspkit_server::Diagnostic;
-use lspkit_vfs::PositionEncoding;
 use osprey_ast::Program;
 
 /// One warning per undocumented export in this file, read from the file as
@@ -28,7 +28,7 @@ pub(crate) fn diagnostics(
 
 #[cfg(test)]
 mod tests {
-    use lspkit_vfs::PositionEncoding;
+    use lspkit::vfs::PositionEncoding;
 
     fn codes(source: &str) -> Vec<(String, u32)> {
         crate::diagnostics::compute(source, "api.ospml", PositionEncoding::Utf16)

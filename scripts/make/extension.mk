@@ -10,10 +10,6 @@
 _vsix_clean:
 	cd $(EXT_DIR) && $(RM) bin out dist osprey-*.vsix
 
-# The shared profiler UI the extension links from the lspkit submodule, for CI
-# steps that install and lint the extension outside make.
-_profiler_ui: $(PROFILER_UI_BUILT)
-
 # Stage the freshly-built Rust binary AND the C runtime archives where the
 # extension expects its bundled compiler (bin/<os>-<arch>/), so the VSIX runs
 # against THIS build. The compiler locates its runtime archives next to its own
@@ -36,25 +32,30 @@ REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp
 target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build packages/manager/cli --quiet --no-warnings -o $@
 
-PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/native/src packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
+PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/native/src packages/graphics/src packages/json/src packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
 target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
 	$(BIN) build packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
-WORKBENCH_SOURCES := apps/workbench/osprey.toml $(shell find apps/workbench/src examples/proof/kernel/src packages/native/src packages/vscode/src -type f -name '*.ospml')
+WORKBENCH_SOURCES := apps/workbench/osprey.toml $(shell find apps/workbench/src examples/proof/kernel/src packages/native/src packages/graphics/src packages/json/src packages/vscode/src -type f -name '*.ospml')
 target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 	$(BIN) build apps/workbench --target=wasm32 --quiet --no-warnings -o $@
 
 # The local package registry ([PACKAGE-LOCAL-REGISTRY]): the Osprey folder-
 # registry server, and the repository's own packages published into a folder
-# registry with `publish --folder`. `make registry-serve` serves that tree and
+# registry with `publish --folder`. `make -C packages registry-serve` serves that tree and
 # the extension bundles both, so anyone can grab packages before the hosted
 # registry exists. The stamp sits outside the tree, where a stray file would be
 # refused by the catalog walk.
 target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build packages/manager/api --quiet --no-warnings -o $@
 
-LOCAL_REGISTRY_SOURCES := $(shell git ls-files packages | grep -v '^packages/manager/')
-target/local-registry.stamp: target/osprey-pkg scripts/stage-local-registry.sh $(LOCAL_REGISTRY_SOURCES)
+#
+# Second expansion lists the sources only when the stamp is built: every other
+# target, such as the MSYS shell's `_runtime` where git is not on the PATH, runs
+# no git.
+.SECONDEXPANSION:
+LOCAL_REGISTRY_SOURCES = $(shell git ls-files packages | grep -v '^packages/manager/')
+target/local-registry.stamp: target/osprey-pkg scripts/stage-local-registry.sh $$(LOCAL_REGISTRY_SOURCES)
 	scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
 	@touch $@
 
@@ -98,7 +99,7 @@ _vsix_verify:
 # packaging regression is invisible until the installed extension quietly falls
 # back to whatever `osprey` is on PATH. Same assertion as the `vsix` job in
 # .github/workflows/release.yml.
-_vsix_package: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+_vsix_package: $(EXT_NODE_DEPS)
 	cd $(EXT_DIR) && npm run package
 	@set -e; VSIX=$$(ls -t $(EXT_DIR)/osprey-*.vsix 2>/dev/null | head -1); \
 	if [ -z "$$VSIX" ]; then echo "FAIL: npm run package produced no osprey-*.vsix"; exit 1; fi; \

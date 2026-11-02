@@ -7,10 +7,10 @@
 **Safe, elegant, fast.** Osprey is a functional language built for safety, elegance and performance: algebraic effects and `Result` instead of panics, inferred types that say more with less text, and native LLVM compilation.
 
 <p align="center">
-  <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/vscode-extension/media/language-tour.gif" alt="Osprey tour: a function requests storage through an effect, a disk handler saves the draft, an offline handler simulates failure, the same code in Python flavor, and a GPT-2 port whose Tensor handler chooses CPU or GPU" width="960" />
+  <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/vscode-extension/media/showcase.gif" alt="Apps built with Osprey: Prism Synth, a signal-flow synth whose scope changes from sine to saw to square; Casting, a Chromecast player switching TVs; the Proof Workbench stepping through a proof the kernel checks; then on Windows, the signal-flow editor and Osprey Storage, and Casting side by side on the Mac and Windows" width="960" />
 </p>
 
-One function requests storage. One handler writes the file; another simulates being offline. The function stays the same. [Try Osprey in your browser](https://ospreylang.dev/playground/) or read the [effects guide](https://ospreylang.dev/docs/algebraic-effects/).
+Real apps written in Osprey, on macOS and Windows: a synth that plays every edit, a Chromecast player, the proof Workbench, a signal-flow editor and a disk-space explorer. [Watch the full showcase](https://ospreylang.dev/#targets), [try Osprey in your browser](https://ospreylang.dev/playground/) or read the [effects guide](https://ospreylang.dev/docs/algebraic-effects/).
 
 > **Actively evolving.** Osprey is being used to build real applications. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.
 
@@ -134,7 +134,7 @@ Run **Osprey: Add Package** from the Command Palette, search the registry by the
 
 **Local registry.** Until the hosted registry is live, packages come from a local registry the extension runs for you. It serves the Osprey packages in the repository's `packages/` folder (`@osprey/re`, `@osprey/torch` and the rest) on `http://127.0.0.1:8787`. Start it with **Osprey: Start Local Package Registry**, the **Registry** status-bar item, or the `osprey.toml` explorer menu, and stop it the same way. If you open the package manager while nothing answers on that address, the extension asks whether to start it. The VSIX bundles the server and a snapshot of those packages; server output goes to the **Osprey Package Registry** output channel. `osprey.packages.localRegistry.root` serves a different folder registry and `osprey.packages.localRegistry.serverPath` a different server build.
 
-Set `osprey.packages.registry` to your registry API origin. HTTPS is required; loopback HTTP supports the local folder registry (`make registry-serve` from a checkout, default `http://127.0.0.1:8787`). Folder-registry listings provide no audit evidence, so the picker labels releases unverified and requires confirmation. Hosted listings without security eligibility and advisory evidence cannot offer an installation bypass. Hosted authentication and public trust enforcement remain separate delivery work.
+Set `osprey.packages.registry` to your registry API origin. HTTPS is required; loopback HTTP supports the local folder registry (`make -C packages registry-serve` from a checkout, default `http://127.0.0.1:8787`). Folder-registry listings provide no audit evidence, so the picker labels releases unverified and requires confirmation. Hosted listings without security eligibility and advisory evidence cannot offer an installation bypass. Hosted authentication and public trust enforcement remain separate delivery work.
 
 The VSIX bundles `osprey-pkg` for its platform. `osprey.packages.frontendPath` is a machine setting for an explicit client executable; a configured missing executable fails visibly. Package commands work with the language server disabled and require a trusted workspace.
 

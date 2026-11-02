@@ -403,7 +403,7 @@ export default function (eleventyConfig) {
   eleventyConfig.addPassthroughCopy("src/playground");
   copyBrowserLibraries(eleventyConfig);
   // Publish WebAssembly demo assets for the native /wasm/ page. The deploy
-  // pipeline runs `make wasm-site` first so generated binaries land here.
+  // pipeline runs `make -C website wasm-site` first so generated binaries land here.
   eleventyConfig.addPassthroughCopy({
     "../examples/wasm/build/studio.osp.wasm": "wasm/build/studio.osp.wasm",
   });

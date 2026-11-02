@@ -1,0 +1,57 @@
+// A test's hold on one live session ([UI-MACHINE-TEST]): the session, what it
+// last rendered and the host clock, with every host event built from them, so
+// a test names controls by label and never tracks revisions or ordinals.
+namespace uitest
+
+(** One live session as a test drives it: the session, its decoded view and the host clock. *)
+type Driven S =
+    drivenSession : ui::Session<S>
+    drivenSeen : Rendered
+    drivenNow : int
+
+(** Builds host events for a driven session and explains failed lookups. *)
+module Drive
+    (** A session not yet started, or restarted: nothing seen, the clock at 1. *)
+    export idle session = Driven(drivenSession = session, drivenSeen = Read::blank (), drivenNow = 1)
+
+    (** After an envelope: its session kept, its view read and the clock advanced. *)
+    export moved (d, resident) = Driven(drivenSession = resident.residentSession, drivenSeen = Read::envelope (d.drivenSeen, resident.residentEnvelope), drivenNow = d.drivenNow + 1)
+
+    (** A press of the control labelled `label`. *)
+    export press (d, label) = Events::press (d.drivenSeen.renderedRevision, (Views::control (d.drivenSeen, label)).controlOrdinal, d.drivenNow)
+
+    (** A choice of `key` on the picker labelled `label`. *)
+    export choose (d, label, key) = Events::choose (d.drivenSeen.renderedRevision, (Views::control (d.drivenSeen, label)).controlOrdinal, key, d.drivenNow)
+
+    (** A pointer at `x`, `y` on the root canvas, pressed or released. *)
+    export pointer (d, x, y, down) = Events::pointer (d.drivenSeen.renderedRevision, d.drivenSeen.renderedOrdinal, x, y, down, d.drivenNow)
+
+    (** The scene's region measured at `width` by `height` scene units, as the host reports it on showing or resizing. *)
+    export viewed (d, width, height) = Events::viewed (d.drivenSeen.renderedRevision, d.drivenSeen.renderedOrdinal, width, height, d.drivenNow)
+
+    (** A display frame `seconds` after the last. *)
+    export frame (d, seconds) = Events::frame (seconds, d.drivenNow)
+
+    (** The file picker of request `ticket` answered with `path`. *)
+    export chosen (d, ticket, path) = Events::chosen (ticket, path, d.drivenNow)
+
+    (** The process of request `ticket` finished with `status` and `stderr`. *)
+    export ran (d, ticket, status, stderr) = Events::ran (ticket, status, stderr, d.drivenNow)
+
+    (** The platform opening `path` with the app. *)
+    export opened (d, path) = Events::open (path, d.drivenNow)
+
+    explained (ok, why) = match ok
+        true => true
+        false =>
+            print "# ${why}"
+            false
+
+    (** Whether the view shows `label`; when not, prints what it does show. *)
+    export shows (d, label) = explained (Views::shows (d.drivenSeen, label), "not shown: ${label}; the view shows ${Views::texts d.drivenSeen}")
+
+    (** Whether the canvas letters `text`; when not, prints what it does letter. *)
+    export letters (d, text) = explained (Views::letters (d.drivenSeen, text), "not lettered: ${text}; the artboard letters ${Views::lettered d.drivenSeen}")
+
+    (** Whether the accessibility tree offers `label`; when not, prints the tree as an agent reads it. *)
+    export offers (elements, label) = explained (Semantics::offered (elements, label), "not offered: ${label}; the tree offers:\n${Semantics::outline elements}")

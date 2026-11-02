@@ -1,0 +1,93 @@
+{
+  "publisher": "CN=Osprey Development",
+  "publisherName": "Osprey",
+  "version": "1.0.0.0",
+  "apps": {
+    "flock": {
+      "source": "examples/gpui/flock",
+      "name": "Flock",
+      "description": "Herd the flock into the pen.",
+      "capabilities": [],
+      "files": [
+        "self-test.json"
+      ],
+      "arguments": []
+    },
+    "painting": {
+      "source": "examples/gpui/painting",
+      "name": "Painting",
+      "description": "Draw with the mouse, solid or dashed.",
+      "capabilities": [],
+      "files": [
+        "self-test.json"
+      ],
+      "arguments": []
+    },
+    "signal-flow": {
+      "source": "packages/signal_flow/app",
+      "name": "Signal flow",
+      "description": "Edit a signal path whose whole interface is data.",
+      "capabilities": [],
+      "files": [
+        "self-test.json",
+        "../signal_flow.machine.json",
+        "../skins"
+      ],
+      "arguments": [
+        "--machine",
+        "{app}\\signal_flow.machine.json"
+      ]
+    },
+    "storage": {
+      "source": "examples/storage",
+      "name": "Storage",
+      "description": "See where your disk space goes, folder by folder.",
+      "capabilities": [
+        "broadFileSystemAccess"
+      ],
+      "files": [
+        "self-test.json"
+      ],
+      "arguments": [],
+      "fixture": "fixture.ps1"
+    },
+    "probe": {
+      "source": "hosts/gpui/probe",
+      "name": "Probe",
+      "description": "The host probe: a counter, a note kept in the store, and a load.",
+      "capabilities": [],
+      "files": [
+        "self-test.json"
+      ],
+      "arguments": []
+    },
+    "casting": {
+      "source": "examples/casting",
+      "name": "Casting",
+      "description": "Play an audio file on a TV, with a turning disc and a visualiser.",
+      "capabilities": [
+        "privateNetworkClientServer",
+        "internetClientServer"
+      ],
+      "files": [
+        "self-test.json",
+        "player.machine.json",
+        "skins"
+      ],
+      "helpers": [
+        {
+          "source": "windows/cast-browse.c",
+          "libraries": [
+            "dnsapi"
+          ]
+        }
+      ],
+      "arguments": [
+        "--machine",
+        "{app}\\player.machine.json",
+        "--browse",
+        "{app}\\cast-browse.exe"
+      ]
+    }
+  }
+}

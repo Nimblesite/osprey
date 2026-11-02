@@ -14,7 +14,8 @@ Flock is an arcade herding game written entirely in Osprey with `@osprey/native`
 From the repository root:
 
 ```sh
-make gpui-flock                                    # 1,000 birds
+make -C apps/macos flock                                          # 1,000 birds
+make -C apps/windows flock                                        # Windows: the same, sandboxed on the WinUI host
 bash examples/gpui/flock/run.sh --flock 5000       # any size from 1 to 20,000
 ```
 

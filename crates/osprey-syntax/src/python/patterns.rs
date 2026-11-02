@@ -158,13 +158,14 @@ impl Lowerer<'_> {
     }
 }
 
-/// Prepends `let binder = field` statements for each renamed field so the arm
-/// body sees the binder the source wrote.
+/// Wraps the arm body in a block that first binds each renamed field to the
+/// binder the source wrote. The body block stays intact, so a one-statement
+/// arm keeps its own position and coverage still counts its line.
 fn with_renames(body: Expr, renames: &[(String, String)]) -> Expr {
     if renames.is_empty() {
         return body;
     }
-    let lets = renames
+    let statements = renames
         .iter()
         .map(|(field, binder)| Stmt::Let {
             name: binder.clone(),
@@ -175,29 +176,10 @@ fn with_renames(body: Expr, renames: &[(String, String)]) -> Expr {
             position: None,
         })
         .collect();
-    prepend_statements(lets, body)
-}
-
-/// `body` as a block that runs `statements` first, merging into an existing block.
-fn prepend_statements(mut statements: Vec<Stmt>, body: Expr) -> Expr {
-    match body {
-        Expr::Block {
-            statements: mut rest,
-            value,
-            position,
-        } => {
-            statements.append(&mut rest);
-            Expr::Block {
-                statements,
-                value,
-                position,
-            }
-        }
-        other => Expr::Block {
-            statements,
-            value: Some(Box::new(other)),
-            position: None,
-        },
+    Expr::Block {
+        statements,
+        value: Some(Box::new(body)),
+        position: None,
     }
 }
 

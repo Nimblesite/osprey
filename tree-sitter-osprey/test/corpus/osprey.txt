@@ -664,7 +664,7 @@ in perform Signal<Count>.read()
                 operation: (identifier)))))))))
 
 ================================================================================
-Call-site type application [TYPE-GENERICS-APPLY]
+Call-site type application [TYPE-GENERICS-APPLY] [SYNTAX-TYPE-ARGUMENTS]
 ================================================================================
 
 fn main() = identity<int>(5)
@@ -691,7 +691,7 @@ fn main() = identity<int>(5)
                   (integer))))))))))
 
 ================================================================================
-Call-site type application with two arguments [TYPE-GENERICS-APPLY]
+Call-site type application with two arguments [TYPE-GENERICS-APPLY] [SYNTAX-TYPE-ARGUMENTS]
 ================================================================================
 
 fn main() = pick<int, string>(1, "two")
@@ -724,7 +724,7 @@ fn main() = pick<int, string>(1, "two")
                   (string (string_content)))))))))))
 
 ================================================================================
-A nested type argument closes two lists with one angle pair [TYPE-GENERICS-APPLY]
+A nested type argument closes two lists with one angle pair [TYPE-GENERICS-APPLY] [SYNTAX-TYPE-ARGUMENTS]
 ================================================================================
 
 fn main() = identity<List<int>>([1])
@@ -758,7 +758,7 @@ fn main() = identity<List<int>>([1])
                           (integer))))))))))))))
 
 ================================================================================
-A spaced comparison is not type application [TYPE-GENERICS-APPLY]
+A spaced comparison is not type application [TYPE-GENERICS-APPLY] [SYNTAX-TYPE-ARGUMENTS]
 ================================================================================
 
 fn main() = a < b

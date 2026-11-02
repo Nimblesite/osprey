@@ -14,12 +14,15 @@ public sealed record Completion(string Ticket, bool Ok, string Result, string Er
     public static Completion Failed(string ticket, string error) => new(ticket, false, "null", error, []);
 }
 
+/// <summary>The system pickers: a folder, or a file of one of the given extensions; null when the user cancels.</summary>
+public sealed record Pickers(Func<Task<string?>> Folder, Func<IReadOnlyList<string>, Task<string?>> File);
+
 /// <summary>
 /// The capability adapters [WINUI-HOST-CAPABILITIES]: each does what Osprey asked within the bounds
 /// Osprey chose and reports what happened. They sort, hide, format and decide nothing. A kind this
 /// host does not answer completes with an error naming it, never silently.
 /// </summary>
-public sealed class Capabilities(Func<Task<string?>> chooseFolder, Store store)
+public sealed class Capabilities(Pickers pickers, Store store)
 {
     /// <summary>The most entries one measured folder may list.</summary>
     public const long MaxEntries = 100_000;
@@ -28,7 +31,7 @@ public sealed class Capabilities(Func<Task<string?>> chooseFolder, Store store)
     public const long MaxDeadline = 10 * 60 * 1000;
 
     /// <summary>Every capability kind this host answers, for its coverage declaration [NATIVE-HOSTS-COVERAGE].</summary>
-    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "cancel", "store-read", "store-write", "store-list", "store-delete"];
+    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "choose-file", "run", "cancel", "store-read", "store-write", "store-list", "store-delete"];
 
     readonly ConcurrentDictionary<string, CancellationTokenSource> running = new();
 
@@ -40,7 +43,9 @@ public sealed class Capabilities(Func<Task<string?>> chooseFolder, Store store)
         {
             "measure-folders" => Measure(ticket, request),
             "reveal" => Task.FromResult(Reveal(ticket, request)),
-            "choose-folder" => Choose(ticket),
+            "choose-folder" => Chosen(ticket, pickers.Folder()),
+            "choose-file" => Chosen(ticket, pickers.File(Envelopes.Items(request, "types", item => item.GetString() ?? ""))),
+            "run" => Processes.Run(ticket, request),
             "cancel" => Task.FromResult(Cancel(ticket, request)),
             "store-read" or "store-write" or "store-list" or "store-delete" => Task.FromResult(store.Answer(ticket, request)),
             var kind => Task.FromResult(Completion.Failed(ticket, $"The Windows host does not answer {kind} requests")),
@@ -98,9 +103,9 @@ public sealed class Capabilities(Func<Task<string?>> chooseFolder, Store store)
             ? Completion.Failed(ticket, problem)
             : Completion.Done(ticket, "{}");
 
-    async Task<Completion> Choose(string ticket)
+    static async Task<Completion> Chosen(string ticket, Task<string?> picking)
     {
-        var path = await chooseFolder();
+        var path = await picking;
         return Completion.Done(ticket, Json.Object(writer =>
         {
             writer.WriteString("path", path ?? "");

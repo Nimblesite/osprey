@@ -1,0 +1,2 @@
+// A null send observes the start envelope: the editor's topology at its first rate.
+{"send":null,"expect":{"regions":["root"],"text":{"region":"root","contains":"490 r/s"},"diagnostics":0}}

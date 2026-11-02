@@ -274,8 +274,8 @@ The Python flavor borrows Python's look, not its runtime. Code that depends on P
 From the repository root, after building Osprey:
 
 ```bash
-make gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
-make gpt2 FLAVOR=python BACKEND=lists PROMPT="The capital of France is" TOKENS=1
+make -C apps gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
+make -C apps gpt2 FLAVOR=python BACKEND=lists PROMPT="The capital of France is" TOKENS=1
 ```
 
 The first command installs `on_gpu` and the second `on_lists`; the model is unchanged. The test `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` checks that the Python generator prints exactly what the Default generator prints on host lists, Metal and OpenCL. Only generation has been ported so far; the training step is still Default-only.

@@ -135,4 +135,4 @@ for (i = 1; i < 5; i++) {
 
 A pipeline's stages belong to the iterator they were applied to. A pipeline bound to a name keeps them, two pipelines built on one source are independent, and consuming a pipeline twice runs its stages twice. A lambda stage reads the bindings it closed over where it was written, even when a later statement consumes it.
 
-Fusion happens while the enclosing function is compiled. A pipeline carrying `map` or `filter` stages therefore cannot be returned from that function or passed to a function compiled on its own; both are rejected with ``a `map`/`filter` pipeline leaving the function that built it``. Collect it with `toList` to hand the elements on.
+Fusion happens while the enclosing function is compiled. A pipeline carrying `map` or `filter` stages therefore cannot be returned from that function or passed to a function compiled on its own; both are rejected with ``a `map`/`filter` pipeline leaving the function that built it``, naming `toList`, `forEach` and `fold` as the ways out. Collect it with `toList` to hand the elements on.

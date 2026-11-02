@@ -1,0 +1,28 @@
+WEBVTT
+
+00:00.000 --> 00:15.008
+Static typing, no hints
+
+00:15.008 --> 00:26.104
+Inferred, not written
+
+00:26.104 --> 00:29.687
+Inferred, not written
+
+00:29.687 --> 00:40.970
+Caught before it runs
+
+00:40.970 --> 00:53.534
+A real port
+
+00:53.534 --> 00:58.885
+A real port
+
+00:58.885 --> 01:09.351
+Checked against CPython
+
+01:09.351 --> 01:20.884
+Not CPython
+
+01:20.884 --> 01:30.160
+Try it

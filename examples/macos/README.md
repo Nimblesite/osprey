@@ -9,10 +9,10 @@ Osprey owns the app. [`storage/src`](storage/src) holds the browser's state and 
 Use an Apple silicon Mac with Xcode selected by `xcode-select`. From the repository root:
 
 ```sh
-make macos                          # Mac runtime, compiler and every macOS example
+make -C apps macos                          # Mac runtime, compiler and every macOS example
 examples/macos/run.sh               # build and open the Mac app
 examples/macos/run.sh ios-sim       # the same app in the iPhone simulator
-make macos-test                     # C ABI, corpus, domain suite and smoke
+make -C apps macos-test                     # C ABI, corpus, domain suite and smoke
 ```
 
 `run.sh --smoke` builds a folder with known contents, including a hidden `.git` inside a visible folder, a hidden `.cache` and an unreadable folder, then drives Osprey through the events the app sends: it requires the walk to count them, the screen to show and explain them, the toggle to leave the hidden ones out, and a folder to open. `run.sh ios-sim-smoke` runs the same check in the simulator. `OSPREY_MACOS_SKIP_BUILD=1` reuses the existing Mac build, and `OSPREY_BIN` selects another compiler.

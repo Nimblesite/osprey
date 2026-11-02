@@ -5,11 +5,11 @@
 //! helpers honour the encoding so multi-byte text still lines up.
 //!
 //! These primitives (word-at-position, whole-word occurrences, encoding-aware
-//! column measurement) are language-agnostic and belong in `lspkit-vfs`; they
+//! column measurement) are language-agnostic and belong in `lspkit::vfs`; they
 //! live here only until lspkit provides them. Tracked upstream at
 //! <https://github.com/Nimblesite/lspkit/issues/2>. See [LSP-REUSE-LSPKIT].
 
-use lspkit_vfs::PositionEncoding;
+use lspkit::vfs::PositionEncoding;
 
 /// An identifier found under a cursor, with its span in the line.
 #[derive(Debug, Clone, PartialEq, Eq)]

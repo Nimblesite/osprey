@@ -559,7 +559,7 @@ own packages:
   passes the same source, capability and digest checks the server applies. A
   package that fails them, such as one with a raw `extern` declaration under
   `[PACKAGE-CAPABILITY-CONFINEMENT]`, is reported and not staged.
-  `scripts/stage-local-registry.sh` does this and `make registry-serve` serves
+  `scripts/stage-local-registry.sh` does this and `make -C packages registry-serve` serves
   the result on `http://127.0.0.1:8787`, the client's default registry.
 - **Editor.** The VS Code extension bundles the server (`osprey-registry`) and
   the staged root (`bin/<platform>/registry/`). Its *Start Local Package
@@ -715,6 +715,10 @@ an invalid retained local aborts everything. A cached release lock remains
 reproducible byte for byte after metadata expiry, but is non-activatable until
 freshness is re-established. A known revocation blocks normal building and all
 activation; only isolated `--audit-revoked` reproduction may consume it.
+
+## Workspace packages `[PACKAGE-WORKSPACE]`
+
+A dependency with neither a local `path` nor an installed release under `.osprey/packages` resolves to the directory beside the package named by its key's last segment, when that directory's own `[package].name` declares exactly that key; its dependencies resolve the same way. `osprey --check`, `osprey build` and the language server all see that source, so a package in a workspace checks on its own without listing sibling source roots. It is development resolution only: the manifest keeps its epoch and minimum ordinal and release resolution never reads it. `make _check_packages` keeps every package in this repository clean.
 
 ## Python interop dependencies through uv `[PACKAGE-PYTHON-UV]`
 

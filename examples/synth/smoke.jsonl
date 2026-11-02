@@ -1,0 +1,2 @@
+// A null send observes the start envelope: the Prism patch with its oscillator, filter and keys.
+{"send":null,"expect":{"regions":["root"],"text":{"region":"root","contains":"Oscillator"},"diagnostics":0}}

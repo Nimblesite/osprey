@@ -1,0 +1,25 @@
+{
+  "steps": [
+    { "wait": "07. Bells" },
+    { "wait": "Ready" },
+    { "gone": "Looking for TVs…" },
+    { "shot": "1-opened" },
+    { "invoke": "Play" },
+    { "frames": "600" },
+    { "wait": "Playing" },
+    { "shot": "2-playing" },
+    { "invoke": "Speed: 1×" },
+    { "frames": "30" },
+    { "wait": "1.5×" },
+    { "shot": "3-speed-menu" },
+    { "invoke": "1.5×" },
+    { "frames": "240" },
+    { "gone": "0.75×" },
+    { "wait": "1.5×" },
+    { "shot": "4-speed-1.5" },
+    { "invoke": "Stop" },
+    { "frames": "180" },
+    { "wait": "Finished" },
+    { "shot": "5-stopped" }
+  ]
+}

@@ -1,4 +1,4 @@
-//! Focus, filtered keys and letterbox-aware pointer events ([GPUI-HOST-SCENE]).
+//! Focus, filtered keys and pointer events in scene units ([GPUI-HOST-SCENE]).
 
 use gpui_kit::*;
 use serde_json::{json, Value};
@@ -14,8 +14,17 @@ pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyE
     let binding = render::binding(ctx, ordinal);
     let focus = scene_focus(ctx);
     let key = ctx.key.clone();
+    // A fitted scene's scale is the one its last frame was painted at.
+    let scale = ctx
+        .view
+        .scene_transforms
+        .get(&key)
+        .map_or(decoded.zoom, |t| t.scale);
+    let access = super::access::overlay(&handle, &binding, &decoded.access, scale);
+    let binding_for_paint = binding.clone();
     let surface = div()
         .id(render::control_id(ctx, ordinal))
+        .relative()
         .w_full()
         .flex_grow(1.)
         .min_h(px(320.))
@@ -32,7 +41,8 @@ pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyE
         )
         .on_mouse_move(mouse_move(handle.clone(), binding, key));
     surface
-        .child(paint::canvas(ctx, handle, decoded))
+        .child(paint::canvas(ctx, handle, binding_for_paint, decoded))
+        .children(access)
         .into_any_element()
 }
 
@@ -200,8 +210,30 @@ fn reset_hover(key: &str, window: &mut Window, cx: &mut Context<HostView>) {
     });
 }
 
+/// Tells the application its scene's region is now `width` by `height` scene units, on the next
+/// frame rather than from inside a paint.
+pub(super) fn viewed(
+    binding: &Binding,
+    (width, height): (f32, f32),
+    window: &mut Window,
+    cx: &mut Context<HostView>,
+) {
+    let binding = binding.clone();
+    cx.on_next_frame(window, move |view, window, cx| {
+        let value = json!({"width": width, "height": height});
+        let event = events::control(
+            now(),
+            &binding.region,
+            current(view, &binding),
+            binding.ordinal,
+            value,
+        );
+        view.dispatch(event, window, cx);
+    });
+}
+
 /// A scene re-renders every frame, so input targets the region's live revision; its binding ordinal is stable.
-fn current(view: &HostView, binding: &Binding) -> u64 {
+pub(super) fn current(view: &HostView, binding: &Binding) -> u64 {
     view.regions
         .get(&binding.region)
         .map_or(binding.revision, |region| region.revision)

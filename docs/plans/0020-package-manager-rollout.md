@@ -70,7 +70,7 @@ Start supplier/operator engagement at Stage A kickoff, not after publication cod
 ## Stage A — Prove capabilities and contracts
 
 - [ ] Map spec 0044 IDs to the existing packages and add named failing Osprey regressions before each implementation change.
-- [ ] Run the existing `make registry-test` baseline; keep its folder-registry behavior while extending the same API.
+- [ ] Run the existing `make -C packages registry-test` baseline; keep its folder-registry behavior while extending the same API.
 - [ ] Inventory/probe JWT/JWKS verification, WebAuthn/DSSE, entropy, secure time, constant-time comparisons, TLS verification, credential storage, PostgreSQL transactions/pooling, headers/cookies, secret delivery and browser/WASM host interfaces. Record absent capabilities in the existing blocker suite with failing assertions; resolve through Osprey, never a native/JavaScript package shim.
 - [ ] Verify the native API image's Cloud Run bind/port behavior and secret access. The current JSON bind/port config and missing environment support need an explicit tested solution; no shell secret interpolation or credentials baked into JSON/images.
 - [ ] Extend the canonical domain model for stable principal/org/package IDs, accepted org memberships, the single administrator FK, explicit permission grants, epochs, sessions, invitations and handovers; reconcile spec 0031 and `schemas/package-registry.td` before generating implementation types. No duplicate handwritten model.
@@ -136,7 +136,7 @@ Exit: the staged website supports the full flows, read-only public delivery work
 ## Stage F — Deploy/recover rehearsal and release gates
 
 - [ ] End plan 0020's deferred CI arrangement before hosting: add registry/security/database/browser/edge suites to required checks, preserving every existing gate and coverage floor. Update required-check configuration and its verification together.
-- [ ] Add dedicated registry build/deploy workflows; every staging/production/frontend/manual deployment depends on a fresh unconditional exact-SHA `audit` job. Run `make audit`, `make ci`, `make registry-test` and all hosted conformance checks. Do not reuse a passing audit from another SHA.
+- [ ] Add dedicated registry build/deploy workflows; every staging/production/frontend/manual deployment depends on a fresh unconditional exact-SHA `audit` job. Run `make audit`, `make ci`, `make -C packages registry-test` and all hosted conformance checks. Do not reuse a passing audit from another SHA.
 - [ ] Build the native image/static artifacts once, record immutable digests, apply reviewed additive schema changes separately, verify RLS drift/tests, deploy a no-traffic revision and run release smoke checks through an operator-restricted candidate route retaining the ingress/edge controls. Prove it reaches the candidate revision without public run.app/tag access; unavailable safe routing blocks promotion. Never migrate at build/startup.
 - [ ] Rehearse traffic/artifact rollback to the exact prior release, checking schema compatibility and preserving consumed nonces, authority epochs, revocations and log history.
 - [ ] Provision and rehearse `[PACKAGE-HOSTED-CONTROL]`: named mode-promotion authority, narrow independent incident job/credentials, freeze under edge/API outage, and jointly approved unfreeze. Prove neither operator mode changes nor the independent incident path can grant package permissions or eligibility.

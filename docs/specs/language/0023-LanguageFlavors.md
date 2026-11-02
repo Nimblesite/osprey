@@ -68,6 +68,7 @@ crates/osprey-syntax/src/
   strings.rs   shared interpolation and escape helpers
   default/     tree-sitter parsing and lowering
   ml/          layout lexing, parsing, CST, and lowering
+  python/      tree-sitter-python CST validation and lowering
 ```
 
 Each flavor supplies its own interpolation fragment parser to the shared text
@@ -78,10 +79,11 @@ helpers.
 `[FLAVOR-SELECT]` `osprey_syntax::resolve_flavor(flag, path, source)` applies
 this precedence:
 
-1. an explicit resolver override (`--flavor default|ml` for single-file CLI
+1. an explicit resolver override (`--flavor default|ml|python` for single-file CLI
    use, or `[project].flavor` while loading a project);
-2. a leading `// osprey: flavor=default|ml` marker;
-3. `.osp` or `.ospml` extension;
+2. a leading `// osprey: flavor=default|ml` or `# osprey: flavor=python`
+   marker, preceded only by comments and blank lines;
+3. `.osp`, `.ospml` or `.py` extension;
 4. Default.
 
 Without an explicit flag, a marker that disagrees with the extension is an

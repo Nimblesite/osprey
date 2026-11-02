@@ -1,0 +1,61 @@
+// Readers and geometry over a canvas's typed accessibility tree, as
+// `ui::Canvases::semantics` builds it ([UI-MACHINE-A11Y]).
+namespace uitest
+
+import ui::Canvases
+import ui::Lists
+
+(** A point in the canvas's coordinate space ([UI-MACHINE-A11Y]). *)
+type Point =
+    pointX : float
+    pointY : float
+
+(** Finds accessible elements by label, as a screen reader or agent does ([UI-MACHINE-A11Y]). *)
+module Semantics
+    (** Every element's label, in hit order, `|`-separated. *)
+    export labels elements = join (mapList (elements, \e => e.accessLabel)) "|"
+
+    (** Whether an element labelled `label` is offered. *)
+    export offered (elements, label) = Lists::any (elements, \e => e.accessLabel == label)
+
+    (** The first element labelled `label`, or `Unannounced` with no bounds when none is offered. *)
+    export element (elements, label) = match Lists::find (elements, \e => e.accessLabel == label)
+        Success e => e
+        Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = false)
+
+    (** The role of the element labelled `label`, as hosts name it (`button`, `slider`, `popup`, `menuitem`, `none`). *)
+    export role (elements, label) = Canvases::roleName (element (elements, label)).accessRole
+
+    (** The value of the slider labelled `label`; 0 for anything else. *)
+    export value (elements, label) = (element (elements, label)).accessValue
+
+    (** The point `fraction` across an element's bounds and halfway down it. *)
+    export point (e, fraction) = Point(pointX = e.accessLeft + e.accessWidth * fraction, pointY = e.accessTop + e.accessHeight / 2.0)
+
+    (** One element as an agent reads it: its role and label, a slider's value and range, and `movable` when a drag moves it. *)
+    export announced e =
+        called = Canvases::roleName e.accessRole
+        ranged = match e.accessRole
+            ui::Slidable => " value ${toString e.accessValue} of ${toString e.accessMin} to ${toString e.accessMax}"
+            _ => ""
+        moved = match e.accessMovable
+            true => " movable"
+            false => ""
+        "${called} \"${e.accessLabel}\"${ranged}${moved}"
+
+    (** The whole tree as an agent reads it, one element a line, in hit order. *)
+    export outline elements = join (mapList (elements, announced)) "\n"
+
+    (** The point an activation of the element labelled `label` lands: `fraction` of the way across for a slider, its middle otherwise. *)
+    export spot (elements, label, fraction) =
+        e = element (elements, label)
+        match e.accessRole
+            ui::Slidable => point (e, fraction)
+            _ => point (e, 0.5)
+
+    (** Why an agent could not tell these elements apart or say what one does: each empty label, label cut short by an empty value, and label given twice. Empty when the tree is clear. *)
+    export unclear elements =
+        named = mapList (elements, \e => e.accessLabel)
+        blank = mapList (filterList (named, \l => l == "" || endsWith l ": "), \l => "unnamed: \"${l}\"")
+        twice = filterList (named, \l => length (filterList (named, \m => m == l)) > 1)
+        join (listConcat blank (mapList (twice, \l => "twice: \"${l}\""))) "|"

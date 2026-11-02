@@ -1,0 +1,28 @@
+// Readers for a rendered native view ([UI-MACHINE-TEST]): controls found by
+// what a person or an agent reads on them, never by position.
+namespace uitest
+
+import ui::Lists
+
+(** Finds rendered controls by their label, text or title, and the canvas's lettering. *)
+module Views
+    (** Every rendered node whose accessible label, visible text or title is `label`. *)
+    export labelled (seen, label) = filterList (seen.renderedControls, \c => c.controlLabel == label || c.controlText == label || c.controlTitle == label)
+
+    (** The first rendered node matching `label`, or an empty one with no kind when none does. *)
+    export control (seen, label) = listGet (labelled (seen, label)) 0 ?: Control(controlKind = "", controlLabel = "", controlText = "", controlTitle = "", controlTone = "", controlSelected = "", controlOrdinal = -1, controlEnabled = false, controlChoices = [])
+
+    (** Whether any rendered node matches `label`. *)
+    export shows (seen, label) = length (labelled (seen, label)) > 0
+
+    (** Every nonempty label, text and title in the view, `|`-separated, for a failure message. *)
+    export texts seen = join (filterList (mapList (seen.renderedControls, \c => "${c.controlLabel}${c.controlText}${c.controlTitle}"), \t => t != "")) "|"
+
+    (** Whether the last envelope made a request of `kind`. *)
+    export requested (seen, kind) = Lists::any (seen.renderedRequests, \k => k == kind)
+
+    (** The strings the canvas letters, `|`-separated. *)
+    export lettered seen = join seen.renderedLetters "|"
+
+    (** Whether the canvas letters `text` exactly. *)
+    export letters (seen, text) = Lists::any (seen.renderedLetters, \t => t == text)

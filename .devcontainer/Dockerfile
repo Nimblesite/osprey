@@ -2,7 +2,7 @@
 FROM debian:bookworm
 
 # Install basic system packages.
-# Benchmark suite (make bench): ghc + ocaml are the comparison toolchains;
+# Benchmark suite (make -C benchmarks bench): ghc + ocaml are the comparison toolchains;
 # `time` is GNU /usr/bin/time for peak-memory (RSS) measurement. hyperfine is
 # installed separately below (not packaged in Debian bookworm).
 RUN apt-get update && apt-get install -y \
@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# hyperfine — statistical CPU-time benchmarking tool used by `make bench`.
+# hyperfine — statistical CPU-time benchmarking tool used by `make -C benchmarks bench`.
 # Not in Debian bookworm apt; pull the release .deb for the build architecture.
 ARG HYPERFINE_VERSION=1.19.0
 RUN arch="$(dpkg --print-architecture)" \

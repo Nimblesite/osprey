@@ -7,7 +7,7 @@
 //! instantiation `Tensor<List<float>>` discharges `Tensor`. Implements
 //! [LSP-HOVER-EFFECT-OPERATIONS] and [LSP-IMPLEMENTATIONS-EFFECT-HANDLERS].
 
-use lspkit_vfs::PositionEncoding;
+use lspkit::vfs::PositionEncoding;
 use osprey_ast::effect_name::base;
 use osprey_ast::{
     walk_program, AstVisitor, DocComment, EffectOperation, Expr, Position, Program, SignatureItem,

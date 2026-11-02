@@ -7,7 +7,7 @@ import registry::Policy
 /// means the matching `Capabilities` entry can go. Capabilities with no
 /// builtin at all (argv, exit status, environment, clock, directory
 /// operations) cannot be probed from inside a program and are listed only.
-/// Delivered bitwise primitives are checked by the core conformance suite. Run with `make registry-blockers`; never part of `test`.
+/// Delivered bitwise primitives are checked by the core conformance suite. Run with `make -C packages registry-blockers`; never part of `test`.
 let scratch = ".osprey/scratch"
 let binary = "${scratch}/nul-probe.bin"
 

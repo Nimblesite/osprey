@@ -1,5 +1,6 @@
 #include "http_client_internal.h"
 #include "http_shared.h"
+#include "socket_safety.h"
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>
@@ -159,10 +160,7 @@ int64_t http_perform(int64_t client_id, int64_t method, char *path,
     return -3;
   }
 
-  struct timeval tv;
-  tv.tv_sec = client->timeout / 1000;
-  tv.tv_usec = (client->timeout % 1000) * 1000;
-  setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
+  osp_socket_deadline(sock, client->timeout);
 
   struct sockaddr_in server_addr;
   memset(&server_addr, 0, sizeof(server_addr));

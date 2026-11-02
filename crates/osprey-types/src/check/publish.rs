@@ -1,4 +1,6 @@
 //! Type checking: publish.
+use std::sync::Arc;
+
 use super::{
     dedupe_sites, erased_type_params, open_lambda_vars, resolve_aliases, resolve_op,
     resolve_positioned, type_name_to_type, Checker, HashMap, HashSet, Program, Type,
@@ -109,7 +111,7 @@ pub(super) fn publish_program(
         &checker.instantiations,
         &mut checker.ctx,
     );
-    let source_lets = std::sync::Arc::new(lets.clone());
+    let source_lets = Arc::new(lets.clone());
     for table in [&mut lambdas, &mut lets, &mut lists] {
         for ty in table.values_mut() {
             *ty = runtime_site_type(&checker.ctx, ty);
@@ -135,7 +137,7 @@ pub(super) fn publish_program(
         ((pos.line, pos.column), site)
     }));
     ProgramTypes {
-        obligations: publish_obligations(&mut checker),
+        obligations: Arc::new(publish_obligations(&mut checker)),
         methods: crate::methods::collect(program, &checker.methods),
         functions,
         signal_queries: checker.signal_queries.clone(),
@@ -150,7 +152,7 @@ pub(super) fn publish_program(
         performs,
         handler_ops,
         capabilities: published_capabilities(&checker),
-        call_bindings,
+        call_bindings: Arc::new(call_bindings),
         applications: checker
             .application_tys
             .iter()

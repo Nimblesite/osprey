@@ -17,7 +17,7 @@ function assertProofWorkflow(proof) {
   // its own benchmark steps.
   assert.match(proof, /needs\.changes\.outputs\.code == 'true' \|\| needs\.changes\.outputs\.benchmarks == 'true'/)
   assert.match(proof, /run: make -j3 _test_proof_ci/)
-  assert.match(proof, /timeout-minutes: 45/)
+  assert.match(proof, /timeout-minutes: 25/)
   // Lean is the speed gate's baseline, so the toolchain is pinned to an exact
   // release (`stable` floats) and a non-zero exit is never softened. The pin
   // lives in the tools' lean-toolchain, which the job installs and the tools

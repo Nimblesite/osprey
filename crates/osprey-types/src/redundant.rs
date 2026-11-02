@@ -231,7 +231,7 @@ pub(crate) fn published(program: &Program) -> Option<Snapshot> {
             let _ = published.insert(format!("binder {function} {name}"), ty.clone());
         }
     }
-    for (owner, obligations) in &types.obligations {
+    for (owner, obligations) in types.obligations.iter() {
         for (index, (name, ty)) in obligations
             .iter()
             .filter(|(name, ty)| {
