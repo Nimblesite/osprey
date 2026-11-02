@@ -12,6 +12,7 @@ and `_CHAT_FINISH_REASON_MAP` as `map_finish_reason`. The Responses API,
 streaming, files, structured output, logprobs and web search are not ported.
 """
 from pydantic_ai import Exceptions as E
+from pydantic_ai import JsonSchema
 from pydantic_ai import JsonUtil as J
 from pydantic_ai import Messages as M
 from pydantic_ai import Models
@@ -118,9 +119,25 @@ def thinking_text(part) -> str:
             return ""
 
 
+THINK_START = "<think>"
+THINK_END = "</think>"
+
+
+def sent_text(profile, part) -> str:
+    """`_map_response_text_part`/`_map_response_thinking_part`: a text part's content; a thinking part wrapped in the thinking tags unless the profile sends it back as a field."""
+    send_back = Profiles.profile_text(profile, "openai_chat_send_back_thinking_parts", "auto")
+    match part:
+        case M.TextPart(content=content):
+            return content
+        case M.ThinkingPart(content=content):
+            return "" if send_back == "field" else join([THINK_START, content, THINK_END], "\n")
+        case M.ToolCallPart():
+            return ""
+
+
 def map_response(profile, response) -> list[Json]:
     """`_MapModelResponseContext.map_assistant_message`: one assistant message, or none when the response is empty."""
-    texts = filterList(mapList(response.parts, M.part_text), lambda s: s != "")
+    texts = filterList(mapList(response.parts, lambda p: sent_text(profile, p)), lambda s: s != "")
     thinkings = filterList(mapList(response.parts, thinking_text), lambda s: s != "")
     calls = mapList(M.tool_calls(response), map_tool_call)
     thinking_field = Profiles.profile_text(profile, "openai_chat_thinking_field", "")
@@ -133,6 +150,25 @@ def map_response(profile, response) -> list[Json]:
         with_content = listAppend(with_thinking, J.member("content", JsonString(join(texts, "\n\n")) if len(texts) > 0 else JsonNull()))
         with_calls = listAppend(with_content, J.member("tool_calls", JsonArray(calls))) if len(calls) > 0 else with_content
         return [J.obj(with_calls)]
+
+
+def split_thinking(content) -> list[M.ModelResponsePart]:
+    """`split_content_into_text_and_thinking`: `<think>` sections become thinking parts, the rest text parts."""
+    if content == "":
+        return []
+    else:
+        match indexOf(content, THINK_START):
+            case Success(value=start):
+                before = take(content, start)
+                rest = drop(content, start + length(THINK_START))
+                head = [] if before == "" else [M.TextPart(content=before)]
+                match indexOf(rest, THINK_END):
+                    case Success(value=end):
+                        return listConcat(listAppend(head, M.ThinkingPart(content=take(rest, end))), split_thinking(drop(rest, end + length(THINK_END))))
+                    case Error(message=_m):
+                        return listAppend(head, M.TextPart(content=rest))
+            case Error(message=_m):
+                return [M.TextPart(content=content)]
 
 
 def map_message(profile, message) -> list[Json]:
@@ -167,9 +203,10 @@ def map_messages(profile, messages, parameters) -> list[Json]:
 
 
 def map_tool_definition(profile, tool) -> Json:
-    """`_map_tool_definition`: the `function` tool parameter."""
-    function = [J.member("name", JsonString(tool.name)), J.member("description", JsonString(tool.description)), J.member("parameters", tool.parameters_json_schema)]
-    strict = tool.strict and Profiles.profile_bool(profile, "openai_supports_strict_tool_definition", True)
+    """`_customize_tool_def` then `_map_tool_definition`: the walked schema as the `function` tool parameter, `strict` when the tool asks for it or the schema allows it."""
+    transformed = JsonSchema.transform(tool.parameters_json_schema)
+    function = [J.member("name", JsonString(tool.name)), J.member("description", JsonString(tool.description)), J.member("parameters", transformed.schema)]
+    strict = (tool.strict or transformed.is_strict_compatible) and Profiles.profile_bool(profile, "openai_supports_strict_tool_definition", True)
     return J.obj([J.member("type", JsonString("function")), J.member("function", J.obj(listAppend(function, J.member("strict", JsonBool(True))) if strict else function))])
 
 
@@ -191,7 +228,8 @@ def completions_body(model_name, profile, messages, settings, parameters) -> Jso
     sampling = Profiles.profile_bool(profile, "openai_supports_sampling_settings", True)
     base = [J.member("model", JsonString(model_name)), J.member("messages", JsonArray(map_messages(profile, messages, parameters)))]
     with_tools = listConcat(base, [J.member("tools", JsonArray(tools)), J.member("tool_choice", JsonString(tool_choice))]) if len(tools) > 0 else base
-    members = listConcat(with_tools, listConcat(
+    with_stream = listAppend(with_tools, J.member("stream", JsonBool(False)))
+    members = listConcat(with_stream, listConcat(
         listConcat(setting_member(settings, "stop_sequences", "stop"), setting_member(settings, "max_tokens", "max_completion_tokens" if supports_max_completion else "max_tokens")),
         listConcat(setting_member(settings, "seed", "seed"), sampling_members(settings) if sampling else []),
     ))
@@ -295,7 +333,7 @@ def process_response(model_name, provider_name, profile, body) -> E.Outcome[M.Mo
                 choice = unwrap_or(listGet(choices, 0), JsonNull())
                 message = J.object_at(choice, "message")
                 content = J.text_at(message, "content", "")
-                texts = [] if content == "" else [M.TextPart(content=content)]
+                texts = split_thinking(content)
                 calls = mapList(J.list_at(message, "tool_calls"), map_tool_call_part)
                 finish = J.text_at(choice, "finish_reason", "stop")
                 return E.Ok(value=M.ModelResponse(
