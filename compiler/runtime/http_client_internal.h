@@ -23,8 +23,9 @@ int64_t http_parse_status_line(const char *raw);
 // Transfer-Encoding: chunked (case-insensitive header name).
 bool http_header_is_chunked(const char *headers);
 
-// Decodes an HTTP/1.1 chunked body: returns a freshly allocated,
-// NUL-terminated decoded body (caller frees), or NULL.
-char *http_decode_chunked(const char *body);
+// Decodes the len bytes of an HTTP/1.1 chunked body: returns a freshly allocated,
+// NUL-terminated decoded body (caller frees), or NULL with *malformed saying what
+// is wrong with the framing, or NULL with *malformed NULL when out of memory.
+char *http_decode_chunked(const char *body, size_t len, const char **malformed);
 
 #endif // HTTP_CLIENT_INTERNAL_H

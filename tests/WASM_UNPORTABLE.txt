@@ -76,6 +76,8 @@ tests/regressions/fiber/fiber_determinism.test.osp foreign C import `fiber_set_d
 tests/regressions/fiber/fiber_exact_replica.test.osp foreign C import `fiber_set_deterministic_mode`
 tests/regressions/fiber/fiber_showcase.test.osp fiber concurrency
 tests/regressions/fiber/fiber_showcase.test.ospml fiber concurrency
+tests/regressions/http/chunked_hostile_server.test.osp HTTP builtin `httpCreateServer`
+tests/regressions/http/chunked_hostile_server.test.ospml HTTP builtin `httpCreateServer`
 tests/regressions/http/http_client_example.test.osp HTTP builtin `httpCreateServer`
 tests/regressions/http/http_client_example.test.ospml HTTP builtin `httpCreateServer`
 tests/regressions/http/http_create_client.test.osp HTTP builtin `httpCreateClient`

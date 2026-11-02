@@ -21,10 +21,10 @@ The order puts small, isolated fixes first. 4 comes before 5 because both change
 
 ### 1. Chunked decoder [HTTP-CHUNKED-DECODE]
 
-- [ ] Spec: a chunk size that is malformed, overflows, or exceeds the remaining input makes the response an `Error`; no partial body is returned
-- [ ] `http_decode_chunked` takes the body's length, parses sizes as unsigned with an overflow check, bounds every copy, and requires the CRLF after each chunk
-- [ ] `http_request_capture` returns a new negative code on a malformed body instead of falling back to the raw framing at `strdup(body_start)`
-- [ ] Test: a real program calling `httpGetResponse` against a local hostile server, with each of an oversized size, `7FFFFFFF`, a negative size, a missing CRLF, a truncated body and a valid multi-chunk body
+- [x] Spec: a chunk size that is malformed, overflows, or exceeds the remaining input makes the response an `Error`; no partial body is returned
+- [x] `http_decode_chunked` takes the body's length, parses sizes as unsigned with an overflow check, bounds every copy, and requires the CRLF after each chunk
+- [x] `http_request_capture` returns a new negative code on a malformed body instead of falling back to the raw framing at `strdup(body_start)`
+- [x] Test: a real program calling `httpGetResponse` against a local hostile server, with each of an oversized size, `7FFFFFFF`, a negative size, a missing CRLF, a truncated body and a valid multi-chunk body
 
 ### 2. File server [FFI-FILE-SERVER-CONTAINMENT], [FFI-FILE-SERVER-STOP]
 

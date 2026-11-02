@@ -1,0 +1,216 @@
+// ML twin of chunked_hostile_server.test.osp: a hostile origin written in Osprey.
+// The handler sends back, byte for byte, the chunked framing each case asks for,
+// and the client must decode it or answer Error, never crash and never hand back
+// a partial body. [HTTP-CHUNKED-DECODE] [HTTP-RESPONSE-HANDLE]
+
+framingHeaders path = match path
+    "/lower" => "transfer-encoding: chunked\r\n"
+    "/upper" => "TRANSFER-ENCODING: CHUNKED\r\n"
+    "/padded" => "Transfer-Encoding:   chunked  \r\n"
+    "/gzip-chunked" => "Transfer-Encoding: gzip, chunked\r\n"
+    "/x-te" => "X-Transfer-Encoding: chunked\r\n"
+    "/note" => "Transfer-Encoding: gzip\r\nX-Note: chunked\r\n"
+    "/chunked-gzip" => "Transfer-Encoding: chunked, gzip\r\n"
+    "/notchunked" => "Transfer-Encoding: notchunked\r\n"
+    "/plain" => ""
+    _ => "Transfer-Encoding: chunked\r\n"
+
+framingFor (path, requested) = match path
+    "/get-oversized" => "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
+    "/get-valid" => "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
+    _ => requested
+
+hostileOrigin : (string, string, string, string) -> HttpResponse
+hostileOrigin (_method, path, _headers, requested) = HttpResponse(
+    status = 200,
+    headers = framingHeaders path,
+    contentType = "text/plain",
+    streamFd = (0 - 1),
+    isComplete = true,
+    partialBody = framingFor (path, requested)
+)
+
+released (responseId, outcome) = match httpResponseFree responseId
+    Success _value => outcome
+    Error message => "free-failed=${message}"
+
+bodyOf responseId = match httpResponseBody responseId
+    Success value => released (responseId, "status=${httpResponseStatus responseId} body=${value}")
+    Error message => released (responseId, "body-failed=${message}")
+
+outcomeOf response = match response
+    Success value => bodyOf value
+    Error message => "error=${message}"
+
+posted (client, path, framing) = outcomeOf (httpPostResponse client path framing "")
+
+fetched (client, path) = outcomeOf (httpGetResponse client path "")
+
+withHostileOrigin (port, scenario) =
+    server = httpCreateServer port "127.0.0.1" ?: -1
+    _listening = httpListen server hostileOrigin ?: -1
+    client = httpCreateClient "http://127.0.0.1:${port}" 5000 ?: -1
+    _ran = scenario client
+    _closed = httpCloseClient client ?: -1
+    _stopped = httpStopServer server ?: -1
+    "done"
+
+accepts (client, framing, body) =
+    check "accepts ${framing}" "status=200 body=${body}" (posted (client, "/chunked", framing))
+
+refuses (client, framing, reason) =
+    check "refuses ${framing}" "error=http response: chunked body: ${reason}" (posted (client, "/chunked", framing))
+
+tooBig (client, framing) = refuses (client, framing, "chunk size exceeds the remaining body")
+
+badSize (client, framing) = refuses (client, framing, "invalid chunk size")
+
+noCrlf (client, framing) = refuses (client, framing, "chunk data not followed by CRLF")
+
+truncated (client, framing) = refuses (client, framing, "truncated")
+
+sizesBeyondTheBody client =
+    tooBig (client, "10\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "3\r\nhi")
+    tooBig (client, "6\r\nhello")
+    tooBig (client, "5\r\nhel")
+    tooBig (client, "1\r\n")
+    tooBig (client, "400\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "10000\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "7FFFFFFF\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "7fffffff\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "80000000\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "FFFFFFFF\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "100000000\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "7FFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "8000000000000000\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "FFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "3\r\nabc\r\n100\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "3\r\nabc\r\n7FFFFFFF\r\nhi\r\n0\r\n\r\n")
+    tooBig (client, "1;ext=1\r\n")
+    tooBig (client, "FFFFFFFF;ext=1\r\nhi\r\n0\r\n\r\n")
+
+sizesThatAreNotSizes client =
+    badSize (client, "10000000000000000\r\n\r\n")
+    badSize (client, "10000000000000005\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "FFFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n")
+    badSize (client, "-1\r\nhi\r\n0\r\n\r\n")
+    badSize (client, "-5\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "-0\r\n\r\n")
+    badSize (client, "-7FFFFFFF\r\nhi\r\n0\r\n\r\n")
+    badSize (client, "+5\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "0x5\r\nhello\r\n0\r\n\r\n")
+    badSize (client, " 5\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "\t5\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "zz\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "5z\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "5 z\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "5,3\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "g\r\n")
+    badSize (client, "\r\n")
+    badSize (client, "\r\n0\r\n\r\n")
+    badSize (client, ";ext\r\nhi\r\n0\r\n\r\n")
+    badSize (client, "5\nhello\n0\n\n")
+    badSize (client, "0\n\n")
+    badSize (client, "3\r\nabc\r\nzz\r\n")
+    badSize (client, "3\r\nabc\r\n-1\r\nhi\r\n")
+    badSize (client, "5\r\nhello\r\n\r\n")
+
+dataWithoutItsCrlf client =
+    noCrlf (client, "5\r\nhelloXX0\r\n\r\n")
+    noCrlf (client, "5\r\nhello0\r\n\r\n")
+    noCrlf (client, "5\r\nhello\n0\r\n\r\n")
+    noCrlf (client, "5\r\nhello\rX0\r\n\r\n")
+    noCrlf (client, "5\r\nhello\n\r0\r\n\r\n")
+    noCrlf (client, "4\r\nhello\r\n0\r\n\r\n")
+    noCrlf (client, "6\r\nhello\r\n0\r\n\r\n")
+    noCrlf (client, "3\r\nabc\r\n2\r\nhiXX0\r\n\r\n")
+
+framingCutShort client =
+    truncated (client, "")
+    truncated (client, "5")
+    truncated (client, "5\r")
+    truncated (client, "5 ")
+    truncated (client, "5;ext")
+    truncated (client, "5\r\nhello")
+    truncated (client, "5\r\nhello\r")
+    truncated (client, "5\r\nhello\r\n")
+    truncated (client, "5\r\nhello\r\n0")
+    truncated (client, "5\r\nhello\r\n0\r")
+    truncated (client, "5\r\nhello\r\n0\r\n")
+    truncated (client, "5\r\nhello\r\n0\r\n\r")
+    truncated (client, "0")
+    truncated (client, "0\r\n")
+    truncated (client, "0\r\nX-Trailer: yes")
+    truncated (client, "0\r\nX-Trailer: yes\r\n")
+    truncated (client, "0\r\nX-One: 1\r\nX-Two: 2\r\n")
+
+wellFormedBodies client =
+    accepts (client, "0\r\n\r\n", "")
+    accepts (client, "00000\r\n\r\n", "")
+    accepts (client, "5\r\nhello\r\n0\r\n\r\n", "hello")
+    accepts (client, "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n", "hello world")
+    accepts (client, "1\r\na\r\n1\r\nb\r\n1\r\nc\r\n1\r\nd\r\n0\r\n\r\n", "abcd")
+    accepts (client, "a\r\n0123456789\r\n0\r\n\r\n", "0123456789")
+    accepts (client, "A\r\n0123456789\r\n0\r\n\r\n", "0123456789")
+    accepts (client, "0005\r\nhello\r\n000\r\n\r\n", "hello")
+    accepts (client, "00000000000000000000005\r\nhello\r\n0\r\n\r\n", "hello")
+    accepts (client, "5;name=value\r\nhello\r\n0;last\r\n\r\n", "hello")
+    accepts (client, "5 ;name\r\nhello\r\n0\t;last\r\n\r\n", "hello")
+    accepts (client, "5  \r\nhello\r\n0 \r\n\r\n", "hello")
+    accepts (client, "3\r\nabc\r\n0\r\nX-Trailer: yes\r\n\r\n", "abc")
+    accepts (client, "3\r\nabc\r\n0\r\nX-One: 1\r\nX-Two: 2\r\n\r\n", "abc")
+    accepts (client, "8\r\na\r\n0\r\n\r\n\r\n0\r\n\r\n", "a\r\n0\r\n\r\n")
+    accepts (client, "2\r\n\r\n\r\n0\r\n\r\n", "\r\n")
+    accepts (client, "2\r\né\r\n0\r\n\r\n", "é")
+    accepts (client, "3\r\nabc\r\n0\r\n\r\nleft over", "abc")
+
+whichResponsesAreChunked client =
+    framing = "2\r\nhi\r\n0\r\n\r\n"
+    hostile = "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
+    check "lower-case header" "status=200 body=hi" (posted (client, "/lower", framing))
+    check "upper-case header" "status=200 body=hi" (posted (client, "/upper", framing))
+    check "padded value" "status=200 body=hi" (posted (client, "/padded", framing))
+    check "chunked last" "status=200 body=hi" (posted (client, "/gzip-chunked", framing))
+    check "named header only" "status=200 body=${hostile}" (posted (client, "/x-te", hostile))
+    check "another header's value" "status=200 body=${hostile}" (posted (client, "/note", hostile))
+    check "chunked not last" "status=200 body=${hostile}" (posted (client, "/chunked-gzip", hostile))
+    check "a longer word" "status=200 body=${hostile}" (posted (client, "/notchunked", hostile))
+    check "no header" "status=200 body=${hostile}" (posted (client, "/plain", hostile))
+
+hostileThenValid client =
+    _refused = posted (client, "/chunked", "FFFFFFFF\r\nhi\r\n0\r\n\r\n")
+    posted (client, "/chunked", "2\r\nok\r\n0\r\n\r\n")
+
+getAndPostAgree client =
+    check "GET hostile" "error=http response: chunked body: chunk size exceeds the remaining body" (fetched (client, "/get-oversized"))
+    check "GET valid" "status=200 body=hello world" (fetched (client, "/get-valid"))
+    check "POST hostile then valid" "status=200 body=ok" (hostileThenValid client)
+
+hammer (client, remaining) = match remaining
+    0 => "status=200 body=survived"
+    _ => match posted (client, "/chunked", "7FFFFFFF\r\nhi\r\n0\r\n\r\n")
+        "error=http response: chunked body: chunk size exceeds the remaining body" => hammer (client, wrapSub remaining 1)
+        other => other
+
+survivesRepeatedAttacks client =
+    check "200 attacks in a row" "status=200 body=survived" (hammer (client, 200))
+    check "still serving" "status=200 body=alive" (posted (client, "/chunked", "5\r\nalive\r\n0\r\n\r\n"))
+
+sizesCase () = withHostileOrigin (18110, sizesBeyondTheBody)
+parseCase () = withHostileOrigin (18111, sizesThatAreNotSizes)
+crlfCase () = withHostileOrigin (18112, dataWithoutItsCrlf)
+cutCase () = withHostileOrigin (18113, framingCutShort)
+validCase () = withHostileOrigin (18114, wellFormedBodies)
+headerCase () = withHostileOrigin (18115, whichResponsesAreChunked)
+methodCase () = withHostileOrigin (18116, getAndPostAgree)
+repeatCase () = withHostileOrigin (18117, survivesRepeatedAttacks)
+
+test "chunk sizes beyond the body are refused" sizesCase
+test "chunk sizes that do not parse are refused" parseCase
+test "chunk data without its CRLF is refused" crlfCase
+test "truncated framing is refused" cutCase
+test "well-formed framing decodes" validCase
+test "only a final chunked coding means chunked" headerCase
+test "GET and POST share the decoder" methodCase
+test "repeated attacks leave the client working" repeatCase

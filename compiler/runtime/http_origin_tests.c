@@ -5,6 +5,7 @@
 // [HTTP-RESPONSE-HANDLE].
 #include "http_runtime_tests.h"
 #include "http_shared.h"
+#include "io_error.h"
 #include "socket_safety.h"
 
 #include <signal.h>
@@ -362,9 +363,9 @@ void test_client_large_response(void) {
   http_close_client(client_id);
 }
 
-// Chunked framing the origin got wrong stops decoding at the damage instead of
-// walking off the end of the body [HTTP-RESPONSE-HANDLE].
-static void expect_chunked_body(const char *chunks, const char *expected) {
+// Sends `chunks` as the body of a chunked response and returns what the client
+// made of it, with the origin already finished [HTTP-CHUNKED-DECODE].
+static int64_t chunked_exchange(const char *chunks, int64_t client_id) {
   static char reply[512];
   int written = snprintf(reply, sizeof(reply),
                          "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n%s",
@@ -372,14 +373,38 @@ static void expect_chunked_body(const char *chunks, const char *expected) {
   assert(written > 0 && (size_t)written < sizeof(reply));
   ScriptedOrigin origin;
   origin_start(&origin, reply);
-  int64_t client_id = origin_client();
   int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/c",
                                      (char *)(uintptr_t) "");
   origin_stop(&origin);
+  return handle;
+}
+
+static void expect_chunked_body(const char *chunks, const char *expected) {
+  int64_t client_id = origin_client();
+  int64_t handle = chunked_exchange(chunks, client_id);
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, expected) == 0);
   free(body);
+  assert(http_response_free(handle) == 0);
+  http_close_client(client_id);
+}
+
+// Broken framing is an error with its reason on the channel. It takes no
+// response slot, leaks nothing and leaves the client usable.
+static void expect_chunked_refused(const char *chunks, const char *reason) {
+  char message[128];
+  snprintf(message, sizeof(message), "http response: chunked body: %s", reason);
+  int64_t client_id = origin_client();
+  long live = test_alloc_live();
+  osp_io_error_clear();
+  assert(chunked_exchange(chunks, client_id) == -14);
+  assert(osp_io_error() != NULL && strcmp(osp_io_error(), message) == 0);
+  assert(test_alloc_live() == live);
+  osp_io_error_clear();
+  int64_t handle = chunked_exchange("2\r\nok\r\n0\r\n\r\n", client_id);
+  assert(handle >= 1);
+  assert(osp_io_error() == NULL);
   assert(http_response_free(handle) == 0);
   http_close_client(client_id);
 }
@@ -409,11 +434,51 @@ void test_client_response_allocation_failures(void) {
   expect_response_allocation_failure(big, MAX_HTTP_BUFFER * 2);
 }
 
+// Running out of memory while decoding is -9, not a verdict on the body, and it
+// leaks nothing. The size is one no other allocation in the exchange asks for.
+static void check_chunked_allocation_failure(void) {
+  char chunks[300];
+  memset(chunks, 'x', sizeof(chunks) - 1);
+  chunks[sizeof(chunks) - 1] = '\0';
+  memcpy(chunks, "11f\r\n", 5);
+  memcpy(chunks + sizeof(chunks) - 8, "\r\n0\r\n\r\n", 7);
+  int64_t client_id = origin_client();
+  long live = test_alloc_live();
+  osp_io_error_clear();
+  test_alloc_fail_size(sizeof(chunks));
+  assert(chunked_exchange(chunks, client_id) == -9);
+  test_alloc_fail_off();
+  assert(osp_io_error() == NULL);
+  assert(test_alloc_live() == live);
+  int64_t handle = chunked_exchange(chunks, client_id);
+  assert(handle >= 1);
+  char *body = http_response_body(handle);
+  assert(body != NULL && strlen(body) == 0x11f && body[0] == 'x');
+  free(body);
+  assert(http_response_free(handle) == 0);
+  http_close_client(client_id);
+}
+
 void test_client_malformed_chunks(void) {
-  expect_chunked_body("zz\r\nhello\r\n0\r\n\r\n", "");   // size is not hex
-  expect_chunked_body("4", "");                          // size line unfinished
-  expect_chunked_body("3\r\nabc\r\nzz\r\n", "abc");      // damage after a chunk
-  expect_chunked_body("0\r\n\r\n", "");                  // terminator only
+  static const char too_big[] = "chunk size exceeds the remaining body";
+  static const char bad_size[] = "invalid chunk size";
+  static const char no_crlf[] = "chunk data not followed by CRLF";
+  static const char cut_short[] = "truncated";
+  expect_chunked_refused("7FFFFFFF\r\nhi\r\n0\r\n\r\n", too_big);
+  expect_chunked_refused("FFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", too_big);
+  expect_chunked_refused("10\r\nhi\r\n0\r\n\r\n", too_big);
+  expect_chunked_refused("3\r\nabc\r\n100\r\nhi\r\n", too_big);
+  expect_chunked_refused("10000000000000005\r\nhello\r\n0\r\n\r\n", bad_size);
+  expect_chunked_refused("-1\r\nhi\r\n0\r\n\r\n", bad_size);
+  expect_chunked_refused("zz\r\nhello\r\n0\r\n\r\n", bad_size);
+  expect_chunked_refused("3\r\nabc\r\nzz\r\n", bad_size);
+  expect_chunked_refused("5\r\nhelloXX0\r\n\r\n", no_crlf);
+  expect_chunked_refused("4", cut_short);
+  expect_chunked_refused("5\r\nhello\r\n", cut_short);
+  expect_chunked_refused("5\r\nhello\r\n0\r\n", cut_short);
+  expect_chunked_body("0\r\n\r\n", "");
+  expect_chunked_body("3\r\nabc\r\n0\r\nX-T: y\r\n\r\n", "abc");
+  check_chunked_allocation_failure();
 }
 
 // An https:// client negotiates TLS before it sends anything; a plaintext peer

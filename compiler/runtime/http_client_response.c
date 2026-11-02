@@ -1,5 +1,6 @@
 #include "http_client_internal.h"
 #include "http_shared.h"
+#include "io_error.h"
 
 #include <strings.h> // strncasecmp
 
@@ -9,55 +10,154 @@
 // (http_client_runtime.c) so each TU stays under the repo size budget.
 // Implements [HTTP-RESPONSE-HANDLE].
 
-// http_header_is_chunked reports whether the response header block declares
-// Transfer-Encoding: chunked (case-insensitive header name).
+// http_header_is_chunked reports whether the response header block names chunked
+// as the final coding of its Transfer-Encoding header (case-insensitive, per
+// RFC 9112 6.1). Any other header that merely mentions either word does not count.
 bool http_header_is_chunked(const char *headers) {
-  if (!headers) {
-    return false;
-  }
-  for (const char *p = headers; *p; p++) {
-    if ((p[0] == 'T' || p[0] == 't') &&
-        strncasecmp(p, "Transfer-Encoding:", 18) == 0) {
-      const char *v = p + 18;
-      return strstr(v, "chunked") != NULL || strstr(v, "Chunked") != NULL;
+  static const size_t name_len = 18;
+  static const size_t coding_len = 7;
+  const char *line = headers;
+  while (line && *line) {
+    const char *eol = strstr(line, "\r\n");
+    if (strncasecmp(line, "Transfer-Encoding:", name_len) == 0) {
+      const char *value = line + name_len;
+      const char *end = eol ? eol : value + strlen(value);
+      while (end > value && (end[-1] == ' ' || end[-1] == '\t')) {
+        end--;
+      }
+      if ((size_t)(end - value) < coding_len ||
+          strncasecmp(end - coding_len, "chunked", coding_len) != 0) {
+        return false;
+      }
+      char before = end[-(ptrdiff_t)coding_len - 1];
+      return before == ':' || before == ' ' || before == '\t' || before == ',';
     }
+    line = eol ? eol + 2 : NULL;
   }
   return false;
 }
 
-// http_decode_chunked decodes an HTTP/1.1 chunked body in place: each chunk is
-// "<hex-length>\r\n<data>\r\n", terminated by a zero-length chunk. Returns a
-// freshly allocated, NUL-terminated decoded body (caller frees), or NULL.
-char *http_decode_chunked(const char *body) {
-  size_t cap = strlen(body) + 1;
-  char *out = malloc(cap);
+static const char CHUNK_TOO_BIG[] = "chunk size exceeds the remaining body";
+static const char CHUNK_BAD_SIZE[] = "invalid chunk size";
+static const char CHUNK_NO_CRLF[] = "chunk data not followed by CRLF";
+static const char CHUNK_CUT_SHORT[] = "truncated";
+
+static const char *find_crlf(const char *p, const char *end) {
+  for (; end - p >= 2; p++) {
+    if (p[0] == '\r' && p[1] == '\n') {
+      return p;
+    }
+  }
+  return NULL;
+}
+
+static int hex_digit(char c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  return c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+}
+
+// Parses "<hex-size>[ws][;ext]\r\n" at *cursor and moves past it. Returns NULL,
+// or why the line is malformed. A size that overflows is malformed, so it can
+// never wrap round to a small value that passes the caller's bound.
+static const char *parse_chunk_size(const char **cursor, const char *end,
+                                    size_t *size) {
+  const char *p = *cursor;
+  const char *digits = p;
+  *size = 0;
+  for (; p < end && hex_digit(*p) >= 0; p++) {
+    if (*size > SIZE_MAX / 16) {
+      return CHUNK_BAD_SIZE;
+    }
+    *size = *size * 16 + (size_t)hex_digit(*p);
+  }
+  if (p == end) {
+    return CHUNK_CUT_SHORT;
+  }
+  if (p == digits) {
+    return CHUNK_BAD_SIZE;
+  }
+  while (p < end && (*p == ' ' || *p == '\t')) {
+    p++;
+  }
+  if (p == end) {
+    return CHUNK_CUT_SHORT;
+  }
+  if (*p != ';' && *p != '\r') {
+    return CHUNK_BAD_SIZE;
+  }
+  const char *line_end = find_crlf(p, end);
+  if (!line_end) {
+    return *p == ';' || end - p == 1 ? CHUNK_CUT_SHORT : CHUNK_BAD_SIZE;
+  }
+  if (*p == '\r' && line_end != p) {
+    return CHUNK_BAD_SIZE;
+  }
+  *cursor = line_end + 2;
+  return NULL;
+}
+
+// Decodes every chunk of [p, end) into out, which holds end - p + 1 bytes: the
+// decoded bytes can't outnumber the framed ones. The body ends at the blank line
+// after the zero chunk's trailers, and bytes after it are ignored, as the
+// connection closes there. Returns NULL, or why the framing is malformed.
+static const char *decode_chunks(const char *p, const char *end, char *out) {
+  size_t out_len = 0;
+  for (;;) {
+    size_t size = 0;
+    const char *malformed = parse_chunk_size(&p, end, &size);
+    if (malformed) {
+      return malformed;
+    }
+    if (size == 0) {
+      break;
+    }
+    if (size > (size_t)(end - p)) {
+      return CHUNK_TOO_BIG;
+    }
+    memcpy(out + out_len, p, size);
+    out_len += size;
+    p += size;
+    if (end - p < 2) {
+      return CHUNK_CUT_SHORT;
+    }
+    if (p[0] != '\r' || p[1] != '\n') {
+      return CHUNK_NO_CRLF;
+    }
+    p += 2;
+  }
+  out[out_len] = '\0';
+  for (;;) {
+    const char *line_end = find_crlf(p, end);
+    if (!line_end) {
+      return CHUNK_CUT_SHORT;
+    }
+    if (line_end == p) {
+      return NULL;
+    }
+    p = line_end + 2;
+  }
+}
+
+// http_decode_chunked decodes the len bytes of an HTTP/1.1 chunked body. Returns
+// a freshly allocated, NUL-terminated body (caller frees), or NULL with *malformed
+// saying what is wrong with the framing, or NULL with *malformed NULL when out of
+// memory. Nothing partial comes back. Implements [HTTP-CHUNKED-DECODE].
+char *http_decode_chunked(const char *body, size_t len, const char **malformed) {
+  *malformed = NULL;
+  char *out = malloc(len + 1);
   if (!out) {
     return NULL;
   }
-  size_t out_len = 0;
-  const char *p = body;
-  for (;;) {
-    char *end = NULL;
-    long chunk = strtol(p, &end, 16); // chunk size in hex
-    if (end == p) {
-      break; // no valid size: stop
-    }
-    const char *line_end = strstr(end, "\r\n");
-    if (!line_end) {
-      break;
-    }
-    const char *data = line_end + 2;
-    if (chunk <= 0) {
-      break; // terminating zero chunk
-    }
-    memcpy(out + out_len, data, (size_t)chunk);
-    out_len += (size_t)chunk;
-    p = data + chunk;
-    if (strncmp(p, "\r\n", 2) == 0) {
-      p += 2; // skip trailing CRLF after the chunk data
-    }
+  *malformed = decode_chunks(body, body + len, out);
+  if (*malformed) {
+    free(out);
+    return NULL;
   }
-  out[out_len] = '\0';
   return out;
 }
 
@@ -117,15 +217,18 @@ static int64_t http_request_capture(int64_t client_id, int64_t method,
   }
 
   // Decode a chunked body so callers see the real payload, not chunk framing.
-  char *resp_body = NULL;
-  if (http_header_is_chunked(resp_headers)) {
-    resp_body = http_decode_chunked(body_start);
-  }
-  if (!resp_body) {
-    resp_body = strdup(body_start);
-  }
+  size_t body_len = len - (size_t)(body_start - raw);
+  const char *malformed = NULL;
+  char *resp_body = http_header_is_chunked(resp_headers)
+                        ? http_decode_chunked(body_start, body_len, &malformed)
+                        : strdup(body_start);
   free(raw);
 
+  if (malformed) {
+    free(resp_headers);
+    osp_io_error_text("http response", "chunked body", malformed);
+    return -14; // broken framing is never shown to the caller as a body
+  }
   if (!resp_body) {
     free(resp_headers);
     return -9;

@@ -92,6 +92,8 @@ tests/regressions/fiber/fiber_determinism.test.osp fibers and continuations: `fi
 tests/regressions/fiber/fiber_exact_replica.test.osp fibers and continuations: `fiber_set_deterministic_mode` is the native fiber runtime, outside the module
 tests/regressions/fiber/fiber_showcase.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
 tests/regressions/fiber/fiber_showcase.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/http/chunked_hostile_server.test.osp HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/http/chunked_hostile_server.test.ospml HTTP needs sockets: `http_create_server` is outside the module
 tests/regressions/http/http_client_example.test.osp HTTP needs sockets: `http_create_server` is outside the module
 tests/regressions/http/http_client_example.test.ospml HTTP needs sockets: `http_create_server` is outside the module
 tests/regressions/http/http_create_client.test.osp HTTP needs sockets: `http_create_client` is outside the module
