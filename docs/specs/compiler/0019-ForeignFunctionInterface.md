@@ -43,6 +43,20 @@ An extern whose return type is `Unit` calls a C `void` function. Its LLVM declar
 
 Osprey function values retain their normal calling convention. A wrapper around a `Unit`-returning extern calls the C function with its `void` ABI and returns Osprey's `Unit` value.
 
+## Numeric widths [FFI-NUMERIC-WIDTH]
+
+An `extern` parameter or return of a numeric type crosses the boundary as the C type of its row in [TYPE-NUMERIC-SIZED](../language/0004-TypeSystem.md#sized-numeric-types--type-numeric-sized): `int` is `int64_t`, `int32` is `int32_t`, `uint8` is `uint8_t`, `float` is `double`, `float32` is `float`, and `float16` is `uint16_t` holding the binary16 bits. The LLVM declaration uses the row's LLVM type, so a C function taking `float` receives a `float` register, never a widened double. `bool` remains `i1`. No numeric conversion is inserted on either side; a C signature that differs from the declaration is the program's error, as it is for any other extern.
+
+```osprey
+extern fn sqrtf(x: float32) -> float32
+extern fn memset(p: Ptr, value: int32, count: int) -> Ptr
+```
+
+```osprey-ml
+extern sqrtf (x : float32) -> float32
+extern memset (p : Ptr, value : int32, count : int) -> Ptr
+```
+
 ## The `Ptr` Type [FFI-PTR]
 
 `Ptr` is an opaque C pointer (`i8*`). It also crosses the app-library C boundary as `void *` ([IOS-HOST-ABI](iOSCodegen.md#c-function-boundary-ios-host-abi)). It may appear in signatures and may be

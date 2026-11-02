@@ -62,8 +62,8 @@ Audited against this repository on 2026-11-03.
 
 | Need | Today | Gap |
 | --- | --- | --- |
-| Hold the weights | `GpuBuffer<float>` stores binary64 | About 220 GB for 27.4B text parameters. **Blocking** |
-| Compute at speed | Metal and OpenCL kernels run software binary64 | About a minute per token, see below. **Blocking** |
+| Hold the weights | `GpuBuffer<float>` stores binary64 | About 220 GB for 27.4B text parameters. **Blocking**; [plan 0050](0050-sized-numeric-types.md) |
+| Compute at speed | Metal and OpenCL kernels run software binary64 | About a minute per token, see below. **Blocking**; [plan 0050](0050-sized-numeric-types.md) |
 | KV cache and recurrent state | A buffer is immutable at the language surface | Copying 4 GB of KV per token is impossible. **Blocking** |
 | Read quantized weights | `gpuLoad` and `gpuLoadTensor` copy and widen | Needs a mapped, block-quantized, read-only weight type |
 | Read GGUF | Nothing | Port the `gguf` package |
@@ -134,7 +134,7 @@ Each phase ends with its gate met, its tests in the suite, its spec IDs written,
 ### Phase 1 — Storage
 
 - [ ] Write spec 0053.
-- [ ] `[LLM-BUFFER-FLOAT32]` `[LLM-BUFFER-FLOAT16]`: `GpuBuffer` element types with native arithmetic on Metal and OpenCL and on the host. Kernel arithmetic stays binary32 end to end, with no silent widening.
+- [ ] `float32` and `float16` buffers with native device arithmetic come from [plan 0050](0050-sized-numeric-types.md) ([TYPE-NUMERIC-SIZED], [GPU-DEVICE-NATIVE]); this phase waits on its phase 5 gate and adds nothing of its own there.
 - [ ] `[LLM-WEIGHTS-MAPPED]`: a read-only buffer over a memory-mapped file region, shared with the GPU without a copy on unified memory.
 - [ ] `[LLM-WEIGHTS-QUANT]`: block decoders for each tensor type the chosen GGUF actually uses, listed from the file in phase 0. Compare against `gguf-py` on every block of a generated fixture.
 - [ ] `[LLM-STATE-OWNED]`: one mutable, single-owner state buffer for KV and recurrent state. This relaxes [GPU-BUFFER]'s immutability for that type only, so it needs its own checks: no aliasing, and a compile error on capture by an escaping closure.

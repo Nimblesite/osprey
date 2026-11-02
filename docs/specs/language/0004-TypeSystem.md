@@ -339,8 +339,11 @@ Primitive spellings are case-sensitive.
 
 | Type             | Description                                                        |
 | ---------------- | ------------------------------------------------------------------ |
-| `int`            | 64-bit signed integer (LLVM `i64`)                                 |
-| `float`          | 64-bit IEEE 754 (LLVM `double`)                                    |
+| `int`            | 64-bit signed integer (LLVM `i64`); the default integer type       |
+| `float`          | 64-bit IEEE 754 binary64 (LLVM `double`); the default float type   |
+| `int8` `int16` `int32` | Signed integers at 8, 16 and 32 bits ([TYPE-NUMERIC-SIZED](#sized-numeric-types--type-numeric-sized)) |
+| `uint8` `uint16` `uint32` | Unsigned integers at 8, 16 and 32 bits                      |
+| `float16` `float32` | IEEE 754 binary16 and binary32                                  |
 | `string`         | UTF-8 encoded                                                      |
 | `bool`           | `true` \| `false`                                                  |
 | `Unit`           | The single value `()`; the return type of a function with no result|
@@ -350,7 +353,52 @@ Primitive spellings are case-sensitive.
 | `Map<K, V>`      | Immutable key/value collection                                     |
 | `Iterator<T>`    | Opaque range pipeline (see [Iterators](0010-LoopConstructsAndFunctionalIterators.md)) |
 
-Mixed numeric arithmetic promotes `int` to `float`. Integer `+`, `-`, `*`, `%`, and unary `-` have type `int`; `/` has type `float`; floating-point `+`, `-`, `*`, and unary `-` have type `float`. Arithmetic is total: no trap, no panic, no silent wrap, no unspecified value, and no undischarged fault ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic--arith-checked), [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+Mixed arithmetic between `int` and `float` promotes the `int` to `float`; that is the only implicit numeric conversion ([TYPE-NUMERIC-SAME-TYPE](#one-type-per-operation--type-numeric-same-type)). Integer `+`, `-`, `*`, `%`, and unary `-` have the operand's integer type; `/` has type `float` for every integer type; floating-point `+`, `-`, `*`, `/` and unary `-` have the operand's float type. Arithmetic is total: no trap, no panic, no silent wrap, no unspecified value, and no undischarged fault ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic--arith-checked), [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+
+### Sized numeric types — [TYPE-NUMERIC-SIZED]
+
+Ten numeric types share one description: a kind (signed, unsigned or binary floating point) and a width. Every rule in this section is stated once over that description, and the compiler holds it in one table (`crates/osprey-types/src/numeric.rs`), so no type has a rule of its own.
+
+| Type | Kind | Bits | Range or format | LLVM | C |
+| --- | --- | --- | --- | --- | --- |
+| `int8` | signed | 8 | −128 … 127 | `i8` | `int8_t` |
+| `int16` | signed | 16 | −32768 … 32767 | `i16` | `int16_t` |
+| `int32` | signed | 32 | −2^31 … 2^31 − 1 | `i32` | `int32_t` |
+| `int` | signed | 64 | −2^63 … 2^63 − 1 | `i64` | `int64_t` |
+| `uint8` | unsigned | 8 | 0 … 255 | `i8` | `uint8_t` |
+| `uint16` | unsigned | 16 | 0 … 65535 | `i16` | `uint16_t` |
+| `uint32` | unsigned | 32 | 0 … 2^32 − 1 | `i32` | `uint32_t` |
+| `float16` | binary | 16 | IEEE 754 binary16 | `i16` (bits) | `uint16_t` (bits) |
+| `float32` | binary | 32 | IEEE 754 binary32 | `float` | `float` |
+| `float` | binary | 64 | IEEE 754 binary64 | `double` | `double` |
+
+There is no `uint64`: it would need its own division and comparison rules against `int`. There is no `bfloat16` type: a `BF16` tensor widens exactly into `float32` ([GPU-BUFFER-TENSOR](../runtime/0034-GPUComputation.md#gpuloadtensorpath-string-name-string---resultgpubuffert-error--gpu-buffer-tensor)).
+
+The sized types are ordinary primitives. They appear in records, unions, lists, maps, `Result` payloads, effect operations, closures, pattern literals, string interpolation and `extern` signatures ([FFI-NUMERIC-WIDTH](../compiler/0019-ForeignFunctionInterface.md#numeric-widths-ffi-numeric-width)). Inside `List`, `Map`, `Result`, an `any` box or a closure environment a sized value occupies the uniform 8-byte word — integers sign- or zero-extended by kind, floats as their bit pattern zero-extended — and reads back at its own type ([TYPE-NUMERIC-WORD]). A `GpuBuffer<T>` is the dense form: it stores each element at the table's width ([GPU-BUFFER-ELEM](../runtime/0034-GPUComputation.md#element-restriction--gpu-buffer-elem)).
+
+### One type per operation — [TYPE-NUMERIC-SAME-TYPE]
+
+A binary arithmetic or comparison operator takes both operands at one numeric type and, for arithmetic other than integer `/`, returns it. `int32 + int` is a type error (`cannot unify int32 with int`), as is `float32 < float`. The one exception is the long-standing promotion of `int` to `float`, which is unchanged and does not extend to any sized type. Conversions are explicit and named for their target ([BUILTIN-CONVERT-INT](../runtime/0012-Built-InFunctions.md#integer-conversions--builtin-convert-int), [BUILTIN-CONVERT-FLOAT](../runtime/0012-Built-InFunctions.md#float-conversions--builtin-convert-float)). [FLOAT-OPERANDS] applies to every numeric type: a helper such as `fn scale(x) = x * 2` serves one numeric type per program, selected by its uses.
+
+### Literals — [TYPE-NUMERIC-LITERAL]
+
+An integer literal has the integer type its context requires and `int` when nothing requires one; a float literal likewise ranges over the float types and defaults to `float`. The requirement flows from annotations, parameter slots, operator siblings, record fields and match scrutinees in the same way an open arithmetic overload resolves ([GPU-KERNEL-ELEM-TYPING](../runtime/0034-GPUComputation.md#kernel-element-typing--gpu-kernel-elem-typing)), so `let x: uint8 = 200` and `fn bump(n: int16) = n + 1` need no suffix and no conversion.
+
+A literal that does not fit the type it resolves to is a compile error at the literal: `literal 300 does not fit uint8`, `literal -1 does not fit uint32`, and `literal 1e40 does not fit float32` for a float literal whose rounded value is infinite. A float literal that fits rounds to nearest, ties to even, exactly as source text rounds to `float` today. Pattern literals take the scrutinee's type under the same rule. [ARITH-EFFECT-CONST] folds constant expressions at the resolved width, so `uint8` `200 + 100` is `constant arithmetic overflows`.
+
+### Arithmetic at width — [TYPE-NUMERIC-ARITH-WIDTH]
+
+Integer arithmetic is checked at the operand type's width under [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total): `+`, `-`, `*`, unary `-`, `%`, `intDiv` and `abs` perform the same `Arith` operations as at 64 bits when the result does not fit the type, and the handler's recovery value is at that type. Unary `-` on an unsigned type performs `Arith.overflow` for every nonzero operand. The backend emits `llvm.sadd.with.overflow.iN` and `llvm.uadd.with.overflow.iN` and their subtract and multiply forms for the type's `N` and kind. `wrapAdd`, `satAdd` and the rest of [BUILTIN-TOTAL-ARITH] and the bitwise builtins of [BUILTIN-BITWISE] are open over every integer type: wrapping, clamping and shift limits are taken from the width, so `wrapAdd` on `uint8` `255, 1` is `0` and `shiftLeft` on `int16` is `0` for a count outside `0..15`.
+
+Float arithmetic at `float32` is the native binary32 operation, correctly rounded, with no contraction into fused multiply-add on any backend. Arithmetic at `float16` computes the operation in binary32 and rounds the result to binary16 once; for `+`, `-`, `*`, `/` and `sqrt` that is the correctly rounded binary16 result, because 24 significand bits exceed twice binary16's 11 plus two. [FLOAT-COMPARE] holds at every float width. [FLOAT-IEEE-RESULTS] holds at every width: `sqrt` and the four operations have one byte-exact answer everywhere; the transcendental functions are each host's `libm` at that width (`expf`, `tanhf`).
+
+### Printing — [TYPE-NUMERIC-PRINT]
+
+An integer of any type interpolates in decimal. A float of any width interpolates as the shortest decimal that reads back as the same value **at that width**, with the `.0` marker rule of `float`: `toFloat32(0.1)` prints `0.1`, not `0.10000000149011612`, and `toFloat16(1.0) / 3.0` prints `0.3333`. NaN and the infinities print as they do for `float`.
+
+### Container words — [TYPE-NUMERIC-WORD]
+
+A sized scalar stored in a `List`, `Map`, `Result` payload, `any` box, fiber result or closure environment is one 8-byte word: a signed integer sign-extended, an unsigned integer zero-extended, a `float32` or `float16` its bit pattern zero-extended. The container tag names the element (`List#i32`, `Gpu#u8`, `[]f16`), so a read recovers the value at its type and `listGet(xs, 0) == toUint8(7)` compares two `uint8`s. The cost of a list element is therefore unchanged; code that needs dense storage uses a buffer.
 
 ### Numeric operand constraints — [FLOAT-OPERANDS]
 
@@ -386,11 +434,12 @@ either operand, equality complements, finite controls, infinities and signed zer
 
 ### Internal numeric narrowing — [FLOAT-CONVERT]
 
-The type checker rejects implicit float-to-integer narrowing. The backend's
-internal coercion also has defined behavior if a future caller supplies a
-double: finite values truncate toward zero, out-of-range values clamp to the
-signed 64-bit bounds, and NaN becomes zero. It emits
-`llvm.fptosi.sat.i64.f64`, never poison-producing bare `fptosi`.
+The type checker rejects implicit float-to-integer narrowing at every width.
+The backend's internal coercion also has defined behavior if a future caller
+supplies a float: finite values truncate toward zero, out-of-range values
+clamp to the target integer type's bounds, and NaN becomes zero. It emits
+`llvm.fptosi.sat.iN.fM` (`llvm.fptoui.sat` for an unsigned target), never
+poison-producing bare `fptosi`.
 The codegen conversion tests assert this path for signed NaNs, infinities,
 both range boundaries, signed zeros and fractional values. These semantics
 follow the [LLVM conversion contract](https://llvm.org/docs/LangRef.html#llvm-fptosi-sat-intrinsic).
