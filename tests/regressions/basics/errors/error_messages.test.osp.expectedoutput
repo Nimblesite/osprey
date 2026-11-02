@@ -28,9 +28,7 @@ codePointWidth-toobig: codePointWidth: code point out of range
 
 fromCodePoint: fromCodePoint: invalid code point
 
-codePointAt-truncated: codePointAt: truncated codepoint
-
-codePointAt-continuation: codePointAt: invalid continuation byte
+codePointAt-whole: 233
 
 divide: division by zero
 
