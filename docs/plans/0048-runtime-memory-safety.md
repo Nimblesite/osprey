@@ -80,7 +80,7 @@ These stay open as findings in the reports:
 - `osprey_media_unrender` accepting arbitrary `/osprey-cast.` paths and trusting the `pid` file
 - The escaped-quote interpolation bug in `crates/osprey-syntax/src/strings.rs`, which came in with the #323 fix and is small enough to fix on its own
 - `providers_http.py` hiding body and cleanup failures
-- WinUI output buffering, store symlinks, and `gethostbyname` races
+- WinUI output buffering and store symlinks
 - Compiler stack overflow on extreme nesting, and segfaults on deep non-tail recursion
 - The Chromecast recursion finding, which is unproven
 - WebSocket close, ping and fragmented frames, which [BUILTIN-WEBSOCKET-FRAMING] documents as unimplemented
