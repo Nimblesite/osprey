@@ -45,7 +45,8 @@ import {
 } from "./compile-commands";
 import { registerPackageWorkspace } from "./package-workspace";
 import { registerWorkbench } from "./workbench";
-import { registerPackageCommands } from "./package-commands";
+import { defaultFrontend, registerPackageCommands } from "./package-commands";
+import { registerModuleExplorer } from "./module-explorer";
 import { registerLocalRegistry } from "./local-registry";
 import { huntCurrentFile } from "./hunt";
 export * from "./client-config";
@@ -110,6 +111,7 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
   registerPackageWorkspace(context, (folder) => localRegistry.ensureRunning(folder));
   registerWorkbench(context);
   registerPackageCommands(context);
+  registerModuleExplorer(context, () => resolveServerCommand(context), defaultFrontend(context.extensionPath));
   registerWarningFixes(context, (params) =>
     client.sendRequest(CodeActionRequest.type, params),
   );

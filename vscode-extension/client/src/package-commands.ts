@@ -66,7 +66,7 @@ const FRONTEND_CONFIG = "packages.frontendPath";
 const FRONTEND_DEFAULT = "osprey-pkg";
 
 /** The frontend executable: the configured path, else `osprey-pkg` on PATH. */
-function defaultFrontend(extensionPath?: string): FrontendRunner {
+export function defaultFrontend(extensionPath?: string): FrontendRunner {
   return { run: (command, cwd) => {
     const configured = workspace.getConfiguration("osprey").get<string>(FRONTEND_CONFIG);
     const bundled = extensionPath && path.join(extensionPath, "bin", shipwrightPlatform(), process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg");

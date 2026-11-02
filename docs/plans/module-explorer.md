@@ -1,15 +1,20 @@
 # Module explorer delivery plan
 
-**Status: compiler data available; the sidebar is not implemented.** Record this requirement during stabilization; implementation starts after existing delivery gates are green. The binding contract is [EDITOR-MODULE-EXPLORER](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer). This is the Osprey counterpart to the module/solution explorers in Basilisk and SharpLsp.
+**Status: the sidebar view runs on real compiler data; transitive and locked dependencies, verification findings and installed-VSIX acceptance remain.** Record this requirement during stabilization; implementation starts after existing delivery gates are green. The binding contract is [EDITOR-MODULE-EXPLORER](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer). This is the Osprey counterpart to the module/solution explorers in Basilisk and SharpLsp.
 
 ## Delivery steps
 
 - [x] Inventory: `osprey <project> --source-graph` already gives sources and checked dependency edges, and now gives each source's namespaces and modules with positions (`declarations`). Direct and transitive packages, locked versions, overrides and verification findings come from the package frontend behind `osprey.packages.open`, so no second resolver is needed.
-- [ ] Add the Module Explorer to the existing Osprey sidebar with project, module, namespace and source nodes plus organization-qualified direct/transitive dependencies, distinguishing locked releases and local overrides. Keep application decisions in Osprey and VS Code host capability glue in the extension.
-- [ ] Implement document/declaration navigation, active-file reveal, refresh and accessible keyboard operation. Preserve selection across refreshes and isolate multi-root projects. Preserve read-only navigation in untrusted workspaces, exclude generated caches and refuse traversal/symlink escapes outside authorized roots.
-- [ ] Expose the existing Manage Packages command with the selected project's context. Reflect completed package operations without duplicating mutation logic.
-- [ ] Show real analysis errors, stale/loading/missing-lock states and package verification findings attached to affected items. Prove that missing data cannot appear as a clean empty result or a safe dependency.
-- [ ] Add real editor E2E coverage for cross-flavor module membership, locked and local dependencies, source navigation, refresh after edits and package changes, project selection/cancellation, untrusted read-only navigation and mutation refusal, root containment and keyboard access. Assert membership from the actual compiler graph, not a synthetic tree fixture.
+- [x] Add the Module Explorer to the existing Osprey sidebar with project, module, namespace and source nodes and organization-qualified direct dependencies (`client/src/module-explorer.ts`). The tree holds no application decisions: membership comes from the compiler and dependencies from the Osprey package client.
+- [ ] Add transitive dependencies, distinguishing locked releases and local overrides.
+- [x] Document/declaration navigation, active-file reveal, refresh on edits, stable ids across refreshes, one node per project, generated caches excluded, and keyboard operation through the native tree.
+- [ ] In an untrusted workspace the view runs nothing and says why; preserve read-only navigation there, and refuse traversal/symlink escapes outside authorized roots.
+- [x] The existing Manage Packages command is on the view's toolbar, and manifest and lock changes refresh the tree without duplicating mutation logic.
+- [ ] Pass the selected project's context to Manage Packages.
+- [x] Real analysis and dependency errors show as items, and an incomplete graph or report is refused rather than read as an empty result.
+- [ ] Stale, loading and missing-lock states, and package verification findings on affected items.
+- [x] Editor E2E coverage against the actual compiler graph for cross-flavor membership, source navigation, refresh after edits, analysis failures and untrusted refusal (`test/suite/module-explorer.test.ts`).
+- [ ] E2E coverage for locked and local dependencies, package changes, project selection/cancellation, root containment and keyboard access.
 - [ ] Verify the installed VSIX and current-head CI gates before marking the explorer delivered. Record exact runnable acceptance commands and verified results in AGENTS.md at implementation time.
 
 ## Completion evidence
