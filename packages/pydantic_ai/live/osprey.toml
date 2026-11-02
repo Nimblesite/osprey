@@ -1,0 +1,9 @@
+[project]
+name = "pydantic_ai-live"
+source_roots = [".", "../src", "../../testing/src"]
+python_sources = ["../src/json_util.py", "../src/exceptions.py", "../src/usage.py", "../src/tools.py", "../src/settings.py", "../src/profiles.py", "../src/messages.py", "../src/models.py", "../src/providers.py", "../src/models_openai.py", "../src/models_test.py", "../src/direct.py", "../src/agent.py", "../../testing/src/check.py", "main.py"]
+default_namespace = "pydantic_ai_live"
+entry = "main.py"
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }
