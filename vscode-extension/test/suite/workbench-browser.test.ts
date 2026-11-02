@@ -262,7 +262,9 @@ suite("workbench VSIX visual comparison", () => {
       await comparisonState(frame, "paper-proof");
       await assertNoFreehandInk(frame);
       assert.strictEqual(await frame.getByRole("button", { name: "Use this sample statement", exact: true }).count(), 0, "the removed sample-statement action cannot survive as an inert control");
-      assert.ok((await frame.getByRole("textbox", { name: "Write the next step…", exact: true }).boundingBox())?.height, "the typed proof entry remains the visible writing surface");
+      const entry = frame.getByRole("textbox", { name: "Write the next step…", exact: true });
+      await entry.waitFor({ state: "visible" });
+      assert.ok((await entry.boundingBox())?.height, "the typed proof entry remains the visible writing surface");
     }, "failure-transcription-removed");
   });
   test("the typed proof document replaces the removed transcription reference surface", async () => {
