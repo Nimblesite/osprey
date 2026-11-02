@@ -10,6 +10,14 @@
     },
     {
       "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"It explains itself.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Nothing wrong with it.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    },
+    {
+      "status": 200,
       "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"The reasoned answer.\", \"reasoning_content\": \"Considering the question.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
     },
     {

@@ -152,8 +152,23 @@ final class SelfTestTests: XCTestCase {
         XCTAssertNil(SelfTestPicture.difference(Data(), black))
     }
 
-    private func httpRequest(_ body: String, _ slice: String) -> Request {
-        Request(ticket: "t", kind: "http", members: ["body": .string(body), "slice": .string(slice)])
+    private func httpRequest(_ body: String, _ slice: String, url: String = "https://example.test/chat", method: String = "POST", authorized: Bool = true) -> Request {
+        Request(ticket: "t", kind: "http", members: ["url": .string(url), "method": .string(method), "timeout": .number(1000), "headers": .array(authorized ? [.object(["name": .string("Authorization"), "value": .string("Bearer k")])] : []), "body": .string(body), "slice": .string(slice)])
+    }
+
+    func testHttpDoubleRefusesWhatTheRealAdapterWould() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("osprey-double-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("double.json")
+        try #"{"replies": [{"status": 200, "body": "a"}, {"status": 200, "body": "b"}, {"status": 200, "body": "c"}]}"#.write(to: file, atomically: true, encoding: .utf8)
+        let double = try HttpDoubleAdapter(file: file.path, requests: folder.appendingPathComponent("requests.jsonl"))
+        for bad in [httpRequest("x", "s", url: "http://example.test/chat"), httpRequest("x", "s", method: "GET"), httpRequest("x", "s", authorized: false)] {
+            do {
+                _ = try await double.perform(bad, slices: SliceStore())
+                XCTFail("The double took \(bad.members)")
+            } catch is CapabilityError {}
+        }
     }
 
     func testHttpDoubleRepliesInOrderRecordsBodiesAndRejectsExtraRequests() async throws {

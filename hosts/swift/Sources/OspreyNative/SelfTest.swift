@@ -238,6 +238,10 @@ public struct HttpDoubleAdapter: CapabilityAdapter {
     public func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue {
         let index = position.take()
         guard index < replies.count else { throw CapabilityError.platform("The double has no reply for request \(index + 1)") }
+        let outgoing = try HttpAdapter.outgoing(request, timeout: max(try request.number("timeout"), 1))
+        guard outgoing.httpMethod == "POST", outgoing.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true else {
+            throw CapabilityError.notAllowed("The double takes only an authorized POST")
+        }
         if let delay = replies[index]["delayMs"]?.int { try await Task.sleep(for: .milliseconds(delay)) }
         let line = Data((try request.text("body") + "\n").utf8)
         if let handle = try? FileHandle(forWritingTo: requests) {
@@ -311,10 +315,9 @@ public final class SelfTestRun {
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
-        if options.headless {
-            window.alphaValue = 0
-            window.ignoresMouseEvents = true
-        }
+        // Whatever a person types or clicks meanwhile belongs to them, and must not reach the model.
+        window.ignoresMouseEvents = true
+        if options.headless { window.alphaValue = 0 }
         let content = NSHostingView(rootView: RootView(store: store))
         content.sizingOptions = []
         content.frame = NSRect(origin: .zero, size: Self.size)
@@ -394,13 +397,14 @@ public final class SelfTestRun {
             let steps = try SelfTestStep.parse(String(contentsOfFile: options.script, encoding: .utf8))
             try FileManager.default.createDirectory(atPath: options.shots, withIntermediateDirectories: true)
             NSApp.setActivationPolicy(options.headless ? .accessory : .regular)
-            window.makeKeyAndOrderFront(nil)
-            if !options.headless { NSApp.activate(ignoringOtherApps: true) }
+            window.orderFrontRegardless()
             store.start()
             for (index, step) in steps.enumerated() {
                 try await play(step)
                 print("ok \(index + 1) \(step.verb) \(step.words.first.map { String($0.prefix(60)) } ?? "")")
             }
+            await settle()
+            if let failure = store.failure { throw SelfTestProblem(failure) }
             print("self-test passed: \(steps.count) steps")
             return true
         } catch {

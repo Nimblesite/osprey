@@ -44,9 +44,11 @@ public struct Inherited: Equatable {
     var iconOnly = false
     var trailingSymbols = false
     var flatRows = false
+    var rowsFromTop = false
 
     func merging(_ style: [String: JSONValue]) -> Inherited {
         var next = self
+        next.rowsFromTop = style["cross"]?.string == "start"
         if let value = style["gap"]?.int, value > 0 { next.gap = CGFloat(value) }
         if let value = style["font"]?.string, !value.isEmpty { next.family = value }
         if let value = style["textSize"]?.int, value > 0 { next.size = CGFloat(value) }

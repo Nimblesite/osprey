@@ -38,6 +38,8 @@ Every pixel is a framework node, a frame and a theme token, so the application c
 
 ## Testing it
 
+`make -C apps/tests agent` runs the host-free suites on any platform. `make -C apps/macos/tests agent-headless` and `agent-live` run the two modes below.
+
 `self-test.sh` plays the same scripts in `self-test/` through the real views, update and capabilities on the SwiftUI host ([UI-MACHINE-SELF-TEST]):
 
 ```sh

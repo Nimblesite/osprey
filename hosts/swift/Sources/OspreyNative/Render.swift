@@ -78,7 +78,7 @@ struct ContainerView: View {
     @ViewBuilder private var stack: some View {
         let gap = inherited.gap ?? theme.spacing(1)
         if node.text("axis") == "horizontal" {
-            HStack(alignment: .center, spacing: gap) { Children(nodes: node.list("children"), drawing: drawing).environment(\.ospreyInRow, true) }
+            HStack(alignment: inherited.rowsFromTop ? .top : .center, spacing: gap) { Children(nodes: node.list("children"), drawing: drawing).environment(\.ospreyInRow, true) }
         } else {
             VStack(alignment: .leading, spacing: gap) { Children(nodes: node.list("children"), drawing: drawing).environment(\.ospreyInRow, false) }
         }

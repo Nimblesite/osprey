@@ -57,7 +57,7 @@ public struct HttpAdapter: CapabilityAdapter {
         }
     }
 
-    private static func outgoing(_ request: Request, timeout: Int) throws -> URLRequest {
+    static func outgoing(_ request: Request, timeout: Int) throws -> URLRequest {
         guard let url = URL(string: try request.text("url")), url.scheme == "https", url.host != nil else { throw CapabilityError.notAllowed("Only https URLs are allowed") }
         var outgoing = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: Double(timeout) / 1000)
         outgoing.httpMethod = try request.text("method")

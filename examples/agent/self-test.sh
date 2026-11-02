@@ -33,22 +33,30 @@ if [ "$mode" = live ]; then
     # The key leaves ~/Documents first: the app reading a file there would raise a privacy prompt.
     (umask 077; grep '^DEEPSEEKKEY=' "$env_file" > "$work/key.env")
     "$host" --self-test "$here/self-test/coding.json" "$records/coding" --store "$work/store" --patience 400 "$project" "$work/key.env"
-    verdict=$(cd "$project" && python3 test_calc.py 2>&1) || { echo "$verdict"; echo "FAILED: the project's tests do not pass" >&2; exit 1; }
-    echo "$verdict" | tail -3
-    grep -q median "$project/calc/__init__.py" || { echo "FAILED: median was not added" >&2; exit 1; }
+    verdict=$(python3 "$here/self-test/verify_calc.py" "$project" --tests 2>&1) || { echo "$verdict"; exit 1; }
+    echo "$verdict" | tail -5
     python3 "$here/drive/judge.py" "$work/key.env" "$records/coding/04-feature.access.txt" "$verdict"
-    echo "live self-test passed; pictures are in $records/coding"
+    # Harder tasks, each checked by acceptance tests the agent never sees.
+    for task in "$here"/self-test/tasks/*/; do
+        task_name=$(basename "$task")
+        echo "task: $task_name"
+        cp -R "$task/project" "$work/$task_name"
+        "$host" --self-test "$task/task.json" "$records/$task_name" --store "$work/store-$task_name" --patience 400 "$work/$task_name" "$work/key.env"
+        python3 "$task/verify.py" "$work/$task_name"
+    done
+    key=$(sed -n 's/^DEEPSEEKKEY=//p' "$work/key.env")
+    if grep -rqF -- "$key" "$records"; then echo "FAILED: the key reached the records" >&2; exit 1; fi
+    echo "live self-test passed; pictures are in $records"
     exit 0
 fi
 
 printf 'DEEPSEEKKEY=sk-double\n' > "$work/key.env"
 "$host" --self-test "$here/self-test/coding.json" "$records/coding" --headless --store "$work/store-coding" --http-double "$here/self-test/doubles.json" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project" "$work/key.env"
-verdict=$(cd "$project" && python3 test_calc.py 2>&1) || { echo "$verdict"; echo "FAILED: the project's tests do not pass" >&2; exit 1; }
-grep -q median "$project/calc/__init__.py" || { echo "FAILED: median was not added" >&2; exit 1; }
+python3 "$here/self-test/verify_calc.py" "$project"
 grep -q 'wrote calc/__init__.py' "$records/coding/requests.jsonl" || { echo "FAILED: the model never heard the write's result" >&2; exit 1; }
 
 mkdir -p "$work/other-project"
 "$host" --self-test "$here/self-test/controls.json" "$records/controls" --headless --store "$work/store-controls" --http-double "$here/self-test/controls-doubles.json" --folder-double "$work/other-project" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 "$host" --self-test "$here/self-test/restart.json" "$records/restart" --headless --store "$work/store-controls" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
-if grep -q sk-double "$work/store-controls/chats.json"; then echo "FAILED: the key reached the saved conversations" >&2; exit 1; fi
+if grep -rq sk-double "$work/store-controls/chats.json" "$records"; then echo "FAILED: the key reached a saved file or the records" >&2; exit 1; fi
 echo "self-test passed"

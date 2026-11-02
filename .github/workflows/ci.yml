@@ -1149,7 +1149,7 @@ jobs:
               cargo build --release -p osprey-cli
               bash apps/workbench/hosts/apple/run.sh --build
               swift test --package-path apps/workbench/hosts/apple
-              swift test --package-path hosts/swift/Tests
+              OSPREY_AGENT_RECORDS="$PWD/target/agent-self-test" make _agent-self-test
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1176,6 +1176,14 @@ jobs:
         env:
           OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
         run: ${{ matrix.run }}
+
+      - name: Osprey Agent self-test pictures
+        if: always() && matrix.part == 'Workbench'
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-self-test
+          path: target/agent-self-test/
+          if-no-files-found: ignore
 
       - name: Native bank simulator results
         if: ${{ always() && matrix.part == 'Talon Bank' }}

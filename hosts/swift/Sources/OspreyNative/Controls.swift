@@ -262,7 +262,7 @@ struct RowsView: View {
     private var source: some View {
         List(selection: Binding(get: { selected.isEmpty ? nil : selected }, set: { if let key = $0 { choose(key) } })) {
             ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                if group.title.isEmpty { items(group.rows) } else { Section(group.title) { items(group.rows) } }
+                if group.title.isEmpty { items(group.rows) } else { Section(group.title) { items(group.rows) }.collapsible(false) }
             }
         }
         .listStyle(.sidebar)
