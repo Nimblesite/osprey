@@ -1608,6 +1608,68 @@ fn a_json_line_on_stdin_becomes_outputs_and_an_exit_status() {
     }
 }
 
+/// The compiler answers which namespaces and modules each source declares, in both
+/// flavors, nested and repeated across files. [EDITOR-MODULE-EXPLORER]
+#[test]
+fn the_source_graph_names_each_sources_namespaces_and_modules() {
+    let dir = temp_dir("source_graph_declarations");
+    std::fs::create_dir_all(dir.join("src")).expect("create project");
+    for (file, text) in [
+        (
+            "osprey.toml",
+            "[project]\nname = \"graph\"\nsource_roots = [\"src\"]\nentry = \"src/main.ospml\"\n",
+        ),
+        (
+            "src/main.ospml",
+            "namespace app\n\nmodule Outer\n    export module Inner\n        export one = 1\n\nprint \"${Outer::Inner::one}\"\n",
+        ),
+        ("src/more.osp", "namespace app;\n\nmodule Extra {\n    export fn two() = 2\n}\n"),
+    ] {
+        std::fs::write(dir.join(file), text).expect("write project file");
+    }
+    let run = run_args(&[
+        dir.to_str().unwrap_or_default(),
+        "--source-graph",
+        "--no-warnings",
+    ]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    let graph: serde_json::Value = serde_json::from_str(&run.stdout).expect("graph json");
+    let found = graph
+        .get("declarations")
+        .and_then(serde_json::Value::as_array)
+        .expect("declarations")
+        .iter()
+        .map(|entry| {
+            let text = |key: &str| {
+                entry
+                    .get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+            };
+            (
+                text("kind").to_owned(),
+                text("name").to_owned(),
+                text("source")
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned(),
+                entry.get("line").is_some_and(serde_json::Value::is_u64),
+            )
+        })
+        .collect::<Vec<_>>();
+    for (kind, name, file) in [
+        ("namespace", "app", "main.ospml"),
+        ("module", "app::Outer", "main.ospml"),
+        ("module", "app::Outer::Inner", "main.ospml"),
+        ("namespace", "app", "more.osp"),
+        ("module", "app::Extra", "more.osp"),
+    ] {
+        let want = (kind.to_owned(), name.to_owned(), file.to_owned(), true);
+        assert!(found.contains(&want), "{want:?} missing from {found:?}");
+    }
+}
+
 /// `--warnings-as-errors` keeps the warning text and fails; the default stays
 /// advisory, `--no-warnings` stays silent, and errors fail as ever.
 #[test]

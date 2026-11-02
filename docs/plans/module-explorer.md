@@ -1,10 +1,10 @@
 # Module explorer delivery plan
 
-**Status: planned, not implemented.** Record this requirement during stabilization; implementation starts after existing delivery gates are green. The binding contract is [EDITOR-MODULE-EXPLORER](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer). This is the Osprey counterpart to the module/solution explorers in Basilisk and SharpLsp.
+**Status: compiler data available; the sidebar is not implemented.** Record this requirement during stabilization; implementation starts after existing delivery gates are green. The binding contract is [EDITOR-MODULE-EXPLORER](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer). This is the Osprey counterpart to the module/solution explorers in Basilisk and SharpLsp.
 
 ## Delivery steps
 
-- [ ] Inventory the existing checked source graph, project manifest, lock, overlay and verification APIs. Specify missing semantic data explicitly; reuse the compiler and package manager rather than introducing another resolver.
+- [x] Inventory: `osprey <project> --source-graph` already gives sources and checked dependency edges, and now gives each source's namespaces and modules with positions (`declarations`). Direct and transitive packages, locked versions, overrides and verification findings come from the package frontend behind `osprey.packages.open`, so no second resolver is needed.
 - [ ] Add the Module Explorer to the existing Osprey sidebar with project, module, namespace and source nodes plus organization-qualified direct/transitive dependencies, distinguishing locked releases and local overrides. Keep application decisions in Osprey and VS Code host capability glue in the extension.
 - [ ] Implement document/declaration navigation, active-file reveal, refresh and accessible keyboard operation. Preserve selection across refreshes and isolate multi-root projects. Preserve read-only navigation in untrusted workspaces, exclude generated caches and refuse traversal/symlink escapes outside authorized roots.
 - [ ] Expose the existing Manage Packages command with the selected project's context. Reflect completed package operations without duplicating mutation logic.
@@ -14,4 +14,4 @@
 
 ## Completion evidence
 
-No implementation or passing explorer acceptance is claimed. The immediate package-manager discovery fix uses the existing sidebar toolbar and command; it does not satisfy the module explorer milestones above.
+No explorer acceptance is claimed. The immediate package-manager discovery fix uses the existing sidebar toolbar and command; it does not satisfy the module explorer milestones above.
