@@ -20,7 +20,6 @@ framingFor (path, requested) = match path
     "/get-valid" => "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
     _ => requested
 
-hostileOrigin : (string, string, string, string) -> HttpResponse
 hostileOrigin (_method, path, _headers, requested) = HttpResponse(
     status = 200,
     headers = framingHeaders path,
