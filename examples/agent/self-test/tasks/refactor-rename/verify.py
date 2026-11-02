@@ -1,3 +1,4 @@
+import ast
 import inspect
 from pathlib import Path
 import re
@@ -18,6 +19,14 @@ def test_ids(suite):
             yield test.id()
 
 
+def uses_old_name(source):
+    return any(
+        (isinstance(node, ast.Name) and node.id == "compact")
+        or (isinstance(node, ast.alias) and node.name == "compact")
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
+    )
+
+
 def main():
     project = Path(sys.argv[1]).resolve()
     tests = subprocess.run(
@@ -35,14 +44,20 @@ def main():
     missing = required - set(test_ids(suite))
     if missing:
         fail(f"required visible tests missing: {sorted(missing)}")
-    for source in project.rglob("*.py"):
+    for source in (project / "pipeline").rglob("*.py"):
         if re.search(r"\bcompact\b", source.read_text(encoding="utf-8")):
             fail(f"old name remains in {source.relative_to(project)}")
+    # A test may name the old route in a string, to prove it is gone; it may not use the old name.
+    for source in project.glob("test*.py"):
+        if uses_old_name(source):
+            fail(f"old name still used in {source.relative_to(project)}")
     sys.path.insert(0, str(project))
     import pipeline
     from pipeline import cli, dispatch, titles
     from pipeline.core import normalize
 
+    if hasattr(pipeline, "compact"):
+        fail("the package still has the old name")
     if pipeline.normalize is not normalize:
         fail("package root does not export the renamed function")
     if str(inspect.signature(normalize)) != "(text, *, lowercase=True)":
