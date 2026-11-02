@@ -4,7 +4,7 @@
 
 A warm glowing music orb with broadcast arcs, matching Sherbet Signal. Keep this product identity stable across skins. This is the casting player's mark, not a replacement for the Osprey language logo.
 
-Source: [transparent PNG](logo-icon.png), generated with the built-in image generation tool on 1 November 2026. Platform icon packaging and small-size optical variants remain implementation work; this is the master raster artwork.
+Source: [transparent PNG](logo-icon.png), generated with the built-in image generation tool on 1 November 2026. `run.sh` packages it into `Casting.app` on a Mac, so the Dock shows it. Small-size optical variants remain implementation work; this is the master raster artwork.
 
 ## Exact generation prompt
 

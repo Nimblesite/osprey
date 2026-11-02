@@ -1,0 +1,10 @@
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key><string>MP3 audio</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Owner</string>
+            <key>LSItemContentTypes</key>
+            <array><string>public.mp3</string></array>
+        </dict>
+    </array>
