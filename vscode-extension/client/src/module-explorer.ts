@@ -16,7 +16,9 @@ import { MANIFEST_FILE } from "./package-commands";
 export const MODULE_EXPLORER_VIEW = "osprey.moduleExplorer";
 export const OPEN_SOURCE_COMMAND = "osprey.modules.open";
 export const REFRESH_COMMAND = "osprey.modules.refresh";
+export const MANAGE_PACKAGES_COMMAND = "osprey.modules.managePackages";
 const GRAPH_TIMEOUT_MS = 120_000;
+const NO_LOCK_CODE = "tree.no-lock";
 
 /** One namespace or module a source declares. Lines are one-based, columns zero-based. */
 export interface Declaration {
@@ -99,19 +101,50 @@ function declarationNodes(parent: ModuleNode, root: string, graph: SourceGraph):
   });
 }
 
+/** `osprey-pkg tree` lines under the project line, nested by their indentation. */
+function lockedNodes(parent: ModuleNode, lines: readonly string[]): ModuleNode[] {
+  const rows = lines.slice(1).map((line) => ({ depth: line.length - line.trimStart().length, text: line.trim() }));
+  const build = (owner: ModuleNode, start: number, depth: number): ModuleNode[] => {
+    const nodes: ModuleNode[] = [];
+    for (let at = start; at < rows.length && rows[at].depth >= depth; at += 1) {
+      if (rows[at].depth === depth) {
+        const unlocked = rows[at].text.endsWith("(not locked)");
+        nodes.push(attach({
+          id: `${owner.id}/${rows[at].text}#${at}`, parent: owner, label: rows[at].text,
+          icon: unlocked ? "warning" : "package", description: owner === parent ? "direct" : "transitive",
+        }, (self) => (rows[at + 1]?.depth > depth ? build(self, at + 1, rows[at + 1].depth) : [])));
+      }
+    }
+    return nodes;
+  };
+  return rows.length ? build(parent, 0, rows[0].depth) : [];
+}
+
+function dependencyNodes(
+  self: ModuleNode, direct: Loaded<readonly string[]>, locked: Loaded<readonly string[]>,
+): readonly ModuleNode[] {
+  if ("ok" in locked) {
+    const nodes = lockedNodes(self, locked.ok);
+    return nodes.length ? nodes : [stateNode(self, "none", "No dependencies", "The lock file records none.", "info")];
+  }
+  const lockState = stateNode(self, "lock", locked.error.startsWith(NO_LOCK_CODE) ? "No lock file" : "Lock unavailable", locked.error,
+    locked.error.startsWith(NO_LOCK_CODE) ? "warning" : "error");
+  if ("error" in direct) {
+    return [lockState, stateNode(self, "unavailable", "Dependencies unavailable", direct.error)];
+  }
+  return [lockState, ...direct.ok.map((key) =>
+    ({ id: `${self.id}/${key}`, parent: self, label: key, icon: "package", description: "direct, not locked" }))];
+}
+
 /** The groups under one project, from what the compiler and package client answered. */
 export function projectChildren(
-  project: ModuleNode, graph: Loaded<SourceGraph>, direct: Loaded<readonly string[]>,
+  project: ModuleNode, graph: Loaded<SourceGraph>, direct: Loaded<readonly string[]>, locked: Loaded<readonly string[]>,
 ): ModuleNode[] {
   const root = project.projectRoot ?? "";
   const group = (key: string, label: string, icon: string) =>
     ({ id: `${project.id}/${key}`, parent: project, label, icon }) as ModuleNode;
   const dependencies = attach(group("dependencies", "Dependencies", "package"), (self) =>
-    "error" in direct
-      ? [stateNode(self, "unavailable", "Dependencies unavailable", direct.error)]
-      : direct.ok.length
-        ? direct.ok.map((key) => ({ id: `${self.id}/${key}`, parent: self, label: key, icon: "package", description: "direct" }))
-        : [stateNode(self, "none", "No direct dependencies", "The package client reports none.", "info")]);
+    dependencyNodes(self, direct, locked));
   if ("error" in graph) {
     return [stateNode(project, "analysis", "Analysis failed", graph.error), dependencies];
   }
@@ -130,6 +163,7 @@ export interface ModuleExplorerDeps {
   projectRoots(): Thenable<readonly string[]> | readonly string[];
   sourceGraph(root: string): Promise<Loaded<SourceGraph>>;
   directDependencies(root: string): Promise<Loaded<readonly string[]>>;
+  lockedTree(root: string): Promise<Loaded<readonly string[]>>;
   trusted(): boolean;
 }
 
@@ -183,8 +217,9 @@ export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
       return [stateNode(project, "untrusted", "Analysis needs a trusted workspace", detail, "shield")];
     }
     const root = project.projectRoot ?? "";
-    const [graph, direct] = await Promise.all([this.deps.sourceGraph(root), this.deps.directDependencies(root)]);
-    return projectChildren(project, graph, direct);
+    const [graph, direct, locked] = await Promise.all(
+      [this.deps.sourceGraph(root), this.deps.directDependencies(root), this.deps.lockedTree(root)]);
+    return projectChildren(project, graph, direct, locked);
   }
 
   /** The Sources entry for a file, when its project is already loaded. */
@@ -211,17 +246,28 @@ export function compilerSourceGraph(compiler: () => string): (root: string) => P
   });
 }
 
+async function clientReport(
+  frontend: FrontendRunner, command: string, root: string,
+  answer: (report: { status: number; lines: readonly string[] }) => readonly string[] | undefined,
+): Promise<Loaded<readonly string[]>> {
+  try {
+    const report = await frontend.run(command, root);
+    const lines = answer(report);
+    return lines ? { ok: lines } : { error: report.lines.join("; ") || `The package client answered status ${report.status}.` };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /** Direct dependencies through the same report the Remove command reads. */
 export function clientDependencies(frontend: FrontendRunner): (root: string) => Promise<Loaded<readonly string[]>> {
-  return async (root) => {
-    try {
-      const report = await frontend.run("--json tree --direct --project .", root);
-      const keys = dependencyKeys(report);
-      return keys ? { ok: keys } : { error: report.lines.join("; ") || `The package client answered status ${report.status}.` };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) };
-    }
-  };
+  return (root) => clientReport(frontend, "--json tree --direct --project .", root, dependencyKeys);
+}
+
+/** The locked graph, direct and transitive, as the package client prints it. */
+export function clientLockedTree(frontend: FrontendRunner): (root: string) => Promise<Loaded<readonly string[]>> {
+  return (root) => clientReport(frontend, "--json tree --project .", root,
+    (report) => (report.status === 0 ? report.lines : undefined));
 }
 
 async function workspaceProjects(): Promise<string[]> {
@@ -244,6 +290,7 @@ export function registerModuleExplorer(
     projectRoots: workspaceProjects,
     sourceGraph: compilerSourceGraph(compiler),
     directDependencies: clientDependencies(frontend),
+    lockedTree: clientLockedTree(frontend),
     trusted: () => workspace.isTrusted,
   });
   const view = window.createTreeView(MODULE_EXPLORER_VIEW, { treeDataProvider: provider, showCollapseAll: true });
@@ -253,6 +300,8 @@ export function registerModuleExplorer(
     watcher,
     commands.registerCommand(REFRESH_COMMAND, () => provider.refresh()),
     commands.registerCommand(OPEN_SOURCE_COMMAND, openSource),
+    commands.registerCommand(MANAGE_PACKAGES_COMMAND, (node?: ModuleNode) =>
+      commands.executeCommand("osprey.packages.open", node?.projectRoot ? Uri.file(node.projectRoot) : undefined)),
     watcher.onDidChange(() => provider.refresh()),
     watcher.onDidCreate(() => provider.refresh()),
     watcher.onDidDelete(() => provider.refresh()),

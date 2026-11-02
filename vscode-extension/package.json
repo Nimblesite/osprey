@@ -122,6 +122,12 @@
         "title": "Osprey: Open Workbench"
       },
       {
+        "command": "osprey.modules.managePackages",
+        "title": "Manage This Project's Packages",
+        "category": "Osprey",
+        "icon": "$(package)"
+      },
+      {
         "command": "osprey.modules.refresh",
         "title": "Refresh Modules",
         "category": "Osprey",
@@ -439,6 +445,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "osprey.modules.managePackages",
+          "when": "view == osprey.moduleExplorer && viewItem == ospreyProject",
+          "group": "inline@0"
+        },
         {
           "command": "osprey.profiler.profileStop",
           "when": "view == osprey.profiler.processes && viewItem == processProfiling",

@@ -4,7 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import {
-  clientDependencies, compilerSourceGraph, ModuleExplorerProvider, parseSourceGraph, projectChildren,
+  clientDependencies, clientLockedTree, compilerSourceGraph, ModuleExplorerProvider, parseSourceGraph, projectChildren,
   type ModuleNode,
 } from "../../client/src/module-explorer";
 import { resolveBuiltOsprey } from "./osprey-test-env";
@@ -28,11 +28,13 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.ok(built, "build the Osprey compiler before this suite");
     return built;
   };
+  const NO_LOCK = { error: "tree.no-lock readFile: osprey.lock: No such file or directory" };
   const provider = (roots: string[], direct: readonly string[] | string, trusted = true) =>
     new ModuleExplorerProvider({
       projectRoots: () => roots,
       sourceGraph: compilerSourceGraph(compiler),
       directDependencies: async () => (typeof direct === "string" ? { error: direct } : { ok: direct }),
+      lockedTree: async () => NO_LOCK,
       trusted: () => trusted,
     });
 
@@ -62,7 +64,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual(tree.getParent(declared[1]), modules);
 
     assert.deepStrictEqual(labels(await tree.getChildren(sources)), [path.join("src", "main.ospml"), path.join("src", "more.osp")]);
-    assert.deepStrictEqual(labels(await tree.getChildren(dependencies)), ["@org/left", "@org/right"]);
+    assert.deepStrictEqual(labels(await tree.getChildren(dependencies)), ["No lock file", "@org/left", "@org/right"]);
     assert.strictEqual((await tree.sourceNode(path.join(root, "src", "more.osp")))?.parent, sources);
 
     // Selecting a module opens its file at its declaration.
@@ -91,7 +93,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     const groups = await tree.getChildren(node);
     assert.deepStrictEqual(labels(groups), ["Analysis failed", "Dependencies"]);
     assert.ok(groups[0].description?.includes("main.ospml"), groups[0].description);
-    const [state] = await tree.getChildren(groups[1]);
+    const [, state] = await tree.getChildren(groups[1]);
     assert.strictEqual(state.label, "Dependencies unavailable");
     assert.strictEqual(state.description, "The package client is not installed.");
 
@@ -105,6 +107,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
       projectRoots: () => ["/project"],
       sourceGraph: async () => { ran = true; return { error: "ran" }; },
       directDependencies: async () => { ran = true; return { error: "ran" }; },
+      lockedTree: async () => { ran = true; return { error: "ran" }; },
       trusted: () => false,
     });
     const [only] = await untrusted.getChildren();
@@ -114,10 +117,34 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
 
   test("a project with nothing declared and no dependencies says so", () => {
     const owner: ModuleNode = { id: "p", label: "p", projectRoot: "/p" };
-    const [modules, sources, dependencies] = projectChildren(owner, { ok: { sources: ["/p/a.osp"], declarations: [] } }, { ok: [] });
+    const [modules, sources, dependencies] = projectChildren(
+      owner, { ok: { sources: ["/p/a.osp"], declarations: [] } }, { ok: [] }, { ok: ["p"] });
     assert.deepStrictEqual(labels(modules.children ?? []), ["No namespaces or modules"]);
     assert.deepStrictEqual(labels(sources.children ?? []), ["a.osp"]);
-    assert.deepStrictEqual(labels(dependencies.children ?? []), ["No direct dependencies"]);
+    assert.deepStrictEqual(labels(dependencies.children ?? []), ["No dependencies"]);
+  });
+
+  test("the locked graph nests direct and transitive dependencies and flags what is not locked", () => {
+    const owner: ModuleNode = { id: "p", label: "p", projectRoot: "/p" };
+    const graph = { ok: { sources: [], declarations: [] } };
+    const [, , dependencies] = projectChildren(owner, graph, { ok: ["@org/a"] }, { ok: [
+      "p", "  @org/a e1.r2", "    @org/b e3.r0 (build)", "      @org/c e1.r0", "    @org/d (not locked)", "  @org/e e2.r1 (test)",
+    ] });
+    const direct = dependencies.children ?? [];
+    assert.deepStrictEqual(labels(direct), ["@org/a e1.r2", "@org/e e2.r1 (test)"]);
+    assert.deepStrictEqual(direct.map((node) => node.description), ["direct", "direct"]);
+    const [first] = direct;
+    assert.deepStrictEqual(labels(first.children ?? []), ["@org/b e3.r0 (build)", "@org/d (not locked)"]);
+    const [build, unlocked] = first.children ?? [];
+    assert.strictEqual(build.description, "transitive");
+    assert.deepStrictEqual(labels(build.children ?? []), ["@org/c e1.r0"]);
+    assert.strictEqual(unlocked.icon, "warning");
+    assert.strictEqual(direct[1].parent, dependencies);
+
+    const lockFailure = projectChildren(owner, graph, { ok: ["@org/a"] }, { error: "registry.corrupt" })[2];
+    assert.deepStrictEqual(labels(lockFailure.children ?? []), ["Lock unavailable", "@org/a"]);
+    assert.strictEqual(lockFailure.children?.[0].icon, "error");
+    assert.strictEqual(lockFailure.children?.[1].description, "direct, not locked");
   });
 
   test("a graph or dependency report that is not complete is refused", async () => {
@@ -133,6 +160,10 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.deepStrictEqual(await answering(1, ["no manifest"]), { error: "no manifest" });
     assert.deepStrictEqual(await answering(0, ["not-qualified"]), { error: "not-qualified" });
     assert.deepStrictEqual(await answering(2, []), { error: "The package client answered status 2." });
+    const locked = (status: number, lines: string[]) =>
+      clientLockedTree({ run: async () => ({ status, lines }) as never })("/p");
+    assert.deepStrictEqual(await locked(0, ["p", "  @org/a e1.r0"]), { ok: ["p", "  @org/a e1.r0"] });
+    assert.deepStrictEqual(await locked(1, ["tree.no-lock missing"]), { error: "tree.no-lock missing" });
     const thrown = await clientDependencies({ run: async () => { throw new Error("spawn failed"); } })("/p");
     assert.deepStrictEqual(thrown, { error: "spawn failed" });
   });
