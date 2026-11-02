@@ -65,7 +65,9 @@ function observeGestureMessages(): void {
     const html = actual(options), boundary = "const vscode = acquireVsCodeApi();";
     assert.ok(html.includes(boundary), "observe the real host API without replacing its event delivery");
     return html.replace(boundary, String.raw`const api = acquireVsCodeApi();
-      window.ospreyGestureMessages = [];
+      window.ospreyGestureMessages = []; window.ospreyGestureInbox = []; window.ospreyGestureErrors = [];
+      window.addEventListener("message", function (event) { window.ospreyGestureInbox.push({ at: Date.now(), type: event.data && event.data.type, active: event.data && event.data.active }); });
+      window.addEventListener("error", function (event) { window.ospreyGestureErrors.push(String(event.message)); });
       const vscode = Object.assign({}, api, { postMessage: function (message) { window.ospreyGestureMessages.push(Object.assign({ recordedAt: Date.now() }, message)); return api.postMessage(message); } });`);
   });
 }
@@ -80,9 +82,11 @@ async function heldTitleRender(frame: Frame): Promise<void> {
   } catch (error) {
     const snapshot = await frame.evaluate(() => {
       const title = document.querySelector<HTMLInputElement>('input[aria-label="Solution title"]');
-      return { messages: (document.defaultView as unknown as { ospreyGestureMessages: unknown[] }).ospreyGestureMessages,
+      const recorded = document.defaultView as unknown as { ospreyGestureMessages: unknown[]; ospreyGestureInbox: unknown[]; ospreyGestureErrors: unknown[] };
+      return { messages: recorded.ospreyGestureMessages, inbox: recorded.ospreyGestureInbox, errors: recorded.ospreyGestureErrors,
         visibility: document.visibilityState, focused: document.hasFocus(), busy: document.getElementById("osprey-root")?.getAttribute("aria-busy"),
-        draft: title?.value, committed: title?.getAttribute("data-value") };
+        draft: title?.value, committed: title?.getAttribute("data-value"), active: document.activeElement?.getAttribute("aria-label"),
+        theme: document.querySelector<HTMLButtonElement>('button[aria-label="Switch appearance"]')?.disabled };
     });
     console.error("Held title timing", JSON.stringify({ awaitedAt, observed: Date.now(), runs: gestureRuns, snapshot }));
     throw error;
