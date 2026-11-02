@@ -190,4 +190,4 @@ Run [41378280720](https://github.com/Nimblesite/osprey/actions/runs/41378280720)
 
 The run failed on one job, so it does not yet prove the time of a green run. In Integration the Android emulator died ("device offline") after all six bank instrumentation tests had passed, while their screenshots were being pulled. The steps after it (bank e2e, documentation acceptance, web compiler) were skipped, so a passing Integration runs longer.
 
-This failure predates the new shape: the same "device offline" stopped `80fcc980` and `e13285ae`, the second during the language goldens. The cause is not known yet, so the job now prints memory, kernel kills and the emulator's crash directory when it fails.
+This failure predates the new shape: the same "device offline" stopped `80fcc980` and `e13285ae`, the second during the language goldens. The cause is not known yet, so the job now prints kernel kills, memory and disk when it fails.

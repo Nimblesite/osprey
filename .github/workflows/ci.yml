@@ -1021,14 +1021,6 @@ jobs:
             examples/projects/modules/mobile/android/gradlew -p examples/projects/modules/mobile/android --console=plain :app:lintDebug
             cd examples/mobile/android && ./gradlew --console=plain :app:lintDebug
 
-      # The emulator has died mid-step on some runs ("device offline"); this says what ended it.
-      - name: Why the emulator ended
-        if: failure()
-        run: |
-          free -m
-          sudo dmesg | grep -iE 'out of memory|killed process|segfault|qemu' || true
-          ls -la /tmp/android-runner || true
-
       - name: Native bank Android results
         if: always()
         uses: actions/upload-artifact@v7
