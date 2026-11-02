@@ -1,7 +1,7 @@
 # osprey: flavor=python
 # osprey: namespace=agent
 # osprey: module=Engine
-"""The coding agent's turn logic over @osprey/pydantic_ai, with every effect
+"""The coding agent's turn logic over @osprey/pydantic-ai, with every effect
 left to the host: a model request is an `Http` capability and a tool is a `Run`
 capability, so a turn is a sequence of pure steps the application drives from
 completions, and the window stays live while the model thinks.
@@ -144,7 +144,7 @@ def call_of(part):
 def accept(history, model_name, status, body):
     """Takes one HTTP answer: the failure as words, or the response added and the calls it asks for."""
     if status >= 400:
-        return Reply(replyOk=False, replyProblem=E.message_of(E.http_error(status, model_name, body)), replyHistory=history, replyCalls=[])
+        return Reply(replyOk=False, replyProblem=E.message_of(E.status_error(status, model_name, body)), replyHistory=history, replyCalls=[])
     else:
         match ModelsOpenai.process_response(model_name, "deepseek", profile_of(model_name), body):
             case E.Ok(value=response):

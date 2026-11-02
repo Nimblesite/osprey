@@ -9,7 +9,7 @@ the variants of `ModelError` in a `Result`, with `message_of` spelling the text
 `str(exception)` printed. Port of pydantic_ai/exceptions.py (2.46.0).
 """
 
-__all__ = ["ModelError", "Outcome", "message_of", "status_code_of", "http_error", "is_ok", "error_of", "error_message"]
+__all__ = ["ModelError", "Outcome", "message_of", "status_code_of", "status_error", "is_ok", "error_of", "error_message"]
 
 
 @union
@@ -74,7 +74,7 @@ def error_message(outcome) -> str:
             return message_of(error)
 
 
-def http_error(status_code, model_name, body):
+def status_error(status_code, model_name, body):
     """`ModelHTTPError(status_code, model_name, body)`."""
     return ModelHTTPError(status_code=status_code, model_name=model_name, body=body)
 

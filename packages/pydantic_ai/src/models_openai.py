@@ -49,7 +49,7 @@ def chat_request(model_name, provider, profile, messages, settings, parameters) 
     match provider.post("/chat/completions", body, ""):
         case Success(value=reply):
             if reply.status >= 400:
-                return E.Failed(error=E.http_error(reply.status, model_name, reply.body))
+                return E.Failed(error=E.status_error(reply.status, model_name, reply.body))
             else:
                 return process_response(model_name, provider.name, profile, reply.body)
         case Error(message=message):

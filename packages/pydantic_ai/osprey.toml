@@ -5,7 +5,7 @@ python_sources = ["src/json_util.py", "src/json_schema.py", "src/exceptions.py",
 default_namespace = "pydantic_ai"
 
 [package]
-name = "@osprey/pydantic_ai"
+name = "@osprey/pydantic-ai"
 license = "MIT"
 summary = "The pydantic-ai agent engine: messages, models, the OpenAI chat API, TestModel, direct requests and the tool-calling agent loop"
 keywords = ["agents", "llm", "openai", "pydantic-ai", "python-flavor"]

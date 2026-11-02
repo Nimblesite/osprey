@@ -1,6 +1,6 @@
 # Osprey Agent
 
-A coding agent as a desktop application, written in Osprey on [`@osprey/native`](../../packages/native/README.md) and powered by the [`@osprey/pydantic_ai`](../../packages/pydantic_ai/README.md) engine. Give it a project folder and a task. It reads, edits and runs commands through tools, and shows its work as it goes.
+A coding agent as a desktop application, written in Osprey on [`@osprey/native`](../../packages/native/README.md) and powered by the [`@osprey/pydantic-ai`](../../packages/pydantic_ai/README.md) engine. Give it a project folder and a task. It reads, edits and runs commands through tools, and shows its work as it goes.
 
 ```sh
 examples/agent/run.sh /path/to/project          # uses DEEPSEEKKEY from the repository's .env

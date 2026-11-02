@@ -78,9 +78,9 @@ ok scripted.messages[2]
 ok scripted.messages[3]
 ok scripted.messages[4]
 ok scripted.messages[5]
-ok http_error.status
-ok http_error.message
-ok http_error.text
+ok status_error.status
+ok status_error.message
+ok status_error.text
 ok transport_error
 ok usage_limit
 ok profile.flags
@@ -158,7 +158,7 @@ ok export.char_of
 ok export.test_model
 ok export.request_usage
 ok export.details_merge
-ok export.http_post_refused
+ok export.post_json_refused
 ok typed.agent_run_result
 ok typed.model_error
 ok typed.request_part

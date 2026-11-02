@@ -1,5 +1,5 @@
 # osprey: flavor=python
-"""@osprey/pydantic_ai's suite: values the real pydantic-ai 2.46.0 produced over
+"""@osprey/pydantic-ai's suite: values the real pydantic-ai 2.46.0 produced over
 an httpx mock transport (scripts/oracles/pydantic_ai.py), compared against the
 port through @osprey/testing. Covers the Chat Completions request body for
 eight scenarios, response parsing, `ModelResponse.text`, tool-call argument
@@ -371,16 +371,16 @@ def scripted_cases():
             return [Check.failed("scripted", E.message_of(error))]
 
 
-def http_error_cases():
+def status_error_cases():
     model = scripted_model(["{\"error\":{\"message\":\"rate limited\"}}"], 429)
     match Agent.run_sync(build(model, True), "go", []):
         case E.Ok(value=_result):
-            return [Check.failed("http_error", "expected ModelHTTPError")]
+            return [Check.failed("status_error", "expected ModelHTTPError")]
         case E.Failed(error=error):
             return [
-                Check.equal("http_error.status", E.status_code_of(error), Expected.HTTP_ERROR_STATUS),
-                Check.equal("http_error.message", E.message_of(error), f"status_code: 429, model_name: {Expected.HTTP_ERROR_MODEL}, body: {{\"error\":{{\"message\":\"rate limited\"}}}}"),
-                Check.equal("http_error.text", E.message_of(E.http_error(429, "gpt-4o", "{\"error\":\"x\"}")), Expected.HTTP_ERROR_MESSAGE),
+                Check.equal("status_error.status", E.status_code_of(error), Expected.HTTP_ERROR_STATUS),
+                Check.equal("status_error.message", E.message_of(error), f"status_code: 429, model_name: {Expected.HTTP_ERROR_MODEL}, body: {{\"error\":{{\"message\":\"rate limited\"}}}}"),
+                Check.equal("status_error.text", E.message_of(E.status_error(429, "gpt-4o", "{\"error\":\"x\"}")), Expected.HTTP_ERROR_MESSAGE),
             ]
 
 
@@ -603,7 +603,7 @@ def export_cases():
         Check.equal("export.test_model", ModelsTest.test_model("named", "hi", [], 0).model_name, "named"),
         Check.equal("export.request_usage", Usage.request_usage().input_tokens, 0),
         Check.equal("export.details_merge", unwrap_or(mapGet(Usage.details_merge({"a": 1}, {"a": 2, "b": 3}), "a"), 0) + unwrap_or(mapGet(Usage.details_merge({"a": 1}, {"a": 2, "b": 3}), "b"), 0), 6),
-        http_post_case(),
+        post_json_case(),
     ]
 
 
@@ -616,13 +616,13 @@ def chat_request_case(profile):
             return Check.failed("export.chat_request", E.message_of(error))
 
 
-def http_post_case():
+def post_json_case():
     """A real request to a port nothing listens on: a refused connection is an error, never a reply."""
-    match ProvidersHttp.http_post("http://127.0.0.1:1", "/", "{}", ""):
+    match ProvidersHttp.post_json("http://127.0.0.1:1", "/", "{}", ""):
         case Success(value=reply):
-            return Check.failed("export.http_post_refused", f"got status {reply.status}")
+            return Check.failed("export.post_json_refused", f"got status {reply.status}")
         case Error(message=message):
-            return Check.truth("export.http_post_refused", message != "", "no reason given")
+            return Check.truth("export.post_json_refused", message != "", "no reason given")
 
 
 def typed_output(outcome: E.Outcome[Agent.AgentRunResult]) -> str:
@@ -723,7 +723,7 @@ def suite():
         test_agent_custom_cases(),
         [test_agent_no_tools_case(), test_agent_unknown_tool_case()],
         scripted_cases(),
-        http_error_cases(),
+        status_error_cases(),
         [transport_error_case(), usage_limit_case()],
         profile_cases(),
         settings_cases(),

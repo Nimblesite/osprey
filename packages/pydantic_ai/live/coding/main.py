@@ -1,5 +1,5 @@
 # osprey: flavor=python
-"""@osprey/pydantic_ai doing real coding against a live model.
+"""@osprey/pydantic-ai doing real coding against a live model.
 
 Each task gets a fresh folder holding real source and a real test command. The
 agent works only through its tools (`list_files`, `read_file`, `write_file`,

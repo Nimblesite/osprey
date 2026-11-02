@@ -1,5 +1,5 @@
 # osprey: flavor=python
-"""@osprey/pydantic_ai against a live model: an agent is given a task it can
+"""@osprey/pydantic-ai against a live model: an agent is given a task it can
 only finish by calling tools, and a second model call judges the answer.
 
 Reads `DEEPSEEKKEY` from `.env` in the working directory and talks to

@@ -10,13 +10,13 @@ HTTP, such as a native application whose host performs requests, cannot link it.
 """
 from pydantic_ai import Providers as P
 
-__all__ = ["OpenAIProvider", "OllamaProvider", "DeepSeekProvider", "provider", "http_post"]
+__all__ = ["OpenAIProvider", "OllamaProvider", "DeepSeekProvider", "provider", "post_json"]
 
 REQUEST_TIMEOUT_MS = 600000
 """The 600 s timeout `openai.AsyncOpenAI` defaults to."""
 
 
-def http_post(base_url, path, body, headers) -> Result[P.HttpReply, str]:
+def post_json(base_url, path, body, headers) -> Result[P.HttpReply, str]:
     """One POST through the runtime HTTP client; `Error` names a transport failure."""
     client = httpCreateClient(base_url, REQUEST_TIMEOUT_MS)
     result = post_with(client, path, body, headers)
@@ -40,7 +40,7 @@ def post_with(client, path, body, headers) -> Result[P.HttpReply, str]:
 
 def provider(name, base_url, api_key):
     """A provider whose `post` sends `Authorization: Bearer <api_key>` and JSON to `base_url`."""
-    return P.Provider(name=name, base_url=base_url, api_key=api_key, post=lambda path, body, headers: http_post(base_url, path, body, "Content-Type: application/json\r\nAuthorization: Bearer " + api_key + headers))
+    return P.Provider(name=name, base_url=base_url, api_key=api_key, post=lambda path, body, headers: post_json(base_url, path, body, "Content-Type: application/json\r\nAuthorization: Bearer " + api_key + headers))
 
 
 def OpenAIProvider(base_url, api_key):

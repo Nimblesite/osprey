@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPython oracle for @osprey/pydantic_ai.
+"""CPython oracle for @osprey/pydantic-ai.
 
 Runs the real pydantic-ai (2.46.0) with the OpenAI SDK over an httpx mock
 transport, so every Chat Completions request body the library sends and every
@@ -398,7 +398,7 @@ def main():
 
     expected_module.write(
         "pydantic_ai",
-        "Expected values for the @osprey/pydantic_ai suite, computed by the real pydantic-ai over an httpx mock transport.",
+        "Expected values for the @osprey/pydantic-ai suite, computed by the real pydantic-ai over an httpx mock transport.",
         {"pydantic-ai": pydantic_ai.__version__, "openai": openai.__version__, "httpx": httpx.__version__},
         constants,
         docs,

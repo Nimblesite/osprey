@@ -1,4 +1,4 @@
-# @osprey/pydantic_ai
+# @osprey/pydantic-ai
 
 An Osprey Python-flavor port of the [pydantic-ai](https://github.com/pydantic/pydantic-ai) 2.46.0 agent engine: enough of the library to run a tool-calling agent against any OpenAI-compatible chat API, and to cut an application such as NAP across from CPython.
 
