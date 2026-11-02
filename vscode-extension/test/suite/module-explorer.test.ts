@@ -181,6 +181,12 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual(gone.description, "e1.r0 · transitive · verify.missing · not installed");
     assert.strictEqual(a.parent, dependencies);
 
+    const local = projectChildren(owner, source, { ok: {
+      direct: ["@org/a"], findings: [], packages: [{ ...clean, key: "@org/a", version: "e1.r2", override: "../a" }],
+    } })[2].children ?? [];
+    assert.strictEqual(local[0].description, "e1.r2 · direct · local: ../a");
+    assert.strictEqual(local[0].icon, "package");
+
     const [lockState, bare] = projectChildren(owner, source, { ok: NO_LOCK(["@org/a"]) })[2].children ?? [];
     assert.strictEqual(lockState.label, "No lock file");
     assert.strictEqual(bare.description, "not locked · direct");

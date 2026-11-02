@@ -108,6 +108,8 @@ export interface LockedPackage {
   readonly dependencies: readonly string[];
   readonly findings: readonly string[];
   readonly present: boolean;
+  /** The local checkout standing in for this release, when one does. */
+  readonly override?: string;
 }
 
 export interface PackageGraph {
@@ -121,7 +123,8 @@ const isTextList = (value: any): value is string[] =>
 
 function isLockedPackage(item: any): item is LockedPackage {
   return typeof item?.key === "string" && typeof item?.version === "string" && typeof item?.present === "boolean" &&
-    isTextList(item?.dependencies) && isTextList(item?.findings);
+    isTextList(item?.dependencies) && isTextList(item?.findings) &&
+    (item?.override === undefined || typeof item.override === "string");
 }
 
 /** Reject anything but a complete graph, so a partial one cannot read as a safe dependency. */
@@ -144,7 +147,9 @@ function packageNode(owner: ModuleNode, key: string, graph: PackageGraph, ancest
   const node: ModuleNode = {
     id: `${owner.id}/${key}`, parent: owner, label: key,
     icon: !locked || problems.length ? "warning" : "package",
-    description: [locked?.version ?? "not locked", role, ...problems].join(" · "),
+    description: [
+      locked?.version ?? "not locked", role, ...(locked?.override ? [`local: ${locked.override}`] : []), ...problems,
+    ].join(" · "),
     tooltip: problems.join("\n") || undefined,
   };
   const trail = [...ancestors, key];

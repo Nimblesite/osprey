@@ -22,6 +22,7 @@ module TreeGraph {
     let failStatus = 1
     let notLockedCode = "tree.no-lock"
     let missingCode = "verify.missing"
+    let localUnreadableCode = "lock.local-unreadable"
 
     type Finding = { code: string, detail: string }
 
@@ -76,10 +77,33 @@ module TreeGraph {
             listAppend(acc, keyOf(releaseOf(p)))
         } else { acc }))
 
-    fn packageValue(lines, direct, packages, pkg: Lockfile::Package) = {
+    // A local checkout replaces the release's bytes ([PACKAGE-LOCAL-OVERRIDE]), so
+    // the editor must be able to tell them apart. Absent for a release, keeping a
+    // graph with no overrides byte-identical to one from before local checkouts.
+    fn overrideMembers(overrides, key) = match Lockfile::overrideFor(overrides, key) {
+        Success { value } => [member("override", str(overridePath(value)))]
+        Error => []
+    }
+
+    fn overridePath(o: Lockfile::Override) = o.path
+    fn overridesOf(lock: Lockfile::Lock) = lock.overrides
+
+    fn localLock(project) = match Project::readLocalLockAt(project) {
+        Success { value } => Success { value: overridesOf(value) }
+        Error { message } => Error { message: message }
+    }
+
+    /// The development lock's overrides; a missing one has none, and an unreadable
+    /// one is a finding rather than a graph that looks free of overrides.
+    fn localOverrides(project) = match perform Host::Files.exists(Project::localLockPathAt(project)) {
+        Success { value } => if value { localLock(project) } else { Success { value: [] } }
+        Error { message } => Error { message: message }
+    }
+
+    fn packageValue(lines, direct, packages, overrides, pkg: Lockfile::Package) = {
         let id = releaseOf(pkg)
         let keyText = Names::display(keyOf(id))
-        obj([
+        obj(listConcat(overrideMembers(overrides, keyOf(id)), [
             member("key", str(keyText)),
             member("version", str(versionOf(id))),
             member("digest", str(id.digest)),
@@ -88,19 +112,19 @@ module TreeGraph {
             member("dependents", textList(mapList(dependentsOf(packages, keyOf(id)), Names::display))),
             member("findings", textList(packageFindings(lines, keyText))),
             member("present", bool(presentOf(lines, keyText)))
-        ])
+        ]))
     }
 
-    fn packagesValue(lines, direct, packages) = arr(mapList(packages, fn(p: Lockfile::Package) => packageValue(lines, direct, packages, p)))
+    fn packagesValue(lines, direct, packages, overrides) = arr(mapList(packages, fn(p: Lockfile::Package) => packageValue(lines, direct, packages, overrides, p)))
 
-    fn graphValue(manifest, lock, lines) = {
+    fn graphValue(manifest, lock, lines, overrides, localFindings) = {
         let direct = directKeys(manifest)
         let packages = packagesOf(lock)
         obj([
             member("project", str(nameOf(manifest))),
             member("direct", textList(mapList(direct, Names::display))),
-            member("packages", packagesValue(lines, direct, packages)),
-            member("findings", textList(codesOf(globalLines(lines, packages))))
+            member("packages", packagesValue(lines, direct, packages, overrides)),
+            member("findings", textList(listConcat(codesOf(globalLines(lines, packages)), localFindings)))
         ])
     }
 
@@ -118,7 +142,10 @@ module TreeGraph {
 
     fn withLock(project, manifest, lock) = {
         let lines = Reports::findings(Verify::verifyReleaseAt(project))
-        serialized(graphValue(manifest, lock, lines))
+        match localOverrides(project) {
+            Success { value } => serialized(graphValue(manifest, lock, lines, value, []))
+            Error => serialized(graphValue(manifest, lock, lines, [], [localUnreadableCode]))
+        }
     }
 
     fn withLockText(project, manifest, text) = match Lockfile::decode(text) {
