@@ -152,15 +152,7 @@ impl Checker {
                 Some(inner) => self.infer_expr(inner, env),
                 None => Type::unit(),
             },
-            Expr::Select { .. } => {
-                // Parsing remains reserved, but accepting the node would reach
-                // a backend that cannot perform channel selection.
-                // Implements [CONCURRENCY-SELECT-REJECT].
-                self.errors.push(TypeError::new(
-                    "`select` is not supported; use explicit `send`, `recv`, and `await`",
-                ));
-                self.ctx.fresh()
-            }
+            Expr::Select { operations, arms } => self.infer_select(operations, arms, env),
             Expr::Perform { .. } | Expr::Handler { .. } | Expr::Mask { .. } => {
                 self.infer_effect_expr(e, env)
             }
@@ -220,7 +212,7 @@ impl Checker {
 
     /// A channel and its sent value share one element type; the send is `Unit`.
     /// Implements [CONCURRENCY-CHANNEL] (split out of [`Self::infer_expr`]).
-    fn infer_send(&mut self, channel: &Expr, value: &Expr, env: &TypeEnv) -> Type {
+    pub(crate) fn infer_send(&mut self, channel: &Expr, value: &Expr, env: &TypeEnv) -> Type {
         let channel_ty = self.infer_expr(channel, env);
         let value_ty = self.infer_expr(value, env);
         let element_ty = self.ctx.fresh();
@@ -251,7 +243,7 @@ impl Checker {
         let _ = self.methods.insert(std::ptr::from_ref(site).addr(), target);
     }
 
-    fn infer_recv(&mut self, channel: &Expr, env: &TypeEnv) -> Type {
+    pub(crate) fn infer_recv(&mut self, channel: &Expr, env: &TypeEnv) -> Type {
         let elem = self.infer_unwrap_con(channel, names::CHANNEL, env);
         self.reject_result_channel(&elem, "receiving must never erase the Result wrapper");
         elem
@@ -1943,13 +1935,37 @@ mod tests {
     }
 
     #[test]
-    fn select_is_rejected_until_channel_selection_has_runtime_semantics() {
-        bad_with(
-            "fn pick() -> int = select {\n\
-              x => x\n\
-              _ => 0\n\
+    fn select_types_each_operation_and_joins_its_arms() {
+        // Implements [CONCURRENCY-SELECT].
+        ok(
+            "fn pick(a: Channel<int>, b: Channel<string>) -> int = select {\n\
+              x = recv(a) => x\n\
+              y = recv(b) => length(y)\n\
+              send(a, 1) => 2\n\
+              timeout(5) => 3\n\
             }\n",
-            "`select` is not supported",
+        );
+        for (arm, message) in [
+            ("y = recv(a) => length(y)", "`length` supports only"),
+            ("send(a, \"text\") => 1", "cannot unify int with string"),
+            ("recv(a) => \"text\"", "cannot unify"),
+        ] {
+            bad_with(
+                &format!("fn pick(a: Channel<int>) -> int = select {{\n {arm}\n _ => 0\n}}\n"),
+                message,
+            );
+        }
+        bad_with(
+            "fn pick(a: Channel<int>) -> int = select {\n recv(a) => 1\n timeout(\"soon\") => 2\n}\n",
+            "cannot unify int with string",
+        );
+        bad_with(
+            "fn pick() -> int = select {\n timeout(1) => 2\n}\n",
+            "needs at least one `send` or `recv` arm",
+        );
+        bad_with(
+            "fn pick(a: Channel<int>) -> int = select {\n recv(a) => 1\n timeout(1) => 2\n _ => 3\n}\n",
+            "at most one `timeout` or `_` arm",
         );
     }
 

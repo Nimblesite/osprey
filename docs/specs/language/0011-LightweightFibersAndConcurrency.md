@@ -170,9 +170,45 @@ returning an `Outcome<T>`, and deadline/racing forms — is specified in
 [plan 0026](../../plans/0026-structured-concurrency.md). Until that plan lands,
 nothing in this section's target exists in the compiler.
 
-## Reserved `select` syntax [CONCURRENCY-SELECT-REJECT]
+## Choosing among channel operations [CONCURRENCY-SELECT]
 
-Both parsers reserve and lower `select`, but channel selection has no runtime
-semantics. The type checker rejects every `select` expression with
-`` `select` is not supported `` before code generation. Use explicit `send`,
-`recv`, and `await` operations.
+`select` waits for the first of several channel operations and runs that arm:
+
+```osprey
+let outcome = select {
+    message = recv(inbox) => handle(message)
+    recv(cancel) => "stopped"
+    send(outbox, reply) => "sent"
+    timeout(500) => "timed out"
+}
+```
+
+```osprey-ml
+outcome = select
+    message = recv inbox => handle message
+    recv cancel => "stopped"
+    send outbox reply => "sent"
+    timeout 500 => "timed out"
+```
+
+- **Arms.** An arm is `name = recv(channel)`, `recv(channel)`, `send(channel, value)`,
+  `timeout(milliseconds)` or `_`. A receive binding has the channel's element type, and
+  `_ = recv(channel)` receives and drops. A `select` needs at least one `send` or `recv`
+  arm and takes at most one `timeout` or `_` arm.
+- **Evaluation.** Every channel, value and timeout operand evaluates once on entry, in
+  source order, whichever arm runs.
+- **Choice.** The first ready arm in source order runs, in every mode, and is the only
+  operation performed. A program that needs fairness among busy channels orders or
+  rotates its own arms. With nothing ready, `_` runs at once, `timeout` runs when the
+  time has passed (`timeout(0)` is `_`), and otherwise the `select` blocks until an arm
+  is ready.
+- **Ownership.** A send that is not chosen drops the reference it would have handed to
+  the channel; a received managed value belongs to the chosen arm's region.
+- **Result.** The arms' bodies join as a `match`'s do, so the `select` has their type.
+- **Deterministic mode.** With nothing ready, a `select` runs queued fibers one at a time
+  in spawn order until an arm is ready. Once none is left, `_` or `timeout` runs without
+  waiting for the clock, since nothing could change. Otherwise the `select` blocks, as a
+  `recv` on an empty channel does.
+- **Targets.** Native only; wasm32 and the Python target reject it like every other fiber
+  operation.
+

@@ -111,7 +111,13 @@ fn effect_children_mut(expression: &mut Expr, visit: &mut impl FnMut(&mut Expr))
             visit(channel);
             visit(value);
         }
-        Expr::Select { arms } => {
+        Expr::Select { operations, arms } => {
+            for operand in operations
+                .iter_mut()
+                .flat_map(crate::SelectOperation::operands_mut)
+            {
+                visit(operand);
+            }
             for arm in &mut *arms {
                 visit(&mut arm.body);
             }

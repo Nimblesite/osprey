@@ -225,9 +225,9 @@ pub(crate) enum MlExpr {
     },
     /// `recv channel` — receive a value from a channel ([FLAVOR-ML-CONCURRENCY]).
     Recv(Box<MlExpr>),
-    /// `select` + indented `pattern => body` arms — choose among ready channel
-    /// arms ([FLAVOR-ML-CONCURRENCY]).
-    Select(Vec<MlArm>),
+    /// `select` + indented operation arms — choose among ready channel operations
+    /// ([FLAVOR-ML-CONCURRENCY], [CONCURRENCY-SELECT]).
+    Select(Vec<MlSelectArm>),
 }
 
 /// A handler's completion clauses: `return x => …` as a unary lambda and
@@ -251,6 +251,32 @@ pub(crate) struct MlHandleArm {
     pub body: MlExpr,
     /// Source position of the operation name.
     pub pos: Position,
+}
+
+/// One arm of a `select`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct MlSelectArm {
+    /// The name a received value binds to.
+    pub binding: Option<String>,
+    /// What the arm waits for.
+    pub operation: MlSelectOperation,
+    /// The arm body.
+    pub body: MlExpr,
+    /// Source position of the arm's head.
+    pub pos: Position,
+}
+
+/// What one `select` arm waits for.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum MlSelectOperation {
+    /// `recv channel`.
+    Recv(MlExpr),
+    /// `send channel value`.
+    Send(MlExpr, MlExpr),
+    /// `timeout milliseconds`.
+    Timeout(MlExpr),
+    /// `_`.
+    Default,
 }
 
 /// One `pattern => body` arm of a `match`.

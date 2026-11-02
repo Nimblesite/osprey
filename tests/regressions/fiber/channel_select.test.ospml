@@ -1,0 +1,144 @@
+// [CONCURRENCY-SELECT] Select chooses among channel operations; the arms join as a
+// match does and every arm kind is exercised across element types.
+
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
+(** A shopping order on a channel, for a managed element. *)
+type Order =
+    item : string
+    qty : int
+
+(** Ready arms run in source order, and only the chosen arm's operation happens. *)
+tieBreaksInSourceOrder () =
+    first = Channel 2
+    second = Channel 2
+    send first 1
+    send second 2
+    chosen = select
+        a = recv first => a + 10
+        b = recv second => b + 20
+    next = select
+        a = recv first => a + 10
+        b = recv second => b + 20
+        _ => 99
+    drained = select
+        a = recv first => a
+        b = recv second => b
+        _ => 99
+    checkAll "source order" [chosen == 11, next == 22, drained == 99]
+
+(** A send arm runs when its channel has room, and a full one falls through. *)
+sendArmsRespectCapacity () =
+    room = Channel 1
+    sent = select
+        send room 7 => "sent"
+        _ => "full"
+    refused = select
+        send room 8 => "sent"
+        _ => "full"
+    received = recv room
+    checkAll "send capacity" [sent == "sent", refused == "full", received == 7]
+
+(** A receive binding has the channel's element type, for each kind of element. *)
+bindingsHaveTheElementType () =
+    words = Channel 1
+    orders = Channel 1
+    flags = Channel 1
+    send words ("he" + "llo")
+    send orders (Order(item = "tea", qty = 2))
+    send flags true
+    word = select
+        w = recv words => length w
+        _ => 0
+    order = select
+        o = recv orders => o.item + toString o.qty
+        _ => "none"
+    flag = select
+        f = recv flags => !f
+        _ => true
+    ignored = Channel 1
+    send ignored ("dropped" + "!")
+    dropped = select
+        recv ignored => "took"
+        _ => "none"
+    checkAll "bindings" [word == 5, order == "tea2", flag == false, dropped == "took"]
+
+(** An unchosen managed send gives its reference back, and a chosen one delivers it. *)
+managedSendsKeepTheirOwnership () =
+    full = Channel 1
+    open = Channel 1
+    send full ("occupied" + "!")
+    chosen = select
+        send full ("never" + "!") => "full arm"
+        send open ("deliver" + "ed") => "open arm"
+    inFull = recv full
+    inOpen = recv open
+    checkAll "managed sends" [chosen == "open arm", inFull == "occupied!", inOpen == "delivered"]
+
+(** A timeout arm runs once nothing is ready, and a ready channel beats it. *)
+timeoutsDecideOnlyWhenNothingIsReady () =
+    quiet = Channel 1
+    expired = select
+        recv quiet => "value"
+        timeout 5 => "expired"
+    immediate = select
+        recv quiet => "value"
+        timeout 0 => "expired"
+    send quiet 1
+    ready = select
+        recv quiet => "value"
+        timeout 5000 => "expired"
+    checkAll "timeouts" [expired == "expired", immediate == "expired", ready == "value"]
+
+(** A blocked select wakes when another fiber's operation makes an arm ready. *)
+aFiberWakesABlockedSelect () =
+    replies = Channel 1
+    idle = Channel 1
+    worker = spawn (send replies 42)
+    answer = select
+        r = recv replies => r
+        i = recv idle => i + 1000
+    _ignored = await worker
+    drains = Channel 1
+    send drains 1
+    blocked = spawn (send drains 2)
+    freed = recv drains
+    second = select
+        d = recv drains => d
+        timeout 5000 => 0
+    _done = await blocked
+    checkAll "wakeups" [answer == 42, freed == 1, second == 2]
+
+(** Record a step on the log, then answer the value. *)
+note log step value =
+    send log step
+    value
+
+(** Operands evaluate once on entry, in source order, whichever arm runs. *)
+operandsEvaluateOnceInOrder () =
+    log = Channel 4
+    channel = Channel 1
+    picked = select
+        send channel (note log 1 10) => note log 3 100
+        timeout (note log 2 5) => 0
+    checkAll "operands" [picked == 100, recv log == 1, recv log == 2, recv log == 3, recv channel == 10]
+
+test "ready arms run in source order" (\() => exactArithmetic (tieBreaksInSourceOrder))
+test "send arms respect capacity" (\() => exactArithmetic (sendArmsRespectCapacity))
+test "receive bindings have the element type" (\() => exactArithmetic (bindingsHaveTheElementType))
+test "managed sends keep their ownership" (\() => exactArithmetic (managedSendsKeepTheirOwnership))
+test "timeouts decide only when nothing is ready" (\() => exactArithmetic (timeoutsDecideOnlyWhenNothingIsReady))
+test "a fiber wakes a blocked select" (\() => exactArithmetic (aFiberWakesABlockedSelect))
+test "operands evaluate once in order" (\() => exactArithmetic (operandsEvaluateOnceInOrder))

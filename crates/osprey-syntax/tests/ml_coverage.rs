@@ -819,8 +819,14 @@ fn concurrency_forms_and_uncurried_calls_lower_to_ast_nodes() {
         other => panic!("expected a flat uncurried call, got {other:?}"),
     }
 
-    match let_value("r =\n    select\n        value => value\n        _ => 0\n") {
-        Expr::Select { arms } => assert_eq!(arms.len(), 2),
+    match let_value(
+        "r =\n    select\n        value = recv a => value\n        recv a => 1\n        send a 2 => 3\n        timeout 4 => 5\n        _ => 0\n",
+    ) {
+        Expr::Select { operations, arms } => {
+            assert_eq!(arms.len(), 5);
+            assert_eq!(operations.len(), 5);
+            assert_eq!(arms[0].pattern, Pattern::Binding("value".to_owned()));
+        }
         other => panic!("expected a select expression, got {other:?}"),
     }
 }

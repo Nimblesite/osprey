@@ -5,6 +5,8 @@ use super::{
     Expr, FieldAssignment, HandlerArm, MapEntry, MatchArm, MlArm, MlClauses, MlExpr, MlField,
     MlHandleArm, MlItem, MlParam, MlPattern, MlType, Pattern, Position, SymbolPath, TypeExpr,
 };
+use crate::ml::cst::{MlBinder, MlSelectArm, MlSelectOperation};
+use osprey_ast::SelectOperation;
 
 /// Lower one CST expression to a canonical [`Expr`].
 pub(in crate::ml) fn lower_expr(expr: MlExpr) -> Expr {
@@ -113,10 +115,44 @@ pub(in crate::ml) fn lower_expr(expr: MlExpr) -> Expr {
             value: Box::new(lower_expr(*value)),
         },
         MlExpr::Recv(inner) => Expr::Recv(Box::new(lower_expr(*inner))),
-        MlExpr::Select(arms) => Expr::Select {
-            arms: arms.into_iter().map(lower_arm).collect(),
-        },
+        MlExpr::Select(arms) => lower_select(arms),
     }
+}
+
+/// Parallel operations and arms, as the shared AST holds them [CONCURRENCY-SELECT].
+fn lower_select(arms: Vec<MlSelectArm>) -> Expr {
+    let (operations, arms) = arms
+        .into_iter()
+        .map(|arm| {
+            let operation = match arm.operation {
+                MlSelectOperation::Recv(channel) => {
+                    SelectOperation::Recv(Box::new(lower_expr(channel)))
+                }
+                MlSelectOperation::Send(channel, value) => SelectOperation::Send {
+                    channel: Box::new(lower_expr(channel)),
+                    value: Box::new(lower_expr(value)),
+                },
+                MlSelectOperation::Timeout(milliseconds) => {
+                    SelectOperation::Timeout(Box::new(lower_expr(milliseconds)))
+                }
+                MlSelectOperation::Default => SelectOperation::Default,
+            };
+            let pos = arm.pos;
+            let pattern = arm.binding.map_or(MlPattern::Wildcard, |name| {
+                MlPattern::Bind(MlBinder {
+                    name,
+                    pos: Some(pos),
+                })
+            });
+            let arm = lower_arm(MlArm {
+                pattern,
+                body: arm.body,
+                pos,
+            });
+            (operation, arm)
+        })
+        .unzip();
+    Expr::Select { operations, arms }
 }
 
 /// `mask E` + body and `instance E`. Implements [EFFECTS-MASK] and

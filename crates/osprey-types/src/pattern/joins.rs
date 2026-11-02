@@ -5,7 +5,7 @@ impl Checker {
     /// A known erased arm keeps the whole result erased, regardless of arm
     /// order. A concrete result annotation must still pass one-way assignment.
     /// Implements [TYPE-ANY].
-    pub(super) fn match_result(&mut self, result: Type, bodies: &[Type]) -> Type {
+    pub(crate) fn match_result(&mut self, result: Type, bodies: &[Type]) -> Type {
         if bodies
             .iter()
             .any(|ty| self.ctx.apply(ty).is_named(names::ANY))

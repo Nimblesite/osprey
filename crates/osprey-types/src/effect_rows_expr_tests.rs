@@ -113,9 +113,21 @@ fn a_select_arm_body_contributes_its_row() {
     assert_rejected_with(
         "effect Alarm { ring: fn() -> int }\n\
          fn ring() = perform Alarm.ring()\n\
+         let channel = Channel(1)\n\
          let chosen = select {\n\
-           first => ring()\n\
-           second => 0\n\
+           recv(channel) => ring()\n\
+           _ => 0\n\
+         }\n",
+        &["Alarm.ring"],
+    );
+    // An operand runs on entry, so its row counts whichever arm is chosen.
+    assert_rejected_with(
+        "effect Alarm { ring: fn() -> int }\n\
+         fn ring() = perform Alarm.ring()\n\
+         let channel = Channel(1)\n\
+         let chosen = select {\n\
+           send(channel, ring()) => 1\n\
+           timeout(5) => 0\n\
          }\n",
         &["Alarm.ring"],
     );

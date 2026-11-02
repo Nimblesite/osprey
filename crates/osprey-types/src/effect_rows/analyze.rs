@@ -284,9 +284,14 @@ impl Analyzer<'_> {
                 }
                 out
             }
-            Expr::Select { arms } => {
-                self.union_over(arms.iter().map(|arm| &arm.body), scope, env)
-            }
+            Expr::Select { operations, arms } => self.union_over(
+                operations
+                    .iter()
+                    .flat_map(osprey_ast::SelectOperation::operands)
+                    .chain(arms.iter().map(|arm| &arm.body)),
+                scope,
+                env,
+            ),
             Expr::Block { statements, value, .. } => {
                 let mut local = env.clone();
                 let mut out = self.statements(statements, scope, &mut local);

@@ -86,3 +86,5 @@ tests/regressions/http/net_local_address.test.osp foreign C import `osprey_net_l
 tests/regressions/http/net_local_address.test.ospml foreign C import `osprey_net_local_address`
 tests/regressions/http/tui_repo_table.test.osp HTTP builtin `httpResponseBody`
 tests/regressions/http/tui_repo_table.test.ospml HTTP builtin `httpResponseBody`
+tests/regressions/fiber/channel_select.test.osp fiber concurrency
+tests/regressions/fiber/channel_select.test.ospml fiber concurrency

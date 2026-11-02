@@ -14,5 +14,6 @@ The deterministic run scheduler preserves that order
 Total processed: 3400 units
 === Test Complete ===
 ok 1 - deterministic fibers complete in spawn order
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - a deterministic select runs queued fibers in spawn order
+1..2
+# tests=2 passed=2 failed=0 skipped=0

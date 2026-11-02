@@ -6,6 +6,7 @@
 #include "test_death.h"
 
 #include <assert.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -31,6 +32,8 @@ extern int64_t channel_create_checked(int64_t capacity);
 extern int64_t channel_send(int64_t channel_id, int64_t value, int64_t managed);
 extern void channel_cleanup(void);
 extern int64_t channel_recv(int64_t channel_id);
+extern int64_t channel_select(int64_t count, const int64_t *kinds, const int64_t *ids,
+                              const int64_t *words, int64_t *received, int64_t timeout_ms);
 extern int64_t spawn_process_with_handler(const char *command,
                                           void (*handler)(int64_t, int64_t,
                                                           char *));
@@ -530,7 +533,49 @@ void run_all_fiber_tests(void) {
   puts("fiber runtime tests passed");
 }
 
+static void *select_late_sender(void *channel) {
+  usleep(20000);
+  channel_send(*(int64_t *)channel, 77, 0);
+  return NULL;
+}
+
+// [CONCURRENCY-SELECT]: choice, capacity, timeouts, invalid channels and wakeups.
+static void test_channel_select(void) {
+  int64_t first = channel_create(1);
+  int64_t second = channel_create(1);
+  int64_t received = 0;
+  int64_t recv_kinds[] = {0, 0};
+  int64_t ids[] = {first, second};
+  int64_t words[] = {0, 0};
+  // Nothing ready: a zero wait answers `count` at once, and a bounded one expires.
+  assert(channel_select(2, recv_kinds, ids, words, &received, 0) == 2);
+  assert(channel_select(2, recv_kinds, ids, words, &received, 5) == 2);
+  // Both ready: source order, and only the chosen arm's value leaves its channel.
+  channel_send(first, 1, 0);
+  channel_send(second, 2, 0);
+  assert(channel_select(2, recv_kinds, ids, words, &received, -1) == 0 && received == 1);
+  assert(channel_select(2, recv_kinds, ids, words, &received, -1) == 1 && received == 2);
+  // A send arm performs only with room; the full channel falls to the next arm.
+  channel_send(first, 3, 0);
+  int64_t send_kinds[] = {1, 1};
+  int64_t send_words[] = {30, 40};
+  assert(channel_select(2, send_kinds, ids, send_words, &received, 0) == 1);
+  assert(channel_select(2, send_kinds, ids, send_words, &received, 0) == 2);
+  assert(channel_recv(first) == 3);
+  assert(channel_recv(second) == 40);
+  // Out-of-range and unknown channels are never ready, and never fault.
+  int64_t invalid[] = {0, 999};
+  assert(channel_select(2, recv_kinds, invalid, words, &received, 0) == 2);
+  // A blocked select wakes for a send from another thread.
+  pthread_t sender;
+  assert(pthread_create(&sender, NULL, select_late_sender, &second) == 0);
+  assert(channel_select(2, recv_kinds, ids, words, &received, -1) == 1 && received == 77);
+  assert(pthread_join(sender, NULL) == 0);
+  printf("  ok  channel select\n");
+}
+
 int main(void) {
+  test_channel_select();
   run_all_fiber_tests();
   return 0;
 }

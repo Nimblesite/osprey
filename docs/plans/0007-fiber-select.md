@@ -1,24 +1,8 @@
 # Plan 0007 — `select` Over Channels
 
 **Subsystem:** syntax, AST, types, codegen, native runtime  
-**Status:** reserved syntax; typed compilation rejects it  
-**Spec boundary:** [CONCURRENCY-SELECT-REJECT](../specs/language/0011-LightweightFibersAndConcurrency.md#reserved-select-syntax-concurrency-select-reject)
-
-## Current boundary
-
-- Both parsers lower `select` to `Expr::Select`; each arm currently contains
-  only a pattern and body, not a channel operation.
-- The type checker reports `` `select` is not supported ``. The CLI therefore
-  stops before code generation.
-- The native runtime has no primitive that waits on multiple channel
-  operations.
-- `codegen::fiber::gen_select` **used to** evaluate the first arm on the
-  direct-AST path — unreachable through typed compilation, but a
-  plausible-looking wrong answer for anything that bypassed the checker. It now
-  returns the same `` `select` is not supported `` error the checker does, pinned
-  by `direct_ast_select_is_rejected_instead_of_choosing_the_first_arm`
-  (`osprey-codegen/src/lib.rs`). The function stays as the loud-failure arm and
-  is replaced — not deleted — when arm lowering lands.
+**Status:** implemented on native; awaiting `make ci`  
+**Contract:** [CONCURRENCY-SELECT](../specs/language/0011-LightweightFibersAndConcurrency.md#choosing-among-channel-operations-concurrency-select)
 
 ## Required implementation
 
@@ -41,33 +25,20 @@
 
 ## TODO
 
-- [x] Direct AST compilation cannot silently choose the first arm —
-      `codegen::fiber::gen_select` returns the checker's own
-      `` `select` is not supported `` error instead of lowering `arms[0].body`.
-      Pinned by `direct_ast_select_is_rejected_instead_of_choosing_the_first_arm`
-      (`osprey-codegen/src/lib.rs`); the surface-syntax rejection stays pinned by
-      `crates/osprey-cli/tests/examples_compile.rs` and the `osprey-types` unit
-      test at `expr.rs`.
-- [ ] Arm model that retains each `send` / `recv` operation and any receive
-      binding through lowering in **both** flavors — today each arm carries only
-      a pattern and a body (`Expr::Select { arms: Vec<MatchArm> }`,
-      `osprey-ast/src/lib.rs`), so the channel operation is not representable and
-      every downstream walker (`freevars`, `effects`, `effect_rows`, `analysis`,
-      `rewrite`, `span`) needs the new shape.
-- [ ] Native runtime primitive that waits on multiple buffered channel
-      operations, with explicit default / timeout behavior — `fiber_runtime.c`
-      has `channel_send` / `channel_recv` only, both single-channel and blocking.
-- [ ] Type-check each operation against its channel element type, merge arm
-      result types, then remove `[CONCURRENCY-SELECT-REJECT]` from
-      `osprey-types/src/expr.rs` and from
-      [spec 0011](../specs/language/0011-LightweightFibersAndConcurrency.md).
-- [ ] Lower the runtime's selected-arm index to control flow, replacing the
-      loud-failure `gen_select` above.
-- [ ] Deterministic-mode tie-breaking defined and tested
-      ([CONCURRENCY-DETERMINISTIC] — the golden, not just the assertions, is the
-      oracle here).
-- [ ] Assertion suites in both flavors selecting between ≥ 2 channel operations,
-      with receive bindings at the channel element type and an explicit
-      default/timeout case; goldens byte-identical across flavors and across all
-      three memory backends.
+- [x] Direct AST compilation cannot silently choose the first arm: arms now hold their
+      operations, and the runtime reports the arm it performed (`select_calls_the_runtime_and_switches_on_the_arm_it_performed`).
+- [x] Arm model retains each `send` / `recv` operation and any receive binding through
+      lowering in both flavors: `Expr::Select { operations, arms }`, with every walker
+      visiting the operands.
+- [x] Native runtime primitive `channel_select` waits on multiple buffered channel
+      operations, with explicit default and timeout behavior.
+- [x] Each operation is type-checked against its channel's element type, arm results
+      merge, and `[CONCURRENCY-SELECT-REJECT]` is replaced by
+      [`[CONCURRENCY-SELECT]`](../specs/language/0011-LightweightFibersAndConcurrency.md).
+- [x] The runtime's selected arm lowers to control flow in `gen_select`.
+- [x] Deterministic-mode tie-breaking defined and tested
+      (`tests/regressions/fiber/fiber_determinism.test.osp`, golden included).
+- [x] Assertion suites in both flavors select between at least two channel operations,
+      with receive bindings at the element type and explicit default and timeout cases
+      (`tests/regressions/fiber/channel_select.test.osp` and its ML twin, identical IR).
 - [ ] `make ci` green.

@@ -1,0 +1,27 @@
+// [CONCURRENCY-SELECT] A select waits on channels, decides one thing when none is
+// ready, types each operation, and joins its arms like a match.
+let c = Channel(1)
+send(c, 1)
+let noChannels = select { timeout(1) => 1 }
+let twoFallbacks = select {
+    recv(c) => 1
+    timeout(1) => 2
+    _ => 3
+}
+let wrongElement = select {
+    send(c, "text") => 1
+    _ => 2
+}
+let wrongTime = select {
+    recv(c) => 1
+    timeout("soon") => 2
+}
+let disagree = select {
+    recv(c) => 1
+    _ => "two"
+}
+print(noChannels)
+print(twoFallbacks)
+print(wrongElement)
+print(wrongTime)
+print(disagree)

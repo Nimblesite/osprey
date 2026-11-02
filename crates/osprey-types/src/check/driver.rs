@@ -252,8 +252,9 @@ mod tests {
         ] {
             let errors = check_program(&program(source));
             assert_eq!(errors.len(), 1, "{source}: {errors:?}");
-            assert!(errors[0].message.contains("cannot unify"), "{errors:?}");
-            assert_eq!(errors[0].position.map(|at| at.line), Some(line), "{source}");
+            let error = errors.first().expect("one error");
+            assert!(error.message.contains("cannot unify"), "{errors:?}");
+            assert_eq!(error.position.map(|at| at.line), Some(line), "{source}");
         }
         // Two distinct failures of the same message at different places both stay.
         let two = check_program(&program(

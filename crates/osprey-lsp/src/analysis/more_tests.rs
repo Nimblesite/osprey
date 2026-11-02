@@ -320,6 +320,7 @@ fn every_container_with_a_nested_let() -> Vec<Expr> {
             value: b("sendv"),
         },
         Expr::Select {
+            operations: vec![osprey_ast::SelectOperation::Default],
             arms: vec![arm("select")],
         },
         Expr::Perform {

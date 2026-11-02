@@ -1,0 +1,5 @@
+5:0: `select` needs at least one `send` or `recv` arm
+6:0: `select` takes at most one `timeout` or `_` arm: they both decide what happens when no channel is ready
+11:0: type mismatch: cannot unify int with string
+15:0: type mismatch: cannot unify int with string
+19:0: type mismatch: cannot unify int with string

@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -73,6 +74,25 @@ typedef struct Channel {
   pthread_cond_t not_empty;
   pthread_cond_t not_full;
 } Channel;
+
+// `select` waits on every channel at once, so it cannot sleep on one channel's
+// condition. A channel operation that changes a channel's state advances this
+// generation; a waiter records it BEFORE trying its arms, so a change made while
+// it tried wakes it at once. [CONCURRENCY-SELECT]
+static pthread_mutex_t select_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t select_changed = PTHREAD_COND_INITIALIZER;
+static uint64_t select_generation = 0;
+static atomic_int select_waiters = 0;
+
+static void select_notify(void) {
+  if (atomic_load(&select_waiters) == 0) {
+    return;
+  }
+  pthread_mutex_lock(&select_mutex);
+  select_generation++;
+  pthread_cond_broadcast(&select_changed);
+  pthread_mutex_unlock(&select_mutex);
+}
 
 // Global runtime state
 static Fiber *fibers[1000];
@@ -483,6 +503,7 @@ int64_t channel_send(int64_t channel_id, int64_t value, int64_t managed) {
   pthread_cond_signal(&channel->not_empty);
 
   pthread_mutex_unlock(&channel->mutex);
+  select_notify();
 
   return 1; // Success
 }
@@ -517,8 +538,149 @@ int64_t channel_recv(int64_t channel_id) {
   pthread_cond_signal(&channel->not_full);
 
   pthread_mutex_unlock(&channel->mutex);
+  select_notify();
 
   return value;
+}
+
+#define SELECT_RECV 0
+#define SELECT_SEND 1
+#define SELECT_SEND_MANAGED 2
+
+static Channel *select_channel(int64_t channel_id) {
+  if (channel_id < 1 || channel_id >= 1000) {
+    return NULL;
+  }
+  pthread_mutex_lock(&runtime_mutex);
+  Channel *channel = channels[channel_id];
+  pthread_mutex_unlock(&runtime_mutex);
+  return channel;
+}
+
+// Perform one arm's operation if its channel is ready right now.
+static bool select_try(int64_t kind, int64_t channel_id, int64_t word, int64_t *received) {
+  Channel *channel = select_channel(channel_id);
+  if (!channel) {
+    return false;
+  }
+  pthread_mutex_lock(&channel->mutex);
+  bool ready = kind == SELECT_RECV ? channel->count > 0 : channel->count < channel->capacity;
+  if (ready && kind == SELECT_RECV) {
+    *received = channel->buffer[channel->head];
+    channel->head = (channel->head + 1) % channel->capacity;
+    channel->count--;
+    pthread_cond_signal(&channel->not_full);
+  } else if (ready) {
+    channel->elem_managed = channel->elem_managed || kind == SELECT_SEND_MANAGED;
+    channel->buffer[channel->tail] = word;
+    channel->tail = (channel->tail + 1) % channel->capacity;
+    channel->count++;
+    pthread_cond_signal(&channel->not_empty);
+  }
+  pthread_mutex_unlock(&channel->mutex);
+  if (ready) {
+    select_notify();
+  }
+  return ready;
+}
+
+// The first ready arm in source order, or `count` when none is.
+static int64_t select_scan(int64_t count, const int64_t *kinds, const int64_t *ids,
+                           const int64_t *words, int64_t *received) {
+  for (int64_t arm = 0; arm < count; arm++) {
+    if (select_try(kinds[arm], ids[arm], words[arm], received)) {
+      return arm;
+    }
+  }
+  return count;
+}
+
+// Sleep until a channel changes or the deadline passes; false once it has passed.
+static bool select_wait(uint64_t seen, bool bounded, const struct timespec *deadline) {
+  bool in_time = true;
+  pthread_mutex_lock(&select_mutex);
+  while (select_generation == seen && in_time) {
+    if (bounded) {
+      in_time = pthread_cond_timedwait(&select_changed, &select_mutex, deadline) != ETIMEDOUT;
+    } else {
+      pthread_cond_wait(&select_changed, &select_mutex);
+    }
+  }
+  pthread_mutex_unlock(&select_mutex);
+  return in_time;
+}
+
+// Deterministic mode has no other thread to wait for: a queued fiber runs instead,
+// in spawn order. False once none is left to run. [CONCURRENCY-DETERMINISTIC]
+static bool select_run_queued(void) {
+  pthread_mutex_lock(&runtime_mutex);
+  Fiber *next = NULL;
+  for (int64_t i = 0; i < queue_size && !next; i++) {
+    Fiber *fiber = fibers[execution_queue[i]];
+    next = fiber && !fiber->completed ? fiber : NULL;
+  }
+  pthread_mutex_unlock(&runtime_mutex);
+  if (next) {
+    execute_fiber_directly(next);
+  }
+  return next != NULL;
+}
+
+static int64_t select_deterministic(int64_t count, const int64_t *kinds, const int64_t *ids,
+                                    const int64_t *words, int64_t *received,
+                                    int64_t timeout_ms) {
+  int64_t chosen = select_scan(count, kinds, ids, words, received);
+  while (chosen == count && timeout_ms != 0 && select_run_queued()) {
+    chosen = select_scan(count, kinds, ids, words, received);
+  }
+  return chosen;
+}
+
+static int64_t select_until_ready(int64_t count, const int64_t *kinds, const int64_t *ids,
+                                  const int64_t *words, int64_t *received,
+                                  int64_t timeout_ms) {
+  struct timespec deadline;
+  clock_gettime(CLOCK_REALTIME, &deadline);
+  if (timeout_ms > 0) {
+    deadline.tv_sec += timeout_ms / 1000;
+    deadline.tv_nsec += (timeout_ms % 1000) * 1000000;
+    deadline.tv_sec += deadline.tv_nsec / 1000000000;
+    deadline.tv_nsec %= 1000000000;
+  }
+  atomic_fetch_add(&select_waiters, 1);
+  int64_t chosen = count;
+  for (bool waiting = true; waiting;) {
+    pthread_mutex_lock(&select_mutex);
+    uint64_t seen = select_generation;
+    pthread_mutex_unlock(&select_mutex);
+    chosen = select_scan(count, kinds, ids, words, received);
+    waiting = chosen == count && timeout_ms != 0 &&
+              select_wait(seen, timeout_ms > 0, &deadline);
+  }
+  atomic_fetch_sub(&select_waiters, 1);
+  return chosen;
+}
+
+// Run the channel arms of a `select`: `kinds[i]` is SELECT_RECV, SELECT_SEND or
+// SELECT_SEND_MANAGED on channel `ids[i]`, sending `words[i]`. Answers the index of
+// the first ready arm in source order, which has been performed, or `count` when
+// none became ready within `timeout_ms` (0 never waits, negative waits for ever). A
+// send that was not chosen releases the reference it would have handed over.
+// [CONCURRENCY-SELECT]
+int64_t channel_select(int64_t count, const int64_t *kinds, const int64_t *ids,
+                       const int64_t *words, int64_t *received, int64_t timeout_ms) {
+  int64_t chosen = deterministic_mode
+                       ? select_deterministic(count, kinds, ids, words, received, timeout_ms)
+                       : count;
+  if (!deterministic_mode || (chosen == count && timeout_ms < 0)) {
+    chosen = select_until_ready(count, kinds, ids, words, received, timeout_ms);
+  }
+  for (int64_t arm = 0; arm < count; arm++) {
+    if (arm != chosen && kinds[arm] == SELECT_SEND_MANAGED) {
+      osp_release((void *)(uintptr_t)words[arm]);
+    }
+  }
+  return chosen;
 }
 
 // Release every managed value still buffered when the program ends. A value

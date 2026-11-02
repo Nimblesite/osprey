@@ -48,7 +48,12 @@ fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
             walk(value, bound, out);
             walk_arms(arms, bound, out);
         }
-        Expr::Select { arms } => walk_arms(arms, bound, out),
+        Expr::Select { operations, arms } => {
+            for operand in operations.iter().flat_map(crate::SelectOperation::operands) {
+                walk(operand, bound, out);
+            }
+            walk_arms(arms, bound, out);
+        }
         Expr::Block {
             statements, value, ..
         } => walk_block(statements, value.as_deref(), bound, out),

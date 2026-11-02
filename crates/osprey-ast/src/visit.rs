@@ -6,7 +6,7 @@
 //! state — the free-variable collector and effect scanner
 //! ([`osprey-codegen`]) and the symbol collector ([`osprey-lsp`]) all reuse it.
 
-use crate::{Expr, InterpolatedPart, Program, Stmt};
+use crate::{Expr, InterpolatedPart, Program, SelectOperation, Stmt};
 
 /// Callbacks for one preorder walk over every statement and expression in a
 /// program. Implementors override only the node kinds they need.
@@ -162,7 +162,12 @@ fn expression_children<'a>(expression: &'a Expr, visit: &mut impl FnMut(AstNode<
             visit(AstNode::Expression(channel));
             visit(AstNode::Expression(value));
         }
-        Expr::Select { arms } => visit_each(arms, visit, |arm| &arm.body),
+        Expr::Select { operations, arms } => {
+            for operand in operations.iter().flat_map(SelectOperation::operands) {
+                visit(AstNode::Expression(operand));
+            }
+            visit_each(arms, visit, |arm| &arm.body);
+        }
         Expr::Perform {
             arguments,
             named_arguments,

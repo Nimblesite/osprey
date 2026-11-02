@@ -529,6 +529,10 @@ next = recv channel
 yield next
 ```
 
+`select` takes indented arms, each `name = recv channel`, `recv channel`,
+`send channel value`, `timeout milliseconds` or `_`, followed by `=> body`. It lowers
+to `Expr::Select` ([CONCURRENCY-SELECT](0011-LightweightFibersAndConcurrency.md#choosing-among-channel-operations-concurrency-select)).
+
 ## Blocks
 
 `[FLAVOR-ML-BLOCK]` A function body, match arm, handler arm, or spawned body may

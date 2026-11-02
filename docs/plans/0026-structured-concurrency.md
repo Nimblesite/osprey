@@ -46,8 +46,8 @@ round-trip serialization — rather than adding a parallel subsystem.
 4. **Kill-safety** — channel wait-queue removal without element loss, turn
    completion under performer cancellation, ARC/GC release of dropped
    continuations. [CANCEL-KILLSAFE]
-5. **Deadlines and races** — `within`, `race`; blocked on plan 0007's runtime
-   multiplexing primitive; deterministic tie-breaking shared with it.
+5. **Deadlines and races** — `within`, `race`; build on plan 0007's
+   `channel_select`; deterministic tie-breaking shared with it.
    [CANCEL-DEADLINE]
 6. **Turn isolation** — name the shipped serialization as turns; flat-combining
    turn queue with single-CAS fast path; deterministic-mode total turn order.

@@ -248,7 +248,7 @@ fn invocation(expression: &Expr) -> Option<(Site, Option<String>)> {
 fn shadowing_names(expression: &Expr) -> Vec<String> {
     match expression {
         Expr::Lambda { parameters, .. } => parameters.iter().map(|p| p.name.clone()).collect(),
-        Expr::Match { arms, .. } | Expr::Select { arms } => arms
+        Expr::Match { arms, .. } | Expr::Select { arms, .. } => arms
             .iter()
             .flat_map(|arm| pattern_binder_names(&arm.pattern))
             .collect(),

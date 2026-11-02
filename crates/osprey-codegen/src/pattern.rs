@@ -103,6 +103,32 @@ fn match_mark(cg: &mut Codegen) -> usize {
     mark
 }
 
+/// The join state of a `select`, opened before its arms run.
+pub(crate) fn select_state(cg: &mut Codegen) -> (String, Vec<(Value, String)>, usize) {
+    let (end, phi_in, _, mark) = match_state(cg, &[]);
+    (end, phi_in, mark)
+}
+
+/// One `select` arm, joined like a match arm.
+pub(crate) fn select_arm(
+    cg: &mut Codegen,
+    arm: &MatchArm,
+    phi_in: &mut Vec<(Value, String)>,
+    bind: impl FnOnce(&mut Codegen) -> Result<()>,
+) -> Result<()> {
+    try_emit_arm(cg, arm, phi_in, bind)
+}
+
+/// Close a `select`'s join.
+pub(crate) fn select_finish(
+    cg: &mut Codegen,
+    phi_in: &[(Value, String)],
+    end: &str,
+    mark: usize,
+) -> Result<Value> {
+    finish_phi(cg, phi_in, end, mark)
+}
+
 /// Generate a successful match arm and branch to the common result block.
 fn emit_arm(
     cg: &mut Codegen,

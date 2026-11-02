@@ -327,7 +327,15 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
             offset_expr(channel, offset);
             offset_expr(value, offset);
         }
-        Expr::Select { arms } => offset_arms(arms, offset),
+        Expr::Select { operations, arms } => {
+            for operand in operations
+                .iter_mut()
+                .flat_map(crate::SelectOperation::operands_mut)
+            {
+                offset_expr(operand, offset);
+            }
+            offset_arms(arms, offset);
+        }
         Expr::Perform {
             arguments,
             named_arguments,
