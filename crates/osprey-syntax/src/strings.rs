@@ -264,6 +264,14 @@ fn decode(raw: &str) -> Decoded {
                 continue;
             }
         }
+        // A line break in a literal is `\n` however the file was checked out.
+        if character == '\r'
+            && text
+                .get(index + 1..)
+                .is_some_and(|rest| rest.starts_with('\n'))
+        {
+            continue;
+        }
         scope.observe(character);
         decoded.text.push(character);
         decoded
@@ -348,6 +356,13 @@ mod tests {
         // from the Default twin — only a matched `"…"` pair may be stripped.
         assert_eq!(unquote("he said \\\"hi\\\""), "he said \"hi\""); // ML raw, no quotes
         assert_eq!(unquote("\"he said \\\"hi\\\"\""), "he said \"hi\""); // Default token
+    }
+
+    #[test]
+    fn a_literal_line_break_is_a_newline_on_every_checkout() {
+        assert_eq!(unquote("a\r\nb\nc"), "a\nb\nc");
+        assert_eq!(unquote("lone\rreturn"), "lone\rreturn");
+        assert_eq!(unquote("escaped\\r\\n"), "escaped\r\n");
     }
 
     #[test]

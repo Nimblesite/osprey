@@ -67,4 +67,4 @@ Timing on `ubuntu-latest` is too noisy to gate on and the Mac runners are slower
 - [ ] Re-run `make -C benchmarks bench` after Phases 3 and 4 on an idle machine and update `website/src/benchmarks.md` from the recorded data.
 - [x] Phase 4 cold slow path with its oracle test: `osp.arith.fault.*` in `effects/requests.rs`, `a_checked_operation_keeps_its_slow_path_out_of_line`.
 - [x] Phase 5 decision recorded in spec 0037: `[ARITH-EFFECT-NO-REASSOCIATION]`, the recursion stays.
-- [ ] Phase 6 cachegrind job `test-instructions`, under the required `CI` job (`benchmarks/instruction_gate.py`, `benchmarks/instruction-ratios.json`); ratios await their first Linux measurement.
+- [x] Phase 6 cachegrind job `test-instructions`, under the required `CI` job (`benchmarks/instruction_gate.py`, `benchmarks/instruction-ratios.json`, first measured on CI run 41435920098).

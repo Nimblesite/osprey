@@ -101,8 +101,14 @@ fn network_builtins_match_the_runtime_status_abi() {
             "writeFile",
             "writeFile : (string, string) -> Result<int, Error>",
         ),
-        ("httpCloseClient", "httpCloseClient : (int) -> int"),
-        ("httpGet", "httpGet : (int, string, string) -> int"),
+        (
+            "httpCloseClient",
+            "httpCloseClient : (int) -> Result<int, Error>",
+        ),
+        (
+            "httpGet",
+            "httpGet : (int, string, string) -> Result<int, Error>",
+        ),
         (
             "httpResponseFree",
             "httpResponseFree : (int) -> Result<int, Error>",
@@ -115,13 +121,22 @@ fn network_builtins_match_the_runtime_status_abi() {
             "httpPostResponse",
             "httpPostResponse : (int, string, string, string) -> Result<int, Error>",
         ),
-        ("httpPut", "httpPut : (int, string, string, string) -> int"),
-        ("httpDelete", "httpDelete : (int, string, string) -> int"),
+        (
+            "httpPut",
+            "httpPut : (int, string, string, string) -> Result<int, Error>",
+        ),
+        (
+            "httpDelete",
+            "httpDelete : (int, string, string) -> Result<int, Error>",
+        ),
         (
             "httpListen",
             "httpListen : (int, (string, string, string, string) -> HttpResponse) -> int",
         ),
-        ("httpStopServer", "httpStopServer : (int) -> int"),
+        (
+            "httpStopServer",
+            "httpStopServer : (int) -> Result<int, Error>",
+        ),
         ("websocketClose", "websocketClose : (int) -> int"),
         ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
     ];
