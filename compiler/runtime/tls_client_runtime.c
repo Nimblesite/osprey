@@ -58,8 +58,9 @@ static int tcp_dial(const char *host, int64_t port, int64_t timeout_ms) {
     return -1;
   }
   osprey_wsa_init();
-  struct hostent *server = gethostbyname(host);
-  if (!server || server->h_addrtype != AF_INET) {
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof addr);
+  if (!osp_socket_resolve_ipv4(host, &addr.sin_addr)) {
     return -2;
   }
   int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -68,11 +69,8 @@ static int tcp_dial(const char *host, int64_t port, int64_t timeout_ms) {
   }
   osp_socket_deadline(fd, timeout_ms > 0 ? timeout_ms : 10000);
   osp_socket_configure_no_sigpipe(fd);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof addr);
   addr.sin_family = AF_INET;
   addr.sin_port = htons((uint16_t)port);
-  memcpy(&addr.sin_addr.s_addr, server->h_addr_list[0], (size_t)server->h_length);
   if (connect(fd, (struct sockaddr *)&addr, sizeof addr) < 0) {
     close_fd(fd);
     return -4;
@@ -338,16 +336,14 @@ int64_t osprey_tls_close(int64_t handle) {
 // particular device binds here.
 char *osprey_net_local_address(char *host, int64_t port) {
   osprey_wsa_init();
-  struct hostent *server = host ? gethostbyname(host) : NULL;
-  if (!server || server->h_addrtype != AF_INET || port < 1 || port > 65535) {
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof addr);
+  if (port < 1 || port > 65535 || !osp_socket_resolve_ipv4(host, &addr.sin_addr)) {
     return bytes_hex((const unsigned char *)"", 0);
   }
   int fd = socket(AF_INET, SOCK_DGRAM, 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof addr);
   addr.sin_family = AF_INET;
   addr.sin_port = htons((uint16_t)port);
-  memcpy(&addr.sin_addr.s_addr, server->h_addr_list[0], (size_t)server->h_length);
   struct sockaddr_in local;
   socklen_t local_len = sizeof local;
   char text[INET_ADDRSTRLEN] = "";

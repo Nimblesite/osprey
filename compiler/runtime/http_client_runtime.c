@@ -185,8 +185,7 @@ int64_t http_perform(int64_t client_id, int64_t method, char *path,
   server_addr.sin_family = AF_INET;
   server_addr.sin_port = htons(client->port);
 
-  struct hostent *server = gethostbyname(client->host);
-  if (!server) {
+  if (!osp_socket_resolve_ipv4(client->host, &server_addr.sin_addr)) {
 #ifdef _WIN32
     closesocket(sock);
 #else
@@ -194,8 +193,6 @@ int64_t http_perform(int64_t client_id, int64_t method, char *path,
 #endif
     return -4;
   }
-
-  memcpy(&server_addr.sin_addr.s_addr, server->h_addr, server->h_length);
 
   if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
 #ifdef _WIN32
