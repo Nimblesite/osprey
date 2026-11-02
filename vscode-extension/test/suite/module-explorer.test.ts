@@ -7,7 +7,8 @@ import {
   clientPackageGraph, compilerSourceGraph, isContained, ModuleExplorerProvider, openSource, parsePackageGraph,
   parseSourceGraph, projectChildren, type ModuleExplorerDeps, type ModuleNode, type PackageGraph,
 } from "../../client/src/module-explorer";
-import { resolveBuiltOsprey } from "./osprey-test-env";
+import { runFrontendCommand } from "../../client/src/package-frontend";
+import { extensionRoot, resolveBuiltOsprey } from "./osprey-test-env";
 
 const labels = (nodes: readonly ModuleNode[]) => nodes.map((node) => node.label);
 
@@ -147,6 +148,43 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     fs.rmSync(inside, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
+  });
+
+  test("the real package client answers per project, and a manifest change shows after a refresh", async () => {
+    const client = path.resolve(extensionRoot, "..", "target", process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg");
+    assert.ok(fs.existsSync(client), "build target/osprey-pkg before this suite");
+    const frontend = { run: (command: string, cwd: string) => runFrontendCommand(client, command, cwd) };
+    const manifest = (deps: string) => `[project]\nname = "demo"\nsource_roots = ["src"]\ndefault_namespace = "demo"\n\n[dependencies]\n${deps}`;
+    const source = { "src/main.ospml": 'print "x"\n' };
+    const first = project({ ...source, "osprey.toml": manifest("") });
+    const second = project({ ...source, "osprey.toml": manifest('"@org/other" = { epoch = 1 }\n') });
+    const tree = provider([first, second], [], { packageGraph: clientPackageGraph(frontend) });
+    const dependencies = async (node: ModuleNode) => {
+      const groups = await tree.getChildren(node);
+      return tree.getChildren(groups.find((group) => group.label === "Dependencies"));
+    };
+
+    // Two projects in one workspace answer independently.
+    const [one, two] = await tree.getChildren();
+    assert.deepStrictEqual(labels(await dependencies(one)), ["No lock file"]);
+    assert.deepStrictEqual(labels(await dependencies(two)), ["No lock file", "@org/other"]);
+    assert.strictEqual((await dependencies(two))[1].description, "not locked · direct");
+
+    // An edit made outside the view shows after a refresh.
+    fs.writeFileSync(path.join(first, "osprey.toml"), manifest('"@org/added" = { epoch = 2 }\n'));
+    assert.deepStrictEqual(labels(await dependencies(one)), ["No lock file"], "the loaded answer holds until a refresh");
+    tree.refresh();
+    assert.deepStrictEqual(labels(await dependencies(one)), ["No lock file", "@org/added"]);
+    assert.deepStrictEqual(labels(await dependencies(two)), ["No lock file", "@org/other"]);
+
+    // A manifest the client rejects is that client's error, never an empty list.
+    fs.writeFileSync(path.join(first, "osprey.toml"), "[project]\n");
+    tree.refresh();
+    const [broken] = await dependencies(one);
+    assert.strictEqual(broken.label, "Dependencies unavailable");
+    assert.ok((broken.description ?? "").length > 0);
+    fs.rmSync(first, { recursive: true, force: true });
+    fs.rmSync(second, { recursive: true, force: true });
   });
 
   test("the locked graph nests dependencies and shows what verification found", () => {

@@ -1,6 +1,6 @@
 # Module explorer delivery plan
 
-**Status: the sidebar view runs on real compiler data; real-client E2E for package changes and project selection remains.** Record this requirement during stabilization; implementation starts after existing delivery gates are green. The binding contract is [EDITOR-MODULE-EXPLORER](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer). This is the Osprey counterpart to the module/solution explorers in Basilisk and SharpLsp.
+**Status: the sidebar view runs on real compiler data; an automated keyboard test remains.** Record this requirement during stabilization; implementation starts after existing delivery gates are green. The binding contract is [EDITOR-MODULE-EXPLORER](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer). This is the Osprey counterpart to the module/solution explorers in Basilisk and SharpLsp.
 
 ## Delivery steps
 
@@ -17,9 +17,10 @@
 - [x] Editor E2E coverage against the actual compiler graph for cross-flavor membership, source navigation, refresh after edits, analysis failures and untrusted refusal (`test/suite/module-explorer.test.ts`).
 - [x] E2E coverage for the locked graph, verification findings, unsaved edits and root containment.
 - [x] Local dependencies are covered through the graph report (`tree_graph_tests.osp`) and the view.
-- [ ] E2E coverage for package changes through the real client, project selection/cancellation and keyboard access.
+- [x] E2E coverage through the real package client: per-project answers, a manifest change after refresh, and a rejected manifest.
+- [ ] An automated keyboard test; the view is VS Code's native tree, whose keyboard operation is not separately exercised here.
 - [x] The installed VSIX contributes the view and its commands (`test/installed/packages.test.ts`, run by `npm run test:vsix` in the required extension job).
 
 ## Completion evidence
 
-No explorer acceptance is claimed. The immediate package-manager discovery fix uses the existing sidebar toolbar and command; it does not satisfy the module explorer milestones above.
+`test/suite/module-explorer.test.ts` runs against the real compiler and package client, and `test/installed/packages.test.ts` against the installed VSIX, both in the required extension job.
