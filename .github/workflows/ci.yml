@@ -1033,6 +1033,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # The emulator can vanish without a word in its own log; only the host
+      # can say whether the kernel killed it.
+      - name: Host state after a failed Android step
+        if: failure()
+        run: |
+          sudo dmesg -T | grep -iE 'out of memory|oom|killed process|segfault|qemu|kvm' | tail -40 || true
+          free -h
+          df -h /
+
       - name: Install bank e2e dependencies
         run: npm ci
         working-directory: ./examples/projects/modules/e2e
