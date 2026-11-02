@@ -123,13 +123,13 @@ pub struct ProgramTypes {
     /// bound to the written name. Implements [EFFECTS-INSTANCE].
     pub capabilities: HashMap<(u32, u32), String>,
     /// Explicit call substitutions, applied while specializing generic bodies.
-    pub applications: HashMap<(u32, u32), HashMap<VarId, Type>>,
+    pub applications: HashMap<(u32, u32), Arc<HashMap<VarId, Type>>>,
     /// Binder identity is part of the contract even when its spelling is omitted.
     pub(crate) declared_params: HashMap<String, HashMap<String, Type>>,
-    pub(crate) call_bindings: HashMap<usize, HashMap<VarId, Type>>,
+    pub(crate) call_bindings: Arc<HashMap<usize, HashMap<VarId, Type>>>,
     pub(crate) methods: crate::methods::Targets,
     /// Generalized source-binding constraints compared by annotation diagnostics.
-    pub(crate) obligations: HashMap<String, Vec<(String, Type)>>,
+    pub(crate) obligations: Arc<HashMap<String, Vec<(String, Type)>>>,
 }
 
 /// One `perform` site's resolved instantiation.
@@ -250,10 +250,12 @@ impl ProgramTypes {
         let substitute = |ty: &mut Type| *ty = crate::env::subst_vars(ty, bindings);
         result.specialize_body(function, &substitute);
         result.specialize_operations(&substitute);
+        // Most call sites are already concrete and stay shared with every other specialization.
         result
             .applications
             .values_mut()
-            .flat_map(HashMap::values_mut)
+            .filter(|bindings| bindings.values().any(crate::has_type_var))
+            .flat_map(|bindings| Arc::make_mut(bindings).values_mut())
             .chain(
                 result
                     .declared_params
@@ -364,7 +366,9 @@ impl ProgramTypes {
 /// which is what a flat position map always did.
 #[derive(Debug, Clone, Default)]
 pub struct SiteTable {
-    entries: HashMap<(u32, u32), Vec<Entry>>,
+    /// Shared per position: specializing a generic call copies a table for every call, and rewrites
+    /// only the few positions that still mention a type variable.
+    entries: HashMap<(u32, u32), Arc<Vec<Entry>>>,
 }
 
 /// One recorded entry: the enclosing top-level function and the resolved type.
@@ -372,15 +376,19 @@ type Entry = (Option<String>, Type);
 
 impl SiteTable {
     fn specialize(&mut self, function: Option<&str>, substitute: &impl Fn(&mut Type)) {
+        let moves = |(owner, ty): &Entry| {
+            function.is_none_or(|f| owner.as_deref() == Some(f)) && crate::has_type_var(ty)
+        };
         self.entries
             .values_mut()
-            .flatten()
-            .filter(|(owner, _)| function.is_none_or(|f| owner.as_deref() == Some(f)))
+            .filter(|recorded| recorded.iter().any(moves))
+            .flat_map(|recorded| Arc::make_mut(recorded).iter_mut())
+            .filter(|entry| moves(entry))
             .for_each(|(_, ty)| substitute(ty));
     }
 
     pub(crate) fn insert(&mut self, function: Option<&str>, position: (u32, u32), ty: Type) {
-        let recorded = self.entries.entry(position).or_default();
+        let recorded = Arc::make_mut(self.entries.entry(position).or_default());
         match recorded
             .iter_mut()
             .find(|(owner, _)| owner.as_deref() == function)
@@ -414,11 +422,17 @@ impl SiteTable {
 
     /// Every recorded type, in no particular order.
     pub fn values(&self) -> impl Iterator<Item = &Type> {
-        self.entries.values().flatten().map(|(_, ty)| ty)
+        self.entries
+            .values()
+            .flat_map(|recorded| recorded.iter())
+            .map(|(_, ty)| ty)
     }
 
     pub(crate) fn values_mut(&mut self) -> impl Iterator<Item = &mut Type> {
-        self.entries.values_mut().flatten().map(|(_, ty)| ty)
+        self.entries
+            .values_mut()
+            .flat_map(|recorded| Arc::make_mut(recorded).iter_mut())
+            .map(|(_, ty)| ty)
     }
 
     /// Every entry as its position and type; a position copied into several

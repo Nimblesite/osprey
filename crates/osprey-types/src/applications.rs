@@ -235,7 +235,9 @@ fn elaborate_expr(expression: &mut Expr, index: &mut usize, types: &mut ProgramT
             _ => return,
         }
     };
-    let _ = types.applications.insert((0, column), bindings);
+    let _ = types
+        .applications
+        .insert((0, column), std::sync::Arc::new(bindings));
     *function = Expr::TypeApply {
         function: Box::new(function.clone()),
         type_args: Vec::new(),

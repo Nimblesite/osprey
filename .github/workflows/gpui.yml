@@ -47,6 +47,10 @@ jobs:
       - name: Setup Osprey Compiler
         uses: ./.github/actions/setup-osprey-compiler
 
+      # The real windows draw the apps' skins, which are LFS pictures.
+      - name: Pull the apps' LFS pictures
+        run: git lfs install --local && git lfs pull --include="examples/**,hosts/**,packages/**"
+
       # The Mac slice is the `macos` app-library target, with the Metal adapter.
       - name: Mac app-library runtime
         run: make _runtime_macos
