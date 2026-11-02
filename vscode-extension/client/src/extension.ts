@@ -168,10 +168,12 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
   // crate, built on the published lspkit crates), spoken over stdio. Resolve
   // the binary: explicit user setting first, then the version-matched bundled
   // compiler, then `osprey` on PATH. [EDITOR-VSCODE], [LSP-TRANSPORT]
-  const ospreyCommand = resolveServerCommand(context, (m) => {
-    outputChannel.appendLine(m);
-    window.showWarningMessage(m);
-  });
+  const resolveServer = () =>
+    resolveServerCommand(context, (m) => {
+      outputChannel.appendLine(m);
+      window.showWarningMessage(m);
+    });
+  const ospreyCommand = resolveServer();
   outputChannel.appendLine(`Language server command: ${ospreyCommand} lsp`);
 
   const serverExecutable: Executable = {
@@ -340,7 +342,16 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
       }
     }),
     workspace.onDidChangeConfiguration((event: any) => {
-      if (event.affectsConfiguration("osprey")) {
+      if (event.affectsConfiguration("osprey.server")) {
+        // A running server must never outlive the compiler it was chosen from.
+        serverExecutable.command = resolveServer();
+        outputChannel.appendLine(
+          `Language server command: ${serverExecutable.command} lsp`,
+        );
+        client.restart().catch((error: unknown) => {
+          outputChannel.appendLine(`Language server restart failed: ${error}`);
+        });
+      } else if (event.affectsConfiguration("osprey")) {
         window.showInformationMessage(
           "Osprey configuration changed. Restart required.",
         );
