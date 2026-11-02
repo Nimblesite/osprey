@@ -31,6 +31,17 @@ suite("installed VSIX packages", () => {
     for (const command of ["osprey.packages.open", "osprey.packages.add", "osprey.packages.remove", "osprey.packages.startLocalRegistry", "osprey.packages.stopLocalRegistry"]) assert.ok(commands.includes(command));
   });
 
+  test("the installed Module Explorer contributes its view and refreshes", async () => {
+    const extension = await installedOsprey();
+    const views = extension.packageJSON.contributes.views.ospreyDebug.map((view: { id: string }) => view.id);
+    assert.ok(views.includes("osprey.moduleExplorer"));
+    const commands = await vscode.commands.getCommands(true);
+    for (const command of ["osprey.modules.refresh", "osprey.modules.open", "osprey.modules.managePackages"])
+      assert.ok(commands.includes(command), command);
+    await vscode.commands.executeCommand("osprey.modules.refresh");
+    await vscode.commands.executeCommand("osprey.moduleExplorer.focus");
+  });
+
   test("ships the exact shared Workbench WASM and every asset and registers its command", async () => {
     const extension = await installedOsprey();
     const root = path.join(extension.extensionPath, "bin", `${process.platform}-${process.arch}`, "workbench");

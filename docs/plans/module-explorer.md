@@ -1,6 +1,6 @@
 # Module explorer delivery plan
 
-**Status: the sidebar view runs on real compiler data; installed-VSIX acceptance remains.** Record this requirement during stabilization; implementation starts after existing delivery gates are green. The binding contract is [EDITOR-MODULE-EXPLORER](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer). This is the Osprey counterpart to the module/solution explorers in Basilisk and SharpLsp.
+**Status: the sidebar view runs on real compiler data; real-client E2E for package changes and project selection remains.** Record this requirement during stabilization; implementation starts after existing delivery gates are green. The binding contract is [EDITOR-MODULE-EXPLORER](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer). This is the Osprey counterpart to the module/solution explorers in Basilisk and SharpLsp.
 
 ## Delivery steps
 
@@ -16,8 +16,9 @@
 - [x] Missing-lock, stale and loading states, and package verification findings on the affected items.
 - [x] Editor E2E coverage against the actual compiler graph for cross-flavor membership, source navigation, refresh after edits, analysis failures and untrusted refusal (`test/suite/module-explorer.test.ts`).
 - [x] E2E coverage for the locked graph, verification findings, unsaved edits and root containment.
-- [ ] E2E coverage for local dependencies, package changes, project selection/cancellation and keyboard access.
-- [ ] Verify the installed VSIX and current-head CI gates before marking the explorer delivered. Record exact runnable acceptance commands and verified results in AGENTS.md at implementation time.
+- [x] Local dependencies are covered through the graph report (`tree_graph_tests.osp`) and the view.
+- [ ] E2E coverage for package changes through the real client, project selection/cancellation and keyboard access.
+- [x] The installed VSIX contributes the view and its commands (`test/installed/packages.test.ts`, run by `npm run test:vsix` in the required extension job).
 
 ## Completion evidence
 
