@@ -56,7 +56,7 @@ def without(members, keys) -> list[JsonMember]:
     return filterList(members, lambda m: not listContains(keys, J.member_name(m)))
 
 
-def handle(schema) -> Transformed:
+def handle(schema):
     """`_handle`: walk the children by type, then `transform` this node."""
     match schema:
         case JsonObject():
@@ -79,11 +79,11 @@ def handle(schema) -> Transformed:
             return Transformed(schema=schema, is_strict_compatible=True)
 
 
-def handle_unions(members, compatible) -> Transformed:
+def handle_unions(members, compatible):
     return handle_unions_of(J.obj(members), compatible)
 
 
-def handle_unions_of(schema, compatible) -> Transformed:
+def handle_unions_of(schema, compatible):
     """Walk every member of `allOf`, `anyOf` and `oneOf`."""
     return foldList(["allOf", "anyOf", "oneOf"], Transformed(schema=schema, is_strict_compatible=compatible), union_step)
 
@@ -102,7 +102,7 @@ def item_step(acc, item):
     return Transformed(schema=JsonArray(listAppend(J.items_of(acc.schema), inner.schema)), is_strict_compatible=acc.is_strict_compatible and inner.is_strict_compatible)
 
 
-def handle_object(members) -> Transformed:
+def handle_object(members):
     """`_handle_object`: walk `properties` and an object-valued `additionalProperties`."""
     schema = J.obj(members)
     props = J.members_of(J.object_at(schema, "properties"))
@@ -152,7 +152,7 @@ def handle_array(members) -> Transformed:
             return Transformed(schema=with_prefix, is_strict_compatible=walked_prefix.is_strict_compatible)
 
 
-def has_key(schema, key) -> bool:
+def has_key(schema, key):
     return len(filterList(J.members_of(schema), lambda m: J.member_name(m) == key)) > 0
 
 

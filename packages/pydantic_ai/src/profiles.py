@@ -34,6 +34,7 @@ def model_profile():
         "openai_supports_sampling_settings": JsonBool(True),
         "openai_supports_tool_choice_required": JsonBool(True),
         "openai_chat_supports_max_completion_tokens": JsonBool(True),
+        "json_schema_transformer": JsonString(""),
         "openai_system_prompt_role": JsonString(""),
         "openai_chat_thinking_field": JsonString(""),
         "openai_chat_send_back_thinking_parts": JsonString(""),
@@ -60,6 +61,7 @@ def openai_model_profile(model_name):
     """`openai_model_profile(model_name)`: the OpenAI profile of a model name."""
     reasoning = startsWith(model_name, "o1") or startsWith(model_name, "o3") or startsWith(model_name, "o4") or startsWith(model_name, "gpt-5")
     return merge_profile(model_profile(), {
+        "json_schema_transformer": JsonString("openai"),
         "supports_json_schema_output": JsonBool(True),
         "supports_json_object_output": JsonBool(True),
         "supports_thinking": JsonBool(reasoning),
@@ -78,6 +80,7 @@ def deepseek_model_profile(model_name):
     is_r1 = model_name == "r1" or startsWith(model_name, "deepseek-r1") or model_name == "deepseek-reasoner"
     is_v4 = startsWith(model_name, "deepseek-v4-")
     return merge_profile(model_profile(), {
+        "json_schema_transformer": JsonString("openai"),
         "ignore_streamed_leading_whitespace": JsonBool(is_r1),
         "supports_thinking": JsonBool(is_r1 or is_v4),
         "thinking_always_enabled": JsonBool(is_r1),
@@ -88,7 +91,7 @@ def deepseek_model_profile(model_name):
     })
 
 
-def ollama_model_profile(model_name):
+def ollama_model_profile(_model_name):
     """`OllamaProvider.model_profile(model_name)`: the overrides Ollama needs."""
     return merge_profile(model_profile(), {
         "supports_json_schema_output": JsonBool(True),

@@ -16,6 +16,7 @@ from pydantic_ai import JsonUtil as J
 from pydantic_ai import Messages as M
 from pydantic_ai import Models
 from pydantic_ai import Profiles
+from pydantic_ai import Usage
 
 __all__ = ["TestModel", "test_model", "gen_tool_args", "gen_any", "Gen", "char_of"]
 
@@ -36,10 +37,10 @@ def TestModel(custom_output_text, call_tools):
 
 def test_model(model_name, custom_output_text, call_tools, seed):
     """A `TestModel` with an explicit model name and seed."""
-    return Models.model(model_name, "test", Profiles.model_profile(), lambda messages, settings, parameters: request(model_name, custom_output_text, call_tools, seed, messages, parameters))
+    return Models.model(model_name, "test", Profiles.model_profile(), lambda messages, _settings, parameters: request(model_name, custom_output_text, call_tools, seed, messages, parameters))
 
 
-def calls_all(call_tools) -> bool:
+def calls_all(call_tools):
     return len(call_tools) == 1 and unwrap_or(listGet(call_tools, 0), "") == "all"
 
 
@@ -53,7 +54,7 @@ def tools_to_call(call_tools, parameters) -> Result[list[Json], str]:
         return Error(message=f"TestModel was configured to call unknown tool '{unwrap_or(listGet(unknown, 0), "")}'.") if len(unknown) > 0 else Success(value=mapList(call_tools, lambda n: JsonString(n)))
 
 
-def schema_of(parameters, name) -> Json:
+def schema_of(parameters, name):
     found = filterList(parameters.function_tools, lambda d: d.name == name)
     match listGet(found, 0):
         case Success(value=d):
@@ -62,17 +63,17 @@ def schema_of(parameters, name) -> Json:
             return JsonNull()
 
 
-def tool_call_for(parameters, seed, name) -> M.ModelResponsePart:
+def tool_call_for(parameters, seed, name):
     return M.ToolCallPart(tool_name=name, args=J.encode(gen_tool_args(schema_of(parameters, name), seed)), tool_call_id=f"pyd_ai_tool_call_id__{name}")
 
 
-def retry_names(messages) -> list[str]:
+def retry_names(messages):
     """The tool names of the retry prompts in the last request."""
     last = foldList(M.requests(messages), M.ModelRequest(parts=[], instructions=""), lambda _acc, r: r)
     return filterList(mapList(last.parts, retry_name), lambda n: n != "")
 
 
-def retry_name(part) -> str:
+def retry_name(part):
     match part:
         case M.RetryPromptPart(tool_name=tool_name):
             return tool_name
@@ -86,13 +87,13 @@ def retry_name(part) -> str:
             return ""
 
 
-def tool_returns(messages) -> list[JsonMember]:
+def tool_returns(messages):
     """`{tool_name: content}` over every tool return in the history (a repeated name keeps its last content)."""
     returns = foldList(M.requests(messages), [], lambda acc, r: listConcat(acc, filterList(mapList(r.parts, return_member), lambda m: J.member_name(m) != "")))
     return J.members_of(J.of_map(foldList(returns, {}, lambda acc, m: mapSet(acc, J.member_name(m), J.member_value(m)))))
 
 
-def return_member(part) -> JsonMember:
+def return_member(part):
     match part:
         case M.ToolReturnPart(tool_name=tool_name, content=content):
             return J.member(tool_name, JsonString(content))
@@ -106,7 +107,72 @@ def return_member(part) -> JsonMember:
             return J.member("", JsonNull())
 
 
-def request(model_name, custom_output_text, call_tools, seed, messages, parameters) -> E.Outcome[M.ModelResponse]:
+SEPARATORS = " \t\n\r\f\v\",.:"
+"""`_TOKEN_SPLIT_PATTERN`: whitespace, quotes, commas, periods and colons split tokens."""
+
+
+def is_separator(text, i):
+    return contains(SEPARATORS, unwrap_or(substring(text, i, i + 1), "x"))
+
+
+def estimate_string_tokens(text):
+    """`_utils.estimate_string_tokens`: pieces after splitting the stripped text on separator runs; empty text is 0 tokens."""
+    stripped = trim(text)
+    if text == "":
+        return 0
+    else:
+        runs = fold(range(length(stripped)), 0, lambda n, i: n + 1 if is_separator(stripped, i) and (i == 0 or not is_separator(stripped, i - 1)) else n)
+        return runs + 1
+
+
+def request_part_tokens(part):
+    match part:
+        case M.SystemPromptPart(content=content):
+            return estimate_string_tokens(content)
+        case M.UserPromptPart(content=content):
+            return estimate_string_tokens(content)
+        case M.ToolReturnPart(content=content):
+            return estimate_string_tokens(content)
+        case M.RetryPromptPart():
+            return estimate_string_tokens(M.retry_model_response(part))
+        case M.InstructionPart():
+            return 0
+
+
+def response_part_tokens(part):
+    match part:
+        case M.TextPart(content=content):
+            return estimate_string_tokens(content)
+        case M.ThinkingPart(content=content):
+            return estimate_string_tokens(content)
+        case M.ToolCallPart():
+            return 1 + estimate_string_tokens(M.args_as_json_str(part))
+
+
+def estimate_usage(messages, response) -> Usage.RequestUsage:
+    """`_estimate_usage` over the history plus the new response: 50 input tokens plus every request part, output tokens over every response part."""
+    requests_tokens = foldList(M.requests(messages), 50, lambda n, r: n + foldList(r.parts, 0, lambda m, p: m + request_part_tokens(p)))
+    all_responses = listAppend(M.responses(messages), response)
+    response_tokens = foldList(all_responses, 0, lambda n, r: n + foldList(r.parts, 0, lambda m, p: m + response_part_tokens(p)))
+    zero = Usage.request_usage()
+    return Usage.RequestUsage(input_tokens=requests_tokens, cache_write_tokens=0, cache_read_tokens=0, output_tokens=response_tokens, input_audio_tokens=0, cache_audio_read_tokens=0, output_audio_tokens=0, details=zero.details)
+
+
+def with_usage(messages, response) -> M.ModelResponse:
+    """`TestModel.request`'s usage and provider name on a `_request` response."""
+    return M.ModelResponse(parts=response.parts, usage=estimate_usage(messages, response), model_name=response.model_name, provider_name="test", provider_response_id=response.provider_response_id, finish_reason=response.finish_reason)
+
+
+def request(model_name, custom_output_text, call_tools, seed, messages, parameters):
+    """`TestModel.request`: `_request` plus the estimated usage."""
+    match raw_request(model_name, custom_output_text, call_tools, seed, messages, parameters):
+        case E.Ok(value=response):
+            return E.Ok(value=with_usage(messages, response))
+        case E.Failed(error=error):
+            return E.Failed(error=error)
+
+
+def raw_request(model_name, custom_output_text, call_tools, seed, messages, parameters) -> E.Outcome[M.ModelResponse]:
     """`TestModel._request`."""
     match tools_to_call(call_tools, parameters):
         case Success(value=names):
@@ -138,19 +204,19 @@ def char_of(seed) -> str:
     return char_prefix(rem, n, "") + char_at(seed % n)
 
 
-def char_at(i) -> str:
+def char_at(i):
     return unwrap_or(substring(CHARS, i, i + 1), "a")
 
 
-def char_prefix(rem, n, acc) -> str:
+def char_prefix(rem, n, acc):
     return acc if rem <= 0 else char_prefix(intDiv(rem, n), n, char_at((rem - 1) % n) + acc)
 
 
-def pick(items, seed) -> Json:
+def pick(items, seed):
     return unwrap_or(listGet(items, seed % len(items)), JsonNull())
 
 
-def ref_name(ref) -> str:
+def ref_name(ref):
     return unwrap_or(replace(ref, "#/$defs/", ""), ref)
 
 
@@ -174,7 +240,7 @@ def gen_any(root, schema, seed) -> Gen:
         return gen_typed(root, schema, J.text_at(schema, "type", ""), seed)
 
 
-def gen_typed(root, schema, type_, seed) -> Gen:
+def gen_typed(root, schema, type_, seed):
     if type_ == "object":
         return gen_object(root, schema, seed)
     elif type_ == "string":
@@ -228,7 +294,7 @@ def object_step(root, acc, m) -> ObjectFold:
     return ObjectFold(members=listAppend(acc.members, J.member(J.member_name(m), generated.value)), seed=generated.seed)
 
 
-def gen_str(schema, seed) -> str:
+def gen_str(schema, seed):
     """`_str_gen`: `minLength` copies of the seed's character, empty for `maxLength` 0, else the character."""
     min_len = J.int_at(schema, "minLength", -1)
     if min_len >= 0:
@@ -239,7 +305,7 @@ def gen_str(schema, seed) -> str:
         return char_of(seed)
 
 
-def gen_int(schema, seed) -> int:
+def gen_int(schema, seed):
     """`_int_gen`: within the schema's bounds, offset by the seed."""
     has_max = not J.is_null(J.object_at(schema, "maximum"))
     has_min = not J.is_null(J.object_at(schema, "minimum"))
@@ -263,7 +329,7 @@ def gen_int(schema, seed) -> int:
         return seed
 
 
-def gen_number(schema, seed) -> float:
+def gen_number(schema, seed):
     """`_number_gen`: within the schema's bounds, offset by the seed."""
     has_max = not J.is_null(J.object_at(schema, "maximum")) or not J.is_null(J.object_at(schema, "exclusiveMaximum"))
     has_min = not J.is_null(J.object_at(schema, "minimum")) or not J.is_null(J.object_at(schema, "exclusiveMinimum"))
@@ -283,7 +349,7 @@ def gen_number(schema, seed) -> float:
         return toFloat(seed)
 
 
-def bound_min(schema) -> float:
+def bound_min(schema):
     minimum = J.float_at(schema, "minimum", 0.0)
     exclusive = J.float_at(schema, "exclusiveMinimum", 0.0)
     if J.is_null(J.object_at(schema, "exclusiveMinimum")):
@@ -294,7 +360,7 @@ def bound_min(schema) -> float:
         return minimum if minimum > exclusive else exclusive
 
 
-def bound_max(schema) -> float:
+def bound_max(schema):
     maximum = J.float_at(schema, "maximum", 0.0)
     exclusive = J.float_at(schema, "exclusiveMaximum", 0.0)
     if J.is_null(J.object_at(schema, "exclusiveMaximum")):

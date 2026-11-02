@@ -156,7 +156,7 @@ def chat_model(name, transport, provider="openai", profile=None):
 HISTORY = [
     ModelRequest(parts=[SystemPromptPart(content="sys"), UserPromptPart(content="hello")]),
     ModelResponse(parts=[ThinkingPart(content="hmm"), TextPart(content="calling"), ToolCallPart(tool_name="add", args='{"a": 1, "b": 2}', tool_call_id="c1")]),
-    ModelRequest(parts=[ToolReturnPart(tool_name="add", content="3", tool_call_id="c1"), RetryPromptPart(content="bad", tool_name="add", tool_call_id="c2"), RetryPromptPart(content="plain")], instructions="be brief"),
+    ModelRequest(parts=[ToolReturnPart(tool_name="add", content="3", tool_call_id="c1"), RetryPromptPart(content="bad", tool_name="add", tool_call_id="c2"), RetryPromptPart(content="plain", tool_call_id="c0")], instructions="be brief"),
     ModelResponse(parts=[TextPart(content="first"), TextPart(content="second"), ToolCallPart(tool_name="get_temperature", args="", tool_call_id="c3")]),
     ModelRequest(parts=[ToolReturnPart(tool_name="get_temperature", content="21", tool_call_id="c3"), UserPromptPart(content="and?")]),
 ]
@@ -169,7 +169,7 @@ SCENARIOS = [
     ("no_max_completion", "gpt-4o", "openai", OpenAIModelProfile(openai_chat_supports_max_completion_tokens=False), PLAIN, ModelSettings(max_tokens=10), ModelRequestParameters()),
     ("history", "gpt-4o", "openai", None, HISTORY, None, ModelRequestParameters(function_tools=TOOLS[:2], instruction_parts=[InstructionPart(content="inst")])),
     ("deepseek_history", "deepseek-chat", "deepseek", None, HISTORY, None, ModelRequestParameters(function_tools=TOOLS[:2])),
-    ("o1_mini", "o1-mini", "openai", None, PLAIN, ModelSettings(temperature=0.5, max_tokens=5, thinking={"effort": "low"}), ModelRequestParameters()),
+    ("o1_mini", "o1-mini", "openai", None, PLAIN, ModelSettings(temperature=0.5, max_tokens=5, openai_reasoning_effort="low"), ModelRequestParameters()),
     ("ollama", "llama3", "ollama", None, PLAIN, None, ModelRequestParameters(function_tools=TOOLS[1:])),
     ("required", "gpt-4o", "openai", None, PLAIN, None, ModelRequestParameters(function_tools=TOOLS[:1], allow_text_output=False)),
 ]
@@ -294,7 +294,7 @@ def main():
         {"type": "object", "properties": {"items": {"type": "array", "items": {"type": "string"}, "minItems": 3, "uniqueItems": True}, "pair": {"type": "array", "prefixItems": [{"type": "integer"}, {"type": "boolean"}]}, "ref": {"$ref": "#/$defs/Inner"}, "any": {"anyOf": [{"type": "null"}, {"type": "integer"}]}, "untyped": {}}, "required": ["items", "pair", "ref", "any", "untyped"], "$defs": {"Inner": {"type": "object", "properties": {"v": {"type": "number", "exclusiveMaximum": 1.5}}, "required": ["v"]}}},
     ]
     gen_seeds = [0, 0, 5, 1, 2]
-    constants["GEN_SCHEMAS"] = [canonical(s) for s in gen_schemas]
+    constants["GEN_SCHEMAS"] = [json.dumps(s, separators=(",", ":")) for s in gen_schemas]
     constants["GEN_SEEDS"] = gen_seeds
     constants["GEN_EXPECTED"] = [canonical(TestModel(seed=seed).gen_tool_args(ToolDefinition(name="t", parameters_json_schema=s))) for s, seed in zip(gen_schemas, gen_seeds)]
     docs["GEN_SCHEMAS"] = "Tool parameter schemas handed to `TestModel.gen_tool_args`."
@@ -302,7 +302,7 @@ def main():
     docs["GEN_EXPECTED"] = "The generated arguments per schema as sorted-key JSON."
 
     # Agent on TestModel
-    def build(model, system_prompt="sys"):
+    def build(model, system_prompt="sys", retry=True):
         agent = Agent(model, system_prompt=system_prompt)
 
         @agent.tool_plain
@@ -310,7 +310,9 @@ def main():
             """The current temperature of a city in degrees Celsius."""
             if city.lower() == "paris":
                 return "21"
-            raise ModelRetry(f"Unknown city {city}; known cities are Paris and London")
+            if retry:
+                raise ModelRetry(f"Unknown city {city}; known cities are Paris and London")
+            return "unknown"
 
         @agent.tool_plain
         def add(a: int, b: int) -> str:
@@ -319,7 +321,7 @@ def main():
 
         return agent
 
-    agent = build(TestModel())
+    agent = build(TestModel(), retry=False)
     run = agent.run_sync("go")
     constants["TEST_AGENT_OUTPUT"] = run.output
     constants["TEST_AGENT_MESSAGES"] = [canonical(project(m)) for m in ModelMessagesTypeAdapter.dump_python(run.all_messages(), mode="json")]
@@ -329,7 +331,7 @@ def main():
     docs["TEST_AGENT_MESSAGES"] = "`run.all_messages()` projected to the port's wire keys."
     docs["TEST_AGENT_USAGE"] = "`[requests, tool_calls]` of the TestModel run."
     docs["TEST_AGENT_SCHEMAS"] = "The parameter schemas pydantic derives for `get_temperature(city: str)` and `add(a: int, b: int)`."
-    custom = build(TestModel(custom_output_text="done")).run_sync("go")
+    custom = build(TestModel(custom_output_text="done"), retry=False).run_sync("go")
     constants["TEST_AGENT_CUSTOM_OUTPUT"] = custom.output
     constants["TEST_AGENT_CUSTOM_REQUESTS"] = custom.usage.requests
     constants["TEST_AGENT_NO_TOOLS_OUTPUT"] = Agent(TestModel(), system_prompt="sys").run_sync("go").output
@@ -342,6 +344,7 @@ def main():
         reply(text=None, tool_calls=[("get_temperature", '{"city":"Paris"}', "call_1"), ("get_temperature", '{"city":"Rome"}', "call_2")],
               usage={"prompt_tokens": 40, "completion_tokens": 9, "total_tokens": 49}, finish="tool_calls", id_="s1"),
         reply(text=None, tool_calls=[("add", '{"a":21,"b":10}', "call_3")], usage={"prompt_tokens": 60, "completion_tokens": 7, "total_tokens": 67}, finish="tool_calls", id_="s2"),
+        reply(text=None, tool_calls=[("add", '{"a":21,"b":10}', "call_3")], usage={"prompt_tokens": 60, "completion_tokens": 7, "total_tokens": 67}, finish="tool_calls", id_="s2"),
         reply(text="The answer is 31.", usage={"prompt_tokens": 80, "completion_tokens": 6, "total_tokens": 86}, id_="s3"),
     ]
     transport = Transport(scripted)
@@ -352,7 +355,7 @@ def main():
     constants["SCRIPTED_BODIES"] = [canonical(b) for b in transport.bodies]
     constants["SCRIPTED_MESSAGES"] = [canonical(project(m)) for m in ModelMessagesTypeAdapter.dump_python(run.all_messages(), mode="json")]
     constants["SCRIPTED_USAGE"] = [run.usage.requests, run.usage.tool_calls, run.usage.input_tokens, run.usage.output_tokens]
-    docs["SCRIPTED_REPLIES"] = "Reply bodies answered in turn, chosen by the number of tool messages in the request."
+    docs["SCRIPTED_REPLIES"] = "Reply bodies indexed by the number of tool messages in the request: two temperature calls (Rome makes the tool retry), the add call, the text answer."
     docs["SCRIPTED_OUTPUT"] = "The real agent's output over the scripted replies."
     docs["SCRIPTED_BODIES"] = "Every request body the real agent sent, in order, as sorted-key JSON."
     docs["SCRIPTED_MESSAGES"] = "`run.all_messages()` of the scripted run projected to the port's wire keys."
@@ -379,16 +382,16 @@ def main():
     # Profiles
     deepseek_profile = DeepSeekProvider.model_profile("deepseek-reasoner")
     constants["PROFILE_FLAGS"] = [
-        deepseek_profile.supports_thinking,
-        deepseek_profile.thinking_always_enabled,
-        deepseek_profile.openai_supports_tool_choice_required,
-        OllamaProvider.model_profile("llama3").openai_supports_strict_tool_definition,
-        OpenAIModelProfile(openai_chat_supports_max_completion_tokens=False).openai_chat_supports_max_completion_tokens,
+        deepseek_profile.get("supports_thinking"),
+        deepseek_profile.get("thinking_always_enabled"),
+        deepseek_profile.get("openai_supports_tool_choice_required"),
+        OllamaProvider.model_profile("llama3").get("openai_supports_strict_tool_definition"),
+        OpenAIModelProfile(openai_chat_supports_max_completion_tokens=False).get("openai_chat_supports_max_completion_tokens"),
     ]
     constants["PROFILE_TEXTS"] = [
-        deepseek_profile.openai_chat_thinking_field,
-        deepseek_profile.openai_chat_send_back_thinking_parts,
-        OpenAIModelProfile.from_profile(ModelProfile()).openai_system_prompt_role or "",
+        deepseek_profile.get("openai_chat_thinking_field"),
+        deepseek_profile.get("openai_chat_send_back_thinking_parts"),
+        ModelProfile().get("openai_system_prompt_role") or "",
     ]
     docs["PROFILE_FLAGS"] = "deepseek-reasoner supports_thinking, thinking_always_enabled, tool_choice_required; ollama strict tool definitions; an explicit max_completion_tokens override."
     docs["PROFILE_TEXTS"] = "deepseek-reasoner thinking field and send-back mode; the default system prompt role (empty for None)."

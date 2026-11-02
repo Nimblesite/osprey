@@ -48,6 +48,7 @@ class Outcome[T]:
 
 
 def is_ok(outcome) -> bool:
+    """Whether an outcome is `Ok`."""
     match outcome:
         case Ok():
             return True
@@ -83,7 +84,7 @@ def message_of(error) -> str:
     match error:
         case ModelHTTPError(status_code=status_code, model_name=model_name, body=body):
             return f"status_code: {status_code}, model_name: {model_name}, body: {body}"
-        case ModelAPIError(model_name=model_name, message=message):
+        case ModelAPIError(message=message):
             return message
         case UserError(message=message):
             return message

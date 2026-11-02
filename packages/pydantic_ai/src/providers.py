@@ -34,6 +34,7 @@ class Provider:
 
 
 def reply(status, body):
+    """`HttpReply(status, body)`."""
     return HttpReply(status=status, body=body)
 
 
@@ -79,14 +80,14 @@ def DeepSeekProvider(api_key):
     return provider("deepseek", "https://api.deepseek.com", api_key)
 
 
-def tool_message_count(body) -> int:
+def tool_message_count(body):
     """How many `"role":"tool"` messages a request body carries."""
     return len(unwrap_or(split(body, "\"role\":\"tool\""), [body])) - 1
 
 
-def scripted(replies):
-    """A provider answering `replies[n]` to the request carrying `n` tool results (the last reply repeats)."""
-    return Provider(name="scripted", base_url="scripted://", api_key="", post=lambda path, body, headers: scripted_post(replies, body))
+def scripted(name, replies):
+    """A provider called `name` answering `replies[n]` to the request carrying `n` tool results (the last reply repeats)."""
+    return Provider(name=name, base_url="scripted://", api_key="", post=lambda _path, body, _headers: scripted_post(replies, body))
 
 
 def scripted_post(replies, body) -> Result[HttpReply, str]:

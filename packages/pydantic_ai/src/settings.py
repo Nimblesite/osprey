@@ -28,6 +28,7 @@ def merge_model_settings(base, overrides):
 
 
 def has_setting(settings, key) -> bool:
+    """Whether `key` was given."""
     return mapContains(settings, key)
 
 

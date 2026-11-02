@@ -50,7 +50,7 @@ def model(model_name, system, profile, request):
     return Model(model_name=model_name, system=system, profile=profile, request=request)
 
 
-def instruction_content(part) -> str:
+def instruction_content(part):
     match part:
         case Messages.InstructionPart(content=content):
             return content
@@ -64,12 +64,12 @@ def instruction_content(part) -> str:
             return ""
 
 
-def last_request_instructions(messages) -> str:
+def last_request_instructions(messages):
     """The `instructions` of the last `ModelRequest`, as `Model._get_instructions` reads them."""
     return foldList(messages, "", lambda acc, m: request_instructions(m, acc))
 
 
-def request_instructions(message, acc) -> str:
+def request_instructions(message, acc):
     match message:
         case Messages.Request(request=request):
             return request.instructions

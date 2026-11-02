@@ -76,10 +76,10 @@ def parameters_of(a) -> Models.ModelRequestParameters:
     return Models.with_tools(mapList(a.tools, Tools.tool_definition_of))
 
 
-def step(a, messages, usage, start) -> E.Outcome[AgentRunResult]:
+def step(a, messages, usage, start):
     """One model request, then the tool calls it asked for, until a text answer."""
     if usage.requests >= REQUEST_LIMIT:
-        return E.Failed(error=E.UsageLimitExceeded(message=f"The next request would exceed the request_limit of {REQUEST_LIMIT}"))
+        return E.Failed(error=E.UsageLimitExceeded(message=f"The next request would exceed the request_limit of {REQUEST_LIMIT}. Consider raising the limit, or see the docs on usage limits for budget-aware patterns: https://pydantic.dev/docs/ai/core-concepts/agent/#usage-limits"))
     else:
         match a.model.request(messages, {}, parameters_of(a)):
             case E.Ok(value=response):
@@ -88,14 +88,15 @@ def step(a, messages, usage, start) -> E.Outcome[AgentRunResult]:
                 return E.Failed(error=error)
 
 
-def continue_run(a, messages, usage, start, response) -> E.Outcome[AgentRunResult]:
+def continue_run(a, messages, usage, start, response):
     calls = M.tool_calls(response)
     if len(calls) == 0:
         return E.Ok(value=AgentRunResult(output=M.text(response), messages=messages, usage=usage, new_message_index=start))
     else:
         returns = mapList(calls, lambda call: call_tool(a, call))
+        succeeded = len(filterList(returns, is_tool_return))
         counted = Usage.RunUsage(
-            requests=usage.requests, tool_calls=usage.tool_calls + len(calls), input_tokens=usage.input_tokens,
+            requests=usage.requests, tool_calls=usage.tool_calls + succeeded, input_tokens=usage.input_tokens,
             cache_write_tokens=usage.cache_write_tokens, cache_read_tokens=usage.cache_read_tokens, output_tokens=usage.output_tokens,
             input_audio_tokens=usage.input_audio_tokens, cache_audio_read_tokens=usage.cache_audio_read_tokens,
             output_audio_tokens=usage.output_audio_tokens, details=usage.details,
@@ -103,13 +104,28 @@ def continue_run(a, messages, usage, start, response) -> E.Outcome[AgentRunResul
         return step(a, listAppend(messages, M.of_request(M.model_request(returns))), counted, start)
 
 
-def call_tool(a, call) -> M.ModelRequestPart:
+def is_tool_return(part):
+    """Whether a tool answered (a retry is not counted as a tool call, as `RunUsage.tool_calls` counts)."""
+    match part:
+        case M.ToolReturnPart():
+            return True
+        case M.RetryPromptPart():
+            return False
+        case M.SystemPromptPart():
+            return False
+        case M.UserPromptPart():
+            return False
+        case M.InstructionPart():
+            return False
+
+
+def call_tool(a, call):
     """Runs the tool a call names: its text as a `ToolReturnPart`, its `Error` as a `RetryPromptPart`, an unknown name as a retry too."""
     name = M.tool_name_of(call)
     return call_named(a, call, name, 0)
 
 
-def call_named(a, call, name, i) -> M.ModelRequestPart:
+def call_named(a, call, name, i):
     """Finds the tool by index so the stored function keeps its effect provenance, then calls it."""
     match listGet(a.tools, i):
         case Success(value=t):

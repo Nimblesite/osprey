@@ -14,6 +14,7 @@ __all__ = [
 
 
 def is_null(value) -> bool:
+    """Whether a value is JSON null."""
     match value:
         case JsonNull():
             return True
@@ -115,18 +116,22 @@ def object_at(value, name) -> Json:
 
 
 def member(name, value) -> JsonMember:
+    """`JsonMember(name, value)`."""
     return JsonMember(name, value)
 
 
 def obj(members) -> Json:
+    """`JsonObject(members)`."""
     return JsonObject(members)
 
 
 def jtext(text) -> Json:
+    """`JsonString(text)`."""
     return JsonString(text)
 
 
 def jint(i) -> Json:
+    """`JsonInt(i)`."""
     return JsonInt(i)
 
 
@@ -145,12 +150,14 @@ def decode(text) -> Result[Json, str]:
 
 
 def member_name(m) -> str:
+    """The name of an object member."""
     match m:
         case JsonMember(name, _value):
             return name
 
 
 def member_value(m) -> Json:
+    """The value of an object member."""
     match m:
         case JsonMember(_name, value):
             return value

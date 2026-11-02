@@ -56,19 +56,19 @@ def chat_request(model_name, provider, profile, messages, settings, parameters) 
             return E.Failed(error=E.ModelAPIError(model_name=model_name, message=message))
 
 
-def system_prompt_role(profile) -> str:
+def system_prompt_role(profile):
     return Profiles.profile_text(profile, "openai_system_prompt_role", "system")
 
 
-def role_message(role, content) -> Json:
+def role_message(role, content):
     return J.obj([J.member("role", JsonString(role)), J.member("content", JsonString(content))])
 
 
-def tool_message(tool_call_id, content) -> Json:
+def tool_message(tool_call_id, content):
     return J.obj([J.member("role", JsonString("tool")), J.member("tool_call_id", JsonString(tool_call_id)), J.member("content", JsonString(content))])
 
 
-def map_request_part(profile, part) -> Json:
+def map_request_part(profile, part):
     match part:
         case M.SystemPromptPart(content=content):
             return role_message(system_prompt_role(profile), content)
@@ -82,7 +82,7 @@ def map_request_part(profile, part) -> Json:
             return role_message(system_prompt_role(profile), content)
 
 
-def is_instruction(part) -> bool:
+def is_instruction(part):
     match part:
         case M.InstructionPart():
             return True
@@ -101,7 +101,7 @@ def map_request(profile, request) -> list[Json]:
     return mapList(filterList(request.parts, lambda p: not is_instruction(p)), lambda p: map_request_part(profile, p))
 
 
-def map_tool_call(part) -> Json:
+def map_tool_call(part):
     return J.obj([
         J.member("id", JsonString(M.tool_call_id_of(part))),
         J.member("type", JsonString("function")),
@@ -109,7 +109,7 @@ def map_tool_call(part) -> Json:
     ])
 
 
-def thinking_text(part) -> str:
+def thinking_text(part):
     match part:
         case M.ThinkingPart(content=content):
             return content
@@ -123,7 +123,7 @@ THINK_START = "<think>"
 THINK_END = "</think>"
 
 
-def sent_text(profile, part) -> str:
+def sent_text(profile, part):
     """`_map_response_text_part`/`_map_response_thinking_part`: a text part's content; a thinking part wrapped in the thinking tags unless the profile sends it back as a field."""
     send_back = Profiles.profile_text(profile, "openai_chat_send_back_thinking_parts", "auto")
     match part:
@@ -152,7 +152,7 @@ def map_response(profile, response) -> list[Json]:
         return [J.obj(with_calls)]
 
 
-def split_thinking(content) -> list[M.ModelResponsePart]:
+def split_thinking(content):
     """`split_content_into_text_and_thinking`: `<think>` sections become thinking parts, the rest text parts."""
     if content == "":
         return []
@@ -171,15 +171,30 @@ def split_thinking(content) -> list[M.ModelResponsePart]:
                 return [M.TextPart(content=content)]
 
 
-def map_message(profile, message) -> list[Json]:
+def has_thinking(response):
+    return len(filterList(mapList(response.parts, thinking_text), lambda s: s != "")) > 0
+
+
+def backfill(profile, mapped):
+    """`_map_messages`' backfill: an assistant message with tool calls and no thinking field gets an empty one, so a provider that must see reasoning on every turn is satisfied."""
+    field = Profiles.profile_text(profile, "openai_chat_thinking_field", "")
+    needs = J.text_at(mapped, "role", "") == "assistant" and len(J.list_at(mapped, "tool_calls")) > 0 and not has_member(mapped, field)
+    return J.obj(listAppend(J.members_of(mapped), J.member(field, JsonString("")))) if needs else mapped
+
+
+def has_member(value, name):
+    return len(filterList(J.members_of(value), lambda m: J.member_name(m) == name)) > 0
+
+
+def map_message(profile, backfill_field, message):
     match message:
         case M.Request(request=request):
             return map_request(profile, request)
         case M.Response(response=response):
-            return map_response(profile, response)
+            return mapList(map_response(profile, response), lambda m: backfill(profile, m) if backfill_field else m)
 
 
-def count_leading(mapped, role, i) -> int:
+def count_leading(mapped, role, i):
     if i >= len(mapped):
         return i
     elif J.text_at(unwrap_or(listGet(mapped, i), JsonNull()), "role", "") == role:
@@ -190,7 +205,9 @@ def count_leading(mapped, role, i) -> int:
 
 def map_messages(profile, messages, parameters) -> list[Json]:
     """`_map_messages`: the chat messages, with the instructions inserted after the leading system messages."""
-    mapped = foldList(messages, [], lambda acc, m: listConcat(acc, map_message(profile, m)))
+    thinking_active = len(filterList(M.responses(messages), has_thinking)) > 0
+    backfill_field = thinking_active and Profiles.profile_text(profile, "openai_chat_send_back_thinking_parts", "auto") == "field" and Profiles.profile_text(profile, "openai_chat_thinking_field", "") != ""
+    mapped = foldList(messages, [], lambda acc, m: listConcat(acc, map_message(profile, backfill_field, m)))
     instructions = Models.instructions_text(messages, parameters)
     if instructions == "":
         return mapped
@@ -204,13 +221,14 @@ def map_messages(profile, messages, parameters) -> list[Json]:
 
 def map_tool_definition(profile, tool) -> Json:
     """`_customize_tool_def` then `_map_tool_definition`: the walked schema as the `function` tool parameter, `strict` when the tool asks for it or the schema allows it."""
-    transformed = JsonSchema.transform(tool.parameters_json_schema)
+    has_transformer = Profiles.profile_text(profile, "json_schema_transformer", "") == "openai"
+    transformed = JsonSchema.transform(tool.parameters_json_schema) if has_transformer else JsonSchema.Transformed(schema=tool.parameters_json_schema, is_strict_compatible=False)
     function = [J.member("name", JsonString(tool.name)), J.member("description", JsonString(tool.description)), J.member("parameters", transformed.schema)]
     strict = (tool.strict or transformed.is_strict_compatible) and Profiles.profile_bool(profile, "openai_supports_strict_tool_definition", True)
     return J.obj([J.member("type", JsonString("function")), J.member("function", J.obj(listAppend(function, J.member("strict", JsonBool(True))) if strict else function))])
 
 
-def setting_member(settings, key, name) -> list[JsonMember]:
+def setting_member(settings, key, name):
     """The request member `name` from setting `key`, nothing when the setting is absent."""
     match mapGet(settings, key):
         case Success(value=value):
@@ -237,21 +255,20 @@ def completions_body(model_name, profile, messages, settings, parameters) -> Jso
     return J.obj(listConcat(with_effort, extra_body_members(settings)))
 
 
-def sampling_members(settings) -> list[JsonMember]:
+def sampling_members(settings):
     return listConcat(
         listConcat(setting_member(settings, "temperature", "temperature"), setting_member(settings, "top_p", "top_p")),
         listConcat(setting_member(settings, "presence_penalty", "presence_penalty"), setting_member(settings, "frequency_penalty", "frequency_penalty")),
     )
 
 
-def reasoning_members(settings) -> list[JsonMember]:
-    """`_translate_thinking`: a `thinking` setting of `{'effort': ...}` becomes `reasoning_effort`."""
-    thinking = unwrap_or(mapGet(settings, "thinking"), JsonNull())
-    effort = J.text_at(thinking, "effort", "")
+def reasoning_members(settings):
+    """`_translate_thinking`: the `openai_reasoning_effort` setting becomes `reasoning_effort`."""
+    effort = Settings.setting_text(settings, "openai_reasoning_effort", "")
     return [] if effort == "" else [J.member("reasoning_effort", JsonString(effort))]
 
 
-def extra_body_members(settings) -> list[JsonMember]:
+def extra_body_members(settings):
     """`extra_body`: its members are added to the request body."""
     return J.members_of(unwrap_or(mapGet(settings, "extra_body"), JsonNull()))
 
@@ -272,7 +289,7 @@ def map_finish_reason(key) -> str:
         return ""
 
 
-def int_members(value) -> dict[str, int]:
+def int_members(value):
     """The integer-valued members of a JSON object."""
     empty: dict[str, int] = {}
     return foldList(J.members_of(value), empty, int_member_step)
@@ -309,12 +326,12 @@ def map_usage(response) -> Usage.RequestUsage:
         )
 
 
-def map_tool_call_part(call) -> M.ModelResponsePart:
+def map_tool_call_part(call):
     function = J.object_at(call, "function")
     return M.ToolCallPart(tool_name=J.text_at(function, "name", ""), args=J.text_at(function, "arguments", ""), tool_call_id=J.text_at(call, "id", ""))
 
 
-def thinking_parts(profile, message) -> list[M.ModelResponsePart]:
+def thinking_parts(profile, message):
     """`_process_thinking`: the first non-empty of the profile's thinking field, `reasoning`, `reasoning_content`."""
     custom = Profiles.profile_text(profile, "openai_chat_thinking_field", "")
     fields = filterList([custom, "reasoning", "reasoning_content"], lambda f: f != "")

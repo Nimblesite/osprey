@@ -162,6 +162,7 @@ def of_response(response) -> ModelMessage:
 
 
 def is_response(message) -> bool:
+    """Whether a history message is a `ModelResponse`."""
     match message:
         case Request():
             return False
@@ -170,6 +171,7 @@ def is_response(message) -> bool:
 
 
 def is_request(message) -> bool:
+    """Whether a history message is a `ModelRequest`."""
     return not is_response(message)
 
 
@@ -218,6 +220,7 @@ def request_step(acc, message):
 
 
 def part_text(part) -> str:
+    """A text part's content; empty for any other part."""
     match part:
         case TextPart(content=content):
             return content
@@ -228,6 +231,7 @@ def part_text(part) -> str:
 
 
 def is_text(part) -> bool:
+    """Whether a response part is a `TextPart`."""
     match part:
         case TextPart():
             return True
@@ -238,6 +242,7 @@ def is_text(part) -> bool:
 
 
 def is_tool_call(part) -> bool:
+    """Whether a response part is a `ToolCallPart`."""
     match part:
         case TextPart():
             return False
@@ -276,10 +281,12 @@ def tool_calls(response) -> list[ModelResponsePart]:
 
 
 def has_tool_calls(response) -> bool:
+    """`ModelResponse.tool_calls` is non-empty."""
     return len(tool_calls(response)) > 0
 
 
 def tool_name_of(part) -> str:
+    """`ToolCallPart.tool_name`; empty for any other part."""
     match part:
         case TextPart():
             return ""
@@ -290,6 +297,7 @@ def tool_name_of(part) -> str:
 
 
 def tool_call_id_of(part) -> str:
+    """`ToolCallPart.tool_call_id`; empty for any other part."""
     match part:
         case TextPart():
             return ""
@@ -299,7 +307,7 @@ def tool_call_id_of(part) -> str:
             return tool_call_id
 
 
-def args_text(part) -> str:
+def args_text(part):
     match part:
         case TextPart():
             return ""
@@ -328,7 +336,7 @@ def args_as_json_str(part) -> str:
     return J.encode(J.of_map(args_as_dict(part))) if raw == "" or not is_object_text(raw) else raw
 
 
-def is_object_text(raw) -> bool:
+def is_object_text(raw):
     match J.decode(raw):
         case Success(value=value):
             return len(J.members_of(value)) > 0 or J.encode(value) == "{}"
@@ -355,7 +363,7 @@ def retry_model_response(part) -> str:
 # Wire form: ModelMessagesTypeAdapter.dump_python(messages, mode="json") / validate_python
 
 
-def dump_request_part(part) -> Json:
+def dump_request_part(part):
     match part:
         case SystemPromptPart(content=content):
             return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString("system-prompt"))])
@@ -369,7 +377,7 @@ def dump_request_part(part) -> Json:
             return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString("instruction"))])
 
 
-def dump_response_part(part) -> Json:
+def dump_response_part(part):
     match part:
         case TextPart(content=content):
             return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString("text"))])
@@ -379,7 +387,7 @@ def dump_response_part(part) -> Json:
             return J.obj([J.member("tool_name", JsonString(tool_name)), J.member("args", JsonString(args)), J.member("tool_call_id", JsonString(tool_call_id)), J.member("part_kind", JsonString("tool-call"))])
 
 
-def dump_usage(usage) -> Json:
+def dump_usage(usage):
     return J.obj([
         J.member("input_tokens", JsonInt(usage.input_tokens)),
         J.member("cache_write_tokens", JsonInt(usage.cache_write_tokens)),
@@ -392,7 +400,7 @@ def dump_usage(usage) -> Json:
     ])
 
 
-def null_if_empty(value) -> Json:
+def null_if_empty(value):
     return JsonNull() if value == "" else JsonString(value)
 
 
@@ -445,7 +453,7 @@ def validate_request_part(value) -> Result[ModelRequestPart, str]:
         return Error(message=f"unknown request part_kind: {kind}")
 
 
-def content_text(value) -> str:
+def content_text(value):
     """A tool return's content: text verbatim, any other JSON as its text."""
     match value:
         case JsonString(s):
@@ -477,7 +485,7 @@ def validate_response_part(value) -> Result[ModelResponsePart, str]:
         return Error(message=f"unknown response part_kind: {kind}")
 
 
-def args_wire_text(value) -> str:
+def args_wire_text(value):
     """`args` dumped either as a JSON string or as an object (CPython allows both)."""
     match value:
         case JsonString(s):
