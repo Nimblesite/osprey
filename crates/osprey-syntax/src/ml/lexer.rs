@@ -354,12 +354,6 @@ impl Scanner {
                     self.error(pos, "unterminated string literal");
                     break;
                 }
-                // A newline only ends the outer literal outside interpolation;
-                // a `${…}` fragment may legitimately span the line break.
-                Some('\n') if interp_depth == 0 => {
-                    self.error(pos, "unterminated string literal");
-                    break;
-                }
                 Some('"') if interp_depth == 0 => {
                     let _ = self.bump();
                     break;

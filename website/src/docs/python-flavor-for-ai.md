@@ -191,6 +191,7 @@ The [functions example](/docs/python-flavor/#functions-and-inference) shows infe
 - `def` declares a flat function; a nested `def` is rejected. Bind a lambda instead. There are no default arguments, `*args`, `**kwargs`, argument unpacking, currying or implicit `self`.
 - Calls are fully positional or fully named. `lambda params: expr` is a single expression.
 - `return` is allowed at the tail of a function or every branch of a final `if`/`match`. A non-tail conditional must produce `None` in every branch. A function without a tail return, or an empty `pass` body, produces `Unit`.
+- `len`, `take`, `drop` and `substring` count UTF-8 bytes: `len("“ok”")` is `8`. `take` and `drop` never split a character, so a count inside one covers all of it, and `substring` returns `Error` for an index inside one.
 - `and`, `or`, `not` take booleans and short-circuit. There is no truthiness; write `not isEmpty(items)`.
 - Compare operands of the same type. Chained comparisons and `is` are rejected; write `a < b and b < c`.
 - `/` produces `float`. Integer `//` and `%` truncate toward zero: `-7 // 2` is `-3`; `-7 % 3` is `-1`. Their fallible sites need an arithmetic policy.

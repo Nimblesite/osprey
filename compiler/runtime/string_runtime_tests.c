@@ -84,6 +84,14 @@ static void test_take(void) {
     out = osp_string_take("hello", 99); assert(strcmp(out, "hello") == 0); free(out); /* clamp */
     out = osp_string_take("", 3);       assert(strcmp(out, "")    == 0);   free(out);
     out = osp_string_take(NULL, 3);     assert(strcmp(out, "")    == 0);   free(out);
+    /* [BUILTIN-STRING-TAKE]: a cut inside a character moves past it. */
+    const char *quote = "\xE2\x80\x9Cok\xE2\x80\x9D"; /* 8 bytes */
+    for (int64_t n = 1; n <= 3; n++) {
+        out = osp_string_take(quote, n); assert(strcmp(out, "\xE2\x80\x9C") == 0); free(out);
+    }
+    out = osp_string_take(quote, 4); assert(strcmp(out, "\xE2\x80\x9Co") == 0); free(out);
+    out = osp_string_take(quote, 6); assert(strcmp(out, quote) == 0); free(out);
+    out = osp_string_take("\xF0\x9F\xA6\x85x", 2); assert(strcmp(out, "\xF0\x9F\xA6\x85") == 0); free(out);
     printf("  ok  take\n");
 }
 
@@ -97,6 +105,17 @@ static void test_drop(void) {
     out = osp_string_drop("", 3);       assert(strcmp(out, "")    == 0);  free(out);
     out = osp_string_drop(NULL, 3);     assert(strcmp(out, "")    == 0);  free(out);
     printf("  ok  drop\n");
+    /* [BUILTIN-STRING-DROP]: the complement of take at every byte count. */
+    const char *quote = "\xE2\x80\x9Cok\xE2\x80\x9D";
+    for (int64_t n = 0; n <= 9; n++) {
+        char *head = osp_string_take(quote, n);
+        char *tail = osp_string_drop(quote, n);
+        assert(strlen(head) + strlen(tail) == strlen(quote));
+        assert(strncmp(quote, head, strlen(head)) == 0);
+        assert(strcmp(quote + strlen(head), tail) == 0);
+        free(head);
+        free(tail);
+    }
 }
 
 static void test_substring(void) {

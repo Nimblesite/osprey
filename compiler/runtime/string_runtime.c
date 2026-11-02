@@ -85,12 +85,19 @@ int64_t osp_string_index_of(const char *s, const char *needle) {
 
 /* ---------- substrings (total) ---------- */
 
+/* A cut never splits a UTF-8 character: it moves forward past the character's
+ * continuation bytes, so take(s, n) + drop(s, n) == s and drop(s, 1) advances. */
+static size_t osp_string_cut(const char *s, size_t cut) {
+    while (((unsigned char)s[cut] & 0xC0) == 0x80) cut++;
+    return cut;
+}
+
 char *osp_string_take(const char *s, int64_t n) {
     if (!s) return osp_string_empty_internal();
     size_t len = strlen(s);
     if (n <= 0) return osp_string_empty_internal();
     if ((size_t)n >= len) return osp_string_dup_internal(s, len);
-    return osp_string_dup_internal(s, (size_t)n);
+    return osp_string_dup_internal(s, osp_string_cut(s, (size_t)n));
 }
 
 char *osp_string_drop(const char *s, int64_t n) {
@@ -98,15 +105,18 @@ char *osp_string_drop(const char *s, int64_t n) {
     size_t len = strlen(s);
     if (n <= 0) return osp_string_dup_internal(s, len);
     if ((size_t)n >= len) return osp_string_empty_internal();
-    return osp_string_dup_internal(s + n, len - (size_t)n);
+    size_t cut = osp_string_cut(s, (size_t)n);
+    return osp_string_dup_internal(s + cut, len - cut);
 }
 
-/* substring: returns NULL on out-of-range or inverted indices.
- * Caller emits IndexOutOfRange when NULL. */
+/* substring: returns NULL on out-of-range or inverted indices, or on an index
+ * inside a UTF-8 character. Caller emits IndexOutOfRange when NULL. */
 char *osp_string_substring(const char *s, int64_t start, int64_t end) {
     if (!s) return NULL;
     size_t len = strlen(s);
     if (start < 0 || end < start || (size_t)end > len) return NULL;
+    if (osp_string_cut(s, (size_t)start) != (size_t)start ||
+        osp_string_cut(s, (size_t)end) != (size_t)end) return NULL;
     return osp_string_dup_internal(s + start, (size_t)(end - start));
 }
 

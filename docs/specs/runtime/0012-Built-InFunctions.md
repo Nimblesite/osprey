@@ -625,15 +625,17 @@ NUL-terminated string ABI cannot represent.
 
 #### `substring(s: string, start: int, end: int) -> Result<string, Error>` — [BUILTIN-STRING-SUBSTRING]
 Extracts bytes in `[start, end)`. Returns `Error` if
-`start < 0`, `end > length(s)`, or `start > end`.
+`start < 0`, `end > length(s)`, `start > end`, or either index falls inside a
+UTF-8 character.
 
 #### `take(s: string, n: int) -> string` — [BUILTIN-STRING-TAKE]
-Returns at most the first `n` bytes. If `n <= 0`, returns `""`; if
-`n >= length(s)`, returns `s`.
+Returns the first `n` bytes. If `n <= 0`, returns `""`; if
+`n >= length(s)`, returns `s`. A count that falls inside a UTF-8 character
+includes the whole character, so the result is always valid UTF-8.
 
 #### `drop(s: string, n: int) -> string` — [BUILTIN-STRING-DROP]
-Returns `s` without its first `n` bytes, with the same clamping rules as
-`take`.
+Returns `s` without its first `n` bytes, with the same clamping rules and the
+same character rule as `take`: `take(s, n) + drop(s, n)` is always `s`.
 
 ### Splitting and Joining — [BUILTIN-STRING-LIST]
 

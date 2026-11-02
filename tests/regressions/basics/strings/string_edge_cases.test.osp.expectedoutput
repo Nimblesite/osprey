@@ -108,5 +108,6 @@ ok 5 - search builtins scan every substring position
 ok 6 - ASCII case folding is total and round-trips
 ok 7 - concatenation and length arithmetic hold
 ok 8 - interpolation composes expressions and preserves text
-1..8
-# tests=8 passed=8 failed=0 skipped=0
+ok 9 - a byte count never splits a UTF-8 character
+1..9
+# tests=9 passed=9 failed=0 skipped=0

@@ -155,19 +155,19 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "substring",
-        "Extracts the byte interval s[start, end). Invalid or inverted bounds return Error.",
+        "Extracts the byte interval s[start, end). Invalid or inverted bounds, or a bound inside a UTF-8 character, return Error.",
         ["s" => "The source string", "start" => "Starting byte offset (inclusive)", "end" => "Ending byte offset (exclusive)"],
         "match substring(\"hello\", 1, 4) {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "take",
-        "Returns at most the first n bytes of s. Clamps; never fails.",
+        "Returns the first n bytes of s, including the whole of any character n falls inside. Clamps; never fails.",
         ["s" => "The source string", "n" => "How many bytes to take"],
         "print(take(\"hello\", 3))  // \"hel\"",
     ),
     builtin_doc!(
         "drop",
-        "Returns s without its first n bytes. Clamps; never fails.",
+        "Returns s without its first n bytes, including the whole of any character n falls inside. Clamps; never fails.",
         ["s" => "The source string", "n" => "How many bytes to drop"],
         "print(drop(\"hello\", 3))  // \"lo\"",
     ),

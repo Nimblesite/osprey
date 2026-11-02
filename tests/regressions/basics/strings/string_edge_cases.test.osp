@@ -1043,6 +1043,40 @@ fn interpolationCompositionCase() = {
     ])
 }
 
+/// Byte counts move past a character they would split, and take and drop stay complementary.
+fn utf8CutCase() = {
+    let quote = "“ok”"
+    let eagle = "🦅x"
+    checkAll("utf-8 cuts", [
+        length(quote) == 8,
+        take(quote, 1) == "“",
+        take(quote, 2) == "“",
+        take(quote, 3) == "“",
+        take(quote, 4) == "“o",
+        drop(quote, 1) == "ok”",
+        drop(quote, 3) == "ok”",
+        drop(quote, 5) == "”",
+        drop(quote, 6) == "",
+        take(eagle, 1) == "🦅",
+        drop(eagle, 1) == "x",
+        take(quote, 2) + drop(quote, 2) == quote,
+        take(eagle, 3) + drop(eagle, 3) == eagle
+    ])
+    checkAll("utf-8 substring bounds", [
+        (substring(quote, 0, 3) ?: "bad") == "“",
+        (substring(quote, 3, 5) ?: "bad") == "ok",
+        (substring(quote, 1, 3) ?: "bad") == "bad",
+        (substring(quote, 0, 1) ?: "bad") == "bad"
+    ])
+    let block = "first
+  second ${length(quote)}
+third"
+    checkAll("a literal may span lines", [
+        length(block) == 22,
+        block == "first\n  second 8\nthird"
+    ])
+}
+
 // Registration order fixes the TAP order in the shared golden.
 test("interpolation renders every printable scalar", fn() => exactArithmetic(interpolationScalarCase))
 test("a Result is never unwrapped at an interpolation hole", fn() => exactArithmetic(interpolationResultCase))
@@ -1051,3 +1085,4 @@ test("search builtins scan every substring position", fn() => exactArithmetic(su
 test("ASCII case folding is total and round-trips", fn() => exactArithmetic(caseFoldingCase))
 test("concatenation and length arithmetic hold", fn() => exactArithmetic(concatLengthCase))
 test("interpolation composes expressions and preserves text", fn() => exactArithmetic(interpolationCompositionCase))
+test("a byte count never splits a UTF-8 character", fn() => exactArithmetic(utf8CutCase))
