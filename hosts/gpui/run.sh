@@ -6,10 +6,11 @@
 #   run.sh --self-test <script> <records> [--headless]
 #                     drive the app from its script, in a real window or with none
 #   run.sh --build    build only; the host is target/release/osprey-gpui, the application linked in
+#   run.sh --compile  compile only the application's C ABI archive
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
-python3 "$here/dependencies.py"
+[ "${1:-}" = --compile ] || python3 "$here/dependencies.py"
 compiler=${OSPREY_BIN:-"$repo/target/release/osprey"}
 app=${OSPREY_GPUI_APP:-"$here/probe"}
 case "$(uname -s)-$(uname -m)" in
@@ -20,7 +21,12 @@ case "$(uname -s)-$(uname -m)" in
     *) echo "run.sh: no Osprey desktop target for $(uname -s) $(uname -m)" >&2; exit 2 ;;
 esac
 mkdir -p "$app/build"
-"$compiler" "$app" --compile --target="$target" -o "$app/build/libOspreyApp.a"
+if [ "${OSPREY_GPUI_PREBUILT:-}" != 1 ]; then
+    "$compiler" "$app" --compile --target="$target" -o "$app/build/libOspreyApp.a"
+fi
+if [ "${1:-}" = --compile ]; then
+    exit 0
+fi
 export OSPREY_GPUI_APP_DIR="$app/build"
 cd "$here"
 if [ "${1:-}" = --build ]; then

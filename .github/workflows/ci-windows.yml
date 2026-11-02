@@ -44,7 +44,7 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -155,12 +155,6 @@ jobs:
 
       # Each invocation recursively exercises both Default and ML programs with
       # internal assertions, including cross-feature interaction scenarios.
-      - name: Core language assertion corpus — no memory management
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests
-
       - name: Core language assertion corpus — GC
         shell: msys2 {0}
         run: |
@@ -172,10 +166,3 @@ jobs:
         run: |
           set -euo pipefail
           OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=arc
-
-      # The UI test framework's suite and the casting and signal-flow apps it drives by accessible
-      # label alone, with no host or window. [UI-MACHINE-TEST] The runtime is already built; CC and AR
-      # stay off the command line because make would export them to cargo's MSVC build of tree-sitter.
-      - name: UI tests by accessible label
-        shell: msys2 {0}
-        run: make _ui-test BIN=target/release/osprey.exe

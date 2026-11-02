@@ -14,6 +14,20 @@ _test_rust: _runtime_wasm
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
 
+# CI's shards of _test_rust: the slowest tests by name, each in its own job, and everything else.
+# The coverage job merges their reports; scripts/ci-scope.test.mjs holds the shards to one another.
+RUST_SHARD_PACKAGES := every_ported_package_matches_its_cpython_oracle_under_every_memory_backend
+RUST_SHARD_WORKBENCH := workbench_retains_record_identity_through_shared_proof_helpers workbench_apple_host_includes_shared_proof_dependencies a_faulted_workbench_goal_formula_fails_its_case_without_fabricating_bottom
+RUST_SHARD_ARGS_packages := --test python_packages -- $(RUST_SHARD_PACKAGES)
+RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- $(RUST_SHARD_WORKBENCH)
+RUST_SHARD_ARGS_rest := -- $(addprefix --skip ,$(RUST_SHARD_PACKAGES) $(RUST_SHARD_WORKBENCH))
+
+.PHONY: _test_rust_shard
+_test_rust_shard: _runtime_wasm
+	@echo "==> [rust] running shard $(RUST_SHARD) with coverage..."
+	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
+	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
+
 # Every crate under crates/ must have a valid threshold and measured lines.
 # Check inventory before results so an omitted crate cannot silently pass.
 _coverage_check_rust:

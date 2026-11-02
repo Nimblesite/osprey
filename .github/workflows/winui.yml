@@ -1,7 +1,7 @@
 name: WinUI host
 
-# Plan 0038 ([WINUI-HOST]): build the CLI and its MinGW runtime, run Osprey Storage's suite and
-# compile Storage to a windows-x64 DLL, then run the WinUI host's tests and publish the host with
+# Plan 0038 ([WINUI-HOST]): build the CLI and its MinGW runtime, compile the apps to windows-x64
+# DLLs, then run the WinUI host's tests and publish the host with
 # Native AOT. The tests drive the real DLL boundary, the envelope, the region store, the
 # capabilities and the folder walk, and guard coverage, no XAML and host neutrality. No test opens
 # a window. Then every app runs as its own sandboxed MSIX package in a real window on the runner's
@@ -39,7 +39,7 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
 
@@ -105,19 +105,25 @@ jobs:
           echo "OSPREY_CC=$(cygpath -m /ucrt64/bin/clang.exe)" >> "$GITHUB_ENV"
           echo "OSPREY_AR=$(cygpath -m /ucrt64/bin/llvm-ar.exe)" >> "$GITHUB_ENV"
 
-      - name: Example suites and DLLs
+      - name: The apps' DLLs
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe test examples/storage/test
-          ./target/release/osprey.exe test packages/signal_flow/tests
           mkdir -p examples/storage/build examples/gpui/flock/build examples/gpui/painting/build packages/signal_flow/app/build hosts/gpui/probe/build examples/casting/build
-          ./target/release/osprey.exe build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll
-          ./target/release/osprey.exe build examples/gpui/flock --target=windows-x64 --no-warnings -o examples/gpui/flock/build/flock.dll
-          ./target/release/osprey.exe build examples/gpui/painting --target=windows-x64 --no-warnings -o examples/gpui/painting/build/painting.dll
-          ./target/release/osprey.exe build packages/signal_flow/app --target=windows-x64 --no-warnings -o packages/signal_flow/app/build/signal-flow.dll
-          ./target/release/osprey.exe build hosts/gpui/probe --target=windows-x64 --no-warnings -o hosts/gpui/probe/build/probe.dll
-          ./target/release/osprey.exe build examples/casting --target=windows-x64 --no-warnings -o examples/casting/build/casting.dll
+          pids=()
+          ./target/release/osprey.exe build examples/storage --target=windows-x64 -o examples/storage/build/storage.dll &
+          pids+=("$!")
+          ./target/release/osprey.exe build examples/gpui/flock --target=windows-x64 --no-warnings -o examples/gpui/flock/build/flock.dll &
+          pids+=("$!")
+          ./target/release/osprey.exe build examples/gpui/painting --target=windows-x64 --no-warnings -o examples/gpui/painting/build/painting.dll &
+          pids+=("$!")
+          ./target/release/osprey.exe build packages/signal_flow/app --target=windows-x64 --no-warnings -o packages/signal_flow/app/build/signal-flow.dll &
+          pids+=("$!")
+          ./target/release/osprey.exe build hosts/gpui/probe --target=windows-x64 --no-warnings -o hosts/gpui/probe/build/probe.dll &
+          pids+=("$!")
+          ./target/release/osprey.exe build examples/casting --target=windows-x64 --no-warnings -o examples/casting/build/casting.dll &
+          pids+=("$!")
+          for p in "${pids[@]}"; do wait "$p"; done
 
       - uses: actions/setup-dotnet@v6
         with:

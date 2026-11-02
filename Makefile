@@ -464,11 +464,26 @@ _gpui-test: _runtime_macos _runtime
 	$(MAKE) _gpui-smoke _gpui-self-test
 	cd hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings
 
+# Compile every app's archive once for the smoke and self-test targets. The synth wrapper bundles
+# and opens the app after its inner run.sh returns, so compile its archive directly instead.
+.PHONY: _gpui-apps
+_gpui-apps:
+	pids=; \
+	for app in hosts/gpui examples/gpui/flock examples/gpui/painting packages/signal_flow/app examples/casting; do \
+		OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --compile & \
+		pids="$$pids $$!"; \
+	done; \
+	OSPREY_GPUI_APP="$(CURDIR)/examples/synth" OSPREY_BIN="$(CURDIR)/$(BIN)" bash hosts/gpui/run.sh --compile & \
+	pids="$$pids $$!"; \
+	status=0; \
+	for pid in $$pids; do wait $$pid || status=1; done; \
+	exit $$status
+
 # [UI-MACHINE-SELF-TEST] the scripts run in `_gpui-self-test`.
 # Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
 # real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
-_gpui-smoke:
-	for app in hosts/gpui examples/gpui/flock examples/gpui/painting packages/signal_flow/app examples/synth examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --smoke || exit 1; done
+_gpui-smoke: _gpui-apps
+	for app in hosts/gpui examples/gpui/flock examples/gpui/painting packages/signal_flow/app examples/synth examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
 
 _macos-test: _macos _runtime
 	$(MAKE) _test_macos

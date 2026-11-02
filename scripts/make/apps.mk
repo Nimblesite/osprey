@@ -154,10 +154,10 @@ _test_bench_tools:
 .PHONY: _gpui-self-test
 GPUI_WINDOW ?= --headless
 GPUI_SCRIPTED := hosts/gpui:hosts/gpui/probe examples/gpui/flock:examples/gpui/flock examples/gpui/painting:examples/gpui/painting packages/signal_flow/app:packages/signal_flow/app examples/casting:examples/casting
-_gpui-self-test:
+_gpui-self-test: _gpui-apps
 	for pair in $(GPUI_SCRIPTED); do \
 		app=$${pair%%:*}; script=$${pair##*:}; \
-		OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --self-test "$(CURDIR)/$$script/self-test.json" "$(CURDIR)/target/gpui-self-test/$$(basename $$script)" $(GPUI_WINDOW) || exit 1; \
+		OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --self-test "$(CURDIR)/$$script/self-test.json" "$(CURDIR)/target/gpui-self-test/$$(basename $$script)" $(GPUI_WINDOW) || exit 1; \
 	done
 
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible

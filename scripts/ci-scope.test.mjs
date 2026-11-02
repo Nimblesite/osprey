@@ -97,16 +97,17 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
   }
 })
 
-test('the required macOS gate builds and tests the native Workbench host', () => {
+test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = job('test-apple', '.github/workflows/ci.yml')
-  const step = (apple.split('- name: Native Workbench host and rendering regressions\n')[1] ?? '').split('\n      - ')[0]
-  assert.match(step, /^ {8}run: \|\n {10}bash apps\/workbench\/hosts\/apple\/run\.sh --build\n {10}swift test --package-path apps\/workbench\/hosts\/apple$/m)
-  assert.match(step, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
-  assert.doesNotMatch(step, /^\s*(?:-\s*)?if:/m)
-  assert.doesNotMatch(step, /continue-on-error/)
+  for (const command of ['make -C apps ios-test mobile-ios-test', 'make -C apps macos-test', 'make -C apps bank-ios-test',
+    'bash apps/workbench/hosts/apple/run.sh --build', 'swift test --package-path apps/workbench/hosts/apple']) {
+    assert.ok(apple.includes(command), command)
+  }
+  assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
+  assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
+  assert.doesNotMatch(apple, /continue-on-error/)
   assert.match(apple, /^    runs-on: macos-15$/m)
   assert.match(apple, /^ {10}lfs: true$/m)
-  assert.match(apple, /^ {8}run: make -C apps ios-test macos-test mobile-ios-test bank-ios-test$/m)
   assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
 })
 
@@ -237,14 +238,24 @@ test('the KLEE engine gates stay out of CI and make ci; the mock oracle and know
   assert.match(readFileSync('scripts/test-hunt-default-budget.py', 'utf8'), /\('gc', 'arc'\), \('crash',\)/)
 })
 
-test('ported packages remain in the unfiltered Rust workspace gate', () => {
-  assert.match(job('test-rust', '.github/workflows/ci.yml'), /run: make _test_rust/)
+test('the Rust shards run every test: each name the rest skips, another shard selects', () => {
+  assert.match(job('test-rust', '.github/workflows/ci.yml'), /run: make _test_rust_shard RUST_SHARD=\$\{\{ matrix\.shard \}\}/)
+  assert.match(job('test-rust', '.github/workflows/ci.yml'), /shard: \[packages, workbench, rest\]/)
   const make = readFileSync('scripts/make/tests.mk', 'utf8')
   assert.match(make, /cargo llvm-cov --workspace --profile ci --lcov/)
   assert.doesNotMatch(make, /cargo llvm-cov[^\n]*(?:--exclude|--skip)/)
+  assert.match(make, /^RUST_SHARD_ARGS_packages := --test python_packages -- \$\(RUST_SHARD_PACKAGES\)$/m)
+  assert.match(make, /^RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- \$\(RUST_SHARD_WORKBENCH\)$/m)
+  assert.match(make, /^RUST_SHARD_ARGS_rest := -- \$\(addprefix --skip ,\$\(RUST_SHARD_PACKAGES\) \$\(RUST_SHARD_WORKBENCH\)\)$/m)
 })
 
-registerLintContracts(job('build', '.github/workflows/ci.yml'))
+test('the coverage gate reads the merge of every Rust shard', () => {
+  const coverage = job('coverage', '.github/workflows/ci.yml')
+  assert.match(coverage, /pattern: coverage-rust-\*/)
+  assert.match(coverage, /python3 scripts\/merge_lcov\.py target\/coverage\/rust\/\*\/lcov\.info > target\/coverage\/lcov\.info/)
+})
+
+registerLintContracts(job('analyse', '.github/workflows/ci.yml'))
 
 test('package source coverage runs independently and blocks the required coverage gate', () => {
   const packages = job('test-packages', '.github/workflows/ci.yml')
