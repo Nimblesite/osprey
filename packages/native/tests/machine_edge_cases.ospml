@@ -13,6 +13,7 @@ import ui::Messages
 import ui::Runtime
 import ui::Templates
 import ui::Ui
+import ui::Boards
 import ui::Values
 
 completeMachine () = realMachine "packages/native/tests/complete.machine.json"
@@ -152,7 +153,7 @@ completeEventAndConvenienceCases () =
             _ => "wrong event"
         Error problem => problem
     expect (completed, "denied")
-    board = listGet (Encode::walk ([], Ui::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso")))).nodes 0 ?: JsonNull
+    board = listGet (Encode::walk ([], Boards::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso")))).nodes 0 ?: JsonNull
     expect (Doc::text (board, "kind"), "board")
     expect (Doc::text (board, "backdrop"), "")
     field = listGet (Encode::walk ([], Ui::multiline ("Notes", "one\ntwo", "write", ui::Fire(fireName = "edit")))).nodes 0 ?: JsonNull

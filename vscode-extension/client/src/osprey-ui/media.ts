@@ -1,4 +1,4 @@
-// [LESSONS-FRAMEWORK] Native media is application-authored content. Hosts
+// [UI-COMPONENTS-MEDIA] Native media is application-authored content. Hosts
 // resolve approved assets; media never creates a control binding or autoplays.
 import { escapeHtml } from "./html";
 

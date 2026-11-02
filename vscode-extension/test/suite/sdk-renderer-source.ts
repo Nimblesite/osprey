@@ -2,6 +2,8 @@
 export const SDK_COMPONENT_SOURCE = String.raw`
 namespace sdk_renderer_probe
 import ui::Ui
+import ui::Editors
+import ui::Maths
 import ui::Encode
 import ui::Doc
 import ui::Runtime
@@ -22,8 +24,8 @@ controls expanded = [
 ]
 
 proof () = [
-    Ui::editor ("SDK argument", "p ∧ q\nFrom hp.", 0, [Ui::mark (2, true, ui::Danger, "Needs attention", "The goal is q; this step establishes p.")], Changed, Changed),
-    Ui::math (ui::Frac (ui::Sup (ui::Sym "x") (ui::Num "2")) (ui::Root (ui::Sym "y")), "x squared over square root of y"),
+    Editors::editor ("SDK argument", "p ∧ q\nFrom hp.", 0, [Editors::mark (2, true, ui::Danger, "Needs attention", "The goal is q; this step establishes p.")], Changed, Changed),
+    Maths::typeset (ui::Frac (ui::Sup (ui::Sym "x") (ui::Num "2")) (ui::Root (ui::Sym "y")), "x squared over square root of y"),
     Ui::evidence ("SDK evidence", "37 lines"),
     Ui::pair ("SDK pair", "42 nodes"),
     Ui::label ("SDK label", "info"),

@@ -4,6 +4,7 @@ namespace workbench
 import proof::CachedImports
 import proof::Trust
 import ui::Ui
+import ui::Maths
 import ui::Frames
     plain
     text
@@ -195,7 +196,7 @@ module ProofLibraries
 
     chosen (current, entries) = match Lists::find (entries, \entry => entry.importedName == current.exportSelected)
         Error _ => refused "Select a theorem in the current export."
-        Success entry => Ui::framed (plain(frameName = "proof-library-result", frameGap = 12), Ui::column [Ui::styled (entry.importedName, ui::Headline, ui::Primary), Ui::badge ("Checked theorem", "", ui::Good), Ui::caption ("Axioms: " + assumptions entry.importedAxioms), Ui::framed (plain(frameFont = "serif", frameTextSize = 19), Ui::math (ProofTerms::typeset (entry.importedType, entry.importedNotation), entry.importedStatement)), formalStatement (current, entry)])
+        Success entry => Ui::framed (plain(frameName = "proof-library-result", frameGap = 12), Ui::column [Ui::styled (entry.importedName, ui::Headline, ui::Primary), Ui::badge ("Checked theorem", "", ui::Good), Ui::caption ("Axioms: " + assumptions entry.importedAxioms), Ui::framed (plain(frameFont = "serif", frameTextSize = 19), Maths::typeset (ProofTerms::typeset (entry.importedType, entry.importedNotation), entry.importedStatement)), formalStatement (current, entry)])
 
     formalStatement (current, entry) = match current.exportExpanded
         true => Ui::column [Ui::caption "Exact checked statement", Ui::framed (plain(frameName = "proof-library-formal", frameFont = "mono", frameTextSize = 12), Ui::text entry.importedStatement)]

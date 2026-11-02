@@ -175,43 +175,6 @@ module Events
             true => Success(value = Controlled(control = action, input = input value))
             false => mismatch "scene"
 
-(** Decodes the board's stroke and lasso values ([UI-COMPONENTS-BOARD]); a malformed stroke is refused, never guessed. *)
-module Strokes
-    coordinate (pair, at) = jsonInt (jsonIndex pair at ?: JsonNull) ?: (0 - 1)
-
-    point pair = Point(pointX = coordinate (pair, 0), pointY = coordinate (pair, 1))
-
-    validPoint pair = match pair
-        JsonArray values => length values == 2 && (point pair).pointX >= 0 && (point pair).pointY >= 0
-        _ => false
-
-    validNumber (value, key, least) = match jsonInt (Doc::field (value, key))
-        Success number => number >= least
-        Error _ => false
-
-    (** The stroke a host sent: `points` as `[x, y]` pairs, `width` and `at`; an error when a point is not a pair of non-negative integers. *)
-    export decode value =
-        points = Doc::items (Doc::field (value, "points"))
-        match Lists::any (points, \pair => validPoint pair == false) || isEmpty points || validNumber (value, "width", 1) == false || validNumber (value, "at", 0) == false
-            true => Error(message = "A board control sent a malformed stroke")
-            false => Success(value = Stroke(strokePoints = mapList (points, \pair => point pair), strokeWidth = Doc::number (value, "width"), strokeAt = Doc::number (value, "at")))
-
-    (** The `Stroked` message for a stroke value delivered to `action`. *)
-    export bind (action, value) = match decode value
-        Success stroke => Success(value = Stroked(stroker = action, stroked = stroke))
-        Error problem => Error(message = problem)
-
-    index item = jsonInt item ?: (0 - 1)
-
-    (** The `Lassoed` message for an array of stroke indices delivered to `action`; any other value is refused. *)
-    export lasso (action, value) = match value
-        JsonArray items => enclosed (action, mapList (items, \item => index item))
-        _ => Error(message = "A board control sent a lasso that is not a list of strokes")
-
-    enclosed (action, indices) = match Lists::any (indices, \at => at < 0)
-        true => Error(message = "A board control sent a lasso that is not a list of strokes")
-        false => Success(value = Lassoed(lassoer = action, lassoed = indices))
-
 (** Takes a message apart for the application's `update`. Osprey cannot yet match a constructor declared in another namespace, so applications fold over messages here. *)
 module Messages
     (** Calls the handler for `message`: a tap, a text or choice value, a toggle, a splitter's width or a cursor's offset, a completion, a lifecycle phase, a board stroke or lasso, a display frame's elapsed seconds or a scene's key or pointer input. *)

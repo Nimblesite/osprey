@@ -109,7 +109,7 @@ module Templates
         Toggled => Ui::toggle (said (machine, node), Machines::flag (machine, node.tplValue), node.tplLever)
         Metered => Ui::meter (said (machine, node), whole (machine, node.tplAmount), whole (machine, node.tplTotal), node.tplTone)
         Progressing => Progress(label = said (machine, node), detail = fill (machine, node.tplDetail))
-        Pictured => Ui::image (fill (machine, node.tplSource), fill (machine, node.tplAlt), whole (machine, node.tplWidth), whole (machine, node.tplHeight))
+        Pictured => Media::image (fill (machine, node.tplSource), fill (machine, node.tplAlt), whole (machine, node.tplWidth), whole (machine, node.tplHeight))
         Blank => Ui::empty (node.tplSymbol, said (machine, node), fill (machine, node.tplDetail))
         Framing => Ui::framed (frameStyle (machine, node), Ui::column (childrenOf (machine, node)))
         Drawn => Ui::scene (measure (machine, node.tplWidth), measure (machine, node.tplHeight), [], Lists::flatten (mapList (node.tplMarks, \m => Canvases::primitives (machine, m))), node.tplLever)
