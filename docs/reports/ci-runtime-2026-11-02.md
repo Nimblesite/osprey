@@ -1,0 +1,149 @@
+# Where PR CI's 57 minutes go, and how to get it to 20–25
+
+Run [41362564685](https://github.com/Nimblesite/osprey/actions/runs/41362564685), commit `6119a002`: **57 minutes of wall clock and 324 runner-minutes, and it failed**. Timings come from the jobs' API timestamps and their step logs.
+
+## Why the wall clock is 57 minutes
+
+```
+ 0:00 ─ detect changes
+ 0:54 ─ Build, Format & Analyse ───────── 10.7m   every Linux and Apple test job waits on all of it
+11:42 ─ Tests: iOS, macOS and Workbench ─ 45.6m   killed by its 45-minute timeout
+57:24 ─ root CI job
+```
+
+- **The gate is the wrong shape.** The test jobs only need the compiler artifact, but they wait for format, clippy, deslop, hawk and the 6-minute VSIX bundle too.
+- **The two longest test jobs never finished.** The Apple job hit its 45-minute limit and the Rust job its 40-minute limit, so those timeouts set the run's length. The Coverage thresholds job then failed because the Rust coverage file was never produced.
+- **The other failures came early.** Mac GPUI and WinUI failed at 15 and 14 minutes on missing LFS pictures and goldens, fixed by `32636a2a` and `8356f2f7`.
+
+## Every job
+
+| Job | Minutes | Where the time goes |
+|---|---:|---|
+| GPUI host (ubuntu) | 46.8 | UI suites 22.4, smoke 12.8, self-test 5.7, native suite 1.3 |
+| iOS, macOS and Workbench | 45.6 (timed out) | iOS, macOS, mobile and bank 32.0, Workbench 12.9 |
+| Rust workspace (coverage) | 40.2 (timed out) | One Python package test ran 18.6+ minutes until the kill |
+| GPUI host (windows) | 27.5 | Host tests and smoke 13.7, of which the first GPUI build is 10.6 |
+| GPUI host (macos) | 23.8 | Smoke 9.5, headless self-test 4.7, window self-test 3.2 |
+| Package source coverage | 19.8 | Workbench collection 13.6 |
+| WinUI host | 18.9 | Example suites and DLLs 6.6, real windows 4.9 |
+| Proof kernel and Lean gate | 17.8 | Full acceptance |
+| Windows core | 14.2 | UI suites 5.0, corpus three times 3.6 |
+| VS Code extension | 12.5 | Real VS Code under Xvfb |
+| Integration | 12.1 | Android 6.4, web compiler 2.6 |
+| Build, Format & Analyse | 10.7 | VSIX bundle 6.0 |
+| C runtime | 8.3 | Suites 3.6, thresholds 4.1 |
+| Package manager (gc, arc) | 5.5 each | |
+| Website, Python ports, corpus (gc, arc), wasm | 1.6–4.4 | |
+
+## The biggest costs
+
+### 1. Signal Flow and the synth on CI Linux: 21 minutes
+
+| Suite | Linux CI | Mac CI | Windows CI | This Mac |
+|---|---:|---:|---:|---:|
+| `packages/signal_flow/tests` | 906s | 37s | 90s | 21s |
+| `examples/synth/test` | 371s | 37s | 75s | |
+
+The other UI suites take about 30 seconds on Linux, so this is specific to these two, which both load the Signal Flow machine. Run `41370627487`, with an earlier compiler fix, still took 809s and 382s. The cause is not yet known.
+
+### 2. The same tests on every system
+
+| Suite | Runs in |
+|---|---|
+| Signal Flow tests | GPUI ubuntu, GPUI macos, Windows core, WinUI |
+| uitest, Casting and synth tests | GPUI ubuntu, GPUI macos, Windows core |
+| Flock, Painting and Storage tests | GPUI ubuntu, GPUI macos (Storage in WinUI too) |
+| Native framework suite | GPUI ubuntu, GPUI macos, GPUI windows |
+| GPUI headless smoke and self-test | GPUI ubuntu, GPUI macos |
+| GPUI `cargo test` | GPUI ubuntu, GPUI macos, GPUI windows |
+| Language corpus | Linux gc and arc, Windows three times, macOS, iOS simulator, Android |
+
+These suites run in the language's test harness with no host or window, so a repeat on another system mostly re-proves the same logic. What other systems uniquely prove is native code: the host, the window, the C ABI and the runtime on that platform.
+
+### 3. Every app compiled twice per GPUI job
+
+`run.sh` recompiles the app on each call, so `_gpui-smoke` and `_gpui-self-test` compile the same apps again, one at a time. On Linux each compile is 30–110 seconds while the run it serves takes about 10.
+
+### 4. No cache for the GPUI host
+
+`hosts/gpui/target` is not cached. The first build costs about 5.9 minutes on Linux, 4.5 on Mac and 10.6 on Windows, on every run.
+
+### 5. The Apple job does five things in series
+
+| Part | Minutes |
+|---|---:|
+| Compiler build, uncached | 3.4 |
+| iOS simulator corpus (230 programs) | 7.8 |
+| iOS shared and macOS hosts, macOS corpus | 6.0 |
+| Issue Inbox and Talon Bank builds | 5.7 |
+| Talon Bank UI tests in the simulator | 8.0, of which one test is 4.2 |
+| Workbench: Osprey compile | 10.3 |
+| Workbench: Swift build | about 1 |
+| Workbench: Swift tests | cut off by the timeout |
+
+Two of the bank UI tests also sat through a 60-second XCUITest "wait for idle" timeout.
+
+### 6. Rust coverage is one serial pile
+
+Everything runs in one `cargo llvm-cov`. Four tests take most of it: `every_ported_package_matches_its_cpython_oracle_under_every_memory_backend` (18.6+ minutes, killed), `workbench_retains_record_identity_through_shared_proof_helpers` (6.7), `workbench_apple_host_includes_shared_proof_dependencies` (3.4) and the first Workbench goal test (1.0).
+
+### 7. Timeouts too long to catch a hang
+
+Limits are 40–90 minutes, and they have no per-test bound. The 90-minute limits sit on 5-minute jobs.
+
+### 8. The Workbench compile
+
+The Workbench compile took 615 seconds on CI at `6119a002`, and takes 125 seconds and 1 GB on this Mac at `d7360f5d`. `8356f2f7` and `d7360f5d` fix a compiler cost here, so re-measure this after the changes below.
+
+## The plan
+
+No assertion is deleted from the repository's overall coverage: everything removed from Windows or Mac still runs on Linux.
+
+### Phases
+
+| Phase | Jobs | Target |
+|---|---|---|
+| 1. Build | Compiler artifact only | 3–4m |
+| 2. In parallel with build | Analyse (format, clippy, deslop, hawk, guards), extension bundle, Windows, GPUI, WinUI | under 10m for analyse |
+| 3. After build | Every suite, in parallel | under 20m each |
+| 4. Gate | Coverage thresholds, root CI | under 1m |
+
+### Linux runs everything headless
+
+- GPUI splits into a suites job and a host job.
+- All apps compile once, in parallel, for both smoke and self-test.
+- The host's target directory is cached.
+
+### Windows and Mac keep only what they uniquely prove
+
+| Job | Keeps | Removes (still runs on Linux) |
+|---|---|---|
+| GPUI macos | Every app in a real window, Mac archive and string ownership, clippy | Native, UI and example suites, headless smoke and self-test, host `cargo test` |
+| GPUI windows | Probe smoke, Flock and Painting in real windows | Native suite, host `cargo test`, Flock headless smoke |
+| Windows core | Runtime, compiler, package client, fiber and omnibus smokes, corpus under gc and arc | UI suites, the corpus's repeat at the default backend |
+| WinUI | Every app sandboxed in a real window against its goldens, Storage on the C drive, host tests, AOT | Signal Flow and Storage suites |
+
+### Apple splits into parallel jobs
+
+Each uses the cached compiler setup, with its own tight timeout: iOS (host, ABI, corpus, mobile), macOS (hosts, corpus), Talon Bank (simulator UI) and Workbench.
+
+### Rust coverage shards
+
+`cargo llvm-cov` runs in parallel jobs: the Python packages, the Workbench and proof tests, and everything else. The coverage job merges their line counts before checking thresholds, so the floors don't change.
+
+### Tighter timeouts
+
+Each job's limit becomes about 1.5 times its measured healthy time, so a hang fails quickly and by name.
+
+## Targets
+
+| Job | Now | Target |
+|---|---:|---:|
+| Wall clock | 57 | 20–25 |
+| Wait before suites start | 11.7 | 4 |
+| GPUI ubuntu | 46.8 | Suites under 5 once item 1 is fixed, host under 12 |
+| GPUI macos | 23.8 | 12 |
+| GPUI windows | 27.5 | 12 with a warm cache |
+| Windows core | 14.2 | 8 |
+| Apple (longest of four) | 45.6 | 15 |
+| Rust (longest shard) | 40+ | 15 |
