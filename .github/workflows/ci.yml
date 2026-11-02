@@ -1038,7 +1038,7 @@ jobs:
       - name: Host state after a failed Android step
         if: failure()
         run: |
-          sudo dmesg -T | grep -iE 'out of memory|oom|killed process|segfault|qemu|kvm' | tail -40 || true
+          sudo dmesg -T | grep -iE 'out of memory|oom|killed process|segfault|qemu|kvm' | tail -40
           free -h
           df -h /
 
