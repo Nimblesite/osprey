@@ -145,8 +145,8 @@ fn compare_scalar(cg: &mut Codegen, ty: &Type, a: &str, b: &str) -> Option<Strin
 
 /// [FLOAT-COMPARE]: ordered equality, so NaN is unequal to itself.
 fn floats_equal(cg: &mut Codegen, a: &str, b: &str) -> String {
-    let da = crate::conv::unbox_from_i64(cg, a, LType::Double);
-    let db = crate::conv::unbox_from_i64(cg, b, LType::Double);
+    let da = crate::conv::unbox_from_i64(cg, a, LType::F64);
+    let db = crate::conv::unbox_from_i64(cg, b, LType::F64);
     cg.emit_reg(format!("fcmp oeq double {}, {}", da.operand, db.operand))
 }
 

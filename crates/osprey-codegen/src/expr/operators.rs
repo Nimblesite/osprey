@@ -112,7 +112,7 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     }
     // IEEE-754 arithmetic stays plain. Integer `+ - *` below are fallible and
     // return a Result when their exact mathematical result is outside i64.
-    if l.ty == LType::Double || r.ty == LType::Double {
+    if l.ty == LType::F64 || r.ty == LType::F64 {
         let ld = as_double(cg, l)?;
         let rd = as_double(cg, r)?;
         let opc = match op {
@@ -121,7 +121,7 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
             _ => "fmul",
         };
         let reg = cg.emit_reg(format!("{opc} double {}, {}", ld.operand, rd.operand));
-        return Ok(Value::new(reg, LType::Double));
+        return Ok(Value::new(reg, LType::F64));
     }
     let intrinsic = match op {
         "+" => "sadd",
@@ -333,7 +333,7 @@ pub(crate) fn gen_comparison(cg: &mut Codegen, op: &str, l: Value, r: Value) -> 
         cg.emit(format!("{reg} = icmp {} i32 {c}, 0", cmp_code(op, false)));
         return Ok(Value::new(reg, LType::I1));
     }
-    if l.ty == LType::Double || r.ty == LType::Double {
+    if l.ty == LType::F64 || r.ty == LType::F64 {
         let ld = as_double(cg, l)?;
         let rd = as_double(cg, r)?;
         cg.emit(format!(

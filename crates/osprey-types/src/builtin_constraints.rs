@@ -50,7 +50,7 @@ pub(crate) fn operation_name(name: &str) -> &str {
 }
 
 pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
-    ty.is_named(names::INT) || ty.is_named(names::FLOAT)
+    crate::numeric::Numeric::of_type(ty).is_some()
 }
 
 /// A known outer constructor cannot become numeric by resolving its arguments.
@@ -140,7 +140,8 @@ pub fn is_gpu_scalar(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
         Type::Con { name, args } => {
-            args.is_empty() && matches!(name.as_str(), names::INT | names::FLOAT | names::BOOL)
+            args.is_empty()
+                && (name == names::BOOL || crate::numeric::Numeric::of_name(name).is_some())
         }
         _ => false,
     }
@@ -216,15 +217,11 @@ fn is_printable(ty: &Type) -> bool {
         Type::Var(_) => true,
         Type::Con { name, args }
             if args.is_empty()
-                && matches!(
-                    name.as_str(),
-                    names::INT
-                        | names::FLOAT
-                        | names::STRING
-                        | names::BOOL
-                        | names::UNIT
-                        | names::ANY
-                ) =>
+                && (crate::numeric::Numeric::of_name(name).is_some()
+                    || matches!(
+                        name.as_str(),
+                        names::STRING | names::BOOL | names::UNIT | names::ANY
+                    )) =>
         {
             true
         }

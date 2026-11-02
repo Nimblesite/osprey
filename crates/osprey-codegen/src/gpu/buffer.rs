@@ -44,7 +44,7 @@ fn buffer_literal(
     let mut elem = crate::listlit::inferred_elem(cg, position);
     for (i, e) in elements.iter().enumerate() {
         let v = gen_expr(cg, e)?;
-        elem = elem.or_else(|| crate::llty::scalar_spelling(v.ty).map(str::to_string));
+        elem = elem.or_else(|| Some(crate::llty::scalar_spelling(v.ty).to_string()));
         let word = scalar_word(cg, v, "a GPU buffer literal element")?;
         buffer_set(cg, &out, &i.to_string(), &word.operand);
     }
@@ -156,6 +156,6 @@ pub(super) fn from_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     // IEEE-754 words the uniform element ABI stores [GPU-BUFFER-TO-LIST].
     let sealed = crate::collections::list_builder_seal(cg, &bld);
     Ok(sealed.with_owner(Some(crate::collections::list_owner(
-        tagged_elem(&b).and_then(crate::llty::scalar_spelling),
+        tagged_elem(&b).map(crate::llty::scalar_spelling),
     ))))
 }

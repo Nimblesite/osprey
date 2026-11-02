@@ -47,7 +47,7 @@ pub(crate) fn binary_float_function(
         // Total: fmod(x, 0.0) is NaN, like any domain result.
         return Ok(Value::new(
             cg.emit_reg(format!("frem double {}, {}", x.operand, y.operand)),
-            LType::Double,
+            LType::F64,
         ));
     }
     let symbol = BINARY_INTRINSICS
@@ -61,7 +61,7 @@ pub(crate) fn binary_float_function(
         "call double @{symbol}(double {}, double {})",
         x.operand, y.operand
     ));
-    Ok(Value::new(operand, LType::Double))
+    Ok(Value::new(operand, LType::F64))
 }
 
 /// [BUILTIN-FLOAT32] Round to the nearest binary32 (ties to even) and widen
@@ -72,7 +72,7 @@ pub(crate) fn float32_round(cg: &mut Codegen, value: Value) -> Result<Value> {
     let f = cg.emit_reg(format!("fptrunc double {} to float", x.operand));
     Ok(Value::new(
         cg.emit_reg(format!("fpext float {f} to double")),
-        LType::Double,
+        LType::F64,
     ))
 }
 
@@ -86,7 +86,7 @@ pub(crate) fn float_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
 /// [BUILTIN-FLOAT-BITS] The binary64 the word `bits` holds.
 pub(crate) fn float_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
     let b = as_i64(cg, value)?;
-    Ok(unbox_from_i64(cg, &b.operand, LType::Double))
+    Ok(unbox_from_i64(cg, &b.operand, LType::F64))
 }
 
 /// [BUILTIN-FLOAT-BITS] The binary32 pattern of the nearest float32 to `x`
@@ -109,7 +109,7 @@ pub(crate) fn float32_from_bits(cg: &mut Codegen, value: Value) -> Result<Value>
     let f = cg.emit_reg(format!("bitcast i32 {w} to float"));
     Ok(Value::new(
         cg.emit_reg(format!("fpext float {f} to double")),
-        LType::Double,
+        LType::F64,
     ))
 }
 
@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn float32_round_narrows_and_widens() {
         let ir = render(&mut |cg| {
-            let _ = float32_round(cg, Value::new("0.1", LType::Double)).unwrap();
+            let _ = float32_round(cg, Value::new("0.1", LType::F64)).unwrap();
         });
         shows(&ir, &["fptrunc double 0.1 to float", "fpext float "]);
     }
@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn float_bits_bitcast_preserve_the_word() {
         let ir = render(&mut |cg| {
-            let _ = float_bits(cg, Value::new("1.0", LType::Double)).unwrap();
+            let _ = float_bits(cg, Value::new("1.0", LType::F64)).unwrap();
             let _ = float_from_bits(cg, Value::new("1", LType::I64)).unwrap();
         });
         shows(
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn float32_bits_use_the_low_32_bits() {
         let ir = render(&mut |cg| {
-            let _ = float32_bits(cg, Value::new("0.1", LType::Double)).unwrap();
+            let _ = float32_bits(cg, Value::new("0.1", LType::F64)).unwrap();
             let _ = float32_from_bits(cg, Value::new("7", LType::I64)).unwrap();
         });
         shows(
@@ -246,7 +246,7 @@ mod tests {
     #[test]
     fn float_to_int_checks_the_domain_before_fptosi() {
         let ir = render(&mut |cg| {
-            let _ = float_to_int(cg, Value::new("-2.9", LType::Double)).unwrap();
+            let _ = float_to_int(cg, Value::new("-2.9", LType::F64)).unwrap();
         });
         shows(
             &ir,
@@ -312,8 +312,8 @@ mod tests {
                 let _ = binary_float_function(
                     cg,
                     name,
-                    Value::new(left, LType::Double),
-                    Value::new(right, LType::Double),
+                    Value::new(left, LType::F64),
+                    Value::new(right, LType::F64),
                 )
                 .unwrap();
             }

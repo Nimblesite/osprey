@@ -77,7 +77,7 @@ pub(crate) fn division(cg: &mut Codegen, op: &str, left: Value, right: Value) ->
                 "{instruction} double {}, {}",
                 left.operand, right.operand
             )),
-            LType::Double,
+            LType::F64,
         ))
     })
 }
@@ -94,7 +94,7 @@ fn division_guards(cg: &mut Codegen, left: &Value, right: &Value) -> (String, St
 }
 
 pub(crate) fn remainder(cg: &mut Codegen, left: Value, right: Value) -> Result<Value> {
-    if left.ty == LType::Double || right.ty == LType::Double {
+    if left.ty == LType::F64 || right.ty == LType::F64 {
         return division(cg, "%", left, right);
     }
     let left = as_i64(cg, left)?;
@@ -144,10 +144,10 @@ pub(crate) fn int_division(cg: &mut Codegen, left: &Value, right: &Value) -> Res
 }
 
 pub(crate) fn negation(cg: &mut Codegen, value: Value) -> Result<Value> {
-    if value.ty == LType::Double {
+    if value.ty == LType::F64 {
         return Ok(Value::new(
             cg.emit_reg(format!("fneg double {}", value.operand)),
-            LType::Double,
+            LType::F64,
         ));
     }
     let zero = Value::new("0", LType::I64);
@@ -157,7 +157,7 @@ pub(crate) fn negation(cg: &mut Codegen, value: Value) -> Result<Value> {
 }
 
 pub(crate) fn absolute(cg: &mut Codegen, value: Value) -> Result<Value> {
-    if value.ty == LType::Double {
+    if value.ty == LType::F64 {
         return Ok(float_absolute(cg, &value));
     }
     integer_absolute(cg, value)
@@ -216,7 +216,7 @@ pub(crate) fn float_function(cg: &mut Codegen, name: &str, value: Value) -> Resu
     let x = as_double(cg, value)?;
     cg.add_extern(format!("declare double @{symbol}(double)"));
     let operand = cg.emit_reg(format!("call double @{symbol}(double {})", x.operand));
-    Ok(Value::new(operand, LType::Double))
+    Ok(Value::new(operand, LType::F64))
 }
 
 /// [BUILTIN-ABS] clears the sign of zero and infinity, preserving NaN.
@@ -226,7 +226,7 @@ fn float_absolute(cg: &mut Codegen, value: &Value) -> Value {
         "call double @llvm.fabs.f64(double {})",
         value.operand
     ));
-    Value::new(operand, LType::Double)
+    Value::new(operand, LType::F64)
 }
 
 fn integer_absolute(cg: &mut Codegen, value: Value) -> Result<Value> {
@@ -292,7 +292,7 @@ mod tests {
         let mut cg = Codegen::new();
         cg.begin_function("math", None);
         for (name, _) in FLOAT_FUNCTIONS {
-            let _ = float_function(&mut cg, name, Value::new("1.0", LType::Double)).unwrap();
+            let _ = float_function(&mut cg, name, Value::new("1.0", LType::F64)).unwrap();
         }
         cg.emit("ret i64 0");
         cg.finish_function("i64", "math", &[]);

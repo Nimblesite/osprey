@@ -25,6 +25,7 @@ pub(crate) use launch::{declined, launch_fold, launch_map};
 
 use crate::builder::Codegen;
 use crate::llty::LType;
+use osprey_types::numeric::Numeric;
 use osprey_ast::{Expr, Parameter, Program, Stmt};
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -32,16 +33,17 @@ use std::fmt::Write as _;
 /// The device dialect's spelling of a kernel's scalar word.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Ty {
-    Int,
-    Float,
+    Num(Numeric),
     Bool,
 }
 
 impl Ty {
+    pub(crate) const INT: Ty = Ty::Num(Numeric::INT);
+    pub(crate) const FLOAT: Ty = Ty::Num(Numeric::FLOAT);
+
     fn of(ty: LType) -> Option<Ty> {
         match ty {
-            LType::I64 => Some(Ty::Int),
-            LType::Double => Some(Ty::Float),
+            LType::Num(n) => Some(Ty::Num(n)),
             LType::I1 => Some(Ty::Bool),
             _ => None,
         }
@@ -49,8 +51,7 @@ impl Ty {
 
     fn spelling(self) -> &'static str {
         match self {
-            Ty::Int => "long",
-            Ty::Float => "ulong",
+            Ty::Num(n) => n.device(),
             Ty::Bool => "bool",
         }
     }
@@ -58,8 +59,8 @@ impl Ty {
     /// A raw buffer word as a value of this type.
     fn value_of(self, word: &str) -> String {
         match self {
-            Ty::Int => format!("(long)({word})"),
-            Ty::Float => word.to_string(),
+            Ty::Num(n) if n.is_float() => word.to_string(),
+            Ty::Num(n) => format!("({})({word})", n.device()),
             Ty::Bool => format!("({word} != 0ul)"),
         }
     }
@@ -67,8 +68,8 @@ impl Ty {
     /// A value of this type as the raw buffer word that stores it.
     fn word_of(self, value: &str) -> String {
         match self {
-            Ty::Float => value.to_string(),
-            Ty::Int | Ty::Bool => format!("(ulong)({value})"),
+            Ty::Num(n) if n.is_float() => value.to_string(),
+            Ty::Num(_) | Ty::Bool => format!("(ulong)({value})"),
         }
     }
 }
@@ -350,8 +351,8 @@ fn map_entry(text: &mut String, body: &DeviceBody, inputs: usize) {
 }
 
 fn fold_entry(text: &mut String, body: &DeviceBody) {
-    let acc = body.params.first().copied().unwrap_or(Ty::Int);
-    let elem = body.params.get(1).copied().unwrap_or(Ty::Int);
+    let acc = body.params.first().copied().unwrap_or(Ty::INT);
+    let elem = body.params.get(1).copied().unwrap_or(Ty::INT);
     let _ = writeln!(
         text,
         "  if (GPU_INDEX != 0) return;\n  {} acc = {};\n  for (ulong i = 0; i < count; i++) {{",

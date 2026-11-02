@@ -77,7 +77,7 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
 fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     match expr {
         Expr::Integer(n) => Ok(Value::new(n.to_string(), LType::I64)),
-        Expr::Float(f) => Ok(Value::new(fmt_double(*f), LType::Double)),
+        Expr::Float(f) => Ok(Value::new(fmt_double(*f), LType::F64)),
         Expr::Bool(b) => Ok(Value::new(if *b { "1" } else { "0" }, LType::I1)),
         Expr::Str(s) => Ok(cg.string_constant(s)),
         Expr::InterpolatedStr(parts) => gen_interpolation(cg, parts),

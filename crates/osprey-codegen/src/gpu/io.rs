@@ -31,7 +31,7 @@ fn fallible_buffer(
     operands: &[&str],
     fallback: &str,
 ) -> Result<Value> {
-    let owner = elem_owner(Some(LType::Double));
+    let owner = elem_owner(Some(LType::F64));
     crate::extern_call::fallible_handle(cg, callee, params, operands, &owner, Some(fallback))
 }
 

@@ -3,7 +3,7 @@
 //! the LLVM type.
 
 use crate::builder::{Codegen, ParamSig};
-use crate::conv::{as_double, as_i1, as_i64};
+use crate::conv::as_i1;
 use crate::error::Result;
 use crate::llty::{LType, Value};
 
@@ -53,7 +53,6 @@ pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value
         // reverse direction never appears here — the checker rejects every
         // recovery.
         LType::Any => return crate::anybox::box_any(cg, v),
-        LType::Double => as_double(cg, v)?,
         // A string/handle/box reaching an `i64` boundary is a generic value
         // travelling in the uniform machine-word representation — `ptrtoint`
         // it (the inverse `inttoptr` is the `Str`/`Ptr` arm below). Genuine
@@ -61,13 +60,13 @@ pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value
         LType::I64 if matches!(v.ty, LType::Str | LType::Ptr | LType::Any) => {
             crate::conv::box_to_i64(cg, v)
         }
-        LType::I64 => as_i64(cg, v)?,
+        LType::Num(n) => crate::conv::as_num(cg, v, n)?,
         LType::I1 => as_i1(cg, v)?,
         // A pointer target. A boxed `i64` element (the uniform collection ABA)
         // must be `inttoptr`-converted back to a handle; an existing pointer
         // just retags (both are `i8*`). An erased box is NOT retagged — reading
         // it as a string/handle is the unchecked recovery [TYPE-ANY] deletes.
-        LType::Str | LType::Ptr | LType::I32 => {
+        LType::Str | LType::Ptr => {
             if v.ty == LType::Any {
                 return Err(crate::error::CodegenError::invalid(
                     "cannot read through an erased `any`: match its structure instead",

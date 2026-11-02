@@ -384,11 +384,9 @@ pub(super) fn value_shape(ty: &crate::ty::Type) -> Option<Value> {
             ..Value::default()
         }),
         Type::Con { name, .. }
-            if matches!(
+            if crate::numeric::Numeric::of_name(name).is_some() || matches!(
                 name.as_str(),
-                names::INT
-                    | names::FLOAT
-                    | names::STRING
+                names::STRING
                     | names::BOOL
                     | names::UNIT
                     | names::LIST

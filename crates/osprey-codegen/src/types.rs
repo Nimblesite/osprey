@@ -6,6 +6,7 @@
 //! the C runtime's uniform machine-word representation for generic values.
 
 use crate::llty::LType;
+use osprey_types::numeric::Numeric;
 use osprey_types::{names, ProgramTypes, Type};
 
 /// The tag spelling of a container's element type argument when inference
@@ -37,7 +38,7 @@ pub(crate) fn elem_tag(prog: &ProgramTypes, elem: Option<&Type>) -> Option<Strin
     if osprey_types::has_type_var(ty) {
         return None;
     }
-    crate::llty::scalar_spelling(ltype_of(ty)).map(str::to_string)
+    Some(crate::llty::scalar_spelling(ltype_of(ty)).to_string())
 }
 
 /// Map an inferred type to the LLVM type a runtime value of it travels as.
@@ -58,11 +59,13 @@ fn ltype_of_con(name: &str, args: &[Type]) -> LType {
         // handles, which are runtime ids drawn from one shared counter, not
         // pointers.
         // A capability is a runtime identity word as well ([EFFECTS-INSTANCE]).
-        names::INT | names::UNIT | names::FIBER | names::CHANNEL | names::CAPABILITY => LType::I64,
+        names::UNIT | names::FIBER | names::CHANNEL | names::CAPABILITY => LType::I64,
         // An erased `any` is a pointer to its shape-carrying box
         // ([`crate::anybox`], [TYPE-ANY]) — never a bare machine word.
         names::ANY => LType::Any,
-        names::FLOAT => LType::Double,
+        _ if Numeric::of_name(name).is_some() && args.is_empty() => {
+            LType::Num(Numeric::of_name(name).unwrap_or(Numeric::INT))
+        }
         names::STRING => LType::Str,
         names::BOOL => LType::I1,
         // `Value::result` separately records the discriminant-bearing pointer

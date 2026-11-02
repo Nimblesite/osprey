@@ -30,7 +30,7 @@ const GPU_OWNER: &str = "GpuBuffer";
 /// element data, kernel results, reduction accumulators and extracted-kernel
 /// uniforms ([`crate::gpu_kernel`]) all consult this predicate.
 pub(crate) fn is_scalar(ty: LType) -> bool {
-    matches!(ty, LType::I64 | LType::Double | LType::I1)
+    matches!(ty, LType::I64 | LType::F64 | LType::I1)
 }
 
 /// Whether `v` is a bare scalar word — [`is_scalar`] with no `Result` wrapper,
@@ -77,7 +77,7 @@ pub(crate) fn is_buffer_owner(owner: &str) -> bool {
 
 /// The owner tag for a buffer holding `elem` words.
 fn elem_owner(elem: Option<LType>) -> String {
-    owner_of(elem.and_then(crate::llty::scalar_spelling))
+    owner_of(elem.map(crate::llty::scalar_spelling))
 }
 
 /// Dispatch a GPU builtin by name, or `None` if `name` is not one.
@@ -151,7 +151,7 @@ fn buffer_set(cg: &mut Codegen, buf: &Value, index: &str, word: &str) {
 /// raw bits become a `double` operand (never an integer conversion), a `bool`
 /// becomes `i1`, and an unknown element passes through as the raw word.
 fn elem_value(cg: &mut Codegen, raw: String, elem: Option<LType>) -> Value {
-    crate::conv::from_word(cg, raw, elem.and_then(crate::llty::scalar_spelling))
+    crate::conv::from_word(cg, raw, elem.map(crate::llty::scalar_spelling))
 }
 
 /// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer word is an `int`,

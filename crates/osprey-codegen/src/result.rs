@@ -291,7 +291,7 @@ pub(crate) fn map_payload(
 /// Bit conversion keeps that unused branch well typed for float/bool contexts.
 fn convert_payload(cg: &mut Codegen, value: Value, inner: LType) -> Result<Value> {
     match (value.ty, inner) {
-        (LType::Str | LType::Ptr, LType::Double | LType::I1) => {
+        (LType::Str | LType::Ptr, LType::F64 | LType::I1) => {
             let bits = crate::conv::box_to_i64(cg, value);
             Ok(crate::conv::unbox_from_i64(cg, &bits.operand, inner))
         }
