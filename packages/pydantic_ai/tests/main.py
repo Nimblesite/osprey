@@ -567,6 +567,147 @@ def schema_walk_cases():
     ]
 
 
+def export_cases():
+    response = M.model_response([M.TextPart(content="hi"), M.ToolCallPart(tool_name="f", args="{}", tool_call_id="c")], "m")
+    request = M.model_request([M.UserPromptPart(content="hello")])
+    message = M.of_request(request)
+    answer = M.of_response(response)
+    profile = openai_model("gpt-4o", {}).profile
+    tool = Tools.tool_definition("f", "does f", schema(ADD_SCHEMA))
+    value = decode("{\"t\":\"x\",\"b\":true,\"l\":[1],\"n\":null}")
+    built = J.obj([J.member("k", JsonInt(1))])
+    return [
+        Check.equal("export.request_limit", Agent.REQUEST_LIMIT, 50),
+        Check.truth("export.strict_keys", listContains(JsonSchema.STRICT_INCOMPATIBLE_KEYS, "minLength") and listContains(JsonSchema.STRICT_COMPATIBLE_STRING_FORMATS, "date-time"), "the strict tables lost their entries"),
+        Check.equal("export.text_at", J.text_at(value, "t", "") + J.text_at(value, "gone", "fallback"), "xfallback"),
+        same("export.bool_at", [J.bool_at(value, "b", False), J.bool_at(value, "gone", False)], [True, False]),
+        Check.equal("export.list_at", len(J.list_at(value, "l")) + len(J.list_at(value, "gone")), 1),
+        same("export.is_null", [J.is_null(J.object_at(value, "n")), J.is_null(J.object_at(value, "gone")), J.is_null(J.object_at(value, "t"))], [True, True, False]),
+        Check.equal("export.member_built", J.encode(built), "{\"k\":1}"),
+        Check.equal("export.member_value", J.encode(J.member_value(unwrap_or(listGet(J.members_of(built), 0), J.member("", JsonNull())))), "1"),
+        Check.equal("export.members_of_other", len(J.members_of(JsonInt(1))), 0),
+        Check.equal("export.dump_message", canon(M.dump_message(message)), canon(M.dump_request(request))),
+        Check.equal("export.dump_response", canon(M.dump_message(answer)), canon(M.dump_response(response))),
+        Check.equal("export.validate_message", error_text(M.validate_message(M.dump_message(answer))), ""),
+        Check.equal("export.validate_message_bad", error_text(M.validate_message(decode("{\"kind\":\"other\"}"))), "unknown message kind: other"),
+        same("export.is_text", mapList(response.parts, M.is_text), [True, False]),
+        same("export.is_tool_call", mapList(response.parts, M.is_tool_call), [False, True]),
+        Check.equal("export.responses", len(M.responses([message, answer, message])), 1),
+        Check.equal("export.map_request", canon(unwrap_or(listGet(ModelsOpenai.map_request(profile, request), 0), JsonNull())), "{\"content\":\"hello\",\"role\":\"user\"}"),
+        Check.truth("export.map_response", contains(canon(unwrap_or(listGet(ModelsOpenai.map_response(profile, response), 0), JsonNull())), "\"tool_calls\""), "the response lost its call"),
+        Check.equal("export.map_messages", len(ModelsOpenai.map_messages(profile, [message, answer], Models.model_request_parameters())), 2),
+        Check.equal("export.map_tool_definition", J.text_at(J.object_at(ModelsOpenai.map_tool_definition(profile, tool), "function"), "name", ""), "f"),
+        Check.equal("export.map_usage", ModelsOpenai.map_usage(decode("{\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4}}")).input_tokens, 3),
+        chat_request_case(profile),
+        Check.equal("export.char_of", ModelsTest.char_of(0) + ModelsTest.char_of(1), "ab"),
+        Check.equal("export.test_model", ModelsTest.test_model("named", "hi", [], 0).model_name, "named"),
+        Check.equal("export.request_usage", Usage.request_usage().input_tokens, 0),
+        Check.equal("export.details_merge", unwrap_or(mapGet(Usage.details_merge({"a": 1}, {"a": 2, "b": 3}), "a"), 0) + unwrap_or(mapGet(Usage.details_merge({"a": 1}, {"a": 2, "b": 3}), "b"), 0), 6),
+        http_post_case(),
+    ]
+
+
+def chat_request_case(profile):
+    provider = Providers.scripted("openai", replies(["{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"done\"}}]}"], 200))
+    match ModelsOpenai.chat_request("gpt-4o", provider, profile, plain(), {}, Models.model_request_parameters()):
+        case E.Ok(value=response):
+            return Check.equal("export.chat_request", M.text(response), "done")
+        case E.Failed(error=error):
+            return Check.failed("export.chat_request", E.message_of(error))
+
+
+def http_post_case():
+    """A real request to a port nothing listens on: a refused connection is an error, never a reply."""
+    match ProvidersHttp.http_post("http://127.0.0.1:1", "/", "{}", ""):
+        case Success(value=reply):
+            return Check.failed("export.http_post_refused", f"got status {reply.status}")
+        case Error(message=message):
+            return Check.truth("export.http_post_refused", message != "", "no reason given")
+
+
+def typed_output(outcome: E.Outcome[Agent.AgentRunResult]) -> str:
+    match outcome:
+        case E.Ok(value=result):
+            return f"{result.output}:{len(Agent.all_messages(result))}"
+        case E.Failed(error=error):
+            return E.message_of(error)
+
+
+def typed_error(error: E.ModelError) -> str:
+    return E.message_of(error)
+
+
+def typed_first_request_part(parts: list[M.ModelRequestPart]) -> M.ModelRequestPart:
+    return unwrap_or(listGet(parts, 0), M.UserPromptPart(content="none"))
+
+
+def typed_first_response_part(parts: list[M.ModelResponsePart]) -> M.ModelResponsePart:
+    return unwrap_or(listGet(parts, 0), M.TextPart(content="none"))
+
+
+def typed_delta(delta: M.ModelResponsePartDelta) -> str:
+    match delta:
+        case M.TextPartDelta(content_delta=content_delta):
+            return content_delta
+        case _:
+            return ""
+
+
+def typed_events(stream: Direct.StreamedResponse) -> list[M.ModelResponseStreamEvent]:
+    return Direct.events_of(stream.response)
+
+
+def typed_gen(generated: ModelsTest.Gen) -> str:
+    return J.encode(generated.value)
+
+
+def typed_profile(profile: Profiles.ModelProfile) -> Profiles.ModelProfile:
+    return profile
+
+
+def typed_reply(reply: Providers.HttpReply) -> int:
+    return reply.status
+
+
+def typed_settings() -> Settings.ModelSettings:
+    return {"seed": JsonInt(1)}
+
+
+def typed_definition(definition: Tools.ToolDefinition) -> str:
+    return definition.name
+
+
+def typed_tool() -> Tools.Tool:
+    return Tools.tool("f", "does f", schema(ADD_SCHEMA), lambda _args: Success(value="ok"))
+
+
+def typed_run_usage(usage: Usage.RunUsage) -> int:
+    return usage.requests
+
+
+def typed_export_cases():
+    run = Agent.run_sync(Agent.agent(ModelsTest.TestModel("hi", ["all"]), "sys"), "go", [])
+    stream = Direct.StreamedResponse(events=[], response=M.model_response([M.TextPart(content="a")], "m"))
+    transformed = JsonSchema.Transformed(schema=JsonNull(), is_strict_compatible=True)
+    generated = ModelsTest.gen_any(decode("{}"), decode("{\"enum\":[\"only\"]}"), 0)
+    return [
+        Check.equal("typed.agent_run_result", typed_output(run), "hi:2"),
+        Check.truth("typed.model_error", contains(typed_error(E.ModelHTTPError(status_code=500, model_name="m", body="b")), "500"), "the status is missing"),
+        Check.truth("typed.request_part", structuralEquals(typed_first_request_part([]), M.UserPromptPart(content="none")), "the fallback part changed"),
+        Check.equal("typed.response_part", M.part_text(typed_first_response_part([])), "none"),
+        Check.equal("typed.delta", typed_delta(M.TextPartDelta(content_delta="more")), "more"),
+        Check.equal("typed.stream_events", len(typed_events(stream)), 2),
+        Check.equal("typed.transformed", transformed.is_strict_compatible, True),
+        Check.equal("typed.gen", typed_gen(generated), "\"only\""),
+        Check.equal("typed.gen_seed", generated.seed, 0),
+        Check.truth("typed.profile", structuralEquals(typed_profile(Profiles.model_profile()), Profiles.model_profile()), "profiles differ"),
+        Check.equal("typed.http_reply", typed_reply(Providers.reply(201, "x")), 201),
+        Check.equal("typed.settings", Settings.setting_int(typed_settings(), "seed", 0), 1),
+        Check.equal("typed.tool_definition", typed_definition(Tools.tool_definition_of(typed_tool())), "f"),
+        Check.equal("typed.run_usage", typed_run_usage(Usage.run_usage()), 0),
+    ]
+
+
 def suite():
     return concat([
         cases(len(Expected.SCENARIO_NAMES), body_case),
@@ -593,6 +734,8 @@ def suite():
         review_cases(),
         accessor_cases(),
         schema_walk_cases(),
+        export_cases(),
+        typed_export_cases(),
     ])
 
 
