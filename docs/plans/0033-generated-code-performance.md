@@ -53,7 +53,7 @@ Every checked operation currently inlines a five-block slow path (handler lookup
 
 ### Phase 5: accumulator recursion under checked arithmetic (specification question)
 
-Turning `1 + count(n - 1)` into a loop reassociates the adds. Under spec 0037 an `overflow` handler receives the operands and the wrapped result and may resume with a value, so the rewrite is observable: the handler would see a different operand pair at a different moment. Options, to be settled in spec 0037 before any code: permit the rewrite only where the compiler proves no overflow can occur; or define that reassociation is permitted and the handler's operands are unspecified beyond the wrapped result; or leave the recursion as is and document the cost. Until that is settled there is no test for this phase.
+Turning `1 + count(n - 1)` into a loop reassociates the adds. Under spec 0037 an `overflow` handler receives the operands and the wrapped result and may resume with a value, so the rewrite is observable: the handler would see a different operand pair at a different moment. Settled in spec 0037 as `[ARITH-EFFECT-NO-REASSOCIATION]`: the recursion stays and the cost is documented.
 
 ### Phase 6: a performance gate that runs on hosted runners
 
@@ -65,6 +65,6 @@ Timing on `ubuntu-latest` is too noisy to gate on and the Mac runners are slower
 - [x] `optimised_ir` oracle and the red linkage test in `crates/osprey-cli/src/tests/execution.rs`.
 - [x] Phase 3 linkage change behind `CodegenOptions`; the red test goes green; profiler, `--symbols`, iOS, Android, Python and wasm web ABI tests re-run.
 - [ ] Re-run `make -C benchmarks bench` after Phase 3 and update `website/src/benchmarks.md` from the recorded data.
-- [ ] Phase 4 cold slow path with its oracle test.
-- [ ] Phase 5 decision recorded in spec 0037.
-- [ ] Phase 6 cachegrind job, thresholds file, entry in `scripts/verify-branch-protection.mjs`.
+- [x] Phase 4 cold slow path with its oracle test: `osp.arith.fault.*` in `effects/requests.rs`, `a_checked_operation_keeps_its_slow_path_out_of_line`.
+- [x] Phase 5 decision recorded in spec 0037: `[ARITH-EFFECT-NO-REASSOCIATION]`, the recursion stays.
+- [ ] Phase 6 cachegrind job `test-instructions`, under the required `CI` job (`benchmarks/instruction_gate.py`, `benchmarks/instruction-ratios.json`); ratios await their first Linux measurement.

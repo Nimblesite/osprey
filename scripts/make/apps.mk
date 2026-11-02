@@ -147,6 +147,7 @@ _website-build: $(WEBSITE_NODE_DEPS)
 _test_bench_tools:
 	@echo "==> Bench tooling tests..."
 	python3 benchmarks/test_merge_results.py
+	python3 benchmarks/test_instruction_gate.py
 
 ## _gpui-self-test: Every desktop app's self-test.json, the script the WinUI host runs in a real
 ##                  window, on the GPUI host. Without a window by default; GPUI_WINDOW= opens one.

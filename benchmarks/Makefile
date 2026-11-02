@@ -3,7 +3,7 @@
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ..
 
-.PHONY: bench bench-osprey
+.PHONY: bench bench-osprey instruction-gate
 
 ## bench: Build, then run the cross-language performance benchmark suite
 ##        (Osprey vs Rust/C/OCaml/Haskell — CPU via hyperfine, peak memory via
@@ -26,3 +26,9 @@ bench:
 ##        Honours BENCH_FILTER=<substr>. See benchmarks/README.md.
 bench-osprey:
 	$(MAKE) -C $(ROOT) _bench-osprey
+
+## instruction-gate: Fail when an Osprey / checked-Rust instruction ratio rises above
+##        instruction-ratios.json (cachegrind, so Linux with valgrind). The required
+##        CI job runs this; its ratios only go down, through instruction_gate.py --record.
+instruction-gate:
+	python3 instruction_gate.py

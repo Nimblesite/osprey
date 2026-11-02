@@ -88,7 +88,9 @@ jobs:
 
       - name: Benchmark publication contracts
         if: steps.filter.outputs.benchmarks == 'true' || steps.filter.outputs.code == 'true'
-        run: python3 benchmarks/test_merge_results.py --tooling-only
+        run: |
+          python3 benchmarks/test_merge_results.py --tooling-only
+          python3 benchmarks/test_instruction_gate.py
 
       # Branch protection lives in GitHub's settings, not in this tree, so it
       # drifts silently — both rulesets were once found `enforcement: disabled`
@@ -515,6 +517,28 @@ jobs:
         run: chmod +x target/release/osprey
       - name: Corpus and goldens (GC)
         run: make _conformance-gc
+
+  test-instructions:
+    name: "Tests: instruction-count ratios"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Install cachegrind
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends valgrind
+      - name: Osprey against checked Rust
+        run: python3 benchmarks/instruction_gate.py
 
   test-corpus-arc:
     name: "Tests: language corpus (arc)"
@@ -1235,6 +1259,7 @@ jobs:
       - test-registry-arc
       - test-python-app-ports
       - test-corpus-gc
+      - test-instructions
       - test-corpus-arc
       - test-proof
       - test-c-runtime
