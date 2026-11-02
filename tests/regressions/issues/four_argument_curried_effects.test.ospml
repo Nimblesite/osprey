@@ -6,7 +6,7 @@ effect Invalid
 flag (broken, msg) = match broken
     true => perform Invalid.report msg
     false =>
-        unchanged = broken
+        _unchanged = broken
 
 validate name age score email =
     flag (name == "", "name is empty")
@@ -18,7 +18,7 @@ validate name age score email =
 audit name age score email =
     mut count = 0
     handle Invalid
-        report message =>
+        report _ =>
             count := count + 1
     r = validate name age score email
     "${r} ${count}"

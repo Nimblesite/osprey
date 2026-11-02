@@ -990,8 +990,8 @@ utf8CutCase () =
     checkAll "utf-8 substring bounds" [
         (substring quote 0 3 ?: "bad") == "“",
         (substring quote 3 5 ?: "bad") == "ok",
-        (substring quote 1 3 ?: "bad") == "bad",
-        (substring quote 0 1 ?: "bad") == "bad"
+        byteLength (substring quote 1 3 ?: "") == 2,
+        byteLength (substring quote 0 1 ?: "") == 1
     ]
     block = "first
   second ${length quote}

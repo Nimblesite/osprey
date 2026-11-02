@@ -85,6 +85,8 @@ tests/regressions/effects/retry_until_valid.test.osp fibers and continuations: `
 tests/regressions/effects/retry_until_valid.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
 tests/regressions/effects/staged_shared.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
 tests/regressions/effects/staged_shared.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/fiber/channel_select.test.osp fibers and continuations: `channel_select`
+tests/regressions/fiber/channel_select.test.ospml fibers and continuations: `channel_select`
 tests/regressions/fiber/cpu_profiling_demo.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
 tests/regressions/fiber/fiber_determinism.test.osp fibers and continuations: `fiber_set_deterministic_mode` is the native fiber runtime, outside the module
 tests/regressions/fiber/fiber_exact_replica.test.osp fibers and continuations: `fiber_set_deterministic_mode` is the native fiber runtime, outside the module

@@ -371,7 +371,8 @@ async function debugCurrentFile() {
 }
 
 export function deactivate(): Promise<void> | undefined {
-  if (!client) {
+  // A server that never started, or whose restart failed, has nothing to stop.
+  if (!client?.needsStop()) {
     return undefined;
   }
   return client.stop();

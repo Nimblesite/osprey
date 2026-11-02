@@ -625,8 +625,9 @@ NUL-terminated string ABI cannot represent.
 
 #### `substring(s: string, start: int, end: int) -> Result<string, Error>` — [BUILTIN-STRING-SUBSTRING]
 Extracts bytes in `[start, end)`. Returns `Error` if
-`start < 0`, `end > length(s)`, `start > end`, or either index falls inside a
-UTF-8 character.
+`start < 0`, `end > length(s)`, or `start > end`. This is the byte-level
+operation a decoder walks with, so a bound inside a UTF-8 character yields part of
+that character.
 
 #### `take(s: string, n: int) -> string` — [BUILTIN-STRING-TAKE]
 Returns the first `n` bytes. If `n <= 0`, returns `""`; if

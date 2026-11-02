@@ -109,14 +109,12 @@ char *osp_string_drop(const char *s, int64_t n) {
     return osp_string_dup_internal(s + cut, len - cut);
 }
 
-/* substring: returns NULL on out-of-range or inverted indices, or on an index
- * inside a UTF-8 character. Caller emits IndexOutOfRange when NULL. */
+/* substring: returns NULL on out-of-range or inverted indices.
+ * Caller emits IndexOutOfRange when NULL. */
 char *osp_string_substring(const char *s, int64_t start, int64_t end) {
     if (!s) return NULL;
     size_t len = strlen(s);
     if (start < 0 || end < start || (size_t)end > len) return NULL;
-    if (osp_string_cut(s, (size_t)start) != (size_t)start ||
-        osp_string_cut(s, (size_t)end) != (size_t)end) return NULL;
     return osp_string_dup_internal(s + start, (size_t)(end - start));
 }
 

@@ -16,7 +16,7 @@ runAll a b =
 audit a b =
     mut count = 0
     handle Bump
-        hit msg =>
+        hit _ =>
             count := count + 1
             count
     r = runAll a b

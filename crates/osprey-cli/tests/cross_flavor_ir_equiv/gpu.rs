@@ -267,7 +267,9 @@ fn backward_branches(ir: &str) -> usize {
     let mut labels = std::collections::BTreeSet::new();
     let mut count = 0;
     for line in ir.lines().map(str::trim) {
-        if let Some(label) = line.strip_suffix(':') {
+        if line.starts_with("define ") {
+            labels.clear();
+        } else if let Some(label) = line.strip_suffix(':') {
             let _ = labels.insert(label);
         } else if line.starts_with("br ") {
             count += line

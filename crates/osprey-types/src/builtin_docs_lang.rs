@@ -155,7 +155,7 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "substring",
-        "Extracts the byte interval s[start, end). Invalid or inverted bounds, or a bound inside a UTF-8 character, return Error.",
+        "Extracts the byte interval s[start, end), even inside a UTF-8 character. Invalid or inverted bounds return Error.",
         ["s" => "The source string", "start" => "Starting byte offset (inclusive)", "end" => "Ending byte offset (exclusive)"],
         "match substring(\"hello\", 1, 4) {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}",
     ),
