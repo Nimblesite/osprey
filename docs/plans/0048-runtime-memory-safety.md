@@ -84,6 +84,7 @@ These stay open as findings in the reports:
 - Compiler stack overflow on extreme nesting, and segfaults on deep non-tail recursion
 - The Chromecast recursion finding, which is unproven
 - WebSocket close, ping and fragmented frames, which [BUILTIN-WEBSOCKET-FRAMING] documents as unimplemented
+- Found while fixing item 1, and left for their own plans: `http_perform` reads a response into memory until the peer closes, with no size limit, so a hostile server can exhaust the client's memory; and response bodies travel as NUL-terminated strings, so a body with a NUL byte is cut short, whether chunked or not
 
 ## Risks
 
