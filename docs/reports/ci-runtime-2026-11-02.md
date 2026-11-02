@@ -191,3 +191,25 @@ Run [41378280720](https://github.com/Nimblesite/osprey/actions/runs/41378280720)
 The run failed on one job, so it does not yet prove the time of a green run. In Integration the Android emulator died ("device offline") after all six bank instrumentation tests had passed, while their screenshots were being pulled. The steps after it (bank e2e, documentation acceptance, web compiler) were skipped, so a passing Integration runs longer.
 
 This failure predates the new shape: the same "device offline" stopped `80fcc980` and `e13285ae`, the second during the language goldens. The cause is not known yet, so the job now prints kernel kills, memory and disk when it fails.
+
+## Measured: the second run
+
+Run [41380639647](https://github.com/Nimblesite/osprey/actions/runs/41380639647), commit `1609311f`: **21.1 minutes of wall clock and 210 runner-minutes**. It failed on two jobs, so it still does not prove the time of a green run, because the bank e2e, documentation and web compiler steps of Integration were skipped again.
+
+- **Format & Analyse** stopped at the release gate guard, which refused a `|| true` in the new diagnostic step. `772d9c2b` removes it. Every later analysis step was skipped, so this run did not exercise them.
+- **Integration** lost the Android emulator again, and this time the host state is on record.
+
+### The Android emulator
+
+All six instrumentation tests passed at 03:16:47. The next adb command, the first screenshot pull, hung for 33 seconds and ended with `error: closed`, then `device offline`, and the emulator's console port refused the action's `emu kill`.
+
+| Finding | Evidence |
+| --- | --- |
+| It is not host memory or disk | 12 GiB of memory available, 88 KiB of swap used, 73 GB of disk free |
+| The kernel did not kill it | `dmesg` shows no out-of-memory kill and no segfault |
+| It is not a step time limit | Passing runs lasted 6.4 to 7.9 minutes; this one died at 7.5 |
+| The new shape did not introduce it | `80fcc980` and `e13285ae` died the same way before it, and the shape did not change the emulator's options |
+
+The step passed on `c6782c6b`, `6119a002`, `13ffbced`, `d7360f5d` and `50fdef0a`, and failed on `80fcc980`, `e13285ae`, `a7eb9848` and `1609311f`. Both finished runs of the new shape are among the failures, which is too few to say whether the rate has changed.
+
+The cause inside the emulator is still unknown. Its own output says nothing at the moment it dies, so the next thing to capture is the guest's log.
