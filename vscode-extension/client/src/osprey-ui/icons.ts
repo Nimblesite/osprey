@@ -59,6 +59,11 @@ const NAMES: Readonly<Record<string, string>> = {
   person: "person",
   cursor: "debug-step-into",
   chevron: "chevron-right",
+  send: "arrow-up",
+  terminal: "terminal",
+  edit: "edit",
+  panel: "layout-sidebar-right",
+  sparkle: "sparkle",
 };
 
 const FALLBACK = "info";

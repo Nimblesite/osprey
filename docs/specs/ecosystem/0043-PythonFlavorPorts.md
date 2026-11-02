@@ -87,6 +87,7 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/safetensors` | the safetensors header and tensor layout, every dtype, `save` byte-identical | in progress |
 | `@osprey/gguf` | GGUF v3 reader and writer, ggml dequantization | planned; no package source yet |
 | `@osprey/jinja2` | the template lexer, parser, expressions, filters and tests | in progress |
+| `@osprey/pydantic-ai` | the pydantic-ai 2.46.0 agent engine: messages and their wire form, `OpenAIChatModel` request/response mapping, `TestModel`, direct requests, the tool-calling `Agent` loop, against pydantic-ai over a mock transport (111 oracle assertions) plus a live DeepSeek agent run judged by a model | shipped |
 | `@osprey/scipy` | `scipy.special` functions | in progress |
 | `@osprey/sklearn` | metrics, preprocessing and model selection over lists against scikit-learn 1.9.1 (312 oracle assertions) | shipped |
 | `@osprey/transformers` | generation layer of transformers 5.20.2: 19 logits processors and warpers, `LogitsProcessorList` order, softmax/argmax/inverse-CDF sampling, stopping criteria, a model-independent `generate` driver (375 oracle assertions) | generation shipped; LLaMA/GPT-2 models in progress |

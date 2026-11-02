@@ -9,6 +9,7 @@ Start with algebraic effects: declare an operation, request it with `perform`, a
 | [Issue Inbox](mobile/README.md) | Shared iOS/Android state and UI, with SQL/HTTP requests interpreted by a platform-command handler |
 | [iPhone counter](ios/README.md) | A native logging callback behind a value effect |
 | [Storage browser](macos/README.md) | One SwiftUI app for the Mac and iPhone: Osprey owns every screen of a folder-by-folder storage browser, with hidden files on or off |
+| [Osprey Agent](agent/README.md) | A coding agent on `@osprey/native` and `@osprey/pydantic-ai`: conversations, tools that edit and run your project, and a SwiftUI host |
 | [Graphics scenes](graphics/README.md) | Osprey runs three real-time scenes; a Swift Metal host draws them on macOS and a Direct3D 12 bridge on Windows |
 | [GPT-2](gpt2/README.md) | The published GPT-2 weights, generation and a training step written once against a static `Tensor` effect and run by two handlers — host lists or the GPU surface, on the CPU or on Metal or OpenCL — with identical output on the CPU, checked against a pure-Python reference |
 | [Python application ports](python/ports/README.md) | Train a micrograd classifier, rank vectors with a FAISS-style index, and evaluate text with ROUGE using Osprey's Python syntax flavor |

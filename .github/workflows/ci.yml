@@ -993,6 +993,9 @@ jobs:
           target/release/osprey examples/mobile/inbox/test --run
           target/release/osprey examples/projects/modules/mobile/app/test --run
 
+      - name: Osprey Agent suites
+        run: make _test_agent
+
       - name: Set up Java for Android
         uses: actions/setup-java@v6
         with:
@@ -1140,6 +1143,7 @@ jobs:
               cargo build --release -p osprey-cli
               bash apps/workbench/hosts/apple/run.sh --build
               swift test --package-path apps/workbench/hosts/apple
+              swift test --package-path hosts/swift/Tests
     steps:
       - uses: actions/checkout@v7
         with:

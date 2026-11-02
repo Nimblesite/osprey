@@ -1,0 +1,11 @@
+[project]
+name = "pydantic_ai"
+source_roots = ["src"]
+python_sources = ["src/json_util.py", "src/json_schema.py", "src/exceptions.py", "src/usage.py", "src/tools.py", "src/settings.py", "src/profiles.py", "src/messages.py", "src/models.py", "src/providers.py", "src/providers_http.py", "src/models_openai.py", "src/models_test.py", "src/direct.py", "src/agent.py"]
+default_namespace = "pydantic_ai"
+
+[package]
+name = "@osprey/pydantic-ai"
+license = "MIT"
+summary = "The pydantic-ai agent engine: messages, models, the OpenAI chat API, TestModel, direct requests and the tool-calling agent loop"
+keywords = ["agents", "llm", "openai", "pydantic-ai", "python-flavor"]

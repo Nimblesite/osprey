@@ -47,6 +47,7 @@ test: build
 	$(MAKE) _test_registry REGISTRY_MEMORY=gc
 	$(MAKE) _test_registry REGISTRY_MEMORY=arc
 	$(MAKE) _test_python_app_ports
+	$(MAKE) _test_agent
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_hunt_mock
 # The KLEE engine gates (_test_hunt, _test_hunt_crashes, _test_hunt_clean) are
@@ -95,6 +96,12 @@ _test_packages:
 
 _coverage_check_packages:
 	python3 scripts/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+.PHONY: _test_agent
+# Osprey Agent's turn logic and real update path: no network and no window.
+_test_agent:
+	$(BIN) examples/agent/test --run --quiet --no-warnings
+	$(BIN) examples/agent/test-app --run --quiet --no-warnings
 
 .PHONY: _python-app-ports _test_python_app_ports
 _python-app-ports: build

@@ -37,6 +37,11 @@ public static class Glyphs
         ["person"] = "",
         ["cursor"] = "",
         ["chevron"] = "",
+        ["send"] = "",
+        ["terminal"] = "",
+        ["edit"] = "",
+        ["panel"] = "",
+        ["sparkle"] = "",
     };
 
     /// <summary>The glyph for <paramref name="name"/>; the empty name is no symbol.</summary>
