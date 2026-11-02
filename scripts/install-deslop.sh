@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Install the `deslop` duplication-gate CLI at the LATEST published release.
+# Install the `deslop` duplication-gate CLI at the release this repo gates on.
 #
-# Local / devcontainer installer for the gate binary. Always resolves the
-# newest release, matching the CI duplication gate.
+# Local / devcontainer installer for the gate binary, matching the CI duplication gate.
 # Downloads the release tarball,
 # verifies its SHA-256, and installs the `deslop` binary onto PATH.
 #
@@ -19,21 +18,13 @@ say()  { echo -e "${CYAN}${BOLD}▶ $*${RESET}"; }
 ok()   { echo -e "${GREEN}✓ $*${RESET}"; }
 fail() { echo -e "${RED}✗ $*${RESET}" >&2; exit 1; }
 
-# An anonymous API call shares the runner IP's hourly quota with every other
-# job on it and gets a 403 once that runs out; a token has its own.
-auth=()
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then auth=(-H "Authorization: Bearer $GITHUB_TOKEN"); fi
-
-# Avoid `curl | grep -m1`: grep's early exit fails under pipefail.
-say "Resolving latest deslop release"
-latest="$(curl -sSfL ${auth[@]+"${auth[@]}"} https://api.github.com/repos/Nimblesite/Deslop/releases/latest)" \
-    || fail "could not reach the GitHub API to resolve the latest deslop release"
-DESLOP_VERSION="$(awk -F'"' '/"tag_name"/ { v = $4; sub(/^v/, "", v); print v; exit }' \
-    <<<"$latest")"
-[[ -n "$DESLOP_VERSION" ]] || fail "could not resolve latest deslop release from the GitHub API"
+# Pinned: 0.39.0 added an Osprey grammar that returns no parse tree for this repo's own sources
+# (benchmarks/cases/binarytrees/binarytrees.ospml among them) and fails the whole analysis. Move this
+# forward once a release parses them.
+DESLOP_VERSION="0.38.0"
 BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSION}"
 
-# Already at the latest release? Nothing to do (keeps `make setup` idempotent).
+# Already at this release? Nothing to do (keeps `make setup` idempotent).
 if command -v deslop &>/dev/null && deslop --version 2>/dev/null | grep -q "${DESLOP_VERSION}"; then
     ok "deslop ${DESLOP_VERSION} already installed ($(command -v deslop))"
     exit 0

@@ -3,7 +3,7 @@ import registry::Policy
 import registry_host::Native
 import registry_e2e::Probes
 
-/// The end-to-end demo of plan 0020 Milestone 0, run by `make registry-test`
+/// The end-to-end demo of plan 0020 Milestone 0, run by `make -C packages registry-test`
 /// after the suites: start the Osprey server over the sample registry on a
 /// loopback port, request every endpoint over HTTP, fetch the packages with
 /// the client, build a consumer project against them, and stop the server.

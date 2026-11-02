@@ -7,7 +7,7 @@
 //! holding `osprey.toml`) run as one suite, or a directory searched
 //! recursively for `*.test.osp` / `*.test.ospml`, sorted for determinism,
 //! skipping hidden, `target`, and `node_modules` directories. Each file
-//! compiles and runs like `osprey <file> --run --no-warnings`: a suite is
+//! compiles and runs like `osprey <file> --run --quiet --no-warnings`: a suite is
 //! executed, not reviewed, and the warning pass re-infers the whole program
 //! once per annotation site. Suites execute concurrently, then their TAP
 //! output is replayed in sorted file order under `# file:` headers. The exit

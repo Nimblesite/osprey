@@ -97,7 +97,7 @@ public sealed class BoundaryTests
     // Answers every request, oldest first, dispatching each completion against the newest state.
     static async Task<Envelope> Settled(Library library, Envelope envelope, RegionStore regions)
     {
-        var capabilities = new Capabilities(() => Task.FromResult<string?>(null), new Store(Path.Combine(Path.GetTempPath(), "osprey-store-unused")));
+        var capabilities = new Capabilities(new Pickers(() => Task.FromResult<string?>(null), _ => Task.FromResult<string?>(null)), new Store(Path.Combine(Path.GetTempPath(), "osprey-store-unused")));
         var pending = new Queue<JsonElement>(envelope.Requests);
         for (var round = 0; round < Rounds && pending.TryDequeue(out var request); round++)
         {

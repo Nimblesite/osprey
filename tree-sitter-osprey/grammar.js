@@ -512,7 +512,8 @@ module.exports = grammar({
         ),
         prec.right(
           PREC.ternary,
-          seq(field('condition', $.expression), '?', ':', field('else', $.expression)),
+          // `?:` is one token ([LEX-RESULT-DEFAULT-TOKEN]).
+          seq(field('condition', $.expression), '?:', field('else', $.expression)),
         ),
       ),
 
@@ -638,6 +639,7 @@ module.exports = grammar({
     type_constructor: ($) =>
       prec.dynamic(1, seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments), '{', $.field_assignments, '}')),
     type_arguments: ($) => seq('<', $.type_list, '>'),
+    // Implements [SYNTAX-TYPE-ARGUMENTS]: `<` touches the callee.
     _call_type_arguments: ($) => seq($._type_application_ahead, token.immediate('<'), alias($._call_type_list, $.type_list), '>'),
     // Keep misplaced declaration markers visible for a precise diagnostic.
     _call_type_list: ($) => sep1(',', seq(optional(field('variance', choice('in', 'out'))), $._type)),

@@ -179,13 +179,13 @@ suite("CPU profiling — debug-launched end-to-end", () => {
     assert.equal(profilerStore().profiler.value.cpu, "idle", "stop clears the session");
   });
 
-  test("flamegraph webview HTML renders the dashboard from a profile result in Osprey's palette", () => {
+  test("flamegraph webview HTML renders the dashboard from a profile result in Osprey's palette", async () => {
     const result: ProfileResult = {
       sessionId: "s-test", duration: 3, totalSamples: 600, outputFile: "/tmp/profile.speedscope.json",
       hotFunctions: [{ name: HOT_FUNCTION, file: program, line: HOT_LINES.first, samples: 540, percentage: 90, selfPercentage: 85 }],
       hotLines: [{ file: program, line: HOT_LINES.first + 2, samples: 500, percentage: 83 }],
     };
-    const html = buildFlamegraphHtml(result);
+    const html = await buildFlamegraphHtml(result);
     assert.ok(html.includes(HOT_FUNCTION), "the hot functions are embedded");
     assert.ok(html.toLowerCase().includes(OSPREY_PALETTE.critical), "Osprey's heat palette is used");
     assert.ok(html.includes("navigateToSource"), "rows navigate to source");
@@ -193,15 +193,15 @@ suite("CPU profiling — debug-launched end-to-end", () => {
     assert.ok(html.includes(String(result.totalSamples)), "the summary shows the real sample count");
   });
 
-  test("the flamegraph's Speedscope link uses a working import path, not a dead file:// URL", () => {
-    const html = buildFlamegraphHtml({ sessionId: "s-test", duration: 3, totalSamples: 600, outputFile: "/tmp/profile.speedscope.json", hotFunctions: [], hotLines: [] });
+  test("the flamegraph's Speedscope link uses a working import path, not a dead file:// URL", async () => {
+    const html = await buildFlamegraphHtml({ sessionId: "s-test", duration: 3, totalSamples: 600, outputFile: "/tmp/profile.speedscope.json", hotFunctions: [], hotLines: [] });
     assertHtml(html, { openSpeedscope: "the Speedscope link posts an openSpeedscope message" });
     assertHtml(html, { "speedscope.app/#profileURL=file://": "never the always-failing speedscope file:// URL" }, false);
   });
 
-  test("flamegraph HTML escapes untrusted frame names/paths and nonce-gates its inline script", () => {
+  test("flamegraph HTML escapes untrusted frame names/paths and nonce-gates its inline script", async () => {
     const hostile = "</script><img src=x onerror=alert(1)>";
-    const html = buildFlamegraphHtml({
+    const html = await buildFlamegraphHtml({
       sessionId: "s-test", duration: 3, totalSamples: 600, outputFile: "/tmp/profile.speedscope.json",
       hotFunctions: [
         { name: hostile, file: hostile, line: 1, samples: 540, percentage: 90, selfPercentage: 85 },

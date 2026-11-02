@@ -27,6 +27,6 @@ Check every application against its golden concurrently under GC and ARC memory:
 python3 scripts/test-python-app-ports.py
 ```
 
-Expect six `PASS` lines from the application runner. The runner requires zero exit status, exact UTF-8 output bytes, positive passing tests, zero failed/skipped tests and exactly one zero-live-object sentinel under ARC. `--memory gc`, `--memory arc`, `--app classifier` and `--compiler <path>` focus a run. `make python-app-ports` runs the complete matrix after building the compiler.
+Expect six `PASS` lines from the application runner. The runner requires zero exit status, exact UTF-8 output bytes, positive passing tests, zero failed/skipped tests and exactly one zero-live-object sentinel under ARC. `--memory gc`, `--memory arc`, `--app classifier` and `--compiler <path>` focus a run. `make -C apps python-app-ports` runs the complete matrix after building the compiler.
 
 After an intentional output change, regenerate the GC golden with `python3 scripts/test-python-app-ports.py --memory gc --write-expected`, review the diff, then verify GC and ARC against it. Failed tests cannot be recorded as a golden. These examples demonstrate the listed workflows; they do not implement the original apps' complete command-line interfaces, plotting or file-processing features.

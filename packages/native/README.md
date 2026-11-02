@@ -32,17 +32,22 @@ flowchart LR
 | Path | Contents |
 | --- | --- |
 | `src/base.ospml` | `Pick::either` and `Lists`: a stable comparator sort, slices, flattening, distinctness, positions and `find`, `any`, `all` over Osprey's built-in list functions |
-| `src/doc.ospml` | `Doc`: total readers and member builders over the built-in `Json`, for the framework's own trusted state |
 | `src/math.ospml` | `Math` and `Maths::encode`/`Maths::decode`: typed mathematical layout trees and their protocol round trip ([UI-COMPONENTS-MATH]) |
 | `src/symbol.ospml` | `Symbol` (semantic icons), `Platform` and `Symbols` ([UI-COMPONENTS-SYMBOLS], [UI-CONTEXT-PLATFORM]) |
 | `src/node.ospml` | `Node<A>`, `Tab<A>`, `Row<A>`, `Binding<A>`, the tone, role, side and axis unions, `Splitters` and the `Ui` constructors ([UI-COMPONENTS]) |
 | `src/encode.ospml` | `Encode::walk`: one depth-first walk that encodes a region and collects its bindings in ordinal order ([UI-PROTOCOL]) |
 | `src/message.ospml` | `Message<A>`, `Input`, `Events::bind`, `Messages::route` and `Inputs::route`: typed delivery of taps, text, flags, choices, sizes, completions, lifecycle, frames and scene input ([UI-EVENTS], [UI-SCENE]) |
 | `src/capability.ospml` | `Capability`, `Request`, `SliceWrite` and `Requests` ([UI-EFFECTS]) |
-| `src/scene.ospml` | `Scenes`: scene primitives and packed colours ([UI-SCENE]) |
+| [`../graphics`](../graphics/README.md) | `Scenes`: scene primitives and packed colours ([UI-SCENE]), in their own package, `@osprey/graphics` |
+| [`../json`](../json/README.md) | `Doc`: total readers, kind checks and member builders over the built-in `Json`, in their own package, `@osprey/json` |
 | `src/reactive.ospml` | The `Slices` effect for host-held slices, `Keyed::region` and `Signals::written` ([UI-SIGNALS], [UI-REGIONS]) |
 | `src/theme.ospml` | `Theme`, `Token`, `Contrast` (WCAG 2 luminance and ratio) and `Themes` ([UI-THEME]) |
 | `src/runtime.ospml` | `Runtime::start` and `Runtime::dispatch`: the session, the envelope and the serialized update ([UI-STORE], [UI-PROTOCOL]); `Runtime::begin` and `Runtime::proceed` for a resident session ([UI-RESIDENT]) |
+| `src/document.ospml` | The typed machine document: `Value`, `Condition`, `MachineLayer`, `Template`, `Stamp`, `Area`, `Skin` and `Accessible` ([UI-MACHINE-DOC]) |
+| `src/machine_doc.ospml` | `MachineDocs`: the JSON edge of a machine, which checks a document, decodes it once and encodes machine state for signals ([UI-MACHINE-DOC]) |
+| `src/machine.ospml` | `Machines` and `Values`: typed inputs, parallel layers, transitions and requests settled ([UI-MACHINE](../../docs/specs/platforms/UiMachines.md)) |
+| `src/templates.ospml` | `Templates`: a machine's node template and skins rendered to ordinary nodes ([UI-MACHINE-VIEW]) |
+| `src/canvas.ospml` | `Canvases`: canvas artboards drawn as scene primitives, listeners hit-tested and the `Accessible` tree with `act` ([UI-MACHINE-CANVAS], [UI-MACHINE-A11Y]) |
 | `src/stream.ospml` | The `SceneStream` effect and `Streams`: a resident session's rects, discs and sprites sent to the host outside the envelope ([UI-SCENE-STREAM]) |
 | `tests/` | The package's suite: a two-slice probe application driven through the real `start`/`dispatch` path, plus encoding, ordinal, splitter, request, document, theme and list cases |
 
@@ -212,7 +217,7 @@ Semantic colour tokens, spacing, shapes and motion durations are Osprey values. 
 `Themes::boardTokens` names the two board colours in order: `board` for the slate and `chalk` for the strokes. A theme without those tokens draws a board on `canvas` in `primary`.
 ## Scenes and frames [UI-SCENE]
 
-A `Scene` node is a surface in the application's own unit space, drawn from a list of `Primitive` values: rectangles, discs, line strips, sprites by atlas index and glyph runs, each with a position, size, rotation, a packed `0xRRGGBBAA` colour and a depth that orders layers, and paths: path-builder steps (move, line, quadratic and cubic curves, arcs, polygons, close), a fill or a stroke with width, dashes and joins, a solid or linear-gradient `Paint` of float `Tint`s, and a translate-and-scale transform. `Scenes` builds them. `Ui::canvas` is a scene in window pixels, without a unit space or letterbox; `examples/gpui/painting` uses it to reproduce GPUI's own painting example pixel for pixel. The host scales the surface to fit, draws one pass per depth and sends keys and pointer positions with the Shift state, in scene units, through the node's single binding as `Controlled` messages; `Inputs::route` takes them apart. The encoding is one small array per primitive with a type code first, so a painter reads it without a schema and the encoder builds it in one `mapList`.
+A `Scene` node is a surface in the application's own unit space, drawn from a list of `Primitive` values: rectangles, discs, line strips, sprites by atlas index and glyph runs, each with a position, size, rotation, a packed `0xRRGGBBAA` colour and a depth that orders layers, and paths: path-builder steps (move, line, quadratic and cubic curves, arcs, polygons, close), a fill or a stroke with width, dashes and joins, a solid or linear-gradient `Paint` of float `Tint`s, and a translate-and-scale transform. `Scenes` builds them. `Ui::canvas` is a scene in window pixels, with its origin at the window's top left; `examples/gpui/painting` uses it to reproduce GPUI's own painting example pixel for pixel. The host draws the surface at its fixed `zoom` from its region's top left, never resizing it with the window, draws one pass per depth and sends keys and pointer positions with the Shift state, in scene units, through the node's single binding as `Controlled` messages; `Inputs::route` takes them apart. The encoding is one small array per primitive with a type code first, so a painter reads it without a schema and the encoder builds it in one `mapList`.
 
 An application that animates asks for the host's frame clock with the `Animate` capability and turns it off the same way. While the clock runs, every display refresh reaches `update` as a `Frame` carrying the seconds since the previous one; `update` moves the store and the scene's region refreshes like any other. Nothing in the host steps a simulation. The framework's per-frame cost at a given entity count is measured by `hosts/gpui/bench` and recorded in [plan 0036](../../docs/plans/0036-gpui-desktop-host.md).
 

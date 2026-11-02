@@ -96,7 +96,7 @@ sealed partial class Renderer
         var key = $"{scope.Region}#{Envelopes.Number(node, "event")}";
         if (!scenes.TryGetValue(key, out var view))
         {
-            view = new SceneView();
+            view = new SceneView(problem => report([problem]));
             scenes[key] = view;
         }
         Detach(view.Element);
@@ -138,14 +138,23 @@ sealed partial class Renderer
         }
     }
 
-    /// <summary>Presses and releases a key in the first scene drawn, as its keyboard would; false when none is.</summary>
-    public bool Press(string key)
+    /// <summary>
+    /// The size, in window units, of a sized scene that is the whole application, as a bare canvas
+    /// such as a skinned player is; null when the root region is anything else.
+    /// </summary>
+    public (double Width, double Height)? CanvasSize() =>
+        regions.Find(RegionStore.Root) is { } root && Envelopes.Text(root.Node, "kind") == "scene"
+            ? SceneDecoder.Opening(root.Node)
+            : null;
+
+    /// <summary>Acts on the first scene drawn, as its keyboard or pointer would; false when none is.</summary>
+    public bool InScene(Action<SceneView> act)
     {
         if (scenes.Values.FirstOrDefault() is not { } scene)
         {
             return false;
         }
-        scene.Press(key);
+        act(scene);
         return true;
     }
 

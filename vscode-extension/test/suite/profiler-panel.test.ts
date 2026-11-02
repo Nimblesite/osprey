@@ -124,18 +124,18 @@ suite("profiler-panel singleton", () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   });
 
-  test("creates, reuses, and recreates after dispose", () => {
-    showFlamePanel(model, SUMMARY, "/w/fib.osp");
+  test("creates, reuses, and recreates after dispose", async () => {
+    await showFlamePanel(model, SUMMARY, "/w/fib.osp");
     assert.deepStrictEqual(flamePanel.describe(), { viewType: "ospreyProfiler", title: "Profile: fib.osp" });
     assert.ok(flamePanel.html()?.includes('id="flame-data"'));
     assert.ok(flamePanel.html()?.includes("<canvas"));
 
-    showFlamePanel(model, SUMMARY, "/w/other.ospml");
+    await showFlamePanel(model, SUMMARY, "/w/other.ospml");
     assert.strictEqual(flamePanel.describe()?.title, "Profile: other.ospml", "the one panel is retitled");
 
     flamePanel.dispose();
     assert.ok(!flamePanel.isOpen(), "a disposed panel is forgotten");
-    showFlamePanel(model, SUMMARY, "/w/fib.osp");
+    await showFlamePanel(model, SUMMARY, "/w/fib.osp");
     assert.ok(flamePanel.isOpen(), "a disposed panel is recreated");
     flamePanel.dispose();
   });

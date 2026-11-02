@@ -41,7 +41,7 @@ Exit: **met for the window**; the probe app runs in a GPUI window. The envelope 
 ### Phase 1 — frame clock, scene and memory
 
 1. [x] `Frame elapsed` on `Message<A>`, decoded from a `{"kind":"frame","elapsed":s}` event; the clock is requested with the `Animate` capability rather than a start-envelope flag, so an application can stop it while paused (`message.ospml`, `runtime.ospml`, `capability.ospml`). `Messages::route` gained the frame and scene-input handlers; the three in-repo callers were updated, and Vigil needs the same two lambdas when it takes the new package.
-2. [x] `Scene` node, `Primitive` union, `Scenes` constructors, `SceneInput` binding, `Input`/`Controlled` messages and `Inputs::route` (`node.ospml`, `scene.ospml`, `encode.ospml`, `message.ospml`). Encoding: one small array per primitive with a type code first, built by one `mapList`. The first version appended value by value into one flat array and spent 60% of each frame in ARC retain/release from tail clones; the per-primitive array halved the frame cost.
+2. [x] `Scene` node, `Primitive` union, `Scenes` constructors, `SceneInput` binding, `Input`/`Controlled` messages and `Inputs::route` (`node.ospml`, `encode.ospml`, `message.ospml`, and `scene.ospml` now in `packages/graphics`). Encoding: one small array per primitive with a type code first, built by one `mapList`. The first version appended value by value into one flat array and spent 60% of each frame in ARC retain/release from tail clones; the per-primitive array halved the frame cost.
 3. [x] Scene painter, `Animate` adapter and frame clock in Rust (`hosts/gpui/src/scene.rs` with `scene/decode.rs`, `scene/paint.rs`, `scene/input.rs`; `clock.rs`; `store.rs`). Shapes are decoded once per region revision and sorted by depth; rects, sprites and discs paint as quads, strips as stroked paths, glyphs through the text system, all clipped to the letterboxed field. The clock dispatches `frame` from `on_next_frame` with `elapsed` clamped to 0.1 s; scene keys are filtered to the spec vocabulary and pointers are converted through the same letterbox transform; scene input names the region's live revision because a scene re-renders every frame. The window activates on open, since macOS throttles the display clock of a window behind the terminal. Not done: textured sprites (the atlas is not loaded; Flock draws discs) and rotation. Measured in the window with `--bench` (M-series Mac, 120 Hz display, window focused): Flock at 1,000 birds runs 107 to 120 fps, dispatch 5.8 to 7.3 ms, paint 0.3 ms, envelope 90 to 140 KB.
 4. [x] Memory: the CLI defaults every hosted target to ARC (`crates/osprey-cli/src/invocation.rs`, `apply_default_memory`), so the macOS archive frees per-frame garbage; the README line claiming the Apple allocator never frees was stale and is fixed. Flat memory over ten minutes is still to be observed in the window.
 5. [x] Measured with `hosts/gpui/bench` (Osprey only, no host; 120 frame events at 5,000 sprites, M-series Mac, `--memory=arc`, user time). "Framework" is the dispatch minus the bench's own parse of the returned envelope, which the Rust host does instead with serde.
@@ -116,7 +116,7 @@ Exit: Linux and Windows smoke runs green in CI. Met on 2026-10-28.
 ## Commands (to exist by the end of Phase 2)
 
 ```sh
-make macos
+make -C apps macos
 hosts/gpui/run.sh --smoke              # the probe through the real boundary, no window
 hosts/gpui/bench                       # framework-only per-frame cost, see hosts/gpui/README.md
 examples/gpui/flock/run.sh            # build and open

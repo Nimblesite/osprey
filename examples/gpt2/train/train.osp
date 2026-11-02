@@ -4,7 +4,7 @@
 // stdin: the prompt, and the interpretation to run under — `gpu` for the GPU
 // surface (its products on the device `OSPREY_GPU` selects) or `lists` for
 // plain host lists.
-// `make gpt2-train PROMPT="..."` runs it, and examples/gpt2/reference.py prints
+// `make -C apps gpt2-train PROMPT="..."` runs it, and examples/gpt2/reference.py prints
 // the same loss and gradient sums from the same accumulation order. The model
 // lives in ../model; this file is the backward pass, written as the same
 // `Tensor` operations as the forward one, so the handler `main` installs

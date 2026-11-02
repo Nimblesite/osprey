@@ -44,7 +44,7 @@ const EFFECT_REQUIREMENT_SOURCES: [(&str, osprey_syntax::Flavor); 2] = [
 
 #[test]
 fn effect_requirements_follow_every_editor_view() -> Result<(), String> {
-    use lspkit_vfs::PositionEncoding::Utf16;
+    use lspkit::vfs::PositionEncoding::Utf16;
     for (source, flavor) in EFFECT_REQUIREMENT_SOURCES {
         let (uri, line, column) = match flavor {
             osprey_syntax::Flavor::Default => ("file:///requirements.osp", 2, 4),

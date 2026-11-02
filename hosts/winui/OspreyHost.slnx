@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="OspreyHost.Core/OspreyHost.Core.csproj" />
+  <Project Path="OspreyHost.Tests/OspreyHost.Tests.csproj" />
+  <Project Path="OspreyHost/OspreyHost.csproj" />
+</Solution>

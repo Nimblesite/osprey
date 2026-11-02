@@ -159,8 +159,8 @@ A positional payload is declared, constructed, and matched in slot order:
 type Tree = Leaf | Node(Tree, Tree)
 let tree = Node(Node(Leaf, Leaf), Leaf)
 
-fn size(tree) -> int = match tree {
-    Leaf          => Success { value: 1 }
+fn size(tree) = match tree {
+    Leaf          => 1
     Node(left, _) => 1 + size(left)
 }
 ```
@@ -239,7 +239,7 @@ let zero = fn() => 0
 The pipe-delimited form requires at least one parameter because `||` is the
 logical-OR token.
 
-### Call-site type arguments [TYPE-GENERICS-APPLY]
+### Call-site type arguments [SYNTAX-TYPE-ARGUMENTS]
 
 A call may carry an explicit type-argument list between the callee and its
 arguments. The list is recognised only when the `<` immediately follows the

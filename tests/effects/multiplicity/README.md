@@ -21,7 +21,7 @@ is the positive control for `[MULTI-HANDLE-ONCE]`, which is a rule about one
 control **path**: reading it as "does this arm contain a `resume`" would reject
 this program, and the shape is the sanctioned exception-style handler.
 
-The effect is `Email.deliver`, not the spec's `Email.send`, only because `send`
+The effect is `Email.deliver`, not `Email.send`, only because `send`
 is a hard keyword in the ML flavor and the twins must be the same program.
 
 Two further cases cover the rest of the surface:

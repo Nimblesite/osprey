@@ -16,7 +16,7 @@ migration:
 Example programs and golden tests live at the top-level
 [`../examples/`](../examples): `tests/` (each program matches its
 `.expectedoutput` in the differential harness `crates/run_test_corpus.sh`, run
-by `make test` under every memory backend and by `make wasm` on wasm32) and
+by `make test` under every memory backend and by `make -C website wasm` on wasm32) and
 `examples/failscompilation/` (programs the compiler must reject).
 
 ## Building

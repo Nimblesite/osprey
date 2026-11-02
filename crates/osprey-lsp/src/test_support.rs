@@ -90,13 +90,13 @@ impl Drop for ProjectFixture {
 }
 
 pub(crate) fn view(uri: &str) -> crate::workspace::View {
-    let vfs = lspkit_vfs::Vfs::new(lspkit_vfs::PositionEncoding::Utf16);
+    let vfs = lspkit::vfs::Vfs::new(lspkit::vfs::PositionEncoding::Utf16);
     crate::project_cache::ProjectCache::default().view(uri, &vfs)
 }
 
 macro_rules! disk_feature {
     ($module:ident::$name:ident -> $result:ty $(, $extra:ident: $ty:ty)?) => {
-        pub(crate) fn $name(text: &str, uri: &str, line: u32, character: u32, encoding: lspkit_vfs::PositionEncoding $(, $extra: $ty)?) -> $result {
+        pub(crate) fn $name(text: &str, uri: &str, line: u32, character: u32, encoding: lspkit::vfs::PositionEncoding $(, $extra: $ty)?) -> $result {
             crate::$module::$name(text, uri, line, character, encoding $(, $extra)?, &view(uri))
         }
     };

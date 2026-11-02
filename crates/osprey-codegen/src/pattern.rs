@@ -364,6 +364,27 @@ fn merged_owner(cg: &mut Codegen, incoming: &[(Value, String)]) -> Option<String
             None => false,
         })
         .then_some(owner.clone())
+        .or_else(|| typed_list_owner(incoming))
+}
+
+/// The owner of a join of lists whose element tags differ: the tag of an arm
+/// inference typed. An empty literal inference could not name elements for is
+/// tagged by default, and it has no elements for that tag to describe. Dropping
+/// the owner sent `length` to the string runtime, which read the list handle as
+/// text ([BUILTIN-COLLECTION-LENGTH]).
+fn typed_list_owner(incoming: &[(Value, String)]) -> Option<String> {
+    let all_lists = incoming.iter().all(|(value, _)| {
+        value
+            .osp_ty
+            .as_deref()
+            .is_some_and(crate::collections::is_list_owner)
+    });
+    all_lists.then_some(())?;
+    let typed = merged_inference(incoming)?;
+    incoming
+        .iter()
+        .find(|(value, _)| value.inferred_type.as_ref() == Some(&typed))
+        .and_then(|(value, _)| value.osp_ty.clone())
 }
 
 /// Resolve the concrete success-slot layout for a Result-valued match.  A bare

@@ -23,7 +23,7 @@ sealed partial class Renderer
         ["swatch"] = (_, node) => Swatch(node), ["slot"] = Slot, ["stack"] = Stack, ["section"] = Section,
         ["screen"] = Screen, ["split"] = Split, ["layer"] = Layer, ["context-menu"] = ContextMenu, ["aside"] = Aside,
         ["tabs"] = Tabs, ["rows"] = Rows, ["button"] = Button, ["field"] = Field, ["toggle"] = Toggle,
-        ["picker"] = Picker, ["disclosure"] = Disclosure, ["alert"] = Alert, ["scene"] = Scene,
+        ["picker"] = Picker, ["disclosure"] = Disclosure, ["alert"] = Alert, ["scene"] = Scene, ["themed"] = Themed,
     };
 
     // Theme resources are cast through WinRT's own query rather than a CLR cast: under Native AOT a
@@ -57,7 +57,12 @@ sealed partial class Renderer
 
     TextBlock Words(string text, string role = "body", string tone = "primary")
     {
-        var block = new TextBlock { Text = text, Style = Role(role), Foreground = Tone(tone), TextWrapping = TextWrapping.Wrap };
+        // Primary words take the ink they inherit, the theme's text colour, so a themed body's ink reaches them.
+        var block = new TextBlock { Text = text, Style = Role(role), TextWrapping = TextWrapping.Wrap };
+        if (tone != "primary" && tone != "")
+        {
+            block.Foreground = Tone(tone);
+        }
         if (role == "mono")
         {
             block.FontFamily = new FontFamily("Cascadia Mono, Consolas");

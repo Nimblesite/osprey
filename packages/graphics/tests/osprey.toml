@@ -1,0 +1,8 @@
+[project]
+name = "graphics-tests"
+source_roots = [".", "../src"]
+default_namespace = "graphics_tests"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

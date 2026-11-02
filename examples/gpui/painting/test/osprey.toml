@@ -1,6 +1,6 @@
 [project]
 name = "painting-tests"
-source_roots = [".", "../src", "../../../../packages/native/src"]
+source_roots = [".", "../src", "../../../../packages/native/src", "../../../../packages/graphics/src", "../../../../packages/json/src"]
 default_namespace = "paintingtests"
 entry = "main.ospml"
 

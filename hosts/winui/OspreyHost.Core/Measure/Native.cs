@@ -31,6 +31,25 @@ internal static unsafe partial class Native
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     public static partial SafeFileHandle CreateFile(string name, uint access, uint share, nint security, uint disposition, uint flags, nint template);
 
+    /// <summary>CREATEFILE2_EXTENDED_PARAMETERS: the flags <c>CreateFile</c> takes beside its attributes.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct OpenParameters
+    {
+        public uint Size;
+        public uint Attributes;
+        public uint Flags;
+        public uint SecurityQos;
+        public nint Security;
+        public nint Template;
+    }
+
+    /// <summary>
+    /// <c>CreateFile</c> through the broker [WINUI-HOST-SANDBOX]: in an AppContainer it opens what the
+    /// person granted, a folder they picked or the whole file system under <c>broadFileSystemAccess</c>.
+    /// </summary>
+    [LibraryImport("api-ms-win-core-file-fromapp-l1-1-0.dll", EntryPoint = "CreateFile2FromAppW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    public static partial SafeFileHandle CreateFileFromApp(string name, uint access, uint share, uint disposition, OpenParameters* parameters);
+
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetFileInformationByHandleEx(SafeFileHandle file, int infoClass, byte* buffer, uint size);

@@ -10,7 +10,7 @@
 //! Implements [LSP-HOVER], [LSP-HOVER-VARIABLES], [LSP-HOVER-DOCS],
 //! [LSP-HOVER-WRITTEN], [LSP-HOVER-PARAM-DOCS].
 
-use lspkit_vfs::PositionEncoding;
+use lspkit::vfs::PositionEncoding;
 
 use osprey_ast::{walk_program, AstVisitor, DocComment, Position, Program, Stmt};
 use osprey_syntax::Flavor;

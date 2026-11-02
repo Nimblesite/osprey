@@ -10,6 +10,8 @@ summary = "Typed VS Code host capabilities for Osprey Native applications"
 keywords = ["editor", "ui", "vscode", "wasm"]
 
 [dependencies]
+"@osprey/graphics" = { epoch = 1, min_release = 1 }
+"@osprey/json" = { epoch = 1, min_release = 1 }
 "@osprey/native" = { epoch = 1, min_release = 1 }
 
 [modules]

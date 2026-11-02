@@ -26,8 +26,19 @@ sealed class Session
     bool applying;
     bool animating;
     TimeSpan? lastFrame;
+    long owed;
 
-    public Session(Library library, string store, Border root, DispatcherQueue queue, Action<IReadOnlyList<string>> report, Func<Task<string?>> pick)
+    /// <summary>
+    /// A steady clock [WINUI-HOST-SELF-TEST] sends only the frames a self-test grants, each exactly
+    /// 1/60 s, so the scene stands still between steps and a picture taken after a given number of
+    /// frames is the same on every run and every machine.
+    /// </summary>
+    public bool Steady { get; init; }
+
+    /// <summary>The frames granted and not yet sent.</summary>
+    public long Owed => owed;
+
+    public Session(Library library, string store, Border root, DispatcherQueue queue, Action<IReadOnlyList<string>> report, Pickers pick)
     {
         this.library = library;
         this.queue = queue;
@@ -45,11 +56,24 @@ sealed class Session
         Send(Events.Lifecycle(Events.Now(), "active"));
     }
 
+    /// <summary>Grants the steady clock <paramref name="frames"/> more frames; false when the clock is not running.</summary>
+    public bool Grant(long frames)
+    {
+        owed += animating ? frames : 0;
+        return animating;
+    }
+
     /// <summary>Chooses a row as a click on it would.</summary>
     public bool Choose(ListViewItem row) => renderer.Choose(row);
 
+    /// <summary>The window-unit size of the application when it is one sized scene, else null.</summary>
+    public (double Width, double Height)? CanvasSize() => renderer.CanvasSize();
+
     /// <summary>Presses and releases a key in the scene on screen.</summary>
-    public bool Press(string key) => renderer.Press(key);
+    public bool Press(string key) => renderer.InScene(scene => scene.Press(key));
+
+    /// <summary>Drags the scene element a screen reader announces as <paramref name="label"/> by a distance in scene units.</summary>
+    public bool Drag(string label, double dx, double dy) => renderer.InScene(scene => scene.Drag(label, dx, dy));
 
     /// <summary>A control's value under the binding the framework issued.</summary>
     void Control(string region, long revision, long ordinal, object? value) =>
@@ -117,6 +141,7 @@ sealed class Session
             queue.TryEnqueue(() => Complete(Completion.Done(ticket, "null")));
             return;
         }
+        Progress.Note($"asked {ticket}: {Envelopes.Text(request, "kind")}");
         capabilities.Answer(request).ContinueWith(done => queue.TryEnqueue(() => Complete(done.IsCompletedSuccessfully
             ? done.Result
             : Completion.Failed(ticket, done.Exception?.GetBaseException().Message ?? "The request did not finish"))), TaskScheduler.Default);
@@ -147,8 +172,14 @@ sealed class Session
 
     void Tick(object? sender, object args)
     {
-        if (applying)
+        if (applying || (Steady && owed == 0))
         {
+            return;
+        }
+        if (Steady)
+        {
+            owed--;
+            Send(Events.Frame(Events.Now(), FirstFrame));
             return;
         }
         var now = clock.Elapsed;
@@ -159,6 +190,7 @@ sealed class Session
 
     void Complete(Completion completion)
     {
+        Progress.Note($"answered {completion.Ticket}: {(completion.Ok ? "ok" : completion.Error)}");
         foreach (var write in completion.Writes)
         {
             Slices.Put(write.Key, write.Text);

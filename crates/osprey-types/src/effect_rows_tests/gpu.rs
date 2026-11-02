@@ -3,7 +3,7 @@ use crate::testutil::{accepts, rejects_with};
 use osprey_syntax::Flavor;
 
 // ---------- GPU kernel purity [GPU-KERNEL-PURE], [STAGE-GPU-LEGAL] ----------
-// (docs/specs/runtime/0034-GPUComputation.md, docs/specs/language/0035-StagedEffects.md)
+// (docs/specs/runtime/0034-GPUComputation.md, docs/specs/language/0017-AlgebraicEffects.md)
 //
 // Staging generalised the rule from "empty row" to "empty DYNAMIC row", so the
 // rejection names what is left to answer at the boundary rather than calling

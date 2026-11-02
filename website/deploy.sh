@@ -28,7 +28,7 @@ fi
 
 # Build the WebAssembly demo assets that the /wasm/ site page publishes.
 echo "🧱 Building WebAssembly demo assets..."
-(cd .. && make wasm-site)
+(cd .. && make -C website wasm-site)
 
 # Build the website (runs update-playground + generate-docs + eleventy)
 echo "🏗️ Building website..."

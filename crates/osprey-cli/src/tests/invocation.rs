@@ -151,7 +151,38 @@ fn parse_args_handles_target_and_output() {
     assert!(cli.output.is_none());
     // -o with no following value, and an unknown target, are errors.
     assert!(parse_args(&args(&["f.osp", "-o"])).is_err());
-    assert!(parse_args(&args(&["f.osp", "--target=riscv"])).is_err());
+    let Err(unknown) = parse_args(&args(&["f.osp", "--target=riscv"])) else {
+        panic!("riscv target accepted");
+    };
+    // The rejection lists exactly the targets the parser accepts.
+    let available = unknown
+        .split("(available: ")
+        .nth(1)
+        .and_then(|rest| rest.split(')').next())
+        .expect("the error lists available targets");
+    for target in [
+        "native",
+        "wasm32",
+        "ios",
+        "ios-sim",
+        "macos",
+        "android-arm64",
+        "android-x64",
+        "linux-x64",
+        "linux-arm64",
+        "windows-x64",
+        "python",
+    ] {
+        let flag = format!("--target={target}");
+        assert!(
+            parse_args(&args(&["f.osp", &flag])).is_ok(),
+            "{target} rejected"
+        );
+        assert!(
+            available.split(", ").any(|listed| listed == target),
+            "{target} missing from: {available}"
+        );
+    }
 }
 
 #[test]

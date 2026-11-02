@@ -77,13 +77,13 @@ impl ProjectCache {
     pub(crate) fn sources(
         &self,
         uri: &str,
-        vfs: Option<&lspkit_vfs::Vfs>,
+        vfs: Option<&lspkit::vfs::Vfs>,
         text: Option<&str>,
     ) -> Option<Result<crate::project_sources::Sources, Vec<ProjectError>>> {
         lock(&self.sources).load(uri, vfs, text)
     }
 
-    pub(crate) fn view(&self, uri: &str, vfs: &lspkit_vfs::Vfs) -> crate::workspace::View {
+    pub(crate) fn view(&self, uri: &str, vfs: &lspkit::vfs::Vfs) -> crate::workspace::View {
         self.sources(uri, Some(vfs), None)
             .and_then(Result::ok)
             .map_or_else(crate::workspace::View::default, |sources| sources.view(uri))
@@ -93,7 +93,7 @@ impl ProjectCache {
         lock(&self.sources).opened(uri, open);
     }
 
-    pub(crate) fn documents(&self) -> Vec<lspkit_vfs::DocumentUri> {
+    pub(crate) fn documents(&self) -> Vec<lspkit::vfs::DocumentUri> {
         lock(&self.sources).documents()
     }
 

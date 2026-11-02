@@ -394,6 +394,11 @@
     "type-names": {
       "patterns": [
         {
+          "comment": "The namespace before a qualified type: `ui::Machine`.",
+          "name": "entity.name.namespace.osprey-ml",
+          "match": "\\b[a-z_][a-zA-Z0-9_]*(?=::)"
+        },
+        {
           "name": "support.type.primitive.osprey-ml",
           "match": "\\b(int|float|string|bool|any|Unit)\\b"
         },

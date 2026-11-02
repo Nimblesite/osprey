@@ -104,6 +104,8 @@ static uintptr_t g_base;   // highest address of the main thread's stack
 static OspGcEnt *g_tab = NULL; // open-addressing heap table (power-of-two cap)
 static size_t g_cap = 0;
 static size_t g_count = 0;
+static uintptr_t g_lowest = UINTPTR_MAX; // the lowest base ever tracked; none yet, so nothing is in range
+static uintptr_t g_highest = 0;          // the highest base ever tracked
 
 static uintptr_t *g_ms = NULL; // mark stack of pending object bases
 static size_t g_ms_cap = 0;
@@ -118,13 +120,21 @@ static size_t g_ncollect = 0;
 // --- heap table --------------------------------------------------------------
 
 static size_t gc_hash(uintptr_t base, size_t cap) {
-  // base is at least 8-byte aligned; drop the dead low bits, then Fibonacci mix.
-  uint64_t h = (uint64_t)(base >> 3) * 0x9E3779B97F4A7C15ull;
-  return (size_t)(h >> 32) & (cap - 1);
+  // base is at least 8-byte aligned; drop the dead low bits, then the full murmur3
+  // finalizer. glibc hands out long runs at a few strides, and a single multiply
+  // turns some of those, depending on where ASLR put the heap, into runs of adjacent
+  // slots: a miss walked ~290 slots at the table's load rather than ~7.
+  uint64_t h = (uint64_t)(base >> 3);
+  h = (h ^ (h >> 33)) * 0xFF51AFD7ED558CCDull;
+  h = (h ^ (h >> 33)) * 0xC4CEB9FE1A85EC53ull;
+  return (size_t)(h ^ (h >> 33)) & (cap - 1);
 }
 
 static OspGcEnt *gc_lookup(uintptr_t w) {
-  if (g_cap == 0) {
+  // Most scanned words are zeros, small integers and floats. The bounds turn them
+  // away before the table, where every zero would walk whatever cluster sits at its
+  // slot (2,600 slots in a Signal Flow suite on Linux, for every zero on the heap).
+  if (w < g_lowest || w > g_highest) {
     return NULL;
   }
   size_t i = gc_hash(w, g_cap);
@@ -174,6 +184,8 @@ static void gc_insert(uintptr_t base, size_t size) {
   }
   gc_place(g_tab, g_cap, base, size, 0);
   g_count++;
+  g_lowest = base < g_lowest ? base : g_lowest;
+  g_highest = base > g_highest ? base : g_highest;
 }
 
 // --- mark --------------------------------------------------------------------

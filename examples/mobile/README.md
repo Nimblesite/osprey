@@ -73,9 +73,9 @@ Set `OSPREY_DEVICE_ID` to select a physical device, or `OSPREY_SIMULATOR_UDID` t
 The Android application lives in [`android/`](android), with Kotlin native rendering and a JNI adapter for the generated C interface. It requires JDK 17, Android SDK 34, an installed Android NDK, and an emulator/device running API 26 or later. Its launcher uses a local Gradle installation when available and downloads Gradle 9.6.0 otherwise. From the repository root:
 
 ```sh
-make android
+make -C apps android
 examples/mobile/android/run.sh
-make android-test
+make -C apps android-test
 ```
 
 `examples/mobile/android/build.sh` builds directly; `examples/mobile/android/run.sh --smoke` runs deterministic fixture and cache-restart checks. Use `--live-smoke` to check actual GitHub responses separately. Set `ANDROID_HOME` or `ANDROID_SDK_ROOT` for the SDK, `ANDROID_NDK_HOME` or `ANDROID_NDK_ROOT` to select an NDK, and `OSPREY_ANDROID_SERIAL` for a particular connected device. The scripts can discover an installed NDK. Set `OSPREY_ANDROID_SKIP_BUILD=1` to install/launch an existing build. The APK includes ARM64 and x86-64 libraries; the launch script requires one connected device unless a serial is supplied.
@@ -111,7 +111,7 @@ The API requests one page of open issues from `swiftlang/swift` initially; enter
 
 ## Assertions and diagnostics
 
-From the repository root, `make mobile-domain-test` runs the shared Osprey assertions, `make mobile-ios-test` builds and checks the iOS application, and `make mobile-test` runs shared, iOS, and Android verification together. The combined target requires both platform toolchains and running test devices.
+From the repository root, `make -C apps mobile-domain-test` runs the shared Osprey assertions, `make -C apps mobile-ios-test` builds and checks the iOS application, and `make -C apps mobile-test` runs shared, iOS, and Android verification together. The combined target requires both platform toolchains and running test devices.
 
 Native smoke tests use a separate SQLite database and exercise the real Osprey archive. iOS uses deterministic HTTP completions to check bound SQL, cache persistence, search, saved filters, bookmarks, detail/annotation events, and visible HTTP failures. It writes `OSPREY_INBOX_SMOKE_OK` to `Documents/inbox-smoke-result.txt`; the launcher requires a fresh result. Android's deterministic smoke exercises the shared app, terminates the process, and verifies its saved cache after restart. Its additional `--live-smoke` mode requires network access and available GitHub rate limits.
 

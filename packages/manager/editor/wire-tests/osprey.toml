@@ -1,6 +1,6 @@
 [project]
 name = "registry-editor-wire-tests"
-source_roots = ["../../../native/src", "../../../vscode/src", "../../core/src/names.osp", "../../core/src/order.osp", "../src/model.ospml", "../src/packages.ospml", "../src/reports.ospml", "../src/update.ospml", "../tests/reports_wire.ospml"]
+source_roots = ["../../../native/src", "../../../graphics/src", "../../../json/src", "../../../vscode/src", "../../core/src/names.osp", "../../core/src/order.osp", "../src/model.ospml", "../src/packages.ospml", "../src/reports.ospml", "../src/update.ospml", "../tests/reports_wire.ospml"]
 default_namespace = "registry_editor"
 entry = "../tests/reports_wire.ospml"
 

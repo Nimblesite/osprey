@@ -142,18 +142,29 @@ pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed {
     }
 }
 
-/// The value of a leading `// osprey: flavor=<name>` marker, if the source has
-/// one (the space-less `//osprey: flavor=` spelling is accepted too). The marker
-/// must appear before any code so flavor selection never depends on a deep scan.
+/// The value of a leading `// osprey: flavor=<name>` marker (`# osprey:
+/// flavor=python` for Python; the space-less spellings are accepted too), if
+/// the source has one. Only comments and blank lines may precede it, so flavor
+/// selection never depends on a deep scan. Implements [FLAVOR-SELECT],
+/// [FLAVOR-PYTHON-SELECT].
 fn flavor_marker(source: &str) -> Option<&str> {
-    source.lines().find_map(|line| {
-        let t = line.trim();
-        t.strip_prefix("// osprey: flavor=")
-            .or_else(|| t.strip_prefix("//osprey: flavor="))
-            .or_else(|| t.strip_prefix("# osprey: flavor="))
-            .or_else(|| t.strip_prefix("#osprey: flavor="))
-            .map(str::trim)
-    })
+    source
+        .lines()
+        .map(str::trim)
+        .take_while(|t| t.is_empty() || t.starts_with("//") || t.starts_with('#'))
+        .find_map(|t| {
+            let slash = t
+                .strip_prefix("// osprey: flavor=")
+                .or_else(|| t.strip_prefix("//osprey: flavor="))
+                .map(str::trim)
+                .filter(|name| *name != "python");
+            let hash = t
+                .strip_prefix("# osprey: flavor=")
+                .or_else(|| t.strip_prefix("#osprey: flavor="))
+                .map(str::trim)
+                .filter(|name| *name == "python");
+            slash.or(hash)
+        })
 }
 
 /// The flavor implied by an extension: `.ospml` ⇒ ML, `.osp` ⇒ Default, `.py` ⇒ Python.

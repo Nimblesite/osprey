@@ -21,6 +21,9 @@ public sealed record SpriteShape(int Atlas, double X, double Y, double W, double
 public sealed record GlyphsShape(string Text, double X, double Y, double Size, uint Colour, double Depth) : Shape(Depth);
 
 /// <summary>A vector path, filled or stroked with a paint, after its own move and scale.</summary>
+/// <summary>Text in the system font at a weight, its left edge, centre or right edge (anchor 0, 1 or 2) at x and the top of its line at y.</summary>
+public sealed record LetteringShape(string Text, double X, double Y, double Size, uint Colour, double Depth, int Anchor, double Weight) : Shape(Depth);
+
 public sealed record PathShape(IReadOnlyList<PathStep> Steps, Outline Outline, Paint Paint, (double X, double Y, double Scale)? Moved, double Depth) : Shape(Depth);
 
 /// <summary>One path-builder command in scene units.</summary>
@@ -62,8 +65,19 @@ public sealed record SolidPaint(Tint Tint) : Paint;
 /// <summary>A gradient from one tint at <paramref name="FromAt"/> to another at <paramref name="ToAt"/>, blended in Oklab when asked.</summary>
 public sealed record LinearPaint(double Angle, Tint From, double FromAt, Tint To, double ToAt, bool Oklab) : Paint;
 
-/// <summary>One decoded scene: its unit space (zero for window pixels), its atlas and its shapes, back to front.</summary>
-public sealed record Scene(double Width, double Height, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes);
+/// <summary>One decoded scene: its unit space (zero for window pixels), its zoom in pixels per unit (0 fits it to its region), its atlas and its shapes, back to front.</summary>
+/// <summary>One element of a scene's accessibility tree [UI-MACHINE-A11Y]: bounds in scene units and, for a slider, its value and range.</summary>
+public sealed record Accessible(string Role, string Label, double X, double Y, double W, double H, double Value, double Min, double Max, bool Movable);
+
+public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyList<string> Atlas, IReadOnlyList<Shape> Shapes, IReadOnlyList<Accessible> Access)
+{
+    /// <summary>
+    /// The size, in window units, of the window an application that is this one scene opens at: its
+    /// units times its zoom. A scene of window pixels or at zoom 0 fits whatever region holds it, so it
+    /// asks for no size.
+    /// </summary>
+    public (double Width, double Height)? Opening => Width > 0 && Height > 0 && Zoom > 0 ? (Width * Zoom, Height * Zoom) : null;
+}
 
 /// <summary>
 /// Decodes a scene node and the primitives streamed for it [UI-SCENE-STREAM] into shapes ordered
@@ -81,8 +95,36 @@ public static class SceneDecoder
         {
             throw new HostException("A window-pixel scene has zero width and zero height");
         }
+        var zoom = node.TryGetProperty("zoom", out var given) ? Real(given, "zoom") : 1;
+        if (zoom < 0)
+        {
+            throw new HostException("A scene's zoom must be zero or positive");
+        }
         var shapes = Envelopes.Items(node, "shapes", Shape).Concat(streamed.Select(Stream));
-        return new Scene(width, height, Envelopes.Items(node, "atlas", item => item.GetString() ?? ""), [.. shapes.OrderBy(shape => shape.Depth)]);
+        return new Scene(width, height, zoom, Envelopes.Items(node, "atlas", item => item.GetString() ?? ""), [.. shapes.OrderBy(shape => shape.Depth)], [.. Envelopes.Items(node, "access", Announced).Where(item => item.Role != "none" && item.Label != "")]);
+    }
+
+    static Accessible Announced(JsonElement item) => new(
+        Envelopes.Text(item, "role"), Envelopes.Text(item, "label"),
+        Measure(item, "x"), Measure(item, "y"), Measure(item, "w"), Measure(item, "h"),
+        Measure(item, "value"), Measure(item, "min"), Measure(item, "max"), Envelopes.Flag(item, "movable"));
+
+    static double Measure(JsonElement item, string name) => item.TryGetProperty(name, out var given) ? Real(given, name) : 0;
+
+    /// <summary>
+    /// The <see cref="Scene.Opening"/> of the scene <paramref name="node"/> describes, or null when it is
+    /// malformed: the scene itself then draws its refusal, so the window opens at its usual size.
+    /// </summary>
+    public static (double Width, double Height)? Opening(JsonElement node)
+    {
+        try
+        {
+            return Decode(node, []).Opening;
+        }
+        catch (HostException)
+        {
+            return null;
+        }
     }
 
     static Shape Stream(Streamed item) => item.Code switch
@@ -104,6 +146,7 @@ public static class SceneDecoder
             3 => Exactly(values, 9, () => new SpriteShape((int)Whole(values[1]), Real(values[2]), Real(values[3]), Real(values[4]), Real(values[5]), Real(values[6]), Colour(values[7]), Real(values[8]))),
             4 => Exactly(values, 7, () => new GlyphsShape(Line(values[1]), Real(values[2]), Real(values[3]), Real(values[4]), Colour(values[5]), Real(values[6]))),
             5 => Exactly(values, 6, () => Path(values)),
+            6 => Exactly(values, 9, () => Lettering(values)),
             var code => throw new HostException($"Unknown shape code {code}"),
         };
     }
@@ -189,6 +232,14 @@ public static class SceneDecoder
 
     static IReadOnlyList<JsonElement> Values(JsonElement item, string what) =>
         item.ValueKind == JsonValueKind.Array ? [.. item.EnumerateArray()] : throw new HostException($"{what} is not an array");
+
+    static LetteringShape Lettering(IReadOnlyList<JsonElement> values)
+    {
+        var anchor = Whole(values[7]);
+        return anchor is >= 0 and <= 2
+            ? new LetteringShape(Line(values[1]), Real(values[2]), Real(values[3]), Real(values[4]), Colour(values[5]), Real(values[6]), (int)anchor, Real(values[8]))
+            : throw new HostException($"A lettering anchor is 0, 1 or 2, not {anchor}");
+    }
 
     static long Code(IReadOnlyList<JsonElement> values) => values.Count > 0 ? Whole(values[0]) : throw new HostException("A scene primitive is empty");
 

@@ -6,6 +6,7 @@ use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use gpui_kit::component::{input::InputState, ActiveTheme as _, Theme};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::envelope::{self, Request};
@@ -22,6 +23,8 @@ pub struct HostView {
     pub inputs: HashMap<(String, u64, u64), Entity<InputState>>,
     /// Decoded scenes and their persistent region-keyed input adapters.
     pub scenes: HashMap<String, scene::Decoded>,
+    /// Scene sprite images, decoded once and turned as drawn.
+    pub sprites: scene::atlas::Sprites,
     pub scene_focus: HashMap<String, FocusHandle>,
     pub scene_transforms: HashMap<String, scene::Transform>,
     pub scene_hover: BTreeSet<String>,
@@ -52,6 +55,7 @@ impl HostView {
             regions,
             inputs: HashMap::new(),
             scenes: HashMap::new(),
+            sprites: Default::default(),
             scene_focus: HashMap::new(),
             scene_transforms: HashMap::new(),
             scene_hover: BTreeSet::new(),
@@ -187,12 +191,12 @@ impl Render for HostView {
     /// Draws the root region above the host-only diagnostic strip.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         clock::schedule(self, window, cx);
+        let framed = !bare();
         div()
             .size_full()
             .flex()
             .flex_col()
-            .gap_4()
-            .p_4()
+            .when(framed, |this| this.gap_4().p_4())
             .bg(self.background(window, cx))
             .text_color(cx.theme().foreground)
             .child(
@@ -233,7 +237,7 @@ pub fn run() -> i32 {
 fn start() -> Result<(Regions, Vec<Request>), String> {
     Library::init()?;
     let home = crate::home()?;
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let arguments = crate::self_test::app_arguments();
     let context = events::start_context(
         now(),
         local_offset()?,
@@ -249,7 +253,9 @@ fn start() -> Result<(Regions, Vec<Request>), String> {
 
 /// Opens the native window; this is the only permitted infallible window-open boundary.
 fn open(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) {
-    gpui_kit::application().run(move |cx| {
+    let application = gpui_kit::application();
+    application.on_open_urls(|urls| opened().extend(urls));
+    application.run(move |cx| {
         gpui_kit::init(cx);
         gpui_kit::open_window(options(), cx, move |window, cx| {
             Theme::sync_system_appearance(Some(window), cx);
@@ -275,10 +281,61 @@ fn new_view(
     .detach();
     let mut view = HostView::new(regions, pending, bench);
     view.dispatch(events::lifecycle(now(), "active"), window, cx);
+    if crate::self_test::requested().is_some() {
+        match crate::self_test::load() {
+            Ok(run) => crate::self_test::in_window(run, window, cx),
+            Err(problem) => {
+                eprintln!("self-test failed: {problem}");
+                std::process::exit(1);
+            }
+        }
+    }
     view
 }
 
-/// The fixed native window dimensions and title.
+/// Files Finder asked the application to open and no frame has delivered yet ([GPUI-HOST-OPEN]).
+static OPENED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn opened() -> std::sync::MutexGuard<'static, Vec<String>> {
+    OPENED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Delivers each file Finder opened as the lifecycle phase `open:<path>`; a `file://` URL is
+/// turned back into its path ([GPUI-HOST-OPEN]).
+pub fn deliver_opened(view: &mut HostView, window: &mut Window, cx: &mut Context<HostView>) {
+    let urls = std::mem::take(&mut *opened());
+    for url in urls {
+        let path = url
+            .strip_prefix("file://")
+            .map_or(url.clone(), events::unescaped);
+        view.dispatch(
+            events::lifecycle(now(), &format!("open:{path}")),
+            window,
+            cx,
+        );
+    }
+}
+
+/// Whether the application draws the whole window itself (`OSPREY_GPUI_CHROME=bare`): no host
+/// padding or frame-time strip, and a transparent title bar its canvas runs under, with the
+/// traffic lights where `OSPREY_GPUI_LIGHTS=x,y` puts them ([UI-MACHINE-CANVAS]).
+pub fn bare() -> bool {
+    std::env::var("OSPREY_GPUI_CHROME").is_ok_and(|chrome| chrome == "bare")
+}
+
+/// The traffic lights' origin for a bare window, `OSPREY_GPUI_LIGHTS=x,y` in points.
+fn lights() -> Option<Point<Pixels>> {
+    let requested = std::env::var("OSPREY_GPUI_LIGHTS").ok()?;
+    let (x, y) = requested.split_once(',')?;
+    Some(point(
+        px(x.trim().parse().ok()?),
+        px(y.trim().parse().ok()?),
+    ))
+}
+
+/// The fixed native window dimensions and title, `OSPREY_GPUI_TITLE` or "Osprey".
 fn options() -> WindowOptions {
     let bounds = window_size().map(|(width, height)| {
         WindowBounds::Windowed(Bounds {
@@ -289,8 +346,13 @@ fn options() -> WindowOptions {
     WindowOptions {
         window_bounds: bounds,
         titlebar: Some(TitlebarOptions {
-            title: Some("Osprey".into()),
-            ..Default::default()
+            title: Some(
+                std::env::var("OSPREY_GPUI_TITLE")
+                    .unwrap_or_else(|_| "Osprey".to_owned())
+                    .into(),
+            ),
+            appears_transparent: bare(),
+            traffic_light_position: lights().filter(|_| bare()),
         }),
         ..Default::default()
     }

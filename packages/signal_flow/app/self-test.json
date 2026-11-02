@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "wait": "490 r/s" },
+    { "wait": "Connections (4)" },
+    { "shot": "1-topology" },
+    { "invoke": "Bypass Gateway" },
+    { "wait": "Bypassed" },
+    { "wait": "1000 r/s" },
+    { "shot": "2-gateway-bypassed" },
+    { "invoke": "Undo" },
+    { "wait": "490 r/s" },
+    { "gone": "Bypassed" },
+    { "shot": "3-undone" },
+    { "set": ["Gateway Rate limit", "0.25"] },
+    { "wait": "25%" },
+    { "shot": "4-rate-limit" },
+    { "invoke": "Skin: Topology" },
+    { "shot": "5-skin-menu" }
+  ]
+}

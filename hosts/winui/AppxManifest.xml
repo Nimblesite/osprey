@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One application's MSIX package [WINUI-HOST-SANDBOX]: the host, the Windows App SDK runtime and
+     the application's DLL. app.ps1 fills each {placeholder} from apps/windows.json. The application
+     runs in an AppContainer: no runFullTrust, and only the capabilities its entry lists. -->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 uap10 rescap">
+  <Identity Name="Osprey.{Id}" Publisher="{Publisher}" Version="{Version}" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>{Name}</DisplayName>
+    <PublisherDisplayName>{PublisherName}</PublisherDisplayName>
+    <Logo>logo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="OspreyHost.exe" uap10:TrustLevel="appContainer" uap10:RuntimeBehavior="packagedClassicApp">
+      <uap:VisualElements DisplayName="{Name}" Description="{Description}" BackgroundColor="transparent" Square150x150Logo="logo.png" Square44x44Logo="logo.png" />
+      <Extensions>
+        <uap5:Extension Category="windows.appExecutionAlias">
+          <uap5:AppExecutionAlias>
+            <uap5:ExecutionAlias Alias="osprey-{Id}.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>{Capabilities}</Capabilities>
+</Package>

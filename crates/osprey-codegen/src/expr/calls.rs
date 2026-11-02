@@ -71,7 +71,7 @@ fn application_types(
         .and_then(|position| cg.prog.applications.get(&(position.line, position.column)))
         .map(|bindings| {
             cg.prog
-                .specialized(bindings, application_scope(cg, function))
+                .specialized(&bindings, application_scope(cg, function))
         })
 }
 

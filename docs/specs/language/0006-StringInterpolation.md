@@ -34,9 +34,9 @@ complete `Success(value)` or `Error(message)` value, preserving its failure
 channel exactly as `toString` does:
 
 ```osprey
-let result = intDiv(10, 5)
-print("value=${result}")       // value=Success(2)
-print(toString(result))       // Success(2)
+let result = checkedAdd(10, 5)
+print("value=${result}")       // value=Success(15)
+print(toString(result))       // Success(15)
 ```
 
 Direct interpolation of collection, record, and function handles has no

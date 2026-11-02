@@ -1,6 +1,6 @@
 [project]
 name = "gpui-bench"
-source_roots = [".", "../../../packages/native/src"]
+source_roots = [".", "../../../packages/native/src", "../../../packages/graphics/src", "../../../packages/json/src"]
 default_namespace = "bench"
 entry = "main.ospml"
 

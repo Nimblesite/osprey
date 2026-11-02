@@ -139,7 +139,7 @@ print(describeAny(42) + "!")
         "file:///inferred.osp",
         0,
         4,
-        lspkit_vfs::PositionEncoding::Utf16,
+        lspkit::vfs::PositionEncoding::Utf16,
     )
     .expect("hover over `describeAny`");
     crate::testkit::shows(&hovered, &["-> string"]);

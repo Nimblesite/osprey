@@ -1,0 +1,109 @@
+{
+ "schema": 1,
+ "name": "native-complete-fixture",
+ "inputs": {
+  "skin": { "type": "text", "value": "native" },
+  "caption": { "type": "text", "value": "Hello" },
+  "selected": { "type": "text", "value": "one" },
+  "assets": { "type": "text", "value": "asset" },
+  "level": { "type": "number", "value": 0.25 },
+  "amount": { "type": "number", "value": 30 },
+  "total": { "type": "number", "value": 120 },
+  "dragX": { "type": "number" },
+  "dragY": { "type": "number" },
+  "viewWidth": { "type": "number" },
+  "viewHeight": { "type": "number" },
+  "spareWidth": { "type": "number" },
+  "spareHeight": { "type": "number" },
+  "enabled": { "type": "bool", "value": true },
+  "choices": { "type": "list", "value": [
+   { "key": "one", "label": "One" },
+   { "key": "two", "label": "Two" },
+   { "key": "three", "label": "Three" }
+  ] },
+  "go": { "type": "trigger" },
+  "one": { "type": "trigger" },
+  "two": { "type": "trigger" },
+  "three": { "type": "trigger" }
+ },
+ "layers": [
+  {
+   "name": "mode",
+   "initial": "idle",
+   "states": { "idle": {}, "done": {} },
+   "transitions": []
+  }
+ ],
+ "view": {
+  "kind": "stack",
+  "axis": "horizontal",
+  "children": [
+   { "kind": "text", "text": "Display", "role": "display", "tone": "secondary" },
+   { "kind": "text", "text": "Large", "role": "large", "tone": "accent" },
+   { "kind": "text", "text": "Heading", "role": "heading", "tone": "good" },
+   { "kind": "text", "text": "Lead", "role": "lead", "tone": "caution" },
+   { "kind": "text", "text": "Headline", "role": "headline", "tone": "danger" },
+   { "kind": "text", "text": "Eyebrow", "role": "eyebrow" },
+   { "kind": "text", "text": "Mono", "role": "mono" },
+   { "kind": "text", "text": "Hidden", "when": { "input": "caption" } },
+   { "kind": "label", "text": "{{caption}}", "symbol": "info" },
+   { "kind": "badge", "text": "Badge", "symbol": "check", "tone": "good" },
+   { "kind": "button", "text": "Prominent", "role": "prominent", "enabled": { "input": "enabled", "eq": true }, "on": { "fire": "go" } },
+   { "kind": "button", "text": "Destructive", "role": "destructive", "on": { "set": "caption", "value": "Deleted", "fire": "go" } },
+   { "kind": "button", "text": "Filled", "role": "filled", "on": { "set": "caption" } },
+   { "kind": "picker", "text": "Pick", "choices": "choices", "selected": "{{selected}}", "on": { "set": "selected" } },
+   { "kind": "toggle", "text": "Toggle", "value": "enabled", "on": { "set": "enabled" } },
+   { "kind": "meter", "text": "Meter", "amount": "{{amount}}", "total": "{{total}}", "tone": "caution" },
+   { "kind": "progress", "text": "Progress", "detail": "{{caption}}" },
+   { "kind": "image", "source": "{{assets}}.png", "alt": "Alternative", "width": 20, "height": 10 },
+   { "kind": "empty", "symbol": "inbox", "text": "Empty", "detail": "Nothing" },
+   { "kind": "framed", "width": 300, "height": 200, "radius": 8, "gap": 4, "padding": 12, "fill": "canvas", "ink": "ink", "line": "line", "align": "center", "cross": "end", "grow": true, "shadow": "floating", "children": [
+    { "kind": "spacer" },
+    { "kind": "divider" },
+    { "kind": "text", "text": "Framed child" }
+   ] },
+   { "kind": "scene", "width": 100, "height": 80, "on": { "fire": "go" }, "shapes": [
+    { "shape": "rect", "x": 1, "y": 2, "w": 3, "h": 4, "colour": "@ink" }
+   ] }
+  ]
+ },
+ "skins": {
+  "native": {
+   "tokens": {
+    "ink": { "light": "#010203", "dark": "#040506" }
+   }
+  },
+  "canvas": {
+   "tokens": {
+    "ink": { "light": "#010203", "dark": "#040506" }
+   },
+   "canvas": {
+    "width": 400,
+    "height": 400,
+    "zoom": 1,
+    "atlas": ["{{assets}}.png"],
+    "shapes": [
+     { "shape": "rect", "x": 1, "y": 2, "w": 30, "h": 40, "angle": 0.2, "turn": 0.1, "colour": "@missing", "alpha": "{{level}}" },
+     { "shape": "rounded", "x": 5, "y": 6, "w": 30, "h": 40, "radius": 4, "stroke": 2, "colour": "@ink" },
+     { "shape": "disc", "x": 10, "y": 20, "radius": 5, "colour": "#010203" },
+     { "shape": "text", "text": "{{caption}}", "x": 20, "y": 20, "size": 20, "anchor": 1, "weight": 500, "colour": "@ink" },
+     { "shape": "sprite", "index": 0, "x": 20, "y": 50, "w": 10, "h": 10, "colour": "#ffffff" },
+     { "shape": "triangle", "x": 20, "y": 70, "w": 10, "h": 10, "colour": "#ffffff" },
+     { "shape": "polyline", "points": [[0, 0], ["{{amount}}", 20]], "stroke": 2, "colour": "#ffffff" },
+     { "shape": "cable", "points": [[0, 0], [100, 20]], "stroke": 2, "dash": 3, "size": 4, "colour": "#ffffff" },
+     { "shape": "text", "text": "{{item.index}}:{{item.key}}:{{item.label}}", "x": 40, "y": 160, "size": 20, "colour": "#ffffff", "each": { "in": "choices", "dx": 2, "dy": 40 }, "when": { "all": [
+      { "any": [ { "fired": "{{item.key}}" }, { "input": "level", "gt": 0 } ] },
+      { "not": { "state": "mode", "in": ["gone"] } }
+     ] } },
+     { "shape": "text", "text": "Always {{item.label}}", "x": 40, "y": 300, "size": 10, "colour": "#ffffff", "each": { "in": "choices", "dy": 10 } }
+    ],
+    "listeners": [
+     { "x": 0, "y": 0, "w": 100, "h": 20, "role": "button", "label": "Fire {{item.label}}", "on": { "fire": "{{item.key}}" }, "each": { "in": "choices", "dy": 20 } },
+     { "x": 100, "y": 0, "w": 100, "h": 20, "role": "slider", "label": "Slide {{item.label}}", "on": { "set": "selected", "fire": "go" }, "slide": { "min": 0, "max": 1, "set": "level", "fire": "go", "of": "level" }, "drag": { "x": "dragX", "y": "dragY" }, "when": { "input": "level", "gt": 0 }, "each": { "in": "choices", "dy": 20 } },
+     { "x": 200, "y": 0, "w": 100, "h": 30, "role": "button", "label": "Hold", "on": { "set": "caption", "value": "Held" } },
+     { "x": 200, "y": 100, "w": 100, "h": 30, "role": "none", "label": "Quiet", "on": { "fire": "go" } }
+    ]
+   }
+  }
+ }
+}

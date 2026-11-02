@@ -39,6 +39,7 @@ export function registerProfiler(
     configSection: "osprey",
     debugType: DEBUG_TYPE,
     languageIds: ["osprey", "osprey-ml"],
+    languageNames: ["Osprey"],
     client,
     logger: { trace: write, debug: write, info: write, warn: write, error: write },
     sessionIdToPid: trackDebuggeePids(context),

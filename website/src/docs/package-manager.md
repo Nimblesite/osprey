@@ -32,10 +32,10 @@ The local registry serves the packages in this repository's `packages/` folder (
 
 ```sh
 make build
-make registry-serve
+make -C packages registry-serve
 ```
 
-`make registry-serve` builds the package client and the server, publishes every package under `packages/` into `target/local-registry` with `publish --folder`, and serves it. Each package passes the same source, capability and digest checks the server applies. Add a package to your own project with the extension, or with the client directly:
+`make -C packages registry-serve` builds the package client and the server, publishes every package under `packages/` into `target/local-registry` with `publish --folder`, and serves it. Each package passes the same source, capability and digest checks the server applies. Add a package to your own project with the extension, or with the client directly:
 
 ```sh
 echo "add @osprey/re --registry http://127.0.0.1:8787 --project $PWD/my-app" | ./target/osprey-pkg
@@ -46,12 +46,12 @@ The cloud registry will replace this for everyday use; the local registry stays 
 
 ### Try the sample registry
 
-`make registry-serve-sample` serves `packages/manager/sample-registry`, the small `@demo` packages the end-to-end consumer depends on:
+`make -C packages registry-serve-sample` serves `packages/manager/sample-registry`, the small `@demo` packages the end-to-end consumer depends on:
 
 ```sh
 make build
 ./target/release/osprey build packages/manager/cli -o target/osprey-pkg
-make registry-serve-sample
+make -C packages registry-serve-sample
 ```
 
 Leave the server running. In another terminal at the repository root, resolve and build the sample consumer, which already declares its dependency on `@demo/report`:
@@ -117,7 +117,7 @@ Epochs and release ordinals both start at 1.
 The Osprey server walks that root, validates every release against the canonical source rules, computes each release's `SourceDigest`, and serves the catalog over HTTP:
 
 ```sh
-make registry-serve-sample   # serves packages/manager/sample-registry on http://127.0.0.1:8787
+make -C packages registry-serve-sample   # serves packages/manager/sample-registry on http://127.0.0.1:8787
 curl http://127.0.0.1:8787/v1/packages
 curl http://127.0.0.1:8787/v1/packages/demo/maths
 ```
@@ -318,4 +318,4 @@ Spec 0029 `[PACKAGE-HARDENING]` defines validation gates with stable diagnostic 
 | `packages/manager/e2e/` | the end-to-end demo: server, fetch, lock, verify, build |
 | `schemas/package-registry.td` | the canonical typeDiagram model shared with spec 0031 |
 
-Run everything with `make registry-test`. The registry README in the repository records the measured host-capability blockers and the compiler limits the code works around. Plan 0020 tracks delivery phase by phase.
+Run everything with `make -C packages registry-test`. The registry README in the repository records the measured host-capability blockers and the compiler limits the code works around. Plan 0020 tracks delivery phase by phase.

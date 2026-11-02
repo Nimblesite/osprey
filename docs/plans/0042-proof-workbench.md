@@ -30,6 +30,7 @@ A box is ticked only when its test exists in `apps/workbench/tests/`.
 - [ ] VS Code: WASI build, the `Lean` capability over the toolchain the extension finds; E2E opens `AndSwap.lean` and sees `Checked`; screens re-captured and compared
 - [ ] Browser: `hosts/web/`, wasm32 page, Unavailable until plan 0044 phase 2; headless smoke test
 - [ ] macOS and iPadOS: `hosts/apple/` SwiftUI host, toolchain bundled on macOS; simulator smoke test
+- [ ] ❓ Decide: `what-is-a-solver` has no prove challenge, which [LESSONS-CURRICULUM] requires unless noted — add one or note the exception in 0052's table
 - [ ] Road test recorded in `docs/reports/`: a newcomer writes and checks `and_swap` in a fresh `.lean` file in under ten minutes
 
 ## Phase 1 — the `.lean` document [WORKBENCH-DOCUMENT] [WORKBENCH-CHECK] [WORKBENCH-VERDICT] [WORKBENCH-STORE] [WORKBENCH-REGIONS]

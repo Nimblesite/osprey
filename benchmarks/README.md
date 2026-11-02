@@ -13,20 +13,20 @@ benchmarks/cases/<name>/
 ```
 
 ```bash
-make bench                       # build everything, run the whole suite
-make bench-osprey                # ONLY the Osprey columns; other languages untouched
-BENCH_FILTER=fib make bench      # only cases whose name contains "fib"
+make -C benchmarks bench                       # build everything, run the whole suite
+make -C benchmarks bench-osprey                # ONLY the Osprey columns; other languages untouched
+BENCH_FILTER=fib make -C benchmarks bench      # only cases whose name contains "fib"
 zsh benchmarks/run.sh            # run directly (assumes `make build` already ran)
 zsh benchmarks/run.sh primes     # direct, single case
 ```
 
-`make bench-osprey` is the fast loop for a compiler or runtime change: it
+`make -C benchmarks bench-osprey` is the fast loop for a compiler or runtime change: it
 compiles and times only `osprey`, `osprey-arc`, `osprey-gc` and `osprey-wasm`,
 never Rust/C/C#/Dart/OCaml/Haskell. It stages into a temp directory and merges
 only the `(case, language)` cells it actually measured, so every other
 language's tracked record survives byte-for-byte — and if any case fails to
 build, mismatches its oracle or fails timing, nothing is published at all. It needs one prior
-`make bench` for the baseline. Every run, including a full `make bench`, stages and merges this way. Missing toolchains, skipped cases and unavailable measurements preserve the last recorded values. Replacements require complete, finite timing measurements; published files are replaced atomically.
+`make -C benchmarks bench` for the baseline. Every run, including a full `make -C benchmarks bench`, stages and merges this way. Missing toolchains, skipped cases and unavailable measurements preserve the last recorded values. Replacements require complete, finite timing measurements; published files are replaced atomically.
 
 All WebAssembly columns run under Wasmtime with an explicit 4 MiB call-stack budget (`-W max-wasm-stack=4194304`). The `ackermann` workload exhausts Wasmtime's default budget; with the shared budget it prints the required `8189`. This changes host capacity, not the workload or correctness oracle.
 
@@ -49,7 +49,7 @@ raw hyperfine exports (`hf/`) are gitignored, and binaries are built in a tempor
 | `results.json` | the same data, structured, for tracking over time |
 | `hf/*.json`    | raw [hyperfine](https://github.com/sharkdp/hyperfine) exports per case |
 
-`make bench` also **bakes** the tables into the website
+`make -C benchmarks bench` also **bakes** the tables into the website
 (`website/src/_includes/benchmarks-tables.html`, committed) so the
 [`/benchmarks`](../website/src/benchmarks.md) page renders them at site-build
 time. The standalone report and website tables are generated mechanically by [`report.py`](report.py). The website prose must be updated to describe those measurements and their provenance.
@@ -189,7 +189,7 @@ redirect (which also stops an `input()` call from blocking on a tty). To watch a
 case run on fresh random data each time, set `BENCH_RANDOM=1`:
 
 ```bash
-BENCH_RANDOM=1 BENCH_FILTER=wordfreq make bench   # prints a randomized demo pass
+BENCH_RANDOM=1 BENCH_FILTER=wordfreq make -C benchmarks bench   # prints a randomized demo pass
 ```
 
 The Osprey cases fall back to seed `1` if `randomBelow` returns an error, so a successful randomized demo does not establish that fresh entropy was obtained. Everything charted is the deterministic constant-seed run.
@@ -244,7 +244,7 @@ and the new cryptographically-secure `random`/`randomBelow` builtins
 3. Add `expected.txt` (exact stdout) and `bench.json` (`{"name","description"}`).
 4. Add `<name>.rs`, `<name>.c`, `<name>.ml`, `<name>.hs` — identical algorithm
    and parameters, each printing only the integer result.
-5. `BENCH_FILTER=<name> make bench` and confirm every language reports `ok`.
+5. `BENCH_FILTER=<name> make -C benchmarks bench` and confirm every language reports `ok`.
 
 ## Symbolic-execution comparison (planned)
 

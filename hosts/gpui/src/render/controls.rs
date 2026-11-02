@@ -46,7 +46,7 @@ fn bound_button(ctx: &mut Ctx, node: &Value, ordinal: u64) -> AnyElement {
 /// A plain button drawn as a flat GPUI div when the application's theme names `button` and
 /// `buttonText` colours, padded by its third and first spacing steps; otherwise the kit's button.
 fn flat_button(ctx: &Ctx, node: &Value, ordinal: u64) -> Option<Stateful<Div>> {
-    let theme = ctx.view.regions.theme();
+    let theme = ctx.theme();
     let background = colour(theme, "button", ctx.dark)?;
     let text = colour(theme, "buttonText", ctx.dark)?;
     let enabled = flag(node, "enabled");

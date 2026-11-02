@@ -20,21 +20,11 @@ COPY scripts /workspace/scripts
 COPY crates /workspace/crates
 COPY tree-sitter-osprey /workspace/tree-sitter-osprey
 COPY compiler/runtime /workspace/compiler/runtime
-# lsp-profiler is a path dependency in the lspkit submodule; cargo reads its
-# manifest to resolve the workspace even where it is not compiled.
-COPY lspkit /workspace/lspkit
 # The compiler embeds this shared grammar in generated HTML documentation.
 COPY website/src/js/osprey-grammar.mjs /workspace/website/src/js/osprey-grammar.mjs
 # Hunt reports embed the same design tokens as the website.
 COPY website/src/css/variables.css /workspace/website/src/css/variables.css
 WORKDIR /workspace
-
-# The language server inside `osprey` mounts lspkit's profiler, whose build
-# script generates its wire model with the typeDiagram CLI on Node.js 20+.
-COPY --from=node:24-bookworm-slim /usr/local/bin/node /usr/local/bin/
-COPY --from=node:24-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
-RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && npm install -g typediagram@0.11.0
 
 # Build the C runtime archives (compiler/lib/lib*_runtime.a)
 RUN make _runtime

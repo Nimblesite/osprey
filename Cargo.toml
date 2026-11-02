@@ -18,8 +18,6 @@ members = [
     "crates/lsp-profiler-osprey",
     "crates/osprey-cli",
 ]
-# The lspkit submodule is its own workspace; its crates are path dependencies.
-exclude = ["lspkit"]
 
 [workspace.package]
 version = "0.0.0-dev"
@@ -54,23 +52,20 @@ stacker = "0.1.25"
 # crate's getopts/serde extras.
 pulldown-cmark = { version = "0.13.5", default-features = false, features = ["html"] }
 
-# Language-server building blocks share the pinned lspkit submodule and its
-# maintained watcher dependencies. [LSP-REUSE-LSPKIT] The LSP is wired in-process,
-# so only the transport/VFS/engine layers are pulled in (no tree-sitter dup).
-lspkit = { version = "0.0.1", path = "lspkit/crates/lspkit" }
-lspkit-server = { version = "0.0.1", path = "lspkit/crates/lspkit-server" }
-lspkit-vfs = { version = "0.0.1", path = "lspkit/crates/lspkit-vfs" }
-lspkit-live = { version = "0.0.1", path = "lspkit/crates/lspkit-live" }
+# Language-server building blocks from the published lspkit crates.
+# [LSP-REUSE-LSPKIT] The LSP is wired in-process, so only the transport, VFS and
+# engine layers are pulled in (no tree-sitter feature).
+lspkit = "0.4.0"
+lspkit-server = "0.4.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "sync"] }
 async-trait = "0.1"
 futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 lsp-types = "0.97"
-# lspkit's shared CPU and memory profiler, from the lspkit submodule: it is not
-# published. Its build script generates the wire model with the typeDiagram
-# CLI, so a build needs Node.js and `typediagram` on PATH [PROF-RUNTIME].
-lsp-profiler = { path = "lspkit/crates/lsp-profiler" }
+# lspkit's shared CPU and memory profiler. The published crate ships its
+# generated wire model, so a build needs neither Node.js nor typeDiagram.
+lsp-profiler = "0.4.0"
 # The same version lsp-profiler pins, so the graph carries one sysinfo.
 sysinfo = { version = "0.39.3", default-features = false, features = ["system", "user"] }
 tracing = "0.1"

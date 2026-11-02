@@ -21,7 +21,7 @@ while [[ $# -gt 0 && $1 != -- ]]; do osprey_flags+=("$1"); shift; done
 repo_dir=$(cd "$(dirname "$0")/.." && pwd)
 compiler=${OSPREY_BIN:-"$repo_dir/target/release/osprey"}
 if [[ ! -x "$compiler" ]]; then
-    echo "Osprey compiler not found at $compiler. Run make macos from the repository root." >&2
+    echo "Osprey compiler not found at $compiler. Run make -C apps macos from the repository root." >&2
     exit 1
 fi
 build=$(dirname "$output")

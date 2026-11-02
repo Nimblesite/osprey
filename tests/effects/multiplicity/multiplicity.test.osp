@@ -18,7 +18,7 @@ fn exactArithmetic(work) = {
 }
 
 /// Resumption multiplicity — how many times an effect's request may be answered
-/// ([MULTI-AXIS], docs/specs/language/0035-StagedEffects.md). This suite is the runnable
+/// ([MULTI-AXIS], docs/specs/language/0017-AlgebraicEffects.md). This suite is the runnable
 /// half of the [MULTI-FALSIFY] gate: the programs the axis must ACCEPT. The
 /// programs it must REJECT are `examples/failscompilation/multi_*.ospo`.
 /// Implements [MULTI-AXIS], [MULTI-DECL], [MULTI-HANDLE-ONCE], [MULTI-COMPAT].

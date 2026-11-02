@@ -1,0 +1,8 @@
+[project]
+name = "json-tests"
+source_roots = [".", "../src"]
+default_namespace = "json_tests"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

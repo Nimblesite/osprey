@@ -1,0 +1,8 @@
+[project]
+name = "signal-flow-tests"
+source_roots = [".", "../src", "../../native/src", "../../graphics/src", "../../json/src", "../../uitest/src"]
+default_namespace = "signalflowtests"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

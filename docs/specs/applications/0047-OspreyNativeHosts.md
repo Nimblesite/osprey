@@ -27,7 +27,7 @@ A host that draws a fallback for an unknown kind, invents an event, or stores ap
 | Transport | Build | Entry | Hosts |
 | --- | --- | --- | --- |
 | C ABI | `--target=macos`, `ios`, `ios-sim`, `android-*`, desktop targets as delivered | exported `start`/`dispatch` C functions, borrowed input, copied output | SwiftUI, GPUI |
-| WASI frames | `--target=wasm32-wasi` | one JSON frame on stdin, one envelope on stdout, routed by `vscode::Webview::respond` | VS Code webview, browser |
+| WASI frames | `--target=wasm32` | one JSON frame on stdin, one envelope on stdout, routed by `vscode::Webview::respond` | VS Code webview, browser |
 
 Both carry the same envelope: `version`, `state`, `slices`, `patches`, `removed`, `requests`, `diagnostics` and, at start, `theme`. A transport may add nothing to it.
 

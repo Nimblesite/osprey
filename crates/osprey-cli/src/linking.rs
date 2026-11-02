@@ -8,7 +8,7 @@ use std::path::Path;
 /// and any `// @link:` / `// @linkdir:` FFI directives (e.g. `-lsqlite3`).
 /// Implements [FFI-LINK-DIRECTIVES].
 pub(super) fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
-    let uses_http = ir.contains("@http") || ir.contains("@websocket");
+    let uses_http = uses_http(ir);
     let mut args: Vec<_> = runtime_archive(uses_http, memory).into_iter().collect();
     if uses_http {
         args.extend(openssl_flags());
@@ -23,6 +23,25 @@ pub(super) fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
     args.extend(source.lines().filter_map(ffi_flag));
     args
 }
+
+/// Whether a program needs the HTTP archive and OpenSSL: HTTP, WebSocket, or the extern-callable
+/// TLS session, file server and media render, which live in that archive [FFI-TLS-CLIENT]
+/// [FFI-FILE-SERVER] [FFI-MEDIA-RENDER].
+pub(crate) fn uses_http(ir: &str) -> bool {
+    ["http", "websocket"]
+        .iter()
+        .chain(&HTTP_RUNTIME_EXTERNS)
+        .any(|prefix| ir.contains(&format!("@{prefix}")))
+}
+
+/// The prefixes of the `extern fn`s the HTTP archive itself defines, so a program that declares
+/// one links it from the archive rather than asking a host for it.
+pub(crate) const HTTP_RUNTIME_EXTERNS: [&str; 4] = [
+    "osprey_tls_",
+    "osprey_net_",
+    "osprey_file_server_",
+    "osprey_media_",
+];
 
 fn runtime_archive(http: bool, memory: &str) -> Option<String> {
     let name = if http { "http" } else { "fiber" };

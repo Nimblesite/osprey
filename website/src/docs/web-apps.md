@@ -314,13 +314,13 @@ From the repository root:
 
 ``` bash
 # Compile the Osprey client, bundle React/host/CSS, and embed the Wasm bytes.
-make bank-web
+make -C apps bank-web
 
 # Rebuild the browser bundle, run the native Osprey server, and open the app.
-make bank
+make -C apps bank
 ```
 
-The application is served at `http://127.0.0.1:18790`. The generated `examples/projects/modules/src/web/bundle.ospml` contains the minified CSS and JavaScript, including base64-encoded Wasm. It is generated source: change the client, host, or styles and rerun `make bank-web` rather than editing it.
+The application is served at `http://127.0.0.1:18790`. The generated `examples/projects/modules/src/web/bundle.ospml` contains the minified CSS and JavaScript, including base64-encoded Wasm. It is generated source: change the client, host, or styles and rerun `make -C apps bank-web` rather than editing it.
 
 The example's web build performs four jobs:
 
@@ -414,7 +414,7 @@ npm test
 
 # Compile the real Osprey client/server and drive it in Chromium
 cd ../../../..
-make bank-e2e
+make -C apps bank-e2e
 
 # Compiler Wasm ABI/linker tests
 cargo test -p osprey-cli wasm::tests

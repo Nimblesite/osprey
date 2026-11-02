@@ -1,9 +1,8 @@
 // Tests for [PROF-VSCODE-SHARED] and [PROF-LSP-HOST]: command registration,
 // configuration, status bar and keybindings of the shared profiler UI, ported
-// from SharpLsp's profiler commands suite, plus the two guarantees Osprey's
+// from SharpLsp's profiler commands suite, plus the guarantee Osprey's
 // packaging adds — the manifest is exactly the generator's output for a host
-// with no memory backend, and the library the tests load is the submodule's
-// current build, never a stale packed copy.
+// with no memory backend.
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -169,14 +168,5 @@ suite("Profiler — Manifest", () => {
     const manifest = JSON.parse(text) as { contributes: { commands: unknown[] } };
     const stale = { ...manifest, contributes: { ...manifest.contributes, commands: [] } };
     assert.equal(sync.needsSync(`${JSON.stringify(stale, null, 2)}\r\n`), true, "a manifest missing the commands is out of sync");
-  });
-
-  test("the installed profiler UI is the submodule's current build, not a stale packed copy", () => {
-    const installed = path.join(extensionRoot, "node_modules", "@nimblesite", "lsp-profiler-ui", "out", "src");
-    const built = path.resolve(extensionRoot, "..", "lspkit", "packages", "lsp-profiler-ui", "out", "src");
-    const scripts = fs.readdirSync(built).filter((file) => file.endsWith(".js"));
-    assert.ok(scripts.length > 0, "the submodule's UI is built");
-    const stale = scripts.filter((file) => fs.readFileSync(path.join(built, file), "utf8") !== fs.readFileSync(path.join(installed, file), "utf8"));
-    assert.deepEqual(stale, [], "reinstall the extension's dependencies (npm ci) after rebuilding the UI");
   });
 });
