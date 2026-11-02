@@ -66,7 +66,8 @@ fn effect_requirements_follow_every_editor_view() -> Result<(), String> {
         let completions = crate::test_support::completion(source, uri, line, column, Utf16);
         let items = crate::wire::completion_result(&completions);
         let relay = items
-            .as_array()
+            .get("items")
+            .and_then(serde_json::Value::as_array)
             .ok_or("completions")?
             .iter()
             .find(|item| item.get("label").and_then(serde_json::Value::as_str) == Some("relay"))
