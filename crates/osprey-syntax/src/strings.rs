@@ -203,8 +203,11 @@ enum Frame {
 }
 
 impl Scope {
-    fn in_code(&self) -> bool {
+    /// In code and not glued to a word: `1\\n x => y` is a newline, not a lambda.
+    fn opens_word(&self) -> bool {
         matches!(self.open.last(), Some(Frame::Code { .. }))
+            && !self.previous.is_alphanumeric()
+            && self.previous != '_'
     }
 
     fn observe(&mut self, character: char) {
@@ -253,7 +256,8 @@ fn decode(raw: &str) -> Decoded {
     while let Some((index, character)) = chars.next() {
         if character == '\\' {
             if let Some((next, escaped)) = chars.next() {
-                let lambda = scope.in_code() && opens_lambda(text.get(next..).unwrap_or_default());
+                let lambda =
+                    scope.opens_word() && opens_lambda(text.get(next..).unwrap_or_default());
                 let meaning = escape_meaning(escaped).filter(|_| !lambda);
                 append_escape(&mut decoded, text, start, index..next, escaped, meaning);
                 scope.observe(escaped);
