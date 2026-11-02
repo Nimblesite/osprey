@@ -1550,6 +1550,64 @@ fn main_returning_an_integer_sets_the_exit_status_in_every_flavor() {
     );
 }
 
+/// The GitHub Action's contract: one JSON line on stdin, `key=value` lines on stdout,
+/// and the exit status of `main`. [GHA-FERRY-STDIN] [GHA-IO-CONTRACT] [ENTRY-EXIT-STATUS]
+#[test]
+fn a_json_line_on_stdin_becomes_outputs_and_an_exit_status() {
+    let program = temp_osp(
+        "gha_ferry",
+        "fn member(members, name, position) = match listGet(members, position) {\n\
+             Success { value } => match value {\n\
+                 JsonMember(key, json) => if key == name { json } else { member(members, name, position + 1) }\n\
+             }\n\
+             Error => JsonNull\n\
+         }\n\
+         fn answer(members) = match member(members, \"who\", 0) {\n\
+             JsonString(who) => {\n\
+                 print(\"greeting=hello ${who}\\nlength=${length(who)}\")\n\
+                 0\n\
+             }\n\
+             _ => {\n\
+                 print(\"error=who is required\")\n\
+                 3\n\
+             }\n\
+         }\n\
+         fn run() = match jsonDecode(input()) {\n\
+             Success { value } => match value {\n\
+                 JsonObject(members) => answer(members)\n\
+                 _ => 2\n\
+             }\n\
+             Error => 1\n\
+         }\n\
+         fn main() = {\n\
+             handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+             run()\n\
+         }\n",
+    );
+    let path = program.to_str().unwrap_or_default();
+    for (line, status, stdout) in [
+        (
+            "{\"who\":\"Osprey\"}\n",
+            0,
+            "greeting=hello Osprey\nlength=6\n",
+        ),
+        (
+            "{\"other\":1,\"who\":\"🦅\"}",
+            0,
+            "greeting=hello 🦅\nlength=4\n",
+        ),
+        ("{\"other\":1}\n", 3, "error=who is required\n"),
+        ("{\"who\":7}\n", 3, "error=who is required\n"),
+        ("[1,2]\n", 2, ""),
+        ("not json\n", 1, ""),
+        ("", 1, ""),
+    ] {
+        let run = run_args_with_stdin(&[path, "--run", "--quiet", "--no-warnings"], line);
+        assert_eq!(run.code, Some(status), "{line}: {}", run.stderr);
+        assert_eq!(run.stdout, stdout, "{line}");
+    }
+}
+
 /// `--warnings-as-errors` keeps the warning text and fails; the default stays
 /// advisory, `--no-warnings` stays silent, and errors fail as ever.
 #[test]

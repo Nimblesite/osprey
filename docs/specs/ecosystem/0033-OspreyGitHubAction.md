@@ -1,7 +1,7 @@
 # Osprey GitHub Action
 
-**Status:** normative target; implementation has not started. Delivery is fixed
-by [plan 0021](../../plans/0021-osprey-github-action.md).
+**Status:** normative target; the input ferry and exit status are implemented and the
+packaging is not. Delivery is fixed by [plan 0021](../../plans/0021-osprey-github-action.md).
 
 A marketplace-published GitHub Action whose entire behaviour is to ferry a job's
 inputs into a co-located Osprey program and surface that program's stdout as the
