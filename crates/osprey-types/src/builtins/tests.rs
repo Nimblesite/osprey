@@ -115,7 +115,7 @@ fn network_builtins_match_the_runtime_status_abi() {
         ),
         (
             "httpPost",
-            "httpPost : (int, string, string, string) -> int",
+            "httpPost : (int, string, string, string) -> Result<int, Error>",
         ),
         (
             "httpPostResponse",
@@ -131,7 +131,7 @@ fn network_builtins_match_the_runtime_status_abi() {
         ),
         (
             "httpListen",
-            "httpListen : (int, (string, string, string, string) -> HttpResponse) -> int",
+            "httpListen : (int, (string, string, string, string) -> HttpResponse) -> Result<int, Error>",
         ),
         (
             "httpStopServer",
