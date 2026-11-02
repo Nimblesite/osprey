@@ -44,7 +44,20 @@ Run [41362564685](https://github.com/Nimblesite/osprey/actions/runs/41362564685)
 | `packages/signal_flow/tests` | 906s | 37s | 90s | 21s |
 | `examples/synth/test` | 371s | 37s | 75s | |
 
-The other UI suites take about 30 seconds on Linux, so this is specific to these two, which both load the Signal Flow machine. Run `41370627487`, with an earlier compiler fix, still took 809s and 382s. The cause is not yet known.
+The other UI suites take about 30 seconds on Linux. Run `41370627487`, with an earlier compiler fix, still took 809s and 382s.
+
+**The cause is the garbage collector, and it's fixed.** A Linux container reproduced it, and a profile put 66–97% of the time in `gc_lookup`, called from the conservative scan.
+
+- **Every scanned word went to the hash table.** That includes zeros, which all hash to one slot and walk whatever cluster sits there. In a captured table that cluster was 2,600 slots long, walked once per zero on the heap.
+- **The hash clustered on glibc's allocation pattern.** One captured table had a run of 8,671 slots, and a miss averaged 293 probes where about 7 is expected. How bad it got depended on where ASLR placed the heap.
+- **The Mac mostly escaped.** The same suite took 16–21 seconds here throughout.
+
+`compiler/runtime/memory_gc.c` now rejects words outside the tracked heap's bounds before touching the table, and uses the full murmur3 finalizer as its hash. Measured in a Linux arm64 container, against the CI x64 figures above:
+
+| Suite | CI before | Container, new hash only | Container, new hash and bounds |
+|---|---:|---:|---:|
+| `packages/signal_flow/tests` | 906s | 460s | 33s |
+| `examples/synth/test` | 371s | | 31s |
 
 ### 2. The same tests on every system
 
@@ -95,7 +108,7 @@ Limits are 40–90 minutes, and they have no per-test bound. The 90-minute limit
 
 The Workbench compile took 615 seconds on CI at `6119a002`, and takes 125 seconds and 1 GB on this Mac at `d7360f5d`. `8356f2f7` and `d7360f5d` fix a compiler cost here, so re-measure this after the changes below.
 
-## The plan
+## The plan, now applied in `ci.yml`, `gpui.yml`, `ci-windows.yml` and `winui.yml`
 
 No assertion is deleted from the repository's overall coverage: everything removed from Windows or Mac still runs on Linux.
 
@@ -141,7 +154,7 @@ Each job's limit becomes about 1.5 times its measured healthy time, so a hang fa
 |---|---:|---:|
 | Wall clock | 57 | 20–25 |
 | Wait before suites start | 11.7 | 4 |
-| GPUI ubuntu | 46.8 | Suites under 5 once item 1 is fixed, host under 12 |
+| GPUI ubuntu | 46.8 | Suites under 5, host under 12 |
 | GPUI macos | 23.8 | 12 |
 | GPUI windows | 27.5 | 12 with a warm cache |
 | Windows core | 14.2 | 8 |
