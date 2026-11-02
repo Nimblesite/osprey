@@ -339,6 +339,7 @@ void run_all_http_tests(void) {
   test_client_chunked_response();
   test_client_status_line_handling();
   test_client_methods_and_body();
+  test_client_large_request_body();
   test_client_transport_failures();
   test_client_large_response();
   test_client_malformed_chunks();

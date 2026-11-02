@@ -2,6 +2,8 @@
 #include "http_shared.h"
 #include "socket_safety.h"
 
+#include <limits.h>
+#include <stdbool.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/x509_vfy.h> // X509_VERIFY_PARAM
@@ -88,6 +90,21 @@ static ssize_t transport_send(SSL *ssl, int sock, const char *buf, int len) {
     return SSL_write(ssl, buf, len);
   }
   return send(sock, buf, (size_t)len, 0);
+}
+
+// Writes all of `buf`, however many short writes the transport makes of it.
+static bool transport_send_all(SSL *ssl, int sock, const char *buf, size_t len) {
+  size_t sent = 0;
+  while (sent < len) {
+    size_t left = len - sent;
+    int block = left > (size_t)INT_MAX ? INT_MAX : (int)left;
+    ssize_t n = transport_send(ssl, sock, buf + sent, block);
+    if (n <= 0) {
+      return false;
+    }
+    sent += (size_t)n;
+  }
+  return true;
 }
 
 static ssize_t transport_recv(SSL *ssl, int sock, char *buf, int cap) {
@@ -217,31 +234,31 @@ int64_t http_perform(int64_t client_id, int64_t method, char *path,
     }
   }
 
-  char request[MAX_HTTP_BUFFER];
+  // Only the head is formatted here. The body is any size and goes out after it
+  // unchanged, so a large request can neither truncate nor read past this buffer.
+  char head[MAX_HTTP_BUFFER];
   const char *method_str = http_method_to_string((HttpMethod)method);
+  size_t body_len = body ? strlen(body) : 0;
+  const char *extra = headers ? headers : "";
+  size_t extra_len = strlen(extra);
+  const char *extra_end = (extra_len == 0 || (extra_len >= 2 && extra[extra_len - 2] == '\r' && extra[extra_len - 1] == '\n')) ? "" : "\r\n";
 
   // The Host header carries the bare host name (no :port) - servers like
   // GitHub reject "Host: api.github.com:443" with 400.
-  int request_len = snprintf(request, sizeof(request),
-                             "%s %s HTTP/1.1\r\n"
-                             "Host: %s\r\n"
-                             "Connection: close\r\n",
-                             method_str, path, client->host);
-
-  if (headers && strlen(headers) > 0) {
-    request_len += snprintf(request + request_len, sizeof(request) - request_len,
-                            "%s\r\n", headers);
+  int head_len = body_len > 0
+      ? snprintf(head, sizeof(head),
+                 "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n%s%sContent-Length: %zu\r\n\r\n",
+                 method_str, path, client->host, extra, extra_end, body_len)
+      : snprintf(head, sizeof(head),
+                 "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n%s%s\r\n",
+                 method_str, path, client->host, extra, extra_end);
+  if (head_len < 0 || (size_t)head_len >= sizeof(head)) {
+    transport_close(ssl, ctx, sock);
+    return -6; // a head that does not fit is refused, never sent truncated
   }
 
-  if (body && strlen(body) > 0) {
-    request_len += snprintf(request + request_len, sizeof(request) - request_len,
-                            "Content-Length: %zu\r\n\r\n%s", strlen(body), body);
-  } else {
-    request_len += snprintf(request + request_len,
-                            sizeof(request) - request_len, "\r\n");
-  }
-
-  if (transport_send(ssl, sock, request, request_len) < 0) {
+  if (!transport_send_all(ssl, sock, head, (size_t)head_len) ||
+      !transport_send_all(ssl, sock, body, body_len)) {
     transport_close(ssl, ctx, sock);
     return -6;
   }

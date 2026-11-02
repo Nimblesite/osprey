@@ -52,6 +52,7 @@ void test_client_handle_exhaustion(void);
 void test_client_chunked_response(void);
 void test_client_status_line_handling(void);
 void test_client_methods_and_body(void);
+void test_client_large_request_body(void);
 void test_client_transport_failures(void);
 void test_client_large_response(void);
 void test_client_malformed_chunks(void);
