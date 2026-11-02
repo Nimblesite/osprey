@@ -36,16 +36,22 @@ A model request is an `Http` capability and a tool is a `Run` capability, so the
 
 Every pixel is a framework node, a frame and a theme token, so the application contains no host code. Only `Engine.tool_command` names a platform, to pick the shell, and it has POSIX and PowerShell forms. The [SwiftUI host](../../hosts/swift/README.md) draws it today. Its README lists what the WinUI host needs to draw the same app on Windows.
 
-## Testing it live
+## Testing it
 
-`drive/app.sh` opens the app, types with real keystrokes, clicks with real mouse events and captures only the app's window:
+`self-test.sh` plays the same scripts in `self-test/` through the real views, update and capabilities on the SwiftUI host ([UI-MACHINE-SELF-TEST]):
 
 ```sh
-examples/agent/drive/demo-project.sh /tmp/osprey-agent-demo
-examples/agent/drive/app.sh open /tmp/osprey-agent-demo "$PWD/.env"
-examples/agent/drive/app.sh type "Run the tests and fix calc."
-examples/agent/drive/app.sh key return
-examples/agent/drive/app.sh shot /tmp/agent.png
+examples/agent/self-test.sh                   # no window to see, the model a test double, pictures against goldens
+examples/agent/self-test.sh --live            # a real window and real DeepSeek calls; spends tokens
+examples/agent/self-test.sh --live key.env    # the same with a dotenv file you name
+examples/agent/self-test.sh --update-goldens  # writes this macOS version's goldens from a doubled run
 ```
 
-It needs Accessibility and Screen Recording permission for the terminal. Check the outcome independently of what the agent says, for example with `python3 test_calc.py` in the demo project.
+| Script | What it proves |
+| --- | --- |
+| `self-test/coding.json` | Fixes a project and adds a feature through the composer. Both modes run the project's tests afterwards, and `--live` also asks an LLM judge whether the agent's words match them |
+| `self-test/controls.json` | Every control: the key field, suggestions, a failed request and Try again, the model picker, Thought and tool disclosures, Stop, switching, the inspector and its splitter, and Open folder. Doubled only, because a model's words cannot be scripted |
+| `self-test/restart.json` | What `controls.json` saved comes back after a restart, without the key |
+| `self-test/tasks/` | `--live` only: harder tasks, each checked by a hidden `verify.py` the agent never sees |
+
+A script acts through the events the views send, not with a mouse. `drive/app.sh` opens the app for a person's real keystrokes and clicks and captures only the app's window, which needs Accessibility and Screen Recording permission for the terminal.

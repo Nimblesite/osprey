@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {"wait": "New chat"},
+    {"wait": "API key set"},
+    {"wait": "Explain this project"},
+    {"shot": "01-ready"},
+    {"type": ["Message", "Run the tests with python3 test_calc.py, then fix the calc package so they all pass. Do not change the tests.\n"]},
+    {"wait": "Stop"},
+    {"gone": "Stop"},
+    {"wait": "__init__.py"},
+    {"shot": "02-fixed"},
+    {"invoke": "command"},
+    {"wait": "test_calc.py"},
+    {"shot": "03-tool-detail"},
+    {"invoke": "command"},
+    {"type": ["Message", "Add a median(values) function to the calc package, averaging the two middle values for an even count, and add tests for it to test_calc.py. Then run the tests.\n"]},
+    {"wait": "Stop"},
+    {"gone": "Stop"},
+    {"wait": "median"},
+    {"shot": "04-feature"}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "replies": [
+    {
+      "status": 500,
+      "body": "{\"error\":\"the double refuses this one\"}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Answered after trying again.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"The reasoned answer.\", \"reasoning_content\": \"Considering the question.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Never shown: Stop comes first.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}",
+      "delayMs": 30000
+    }
+  ]
+}

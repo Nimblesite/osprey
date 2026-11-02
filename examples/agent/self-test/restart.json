@@ -1,0 +1,10 @@
+{
+  "steps": [
+    {"wait": "Find how this project"},
+    {"wait": "Think about it"},
+    {"wait": "Take your time"},
+    {"choose": "Think about it"},
+    {"wait": "The reasoned answer."},
+    {"shot": "17-restored"}
+  ]
+}

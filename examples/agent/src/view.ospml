@@ -77,7 +77,7 @@ module Blocks
 
     runs spans = mapList (spans, \span => run span)
 
-    paragraph (spans, prefix) = Ui::rich (listConcat (Pick::either (prefix == "", [], [Ui::run (prefix, "secondary", false)])) (runs spans), ui::Body)
+    paragraph spans = Ui::rich (runs spans, ui::Body)
 
     heading block =
         size = match block.blockLevel
@@ -89,11 +89,13 @@ module Blocks
 
     listed (spans, prefix) =
         style = Frames::inset (0, 0, 0, 6)
-        Ui::framed (style, paragraph (spans, prefix))
+        mark = Frames::plain
+        words = Frames::plain
+        Ui::framed (style(frameGap = 8, frameCross = "start"), Ui::row [Ui::framed (mark(frameHug = true, frameInk = "secondary"), Ui::text prefix), Ui::framed (words(frameGrow = true), paragraph spans)])
 
     quote block =
         style = Frames::inset (2, 0, 2, 12)
-        Ui::framed (style(frameLine = "line", frameLineEdge = "left", frameInk = "secondary"), paragraph (block.blockSpans, ""))
+        Ui::framed (style(frameLine = "line", frameLineEdge = "left", frameInk = "secondary"), paragraph block.blockSpans)
 
     code block =
         head = Ui::framed (Look::sized (11, "secondary"), Ui::text (Pick::either (block.blockLanguage == "", "code", block.blockLanguage)))
@@ -116,12 +118,12 @@ module Blocks
     (** One Markdown block. *)
     export node block = match block.blockKind
         "heading" => heading block
-        "bullet" => listed (block.blockSpans, "•  ")
-        "numbered" => listed (block.blockSpans, "${block.blockLevel}.  ")
+        "bullet" => listed (block.blockSpans, "•")
+        "numbered" => listed (block.blockSpans, "${block.blockLevel}.")
         "quote" => quote block
         "code" => code block
         "table" => table block
-        _ => paragraph (block.blockSpans, "")
+        _ => paragraph block.blockSpans
 
 (** The transcript's items as nodes. *)
 module Items
@@ -216,7 +218,7 @@ module View
     chatRow chat =
         now = chat.chatStarted
         busy = Model::busy chat
-        note = Pick::either (busy, "Working…", Pick::either (chat.chatStage == "failed", "Stopped by an error", chat.chatModel))
+        note = Pick::either (busy, "Working…", Pick::either (chat.chatStage == "failed", "Stopped by an error", modelName chat.chatModel))
         base3 = Frames::plain
         words = Ui::column [Ui::framed (base3(frameHug = true, frameTextSize = 13), Ui::text chat.chatTitle), Ui::framed (Look::sized (11, Pick::either (busy, "accent", "secondary")), Ui::text note)]
         base4 = Look::gapped 2
@@ -229,7 +231,7 @@ module View
         quiet = Frames::inset (8, 10, 4, 10)
         actions = Ui::framed (quiet(frameQuietControls = true, frameGap = 2, frameTop = 44), Ui::column [Ui::button ("New chat", Symbols::name ui::Edit, NewChat), Ui::button ("Open folder…", Symbols::name ui::Folder, OpenFolder)])
         foot = Frames::inset (10, 16, 14, 16)
-        status = Pick::either (settings.apiKey == "", Ui::badge ("No API key", Symbols::name ui::Warning, ui::Caution), Ui::badge ("DeepSeek connected", Symbols::name ui::Check, ui::Good))
+        status = Pick::either (settings.apiKey == "", Ui::badge ("No API key", Symbols::name ui::Warning, ui::Caution), Ui::badge ("API key set", Symbols::name ui::Check, ui::Good))
         base5 = Frames::plain
         Ui::column [actions, Ui::framed (base5(frameGrow = true), Ui::rows (mapList (chatsNow (), \chat => chatRow chat), panel.panelActive, PickChat)), Ui::framed (foot, status)]
 
@@ -239,10 +241,10 @@ module View
         panel = panelNow ()
         bar = Frames::inset (10, 12, 10, 24)
         base6 = Frames::plain
-        titles = Ui::column [Ui::framed (base6(frameTextSize = 14, frameHug = true), Ui::styled (chat.chatTitle, ui::Headline, ui::Primary)), Ui::framed (Look::sized (11, "secondary"), Ui::text chat.chatFolder)]
+        titles = Ui::framed (base6(frameTextSize = 14, frameHug = true), Ui::styled (chat.chatTitle, ui::Headline, ui::Primary))
         base7 = Frames::plain
         toggle = Ui::framed (base7(frameQuietControls = true, frameIconOnly = true, frameControlHeight = 28, frameSymbolSize = 14, frameHug = true), Ui::button (Pick::either (panel.panelOpen, "Hide inspector", "Show inspector"), Symbols::name ui::Panel, TogglePanel))
-        Ui::framed (bar(frameHeight = 56, frameLine = "line", frameLineEdge = "bottom", frameAlign = "center", frameGap = 2), Ui::row [titles, ui::Spacer, toggle])
+        Ui::framed (bar(frameHeight = 52, frameLine = "line", frameLineEdge = "bottom", frameAlign = "center", frameGap = 2), Ui::row [titles, ui::Spacer, toggle])
 
     suggestion (title, detail, prompt) =
         base8 = Frames::plain
@@ -251,7 +253,7 @@ module View
     welcome chat =
         base9 = Frames::plain
         big = Ui::framed (base9(frameTextSize = 28, frameHug = true), Ui::styled ("What should we build?", ui::Large, ui::Primary))
-        where = Ui::framed (Look::sized (13, "secondary"), Ui::text "Working in ${chat.chatFolder}")
+        where = Ui::framed (Look::sized (13, "secondary"), Ui::text "Working in ${folderName chat.chatFolder}")
         base10 = Look::gapped 8
         ideas = Ui::framed (base10(frameTop = 18), Ui::column [
             suggestion ("Explain this project", "what it does and how it is laid out", "Explain this project: what it does and how it is laid out. Read what you need first."),
@@ -274,7 +276,9 @@ module View
         true =>
             card = Look::card ("surface", 12, 14, 12)
             base14 = Frames::plain
-            words = Ui::framed (base14(frameInk = "danger", frameTextSize = 13), Ui::text chat.chatProblem)
+            title = Ui::framed (base14(frameInk = "danger", frameTextSize = 13), Ui::styled ("The request failed", ui::Headline, ui::Primary))
+            detail = Ui::framed (Look::mono (12, "secondary"), Ui::text chat.chatProblem)
+            words = Ui::column [title, detail]
             base15 = Frames::plain
             [Ui::framed (card(frameLine = "danger"), Ui::column [words, Ui::framed (base15(frameHug = true), Ui::button ("Try again", Symbols::name ui::Refresh, Retry))])]
 
@@ -300,12 +304,14 @@ module View
 
     modelChoices () = [Ui::choice ("deepseek-chat", "DeepSeek Chat"), Ui::choice ("deepseek-reasoner", "DeepSeek Reasoner")]
 
+    modelName id = Pick::either (id == "deepseek-reasoner", "DeepSeek Reasoner", "DeepSeek Chat")
+
     keyField settings = match settings.apiKey == ""
         false => []
         true =>
             style = Frames::inset (8, 0, 0, 0)
             base16 = Frames::plain
-            [Ui::framed (style(frameGap = 8), Ui::row [Ui::framed (base16(frameGrow = true), ui::Field(label = "", value = settings.keyDraft, prompt = "Paste your DeepSeek API key", secure = true, multiline = false, commit = ui::OnEdit, bind = TypedKey)), Ui::action ("Save key", "", ui::Filled, true, SaveKey)])]
+            [Ui::framed (style(frameGap = 8), Ui::row [Ui::framed (base16(frameGrow = true), ui::Field(label = "API key", value = settings.keyDraft, prompt = "Paste your DeepSeek API key", secure = true, multiline = false, commit = ui::OnEdit, bind = TypedKey)), Ui::action ("Save key", "", ui::Filled, true, SaveKey)])]
 
     primary (chat, words) = match Model::busy chat
         true => Ui::action ("Stop", Symbols::name ui::Stop, ui::Filled, true, StopTurn)
@@ -335,9 +341,6 @@ module View
         base20 = Frames::inset (10, 0, 0, 0)
         Ui::framed (base20(frameHug = true), Ui::styled (text, ui::Eyebrow, ui::Secondary))
 
-    // The context window a DeepSeek chat model takes, for the meter.
-    contextTokens () = 128000
-
     grouped n =
         whole = toString n
         match n >= 1000
@@ -355,12 +358,8 @@ module View
             true => [Ui::framed (Look::sized (12, "faint"), Ui::text "Nothing yet")]
             false => mapList (files, \file => Ui::framed (fileLook(frameTextSize = 12), Ui::label (file, Symbols::name ui::Document)))
         Ui::framed (side(frameFill = "inset", frameLine = "line", frameLineEdge = "left", frameGrow = true, frameGap = 8, frameTextSize = 12), Ui::column (listConcat [
-            heading "Environment",
-            fact ("Project", folderName chat.chatFolder),
-            fact ("Model", chat.chatModel),
-            fact ("Provider", "DeepSeek"),
             heading "Usage",
-            Ui::meter ("Context ${grouped usage.lastInput} of ${grouped (contextTokens ())}", usage.lastInput, contextTokens (), ui::Accent),
+            fact ("Context", grouped usage.lastInput),
             fact ("Requests", toString usage.totalRequests),
             fact ("Tool calls", toString usage.totalTools),
             fact ("Tokens in", grouped usage.totalInput),
