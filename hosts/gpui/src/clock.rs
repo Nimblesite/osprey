@@ -89,6 +89,7 @@ fn tick(view: &mut HostView, window: &mut Window, cx: &mut Context<HostView>) {
     view.fps = view.frame_times.len();
     view.frame_started = Some(arrived);
     let started = Instant::now();
+    crate::host::deliver_opened(view, window, cx);
     view.dispatch(events::frame(now(), elapsed), window, cx);
     view.dispatch_ms = started.elapsed().as_secs_f64() * 1000.;
     record_bench(view, arrived);

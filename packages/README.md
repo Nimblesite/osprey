@@ -10,12 +10,14 @@ Each package's `NOTICE.md` acknowledges the original repositories and comparison
 
 | Package | Original API/behavior reference | Specifically retained third-party material |
 | --- | --- | --- |
+| [chromecast](chromecast/NOTICE.md) | A project-owned CPython CAST v2 sender script | None identified; MIT Osprey implementation |
 | [einops](einops/NOTICE.md) | Alex Rogozhnikov, einops 0.8.2 | None identified; MIT Osprey implementation |
 | [faiss](faiss/NOTICE.md) | Meta/Facebook, Faiss 1.15.1 | None identified; MIT Osprey implementation |
 | [flash_attn](flash_attn/NOTICE.md) | Dao-AILab FlashAttention conventions | None identified; MIT Osprey implementation |
 | [jinja2](jinja2/NOTICE.md) | Pallets Jinja 3.1.6 | None identified; MIT Osprey implementation |
 | [micrograd](micrograd/NOTICE.md) | Andrej Karpathy, micrograd 0.1.0 and nn-zero-to-hero | None identified; MIT Osprey implementation |
 | [native](native/NOTICE.md) | Original Osprey framework | MIT |
+| [signal_flow](signal_flow/NOTICE.md) | Original Osprey signal-flow editor and designs | MIT |
 | [numpy](numpy/NOTICE.md) | NumPy 2.5.4 | None identified; MIT Osprey implementation |
 | [re](re/NOTICE.md) | CPython 3.12.13 re behavior | Derived Unicode property/case tables in `src/tables.py` |
 | [rouge_score](rouge_score/NOTICE.md) | Google rouge-score 0.1.2 and NLTK Porter behavior | None identified; MIT Osprey implementation |

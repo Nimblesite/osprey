@@ -25,7 +25,7 @@ The flavor toggle switches between `studio.osp` (Default) and `studio.ospml` (ML
 [`0024-MLFlavorSyntax.md`](../../docs/specs/language/0024-MLFlavorSyntax.md)).
 
 ```sh
-make wasm-serve     # build both flavors + sql-driven page, serve, open the browser
+make -C website wasm-serve     # build both flavors + sql-driven page, serve, open the browser
 ```
 
 Then use the flavor toggle, the SQL console, and ↻ Re-run. No bundler, no npm in
@@ -49,7 +49,7 @@ From the repo root:
 # One target builds everything ready to go: the wasm runtime archive, the hello
 # example, BOTH Studio flavors, validation, and WASI/browser-shim smoke-runs
 # (both Studio flavors must match one byte-identical golden, studio.expectedoutput).
-make wasm
+make -C website wasm
 ```
 
 Or drive the compiler directly:
@@ -73,7 +73,7 @@ page + console) and loads SQLite (`sql.js`) on demand. Serve over HTTP (browsers
 block `fetch()` of `.wasm` and ES modules from `file://`):
 
 ```sh
-make wasm-serve                          # build + serve + open the browser
+make -C website wasm-serve                          # build + serve + open the browser
 # …or by hand:
 cd examples/wasm && python3 -m http.server 8080   # then visit http://localhost:8080/
 ```

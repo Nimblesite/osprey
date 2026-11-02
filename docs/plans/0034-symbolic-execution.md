@@ -14,7 +14,7 @@ Run KLEE on the LLVM IR the compiler already emits, with no annotations in the p
 - The mock C library in `compiler/runtime/klee/` and the runtime bitcode `_runtime_klee` (part of `make build`, with the `[SYMEX-MOCK-CLOSED]` check inside it).
 - `compile_program_symbolic` codegen: debug metadata forced on, `abort()` on fatal paths.
 - Mock unit tests `make _test_hunt_mock` (45 checks, part of `make test`); deterministic engine tests under `tests/hunt/` (`make _test_hunt`).
-- `scripts/hunt_corpus.sh` + `scripts/hunt_summary.py`, wrapped by `make hunt FILE=` and `make hunt-corpus`; `tests/HUNT_UNPORTABLE.txt` skips listed programs.
+- `scripts/hunt_corpus.sh` + `scripts/hunt_summary.py`, wrapped by `make -C tests/hunt hunt FILE=` and `make -C tests/hunt hunt-corpus`; `tests/HUNT_UNPORTABLE.txt` skips listed programs.
 - The VSCode command `osprey.hunt` ("Osprey: Hunt for Bugs") on the editor context menu and command palette: `osprey hunt <file> --json` on the active file, the report in the "Osprey Hunt" output channel, each finding a diagnostic at its line (source "Osprey Hunt (KLEE)").
 - Not built: `--fn`/`--all-fns`, `libkleeRuntest` replay with the entropy/clock provider, `[SYMEX-REGRESSION]`, Windows (WSL2, `--replay-host=windows`), `[SYMEX-PROOF]`.
 
@@ -50,7 +50,7 @@ The subcommand in `osprey-cli`: compile, link, run the fixed KLEE command line, 
 
 ### Phase 5: regression generation, corpus, Windows
 
-`tests/regressions/klee/` writer; a fully completed `make hunt-corpus` run and a required check in `scripts/verify-branch-protection.mjs` (not done); WSL2 execution with `--replay-host=windows`. The recorded 224-program run found no findings, but 20 programs hit the budget. The corpus scripts exist; that bounded result does not complete this phase.
+`tests/regressions/klee/` writer; a fully completed `make -C tests/hunt hunt-corpus` run and a required check in `scripts/verify-branch-protection.mjs` (not done); WSL2 execution with `--replay-host=windows`. The recorded 224-program run found no findings, but 20 programs hit the budget. The corpus scripts exist; that bounded result does not complete this phase.
 
 ### Phase 6: proof
 

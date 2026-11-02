@@ -106,5 +106,5 @@ export function renderFrame(node: Record<string, unknown>, render: (body: unknow
   if (typeof name !== "string" || (name !== "" && !/^[a-z][a-z0-9-]{0,63}$/.test(name))) throw new Error("Frame name must be a safe semantic role");
   const role = name === "" ? "" : ` osp-frame-${name}`;
   const widthMode = metric(node.style, "width") > 0 ? "fixed" : node.style.hug ? "content" : "fill";
-  return `<div class="osp-framed${role}" data-frame-width="${widthMode}" data-frame-grow="${node.style.grow}" style="box-sizing:border-box;min-width:0;${declarations(node.style).join(";")}">${render(node.body)}</div>`;
+  return `<div class="osp-framed${role}" data-frame-width="${widthMode}" data-frame-grow="${node.style.grow}" style="box-sizing:border-box;min-width:0;${metric(node.style, "height") > 0 ? "flex-shrink:0;" : ""}${declarations(node.style).join(";")}">${render(node.body)}</div>`;
 }

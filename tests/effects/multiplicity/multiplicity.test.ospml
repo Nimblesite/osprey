@@ -13,7 +13,7 @@ exactArithmetic work =
     work ()
 
 (** Resumption multiplicity — how many times an effect's request may be answered
-    ([MULTI-AXIS], docs/specs/language/0035-StagedEffects.md). The ML twin of
+    ([MULTI-AXIS], docs/specs/language/0017-AlgebraicEffects.md). The ML twin of
     `multiplicity.test.osp`, sharing its golden.
     Implements [MULTI-AXIS], [MULTI-DECL], [MULTI-HANDLE-ONCE], [MULTI-COMPAT]. *)
 

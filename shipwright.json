@@ -13,7 +13,7 @@
       "kind": "cli",
       "binaryName": "osprey",
       "expectedVersion": "0.0.0-dev",
-      "platforms": ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"],
+      "platforms": ["darwin-arm64", "linux-x64", "win32-x64"],
       "sources": ["user-setting", "bundled", "path", "github-release", "pkgmgr"],
       "userSetting": "osprey.server.compilerPath",
       "bundled": {
@@ -38,7 +38,7 @@
       "kind": "extension-vscode",
       "language": "typescript",
       "expectedVersion": "0.0.0-dev",
-      "platforms": ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"],
+      "platforms": ["darwin-arm64", "linux-x64", "win32-x64"],
       "required": true
     }
   ],

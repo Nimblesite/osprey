@@ -96,18 +96,18 @@ Set `OSPREY_DEVICE_ID` to choose a physical device, or `OSPREY_SIMULATOR_UDID` t
 Use JDK 17, Android SDK 34, an installed Android NDK, and an emulator or phone running Android API 26 or later. From the repository root:
 
 ```bash
-make android
+make -C apps android
 examples/mobile/android/run.sh
 ```
 
 The build creates ARM64 and x86-64 Osprey archives, links the JNI library, and packages the Kotlin host as a debug APK. The launch script installs it on the selected device. The APK is written to `examples/mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ```bash
-make android-test
+make -C apps android-test
 examples/mobile/android/run.sh --live-smoke
 ```
 
-`make android-test` checks the C ABI, supported language goldens, and deterministic application behavior. The separate `--live-smoke` exercises actual GitHub responses. Select a device with `OSPREY_ANDROID_SERIAL`; set `ANDROID_HOME` or `ANDROID_SDK_ROOT` for the SDK, and `ANDROID_NDK_HOME` or `ANDROID_NDK_ROOT` for the NDK. The scripts also discover standard local installations.
+`make -C apps android-test` checks the C ABI, supported language goldens, and deterministic application behavior. The separate `--live-smoke` exercises actual GitHub responses. Select a device with `OSPREY_ANDROID_SERIAL`; set `ANDROID_HOME` or `ANDROID_SDK_ROOT` for the SDK, and `ANDROID_NDK_HOME` or `ANDROID_NDK_ROOT` for the NDK. The scripts also discover standard local installations.
 
 ## Compile the library directly
 

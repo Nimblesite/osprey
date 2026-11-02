@@ -35,6 +35,7 @@ mod state;
 mod state_support;
 mod symbol_rewrite;
 mod type_rewrite;
+mod workspace;
 
 pub use advice::{ProjectWarning, StateBoundary};
 pub use manifest::{Dependency, DisciplineDecl, ProjectConfig};
@@ -273,7 +274,8 @@ pub(crate) fn compiler_binary() -> PathBuf {
 /// Returns manifest and source-root discovery failures.
 pub fn discover(root: &Path) -> Result<(ProjectConfig, Vec<PathBuf>), Vec<ProjectError>> {
     let manifest_path = root.join("osprey.toml");
-    let config = load_config(root, &manifest_path)?;
+    let mut config = load_config(root, &manifest_path)?;
+    workspace::adopt(root, &mut config);
     let paths = source::discover(root, &config).map_err(|error| vec![error])?;
     Ok((config, paths))
 }

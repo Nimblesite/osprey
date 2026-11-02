@@ -12,8 +12,8 @@ Write the model against an effect that declares its tensor operations. Two handl
 The 124M-parameter GPT-2 model in [`examples/gpt2`](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2) includes a forward pass, greedy generation and a training step. Both handlers produce byte-identical output on the CPU.
 
 ```bash
-make gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=gpu
-make gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=lists
+make -C apps gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=gpu
+make -C apps gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=lists
 ```
 
 The first line of each run names which handler answered: `gpt2 (124M) on host` or `gpt2 (124M) on lists`. Every other line is the same.

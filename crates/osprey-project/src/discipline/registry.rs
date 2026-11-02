@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Where the package client installs a dependency: `.osprey/packages/@org/name/<digest>/`.
-const INSTALL_ROOT: &str = ".osprey/packages";
+pub(crate) const INSTALL_ROOT: &str = ".osprey/packages";
 
 /// One registered discipline: a dependency whose manifest declares `[discipline]`.
 #[derive(Debug, Clone, PartialEq, Eq)]

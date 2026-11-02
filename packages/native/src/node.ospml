@@ -28,25 +28,6 @@ type Choice =
     choiceKey : string
     choiceLabel : string
 
-(** A per-line mark on an editor: the 1-based line, whether it is underlined and in which tone, a trailing badge and a note beside it; an empty badge or note draws none ([UI-COMPONENTS-EDITOR]). *)
-type Mark =
-    markLine : int
-    underlined : bool
-    markTone : Tone
-    markBadge : string
-    markNote : string
-
-(** One point of a stroke, in board points from the board's top-left corner. *)
-type Point =
-    pointX : int
-    pointY : int
-
-(** One finished stroke: its points in order, its width in points and the host clock in milliseconds when it ended ([UI-COMPONENTS-BOARD]). *)
-type Stroke =
-    strokePoints : List<Point>
-    strokeWidth : int
-    strokeAt : int
-
 (** A semantic component tree; `A` is the application's action union, so every control carries a typed action, never a callback ([UI-COMPONENTS]). *)
 type Node A =
     Text
@@ -213,10 +194,12 @@ type Node A =
     Scene
         sceneWidth : float
         sceneHeight : float
+        sceneZoom : float
         atlas : List<string>
         primitives : List<Primitive>
         play : A
         streamedCount : int
+        sceneAccess : List<Accessible>
 
 (** One tab: its key, label, symbol and page. *)
 type Tab A =
@@ -417,62 +400,28 @@ module Ui
     export contextMenu<A> : (Node<A>, List<Node<A>>) -> Node<A>
     contextMenu (content, actions) = ContextMenu(menuBody = content, menuActions = actions)
 
-    (** [UI-COMPONENTS-MATH] Typeset mathematics: the host lays out `math` with a mathematics face and exposes `spoken` to assistive technology. *)
-    export math<A> : (Math, string) -> Node<A>
-    math (tree, text) = Typeset(math = tree, spoken = text)
-
-    (** [LESSONS-FRAMEWORK] A still picture with required alternative text, scaled to fit its width and keeping its aspect ratio; it carries no binding. *)
-    export image<A> : (string, string, int, int) -> Node<A>
-    image (source, alt, width, height) = Image(imageSource = source, imageAlt = alt, imageWidth = width, imageHeight = height)
-
-    (** [LESSONS-FRAMEWORK] A film the person starts, showing its poster and a play control until then; captions are on by default and it never autoplays, and it carries no binding. *)
-    export video<A> : (string, string, string, string, int) -> Node<A>
-    video (source, poster, captions, alt, seconds) = Video(videoSource = source, videoPoster = poster, videoCaptions = captions, videoAlt = alt, videoSeconds = seconds)
-
-    (** [UI-COMPONENTS-EDITOR] A multiline text editor with per-line marks and a cursor: each edit delivers the whole text to `edit`, each caret move delivers its UTF-8 byte offset to `place`. *)
-    export editor<A> : (string, string, int, List<Mark>, A, A) -> Node<A>
-    editor (label, value, cursor, marks, edit, place) = editorNode (label, value, false, cursor, 0, marks, edit, place)
-
-    (** A mark on 1-based `line`: an underline in `tone` when `underlined`, with a trailing `badge` and a `note`; empty text draws none. *)
-    export mark (line, underlined, tone, badge, note) = Mark(markLine = line, underlined = underlined, markTone = tone, markBadge = badge, markNote = note)
-
-    (** [UI-COMPONENTS-BOARD] A writable board drawing the `count` strokes the host holds in the slices `slice:0` to `slice:<count - 1>`, each a stroke's JSON; each finished stroke is delivered once to `stroke`, and a lasso, offered only when `lassoing`, delivers the indices of the strokes it encloses to `lasso`. *)
-    export board<A> : (string, int, bool, A, A) -> Node<A>
-    board (slice, count, lassoing, stroke, lasso) = illustratedBoard (slice, count, lassoing, "", stroke, lasso)
-
-
-    (** A drawing board with an explicitly supplied reference image behind the retained strokes. *)
-    export illustratedBoard<A> : (string, int, bool, string, A, A) -> Node<A>
-    illustratedBoard (slice, count, lassoing, backdrop, stroke, lasso) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, boardBackdrop = backdrop, boardPanning = false, boardPanBinding = false, boardPan = stroke, stroke = stroke, lasso = lasso)
-
-
-    (** A board camera drag reports its final absolute x/y offsets as bounded JSON text to `pan`. *)
-    export interactiveBoard<A> : (string, int, bool, string, bool, A, A, A) -> Node<A>
-    interactiveBoard (slice, count, lassoing, backdrop, panning, stroke, lasso, pan) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, boardBackdrop = backdrop, boardPanning = panning, boardPanBinding = true, boardPan = pan, stroke = stroke, lasso = lasso)
-
     (** A multiline free-form field; editing reports the complete text. *)
     export multiline<A> : (string, string, string, A) -> Node<A>
     multiline (label, value, prompt, bind) = Field(label = label, value = value, prompt = prompt, secure = false, multiline = true, commit = OnEdit, bind = bind)
 
-
-    (** Application-owned splitter limits allow narrow goal margins without changing other applications. *)
+    (** `aside` with its splitter limits authored by the application rather than taken from `Splitters`. *)
     export boundedAside<A> : (Node<A>, Side, Node<A>, int, int, int, int, A) -> Node<A>
     boundedAside (pane, side, column, width, least, most, keep, resize) = Aside(side = side, aside = column, pane = pane, extent = width, asideLeast = least, asideMost = most, paneKeep = keep, resize = resize)
 
-
-    (** A compact mathematical step editor, with its accessible label used as the placeholder. *)
-    export inlineEditor<A> : (string, string, int, A, A) -> Node<A>
-    inlineEditor (label, value, cursor, edit, place) = editorNode (label, value, true, cursor, 0, [], edit, place)
-
-    (** [UI-COMPONENTS-EDITOR] An authored epoch increase requests focus on a retained editor; first appearance establishes its baseline. *)
-    export focusedInlineEditor (label, value, cursor, epoch, edit, place) = editorNode (label, value, true, cursor, epoch, [], edit, place)
-
-    editorNode (label, value, inline, cursor, epoch, marks, edit, place) = Editor(editorLabel = label, editorValue = value, editorInline = inline, cursor = cursor, editorFocusEpoch = epoch, marks = marks, edit = edit, place = place)
-
-    (** [UI-SCENE] A surface `width` by `height` units that the host scales to fit, drawn from `primitives` with sprites taken from `atlas` by index. Keys and pointer positions in scene units reach `play` as `Controlled` messages. *)
+    (** [UI-SCENE] A surface `width` by `height` units drawn one unit to one pixel from its region's top left, from `primitives` with sprites taken from `atlas` by index. Keys and pointer positions in scene units reach `play` as `Controlled` messages. *)
     export scene<A> : (float, float, List<string>, List<Primitive>, A) -> Node<A>
-    scene (width, height, atlas, primitives, play) = Scene(sceneWidth = width, sceneHeight = height, atlas = atlas, primitives = primitives, play = play, streamedCount = 0)
+    scene (width, height, atlas, primitives, play) = zoomed (1.0, width, height, atlas, primitives, play)
 
-    (** [UI-SCENE] A scene in window pixels: no unit space, no letterbox, origin at the window's top left, as a canvas that paints in window coordinates. *)
+    (** [UI-SCENE] A scene drawn at a fixed `zoom` in window pixels per unit, whatever the window's size: a mock drawn at twice the size shows crisply at `0.5`. A `zoom` of 0 fits it to its region whole. *)
+    export zoomed<A> : (float, float, float, List<string>, List<Primitive>, A) -> Node<A>
+    zoomed (zoom, width, height, atlas, primitives, play) = Scene(sceneWidth = width, sceneHeight = height, sceneZoom = zoom, atlas = atlas, primitives = primitives, play = play, streamedCount = 0, sceneAccess = [])
+
+    (** [UI-MACHINE-A11Y] A scene with the accessibility tree a host announces for it, each element's bounds in scene units; any other node is unchanged. *)
+    export described<A> : (Node<A>, List<Accessible>) -> Node<A>
+    described (node, elements) = match node
+        Scene width height zoom atlas primitives play sent _ => Scene(sceneWidth = width, sceneHeight = height, sceneZoom = zoom, atlas = atlas, primitives = primitives, play = play, streamedCount = sent, sceneAccess = elements)
+        other => other
+
+    (** [UI-SCENE] A scene in window pixels: no unit space, origin at the window's top left, as a canvas that paints in window coordinates. *)
     export canvas<A> : (List<Primitive>, A) -> Node<A>
-    canvas (primitives, play) = Scene(sceneWidth = 0.0, sceneHeight = 0.0, atlas = [], primitives = primitives, play = play, streamedCount = 0)
+    canvas (primitives, play) = zoomed (1.0, 0.0, 0.0, [], primitives, play)

@@ -132,6 +132,13 @@ separate handler-object hierarchy when an ordinary closure is sufficient.
    borrowed escape and double consumption, deep nesting, cancellation,
    abandonment, HTTP callbacks and fiber ownership. Audit default, GC and ARC;
    output correctness alone cannot prove resource correctness.
+   Gap: every `control abort` operation is still rejected at compile time
+   (`unimplemented_abort`, crates/osprey-types/src/multiplicity.rs) because
+   abandoning a region does not yet unwind it; [MULTI-DECL-ABORT-RESULT] and
+   [MULTI-HANDLE-ABORT-MODE] have no runnable case until it does.
+   ❓ Decide: `tree-sitter-osprey-ml/grammar.js` accepts a multiplicity without
+   `control` (`many op : …`), which the ML parser and [MULTI-DECL]'s `opDecl` reject —
+   tighten the editor grammar or keep it lenient.
 6. **Provide reusable continuations.** Use a representation that can preserve
    the captured remainder independently for each branch; a consumed pthread
    cannot provide it. Prefer explicit continuation frames/CPS with a portable
@@ -142,7 +149,8 @@ separate handler-object hierarchy when an ordinary closure is sufficient.
    handled effect's name. Retrying one operation must not replay later work.
 7. **Prove target and tooling support.** Run accepted programs on native and
    wasm with the same answers; reject missing target capabilities before
-   linking. Add logical continuation/handler-instance traces and LSP views of
+   linking. Add logical continuation/handler-instance traces ([MULTI-TRACE],
+   [DEBUGGER-EFFECT-TRACE]; not built: no debug build or DAP view carries one) and LSP views of
    required operations, possible handlers and replay boundaries. No backend
    may silently weaken multiplicity or cleanup guarantees.
 

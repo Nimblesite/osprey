@@ -8,11 +8,30 @@ public sealed class SceneTests
 {
     static Scene Decode(string node, params Streamed[] streamed) => SceneDecoder.Decode(JsonDocument.Parse(node).RootElement.Clone(), streamed);
 
+    /// <summary>[UI-MACHINE-A11Y] What a scene announces reaches the host whole; a hit area, or an element with no name, is not announced.</summary>
+    [Fact]
+    public void ASceneCarriesItsAccessibilityTree()
+    {
+        var scene = Decode("""
+            {"width":100,"height":100,"zoom":1,"shapes":[],"access":[
+              {"role":"button","label":"Play","x":1,"y":2,"w":3,"h":4,"value":0,"min":0,"max":0,"movable":false},
+              {"role":"slider","label":"Volume","x":5,"y":6,"w":7,"h":8,"value":0.5,"min":0,"max":1,"movable":false},
+              {"role":"button","label":"Select Filter","x":9,"y":9,"w":9,"h":9,"value":0,"min":0,"max":0,"movable":true},
+              {"role":"none","label":"Close menu","x":0,"y":0,"w":100,"h":100,"value":0,"min":0,"max":0,"movable":false},
+              {"role":"button","label":"","x":0,"y":0,"w":1,"h":1,"value":0,"min":0,"max":0,"movable":false}
+            ]}
+            """);
+        Assert.Equal(["Play", "Volume", "Select Filter"], scene.Access.Select(item => item.Label));
+        Assert.Equal(new Accessible("slider", "Volume", 5, 6, 7, 8, 0.5, 0, 1, false), scene.Access[1]);
+        Assert.True(scene.Access[2].Movable);
+        Assert.Empty(Decode("""{"width":1,"height":1,"zoom":1,"shapes":[]}""").Access);
+    }
+
     [Fact]
     public void EveryPrimitiveDecodesAndEqualDepthsKeepTheirOrder()
     {
         var scene = Decode("""{"width":100,"height":50,"atlas":["bird.png","hawk.png"],"shapes":[[4,"hello",1,2,12,287454020,8],[0,10,20,30,40,0.5,4278190335,2],[1,5,6,7,16711935,1],[2,2,0,1,2,3,255,2.5,4],[3,1,8,9,10,11,-0.5,4294967295,2]]}""");
-        Assert.Equal((100.0, 50.0), (scene.Width, scene.Height));
+        Assert.Equal((100.0, 50.0, 1.0), (scene.Width, scene.Height, scene.Zoom));
         Assert.Equal(["bird.png", "hawk.png"], scene.Atlas);
         Assert.Equal<Shape>(
         [
@@ -22,6 +41,17 @@ public sealed class SceneTests
             new StripShape([(0, 1), (2, 3)], 0x000000FF, 2.5, 4),
             new GlyphsShape("hello", 1, 2, 12, 0x11223344, 8),
         ], scene.Shapes, ShapeComparer.Instance);
+    }
+
+    /// <summary>[WINUI-HOST-SCENE] A sized scene opens its window at its units times its zoom; a zoom-0 scene fills whatever window it is in, so it asks for none.</summary>
+    [Fact]
+    public void OnlyASceneWithAZoomOpensItsWindowAtItsSize()
+    {
+        Assert.Equal((217.0, 278.5), Decode("""{"width":434,"height":557,"zoom":0.5,"shapes":[]}""").Opening);
+        Assert.Null(Decode("""{"width":1728,"height":893,"zoom":0,"shapes":[]}""").Opening);
+        Assert.Null(Decode("""{"width":0,"height":0,"shapes":[]}""").Opening);
+        Assert.Equal((217.0, 278.5), SceneDecoder.Opening(JsonDocument.Parse("""{"width":434,"height":557,"zoom":0.5,"shapes":[]}""").RootElement.Clone()));
+        Assert.Null(SceneDecoder.Opening(JsonDocument.Parse("""{"width":10,"height":10,"zoom":-1,"shapes":[]}""").RootElement.Clone()));
     }
 
     [Fact]
@@ -64,7 +94,12 @@ public sealed class SceneTests
     [InlineData("""{"width":10,"height":10,"shapes":[[2,3,0,0,1,1,255,1,0]]}""")]
     [InlineData("""{"width":10,"height":10,"shapes":[[4,"two\nlines",0,0,12,255,0]]}""")]
     [InlineData("""{"width":10,"height":10,"shapes":[[1,0,0,1,-1,0]]}""")]
-    public void AMalformedSceneIsRefused(string node) => Assert.Throws<HostException>(() => Decode(node));
+    public void AMalformedSceneIsRefused(string node)
+    {
+        Assert.Throws<HostException>(() => Decode(node));
+        // As the whole application, it opens no size of its own; it draws its refusal in the usual window.
+        Assert.Null(SceneDecoder.Opening(JsonDocument.Parse(node).RootElement.Clone()));
+    }
 
     [Fact]
     public void AStreamedCodeOutsideRectDiscAndSpriteIsRefused() =>

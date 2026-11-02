@@ -4,7 +4,9 @@
 //! A DLL cannot leave a function for the executable that loads it to supply, so each `extern fn`
 //! the host answers becomes an import slot [WINUI-HOST-IMPORTS]: a pointer the host fills through
 //! `osprey_import_<name>` before it calls `osprey_main`, which returns [`UNBOUND`] while any slot
-//! is still empty. Only the boundary is exported: the entry, the C exports and the binders.
+//! is still empty. An `extern fn` the linked runtime archive defines, such as the TLS session, is
+//! no slot: the archive answers it inside the DLL. Only the boundary is exported: the entry, the
+//! C exports and the binders.
 
 use super::{c_header, defines, llvm_params, rename_symbol, CType, Export, HostAbi, Import, ENTRY};
 use std::fmt::Write as _;
@@ -28,7 +30,7 @@ pub(crate) fn adapt(
     let slotted: Vec<Import> = abi
         .imports
         .iter()
-        .filter(|import| declaration(ir, import).is_some())
+        .filter(|import| declaration(ir, import).is_some() && !in_runtime(import))
         .cloned()
         .collect();
     reject_binder_clashes(ir, &slotted)?;
@@ -37,6 +39,13 @@ pub(crate) fn adapt(
         .iter()
         .fold(exported, |out, import| slot(&out, import, extend_bool));
     Ok((forwarded + &boundary(&slotted), slotted))
+}
+
+/// Whether the runtime archive linked into the DLL defines `import` itself.
+fn in_runtime(import: &Import) -> bool {
+    crate::linking::HTTP_RUNTIME_EXTERNS
+        .iter()
+        .any(|prefix| import.symbol.starts_with(prefix))
 }
 
 /// The line codegen declares `import` with, if the library calls it.

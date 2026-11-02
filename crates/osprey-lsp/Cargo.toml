@@ -1,6 +1,6 @@
 [package]
 name = "osprey-lsp"
-description = "The Osprey language server, built on the pinned lspkit crates"
+description = "The Osprey language server, built on the lspkit crates"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,11 +13,9 @@ osprey-types = { workspace = true }
 osprey-fmt = { workspace = true }
 osprey-project = { workspace = true }
 
-# Reused lspkit building blocks (from the pinned submodule). [LSP-REUSE-LSPKIT]
+# Reused lspkit building blocks. [LSP-REUSE-LSPKIT]
 lspkit = { workspace = true }
 lspkit-server = { workspace = true }
-lspkit-vfs = { workspace = true }
-lspkit-live = { workspace = true }
 
 # lspkit's shared profiler with the Osprey runtime [PROF-LSP-HOST].
 lsp-profiler = { workspace = true }

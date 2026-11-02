@@ -10,7 +10,7 @@ The configuration builds a Debian bookworm workspace with Rust, the C toolchain,
 
 ## Open the workspace
 
-With Docker, VS Code and the Dev Containers extension installed, open the repository and select **Dev Containers: Reopen in Container**. Initialize the `lspkit` submodule before setup (`git submodule update --init --recursive`), or clone with `--recurse-submodules`.
+With Docker, VS Code and the Dev Containers extension installed, open the repository and select **Dev Containers: Reopen in Container**.
 
 The [container configuration](devcontainer.json) defines mounts, port forwarding, editor extensions and the post-create command. The image build and setup require network access.
 

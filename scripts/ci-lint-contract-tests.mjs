@@ -49,7 +49,7 @@ const assertUngated = (build, command) => {
 }
 
 const assertBuildRunsLint = (build) => {
-  assert.match(build, /^    name: Build, Format & Analyse$/m)
+  assert.match(build, /^    name: Format & Analyse$/m)
   assert.match(build, /^    if: \$\{\{ needs\.changes\.outputs\.code == 'true' \}\}$/m)
   assert.doesNotMatch(build, /continue-on-error/)
   for (const command of LINT_COMMANDS) assertUngated(build, command)
@@ -62,7 +62,7 @@ const assertGuardRejectsEvasions = () => {
 }
 
 export const registerLintContracts = (build) => {
-  test('the build job runs the lint commands no other workflow covers', () => assertBuildRunsLint(build))
+  test('the analyse job runs the lint commands no other workflow covers', () => assertBuildRunsLint(build))
   test('the run-line guard rejects a commented, gated, suppressed or missing lint command', assertGuardRejectsEvasions)
 }
 

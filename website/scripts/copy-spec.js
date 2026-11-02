@@ -57,8 +57,10 @@ function resolveLink(target, file, pages) {
   return `https://github.com/Nimblesite/osprey/blob/main/${relative}${anchor ? `#${anchor}` : ''}`;
 }
 
+// Fenced blocks and inline code spans are copied verbatim; only prose links resolve.
 const cleanContent = (content, file, pages) => content.replace(
-  /\]\(([^)\s]+)\)/g, (_match, target) => `](${resolveLink(target, file, pages)})`,
+  /(```[\s\S]*?```|`[^`\n]*`)|\]\(([^)\s]+)\)/g,
+  (match, code, target) => code ?? `](${resolveLink(target, file, pages)})`,
 ).trim();
 
 function frontMatter(title, permalink, description, date = null) {

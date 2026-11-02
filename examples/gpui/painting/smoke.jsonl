@@ -1,0 +1,3 @@
+// A null send observes the start envelope; then the header's Dashed button switches the stroke.
+{"send":null,"expect":{"regions":["root","header","canvas"],"text":{"region":"header","contains":"Dashed"},"diagnostics":0}}
+{"send":{"control":{"region":"header","label":"Dashed"},"value":null},"expect":{"text":{"region":"header","contains":"Solid"},"diagnostics":0}}

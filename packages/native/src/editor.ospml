@@ -1,0 +1,29 @@
+// Implements [UI-COMPONENTS-EDITOR]: a text editor with per-line marks, a
+// caret and application-authored focus requests.
+namespace ui
+
+(** A per-line mark on an editor: the 1-based line, whether it is underlined and in which tone, a trailing badge and a note beside it; an empty badge or note draws none ([UI-COMPONENTS-EDITOR]). *)
+type Mark =
+    markLine : int
+    underlined : bool
+    markTone : Tone
+    markBadge : string
+    markNote : string
+
+(** Typed constructors for text editors ([UI-COMPONENTS-EDITOR]). *)
+module Editors
+    (** A multiline text editor with per-line marks and a cursor: each edit delivers the whole text to `edit`, each caret move delivers its UTF-8 byte offset to `place`. *)
+    export editor<A> : (string, string, int, List<Mark>, A, A) -> Node<A>
+    editor (label, value, cursor, marks, edit, place) = editorNode (label, value, false, cursor, 0, marks, edit, place)
+
+    (** A mark on 1-based `line`: an underline in `tone` when `underlined`, with a trailing `badge` and a `note`; empty text draws none. *)
+    export mark (line, underlined, tone, badge, note) = Mark(markLine = line, underlined = underlined, markTone = tone, markBadge = badge, markNote = note)
+
+    (** A compact editor, with its accessible label used as the placeholder. *)
+    export inline<A> : (string, string, int, A, A) -> Node<A>
+    inline (label, value, cursor, edit, place) = editorNode (label, value, true, cursor, 0, [], edit, place)
+
+    (** A compact editor where an authored epoch increase requests focus on the retained editor; first appearance establishes its baseline. *)
+    export focused (label, value, cursor, epoch, edit, place) = editorNode (label, value, true, cursor, epoch, [], edit, place)
+
+    editorNode (label, value, inline, cursor, epoch, marks, edit, place) = Editor(editorLabel = label, editorValue = value, editorInline = inline, cursor = cursor, editorFocusEpoch = epoch, marks = marks, edit = edit, place = place)

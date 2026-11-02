@@ -4,7 +4,7 @@
 //! ([LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]); `textDocument/definition` lands on
 //! the operation's declaration ([LSP-DEFINITION-EFFECT-OPERATIONS]).
 
-use lspkit_vfs::PositionEncoding;
+use lspkit::vfs::PositionEncoding;
 use osprey_syntax::Flavor;
 
 use osprey_ast::Position;

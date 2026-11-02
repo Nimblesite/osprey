@@ -25,7 +25,7 @@ Native hosts initialize `osprey_main()` once, then call `osprey_talonmobile_star
 From the repository root:
 
 ```sh
-make bank
+make -C apps bank
 ```
 
 The demo API runs at `http://127.0.0.1:18790`; each server run recreates and seeds `/tmp/talon_bank.db`. Keep this terminal running while using either mobile app. Native connection settings accept a different server origin. For a physical iPhone, that origin must be reachable from the phone; forward the demo service through your development machine's LAN proxy when needed.
@@ -35,7 +35,7 @@ The demo API runs at `http://127.0.0.1:18790`; each server run recreates and see
 Requires JDK 17, Android SDK 34, NDK 28.2.13676358, and a connected Android device or emulator running API 26 or newer.
 
 ```sh
-make bank-android
+make -C apps bank-android
 OSPREY_ANDROID_SKIP_BUILD=1 examples/projects/modules/mobile/android/run.sh
 ```
 
@@ -48,7 +48,7 @@ The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. The app has its 
 Requires an Apple silicon Mac with Xcode, iOS SDKs, and an installed iPhone simulator. The app requires iOS 16 or later.
 
 ```sh
-make bank-ios
+make -C apps bank-ios
 OSPREY_IOS_SKIP_BUILD=1 examples/projects/modules/mobile/ios/run.sh ios-sim
 ```
 
@@ -66,12 +66,12 @@ Stop the manually running bank server before native acceptance tests. These targ
 
 | Command | Coverage |
 | --- | --- |
-| `make bank-mobile-domain-test` | Shared Osprey routes, screen data, validation, request payloads, success/refusal/error states, filter/search, handler behavior, and duplicate-submission protection |
-| `make bank-android-test` | Android build and instrumentation: native controls, banking journeys, exact API balances, validation, lifecycle restoration, and network failure |
-| `make bank-ios-test` | Device/simulator builds, XCTest protocol checks, and simulator UI journeys against the real API |
-| `make bank-e2e` | Existing browser tests, verifying changes to shared application modules preserve the web client |
+| `make -C apps bank-mobile-domain-test` | Shared Osprey routes, screen data, validation, request payloads, success/refusal/error states, filter/search, handler behavior, and duplicate-submission protection |
+| `make -C apps bank-android-test` | Android build and instrumentation: native controls, banking journeys, exact API balances, validation, lifecycle restoration, and network failure |
+| `make -C apps bank-ios-test` | Device/simulator builds, XCTest protocol checks, and simulator UI journeys against the real API |
+| `make -C apps bank-e2e` | Existing browser tests, verifying changes to shared application modules preserve the web client |
 
-`make bank-mobile-test` runs shared, Android, and iOS checks sequentially; it requires both platform toolchains and test devices. Android instrumentation reports and screenshots live under `android/build/`; iOS produces `.xcresult` bundles with screenshots under `ios/build/ios-sim/`. API build/run logs are in `target/bank-mobile/`.
+`make -C apps bank-mobile-test` runs shared, Android, and iOS checks sequentially; it requires both platform toolchains and test devices. Android instrumentation reports and screenshots live under `android/build/`; iOS produces `.xcresult` bundles with screenshots under `ios/build/ios-sim/`. API build/run logs are in `target/bank-mobile/`.
 
 CI runs shared tests and Android instrumentation in the integration job, and iOS simulator tests in the macOS job.
 

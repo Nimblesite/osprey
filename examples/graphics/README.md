@@ -61,21 +61,21 @@ learns which GPU API is underneath it.
 
 ## Running it
 
-    make graphics                    # kali
-    make graphics SCENE=opal
-    make graphics SCENE=character
+    make -C apps graphics                    # kali
+    make -C apps graphics SCENE=opal
+    make -C apps graphics SCENE=character
 
 On macOS that builds the Mac runtime, checks `base.metal` with `xcrun metal`,
 compiles the scene with `--target=macos --entry-only` (the host calls only
 `osprey_main`), links the Swift host and runs it from the repository root.
 `examples/graphics/macos/run.sh opal` does the same for one scene, and
-`make graphics-smoke` renders every scene for 60 frames and fails unless each
+`make -C apps graphics-smoke` renders every scene for 60 frames and fails unless each
 reports them. `OSPREY_GFX_FRAMES=<n>` ends a scene after `n` frames. On Windows it must be run from the **MSYS2 UCRT64 shell** —
 the same toolchain that builds Osprey's C runtime there — where it builds
 `ospgfx.dll` plus the `libospgfx.dll.a` import library that `// @link(windows): ospgfx`
 resolves, checks `base.hlsl` with `fxc.exe` when the Windows SDK's compiler is
 on `PATH`, and prepends this directory to `PATH` so the DLL is found at run
-time. `make graphics GFX_WARN=-Wall` drops `-Werror` if a warning blocks you.
+time. `make -C apps graphics GFX_WARN=-Wall` drops `-Werror` if a warning blocks you.
 The directives in `base/base.osp` are qualified, `// @link(windows): ospgfx`, so
 they link only the Windows executable and the Mac slice never sees them.
 
@@ -97,9 +97,9 @@ this one is offered for people already living in an MSVC toolchain.
 
 `base.metal` and the Swift host render all three scenes on macOS. On an Apple
 silicon Mac in October 2026, 90 frames of each on a 1920×1200 drawable ran at
-102 (Kali), 114 (Opal) and 119 (Character) fps. `make macos-test` builds every
+102 (Kali), 114 (Opal) and 119 (Character) fps. `make -C apps macos-test` builds every
 scene's host in CI; rendering needs a desktop session and a Metal GPU, so it
-runs locally through `make graphics-smoke`.
+runs locally through `make -C apps graphics-smoke`.
 
 **On Windows the bridge compiles, links and draws, in software.** On
 2026-10-28, on GitHub's `windows-latest` runner, `make _graphics-smoke` built

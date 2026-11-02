@@ -7,8 +7,8 @@
 //! the [`lspkit_server::Diagnostic`] the diagnostics bus fans out.
 //! Implements [LSP-DIAGNOSTICS].
 
+use lspkit::vfs::PositionEncoding;
 use lspkit_server::{Diagnostic, Severity};
-use lspkit_vfs::PositionEncoding;
 use osprey_ast::{Position, Program};
 use osprey_project::{AssembledProject, ProjectError};
 use std::path::{Path, PathBuf};
@@ -42,7 +42,7 @@ pub(crate) fn analyze_live(
     source: &str,
     path: &str,
     encoding: PositionEncoding,
-    vfs: Option<&lspkit_vfs::Vfs>,
+    vfs: Option<&lspkit::vfs::Vfs>,
 ) -> Analysis {
     analyze_cached(
         source,
@@ -57,7 +57,7 @@ pub(crate) fn analyze_cached(
     source: &str,
     path: &str,
     encoding: PositionEncoding,
-    vfs: Option<&lspkit_vfs::Vfs>,
+    vfs: Option<&lspkit::vfs::Vfs>,
     cache: &crate::project_cache::ProjectCache,
 ) -> Analysis {
     let snapshot = cache.sources(path, vfs, Some(source));

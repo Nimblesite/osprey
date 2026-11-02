@@ -7,6 +7,7 @@
 const DRAWN: &[&str] = &[
     "stack", "text", "label", "pair", "icon", "badge", "button", "field", "toggle", "slot",
     "scene", "section", "screen", "divider", "spacer", "empty", "progress", "rows", "picker",
+    "themed", "meter",
 ];
 
 /// Node kinds drawn as an "unknown node kind" diagnostic until this host draws them
@@ -19,13 +20,11 @@ const REFUSED: &[&str] = &[
     "tabs",
     "link",
     "segments",
-    "meter",
     "swatch",
     "disclosure",
     "alert",
     "rich-text",
     "framed",
-    "themed",
     "dialog",
     "evidence",
     "brand",

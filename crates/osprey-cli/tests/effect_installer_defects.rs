@@ -38,7 +38,7 @@ fn run_source(name: &str, extension: &str, body: &str) -> (Option<i32>, String) 
 
 /// One generic handler installer, applied at two different body result types.
 /// [TYPE-GENERICS-FN] makes `feeding` polymorphic in what its body answers, and
-/// [EFFECTS-HANDLER] puts no restriction on that, so both call sites must
+/// [EFFECTS-HANDLER-VALUE] puts no restriction on that, so both call sites must
 /// render their own value.
 ///
 /// Original defect: evaluated directly inside a top-level statement's interpolation, the
@@ -202,7 +202,7 @@ fn a_file_scope_handler_and_a_generic_binding_coexist() {
 /// may read, and Osprey's Hindley-Milner inference means a helper whose types
 /// are inferable carries no annotation. Each half is ordinary Osprey, and the
 /// pair is the natural spelling of the retry handler in [MULTI-FALSIFY] case 1
-/// (docs/specs/language/0035-StagedEffects.md, plan 0016).
+/// (docs/specs/language/0017-AlgebraicEffects.md, plan 0016).
 ///
 /// Original defect: reading such a cell as the ARGUMENT of an unannotated helper whose
 /// result is a `Result` is rejected at lowering with "`attempts` has no

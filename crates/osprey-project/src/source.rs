@@ -159,6 +159,17 @@ fn selection_error(path: &Path, message: &str) -> ProjectError {
     }
 }
 
+/// Whether `path` lies under `directory`, however either spells `..`.
+pub(crate) fn within(directory: &Path, path: &Path) -> bool {
+    let directory = normalize(directory);
+    if directory == Path::new(".") {
+        return !path
+            .components()
+            .any(|part| part == std::path::Component::ParentDir);
+    }
+    normalize(path).starts_with(directory)
+}
+
 fn normalize(path: &Path) -> PathBuf {
     path.components().fold(PathBuf::new(), |mut result, part| {
         if part == std::path::Component::ParentDir {

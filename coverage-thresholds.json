@@ -233,6 +233,16 @@
       },
       "websocket_server_runtime": {
         "language": "c"
+      },
+      "tls_client_runtime": {
+        "language": "c"
+      },
+      "file_server_runtime": {
+        "language": "c"
+      },
+      "media_render_runtime": {
+        "threshold": 95,
+        "language": "c"
       }
     },
     "editor": {
@@ -261,6 +271,9 @@
       "micrograd": {
         "language": "osprey",
         "threshold": 97.5
+      },
+      "chromecast": {
+        "language": "osprey"
       },
       "native": {
         "threshold": 97.5,
@@ -315,6 +328,22 @@
         "threshold": 97.5
       },
       "vscode": {
+        "language": "osprey",
+        "threshold": 100.0
+      },
+      "graphics": {
+        "language": "osprey",
+        "threshold": 92.0
+      },
+      "json": {
+        "language": "osprey",
+        "threshold": 100.0
+      },
+      "signal_flow": {
+        "language": "osprey",
+        "threshold": 91.0
+      },
+      "uitest": {
         "language": "osprey",
         "threshold": 100.0
       }

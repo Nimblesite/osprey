@@ -19,7 +19,7 @@ fn exactArithmetic(work) = {
 
 /// Staged effects: an effect declared `static` is answered by the compiler and
 /// leaves nothing behind ([STAGE-DECL], [STAGE-RESIDUE],
-/// docs/specs/language/0035-StagedEffects.md). This suite pins the four consequences —
+/// docs/specs/language/0017-AlgebraicEffects.md). This suite pins the four consequences —
 /// compile-time answers, a GPU kernel that performs an effect, one function
 /// serving both stages, and a dynamic effect still behaving exactly as before.
 static effect Tile {

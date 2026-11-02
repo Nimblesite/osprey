@@ -47,7 +47,7 @@ type Message A =
         control : A
         input : Input
 
-(** What a scene's input binding delivers: a key going down or up, or the pointer moving or pressing in scene units with Shift held or not ([UI-SCENE]). *)
+(** What a scene's input binding delivers: a key going down or up, the pointer moving or pressing in scene units with Shift held or not, or the scene's region measured in scene units when it first shows and whenever it changes size ([UI-SCENE]). *)
 type Input =
     Key
         keyName : string
@@ -57,6 +57,9 @@ type Input =
         pointerY : float
         pointerDown : bool
         pointerShift : bool
+    Viewed
+        viewWidth : float
+        viewHeight : float
 
 (** A host event before it is resolved: a control's ordinal and value, a completion, a lifecycle phase or a display frame. *)
 type Incoming =
@@ -131,11 +134,17 @@ module Events
             Error _ => false
         false => numeric (Doc::field (value, "x")) && numeric (Doc::field (value, "y")) && optionalShift value
 
-    validScene value = boolean (Doc::field (value, "down")) && positionOrKey value
+    measured value = numeric (Doc::field (value, "width")) && numeric (Doc::field (value, "height"))
+
+    validScene value = Pick::either (Doc::has (value, "width"), measured value, boolean (Doc::field (value, "down")) && positionOrKey value)
 
     // Validate the shape first, so missing fields never invent a pointer at zero.
-    // A scene value names a key or a pointer position; `down` says pressed or released.
-    input value = match Doc::has (value, "key")
+    // A scene value names a key or a pointer position, `down` saying pressed or released, or the region's size.
+    input value = match Doc::has (value, "width")
+        true => Viewed(viewWidth = Doc::decimal (value, "width"), viewHeight = Doc::decimal (value, "height"))
+        false => pressedOrKeyed value
+
+    pressedOrKeyed value = match Doc::has (value, "key")
         true => Key(keyName = Doc::text (value, "key"), keyDown = Doc::flag (value, "down"))
         false => Pointer(pointerX = Doc::decimal (value, "x"), pointerY = Doc::decimal (value, "y"), pointerDown = Doc::flag (value, "down"), pointerShift = Doc::flag (value, "shift"))
 
@@ -166,43 +175,6 @@ module Events
             true => Success(value = Controlled(control = action, input = input value))
             false => mismatch "scene"
 
-(** Decodes the board's stroke and lasso values ([UI-COMPONENTS-BOARD]); a malformed stroke is refused, never guessed. *)
-module Strokes
-    coordinate (pair, at) = jsonInt (jsonIndex pair at ?: JsonNull) ?: (0 - 1)
-
-    point pair = Point(pointX = coordinate (pair, 0), pointY = coordinate (pair, 1))
-
-    validPoint pair = match pair
-        JsonArray values => length values == 2 && (point pair).pointX >= 0 && (point pair).pointY >= 0
-        _ => false
-
-    validNumber (value, key, least) = match jsonInt (Doc::field (value, key))
-        Success number => number >= least
-        Error _ => false
-
-    (** The stroke a host sent: `points` as `[x, y]` pairs, `width` and `at`; an error when a point is not a pair of non-negative integers. *)
-    export decode value =
-        points = Doc::items (Doc::field (value, "points"))
-        match Lists::any (points, \pair => validPoint pair == false) || isEmpty points || validNumber (value, "width", 1) == false || validNumber (value, "at", 0) == false
-            true => Error(message = "A board control sent a malformed stroke")
-            false => Success(value = Stroke(strokePoints = mapList (points, \pair => point pair), strokeWidth = Doc::number (value, "width"), strokeAt = Doc::number (value, "at")))
-
-    (** The `Stroked` message for a stroke value delivered to `action`. *)
-    export bind (action, value) = match decode value
-        Success stroke => Success(value = Stroked(stroker = action, stroked = stroke))
-        Error problem => Error(message = problem)
-
-    index item = jsonInt item ?: (0 - 1)
-
-    (** The `Lassoed` message for an array of stroke indices delivered to `action`; any other value is refused. *)
-    export lasso (action, value) = match value
-        JsonArray items => enclosed (action, mapList (items, \item => index item))
-        _ => Error(message = "A board control sent a lasso that is not a list of strokes")
-
-    enclosed (action, indices) = match Lists::any (indices, \at => at < 0)
-        true => Error(message = "A board control sent a lasso that is not a list of strokes")
-        false => Success(value = Lassoed(lassoer = action, lassoed = indices))
-
 (** Takes a message apart for the application's `update`. Osprey cannot yet match a constructor declared in another namespace, so applications fold over messages here. *)
 module Messages
     (** Calls the handler for `message`: a tap, a text or choice value, a toggle, a splitter's width or a cursor's offset, a completion, a lifecycle phase, a board stroke or lasso, a display frame's elapsed seconds or a scene's key or pointer input. *)
@@ -223,8 +195,9 @@ module Messages
 
 (** Takes a scene's input apart for the application's `update` ([UI-SCENE]). *)
 module Inputs
-    (** Calls `keyed` with a key's name and whether it went down, or `pointed` with the pointer's scene position, whether it is pressed and whether Shift is held. *)
-    export route<R> : (Input, (string, bool) -> R, (float, float, bool, bool) -> R) -> R !e
-    route (input, keyed, pointed) = match input
+    (** Calls `keyed` with a key's name and whether it went down, `pointed` with the pointer's scene position, whether it is pressed and whether Shift is held, or `viewed` with the region's width and height in scene units. *)
+    export route<R> : (Input, (string, bool) -> R, (float, float, bool, bool) -> R, (float, float) -> R) -> R !e
+    route (input, keyed, pointed, viewed) = match input
         Key name down => keyed (name, down)
         Pointer x y down shift => pointed (x, y, down, shift)
+        Viewed width height => viewed (width, height)

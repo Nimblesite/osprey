@@ -21,7 +21,7 @@ Start with the [installation guide](website/src/docs/installation.md) for host t
 
 ```bash
 # Fork and clone
-git clone --recurse-submodules https://github.com/Nimblesite/osprey.git
+git clone https://github.com/Nimblesite/osprey.git
 cd osprey
 
 # Build and test (from the repo root)

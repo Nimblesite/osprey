@@ -1,0 +1,13 @@
+ok 1 - rect preserves geometry rotation colour and depth including negative and zero values
+ok 2 - disc preserves centres arbitrary radii colours and layer order
+ok 3 - strip retains every point verbatim even for empty odd and negative coordinate lists
+ok 4 - sprite preserves atlas indices transforms dimensions tints and negative layers
+ok 5 - glyphs keeps empty and Unicode text baseline size colour and depth unchanged
+ok 6 - lettering preserves text metrics anchors weights colour and depth for all anchoring modes
+ok 7 - path builds an untransformed filled path and preserves empty steps solid paint and depth
+ok 8 - moved retains every path command line style gradient stop and explicit transform
+ok 9 - rgba and rgb pack channels as RRGGBBAA including boundaries and signed inputs
+ok 10 - hex splits packed RGB into exact endpoint channels and retains every alpha
+ok 11 - a complete layered scene composes every primitive and colour builder without rewriting data
+1..11
+# tests=11 passed=11 failed=0 skipped=0

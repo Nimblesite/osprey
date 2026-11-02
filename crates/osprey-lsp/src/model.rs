@@ -4,8 +4,8 @@
 //! to the wire protocol. The same vocabulary can back an MCP surface, honouring
 //! lspkit's "one engine, two surfaces" contract.
 
+use lspkit::vfs::DocumentUri;
 use lspkit_server::Diagnostic;
-use lspkit_vfs::DocumentUri;
 
 use crate::analysis::SymbolInfo;
 

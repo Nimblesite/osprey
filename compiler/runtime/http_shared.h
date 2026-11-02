@@ -24,6 +24,8 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+// Winsock needs starting before the first socket call; BSD sockets do not.
+static inline void osprey_wsa_init(void) {}
 #endif
 
 // Constants

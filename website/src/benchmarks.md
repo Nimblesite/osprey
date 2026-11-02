@@ -59,8 +59,8 @@ The following **3 October sample** reports mean ± standard deviation in millise
 ## Reproduce
 
 ```bash
-make bench-osprey                # refresh all Osprey backends only
-BENCH_FILTER=wordfreq make bench # one workload across installed toolchains
+make -C benchmarks bench-osprey                # refresh all Osprey backends only
+BENCH_FILTER=wordfreq make -C benchmarks bench # one workload across installed toolchains
 ```
 
 [`benchmarks/report.py`](https://github.com/Nimblesite/osprey/blob/main/benchmarks/report.py) generates the website tables and `benchmarks/results/results.html` from `results.json`. Partial reruns preserve older values for skipped, unavailable or failed cases. Record the date, machine, toolchain versions, selected languages and variance when sharing a comparison.

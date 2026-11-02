@@ -60,7 +60,7 @@ type must be `Unit`. Any other type is a compile error naming the type and
 pointing at the statement:
 
 ```
-a `int` value cannot be discarded; bind it with `let`, or remove the statement
+a `int` value cannot be discarded; bind it with `let _ =` if that is deliberate, or remove the statement
 ```
 
 A discarded `Result` keeps its own wording, because there the fix is to handle

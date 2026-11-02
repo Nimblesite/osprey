@@ -14,6 +14,20 @@ _test_rust: _runtime_wasm
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
 
+# CI's shards of _test_rust: the slowest tests by name, each in its own job, and everything else.
+# The coverage job merges their reports; scripts/ci-scope.test.mjs holds the shards to one another.
+RUST_SHARD_PACKAGES := every_ported_package_matches_its_cpython_oracle_under_every_memory_backend
+RUST_SHARD_WORKBENCH := workbench_retains_record_identity_through_shared_proof_helpers workbench_apple_host_includes_shared_proof_dependencies a_faulted_workbench_goal_formula_fails_its_case_without_fabricating_bottom
+RUST_SHARD_ARGS_packages := --test python_packages -- $(RUST_SHARD_PACKAGES)
+RUST_SHARD_ARGS_workbench := --test generic_effect_arc_result -- $(RUST_SHARD_WORKBENCH)
+RUST_SHARD_ARGS_rest := -- $(addprefix --skip ,$(RUST_SHARD_PACKAGES) $(RUST_SHARD_WORKBENCH))
+
+.PHONY: _test_rust_shard
+_test_rust_shard: _runtime_wasm
+	@echo "==> [rust] running shard $(RUST_SHARD) with coverage..."
+	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
+	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
+
 # Every crate under crates/ must have a valid threshold and measured lines.
 # Check inventory before results so an omitted crate cannot silently pass.
 _coverage_check_rust:
@@ -82,8 +96,8 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   test_file_runtime tensor_list_tests \
   test_http_length_validation http_server_send_tests http_server_request_tests \
   fiber_runtime_tests http_runtime_tests http_shared_tests \
-  websocket_runtime_tests profiler_runtime_tests profiler_stream_tests \
-  coverage_runtime_tests
+  websocket_runtime_tests net_runtime_tests media_render_runtime_tests \
+  profiler_runtime_tests profiler_stream_tests coverage_runtime_tests
 C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
 C_LIBS_memory_gc_stack_root_tests = -pthread
 C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc.c
@@ -162,6 +176,13 @@ C_LIBS_http_shared_tests = -pthread $(OSSL_LIBS)
 C_FLAGS_websocket_runtime_tests = $(OSSL_CFLAGS)
 C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
+# Owns tls_client_runtime.c and file_server_runtime.c: a loopback OpenSSL echo
+# server (18092/18093) and a plain TCP client against the one-file server.
+C_FLAGS_net_runtime_tests = $(OSSL_CFLAGS)
+C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
+C_LIBS_net_runtime_tests = -pthread $(OSSL_LIBS)
+# Owns media_render_runtime.c: real posix_spawnp calls against fake tools.
+C_SRC_media_render_runtime_tests = runtime/media_render_runtime_tests.c runtime/media_render_runtime.c
 C_PROFILE_profiler_runtime_tests = $(PROF_T)
 C_SRC_profiler_runtime_tests = runtime/profiler_runtime_tests.c runtime/profiler_walk_tests.c runtime/profiler_spec_tests.c $(PROF_SRC)
 C_LIBS_profiler_runtime_tests = -pthread
@@ -231,7 +252,7 @@ _test_hunt:
 	  python3 scripts/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
 	done; done; exit $$fail
 
-# No skip path: run by hand (`make hunt-crashes`), it must detect and natively
+# No skip path: run by hand (`make -C tests/hunt hunt-crashes`), it must detect and natively
 # reproduce every planted failure.
 .PHONY: _test_hunt_crashes
 _test_hunt_crashes:
@@ -339,7 +360,7 @@ _test_profiler:
 # exactly the kind of failure a developer cannot reproduce from a green CI run.
 # Restaging keeps `make test` honest about which compiler it just tested.
 # CI consumes the exact stage-1 bundle; public `make test` builds it first.
-_test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+_test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS)
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
 	cp $(BIN) target/path-bin/osprey
@@ -396,7 +417,7 @@ _tui: build
 # _gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
 #            on the host backend [GPU-BACKEND-HOST]; the raster suite uses
 #            gpuScan/gpuFilter, which have no device form yet, so a selected
-#            device would decline it. For pixels on the actual GPU, see `make graphics`.
+#            device would decline it. For pixels on the actual GPU, see `make -C apps graphics`.
 #            FLAVOR=ml renders the ML twin, which prints byte-identical output.
 _gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
@@ -460,7 +481,7 @@ _test_registry_blockers:
 _language-test: build
 	$(MAKE) _test_language_corpus
 
-_lint: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+_lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
 	node scripts/verify-node-deps-guard.mjs
 	node scripts/verify-no-dead-code.mjs

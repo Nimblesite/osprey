@@ -26,11 +26,11 @@ The caller installs one handler around the computation; device placement never e
 ## Run it
 
 ```
-make gpt2 FLAVOR=python PROMPT="The capital of France is" TOKENS=20 BACKEND=gpu
-make gpt2 FLAVOR=python PROMPT="The capital of France is" TOKENS=20 BACKEND=lists
-make gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=gpu
-make gpt2-train PROMPT="The capital of France is" BACKEND=gpu
-make gpt2-train PROMPT="The capital of France is" BACKEND=lists
+make -C apps gpt2 FLAVOR=python PROMPT="The capital of France is" TOKENS=20 BACKEND=gpu
+make -C apps gpt2 FLAVOR=python PROMPT="The capital of France is" TOKENS=20 BACKEND=lists
+make -C apps gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=gpu
+make -C apps gpt2-train PROMPT="The capital of France is" BACKEND=gpu
+make -C apps gpt2-train PROMPT="The capital of France is" BACKEND=lists
 ```
 
 Run these commands from the repository root. The first run downloads about 550 MB into `examples/gpt2/weights/`, ignored by git. `BACKEND` defaults to `gpu`; `GPU=auto` selects the adapter. Generation prints the device, token IDs and continuation:
@@ -45,7 +45,7 @@ The capital of France is the capital of the French Republic, and the capital of 
 
 This banner uses `GPU=host`; a GPU run names its adapter, such as `metal:0 (Apple M4 Max)`, and `BACKEND=lists` names `lists`.
 
-`make gpt2-train` computes next-token cross-entropy, gradients through all twelve blocks, one SGD update, then the loss again. It prints 148 gradient-tensor sums in checkpoint order, accumulating vector elements and matrix rows sequentially:
+`make -C apps gpt2-train` computes next-token cross-entropy, gradients through all twelve blocks, one SGD update, then the loss again. It prints 148 gradient-tensor sums in checkpoint order, accumulating vector elements and matrix rows sequentially:
 
 ```
 gpt2 (124M) on host — one training step over 5 tokens, learning rate 0.0001
@@ -112,9 +112,9 @@ The [runnable interop example](../python/interop.py) also calls Python from Ospr
 `BACKEND=gpu` installs `onGpu`; `GPU=auto` selects Metal on macOS or an OpenCL GPU elsewhere. `GPU=metal` and `GPU=opencl` request an adapter explicitly; `GPU=host` runs those same kernels and matrix products on the CPU. `BACKEND=lists` uses host lists regardless of `GPU`. Both flavors follow this split: the list handler never touches the GPU surface, and the device handler executes every model kernel and product on the selected GPU, without CUDA. Adapter failures abort with an error.
 
 ```sh
-make gpt2 GPU=host      # every kernel and product on the CPU
-make gpt2 GPU=metal     # every kernel and product on the Apple GPU
-make gpt2 BACKEND=lists # host lists, CPU only
+make -C apps gpt2 GPU=host      # every kernel and product on the CPU
+make -C apps gpt2 GPU=metal     # every kernel and product on the Apple GPU
+make -C apps gpt2 BACKEND=lists # host lists, CPU only
 ```
 
 To run the compiler interactively from the repository root:

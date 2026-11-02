@@ -32,26 +32,26 @@ export effect Render
 ## Run
 
 ```sh
-make bank
+make -C apps bank
 ```
 
 Open <http://127.0.0.1:18790>. The demo supports accounts, deposits, withdrawals, transfers, a filterable activity ledger and browser navigation. Each run resets the demo SQLite database at `/tmp/talon_bank.db`.
 
-`make bank` rebuilds the browser bundle before serving it. Use `make bank-web` to rebuild only that bundle after changing the client or browser host.
+`make -C apps bank` rebuilds the browser bundle before serving it. Use `make -C apps bank-web` to rebuild only that bundle after changing the client or browser host.
 
 ## Native Android and iOS
 
 [The mobile bank](mobile/README.md) uses the same Osprey screens, state transitions, validation, and API as the web client. Android widgets and SwiftUI render the shared view tree with the web palette and a shared Inter font. Both include all five screens, account creation, money movement, journal filtering, notices, and server connection settings.
 
 ```sh
-make bank-android       # ARM64/x86-64 APK
-make bank-ios           # device and simulator apps; requires Xcode
-make bank-mobile-domain-test
-make bank-android-test  # live API + native UI tests on a connected device/emulator
-make bank-ios-test      # live API + iOS simulator tests
+make -C apps bank-android       # ARM64/x86-64 APK
+make -C apps bank-ios           # device and simulator apps; requires Xcode
+make -C apps bank-mobile-domain-test
+make -C apps bank-android-test  # live API + native UI tests on a connected device/emulator
+make -C apps bank-ios-test      # live API + iOS simulator tests
 ```
 
-The API stays on the server. Start it with `make bank`, then follow the [native launch instructions](mobile/README.md). The test targets start and stop their own seeded server.
+The API stays on the server. Start it with `make -C apps bank`, then follow the [native launch instructions](mobile/README.md). The test targets start and stop their own seeded server.
 
 ## Boundaries
 
@@ -82,9 +82,9 @@ Osprey sends one `{model, view, commands}` envelope per render. The host returns
 
 | Command | Coverage |
 | --- | --- |
-| `make bank-test` | Native domain assertions, handler state, return clauses and storage guards |
+| `make -C apps bank-test` | Native domain assertions, handler state, return clauses and storage guards |
 | `cd examples/projects/modules/web && npm test` | Browser host, protocol, WASI and embedding tests |
-| `make bank-e2e` | Real browser, compiled Wasm and native API: accounts, movements, refusals, navigation and rendering |
+| `make -C apps bank-e2e` | Real browser, compiled Wasm and native API: accounts, movements, refusals, navigation and rendering |
 
 The deterministic native tour is byte-compared with [`expectedoutput`](expectedoutput) by `crates/osprey-cli/tests/project_e2e.rs`. Browser builds regenerate `src/web/bundle.ospml`; edit its inputs rather than the generated module.
 

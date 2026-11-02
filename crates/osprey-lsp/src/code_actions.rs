@@ -1,7 +1,7 @@
 //! Current-buffer actions, derived from the same safe set as diagnostics.
 //! Implements [LSP-CODE-ACTIONS-ANNOTATIONS].
 
-use lspkit_vfs::{DocumentUri, Vfs};
+use lspkit::vfs::{DocumentUri, Vfs};
 
 use crate::model::{CodeAction, Span};
 use crate::warning_actions::Fix;
@@ -268,7 +268,7 @@ mod tests {
         assert!(repairs().is_empty(), "invalid manifest");
         Ok(())
     }
-    use lspkit_vfs::{DocumentVersion, Position, PositionEncoding, Range, TextEdit};
+    use lspkit::vfs::{DocumentVersion, Position, PositionEncoding, Range, TextEdit};
 
     const SOURCE: &str = "decorate : string -> string\ndecorate text = text + \"!\"\n";
 

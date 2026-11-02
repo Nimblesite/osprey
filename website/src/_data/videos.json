@@ -303,5 +303,83 @@
     ],
     "proofTopic": "navier-stokes-proof",
     "audience": "mathematicians"
+  },
+  "chromecast-from-mac": {
+    "name": "How to Chromecast from a Mac to a TV",
+    "description": "A 97-second video. A native Mac player written in Osprey finds Chromecasts and Google TVs, plays an MP3 with full controls and a spectrum visualiser, and is tested end to end without a TV.",
+    "content": "/assets/videos/osprey-chromecast-from-mac.mp4",
+    "poster": "/assets/videos/osprey-chromecast-from-mac-poster.jpg",
+    "posterAlt": "Title card with the Osprey bird and the words Chromecast from a Mac to a TV",
+    "captions": "/assets/videos/osprey-chromecast-from-mac.en.vtt",
+    "chapters": "/assets/videos/osprey-chromecast-from-mac.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-11-01T13:40:00+11:00",
+    "tags": [
+      "Osprey",
+      "Chromecast",
+      "Google TV",
+      "macOS",
+      "casting",
+      "GPUI"
+    ]
+  },
+  "static-typing-python": {
+    "name": "Static typing for Python-style code, with no type hints",
+    "description": "A 90-second video. Osprey's Python flavor infers every type and stops a mistyped call at compile time, shown on a 1,262-line Chromecast sender ported from CPython and checked against it.",
+    "content": "/assets/videos/osprey-static-typing-python.mp4",
+    "poster": "/assets/videos/osprey-static-typing-python-poster.jpg",
+    "posterAlt": "Title card with the Osprey bird and the words Static typing for Python, no hints",
+    "captions": "/assets/videos/osprey-static-typing-python.en.vtt",
+    "chapters": "/assets/videos/osprey-static-typing-python.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-11-01T13:40:00+11:00",
+    "tags": [
+      "Osprey",
+      "Python flavor",
+      "static typing",
+      "type inference",
+      "Python"
+    ]
+  },
+  "ui-testing-by-label": {
+    "name": "An accessibility tree AI agents can drive: UI testing by label",
+    "description": "A two-minute video. Osprey UI machines give every native control a role and a label; tests and agents find controls by name and press them with pointer events, with no window or browser.",
+    "content": "/assets/videos/osprey-ui-testing-by-label.mp4",
+    "poster": "/assets/videos/osprey-ui-testing-by-label-poster.jpg",
+    "posterAlt": "Title card with the Osprey bird and the words An accessibility tree agents can drive",
+    "captions": "/assets/videos/osprey-ui-testing-by-label.en.vtt",
+    "chapters": "/assets/videos/osprey-ui-testing-by-label.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-11-01T13:40:00+11:00",
+    "tags": [
+      "Osprey",
+      "UI testing",
+      "accessibility",
+      "AI agents",
+      "end-to-end tests"
+    ]
+  },
+  "rust-ui-framework-without-rust": {
+    "name": "A Rust UI framework without writing Rust: GPUI apps as state machines",
+    "description": "A 104-second video. Osprey UI machines describe a GPUI app as parallel state machines, a view and skins in one JSON document, with a small Osprey adapter and no layout code.",
+    "content": "/assets/videos/osprey-rust-ui-framework-without-rust.mp4",
+    "poster": "/assets/videos/osprey-rust-ui-framework-without-rust-poster.jpg",
+    "posterAlt": "Title card with the Osprey bird and the words A Rust UI framework, no Rust",
+    "captions": "/assets/videos/osprey-rust-ui-framework-without-rust.en.vtt",
+    "chapters": "/assets/videos/osprey-rust-ui-framework-without-rust.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-11-01T13:40:00+11:00",
+    "tags": [
+      "Osprey",
+      "GPUI",
+      "Rust",
+      "UI framework",
+      "state machines",
+      "Osprey Native"
+    ]
   }
 }

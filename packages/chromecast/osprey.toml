@@ -1,0 +1,14 @@
+[project]
+name = "chromecast"
+source_roots = ["src"]
+python_sources = ["src/hex.py", "src/protocol.py", "src/wire.py", "src/discovery.py", "src/dns.py", "src/session.py", "src/media.py", "src/player.py", "src/cast.py"]
+default_namespace = "chromecast"
+
+[package]
+name = "@osprey/chromecast"
+license = "MIT"
+summary = "Cast local audio to a Chromecast or Google TV over CAST v2: discovery, framing, sessions and playback"
+keywords = ["cast", "chromecast", "google-tv", "python-flavor"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

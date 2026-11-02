@@ -1,15 +1,19 @@
 // Implements [UI-COMPONENTS-MATH]: typeset mathematics as a typed layout
 // tree the host draws with a mathematics face. Applications never write TeX,
 // MathML or HTML; the browser and VS Code hosts render the tree as MathML and
-// a native host lays it out itself ([WORKBENCH-MATH]).
+// a native host lays it out itself.
 namespace ui
 
 // `Seq` is spec 0051's `Row`: `Row` already names the framework's selectable row.
 (** A mathematics layout tree: glyphs, sequences, scripts, fractions, radicals, binders, spaced operators, fences and big operators. *)
 type Math = Sym string | Num string | Seq (List<Math>) | Sup Math Math | Sub Math Math | Frac Math Math | Root Math | Binder string (List<Math>) Math | Op string Math Math | Paren Math | Big string Math Math Math
 
-(** Encodes and decodes a mathematics tree for the protocol ([UI-COMPONENTS-MATH], [LESSONS-FORMAT]). *)
+(** Typesets a mathematics tree, and encodes and decodes it for the protocol ([UI-COMPONENTS-MATH]). *)
 module Maths
+    (** Typeset mathematics: the host lays out `math` with a mathematics face and exposes `spoken` to assistive technology. *)
+    export typeset<A> : (Math, string) -> Node<A>
+    typeset (tree, text) = Typeset(math = tree, spoken = text)
+
     str key value = Doc::str (key, value)
 
     kind name members = JsonObject (listPrepend members (str "kind" name))
@@ -117,7 +121,7 @@ module Maths
                     Error problem => Error(message = problem)
                     Success body => Success(value = Big symbol lower upper body)
 
-    (** The inverse of `encode`: the mathematics tree its protocol form names, or an error naming an unknown kind, a missing child, a non-object node or a non-string text or symbol ([UI-COMPONENTS-MATH], [LESSONS-FORMAT]). *)
+    (** The inverse of `encode`: the mathematics tree its protocol form names, or an error naming an unknown kind, a missing child, a non-object node or a non-string text or symbol ([UI-COMPONENTS-MATH]). *)
     export decode doc = match doc
         JsonObject _ => match jsonField doc "kind"
             Error _ => Error(message = "a math node is missing its kind")

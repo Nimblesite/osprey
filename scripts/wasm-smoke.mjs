@@ -6,7 +6,7 @@
 // WASI command under Node's built-in `node:wasi` (no external runtime needed —
 // the same preview1 ABI a browser WASI shim emulates), and, when an expected-
 // output file is given, asserts captured stdout matches it. Exits non-zero on
-// any failure so `make wasm` / CI can gate on it.
+// any failure so `make -C website wasm` / CI can gate on it.
 
 import { openSync, closeSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { WASI } from "node:wasi";

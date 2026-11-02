@@ -1,7 +1,7 @@
 //! The Osprey language server.
 //!
 //! A Rust LSP built on the pinned `lspkit` crates: [`lspkit_server`] for the
-//! JSON-RPC transport/dispatch, [`lspkit_vfs`] for the open-document store, and
+//! JSON-RPC transport/dispatch, [`lspkit::vfs`] for the open-document store, and
 //! [`lspkit`]'s `EngineApi` contract (implemented by [`engine::OspreyEngine`])
 //! for analysis. The compiler is driven in-process (`osprey_syntax` /
 //! `osprey_types`) — diagnostics, outline, hover and navigation are computed

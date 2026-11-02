@@ -4,7 +4,9 @@ Memory reclamation is an implementation detail. Osprey source cannot select
 allocation sites, release values, or observe when a value is reclaimed. Native
 builds default to tracing GC (`gc`); `arc` selects Perceus reference counting. WebAssembly, Apple and Android archives, and Python-hosted libraries default to ARC.
 Unmanaged allocation requires explicit `--memory=none`. The old
-`--memory=default` spelling is rejected.
+`--memory=default` spelling is rejected. A third reclaiming backend,
+compile-time ownership, is planned to replace `none`
+([MEM-OWNERSHIP-STATIC](#compile-time-ownership-mem-ownership-static)).
 
 ## Collection Is Unobservable [MEM-OPAQUE]
 
@@ -140,3 +142,23 @@ managed child slots non-recursively. Persistent list and
 map nodes retain shared structure and release the portion no longer referenced
 by any live version. ARC operations start lock-free and become mutex-protected
 before a pthread-backed fiber is spawned.
+
+## Compile-Time Ownership [MEM-OWNERSHIP-STATIC]
+
+**Planned; not in active work and not implemented.** `--memory=ownership` is
+not accepted today. Delivery is tracked by
+[plan 0045](../../plans/0045-compile-time-ownership.md).
+
+Under this backend the compiler proves the last use of every managed value
+and frees it there, as Rust's ownership and borrowing rules do, with no
+collector and no reference count at run time. Osprey source gains no
+lifetimes, borrow markers or ownership annotations: the ownership ledger
+([MEM-OWNERSHIP]) infers owners and borrows, and a program whose ownership it
+cannot prove is rejected at compile time with a diagnostic naming the value
+and its conflicting uses. The acyclic heap ([MEM-ACYCLIC]) makes a single-owner
+tree sufficient. Collection stays unobservable ([MEM-OPAQUE]): the backend
+decides which programs compile and when memory is freed, never a compiled
+program's output.
+
+When shipped, `ownership` replaces the unmanaged `none` backend, which is then
+deleted and its spelling rejected.

@@ -300,7 +300,7 @@ fn build_and_run_drive_the_full_driver_with_stub_tools() {
     let sysroot = unique_dir("full_sysroot");
     std::fs::create_dir_all(sysroot.join("lib").join("wasm32-wasip1")).expect("mk libdir");
     // A discoverable runtime archive next to the test binary (the current-exe
-    // search root) so `find_runtime_lib` succeeds without `make wasm`.
+    // search root) so `find_runtime_lib` succeeds without `make -C website wasm`.
     let archive = std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(|p| p.join(RUNTIME_LIB_ARC)));
@@ -324,7 +324,7 @@ fn build_and_run_drive_the_full_driver_with_stub_tools() {
 
 // End-to-end build+run, exercised only where the wasm toolchain is present
 // (the dev machine and the CI `ci` job, which installs lld + a WASI sysroot
-// and `make wasm` before `make test`). Skipped elsewhere so the unit suite
+// and `make -C website wasm` before `make test`). Skipped elsewhere so the unit suite
 // stays toolchain-free.
 #[test]
 fn build_and_run_end_to_end_when_toolchain_present() {

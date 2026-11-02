@@ -5,7 +5,7 @@
 # one boundary on every Apple platform. [IOS-TARGET-CAPABILITIES] [IOS-TARGET-MACOS]
 IOS_RT_SRC ?= $(MOBILE_RT_SRC)
 
-.PHONY: ios ios-test macos macos-test _runtime_ios _runtime_ios_sim _runtime_macos _test_ios _test_ios_goldens _test_macos
+.PHONY: _ios _ios-test _macos _macos-test _runtime_ios _runtime_ios_sim _runtime_macos _test_ios _test_ios_goldens _test_macos
 
 _runtime_ios: _runtime_ios_arc
 	@bash scripts/ios-runtime.sh iphoneos arm64-apple-ios15.0 \

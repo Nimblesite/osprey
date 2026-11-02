@@ -1,6 +1,6 @@
 [project]
 name = "osprey-storage"
-source_roots = ["main.ospml", "src", "../../packages/native/src"]
+source_roots = ["main.ospml", "src", "../../packages/native/src", "../../packages/graphics/src", "../../packages/json/src"]
 default_namespace = "app"
 entry = "main.ospml"
 

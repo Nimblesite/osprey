@@ -1,0 +1,41 @@
+# The desktop apps on Windows, each its own MSIX package in an AppContainer on the WinUI host
+# [WINUI-HOST-SANDBOX], as ../windows.json describes them. Run from PowerShell with GNU make on the
+# PATH; hosts/winui/app.ps1 builds and registers each. macOS: apps/macos.
+ROOT ?= ../..
+APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/hosts/winui/app.ps1
+# HEADLESS=-Headless draws the self-tests' windows off screen; by default they are on screen.
+HEADLESS ?=
+
+.PHONY: storage flock painting signal-flow probe casting test
+
+## storage: Open Osprey Storage, where your disk space goes folder by folder, in its sandbox.
+##          It reads the whole drive once Settings > Privacy & security > File system allows it.
+storage:
+	$(APP_PS1) -App storage
+
+## flock: Open Flock, the boids herding game, in its sandbox.
+flock:
+	$(APP_PS1) -App flock
+
+## painting: Open the Osprey port of GPUI's painting example in its sandbox.
+painting:
+	$(APP_PS1) -App painting
+
+## signal-flow: Open the signal-flow editor, a UI machine with four canvas skins, in its sandbox.
+signal-flow:
+	$(APP_PS1) -App signal-flow
+
+## probe: Open the hosts' probe application (counter, note, load) in its sandbox.
+probe:
+	$(APP_PS1) -App probe
+
+## casting: Open the casting player in its sandbox: it finds Cast devices on the private network
+##          with its DnsServiceBrowse helper and plays an MP3 on one. Needs MSYS2's OpenSSL.
+casting:
+	$(APP_PS1) -App casting
+
+## test: Every app's self-test in a real window inside its sandbox, each picture compared with its
+##       goldens and with what the screen shows (HEADLESS=-Headless: off screen). One app, or the
+##       headless run: apps/windows/tests.
+test:
+	$(MAKE) -C tests full HEADLESS=$(HEADLESS)

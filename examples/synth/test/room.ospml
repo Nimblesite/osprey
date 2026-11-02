@@ -1,0 +1,42 @@
+// The synth given room ([UI-MACHINE-FLOW-SYNTH], [UI-MACHINE-CANVAS]): a larger window drops the
+// keyboard deck to its bottom and moves the inspector to its right, each key and switch its own
+// size, and a struck key still plays the patch at its pitch from where it now is.
+
+import uitest::Events
+
+viewed (width, height) = post (Events::viewed (sight.sightSeen.renderedRevision, sight.sightSeen.renderedOrdinal, width, height, sight.sightNow))
+
+topOf label = (element label).accessTop
+
+leftOf label = (element label).accessLeft
+
+widthOf label = (element label).accessWidth
+
+// The deck `dy` lower and the inspector `dx` further right than at the design size, `gap` being their distance there; the graph's nodes stay.
+roomFor (gap, dx, dy) =
+    near (topOf "Play C4", 866.0 + dy)
+    near (leftOf "Play C4", 480.0)
+    near (widthOf "Play C4", 60.0)
+    near (topOf "Play C#4", 866.0 + dy)
+    near (leftOf "Inspector bypass: Bypass Filter" - leftOf "Bypass Filter", gap + dx)
+
+roomyKeys () =
+    begun ()
+    knobNumber ("spareHeight", 0.0)
+    gap = leftOf "Inspector bypass: Bypass Filter" - leftOf "Bypass Filter"
+    roomFor (gap, 0.0, 0.0)
+    viewed (1836.0, 1258.0)
+    knobNumber ("spareWidth", 300.0)
+    knobNumber ("spareHeight", 250.0)
+    roomFor (gap, 300.0, 250.0)
+    expect (runCount (), 0)
+    struck ("C4", 261.6256)
+    struck ("A#4", 466.1638)
+    tap "Inspector bypass: Bypass Filter"
+    flag ("processOn", false)
+    expect (runCount (), 0)
+    tap "Inspector bypass: Enable Filter"
+    flag ("processOn", true)
+    viewed (1536.0, 1008.0)
+    roomFor (gap, 0.0, 0.0)
+    struck ("E3", 164.8138)

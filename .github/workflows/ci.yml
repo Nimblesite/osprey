@@ -7,17 +7,18 @@ name: CI
 # ─── Shape of this pipeline ─────────────────────────────────────────────────
 # Four stages, and every test runs EXACTLY ONCE:
 #
-#   1. `build`  — every static check (format, clippy, extension lint,
-#      duplication, dead code, manifest) plus every artifact the test stage
-#      needs: the C runtime archives, the wasm runtime archive, the release
-#      `osprey` binary and the compiled extension bundle.
+#   1. `build`  — every artifact the test stage needs: the C runtime archives,
+#      the wasm runtime archive, the release `osprey` binary and the compiled
+#      extension bundle. `analyse` runs every static check (format, clippy,
+#      extension lint, duplication, dead code, manifest) beside it, so no suite
+#      waits on a lint.
 #   2. Those artifacts are uploaded once and downloaded by each test job, so
-#      Linux jobs reuse the build; iOS builds its own macOS compiler and SDK artifacts.
+#      Linux jobs reuse the build; each Apple job builds its own macOS compiler and SDK artifacts.
 #   3. Every test suite runs in parallel, each collecting coverage where the
 #      language has a coverage story (Rust via llvm-cov, C via gcov, the
 #      extension via V8).
 #   4. `coverage` gathers those reports and enforces the per-project
-#      thresholds in coverage-thresholds.json, then runs the iOS platform gate.
+#      thresholds in coverage-thresholds.json. It builds and runs nothing.
 #
 # This replaced a pipeline that ran the language corpus SEVEN times per PR —
 # `make test` ran it as TAP, again for goldens, and again under GC and ARC,
@@ -100,21 +101,19 @@ jobs:
         run: node scripts/verify-branch-protection.mjs
 
   # ═══ STAGE 1 ════════════════════════════════════════════════════════════════
-  # Every static check, and every artifact the test stage consumes. Nothing
-  # here executes a test suite; Linux test jobs reuse this compiler artifact.
+  # Every artifact the test stage consumes. Nothing here executes a test suite
+  # or a lint; Linux test jobs reuse this compiler artifact.
   build:
-    name: Build, Format & Analyse
+    name: Build
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-        # The site's images and videos are Git LFS files; the extension links
-        # the shared profiler UI from the lspkit submodule.
+        # The site's images and videos are Git LFS files.
         with:
           lfs: true
-          submodules: true
 
       - uses: actions/setup-node@v7
         with:
@@ -127,18 +126,10 @@ jobs:
             examples/projects/modules/e2e/package-lock.json
             examples/projects/modules/web/package-lock.json
 
-      # Skills live in .agents/skills for every agent; Claude Code reads them
-      # through links in .claude/skills.
-      - name: Every skill is linked for Claude Code
-        run: node lspkit/scripts/link-skills.mjs --check .
-
       # Rust toolchain + clang/LLVM + lldb-dap + the C runtime archives + the
       # release binary.
       - name: Setup Osprey Compiler
         uses: ./.github/actions/setup-osprey-compiler
-
-      - name: Build the shared profiler UI (lspkit submodule)
-        run: make _profiler_ui
 
       - name: Install VS Code extension dependencies
         run: npm ci
@@ -165,7 +156,71 @@ jobs:
           npm ci --prefix examples/projects/modules/web
           npm --prefix examples/projects/modules/web run build
 
-      # ── Static analysis. All of it, before anything is tested. ──
+      - name: Build the extension bundle
+        run: make _vsix_bundle
+
+      - name: Package the VSIX
+        run: make _vsix_package
+
+      - name: Upload compiler artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: osprey-build
+          # The archives only — compiler/bin also holds ~12M of object files
+          # and C test binaries, and the C suite rebuilds those instrumented
+          # anyway. `_vsix_bundle` reads them from compiler/bin ($(RTB)); the
+          # compiler itself resolves them via compiler/lib.
+          path: |
+            target/release/osprey
+            target/osprey-pkg
+            target/osprey-registry
+            target/package-workspace.wasm
+            target/workbench.wasm
+            compiler/lib/
+            compiler/bin/*.a
+            examples/projects/modules/src/web/bundle.ospml
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload extension artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: osprey-extension
+          path: |
+            vscode-extension/out/
+            vscode-extension/*.vsix
+          retention-days: 7
+          if-no-files-found: error
+
+  # Every static check, beside the build: a lint never holds up a suite.
+  analyse:
+    name: Format & Analyse
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      # Skills live in .agents/skills for every agent; Claude Code reads them
+      # through links in .claude/skills.
+      - name: Every skill is linked for Claude Code
+        run: |
+          node --test scripts/link-skills.test.mjs
+          node scripts/link-skills.mjs --check .
+
+      - name: Setup Osprey Compiler
+        uses: ./.github/actions/setup-osprey-compiler
+
+      - name: Install VS Code extension dependencies
+        run: npm ci
+        working-directory: ./vscode-extension
 
       # A Make target that runs a node tool without depending on that
       # subproject's install stamp only fails on a machine that has never
@@ -224,7 +279,7 @@ jobs:
 
       # The local and hosted gates install the latest release and read the same
       # committed threshold. A failed download or breached ceiling fails CI.
-      - name: Install latest Deslop
+      - name: Install the pinned Deslop
         run: bash scripts/install-deslop.sh
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -242,62 +297,26 @@ jobs:
       - name: Dead-code gate (hawk)
         run: make hawk
 
-      # ── Artifacts for stage 3. ──
-      - name: Build the extension bundle
-        run: make _vsix_bundle
-
-      - name: Package the VSIX
-        run: make _vsix_package
-
-      - name: Upload compiler artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: osprey-build
-          # The archives only — compiler/bin also holds ~12M of object files
-          # and C test binaries, and the C suite rebuilds those instrumented
-          # anyway. `_vsix_bundle` reads them from compiler/bin ($(RTB)); the
-          # compiler itself resolves them via compiler/lib.
-          path: |
-            target/release/osprey
-            target/osprey-pkg
-            target/osprey-registry
-            target/package-workspace.wasm
-            target/workbench.wasm
-            compiler/lib/
-            compiler/bin/*.a
-            examples/projects/modules/src/web/bundle.ospml
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Upload extension artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: osprey-extension
-          path: |
-            vscode-extension/out/
-            vscode-extension/*.vsix
-          retention-days: 7
-          if-no-files-found: error
-
   # ═══ STAGE 3 ════════════════════════════════════════════════════════════════
   # Every suite, in parallel, each instrumented. None of these rebuilds the
   # compiler: they download stage 1's artifacts.
 
-  # The Rust workspace, run ONCE under llvm-cov. There is no separate plain
-  # `cargo test` run: an instrumented run asserts everything an uninstrumented
-  # one does, so running both is pure duplication.
+  # The Rust workspace, run ONCE under llvm-cov, in three shards the coverage job
+  # merges back into one report. There is no separate plain `cargo test` run: an
+  # instrumented run asserts everything an uninstrumented one does, so running
+  # both is pure duplication.
   test-rust:
-    name: "Tests: Rust workspace (coverage)"
+    name: "Tests: Rust workspace (${{ matrix.shard }})"
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [packages, workbench, rest]
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -338,12 +357,12 @@ jobs:
         run: cargo install cargo-llvm-cov --locked
 
       - name: Tests with coverage
-        run: make _test_rust
+        run: make _test_rust_shard RUST_SHARD=${{ matrix.shard }}
 
       - name: Upload Rust coverage
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-rust
+          name: coverage-rust-${{ matrix.shard }}
           path: target/coverage/lcov.info
           retention-days: 7
           if-no-files-found: error
@@ -352,7 +371,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: test-log-rust
+          name: test-log-rust-${{ matrix.shard }}
           path: target/logs/rust-test.log
           if-no-files-found: ignore
           retention-days: 7
@@ -364,13 +383,9 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -380,6 +395,8 @@ jobs:
           name: osprey-build
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey
+      - name: Every package checks on its own
+        run: make _check_packages
       - name: Package coverage collection
         run: make _test_packages
       - name: Upload package coverage
@@ -396,11 +413,9 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -428,11 +443,9 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -460,11 +473,9 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -490,13 +501,9 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -514,13 +521,9 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -555,13 +558,9 @@ jobs:
     runs-on: ubuntu-latest
     # A cold run installs a 2.3 GB toolchain and builds lean4export and
     # lean4checker from source before any test runs.
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -651,7 +650,7 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v7
 
@@ -686,21 +685,17 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    # The extension suite dominates every budget in this file: it drives a real
-    # VS Code and spawns lldb-dap per debug-adapter case, which is minutes
-    # slower on a runner than locally. 45 leaves headroom without hiding a
-    # hang — a stuck run still fails, just later.
-    timeout-minutes: 45
+    # It drives a real VS Code and spawns lldb-dap per debug-adapter case, which
+    # is minutes slower on a runner than locally. 20 leaves headroom over its 12
+    # without hiding a hang.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        # The extension links the shared profiler UI from the lspkit submodule.
-        with:
-          submodules: true
       # `pretest` compiles the extension, which copies its icon from this
       # LFS-stored logo; packaging also requires the README GIFs and the workbench
       # assets/lessons media it stages verbatim. Refuse pointers.
       - name: Fetch extension icon, README media and workbench assets
-        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,vscode-extension/media/language-tour.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif,vscode-extension/media/showcase.gif,apps/workbench/assets/**,apps/workbench/lessons/media/**"
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -730,10 +725,6 @@ jobs:
           sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
           test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
-
-      # npm installs a packed copy of the built UI, so it is built first.
-      - name: Build the shared profiler UI (lspkit submodule)
-        run: make _profiler_ui
 
       - name: Install VS Code extension dependencies
         run: npm ci
@@ -794,13 +785,9 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -867,14 +854,13 @@ jobs:
   test-website:
     name: "Tests: Website E2E (Playwright)"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
         # The site's images and videos are Git LFS files; the Book's examples
-        # build the compiler, whose workspace resolves through lspkit.
+        # build the compiler.
         with:
           lfs: true
-          submodules: true
       - uses: ./.github/actions/detect-ci-scope
         id: filter
       - uses: actions/setup-node@v7
@@ -882,11 +868,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: website/package-lock.json
-
-      # Building the compiler compiles lspkit's profiler, whose build.rs runs
-      # typeDiagram; without it on PATH the cargo build fails before any test.
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -954,13 +935,9 @@ jobs:
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -1041,8 +1018,8 @@ jobs:
           target: google_apis
           arch: x86_64
           script: |
-            make android-test
-            make bank-android-test
+            make -C apps android-test
+            make -C apps bank-android-test
             examples/projects/modules/mobile/android/gradlew -p examples/projects/modules/mobile/android --console=plain :app:lintDebug
             cd examples/mobile/android && ./gradlew --console=plain :app:lintDebug
 
@@ -1057,6 +1034,15 @@ jobs:
             examples/projects/modules/mobile/android/app/build/reports/
           if-no-files-found: ignore
           retention-days: 7
+
+      # The emulator can vanish without a word in its own log; only the host
+      # can say whether the kernel killed it.
+      - name: Host state after a failed Android step
+        if: failure()
+        run: |
+          sudo dmesg -T | grep -iE 'out of memory|oom|killed process|segfault|qemu|kvm' | tail -40
+          free -h
+          df -h /
 
       - name: Install bank e2e dependencies
         run: npm ci
@@ -1102,28 +1088,37 @@ jobs:
           docker stop osprey-web-compiler-ci
           docker rm osprey-web-compiler-ci
 
-  # ═══ STAGE 4 ════════════════════════════════════════════════════════════════
-  # Thresholds are enforced HERE, against reports the test jobs produced, so no
-  # suite is ever re-run to measure what it already measured. The C runtime
-  # gate lives in its own job because gcov data never leaves that container.
-  # This existing required context also gates the iOS device/simulator builds
-  # and simulator tests. macos-15 is ARM64, matching the simulator archive.
-  coverage:
-    name: Coverage thresholds
-    needs: [changes, test-rust, test-extension, test-packages, test-registry-gc, test-registry-arc]
-    if: ${{ always() && needs.changes.outputs.code == 'true' }}
+  # iOS/macOS device and simulator builds, simulator tests and the native
+  # Workbench host. macos-15 is ARM64, matching the simulator archive.
+  test-apple:
+    name: "Tests: Apple (${{ matrix.part }})"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: iOS
+            minutes: 22
+            run: make -C apps ios-test mobile-ios-test
+          - part: macOS
+            minutes: 15
+            run: make -C apps macos-test
+          - part: Talon Bank
+            minutes: 22
+            run: make -C apps bank-ios-test
+          - part: Workbench
+            minutes: 15
+            run: |
+              make _runtime _runtime_macos
+              cargo build --release -p osprey-cli
+              bash apps/workbench/hosts/apple/run.sh --build
+              swift test --package-path apps/workbench/hosts/apple
     steps:
-      - name: Package manager suites passed
-        run: |
-          test "${{ needs.test-registry-gc.result }}" = "success"
-          test "${{ needs.test-registry-arc.result }}" = "success"
       - uses: actions/checkout@v7
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
-          submodules: true
           lfs: true
 
       - name: Install jq
@@ -1132,15 +1127,54 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # The iOS and macOS builds compile the workspace, whose lsp-profiler
-      # build script generates its wire model with typeDiagram [PROF-LSP-RUNTIME].
-      - name: Install typeDiagram
-        uses: ./.github/actions/typediagram
+      - name: Restore the compiler's cargo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-osprey-
+
+      - name: ${{ matrix.part }} builds, ABI, goldens and app tests
+        env:
+          OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
+        run: ${{ matrix.run }}
+
+      - name: Native bank simulator results
+        if: ${{ always() && matrix.part == 'Talon Bank' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: bank-ios-results
+          path: examples/projects/modules/mobile/ios/build/**/*.xcresult
+          if-no-files-found: ignore
+
+  # ═══ STAGE 4 ════════════════════════════════════════════════════════════════
+  # Thresholds are enforced HERE, against reports the test jobs produced. This
+  # job builds nothing and runs nothing: it reads reports and compares numbers.
+  # The C runtime gate lives in its own job because gcov data never leaves
+  # that container.
+  coverage:
+    name: Coverage thresholds
+    needs: [changes, test-rust, test-extension, test-packages, test-registry-gc, test-registry-arc]
+    if: ${{ always() && needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Package manager suites passed
+        run: |
+          test "${{ needs.test-registry-gc.result }}" = "success"
+          test "${{ needs.test-registry-arc.result }}" = "success"
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
-          name: coverage-rust
-          path: target/coverage/
+          pattern: coverage-rust-*
+          path: target/coverage/rust/
+      - name: Merge the Rust shards' coverage
+        run: python3 scripts/merge_lcov.py target/coverage/rust/*/lcov.info > target/coverage/lcov.info
       - uses: actions/download-artifact@v8
         with:
           name: coverage-extension
@@ -1158,31 +1192,6 @@ jobs:
 
       - name: Package thresholds
         run: make _coverage_check_packages
-
-      - name: iOS and macOS builds, ABI, goldens and app persistence
-        run: make ios-test macos-test mobile-ios-test bank-ios-test
-
-      - name: Native Workbench host and rendering regressions
-        env:
-          OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
-        run: |
-          bash apps/workbench/hosts/apple/run.sh --build
-          swift test --package-path apps/workbench/hosts/apple
-
-      # [SYMEX-CRASH-GATE] The KLEE engine gates (hunt expectations, planted
-      # crashes, default budget, safe sweep) are intentionally NOT run in CI:
-      # clean.osp cannot complete inside the pinned 64-byte/30s settings on
-      # any backend (issues #306, #307). Verification is local — the hunt
-      # targets live in scripts/make/tests.mk and stay red until issue #306
-      # is fixed. The host-only mock oracle below stays (no KLEE involved).
-
-      - name: Native bank simulator results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: bank-ios-results
-          path: examples/projects/modules/mobile/ios/build/**/*.xcresult
-          if-no-files-found: ignore
 
       - name: Upload combined coverage
         uses: actions/upload-artifact@v7
@@ -1219,6 +1228,7 @@ jobs:
     needs:
       - changes
       - build
+      - analyse
       - test-rust
       - test-packages
       - test-registry-gc
@@ -1232,6 +1242,7 @@ jobs:
       - test-wasm
       - test-website
       - test-integration
+      - test-apple
       - coverage
       - windows
       - gpui

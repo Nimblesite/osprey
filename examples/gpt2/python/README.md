@@ -29,8 +29,8 @@ def product(a, b, rows, inner, cols):
 From the repository root:
 
 ```sh
-make gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
-make gpt2 FLAVOR=python BACKEND=lists PROMPT="The capital of France is" TOKENS=1
+make -C apps gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
+make -C apps gpt2 FLAVOR=python BACKEND=lists PROMPT="The capital of France is" TOKENS=1
 ```
 
 The output is byte for byte the Default example's output for the same stdin: the banner naming the device, the prompt and token lines, the generated count, the decoded text, and the `generation stopped:` and unknown-backend messages. `GPU=auto`, `GPU=metal` and `GPU=opencl` select the existing device adapters; a missing adapter stops execution with an error. The prompt takes one full forward pass and every later token one `forward_step` over the blocks' cached qkv rows, as in the Default sampler.
@@ -45,6 +45,6 @@ Pass `--device metal`, `--device opencl` or `--device auto` for a strict hardwar
 
 The generator comparison itself is `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` in `crates/osprey-cli/tests/cross_flavor_equiv.rs`. It needs the downloaded checkpoint, so it runs with `cargo test -p osprey-cli --test cross_flavor_equiv -- --ignored`; the checkpoint-free message comparison and the no-`.osp` check run in every suite.
 
-Only generation is ported. The [training program](../train) is not being ported at the moment and stays Default-only; `make gpt2-train` rejects `FLAVOR=python`.
+Only generation is ported. The [training program](../train) is not being ported at the moment and stays Default-only; `make -C apps gpt2-train` rejects `FLAVOR=python`.
 
 The [port notes](../../../docs/plans/python-flavor-port/README.md) show the concrete changes from reference Python.

@@ -8,6 +8,8 @@ publish = false
 
 [dependencies]
 gpui-kit = "0.8.1"
+# Decodes and turns scene sprite images; the same release GPUI decodes images with.
+image = { version = "0.25", default-features = false, features = ["png"] }
 # The same lyon GPUI tessellates with; only its stroke join type is named here.
 lyon = "1.0"
 serde = { version = "1", features = ["derive"] }

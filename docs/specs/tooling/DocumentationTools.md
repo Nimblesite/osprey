@@ -209,12 +209,12 @@ From the repository root:
 ```sh
 cargo test -p osprey-cli --test cli_e2e api_docs
 cargo test -p osprey-cli --test cli_e2e doctests
-make docs-html-test
+make -C website docs-html-test
 ```
 
 The CLI tests check source validation, public API visibility, inferred signatures, authored pages and doctest execution. Renderer unit tests live under `crates/osprey-cli/src/docs/html/tests*`. The corpus harness separately runs doctests under native memory backends and WebAssembly, rejecting output drift, malformed summaries and ARC leaks.
 
-`make docs-html-test` builds the compiler and runs [the standalone Chromium checks](../../../scripts/verify-docs-html.mjs). They cover generated sites opened over `file://`, all three themes, custom CSS ordering, search, links, mobile/keyboard navigation and inert Markdown.
+`make -C website docs-html-test` builds the compiler and runs [the standalone Chromium checks](../../../scripts/verify-docs-html.mjs). They cover generated sites opened over `file://`, all three themes, custom CSS ordering, search, links, mobile/keyboard navigation and inert Markdown.
 
 For the [website's generated-documentation tests](../../../website/tests/api-docs.spec.js), run `cd website && npm test -- tests/api-docs.spec.js`. They additionally exercise HTTP hosting under a URL prefix, executable guide examples, responsive layouts and navigation without JavaScript.
 

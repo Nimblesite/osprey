@@ -1,0 +1,263 @@
+// Implements [UI-MACHINE]: an interface as data. A machine holds typed
+// inputs, parallel state-machine layers, a view template and skins, decoded
+// once by `MachineDocs::load`; this module settles its layers when inputs
+// change and collects the requests the entered states make.
+namespace ui
+
+(** One input of a machine: its name, declared type and value ([UI-MACHINE-INPUTS]). *)
+type Knob =
+    knobName : string
+    knobType : InputKind
+    knobValue : Value
+
+(** A domain fact for `Machines::feed`: an input's name and its new value. *)
+type Fact =
+    factName : string
+    factValue : Value
+
+(** The state a layer is in ([UI-MACHINE-LAYERS]). *)
+type Current =
+    currentLayer : string
+    currentState : string
+
+(** A request an entered state made: its name and the inputs it named, with their values at entry. *)
+type Ask =
+    askName : string
+    askInputs : List<Knob>
+
+(** What a machine's controls deliver ([UI-MACHINE-VIEW]): fire a trigger, or set an input from the control's value or to a literal and then fire `…Fire` unless it is "". *)
+type Lever =
+    Fire
+        fireName : string
+    Assign
+        assignName : string
+        assignFire : string
+    Put
+        putName : string
+        putValue : Value
+        putFire : string
+
+(** A drag in progress ([UI-MACHINE-DRAG]): the two inputs it moves, the pointer's offset from them, where it was pressed and whether it has left the slop. *)
+type Grab =
+    grabX : string
+    grabY : string
+    offsetX : float
+    offsetY : float
+    pressX : float
+    pressY : float
+    travelled : bool
+
+(** The pointer's hold on a canvas ([UI-MACHINE-DRAG]): none, pressed where its release acts, dragging, or sliding a slider. *)
+type Grip =
+    Loose
+    Holding
+    Moving
+        moving : Grab
+    Sliding
+        slidArea : Area
+
+(** A running machine: its inputs, each layer's state, the requests not yet taken, the last fault ("" when none), its layers, view template, skins and the pointer's grip on its canvas. *)
+type Machine =
+    knobs : List<Knob>
+    currents : List<Current>
+    asks : List<Ask>
+    machineFault : string
+    machineLayers : List<MachineLayer>
+    machineView : Template
+    machineSkins : List<Skin>
+    machineGrip : Grip
+
+(** A layer's move in one settle round, and whether it moved. *)
+type Moved =
+    movedMachine : Machine
+    moved : bool
+
+(** Builds input values, so an adapter never names a `Value` variant's field. *)
+module Values
+    (** A text value. *)
+    export text s = Words(valueWords = s)
+
+    (** A number value. *)
+    export number x = Amount(valueAmount = x)
+
+    (** A flag value. *)
+    export flag b = Flag(valueFlag = b)
+
+    (** A list value of key and label choices. *)
+    export list choices = Choices(valueChoices = choices)
+
+    (** No value: what a button delivers. *)
+    export none () = Unset
+
+(** Drives and reads machines ([UI-MACHINE]). *)
+module Machines
+    (** How many settle rounds may pass before a machine is reported as cycling. *)
+    export rounds = 32
+
+    fits (kind, given) = match given
+        Unset => false
+        Flag _ => kind == IsBool || kind == IsTrigger
+        Amount _ => kind == IsNumber
+        Words _ => kind == IsText
+        Choices _ => kind == IsList
+
+    (** The empty value of an input of `kind`. *)
+    export blank kind = match kind
+        IsBool => Values::flag false
+        IsTrigger => Values::flag false
+        IsNumber => Values::number 0.0
+        IsList => Values::list []
+        IsText => Values::text ""
+
+    knob (machine, name) = Lists::find (machine.knobs, \k => k.knobName == name)
+
+    (** The value of input `name`, or `Unset` when there is none. *)
+    export value (machine, name) = match knob (machine, name)
+        Success k => k.knobValue
+        Error _ => Unset
+
+    (** Input `name` as text: a text as itself, a number or flag written out, anything else "". *)
+    export text (machine, name) = match value (machine, name)
+        Words s => s
+        Amount x => toString x
+        Flag b => toString b
+        _ => ""
+
+    (** Whether input `name` is declared as text. *)
+    export textual (machine, name) = match knob (machine, name)
+        Success k => k.knobType == IsText
+        Error _ => false
+
+    (** Input `name` as a float, 0 when it is not a number. *)
+    export number (machine, name) = match value (machine, name)
+        Amount x => x
+        _ => 0.0
+
+    (** Input `name` as a flag, false when it is not one. *)
+    export flag (machine, name) = match value (machine, name)
+        Flag b => b
+        _ => false
+
+    (** The choices of list input `name`, none when it is not a list. *)
+    export choicesOf (machine, name) = match value (machine, name)
+        Choices cs => cs
+        _ => []
+
+    (** The state layer `layer` is in, "" when there is no such layer. *)
+    export current (machine, layer) = match Lists::find (machine.currents, \c => c.currentLayer == layer)
+        Success c => c.currentState
+        Error _ => ""
+
+    faulted (machine, fault) = machine(machineFault = fault)
+
+    replaced (machine, name, given) = machine(knobs = mapList (machine.knobs, \k => Pick::either (k.knobName == name, k(knobValue = given), k)))
+
+    (** Sets input `name` without settling; a missing input or a value of the wrong type leaves the machine as it was and records a fault. *)
+    export put (machine, name, given) = match knob (machine, name)
+        Error _ => faulted (machine, "no input named \"${name}\"")
+        Success k => match fits (k.knobType, given)
+            true => replaced (machine, name, given)
+            false => faulted (machine, "input \"${name}\" is a ${MachineDocs::kindName k.knobType}")
+
+    // ---- conditions [UI-MACHINE-WHEN] ----
+
+    numeric given = match given
+        Amount x => x
+        _ => 0.0
+
+    compared (held, by, literal) = match by
+        Equal => structuralEquals(held, literal)
+        Unequal => structuralEquals(held, literal) == false
+        Below => numeric held < numeric literal
+        Above => numeric held > numeric literal
+
+    (** Whether condition `c` holds for the machine's inputs and states. *)
+    export holds (machine, c) = match c
+        Always => true
+        AllOf cs => Lists::all (cs, \x => holds (machine, x))
+        AnyOf cs => Lists::any (cs, \x => holds (machine, x))
+        Negated inner => holds (machine, inner) == false
+        Fired name => flag (machine, name)
+        InState layer names => Lists::any (names, \name => name == current (machine, layer))
+        Compared input by literal => compared (value (machine, input), by, literal)
+
+    // ---- layers and settling [UI-MACHINE-LAYERS] ----
+
+    ask (machine, entry) = Ask(askName = entry.entryRequest, askInputs = filterList (machine.knobs, \k => Lists::any (entry.entryWith, \name => name == k.knobName)))
+
+    entries (layer, target) = match Lists::find (layer.layerPhases, \p => p.phaseName == target)
+        Success p => p.phaseEnter
+        Error _ => []
+
+    entered (machine, layer, target) =
+        name = layer.layerName
+        moved = machine(currents = mapList (machine.currents, \c => Pick::either (c.currentLayer == name, Current(currentLayer = name, currentState = target), c)))
+        moved(asks = listConcat moved.asks (mapList (entries (layer, target), \e => ask (moved, e))))
+
+    eligible (machine, current, t) = (t.moveFrom == current || t.moveFrom == "*") && t.moveTo != current && holds (machine, t.moveWhen)
+
+    stepLayer (round, layer) =
+        machine = round.movedMachine
+        current = current (machine, layer.layerName)
+        match Lists::find (layer.layerMoves, \t => eligible (machine, current, t))
+            Success t => Moved(movedMachine = entered (machine, layer, t.moveTo), moved = true)
+            Error _ => round
+
+    unfire machine = machine(knobs = mapList (machine.knobs, \k => Pick::either (k.knobType == IsTrigger, k(knobValue = Values::flag false), k)))
+
+    round machine = foldList (machine.machineLayers, Moved(movedMachine = machine, moved = false), \(r, layer) => stepLayer (r, layer))
+
+    settling (machine, left) = match left <= 0
+        true => faulted (machine, "the machine is still moving after ${toString rounds} rounds")
+        false =>
+            next = round machine
+            match next.moved
+                true => settling (next.movedMachine, satSub left 1)
+                false => next.movedMachine
+
+    (** Moves every layer until no transition fires, collecting the entered states' requests. Triggers are seen by the first round only, so each fires once. *)
+    export settle machine =
+        first = round machine
+        match first.moved
+            true => settling (unfire first.movedMachine, satSub rounds 1)
+            false => unfire first.movedMachine
+
+    (** Every layer entered into its initial state, then settled: a machine as it first appears. *)
+    export begin machine = settle (foldList (machine.machineLayers, machine, \(m, layer) => entered (m, layer, layer.layerInitial)))
+
+    (** Sets several inputs, then settles once: what an adapter does with a batch of domain facts. *)
+    export feed (machine, facts) = settle (foldList (facts, machine, \(m, f) => put (m, f.factName, f.factValue)))
+
+    (** A fact for `feed`. *)
+    export fact (name, given) = Fact(factName = name, factValue = given)
+
+    (** A control's lever pulled with the control's value (`Unset` for a button), then settled. *)
+    export pull (machine, lever, given) = settle (pulled (machine, lever, given))
+
+    fired (machine, name) = Pick::either (name == "", machine, put (machine, name, Values::flag true))
+
+    pulled (machine, lever, given) = match lever
+        Fire name => put (machine, name, Values::flag true)
+        Assign name trigger => fired (put (machine, name, given), trigger)
+        Put name literal trigger => fired (put (machine, name, literal), trigger)
+
+    asked (ask, name) = match Lists::find (ask.askInputs, \k => k.knobName == name)
+        Success k => k.knobValue
+        Error _ => Unset
+
+    (** The text input `name` a request carried, as the machine held it at entry; "" when it carried none. *)
+    export askedText (ask, name) = match asked (ask, name)
+        Words s => s
+        _ => ""
+
+    (** The number input `name` a request carried, or a picker's choice key read as a number; 0 when it is neither. *)
+    export askedNumber (ask, name) = match asked (ask, name)
+        Words s => parseFloat s ?: 0.0
+        Amount x => x
+        _ => 0.0
+
+    (** The requests made since the last `taken`, oldest first. *)
+    export requests machine = machine.asks
+
+    (** The machine with its requests taken. *)
+    export taken machine = machine(asks = [])

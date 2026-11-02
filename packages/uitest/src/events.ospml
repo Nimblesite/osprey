@@ -1,0 +1,41 @@
+// The JSON edge going the other way ([UI-EVENTS]): typed host actions encoded
+// as the event text `ui::Runtime::proceed` takes.
+namespace uitest
+
+import ui::Doc
+
+(** Builds the host events a person, a screen reader or the clock would send. *)
+module Events
+    control (revision, ordinal, value, now) = Doc::write (JsonObject [Doc::str ("kind", "ui"), Doc::str ("region", "root"), Doc::num ("revision", revision), Doc::num ("ordinal", ordinal), JsonMember "value" value, Doc::num ("now", now)])
+
+    (** A press of the control at `ordinal` in root revision `revision`, at host time `now`. *)
+    export press (revision, ordinal, now) = control (revision, ordinal, JsonNull, now)
+
+    (** A choice of `key` on the picker at `ordinal`. *)
+    export choose (revision, ordinal, key, now) = control (revision, ordinal, JsonString key, now)
+
+    (** A pointer at `x`, `y`, pressed or released, on the scene at `ordinal`. *)
+    export pointer (revision, ordinal, x, y, down, now) = control (revision, ordinal, JsonObject [Doc::dec ("x", x), Doc::dec ("y", y), Doc::bit ("down", down)], now)
+
+    (** The scene at `ordinal` measured at `width` by `height` scene units, as a host reports its region when it shows or resizes. *)
+    export viewed (revision, ordinal, width, height, now) = control (revision, ordinal, JsonObject [Doc::dec ("width", width), Doc::dec ("height", height)], now)
+
+    completed (ticket, result, now) = Doc::write (JsonObject [Doc::str ("kind", "completed"), Doc::str ("ticket", ticket), Doc::bit ("ok", true), JsonMember "result" result, Doc::num ("now", now)])
+
+    (** The file picker of request `ticket` answered with `path`. *)
+    export chosen (ticket, path, now) = completed (ticket, JsonObject [Doc::str ("path", path), Doc::bit ("cancelled", false)], now)
+
+    (** The file picker of request `ticket` cancelled. *)
+    export cancelled (ticket, now) = completed (ticket, JsonObject [Doc::str ("path", ""), Doc::bit ("cancelled", true)], now)
+
+    (** The process of request `ticket` finished with `status` and `stderr`. *)
+    export ran (ticket, status, stderr, now) = completed (ticket, JsonObject [Doc::num ("status", status), Doc::str ("stderr", stderr)], now)
+
+    (** A display frame `elapsed` seconds after the last. *)
+    export frame (elapsed, now) = Doc::write (JsonObject [Doc::str ("kind", "frame"), Doc::dec ("elapsed", elapsed), Doc::num ("now", now)])
+
+    (** A lifecycle `phase`, such as `resume` or `open:<path>`. *)
+    export lifecycle (phase, now) = Doc::write (JsonObject [Doc::str ("kind", "lifecycle"), Doc::str ("phase", phase), Doc::num ("now", now)])
+
+    (** Finder opening `path` with the app. *)
+    export open (path, now) = lifecycle ("open:${path}", now)

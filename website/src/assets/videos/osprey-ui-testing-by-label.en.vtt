@@ -1,0 +1,58 @@
+WEBVTT
+
+00:00.500 --> 00:04.319
+There are two ways for software to use an interface it did not write.
+
+00:05.069 --> 00:09.776
+It can look at pixels: take a screenshot, guess where the Play button is, and click there.
+
+00:09.976 --> 00:18.483
+Or it can read the accessibility tree: every control's role and label. The button labelled Play survives a redesign that moves it.
+
+00:19.233 --> 00:27.564
+In Osprey, an interface written as a UI machine produces its own tree. Every hit area on this player names its role and its label.
+
+00:28.314 --> 00:34.580
+Semantics turns the live controls into the tree: role, filled-in label, bounds, and a slider's value.
+
+00:34.780 --> 00:41.835
+Act operates a control by label, the way a screen reader or an agent would. An unknown label changes nothing.
+
+00:42.585 --> 00:48.160
+A test taps by label, and a tap is a real pointer press and release at the control's bounds.
+
+00:48.360 --> 00:53.358
+If a hit area is misplaced or covered, the test fails, just as a user's click would.
+
+00:54.108 --> 00:58.943
+Read it as a user would. Before a file is chosen, Play sends nothing to the TV.
+
+00:59.143 --> 01:02.664
+Open a file, press Play, and the player connects and launches.
+
+01:02.864 --> 01:06.539
+Tap halfway along the volume slider, and the volume is a half.
+
+01:06.739 --> 01:10.803
+Tap a quarter along a two hundred second track, and it shows fifty seconds.
+
+01:11.553 --> 01:22.385
+The test drives the app's real start and dispatch, with no window, and a handler plays the TV. The second journey switches skins: the pixels change, the labels must not.
+
+01:22.585 --> 01:25.379
+All four journeys pass, the same way every run.
+
+01:26.129 --> 01:34.167
+The GPUI desktop host maps the same tree to AccessKit, and turns a screen reader's click into the same pointer events.
+
+01:34.367 --> 01:37.821
+So the app cannot tell a screen reader or an agent from a hand.
+
+01:38.571 --> 01:48.238
+An agent needs no vision. It reads a short list of what can be done right now, picks one by name, and acts. And the labels it uses are tested on every build.
+
+01:48.988 --> 01:59.435
+What is not done yet. There is no ready-made MCP server for agents. The tree comes from UI machines only, and only the GPUI host maps it today.
+
+02:00.185 --> 02:06.119
+Build Osprey, and run the casting journeys. Osprey is actively evolving. Try it on your projects.

@@ -63,14 +63,12 @@ internal static unsafe class Volumes
     /// <summary>The label, capacity and space available to this user of the volume holding <paramref name="path"/>.</summary>
     public static Volume Of(string path)
     {
+        // Capacity is asked of the folder itself, which a sandbox may read when it may not open the volume's root.
+        var folder = Path.TrimEndingDirectorySeparator(path) + Path.DirectorySeparatorChar;
+        var (total, available) = Native.GetDiskFreeSpaceEx(folder, out var free, out var size, out _) ? ((long)size, (long)free) : (0L, 0L);
         var root = stackalloc char[Native.RootLength];
-        if (!Native.GetVolumePathName(path, root, Native.RootLength))
-        {
-            return new Volume("", 0, 0);
-        }
-        var top = new string(root);
-        var (total, available) = Native.GetDiskFreeSpaceEx(top, out var free, out var size, out _) ? ((long)size, (long)free) : (0L, 0L);
-        return new Volume(Label(top) is { Length: > 0 } label ? label : top, total, available);
+        var top = Native.GetVolumePathName(path, root, Native.RootLength) ? new string(root) : "";
+        return new Volume(top.Length > 0 && Label(top) is { Length: > 0 } label ? label : top, total, available);
     }
 
     static string Label(string root)

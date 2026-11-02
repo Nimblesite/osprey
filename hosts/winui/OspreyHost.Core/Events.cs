@@ -56,6 +56,7 @@ public static class Events
             case long whole: writer.WriteNumberValue(whole); break;
             case KeyInput key: Keyed(writer, key); break;
             case PointerInput pointer: Pointed(writer, pointer); break;
+            case ViewInput view: Viewed(writer, view); break;
             case int whole: writer.WriteNumberValue(whole); break;
             default: throw new HostException($"A control cannot deliver a {value.GetType().Name}");
         }
@@ -99,6 +100,15 @@ public static class Events
         writer.WriteEndObject();
     }
 
+    // [UI-SCENE] The scene's region in scene units.
+    static void Viewed(Utf8JsonWriter writer, ViewInput view)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("width", view.Width);
+        writer.WriteNumber("height", view.Height);
+        writer.WriteEndObject();
+    }
+
     /// <summary>One display frame [WINUI-HOST-FRAME]: the seconds since the previous one.</summary>
     public static string Frame(long now, double elapsed) => Written(writer =>
     {
@@ -123,6 +133,9 @@ public sealed record KeyInput(string Key, bool Down);
 
 /// <summary>The pointer over a scene, in scene units, pressed or not, with Shift held or not [UI-SCENE].</summary>
 public sealed record PointerInput(double X, double Y, bool Down, bool Shift);
+
+/// <summary>A scene's region in scene units, sent when it first shows and whenever it changes size [UI-SCENE].</summary>
+public sealed record ViewInput(double Width, double Height);
 
 /// <summary>JSON the host writes: escaped only where JSON requires, so text reaches Osprey as UTF-8.</summary>
 public static class Json

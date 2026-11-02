@@ -302,7 +302,7 @@ pub(super) fn parse_target(value: &str) -> Result<String, String> {
         "native" | "wasm32" | "python" => Ok(value.to_string()),
         host if crate::toolchain::host_archive_target(host) => Ok(host.to_string()),
         other => Err(format!(
-            "unknown target '{other}' (available: native, wasm32, ios, ios-sim, macos, android-arm64, android-x64, python)\n{USAGE}"
+            "unknown target '{other}' (available: native, wasm32, ios, ios-sim, macos, android-arm64, android-x64, linux-x64, linux-arm64, windows-x64, python)\n{USAGE}"
         )),
     }
 }

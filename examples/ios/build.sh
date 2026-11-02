@@ -29,7 +29,7 @@ compiler_target=${target/ios-device/ios}
 
 compiler=${OSPREY_BIN:-"$repo_dir/target/release/osprey"}
 if [[ ! -x "$compiler" ]]; then
-    echo "Osprey compiler not found at $compiler. Run make ios or make macos from the repository root." >&2
+    echo "Osprey compiler not found at $compiler. Run make -C apps ios or make -C apps macos from the repository root." >&2
     exit 1
 fi
 output="$example_dir/build/$target"

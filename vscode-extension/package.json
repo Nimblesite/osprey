@@ -231,6 +231,18 @@
         "icon": "$(graph)"
       },
       {
+        "command": "osprey.profiler.inspectVariableType",
+        "title": "Inspect Variable Type",
+        "category": "Osprey",
+        "icon": "$(symbol-parameter)"
+      },
+      {
+        "command": "osprey.profiler.watchVariable",
+        "title": "Add Variable to Watch",
+        "category": "Osprey",
+        "icon": "$(eye)"
+      },
+      {
         "command": "osprey.profiler.refreshProcesses",
         "title": "Refresh Processes",
         "category": "Osprey",
@@ -771,7 +783,7 @@
     ]
   },
   "dependencies": {
-    "@nimblesite/lsp-profiler-ui": "file:../lspkit/packages/lsp-profiler-ui",
+    "@nimblesite/lsp-profiler-ui": "^0.4.0",
     "@nimblesite/shipwright-vscode": "^0.11.0",
     "@preact/signals-core": "^1.14.4",
     "@vscode/codicons": "^0.0.46-24",
