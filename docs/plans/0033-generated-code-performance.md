@@ -64,7 +64,7 @@ Timing on `ubuntu-latest` is too noisy to gate on and the Mac runners are slower
 - [x] `rust-checked` benchmark column (`benchmarks/run.sh`, `benchmarks/report.py`, `benchmarks/README.md`).
 - [x] `optimised_ir` oracle and the red linkage test in `crates/osprey-cli/src/tests/execution.rs`.
 - [x] Phase 3 linkage change behind `CodegenOptions`; the red test goes green; profiler, `--symbols`, iOS, Android, Python and wasm web ABI tests re-run.
-- [ ] Re-run `make -C benchmarks bench` after Phases 3 and 4 on an idle machine and update `website/src/benchmarks.md` from the recorded data.
+- [x] Osprey columns re-timed after Phases 3 and 4 with `make -C benchmarks bench-osprey`; other languages keep their recorded baselines, and `website/src/benchmarks.md` renders the data at site build.
 - [x] Phase 4 cold slow path with its oracle test: `osp.arith.fault.*` in `effects/requests.rs`, `a_checked_operation_keeps_its_slow_path_out_of_line`.
 - [x] Phase 5 decision recorded in spec 0037: `[ARITH-EFFECT-NO-REASSOCIATION]`, the recursion stays.
 - [x] Phase 6 cachegrind job `test-instructions`, under the required `CI` job (`benchmarks/instruction_gate.py`, `benchmarks/instruction-ratios.json`, first measured on CI run 41435920098).
