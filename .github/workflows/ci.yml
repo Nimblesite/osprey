@@ -1047,7 +1047,7 @@ jobs:
           script: |
             make -C apps android-test
             mkdir -p examples/projects/modules/mobile/android/build
-            adb logcat -v threadtime -f /dev/stdout > examples/projects/modules/mobile/android/build/logcat.txt &
+            adb logcat -v threadtime > examples/projects/modules/mobile/android/build/logcat.txt &
             make -C apps bank-android-test
             examples/projects/modules/mobile/android/gradlew -p examples/projects/modules/mobile/android --console=plain :app:lintDebug
             cd examples/mobile/android && ./gradlew --console=plain :app:lintDebug
