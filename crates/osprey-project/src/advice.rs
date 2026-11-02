@@ -70,7 +70,7 @@ fn namespace_warnings(
     contributions: &[Contribution],
     sources: &[SourceMetadata],
 ) -> Vec<ProjectWarning> {
-    let folders = namespace_folders(contributions, sources);
+    let folders = namespace_folders(config, contributions, sources);
     let mut seen = BTreeSet::new();
     contributions
         .iter()
@@ -112,6 +112,7 @@ pub(crate) fn warnings(
 }
 
 fn namespace_folders<'a>(
+    config: &ProjectConfig,
     contributions: &'a [Contribution],
     sources: &'a [SourceMetadata],
 ) -> BTreeMap<&'a str, BTreeSet<&'a std::path::Path>> {
@@ -120,6 +121,8 @@ fn namespace_folders<'a>(
         if let Some(parent) = sources
             .get(contribution.source)
             .and_then(|source| source.path.parent())
+            // Another package's folders are its own layout, not this project's drift.
+            .filter(|parent| crate::source::within(&config.directory, parent))
         {
             let _ = folders
                 .entry(contribution.namespace.label())

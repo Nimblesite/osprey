@@ -18,6 +18,7 @@ mod runner;
 mod tests;
 
 pub use imports::export_signature;
+pub(crate) use registry::INSTALL_ROOT;
 pub use registry::{Discipline, Registry};
 pub use runner::{CheckerRunner, ProcessRunner};
 

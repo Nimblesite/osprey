@@ -77,7 +77,7 @@ identity written in that source.
 
 ### Project Style Advice `[MODULES-STYLE]`
 
-Style findings are warnings, never rejection criteria. `namespace-folder-drift` reports each contributing source when one namespace spans more than one physical parent folder; no folder-to-namespace naming convention is imposed. `module-deep-hierarchy` reports module declarations nested more than three levels. `namespace-reverse-domain` reports application namespace labels starting with `com.`, `org.`, `net.`, `io.`, `dev.` or `edu.` and containing at least three nonempty dot-separated components. Dots and slashes remain ordinary label characters, never namespace ancestry.
+Style findings are warnings, never rejection criteria. `namespace-folder-drift` reports each contributing source when one namespace spans more than one physical parent folder inside the project's own directory, so a namespace shared with a dependency beside it is not drift; no folder-to-namespace naming convention is imposed. `module-deep-hierarchy` reports module declarations nested more than three levels. `namespace-reverse-domain` reports application namespace labels starting with `com.`, `org.`, `net.`, `io.`, `dev.` or `edu.` and containing at least three nonempty dot-separated components. Dots and slashes remain ordinary label characters, never namespace ancestry.
 
 `[modules].published_library = true` suppresses the application-only hierarchy and reverse-domain advice. It does not suppress folder drift or state ownership warnings. Omitted, it defaults to `false`; a non-boolean value is a manifest error. CLI and LSP consume the same sorted, source-located findings from project assembly.
 
