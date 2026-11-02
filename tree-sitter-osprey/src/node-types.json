@@ -2566,6 +2566,20 @@
     "type": "select_arm",
     "named": true,
     "fields": {
+      "binding": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "_",
+            "named": false
+          },
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
       "body": {
         "multiple": false,
         "required": true,
@@ -2576,12 +2590,20 @@
           }
         ]
       },
-      "pattern": {
+      "operation": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
-            "type": "pattern",
+            "type": "recv_call",
+            "named": true
+          },
+          {
+            "type": "select_timeout",
+            "named": true
+          },
+          {
+            "type": "send_call",
             "named": true
           }
         ]
@@ -2598,6 +2620,21 @@
       "types": [
         {
           "type": "select_arm",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "select_timeout",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
           "named": true
         }
       ]
@@ -3810,6 +3847,10 @@
   {
     "type": "string_content",
     "named": true
+  },
+  {
+    "type": "timeout",
+    "named": false
   },
   {
     "type": "true",

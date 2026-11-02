@@ -106,6 +106,8 @@ pub(crate) struct Codegen {
     /// Erased-`any` descriptors, deep-box functions and the candidate row
     /// table ([`crate::anybox`], [TYPE-ANY]).
     pub(crate) anys: crate::anybox::AnyState,
+    /// The cold arithmetic fault functions already emitted.
+    pub(crate) arithmetic_faults: BTreeSet<String>,
     /// One deep-comparison function per distinct compared type, memoised by
     /// its rendered type so two call sites sharing a type share the function
     /// and a recursive type calls its own comparator
@@ -391,6 +393,7 @@ impl Codegen {
             arc_slot_count: 0,
             rodata_regs: HashSet::new(),
             anys: crate::anybox::AnyState::default(),
+            arithmetic_faults: BTreeSet::new(),
             seq_fns: HashMap::new(),
         }
     }

@@ -53,7 +53,7 @@ fn in_source_order(warnings: &mut [TypeWarning]) {
 }
 
 /// Print `warnings` to stderr. A clean build prints nothing.
-pub(crate) fn report(input: &CompilationInput, warnings: &[TypeWarning]) {
+pub(crate) fn report(input: &CompilationInput, warnings: &[TypeWarning]) -> usize {
     let mut warnings = warnings.to_vec();
     warnings.extend(input.project_warnings().iter().map(|warning| TypeWarning {
         rule: warning.rule,
@@ -64,6 +64,7 @@ pub(crate) fn report(input: &CompilationInput, warnings: &[TypeWarning]) {
     if let Some(text) = render(input, &warnings) {
         eprintln!("{text}");
     }
+    warnings.len()
 }
 
 /// The whole warning block, or `None` when there is nothing to say.

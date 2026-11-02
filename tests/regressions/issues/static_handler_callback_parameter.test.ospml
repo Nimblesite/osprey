@@ -1,0 +1,19 @@
+// #274: handle static discharges the operations of a callback passed as a parameter.
+
+static effect Signal T
+    read : Unit => T
+
+type Query =
+    text : string
+
+listView () = "list:${(perform Signal<Query>.read ()).text}"
+
+provide (store, work) =
+    handle static Signal<Query>
+        read => store
+    work ()
+
+snap () = signalSnapshot listView
+
+result = provide (Query(text = "x"), snap)
+print result.value

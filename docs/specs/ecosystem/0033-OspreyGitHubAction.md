@@ -1,7 +1,7 @@
 # Osprey GitHub Action
 
-**Status:** normative target; implementation has not started. Delivery is fixed
-by [plan 0021](../../plans/0021-osprey-github-action.md).
+**Status:** normative target; the input ferry and exit status are implemented and the
+packaging is not. Delivery is fixed by [plan 0021](../../plans/0021-osprey-github-action.md).
 
 A marketplace-published GitHub Action whose entire behaviour is to ferry a job's
 inputs into a co-located Osprey program and surface that program's stdout as the
@@ -76,7 +76,7 @@ type RunResult { stdout: String, exitCode: Int }
   stdout; the wrapper appends stdout to `$GITHUB_OUTPUT`. No consecutive `print`
   calls — a multi-key result is one interpolated string with embedded newlines.
 - **Status**: the program's process exit code is the step's success/failure. A
-  non-zero exit fails the job. The current compiler discards the ordinary `main` result and returns zero unless the testing runtime supplies a failure status (`crates/osprey-codegen/src/lower.rs`). Returning `Error` or an integer from `main` does not implement this requirement. Plan 0021 must establish and test an explicit failure-status mechanism before packaging is accepted.
+  non-zero exit fails the job. An integer returned from `main` is that exit code ([ENTRY-EXIT-STATUS](../language/0001-Introduction.md)); returning `Error` from `main` does not fail the job, so the program returns a non-zero integer on failure.
 
 ## Runner Toolchain [GHA-TOOLCHAIN]
 

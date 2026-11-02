@@ -1,0 +1,10 @@
+{
+  "collatz": 1.453,
+  "coprime": 1.797,
+  "digitsum": 1.538,
+  "fib": 1.327,
+  "gcdsum": 1.138,
+  "hanoi": 1.437,
+  "isqrt": 1.409,
+  "tak": 1.222
+}

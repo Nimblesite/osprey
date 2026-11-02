@@ -3,6 +3,7 @@ use super::{
     HandleHead, MlBinder, MlClauses, MlExpr, MlHandleArm, MlParam, Parser, Stage, TokKind,
     STATIC_STAGE_KEYWORD,
 };
+use crate::ml::cst::{MlSelectArm, MlSelectOperation};
 
 impl Parser<'_> {
     /// `spawn body` — start a fiber. The body is an indented layout block or an
@@ -288,10 +289,75 @@ impl Parser<'_> {
         MlExpr::Recv(Box::new(self.postfix()))
     }
 
-    /// `select` + indented `pattern => body` arms — choose among ready channel
-    /// arms, reusing the `match` arm grammar ([FLAVOR-ML-CONCURRENCY]).
+    /// `select` + indented arms: `name = recv c`, `recv c`, `send c v`, `timeout ms`
+    /// or `_`, each `=> body` ([FLAVOR-ML-CONCURRENCY], [CONCURRENCY-SELECT]).
     pub(in crate::ml) fn select_expr(&mut self) -> MlExpr {
         self.advance(); // `select`
-        MlExpr::Select(self.match_arms_block())
+        let mut arms = Vec::new();
+        if self.eat(&TokKind::Indent) {
+            while !self.at_block_end() {
+                self.skip_separators();
+                if self.at_block_end() {
+                    break;
+                }
+                arms.push(self.select_arm());
+            }
+            let _ = self.eat(&TokKind::Dedent);
+        }
+        MlExpr::Select(arms)
+    }
+
+    fn select_arm(&mut self) -> MlSelectArm {
+        let pos = self.pos();
+        let (binding, operation) = self.select_head();
+        if !self.eat(&TokKind::FatArrow) {
+            self.error("expected '=>' in select arm");
+        }
+        MlSelectArm {
+            binding,
+            operation,
+            body: self.body_after_eq(),
+            pos,
+        }
+    }
+
+    fn select_head(&mut self) -> (Option<String>, MlSelectOperation) {
+        let name = match self.peek() {
+            TokKind::Ident(name) => Some(name.clone()),
+            _ => None,
+        };
+        match (self.peek(), self.peek_at(1)) {
+            (TokKind::KwRecv, _) => (None, self.select_recv()),
+            (TokKind::KwSend, _) => {
+                self.advance();
+                let channel = self.postfix();
+                let value = self.postfix();
+                (None, MlSelectOperation::Send(channel, value))
+            }
+            (TokKind::Ident(_), TokKind::Eq) => {
+                self.advance();
+                self.advance();
+                (name.filter(|name| name != "_"), self.select_recv())
+            }
+            _ if name.as_deref() == Some("_") => {
+                self.advance();
+                (None, MlSelectOperation::Default)
+            }
+            _ if name.as_deref() == Some("timeout") => {
+                self.advance();
+                (None, MlSelectOperation::Timeout(self.postfix()))
+            }
+            _ => {
+                self.error("a select arm is `name = recv channel`, `recv channel`, `send channel value`, `timeout milliseconds` or `_`");
+                (None, MlSelectOperation::Default)
+            }
+        }
+    }
+
+    fn select_recv(&mut self) -> MlSelectOperation {
+        if !self.eat(&TokKind::KwRecv) {
+            self.error("expected `recv` after `=` in select arm");
+        }
+        MlSelectOperation::Recv(self.postfix())
     }
 }

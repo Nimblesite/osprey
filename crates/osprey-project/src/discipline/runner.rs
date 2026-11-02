@@ -151,7 +151,20 @@ fn spawn(command: &mut Command) -> std::io::Result<Child> {
         use std::os::unix::process::CommandExt;
         let _ = command.process_group(0);
     }
-    command.spawn()
+    // Linux refuses to run a file some process still holds open for writing. A
+    // program just written, while another thread forked, is held that way for a moment.
+    let mut attempts = 0;
+    loop {
+        match command.spawn() {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy && attempts < 50 =>
+            {
+                attempts += 1;
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            other => return other,
+        }
+    }
 }
 
 /// Stop this runner's isolated process group, including descendants holding pipes.

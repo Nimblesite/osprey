@@ -119,9 +119,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("refreshTestFile discovers leaves with names, ids, and ranges", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const item = await refreshTestFile(controller, passUri, compiler);
@@ -142,9 +140,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("refreshTestFile re-resolves children after edits", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const uri = writeFixture("edited.test.osp", PASS_FIXTURE);
@@ -157,9 +153,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("refreshTestFile discovers the ML flavor", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const item = await refreshTestFile(controller, mlUri, compiler);
@@ -168,9 +162,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("refreshTestFile groups workspace test files by folder", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const workspaceUri = vscode.Uri.file(fixtureDir);
@@ -220,9 +212,7 @@ suite("Osprey Test Explorer", () => {
     // outermost from the controller itself. A stale empty folder in the
     // Explorer is how a deleted test file appears to still exist.
     test("removeTestFile prunes the directory chain it emptied", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const workspaceUri = vscode.Uri.file(fixtureDir);
@@ -281,9 +271,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("a syntax error surfaces on the file item with no children", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const item = await refreshTestFile(controller, brokenUri, compiler);
@@ -302,9 +290,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("discovery reacts to test files, modules, and build output", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(60000);
       const projectDir = fs.mkdtempSync(path.join(fixtureDir, "project-"));
       fs.writeFileSync(path.join(projectDir, "osprey.toml"), "");
@@ -417,9 +403,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("rescan resolves the workspace, skips build output, drops stale files", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       let found: vscode.Uri[] = [passUri, mlUri];
@@ -512,9 +496,7 @@ suite("Osprey Test Explorer", () => {
     }
 
     test("a failed test peek includes complete Context For AI details", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, failUri);
@@ -564,9 +546,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("a single requested leaf runs with OSPREY_TEST_FILTER", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, failUri);
@@ -597,9 +577,7 @@ suite("Osprey Test Explorer", () => {
     // the Problems panel via vscode.languages.getDiagnostics — and a case that
     // runs again must clear its own warning.
     test("a skipped case raises a Warning diagnostic and a revived one clears it", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       // Two full compile+run cycles (skip, then revive) — twice the budget of
       // the single-run tests around it.
       this.timeout(120000);
@@ -665,9 +643,7 @@ suite("Osprey Test Explorer", () => {
     // warning: the case still reports skipped in the TAP, but the diagnostic
     // it publishes is the strongest one the editor has.
     test("a skip with no reason raises an Error diagnostic", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(120000);
       const uri = writeFixture(
         "unexplained.test.osp",
@@ -725,9 +701,7 @@ suite("Osprey Test Explorer", () => {
     // that never appears in its run's TAP at all (ignored) warns too, and
     // deleting the file drops its warnings.
     test("a case missing from the TAP warns as ignored; removal clears warnings", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(120000);
       const ghostUri = writeFixture("ghost.test.osp", PASS_FIXTURE);
       const controller = newController();
@@ -794,9 +768,7 @@ suite("Osprey Test Explorer", () => {
     // STATIC skip and a DYNAMIC skip. Exactly the two skips warn — a failure
     // is a failure, not a skip, and a pass warns about nothing.
     test("a mixed suite warns for every skip and for nothing else", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(120000);
       const mixedUri = writeFixture("mixed.test.osp", MIXED_FIXTURE);
       const controller = newController();
@@ -874,9 +846,7 @@ suite("Osprey Test Explorer", () => {
     // never be reported as skipped. This is the exact line a naive TAP split
     // mangles, and it would have marked a green test as an ignored one.
     test("a passing case whose name contains the SKIP directive is not warned", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(120000);
       const uri = writeFixture("ambiguous.test.osp", AMBIGUOUS_NAME_FIXTURE);
       const controller = newController();
@@ -926,9 +896,7 @@ suite("Osprey Test Explorer", () => {
     // park → re-park under a new reason → revive → delete. Every step is a
     // real compile+run, and every step re-checks the published diagnostics.
     test("skip warnings track park, re-park, revive, and delete across runs", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       // Four full compile+run cycles, each on an edited file (so the build
       // cache misses every time): budgeted at ~75s per cycle.
       this.timeout(300000);
@@ -988,9 +956,7 @@ suite("Osprey Test Explorer", () => {
     // others unrun — which is exactly an ignored test — so they warn; running
     // the whole file afterwards clears the ones that then execute.
     test("a filtered single-case run warns about the cases it left unrun", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(180000);
       const uri = writeFixture("filtered.test.osp", PASS_FIXTURE);
       const controller = newController();
@@ -1064,9 +1030,7 @@ suite("Osprey Test Explorer", () => {
     // its own frontend, and a COVERAGE run publishes the same warnings as a
     // plain run — the profile must not change what is reported.
     test("ML suites and coverage runs publish the same skip warnings", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(180000);
       const mlUri = writeFixture("mlskip.test.ospml", ML_SKIP_FIXTURE);
       const controller = newController();
@@ -1112,9 +1076,7 @@ suite("Osprey Test Explorer", () => {
     // [TESTING-SKIP-WARNING] damage case: a suite that does not COMPILE has no
     // verdicts at all. It must error, not manufacture skip warnings.
     test("a compile failure errors without inventing skip warnings", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(120000);
       const uri = writeFixture("breaks.test.osp", SKIP_FIXTURE);
       const controller = newController();
@@ -1145,9 +1107,7 @@ suite("Osprey Test Explorer", () => {
     // [TESTING-COVERAGE-VSCODE]: a coverage run maps TAP as usual AND reports
     // per-line hits — the executed `double` covered, the dead `unused` at 0.
     test("a coverage run reports line hits including uncovered lines", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const coverageUri = writeFixture("covered.test.osp", COVERAGE_FIXTURE);
       const controller = newController();
@@ -1233,9 +1193,7 @@ suite("Osprey Test Explorer", () => {
     // function, test registration and assertion (1, 5, 6); unused (3) stays
     // uncovered. Every source line and its hit count must reach the gutter.
     test("the Coverage profile path yields covered=3/total=4 for the fixture", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const coverageUri = writeFixture("calc-proof.test.osp", COVERAGE_FIXTURE);
       const controller = newController();
@@ -1269,9 +1227,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("several leaves of one file run as sequential filtered invocations", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, failUri);
@@ -1304,9 +1260,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("a compile error marks the file item errored with stderr", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await refreshTestFile(controller, brokenUri, compiler);
@@ -1328,9 +1282,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("a requested leaf absent from the output is skipped", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, passUri);
@@ -1355,9 +1307,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("a request without include runs every root", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       await discoveredFile(controller, passUri);
@@ -1375,9 +1325,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("a whole-file run resolves children on demand", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const bare = controller.createTestItem(
@@ -1399,9 +1347,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("excluded leaves never execute during a whole-file run", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, failUri);
@@ -1427,9 +1373,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("a stray assertion failure outside any test marks the file failed", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, strayUri);
@@ -1460,9 +1404,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("an unfiltered run scrubs an inherited OSPREY_TEST_FILTER", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, passUri);
@@ -1485,9 +1427,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("a pre-cancelled token produces no results", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       const controller = newController();
       const file = await discoveredFile(controller, passUri);
       const source = new vscode.CancellationTokenSource();
@@ -1504,9 +1444,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("cancellation mid-run kills the compiler and reports nothing", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, passUri);
@@ -1548,9 +1486,7 @@ suite("Osprey Test Explorer", () => {
     // STILL end the run — an un-ended run spins forever in the Testing view
     // and its Stop button is dead.
     test("a run whose reporting throws still ends (and rethrows)", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, passUri);
@@ -1597,9 +1533,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("makeRunHandler drives a real TestRun end to end", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, passUri);

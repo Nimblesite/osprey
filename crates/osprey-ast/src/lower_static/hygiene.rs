@@ -144,7 +144,15 @@ impl Resolver {
                 self.expression(value, scope);
                 self.arms(arms, scope);
             }
-            Expr::Select { arms } => self.arms(arms, scope),
+            Expr::Select { operations, arms } => {
+                for operand in operations
+                    .iter_mut()
+                    .flat_map(crate::SelectOperation::operands_mut)
+                {
+                    self.expression(operand, scope);
+                }
+                self.arms(arms, scope);
+            }
             Expr::TypeConstructor { name, fields, .. }
             | Expr::Update {
                 record: name,

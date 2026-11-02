@@ -158,7 +158,7 @@ withinExpr ::= "within" "(" expr ")" blockExpr
   ordinary data, so `?:` and `match` apply.
 - `race(a: Fiber<T>, b: Fiber<T>) -> T` waits for the first fiber to complete
   `Done` and cancels the other. It is specified over the channel-selection
-  primitive of [plan 0007](../../plans/0007-fiber-select.md) and MUST define
+  primitive of [CONCURRENCY-SELECT](0011-LightweightFibersAndConcurrency.md#choosing-among-channel-operations-concurrency-select) and MUST define
   deterministic-mode tie-breaking with it.
 
 ```osprey

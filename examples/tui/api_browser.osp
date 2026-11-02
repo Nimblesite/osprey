@@ -381,10 +381,15 @@ fn spinFrame(fib: Fiber, frame: int) = {
 }
 
 fn fetchBody(path: string) =
-    collect(clientId: httpCreateClient("https://api.github.com", 10000), path: path, headers: ghHeaders())
+    collectFrom(path: path, headers: ghHeaders())
 
 fn fetchRawBody(path: string) =
-    collect(clientId: httpCreateClient("https://api.github.com", 10000), path: path, headers: rawHeaders())
+    collectFrom(path: path, headers: rawHeaders())
+
+fn collectFrom(path: string, headers: string) = match httpCreateClient("https://api.github.com", 10000) {
+    Success { value } => collect(clientId: value, path: path, headers: headers)
+    Error { message } => Error { message: message }
+}
 
 fn collect(clientId: int, path: string, headers: string) =
     finish(clientId: clientId,
@@ -403,7 +408,7 @@ fn freeAfter(value: int, result: Result<string, Error>) = {
 }
 
 fn closeAfter(clientId: int, result: Result<string, Error>) = {
-    let _ = httpCloseClient(clientId)
+    let _ = httpCloseClient(clientId) ?: 0
     result
 }
 

@@ -5,7 +5,7 @@ print("=== Comprehensive HTTP API Test ===")
 
 // Test HTTP server creation
 print("Creating HTTP server on port 18080...")
-let serverId = httpCreateServer(18080, "127.0.0.1")
+let serverId = (httpCreateServer(18080, "127.0.0.1") ?: -1)
 print("Server created with ID: ${serverId}")
 
 /// Define HTTP request handler function - RESTORED TO ORIGINAL GLORY!
@@ -111,12 +111,12 @@ fn handleHttpRequest(method: string, path: string, _headers: string, _body: stri
 
 // Start the server listening with our comprehensive handler
 print("Starting server listener with callback handler...")
-let listenResult = httpListen(serverId, handleHttpRequest)
+let listenResult = (httpListen(serverId, handleHttpRequest) ?: -1)
 print("Server listening on http://127.0.0.1:18080")
 
 // Create HTTP client to connect to OUR Osprey server
 print("Creating HTTP client...")
-let clientId = httpCreateClient("http://127.0.0.1:18080", 5000)
+let clientId = (httpCreateClient("http://127.0.0.1:18080", 5000) ?: -1)
 print("Client created with ID: ${clientId}")
 
 // Test HTTP methods against our REAL Osprey server
@@ -124,39 +124,39 @@ print("=== Testing HTTP Methods ===")
 
 // Test GET request
 print("GET /api/users")
-let getUsersResult = httpGet(clientId, "/api/users", "")
+let getUsersResult = (httpGet(clientId, "/api/users", "") ?: -1)
 print("GET /api/users result: ${getUsersResult}")
 
 print("GET /health")
-let getHealthResult = httpGet(clientId, "/health", "")
+let getHealthResult = (httpGet(clientId, "/health", "") ?: -1)
 print("GET /health result: ${getHealthResult}")
 
 // Test POST request
 print("POST /api/users")
 let createUserData = "{\"name\": \"Charlie\", \"email\": \"charlie@example.com\"}"
-let postResult = httpPost(clientId, "/api/users", createUserData, "Content-Type: application/json")
+let postResult = (httpPost(clientId, "/api/users", createUserData, "Content-Type: application/json") ?: -1)
 print("POST /api/users result: ${postResult}")
 
 print("POST /api/auth/login")
 let loginData = "{\"username\": \"admin\", \"password\": \"secret\"}"
-let loginResult = httpPost(clientId, "/api/auth/login", loginData, "Content-Type: application/json")
+let loginResult = (httpPost(clientId, "/api/auth/login", loginData, "Content-Type: application/json") ?: -1)
 print("POST /api/auth/login result: ${loginResult}")
 
 // Test PUT request
 print("PUT /api/users/1")
 let updateUserData = "{\"name\": \"Alice Smith\", \"email\": \"alice.smith@example.com\"}"
-let putResult = httpPut(clientId, "/api/users/1", updateUserData, "Content-Type: application/json")
+let putResult = (httpPut(clientId, "/api/users/1", updateUserData, "Content-Type: application/json") ?: -1)
 print("PUT /api/users/1 result: ${putResult}")
 
 // Test DELETE request
 print("DELETE /api/users/1")
-let deleteResult = httpDelete(clientId, "/api/users/1", "")
+let deleteResult = (httpDelete(clientId, "/api/users/1", "") ?: -1)
 print("DELETE /api/users/1 result: ${deleteResult}")
 
 // Test non-existent endpoints
 print("=== Testing Error Cases ===")
 print("GET /nonexistent")
-let notFoundResult = httpGet(clientId, "/nonexistent", "")
+let notFoundResult = (httpGet(clientId, "/nonexistent", "") ?: -1)
 print("GET /nonexistent result: ${notFoundResult}")
 
 print("=== Server Shutdown Test ===")
@@ -164,7 +164,7 @@ print("✅ All HTTP operations completed successfully")
 print("🛑 Initiating immediate graceful server shutdown...")
 
 /// Clean up server resources
-let stopResult = httpStopServer(serverId)
+let stopResult = (httpStopServer(serverId) ?: -1)
 print("Server stopped with result: ${stopResult}")
 
 print("=== HTTP API Test Complete ===")

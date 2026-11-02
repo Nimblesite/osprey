@@ -149,6 +149,10 @@ fn branches_take_the_worst_arm_while_sequences_add_up() {
 #[test]
 fn select_branches_and_lambdas_and_nested_handlers() {
     let selected = Expr::Select {
+        operations: vec![
+            crate::SelectOperation::Default,
+            crate::SelectOperation::Default,
+        ],
         arms: vec![arm(r()), arm(r())],
     };
     assert_eq!(resumes_on_one_path(&selected), 1);

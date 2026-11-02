@@ -244,7 +244,7 @@ class InteropTests(unittest.TestCase):
 
     def test_python_target_rejects_native_fiber_callbacks(self):
         source = self.root / "fiber.osp"
-        for program in ['let task = spawn(fn() => 1)\nprint("${await(task)}")\n',
+        for program in ['let task = spawn(1)\nprint("${await(task)}")\n',
                         'let queue = Channel(1)\n', 'let later = sleep\nlater(1)\n']:
             source.write_text(program)
             result = subprocess.run([os.environ["OSPREY"], str(source), "--target=python", "--check"],

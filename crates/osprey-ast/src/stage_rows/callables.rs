@@ -156,7 +156,7 @@ impl AstVisitor for Scope {
                 self.binders
                     .extend(arms.iter().flat_map(|arm| arm.params.iter().cloned()));
             }
-            Expr::Match { arms, .. } | Expr::Select { arms } => {
+            Expr::Match { arms, .. } | Expr::Select { arms, .. } => {
                 self.binders.extend(
                     arms.iter()
                         .flat_map(|arm| crate::freevars::pattern_bindings(&arm.pattern)),

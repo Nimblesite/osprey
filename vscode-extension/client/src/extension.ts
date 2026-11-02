@@ -45,7 +45,8 @@ import {
 } from "./compile-commands";
 import { registerPackageWorkspace } from "./package-workspace";
 import { registerWorkbench } from "./workbench";
-import { registerPackageCommands } from "./package-commands";
+import { defaultFrontend, registerPackageCommands } from "./package-commands";
+import { registerModuleExplorer } from "./module-explorer";
 import { registerLocalRegistry } from "./local-registry";
 import { huntCurrentFile } from "./hunt";
 export * from "./client-config";
@@ -110,6 +111,7 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
   registerPackageWorkspace(context, (folder) => localRegistry.ensureRunning(folder));
   registerWorkbench(context);
   registerPackageCommands(context);
+  registerModuleExplorer(context, () => resolveServerCommand(context), defaultFrontend(context.extensionPath));
   registerWarningFixes(context, (params) =>
     client.sendRequest(CodeActionRequest.type, params),
   );
@@ -168,10 +170,12 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
   // crate, built on the published lspkit crates), spoken over stdio. Resolve
   // the binary: explicit user setting first, then the version-matched bundled
   // compiler, then `osprey` on PATH. [EDITOR-VSCODE], [LSP-TRANSPORT]
-  const ospreyCommand = resolveServerCommand(context, (m) => {
-    outputChannel.appendLine(m);
-    window.showWarningMessage(m);
-  });
+  const resolveServer = () =>
+    resolveServerCommand(context, (m) => {
+      outputChannel.appendLine(m);
+      window.showWarningMessage(m);
+    });
+  const ospreyCommand = resolveServer();
   outputChannel.appendLine(`Language server command: ${ospreyCommand} lsp`);
 
   const serverExecutable: Executable = {
@@ -340,7 +344,16 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
       }
     }),
     workspace.onDidChangeConfiguration((event: any) => {
-      if (event.affectsConfiguration("osprey")) {
+      if (event.affectsConfiguration("osprey.server")) {
+        // A running server must never outlive the compiler it was chosen from.
+        serverExecutable.command = resolveServer();
+        outputChannel.appendLine(
+          `Language server command: ${serverExecutable.command} lsp`,
+        );
+        client.restart().catch((error: unknown) => {
+          outputChannel.appendLine(`Language server restart failed: ${error}`);
+        });
+      } else if (event.affectsConfiguration("osprey")) {
         window.showInformationMessage(
           "Osprey configuration changed. Restart required.",
         );
@@ -360,7 +373,8 @@ async function debugCurrentFile() {
 }
 
 export function deactivate(): Promise<void> | undefined {
-  if (!client) {
+  // A server that never started, or whose restart failed, has nothing to stop.
+  if (!client?.needsStop()) {
     return undefined;
   }
   return client.stop();

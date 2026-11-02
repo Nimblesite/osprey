@@ -117,3 +117,21 @@ test("deterministic fibers complete in spawn order", fn() => exactArithmetic(fn(
     calculateComplexity(High) == 450,
     calculateTaskTime(600) == 62
 ])))
+
+/// A select with nothing ready runs queued fibers in spawn order until an arm is
+/// ready, and a timeout fires without waiting once none is left to run.
+/// Implements [CONCURRENCY-DETERMINISTIC] and [CONCURRENCY-SELECT].
+fn selectDrivesQueuedFibers() = {
+    let first = Channel(1)
+    let second = Channel(1)
+    let earlier = spawn(send(second, 2))
+    let later = spawn(send(first, 1))
+    let woken = select { x = recv(first) => "first:${x}"  y = recv(second) => "second:${y}" }
+    let next = select { x = recv(first) => "first:${x}"  y = recv(second) => "second:${y}" }
+    let quiet = Channel(1)
+    let expired = select { recv(quiet) => "value"  timeout(600000) => "expired" }
+    let _finished = "${await(earlier)}${await(later)}"
+    "${woken}|${next}|${expired}"
+}
+
+test("a deterministic select runs queued fibers in spawn order", fn() => check("trace", "second:2|first:1|expired", selectDrivesQueuedFibers()))

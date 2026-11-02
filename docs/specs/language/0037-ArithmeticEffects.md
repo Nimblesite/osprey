@@ -234,4 +234,6 @@ Integer arithmetic produces plain numeric values. `MathError` and arithmetic Res
 
 The policy examples above can be compiled with concrete iterator inputs and definitions for their application-specific names (`payload`, `ledger`, `postings`, `settle`, `backoff`, `capMs`). The `Arith` declaration describes the compiler builtin; redeclaring it in source is deliberately rejected.
 
+`[ARITH-EFFECT-NO-REASSOCIATION]` The compiler does not reassociate checked arithmetic. Turning `1 + count(n - 1)` into a loop would change which operands an `overflow` handler receives and when, and a handler may resume with a value, so the rewrite is observable. Such a recursion therefore stays a recursion, and costs what the [generated-code performance plan](../../plans/0033-generated-code-performance.md) measures. A program that wants the loop writes the accumulator, or uses `wrapAdd`, whose result no handler observes.
+
 Benchmark measurements and their machine/provenance limits live in [the benchmark report](../../../website/src/benchmarks.md). `make -C benchmarks bench-osprey` refreshes Osprey's four backend columns while preserving the other languages' recorded measurements.

@@ -44,7 +44,7 @@ pub(super) fn rebase_expr(expression: &mut Expr, map: &FragmentMap<'_>, flavor: 
                 slot(&mut arm.position, map, flavor);
             }
         }
-        Expr::Match { arms, .. } | Expr::Select { arms } => arms
+        Expr::Match { arms, .. } | Expr::Select { arms, .. } => arms
             .iter_mut()
             .for_each(|arm| pattern(&mut arm.pattern, map, flavor)),
         _ => {}

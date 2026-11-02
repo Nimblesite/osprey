@@ -12,9 +12,9 @@ pub(super) fn http(e: &mut TypeEnv) {
 }
 
 fn http_client(e: &mut TypeEnv) {
-    mono(e, "httpCreateClient", vec![s(), i()], i());
-    mono(e, "httpCloseClient", vec![i()], i());
-    mono(e, "httpGet", vec![i(), s(), s()], i());
+    mono(e, "httpCreateClient", vec![s(), i()], res(i()));
+    mono(e, "httpCloseClient", vec![i()], res(i()));
+    mono(e, "httpGet", vec![i(), s(), s()], res(i()));
     mono(e, "httpGetResponse", vec![i(), s(), s()], res(i()));
     mono(e, "httpPostResponse", vec![i(), s(), s(), s()], res(i()));
     mono(e, "httpResponseBody", vec![i()], res(s()));
@@ -22,13 +22,13 @@ fn http_client(e: &mut TypeEnv) {
     mono(e, "httpResponseStatus", vec![i()], i());
     mono(e, "httpResponseHeader", vec![i(), s()], res(s()));
     // (clientId, path, body, headers) for POST/PUT; (clientId, path, headers) for DELETE.
-    mono(e, "httpPost", vec![i(), s(), s(), s()], i());
-    mono(e, "httpPut", vec![i(), s(), s(), s()], i());
-    mono(e, "httpDelete", vec![i(), s(), s()], i());
+    mono(e, "httpPost", vec![i(), s(), s(), s()], res(i()));
+    mono(e, "httpPut", vec![i(), s(), s(), s()], res(i()));
+    mono(e, "httpDelete", vec![i(), s(), s()], res(i()));
 }
 
 fn http_server(e: &mut TypeEnv) {
-    mono(e, "httpCreateServer", vec![i(), s()], i());
+    mono(e, "httpCreateServer", vec![i(), s()], res(i()));
     // The C runtime calls this handler with the four request strings and reads
     // the returned record using the built-in HttpResponse layout.
     mono(
@@ -38,9 +38,9 @@ fn http_server(e: &mut TypeEnv) {
             i(),
             Type::fun(vec![s(), s(), s(), s()], Type::prim("HttpResponse")),
         ],
-        i(),
+        res(i()),
     );
-    mono(e, "httpStopServer", vec![i()], i());
+    mono(e, "httpStopServer", vec![i()], res(i()));
 }
 
 pub(super) fn websocket(e: &mut TypeEnv) {

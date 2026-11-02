@@ -131,7 +131,11 @@ impl Checker {
         self.handler_scopes.extend(scopes);
         self.current_fn_typarams = typarams;
         let enclosing = self.current_fn.replace(name.to_owned());
+        // A call has no position of its own: its failures anchor at this function.
+        let outer_position = self.expr_position;
+        self.expr_position = pos.or(outer_position);
         let body_ty = self.infer_expr(body, &local);
+        self.expr_position = outer_position;
         self.current_fn = enclosing;
         self.current_fn_typarams = HashMap::new();
         self.handler_scopes

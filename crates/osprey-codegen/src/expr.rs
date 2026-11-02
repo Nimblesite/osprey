@@ -125,7 +125,7 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
         Expr::Yield(e) => crate::fiber::gen_yield(cg, e.as_deref()),
         Expr::Send { channel, value } => crate::fiber::gen_send(cg, channel, value),
         Expr::Recv(e) => crate::fiber::gen_recv(cg, e),
-        Expr::Select { arms } => crate::fiber::gen_select(cg, arms),
+        Expr::Select { operations, arms } => crate::fiber::gen_select(cg, operations, arms),
         Expr::Perform {
             effect,
             operation,

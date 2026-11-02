@@ -1,0 +1,1 @@
+5:0: function `add`: a curried signature declares curried parameters; write `add a b … = …` or a parenthesised domain to match

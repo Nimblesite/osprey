@@ -377,10 +377,10 @@ mod tests {
     status: 200, headers: "", contentType: "text/plain",
     streamFd: 0, isComplete: true, partialBody: "ok"
 }
-let server = httpCreateServer(18201, "127.0.0.1")
-let listening = httpListen(server, handler)
-let second = httpCreateServer(18202, "127.0.0.1")
-let alsoListening = httpListen(second, handler)
+let server = httpCreateServer(18201, "127.0.0.1") ?: -1
+let listening = httpListen(server, handler) ?: -1
+let second = httpCreateServer(18202, "127.0.0.1") ?: -1
+let alsoListening = httpListen(second, handler) ?: -1
 print("${listening}${alsoListening}")
 "#;
 

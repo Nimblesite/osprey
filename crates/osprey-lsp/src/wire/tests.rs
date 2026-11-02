@@ -154,14 +154,16 @@ fn completion_result_maps_kinds_and_carries_snippet_format() {
         },
     ];
     let value = completion_result(&items);
-    assert_at(&value, "/0/kind", COMPLETION_KEYWORD);
-    assert_at(&value, "/0/detail", "Pattern matching");
+    // Context-sensitive items must be asked for again, never filtered from a cache.
+    assert_eq!(value.pointer("/isIncomplete"), Some(&Value::Bool(true)));
+    assert_at(&value, "/items/0/kind", COMPLETION_KEYWORD);
+    assert_at(&value, "/items/0/detail", "Pattern matching");
     // A snippet insert text also carries the snippet `insertTextFormat`.
-    assert_at(&value, "/0/insertTextFormat", INSERT_SNIPPET);
+    assert_at(&value, "/items/0/insertTextFormat", INSERT_SNIPPET);
     // A type item maps to the class completion kind and omits detail/insert.
-    assert_at(&value, "/1/kind", COMPLETION_CLASS);
-    assert_absent(&value, "/1/detail");
-    assert_absent(&value, "/1/insertText");
+    assert_at(&value, "/items/1/kind", COMPLETION_CLASS);
+    assert_absent(&value, "/items/1/detail");
+    assert_absent(&value, "/items/1/insertText");
 }
 
 #[test]

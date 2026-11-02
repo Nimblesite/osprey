@@ -1,0 +1,7 @@
+// osprey: flavor=ml
+// Must-reject. Pins [FLAVOR-ML-FN]/[FLAVOR-ML-CURRY]: a curried signature describes
+// the curried binding form, the mirror of ml_flat_signature_ignored.ospo.
+add : int -> int -> int
+add (a, b) = a + b
+
+print "${add (1, 2)}"

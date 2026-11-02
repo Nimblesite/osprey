@@ -17,6 +17,7 @@ mod applications;
 #[cfg(test)]
 mod applications_tests;
 mod arithmetic;
+mod select;
 pub use arithmetic::fold_arithmetic;
 mod builtin_constraints;
 mod builtin_docs;

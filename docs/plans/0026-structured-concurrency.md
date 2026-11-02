@@ -26,7 +26,7 @@ round-trip serialization — rather than adding a parallel subsystem.
   cycles).
 - `fiber_runtime.c`: channel wait queues that [CANCEL-KILLSAFE] must make
   dequeue-safe; the completed-result roots that scope teardown generalizes.
-- [Plan 0007](0007-fiber-select.md): the multi-channel wait primitive `race`
+- `channel_select` ([CONCURRENCY-SELECT](../specs/language/0011-LightweightFibersAndConcurrency.md#choosing-among-channel-operations-concurrency-select)): the multi-channel wait primitive `race`
   and `within` are specified over.
 - ARC leak discipline (`make test` zero-leak gate): a dropped continuation
   must release its captures — same family as
@@ -46,8 +46,8 @@ round-trip serialization — rather than adding a parallel subsystem.
 4. **Kill-safety** — channel wait-queue removal without element loss, turn
    completion under performer cancellation, ARC/GC release of dropped
    continuations. [CANCEL-KILLSAFE]
-5. **Deadlines and races** — `within`, `race`; blocked on plan 0007's runtime
-   multiplexing primitive; deterministic tie-breaking shared with it.
+5. **Deadlines and races** — `within`, `race`; build on
+   `channel_select`; deterministic tie-breaking shared with it.
    [CANCEL-DEADLINE]
 6. **Turn isolation** — name the shipped serialization as turns; flat-combining
    turn queue with single-CAS fast path; deterministic-mode total turn order.
@@ -91,7 +91,7 @@ round-trip serialization — rather than adding a parallel subsystem.
       cancels a fiber suspended two regions deep.
 - [ ] Kill-safe channels: cancel a blocked sender and receiver; element count
       proven conserved in the golden.
-- [ ] `within` / `race` after plan 0007's primitive lands; deterministic
+- [ ] `within` / `race` on `channel_select`; deterministic
       tie-break golden shared with that plan.
 - [ ] Flat-combining turn queue benchmarked against the current round-trip
       serialization in `benchmarks/` before it replaces anything.

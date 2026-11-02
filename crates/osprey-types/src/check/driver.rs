@@ -92,7 +92,7 @@ pub fn check_and_publish(
         let types = publish_program(&lowered, checker, true);
         Ok(CheckedProgram::new(program, lowered, types))
     } else {
-        Err(checker.errors)
+        Err(distinct(checker.errors))
     }
 }
 /// Run inference and publish the resolved signatures, constructor layouts and
@@ -127,11 +127,26 @@ fn infer_checked_with_rejection(
     if checker.errors.is_empty() {
         Ok(publish_program(&program, checker, false))
     } else {
-        Err(checker.errors)
+        Err(distinct(checker.errors))
     }
 }
 /// Collect declarations and type-check a program before either caller consumes
 /// diagnostics or publishes inferred backend metadata.
+/// One failure yields one diagnostic: each arm of a `match` meets the same bad
+/// scrutinee, and every arm's unify would otherwise repeat it. Errors without a
+/// position stay, since nothing shows that they are the same failure.
+fn distinct(errors: Vec<TypeError>) -> Vec<TypeError> {
+    let mut seen = Vec::with_capacity(errors.len());
+    errors.into_iter().fold(Vec::new(), |mut kept, error| {
+        let key = error.position.map(|at| (at, error.message.clone()));
+        if key.is_none() || !seen.contains(&key) {
+            seen.push(key);
+            kept.push(error);
+        }
+        kept
+    })
+}
+
 pub(super) fn checked_program(program: &Program) -> Checker {
     checked_program_with_exports(program, &[], false, false)
 }
@@ -221,6 +236,31 @@ mod tests {
             oracle_checks("effect Read { get: fn() -> int }\nlet value = perform Read.get()\n");
         assert!(!accepted);
         assert!(checks > 0);
+    }
+
+    #[test]
+    fn one_failure_yields_one_located_diagnostic() {
+        // An `if` is two arms over one scrutinee, and a call has
+        // no position of its own, so its failure anchors at the enclosing function.
+        for (source, line) in [
+            ("fn f() = { let xs = [1]\n if xs { 1 } else { 2 } }\n", 2),
+            ("fn g(a: string) = a\nfn f() = g(1)\nprint(f())\n", 2),
+            (
+                "fn g(a: string) = a\n\nfn f() = {\n let y = g(1)\n y }\n",
+                4,
+            ),
+        ] {
+            let errors = check_program(&program(source));
+            assert_eq!(errors.len(), 1, "{source}: {errors:?}");
+            let error = errors.first().expect("one error");
+            assert!(error.message.contains("cannot unify"), "{errors:?}");
+            assert_eq!(error.position.map(|at| at.line), Some(line), "{source}");
+        }
+        // Two distinct failures of the same message at different places both stay.
+        let two = check_program(&program(
+            "fn g(a: string) = a\nfn f() = g(1)\nfn h() = g(2)\n",
+        ));
+        assert_eq!(two.len(), 2, "{two:?}");
     }
 
     #[test]

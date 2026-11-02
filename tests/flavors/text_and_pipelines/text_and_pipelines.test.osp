@@ -80,6 +80,16 @@ fn stringsCase() = {
             stringShout(hello) == stringShout(stringGreet(name)),
             name + hello == "AdaHi Ada"
     ])
+    let rows = [1, 2, 3]
+    // A lambda parameter inside an interpolation stays code, whatever its first letter.
+    checkAll("lambdas inside interpolation", [
+            "${length(filterList(rows, |row| => row > 1))} kept" == "2 kept",
+            "${length(filterList(rows, |name| => name > 2))} kept" == "1 kept",
+            "${length(filterList(rows, |thing| => thing > 0))} kept" == "3 kept",
+            "${length(filterList(rows, |each| => each > 3))} kept" == "0 kept",
+            "${length(filterList(rows, |zero| => zero > 1))}\t${length(filterList(rows, |row| => row > 0))}\n" == "2\t3\n",
+            "a\nb${length(filterList(rows, |row| => row > 1))}" == "a\nb2"
+    ])
 }
 
 // Register the pipeline composition scenario.

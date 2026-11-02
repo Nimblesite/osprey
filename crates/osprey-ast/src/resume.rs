@@ -24,7 +24,7 @@ pub fn resumes_on_one_path(body: &Expr) -> u32 {
                     .max()
                     .unwrap_or(0)
         }
-        Expr::Select { arms } => arms
+        Expr::Select { arms, .. } => arms
             .iter()
             .map(|arm| resumes_on_one_path(&arm.body))
             .max()

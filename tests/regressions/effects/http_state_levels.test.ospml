@@ -48,7 +48,7 @@ onGet path = match path
     "/stats" => textResp (200, "requests=${toString (perform Metrics.served ())} tasks=${toString (perform Db.count ())}")
     _        => textResp (200, perform Db.list ())
 
-handleReq : string -> string -> string -> string -> HttpResponse
+handleReq : (string, string, string, string) -> HttpResponse
 handleReq (method, path, _headers, body) =
     perform Metrics.hit path
     match method
@@ -70,15 +70,17 @@ fetch (clientId, path) = match httpGetResponse clientId path ""
 
 postTask (clientId, text) =
     perform Log.info "POST /tasks <- ${text}"
-    print ("  server replied ${toString (httpPost clientId "/tasks" text "")}")
+    print ("  server replied ${toString (httpPost clientId "/tasks" text "" ?: -1)}")
 
 seedTask text = perform Db.add text
 
 runDemo () =
-    serverId = httpCreateServer 18280 "127.0.0.1"
-    _listening = httpListen serverId handleReq
-    clientId = httpCreateClient "http://127.0.0.1:18280" 5000
-    print "server up on :18280"
+    serverId = httpCreateServer 18280 "127.0.0.1" ?: -1
+    listening = match httpListen serverId handleReq
+        Success _ => "server up on :18280"
+        Error message => "cannot listen on :18280: ${message}"
+    clientId = httpCreateClient "http://127.0.0.1:18280" 5000 ?: -1
+    print listening
     seeded = await (spawn (seedTask "welcome to osprey"))
     print "seeded task #${toString seeded} from a background fiber"
     postTask (clientId, "buy oat milk")
@@ -86,7 +88,7 @@ runDemo () =
     listing = fetch (clientId, "/tasks")
     print "--- GET /tasks ---\n${listing}--- end ---"
     print "GET /stats -> ${fetch (clientId, "/stats")}"
-    _stopped = httpStopServer serverId
+    _stopped = httpStopServer serverId ?: -1
     print "STATE @ shutdown — db: ${toString (perform Db.count ())} tasks | server: ${toString (perform Metrics.served ())} requests | disk: ${toString (perform Persist.bytes ())} bytes"
 mut diskBytes = 0
 mut requests = 0

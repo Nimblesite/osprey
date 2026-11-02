@@ -3,6 +3,7 @@
 
 use super::lower::Lowerer;
 use crate::strings::{lower_interpolation, unquote};
+use osprey_ast::SelectOperation;
 use osprey_ast::{
     Expr, FieldAssignment, MapEntry, MatchArm, NamedArgument, Pattern, Stmt, SymbolPath,
 };
@@ -55,9 +56,7 @@ impl Lowerer<'_> {
             // same boolean `match` the ternary uses; `else if` nests into the
             // `false` arm. No new AST node ([FLAVOR-BOUNDARY]).
             "if_expression" => self.lower_if(node),
-            "select_expression" => Expr::Select {
-                arms: self.lower_arms(node),
-            },
+            "select_expression" => self.lower_select(node),
             // `handler E { arm… }` — the handler with no region attached, as a
             // value. Implements [EFFECTS-HANDLER-VALUE].
             "handler_value_expression" => osprey_ast::handler_value(
@@ -139,6 +138,44 @@ impl Lowerer<'_> {
         Expr::Send {
             channel: Box::new(expressions.next().unwrap_or(Expr::Bool(false))),
             value: Box::new(expressions.next().unwrap_or(Expr::Bool(false))),
+        }
+    }
+
+    /// `select { value = recv(c) => … send(c, v) => … timeout(ms) => … _ => … }`.
+    fn lower_select(&self, node: Node<'_>) -> Expr {
+        let arms = self.named_of_kind(node, "select_arm");
+        Expr::Select {
+            operations: arms
+                .iter()
+                .map(|arm| self.lower_select_operation(*arm))
+                .collect(),
+            arms: arms
+                .iter()
+                .map(|arm| MatchArm {
+                    pattern: arm
+                        .child_by_field_name("binding")
+                        .map(|binding| self.text(binding))
+                        .filter(|name| name != "_")
+                        .map_or(Pattern::Wildcard, Pattern::Binding),
+                    body: crate::desugar::positioned(
+                        self.lower_expr_field(*arm, "body"),
+                        Some(self.pos(*arm)),
+                    ),
+                })
+                .collect(),
+        }
+    }
+
+    fn lower_select_operation(&self, arm: Node<'_>) -> SelectOperation {
+        let Some(operation) = arm.child_by_field_name("operation") else {
+            return SelectOperation::Default;
+        };
+        match (operation.kind(), self.lower_send(operation)) {
+            ("send_call", Expr::Send { channel, value }) => {
+                SelectOperation::Send { channel, value }
+            }
+            ("recv_call", _) => SelectOperation::Recv(Box::new(self.lower_inner_expr(operation))),
+            _ => SelectOperation::Timeout(Box::new(self.lower_inner_expr(operation))),
         }
     }
 
@@ -283,7 +320,6 @@ impl Lowerer<'_> {
     fn lower_arms(&self, node: Node<'_>) -> Vec<MatchArm> {
         self.named_of_kind(node, "match_arm")
             .iter()
-            .chain(self.named_of_kind(node, "select_arm").iter())
             .map(|arm| MatchArm {
                 pattern: arm
                     .child_by_field_name("pattern")
@@ -592,6 +628,7 @@ mod tests {
     use crate::parse_tree;
     use crate::test_support::find_kind;
     use crate::test_support::stmts;
+    use osprey_ast::SelectOperation;
     use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt};
 
     fn let_value(src: &str) -> Expr {
@@ -765,10 +802,23 @@ mod tests {
             Expr::Match { .. }
         ));
         // select expression (reuses arm lowering).
-        assert!(matches!(
-            let_value("let r = select { a => 1  b => 2 }\n"),
-            Expr::Select { .. }
-        ));
+        match let_value("let r = select { m = recv(a) => m  recv(a) => 1  send(a, 2) => 3  timeout(4) => 5  _ => 6 }\n") {
+            Expr::Select { operations, arms } => {
+                assert!(matches!(
+                    operations.as_slice(),
+                    [
+                        SelectOperation::Recv(_),
+                        SelectOperation::Recv(_),
+                        SelectOperation::Send { .. },
+                        SelectOperation::Timeout(_),
+                        SelectOperation::Default
+                    ]
+                ));
+                assert_eq!(arms[0].pattern, Pattern::Binding("m".to_owned()));
+                assert_eq!(arms[1].pattern, Pattern::Wildcard);
+            }
+            other => panic!("expected a select, got {other:?}"),
+        }
         // handler with params + perform inside its body.
         // The handler over the rest of its block is the block's VALUE, and a
         // block with nothing before it IS that value — the same node ML's

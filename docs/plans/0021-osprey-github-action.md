@@ -2,13 +2,12 @@
 
 **Subsystem:** `tests/` (ferry round-trip), repo-root action packaging
 (`action.yml`, `Dockerfile`, `main.osp`), `.github/workflows/release.yml`
-**Status:** Spec written; **no implementation started.** No root `action.yml`,
-no `Dockerfile` for the action image, no `main.osp`, no GHCR job in
-`release.yml`, and no corpus program combines `input()` with JSON parsing. The
+**Status:** Phase 1 done: the stdin ferry and exit status are tested. No root `action.yml`,
+no `Dockerfile` for the action image, no `main.osp` and no GHCR job in
+`release.yml`. The
 only `action.yml` in the tree is the internal
 `.github/actions/setup-osprey-compiler/action.yml`, which builds the compiler
-for CI and is not the marketplace action. Zero code or test references any
-`[GHA-*]` spec id.
+for CI and is not the marketplace action.
 **Spec:** [0033 - Osprey GitHub Action](../specs/ecosystem/0033-OspreyGitHubAction.md)
 (`[GHA-*]`)
 
@@ -129,28 +128,21 @@ no `osprey`, `clang`, or runtime archive installed.
 
 ## TODO
 
-Nothing is implemented. Every item below is unstarted; the evidence for each is
-in §Status and §Verified Constraints.
+Phase 1 is done; the packaging phases are unstarted.
 
 Phase 1 — ferry round-trip [GHA-IO-CONTRACT]:
 
-- [ ] Decide how a program under test receives stdin: a `.stdin` fixture
-      convention in `crates/run_test_corpus.sh` (which today pipes nothing to any
-      corpus program) **or** a `cli_e2e` Rust test that pipes the JSON line
-      itself. This gates every other Phase 1 item.
-- [ ] Explicit application failure status, with valid input, invalid JSON, application error, and wrapper pipeline failure checks; ordinary `main` results do not determine process status.
-- [ ] One program calling `input()` once, parsing the JSON line with
-      [BUILTIN-JSON], and printing `key=value` as a single interpolated
-      string. Expand
-      `tests/regressions/basics/math/comprehensive_math.test.osp` (already calls
-      `input()`; its golden line `stdin=[]` changes once stdin is fed) or
-      `tests/regressions/basics/json/json_document_query.test.osp` (parses JSON,
-      never reads stdin) rather than adding a file.
-- [ ] `.expectedoutput` golden for it, plus the `.ospml` twin the paired corpus
-      requires; green under default / `--memory=gc` / `--memory=arc`.
-- [ ] Cite `[GHA-FERRY-STDIN]` and `[GHA-IO-CONTRACT]` in the program header —
-      today **no** code or test references any `[GHA-*]` id, so `spec-check`
-      links nothing.
+- [x] A program under test receives stdin from a `cli_e2e` test that pipes the JSON
+      line itself, since the corpus harness feeds no stdin.
+- [x] Application failure status: an integer returned from `main` is the exit status
+      ([ENTRY-EXIT-STATUS]). Valid input, invalid JSON, non-object JSON and application
+      errors are each checked; wrapper pipeline failure belongs to the packaging phases.
+- [x] One program calls `input()` once, parses the line and prints `key=value` lines as
+      one interpolated string: `a_json_line_on_stdin_becomes_outputs_and_an_exit_status`.
+- [x] The test cites `[GHA-FERRY-STDIN]` and `[GHA-IO-CONTRACT]`.
+
+The phases below need two owner decisions first: what the published action computes,
+since the spec fixes only its shape, and the GHCR and Marketplace publication.
 
 Phase 2 — Docker packaging [GHA-PACKAGING-DOCKER]:
 

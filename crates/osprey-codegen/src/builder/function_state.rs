@@ -234,6 +234,13 @@ impl Codegen {
 
     /// Render the in-progress function and append it to the module. `ret` is the
     /// already-rendered LLVM return type (`i64`, `{ i1, i8 }*`, …).
+    /// Keep the function just finished out of line and off the hot path.
+    pub(crate) fn mark_last_function_cold(&mut self) {
+        if let Some(function) = self.funcs.last_mut() {
+            *function = function.replacen(" #0", " cold noinline #0", 1);
+        }
+    }
+
     pub(crate) fn finish_function(&mut self, ret: &str, name: &str, params: &[(LType, String)]) {
         let lines = std::mem::take(&mut self.cur_lines);
         self.cur_lines = crate::arc::instrument_unwind(self, self.arc_slot_count, lines);

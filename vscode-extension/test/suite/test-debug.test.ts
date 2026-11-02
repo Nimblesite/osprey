@@ -234,9 +234,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     }
 
     test("a refused launch errors the suite instead of reporting nothing", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discovered(controller);
@@ -258,9 +256,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     });
 
     test("a session's own TAP decides every verdict", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discovered(controller);
@@ -293,9 +289,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     });
 
     test("a whole-file request launches ONE session with no case filter", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discovered(controller);
@@ -318,9 +312,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     });
 
     test("a single-case request filters the session to that case", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discovered(controller);
@@ -348,9 +340,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     });
 
     test("cancelling the run stops waiting on the session", async function () {
-      if (!compiler) {
-        this.skip();
-      }
+      assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discovered(controller);

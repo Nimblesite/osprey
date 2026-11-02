@@ -159,6 +159,18 @@ fn is_null_result(message: &Message) -> bool {
 }
 
 /// The array carried by a request's `result`, cloned out for inspection.
+fn completion_items(message: &Message) -> Vec<Value> {
+    let list = message
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("completion result"));
+    assert_eq!(list.pointer("/isIncomplete"), Some(&Value::Bool(true)));
+    list.pointer("/items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_else(|| panic!("completion items"))
+}
+
 fn array_result(message: &Message, what: &str) -> Vec<Value> {
     message
         .result

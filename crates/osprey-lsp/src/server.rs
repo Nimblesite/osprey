@@ -430,7 +430,7 @@ fn symbols_value(report: Option<Report>, text: &str) -> Value {
 fn completion_value(report: Option<Report>) -> Value {
     match report {
         Some(Report::Completion(items)) => wire::completion_result(&items),
-        _ => Value::Array(Vec::new()),
+        _ => wire::completion_result(&[]),
     }
 }
 

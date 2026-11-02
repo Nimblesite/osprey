@@ -120,17 +120,11 @@ Error   { message } => print("codePointWidth-toobig: ${message}\n")
 Success { value }   => print("fromCodePoint: unexpected ${value}\n")
 Error   { message } => print("fromCodePoint: ${message}\n")
   }
-  // A lone lead byte (first byte of "é") decodes as a TRUNCATED codepoint:
-  // the lead announces 2 bytes but the string is only 1 byte long.
+  // `take` keeps a character whole, so no Osprey string operation can produce the
+  // truncated or broken sequences the runtime's C tests feed `codePointAt`.
   match codePointAt(take("é", 1), 0) {
-Success { value }   => print("codePointAt-truncated: unexpected ${value}\n")
-Error   { message } => print("codePointAt-truncated: ${message}\n")
-  }
-  // A valid lead byte followed by an ASCII byte ('x', not 10xxxxxx) is an
-  // INVALID continuation byte.
-  match codePointAt(take("é", 1) + "x", 0) {
-Success { value }   => print("codePointAt-continuation: unexpected ${value}\n")
-Error   { message } => print("codePointAt-continuation: ${message}\n")
+Success { value }   => print("codePointAt-whole: ${value}\n")
+Error   { message } => print("codePointAt-whole: unexpected ${message}\n")
   }
 
   // ---- division: error AND success on the same construct ----
@@ -207,8 +201,7 @@ fn cursorErrorCase() = checkAll("cursor Result diagnostics", [
     hasDiagnostic(codePointWidth(55296)),
     hasDiagnostic(codePointWidth(1114112)),
     hasDiagnostic(fromCodePoint(1114112)),
-    hasDiagnostic(codePointAt(take("é", 1), 0)),
-    hasDiagnostic(codePointAt(take("é", 1) + "x", 0))
+    !hasDiagnostic(codePointAt(take("é", 1), 0))
 ])
 
 /// Verifies collection errors alongside the successful counterparts.

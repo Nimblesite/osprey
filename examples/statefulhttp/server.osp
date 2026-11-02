@@ -171,9 +171,19 @@ fn main() -> int {
             print("  ${m}")
         }
     }
-    let serverId = httpCreateServer(8080, "127.0.0.1")
-    let _listening = httpListen(serverId, handleReq)
-    print(banner())
-    serveForever()
-    0
+    let listening = match httpCreateServer(8080, "127.0.0.1") {
+        Success { value } => httpListen(value, handleReq)
+        Error { message } => Error { message: message }
+    }
+    match listening {
+        Success => {
+            print(banner())
+            serveForever()
+            0
+        }
+        Error { message } => {
+            print("cannot listen on 127.0.0.1:8080: ${message}")
+            1
+        }
+    }
 }

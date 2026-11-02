@@ -295,7 +295,13 @@ impl<'a> Inspector<'a> {
                 self.expr(channel, in_owner_arm, position);
                 self.expr(value, in_owner_arm, position);
             }
-            Expr::Select { arms } => {
+            Expr::Select { operations, arms } => {
+                for operand in operations
+                    .iter()
+                    .flat_map(osprey_ast::SelectOperation::operands)
+                {
+                    self.expr(operand, in_owner_arm, position);
+                }
                 for arm in arms {
                     self.match_arm(arm, in_owner_arm, position);
                 }

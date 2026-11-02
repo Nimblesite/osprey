@@ -1,0 +1,28 @@
+// #272: signalRefresh passed straight to a call keeps its snapshot.
+
+static effect Signal T
+    read : Unit => T
+
+type Query =
+    text : string
+
+type Snap =
+    region : string
+    dependencies : List<string>
+    revision : int
+    json : string
+
+query () = (perform Signal<Query>.read ()).text
+listView () = "list:${query ()}"
+
+blank () = { dependencies = ["<unknown>"], revision = 0, value = "" }
+
+named (key, next) = Snap(region = key, dependencies = next.dependencies, revision = next.revision, json = next.value)
+
+render store =
+    handle static Signal<Query>
+        read => store
+    named ("list", signalRefresh (blank ()) [] listView)
+
+s = render (Query(text = "x"))
+print "${s.region} ${s.json} ${s.revision}"

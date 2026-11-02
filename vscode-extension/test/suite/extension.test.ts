@@ -19,6 +19,7 @@ import {
   ospreyLanguageForFile,
   isOspreyFile,
   deactivate,
+  type OspreyExtensionApi,
 } from "../../client/src/extension";
 import {
   extensionRoot,
@@ -127,6 +128,56 @@ suite("Osprey Shipwright Activation Coverage", () => {
     if (manifestWasStaged && fs.existsSync(stagedManifestPath)) {
       fs.rmSync(stagedManifestPath, { force: true });
     }
+  });
+
+  test("a compiler path change restarts the language server on that compiler", async () => {
+    const ospreyPath = resolveBuiltOsprey();
+    assert.ok(ospreyPath, "build the Osprey compiler before this suite");
+    const ext = vscode.extensions.getExtension<OspreyExtensionApi>(extensionId);
+    assert.ok(ext, "extension must be discoverable");
+    await ext.activate();
+    const client = ext.exports.getLspClient();
+    assert.ok(client, "the language client exists");
+    const serving = () =>
+      (client as unknown as { _serverProcess?: { spawnfile?: string; pid?: number } })
+        ._serverProcess;
+    const servesOn = async (binary: string) => {
+      for (let tries = 0; tries < 120; tries += 1) {
+        if (client.isRunning() && serving()?.spawnfile === binary) {
+          return;
+        }
+        await settle(250);
+      }
+      assert.fail(`server still on ${serving()?.spawnfile}, expected ${binary}`);
+    };
+    const config = () => vscode.workspace.getConfiguration("osprey");
+    await servesOn(ospreyPath);
+    const firstProcess = serving()?.pid;
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-restart-"));
+    const copy = path.join(dir, path.basename(ospreyPath));
+    fs.copyFileSync(ospreyPath, copy);
+    fs.chmodSync(copy, 0o755);
+    try {
+      await config().update("server.compilerPath", copy, vscode.ConfigurationTarget.Global);
+      await servesOn(copy);
+      assert.notStrictEqual(serving()?.pid, firstProcess, "a new server process runs");
+
+      // The restarted server answers real requests on the new compiler.
+      const document = await vscode.workspace.openTextDocument({
+        language: "osprey",
+        content: "fn answer() = 42\nprint(answer())\n",
+      });
+      const symbols = await client.sendRequest<unknown[]>("textDocument/documentSymbol", {
+        textDocument: { uri: document.uri.toString() },
+      });
+      assert.ok(Array.isArray(symbols) && symbols.length > 0, "symbols come from the new server");
+    } finally {
+      await config().update("server.compilerPath", ospreyPath, vscode.ConfigurationTarget.Global);
+      await servesOn(ospreyPath);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    assert.strictEqual(serving()?.spawnfile, ospreyPath, "the server follows the path back");
   });
 
   test("extension activates with a shipwright manifest present", async () => {

@@ -68,7 +68,7 @@ async fn assert_requirement_views(
             position_params(uri, line, column),
         )
         .await;
-    let items = array_result(&completion, "completion");
+    let items = completion_items(&completion);
     let relay = find_by(&items, "/label", "relay");
     assert_eq!(
         relay
@@ -189,7 +189,7 @@ async fn symbols_completion_and_signature_help() {
     let completion = h
         .request(21, "textDocument/completion", position_params(URI, 2, 0))
         .await;
-    let items = array_result(&completion, "completion");
+    let items = completion_items(&completion);
     let labels = field_values(&items, "/label");
     assert!(labels.contains(&"fn"), "keyword completion present");
     assert!(labels.contains(&"add"), "declaration completion present");
@@ -231,7 +231,7 @@ async fn symbols_completion_and_signature_help() {
     let mid = h
         .request(23, "textDocument/completion", position_params(URI, 4, 8))
         .await;
-    let mid_items = array_result(&mid, "completion");
+    let mid_items = completion_items(&mid);
     let mid_labels = field_values(&mid_items, "/label");
     for keyword in ["fn", "let", "type", "namespace"] {
         assert!(

@@ -74,6 +74,29 @@ pub(crate) fn gen_arithmetic_request(
     operation: &str,
     args: &[Value],
 ) -> Result<Value> {
+    let name = ensure_arithmetic_fault(cg, operation, args)?;
+    let sig = op_sig_for(cg, osprey_ast::ARITH_EFFECT, operation)?;
+    let typed = args.iter().map(Value::typed).collect::<Vec<_>>();
+    let r = cg.emit_reg(format!(
+        "call {} @{name}({})",
+        sig.ret_ty(),
+        typed.join(", ")
+    ));
+    Ok(Value::new(r, sig.ret))
+}
+
+/// A checked operation's slow path lives in one `cold` function per operation and
+/// operand shape, so the hot function stays small enough to inline and unroll.
+fn ensure_arithmetic_fault(cg: &mut Codegen, operation: &str, args: &[Value]) -> Result<String> {
+    let shape = args
+        .iter()
+        .map(|arg| arg.ty.as_str().replace('*', "p"))
+        .collect::<Vec<_>>()
+        .join(".");
+    let name = format!("osp.arith.fault.{operation}.{shape}");
+    if !cg.arithmetic_faults.insert(name.clone()) {
+        return Ok(name);
+    }
     declare_stack(cg);
     let sig = op_sig_for(cg, osprey_ast::ARITH_EFFECT, operation)?;
     let ret = cg
@@ -88,13 +111,21 @@ pub(crate) fn gen_arithmetic_request(
         operation,
         instance: super::scope::DEFAULT_INSTANCE,
     };
-    dispatch_request(
-        cg,
-        &request,
-        &sig,
-        &ret,
-        args.iter().map(Value::typed).collect(),
-    )
+    let params = args
+        .iter()
+        .enumerate()
+        .map(|(index, arg)| (arg.ty, format!("a{index}")))
+        .collect::<Vec<_>>();
+    let saved = cg.enter_nested_fn();
+    let typed = params
+        .iter()
+        .map(|(ty, param)| format!("{ty} %{param}"))
+        .collect();
+    let out = dispatch_request(cg, &request, &sig, &ret, typed)?;
+    cg.emit(format!("ret {} {}", sig.ret_ty(), out.operand));
+    cg.exit_nested_fn(saved, &sig.ret_ty(), &name, &params);
+    cg.mark_last_function_cold();
+    Ok(name)
 }
 
 pub(super) fn dispatch_request(

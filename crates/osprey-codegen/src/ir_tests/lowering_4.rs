@@ -410,22 +410,21 @@ fn fibers_channels_yield_and_done() {
 }
 
 #[test]
-fn direct_ast_select_is_rejected_instead_of_choosing_the_first_arm() {
-    // [CONCURRENCY-SELECT-REJECT]: the type checker rejects `select` first, so
-    // codegen sees one only when an AST is compiled directly. It used to lower
-    // the FIRST arm's body and return it as the select's value — a wrong answer
-    // that looked right. Plan 0007's acceptance bar is that this path cannot
-    // silently pick an arm.
-    let err = compile_err(
+fn select_calls_the_runtime_and_switches_on_the_arm_it_performed() {
+    // [CONCURRENCY-SELECT]: the arm comes from the runtime, never from source order.
+    let ir = module(
         "fn main() -> Unit = {\n\
-               let pick = select { 1 => 100  2 => 200 }\n\
+               let c = Channel(1)\n\
+               let d = Channel(1)\n\
+               let pick = select {\n\
+                   m = recv(c) => m + 0\n\
+                   send(d, 2) => 20\n\
+                   timeout(5) => 30\n\
+               }\n\
                print(\"${pick}\")\n\
              }\n",
     );
-    assert!(
-        err.to_string().contains("`select` is not supported"),
-        "expected the select rejection, got {err}"
-    );
+    shows(&ir, &["@channel_select(i64 2,", "i64 5)", "switch i64"]);
 }
 
 #[test]

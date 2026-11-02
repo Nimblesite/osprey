@@ -412,7 +412,15 @@ impl Resolver<'_> {
                 self.rewrite_expr(channel, context, locals);
                 self.rewrite_expr(value, context, locals);
             }
-            Expr::Select { arms } => self.rewrite_pattern_arms(arms, context, locals),
+            Expr::Select { operations, arms } => {
+                for operand in operations
+                    .iter_mut()
+                    .flat_map(osprey_ast::SelectOperation::operands_mut)
+                {
+                    self.rewrite_expr(operand, context, locals);
+                }
+                self.rewrite_pattern_arms(arms, context, locals);
+            }
             Expr::Perform {
                 effect,
                 arguments,

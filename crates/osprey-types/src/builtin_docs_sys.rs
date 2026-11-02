@@ -16,7 +16,7 @@ const JSON_DOCUMENT_EXAMPLE: &str = "fn inspect(document) = {\n    let summary =
 
 const PROCESS_EXAMPLE: &str = "fn onEvent(_pid, kind, data) = print(\"${kind}: ${trim(data)}\")\nmatch spawnProcess(\"echo hello\", onEvent) {\n    Success { value } => {\n        let exitCode = awaitProcess(value)\n        cleanupProcess(value)\n        print(\"exit: ${exitCode}\")\n    }\n    Error { message } => print(\"Process failed: ${message}\")\n}";
 
-const HTTP_CLIENT_EXAMPLE: &str = "let client = httpCreateClient(\"http://127.0.0.1:18898\", 1000)\nprint(if client > 0 { \"closed: ${httpCloseClient(client)}\" } else { \"client error: ${client}\" })";
+const HTTP_CLIENT_EXAMPLE: &str = "print(match httpCreateClient(\"http://127.0.0.1:18898\", 1000) {\n    Success { value } => \"closed: ${httpCloseClient(value) ?: -1}\"\n    Error { message } => \"client error: ${message}\"\n})";
 
 const RAW_KEY_EXAMPLE: &str = "// Run in an interactive terminal; raw mode is restored before printing.\ntermRawMode(1)\nlet key = termReadKey()\ntermRawMode(0)\nprint(key)";
 
@@ -31,7 +31,7 @@ const CHANNEL_EXAMPLE: &str = "fn receive(channel) = recv(channel)\nlet channel 
 macro_rules! http_example {
     ($action:literal) => { http_example!("", $action) };
     ($helpers:literal, $action:literal) => {
-        concat!($helpers, "fn reply(_method, _path, _headers, _body) = HttpResponse {\n    status: 200, headers: \"X-Demo: hi\\r\\n\", contentType: \"text/plain\",\n    streamFd: -1, isComplete: true, partialBody: \"hello\"\n}\nfn runRequest(client) = {\n    let result = ", $action, "\n    let closed = httpCloseClient(client)\n    \"${result}; client close=${closed}\"\n}\nfn request() = {\n    let client = httpCreateClient(\"http://127.0.0.1:18898\", 1000)\n    if client > 0 { runRequest(client) } else { \"client error: ${client}\" }\n}\nfn serve(server) = {\n    let listening = httpListen(server, reply)\n    let result = if listening == 0 { request() } else { \"listen error: ${listening}\" }\n    let stopped = httpStopServer(server)\n    \"${result}; server stop=${stopped}\"\n}\nlet server = httpCreateServer(18898, \"127.0.0.1\")\nprint(if server > 0 { serve(server) } else { \"server error: ${server}\" })")
+        concat!($helpers, "fn reply(_method, _path, _headers, _body) = HttpResponse {\n    status: 200, headers: \"X-Demo: hi\\r\\n\", contentType: \"text/plain\",\n    streamFd: -1, isComplete: true, partialBody: \"hello\"\n}\nfn runRequest(client) = {\n    let result = ", $action, "\n    let closed = httpCloseClient(client) ?: -1\n    \"${result}; client close=${closed}\"\n}\nfn request() = match httpCreateClient(\"http://127.0.0.1:18898\", 1000) {\n    Success { value } => runRequest(value)\n    Error { message } => \"client error: ${message}\"\n}\nfn serve(server) = {\n    let result = match httpListen(server, reply) {\n        Success => request()\n        Error { message } => \"listen error: ${message}\"\n    }\n    let stopped = httpStopServer(server) ?: -1\n    \"${result}; server stop=${stopped}\"\n}\nprint(match httpCreateServer(18898, \"127.0.0.1\") {\n    Success { value } => serve(value)\n    Error { message } => \"server error: ${message}\"\n})")
     };
 }
 macro_rules! http_response_example {
@@ -66,21 +66,21 @@ pub(crate) static FILES: &[BuiltinDoc] = &[
 pub(crate) static HTTP: &[BuiltinDoc] = &[
     builtin_doc!(
         "httpCreateClient",
-        "Creates an HTTP client and returns its handle, or a negative runtime error.",
+        "Creates an HTTP client and answers its handle, or an Error.",
         ["base_url" => "Base URL for requests (e.g., \"http://api.example.com\")", "timeout" => "Request timeout in milliseconds"],
         HTTP_CLIENT_EXAMPLE,
     ),
     builtin_doc!(
         "httpCloseClient",
-        "Closes the HTTP client and returns the runtime status.",
+        "Closes the HTTP client and answers 0, or an Error.",
         ["clientID" => "Client identifier to close"],
         HTTP_CLIENT_EXAMPLE,
     ),
     builtin_doc!(
         "httpGet",
-        "Makes an HTTP GET request and returns its status code, or a negative transport error.",
+        "Makes an HTTP GET request and answers its status code, or an Error on transport failure.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path (e.g., \"/api/users\")", "headers" => "Additional headers (e.g., \"Authorization: Bearer token\")"],
-        http_example!("toString(httpGet(client, \"/\", \"\"))"),
+        http_example!("toString(httpGet(client, \"/\", \"\") ?: -1)"),
     ),
     builtin_doc!(
         "httpGetResponse",
@@ -120,39 +120,39 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "httpPost",
-        "Makes an HTTP POST request and returns its status code, or a negative transport error.",
+        "Makes an HTTP POST request and answers its status code, or an Error on transport failure.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "body" => "Request body data", "headers" => "Additional headers"],
-        http_example!("toString(httpPost(client, \"/\", \"hello\", \"Content-Type: text/plain\"))"),
+        http_example!("toString(httpPost(client, \"/\", \"hello\", \"Content-Type: text/plain\") ?: -1)"),
     ),
     builtin_doc!(
         "httpPut",
-        "Makes an HTTP PUT request and returns its status code, or a negative transport error.",
+        "Makes an HTTP PUT request and answers its status code, or an Error on transport failure.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "body" => "Request body data", "headers" => "Additional headers"],
-        http_example!("toString(httpPut(client, \"/\", \"updated\", \"Content-Type: text/plain\"))"),
+        http_example!("toString(httpPut(client, \"/\", \"updated\", \"Content-Type: text/plain\") ?: -1)"),
     ),
     builtin_doc!(
         "httpDelete",
-        "Makes an HTTP DELETE request and returns its status code, or a negative transport error.",
+        "Makes an HTTP DELETE request and answers its status code, or an Error on transport failure.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "headers" => "Additional headers"],
-        http_example!("toString(httpDelete(client, \"/\", \"\"))"),
+        http_example!("toString(httpDelete(client, \"/\", \"\") ?: -1)"),
     ),
     builtin_doc!(
         "httpCreateServer",
-        "Creates an HTTP server bound to the specified port and address.",
+        "Creates an HTTP server bound to the specified port and address, and answers its handle or an Error.",
         ["port" => "Port number to bind to (1-65535)", "address" => "IP address to bind to (e.g., \"127.0.0.1\", \"0.0.0.0\")"],
-        http_example!("toString(httpGet(client, \"/\", \"\"))"),
+        http_example!("toString(httpGet(client, \"/\", \"\") ?: -1)"),
     ),
     builtin_doc!(
         "httpListen",
-        "Starts the HTTP server with a request handler and returns 0 or a negative runtime error.",
+        "Starts the HTTP server with a request handler and answers 0, or an Error when it cannot bind.",
         ["serverID" => "Server identifier from httpCreateServer", "handler" => "Request handler function"],
-        http_example!("toString(httpGet(client, \"/\", \"\"))"),
+        http_example!("toString(httpGet(client, \"/\", \"\") ?: -1)"),
     ),
     builtin_doc!(
         "httpStopServer",
-        "Stops the HTTP server and returns the runtime status.",
+        "Stops the HTTP server and answers 0, or an Error.",
         ["serverID" => "Server identifier to stop"],
-        http_example!("toString(httpGet(client, \"/\", \"\"))"),
+        http_example!("toString(httpGet(client, \"/\", \"\") ?: -1)"),
     ),
 ];
 

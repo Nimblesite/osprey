@@ -189,8 +189,59 @@ fn fragment_end(bytes: &[u8], start: usize) -> usize {
     index
 }
 
+/// Whether a decode position is literal text or `${…}` code, tracked through
+/// nested strings.
+#[derive(Default)]
+struct Scope {
+    open: Vec<Frame>,
+    previous: char,
+}
+
+enum Frame {
+    Code { braces: usize },
+    Text,
+}
+
+impl Scope {
+    /// In code and not glued to a word: `1\\n x => y` is a newline, not a lambda.
+    fn opens_word(&self) -> bool {
+        matches!(self.open.last(), Some(Frame::Code { .. }))
+            && !self.previous.is_alphanumeric()
+            && self.previous != '_'
+    }
+
+    fn observe(&mut self, character: char) {
+        match (self.open.last_mut(), character) {
+            (Some(Frame::Code { braces }), '{') => *braces += 1,
+            (Some(Frame::Code { braces }), '}') => {
+                *braces -= 1;
+                if *braces == 0 {
+                    let _ = self.open.pop();
+                }
+            }
+            (Some(Frame::Code { .. }), '"') => self.open.push(Frame::Text),
+            (Some(Frame::Text), '"') => {
+                let _ = self.open.pop();
+            }
+            (Some(Frame::Text) | None, '{') if self.previous == '$' => {
+                self.open.push(Frame::Code { braces: 1 });
+            }
+            _ => {}
+        }
+        self.previous = character;
+    }
+}
+
+/// A backslash in code opens a lambda when parameters and `=>` follow it.
+fn opens_lambda(after_backslash: &str) -> bool {
+    after_backslash
+        .trim_start_matches(|c: char| c.is_alphanumeric() || c.is_whitespace() || "_,:".contains(c))
+        .starts_with("=>")
+}
+
 /// Strip a matched quote pair and resolve escapes once. Unrecognized escapes
-/// remain verbatim; every output boundary retains its original byte offset.
+/// remain verbatim, as does a lambda's backslash; every output boundary retains
+/// its original byte offset.
 fn decode(raw: &str) -> Decoded {
     let (text, start) = raw
         .strip_prefix('"')
@@ -201,13 +252,27 @@ fn decode(raw: &str) -> Decoded {
         offsets: vec![start],
     };
     let mut chars = text.char_indices();
+    let mut scope = Scope::default();
     while let Some((index, character)) = chars.next() {
         if character == '\\' {
             if let Some((next, escaped)) = chars.next() {
-                append_escape(&mut decoded, text, start, index, next, escaped);
+                let lambda =
+                    scope.opens_word() && opens_lambda(text.get(next..).unwrap_or_default());
+                let meaning = escape_meaning(escaped).filter(|_| !lambda);
+                append_escape(&mut decoded, text, start, index..next, escaped, meaning);
+                scope.observe(escaped);
                 continue;
             }
         }
+        // A line break in a literal is `\n` however the file was checked out.
+        if character == '\r'
+            && text
+                .get(index + 1..)
+                .is_some_and(|rest| rest.starts_with('\n'))
+        {
+            continue;
+        }
+        scope.observe(character);
         decoded.text.push(character);
         decoded
             .offsets
@@ -216,15 +281,8 @@ fn decode(raw: &str) -> Decoded {
     decoded
 }
 
-fn append_escape(
-    decoded: &mut Decoded,
-    text: &str,
-    start: usize,
-    index: usize,
-    next: usize,
-    escaped: char,
-) {
-    let character = match escaped {
+fn escape_meaning(escaped: char) -> Option<char> {
+    match escaped {
         'n' => Some('\n'),
         'r' => Some('\r'),
         't' => Some('\t'),
@@ -233,16 +291,26 @@ fn append_escape(
         '"' => Some('"'),
         '\\' => Some('\\'),
         _ => None,
-    };
-    let end = next + escaped.len_utf8();
-    if let Some(character) = character {
+    }
+}
+
+fn append_escape(
+    decoded: &mut Decoded,
+    text: &str,
+    start: usize,
+    span: Range<usize>,
+    escaped: char,
+    meaning: Option<char>,
+) {
+    let end = span.end + escaped.len_utf8();
+    if let Some(character) = meaning {
         decoded.text.push(character);
         decoded.offsets.push(start + end);
-    } else if let Some(raw) = text.get(index..end) {
+    } else if let Some(raw) = text.get(span.start..end) {
         decoded.text.push_str(raw);
         decoded
             .offsets
-            .extend((index + 1..=end).map(|byte| start + byte));
+            .extend((span.start + 1..=end).map(|byte| start + byte));
     }
 }
 
@@ -288,6 +356,32 @@ mod tests {
         // from the Default twin — only a matched `"…"` pair may be stripped.
         assert_eq!(unquote("he said \\\"hi\\\""), "he said \"hi\""); // ML raw, no quotes
         assert_eq!(unquote("\"he said \\\"hi\\\"\""), "he said \"hi\""); // Default token
+    }
+
+    #[test]
+    fn a_literal_line_break_is_a_newline_on_every_checkout() {
+        assert_eq!(unquote("a\r\nb\nc"), "a\nb\nc");
+        assert_eq!(unquote("lone\rreturn"), "lone\rreturn");
+        assert_eq!(unquote("escaped\\r\\n"), "escaped\r\n");
+    }
+
+    #[test]
+    fn a_lambda_stays_code_while_text_and_nested_text_keep_their_escapes() {
+        for (raw, decoded) in [
+            ("${f(\\row => row)}", "${f(\\row => row)}"),
+            ("${f(\\n => n)}\\n", "${f(\\n => n)}\n"),
+            ("${f(\\row, x => row)}", "${f(\\row, x => row)}"),
+            ("${f (\"a\\tb\")}", "${f (\"a\tb\")}"),
+            (
+                "${\"in\\t${f(\\row => row)}\"}",
+                "${\"in\t${f(\\row => row)}\"}",
+            ),
+            ("${1\\n x => y}", "${1\n x => y}"),
+            ("${a\\tb}", "${a\tb}"),
+            ("no fragment \\row => x", "no fragment \row => x"),
+        ] {
+            assert_eq!(unquote(raw), decoded, "{raw}");
+        }
     }
 
     #[test]

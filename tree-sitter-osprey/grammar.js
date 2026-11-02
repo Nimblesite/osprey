@@ -99,7 +99,6 @@ module.exports = grammar({
     [$.expression_statement, $.ternary_expression],
     [$.let_declaration, $.ternary_expression],
     [$.lambda_expression, $.ternary_expression],
-    [$.select_arm, $.ternary_expression],
     [$.handler_arm, $.ternary_expression],
     [$.function_declaration, $.ternary_expression],
     // `await ( x )` — the await_call form vs unary `await` over a parenthesized expr.
@@ -496,7 +495,12 @@ module.exports = grammar({
 
     select_expression: ($) => seq('select', '{', repeat1($.select_arm), '}'),
     select_arm: ($) =>
-      seq(field('pattern', $.pattern), '=>', field('body', $.expression)),
+      choice(
+        seq(field('binding', choice($.identifier, '_')), '=', field('operation', $.recv_call), '=>', field('body', $.expression)),
+        seq(field('operation', choice($.recv_call, $.send_call, $.select_timeout)), '=>', field('body', $.expression)),
+        seq('_', '=>', field('body', $.expression)),
+      ),
+    select_timeout: ($) => seq('timeout', '(', $.expression, ')'),
 
     ternary_expression: ($) =>
       choice(

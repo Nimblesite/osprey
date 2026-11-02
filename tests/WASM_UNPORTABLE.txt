@@ -69,6 +69,8 @@ tests/regressions/effects/retry_until_valid.test.osp a continuation for `Prompt.
 tests/regressions/effects/retry_until_valid.test.ospml a continuation for `Prompt.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/regressions/effects/staged_shared.test.osp a continuation for `Audit.note` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/regressions/effects/staged_shared.test.ospml a continuation for `Audit.note` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/fiber/channel_select.test.osp fiber concurrency builtin `Channel`
+tests/regressions/fiber/channel_select.test.ospml fiber concurrency builtin `Channel`
 tests/regressions/fiber/cpu_profiling_demo.test.osp fiber concurrency builtin `sleep`
 tests/regressions/fiber/fiber_determinism.test.osp foreign C import `fiber_set_deterministic_mode`
 tests/regressions/fiber/fiber_exact_replica.test.osp foreign C import `fiber_set_deterministic_mode`

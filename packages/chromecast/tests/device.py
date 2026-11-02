@@ -237,9 +237,9 @@ def serve_cases(l):
     """media_url serves the file whole over HTTP; unserve stops it."""
     match Media.media_url(f"{l.dir}/song.mp3", "127.0.0.1"):
         case Success(value=served):
-            client = httpCreateClient(f"http://127.0.0.1:{served.port}", 5000)
+            client = unwrap_or(httpCreateClient(f"http://127.0.0.1:{served.port}", 5000), -1)
             body = unwrap_or(body_of(httpGetResponse(client, "/media", "")), "")
-            _closed = httpCloseClient(client)
+            _closed = unwrap_or(httpCloseClient(client), -1)
             return [Check.truth("serve.record", structuralEquals(served, Media.Served(url=served.url, port=served.port, folder="", content_type="audio/mpeg")), "served record differs"), Check.equal("serve.url", served.url, f"http://127.0.0.1:{served.port}/media"), Check.equal("serve.body", body, "ID3 scripted audio"), Check.equal("serve.unserve", Media.unserve(served), 0), Check.equal("serve.unserve.again", Media.unserve(served), -1)]
         case Error(message=message):
             return [Check.failed("serve.url", message)]

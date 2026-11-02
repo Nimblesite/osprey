@@ -51,7 +51,7 @@ impl Checker {
 
     /// Infer one arm's body type after binding its pattern against the exact
     /// discriminant type.
-    fn infer_arm(&mut self, arm: &MatchArm, disc: &Type, env: &TypeEnv) -> Type {
+    pub(crate) fn infer_arm(&mut self, arm: &MatchArm, disc: &Type, env: &TypeEnv) -> Type {
         let mut local = env.child();
         self.bind_pattern(&arm.pattern, disc, &mut local);
         self.infer_expr(&arm.body, &local)

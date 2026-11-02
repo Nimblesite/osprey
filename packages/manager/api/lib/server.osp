@@ -48,13 +48,13 @@ module Server {
         forEachList(catalog.refused, fn(r: Release::Refused) => line("refused ${r.dir}: ${r.code}"))
     }
 
-    fn started(settings: Config::Settings, listening) = match listening == 0 {
-        true => {
+    fn started(settings: Config::Settings, listening) = match listening {
+        Success => {
             line("listening on http://${settings.address}:${settings.port}/v1/packages")
             forever()
         }
-        false => {
-            line("error: cannot listen on ${settings.address}:${settings.port} (${listening})")
+        Error { message } => {
+            line("error: cannot listen on ${settings.address}:${settings.port} (${message})")
             1
         }
     }
@@ -62,8 +62,11 @@ module Server {
     fn listen(settings: Config::Settings, loaded) = {
         announce(loaded)
         handle Registry { catalog => loaded }
-        let server = httpCreateServer(settings.port, settings.address)
-        started(settings, httpListen(server, route))
+        let listening = match httpCreateServer(settings.port, settings.address) {
+            Success { value } => httpListen(value, route)
+            Error { message } => Error { message: message }
+        }
+        started(settings, listening)
     }
 
     /// Serve `settings.root` until the process is stopped; the exit status otherwise.

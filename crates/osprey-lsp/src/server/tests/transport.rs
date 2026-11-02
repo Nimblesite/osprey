@@ -221,10 +221,13 @@ fn value_builders_map_matching_reports_and_fall_back_otherwise() {
         insert_text: None,
     }]);
     assert_eq!(
-        completion_value(Some(items)).pointer("/0/label"),
+        completion_value(Some(items)).pointer("/items/0/label"),
         Some(&Value::from("fn"))
     );
-    assert_eq!(completion_value(None), Value::Array(Vec::new()));
+    assert_eq!(
+        completion_value(None).pointer("/items"),
+        Some(&Value::Array(Vec::new()))
+    );
 }
 
 #[tokio::test]

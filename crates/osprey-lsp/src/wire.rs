@@ -305,10 +305,15 @@ pub(crate) fn signature_result(info: Option<SignatureInfo>) -> Value {
     })
 }
 
-/// `textDocument/completion` result: an array of completion items.
+/// `textDocument/completion` result. The list is always incomplete: the items
+/// depend on the cursor's context, so a client that filtered a cached list on
+/// later keystrokes would offer declaration keywords in value positions.
 #[must_use]
 pub(crate) fn completion_result(items: &[CompletionItem]) -> Value {
-    Value::Array(items.iter().map(completion_json).collect())
+    json!({
+        "isIncomplete": true,
+        "items": items.iter().map(completion_json).collect::<Vec<_>>(),
+    })
 }
 
 fn completion_json(item: &CompletionItem) -> Value {

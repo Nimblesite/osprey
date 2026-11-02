@@ -1,0 +1,17 @@
+// #279: Generic self-recursion through a fold lambda over a recursive union compiles.
+
+namespace demo
+
+type Tree T =
+    Leaf
+        item : T
+    Node
+        kids : List<Tree<T>>
+
+module Walk
+    export all<T> : Tree<T> -> List<T>
+    all tree = match tree
+        Leaf item => [item]
+        Node kids => range (0, length kids) |> fold [] (\(out, index) => listConcat out (all (listGet kids index ?: Node(kids = []))))
+
+print "${length (Walk::all (Node(kids = [Leaf(item = 1), Leaf(item = 2)])))}"

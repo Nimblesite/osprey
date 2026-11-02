@@ -123,7 +123,7 @@ forEachList tokens print
 print "=== Scan Complete ===\n"
 
 (** Check a token value at an exact position without hiding index failures. *)
-tokenIs : List int -> int -> int -> bool
+tokenIs : (List int, int, int) -> bool
 tokenIs (tokens, index, expected) =
     match listGet tokens index
         Success value => value == expected

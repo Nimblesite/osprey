@@ -58,7 +58,9 @@ function collectProblems(page, pageName) {
   const pageErrors = [];
   const failedRequests = [];
   page.on("console", (m) => {
-    if (m.type() === "error" && !isKnown(pageName, m.text())) consoleErrors.push(m.text());
+    // A third-party script's own failure is logged as a console error with its URL.
+    const ours = !IGNORED_REQUEST_HOSTS.test(m.location().url ?? "");
+    if (m.type() === "error" && ours && !isKnown(pageName, m.text())) consoleErrors.push(m.text());
   });
   page.on("pageerror", (e) => {
     if (!isKnown(pageName, String(e))) pageErrors.push(String(e));

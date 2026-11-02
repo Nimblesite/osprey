@@ -1,0 +1,38 @@
+// #273: Two generic records sharing a field name both read it through a known receiver.
+
+type Node A =
+    Leaf
+        label : string
+    Tabs
+        tabs : List<Tab<A>>
+    Rows
+        rows : List<Row<A>>
+
+type Tab A =
+    name : string
+    child : Node<A>
+
+type Row A =
+    key : string
+    child : Node<A>
+
+labelOf<A> : Node<A> -> string
+labelOf node = match node
+    Leaf label => label
+    Tabs tabs => join (range (0, length tabs) |> fold [] (\(out, index) => tabAt (out, tabs, index))) ","
+    Rows rows => join (range (0, length rows) |> fold [] (\(out, index) => rowAt (out, rows, index))) ","
+
+tabAt<A> : (List<string>, List<Tab<A>>, int) -> List<string>
+tabAt (out, tabs, index) = match listGet tabs index
+    Success tab => listAppend out (labelOf tab.child)
+    Error _ => out
+
+rowAt<A> : (List<string>, List<Row<A>>, int) -> List<string>
+rowAt (out, rows, index) = match listGet rows index
+    Success row => listAppend out (labelOf row.child)
+    Error _ => out
+
+type Act = Go
+
+tree = Tabs<Act>(tabs = [Tab<Act>(name = "t", child = Leaf<Act>(label = "a"))])
+print (labelOf tree)

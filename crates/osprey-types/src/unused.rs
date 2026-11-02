@@ -263,7 +263,15 @@ impl Analysis {
                 self.expression(value, owner);
                 self.arms(arms, owner);
             }
-            Expr::Select { arms } => self.arms(arms, owner),
+            Expr::Select { operations, arms } => {
+                for operand in operations
+                    .iter()
+                    .flat_map(osprey_ast::SelectOperation::operands)
+                {
+                    self.expression(operand, owner);
+                }
+                self.arms(arms, owner);
+            }
             Expr::Handler {
                 effect,
                 arms,

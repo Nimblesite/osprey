@@ -1,0 +1,21 @@
+// #272: signalRefresh passed straight to a helper reads its fields.
+
+static effect Signal T
+    read : Unit => T
+
+type Query =
+    text : string
+
+query () = (perform Signal<Query>.read ()).text
+listView () = "list:${query ()}"
+
+describe next = "${next.value} ${next.revision}"
+
+blank () = { dependencies = ["<unknown>"], revision = 0, value = "" }
+
+direct store =
+    handle static Signal<Query>
+        read => store
+    describe (signalRefresh (blank ()) [] listView)
+
+print "direct: ${direct (Query(text = "x"))}"

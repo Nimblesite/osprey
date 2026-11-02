@@ -80,6 +80,16 @@ stringsCase () =
         stringShout hello == stringShout (stringGreet name),
         name + hello == "AdaHi Ada"
     ]
+    rows = [1, 2, 3]
+    // A lambda parameter inside an interpolation stays code: `\row`, `\name`, `\thing`, `\each` and `\zero` are not escapes.
+    checkAll "lambdas inside interpolation" [
+        "${length (filterList (rows, \row => row > 1))} kept" == "2 kept",
+        "${length (filterList (rows, \name => name > 2))} kept" == "1 kept",
+        "${length (filterList (rows, \thing => thing > 0))} kept" == "3 kept",
+        "${length (filterList (rows, \each => each > 3))} kept" == "0 kept",
+        "${length (filterList (rows, \zero => zero > 1))}\t${length (filterList (rows, \row => row > 0))}\n" == "2\t3\n",
+        "a\nb${length (filterList (rows, \row => row > 1))}" == "a\nb2"
+    ]
 
 
 test "pipelines retain each stage and complete chain" (\() => exactArithmetic (pipeChainCase))

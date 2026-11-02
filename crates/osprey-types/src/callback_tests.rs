@@ -201,13 +201,9 @@ fn comparing_functions_is_rejected_so_no_comparison_observes_a_wrapper() {
 }
 
 #[test]
-fn function_display_and_foreign_observation_keep_the_wrapper() {
-    for source in [
-        "fn work() = 41\nlet callback = fn() => work()\nprint(\"${callback} ${work}\")\n",
-        "extern fn observe(callback: fn() -> int) -> int\nfn work() = 41\nlet answer = observe(fn() => work())\n",
-    ] {
-        assert!(warnings(Flavor::Default, source).is_empty(), "{source}");
-    }
+fn foreign_observation_keeps_the_wrapper() {
+    let source = "extern fn observe(callback: fn() -> int) -> int\nfn work() = 41\nlet answer = observe(fn() => work())\n";
+    assert!(warnings(Flavor::Default, source).is_empty(), "{source}");
 }
 
 #[test]

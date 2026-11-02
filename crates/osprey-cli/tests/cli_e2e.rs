@@ -1194,8 +1194,8 @@ fn test_subcommand_reuses_unchanged_compiled_suites() {
     let _ = write_in(
         &dir,
         "cached_http.test.osp",
-        "let client = httpCreateClient(\"http://127.0.0.1:1\", 1)\n\
-         let closed = httpCloseClient(client)\n\
+        "let client = httpCreateClient(\"http://127.0.0.1:1\", 1) ?: -1\n\
+         let closed = httpCloseClient(client) ?: -1\n\
          test(\"http client\", fn() => expect(closed, 0))\n",
     );
     let linked = format!("// @link: m\n{PASSING_TESTS}");
@@ -1464,6 +1464,276 @@ fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
         o.stderr.contains("cannot unify int with string"),
         "stderr={}",
         o.stderr
+    );
+}
+
+/// A program ends by returning: `main`'s integer is its exit status in every
+/// flavor, and every other shape of program exits 0. [ENTRY-EXIT-STATUS]
+#[test]
+fn main_returning_an_integer_sets_the_exit_status_in_every_flavor() {
+    for (name, source, status, stdout) in [
+        (
+            "default_3",
+            "fn main() -> int = {\n print(\"failing\")\n 3\n}\n",
+            3,
+            "failing\n",
+        ),
+        ("default_0", "fn main() -> int = 0\n", 0, ""),
+        ("default_255", "fn main() = 255\n", 255, ""),
+        ("default_unit", "fn main() = print(\"fine\")\n", 0, "fine\n"),
+        ("default_string", "fn main() = \"text\"\n", 0, ""),
+        ("default_bool", "fn main() = true\n", 0, ""),
+        (
+            "default_script",
+            "print(\"script\")\nlet x = 4\nprint(\"${x}\")\n",
+            0,
+            "script\n4\n",
+        ),
+        (
+            "default_computed",
+            "fn fails(n) = n > 2\nfn main() = match fails(3) {\n true => 7\n false => 0\n}\n",
+            7,
+            "",
+        ),
+    ] {
+        let program = temp_osp(&format!("exit_status_{name}"), source);
+        let run = run_file(&program, &["--run", "--quiet", "--no-warnings"]);
+        assert_eq!(run.code, Some(status), "{name}: stderr={}", run.stderr);
+        assert_eq!(run.stdout, stdout, "{name}");
+    }
+    for (name, extension, source, status) in [
+        (
+            "ml",
+            "ospml",
+            "main () =\n    print \"failing\"\n    3\n",
+            3,
+        ),
+        ("ml_unit", "ospml", "main () = print \"fine\"\n", 0),
+        (
+            "python",
+            "py",
+            "# osprey: flavor=python\n\ndef main():\n    print(\"failing\")\n    return 3\n",
+            3,
+        ),
+        (
+            "python_none",
+            "py",
+            "# osprey: flavor=python\n\ndef main():\n    print(\"fine\")\n",
+            0,
+        ),
+    ] {
+        let directory =
+            std::env::temp_dir().join(format!("osprey_exit_{}_{name}", std::process::id()));
+        std::fs::create_dir_all(&directory).expect("create temp dir");
+        let program = directory.join(format!("exit.{extension}"));
+        std::fs::write(&program, source).expect("write source");
+        let run = run_file(&program, &["--run", "--quiet", "--no-warnings"]);
+        assert_eq!(run.code, Some(status), "{name}: stderr={}", run.stderr);
+        std::fs::remove_dir_all(&directory).expect("remove temp dir");
+    }
+    // A failed test outranks whatever `main` returned; a passing one defers to it.
+    let failed = temp_osp(
+        "exit_status_failed_test",
+        "fn main() = {\n test(\"no\", fn() => expect(1, 2))\n 0\n}\n",
+    );
+    assert_eq!(
+        run_file(&failed, &["--run", "--quiet", "--no-warnings"]).code,
+        Some(1)
+    );
+    let passed = temp_osp(
+        "exit_status_passed_test",
+        "fn main() = {\n test(\"yes\", fn() => expect(1, 1))\n 9\n}\n",
+    );
+    assert_eq!(
+        run_file(&passed, &["--run", "--quiet", "--no-warnings"]).code,
+        Some(9)
+    );
+}
+
+/// The GitHub Action's contract: one JSON line on stdin, `key=value` lines on stdout,
+/// and the exit status of `main`. [GHA-FERRY-STDIN] [GHA-IO-CONTRACT] [ENTRY-EXIT-STATUS]
+#[test]
+fn a_json_line_on_stdin_becomes_outputs_and_an_exit_status() {
+    let program = temp_osp(
+        "gha_ferry",
+        "fn member(members, name, position) = match listGet(members, position) {\n\
+             Success { value } => match value {\n\
+                 JsonMember(key, json) => if key == name { json } else { member(members, name, position + 1) }\n\
+             }\n\
+             Error => JsonNull\n\
+         }\n\
+         fn answer(members) = match member(members, \"who\", 0) {\n\
+             JsonString(who) => {\n\
+                 print(\"greeting=hello ${who}\\nlength=${length(who)}\")\n\
+                 0\n\
+             }\n\
+             _ => {\n\
+                 print(\"error=who is required\")\n\
+                 3\n\
+             }\n\
+         }\n\
+         fn run() = match jsonDecode(input()) {\n\
+             Success { value } => match value {\n\
+                 JsonObject(members) => answer(members)\n\
+                 _ => 2\n\
+             }\n\
+             Error => 1\n\
+         }\n\
+         fn main() = {\n\
+             handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+             run()\n\
+         }\n",
+    );
+    let path = program.to_str().unwrap_or_default();
+    for (line, status, stdout) in [
+        (
+            "{\"who\":\"Osprey\"}\n",
+            0,
+            "greeting=hello Osprey\nlength=6\n",
+        ),
+        (
+            "{\"other\":1,\"who\":\"🦅\"}",
+            0,
+            "greeting=hello 🦅\nlength=4\n",
+        ),
+        ("{\"other\":1}\n", 3, "error=who is required\n"),
+        ("{\"who\":7}\n", 3, "error=who is required\n"),
+        ("[1,2]\n", 2, ""),
+        ("not json\n", 1, ""),
+        ("", 1, ""),
+    ] {
+        let run = run_args_with_stdin(&[path, "--run", "--quiet", "--no-warnings"], line);
+        assert_eq!(run.code, Some(status), "{line}: {}", run.stderr);
+        assert_eq!(run.stdout, stdout, "{line}");
+    }
+}
+
+/// The compiler answers which namespaces and modules each source declares, in both
+/// flavors, nested and repeated across files. [EDITOR-MODULE-EXPLORER]
+#[test]
+fn the_source_graph_names_each_sources_namespaces_and_modules() {
+    let dir = temp_dir("source_graph_declarations");
+    std::fs::create_dir_all(dir.join("src")).expect("create project");
+    for (file, text) in [
+        (
+            "osprey.toml",
+            "[project]\nname = \"graph\"\nsource_roots = [\"src\"]\nentry = \"src/main.ospml\"\n",
+        ),
+        (
+            "src/main.ospml",
+            "namespace app\n\nmodule Outer\n    export module Inner\n        export one = 1\n\nprint \"${Outer::Inner::one}\"\n",
+        ),
+        ("src/more.osp", "namespace app;\n\nmodule Extra {\n    export fn two() = 2\n}\n"),
+    ] {
+        std::fs::write(dir.join(file), text).expect("write project file");
+    }
+    let run = run_args(&[
+        dir.to_str().unwrap_or_default(),
+        "--source-graph",
+        "--no-warnings",
+    ]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    let graph: serde_json::Value = serde_json::from_str(&run.stdout).expect("graph json");
+    let found = graph
+        .get("declarations")
+        .and_then(serde_json::Value::as_array)
+        .expect("declarations")
+        .iter()
+        .map(|entry| {
+            let text = |key: &str| {
+                entry
+                    .get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+            };
+            (
+                text("kind").to_owned(),
+                text("name").to_owned(),
+                text("source")
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned(),
+                entry.get("line").is_some_and(serde_json::Value::is_u64),
+            )
+        })
+        .collect::<Vec<_>>();
+    for (kind, name, file) in [
+        ("namespace", "app", "main.ospml"),
+        ("module", "app::Outer", "main.ospml"),
+        ("module", "app::Outer::Inner", "main.ospml"),
+        ("namespace", "app", "more.osp"),
+        ("module", "app::Extra", "more.osp"),
+    ] {
+        let want = (kind.to_owned(), name.to_owned(), file.to_owned(), true);
+        assert!(found.contains(&want), "{want:?} missing from {found:?}");
+    }
+}
+
+/// `--warnings-as-errors` keeps the warning text and fails; the default stays
+/// advisory, `--no-warnings` stays silent, and errors fail as ever.
+#[test]
+fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
+    let warned = temp_osp(
+        "strict_warned",
+        "fn choose(value, ignored) = value\nprint(choose(1, 2))\n",
+    );
+    let clean = temp_osp(
+        "strict_clean",
+        "fn shout(value) = \"${value}!\"\nprint(shout(\"x\"))\n",
+    );
+    let broken = temp_osp("strict_broken", "fn f() -> string = 1\nprint(f())\n");
+    for mode in ["--check", "--run", "--llvm"] {
+        let advisory = run_file(&warned, &[mode]);
+        assert_eq!(advisory.code, Some(0), "{mode}: {}", advisory.stderr);
+        assert!(
+            advisory.stderr.contains("unused parameter `ignored`"),
+            "{mode}"
+        );
+
+        let strict = run_file(&warned, &[mode, "--warnings-as-errors"]);
+        assert_ne!(strict.code, Some(0), "{mode} must fail on a warning");
+        assert!(
+            strict.stderr.contains("unused parameter `ignored`"),
+            "{mode}: {}",
+            strict.stderr
+        );
+        assert!(
+            strict.stderr.contains("1 warning (unused-parameter)"),
+            "{mode}: {}",
+            strict.stderr
+        );
+        assert!(!strict.stdout.contains("ok ("), "{mode}: {}", strict.stdout);
+
+        let skipped = run_file(&warned, &[mode, "--no-warnings"]);
+        assert_eq!(skipped.code, Some(0), "{mode}: {}", skipped.stderr);
+        assert!(
+            !skipped.stderr.contains("warning"),
+            "{mode}: {}",
+            skipped.stderr
+        );
+
+        let fine = run_file(&clean, &[mode, "--warnings-as-errors"]);
+        assert_eq!(fine.code, Some(0), "{mode}: {}", fine.stderr);
+
+        let errors = run_file(&broken, &[mode, "--warnings-as-errors"]);
+        assert_ne!(errors.code, Some(0), "{mode}");
+        assert!(
+            errors.stderr.contains("cannot unify string with int"),
+            "{mode}: {}",
+            errors.stderr
+        );
+    }
+    let output = warned.with_extension("bin");
+    let output = output.to_str().unwrap_or_default();
+    let refused = run_file(
+        &warned,
+        &["--compile", "--warnings-as-errors", "-o", output],
+    );
+    assert_ne!(refused.code, Some(0), "{}", refused.stderr);
+    assert!(
+        !Path::new(output).exists(),
+        "a refused build writes nothing"
     );
 }
 

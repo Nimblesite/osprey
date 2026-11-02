@@ -18,24 +18,24 @@ REQUEST_TIMEOUT_MS = 600000
 
 def post_json(base_url, path, body, headers) -> Result[P.HttpReply, str]:
     """One POST through the runtime HTTP client; `Error` names a transport failure."""
-    client = httpCreateClient(base_url, REQUEST_TIMEOUT_MS)
-    result = post_with(client, path, body, headers)
-    closed = httpCloseClient(client)
-    return result if closed == 0 else result
+    match httpCreateClient(base_url, REQUEST_TIMEOUT_MS):
+        case Success(value=client):
+            result = post_with(client, path, body, headers)
+            closed = unwrap_or(httpCloseClient(client), -1)
+            return result if closed == 0 else result
+        case Error(message=message):
+            return Error(message=f"httpCreateClient failed: {message}")
 
 
 def post_with(client, path, body, headers) -> Result[P.HttpReply, str]:
-    if client <= 0:
-        return Error(message=f"httpCreateClient failed: {client}")
-    else:
-        match httpPostResponse(client, path, body, headers):
-            case Success(value=handle):
-                status = httpResponseStatus(handle)
-                text = unwrap_or(httpResponseBody(handle), "")
-                freed = unwrap_or(httpResponseFree(handle), 0)
-                return Success(value=P.HttpReply(status=status, body=text)) if freed == 0 else Success(value=P.HttpReply(status=status, body=text))
-            case Error(message=message):
-                return Error(message=message)
+    match httpPostResponse(client, path, body, headers):
+        case Success(value=handle):
+            status = httpResponseStatus(handle)
+            text = unwrap_or(httpResponseBody(handle), "")
+            freed = unwrap_or(httpResponseFree(handle), 0)
+            return Success(value=P.HttpReply(status=status, body=text)) if freed == 0 else Success(value=P.HttpReply(status=status, body=text))
+        case Error(message=message):
+            return Error(message=message)
 
 
 def provider(name, base_url, api_key):

@@ -1,1 +1,0 @@
-`select` is not supported; use explicit `send`, `recv`, and `await`

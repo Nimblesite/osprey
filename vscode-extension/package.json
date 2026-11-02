@@ -122,6 +122,18 @@
         "title": "Osprey: Open Workbench"
       },
       {
+        "command": "osprey.modules.managePackages",
+        "title": "Manage This Project's Packages",
+        "category": "Osprey",
+        "icon": "$(package)"
+      },
+      {
+        "command": "osprey.modules.refresh",
+        "title": "Refresh Modules",
+        "category": "Osprey",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "osprey.packages.open",
         "title": "Manage Packages",
         "category": "Osprey",
@@ -393,8 +405,13 @@
       "view/title": [
         {
           "command": "osprey.packages.open",
-          "when": "view == ospreyDebugView || view == osprey.profiler.processes",
+          "when": "view == ospreyDebugView || view == osprey.profiler.processes || view == osprey.moduleExplorer",
           "group": "navigation@0"
+        },
+        {
+          "command": "osprey.modules.refresh",
+          "when": "view == osprey.moduleExplorer",
+          "group": "navigation@1"
         },
         {
           "command": "osprey.profiler.profileCurrentFileCpu",
@@ -428,6 +445,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "osprey.modules.managePackages",
+          "when": "view == osprey.moduleExplorer && viewItem == ospreyProject",
+          "group": "inline@0"
+        },
         {
           "command": "osprey.profiler.profileStop",
           "when": "view == osprey.profiler.processes && viewItem == processProfiling",
@@ -519,6 +541,12 @@
     },
     "views": {
       "ospreyDebug": [
+        {
+          "id": "osprey.moduleExplorer",
+          "name": "Modules",
+          "icon": "$(symbol-module)",
+          "contextualTitle": "Osprey Modules"
+        },
         {
           "id": "ospreyDebugView",
           "name": "Program",

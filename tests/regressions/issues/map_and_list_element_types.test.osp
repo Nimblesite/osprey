@@ -1,0 +1,13 @@
+// #211: mapGet and listGet return values, never raw storage words.
+
+let ms = mapSet(Map(), "k", "he" + "ap")
+print("map string  -> ${mapGet(ms, "k")}")
+let mf = mapSet(Map(), "k", 1.5)
+print("map float   -> ${mapGet(mf, "k")}")
+let mb = mapSet(Map(), "k", true)
+print("map bool    -> ${mapGet(mb, "k")}")
+let mi = mapSet(Map(), "k", 42)
+print("map int     -> ${mapGet(mi, "k")}")
+
+print("list string -> ${listGet(listAppend(List(), "he" + "ap"), 0)}")
+print("list float  -> ${listGet(listAppend(List(), 1.5), 0)}")

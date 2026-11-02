@@ -1,0 +1,9 @@
+ok 1 - ready arms run in source order
+ok 2 - send arms respect capacity
+ok 3 - receive bindings have the element type
+ok 4 - managed sends keep their ownership
+ok 5 - timeouts decide only when nothing is ready
+ok 6 - a fiber wakes a blocked select
+ok 7 - operands evaluate once in order
+1..7
+# tests=7 passed=7 failed=0 skipped=0

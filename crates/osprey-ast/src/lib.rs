@@ -743,6 +743,45 @@ pub struct MatchArm {
     pub body: Expr,
 }
 
+/// What one `select` arm waits for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SelectOperation {
+    /// Receive from this channel.
+    Recv(Box<Expr>),
+    /// Send on a channel.
+    Send {
+        /// The channel.
+        channel: Box<Expr>,
+        /// The value to send.
+        value: Box<Expr>,
+    },
+    /// Give up after this many milliseconds.
+    Timeout(Box<Expr>),
+    /// Run at once when no other arm is ready.
+    Default,
+}
+
+impl SelectOperation {
+    /// The expressions evaluated on entry to the `select`.
+    #[must_use]
+    pub fn operands(&self) -> Vec<&Expr> {
+        match self {
+            Self::Recv(operand) | Self::Timeout(operand) => vec![operand],
+            Self::Send { channel, value } => vec![channel, value],
+            Self::Default => Vec::new(),
+        }
+    }
+
+    /// The expressions evaluated on entry to the `select`, for rewriting.
+    pub fn operands_mut(&mut self) -> Vec<&mut Expr> {
+        match self {
+            Self::Recv(operand) | Self::Timeout(operand) => vec![operand],
+            Self::Send { channel, value } => vec![channel, value],
+            Self::Default => Vec::new(),
+        }
+    }
+}
+
 /// A pattern in a match/select arm.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
@@ -968,8 +1007,12 @@ pub enum Expr {
     },
     /// `<-channel` receive.
     Recv(Box<Expr>),
-    /// A `select { ... }` over channel arms.
+    /// A `select` over channel operations. Each operation's operands evaluate
+    /// once on entry, in source order; `arms[i]` runs when `operations[i]` is
+    /// chosen, its pattern binding a received value. [CONCURRENCY-SELECT]
     Select {
+        /// What each arm waits for, parallel to `arms`.
+        operations: Vec<SelectOperation>,
         /// The select arms.
         arms: Vec<MatchArm>,
     },

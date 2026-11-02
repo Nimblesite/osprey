@@ -130,9 +130,8 @@ fn print_ir(cli: &Cli, input: &CompilationInput) -> ExitCode {
 /// Type-check `program`, print every error in `file:line:col: message` form,
 /// and return how many there were. The shared gate for every compiling mode.
 ///
-/// Warnings print alongside the errors and are deliberately not counted: a
-/// redundant annotation is a defect to delete, never a reason to fail a build
-/// ([TYPE-ANNOTATION-REDUNDANT]).
+/// Warnings print alongside the errors and are not counted unless the caller
+/// opted in with `--warnings-as-errors` ([TYPE-ANNOTATION-REDUNDANT]).
 ///
 /// `--quiet` never reaches here: it silences progress, and a warning is a
 /// diagnostic, not progress. Only `--no-warnings` ([`Warnings::Skip`]) skips
@@ -143,8 +142,7 @@ fn print_ir(cli: &Cli, input: &CompilationInput) -> ExitCode {
 pub(crate) fn report_type_errors(input: &CompilationInput, warnings: Warnings) -> usize {
     let errors = osprey_types::check_program(input.program());
     let count = report_errors(&errors, input);
-    report_warnings(input, warnings);
-    count
+    count + report_warnings(input, warnings)
 }
 
 /// Gate a compiling mode exactly like [`report_type_errors`], retaining the
@@ -158,7 +156,9 @@ fn gate(
         let _ = report_errors(&errors, input);
         ExitCode::FAILURE
     });
-    report_warnings(input, warnings);
+    if report_warnings(input, warnings) > 0 {
+        return Err(ExitCode::FAILURE);
+    }
     checked
 }
 
@@ -169,9 +169,15 @@ fn report_errors(errors: &[osprey_types::TypeError], input: &CompilationInput) -
     errors.len()
 }
 
-fn report_warnings(input: &CompilationInput, warnings: Warnings) {
-    if warnings == Warnings::Report {
-        warnings::report(input, &warnings::collect(input));
+/// Print the warnings and return how many of them fail the invocation.
+fn report_warnings(input: &CompilationInput, warnings: Warnings) -> usize {
+    match warnings {
+        Warnings::Skip => 0,
+        Warnings::Report => {
+            let _ = warnings::report(input, &warnings::collect(input));
+            0
+        }
+        Warnings::Deny => warnings::report(input, &warnings::collect(input)),
     }
 }
 

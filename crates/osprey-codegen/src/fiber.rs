@@ -20,7 +20,7 @@ use crate::conv::{as_i64, box_to_i64};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
-use osprey_ast::{Expr, MatchArm};
+use osprey_ast::{Expr, MatchArm, Pattern, SelectOperation};
 
 /// The thunk's value-ABI signature: no parameters, returns the boxed `i64`
 /// fiber result.
@@ -102,16 +102,22 @@ fn adopt_from_runtime(
     runtime: &str,
     missing: &str,
 ) -> Result<Value> {
+    if handle.fiber_elem.is_none() {
+        return Err(CodegenError::invalid(missing));
+    }
+    let id = as_i64(cg, handle.clone())?;
+    let r = cg.call("i64", runtime, "i64", &[&id.operand]);
+    adopt_word(cg, handle, &r, missing)
+}
+
+/// Unbox a wire word received for `handle` and register its +1 reference.
+fn adopt_word(cg: &mut Codegen, handle: Value, word: &str, missing: &str) -> Result<Value> {
     let Some(elem) = handle.fiber_elem else {
         return Err(CodegenError::invalid(missing));
     };
-    let owner = handle.fiber_elem_owner.clone();
-    let result_inner = handle.fiber_elem_result_inner;
-    let payload_owner = handle.fiber_elem_payload_owner.clone();
-    let id = as_i64(cg, handle)?;
-    let r = cg.call("i64", runtime, "i64", &[&id.operand]);
-    let mut out = crate::effects::unbox_coro_value(cg, &r, elem, result_inner).with_owner(owner);
-    out.payload_owner = payload_owner;
+    let mut out = crate::effects::unbox_coro_value(cg, word, elem, handle.fiber_elem_result_inner)
+        .with_owner(handle.fiber_elem_owner);
+    out.payload_owner = handle.fiber_elem_payload_owner;
     crate::arc::own(cg, &out);
     Ok(out)
 }
@@ -132,6 +138,26 @@ pub(crate) fn gen_yield(cg: &mut Codegen, e: Option<&Expr>) -> Result<Value> {
 
 /// `send(channel, value)` — `channel_send` on the C runtime (blocks when full).
 pub(crate) fn gen_send(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result<Value> {
+    let wire = send_wire(cg, channel, value)?;
+    let r = cg.call(
+        "i64",
+        "channel_send",
+        "i64, i64, i64",
+        &[&wire.id, &wire.word, &wire.managed],
+    );
+    Ok(Value::new(r, LType::I64))
+}
+
+/// A sent value on the wire, its reference already handed to the channel.
+struct SendWire {
+    id: String,
+    word: String,
+    managed: String,
+}
+
+/// Evaluate a send's operands into the wire form both `send` and `select` hand the
+/// runtime.
+fn send_wire(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result<SendWire> {
     cg.lowered.channels = true;
     let ch = gen_expr(cg, channel)?;
     let id = as_i64(cg, ch)?;
@@ -168,14 +194,17 @@ pub(crate) fn gen_send(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result
     let managed = i64::from(v.ty.is_managed_ptr()).to_string();
     crate::arc::escape_retain(cg, &v);
     let v = box_to_i64(cg, v);
-    let r = cg.call(
-        "i64",
-        "channel_send",
-        "i64, i64, i64",
-        &[&id.operand, &v.operand, &managed],
-    );
-    Ok(Value::new(r, LType::I64))
+    Ok(SendWire {
+        id: id.operand,
+        word: v.operand,
+        managed,
+    })
 }
+
+const RECV_WITHOUT_ELEMENT: &str =
+    "this channel's element type did not reach `recv`: it was read out of a field or structure \
+     whose declared type is a type variable, which carries no element type. Give the field the \
+     channel's concrete type";
 
 /// `recv(channel)` — `channel_recv` on the C runtime (blocks when empty).
 pub(crate) fn gen_recv(cg: &mut Codegen, channel: &Expr) -> Result<Value> {
@@ -192,31 +221,135 @@ pub(crate) fn gen_recv(cg: &mut Codegen, channel: &Expr) -> Result<Value> {
     // does travel [CONCURRENCY-CHANNEL].
     // `send` retained a reference for the receiver; adopting it here makes
     // this region drop it.
-    adopt_from_runtime(
-        cg,
-        ch,
-        "channel_recv",
-        "this channel's element type did not reach `recv`: it was read out \
-         of a field or structure whose declared type is a type variable, \
-         which carries no element type. Give the field the channel's \
-         concrete type",
-    )
+    adopt_from_runtime(cg, ch, "channel_recv", RECV_WITHOUT_ELEMENT)
 }
 
-/// `select` reaching code generation is a hard error, not a silent choice.
-///
-/// The typed compiler rejects every such node first ([CONCURRENCY-SELECT-REJECT]),
-/// so this arm is only reachable by compiling an AST directly. It used to lower
-/// the FIRST arm's body — a plausible-looking wrong answer for any program that
-/// bypassed the checker, and one that would have masked the real multiplexing
-/// primitive's absence once channel operations landed in the arms. Failing here
-/// is [plan 0007](../../../docs/plans/0007-fiber-select.md)'s "direct AST
-/// compilation cannot silently choose the first arm" acceptance bar; the arms are
-/// unused because no arm shape survives to lowering yet.
-pub(crate) fn gen_select(_cg: &mut Codegen, _arms: &[MatchArm]) -> Result<Value> {
-    Err(CodegenError::unsupported(
-        "`select` is not supported; use explicit `send`, `recv`, and `await`",
-    ))
+/// `select` — one `channel_select` call over the channel arms, then a switch on
+/// the arm it performed. A `timeout` or `_` arm runs when the call answers `count`.
+/// [CONCURRENCY-SELECT]
+pub(crate) fn gen_select(
+    cg: &mut Codegen,
+    operations: &[SelectOperation],
+    arms: &[MatchArm],
+) -> Result<Value> {
+    cg.lowered.channels = true;
+    let mut channels = Vec::new();
+    let mut waits = None;
+    let mut fallback = None;
+    for (operation, arm) in operations.iter().zip(arms) {
+        match operation {
+            SelectOperation::Recv(channel) => {
+                let handle = gen_expr(cg, channel)?;
+                let id = as_i64(cg, handle.clone())?;
+                channels.push(SelectChannel::recv(arm, id.operand, handle));
+            }
+            SelectOperation::Send { channel, value } => {
+                let wire = send_wire(cg, channel, value)?;
+                channels.push(SelectChannel::send(arm, wire));
+            }
+            SelectOperation::Timeout(milliseconds) => {
+                let waited = gen_expr(cg, milliseconds)?;
+                waits = Some(as_i64(cg, waited)?.operand);
+                fallback = Some(arm);
+            }
+            SelectOperation::Default => {
+                waits = Some("0".to_owned());
+                fallback = Some(arm);
+            }
+        }
+    }
+    let (chosen, received) = select_call(cg, &channels, waits.as_deref().unwrap_or("-1"));
+    let (end, mut phi_in, mark) = crate::pattern::select_state(cg);
+    let labels = channels
+        .iter()
+        .map(|_| cg.fresh_label())
+        .collect::<Vec<_>>();
+    let none = cg.fresh_label();
+    let cases = labels
+        .iter()
+        .enumerate()
+        .map(|(position, label)| format!("i64 {position}, label %{label}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    cg.emit(format!("switch i64 {chosen}, label %{none} [ {cases} ]"));
+    for (channel, label) in channels.iter().zip(&labels) {
+        cg.start_block(label);
+        let handle = channel.received_from.clone();
+        crate::pattern::select_arm(cg, channel.arm, &mut phi_in, |cg| {
+            let Some(handle) = handle else {
+                return Ok(());
+            };
+            let word = cg.emit_reg(format!("load i64, i64* {received}"));
+            let value = adopt_word(cg, handle, &word, RECV_WITHOUT_ELEMENT)?;
+            if let Pattern::Binding(name) = &channel.arm.pattern {
+                cg.bind(name.clone(), value);
+            }
+            Ok(())
+        })?;
+    }
+    cg.start_block(&none);
+    match fallback {
+        Some(arm) => crate::pattern::select_arm(cg, arm, &mut phi_in, |_| Ok(()))?,
+        None => cg.emit("unreachable"),
+    }
+    crate::pattern::select_finish(cg, &phi_in, &end, mark)
+}
+
+/// One channel arm of a `select`, with its operands already evaluated.
+struct SelectChannel<'a> {
+    arm: &'a MatchArm,
+    kind: &'static str,
+    id: String,
+    word: String,
+    received_from: Option<Value>,
+}
+
+impl<'a> SelectChannel<'a> {
+    fn recv(arm: &'a MatchArm, id: String, handle: Value) -> Self {
+        Self {
+            arm,
+            kind: "0",
+            id,
+            word: "0".to_owned(),
+            received_from: Some(handle),
+        }
+    }
+
+    fn send(arm: &'a MatchArm, wire: SendWire) -> Self {
+        Self {
+            arm,
+            kind: if wire.managed == "1" { "2" } else { "1" },
+            id: wire.id,
+            word: wire.word,
+            received_from: None,
+        }
+    }
+}
+
+/// Fill the runtime's arrays and call it; the chosen index and the received slot.
+fn select_call(cg: &mut Codegen, channels: &[SelectChannel<'_>], waits: &str) -> (String, String) {
+    cg.add_extern("declare i64 @channel_select(i64, i64*, i64*, i64*, i64*, i64)");
+    let count = channels.len();
+    let array = |cg: &mut Codegen, slot: &dyn Fn(&SelectChannel<'_>) -> String| {
+        let base = cg.emit_reg(format!("alloca [{count} x i64]"));
+        for (position, channel) in channels.iter().enumerate() {
+            let at = cg.emit_reg(format!(
+                "getelementptr [{count} x i64], [{count} x i64]* {base}, i64 0, i64 {position}"
+            ));
+            cg.emit(format!("store i64 {}, i64* {at}", slot(channel)));
+        }
+        cg.emit_reg(format!(
+            "getelementptr [{count} x i64], [{count} x i64]* {base}, i64 0, i64 0"
+        ))
+    };
+    let kinds = array(cg, &|channel| channel.kind.to_owned());
+    let ids = array(cg, &|channel| channel.id.clone());
+    let words = array(cg, &|channel| channel.word.clone());
+    let received = cg.emit_reg("alloca i64");
+    let chosen = cg.emit_reg(format!(
+        "call i64 @channel_select(i64 {count}, i64* {kinds}, i64* {ids}, i64* {words}, i64* {received}, i64 {waits})"
+    ));
+    (chosen, received)
 }
 
 /// Fiber/channel builtins reached as ordinary calls. Returns `None` when `name`
