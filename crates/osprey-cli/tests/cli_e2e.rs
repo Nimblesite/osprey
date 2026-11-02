@@ -1563,7 +1563,7 @@ fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
         "fn shout(value) = \"${value}!\"\nprint(shout(\"x\"))\n",
     );
     let broken = temp_osp("strict_broken", "fn f() -> string = 1\nprint(f())\n");
-    for mode in ["--check", "--compile", "--run", "--llvm"] {
+    for mode in ["--check", "--run", "--llvm"] {
         let advisory = run_file(&warned, &[mode]);
         assert_eq!(advisory.code, Some(0), "{mode}: {}", advisory.stderr);
         assert!(
@@ -1604,6 +1604,17 @@ fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
             errors.stderr
         );
     }
+    let output = warned.with_extension("bin");
+    let output = output.to_str().unwrap_or_default();
+    let refused = run_file(
+        &warned,
+        &["--compile", "--warnings-as-errors", "-o", output],
+    );
+    assert_ne!(refused.code, Some(0), "{}", refused.stderr);
+    assert!(
+        !Path::new(output).exists(),
+        "a refused build writes nothing"
+    );
 }
 
 #[test]
