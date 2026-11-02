@@ -7,7 +7,10 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 compiler=${OSPREY_BIN:-"$repo/target/release/osprey"}
-if [ "${1:-}" = --test ]; then exec "$compiler" "$here/test" --run; fi
+if [ "${1:-}" = --test ]; then
+    "$compiler" "$here/test" --run --quiet
+    exec "$compiler" "$here/test-app" --run --quiet
+fi
 project=${1:-$PWD}
 env_file=${2:-}
 if [ -z "$env_file" ] && [ -f "$repo/.env" ]; then env_file="$repo/.env"; fi

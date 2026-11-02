@@ -3,7 +3,19 @@
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ..
 
-.PHONY: python-app-ports bank bank-web bank-test bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test mobile-ios mobile-ios-test mobile-domain-test mobile-test android android-test bank-mobile-domain-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-test workbench-native-test workbench-render-review
+.PHONY: agent agent-test python-app-ports bank bank-web bank-test bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test mobile-ios mobile-ios-test mobile-domain-test mobile-test android android-test bank-mobile-domain-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-test workbench-native-test workbench-render-review
+
+## agent: Open Osprey Agent, the coding agent on @osprey/native, in the SwiftUI
+##        host (macOS). PROJECT names the folder it works in; the key comes from
+##        DEEPSEEKKEY in the repository's .env. See examples/agent/README.md.
+PROJECT ?= $(CURDIR)
+agent:
+	$(MAKE) -C $(ROOT) build
+	bash $(ROOT)/examples/agent/run.sh "$(PROJECT)"
+
+## agent-test: Osprey Agent's offline suites: no network and no window.
+agent-test:
+	bash $(ROOT)/examples/agent/run.sh --test
 
 ## python-app-ports: Verify the classifier, vector search and text evaluation ports.
 python-app-ports:

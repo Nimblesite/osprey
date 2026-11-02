@@ -9,7 +9,15 @@ struct SplitView: View {
     let node: JSONValue
     let drawing: Drawing
 
+    @Environment(\.ospreyTheme) private var theme
+    @Environment(\.colorScheme) private var scheme
+
     private var panes: [JSONValue] { node.list("children") }
+
+    /// The theme's `sidebar` token over the material, so the window behind shows through only a little.
+    @ViewBuilder private var tint: some View {
+        if let colour = theme.color("sidebar", dark: scheme == .dark) { colour.opacity(0.9) }
+    }
 
     /// The sidebar's width in points.
     private static let sidebar: CGFloat = 264
@@ -24,8 +32,7 @@ struct SplitView: View {
                     .environment(\.ospreyPlacement, .sidebar)
                     .frame(width: Self.sidebar)
                     .frame(maxHeight: .infinity)
-                    .background(SidebarMaterial())
-                    .background { Rectangle().fill(.clear) }
+                    .background { ZStack { SidebarMaterial(); tint } }
                 VStack(spacing: 0) { Children(nodes: Array(panes.dropFirst()), drawing: drawing) }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

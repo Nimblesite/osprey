@@ -84,7 +84,7 @@ module Model
     export blank (id, folder, now) = Chat(chatId = id, chatTitle = "New chat", chatFolder = folder, chatModel = defaultModel, chatHistory = Engine::new_history (), chatStage = "idle", chatTicket = "", chatCall = "", chatResults = [], chatProblem = "", chatStarted = now)
 
     (** The store at launch: one empty conversation in `folder`. *)
-    export launched (system, home, folder, now) = Store(chats = [blank ("c1", folder, now)], draft = Draft(draftText = ""), panel = Panel(panelActive = "c1", panelOpen = true, panelWidth = 288, panelExpanded = []), settings = Settings(platform = system, homeFolder = home, apiKey = "", keyDraft = ""), ticketCount = 2, clock = now)
+    export launched (system, home, folder, now) = Store(chats = [blank ("launch${now}", folder, now)], draft = Draft(draftText = ""), panel = Panel(panelActive = "launch${now}", panelOpen = true, panelWidth = 288, panelExpanded = []), settings = Settings(platform = system, homeFolder = home, apiKey = "", keyDraft = ""), ticketCount = 2, clock = now)
 
     (** The open conversation. *)
     export active store = Lists::find (store.chats, \chat => chat.chatId == store.panel.panelActive) ?: (listGet store.chats 0 ?: blank ("c0", store.settings.homeFolder, store.clock))

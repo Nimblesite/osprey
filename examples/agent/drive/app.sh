@@ -16,7 +16,7 @@ helper="$repo/hosts/swift/build/window-id"
 activate() { osascript -e "tell application \"$name\" to activate" >/dev/null; sleep 0.3; }
 case "$1" in
     open)
-        [ -x "$helper" ] || swiftc -O "$here/shot.swift" -o "$helper"
+        [ "$helper" -nt "$here/shot.swift" ] || swiftc -O "$here/shot.swift" -o "$helper"
         pkill -f "$bundle/Contents/MacOS" 2>/dev/null || true
         sleep 0.5
         rm -f "$HOME/Library/Application Support/org.ospreylang.agent/chats.json"
@@ -41,10 +41,7 @@ case "$1" in
         ;;
     click)
         activate
-        osascript -e "tell application \"System Events\" to tell process \"$name\"
-            set {left, top} to position of window 1
-            click at {left + $2, top + $3}
-        end tell" >/dev/null
+        "$helper" "$name" "$2" "$3"
         ;;
     *) echo "Usage: $0 open|shot|type|key|click" >&2; exit 2 ;;
 esac

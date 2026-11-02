@@ -92,7 +92,8 @@ module Turn
         history = Pick::either (length answered > 0, Engine::add_returns (chat.chatHistory, answered), chat.chatHistory)
         cancels = Pick::either (chat.chatTicket == "", [], [Requests::ask ("cancel:${store.ticketCount}", ui::Cancel(cancelled = chat.chatTicket))])
         moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatHistory = history, chatResults = [], chatStage = "idle", chatTicket = "", chatCall = ""))
-        Runtime::asking (moved, cancels)
+        saving = Model::persisting moved
+        saving(requests = listConcat cancels saving.requests)
 
 (** How Osprey Agent answers each message: taps, text, choices, flags and completions. *)
 module Answers
@@ -226,7 +227,7 @@ module App
         token ("primary", "#17171A", "#EDEDF0"), token ("secondary", "#6B6B76", "#9B9BA6"), token ("faint", "#9A9AA5", "#65656F"),
         token ("accent", "#4F46E5", "#8B8CFF"), token ("onAccent", "#FFFFFF", "#101018"),
         token ("good", "#14804A", "#4CC38A"), token ("caution", "#A16207", "#F5B454"), token ("danger", "#C92A2A", "#F47C7C"),
-        token ("canvas", "#FBFBFC", "#141417"), token ("surface", "#FFFFFF", "#1E1E23"), token ("raised", "#F3F3F6", "#26262C"),
+        token ("canvas", "#FBFBFC", "#141417"), token ("sidebar", "#EFEFF3", "#1B1B20"), token ("surface", "#FFFFFF", "#1E1E23"), token ("raised", "#F3F3F6", "#26262C"),
         token ("bubble", "#EEEEF3", "#2A2A31"), token ("line", "#E4E4EA", "#2C2C33"), token ("inset", "#F6F6F9", "#18181C"),
         token ("codeFill", "#F2F2F6", "#0E0E11"), token ("codeInk", "#5B45D6", "#C2B5FF"),
     ], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)

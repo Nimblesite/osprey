@@ -40,6 +40,7 @@ Both carry the same envelope: `version`, `state`, `slices`, `patches`, `removed`
 | Browser | HTML, CSS | WASI frames in a worker | any browser | planned, extracted from the webview host | not started |
 | GPUI | GPU primitives via GPUI | C ABI | macOS first, then Linux, Windows | `hosts/gpui` | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running on macOS |
 | WinUI | WinUI controls, Segoe Fluent Icons | C ABI, as a DLL | Windows | `hosts/winui` | [spec 0048](../platforms/0048-WinUiHost.md), tested without a window |
+| SwiftUI (in-repo) | SwiftUI views, SF Symbols, frames and rich text | C ABI | macOS | [`hosts/swift`](../../../hosts/swift/README.md) | running; draws [Osprey Agent](../../../examples/agent/README.md) |
 
 The webview and browser hosts share one TypeScript renderer; the VS Code one adds editor capabilities through [`@osprey/vscode`](../../../packages/vscode/README.md). A new host gets a row here and a column in the coverage matrix before any code merges.
 

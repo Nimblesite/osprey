@@ -326,6 +326,14 @@ def plain_span(text):
     return [] if text == "" else [Span(spanText=text, spanKind="")]
 
 
+def inner_span(inner, marker):
+    """A marked run; code inside emphasis, as in **`file`**, reads as code."""
+    if marker != "`" and length(inner) > 2 and startsWith(inner, "`") and endsWith(inner, "`"):
+        return Span(spanText=take(drop(inner, 1), length(inner) - 2), spanKind="code")
+    else:
+        return Span(spanText=inner, spanKind=span_kind(marker))
+
+
 def spans_of(text):
     """The inline runs of `text`: `code`, **strong** and *em*; an unclosed marker is plain text."""
     found = next_marker(text)
@@ -338,6 +346,6 @@ def spans_of(text):
             case Success(value=end):
                 inner = take(after, end)
                 rest = drop(after, end + length(found.markerText))
-                return listConcat(listAppend(plain_span(before), Span(spanText=inner, spanKind=span_kind(found.markerText))), spans_of(rest))
+                return listConcat(listAppend(plain_span(before), inner_span(inner, found.markerText)), spans_of(rest))
             case Error(message=_m):
                 return listConcat(plain_span(before + found.markerText), spans_of(after))
