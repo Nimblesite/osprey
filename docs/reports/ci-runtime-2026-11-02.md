@@ -160,3 +160,34 @@ Each job's limit becomes about 1.5 times its measured healthy time, so a hang fa
 | Windows core | 14.2 | 8 |
 | Apple (longest of four) | 45.6 | 15 |
 | Rust (longest shard) | 40+ | 15 |
+
+## Measured: the first run of the new shape
+
+Run [41378280720](https://github.com/Nimblesite/osprey/actions/runs/41378280720), commit `a7eb9848`: **22.7 minutes of wall clock and 223 runner-minutes, down from 57 and 324**. Every job finished inside its timeout, and the coverage thresholds passed on the merged Rust shards.
+
+| Job | Minutes | Finished at |
+| --- | --- | --- |
+| Build | 6.4 | 8.4 |
+| Format & Analyse | 4.1 | 6.0 |
+| Apple: Talon Bank | 14.1 | 22.6 |
+| Apple: iOS | 13.7 | 22.2 |
+| Apple: Workbench | 8.6 | 17.1 |
+| Apple: macOS | 4.8 | 13.2 |
+| GPUI Windows | 20.7 | 22.4 |
+| GPUI Linux host | 17.1 | 18.8 |
+| GPUI Mac | 12.6 | 14.3 |
+| GPUI Linux suites | 6.4 | 8.1 |
+| WinUI | 13.6 | 15.3 |
+| Windows core | 6.0 | 7.6 |
+| Rust: packages | 9.2 | 17.6 |
+| Rust: workbench | 8.6 | 17.0 |
+| Rust: rest | 6.3 | 14.7 |
+| Package source coverage | 11.3 | 19.8 |
+| Proof kernel | 10.9 | 19.3 |
+| VS Code extension | 10.3 | 18.7 |
+| C runtime | 7.7 | 16.1 |
+| Integration | 9.9 (failed) | 18.3 |
+
+The run failed on one job, so it does not yet prove the time of a green run. In Integration the Android emulator died ("device offline") after all six bank instrumentation tests had passed, while their screenshots were being pulled. The steps after it (bank e2e, documentation acceptance, web compiler) were skipped, so a passing Integration runs longer.
+
+This failure predates the new shape: the same "device offline" stopped `80fcc980` and `e13285ae`, the second during the language goldens. The cause is not known yet, so the job now prints memory, kernel kills and the emulator's crash directory when it fails.
