@@ -43,6 +43,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
+      - name: Pull the apps' LFS pictures
+        run: git lfs install --local && git lfs pull --include="examples/**,hosts/**,packages/**"
+
       # Rust, clang/LLVM, the native C runtime archives and the release CLI.
       - name: Setup Osprey Compiler
         uses: ./.github/actions/setup-osprey-compiler
@@ -61,6 +65,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+
+      # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
+      - name: Pull the apps' LFS pictures
+        run: git lfs install --local && git lfs pull --include="examples/**,hosts/**,packages/**"
 
       # Rust, clang/LLVM, the native C runtime archives and the release CLI.
       - name: Setup Osprey Compiler
@@ -83,6 +91,10 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
+
+      # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
+      - name: Pull the apps' LFS pictures
+        run: git lfs install --local && git lfs pull --include="examples/**,hosts/**,packages/**"
 
       # The C runtime is built with MinGW (as in ci-windows.yml) and the host with MSYS2's UCRT64
       # Rust, so its build scripts run as GNU programs and the host, GPUI and the Osprey runtime all
