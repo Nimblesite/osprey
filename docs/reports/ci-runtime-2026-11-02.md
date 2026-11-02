@@ -212,6 +212,8 @@ All six instrumentation tests passed at 03:16:47. The next adb command, the firs
 
 The step passed on `c6782c6b`, `6119a002`, `13ffbced`, `d7360f5d` and `50fdef0a`, and failed on `80fcc980`, `e13285ae`, `a7eb9848` and `1609311f`. Both finished runs of the new shape are among the failures, which is too few to say whether the rate has changed.
 
+Later evidence from PR #337, nine consecutive runs with three deaths: the guest's logcat (now captured through the bank tests) ends in ordinary activity about a second after the tests finish, with no panic or kernel message, so the guest stops rather than fails. The emulator's `Failed to find ColorBuffer` error does not explain it: it appears in green runs, and one of the deaths had none.
+
 The cause inside the emulator is still unknown. Its own output says nothing at the moment it dies, so the next thing to capture is the guest's log.
 
 ## Measured: the first green run
