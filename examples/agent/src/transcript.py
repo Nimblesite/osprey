@@ -314,12 +314,12 @@ def plain_span(text):
     return [] if text == "" else [Span(spanText=text, spanKind="")]
 
 
-def inner_span(inner, marker):
-    """A marked run; code inside emphasis, as in **`file`**, reads as code."""
-    if marker != "`" and length(inner) > 2 and startsWith(inner, "`") and endsWith(inner, "`"):
-        return Span(spanText=take(drop(inner, 1), length(inner) - 2), spanKind="code")
+def inner_spans(inner, marker):
+    """A marked run; code inside emphasis, as in **`file` fix**, reads as code."""
+    if marker == "`":
+        return [Span(spanText=inner, spanKind="code")]
     else:
-        return Span(spanText=inner, spanKind=span_kind(marker))
+        return mapList(spans_of(inner), lambda span: span if span.spanKind != "" else Span(spanText=span.spanText, spanKind=span_kind(marker)))
 
 
 def spans_of(text):
@@ -334,6 +334,6 @@ def spans_of(text):
             case Success(value=end):
                 inner = take(after, end)
                 rest = drop(after, end + length(found.markerText))
-                return listConcat(listAppend(plain_span(before), inner_span(inner, found.markerText)), spans_of(rest))
+                return listConcat(listConcat(plain_span(before), inner_spans(inner, found.markerText)), spans_of(rest))
             case Error(message=_m):
                 return listConcat(plain_span(before + found.markerText), spans_of(after))

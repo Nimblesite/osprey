@@ -165,6 +165,8 @@ def markdown_cases():
         Check.equal("md.inline", span_text(Transcript.spans_of("a `b` **c** *d* e")), ":a |code:b|: |strong:c|: |em:d|: e"),
         Check.truth("md.unclosed_marker", contains(join(mapList(Transcript.spans_of("2 * 3"), lambda s: s.spanText), ""), "2 * 3"), "lost text"),
         Check.equal("md.strong_code", span_text(Transcript.spans_of("**`a.py`** — x")), "code:a.py|: — x"),
+        Check.equal("md.strong_mixed_code", span_text(Transcript.spans_of("**Fix (`a.py`, `b`):** x")), "strong:Fix (|code:a.py|strong:, |code:b|strong:):|: x"),
+        Check.equal("md.heading_code_first", span_text(Transcript.spans_of("**`a` fix**")), "code:a|strong: fix"),
         Check.equal("md.empty", len(Transcript.blocks_of("")), 0),
         Check.equal("title.first_line", Transcript.title_of("  Fix it\nplease"), "Fix it"),
         Check.truth("title.cut", endsWith(Transcript.title_of(fold(range(10), "", lambda acc, _i: acc + "0123456789")), "…"), "not cut"),

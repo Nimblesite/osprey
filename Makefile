@@ -100,7 +100,7 @@ _coverage_check_packages:
 .PHONY: _test_agent _agent-suites
 # Osprey Agent's turn logic and real update path: no network and no window.
 _test_agent:
-	$(BIN) examples/agent/test --run --quiet --no-warnings
+	set -o pipefail && $(BIN) examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 	$(BIN) examples/agent/test-app --run --quiet --no-warnings
 
 _agent-suites: _runtime
