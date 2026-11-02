@@ -97,14 +97,20 @@ module Native {
         Success { value: reply }
     }
 
-    fn fetched(base, path) = {
-        let client = httpCreateClient(base, timeoutMs)
+    fn fetchedWith(client, path) = {
         let answer = match httpGetResponse(client, path, "") {
             Success { value } => replyOf(value)
             Error { message } => Error { message: "http.transport: ${message}" }
         }
-        let _closed = httpCloseClient(client)
+        let _closed = httpCloseClient(client) ?: -1
         answer
+    }
+
+    fn fetched(base, path) = {
+        match httpCreateClient(base, timeoutMs) {
+            Success { value } => fetchedWith(value, path)
+            Error { message } => Error { message: "http.transport: ${message}" }
+        }
     }
 
     /// Web answered by the runtime HTTP client.

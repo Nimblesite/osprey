@@ -11,12 +11,12 @@ localResponse (_method, _path, _headers, _body) = HttpResponse(
 )
 
 localHttpRoundTrip () =
-    server = httpCreateServer 18107 "127.0.0.1"
-    listening = httpListen server localResponse
-    client = httpCreateClient "http://127.0.0.1:18107" 1000
-    status = httpGet client "/health" ""
-    closed = httpCloseClient client
-    stopped = httpStopServer server
+    server = httpCreateServer 18107 "127.0.0.1" ?: -1
+    listening = httpListen server localResponse ?: -1
+    client = httpCreateClient "http://127.0.0.1:18107" 1000 ?: -1
+    status = httpGet client "/health" "" ?: -1
+    closed = httpCloseClient client ?: -1
+    stopped = httpStopServer server ?: -1
     checkAll "loopback HTTP round trip" [
         server != 0,
         listening == 0,

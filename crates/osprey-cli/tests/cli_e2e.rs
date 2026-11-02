@@ -1194,8 +1194,8 @@ fn test_subcommand_reuses_unchanged_compiled_suites() {
     let _ = write_in(
         &dir,
         "cached_http.test.osp",
-        "let client = httpCreateClient(\"http://127.0.0.1:1\", 1)\n\
-         let closed = httpCloseClient(client)\n\
+        "let client = httpCreateClient(\"http://127.0.0.1:1\", 1) ?: -1\n\
+         let closed = httpCloseClient(client) ?: -1\n\
          test(\"http client\", fn() => expect(closed, 0))\n",
     );
     let linked = format!("// @link: m\n{PASSING_TESTS}");

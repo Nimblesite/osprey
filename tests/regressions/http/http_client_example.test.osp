@@ -10,12 +10,12 @@ fn localResponse(_method: string, _path: string, _headers: string, _body: string
 }
 
 fn localHttpRoundTrip() = {
-    let server = httpCreateServer(18107, "127.0.0.1")
-    let listening = httpListen(server, localResponse)
-    let client = httpCreateClient("http://127.0.0.1:18107", 1000)
-    let status = httpGet(client, "/health", "")
-    let closed = httpCloseClient(client)
-    let stopped = httpStopServer(server)
+    let server = (httpCreateServer(18107, "127.0.0.1") ?: -1)
+    let listening = (httpListen(server, localResponse) ?: -1)
+    let client = (httpCreateClient("http://127.0.0.1:18107", 1000) ?: -1)
+    let status = (httpGet(client, "/health", "") ?: -1)
+    let closed = (httpCloseClient(client) ?: -1)
+    let stopped = (httpStopServer(server) ?: -1)
     checkAll("loopback HTTP round trip", [
         server != 0,
         listening == 0,

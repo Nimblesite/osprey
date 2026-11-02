@@ -33,14 +33,17 @@ module ProviderNative {
             Error => Error { message: "auth.provider-transport" }
             Success { value } => response(value)
         }
-        let closed = httpCloseClient(client)
-        if closed != 0 { Error { message: "auth.provider-transport" } } else { received }
+        match httpCloseClient(client) {
+            Success => received
+            Error => Error { message: "auth.provider-transport" }
+        }
     }
 
     fn request(method, base, path, headers, body) = {
-        let client = httpCreateClient(base, timeoutMs)
-        if client < 1 { Error { message: "auth.provider-transport" } }
-        else { performRequest(client, method, path, headers, body) }
+        match httpCreateClient(base, timeoutMs) {
+            Success { value } => performRequest(value, method, path, headers, body)
+            Error => Error { message: "auth.provider-transport" }
+        }
     }
 
     /// Install only after OAuth::configCode succeeds. TLS requires peer and

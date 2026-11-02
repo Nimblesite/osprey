@@ -34,9 +34,9 @@ freeLine h =
         Error _message => "free-err-double"
 
 run () =
-    serverId = httpCreateServer 18095 "127.0.0.1"
-    _listenResult = httpListen serverId handleRequest
-    clientId = httpCreateClient "http://127.0.0.1:18095" 5000
+    serverId = httpCreateServer 18095 "127.0.0.1" ?: -1
+    _listenResult = httpListen serverId handleRequest ?: -1
+    clientId = httpCreateClient "http://127.0.0.1:18095" 5000 ?: -1
     resp = httpGetResponse clientId "/" ""
     summary = match resp
         Success value =>
@@ -48,8 +48,8 @@ run () =
             doubleFreed = freeLine value
             "${status}|${body}|${header}|${missing}|${freed}|${doubleFreed}"
         Error message => "request-error:${message}"
-    _closeResult = httpCloseClient clientId
-    _stopResult = httpStopServer serverId
+    _closeResult = httpCloseClient clientId ?: -1
+    _stopResult = httpStopServer serverId ?: -1
     summary
 
 (** Run the complete response-handle lifecycle and verify every transition. *)

@@ -8,7 +8,7 @@
 print "=== Comprehensive HTTP API Test ==="
 
 print "Creating HTTP server on port 18080..."
-serverId = httpCreateServer 18080 "127.0.0.1"
+serverId = httpCreateServer 18080 "127.0.0.1" ?: -1
 print "Server created with ID: ${serverId}"
 
 handleHttpRequest : (string, string, string, string) -> HttpResponse
@@ -112,52 +112,52 @@ handleHttpRequest (method, path, _headers, _body) =
         )
 
 print "Starting server listener with callback handler..."
-listenResult = httpListen serverId handleHttpRequest
+listenResult = httpListen serverId handleHttpRequest ?: -1
 print "Server listening on http://127.0.0.1:18080"
 
 print "Creating HTTP client..."
-clientId = httpCreateClient "http://127.0.0.1:18080" 5000
+clientId = httpCreateClient "http://127.0.0.1:18080" 5000 ?: -1
 print "Client created with ID: ${clientId}"
 
 print "=== Testing HTTP Methods ==="
 
 print "GET /api/users"
-getUsersResult = httpGet clientId "/api/users" ""
+getUsersResult = httpGet clientId "/api/users" "" ?: -1
 print "GET /api/users result: ${getUsersResult}"
 
 print "GET /health"
-getHealthResult = httpGet clientId "/health" ""
+getHealthResult = httpGet clientId "/health" "" ?: -1
 print "GET /health result: ${getHealthResult}"
 
 print "POST /api/users"
 createUserData = "{\"name\": \"Charlie\", \"email\": \"charlie@example.com\"}"
-postResult = httpPost clientId "/api/users" createUserData "Content-Type: application/json"
+postResult = httpPost clientId "/api/users" createUserData "Content-Type: application/json" ?: -1
 print "POST /api/users result: ${postResult}"
 
 print "POST /api/auth/login"
 loginData = "{\"username\": \"admin\", \"password\": \"secret\"}"
-loginResult = httpPost clientId "/api/auth/login" loginData "Content-Type: application/json"
+loginResult = httpPost clientId "/api/auth/login" loginData "Content-Type: application/json" ?: -1
 print "POST /api/auth/login result: ${loginResult}"
 
 print "PUT /api/users/1"
 updateUserData = "{\"name\": \"Alice Smith\", \"email\": \"alice.smith@example.com\"}"
-putResult = httpPut clientId "/api/users/1" updateUserData "Content-Type: application/json"
+putResult = httpPut clientId "/api/users/1" updateUserData "Content-Type: application/json" ?: -1
 print "PUT /api/users/1 result: ${putResult}"
 
 print "DELETE /api/users/1"
-deleteResult = httpDelete clientId "/api/users/1" ""
+deleteResult = httpDelete clientId "/api/users/1" "" ?: -1
 print "DELETE /api/users/1 result: ${deleteResult}"
 
 print "=== Testing Error Cases ==="
 print "GET /nonexistent"
-notFoundResult = httpGet clientId "/nonexistent" ""
+notFoundResult = httpGet clientId "/nonexistent" "" ?: -1
 print "GET /nonexistent result: ${notFoundResult}"
 
 print "=== Server Shutdown Test ==="
 print "✅ All HTTP operations completed successfully"
 print "🛑 Initiating immediate graceful server shutdown..."
 
-stopResult = httpStopServer serverId
+stopResult = httpStopServer serverId ?: -1
 print "Server stopped with result: ${stopResult}"
 
 print "=== HTTP API Test Complete ==="

@@ -38,9 +38,9 @@ fn freeLine(h) = {
 }
 
 fn run() = {
-    let serverId = httpCreateServer(18095, "127.0.0.1")
-    let _listenResult = httpListen(serverId, handleRequest)
-    let clientId = httpCreateClient("http://127.0.0.1:18095", 5000)
+    let serverId = (httpCreateServer(18095, "127.0.0.1") ?: -1)
+    let _listenResult = (httpListen(serverId, handleRequest) ?: -1)
+    let clientId = (httpCreateClient("http://127.0.0.1:18095", 5000) ?: -1)
     let resp = httpGetResponse(clientId, "/", "")
     let summary = match resp {
         Success { value } => {
@@ -54,8 +54,8 @@ fn run() = {
         }
         Error { message } => "request-error:${message}"
     }
-    let _closeResult = httpCloseClient(clientId)
-    let _stopResult = httpStopServer(serverId)
+    let _closeResult = (httpCloseClient(clientId) ?: -1)
+    let _stopResult = (httpStopServer(serverId) ?: -1)
     summary
 }
 

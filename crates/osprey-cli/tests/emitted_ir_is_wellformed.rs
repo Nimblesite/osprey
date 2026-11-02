@@ -37,8 +37,8 @@ const ANNOTATED: &str = r#"fn handler(method: string, path: string, headers: str
     status: 200, headers: "", contentType: "text/plain",
     streamFd: 0, isComplete: true, partialBody: "ok"
 }
-let server = httpCreateServer(18201, "127.0.0.1")
-let listening = httpListen(server, handler)
+let server = httpCreateServer(18201, "127.0.0.1") ?: -1
+let listening = httpListen(server, handler) ?: -1
 print("${listening}")
 "#;
 
@@ -48,8 +48,8 @@ const INFERRED: &str = r#"fn handler(method, path, headers, body) = HttpResponse
     status: 200, headers: "", contentType: "text/plain",
     streamFd: 0, isComplete: true, partialBody: "ok"
 }
-let server = httpCreateServer(18201, "127.0.0.1")
-let listening = httpListen(server, handler)
+let server = httpCreateServer(18201, "127.0.0.1") ?: -1
+let listening = httpListen(server, handler) ?: -1
 print("${listening}")
 "#;
 
@@ -340,7 +340,7 @@ fn generic_runtime_callbacks_keep_their_source_scope() -> Result<(), String> {
     Ok(())
 }
 
-const INFERRED_ML: &str = "respond (method, path, headers, body) = HttpResponse(status = 200, headers = \"\", contentType = \"text/plain\", streamFd = 0, isComplete = true, partialBody = \"ok\")\nserver = httpCreateServer (18201, \"127.0.0.1\")\nlistening = httpListen (server, respond)\nprint \"${listening}\"\n";
+const INFERRED_ML: &str = "respond (method, path, headers, body) = HttpResponse(status = 200, headers = \"\", contentType = \"text/plain\", streamFd = 0, isComplete = true, partialBody = \"ok\")\nserver = httpCreateServer (18201, \"127.0.0.1\") ?: -1\nlistening = httpListen (server, respond) ?: -1\nprint \"${listening}\"\n";
 
 /// [TYPE-GENERICS-FN] Named C callbacks read their declaration's global bindings.
 #[test]

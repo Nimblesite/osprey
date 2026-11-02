@@ -85,9 +85,9 @@ renderResponse h =
             ""
 
 run () =
-    serverId = httpCreateServer 18099 "127.0.0.1"
-    _listenResult = httpListen serverId handleRequest
-    clientId = httpCreateClient "http://127.0.0.1:18099" 5000
+    serverId = httpCreateServer 18099 "127.0.0.1" ?: -1
+    _listenResult = httpListen serverId handleRequest ?: -1
+    clientId = httpCreateClient "http://127.0.0.1:18099" 5000 ?: -1
     resp = httpGetResponse clientId "/repos" ""
     bodyText = match resp
         Success value =>
@@ -97,8 +97,8 @@ run () =
         Error message =>
             print "reqfail ${message}"
             ""
-    _closeResult = httpCloseClient clientId
-    _stopResult = httpStopServer serverId
+    _closeResult = httpCloseClient clientId ?: -1
+    _stopResult = httpStopServer serverId ?: -1
     bodyText
 
 (** Fetch, render, and validate the repository document over loopback HTTP. *)

@@ -179,7 +179,7 @@ fn readFree(h: int) = {
 // connection reset, which is exactly the "GET failed" symptom. Each attempt and
 // its outcome is appended to the log file via the Diag effect.
 fn httpFetch() = {
-    let c = httpCreateClient(baseUrl(), 5000)
+    let c = (httpCreateClient(baseUrl(), 5000) ?: -1)
     let out = match httpGetResponse(c, "/", "") {
         Success { value } => {
             let b = readFree(value)
@@ -191,14 +191,14 @@ fn httpFetch() = {
             "(GET failed — see ${diagFile()})\n"
         }
     }
-    let _closed = httpCloseClient(c)
+    let _closed = (httpCloseClient(c) ?: -1)
     out
 }
 
 fn httpPush(text: string) = {
-    let c = httpCreateClient(baseUrl(), 5000)
-    let code = toString(httpPost(c, "/tasks", text, ""))
-    let _closed = httpCloseClient(c)
+    let c = (httpCreateClient(baseUrl(), 5000) ?: -1)
+    let code = toString((httpPost(c, "/tasks", text, "") ?: -1))
+    let _closed = (httpCloseClient(c) ?: -1)
     perform Diag.log("POST /tasks   ${code}  \"${text}\"")
 }
 

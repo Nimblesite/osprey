@@ -105,9 +105,9 @@ fn renderResponse(h) = {
 }
 
 fn run() = {
-    let serverId = httpCreateServer(18099, "127.0.0.1")
-    let _listenResult = httpListen(serverId, handleRequest)
-    let clientId = httpCreateClient("http://127.0.0.1:18099", 5000)
+    let serverId = (httpCreateServer(18099, "127.0.0.1") ?: -1)
+    let _listenResult = (httpListen(serverId, handleRequest) ?: -1)
+    let clientId = (httpCreateClient("http://127.0.0.1:18099", 5000) ?: -1)
     let resp = httpGetResponse(clientId, "/repos", "")
     let bodyText = match resp {
         Success { value } => {
@@ -120,8 +120,8 @@ fn run() = {
             ""
         }
     }
-    let _closeResult = httpCloseClient(clientId)
-    let _stopResult = httpStopServer(serverId)
+    let _closeResult = (httpCloseClient(clientId) ?: -1)
+    let _stopResult = (httpStopServer(serverId) ?: -1)
     bodyText
 }
 
