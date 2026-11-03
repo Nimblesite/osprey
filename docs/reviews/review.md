@@ -135,7 +135,7 @@ Each was compared by title against the 82 open GitHub issues on 2026-11-03; clos
 | Low | Stale comment says a test pins a `join` segfault | `crates/osprey-cli/tests/cli_e2e.rs:141-158` | The assertions below it prove the opposite. | Open |
 | Unproven | Chromecast parser recursion | `packages/chromecast/src/protocol.py:94-101,135-146`; `hex.py:88-96,102-104` | Reported as a crash, but overstated: a self tail call of the same shape reached depth 20,000,000. `parse_fields` and `points_from` were not checked. | Unchecked |
 
-**Fixed since review, kept for the record:** remote heap overflow in `http_decode_chunked` (`8f96e8bb`, plan 0048), and a cut connection or TLS truncation passing a partial body as whole (`d7393587`), and unsynchronized `gethostbyname` (no longer in `tls_client_runtime.c`).
+**Fixed since review, kept for the record:** unsynchronized `gethostbyname` (no longer in `tls_client_runtime.c`).
 
 **Review coverage gaps.** Nothing from the v0.28.2 reviews ran on Linux, Windows, Android or wasm. Not reviewed: GC and ARC internals, effects coroutines, JSON, GPU and media runtime, `hosts/gpui`, most of `hosts/winui`, the packages `signal_flow`, `uitest`, `graphics` and `json`, and most of `packages/pydantic_ai`. Random mutation (1,500 mutants of 79 programs) covered `--check` only. `panic!`, `unwrap` and `expect` sites in production Rust were not audited one by one.
 
