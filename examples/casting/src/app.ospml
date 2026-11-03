@@ -37,7 +37,15 @@ module App
         launched = Link::launched (loaded (readFile path ?: ""), MachineDocs::folder path, after (context.arguments, "--skin", ""), opened context.arguments)
         found = launched(finder = Link::browse (after (context.arguments, "--browse", "")))
         first = Link::settled found
-        remember (Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true)))))
+        restored (context.arguments, remember (Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))))
+
+    // [CAST-MOBILE-APPEARANCE-RECOVERY] A rejected launch choice must never fail silently.
+    restored (arguments, next) =
+        wanted = after (arguments, "--skin", "")
+        chosen = selected next.stepStore
+        match ui::Lists::position (arguments, \a => a == "--skin") >= 0 && chosen != "" && wanted != chosen
+            true => next(writes = listAppend next.writes (Requests::write ("casting.appearance-warning", "The selected appearance is unavailable. The default appearance has been restored.")))
+            false => next
 
     // [CAST-MOBILE-SKIN-PERSISTENCE] Publish the validated, rendered choice once.
     selected store = (Templates::skin store.screen.screenMachine).skinName

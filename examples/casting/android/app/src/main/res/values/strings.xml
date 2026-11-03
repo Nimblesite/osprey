@@ -1,5 +1,6 @@
 <resources>
     <string name="appearance">Appearance</string>
+    <string name="appearance_restored">Appearance restored</string>
     <string name="casting_failed">Casting could not continue: %1$s</string>
     <string name="local_network_denied">Local network access was denied. Allow it to find and play on a TV.</string>
 </resources>

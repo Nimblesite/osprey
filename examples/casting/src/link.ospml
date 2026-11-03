@@ -9,6 +9,7 @@ import ui::Runtime
 import ui::Requests
 import ui::Machines
 import ui::Canvases
+import ui::Templates
 import ui::Values
 import ui::Ui
 import ui::Inputs
@@ -154,7 +155,12 @@ module Link
     (** The store as launched: the canvas artwork's folder as `assets`, a `--skin` when given and an MP3 the app was opened with. *)
     export launched (store, folder, skin, path) =
         skinned = listConcat [fact ("assets", Values::text folder)] (ui::Pick::either (skin == "", [], [fact ("skin", Values::text skin)]))
-        fed (store, listConcat skinned (ui::Pick::either (path == "", [], fileFacts path)))
+        prepared = fed (store, listConcat skinned (ui::Pick::either (path == "", [], fileFacts path)))
+        // [CAST-MOBILE-APPEARANCE-RECOVERY] The rendered fallback is the real selection.
+        chosen = (Templates::skin (machineOf prepared)).skinName
+        match chosen == ""
+            true => prepared
+            false => fed (prepared, [fact ("skin", Values::text chosen)])
 
     (** Native lifecycle: open a document, choose a bundled skin or close services; other phases change nothing. [CAST-MOBILE-SKINS] *)
     export phased (store, phase) = match phase == "closed"

@@ -173,6 +173,7 @@ public final class CastingActivity extends ComponentActivity {
         var settings = getSharedPreferences("casting", MODE_PRIVATE);
         for (int i = 0; i < slices.length(); i++) {
             JSONObject slice = slices.getJSONObject(i);
+            if (slice.getString("key").equals("casting.appearance-warning")) { appearanceNotice(slice.getString("text")); continue; }
             if (!slice.getString("key").equals("casting.selected-skin")) continue;
             String skin = slice.getString("text");
             if (skin.isEmpty()) throw new JSONException("The selected appearance is empty");
@@ -180,6 +181,15 @@ public final class CastingActivity extends ComponentActivity {
                 !settings.edit().putString("casting.selected-skin", skin).commit())
                 throw new IOException("Cannot save the selected appearance");
         }
+    }
+
+    // [CAST-MOBILE-APPEARANCE-RECOVERY] Present after applying the usable fallback tree.
+    private void appearanceNotice(String message) {
+        if (message.isEmpty()) return;
+        main.post(() -> {
+            if (alive) new android.app.AlertDialog.Builder(this).setTitle(R.string.appearance_restored)
+                .setMessage(message).setPositiveButton(android.R.string.ok, null).show();
+        });
     }
 
     private void request(JSONObject request) throws JSONException {

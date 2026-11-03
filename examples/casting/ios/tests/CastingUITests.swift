@@ -24,6 +24,33 @@ final class CastingUITests: XCTestCase {
     }
 
     @MainActor
+    func testNativeInvalidAppearanceRecovery() {
+        // [CAST-MOBILE-APPEARANCE-RECOVERY] The fixture writes real app-scoped defaults.
+        let app = XCUIApplication()
+        defer { app.terminate() }
+        for saved in ["removed-skin", "", "poolside & <v2>' ☄"] {
+            app.launchEnvironment["CAST_TEST_SAVED_SKIN"] = saved
+            app.launch()
+            let notice = app.alerts["Appearance restored"]
+            XCTAssertTrue(notice.waitForExistence(timeout: 15), app.debugDescription)
+            XCTAssertTrue(notice.staticTexts["The selected appearance is unavailable. The default appearance has been restored."].exists)
+            notice.buttons["OK"].tap()
+            XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["Skin"].exists)
+            app.terminate()
+            app.launchEnvironment.removeValue(forKey: "CAST_TEST_SAVED_SKIN")
+            app.launch()
+            XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 15), app.debugDescription)
+            XCTAssertFalse(notice.exists, "The repaired choice must not warn on the next launch")
+            XCTAssertFalse(app.buttons["Skin"].exists)
+            app.buttons["Appearance"].tap()
+            app.buttons["Midnight Mint"].tap()
+            XCTAssertEqual(app.buttons["Skin"].value as? String, "Midnight Mint")
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testNativeBonjourDiscoveryAndRescan() throws {
         let app = XCUIApplication()
         defer { app.terminate() }

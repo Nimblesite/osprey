@@ -6,12 +6,14 @@ import hashlib
 import json
 import os
 import re
+import shlex
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "examples/casting"
@@ -62,6 +64,35 @@ def stale_volume_popup(tap, find, snapshot):
     tap("Volume 25%"); tap("50%")
     find("Volume 50%")
     print("PASS: changed popup binding rejects its old choice and a fresh menu still controls volume", flush=True)
+
+
+def seed_appearance(adb, package, skin):
+    adb("shell", "am", "force-stop", package)
+    root = ElementTree.Element("map")
+    ElementTree.SubElement(root, "string", name="casting.selected-skin").text = skin
+    xml = ElementTree.tostring(root, encoding="unicode")
+    adb("shell", "run-as", package, "sh", "-c", "printf '%s' " + shlex.quote(xml) + " > shared_prefs/casting.xml")
+    assert adb("exec-out", "run-as", package, "cat", "shared_prefs/casting.xml") == xml
+
+
+def invalid_appearance(adb, launch, tap, find, package, window):
+    # [CAST-MOBILE-APPEARANCE-RECOVERY] Seed real app preferences, then boot normally.
+    snapshot = lambda: json.loads(adb("exec-out", "run-as", package, "cat", "files/test-scene.json"))
+    for skin in ("removed-skin", "", "poolside & <v2>' ☄"):
+        seed_appearance(adb, package, skin)
+        launch(skin=None, native=True, notice=True)
+        find("Appearance restored", timeout=10)
+        find("The selected appearance is unavailable. The default appearance has been restored.")
+        tap("OK")
+        assert find("Open file…").get("class") == "android.widget.Button"
+        wait_native_skin(snapshot, "sherbet")
+        saved = ElementTree.fromstring(adb("exec-out", "run-as", package, "cat", "shared_prefs/casting.xml"))
+        assert saved.find("string[@name='casting.selected-skin']").text == "sherbet"
+        launch(skin=None, native=True)
+        wait_native_skin(snapshot, "sherbet")
+        tree = window()
+        assert tree is not None and not any(node.get("text") == "Appearance restored" for node in tree.iter("node")), "A repaired choice must not warn again"
+    print("PASS: invalid saved appearances show a native notice, repair preferences and restart normally", flush=True)
 
 
 def verify_android_package(archive):

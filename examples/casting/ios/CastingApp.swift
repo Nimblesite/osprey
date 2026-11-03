@@ -74,6 +74,11 @@ private func castingStore() -> RegionStore {
     let folder = Bundle.main.resourceURL?.path ?? ""
     var arguments = ["--machine", folder + "/player.machine.json"] + Array(CommandLine.arguments.dropFirst())
     // [CAST-MOBILE-SKIN-PERSISTENCE] Explicit launch arguments override local settings.
+    #if DEBUG
+    if let saved = ProcessInfo.processInfo.environment["CAST_TEST_SAVED_SKIN"] {
+        UserDefaults.standard.set(saved, forKey: "casting.selected-skin")
+    }
+    #endif
     if !arguments.contains("--skin"), let saved = UserDefaults.standard.string(forKey: "casting.selected-skin") {
         arguments += ["--skin", saved]
     }
@@ -90,6 +95,9 @@ private func castingStore() -> RegionStore {
     return RegionStore(library: Library(entry: entry), context: context, capabilities: CapabilityRunner(adapters: adapters),
                        onSliceWrite: { slice in
         if slice.key == "casting.selected-skin" { UserDefaults.standard.set(slice.text, forKey: slice.key) }
+        if slice.key == "casting.appearance-warning" {
+            NotificationCenter.default.post(name: Notification.Name(slice.key), object: slice.text)
+        }
     })
 }
 
@@ -99,11 +107,18 @@ struct CastingHost: App {
     private let skins = Result { try castingSkins() }
     @Environment(\.scenePhase) private var phase
     @State private var previousFrame = 0.0
+    @State private var appearanceWarning = ""
     private let frames = Timer.publish(every: 1.0 / 30, on: .main, in: .common).autoconnect()
 
     var body: some Scene {
         WindowGroup {
             content
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("casting.appearance-warning"))) { note in
+                    if let message = note.object as? String { appearanceWarning = message }
+                }
+                .alert("Appearance restored", isPresented: Binding(get: { !appearanceWarning.isEmpty }, set: { if !$0 { appearanceWarning = "" } })) {
+                    Button("OK") { appearanceWarning = "" }
+                } message: { Text(appearanceWarning) }
                 .onReceive(frames) { _ in
                     let now = CACurrentMediaTime()
                     if phase == .active, previousFrame > 0 { store.frame(elapsed: min(0.25, max(0, now - previousFrame))) }

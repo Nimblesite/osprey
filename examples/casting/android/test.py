@@ -17,7 +17,7 @@ import time
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from mobile_test import BINDING_CHECK, CastingArtifactContracts, android_java, native_picker, stale_volume_popup, verify_android_package, wait_native_skin
+from mobile_test import BINDING_CHECK, CastingArtifactContracts, android_java, invalid_appearance, native_picker, stale_volume_popup, verify_android_package, wait_native_skin
 
 ROOT = Path(__file__).resolve().parents[3]
 SDK = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
@@ -48,7 +48,6 @@ def index_audio(path):
     result = adb("shell", "content", "call", "--uri", "content://media", "--method", "scan_file", "--arg", canonical)
     assert result.startswith("Result: Bundle[") and "android.intent.extra.STREAM=" in result and "android.intent.extra.STREAM=null" not in result, result
     print("PASS: Android MediaStore indexed the audio fixture before document selection", flush=True)
-
 
 
 def packaged_assets(apk):
@@ -197,13 +196,14 @@ def playback(output):
     find("Play")
 
 
-def launch(skin="sherbet", fixture=None, native=False):
+def launch(skin="sherbet", fixture=None, native=False, notice=False):
     adb("shell", "am", "force-stop", PACKAGE)
     fixture = fixture if fixture is not None else os.environ.get("CAST_TEST_RECEIVER", base64.b64encode(b"\n").decode())
     arguments = ["shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true"]
     if skin is not None: arguments += ["--es", "skin", skin]
     if not native: arguments += ["--es", "testReceiver", fixture]
     adb(*arguments)
+    if notice: return
     assert find("Open file…").get("class") == "android.widget.Button"
     assert find("Play").get("class") == "android.widget.Button"
     assert "files/player/skins/skins" not in adb("exec-out", "run-as", PACKAGE, "find", "files/player/skins", "-type", "d").splitlines()
@@ -293,6 +293,7 @@ def receiver_selection():
 
 def native_discovery(output):
     # [CAST-MOBILE-DELIVERY] No testReceiver extra: real NSD and service-info callbacks.
+    invalid_appearance(adb, launch, tap, find, PACKAGE, read_window)
     launch("midnight", native=True)
     # [CAST-MOBILE-SKIN-PERSISTENCE] Restart without an injected skin override.
     for trigger, skin, label in [("Skin", "poolside", "Poolside Pop"), ("Skin", "sherbet", "Sherbet Signal"), ("Appearance", "midnight", "Midnight Mint")]:
