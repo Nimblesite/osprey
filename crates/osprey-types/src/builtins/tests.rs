@@ -129,6 +129,35 @@ fn assert_tensor_request(prefix: &str, callee: &str, name: &str) {
     }
 }
 
+/// [GPU-MATMUL] Function values retain the float/float32 operand restriction.
+#[test]
+fn matrix_operand_obligations_survive_aliases_and_helpers() {
+    for (prefix, callee) in [
+        ("", "gpuMatMul"),
+        ("let product = gpuMatMul\n", "product"),
+        (
+            "fn product(a, b, r, k, c) = gpuMatMul(a, b, r, k, c)\n",
+            "product",
+        ),
+    ] {
+        for name in ["float", "float32", "float16", "int", "uint8", "bool"] {
+            assert_matrix_request(prefix, callee, name);
+        }
+    }
+}
+
+fn assert_matrix_request(prefix: &str, callee: &str, name: &str) {
+    let source = format!(
+        "{prefix}fn wanted(a: GpuBuffer<{name}>, b: GpuBuffer<{name}>) = {callee}(a, b, 1, 1, 1)\n"
+    );
+    let errors = crate::testutil::check(&source);
+    assert_eq!(
+        errors.is_empty(),
+        matches!(name, "float" | "float32"),
+        "{source}: {errors:?}"
+    );
+}
+
 #[test]
 fn network_builtins_match_the_runtime_status_abi() {
     let expected = [
