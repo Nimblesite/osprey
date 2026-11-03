@@ -1,6 +1,6 @@
 # Python-flavor GPT-2 port notes
 
-The authored sources live in [`examples/gpt2/python`](../../../examples/gpt2/python/README.md). They are self-contained Python-flavor modules: the `Tensor` static effect and its two static handlers, the arithmetic policy, the tokenizer, the checkpoint loader, the records, the forward pass, the KV-cached step and the sampler. The project imports no `.osp` module and its source root holds none. [Plan 0031](../0031-python-flavor.md) tracks the complete flavor. Training is not being ported at the moment; the Osprey trainer in `examples/gpt2/train` stays Default-only.
+The authored sources live in [`examples/gpt2/python`](../../examples/gpt2/python/README.md). They are self-contained Python-flavor modules: the `Tensor` static effect and its two static handlers, the arithmetic policy, the tokenizer, the checkpoint loader, the records, the forward pass, the KV-cached step and the sampler. The project imports no `.osp` module and its source root holds none. [Plan 0031](0031-python-flavor.md) tracks the complete flavor. Training is not being ported at the moment; the Osprey trainer in `examples/gpt2/train` stays Default-only.
 
 | Reference Python | Osprey Python flavor |
 | --- | --- |

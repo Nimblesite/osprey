@@ -47,4 +47,4 @@ The generator comparison itself is `python_gpt2_generator_output_is_byte_identic
 
 Only generation is ported. The [training program](../train) is not being ported at the moment and stays Default-only; `make -C apps gpt2-train` rejects `FLAVOR=python`.
 
-The [port notes](../../../docs/plans/python-flavor-port/README.md) show the concrete changes from reference Python.
+The [port notes](../../../docs/plans/python-flavor-port.md) show the concrete changes from reference Python.
