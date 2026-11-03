@@ -70,9 +70,11 @@ pub(crate) fn hover(
     }
     match best_match(&symbols, &word, line) {
         Some(sym) => Some(symbol_hover(sym, &program, flavor)),
-        None => builtin_doc(word.rsplit("::").next().unwrap_or(&word), flavor)
+        None => crate::features::variants::hover(&program.statements, &word, flavor)
+            .or_else(|| builtin_doc(word.rsplit("::").next().unwrap_or(&word), flavor))
             .or_else(|| written_hover(&symbols, &word, line, &program, flavor))
             .or_else(|| project_hover(siblings, &word, flavor))
+            .or_else(|| project_variant_hover(siblings, &word, flavor))
             .or_else(|| keyword_hover(&word, flavor)),
     }
 }
@@ -85,6 +87,17 @@ fn project_hover(siblings: &[workspace::Sibling], word: &str, flavor: Flavor) ->
         let symbols = collect_all_symbols(&sibling.program);
         let found = symbols.iter().find(|s| symbol_matches(s, word))?;
         Some(symbol_hover(found, &sibling.program, flavor))
+    })
+}
+
+/// A variant declared in a sibling file. Implements [LSP-HOVER-VARIANTS].
+fn project_variant_hover(
+    siblings: &[workspace::Sibling],
+    word: &str,
+    flavor: Flavor,
+) -> Option<String> {
+    siblings.iter().find_map(|sibling| {
+        crate::features::variants::hover(&sibling.program.statements, word, flavor)
     })
 }
 

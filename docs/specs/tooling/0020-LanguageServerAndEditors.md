@@ -239,6 +239,12 @@ Implemented by `render_with_holes` in
 over `ProgramTypes::param_types` / `return_type`. Hover and `--symbols` share
 that one path, so an outline entry and a tooltip can never disagree.
 
+### Union variants `[LSP-HOVER-VARIANTS]`
+
+A variant hovers from its declaration, a `match` arm or a value alike, in the open
+buffer or a sibling file: its name, what it carries, its union, and the union's
+documentation.
+
 ### Written names `[LSP-HOVER-WRITTEN]`
 
 Parameters and built-in type names are hoverable even though they are not
@@ -310,6 +316,12 @@ that hovers perfectly well — the built-in resolves to the identifier the curso
 sits on, a graceful self-definition. Implemented in
 [`osprey-lsp/src/features.rs`](../../../crates/osprey-lsp/src/features.rs)
 (`builtin_definition`), reusing the same built-in table as `[LSP-HOVER]`.
+
+### Union variants `[LSP-DEFINITION-VARIANTS]`
+
+A variant defines at its name in its union's declaration, in the open buffer or a
+sibling file. In a `match` arm the name is the variant, not a binder, so the variant
+comes before the lexical scope.
 
 ### Effect operations `[LSP-DEFINITION-EFFECT-OPERATIONS]`
 

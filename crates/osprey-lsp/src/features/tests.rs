@@ -523,8 +523,7 @@ fn union_variants_hover_and_define_across_the_project() -> std::io::Result<()> {
     let found = definition(using, &uri, 1, 5, U16);
     let first = found.first().expect("definition across the project");
     assert_eq!(first.uri, declared_in, "{found:?}");
-    let column = col_of(declaring, 1, "Clock");
-    assert_eq!(first.span, (1, column, 1, column + 5), "{found:?}");
+    assert_eq!(first.span, word_span(declaring, (1, "Clock")), "{found:?}");
     let shown = hover(using, &uri, 1, 5, U16).expect("hover across the project");
     crate::testkit::shows(&shown, &["Clock", "Symbol", "A semantic icon"]);
     Ok(())
