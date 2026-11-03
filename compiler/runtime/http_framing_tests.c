@@ -9,7 +9,9 @@
 #include "io_error.h"
 
 #include <assert.h>
+#include <signal.h>
 #include <stdio.h>
+#include <unistd.h>
 
 static const char NUL_REFUSED[] = "http response: NUL byte: a string cannot hold it";
 static const char TOO_BIG_REFUSED[] =
@@ -22,10 +24,12 @@ static const char LENGTH_BAD[] = "http response: body: invalid Content-Length";
 // Handles are never reused, and servers share their numbering with clients, so
 // these hundreds of cases share one client rather than spend hundreds of handles.
 static int64_t client_id;
+static bool hold_connections_open;
 
 static int64_t exchange(const char *reply, size_t len) {
   ScriptedOrigin origin;
   origin_start_bytes(&origin, reply, len);
+  origin.hold_open = hold_connections_open; // read only once the request arrives
   int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/f",
                                      (char *)(uintptr_t) "");
   origin_stop(&origin);
@@ -50,7 +54,7 @@ static void expect_response_n(const char *reply, size_t len, int64_t status,
 // Answered with this code and message, nothing leaked, the client still usable.
 static void expect_failure_n(const char *reply, size_t len, int64_t code,
                              const char *message) {
-  static const char good[] = "HTTP/1.1 200 OK\r\n\r\nok";
+  static const char good[] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
   long live = test_alloc_live();
   osp_io_error_clear();
   assert(exchange(reply, len) == code);
@@ -120,6 +124,112 @@ static void check_repeated_transfer_encoding(void) {
   static const char lying[] =
       "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n";
   expect_refused_n(lying, sizeof(lying) - 1, TOO_BIG_REFUSED);
+}
+
+// A list may hold empty elements (RFC 9110 5.6.1): they name no coding, so they
+// can't hide chunked as the last one, nor a later empty line undo it.
+static void check_empty_list_elements(void) {
+  static const char *const chunked[] = {
+      "chunked,", "chunked, ", "chunked ,\t", ",chunked", " , chunked , ,",
+      "gzip,,chunked,,", "chunked\r\nTransfer-Encoding: ,",
+      "chunked\r\nTransfer-Encoding:", ",\r\nTransfer-Encoding: chunked,",
+  };
+  static const char *const plain[] = {"notchunked,", "chunked, gzip,", ",gzip", "chunked\r\nTransfer-Encoding: gzip,"};
+  char reply[200];
+  for (size_t i = 0; i < sizeof(chunked) / sizeof(chunked[0]); i++) {
+    int len = snprintf(reply, sizeof(reply), "HTTP/1.1 200 OK\r\nTransfer-Encoding: %s\r\n\r\n5\r\nhello\r\n0\r\n\r\n", chunked[i]);
+    expect_response_n(reply, (size_t)len, 200, "hello");
+    len = snprintf(reply, sizeof(reply), "HTTP/1.1 200 OK\r\nTransfer-Encoding: %s\r\n\r\n7FFFFFFF\r\nhi\r\n", chunked[i]);
+    expect_refused_n(reply, (size_t)len, TOO_BIG_REFUSED);
+  }
+  for (size_t i = 0; i < sizeof(plain) / sizeof(plain[0]); i++) {
+    int len = snprintf(reply, sizeof(reply), "HTTP/1.1 200 OK\r\nTransfer-Encoding: %s\r\n\r\n2\r\nhi\r\n", plain[i]);
+    expect_response_n(reply, (size_t)len, 200, "2\r\nhi\r\n");
+  }
+}
+
+// Transfer-Encoding overrides Content-Length, whatever its coding (RFC 9112 6.3);
+// an empty one names no coding, so the length still stands.
+static void check_coding_overrides_length(void) {
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: 2\r\n\r\nhello", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 99\r\nTransfer-Encoding: gzip\r\n\r\nhello", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: abc\r\n\r\nhello", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: ,\r\nContent-Length: 2\r\n\r\nhello", 200, "he");
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding:\r\nContent-Length: 9\r\n\r\nhello", BODY_CUT);
+}
+
+// A skipped interim head is held to the same rules as the final one. Otherwise its
+// blank line goes unnoticed, and the final head's is taken for it, making the body
+// the response.
+static void check_interim_heads_are_checked(void) {
+  EXPECT_REFUSED("HTTP/1.1 100 X\n\nHTTP/1.1 200 OK\r\n\r\nHTTP/1.1 404 Forged\r\n\r\nno", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 100 X\r\nno-colon\r\n\r\nHTTP/1.1 200 OK\r\n\r\nok", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 103 X\r\nLink: a\r\n b: c\r\n\r\nHTTP/1.1 200 OK\r\n\r\nok", HEAD_BAD);
+  EXPECT_RESPONSE("HTTP/1.1 103 X\r\nLink: a\r\n\r\nHTTP/1.1 200 OK\r\n\r\nok", 200, "ok");
+}
+
+// A read that fails or times out is not the close that ends an unframed body:
+// reporting what arrived so far as the whole body is how a cut goes unnoticed.
+// Framing that is complete needs no close, and framing that isn't stays refused.
+static void check_reads_that_never_saw_the_close(void) {
+  int64_t patient = client_id;
+  client_id = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", 150);
+  assert(client_id > 0);
+  hold_connections_open = true;
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\n\r\nhalf a bo", BODY_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nhalf a bo", BODY_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nhalf", BODY_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Le", HEAD_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhel", TOO_BIG_REFUSED);
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nhalf", 200, "half");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n", 200, "ok");
+  EXPECT_RESPONSE("HTTP/1.1 204 No Content\r\n\r\n", 204, "");
+  EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\n\r\n", 304, "");
+  hold_connections_open = false;
+  http_close_client(client_id);
+  client_id = patient;
+}
+
+static void ignore_signal(int signo) {
+  (void)signo;
+}
+
+static void *interrupt_soon(void *target) {
+  usleep(50000);
+  assert(pthread_kill(*(pthread_t *)target, SIGUSR1) == 0);
+  return NULL;
+}
+
+// One exchange with a signal landing while the client waits for the reply.
+static int64_t exchange_interrupted(void) {
+  pthread_t self = pthread_self();
+  pthread_t interrupter;
+  assert(pthread_create(&interrupter, NULL, interrupt_soon, &self) == 0);
+  ScriptedOrigin origin;
+  origin_start(&origin, "HTTP/1.1 200 OK\r\n\r\nok");
+  origin.reply_delay_us = 200000; // read only once the request arrives
+  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/f",
+                                     (char *)(uintptr_t) "");
+  origin_stop(&origin);
+  assert(pthread_join(interrupter, NULL) == 0);
+  return handle;
+}
+
+// A signal landing mid-read ends neither the read nor the response.
+static void check_interrupted_read(void) {
+  struct sigaction action;
+  struct sigaction previous;
+  memset(&action, 0, sizeof(action));
+  action.sa_handler = ignore_signal; // no SA_RESTART: recv fails with EINTR
+  assert(sigaction(SIGUSR1, &action, &previous) == 0);
+  int64_t handle = exchange_interrupted();
+  assert(sigaction(SIGUSR1, &previous, NULL) == 0);
+  assert(handle >= 1);
+  char *got = http_response_body(handle);
+  assert(got != NULL && strcmp(got, "ok") == 0);
+  free(got);
+  assert(http_response_free(handle) == 0);
 }
 
 // Running out of memory copying the headers is -9, never a chunked body handed
@@ -312,7 +422,7 @@ static void parse_damaged(const char *bytes, size_t len) {
   assert(http_copy_response_headers(head, sep, &headers));
   char *body = NULL;
   const char *start = sep + 4;
-  rc = http_response_body_of(status, headers, start, len - (size_t)(start - raw), &body);
+  rc = http_response_body_of(status, headers, start, len - (size_t)(start - raw), true, &body);
   if (rc == 0) {
     assert(body != NULL && strlen(body) <= len);
     free(body);
@@ -368,6 +478,11 @@ void test_response_framing(void) {
   check_statuses_without_a_body();
   check_nul_bytes();
   check_repeated_transfer_encoding();
+  check_empty_list_elements();
+  check_coding_overrides_length();
+  check_interim_heads_are_checked();
+  check_reads_that_never_saw_the_close();
+  check_interrupted_read();
   check_header_allocation_failure();
   check_bodies_past_the_transport_buffer();
   http_close_client(client_id);

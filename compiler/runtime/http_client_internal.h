@@ -11,10 +11,11 @@
 
 // Performs the request over http:// or https:// and returns the ENTIRE raw
 // response in a freshly allocated, NUL-terminated buffer (caller frees
-// *out_raw). Returns 0 on success or a negative error code.
+// *out_raw). *out_closed says the peer closed in good order, not that a read
+// failed or timed out. Returns 0 on success or a negative error code.
 int64_t http_perform(int64_t client_id, int64_t method, char *path,
                      char *headers, char *body, char **out_raw,
-                     size_t *out_len);
+                     size_t *out_len, bool *out_closed);
 
 // Returns the numeric status from an HTTP status line, or -8.
 int64_t http_parse_status_line(const char *raw);
@@ -23,7 +24,7 @@ const char *http_checked_head(const char *raw, size_t len, const char **sep,
                               int64_t *status, int64_t *rc);
 bool http_copy_response_headers(const char *head, const char *sep, char **out);
 int64_t http_response_body_of(int64_t status, const char *headers, const char *body,
-                              size_t body_len, char **out);
+                              size_t body_len, bool closed, char **out);
 
 // Reports whether the response header block declares
 // Transfer-Encoding: chunked (case-insensitive header name).

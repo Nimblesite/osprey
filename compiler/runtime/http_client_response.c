@@ -34,7 +34,8 @@ static int64_t http_request_capture(int64_t client_id, int64_t method,
                                     char *path, char *headers, char *body) {
   char *raw = NULL;
   size_t len = 0;
-  int64_t rc = http_perform(client_id, method, path, headers, body, &raw, &len);
+  bool closed = false;
+  int64_t rc = http_perform(client_id, method, path, headers, body, &raw, &len, &closed);
   if (rc != 0) {
     return rc;
   }
@@ -55,7 +56,7 @@ static int64_t http_request_capture(int64_t client_id, int64_t method,
   const char *body_start = sep + 4;
   char *resp_body = NULL;
   rc = http_response_body_of(status, resp_headers, body_start,
-                     len - (size_t)(body_start - raw), &resp_body);
+                             len - (size_t)(body_start - raw), closed, &resp_body);
   free(raw);
   if (rc != 0) {
     free(resp_headers);

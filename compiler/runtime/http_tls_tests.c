@@ -59,6 +59,7 @@ typedef struct {
   pthread_t thread;
   SSL_CTX *ctx;
   const char *reply;
+  bool abrupt; // close without the close_notify, as a cut connection does
   char request[MAX_HTTP_BUFFER];
 } TlsOrigin;
 
@@ -109,7 +110,9 @@ static void *tls_origin_thread(void *arg) {
         SSL_write(ssl, origin->reply, (int)strlen(origin->reply));
       }
     }
-    SSL_shutdown(ssl);
+    if (!origin->abrupt) {
+      SSL_shutdown(ssl); // the close_notify that says nothing was cut off
+    }
     SSL_free(ssl);
   }
   close(fd);
@@ -234,15 +237,44 @@ static void tls_expect_served(EVP_PKEY *ca_key, X509 *ca, const char *cn,
 
 // One exact reply over a trusted TLS connection, returning what the client made of
 // it. The caller frees any handle.
-static int64_t tls_exchange(EVP_PKEY *key, X509 *leaf, const char *reply) {
+static int64_t tls_exchange(EVP_PKEY *key, X509 *leaf, const char *reply, bool abrupt) {
   TlsOrigin origin;
   tls_origin_start(&origin, leaf, key, reply);
+  origin.abrupt = abrupt; // read only once the request below has arrived
   int64_t client_id = tls_client("127.0.0.1");
   int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/x",
                                      (char *)(uintptr_t) "");
   tls_origin_stop(&origin);
   http_close_client(client_id);
   return handle;
+}
+
+static void tls_expect_body(EVP_PKEY *key, X509 *leaf, const char *reply, bool abrupt,
+                            const char *expected) {
+  int64_t handle = tls_exchange(key, leaf, reply, abrupt);
+  assert(handle >= 1);
+  char *body = http_response_body(handle);
+  assert(body != NULL && strcmp(body, expected) == 0);
+  free(body);
+  assert(http_response_free(handle) == 0);
+}
+
+// With no length to check against, only the close_notify says a body is whole: a
+// peer on the wire can forge the TCP close, not this [HTTP-RESPONSE-FRAMING].
+static void tls_expect_truncation_refused(EVP_PKEY *key, X509 *leaf) {
+  static const char unframed[] = "HTTP/1.1 200 OK\r\n\r\nhalf a bo";
+  tls_expect_body(key, leaf, unframed, false, "half a bo");
+  osp_io_error_clear();
+  assert(tls_exchange(key, leaf, unframed, true) == -14);
+  assert(strcmp(osp_io_error(), "http response: body: truncated") == 0);
+  osp_io_error_clear();
+  tls_expect_body(key, leaf, unframed, false, "half a bo");
+  tls_expect_body(key, leaf, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", true, "ok");
+  tls_expect_body(key, leaf,
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n", true, "ok");
+  assert(tls_exchange(key, leaf,
+      "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nok", true) == -14);
+  osp_io_error_clear();
 }
 
 // TLS is only a different pipe: hostile framing arriving through it is decoded or
@@ -253,18 +285,19 @@ static void tls_expect_framing_enforced(EVP_PKEY *ca_key, X509 *ca) {
   assert(leaf != NULL);
   int64_t handle = tls_exchange(key, leaf,
       "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
-      "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n");
+      "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n", false);
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, "hello world") == 0);
   free(body);
   assert(http_response_free(handle) == 0);
   assert(tls_exchange(key, leaf,
-      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n") == -14);
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n", false) == -14);
   assert(tls_exchange(key, leaf,
-      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhel") == -14);
-  assert(tls_exchange(key, leaf, "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nhel") == -14);
-  assert(tls_exchange(key, leaf, "HTTP/1.1 -14 X\r\n\r\nhel") == -8);
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhel", false) == -14);
+  assert(tls_exchange(key, leaf, "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nhel", false) == -14);
+  assert(tls_exchange(key, leaf, "HTTP/1.1 -14 X\r\n\r\nhel", false) == -8);
+  tls_expect_truncation_refused(key, leaf);
   osp_io_error_clear();
   X509_free(leaf);
   EVP_PKEY_free(key);

@@ -9,38 +9,51 @@
 // line, its head and how its body is framed. Everything here treats the bytes as
 // untrusted. Implements [HTTP-RESPONSE-FRAMING] and [HTTP-CHUNKED-DECODE].
 
-// Whether chunked is the last coding of one Transfer-Encoding value, as a whole
-// word. value - 1 is always the header's colon, so looking back stays in bounds.
-static bool value_ends_chunked(const char *value, const char *end) {
+// What the Transfer-Encoding lines of a header block leave as the final coding.
+typedef enum { CODING_NONE, CODING_OTHER, CODING_CHUNKED } TransferCoding;
+
+// The last coding of one Transfer-Encoding value, as a whole word. Empty list
+// elements name no coding (RFC 9110 5.6.1), so a value of only those changes
+// nothing. value - 1 is always the header's colon, so looking back stays in bounds.
+static TransferCoding last_coding(const char *value, const char *end,
+                                  TransferCoding previous) {
   static const size_t coding_len = 7;
-  while (end > value && (end[-1] == ' ' || end[-1] == '\t')) {
+  while (end > value && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == ',')) {
     end--;
+  }
+  if (end == value) {
+    return previous;
   }
   if ((size_t)(end - value) < coding_len ||
       strncasecmp(end - coding_len, "chunked", coding_len) != 0) {
-    return false;
+    return CODING_OTHER;
   }
   char before = end[-(ptrdiff_t)coding_len - 1];
-  return before == ':' || before == ' ' || before == '\t' || before == ',';
+  bool whole_word = before == ':' || before == ' ' || before == '\t' || before == ',';
+  return whole_word ? CODING_CHUNKED : CODING_OTHER;
+}
+
+// Repeated lines are one list, so the last coding on any of them decides. Any other
+// header that merely mentions either word does not count.
+static TransferCoding final_coding(const char *headers) {
+  static const size_t name_len = 18;
+  TransferCoding coding = CODING_NONE;
+  for (const char *line = headers; line && *line;) {
+    const char *eol = strstr(line, "\r\n");
+    if (strncasecmp(line, "Transfer-Encoding:", name_len) == 0) {
+      const char *value = line + name_len;
+      coding = last_coding(value, eol ? eol : value + strlen(value), coding);
+    }
+    line = eol ? eol + 2 : NULL;
+  }
+  return coding;
 }
 
 // http_header_is_chunked reports whether the response header block names chunked
 // as the final coding of its Transfer-Encoding header (case-insensitive, per
-// RFC 9112 6.1). Repeated lines are one list, so the last one decides. Any other
-// header that merely mentions either word does not count.
+// RFC 9112 6.1).
 bool http_header_is_chunked(const char *headers) {
-  static const size_t name_len = 18;
-  bool chunked = false;
-  const char *line = headers;
-  while (line && *line) {
-    const char *eol = strstr(line, "\r\n");
-    if (strncasecmp(line, "Transfer-Encoding:", name_len) == 0) {
-      const char *value = line + name_len;
-      chunked = value_ends_chunked(value, eol ? eol : value + strlen(value));
-    }
-    line = eol ? eol + 2 : NULL;
-  }
-  return chunked;
+  return final_coding(headers) == CODING_CHUNKED;
 }
 
 static const char CHUNK_TOO_BIG[] = "chunk size exceeds the remaining body";
@@ -196,20 +209,6 @@ int64_t http_parse_status_line(const char *raw) {
   return (d[0] - '0') * 100 + (d[1] - '0') * 10 + (d[2] - '0');
 }
 
-// http_final_response skips interim 1xx responses, which aren't the answer. 101 is
-// final: nothing after it is HTTP.
-const char *http_final_response(const char *raw) {
-  const char *head = raw;
-  for (;;) {
-    int64_t status = http_parse_status_line(head);
-    const char *sep = strstr(head, "\r\n\r\n");
-    if (status < 100 || status >= 200 || status == 101 || !sep) {
-      return head;
-    }
-    head = sep + 4;
-  }
-}
-
 // Whether the status line and header lines hold nothing that could hide framing
 // from the header scan: no stray control byte, folded line or space in a name.
 static bool head_is_well_formed(const char *head, const char *sep) {
@@ -228,6 +227,22 @@ static bool head_is_well_formed(const char *head, const char *sep) {
     }
   }
   return true;
+}
+
+// http_final_response skips interim 1xx responses, which aren't the answer. 101 is
+// final: nothing after it is HTTP. A malformed interim head is returned for the
+// caller to refuse, as skipping it would take a later blank line for its end.
+const char *http_final_response(const char *raw) {
+  const char *head = raw;
+  for (;;) {
+    int64_t status = http_parse_status_line(head);
+    const char *sep = strstr(head, "\r\n\r\n");
+    if (status < 100 || status >= 200 || status == 101 || !sep ||
+        !head_is_well_formed(head, sep)) {
+      return head;
+    }
+    head = sep + 4;
+  }
 }
 
 // Copies the header block between the status line and the blank line. Returns
@@ -290,17 +305,20 @@ static bool declared_length(const char *headers, bool *declared, size_t *length)
   return true;
 }
 
-// Copies a body framed by its Content-Length or by the connection's close. Returns
-// NULL when out of memory or, with *malformed set, when the framing is wrong.
+// Copies a body framed by its Content-Length or by the connection's close. Any
+// coding overrides the length (RFC 9112 6.3). A body framed by the close needs to
+// have seen it: a read that failed proves nothing but where the bytes stopped.
+// Returns NULL when out of memory or, with *malformed set, when the framing is wrong.
 static char *plain_body(const char *headers, const char *body, size_t body_len,
-                        const char **malformed) {
+                        bool closed, const char **malformed) {
   bool declared = false;
   size_t length = body_len;
-  if (!declared_length(headers, &declared, &length)) {
+  if (final_coding(headers) == CODING_NONE &&
+      !declared_length(headers, &declared, &length)) {
     *malformed = "invalid Content-Length";
     return NULL;
   }
-  if (declared && length > body_len) {
+  if (declared ? length > body_len : !closed) {
     *malformed = CHUNK_CUT_SHORT;
     return NULL;
   }
@@ -320,7 +338,7 @@ static bool status_has_no_body(int64_t status) {
 
 // Produces the retained body, or a negative code with the reason on the channel.
 int64_t http_response_body_of(int64_t status, const char *headers, const char *body,
-                             size_t body_len, char **out) {
+                              size_t body_len, bool closed, char **out) {
   const char *malformed = NULL;
   const char *subject = "body";
   if (status_has_no_body(status)) {
@@ -329,7 +347,7 @@ int64_t http_response_body_of(int64_t status, const char *headers, const char *b
     subject = "chunked body";
     *out = http_decode_chunked(body, body_len, &malformed);
   } else {
-    *out = plain_body(headers, body, body_len, &malformed);
+    *out = plain_body(headers, body, body_len, closed, &malformed);
   }
   if (malformed) {
     osp_io_error_text("http response", subject, malformed);
@@ -341,7 +359,7 @@ int64_t http_response_body_of(int64_t status, const char *headers, const char *b
 // Refuses a response whose bytes can't be trusted as far as its body, and returns
 // where its final response's head is, with its blank line in *sep. NULL with *rc.
 const char *http_checked_head(const char *raw, size_t len, const char **sep,
-                                int64_t *status, int64_t *rc) {
+                              int64_t *status, int64_t *rc) {
   const char *reason = NULL;
   const char *subject = "head";
   const char *head = http_final_response(raw);
