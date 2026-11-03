@@ -247,12 +247,10 @@ def unit_down(m, e):
 
 
 def split_double(x):
-    """(sign, F, E) with x = sign * F * 2^E, F a positive int < 2^53."""
+    """(sign, F, E) with x = sign * F * 2^E, F a positive int < 2^53, for x != 0."""
     sign = 0 if x > 0.0 else 1
     m = abs(x)
-    if m == 0.0:
-        return DoubleFields(sign=sign, significand=0, exponent=0)
-    elif m * pow2(1022) >= 1.0:
+    if m * pow2(1022) >= 1.0:
         unit = to_unit(m)
         F = unwrap_or(floatToInt(unit.mantissa * pow2(52)), 0)
         return DoubleFields(sign=sign, significand=F, exponent=unit.exponent - 52)
@@ -262,11 +260,9 @@ def split_double(x):
 
 
 def round_shift(M, k):
-    """M >> k with round-half-even, for M >= 0 and k >= 0."""
+    """M >> k with round-half-even, for M >= 0 and k > 0."""
     if k >= 54:
         return 0
-    elif k == 0:
-        return M
     else:
         q = intDiv(M, pow2i(k))
         r = M % pow2i(k)
