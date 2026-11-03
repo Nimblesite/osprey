@@ -3,7 +3,13 @@
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ..
 
-.PHONY: wasm wasm-site wasm-serve docs-html-test
+.PHONY: wasm wasm-site wasm-serve docs docs-html-test
+
+## docs: Rebuild the compiler and regenerate built-in reference pages and ML twins.
+##       Removed builtins are pruned; generated pages remain untracked.
+docs:
+	cd $(ROOT) && cargo build -p osprey-cli
+	OSPREY_BIN="$(abspath $(ROOT))/target/debug/osprey" npm run generate-docs
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,
