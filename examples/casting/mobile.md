@@ -13,6 +13,7 @@ Both native apps build and run in the simulator/emulator. Both platforms pass th
 - [x] Verify shared library builds for physical iPhone, iOS simulator, Android ARM64 and Android x64.
 - [x] Drive both native apps through TLS playback, pause/resume, seek, volume, speed, stop and replay; verify metadata, exact served MP3 bytes and one command per slider adjustment.
 - [x] Verify native picker cancellation twice and restart on both platforms; verify actual picker import and playback from the imported copy on both platforms.
+- [x] Replace Android virtual accessibility controls with real native buttons and seek bars; verify Tab focus and Enter activation against the actual file picker.
 - [ ] Implement reusable SwiftUI and Android rendering for the casting machine, including canvas, native controls, accessibility, frame clock and responsive layout.
 - [ ] Replace process-based discovery with native Bonjour and Android network service discovery; handle permission denial, retries and disappearing receivers.
 - [ ] Implement document selection and copying scoped files into app storage, including cancellation and failed reads.
@@ -29,7 +30,7 @@ The existing host-free casting suite simulates the receiver and drives the real 
 ## Verified native progress [CAST-MOBILE-EVIDENCE]
 
 - iOS: the unsigned physical-device app and simulator app link successfully; the real iPhone simulator UI test passes launch, two document-picker cancellations, actual Files selection and import, fixture-file loading, play/pause/resume, seek, volume, speed, stop, replay and restart. Native sliders and speed-menu buttons are verified through XCTest. The receiver checks the requested control values and rejects duplicate slider commands.
-- Android: ARM64 and x64 JNI libraries link into the APK; the ARM64 emulator discovers a real LAN TV and passes two document-picker cancellations, MP3 import, scene-title verification, play/pause/resume, seek, volume, speed, stop, replay and restart. The fixture verifies exact MP3 bytes over HTTP HEAD and range requests. Android lint passes with warnings treated as errors.
+- Android: real `Button` and `SeekBar` widgets provide touch, keyboard navigation, native accessibility and focus indicators beneath the shared skin artwork. Programmatic native range updates are paced every two seconds while the canvas keeps animating; focusing or dragging a slider synchronizes it immediately. The keyboard journey opens and cancels the native file picker. ARM64 and x64 JNI libraries link into the APK; the ARM64 emulator discovers a real LAN TV and passes two document-picker cancellations, MP3 import, scene-title verification, play/pause/resume, seek, volume, speed, stop, replay and restart. The fixture verifies exact MP3 bytes over HTTP HEAD and range requests. Android lint passes with warnings treated as errors.
 - Both TLS implementations pass a live loopback test covering handshake, fragmented reads, timeout recovery, byte preservation, writes, EOF, cleanup and route selection.
 - The shared casting suite passes all seven journeys; the Swift host passes 37 regression tests. Native network and media-render runtime suites pass.
 - The mobile media runtime uses the existing contract's original-audio fallback because sandboxed apps cannot launch desktop ffmpeg. A native TV visualization renderer is not implemented.

@@ -9,12 +9,8 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Typeface;
 import android.view.MotionEvent;
-import android.view.View;
-import android.os.Bundle;
+import android.view.ViewGroup;
 import android.graphics.Rect;
-import android.view.accessibility.AccessibilityNodeInfo;
-import android.view.accessibility.AccessibilityNodeProvider;
-import android.view.accessibility.AccessibilityEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -23,9 +19,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 // [UI-SCENE-STREAM] Draws the machine's vector art and sends its pointer events.
-final class SceneCanvas extends View {
+final class SceneCanvas extends ViewGroup {
     interface Control { void send(int ordinal, long revision, JSONObject value); }
     private final Control control;
+    private final SceneControls controls;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final HashMap<String, Bitmap> images = new HashMap<>();
     private final ArrayList<JSONArray> shapes = new ArrayList<>();
@@ -35,57 +32,37 @@ final class SceneCanvas extends View {
     private long revision;
     private int ordinal;
     private JSONArray access = new JSONArray();
-    private final AccessibilityNodeProvider accessibility = new AccessibilityNodeProvider() {
-        @Override public AccessibilityNodeInfo createAccessibilityNodeInfo(int id) {
-            AccessibilityNodeInfo info = new AccessibilityNodeInfo(SceneCanvas.this, id);
-            info.setPackageName(getContext().getPackageName());
-            if (id == HOST_VIEW_ID) {
-                onInitializeAccessibilityNodeInfo(info);
-                for (int i = 0; i < access.length(); i++) info.addChild(SceneCanvas.this, i);
-                return info;
-            }
-            JSONObject item = access.optJSONObject(id);
-            if (item == null) return null;
-            info.setParent(SceneCanvas.this);
-            info.setContentDescription(item.optString("label"));
-            info.setEnabled(true); info.setFocusable(true); info.setVisibleToUser(isShown());
-            String role = item.optString("role");
-            info.setClassName(role.equals("slider") ? "android.widget.SeekBar" : "android.widget.Button");
-            int[] screen = new int[2]; getLocationOnScreen(screen);
-            Rect bounds = bounds(item); bounds.offset(screen[0], screen[1]); info.setBoundsInScreen(bounds);
-            if (role.equals("slider")) {
-                info.setRangeInfo(new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT,
-                    (float) item.optDouble("min"), (float) item.optDouble("max"), (float) item.optDouble("value")));
-                info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS);
-            } else { info.setClickable(true); info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK); }
-            return info;
-        }
-        @Override public boolean performAction(int id, int action, Bundle arguments) {
-            JSONObject item = access.optJSONObject(id);
-            if (item == null) return false;
-            double fraction = 0.5;
-            if (action == AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.getId() && arguments != null) {
-                double min = item.optDouble("min"), max = item.optDouble("max");
-                fraction = Math.max(0, Math.min(1, (arguments.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE) - min) / Math.max(0.000001, max - min)));
-            } else if (action != AccessibilityNodeInfo.ACTION_CLICK) return false;
-            double x = item.optDouble("x") + item.optDouble("w") * fraction;
-            double y = item.optDouble("y") + item.optDouble("h") / 2;
-            for (boolean down : new boolean[]{true, false}) control.send(ordinal, revision, CastingActivity.object("x", x, "y", y, "down", down, "shift", false));
-            return true;
-        }
-    };
-
     private Rect bounds(JSONObject item) {
         return new Rect(Math.round(left + (float) item.optDouble("x") * scale), Math.round(top + (float) item.optDouble("y") * scale),
             Math.round(left + (float) (item.optDouble("x") + item.optDouble("w")) * scale), Math.round(top + (float) (item.optDouble("y") + item.optDouble("h")) * scale));
     }
 
-    @Override public AccessibilityNodeProvider getAccessibilityNodeProvider() { return accessibility; }
+    void act(JSONObject item, double fraction, Boolean down) {
+        double x = item.optDouble("x") + item.optDouble("w") * fraction;
+        double y = item.optDouble("y") + item.optDouble("h") / 2;
+        if (down == null) { act(item, fraction, true); act(item, fraction, false); return; }
+        control.send(ordinal, revision, CastingActivity.object("x", x, "y", y, "down", down, "shift", false));
+    }
+
+    private void geometry() {
+        if (width <= 0 || height <= 0) return;
+        scale = (float) Math.min(getWidth() / width, getHeight() / height);
+        left = (getWidth() - (float) width * scale) / 2;
+        top = (getHeight() - (float) height * scale) / 2;
+    }
+
+    @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        geometry();
+        controls.layout(this::bounds);
+    }
 
     SceneCanvas(Context context, Control control) {
         super(context);
         this.control = control;
-        setFocusable(true);
+        controls = new SceneControls(this);
+        setFocusable(false);
+        setDescendantFocusability(FOCUS_AFTER_DESCENDANTS);
+        setWillNotDraw(false);
         setContentDescription("Casting player");
     }
 
@@ -105,6 +82,7 @@ final class SceneCanvas extends View {
         if (nextAccess == null) nextAccess = new JSONArray();
         boolean changed = !structure(access).equals(structure(nextAccess));
         access = nextAccess;
+        controls.update(access);
         atlas = node.getJSONArray("atlas");
         if (pending.length() > 0) streamed = pending;
         shapes.clear();
@@ -121,11 +99,11 @@ final class SceneCanvas extends View {
             }
         }
         invalidate();
-        if (changed) sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        if (changed) requestLayout();
     }
 
-    // Playback position changes every frame. Announce structural changes,
-    // while range values remain available through the live node provider.
+    // Native range widgets update independently; only structural changes
+    // need another layout pass.
     private static String structure(JSONArray access) throws JSONException {
         JSONArray result = new JSONArray();
         for (int i = 0; i < access.length(); i++) {
@@ -139,9 +117,7 @@ final class SceneCanvas extends View {
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         if (width <= 0 || height <= 0) return;
-        scale = (float) Math.min(getWidth() / width, getHeight() / height);
-        left = (getWidth() - (float) width * scale) / 2;
-        top = (getHeight() - (float) height * scale) / 2;
+        geometry();
         canvas.save(); canvas.translate(left, top); canvas.scale(scale, scale);
         try { for (JSONArray shape : shapes) draw(shape, canvas); }
         catch (JSONException error) {

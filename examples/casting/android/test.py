@@ -53,6 +53,20 @@ def slide(label, fraction):
     adb("shell", "input", "swipe", str((x1 + x2) // 2), str(y), str(x), str(y), "150")
 
 
+def keyboard_picker():
+    for _ in range(8):
+        adb("shell", "input", "keyevent", "KEYCODE_TAB")
+        focused = [item for item in nodes() if item.get("focused") == "true"]
+        if any(item.get("content-desc") == "Open file…" for item in focused):
+            adb("shell", "input", "keyevent", "KEYCODE_ENTER")
+            find("Show roots")
+            adb("shell", "input", "keyevent", "KEYCODE_BACK")
+            find("Open file…")
+            print("PASS: native Tab focus and Enter open the Android file picker")
+            return
+    raise AssertionError("Open file never received native keyboard focus")
+
+
 def playback(output):
     tap("Play")
     find("Pause")
@@ -81,6 +95,7 @@ def launch():
     adb("shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "testReceiver", fixture)
     assert find("Open file…").get("class") == "android.widget.Button"
     assert find("Play").get("class") == "android.widget.Button"
+    adb("shell", "input", "tap", "10", "150")
     if os.environ.get("CAST_TEST_RECEIVER"): find("Receiver: Test receiver")
 
 
@@ -93,6 +108,7 @@ def main():
         adb("push", str(track), "/sdcard/Download/Casting mobile test.mp3")
         launch()
         (output / "ready.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+        keyboard_picker()
         for _ in range(2):
             tap("Open file…")
             find("Show roots")
