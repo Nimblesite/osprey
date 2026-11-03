@@ -5,6 +5,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.security.GeneralSecurityException;
 import java.security.cert.X509Certificate;
 import java.security.cert.CertificateException;
@@ -45,17 +46,19 @@ public final class CastTLS {
         while (handle <= 64 && sessions.containsKey(handle)) handle++;
         if (handle > 64) return -5;
         SSLSocket socket = null;
+        long failure = -6;
         try {
             SSLContext context = context();
-            socket = (SSLSocket) context.getSocketFactory().createSocket();
-            socket.connect(new InetSocketAddress(host, (int) port), (int) timeout);
+            failure = -3; socket = (SSLSocket) context.getSocketFactory().createSocket();
+            failure = -4; socket.connect(new InetSocketAddress(host, (int) port), (int) timeout);
+            failure = -7;
             socket.setSoTimeout((int) timeout);
             socket.startHandshake();
             sessions.put(handle, new Session(socket));
             return handle;
         } catch (GeneralSecurityException | IOException error) {
             if (socket != null) try { socket.close(); } catch (IOException cleanup) { error.addSuppressed(cleanup); }
-            return -7;
+            return error instanceof UnknownHostException ? -2 : failure;
         }
     }
 

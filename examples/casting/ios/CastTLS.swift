@@ -18,21 +18,39 @@ private final class CastSocket: @unchecked Sendable {
         connection = NWConnection(host: NWEndpoint.Host(host), port: port, using: NWParameters(tls: tls))
     }
 
-    func open(milliseconds: Int64) -> Bool {
+    func open(milliseconds: Int64) -> Int64 {
         let ready = DispatchSemaphore(value: 0)
-        connection.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .ready: ready.signal()
-            case .failed: self?.ended(3); ready.signal()
-            case .cancelled: ready.signal()
-            default: break
-            }
-        }
+        connection.stateUpdateHandler = { [weak self] state in self?.opened(state, ready: ready) }
         connection.start(queue: queue)
         guard ready.wait(timeout: .now() + .milliseconds(Int(milliseconds))) == .success,
-              connection.state == .ready else { connection.cancel(); return false }
+              connection.state == .ready else {
+            let failure = openingFailure()
+            connection.cancel()
+            return failure
+        }
         receive()
-        return true
+        return 0
+    }
+
+    private func opened(_ state: NWConnection.State, ready: DispatchSemaphore) {
+        switch state {
+        case .ready, .cancelled: ready.signal()
+        case .failed: ended(3); ready.signal()
+        default: break
+        }
+    }
+
+    // [CAST-MOBILE-DELIVERY] Keep transport errors distinct from TLS failures.
+    private func openingFailure() -> Int64 {
+        switch connection.state {
+        case let .failed(error), let .waiting(error):
+            switch error {
+            case .dns: return -2
+            case .tls: return -7
+            default: return -4
+            }
+        default: return -4
+        }
     }
 
     private func ended(_ code: Int64) {
@@ -116,8 +134,11 @@ private final class CastTLS: @unchecked Sendable {
 func castConnect(_ host: UnsafePointer<CChar>?, _ port: Int64, _ timeout: Int64) -> Int64 {
     guard let host, port > 0, port <= 65535, timeout > 0, timeout <= 60000,
           let endpoint = NWEndpoint.Port(rawValue: UInt16(port)) else { return -1 }
-    let socket = CastSocket(host: String(cString: host), port: endpoint)
-    guard socket.open(milliseconds: timeout) else { return -7 }
+    let hostname = String(cString: host)
+    guard !hostname.isEmpty else { return -1 }
+    let socket = CastSocket(host: hostname, port: endpoint)
+    let failure = socket.open(milliseconds: timeout)
+    guard failure == 0 else { return failure }
     return CastTLS.shared.lock.withLock {
         guard let handle = (Int64(1)...64).first(where: { CastTLS.shared.sockets[$0] == nil }) else { socket.close(); return -5 }
         CastTLS.shared.sockets[handle] = socket
