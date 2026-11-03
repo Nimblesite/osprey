@@ -29,7 +29,7 @@ denseOutOfBounds (buffer, index) = match gpuGet (buffer, index)
     Error _ => true
     Success _ => false
 
-// [GPU-BUFFER-ELEM]: the ML twin uses the same dense element widths.
+(** [GPU-BUFFER-ELEM]: the ML twin uses the same dense element widths. *)
 denseRoundTrip (label, values) =
     buffer = toGpu values
     mapped = gpuMap (buffer, \value => value)

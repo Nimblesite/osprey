@@ -28,7 +28,7 @@ test("negative gpuIota arguments are flavor-equivalent", negativeIotaCase)
 
 fn denseOutOfBounds(buffer, index) = match gpuGet(buffer, index) { Error _ => true Success _ => false }
 
-// [GPU-BUFFER-ELEM]: list words narrow into dense storage and widen back exactly.
+/// [GPU-BUFFER-ELEM]: list words narrow into dense storage and widen back exactly.
 fn denseRoundTrip(label, values) = {
     let buffer = toGpu(values)
     let mapped = gpuMap(buffer, fn(value) => value)
