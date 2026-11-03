@@ -123,14 +123,45 @@ def playback(output):
     find("Play")
 
 
-def launch():
+def launch(skin="sherbet"):
     adb("shell", "am", "force-stop", PACKAGE)
     fixture = os.environ.get("CAST_TEST_RECEIVER", base64.b64encode(b"\n").decode())
-    adb("shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "testReceiver", fixture)
+    adb("shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "testReceiver", fixture, "--es", "skin", skin)
     assert find("Open file…").get("class") == "android.widget.Button"
     assert find("Play").get("class") == "android.widget.Button"
     adb("shell", "input", "tap", "10", "150")
-    if os.environ.get("CAST_TEST_RECEIVER"): find("Receiver: Test receiver")
+    if os.environ.get("CAST_TEST_RECEIVER"): find("Receiver: Test receiver" if skin == "sherbet" else "Receiver")
+
+
+def import_track():
+    tap("Open file…")
+    tap("Show roots")
+    tap("Downloads")
+    tap("Casting mobile test.mp3")
+    find("Open file…")
+
+
+def alternate_playback(output):
+    tap("Skin"); tap("Midnight Mint")
+    import_track()
+    tap("Play"); find("Pause")
+    tap("Pause"); find("Resume")
+    tap("Forward 10 seconds")
+    tap("Volume 100%"); tap("50%")
+    tap("Speed"); tap("1.5×")
+    tap("Skin"); tap("Poolside Pop")
+    find("Resume")
+    find("Casting mobile test")
+    tap("Back 10 seconds")
+    tap("Volume 50%"); tap("25%")
+    tap("Speed"); tap("0.75×")
+    tap("Resume"); find("Pause")
+    tap("Pause"); find("Resume")
+    (output / "poolside-paused.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+    tap("Stop"); find("Play")
+    tap("Play"); find("Pause")
+    tap("Stop"); find("Play")
+    print("PASS: native alternate skins preserve playback, seek, volume, rate and replay", flush=True)
 
 
 def main():
@@ -140,6 +171,16 @@ def main():
         track = Path(directory) / "Casting mobile test.mp3"
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(track)], check=True)
         adb("push", str(track), "/sdcard/Download/Casting mobile test.mp3")
+        launch("midnight")
+        snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
+        assert snapshot["node"]["kind"] == "themed", snapshot
+        tap("Skin")
+        tap("Poolside Pop")
+        find("Skin")
+        snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
+        assert any(token["name"] == "background" and token["light"] == "#D9EEFF" for token in snapshot["node"]["theme"]["tokens"]), snapshot
+        (output / "poolside-ready.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+        if os.environ.get("CAST_TEST_RECEIVER"): alternate_playback(output)
         launch()
         (output / "ready.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
         keyboard_picker()
@@ -148,11 +189,7 @@ def main():
             find("Show roots")
             adb("shell", "input", "keyevent", "KEYCODE_BACK")
             assert find("Open file…").get("clickable") == "true"
-        tap("Open file…")
-        tap("Show roots")
-        tap("Downloads")
-        tap("Casting mobile test.mp3")
-        find("Open file…")
+        import_track()
         snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
         text = json.dumps(snapshot, ensure_ascii=False)
         assert "Casting mobile test" in text, text[:1000]

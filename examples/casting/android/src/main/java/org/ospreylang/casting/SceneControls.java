@@ -1,7 +1,6 @@
 package org.ospreylang.casting;
 
 import android.graphics.Color;
-import android.os.SystemClock;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
@@ -21,7 +20,6 @@ import org.json.JSONObject;
 // Their transparent normal state lets the same machine artwork supply every skin.
 final class SceneControls {
     private static final int STEPS = 10000;
-    private static final long ACCESSIBILITY_REFRESH_MS = 2000;
     private final SceneCanvas scene;
     private final ArrayList<Binding> bindings = new ArrayList<>();
 
@@ -76,7 +74,6 @@ final class SceneControls {
         private final View view;
         private JSONObject item;
         private boolean tracking;
-        private long nextProgress;
 
         Binding(JSONObject item) {
             this.item = item;
@@ -123,11 +120,9 @@ final class SceneControls {
         // Canvas animation stays smooth. Programmatic native range announcements
         // are paced; focus and direct user gestures always get the current value.
         private void sync(SeekBar slider, boolean force) {
-            long now = SystemClock.elapsedRealtime();
-            if (!force && now < nextProgress) return;
-            nextProgress = now + ACCESSIBILITY_REFRESH_MS;
             double min = item.optDouble("min"), max = item.optDouble("max");
-            slider.setProgress((int) Math.round(STEPS * (item.optDouble("value") - min) / Math.max(0.000001, max - min)));
+            int value = (int) Math.round(STEPS * (item.optDouble("value") - min) / Math.max(0.000001, max - min));
+            NativeRange.update(slider, value, STEPS, force, null);
         }
 
         @Override public void onProgressChanged(SeekBar slider, int value, boolean fromUser) {

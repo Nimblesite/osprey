@@ -48,7 +48,7 @@ public final class CastingActivity extends ComponentActivity {
             });
         });
     private CastDiscovery discovery;
-    private SceneCanvas scene;
+    private NativeRenderer scene;
     private boolean alive = true, animate;
     private long lastFrame;
     private final Runnable frame = new Runnable() {
@@ -64,13 +64,15 @@ public final class CastingActivity extends ComponentActivity {
         super.onCreate(saved);
         discovery = new CastDiscovery(this);
         resident = new Resident(this::receive, this::fail);
-        scene = new SceneCanvas(this, this::control);
+        scene = new NativeRenderer(this, this::control);
         scene.setFitsSystemWindows(true);
         setContentView(scene);
         try {
             File folder = new File(getFilesDir(), "player");
             copyAssets("", folder);
             JSONArray arguments = new JSONArray().put("--machine").put(new File(folder, "player.machine.json").getAbsolutePath());
+            String skin = getIntent().getStringExtra("skin");
+            if (skin != null) arguments.put("--skin").put(skin);
             JSONObject context = object("now", System.currentTimeMillis() / 1000, "offset", 0,
                 "platform", "android", "home", getFilesDir().getAbsolutePath(), "arguments", arguments);
             resident.start(context);
@@ -103,7 +105,7 @@ public final class CastingActivity extends ComponentActivity {
         if (alive) resident.send(event);
     }
 
-    private void control(int ordinal, long revision, JSONObject value) {
+    private void control(int ordinal, long revision, Object value) {
         send(object("kind", "ui", "region", "root", "revision", revision, "ordinal", ordinal, "value", value));
     }
 

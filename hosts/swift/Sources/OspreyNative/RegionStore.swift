@@ -25,6 +25,17 @@ public final class RegionCell: ObservableObject, Identifiable {
         self.revision = revision
         self.node = node
     }
+
+    // [UI-EVENTS] A menu can outlive a frame, never a changed control binding.
+    func pickerRevision(for expected: JSONValue, choice: String) -> Int? {
+        func contains(_ value: JSONValue) -> Bool {
+            if value == expected { return true }
+            return (value.array ?? Array(value.object?.values ?? [:].values)).contains(where: contains)
+        }
+        guard expected.text("kind") == "picker", expected["event"]?.int != nil,
+              expected.list("choices").contains(where: { $0.text("key") == choice }), contains(node) else { return nil }
+        return revision
+    }
 }
 
 public struct HostContext: Sendable {

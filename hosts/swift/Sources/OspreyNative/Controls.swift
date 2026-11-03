@@ -12,7 +12,7 @@ struct ControlView: View {
         case "button": ButtonView(node: node) { drawing.send(node.count("event"), .null) }
         case "field": FieldView(node: node, revision: drawing.revision) { drawing.send(node.count("event"), .string($0)) }
         case "toggle": Toggle(node.text("label"), isOn: Binding(get: { node.flag("on") }, set: { drawing.send(node.count("event"), .bool($0)) })).toggleStyle(.switch).controlSize(.small)
-        case "picker": PickerView(node: node) { drawing.send(node.count("event"), .string($0)) }
+        case "picker": PickerView(node: node) { drawing.choose(node, $0) }.equatable()
         case "disclosure": DisclosureView(node: node, drawing: drawing)
         default: AlertView(node: node) { drawing.send(node.count("event"), .null) }
         }
@@ -168,10 +168,13 @@ struct AnyTextFieldStyle: TextFieldStyle {
     }
 }
 
-struct PickerView: View {
+struct PickerView: View, Equatable {
     let node: JSONValue
     let choose: (String) -> Void
     @Environment(\.ospreyInherited) private var inherited
+
+    // Frame-only revisions must not replace an open native menu and restart its animation.
+    static func == (left: Self, right: Self) -> Bool { left.node == right.node }
 
     private var selected: String {
         node.list("choices").first { $0.text("key") == node.text("selected") }?.text("label") ?? node.text("selected")

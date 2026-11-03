@@ -1,6 +1,6 @@
 # Native mobile delivery [CAST-MOBILE]
 
-Both native apps build and run in the simulator/emulator. Both platforms' Sherbet player passes the full native playback journey against a TLS Cast receiver fixture, including exact HTTP media bytes, seek, volume, speed, stop and replay. Native screenshot goldens now gate the ready and restarted player. CI coverage, broader error/lifecycle cases, the visible iOS Simulator run and physical-device verification remain incomplete.
+Both native apps build and run in the simulator/emulator. All three skins pass native playback journeys on both platforms against a TLS Cast receiver fixture, including exact HTTP media bytes, seek, volume, speed, stop and replay; changing skins preserves the session. Native screenshot goldens now gate the ready and restarted player. CI coverage, broader error/lifecycle cases, the visible iOS Simulator run and physical-device verification remain incomplete.
 
 ## Shared boundary [CAST-MOBILE-ABI]
 
@@ -22,7 +22,8 @@ Both native apps build and run in the simulator/emulator. Both platforms' Sherbe
 - [ ] Handle foreground/background transitions, connection loss, interrupted playback and cleanup of network/file resources.
 - [ ] Add per-platform launch and test Makefile targets and required CI coverage gates.
 - [x] Rotate Android during playback, use landscape pause/resume and volume, preserve the connection, return to portrait and restore the previous system rotation policy.
-- [ ] Complete the alternate skins: Android needs the generic themed UI tree; iOS needs the Midnight background/foreground palette verified and corrected.
+- [x] Render the alternate themed tree on Android, verify both iOS palettes and exercise Midnight/Poolside playback with session-preserving skin changes.
+- [ ] Expose skin selection from the default Sherbet player without launch arguments.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
 - [x] Commit native ready/restart screenshot goldens and verify headless iOS plus visible and headless Android rendering with accessibility assertions.
 - [ ] Verify the same iOS goldens with the Simulator window visible.
@@ -35,7 +36,7 @@ The existing host-free casting suite simulates the receiver and drives the real 
 - iOS: the unsigned physical-device app and simulator app link successfully; the real iPhone simulator UI test passes launch, two document-picker cancellations, actual Files selection and import, fixture-file loading, play/pause/resume, seek, volume, speed, stop, replay and restart. Native sliders and speed-menu buttons are verified through XCTest. The receiver checks the requested control values and rejects duplicate slider commands.
 - Android: real `Button` and `SeekBar` widgets provide touch, keyboard navigation, native accessibility and focus indicators beneath the shared skin artwork. Programmatic native range updates are paced every two seconds while the canvas keeps animating; focusing or dragging a slider synchronizes it immediately. The keyboard journey opens and cancels the native file picker. ARM64 and x64 JNI libraries link into the APK; the ARM64 emulator discovers a real LAN TV and passes two document-picker cancellations, MP3 import, scene-title verification, play/pause/resume, seek, volume, speed, stop, replay and restart. The fixture verifies exact MP3 bytes over HTTP HEAD and range requests. Android lint passes with warnings treated as errors.
 - Both TLS implementations pass a live loopback test covering handshake, fragmented reads, timeout recovery, byte preservation, writes, EOF, cleanup and route selection.
-- The shared casting suite passes all seven journeys; the Swift host passes 37 regression tests. Native network and media-render runtime suites pass.
+- The shared casting suite passes all seven journeys; the Swift host passes 38 regression tests. Native network and media-render runtime suites pass.
 - The mobile media runtime uses the existing contract's original-audio fallback because sandboxed apps cannot launch desktop ffmpeg. A native TV visualization renderer is not implemented.
 
 Entry points: `make -C apps/ios casting`, `make -C apps/android casting`, and each platform's `tests` directory with `casting` or `casting-headless`. Android selects a connected device with `OSPREY_ANDROID_SERIAL`; `OSPREY_BIN` selects the compiler binary.
@@ -48,6 +49,8 @@ The checked references use an iPhone 17 simulator on iOS 27 at 1206 pixels wide 
 
 Use `make -C apps/ios/tests casting-headless` or `make -C apps/android/tests casting-headless` for comparison. Each platform also has `casting-update`, which runs the native journey, rewrites only the ready reference, and checks that restarting still matches it. Review the images under `examples/casting/goldens/<platform>` before committing an update. A missing reference or changed dimensions fails; tests never silently create a baseline. The runner uses the ffmpeg already required for its audio fixture, without an extra image-library dependency.
 
-## Alternate skin gap [CAST-MOBILE-SKINS]
+## Alternate skins [CAST-MOBILE-SKINS]
 
-The native playback and golden results above cover Sherbet. Capturing an iOS launch with `--skin midnight` proves the alternate skin exports a `themed` tree containing stacks, an inline scene, empty state, progress, buttons and pickers. Android currently accepts only a top-level scene and must support that tree before the other skins can work. The captured iOS Midnight screen renders its controls but retains a white background and dark text despite the exported navy background and light text tokens; its palette is not complete. These gaps remain part of delivery, alongside native access to skin selection and full playback checks for every skin.
+Android renders the same themed tree with native buttons, popup menus and progress ranges, reusing controls across frames. Both platforms play in Midnight, pause, seek forward, change volume and speed, switch to Poolside without reloading, seek back, resume, stop and replay. The TLS fixture verifies the exact values and command counts. iOS additionally changes speed while playing. Its native menu previously restarted its animation on every frame and exceeded the test timeout; unchanged picker descriptors now retain the menu, and a choice is accepted against the current revision only while its complete control binding remains unchanged. Host regressions cover changed ordinals, labels, selected values, choices, removal and invalid keys.
+
+The iOS suite checks Midnight and Poolside background pixels and title ink against their declared palette tokens. All skins declare an `onAccent` colour, and the shared suite enforces a minimum 4.5:1 accent-text contrast in both colour schemes. The Sherbet ready/restart goldens still match exactly. Native skin selection is available inside the alternate templates; access from the default Sherbet canvas remains delivery work.

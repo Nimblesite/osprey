@@ -13,6 +13,7 @@ final class CastingUITests: XCTestCase {
     @MainActor
     func testNativeLaunchDocumentCancellationAndRecovery() throws {
         let app = XCUIApplication()
+        defer { app.terminate() }
         app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"], "Use the native test entry point to start the receiver fixture")
         let audio = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
         app.launch()
@@ -91,5 +92,62 @@ final class CastingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15))
         app.buttons["Stop"].tap()
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
+        app.launchEnvironment.removeValue(forKey: "CAST_TEST_AUDIO")
+        for skin in ["midnight", "poolside"] {
+            app.terminate()
+            app.launchArguments = ["--skin", skin]
+            app.launch()
+            XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 15), app.debugDescription)
+            let title = app.staticTexts["Choose an audio file"]
+            XCTAssertTrue(title.waitForExistence(timeout: 10), app.debugDescription)
+            let screen = XCTAttachment(screenshot: app.screenshot())
+            screen.name = "casting-ios-\(skin)-ready"; screen.lifetime = .keepAlways; add(screen)
+            let text = XCTAttachment(screenshot: title.screenshot())
+            text.name = "casting-ios-\(skin)-title"; text.lifetime = .keepAlways; add(text)
+        }
     }
+
+    @MainActor
+    func testThemedPlaybackPreservesTheCastSession() throws {
+        let app = XCUIApplication()
+        defer { app.terminate() }
+        app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"])
+        app.launchEnvironment["CAST_TEST_AUDIO"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
+        app.launchArguments = ["--skin", "midnight"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 15), app.debugDescription)
+        app.buttons["Play"].tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
+        app.buttons["Pause"].tap()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
+        app.buttons["Forward 10 seconds"].tap()
+        app.buttons["Volume 100%"].tap()
+        app.buttons["50%"].tap()
+        app.buttons["Speed"].tap()
+        app.buttons["1.5×"].tap()
+        app.buttons["Skin"].tap()
+        app.buttons["Poolside Pop"].tap()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Casting mobile test"].exists)
+        app.buttons["Back 10 seconds"].tap()
+        app.buttons["Volume 50%"].tap()
+        app.buttons["25%"].tap()
+        app.buttons["Speed"].tap()
+        app.buttons["0.75×"].tap()
+        app.buttons["Resume"].tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
+        app.buttons["Speed"].tap()
+        app.buttons["1.25×"].tap()
+        app.buttons["Pause"].tap()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
+        let paused = XCTAttachment(screenshot: app.screenshot())
+        paused.name = "casting-ios-poolside-paused"; paused.lifetime = .keepAlways; add(paused)
+        app.buttons["Stop"].tap()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
+        app.buttons["Play"].tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15))
+        app.buttons["Stop"].tap()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
+    }
+
 }

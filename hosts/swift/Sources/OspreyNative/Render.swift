@@ -11,6 +11,7 @@ public struct Drawing {
     let revision: Int
     let send: (Int, JSONValue) -> Void
     let point: (Int, JSONValue) -> Void
+    let choose: (JSONValue, String) -> Void
 }
 
 extension JSONValue {
@@ -61,6 +62,7 @@ struct ContainerView: View {
     let drawing: Drawing
     @Environment(\.ospreyInherited) private var inherited
     @Environment(\.ospreyTheme) private var theme
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         switch node.text("kind") {
@@ -89,7 +91,14 @@ struct ContainerView: View {
     }
 
     @ViewBuilder private var themed: some View {
-        NodeView(node: node["body"] ?? .null, drawing: drawing).environment(\.ospreyTheme, ThemeResolver(theme: decodedTheme))
+        let resolver = ThemeResolver(theme: decodedTheme)
+        NodeView(node: node["body"] ?? .null, drawing: drawing)
+            .environment(\.ospreyTheme, resolver)
+            .foregroundStyle(resolver.color("text", dark: scheme == .dark) ?? .primary)
+            .tint(resolver.color("accent", dark: scheme == .dark) ?? .accentColor)
+            .padding(resolver.spacing(1) * 3)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(resolver.color("background", dark: scheme == .dark) ?? .clear)
     }
 
     private var decodedTheme: Theme? {
@@ -230,7 +239,12 @@ struct CellView: View {
         let region = cell.key, revision = cell.revision
         return Drawing(region: region, revision: revision,
                        send: { ordinal, value in store.send(region: region, revision: revision, ordinal: ordinal, value: value) },
-                       point: { ordinal, value in store.send(region: region, revision: cell.revision, ordinal: ordinal, value: value) })
+                       point: { ordinal, value in store.send(region: region, revision: cell.revision, ordinal: ordinal, value: value) },
+                       choose: { node, key in
+                           if let current = cell.pickerRevision(for: node, choice: key) {
+                               store.send(region: region, revision: current, ordinal: node.count("event"), value: .string(key))
+                           }
+                       })
     }
 }
 
