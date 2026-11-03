@@ -99,7 +99,7 @@ fn unpack_assets(app: &android_activity::AndroidApp, folder: &std::path::Path) -
 #[no_mangle]
 pub fn android_main(app: android_activity::AndroidApp) {
     log_panics();
-    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Debug));
+    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info));
     // The sandbox starts the process with no HOME, and an APK's files have no path until
     // they are written out.
     if let Some(home) = app.internal_data_path() {
@@ -111,4 +111,7 @@ pub fn android_main(app: android_activity::AndroidApp) {
     host::set_android_app(app);
     let status = host::run();
     log::info!("the GPUI host finished with status {status}");
+    // GPUI runs once in a process. Back ends the activity but Android keeps the process, and would
+    // start the next activity in it; ending the process lets it start cleanly instead.
+    std::process::exit(status);
 }

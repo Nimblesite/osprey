@@ -86,6 +86,26 @@ pub(crate) struct AndroidWindow {
     pub callbacks: Callbacks,
     app: AndroidApp,
     waker: AndroidAppWaker,
+    /// TalkBack's view of the window, once GPUI has opened accessibility.
+    accessibility: Mutex<Option<accesskit_android::InjectingAdapter>>,
+}
+
+/// GPUI's activation callback as AccessKit asks for it.
+struct Activation(Box<dyn Fn() -> Option<accesskit::TreeUpdate> + Send + 'static>);
+
+impl accesskit::ActivationHandler for Activation {
+    fn request_initial_tree(&mut self) -> Option<accesskit::TreeUpdate> {
+        (self.0)()
+    }
+}
+
+/// GPUI's action callback as AccessKit asks for it.
+struct Action(Box<dyn Fn(accesskit::ActionRequest) + Send + 'static>);
+
+impl accesskit::ActionHandler for Action {
+    fn do_action(&mut self, request: accesskit::ActionRequest) {
+        (self.0)(request);
+    }
 }
 
 impl AndroidWindow {
@@ -109,6 +129,7 @@ impl AndroidWindow {
             callbacks: Callbacks::default(),
             app: app.clone(),
             waker: app.create_waker(),
+            accessibility: Mutex::new(None),
         })
     }
 
@@ -264,6 +285,56 @@ impl AndroidWindow {
     /// poll timeout.
     pub fn wake(&self) {
         self.waker.wake();
+    }
+
+    /// Whether any accessibility service is connected right now.
+    fn accessibility_enabled(&self) -> jni::errors::Result<bool> {
+        // SAFETY: as in `open_accessibility`.
+        let (vm, activity) = unsafe {
+            (
+                jni::JavaVM::from_raw(self.app.vm_as_ptr().cast())?,
+                jni::objects::JObject::from_raw(self.app.activity_as_ptr().cast()),
+            )
+        };
+        let mut env = vm.attach_current_thread()?;
+        let service = env.new_string("accessibility")?;
+        let manager = env
+            .call_method(
+                &activity,
+                "getSystemService",
+                "(Ljava/lang/String;)Ljava/lang/Object;",
+                &[(&service).into()],
+            )?
+            .l()?;
+        env.call_method(&manager, "isEnabled", "()Z", &[])?.z()
+    }
+
+    /// Hands TalkBack the activity's decor view, which covers the same pixels as the surface,
+    /// so the tree's window coordinates are its own.
+    fn open_accessibility(&self, callbacks: gpui::A11yCallbacks) -> jni::errors::Result<()> {
+        // SAFETY: the VM and activity pointers stay valid for the process, and the activity is
+        // a global reference this borrow never deletes.
+        let (vm, activity) = unsafe {
+            (
+                jni::JavaVM::from_raw(self.app.vm_as_ptr().cast())?,
+                jni::objects::JObject::from_raw(self.app.activity_as_ptr().cast()),
+            )
+        };
+        let mut env = vm.attach_current_thread()?;
+        let window = env
+            .call_method(&activity, "getWindow", "()Landroid/view/Window;", &[])?
+            .l()?;
+        let host = env
+            .call_method(&window, "getDecorView", "()Landroid/view/View;", &[])?
+            .l()?;
+        let adapter = accesskit_android::InjectingAdapter::new(
+            &mut env,
+            &host,
+            Activation(callbacks.activation),
+            Action(callbacks.action),
+        );
+        *locked(&self.accessibility) = Some(adapter);
+        Ok(())
     }
 
     /// Delivers one input event; the return value tells Android whether the
@@ -469,6 +540,23 @@ impl HasDisplayHandle for AndroidPlatformWindow {
 }
 
 impl PlatformWindow for AndroidPlatformWindow {
+    fn a11y_init(&self, callbacks: gpui::A11yCallbacks) {
+        if let Err(problem) = self.window.open_accessibility(callbacks) {
+            log::error!("TalkBack cannot reach this window: {problem}");
+        }
+    }
+
+    fn a11y_tree_update(&self, tree_update: accesskit::TreeUpdate) {
+        // Android throws when an event is sent with no accessibility service left, and that
+        // exception would abort the app the moment a person turned TalkBack off.
+        if !self.window.accessibility_enabled().unwrap_or(false) {
+            return;
+        }
+        if let Some(adapter) = locked(&self.window.accessibility).as_mut() {
+            adapter.update_if_active(|| tree_update);
+        }
+    }
+
     fn bounds(&self) -> gpui::Bounds<Pixels> {
         let state = locked(&self.window.state);
         gpui::Bounds {

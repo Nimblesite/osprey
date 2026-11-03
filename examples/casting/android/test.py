@@ -241,8 +241,41 @@ def launch():
     time.sleep(5)
 
 
+def install_press():
+    """The helper that presses through the accessibility action a screen reader sends."""
+    source = APP / "android/tests/press"
+    tools = sorted((SDK / "build-tools").iterdir(), key=lambda path: [int(part) for part in path.name.split(".") if part.isdigit()])[-1]
+    platform = sorted((SDK / "platforms").glob("android-*"), key=lambda path: float(path.name.split("-")[1]))[-1] / "android.jar"
+    java_home = os.environ.get("JAVA_HOME", "/Applications/Android Studio.app/Contents/jbr/Contents/Home")
+    environment = dict(os.environ, JAVA_HOME=java_home, PATH=f"{java_home}/bin:{os.environ['PATH']}")
+    with tempfile.TemporaryDirectory(prefix="casting-press-") as folder:
+        work = Path(folder)
+        run = lambda *arguments: subprocess.run(arguments, check=True, env=environment, capture_output=True)
+        run(str(tools / "aapt2"), "link", "-o", str(work / "base.apk"), "--manifest", str(source / "AndroidManifest.xml"), "-I", str(platform), "--min-sdk-version", "34", "--target-sdk-version", "37")
+        run("javac", "-nowarn", "--release", "11", "-classpath", str(platform), "-d", str(work), str(source / "java/org/ospreylang/casting/press/Press.java"))
+        run(str(tools / "d8"), "--lib", str(platform), "--min-api", "34", "--output", str(work), str(work / "org/ospreylang/casting/press/Press.class"))
+        run("zip", "-j", "-q", str(work / "base.apk"), str(work / "classes.dex"))
+        run(str(tools / "apksigner"), "sign", "--ks", str(Path.home() / ".android/debug.keystore"), "--ks-pass", "pass:android", "--key-pass", "pass:android", "--min-sdk-version", "34", "--out", str(work / "press.apk"), str(work / "base.apk"))
+        adb("install", "-r", str(work / "press.apk"))
+
+
+def press(label):
+    print("PRESS:", label, flush=True)
+    answer = adb("shell", "am", "instrument", "-w", "-e", "label", label, "org.ospreylang.casting.press/.Press")
+    time.sleep(0.5)
+    assert "pressed=true" in answer, (label, answer)
+
+
+def wait_accessible(label, role):
+    """A screen reader's view of the live window; uiautomator cannot snapshot a spinning disc."""
+    print("LOOK:", label, role, flush=True)
+    answer = adb("shell", "am", "instrument", "-w", "-e", "label", label, "-e", "role", role, "-e", "look", "1", "org.ospreylang.casting.press/.Press")
+    assert "pressed=true" in answer, (label, role, answer)
+
+
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    install_press()
     with tempfile.TemporaryDirectory(prefix="casting-mobile-") as directory:
         track = Path(directory) / "Casting mobile test.mp3"
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(track)], check=True)
@@ -260,13 +293,22 @@ def main():
     import_track()
     time.sleep(1)
     shot("imported.png")
+    # The same controls a person touches, as a screen reader reads and presses them.
+    wait_accessible("Open file", "Button")
+    wait_accessible("Casting mobile test", "TextView")
+    press("Open file")
+    find("Show roots")
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    wait_focus()
+    time.sleep(2)
     scene_tap("Play")
     wait_sent("LOAD", 1)
-    time.sleep(1)
-    scene_tap("Pause")
+    wait_accessible("Pause", "Button")
+    wait_accessible("Volume", "SeekBar")
+    press("Pause")
     wait_sent("PAUSE", 1)
-    time.sleep(1)
-    scene_tap("Resume")
+    wait_accessible("Resume", "Button")
+    press("Resume")
     wait_sent("PLAY", 1)
     time.sleep(1)
     volumes = len(sent("SET_VOLUME"))
@@ -305,6 +347,12 @@ def main():
     time.sleep(1)
     scene_tap("Stop")
     wait_sent("STOP", 2)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    time.sleep(2)
+    launch_after_back = adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.CastingActivity")
+    assert "Status: ok" in launch_after_back, launch_after_back
+    wait_focus()
+    wait_accessible("Play", "Button")
     launch()
     shot("restarted.png")
     print("PASS: Android GPUI player: two picker cancellations, MP3 import, Cast playback, rotation, restart")

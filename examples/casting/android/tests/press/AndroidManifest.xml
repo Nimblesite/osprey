@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Presses a control through the accessibility action TalkBack sends, for the journey in test.py. It targets itself: `am instrument` kills its target, and the player must live on. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.ospreylang.casting.press">
+  <application android:hasCode="true"/>
+  <instrumentation android:name=".Press" android:targetPackage="org.ospreylang.casting.press"/>
+</manifest>
