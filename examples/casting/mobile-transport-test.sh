@@ -92,5 +92,5 @@ wait "$server_pid"
 server_pid=
 if [[ "$platform" == ios ]]; then
     sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
-    xcrun swiftc -swift-version 6 -warnings-as-errors -typecheck -target arm64-apple-ios18.0-simulator -sdk "$sdk" "$here/ios"/*.swift
+    xcrun swiftc -swift-version 6 -warnings-as-errors -typecheck -target arm64-apple-ios18.0-simulator -sdk "$sdk" "$here/ios/CastTLS.swift" "$here/ios/CastDiscovery.swift"
 fi

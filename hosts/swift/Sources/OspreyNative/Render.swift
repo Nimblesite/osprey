@@ -26,6 +26,9 @@ public struct NodeView: View {
 
     public var body: some View {
         switch node.text("kind") {
+        #if os(iOS)
+        case "scene": SceneView(node: node, drawing: drawing)
+        #endif
         case "text", "rich-text", "label", "icon", "badge", "pair", "evidence", "link", "spacer", "divider", "progress", "meter", "empty": LeafView(node: node)
         case "button", "field", "toggle", "picker", "disclosure", "alert": ControlView(node: node, drawing: drawing)
         case "rows": RowsView(node: node, drawing: drawing)

@@ -68,6 +68,15 @@ public final class RegionStore: ObservableObject {
 
     public func cell(_ key: String) -> RegionCell? { cells[key] }
 
+    public func frame(elapsed: Double) {
+        guard elapsed.isFinite, elapsed >= 0 else { return }
+        deliver(.object(["kind": "frame", "elapsed": .number(elapsed), "now": .number(Double(context.now))]))
+    }
+
+    public func lifecycle(_ phase: String) {
+        deliver(.object(["kind": "lifecycle", "phase": .string(phase), "now": .number(Double(context.now))]))
+    }
+
     public func start() {
         guard state.isEmpty, failure == nil else { return }
         do { try accept(library.start(context: context.startJSON)) } catch { fail("Osprey could not start: \(error)") }
