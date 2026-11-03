@@ -6,7 +6,7 @@ source "$repo/scripts/android-env.sh"
 adb="$ANDROID_HOME/platform-tools/adb"
 serial=${OSPREY_ANDROID_SERIAL:?Set OSPREY_ANDROID_SERIAL to the emulator or device to run}
 architecture=$("$adb" -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')
-case "$architecture" in arm64-v8a) target=android-arm64 ;; x86_64) target=android-x64 ;; *) echo "Unsupported Android ABI: $architecture" >&2; exit 2 ;; esac
-bash "$here/build.sh" "$target"
+case "$architecture" in arm64-v8a|x86_64) ;; *) echo "Unsupported Android ABI: $architecture" >&2; exit 2 ;; esac
+bash "$here/build.sh"
 "$adb" -s "$serial" install -r "$here/app/build/outputs/apk/debug/app-debug.apk"
 "$adb" -s "$serial" shell am start -n org.ospreylang.casting/.CastingActivity

@@ -2,6 +2,7 @@
 """[CAST-MOBILE-DELIVERY] Native app journeys against a real TLS Cast receiver."""
 import base64
 from contextlib import contextmanager
+import hashlib
 import json
 import os
 import re
@@ -10,9 +11,59 @@ import subprocess
 import sys
 import tempfile
 import time
+import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "examples/casting"
+
+
+def verify_native_inputs(folder, library):
+    records = (folder / "native-inputs.sha256").read_text().splitlines()
+    assert records, "Missing native input checksums"
+    for line in records:
+        expected, name = line.split("  ", 1)
+        assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == expected, f"Stale native input: {name}"
+    assert library == (folder / "libosprey_casting.stripped.so").read_bytes(), "APK contains a stale native library"
+
+
+def verify_android_package(archive):
+    paths = archive.namelist()
+    assert len(paths) == len(set(paths)), "Duplicate APK archive entries"
+    assert "assets/player.machine.json" in paths
+    assert archive.read("assets/player.machine.json") == (APP / "player.machine.json").read_bytes(), "APK contains a stale machine document"
+    for name in ("backdrop", "disc", "transport"):
+        assert f"assets/skins/sherbet/{name}.png" in paths, name
+    assert not any(path.startswith("assets/skins/skins/") for path in paths), "Nested duplicate skin assets in the APK"
+    targets = {"arm64-v8a": "android-arm64", "x86_64": "android-x64"}
+    abis = {path.split("/")[1] for path in paths if path.startswith("lib/") and path.endswith(".so")}
+    assert abis == set(targets), ("APK must support ARM64 and x64", abis)
+    for abi, target in targets.items():
+        library = archive.read(f"lib/{abi}/libosprey_casting.so")
+        assert library[:6] == b"\x7fELF\x02\x01", f"Expected little-endian ELF64 for {abi}"
+        assert int.from_bytes(library[18:20], "little") == (183 if abi == "arm64-v8a" else 62), f"Wrong ELF architecture for {abi}"
+        verify_native_inputs(APP / "build" / target, library)
+
+
+class CastingArtifactContracts(unittest.TestCase):
+    def test_native_receipt_rejects_changed_sources_binaries_and_missing_provenance(self):
+        # [CAST-MOBILE-ABI] Isolate stale-source mutations from real compiler archives.
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            source = folder / "input.c"; source.write_bytes(b"abc")
+            binary = folder / "libosprey_casting.stripped.so"; binary.write_bytes(b"native")
+            receipt = folder / "native-inputs.sha256"
+            receipt.write_text(f"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  {source}\n")
+            verify_native_inputs(folder, b"native")
+            source.write_bytes(b"changed")
+            with self.assertRaisesRegex(AssertionError, "Stale native input"): verify_native_inputs(folder, b"native")
+            source.write_bytes(b"abc")
+            with self.assertRaisesRegex(AssertionError, "stale native library"): verify_native_inputs(folder, b"old")
+            binary.write_bytes(b"wrong")
+            with self.assertRaisesRegex(AssertionError, "stale native library"): verify_native_inputs(folder, b"native")
+            receipt.write_text("")
+            with self.assertRaisesRegex(AssertionError, "Missing native input"): verify_native_inputs(folder, b"native")
+            receipt.unlink()
+            with self.assertRaises(FileNotFoundError): verify_native_inputs(folder, b"native")
 
 
 # Isolate the event-binding guard on Android's real JSON/runtime implementation.

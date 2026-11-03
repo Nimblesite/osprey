@@ -17,7 +17,7 @@ import time
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from mobile_test import BINDING_CHECK, android_java
+from mobile_test import BINDING_CHECK, CastingArtifactContracts, android_java, verify_android_package
 
 ROOT = Path(__file__).resolve().parents[3]
 SDK = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
@@ -53,14 +53,7 @@ def index_audio(path):
 
 def packaged_assets(apk):
     with zipfile.ZipFile(io.BytesIO(adb("exec-out", "cat", apk, binary=True))) as archive:
-        paths = archive.namelist()
-    assert len(paths) == len(set(paths)), "Duplicate APK archive entries"
-    assert "assets/player.machine.json" in paths
-    for name in ("backdrop", "disc", "transport"):
-        assert f"assets/skins/sherbet/{name}.png" in paths, name
-    assert not any(path.startswith("assets/skins/skins/") for path in paths), "Nested duplicate skin assets in the APK"
-    abis = {path.split("/")[1] for path in paths if path.startswith("lib/") and path.endswith(".so")}
-    assert abis == {adb("shell", "getprop", "ro.product.cpu.abi").strip()}, ("APK contains an unselected native ABI", abis)
+        verify_android_package(archive)
 
 
 def bindings():
