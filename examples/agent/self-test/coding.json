@@ -1,7 +1,7 @@
 {
   "steps": [
     {"wait": "New chat"},
-    {"wait": "API key set"},
+    {"wait": "Send"},
     {"wait": "Explain this project"},
     {"shot": "01-ready"},
     {"type": ["Message", "Run the tests with python3 test_calc.py, then fix the calc package so they all pass. Do not change the tests.\n"]},

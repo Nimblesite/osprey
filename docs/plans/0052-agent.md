@@ -17,18 +17,18 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 
 ## Providers, models and effort
 
-- [ ] Replace DeepSeek-only `DEEPSEEK_URL`, `url` and `profile_of` in `examples/agent/src/engine.py` with a catalogue of DeepSeek, Kimi and GLM entries; the coding-plan entries reuse the provider's profile at base URLs `https://api.kimi.com/coding/v1` and `https://api.z.ai/api/coding/paas/v4`. Acceptance: host-free tests that `Engine.url`/`Engine.profile_of` return the right endpoint and profile per entry.
-- [ ] `examples/agent/src/model.ospml`: `chatModel` becomes `provider/model` (a value with no `/` reads as DeepSeek), and add a per-conversation `chatEffort` whose choices come from `Profiles.thinking_levels` (no picker when it returns none). Acceptance: a saved conversation with no `/` restores as DeepSeek, and `chatEffort` round-trips through `chatJson`/`chatOf`.
+- [x] Replace DeepSeek-only `DEEPSEEK_URL`, `url` and `profile_of` in `examples/agent/src/engine.py` with a catalogue of DeepSeek, Kimi and GLM entries; the coding-plan entries reuse the provider's profile at base URLs `https://api.kimi.com/coding/v1` and `https://api.z.ai/api/coding/paas/v4`. Acceptance: host-free tests that `Engine.url`/`Engine.profile_of` return the right endpoint and profile per entry.
+- [x] `examples/agent/src/model.ospml`: `chatModel` becomes `provider/model` (a value with no `/` reads as DeepSeek), and add a per-conversation `chatEffort` whose choices come from `Profiles.thinking_levels` (no picker when it returns none). Acceptance: a saved conversation with no `/` restores as DeepSeek, and `chatEffort` round-trips through `chatJson`/`chatOf`.
 
 ## Settings and keys
 
-- [ ] [AGENT-SETTINGS] A `Settings` button always visible at the sidebar's foot, replacing the `API key set` badge. Acceptance: `self-test/settings.json` presses it from a state with a key and from one without.
-- [ ] [AGENT-COMPOSER] The composer's model picker lists every provider with a key, with an `Effort` picker per model and `Add an API key` with none. Acceptance: test-app and `self-test/settings.json`.
-- [ ] [AGENT-SETTINGS] Refused requests say what to do, with `Open Settings`. Acceptance: test-app covers 401, 402, 403, 429.
-- [ ] [AGENT-BLANK-REPLY] A turn that ends with no text says so and leaves no gap. Acceptance: a failing test-app case first.
+- [x] [AGENT-SETTINGS] A `Settings` button always visible at the sidebar's foot, replacing the `API key set` badge. Acceptance: `self-test/settings.json` presses it from a state with a key and from one without.
+- [x] [AGENT-COMPOSER] The composer's model picker lists every provider with a key, with an `Effort` picker per model and `Add an API key` with none. Acceptance: test-app and `self-test/settings.json`.
+- [x] [AGENT-SETTINGS] Refused requests say what to do, with `Open Settings`. Acceptance: test-app covers 401, 402, 403, 429.
+- [x] [AGENT-BLANK-REPLY] A turn that ends with no text says so and leaves no gap. Acceptance: a failing test-app case first.
 
-- [ ] `examples/agent/src/view.ospml` + `model.ospml`: a Settings pane replacing the conversation column, opened from the sidebar foot, with Providers and MCP servers tabs; the composer's model picker gains the provider catalogue and an effort picker. Acceptance: `self-test/settings.json` drives provider + model + effort and matches goldens.
-- [ ] Key persistence in `examples/agent/src/app.ospml` + `model.ospml`: write `providers.json` in the app's private store (mode 0600), never `chats.json`, never records; seed an empty slot from `.env` names `DEEPSEEKKEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`, `KIMI_API_KEY`, `ZAI_API_KEY`, `GLM_API_KEY`. Acceptance: a restart self-test shows a saved provider key and `grep -rq` finds it in neither `chats.json` nor the records.
+- [x] `examples/agent/src/view.ospml` + `model.ospml`: a Settings pane replacing the conversation column, opened from the sidebar foot, with Providers and MCP servers tabs; the composer's model picker gains the provider catalogue and an effort picker. Acceptance: `self-test/settings.json` drives provider + model + effort and matches goldens.
+- [x] Key persistence in `examples/agent/src/app.ospml` + `model.ospml`: write `providers.json` in the app's private store (mode 0600), never `chats.json`, never records; seed an empty slot from `.env` names `DEEPSEEKKEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`, `KIMI_API_KEY`, `ZAI_API_KEY`, `GLM_API_KEY`. Acceptance: a restart self-test shows a saved provider key and `grep -rq` finds it in neither `chats.json` nor the records.
 
 ## MCP in the app
 
@@ -38,13 +38,13 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 
 ## Self-tests and goldens
 
-- [ ] `examples/agent/test/main.py` `prov.*`: every catalogue model and every level: URL, exact body members, no `strict` where forbidden, `reasoning_effort` or `thinking` per the package, `reasoning_content` read and sent back, old `deepseek-chat` resolves, an unknown provider fails in words.
+- [x] `examples/agent/test/main.py` `prov.*`: every catalogue model and every level: URL, exact body members, no `strict` where forbidden, `reasoning_effort` or `thinking` per the package, `reasoning_content` read and sent back, old `deepseek-chat` resolves, an unknown provider fails in words.
 - [ ] `examples/agent/test-app/main.ospml`: open and close settings; per provider save, restart, remove a key; `.env` fills only empty slots; provider then model then effort in Settings, inherited by a new chat; a composer pick changes only that chat; effort kept or cleared; sending blocked without a key; each failure status. MCP: config outcomes, add, remove, clash, toggle, project server off and remembered per folder, a dead server, tools gone after remove, secrets absent from every saved document.
-- [ ] Strict HTTP double (`requireBearer`, `requireUrl`) with Swift tests, and `self-test/verify_providers.py`, `self-test/verify_mcp.py`.
+- [x] Strict HTTP double (`requireBearer`, `requireUrl`) with Swift tests, and `self-test/verify_providers.py`, `self-test/verify_mcp.py`.
 - [ ] Read every golden and judge the look. Remove any control that does nothing.
 
-- [ ] `examples/agent/self-test/code-blocks.json` + goldens: a doubled run draws fenced code and tool output through `Highlight.tokens_of`; assert the `Ui::rich` runs and that every code token pair meets 4.5:1 via `packages/native` `Contrast::ratio` (`packages/native/src/theme.ospml`).
-- [ ] `examples/agent/self-test/settings.json` + goldens: configure each provider, pick a model and effort, and check the per-provider request shape against a strict double.
+- [x] `examples/agent/self-test/code-blocks.json` + goldens: a doubled run draws fenced code and tool output through `Highlight.tokens_of`; assert the `Ui::rich` runs and that every code token pair meets 4.5:1 via `packages/native` `Contrast::ratio` (`packages/native/src/theme.ospml`).
+- [x] `examples/agent/self-test/settings.json` + goldens: configure each provider, pick a model and effort, and check the per-provider request shape against a strict double.
 - [ ] `examples/agent/self-test/mcp.json` + goldens per OS: run the doubled model through config, connect, a tool call, a tool error, a dead server, a project server off then on, and a secret kept out of the records, using `self-test/mcp_server.py` on stdio and streamable HTTP.
 
 ## Live proof

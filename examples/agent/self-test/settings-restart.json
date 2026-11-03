@@ -1,0 +1,11 @@
+{
+  "steps": [
+    {"wait": "Settings"},
+    {"invoke": "Settings"},
+    {"wait": "Key saved"},
+    {"gone": "Remove Kimi Code plan key"},
+    {"gone": "sk-kimi-test"},
+    {"shot": "26-keys-restored"},
+    {"invoke": "Close"}
+  ]
+}

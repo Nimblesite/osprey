@@ -242,7 +242,7 @@ def zai_thinking_levels(profile):
             return distinct(mapList(EFFORT_LEVELS, lambda level: mapped_effort(mapping, level)))
 
 
-def effort_map(profile) -> dict[str, str]:
+def effort_map(profile):
     """`zai_reasoning_effort_mapping` as a text map."""
     raw = unwrap_or(mapGet(profile, "zai_reasoning_effort_mapping"), JsonNull())
     table = J.to_map(raw)

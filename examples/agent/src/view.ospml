@@ -219,7 +219,7 @@ module View
     activeChat () =
         panel = panelNow ()
         chats = chatsNow ()
-        Lists::find (chats, \chat => chat.chatId == panel.panelActive) ?: (listGet chats 0 ?: Model::blank ("c0", "", 0))
+        Lists::find (chats, \chat => chat.chatId == panel.panelActive) ?: (listGet chats 0 ?: Model::blank ("c0", "", "", "", 0))
 
     folderName path =
         parts = split path "/" ?: []
@@ -229,9 +229,10 @@ module View
     (** The window: the sidebar beside the conversation and, when open, the inspector. *)
     export root () =
         panel = panelNow ()
+        settings = settingsNow ()
         base1 = Look::filled "canvas"
         base2 = Frames::plain
-        conversation = Ui::framed (base1(frameGrow = true), Ui::column [Ui::slot "header", Ui::framed (base2(frameGrow = true), Ui::slot "transcript"), Ui::slot "composer"])
+        conversation = Pick::either (settings.settingsOpen, Ui::slot "settings", Ui::framed (base1(frameGrow = true), Ui::column [Ui::slot "header", Ui::framed (base2(frameGrow = true), Ui::slot "transcript"), Ui::slot "composer"]))
         detail = match panel.panelOpen
             true => Ui::boundedAside (conversation, ui::Trailing, Ui::slot "inspector", panel.panelWidth, 220, 420, 480, ResizePanel)
             false => conversation
@@ -239,7 +240,7 @@ module View
 
     chatRow chat =
         busy = Model::busy chat
-        note = Pick::either (busy, "Working…", Pick::either (chat.chatStage == "failed", "Stopped by an error", modelName chat.chatModel))
+        note = Pick::either (busy, "Working…", Pick::either (chat.chatStage == "failed", "Stopped by an error", Engine::model_label chat.chatModel))
         base3 = Frames::plain
         words = Ui::column [Ui::framed (base3(frameHug = true, frameTextSize = 13), Ui::text chat.chatTitle), Ui::framed (Look::sized (11, Pick::either (busy, "accent", "secondary")), Ui::text note)]
         base4 = Look::gapped 2
@@ -252,9 +253,12 @@ module View
         quiet = Frames::inset (8, 10, 4, 10)
         actions = Ui::framed (quiet(frameQuietControls = true, frameGap = 2, frameTop = 44), Ui::column [Ui::button ("New chat", Symbols::name ui::Edit, NewChat)])
         foot = Frames::inset (10, 16, 14, 16)
-        status = Pick::either (settings.apiKey == "", Ui::badge ("No API key", Symbols::name ui::Warning, ui::Caution), Ui::badge ("API key set", Symbols::name ui::Check, ui::Good))
+        chat = activeChat ()
+        missing = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
+        symbol = Pick::either (missing, Symbols::name ui::Warning, Symbols::name ui::Settings)
         base5 = Frames::plain
-        Ui::column [actions, Ui::framed (base5(frameGrow = true), Ui::rows (mapList (chatsNow (), \chat => chatRow chat), panel.panelActive, PickChat)), Ui::framed (foot, status)]
+        settingsButton = Ui::framed (base5(frameQuietControls = true), Ui::button ("Settings", symbol, OpenSettings))
+        Ui::column [actions, Ui::framed (base5(frameGrow = true), Ui::rows (mapList (chatsNow (), \chat => chatRow chat), panel.panelActive, PickChat)), Ui::framed (foot, settingsButton)]
 
     (** The conversation's title bar. *)
     export header () =
@@ -292,6 +296,15 @@ module View
             "tools" => [Ui::framed (look, ui::Progress(label = "Working", detail = ""))]
             _ => []
 
+    troubleWords chat =
+        provider = Engine::provider_label (Engine::provider_id_of chat.chatModel)
+        match chat.chatProblemStatus
+            401 => "This key was refused."
+            403 => "This key was refused."
+            402 => "${provider} has no credit left. Pick another model, or add credit."
+            429 => "${provider} is rate limiting: try again shortly."
+            _ => ""
+
     trouble chat = match chat.chatStage == "failed"
         false => []
         true =>
@@ -299,9 +312,11 @@ module View
             base14 = Frames::plain
             title = Ui::framed (base14(frameInk = "danger", frameTextSize = 13), Ui::styled ("The request failed", ui::Headline, ui::Primary))
             detail = Ui::framed (Look::mono (12, "secondary"), Ui::text chat.chatProblem)
-            words = Ui::column [title, detail]
+            sentence = Pick::either (troubleWords chat == "", [], [Ui::framed (Look::sized (13, "primary"), Ui::text (troubleWords chat))])
             base15 = Frames::plain
-            [Ui::framed (card(frameLine = "danger"), Ui::column [words, Ui::framed (base15(frameHug = true), Ui::button ("Try again", Symbols::name ui::Refresh, Retry))])]
+            buttons = listConcat [Ui::framed (base15(frameHug = true), Ui::button ("Try again", Symbols::name ui::Refresh, Retry))] (Pick::either (troubleWords chat == "", [], [Ui::framed (base15(frameHug = true), Ui::button ("Open Settings", Symbols::name ui::Settings, OpenSettings))]))
+            words = Ui::column (listConcat [title, detail] sentence)
+            [Ui::framed (card(frameLine = "danger"), Ui::column [words, Ui::framed (Look::gapped 8, Ui::row buttons)])]
 
     saveTrouble () =
         problem = (settingsNow ()).saveProblem
@@ -323,27 +338,59 @@ module View
         centred = Frames::inset (28, 24, 18, 24)
         Ui::framed (centred(frameGrow = true, frameScrollY = length items > 0, frameAlign = Pick::either (length items > 0, "end", "center"), frameCross = "center"), Ui::framed (reading(frameWidth = Look::column, frameGrow = length items == 0), body))
 
-    modelChoices () = [Ui::choice ("deepseek-chat", "DeepSeek Chat"), Ui::choice ("deepseek-reasoner", "DeepSeek Reasoner")]
+    effortLabel level = match level
+        "off" => "Off"
+        "low" => "Low"
+        "medium" => "Medium"
+        "high" => "High"
+        "max" => "Max"
+        "minimal" => "Minimal"
+        "xhigh" => "Extra high"
+        _ => level
 
-    modelName id = Pick::either (id == "deepseek-reasoner", "DeepSeek Reasoner", "DeepSeek Chat")
+    modelName model = Engine::model_label model
 
-    keyField settings = match settings.apiKey == ""
-        false => []
-        true =>
-            style = Frames::inset (8, 0, 0, 0)
-            base16 = Frames::plain
-            [Ui::framed (style(frameGap = 8), Ui::row [Ui::framed (base16(frameGrow = true), ui::Field(label = "API key", value = settings.keyDraft, prompt = "Paste your DeepSeek API key", secure = true, multiline = false, commit = ui::OnEdit, bind = TypedKey)), Ui::action ("Save key", "", ui::Filled, true, SaveKey)])]
+    modelLine model =
+        provider = Engine::provider_label (Engine::provider_id_of model)
+        label = Engine::model_label model
+        "${provider} · ${label}"
 
-    primary (chat, words) = match Model::busy chat
-        true => Ui::action ("Stop", Symbols::name ui::Stop, ui::Filled, true, StopTurn)
-        false => Ui::action ("Send", Symbols::name ui::Send, ui::Filled, trim words != "", SendDraft)
+    modelChoices (chat, settings) =
+        current = chat.chatModel
+        keyed = filterList (Engine::provider_ids (), \provider => Model::hasKey (settings, provider))
+        offered = foldList (keyed, [], \(acc, provider) => listConcat acc (mapList (Engine::model_ids provider, \model => Ui::choice (Engine::full_model (provider, model), modelLine (Engine::full_model (provider, model))))))
+        Pick::either (Lists::any (offered, \choice => choice.choiceKey == current), offered, listPrepend offered (Ui::choice (current, modelLine current)))
+
+    effortPicker (model, effort) =
+        levels = Engine::model_levels model
+        match length levels == 0
+            true => []
+            false => [Ui::picker ("Effort", mapList (levels, \level => Ui::choice (level, effortLabel level)), effort, PickEffort)]
+
+    keyProblem (chat, settings) =
+        keyed = Model::hasAnyKey settings
+        missing = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
+        provider = Engine::provider_label (Engine::provider_id_of chat.chatModel)
+        note = Frames::inset (4, 0, 0, 0)
+        match keyed && missing
+            true => [Ui::framed (note(frameTextSize = 11, frameInk = "caution", frameHug = true), Ui::label ("Add a key for ${provider} to send.", Symbols::name ui::Warning))]
+            false => []
+
+    primary (chat, words, settings) =
+        keyed = Model::hasAnyKey settings
+        missing = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
+        match Model::busy chat
+            true => Ui::action ("Stop", Symbols::name ui::Stop, ui::Filled, true, StopTurn)
+            false => match keyed == false
+                true => Ui::action ("Add an API key", Symbols::name ui::Lock, ui::Filled, true, OpenSettings)
+                false => Ui::action ("Send", Symbols::name ui::Send, ui::Filled, missing == false && trim words != "", SendDraft)
 
     (** The one-line truth about the agent's power, always on show under the composer. *)
     access () =
         above = Frames::inset (4, 0, 0, 0)
         Ui::framed (above(frameTextSize = 11, frameInk = "secondary", frameHug = true), Ui::label ("Not sandboxed: the agent can run any command and change any file your account can.", Symbols::name ui::Warning))
 
-    (** The floating composer: the words, the model and the one action that matters. *)
+    (** The floating composer: the words, the model, its effort and the one action that matters. *)
     export composer () =
         chat = activeChat ()
         settings = settingsNow ()
@@ -351,15 +398,61 @@ module View
         base17 = Frames::plain
         field = Ui::framed (base17(frameTextSize = 14, frameLineHeight = 21.0, frameQuietControls = true), ui::Field(label = "Message", value = words, prompt = "Ask Osprey to change something…", secure = false, multiline = true, commit = ui::OnEdit, bind = Typed))
         base18 = Frames::plain
-        model = Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::picker ("Model", modelChoices (), chat.chatModel, PickModel))
+        model = Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::picker ("Model", modelChoices (chat, settings), chat.chatModel, PickModel))
+        effort = mapList (effortPicker (chat.chatModel, chat.chatEffort), \picker => Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), picker))
         place = Ui::framed (base18(frameQuietControls = true, frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::action (folderName chat.chatFolder, Symbols::name ui::Folder, ui::Plain, Model::busy chat == false, ChangeFolder))
         base19 = Frames::plain
-        sending = Ui::framed (base19(frameIconOnly = true, frameControlHeight = 30, frameSymbolSize = 13, frameHug = true), primary (chat, words))
-        controls = Ui::row [place, model, ui::Spacer, sending]
+        sending = Ui::framed (base19(frameIconOnly = true, frameControlHeight = 30, frameSymbolSize = 13, frameHug = true), primary (chat, words, settings))
+        controls = Ui::row (listConcat [place, model] (listConcat effort [ui::Spacer, sending]))
         box = Look::card ("surface", 12, 14, 18)
         outer = Frames::inset (0, 24, 2, 24)
         inner = (Look::gapped 10)
-        Ui::framed (outer(frameCross = "center"), Ui::column [Ui::framed (box(frameWidth = Look::column, frameShadow = "floating"), Ui::framed (inner, Ui::column (listConcat [field, controls] (keyField settings)))), access ()])
+        Ui::framed (outer(frameCross = "center"), Ui::column [Ui::framed (box(frameWidth = Look::column, frameShadow = "floating"), Ui::framed (inner, Ui::column (listConcat [field, controls] (keyProblem (chat, settings))))), access ()])
+
+    providerCard (settings, provider) =
+        keySaved = Model::hasKey (settings, provider)
+        label = Engine::provider_label provider
+        badge = Pick::either (keySaved, Ui::badge ("Key saved", Symbols::name ui::Check, ui::Good), Ui::badge ("No key", Symbols::name ui::Warning, ui::Caution))
+        base21 = Frames::plain
+        head = Ui::row [Ui::framed (Look::sized (14, "primary"), Ui::text label), ui::Spacer, badge]
+        endpoint = Ui::framed (Look::mono (11, "secondary"), Ui::text (Engine::provider_base provider))
+        draft = Model::draftOf (settings, provider)
+        field = ui::Field(label = "${label} key", value = draft, prompt = "Paste the key", secure = true, multiline = false, commit = ui::OnEdit, bind = TypedKey(keyProvider = provider))
+        save = Ui::action ("Save ${label} key", "", ui::Filled, draft != "", SaveKey(keyProvider = provider))
+        remove = Ui::action ("Remove ${label} key", "", ui::Destructive, true, RemoveKey(keyProvider = provider))
+        controls = listConcat [Ui::framed (base21(frameGrow = true), field), save] (Pick::either (keySaved, [remove], []))
+        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column [head, endpoint, Ui::framed (Look::gapped 8, Ui::row controls)])
+
+    defaultModelSection settings =
+        base22 = Frames::plain
+        heading = Ui::framed (base22(frameHug = true), Ui::styled ("Default model", ui::Eyebrow, ui::Secondary))
+        providers = mapList (Engine::provider_ids (), \provider => Ui::choice (provider, Engine::provider_label provider))
+        providerPicker = Ui::framed (base22(frameGrow = true), Ui::picker ("Provider", providers, settings.providerOpen, PickProvider))
+        models = mapList (Engine::model_ids settings.providerOpen, \model => Ui::choice (Engine::full_model (settings.providerOpen, model), Engine::model_label (Engine::full_model (settings.providerOpen, model))))
+        modelPicker = Ui::framed (base22(frameGrow = true), Ui::picker ("Model", models, settings.defaultModel, PickDefaultModel))
+        levels = Engine::model_levels settings.defaultModel
+        effort = Pick::either (length levels == 0, [], [Ui::framed (base22(frameGrow = true), Ui::picker ("Effort", mapList (levels, \level => Ui::choice (level, effortLabel level)), settings.defaultEffort, PickDefaultEffort))])
+        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column [heading, Ui::framed (Look::gapped 12, Ui::row (listConcat [providerPicker, modelPicker] effort))])
+
+    providersPane settings =
+        cards = Ui::framed (Look::gapped 12, Ui::column (mapList (Engine::provider_ids (), \provider => providerCard (settings, provider))))
+        Ui::column [cards, defaultModelSection settings]
+
+    mcpState () = Ui::empty ("package", "No MCP servers yet", "Add a server to give the agent more tools.")
+
+    settingsTab (settings, key, label, symbol) = Ui::action (label, Symbols::name symbol, Pick::either (settings.settingsTab == key, ui::Filled, ui::Plain), true, ShowSettingsTab(tabKey = key))
+
+    (** The settings pane, in place of the conversation column: providers first, then MCP servers. *)
+    export settings () =
+        settings = settingsNow ()
+        bar = Frames::inset (10, 24, 10, 24)
+        base23 = Frames::plain
+        title = Ui::framed (base23(frameTextSize = 17, frameHug = true), Ui::styled ("Settings", ui::Headline, ui::Primary))
+        close = Ui::framed (base23(frameQuietControls = true, frameIconOnly = true, frameControlHeight = 28, frameSymbolSize = 14, frameHug = true), Ui::button ("Close", Symbols::name ui::Dismiss, CloseSettings))
+        tabs = Ui::framed (Look::gapped 8, Ui::row [settingsTab (settings, "providers", "Providers", ui::Shield), settingsTab (settings, "mcp", "MCP servers", ui::Package), ui::Spacer])
+        pane = Pick::either (settings.settingsTab == "mcp", mcpState (), providersPane settings)
+        body = Frames::inset (20, 24, 20, 24)
+        Ui::framed (Look::filled "canvas", Ui::column [Ui::framed (bar(frameHeight = 52, frameLine = "line", frameLineEdge = "bottom", frameAlign = "center"), Ui::row [title, ui::Spacer, close]), Ui::framed (body(frameGrow = true, frameScrollY = true), Ui::framed (Look::gapped 16, Ui::column [tabs, pane]))])
 
     fact (label, value) = Ui::pair (label, value)
 

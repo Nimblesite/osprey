@@ -48,6 +48,7 @@ class Item:
 
 
 def plain_item(kind, key, text):
+    """An item of one kind holding only text, with no blocks or steps."""
     return Item(itemKind=kind, itemKey=key, itemText=text, itemBlocks=[], itemSteps=[])
 
 
@@ -182,6 +183,7 @@ class Reading:
 
 
 def block(kind, level, text):
+    """A block of one kind and level whose text reads as spans."""
     return Block(blockKind=kind, blockLevel=level, blockSpans=spans_of(text), blockLanguage="", blockCode="", blockRows=[])
 
 

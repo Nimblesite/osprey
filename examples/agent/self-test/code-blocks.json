@@ -1,19 +1,31 @@
 {
   "steps": [
     {
-      "wait": "No API key"
+      "wait": "Add an API key"
+    },
+    {
+      "invoke": "Add an API key"
+    },
+    {
+      "wait": "Save DeepSeek key"
     },
     {
       "type": [
-        "API key",
+        "DeepSeek key",
         "sk-double"
       ]
     },
     {
-      "invoke": "Save key"
+      "invoke": "Save DeepSeek key"
     },
     {
-      "wait": "API key set"
+      "wait": "Key saved"
+    },
+    {
+      "invoke": "Close"
+    },
+    {
+      "wait": "Send"
     },
     {
       "type": [

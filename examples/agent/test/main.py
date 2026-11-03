@@ -36,7 +36,7 @@ def result(call_id, name, text):
 
 def conversation_cases():
     opened = Engine.add_user(Engine.new_history(), FOLDER, "Fix it")
-    body = Engine.request_body(opened, MODEL)
+    body = Engine.request_body(opened, MODEL, "")
     first = Engine.accept(opened, MODEL, 200, FIRST)
     owed = Engine.pending(first.replyHistory, [])
     partial = [result("c1", "read_file", "print(1)")]
@@ -111,7 +111,7 @@ def folder_prompt_cases():
     unchanged = Engine.add_user(moved, other, "four")
     back = Engine.add_user(unchanged, FOLDER, "five")
     corrupt = Engine.add_user(JsonString("broken"), FOLDER, "fresh")
-    wire = J.list_at(unwrap_or(J.decode(Engine.request_body(moved, MODEL)), JsonNull()), "messages")
+    wire = J.list_at(unwrap_or(J.decode(Engine.request_body(moved, MODEL, "")), JsonNull()), "messages")
     prompt = J.text_at(at(wire, len(wire) - 2, JsonNull()), "content", "")
     return [
         Check.equal("folder.empty_gets_prompt", len(last_systems(empty)), 1),
@@ -141,17 +141,90 @@ def in_flight_cases():
     ]
 
 
+def prov_pairs():
+    """Every `provider/model` in the catalogue, in order."""
+    return foldList(Engine.provider_ids(), [], lambda acc, pid: listConcat(acc, mapList(Engine.model_ids(pid), lambda mid: Engine.full_model(pid, mid))))
+
+
+def prov_zai(model):
+    pid = Engine.provider_id_of(model)
+    return pid == "zai" or pid == "zai-coding"
+
+
+def prov_strict(model):
+    pid = Engine.provider_id_of(model)
+    return pid == "deepseek" or pid == "zai" or pid == "zai-coding"
+
+
+def prov_effort(model, level):
+    return "" if level == "" or level == "off" else level
+
+
+def prov_body_checks(model, level):
+    opened = Engine.add_user(Engine.new_history(), FOLDER, "Go")
+    text = Engine.request_body(opened, model, level)
+    doc = unwrap_or(J.decode(text), JsonNull())
+    pid = Engine.provider_id_of(model)
+    mid = Engine.model_id_of(model)
+    suffix = pid + "." + mid + "." + (level if level != "" else "default")
+    zai = prov_zai(model)
+    effort = prov_effort(model, level)
+    kind = "disabled" if level == "off" else ("enabled" if level != "" else "")
+    base = [
+        Check.equal("prov.url." + suffix, Engine.url(model), Engine.provider_base(pid) + "/chat/completions"),
+        Check.equal("prov.model." + suffix, J.text_at(doc, "model", ""), mid),
+        Check.truth("prov.strict." + suffix, contains(text, "\"strict\":true") == prov_strict(model), text),
+        Check.equal("prov.effort." + suffix, J.text_at(doc, "reasoning_effort", ""), effort),
+        Check.equal("prov.tool_choice." + suffix, J.text_at(doc, "tool_choice", ""), "auto"),
+        Check.equal("prov.stream." + suffix, J.bool_at(doc, "stream", True), False),
+    ]
+    thinking = [Check.equal("prov.thinking.type." + suffix, J.text_at(J.object_at(doc, "thinking"), "type", ""), kind)] if zai else [Check.equal("prov.no_thinking." + suffix, J.has(doc, "thinking"), False)]
+    return listConcat(base, thinking)
+
+
+def prov_level_checks(model):
+    return foldList(listPrepend(Engine.model_levels(model), ""), [], lambda acc, level: listConcat(acc, prov_body_checks(model, level)))
+
+
+def prov_cases():
+    bodies = foldList(prov_pairs(), [], lambda acc, model: listConcat(acc, prov_level_checks(model)))
+    roundtrip = prov_roundtrip_cases()
+    return listConcat(bodies, roundtrip)
+
+
+def prov_roundtrip_cases():
+    opened = Engine.add_user(Engine.new_history(), FOLDER, "Think")
+    reply = "{\"id\":\"r\",\"model\":\"glm-5.3\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Done.\",\"reasoning_content\":\"I reasoned.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}"
+    accepted = Engine.accept(opened, "zai/glm-5.3", 200, reply)
+    body = unwrap_or(J.decode(Engine.request_body(accepted.replyHistory, "zai/glm-5.3", "high")), JsonNull())
+    messages = J.list_at(body, "messages")
+    assistant = at(messages, len(messages) - 1, JsonNull())
+    return [
+        Check.equal("prov.roundtrip_ok", accepted.replyOk, True),
+        Check.equal("prov.roundtrip_reasoning_back", J.text_at(assistant, "reasoning_content", ""), "I reasoned."),
+        Check.equal("prov.old_deepseek_resolves", Engine.provider_id_of("deepseek-chat"), "deepseek"),
+        Check.equal("prov.old_deepseek_url", Engine.url("deepseek-chat"), "https://api.deepseek.com/chat/completions"),
+        Check.equal("prov.old_deepseek_label", Engine.model_label("deepseek-chat"), "DeepSeek Chat"),
+        Check.truth("prov.unknown_provider_words", contains(Engine.provider_problem("nosuch/glm-5.3"), "Unknown provider"), Engine.provider_problem("nosuch/glm-5.3")),
+        Check.truth("prov.unknown_model_words", contains(Engine.provider_problem("deepseek/nosuch"), "no model"), Engine.provider_problem("deepseek/nosuch")),
+    ]
+
+
 def failure_cases():
     opened = Engine.add_user(Engine.new_history(), FOLDER, "Go")
     limited = Engine.accept(opened, MODEL, 429, "{\"error\":\"busy\"}")
     garbage = Engine.accept(opened, MODEL, 200, "not json")
     empty = Engine.accept(opened, MODEL, 200, "{\"choices\":[]}")
+    blank = Engine.accept(opened, MODEL, 200, "{\"id\":\"r\",\"model\":\"deepseek-chat\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}")
     return [
         Check.equal("fail.http_ok", limited.replyOk, False),
         Check.truth("fail.http_words", contains(limited.replyProblem, "status_code: 429"), limited.replyProblem),
         Check.equal("fail.history_kept", J.encode(limited.replyHistory), J.encode(opened)),
         Check.equal("fail.garbage", garbage.replyOk, False),
         Check.equal("fail.empty_choices", empty.replyOk, False),
+        Check.equal("fail.blank_no_text", blank.replyOk, False),
+        Check.truth("fail.blank_words", contains(blank.replyProblem, "no answer"), blank.replyProblem),
+        Check.equal("fail.blank_history_kept", J.encode(blank.replyHistory), J.encode(opened)),
         Check.equal("fail.tool_error_words", Engine.tool_result_text("read_file", 1, "", "no such file"), "The tool could not run: no such file"),
         Check.equal("fail.command_status", Engine.tool_result_text("run_command", 3, "out", ""), "exit 3\nout"),
         Check.equal("fail.read_status", Engine.tool_result_text("read_file", 1, "nope", ""), "failed with status 1\nnope"),
@@ -258,6 +331,12 @@ HL_SNIPPETS = [
 HL_MALFORMED = ["", "\n\n\n", "\t\t", "a\r\nb\r\n", "héllo → wörld ✓", "'", "\"", "'''", "\"unclosed", "/* unclosed block", "def", "0x", "${", "#[", "<", "</a>", "<!--", "`x`", "@word", "\"\"\"\"\"\"", "```\"'''<!--/*/#@${!:`"]
 
 
+def hl_flow(language, name, code, words):
+    """Every control-flow word of a language draws as a keyword."""
+    marked = hl_marked(language, code)
+    return Check.truth("hl." + language + ".flow." + name, len(filterList(words, lambda word: not contains(marked, "|keyword:" + word + "|"))) == 0, marked)
+
+
 def hl_marked(language, code):
     """The tokens as `kind:text`, fenced, so one token can be asserted exactly."""
     return "|" + join(mapList(Highlight.tokens_of(language, code), lambda t: t.tokenKind + ":" + t.tokenText), "|") + "|"
@@ -335,6 +414,7 @@ def highlight_cases():
     ]
     rules = [
         hl_has("python", "formatted classy", "", "formatted"),
+        hl_flow("python", "return", "if x:\n    return y\nelse:\n    for i in z:\n        while i:\n            break\n    continue\n", ["if", "return", "else", "for", "while", "break", "continue"]),
         Check.truth("hl.python.whole_words", not contains(hl_marked("python", "formatted classy"), "keyword:"), hl_marked("python", "formatted classy")),
         hl_has("python", "x = \"def class 42 # no\"", "string", "\"def class 42 # no\""),
         Check.truth("hl.python.hash_in_string", not contains(hl_marked("python", "y = \"a # b\""), "comment:"), hl_marked("python", "y = \"a # b\"")),
@@ -396,7 +476,7 @@ def highlight_cases():
 
 
 def suite():
-    return listConcat(listConcat(listConcat(listConcat(listConcat(conversation_cases(), folder_prompt_cases()), in_flight_cases()), listConcat(failure_cases(), command_cases())), markdown_cases()), highlight_cases())
+    return listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(conversation_cases(), folder_prompt_cases()), in_flight_cases()), listConcat(failure_cases(), command_cases())), prov_cases()), markdown_cases()), highlight_cases())
 
 
 def report_suite():

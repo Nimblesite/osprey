@@ -63,11 +63,18 @@ mkdir -p "$work/other-project"
 "$host" --self-test "$here/self-test/controls.json" "$records/controls" --headless --store "$work/store-controls" --http-double "$here/self-test/controls-doubles.json" --folder-double "$work/other-project" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 "$host" --self-test "$here/self-test/restart.json" "$records/restart" --headless --store "$work/store-controls" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 "$host" --self-test "$here/self-test/code-blocks.json" "$records/code-blocks" --headless --store "$work/store-code-blocks" --http-double "$here/self-test/code-blocks-doubles.json" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
+"$host" --self-test "$here/self-test/settings.json" "$records/settings" --headless --store "$work/store-settings" --http-double "$here/self-test/settings-doubles.json" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
+python3 "$here/self-test/verify_providers.py" "$records/settings/requests.jsonl"
+"$host" --self-test "$here/self-test/settings-restart.json" "$records/settings-restart" --headless --store "$work/store-settings" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
+[ "$(stat -f %Lp "$work/store-settings/providers.json")" = 600 ] || { echo "FAILED: providers.json is readable by others" >&2; exit 1; }
+grep -q sk-glm-test "$work/store-settings/providers.json" || { echo "FAILED: the GLM key was not saved" >&2; exit 1; }
+if grep -q sk-kimi-test "$work/store-settings/providers.json"; then echo "FAILED: the removed Kimi key is still saved" >&2; exit 1; fi
+if grep -rqE 'sk-glm-test|sk-kimi-test' "$work/store-settings/chats.json" "$records"; then echo "FAILED: a provider key reached the conversations or the records" >&2; exit 1; fi
 if grep -rq sk-double "$work/store-controls/chats.json" "$records"; then echo "FAILED: the key reached a saved file or the records" >&2; exit 1; fi
 [ -f "$work/other-project/moved.txt" ] || { echo "FAILED: the tool did not write in the chosen folder" >&2; exit 1; }
 [ ! -e "$work/calc-project/moved.txt" ] || { echo "FAILED: the tool wrote in the old folder" >&2; exit 1; }
 python3 -c 'import json, sys
-requests = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8")]
+requests = [json.loads(json.loads(line)["body"]) for line in open(sys.argv[1], encoding="utf-8")]
 if not any(any(message.get("role") == "system" and sys.argv[2] in message.get("content", "") for message in request.get("messages", [])) for request in requests):
     raise SystemExit("FAILED: no system message names the chosen folder")' "$records/controls/requests.jsonl" "$work/other-project"
 echo "self-test passed"

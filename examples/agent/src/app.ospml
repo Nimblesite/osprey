@@ -26,10 +26,11 @@ module Turn
 
     toolLimit () = 8000000
 
-    (** The model request for `chat`'s next step, under a new ticket. *)
+    (** The model request for `chat`'s next step, under a new ticket, with the key of its provider. *)
     export asking (store, chat) =
         ticket = "model:${chat.chatId}:${store.ticketCount}"
-        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${store.settings.apiKey}"), ui::Header(headerName = "Content-Type", headerValue = "application/json")], body = Engine::request_body (chat.chatHistory, chat.chatModel), responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
+        key = Model::keyOf (store.settings, Engine::provider_id_of chat.chatModel)
+        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${key}"), ui::Header(headerName = "Content-Type", headerValue = "application/json")], body = Engine::request_body (chat.chatHistory, chat.chatModel, chat.chatEffort), responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
         moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatStage = "thinking", chatTicket = ticket, chatProblem = ""))
         Runtime::asking (moved, [request])
 
@@ -51,18 +52,19 @@ module Turn
     // A turn over: the agent idle and the conversations kept.
     finished (store, chat) =
         moved = Model::putChat (store, chat(chatStage = "idle", chatTicket = "", chatCall = ""))
-        Model::persisting moved
+        Model::persisting (moved, "chats.json")
 
-    failed (store, chat, problem) = Model::persisting (Model::putChat (store, chat(chatStage = "failed", chatTicket = "", chatCall = "", chatProblem = problem)))
+    failed (store, chat, problem, status) = Model::persisting (Model::putChat (store, chat(chatStage = "failed", chatTicket = "", chatCall = "", chatProblem = problem, chatProblemStatus = status)), "chats.json")
 
     (** A model answer: add the response and run what it asks for. *)
     export modelAnswered (store, chat, ticket, outcome) = match outcome
-        Error problem => failed (store, chat, problem)
+        Error problem => failed (store, chat, problem, 0)
         Success result =>
             body = perform ui::Slices.fetch ticket
-            reply = Engine::accept (chat.chatHistory, chat.chatModel, Doc::number (result, "status"), body)
+            status = Doc::number (result, "status")
+            reply = Engine::accept (chat.chatHistory, chat.chatModel, status, body)
             match reply.replyOk
-                false => failed (store, chat, reply.replyProblem)
+                false => failed (store, chat, reply.replyProblem, status)
                 true => advance (store, chat(chatHistory = reply.replyHistory, chatStage = "tools"))
 
     (** A tool's answer: keep it and move on. *)
@@ -73,11 +75,13 @@ module Turn
             Error problem => Engine::tool_result_text (call.callName, 1, "", problem)
         advance (store, chat(chatResults = listAppend chat.chatResults (Engine::ToolResult(resultId = call.callId, resultName = call.callName, resultContent = output))))
 
-    (** Starts a turn in the active conversation with `text`, unless it is already working or the words are empty. *)
+    (** Starts a turn in the active conversation with `text`, unless it is already working, the words are empty, its provider has no key, or the model is unknown. *)
     export submit (store, text) =
         words = trim text
         chat = Model::active store
-        match words == "" || Model::busy chat || store.settings.apiKey == ""
+        missing = Model::keyOf (store.settings, Engine::provider_id_of chat.chatModel) == ""
+        problem = Engine::provider_problem chat.chatModel
+        match words == "" || Model::busy chat || missing || problem != ""
             true => Runtime::step (store(draft = Draft(draftText = words)))
             false =>
                 titled = Pick::either (length (Transcript::items_of chat.chatHistory) == 0, chat(chatTitle = Transcript::title_of words), chat)
@@ -89,7 +93,7 @@ module Turn
         chat = Model::active store
         cancels = Pick::either (chat.chatTicket == "", [], [Requests::ask ("cancel:${store.ticketCount}", ui::Cancel(cancelled = chat.chatTicket))])
         moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), Model::halted chat)
-        saving = Model::persisting moved
+        saving = Model::persisting (moved, "chats.json")
         saving(requests = listConcat cancels saving.requests)
 
 (** How Osprey Agent answers each message: taps, text, choices, flags and completions. *)
@@ -105,12 +109,27 @@ module Answers
             panel = store.panel
             Runtime::step (store(panel = panel(panelOpen = panel.panelOpen == false)))
         Suggest words => Turn::submit (store, words)
-        SaveKey =>
+        SaveKey provider =>
             settings = store.settings
-            Runtime::step (store(settings = settings(apiKey = trim settings.keyDraft, keyDraft = "")))
+            value = Model::draftOf (settings, provider)
+            match value == ""
+                true => Runtime::step store
+                false => Model::persisting (store(settings = Model::withKey (Model::withDraft (settings, provider, ""), provider, value)), "providers.json")
+        RemoveKey provider =>
+            settings = store.settings
+            Model::persisting (store(settings = Model::withKey (settings, provider, "")), "providers.json")
+        ShowSettingsTab key =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(settingsTab = key)))
+        OpenSettings =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(settingsOpen = true)))
+        CloseSettings =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(settingsOpen = false)))
         _ => Runtime::step store
 
-    (** Applies text or a choice: the composer's words, where a final newline sends; a conversation; a model. *)
+    (** Applies text or a choice: the composer's words, where a final newline sends; a conversation; a model, effort or a settings picker. *)
     export typed (store, action, text) = match action
         Typed => match endsWith text "\n"
             true => Turn::submit (store, text)
@@ -120,10 +139,25 @@ module Answers
             Runtime::step (store(panel = panel(panelActive = text)))
         PickModel =>
             chat = Model::active store
-            Runtime::step (Model::putChat (store, chat(chatModel = text)))
-        TypedKey =>
+            effort = Pick::either (Lists::any (Engine::model_levels text, \level => level == chat.chatEffort), chat.chatEffort, "")
+            Runtime::step (Model::putChat (store, chat(chatModel = text, chatEffort = effort)))
+        PickEffort =>
+            chat = Model::active store
+            Runtime::step (Model::putChat (store, chat(chatEffort = text)))
+        PickProvider =>
             settings = store.settings
-            Runtime::step (store(settings = settings(keyDraft = text)))
+            first = listGet (Engine::model_ids text) 0 ?: "deepseek-chat"
+            Model::persisting (store(settings = settings(providerOpen = text, defaultModel = Engine::full_model (text, first), defaultEffort = "")), "providers.json")
+        PickDefaultModel =>
+            settings = store.settings
+            effort = Pick::either (Lists::any (Engine::model_levels text, \level => level == settings.defaultEffort), settings.defaultEffort, "")
+            Model::persisting (store(settings = settings(defaultModel = text, defaultEffort = effort)), "providers.json")
+        PickDefaultEffort =>
+            settings = store.settings
+            Model::persisting (store(settings = settings(defaultEffort = text)), "providers.json")
+        TypedKey provider =>
+            settings = store.settings
+            Runtime::step (store(settings = Model::withDraft (settings, provider, text)))
         _ => Runtime::step store
 
     (** Applies a disclosure's flag. *)
@@ -145,10 +179,16 @@ module Answers
         Error _ => Runtime::step store
         Success _ =>
             settings = store.settings
-            // A key pasted while the file was being read is the newer word.
-            match settings.apiKey == ""
-                true => Runtime::step (store(settings = settings(apiKey = Model::keyIn (perform ui::Slices.fetch "env"))))
-                false => Runtime::step store
+            // A key pasted while the file was being read is the newer word; the dotenv fills only empty slots.
+            seeded = Model::keysIn (perform ui::Slices.fetch "env")
+            filled = foldList (seeded, settings, \(acc, key) => Pick::either (Model::keyOf (acc, key.keyProvider) == "" && key.keyValue != "", Model::withKey (acc, key.keyProvider, key.keyValue), acc))
+            Runtime::step (store(settings = filled))
+
+    providersLoaded (store, outcome) = match outcome
+        Error _ => Runtime::step store
+        Success result => match Doc::flag (result, "found")
+            false => Runtime::step store
+            true => Runtime::step (store(settings = Model::providersOf (store.settings, Doc::parse (perform ui::Slices.fetch "providers-file"))))
 
     chatsLoaded (store, outcome) = match outcome
         Error _ => Runtime::step store
@@ -162,22 +202,24 @@ module Answers
             true => Runtime::step store
             false =>
                 chat = Model::active store
-                Model::persisting (Model::putChat (store, chat(chatFolder = Doc::text (result, "path"))))
+                Model::persisting (Model::putChat (store, chat(chatFolder = Doc::text (result, "path"))), "chats.json")
 
     // The write in flight ended: say if it failed, and write what changed meanwhile.
     saved (store, outcome) =
         settings = store.settings
         problem = match outcome
-            Error reason => "Your conversations could not be saved: ${reason}"
+            Error reason => "Your ${Model::saveLabel settings.saveName} could not be saved: ${reason}"
             Success _ => ""
-        settledStore = store(settings = settings(saving = false, saveAgain = false, saveProblem = problem))
-        Pick::either (settings.saveAgain, Model::persisting settledStore, Runtime::step settledStore)
+        next = listGet settings.savePending 0 ?: ""
+        settledStore = store(settings = settings(saving = false, savePending = filterList (settings.savePending, \name => name != next), saveName = "", saveProblem = problem))
+        Pick::either (next == "", Runtime::step settledStore, Model::persisting (settledStore, next))
 
     chatOf (store, ticket) = Lists::find (store.chats, \chat => chat.chatTicket == ticket)
 
     (** Applies a completion: only the ticket a conversation is waiting on counts, so a stopped turn's late answer changes nothing. *)
     export completed (store, ticket, outcome) = match ticket
         "env" => settingsLoaded (store, outcome)
+        "providers" => providersLoaded (store, outcome)
         "chats" => chatsLoaded (store, outcome)
         "folder" => folderChosen (store, outcome)
         _ => match startsWith ticket "save:"
@@ -190,14 +232,14 @@ module Answers
 
 (** Osprey Agent as the framework runs it: launch, update, regions, the session document and the theme ([UI-STORE], [UI-REGIONS]). *)
 module App
-    (** The store at launch, with the conversations and the key asked for. The first launch argument names the project folder and the second a dotenv file. *)
+    (** The store at launch, with the conversations, the providers and the key file asked for. The first launch argument names the project folder and the second a dotenv file. *)
     export initial context =
         home = context.home
         folder = Pick::either ((listGet context.arguments 0 ?: "") == "", home, listGet context.arguments 0 ?: "")
         store = Model::launched (context.platform, home, folder, context.now)
         envFile = listGet context.arguments 1 ?: ""
         env = Pick::either (envFile == "", [], [Requests::ask ("env", Model::readText (context.platform, envFile))])
-        Runtime::asking (store, listConcat env [Requests::ask ("chats", ui::StoreRead(readName = "chats.json", readLimit = 64000000, readSlice = "chats-file"))])
+        Runtime::asking (store, listConcat env [Requests::ask ("providers", ui::StoreRead(readName = "providers.json", readLimit = 1000000, readSlice = "providers-file")), Requests::ask ("chats", ui::StoreRead(readName = "chats.json", readLimit = 64000000, readSlice = "chats-file"))])
 
     (** Applies one message: a tap, text or a choice, a flag, a splitter's width or a completion. *)
     export update (context, before, message) =
@@ -212,7 +254,7 @@ module App
 
     settingsSlice () = perform Signal<Settings>.read ()
 
-    (** The regions: the window's split, the sidebar, the conversation's header and transcript, the composer and the inspector, each rebuilt only when a slice it read changed. *)
+    (** The regions: the window's split, the sidebar, the conversation's header and transcript, the composer, the inspector and the settings pane, each rebuilt only when a slice it read changed. *)
     export regions (before, store, frames, _) =
         chats = Chats(chatList = store.chats)
         previous = Chats(chatList = before.chats)
@@ -225,7 +267,7 @@ module App
         handle static Signal<Settings>
             read => store.settings
         changed = listConcat (signalChanges previous chats Model::chatsJson (signalDependencies chatsSlice)) (listConcat (signalChanges before.draft store.draft Model::draftJson (signalDependencies draftSlice)) (listConcat (signalChanges before.panel store.panel Model::panelJson (signalDependencies panelSlice)) (signalChanges before.settings store.settings Model::settingsJson (signalDependencies settingsSlice))))
-        [Keyed::region (frames, "root", changed, View::root), Keyed::region (frames, "sidebar", changed, View::sidebar), Keyed::region (frames, "header", changed, View::header), Keyed::region (frames, "transcript", changed, View::transcript), Keyed::region (frames, "composer", changed, View::composer), Keyed::region (frames, "inspector", changed, View::inspector)]
+        [Keyed::region (frames, "root", changed, View::root), Keyed::region (frames, "sidebar", changed, View::sidebar), Keyed::region (frames, "header", changed, View::header), Keyed::region (frames, "transcript", changed, View::transcript), Keyed::region (frames, "composer", changed, View::composer), Keyed::region (frames, "inspector", changed, View::inspector), Keyed::region (frames, "settings", changed, View::settings)]
 
     (** The store as the opaque session document. *)
     export save store = Model::storeJson store

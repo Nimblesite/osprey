@@ -151,10 +151,18 @@ public struct SelfTestRegions {
     private func enabled(_ node: JSONValue) -> Bool { node["enabled"]?.bool ?? true }
 
     private func chooser(_ words: String) -> SelfTestSend? {
-        for field in ["rows", "choices"] {
-            let offering = control { $0.list(field).contains { Self.holds($0, words) } }
-            if let offering, let row = offering.node.list(field).first(where: { Self.holds($0, words) }) {
-                return SelfTestSend(region: offering.region, ordinal: offering.node.count("event"), value: .string(row.text("key")))
+        // An exact choice wins over a substring, so `High` picks an effort picker's `High` before a model named `Highspeed`, and `GLM-5.3` picks `GLM · GLM-5.3` before `GLM · GLM-5.3 Highspeed`.
+        for exact in [true, false] {
+            for field in ["rows", "choices"] {
+                for (key, root) in nodes {
+                    let wanted = { (row: JSONValue) in
+                        Self.holds(row, words) && (!exact || row.text("label") == words || row.text("label").hasSuffix(" · " + words) || row.text("key") == words)
+                    }
+                    guard let node = Self.find(root, { $0["event"]?.int != nil && $0.list(field).contains(where: wanted) }) else { continue }
+                    if let row = node.list(field).first(where: wanted) {
+                        return SelfTestSend(region: key, ordinal: node.count("event"), value: .string(row.text("key")))
+                    }
+                }
             }
         }
         return nil
@@ -246,8 +254,18 @@ public struct HttpDoubleAdapter: CapabilityAdapter {
         guard outgoing.httpMethod == "POST", outgoing.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true else {
             throw CapabilityError.notAllowed("The double takes only an authorized POST")
         }
-        if let delay = replies[index]["delayMs"]?.int { try await Task.sleep(for: .milliseconds(delay)) }
-        let line = Data((try request.text("body") + "\n").utf8)
+        // A strict double answers the status the real server would, without logging the key.
+        let entry = replies[index]
+        if let wanted = entry["requireUrl"]?.string, wanted != outgoing.url?.absoluteString {
+            return .object(["status": .number(404), "headers": .array([])])
+        }
+        if entry["requireBearer"]?.bool == true, outgoing.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") != true {
+            return .object(["status": .number(401), "headers": .array([])])
+        }
+        if let delay = entry["delayMs"]?.int { try await Task.sleep(for: .milliseconds(delay)) }
+        // The record holds where the request went and what it carried, never the key.
+        let record = JSONValue.object(["url": .string(outgoing.url?.absoluteString ?? ""), "body": .string(try request.text("body"))])
+        let line = Data((record.text + "\n").utf8)
         if let handle = try? FileHandle(forWritingTo: requests) {
             _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: line)
@@ -255,8 +273,8 @@ public struct HttpDoubleAdapter: CapabilityAdapter {
         } else {
             try line.write(to: requests)
         }
-        slices.write(try request.text("slice"), replies[index].text("body"))
-        return .object(["status": .number(Double(replies[index].count("status"))), "headers": .array([])])
+        slices.write(try request.text("slice"), entry.text("body"))
+        return .object(["status": .number(Double(entry.count("status"))), "headers": .array([])])
     }
 }
 

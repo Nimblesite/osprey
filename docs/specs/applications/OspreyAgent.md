@@ -10,15 +10,15 @@ Each request, in the words it was made, with the section that holds it. A reques
 
 | Request | Section | State |
 | --- | --- | --- |
-| "We are out of ds credit! Add support for kimi and glm! port this into the package" | [AGENT-PROVIDERS] | Package done, app open |
-| "The settings screen needs to allow us to CONFIGURE the PROVIDER -> SELECT MODEL" | [AGENT-SETTINGS] | Open |
-| "We need to be able to select the model and its peculiar settings like effort/reasoning here" (the composer, beside the folder chip) | [AGENT-COMPOSER] | Open |
-| "Where are the fucking settings?" | [AGENT-SETTINGS]: always visible at the sidebar's foot | Open |
+| "We are out of ds credit! Add support for kimi and glm! port this into the package" | [AGENT-PROVIDERS] | Done, doubled; no live call yet |
+| "The settings screen needs to allow us to CONFIGURE the PROVIDER -> SELECT MODEL" | [AGENT-SETTINGS] | Done, doubled; no live call yet |
+| "We need to be able to select the model and its peculiar settings like effort/reasoning here" (the composer, beside the folder chip) | [AGENT-COMPOSER] | Done, doubled; no live call yet |
+| "Where are the fucking settings?" | [AGENT-SETTINGS]: always visible at the sidebar's foot | Done |
 | "finish the pydanticai app, including mcp support and the settings UI that allows the user to add/remove MCPs" | [AGENT-MCP] | Open |
 | "port the MCP aspect of pydanticai into python flavor osprey and bring the MCP functionality into the app with a beautiful ui" | [AGENT-MCP] | Package done, app open |
 | "How do I configure MCPs in this app?" | [AGENT-MCP], and the README's MCP section | Open |
 | "I can only select one line of text. I need to be able to select a whole bunch of text in one hit" | [AGENT-SELECTION] | Open |
-| "make sure that the syntax higlighting works good, verify in tests"; "no fucking syntax highlighting" | [AGENT-HIGHLIGHT] | Code done, golden open |
+| "make sure that the syntax higlighting works good, verify in tests"; "no fucking syntax highlighting" | [AGENT-HIGHLIGHT] | Done |
 | "the button that says calc here should allow the user to change the path" | [AGENT-FOLDER] | Done |
 | "there should be a note somewhere on the screen conveying that the agent is not sandboxed" | [AGENT-FOLDER] | Done |
 | "We need to give credit to all the original authors of ported libraries and apps etc. on the website" | [the credits page](../../../website/src/credits.md) | Done |
@@ -26,8 +26,6 @@ Each request, in the words it was made, with the section that holds it. A reques
 | "prove a) all the actual agent harness UI works (remove controls that are not necessary and don't work) b) that it can solve coding problems c) that it looks fucking amazing" | [AGENT-PROOF] | Open |
 
 ## Providers, models and effort [AGENT-PROVIDERS]
-
-Not implemented yet: `Engine.url` returns DeepSeek's Chat Completions endpoint for every model, `Engine.profile_of` chooses DeepSeek's or OpenAI's profile, `chatModel` holds a bare model name and there is no `chatEffort`.
 
 The catalogue is one table in `examples/agent/src/engine.py`, `Provider(id, label, keyNames, base, models)` and `ModelEntry(id, label, levels, wire)`, and every lookup goes through it. Nothing else names a provider.
 
@@ -47,13 +45,9 @@ Each conversation carries its own `chatEffort`, whose choices come from the mode
 
 ## The composer [AGENT-COMPOSER]
 
-Not implemented yet: the composer has a DeepSeek-only model picker and no effort control.
-
 Beside the folder chip: a model picker listing the models of every provider with a key, labelled with provider and model such as `GLM Coding Plan · GLM-5.3`, the current one always listed; then an `Effort` picker with that model's own levels, absent when it has none. Both change only this conversation. Changing model keeps the effort when the new model has that level and clears it otherwise. With no key at all, a button `Add an API key` opens Settings and sending does nothing. A conversation whose provider lost its key cannot send, and says why. Each sidebar row names its conversation's model.
 
 ## Settings and keys [AGENT-SETTINGS]
-
-Not implemented yet: the composer asks for one DeepSeek key, `Model::keyIn` seeds it from `.env` names `DEEPSEEKKEY` and `DEEPSEEK_API_KEY` alone, and the app writes no key file — only `chats.json`, which never holds the key.
 
 A `Settings` button is always visible at the sidebar's foot, whether or not a key is set; it replaces today's `API key set` badge, and carries a warning symbol when the open conversation's provider has no key. It opens a pane in place of the conversation column, with a close control and two tabs: Providers and MCP servers.
 
@@ -95,7 +89,7 @@ The folder chip in the composer changes the conversation's working folder. The w
 
 ## Blank replies [AGENT-BLANK-REPLY]
 
-Not implemented yet: a request that returned no text leaves an empty gap in the transcript and looks like no answer (seen with two `yo` messages in a row). A turn that ends with no text says so in words, with `Try again`, and leaves no gap.
+A turn that ends with no text says so in words, with `Try again`, and leaves no gap.
 
 ## Proof [AGENT-PROOF]
 

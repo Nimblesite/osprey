@@ -1,8 +1,8 @@
 {
   "steps": [
-    {"wait": "No API key"},
+    {"wait": "Add an API key"},
     {"invoke": "calc-project"},
     {"panel": "cancel"},
-    {"wait": "No API key"}
+    {"wait": "Add an API key"}
   ]
 }

@@ -123,6 +123,27 @@ final class SelfTestTests: XCTestCase {
         XCTAssertThrowsError(try regions.attempt(step("shot")))
     }
 
+    private func composerSend(_ ordinal: Int, _ value: JSONValue) -> SelfTestAttempt {
+        .sending(SelfTestSend(region: "composer", ordinal: ordinal, value: value))
+    }
+
+    func testChoosePrefersAnExactChoiceOverASubstring() throws {
+        let model = control("picker", "Model", 20, ["choices": .array([
+            .object(["key": .string("zai/glm-5.3-highspeed"), "label": .string("GLM · GLM-5.3 Highspeed")]),
+            .object(["key": .string("zai/glm-5.3"), "label": .string("GLM · GLM-5.3")]),
+        ])])
+        let effort = control("picker", "Effort", 21, ["choices": .array([
+            .object(["key": .string("low"), "label": .string("Low")]),
+            .object(["key": .string("high"), "label": .string("High")]),
+            .object(["key": .string("max"), "label": .string("Max")]),
+        ])])
+        let regions = SelfTestRegions(nodes: [("composer", .object(["children": .array([model, effort])]))])
+        XCTAssertEqual(try regions.attempt(step("choose", "High")), composerSend(21, .string("high")))
+        XCTAssertEqual(try regions.attempt(step("choose", "GLM-5.3")), composerSend(20, .string("zai/glm-5.3")))
+        XCTAssertEqual(try regions.attempt(step("choose", "Highspeed")), composerSend(20, .string("zai/glm-5.3-highspeed")))
+        XCTAssertEqual(try regions.attempt(step("choose", "Max")), composerSend(21, .string("max")))
+    }
+
     func testOutlineListsControlsAndVisibleText() {
         let outline = regions().outline
         XCTAssertTrue(outline.contains("button \"Save\"\n"))
@@ -200,12 +221,48 @@ final class SelfTestTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(started), 0.08)
         XCTAssertEqual(second, .object(["status": 202, "headers": .array([])]))
         XCTAssertEqual(slices.text("two"), "second reply")
-        XCTAssertEqual(try String(contentsOf: requests, encoding: .utf8), "first body\nsecond body\n")
+        let recorded = try String(contentsOf: requests, encoding: .utf8)
+            .split(separator: "\n").compactMap { JSONValue.parse(String($0)) }
+        XCTAssertEqual(recorded.count, 2)
+        XCTAssertEqual(recorded[0]["url"]?.string, "https://example.test/chat")
+        XCTAssertEqual(recorded[0]["body"]?.string, "first body")
+        XCTAssertEqual(recorded[1]["url"]?.string, "https://example.test/chat")
+        XCTAssertEqual(recorded[1]["body"]?.string, "second body")
+        XCTAssertFalse(recorded[0].text.contains("Bearer"))
         do {
             _ = try await adapter.perform(httpRequest("extra", "three"), slices: slices)
             XCTFail("A request past the scripted replies succeeded")
         } catch {
             XCTAssertEqual(error as? CapabilityError, .platform("The double has no reply for request 3"))
         }
+    }
+
+    func testHttpDoubleAnswersStrictUrlAndBearerAsTheRealServerWould() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("osprey-double-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let doubles = folder.appendingPathComponent("doubles.json")
+        let requests = folder.appendingPathComponent("requests.jsonl")
+        let document = JSONValue.object(["replies": .array([
+            .object(["status": 200, "body": .string("right url"), "requireUrl": .string("https://api.z.ai/api/coding/paas/v4/chat/completions")]),
+            .object(["status": 200, "body": .string("wrong url never shown"), "requireUrl": .string("https://api.z.ai/api/coding/paas/v4/chat/completions")]),
+            .object(["status": 200, "body": .string("bearer ok"), "requireBearer": true]),
+        ])])
+        try document.text.write(to: doubles, atomically: true, encoding: .utf8)
+        let adapter = try HttpDoubleAdapter(file: doubles.path, requests: requests)
+        let slices = SliceStore()
+        let right = try await adapter.perform(httpRequest("a", "one", url: "https://api.z.ai/api/coding/paas/v4/chat/completions"), slices: slices)
+        XCTAssertEqual(right, .object(["status": 200, "headers": .array([])]))
+        XCTAssertEqual(slices.text("one"), "right url")
+        let wrong = try await adapter.perform(httpRequest("b", "two", url: "https://api.z.ai/api/paas/v4/chat/completions"), slices: slices)
+        XCTAssertEqual(wrong, .object(["status": 404, "headers": .array([])]))
+        let bearer = try await adapter.perform(httpRequest("c", "three"), slices: slices)
+        XCTAssertEqual(bearer, .object(["status": 200, "headers": .array([])]))
+        XCTAssertEqual(slices.text("three"), "bearer ok")
+        // The key never reaches the records: only where each answered request went and its body are written.
+        let lines = try String(contentsOf: requests, encoding: .utf8).split(separator: "\n").map(String.init)
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertTrue(lines[0].contains("coding"))
+        for line in lines { XCTAssertFalse(line.contains("Bearer")) }
     }
 }

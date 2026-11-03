@@ -331,7 +331,7 @@ def zai_extra(profile, settings):
     return listConcat(kept, computed)
 
 
-def zai_extra_members(profile, settings) -> list[JsonMember]:
+def zai_extra_members(profile, settings):
     """`_zai_settings_to_openai_settings`: the `extra_body` members Z.AI's endpoint takes — `thinking`
     with its `type` and `clear_thinking`, and `reasoning_effort` mapped from the level on the models that
     accept one. These merge over (and replace same-named members of) the request body and the given
@@ -339,12 +339,12 @@ def zai_extra_members(profile, settings) -> list[JsonMember]:
     return listConcat(zai_thinking_members(profile, settings), zai_effort_member(profile, settings))
 
 
-def zai_thinking_members(profile, settings) -> list[JsonMember]:
+def zai_thinking_members(profile, settings):
     payload = listConcat(zai_type_members(profile, settings), zai_clear_members(profile, settings))
     return [J.member("thinking", J.obj(payload))] if len(payload) > 0 else []
 
 
-def zai_type_members(profile, settings) -> list[JsonMember]:
+def zai_type_members(profile, settings):
     """The payload's `type`: `enabled` or `disabled` for a thinking setting, absent when none was given."""
     value = resolved_thinking(profile, settings)
     if J.is_null(value):
@@ -353,7 +353,7 @@ def zai_type_members(profile, settings) -> list[JsonMember]:
         return [J.member("type", JsonString("disabled" if thinking_off(value) else "enabled"))]
 
 
-def zai_clear_members(profile, settings) -> list[JsonMember]:
+def zai_clear_members(profile, settings):
     """`zai_clear_thinking`: the setting when given, else `false` on a thinking-capable model (preserved
     thinking), else absent."""
     match mapGet(settings, "zai_clear_thinking"):
@@ -367,7 +367,7 @@ def zai_clear_members(profile, settings) -> list[JsonMember]:
             return [J.member("clear_thinking", JsonBool(False))] if Profiles.profile_bool(profile, "supports_thinking", False) else []
 
 
-def zai_effort_member(profile, settings) -> list[JsonMember]:
+def zai_effort_member(profile, settings):
     """The payload's `reasoning_effort`: the level through the profile's mapping, on the models that take
     one (`_zai_settings_to_openai_settings` forwards an explicit level, never a bare `true`/`false`)."""
     if not Profiles.profile_bool(profile, "zai_supports_reasoning_effort", False):
