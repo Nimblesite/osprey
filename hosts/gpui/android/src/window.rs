@@ -178,6 +178,12 @@ impl AndroidWindow {
         });
     }
 
+    /// Whether the surface Android holds is now another size than the one drawn to. A rotation
+    /// this activity handles itself resizes the window without always raising `WindowResized`.
+    pub fn size_changed(&self, app: &AndroidApp) -> bool {
+        app.native_window().is_some_and(|native| window_size(&native) != locked(&self.state).size)
+    }
+
     /// Rereads the content rect Android reserves (status bar, navigation bar,
     /// keyboard) and reports inset changes: the safe-area contract GPUI expects.
     pub fn update_insets(&self, app: &AndroidApp) {

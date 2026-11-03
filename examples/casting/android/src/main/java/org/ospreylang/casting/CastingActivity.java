@@ -9,6 +9,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -36,6 +37,8 @@ public final class CastingActivity extends NativeActivity {
     // which the GPUI backend reports as the safe area, so the shared layout clears the system bars.
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
+        // The player's backdrop is light, so the status bar's icons must be dark to be read.
+        getWindow().getInsetsController().setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
         View content = findViewById(android.R.id.content);
         content.setOnApplyWindowInsetsListener((view, insets) -> {
             Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());

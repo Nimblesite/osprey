@@ -165,28 +165,40 @@ def safe_area():
     return tuple(map(int, lines[-1])) if lines else (0, 0)
 
 
-def scene_point(x, y):
-    """A scene point in device pixels: the same fit and origin hosts/gpui/src/scene.rs draws with."""
+def fit():
+    """The scale and spare scene units hosts/gpui/src/scene.rs draws with, and the safe top."""
     width, height = screen()
     top, bottom = safe_area()
     density = int(re.search(r"(\d+)", adb("shell", "wm", "density")).group(1)) / 160
-    scale = min(SCENE_ZOOM * density, width / SCENE_WIDTH, (height - top - bottom) / SCENE_HEIGHT)
-    return round(x * scale), round(top + y * scale)
+    usable = height - top - bottom
+    scale = min(SCENE_ZOOM * density, width / SCENE_WIDTH, usable / SCENE_HEIGHT)
+    return scale, {"spareWidth": width / scale - SCENE_WIDTH, "spareHeight": usable / scale - SCENE_HEIGHT}, top
 
 
-def scene_tap(label, offset=0):
-    item = listener(label)
-    x, y = scene_point(item["x"] + item["w"] / 2, item["y"] + offset + item["h"] / 2)
+def measure(value, spare):
+    """A listener bound: a number, or a number and `{{spareHeight|scale:0.7}}` terms to add."""
+    if isinstance(value, (int, float)): return value
+    terms = re.findall(r"\{\{(\w+)\|scale:([\d.]+)\}\}", value)
+    plain = re.sub(r"\{\{.*?\}\}", "", value).strip()
+    return (float(plain) if plain else 0) + sum(spare[name] * float(factor) for name, factor in terms)
+
+
+def scene_tap(label, item=None, step=0):
+    item = item or listener(label)
+    scale, spare, top = fit()
+    x = measure(item["x"], spare) + item["w"] / 2
+    y = measure(item["y"], spare) + step + item["h"] / 2
     print("TAP:", label, flush=True)
-    adb("shell", "input", "tap", str(x), str(y))
+    adb("shell", "input", "tap", str(round(x * scale)), str(round(top + y * scale)))
 
 
 def scene_slide(label, fraction):
     item = listener(label)
-    y = item["y"] + item["h"] / 2
-    x1, y1 = scene_point(item["x"] + item["w"] * fraction, y)
+    scale, spare, top = fit()
+    x = round((measure(item["x"], spare) + item["w"] * fraction) * scale)
+    y = round(top + (measure(item["y"], spare) + item["h"] / 2) * scale)
     print("SLIDE:", label, fraction, flush=True)
-    adb("shell", "input", "swipe", str(x1), str(y1), str(x1 + 1), str(y1), "150")
+    adb("shell", "input", "swipe", str(x), str(y), str(x + 1), str(y), "150")
 
 
 def records():
@@ -257,15 +269,19 @@ def main():
     scene_tap("Resume")
     wait_sent("PLAY", 1)
     time.sleep(1)
+    volumes = len(sent("SET_VOLUME"))
     scene_slide("Volume", 0.5)
-    assert abs(wait_sent("SET_VOLUME", 1)["volume"]["level"] - 0.5) < 0.03
+    level = wait_sent("SET_VOLUME", volumes + 1)["volume"]["level"]
+    # The listener is wider than the track its thumb travels, so its middle is close to, not at, half.
+    assert abs(level - 0.5) < 0.05, level
+    seeks = len(sent("SEEK"))
     scene_slide("Position", 0.25)
-    assert abs(wait_sent("SEEK", 1)["currentTime"] - 50) < 5
+    position = wait_sent("SEEK", seeks + 1)["currentTime"]
+    assert abs(position - 50) < 10, position
     scene_tap("Speed")
     time.sleep(1)
     rate = next(item for item in LISTENERS["listeners"] if item.get("each", {}).get("in") == "rates")
-    x, y = scene_point(rate["x"] + rate["w"] / 2, rate["y"] + rate["each"]["dy"] * RATES.index("1.5") + rate["h"] / 2)
-    adb("shell", "input", "tap", str(x), str(y))
+    scene_tap("1.5\u00d7", rate, rate["each"]["dy"] * RATES.index("1.5"))
     assert wait_sent("SET_PLAYBACK_RATE", 1)["playbackRate"] == 1.5
     shot("playing.png")
     previous = adb("shell", "wm", "user-rotation").strip().split()

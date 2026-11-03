@@ -252,6 +252,10 @@ impl AndroidPlatform {
         if !window.is_presenting() {
             return;
         }
+        if window.size_changed(&self.0.app) {
+            window.resized(&self.0.app);
+            window.update_insets(&self.0.app);
+        }
         let now = Instant::now();
         if self.0.last_frame.get().is_some_and(|last| now - last < FRAME_INTERVAL) {
             return;
