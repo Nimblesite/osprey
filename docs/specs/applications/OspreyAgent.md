@@ -18,7 +18,7 @@ Each request, in the words it was made, with the section that holds it. A reques
 | "finish the pydanticai app, including mcp support and the settings UI that allows the user to add/remove MCPs" | [AGENT-MCP] | Done, with real servers and a doubled model; no live call yet |
 | "port the MCP aspect of pydanticai into python flavor osprey and bring the MCP functionality into the app with a beautiful ui" | [AGENT-MCP] | Done, with real servers and a doubled model; no live call yet |
 | "How do I configure MCPs in this app?" | [AGENT-MCP], and the README's MCP section | Done |
-| "I can only select one line of text. I need to be able to select a whole bunch of text in one hit" | [AGENT-SELECTION] | Open |
+| "I can only select one line of text. I need to be able to select a whole bunch of text in one hit" | [AGENT-SELECTION] | Done, with in-process mouse events |
 | "make sure that the syntax higlighting works good, verify in tests"; "no fucking syntax highlighting" | [AGENT-HIGHLIGHT] | Done |
 | "the button that says calc here should allow the user to change the path" | [AGENT-FOLDER] | Done |
 | "there should be a note somewhere on the screen conveying that the agent is not sandboxed" | [AGENT-FOLDER] | Done |
