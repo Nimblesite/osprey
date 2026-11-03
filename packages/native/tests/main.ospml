@@ -361,6 +361,13 @@ test ("desktop requests preserve picker export and cancellation payloads", \() =
     expect (requestText (ui::SaveFile(suggested = "report.txt", exportSlice = "export")), "{\"ticket\":\"job:7\",\"kind\":\"save-file\",\"name\":\"report.txt\",\"slice\":\"export\"}")
     expect (requestText (ui::Reveal(revealPath = "/tmp/report.txt")), "{\"ticket\":\"job:7\",\"kind\":\"reveal\",\"path\":\"/tmp/report.txt\"}")
     expect (requestText (ui::Cancel(cancelled = "old:7")), "{\"ticket\":\"job:7\",\"kind\":\"cancel\",\"target\":\"old:7\"}"))
+// [UI-EFFECTS-PROCESS]: the four long-lived process capabilities encode their handles, bounds, arguments and merged environment.
+test ("process capabilities encode their handles bounds arguments and environment", \() =>
+    expect (requestText (ui::ProcessStart(processCommand = "npx", processArguments = ["-y", "filesystem"], processEnv = [ui::EnvVar(envName = "TOKEN", envValue = "s"), ui::EnvVar(envName = "DEBUG", envValue = "1")], processHandle = "fs")), "{\"ticket\":\"job:7\",\"kind\":\"process-start\",\"command\":\"npx\",\"arguments\":[\"-y\",\"filesystem\"],\"env\":[{\"name\":\"TOKEN\",\"value\":\"s\"},{\"name\":\"DEBUG\",\"value\":\"1\"}],\"name\":\"fs\"}")
+    expect (requestText (ui::ProcessStart(processCommand = "/usr/bin/env", processArguments = [], processEnv = [], processHandle = "plain")), "{\"ticket\":\"job:7\",\"kind\":\"process-start\",\"command\":\"/usr/bin/env\",\"arguments\":[],\"env\":[],\"name\":\"plain\"}")
+    expect (requestText (ui::ProcessWrite(writeHandle = "fs", writeBytes = "ping")), "{\"ticket\":\"job:7\",\"kind\":\"process-write\",\"name\":\"fs\",\"input\":\"ping\"}")
+    expect (requestText (ui::ProcessRead(readHandle = "fs", readBytesLimit = 1, readDeadline = 0)), "{\"ticket\":\"job:7\",\"kind\":\"process-read\",\"name\":\"fs\",\"limit\":1,\"timeout\":0}")
+    expect (requestText (ui::ProcessStop(stopHandle = "fs")), "{\"ticket\":\"job:7\",\"kind\":\"process-stop\",\"name\":\"fs\"}"))
 
 roleText role =
     doc = listGet (Encode::walk ([], Ui::column [ui::Text(content = "sample", role = role, tone = ui::Primary), Ui::button ("Go", "play", Increment)])).nodes 0 ?: JsonNull

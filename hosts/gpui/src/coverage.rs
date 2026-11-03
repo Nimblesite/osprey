@@ -62,6 +62,10 @@ const UNANSWERED: &[&str] = &[
     "running-applications",
     "open-settings",
     "recognise",
+    "process-start",
+    "process-write",
+    "process-read",
+    "process-stop",
 ];
 
 const NODES: &str = include_str!("../../../packages/native/src/node.ospml");

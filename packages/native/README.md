@@ -173,6 +173,14 @@ Each `Editors::mark (line, underlined, tone, badge, note)` names a 1-based line.
 
 When `lassoing` is true, the host offers a lasso and sends the enclosed strokes as a JSON array of non-negative integer indices. These arrive as `Stroked` and `Lassoed` messages respectively. The host must not send an unfinished stroke more than once or invent stroke indices.
 
+### Shortcuts [UI-COMPONENTS-SHORTCUT]
+
+A `Button` may carry a typed `Chord`. `Primary` is Command on Apple systems and Control elsewhere, and the host shows the chord in its menu or tooltip. Osprey picks each chord per platform: Alt+Up, F5 and Ctrl+O on Windows; Command+Up, Command+R and Command+O on the Mac. Not implemented yet: `Node` carries no chord.
+
+### Rich paragraphs [UI-COMPONENTS-RICH]
+
+A `Rich` node is a paragraph of styled runs: strong, emphasis, code and link. Markdown parsing stays in Osprey, in today's `markdown.ospml`. Not implemented yet: `Node` has no `Rich` constructor; `Ui::rich`'s inline emphasis runs above are the nearest today.
+
 ## Bindings and events [UI-EVENTS]
 
 A control's binding is a **typed action value**, not a callback or an event dictionary. `Button` carries an `A`; `Field`, `Toggle`, `Picker`, `Tabs` and `Rows` selection carry an `A` that names the binding, and the framework delivers `Entered`, `Switched`, `Chose` or `Act` messages with the bound action and a value of the matching type. An `Aside`'s splitter delivers `Resized` with a width in points. An `Editor` cursor delivers `Placed` with a UTF-8 byte offset; a `Board` delivers `Stroked` with a finished stroke and `Lassoed` with the selected stroke indices. A text binding can only produce a text message, a toggle only a boolean and a splitter, cursor, stroke or lasso only its matching value kind.
@@ -189,7 +197,7 @@ When encoding a region, the framework assigns each binding an opaque ID: region 
 
 Updates request platform work by returning `Request` values in their `Step`: a `Capability` with an application-chosen ticket. The runtime encodes them into the envelope; the host completes each with a `completed` event carrying the ticket, and the application ignores completions whose ticket no longer matches, so stale, cancelled and superseded work never overwrites newer state. Bulk results land in host-held slices named by the request, so large outputs never travel back through an event.
 
-`Capability` is a typed union whose variants are mechanical primitives with explicit bounds chosen by Osprey, each one something every desktop can do: `Run` (shell-free executable, arguments, deadline, output limit), `ListDirectories`, `ReadTexts`, `StoreRead`, `StoreWrite`, `StoreList`, `StoreDelete` (app-private files), `Http` (method, URL, headers, body, response limit, deadline), `ChooseFile`, `ChooseFolder`, `SaveFile`, `MeasureFolders` ([UI-EFFECTS-MEASURE]), `Reveal`, `Cancel` and `Animate` ([UI-SCENE]). Work only one host or product can do, such as reading one operating system's settings files or opening its settings app, is a `HostCall`: a namespace, an operation, JSON arguments, a deadline, a result limit and a slice, answered only by the host that registered that namespace. A host that does not know a namespace completes the request with an error. Adapters return typed results or typed errors; they make no application decision, choose no paths beyond what Osprey named and never retry automatically. Rendering never starts work: only an explicit action, lifecycle message or completion produces requests.
+`Capability` is a typed union whose variants are mechanical primitives with explicit bounds chosen by Osprey, each one something every desktop can do: `Run` (shell-free executable, arguments, deadline, output limit), `ListDirectories`, `ReadTexts`, `StoreRead`, `StoreWrite`, `StoreList`, `StoreDelete` (app-private files), `Http` (method, URL, headers, body, response limit, deadline), `ChooseFile`, `ChooseFolder`, `SaveFile`, `MeasureFolders` ([UI-EFFECTS-MEASURE]), `ProcessStart`, `ProcessWrite`, `ProcessRead`, `ProcessStop` ([UI-EFFECTS-PROCESS]), `Reveal`, `Cancel` and `Animate` ([UI-SCENE]). Work only one host or product can do, such as reading one operating system's settings files or opening its settings app, is a `HostCall`: a namespace, an operation, JSON arguments, a deadline, a result limit and a slice, answered only by the host that registered that namespace. A host that does not know a namespace completes the request with an error. Adapters return typed results or typed errors; they make no application decision, choose no paths beyond what Osprey named and never retry automatically. Rendering never starts work: only an explicit action, lifecycle message or completion produces requests.
 
 ### Meter [UI-COMPONENTS-METER]
 
@@ -206,6 +214,10 @@ The rules are the same on every host:
 - A folder that cannot be read adds one to `unreadable` and is not an error; a child that cannot be opened is listed `guarded`.
 - More children than the limit are measured but not listed, and set `truncated`, as does a walk that reaches its deadline. `Cancel` with the request's ticket stops the walk, which completes with the error `cancelled`.
 - The adapter sorts, hides, formats and decides nothing: [examples/storage](../../examples/storage/README.md) ranks, words and draws the result in Osprey.
+
+### Long-lived processes [UI-EFFECTS-PROCESS]
+
+`ProcessStart` runs a long-lived child process by an application-chosen handle: a `command` (a path or a name found on the host's `PATH`), `arguments`, an `env` list merged over the existing environment, and the `name` later requests address it by. Its completion is `{"pid": <number>}`. A missing command completes with a typed error, never a crash. `ProcessWrite` sends `input` bytes to the process's standard input by `name` and completes with `{"written": <bytes>}`. `ProcessRead` returns the standard output produced so far as one completion `{"output", "stderr", "exited", "status"}`: it waits for output, the process's exit or its `timeout` deadline, whichever comes first, never longer, and returns at most `limit` bytes; standard error is kept in its own bounded buffer, and `exited`/`status` report the process's exit. `ProcessStop` ends a process by `name` and completes with `{"stopped": <bool>}`; stopping an unknown or already exited process is a harmless result. The host stops every process when the application quits. A host without these capabilities completes each request with a typed error naming the kind.
 
 ### Recognition [UI-EFFECTS-RECOGNISE]
 

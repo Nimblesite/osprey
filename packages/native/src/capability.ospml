@@ -8,7 +8,12 @@ type Header =
     headerName : string
     headerValue : string
 
-(** A bounded, mechanical operation only the host can perform: every one states its limits, and its result returns as a completion ([UI-EFFECTS]). `Recognise` sends the strokes the host holds under `strokeSlices` to its handwriting service, as points, and completes with their text, at most `recogniseLimit` bytes, or with an error naming `Unsupported` on a host without one ([UI-EFFECTS-RECOGNISE]). `MeasureFolders` measures each folder's children to the bottom within an entry limit and a deadline, by the same rules on every host ([UI-EFFECTS-MEASURE]). Work only one host or product can do, such as reading one operating system's settings, is a `HostCall` in a namespace that host answers. `Animate` turns the host's frame clock on or off: while it runs, every display refresh reaches `update` as a `Frame` ([UI-SCENE]). *)
+(** One environment variable a process inherits, merged over the environment the host already has ([UI-EFFECTS-PROCESS]). *)
+type EnvVar =
+    envName : string
+    envValue : string
+
+(** A bounded, mechanical operation only the host can perform: every one states its limits, and its result returns as a completion ([UI-EFFECTS]). `Recognise` sends the strokes the host holds under `strokeSlices` to its handwriting service, as points, and completes with their text, at most `recogniseLimit` bytes, or with an error naming `Unsupported` on a host without one ([UI-EFFECTS-RECOGNISE]). `MeasureFolders` measures each folder's children to the bottom within an entry limit and a deadline, by the same rules on every host ([UI-EFFECTS-MEASURE]). `ProcessStart`, `ProcessWrite`, `ProcessRead` and `ProcessStop` run one long-lived child process by an application-chosen handle, every request bounded by a limit and a deadline, for MCP stdio servers ([UI-EFFECTS-PROCESS]). Work only one host or product can do, such as reading one operating system's settings, is a `HostCall` in a namespace that host answers. `Animate` turns the host's frame clock on or off: while it runs, every display refresh reaches `update` as a `Frame` ([UI-SCENE]). *)
 type Capability =
     Run
         executable : string
@@ -85,6 +90,20 @@ type Capability =
         recogniseLimit : int
     Animate
         animated : bool
+    ProcessStart
+        processCommand : string
+        processArguments : List<string>
+        processEnv : List<EnvVar>
+        processHandle : string
+    ProcessWrite
+        writeHandle : string
+        writeBytes : string
+    ProcessRead
+        readHandle : string
+        readBytesLimit : int
+        readDeadline : int
+    ProcessStop
+        stopHandle : string
 
 (** A capability with the ticket its completion will carry. Put a generation in the ticket to recognise stale completions. *)
 type Request =
@@ -105,6 +124,8 @@ module Requests
     strings key values = JsonMember key (Doc::strings values)
 
     header item = JsonObject [str "name" item.headerName, str "value" item.headerValue]
+
+    envVar item = JsonObject [str "name" item.envName, str "value" item.envValue]
 
     run executable arguments timeout limit plist slice = [str "kind" "run", str "executable" executable, strings "arguments" arguments, num "timeout" timeout, num "limit" limit, Doc::bit ("plist", plist), str "slice" slice]
 
@@ -132,6 +153,10 @@ module Requests
         Cancel target => [str "kind" "cancel", str "target" target]
         Recognise slices limit => [str "kind" "recognise", strings "slices" slices, num "limit" limit]
         Animate on => [str "kind" "animate", Doc::bit ("on", on)]
+        ProcessStart command arguments env name => [str "kind" "process-start", str "command" command, strings "arguments" arguments, JsonMember "env" (JsonArray (mapList (env, \item => envVar item))), str "name" name]
+        ProcessWrite name input => [str "kind" "process-write", str "name" name, str "input" input]
+        ProcessRead name limit deadline => [str "kind" "process-read", str "name" name, num "limit" limit, num "timeout" deadline]
+        ProcessStop name => [str "kind" "process-stop", str "name" name]
 
     (** The protocol form of `request`: its ticket beside the capability's kind and arguments. *)
     export encode request = JsonObject (listPrepend (members request.capability) (str "ticket" request.ticket))
