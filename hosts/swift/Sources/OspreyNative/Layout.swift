@@ -42,6 +42,7 @@ struct SplitView: View {
 }
 
 /// The system's vibrant sidebar material, blending with what is behind the window.
+#if os(macOS)
 struct SidebarMaterial: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
@@ -53,6 +54,12 @@ struct SidebarMaterial: NSViewRepresentable {
 
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
+
+#else
+struct SidebarMaterial: View {
+    var body: some View { Rectangle().fill(.regularMaterial) }
+}
+#endif
 
 /// A pane with a column beside it that a splitter resizes; only a drag in progress lives here.
 struct AsideView: View {
@@ -80,7 +87,9 @@ struct AsideView: View {
         Rectangle().fill(.clear).frame(width: 6)
             .padding(.horizontal, -3)
             .contentShape(Rectangle())
+            #if os(macOS)
             .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            #endif
             .gesture(DragGesture(coordinateSpace: .global).onChanged { drag in
                 if dragging == nil { start = CGFloat(node.count("width")) }
                 let moved = trailing ? -drag.translation.width : drag.translation.width

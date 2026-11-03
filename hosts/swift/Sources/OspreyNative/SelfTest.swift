@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SwiftUI
@@ -455,3 +456,5 @@ public final class SelfTestRun {
         }
     }
 }
+
+#endif

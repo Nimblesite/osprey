@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import Combine
 import Foundation
 
@@ -120,11 +122,16 @@ public final class RegionStore: ObservableObject {
 /// The standard adapters this host answers ([GPUI-HOST-CAPABILITIES] names the same kinds).
 public enum Adapters {
     public static func standard(store: StoreAdapter) -> [CapabilityAdapter] {
+        #if os(macOS)
         [RunAdapter(), ProcessAdapter(), HttpAdapter(), store, ChooseFolderAdapter()]
+        #else
+        [HttpAdapter(), store, DocumentAdapter()]
+        #endif
     }
 }
 
 /// The system's folder picker; the person's choice comes back as a path, or `cancelled`.
+#if os(macOS)
 public struct ChooseFolderAdapter: CapabilityAdapter {
     public let kinds = ["choose-folder"]
     public init() {}
@@ -140,3 +147,5 @@ public struct ChooseFolderAdapter: CapabilityAdapter {
         }
     }
 }
+
+#endif

@@ -7,7 +7,7 @@ import PackageDescription
 // build a host, because the application is linked in.
 let package = Package(
     name: "OspreyHost",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
         .library(name: "OspreyNative", targets: ["OspreyNative"]),
         .executable(name: "OspreyHost", targets: ["OspreyHost"]),

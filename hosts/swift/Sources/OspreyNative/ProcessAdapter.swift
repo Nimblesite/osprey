@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 
@@ -411,3 +412,5 @@ public struct ProcessAdapter: CapabilityAdapter {
     }
 }
 
+
+#endif
