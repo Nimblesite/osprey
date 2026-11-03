@@ -113,7 +113,7 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 
 - [ ] `OspreyGpuBuffer` gains `elem_bytes`; `data` becomes bytes. `OspreyGpuArg` carries bytes and an element size; `osprey_gpu_arg_bytes` uses it. Metal and OpenCL adapters upload and download by byte count.
 - [ ] `toGpu`, `fromGpu`, `gpuGet`, `gpuIota`, `gpuLength`, `gpuScan`, `gpuFilter` and the host loops of every combinator read and write at the element's width; the codegen tag names it.
-- [ ] `gpuLoad` returns `Result<GpuBuffer<float32>, Error>` with no widening. `gpuLoadTensor` returns `Result<GpuBuffer<T>, Error>` where the caller's `T` must match the tensor: `F64`→`float`, `F32` and `BF16`→`float32`, `F16`→`float16`; a mismatch is `tensor wte.weight is F16, the program asked for float32`.
+- [ ] `gpuLoad` returns `Result<GpuBuffer<float32>, Error>` with no widening. `gpuLoadTensor` returns `Result<GpuBuffer<T>, Error>` where the caller's `T` must match the tensor: `F64`→`float`, `F32` and `BF16`→`float32`, `F16`→`float16`; a mismatch is `tensor wte.weight is F16, the program asked for float32`. The `tensor_fixture` regression with two direct record-field calls requesting different widths must pass; the current monomorphic loader rejects both (2026-11-03).
 - [ ] `examples/gpt2` (both flavors), `tests/core/gpu/transformer.test.*` and `@osprey/transformers` compute in `float32`, as llm.c does; new goldens, with the existing tolerance rule for `exp` and `tanh`.
 - [ ] Tests: `tests/core/gpu/buffers.test.*` round-trips every element type through `toGpu`/`fromGpu`/`gpuGet`; `gpu_runtime_tests.c` checks byte counts, empty buffers and the loader errors; the ARC lane's zero-leak sentinel still passes.
 

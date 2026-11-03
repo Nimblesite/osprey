@@ -80,6 +80,35 @@ fn both_flavors_read_the_safetensors_fixture_exactly() {
     }
 }
 
+#[test]
+fn tensor_loader_calls_in_one_record_keep_distinct_requested_element_types() {
+    // [GPU-BUFFER-TENSOR] Both calls share the record's source position, not its type.
+    let source = r#"
+type Loaded = { wide: Result<GpuBuffer<float32>, Error>, small: Result<GpuBuffer<float16>, Error> }
+fn loaded() = Loaded {
+    wide: gpuLoadTensor("@FIXTURE@", "w"),
+    small: gpuLoadTensor("@FIXTURE@", "h.1.b")
+}
+fn main() = {
+    let pair = loaded()
+    let wide = match pair.wide {
+        Success { value } => "wide ${gpuLength(value)} ${gpuGet(value, 0) ?: toFloat32(0.0)} ${gpuGet(value, 3) ?: toFloat32(0.0)}"
+        Error { message } => "wrong wide: ${message}"
+    }
+    let small = match pair.small {
+        Success { value } => "small ${gpuLength(value)} ${gpuGet(value, 0) ?: toFloat16(0.0)} ${gpuGet(value, 1) ?: toFloat16(0.0)}"
+        Error { message } => "wrong small: ${message}"
+    }
+    print("${wide}\n${small}")
+}
+"#;
+    let path = program("typed_sites.osp", source).expect("write typed tensor fixture");
+    let (code, stdout, stderr) = run(&path);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stdout, "wide 4 0.5 3.0\nsmall 2 1.0 -2.5\n", "{stderr}");
+    std::fs::remove_file(path).expect("remove typed tensor fixture");
+}
+
 fn repo() -> PathBuf {
     manifest().join("..").join("..")
 }
