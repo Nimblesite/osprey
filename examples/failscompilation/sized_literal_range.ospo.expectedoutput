@@ -1,0 +1,8 @@
+2:0: literal 300 does not fit uint8
+3:0: literal -1 does not fit uint32
+4:0: literal 128 does not fit int8
+5:0: literal -129 does not fit int8
+6:21: literal 256 does not fit uint8
+7:22: literal 40000 does not fit int16
+8:19: constant arithmetic overflows: 200 + 100 at uint8
+9:0: literal 256 does not fit uint8

@@ -108,6 +108,7 @@ impl Checker {
         let [receiver] = params.as_slice() else {
             return false;
         };
+        let _ = self.ctx.expose_settled(receiver);
         let receiver = self.ctx.apply(receiver);
         if matches!(receiver, Type::Var(_)) {
             return false;

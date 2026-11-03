@@ -282,6 +282,7 @@ pub(super) fn arithmetic_builtin_operations(
         "abs" if !crate::arithmetic::absolute_overflow_possible(ty) => &[],
         "abs" => &["overflow"],
         "intDiv" => &["overflow", "remainderByZero"],
+        _ if crate::arithmetic::conversion_overflow_possible(name, ty) => &["overflow"],
         _ => &[],
     }
 }
@@ -294,6 +295,13 @@ pub(super) fn builtin_callable_value(name: &str, ty: Option<&crate::ty::Type>) -
             "abs"
                 | "intDiv"
                 | "toFloat"
+                | "toInt"
+                | "toInt8"
+                | "toInt16"
+                | "toInt32"
+                | "toUint8"
+                | "toUint16"
+                | "toUint32"
                 | "sqrt"
                 | "exp"
                 | "ln"

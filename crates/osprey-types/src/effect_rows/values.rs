@@ -487,6 +487,7 @@ impl Analyzer<'_> {
 
 fn scalar_type(ty: &crate::ty::Type) -> bool {
     use crate::ty::{names, Type};
-    matches!(ty, Type::Con { name, args } if args.is_empty() && matches!(name.as_str(),
-        names::INT | names::FLOAT | names::BOOL | names::STRING | names::UNIT | names::PTR))
+    crate::numeric::Numeric::of_type(ty).is_some()
+        || matches!(ty, Type::Con { name, args } if args.is_empty() && matches!(name.as_str(),
+            names::BOOL | names::STRING | names::UNIT | names::PTR))
 }

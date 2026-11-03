@@ -44,6 +44,13 @@ pub(crate) fn as_num(cg: &mut Codegen, v: Value, to: Numeric) -> Result<Value> {
     Ok(Value::new(reg, LType::Num(to)))
 }
 
+/// The bits of an `int` word read as the integer type `to`: its wrap, which is
+/// what `Arith.overflow` offers a handler as `wrapped` [BUILTIN-CONVERT-INT].
+pub(crate) fn reinterpret_int(cg: &mut Codegen, word: &Value, to: Numeric) -> Value {
+    let reg = numeric_cast(cg, &word.operand, Numeric::INT, to);
+    Value::new(reg, LType::Num(to))
+}
+
 fn numeric_cast(cg: &mut Codegen, operand: &str, from: Numeric, to: Numeric) -> String {
     let (f, t) = (from.llvm(), to.llvm());
     let instruction = match (from.is_float(), to.is_float()) {

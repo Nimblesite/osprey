@@ -5,7 +5,7 @@
 //! [`CodegenError::Unsupported`] rather than miscompiling.
 
 use crate::builder::{Codegen, FnSig};
-use crate::conv::{as_double, as_i1, as_i64};
+use crate::conv::{as_double, as_i1};
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use crate::pattern::gen_match;

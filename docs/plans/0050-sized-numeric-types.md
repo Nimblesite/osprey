@@ -68,13 +68,13 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 
 ### Phase 2 — The integer family `[TYPE-NUMERIC-SIZED]` `[TYPE-NUMERIC-LITERAL]` `[TYPE-NUMERIC-ARITH-WIDTH]`
 
-- [ ] Type names resolve in both flavors and the Python flavor's annotations.
-- [ ] Integer literals carry an open numeric obligation that a slot of any integer type resolves and that defaults to `int`; a literal outside the resolved type's range is `literal 300 does not fit uint8`. Pattern literals follow the scrutinee.
-- [ ] `+ - * %`, unary `-`, `intDiv`, `abs`, the `wrap*`/`sat*`/`checked*` helpers and the bitwise builtins at each width: `llvm.{s,u}{add,sub,mul}.with.overflow.iN`, the same `Arith` requests, shift clamps at `bits`.
-- [ ] Comparisons and `==` at width; interpolation prints decimal; `[TYPE-NUMERIC-WORD]` boxing into list, map, `Result`, `any` and closure words with sign or zero extension and back.
-- [ ] `toInt`, `toInt8`, `toInt16`, `toInt32`, `toUint8`, `toUint16`, `toUint32` `[BUILTIN-CONVERT-INT]`, open over integer sources; narrowing out of range performs `Arith.overflow`.
-- [ ] LSP hover and completion docs, TextMate and tree-sitter highlight lists, `osprey-fmt` untouched (type names are identifiers).
-- [ ] Tests: `tests/regressions/basics/types/sized_integers.test.osp` and its ML twin — every type, both range ends, each operator, overflow under a handler, mixed-width rejection in `examples/failscompilation/sized_mixed_width.ospo`, out-of-range literal in `sized_literal_range.ospo`, each with an `ml_` fixture.
+- [x] Type names resolve in both flavors and the Python flavor's annotations.
+- [x] Integer literals carry an open numeric obligation that a slot of any integer type resolves and that defaults to `int`; a literal outside the resolved type's range is `literal 300 does not fit uint8`. Pattern literals follow the scrutinee.
+- [x] `+ - * %`, unary `-`, `intDiv`, `abs`, the `wrap*`/`sat*`/`checked*` helpers and the bitwise builtins at each width: `llvm.{s,u}{add,sub,mul}.with.overflow.iN`, the same `Arith` requests, shift clamps at `bits`.
+- [x] Comparisons and `==` at width; interpolation prints decimal; `[TYPE-NUMERIC-WORD]` boxing into list, map, `Result`, `any` and closure words with sign or zero extension and back.
+- [x] `toInt`, `toInt8`, `toInt16`, `toInt32`, `toUint8`, `toUint16`, `toUint32` `[BUILTIN-CONVERT-INT]`, open over integer sources; narrowing out of range performs `Arith.overflow`.
+- [x] LSP hover and completion docs, TextMate and tree-sitter highlight lists, `osprey-fmt` untouched (type names are identifiers).
+- [x] Tests: `tests/regressions/basics/types/sized_integers.test.osp` and its ML twin — every type, both range ends, each operator, overflow under a handler, mixed-width rejection in `examples/failscompilation/sized_mixed_width.ospo`, out-of-range literal in `sized_literal_range.ospo`, each with an `ml_` fixture.
 
 **Gate:** both twins byte-identical under GC, ARC and wasm32.
 

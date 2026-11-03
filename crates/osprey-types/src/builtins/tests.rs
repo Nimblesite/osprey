@@ -60,11 +60,11 @@ fn registers_core_and_polymorphic_builtins() {
     );
     assert_eq!(
         builtin_signature("intDiv").as_deref(),
-        Some("intDiv : (int, int) -> int")
+        Some("intDiv : (t0, t0) -> t0")
     );
     assert_eq!(
         builtin_signature("wrapAdd").as_deref(),
-        Some("wrapAdd : (int, int) -> int")
+        Some("wrapAdd : (t0, t0) -> t0")
     );
 }
 

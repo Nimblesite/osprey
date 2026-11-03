@@ -492,7 +492,7 @@ fn a_genuinely_redundant_curried_header_is_one_warning_naming_the_function() {
     // the source.
     reports(
         Flavor::Ml,
-        "combine : int -> int -> int\ncombine a b = intDiv a b\n",
+        "combine : int -> int -> int\ncombine a b = (a - 1) * (b - 1)\n",
         &["redundant type signature on `combine`: inference derives `(int) -> (int) -> int` without it"],
     );
 }
@@ -530,7 +530,7 @@ fn a_three_argument_curried_header_preserves_every_arrow() {
     // remain distinct from a function taking three arguments in one call.
     reports(
         Flavor::Ml,
-        "clamp : int -> int -> int -> int\nclamp a b c = intDiv (intDiv a b) c\n",
+        "clamp : int -> int -> int -> int\nclamp a b c = (a - 1) * (b - 1) * (c - 1)\n",
         &["redundant type signature on `clamp`: inference derives `(int) -> (int) -> (int) -> int` without it"],
     );
 }

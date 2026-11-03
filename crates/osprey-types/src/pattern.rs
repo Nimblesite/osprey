@@ -458,7 +458,7 @@ impl Checker {
         {
             return;
         }
-        let pruned = self.ctx.expose(disc);
+        let pruned = self.ctx.expose_settled(disc);
         if is_result(&pruned) || matches!(pruned, Type::Var(_)) {
             return;
         }
@@ -482,7 +482,7 @@ impl Checker {
         // variable as the payload instead detached the two: once the scrutinee
         // later became `Result<int, Error>`, `value` was still the Result, and
         // `Success { value: value }` failed to unify it with `int`.
-        if matches!(self.ctx.expose(disc), Type::Var(_)) {
+        if matches!(self.ctx.expose_settled(disc), Type::Var(_)) {
             let open = Type::result(self.ctx.fresh(), self.ctx.fresh());
             self.push_unify(&open, disc);
         }

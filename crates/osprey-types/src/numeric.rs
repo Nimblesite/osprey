@@ -144,6 +144,42 @@ impl Numeric {
         }
     }
 
+    /// The type a conversion builtin is named for: `toInt`, `toInt8`, `toUint32`,
+    /// `toFloat`, `toFloat16` ([BUILTIN-CONVERT-INT], [BUILTIN-CONVERT-FLOAT]).
+    #[must_use]
+    pub fn conversion_target(builtin: &str) -> Option<Numeric> {
+        let written = builtin.strip_prefix("to")?;
+        Numeric::ALL
+            .into_iter()
+            .find(|n| n.name().eq_ignore_ascii_case(written) && written.starts_with(char::is_uppercase))
+    }
+
+    /// The inclusive range of an integer type; `None` for a float.
+    #[must_use]
+    pub const fn range(self) -> Option<(i128, i128)> {
+        match self.kind {
+            NumericKind::Binary => None,
+            NumericKind::Signed => Some((-(1_i128 << (self.bits - 1)), (1_i128 << (self.bits - 1)) - 1)),
+            NumericKind::Unsigned => Some((0, (1_i128 << self.bits) - 1)),
+        }
+    }
+
+    /// Whether an integer value is inside this type's range.
+    #[must_use]
+    pub const fn fits(self, value: i128) -> bool {
+        match self.range() {
+            Some((low, high)) => low <= value && value <= high,
+            None => true,
+        }
+    }
+
+    /// Neither of the two default types: the same-type rule has no exception
+    /// for it ([TYPE-NUMERIC-SAME-TYPE]).
+    #[must_use]
+    pub fn is_sized(self) -> bool {
+        self != Numeric::INT && self != Numeric::FLOAT
+    }
+
     /// An IEEE float of any width.
     #[must_use]
     pub const fn is_float(self) -> bool {

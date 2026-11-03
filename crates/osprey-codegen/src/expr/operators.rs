@@ -1,8 +1,9 @@
 //! Expression operators lowering.
 use super::{
-    as_double, as_i1, as_i64, gen_expr, to_string_value, Codegen, CodegenError, Expr, LType,
-    Result, Value,
+    as_double, as_i1, gen_expr, to_string_value, Codegen, CodegenError, Expr, LType, Result, Value,
 };
+use crate::conv::as_num;
+use osprey_types::numeric::Numeric;
 
 pub(super) fn gen_binary(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<Value> {
     if op == "&&" || op == "||" {
@@ -123,59 +124,58 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
         let reg = cg.emit_reg(format!("{opc} double {}, {}", ld.operand, rd.operand));
         return Ok(Value::new(reg, LType::F64));
     }
-    let intrinsic = match op {
-        "+" => "sadd",
-        "-" => "ssub",
-        _ => "smul",
+    let stem = match op {
+        "+" => "add",
+        "-" => "sub",
+        _ => "mul",
     };
-    crate::arithmetic::binary(cg, op, intrinsic, l, r)
+    crate::arithmetic::binary(cg, op, stem, l, r)
 }
 
 /// Explicit Result-producing `checkedAdd`, `checkedSub` and `checkedMul`.
-/// `llvm.s{add,sub,mul}.with.overflow.i64` returns the wrapped
-/// value paired with an overflow bit; the bit selects `Error`.
-pub(super) fn gen_checked_arith(
-    cg: &mut Codegen,
-    intrinsic: &str,
-    l: Value,
-    r: Value,
-) -> Result<Value> {
-    let (wrapped, bad) = emit_overflow_arith(cg, intrinsic, l, r)?;
-    gen_guarded(cg, &bad, LType::I64, "0", "integer overflow", |cg| {
+/// The overflow intrinsic returns the wrapped value paired with an overflow
+/// bit; the bit selects `Error`.
+pub(super) fn gen_checked_arith(cg: &mut Codegen, stem: &str, l: Value, r: Value) -> Result<Value> {
+    let numeric = crate::arithmetic::operand_numeric(&l, &r);
+    let (wrapped, bad) = emit_overflow_arith(cg, stem, numeric, l, r)?;
+    gen_guarded(cg, &bad, LType::Num(numeric), "0", "integer overflow", |cg| {
         cg.emit_reg(wrapped)
     })
 }
 
-/// Emit one LLVM signed-overflow intrinsic and return its wrapped-value
-/// extraction instruction plus the overflow flag. Callers decide how the
-/// successful value is shaped before joining it with the Error path.
+/// Emit one LLVM overflow intrinsic at `numeric`'s width and kind, and return
+/// its wrapped-value extraction instruction plus the overflow flag. Callers
+/// decide how the successful value is shaped before joining it with the Error
+/// path. Implements [TYPE-NUMERIC-ARITH-WIDTH].
 pub(crate) fn emit_overflow_arith(
     cg: &mut Codegen,
-    intrinsic: &str,
+    stem: &str,
+    numeric: Numeric,
     l: Value,
     r: Value,
 ) -> Result<(String, String)> {
-    const PAIR: &str = "{ i64, i1 }";
-    let li = as_i64(cg, l)?;
-    let ri = as_i64(cg, r)?;
-    cg.add_extern(format!(
-        "declare {PAIR} @llvm.{intrinsic}.with.overflow.i64(i64, i64)"
-    ));
-    let pair = cg.emit_reg(format!(
-        "call {PAIR} @llvm.{intrinsic}.with.overflow.i64(i64 {}, i64 {})",
+    let ty = numeric.llvm();
+    let pair = format!("{{ {ty}, i1 }}");
+    let sign = if numeric.is_signed() { 's' } else { 'u' };
+    let li = as_num(cg, l, numeric)?;
+    let ri = as_num(cg, r, numeric)?;
+    let intrinsic = format!("llvm.{sign}{stem}.with.overflow.{ty}");
+    cg.add_extern(format!("declare {pair} @{intrinsic}({ty}, {ty})"));
+    let result = cg.emit_reg(format!(
+        "call {pair} @{intrinsic}({ty} {}, {ty} {})",
         li.operand, ri.operand
     ));
-    let bad = cg.emit_reg(format!("extractvalue {PAIR} {pair}, 1"));
-    let wrapped = format!("extractvalue {PAIR} {pair}, 0");
+    let bad = cg.emit_reg(format!("extractvalue {pair} {result}, 1"));
+    let wrapped = format!("extractvalue {pair} {result}, 0");
     Ok((wrapped, bad))
 }
 
 /// The LLVM overflow-intrinsic stem behind each `checked*` builtin.
 pub(super) fn checked_intrinsic(name: &str) -> &'static str {
     match name {
-        "checkedSub" => "ssub",
-        "checkedMul" => "smul",
-        _ => "sadd",
+        "checkedSub" => "sub",
+        "checkedMul" => "mul",
+        _ => "add",
     }
 }
 
@@ -344,11 +344,15 @@ pub(crate) fn gen_comparison(cg: &mut Codegen, op: &str, l: Value, r: Value) -> 
         ));
         return Ok(Value::new(reg, LType::I1));
     }
-    let cc = cmp_code(op, false);
-    let li = as_i64(cg, l)?;
-    let ri = as_i64(cg, r)?;
+    let numeric = crate::arithmetic::operand_numeric(&l, &r);
+    let signed = cmp_code(op, false);
+    let unsigned = signed.replacen('s', "u", usize::from(signed != "ne"));
+    let cc = if numeric.is_signed() { signed } else { &unsigned };
+    let li = as_num(cg, l, numeric)?;
+    let ri = as_num(cg, r, numeric)?;
+    let ty = numeric.llvm();
     cg.emit(format!(
-        "{reg} = icmp {cc} i64 {}, {}",
+        "{reg} = icmp {cc} {ty} {}, {}",
         li.operand, ri.operand
     ));
     Ok(Value::new(reg, LType::I1))

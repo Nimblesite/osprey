@@ -5,12 +5,18 @@ use crate::expr::gen_expr;
 /// Declare a handler-captured plain-value `mut` as a heap cell. Result-backed
 /// cells require a discriminant-bearing slot and are rejected instead of being
 /// silently unwrapped.
-pub(super) fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
+pub(super) fn gen_cell_define(
+    cg: &mut Codegen,
+    name: &str,
+    value: &Expr,
+    position: Option<osprey_ast::Position>,
+) -> Result<()> {
     // The cell is typed storage every arm reads through its declared type, so
     // a list literal is settled into a runtime list before it is stored
     // [TYPE-LIST-LITERAL]; the flat literal layout must never escape into it.
     let v = gen_expr(cg, value)?;
     let v = crate::listlit::escaping(cg, v);
+    let v = super::bindings::fit_literal(cg, position, v)?;
     if v.result_inner.is_some() {
         return Err(CodegenError::invalid(
             "mutable Result state must be handled before storage",

@@ -1,0 +1,13 @@
+// [TYPE-NUMERIC-SAME-TYPE] A binary operator takes both operands at one numeric type.
+// osprey: flavor=ml
+narrow : int32
+narrow = 1
+wide = 2
+small : uint8
+small = 3
+policy = handler Arith
+    overflow _ _ _ wrapped => wrapped
+print "${policy (\() => narrow + wide)}"
+print "${narrow < wide}"
+print "${policy (\() => narrow + small)}"
+print "${policy (\() => narrow + 1.5)}"

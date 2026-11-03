@@ -137,9 +137,8 @@ pub(crate) fn owner_name(prog: &ProgramTypes, ty: &Type) -> Option<String> {
             (!name.is_empty()).then(|| name.clone())
         }
         Type::Con { name, args } => match name.as_str() {
-            names::INT
-            | names::FLOAT
-            | names::STRING
+            scalar if Numeric::of_name(scalar).is_some() => None,
+            names::STRING
             | names::BOOL
             | names::UNIT
             | names::ANY

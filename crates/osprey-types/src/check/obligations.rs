@@ -24,7 +24,9 @@ impl Checker {
         // integer with nothing having looked at it. Keeping it monomorphic is
         // what lets `gpuFold(0.0, plus)` type `plus` at float.
         let pinned = self.arith_operand_vars(&kept);
-        scheme.vars.retain(|v| !pinned.contains(v));
+        scheme
+            .vars
+            .retain(|v| !pinned.contains(v) && self.ctx.literal_default(*v).is_none());
         self.builtin_uses = kept;
         scheme.obligations = deferred;
         scheme

@@ -59,6 +59,10 @@ pub(crate) fn fixed_numeric_operand(name: &str, ty: &Type) -> bool {
     operation_name(name).starts_with(NUMERIC_OPERAND_PREFIX) && !matches!(ty, Type::Var(_))
 }
 
+/// [TYPE-NUMERIC-SIZED] The integer-only form of [`NUMERIC_OPERAND_PREFIX`],
+/// for a builtin open over the integer types.
+pub(crate) const INTEGER_OPERAND_PREFIX: &str = "integer ";
+
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const SORTABLE_DISPLAY: &str = "List<int> | List<string>";
 const PRINTABLE_DISPLAY: &str =
@@ -89,6 +93,11 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
     if let Some(op) = operation_name(name).strip_prefix(NUMERIC_OPERAND_PREFIX) {
         return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
+    }
+    if let Some(op) = operation_name(name).strip_prefix(INTEGER_OPERAND_PREFIX) {
+        let integer = crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_integer);
+        return (!integer && !matches!(ty, Type::Var(_)))
+            .then(|| format!("`{op}` requires an integer; got {ty}"));
     }
     let name = operation_name(name);
     match name {
@@ -202,7 +211,9 @@ fn is_sortable_elem(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
         Type::Con { name, args } => {
-            args.is_empty() && matches!(name.as_str(), names::INT | names::STRING)
+            args.is_empty()
+                && (name == names::STRING
+                    || crate::numeric::Numeric::of_name(name).is_some_and(crate::numeric::Numeric::is_integer))
         }
         _ => false,
     }

@@ -7,10 +7,11 @@
 //! [BUILTIN-FLOAT-BITS], [BUILTIN-FLOATTOINT] and [BUILTIN-BITWISE].
 
 use crate::builder::Codegen;
-use crate::conv::{as_double, as_i64, box_to_i64, unbox_from_i64};
+use crate::conv::{as_double, as_i64, as_num, box_to_i64, unbox_from_i64};
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use crate::result::make_result_if_err;
+use osprey_types::numeric::Numeric;
 
 /// The binary float functions lowered as one `double x double -> double`
 /// call [BUILTIN-MATH-TRIG] [BUILTIN-MATH-LOG] [BUILTIN-MATH-ROUNDING].
@@ -141,17 +142,23 @@ pub(crate) fn float_to_int(cg: &mut Codegen, value: Value) -> Result<Value> {
     )
 }
 
-/// [BUILTIN-BITWISE] `and`/`or`/`xor` and the three total shifts. LLVM shifts
-/// are poison for a count outside 0..63, so the count is clamped to 0 and the
-/// out-of-range answer selected instead: the limit of repeated shifting — 0
-/// for `shl`/`lshr`, and 0 or -1 for the arithmetic `ashr` by the sign.
+/// [BUILTIN-BITWISE] `and`/`or`/`xor` and the three total shifts at the
+/// operands' width. LLVM shifts are poison for a count outside the width, so
+/// the count is clamped to 0 and the out-of-range answer selected instead: the
+/// limit of repeated shifting — 0 for `shl`/`lshr`, and 0 or -1 for the
+/// arithmetic `ashr` by the sign. `shiftRight` on an unsigned type is logical.
 pub(crate) fn bitwise(cg: &mut Codegen, name: &str, left: Value, right: Value) -> Result<Value> {
-    let a = as_i64(cg, left)?;
-    let b = as_i64(cg, right)?;
+    let n = super::operand_numeric(&left, &right);
+    let a = as_num(cg, left, n)?;
+    let b = as_num(cg, right, n)?;
     let op = word_instruction(name)?;
     match op {
-        "and" | "or" | "xor" => Ok(word(cg, format!("{op} i64 {}, {}", a.operand, b.operand))),
-        _ => Ok(total_shift(cg, op, &a.operand, &b.operand)),
+        "and" | "or" | "xor" => {
+            let ty = n.llvm();
+            Ok(word(cg, n, format!("{op} {ty} {}, {}", a.operand, b.operand)))
+        }
+        "ashr" if !n.is_signed() => Ok(total_shift(cg, "lshr", n, &a.operand, &b.operand)),
+        _ => Ok(total_shift(cg, op, n, &a.operand, &b.operand)),
     }
 }
 
@@ -169,27 +176,30 @@ fn word_instruction(name: &str) -> Result<&str> {
     }
 }
 
-fn total_shift(cg: &mut Codegen, op: &str, value: &str, by: &str) -> Value {
-    let ok = cg.emit_reg(format!("icmp ult i64 {by}, 64"));
-    let count = cg.emit_reg(format!("select i1 {ok}, i64 {by}, i64 0"));
-    let shifted = cg.emit_reg(format!("{op} i64 {value}, {count}"));
+fn total_shift(cg: &mut Codegen, op: &str, n: Numeric, value: &str, by: &str) -> Value {
+    let (ty, bits) = (n.llvm(), n.bits);
+    let ok = cg.emit_reg(format!("icmp ult {ty} {by}, {bits}"));
+    let count = cg.emit_reg(format!("select i1 {ok}, {ty} {by}, {ty} 0"));
+    let shifted = cg.emit_reg(format!("{op} {ty} {value}, {count}"));
     let limit = if op == "ashr" {
-        let negative = cg.emit_reg(format!("icmp slt i64 {value}, 0"));
-        cg.emit_reg(format!("select i1 {negative}, i64 -1, i64 0"))
+        let negative = cg.emit_reg(format!("icmp slt {ty} {value}, 0"));
+        cg.emit_reg(format!("select i1 {negative}, {ty} -1, {ty} 0"))
     } else {
         "0".into()
     };
-    word(cg, format!("select i1 {ok}, i64 {shifted}, i64 {limit}"))
+    word(cg, n, format!("select i1 {ok}, {ty} {shifted}, {ty} {limit}"))
 }
 
 /// [BUILTIN-BITWISE] One's complement: `xor` with -1.
 pub(crate) fn bit_not(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let a = as_i64(cg, value)?;
-    Ok(word(cg, format!("xor i64 {}, -1", a.operand)))
+    let n = super::single_numeric(&value);
+    let a = as_num(cg, value, n)?;
+    let ty = n.llvm();
+    Ok(word(cg, n, format!("xor {ty} {}, -1", a.operand)))
 }
 
-fn word(cg: &mut Codegen, instruction: String) -> Value {
-    Value::new(cg.emit_reg(instruction), LType::I64)
+fn word(cg: &mut Codegen, n: Numeric, instruction: String) -> Value {
+    Value::new(cg.emit_reg(instruction), LType::Num(n))
 }
 
 #[cfg(test)]

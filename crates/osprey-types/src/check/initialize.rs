@@ -11,6 +11,7 @@ impl Checker {
             signal_queries: HashMap::new(),
             function_effects: HashMap::new(),
             expression_types: HashMap::new(),
+            constants: Vec::new(),
             union_variants: HashMap::new(),
             fn_params: crate::staging::signal_parameter_names(),
             fn_sigs: HashMap::new(),
