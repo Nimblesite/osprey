@@ -253,7 +253,11 @@ fn start() -> Result<(Regions, Vec<Request>), String> {
 
 /// Opens the native window; this is the only permitted infallible window-open boundary.
 fn open(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) {
+    #[cfg(not(target_os = "ios"))]
     let application = gpui_kit::application();
+    // [CAST-MOBILE-GPUI] gpui-kit leaves the mobile backend to the application.
+    #[cfg(target_os = "ios")]
+    let application = gpui_kit::Application::with_platform(gpui_ios::current_platform(false));
     application.on_open_urls(|urls| opened().extend(urls));
     application.run(move |cx| {
         gpui_kit::init(cx);
