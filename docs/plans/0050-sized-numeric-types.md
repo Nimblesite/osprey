@@ -94,10 +94,10 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - [ ] Float literals reach the right width in list, map, `Result`, record and generic record values, closures and match arms; where the type is unknown the backend reports an error, never a wrong word.
 - [ ] Kernels over sized types: the device emitter declines them by name until Phase 5, so the host path runs; `toGpu` of `List<float32>` either works on the host or is rejected cleanly, and the spec says which.
 - [ ] Delete `float32(x: float) -> float`, `float32_round`, the old `float32Bits` lowering, `float32_64` in `gpu_f64.metal`, their docs pages, and `[BUILTIN-FLOAT32]` and `[BUILTIN-TOFLOAT]` citations in every crate.
-- [ ] Move to the typed forms: `math_builtins.test.*`.
-- [ ] Move to the typed forms: `packages/faiss`.
-- [ ] Move to the typed forms: `packages/safetensors` (`src/bytes.py`).
-- [ ] Move to the typed forms: `examples/python/ports/vector-search`, and anything else `grep -rn 'float32(' tests examples packages website` finds.
+- [x] Move to the typed forms: `math_builtins.test.*`.
+- [x] Move to the typed forms: `packages/faiss`.
+- [x] Move to the typed forms: `packages/safetensors` (`src/bytes.py`).
+- [x] Move to the typed forms: `examples/python/ports/vector-search`, and anything else `grep -rn 'float32(' tests examples packages website` finds.
 - [ ] Tests: `tests/regressions/basics/types/sized_floats.test.osp` and twin — rounding boundaries, subnormals, `-0.0`, NaN comparison table at each width, printing, bit views, conversions in every direction, division by zero under a handler, literals in every container, builtins passed by name.
 - [ ] Tests: `sized_float_literal_range.ospo` and its `ml_` twin with goldens.
 - [ ] Review every line the agents wrote against this plan and correct it; `grep -rn 'names::FLOAT' crates` outside `numeric.rs` shows only rendering and float defaulting.

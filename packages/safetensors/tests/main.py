@@ -201,9 +201,9 @@ def byte_read_cases():
 def float_byte_cases():
     """IEEE words for 1.5 also match CPython struct.pack's little-endian bytes."""
     return [
-        Check.equal("bytes.f16_from_bits", Bytes.f16_from_bits(15872), 1.5),
+        Check.truth("bytes.f16_from_bits", Bytes.f16_from_bits(15872) == toFloat16(1.5), "f16_from_bits(15872) != toFloat16(1.5)"),
         Check.equal("bytes.bf16_from_bits", Bytes.bf16_from_bits(16320), 1.5),
-        Check.equal("bytes.f32_from_bits", Bytes.f32_from_bits(1069547520), 1.5),
+        Check.truth("bytes.f32_from_bits", Bytes.f32_from_bits(1069547520) == toFloat32(1.5), "f32_from_bits(1069547520) != toFloat32(1.5)"),
         Check.equal("bytes.f64_from_parts", Bytes.f64_from_parts(0, 1023, 2251799813685248), 1.5),
         Check.equal("bytes.decode_f16", Bytes.decode_f16(F16_WORD, 0), 1.5),
         Check.equal("bytes.decode_bf16", Bytes.decode_bf16(BF16_WORD, 0), 1.5),
