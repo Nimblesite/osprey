@@ -12,6 +12,7 @@ Each request, in the words it was made, with the section that holds it. A reques
 | --- | --- | --- |
 | "We are out of ds credit! Add support for kimi and glm! port this into the package" | [AGENT-PROVIDERS] | Done, doubled; no live call yet |
 | "The settings screen needs to allow us to CONFIGURE the PROVIDER -> SELECT MODEL" | [AGENT-SETTINGS] | Done, doubled; no live call yet |
+| "why is this locked! Does the app actually KNOW that there is no credit… This is no good unless it can be 100% sure that there is no fucking credit left and becomes unlocked reacreively"; "at least put a tooltiop there telling them wtf the is WRONG" | [AGENT-COMPOSER] | Done, doubled; no live call yet |
 | "We need to be able to select the model and its peculiar settings like effort/reasoning here" (the composer, beside the folder chip) | [AGENT-COMPOSER] | Done, doubled; no live call yet |
 | "Where are the fucking settings?" | [AGENT-SETTINGS]: always visible at the sidebar's foot | Done |
 | "finish the pydanticai app, including mcp support and the settings UI that allows the user to add/remove MCPs" | [AGENT-MCP] | Open |
@@ -45,7 +46,7 @@ Each conversation carries its own `chatEffort`, whose choices come from the mode
 
 ## The composer [AGENT-COMPOSER]
 
-Beside the folder chip: a model picker listing the models of every provider with a key, labelled with provider and model such as `GLM Coding Plan · GLM-5.3`, the current one always listed; then an `Effort` picker with that model's own levels, absent when it has none. Both change only this conversation. Changing model keeps the effort when the new model has that level and clears it otherwise. With no key at all, a button `Add an API key` opens Settings and sending does nothing. A conversation whose provider lost its key cannot send, and says why. Each sidebar row names its conversation's model.
+Beside the folder chip: a model picker listing the models of every provider with a key, labelled with provider and model such as `GLM Coding Plan · GLM-5.3`, the current one always listed; then an `Effort` picker with that model's own levels, absent when it has none. Both change only this conversation. Changing model keeps the effort when the new model has that level and clears it otherwise. When the conversation's provider has no key, the send button becomes a labelled `Add an API key` button that opens Settings, and a line under the composer says `No API key for <provider>. Add one to send.`; never a lone icon. A key is the only thing that stops a send, and adding one takes effect at once. The app never guesses about credit: a 402, a refused key, a rate limit or a server fault is shown on that turn, `Send` stays live, and every send asks the provider again. A launch with no dotenv argument, such as from the Dock, reads `key.env` from the app's own store. Each sidebar row names its conversation's model.
 
 ## Settings and keys [AGENT-SETTINGS]
 

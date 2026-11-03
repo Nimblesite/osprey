@@ -367,23 +367,22 @@ module View
             true => []
             false => [Ui::picker ("Effort", mapList (levels, \level => Ui::choice (level, effortLabel level)), effort, PickEffort)]
 
+    missingKey (chat, settings) = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
+
+    (** Why nothing can be sent, in words. Only a missing key stops a send: a provider's own answer decides everything else. *)
     keyProblem (chat, settings) =
-        keyed = Model::hasAnyKey settings
-        missing = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
         provider = Engine::provider_label (Engine::provider_id_of chat.chatModel)
         note = Frames::inset (4, 0, 0, 0)
-        match keyed && missing
-            true => [Ui::framed (note(frameTextSize = 11, frameInk = "caution", frameHug = true), Ui::label ("Add a key for ${provider} to send.", Symbols::name ui::Warning))]
+        match missingKey (chat, settings)
+            true => [Ui::framed (note(frameTextSize = 11, frameInk = "caution", frameHug = true), Ui::label ("No API key for ${provider}. Add one to send.", Symbols::name ui::Warning))]
             false => []
 
     primary (chat, words, settings) =
-        keyed = Model::hasAnyKey settings
-        missing = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
         match Model::busy chat
             true => Ui::action ("Stop", Symbols::name ui::Stop, ui::Filled, true, StopTurn)
-            false => match keyed == false
-                true => Ui::action ("Add an API key", Symbols::name ui::Lock, ui::Filled, true, OpenSettings)
-                false => Ui::action ("Send", Symbols::name ui::Send, ui::Filled, missing == false && trim words != "", SendDraft)
+            false => match missingKey (chat, settings)
+                true => Ui::action ("Add an API key", Symbols::name ui::Settings, ui::Filled, true, OpenSettings)
+                false => Ui::action ("Send", Symbols::name ui::Send, ui::Filled, trim words != "", SendDraft)
 
     (** The one-line truth about the agent's power, always on show under the composer. *)
     access () =
@@ -402,7 +401,7 @@ module View
         effort = mapList (effortPicker (chat.chatModel, chat.chatEffort), \picker => Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), picker))
         place = Ui::framed (base18(frameQuietControls = true, frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::action (folderName chat.chatFolder, Symbols::name ui::Folder, ui::Plain, Model::busy chat == false, ChangeFolder))
         base19 = Frames::plain
-        sending = Ui::framed (base19(frameIconOnly = true, frameControlHeight = 30, frameSymbolSize = 13, frameHug = true), primary (chat, words, settings))
+        sending = Ui::framed (base19(frameIconOnly = Model::busy chat || missingKey (chat, settings) == false, frameControlHeight = 30, frameSymbolSize = 13, frameHug = true), primary (chat, words, settings))
         controls = Ui::row (listConcat [place, model] (listConcat effort [ui::Spacer, sending]))
         box = Look::card ("surface", 12, 14, 18)
         outer = Frames::inset (0, 24, 2, 24)

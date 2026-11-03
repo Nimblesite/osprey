@@ -131,9 +131,6 @@ module Model
         others = filterList (settings.keyDrafts, \key => key.keyProvider != provider)
         settings(keyDrafts = Pick::either (value == "", others, listPrepend others (key (provider, value))))
 
-    (** Whether any provider has a saved key. *)
-    export hasAnyKey settings = Lists::any (settings.keys, \key => key.keyValue != "")
-
     (** Whether `provider` has a saved key. *)
     export hasKey (settings, provider) = keyOf (settings, provider) != ""
 

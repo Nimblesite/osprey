@@ -320,6 +320,48 @@ testing ("the composer lists keyed providers' models and an Add an API key butto
     expectTrue (contains keyed "\"label\":\"Send\"")
     expectTrue (contains keyed "\"label\":\"Model\""))
 
+testing ("no key says what is wrong in words, never as a lone lock", \() =>
+    launched = (App::initial (context 100)).stepStore
+    noKey = Drive::showing (launched, View::composer)
+    expectFalse (contains noKey "\"symbol\":\"lock\"")
+    expectFalse (contains noKey "\"iconOnly\":true")
+    expectTrue (contains noKey "No API key for DeepSeek. Add one to send.")
+    keyed = Drive::showing (Drive::started (), View::composer)
+    expectFalse (contains keyed "No API key for")
+    expectTrue (contains keyed "\"iconOnly\":true"))
+
+testing ("a launch with no key file argument finds the key file kept in the app's own store", \() =>
+    bare = ui::Context(now = 100, offset = 0, platform = "macos", home = "/home/ada", arguments = [])
+    first = App::initial bare
+    expect (Drive::kinds first, "store-read,store-read,store-read")
+    expect (Drive::keyOf ((Drive::deliver (first.stepStore, ui::Completed(ticket = "env", outcome = ok 0), "DEEPSEEKKEY=sk-kept\n")).stepStore, "deepseek"), "sk-kept"))
+
+// A failure of any kind leaves Send live, and the next send asks the provider again and can succeed.
+recoversFrom status =
+    opened = (Drive::typing (Drive::started (), "Go\n")).stepStore
+    failed = (Drive::answering (opened, ok status, "{}")).stepStore
+    expect ((Model::active failed).chatStage, "failed")
+    shown = Drive::showing ((Drive::typing (failed, "Again")).stepStore, View::composer)
+    expectTrue (contains shown "\"label\":\"Send\"")
+    expectFalse (contains shown "\"enabled\":false")
+    expectFalse (contains shown "\"symbol\":\"lock\"")
+    again = Drive::typing (failed, "Again\n")
+    expect (Drive::kinds again, "http")
+    expect ((Model::active again.stepStore).chatStage, "thinking")
+    expect ((Model::active again.stepStore).chatProblem, "")
+    recovered = Drive::answering (again.stepStore, ok 200, textReply)
+    expect ((Model::active recovered.stepStore).chatStage, "idle")
+    answers = Drive::showing (recovered.stepStore, View::transcript)
+    expectTrue (contains answers "Done.")
+    expectFalse (contains answers "The request failed")
+
+testing ("no credit, a refused key, a rate limit and a server fault never stop the next send", \() =>
+    recoversFrom 402
+    recoversFrom 401
+    recoversFrom 403
+    recoversFrom 429
+    recoversFrom 500)
+
 testing ("the sidebar shows a Settings button with a warning when the open provider has no key", \() =>
     launched = (App::initial (context 100)).stepStore
     noKey = Drive::showing (launched, View::sidebar)

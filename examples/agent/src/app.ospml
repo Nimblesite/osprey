@@ -232,14 +232,14 @@ module Answers
 
 (** Osprey Agent as the framework runs it: launch, update, regions, the session document and the theme ([UI-STORE], [UI-REGIONS]). *)
 module App
-    (** The store at launch, with the conversations, the providers and the key file asked for. The first launch argument names the project folder and the second a dotenv file. *)
+    (** The store at launch, with the conversations, the providers and the key file asked for. The first launch argument names the project folder and the second a dotenv file; without one, the `key.env` in the app's own store is the dotenv file, so opening the app from the Dock finds the key. *)
     export initial context =
         home = context.home
         folder = Pick::either ((listGet context.arguments 0 ?: "") == "", home, listGet context.arguments 0 ?: "")
         store = Model::launched (context.platform, home, folder, context.now)
         envFile = listGet context.arguments 1 ?: ""
-        env = Pick::either (envFile == "", [], [Requests::ask ("env", Model::readText (context.platform, envFile))])
-        Runtime::asking (store, listConcat env [Requests::ask ("providers", ui::StoreRead(readName = "providers.json", readLimit = 1000000, readSlice = "providers-file")), Requests::ask ("chats", ui::StoreRead(readName = "chats.json", readLimit = 64000000, readSlice = "chats-file"))])
+        env = Requests::ask ("env", Pick::either (envFile == "", ui::StoreRead(readName = "key.env", readLimit = 1000000, readSlice = "env"), Model::readText (context.platform, envFile)))
+        Runtime::asking (store, [env, Requests::ask ("providers", ui::StoreRead(readName = "providers.json", readLimit = 1000000, readSlice = "providers-file")), Requests::ask ("chats", ui::StoreRead(readName = "chats.json", readLimit = 64000000, readSlice = "chats-file"))])
 
     (** Applies one message: a tap, text or a choice, a flag, a splitter's width or a completion. *)
     export update (context, before, message) =

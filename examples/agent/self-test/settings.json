@@ -16,7 +16,7 @@
     {"invoke": "Save Kimi Code plan key"},
     {"wait": "Remove Kimi Code plan key"},
     {"invoke": "Close"},
-    {"wait": "Add a key for DeepSeek to send."},
+    {"wait": "No API key for DeepSeek. Add one to send."},
     {"choose": "GLM-5.3"},
     {"choose": "High"},
     {"type": ["Message", "Summarise this project\n"]},
@@ -37,6 +37,6 @@
     {"gone": "Remove Kimi Code plan key"},
     {"shot": "25-key-removed"},
     {"invoke": "Close"},
-    {"wait": "Add a key for Kimi Code plan to send."}
+    {"wait": "No API key for Kimi Code plan. Add one to send."}
   ]
 }
