@@ -1,0 +1,49 @@
+{
+  "steps": [
+    {
+      "wait": "No API key"
+    },
+    {
+      "type": [
+        "API key",
+        "sk-double"
+      ]
+    },
+    {
+      "invoke": "Save key"
+    },
+    {
+      "wait": "API key set"
+    },
+    {
+      "type": [
+        "Message",
+        "Show the code\n"
+      ]
+    },
+    {
+      "wait": "Show the code"
+    },
+    {
+      "wait": "greet"
+    },
+    {
+      "wait": "Shape"
+    },
+    {
+      "wait": "render"
+    },
+    {
+      "wait": "HOME"
+    },
+    {
+      "wait": "schema"
+    },
+    {
+      "wait": "added"
+    },
+    {
+      "shot": "18-syntax"
+    }
+  ]
+}

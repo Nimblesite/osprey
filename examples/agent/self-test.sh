@@ -62,6 +62,7 @@ grep -q 'wrote calc/__init__.py' "$records/coding/requests.jsonl" || { echo "FAI
 mkdir -p "$work/other-project"
 "$host" --self-test "$here/self-test/controls.json" "$records/controls" --headless --store "$work/store-controls" --http-double "$here/self-test/controls-doubles.json" --folder-double "$work/other-project" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 "$host" --self-test "$here/self-test/restart.json" "$records/restart" --headless --store "$work/store-controls" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
+"$host" --self-test "$here/self-test/code-blocks.json" "$records/code-blocks" --headless --store "$work/store-code-blocks" --http-double "$here/self-test/code-blocks-doubles.json" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 if grep -rq sk-double "$work/store-controls/chats.json" "$records"; then echo "FAILED: the key reached a saved file or the records" >&2; exit 1; fi
 [ -f "$work/other-project/moved.txt" ] || { echo "FAILED: the tool did not write in the chosen folder" >&2; exit 1; }
 [ ! -e "$work/calc-project/moved.txt" ] || { echo "FAILED: the tool wrote in the old folder" >&2; exit 1; }

@@ -1,0 +1,8 @@
+{
+  "replies": [
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Here are the blocks.\\n\\n```python\\ndef greet(name):\\n    return \\\"hello \\\" + name\\n```\\n\\n```typescript\\ninterface Shape {\\n    area(): number;\\n}\\n```\\n\\n```rust\\nfn render() {\\n    println!(\\\"hi\\\");\\n}\\n```\\n\\n```bash\\n#!/bin/bash\\necho \\\"$HOME\\\"\\n```\\n\\n```json\\n{\\\"schema\\\": \\\"v2\\\"}\\n```\\n\\n```diff\\n@@ -1,1 +1,1 @@\\n+added\\n-removed\\n```\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 80, \"total_tokens\": 120}}"
+    }
+  ]
+}

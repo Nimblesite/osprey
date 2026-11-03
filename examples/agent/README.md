@@ -22,6 +22,7 @@ The tools run on your machine with your permissions. `run_command` runs whatever
 | --- | --- |
 | `src/engine.py` | One agent turn as pure steps over the engine: open a turn, build a request, accept a reply, turn a call into a process, feed the results back |
 | `src/transcript.py` | The wire history read into display items, and the model's Markdown read into typed blocks, spans and tables |
+| `src/highlight.py` | One language's code read into coloured tokens in one forward pass, and file extensions read into languages |
 | `src/model.ospml` | The store and its session document |
 | `src/app.ospml` | The action union and update: every step of a turn as a capability and its completion |
 | `src/view.ospml` | The regions: sidebar, header, transcript, composer and inspector |
@@ -53,6 +54,7 @@ examples/agent/self-test.sh --update-goldens  # writes this macOS version's gold
 | --- | --- |
 | `self-test/coding.json` | Fixes a project and adds a feature through the composer. Both modes run the project's tests afterwards, and `--live` also asks an LLM judge whether the agent's words match them |
 | `self-test/controls.json` | Every control: the key field, suggestions, a failed request and Try again, the model picker, Thought and tool disclosures, Stop, switching, the inspector and its splitter, and Open folder. Doubled only, because a model's words cannot be scripted |
+| `self-test/code-blocks.json` | One answer with fenced python, typescript, rust, bash, json and diff blocks, drawn with their syntax colours. Doubled only |
 | `self-test/restart.json` | What `controls.json` saved comes back after a restart, without the key |
 | `self-test/tasks/` | `--live` only: harder tasks, each checked by a hidden `verify.py` the agent never sees |
 

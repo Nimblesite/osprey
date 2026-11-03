@@ -4,6 +4,7 @@ whole two-round tool conversation over canned replies, the commands each tool
 becomes on each platform, what the transcript shows at each step, and the
 Markdown the model writes. Live runs are driven through the window by drive/."""
 from agent import Engine
+from agent import Highlight
 from agent import Transcript
 from pydantic_ai import JsonUtil as J
 from pydantic_ai import Messages as M
@@ -219,8 +220,183 @@ def markdown_cases():
     ]
 
 
+# Syntax colouring: each language's snippet, then the checks on it and the
+# round-trip law over everything malformed.
+
+class Snip:
+    """One language's real snippet."""
+    snipName: str
+    snipCode: str
+
+
+HL_SNIPPETS = [
+    Snip(snipName="python", snipCode="class Point:\n    def add(self, first):\n        \"\"\"Sum.\"\"\"\n        return first + 1  # forty two"),
+    Snip(snipName="javascript", snipCode="export class Counter {\n  run(name) {\n    // once\n    return `hi ${name}` + 1;\n  }\n}"),
+    Snip(snipName="typescript", snipCode="interface Shape {\n  area(): number;\n}\nconst make = (n: number): string => `a${n}`;\n// done"),
+    Snip(snipName="rust", snipCode="struct Span {\n    start: usize,\n}\n\nfn len<'a>(s: &'a str) -> usize {\n    // size\n    s.len() + 0x1F\n}"),
+    Snip(snipName="go", snipCode="type Node struct {\n    Name string\n}\n\nfunc main() {\n    // go\n    fmt.Println(\"hi\", 42)\n}"),
+    Snip(snipName="swift", snipCode="class View {\n    func draw() -> Int {\n        // once\n        return 7\n    }\n}"),
+    Snip(snipName="c", snipCode="#include <stdio.h>\n/* add */\nint add(int a) {\n    // sum\n    return a + 2;\n}"),
+    Snip(snipName="cpp", snipCode="class Engine {\npublic:\n    virtual int run() = 0;  // pure\n};\n/* block */"),
+    Snip(snipName="java", snipCode="public class Main {\n    int run(String arg) {\n        // once\n        return 9;\n    }\n}"),
+    Snip(snipName="kotlin", snipCode="data class User(val name: String)\n\nfun main() {\n    // start\n    println(\"hi\", 3)\n}"),
+    Snip(snipName="csharp", snipCode="public class Server {\n    int Run() {\n        // once\n        return 5;\n    }\n}"),
+    Snip(snipName="ruby", snipCode="class Gem\n  def name\n    # plain\n    \"gem\" + 1.to_s\n  end\nend"),
+    Snip(snipName="php", snipCode="<?php\nclass Site {\n  function run($path) {\n    // once\n    return 'home' . 2;\n  }\n}"),
+    Snip(snipName="bash", snipCode="run_job() {\n  if [ -f \"$TARGET\" ]; then\n    # present\n    echo \"${HOME}/ok\" 3\n  fi\n}"),
+    Snip(snipName="sql", snipCode="CREATE TABLE users (id INT, name VARCHAR(10));\nSELECT id, COUNT(*) AS total\nFROM users -- picks\nWHERE name = 'bob' AND age > 21"),
+    Snip(snipName="json", snipCode="{\"schema\": \"v2\", \"n\": 12, \"ok\": true}\n// note"),
+    Snip(snipName="yaml", snipCode="name: agent\n# note\nlevel: 3\nalive: true\npath: \"src/a.py\""),
+    Snip(snipName="toml", snipCode="[package]\nname = \"agent\"  # note\nversion = 2"),
+    Snip(snipName="css", snipCode=".menu {\n  color: #1E1E24;  /* dark */\n  width: rgb(4, 8, 16);\n}"),
+    Snip(snipName="html", snipCode="<div class=\"card\">\n  <!-- note -->\n  <span>4</span>\n</div>"),
+    Snip(snipName="markdown", snipCode="# Title\n\n> quoted\n\n1. first\n\nUse `agent`."),
+    Snip(snipName="diff", snipCode="+++ b/new\n--- a/old\n@@ -1 +1 @@\n+added line\n-removed line\n context"),
+    Snip(snipName="osprey", snipCode="type Point\nmodule Math\n\nexport fn add (a, b) =\n    // sum\n    a + b + 2"),
+]
+
+HL_MALFORMED = ["", "\n\n\n", "\t\t", "a\r\nb\r\n", "héllo → wörld ✓", "'", "\"", "'''", "\"unclosed", "/* unclosed block", "def", "0x", "${", "#[", "<", "</a>", "<!--", "`x`", "@word", "\"\"\"\"\"\"", "```\"'''<!--/*/#@${!:`"]
+
+
+def hl_marked(language, code):
+    """The tokens as `kind:text`, fenced, so one token can be asserted exactly."""
+    return "|" + join(mapList(Highlight.tokens_of(language, code), lambda t: t.tokenKind + ":" + t.tokenText), "|") + "|"
+
+
+def hl_code(name):
+    found = filterList(HL_SNIPPETS, lambda s: s.snipName == name)
+    return unwrap_or(listGet(found, 0), Snip(snipName="", snipCode="")).snipCode
+
+
+def hl_has(name, code, kind, text):
+    marked = hl_marked(name, code)
+    return Check.truth("hl." + name + "." + kind, contains(marked, "|" + kind + ":" + text + "|"), marked)
+
+
+def hl_snip(name, kind, text):
+    return hl_has(name, hl_code(name), kind, text)
+
+
+def hl_roundtrip_checks():
+    """Joining every token's text gives the code back, for every snippet and every malformed input in every language."""
+    codes = listConcat(HL_MALFORMED, mapList(HL_SNIPPETS, lambda s: s.snipCode))
+    pairs = foldList(HL_SNIPPETS, [], lambda acc, s: listConcat(acc, mapList(codes, lambda code: Snip(snipName=s.snipName, snipCode=code))))
+    return mapList(pairs, lambda p: Check.truth("hl.roundtrip." + p.snipName, join(mapList(Highlight.tokens_of(p.snipName, p.snipCode), lambda t: t.tokenText), "") == p.snipCode, hl_marked(p.snipName, p.snipCode)))
+
+
+def highlight_cases():
+    kinds = [
+        hl_snip("python", "type", "Point"), hl_snip("python", "keyword", "def"), hl_snip("python", "function", "add"), hl_snip("python", "builtin", "self"),
+        hl_snip("python", "string", "\"\"\"Sum.\"\"\""), hl_snip("python", "number", "1"), hl_snip("python", "comment", "# forty two"),
+        hl_snip("javascript", "keyword", "export"), hl_snip("javascript", "type", "Counter"), hl_snip("javascript", "function", "run"),
+        hl_snip("javascript", "string", "`hi ${name}`"), hl_snip("javascript", "number", "1"), hl_snip("javascript", "comment", "// once"),
+        hl_snip("typescript", "type", "Shape"), hl_snip("typescript", "type", "number"), hl_snip("typescript", "function", "area"),
+        hl_snip("typescript", "string", "`a${n}`"), hl_snip("typescript", "comment", "// done"), hl_snip("typescript", "keyword", "const"),
+        hl_snip("rust", "type", "Span"), hl_snip("rust", "type", "'a"), hl_snip("rust", "function", "len"), hl_snip("rust", "keyword", "fn"),
+        hl_snip("rust", "number", "0x1F"), hl_snip("rust", "comment", "// size"), hl_snip("rust", "type", "usize"),
+        hl_snip("go", "keyword", "func"), hl_snip("go", "type", "Node"), hl_snip("go", "string", "\"hi\""), hl_snip("go", "number", "42"),
+        hl_snip("go", "comment", "// go"), hl_snip("go", "function", "Println"), hl_snip("go", "type", "string"),
+        hl_snip("swift", "keyword", "class"), hl_snip("swift", "type", "View"), hl_snip("swift", "function", "draw"),
+        hl_snip("swift", "number", "7"), hl_snip("swift", "comment", "// once"), hl_snip("swift", "type", "Int"),
+        hl_snip("c", "meta", "#include"), hl_snip("c", "comment", "/* add */"), hl_snip("c", "function", "add"),
+        hl_snip("c", "number", "2"), hl_snip("c", "comment", "// sum"), hl_snip("c", "keyword", "return"),
+        hl_snip("cpp", "keyword", "class"), hl_snip("cpp", "type", "Engine"), hl_snip("cpp", "function", "run"),
+        hl_snip("cpp", "comment", "// pure"), hl_snip("cpp", "comment", "/* block */"), hl_snip("cpp", "number", "0"),
+        hl_snip("java", "keyword", "public"), hl_snip("java", "type", "Main"), hl_snip("java", "function", "run"),
+        hl_snip("java", "comment", "// once"), hl_snip("java", "number", "9"), hl_snip("java", "type", "int"),
+        hl_snip("kotlin", "keyword", "data"), hl_snip("kotlin", "type", "User"), hl_snip("kotlin", "function", "main"),
+        hl_snip("kotlin", "string", "\"hi\""), hl_snip("kotlin", "number", "3"), hl_snip("kotlin", "comment", "// start"),
+        hl_snip("csharp", "keyword", "public"), hl_snip("csharp", "type", "Server"), hl_snip("csharp", "function", "Run"),
+        hl_snip("csharp", "comment", "// once"), hl_snip("csharp", "number", "5"), hl_snip("csharp", "type", "int"),
+        hl_snip("ruby", "keyword", "class"), hl_snip("ruby", "type", "Gem"), hl_snip("ruby", "function", "name"),
+        hl_snip("ruby", "string", "\"gem\""), hl_snip("ruby", "number", "1"), hl_snip("ruby", "comment", "# plain"),
+        hl_snip("php", "keyword", "class"), hl_snip("php", "type", "Site"), hl_snip("php", "function", "run"), hl_snip("php", "meta", "$path"),
+        hl_snip("php", "string", "'home'"), hl_snip("php", "number", "2"), hl_snip("php", "comment", "// once"),
+        hl_snip("bash", "function", "run_job"), hl_snip("bash", "keyword", "if"), hl_snip("bash", "keyword", "fi"),
+        hl_snip("bash", "string", "\"${HOME}/ok\""), hl_snip("bash", "number", "3"), hl_snip("bash", "comment", "# present"),
+        hl_snip("sql", "keyword", "CREATE"), hl_snip("sql", "type", "INT"), hl_snip("sql", "type", "VARCHAR"),
+        hl_snip("sql", "function", "COUNT"), hl_snip("sql", "string", "'bob'"), hl_snip("sql", "number", "21"), hl_snip("sql", "comment", "-- picks"),
+        hl_snip("json", "meta", "\"schema\""), hl_snip("json", "string", "\"v2\""), hl_snip("json", "number", "12"),
+        hl_snip("json", "builtin", "true"), hl_snip("json", "comment", "// note"),
+        hl_snip("yaml", "meta", "name"), hl_snip("yaml", "comment", "# note"), hl_snip("yaml", "number", "3"),
+        hl_snip("yaml", "builtin", "true"), hl_snip("yaml", "string", "\"src/a.py\""),
+        hl_snip("toml", "type", "[package]"), hl_snip("toml", "meta", "name"), hl_snip("toml", "string", "\"agent\""),
+        hl_snip("toml", "comment", "# note"), hl_snip("toml", "number", "2"),
+        hl_snip("css", "keyword", ".menu"), hl_snip("css", "meta", "color"), hl_snip("css", "number", "#1E1E24"),
+        hl_snip("css", "comment", "/* dark */"), hl_snip("css", "function", "rgb"),
+        hl_snip("html", "keyword", "div"), hl_snip("html", "meta", "class"), hl_snip("html", "string", "\"card\""),
+        hl_snip("html", "comment", "<!-- note -->"), hl_snip("html", "number", "4"),
+        hl_snip("markdown", "keyword", "# Title"), hl_snip("markdown", "comment", "> quoted"), hl_snip("markdown", "number", "1."),
+        hl_snip("markdown", "string", "`agent`"),
+        hl_snip("diff", "meta", "+++ b/new"), hl_snip("diff", "meta", "--- a/old"), hl_snip("diff", "meta", "@@ -1 +1 @@"),
+        hl_snip("diff", "inserted", "+added line"), hl_snip("diff", "removed", "-removed line"),
+        hl_snip("osprey", "keyword", "type"), hl_snip("osprey", "function", "add"), hl_snip("osprey", "comment", "// sum"),
+        hl_snip("osprey", "number", "2"), hl_snip("osprey", "keyword", "export"),
+    ]
+    rules = [
+        hl_has("python", "formatted classy", "", "formatted"),
+        Check.truth("hl.python.whole_words", not contains(hl_marked("python", "formatted classy"), "keyword:"), hl_marked("python", "formatted classy")),
+        hl_has("python", "x = \"def class 42 # no\"", "string", "\"def class 42 # no\""),
+        Check.truth("hl.python.hash_in_string", not contains(hl_marked("python", "y = \"a # b\""), "comment:"), hl_marked("python", "y = \"a # b\"")),
+        hl_has("python", "# say \"hi\"", "comment", "# say \"hi\""),
+        hl_has("python", "s = '''\ndocs\n'''", "string", "'''\ndocs\n'''"),
+        hl_has("c", "/* a\nb */", "comment", "/* a\nb */"),
+        hl_has("bash", "cd ${HOME}\necho $USER", "meta", "${HOME}"),
+        hl_has("bash", "cd ${HOME}\necho $USER", "meta", "$USER"),
+        Check.truth("hl.bash.hash_not_comment", not contains(hl_marked("bash", "echo a#b"), "comment:"), hl_marked("bash", "echo a#b")),
+        hl_has("css", "a:hover {\n}", "type", ":hover"),
+        hl_has("sql", "select * from t", "keyword", "select"),
+        hl_has("markdown", "```\nfence\n```", "meta", "```"),
+        Check.equal("hl.unknown.one_plain", len(Highlight.tokens_of("brainfuck", "x = 1")), 1),
+        Check.equal("hl.unknown.plain_kind", unwrap_or(listGet(Highlight.tokens_of("brainfuck", "x = 1"), 0), Highlight.Token(tokenText="", tokenKind="x")).tokenKind, ""),
+        Check.equal("hl.empty_language.one_plain", len(Highlight.tokens_of("", "x = 1")), 1),
+    ]
+    alias_pairs = [["py", "python"], ["js", "javascript"], ["jsx", "javascript"], ["ts", "typescript"], ["tsx", "typescript"], ["rs", "rust"], ["kt", "kotlin"], ["cs", "csharp"], ["c#", "csharp"], ["c++", "cpp"], ["h", "cpp"], ["hpp", "cpp"], ["rb", "ruby"], ["sh", "bash"], ["shell", "bash"], ["zsh", "bash"], ["console", "bash"], ["yml", "yaml"], ["scss", "css"], ["xml", "html"], ["svg", "html"], ["md", "markdown"], ["patch", "diff"], ["ospml", "osprey"], ["osp", "osprey"], ["golang", "go"]]
+    aliases = mapList(alias_pairs, lambda p: Check.equal("hl.alias." + unwrap_or(listGet(p, 0), ""), hl_marked(unwrap_or(listGet(p, 0), ""), hl_code(unwrap_or(listGet(p, 1), ""))), hl_marked(unwrap_or(listGet(p, 1), ""), hl_code(unwrap_or(listGet(p, 1), "")))))
+    same = mapList(["Python", "PYTHON", "Rust", "JSON", "Markdown"], lambda n: Check.equal("hl.case." + n, hl_marked(n, hl_code("python")), hl_marked(toLowerCase(n), hl_code("python"))))
+    paths = [
+        Check.equal("hl.path.py", Highlight.language_of_path("a.py"), "python"),
+        Check.equal("hl.path.case", Highlight.language_of_path("lib/x.TS"), "typescript"),
+        Check.equal("hl.path.rs", Highlight.language_of_path("main.rs"), "rust"),
+        Check.equal("hl.path.html", Highlight.language_of_path("index.html"), "html"),
+        Check.equal("hl.path.svg", Highlight.language_of_path("x.svg"), "html"),
+        Check.equal("hl.path.scss", Highlight.language_of_path("styles.scss"), "css"),
+        Check.equal("hl.path.md", Highlight.language_of_path("doc.md"), "markdown"),
+        Check.equal("hl.path.go", Highlight.language_of_path("g.go"), "go"),
+        Check.equal("hl.path.swift", Highlight.language_of_path("m.swift"), "swift"),
+        Check.equal("hl.path.h", Highlight.language_of_path("x.h"), "cpp"),
+        Check.equal("hl.path.hpp", Highlight.language_of_path("x.hpp"), "cpp"),
+        Check.equal("hl.path.sh", Highlight.language_of_path("run.sh"), "bash"),
+        Check.equal("hl.path.sql", Highlight.language_of_path("db.sql"), "sql"),
+        Check.equal("hl.path.toml", Highlight.language_of_path("c.toml"), "toml"),
+        Check.equal("hl.path.yml", Highlight.language_of_path("v.yml"), "yaml"),
+        Check.equal("hl.path.ospml", Highlight.language_of_path("a.ospml"), "osprey"),
+        Check.equal("hl.path.osp", Highlight.language_of_path("o.osp"), "osprey"),
+        Check.equal("hl.path.patch", Highlight.language_of_path("p.patch"), "diff"),
+        Check.equal("hl.path.kt", Highlight.language_of_path("k.kt"), "kotlin"),
+        Check.equal("hl.path.cs", Highlight.language_of_path("c.cs"), "csharp"),
+        Check.equal("hl.path.rb", Highlight.language_of_path("r.rb"), "ruby"),
+        Check.equal("hl.path.php", Highlight.language_of_path("p.php"), "php"),
+        Check.equal("hl.path.tsx", Highlight.language_of_path("t.tsx"), "typescript"),
+        Check.equal("hl.path.jsx", Highlight.language_of_path("j.jsx"), "javascript"),
+        Check.equal("hl.path.no_extension", Highlight.language_of_path("Makefile"), ""),
+        Check.equal("hl.path.dotfile", Highlight.language_of_path(".gitignore"), ""),
+        Check.equal("hl.path.dotfolder", Highlight.language_of_path("dir/.env"), ""),
+        Check.equal("hl.path.unknown_extension", Highlight.language_of_path("archive.tar.gz"), ""),
+    ]
+    huge = repeat_text("# line\n", 28572)
+    just_under = repeat_text("# line\n", 28571)
+    size = [
+        Check.equal("hl.max_bytes.one_plain", len(Highlight.tokens_of("python", huge)), 1),
+        Check.equal("hl.max_bytes.whole_text", unwrap_or(listGet(Highlight.tokens_of("python", huge), 0), Highlight.Token(tokenText="", tokenKind="")).tokenText, huge),
+        Check.truth("hl.max_bytes.still_scans_under", len(Highlight.tokens_of("python", just_under)) > 1, toString(len(Highlight.tokens_of("python", just_under)))),
+        Check.equal("hl.max_bytes.constant", Highlight.MAX_BYTES, 200000),
+    ]
+    return listConcat(listConcat(listConcat(listConcat(kinds, rules), aliases), listConcat(same, paths)), listConcat(size, hl_roundtrip_checks()))
+
+
 def suite():
-    return listConcat(listConcat(listConcat(listConcat(conversation_cases(), folder_prompt_cases()), in_flight_cases()), listConcat(failure_cases(), command_cases())), markdown_cases())
+    return listConcat(listConcat(listConcat(listConcat(listConcat(conversation_cases(), folder_prompt_cases()), in_flight_cases()), listConcat(failure_cases(), command_cases())), markdown_cases()), highlight_cases())
 
 
 def report_suite():

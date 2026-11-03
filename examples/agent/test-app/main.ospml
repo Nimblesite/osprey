@@ -19,6 +19,8 @@ toolReply = "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\
 
 textReply = "{\"id\":\"r2\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Done.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":3,\"total_tokens\":23}}"
 
+codeReply = "{\"id\":\"rc\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Here:\\n\\n```python\\ndef add(a, b):\\n    name = \\\"x\\\"\\n    return a + b + 1  # sum\\n```\\n\\nDone.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":4,\"total_tokens\":14}}"
+
 ok status = Success(value = JsonObject [Doc::num ("status", status)])
 
 // Each test runs under the arithmetic policy the application's C boundary uses.
@@ -122,6 +124,18 @@ testing ("a whole turn: model, each tool in order, model again, then saved witho
     file = (listGet done.writes 0 ?: Requests::write ("", "")).sliceText
     expectTrue (contains file "Done.")
     expectFalse (contains file "sk-test"))
+
+testing ("a fenced python block draws as a rich node of coloured runs, more than one ink", \() =>
+    opened = (Drive::typing (Drive::started (), "Show the code\n")).stepStore
+    replied = Drive::answering (opened, ok 200, codeReply)
+    shown = Drive::showing (replied.stepStore, View::transcript)
+    expectTrue (contains shown "\"kind\":\"rich-text\"")
+    expectTrue (contains shown "\"ink\":\"codeKeyword\"")
+    expectTrue (contains shown "\"ink\":\"codeString\"")
+    expectTrue (contains shown "\"ink\":\"codeComment\"")
+    expectTrue (contains shown "\"ink\":\"codeNumber\"")
+    expectTrue (contains shown "\"text\":\"def\"")
+    expectTrue (contains shown "\\n"))
 
 testing ("Stop cancels what runs and answers each owed call, so the next turn is accepted", \() =>
     opened = (Drive::typing (Drive::started (), "Go\n")).stepStore

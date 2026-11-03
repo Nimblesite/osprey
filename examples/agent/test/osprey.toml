@@ -1,6 +1,6 @@
 [project]
 name = "osprey-agent-tests"
-source_roots = ["main.py", "../src/engine.py", "../src/transcript.py", "../../../packages/pydantic_ai/src", "../../../packages/testing/src"]
-python_sources = ["../../../packages/pydantic_ai/src/json_util.py", "../../../packages/pydantic_ai/src/json_schema.py", "../../../packages/pydantic_ai/src/exceptions.py", "../../../packages/pydantic_ai/src/usage.py", "../../../packages/pydantic_ai/src/tools.py", "../../../packages/pydantic_ai/src/settings.py", "../../../packages/pydantic_ai/src/profiles.py", "../../../packages/pydantic_ai/src/messages.py", "../../../packages/pydantic_ai/src/models.py", "../../../packages/pydantic_ai/src/providers.py", "../../../packages/pydantic_ai/src/models_openai.py", "../src/engine.py", "../src/transcript.py", "../../../packages/testing/src/check.py", "main.py"]
+source_roots = ["main.py", "../src/engine.py", "../src/transcript.py", "../src/highlight.py", "../../../packages/pydantic_ai/src", "../../../packages/testing/src"]
+python_sources = ["../../../packages/pydantic_ai/src/json_util.py", "../../../packages/pydantic_ai/src/json_schema.py", "../../../packages/pydantic_ai/src/exceptions.py", "../../../packages/pydantic_ai/src/usage.py", "../../../packages/pydantic_ai/src/tools.py", "../../../packages/pydantic_ai/src/settings.py", "../../../packages/pydantic_ai/src/profiles.py", "../../../packages/pydantic_ai/src/messages.py", "../../../packages/pydantic_ai/src/models.py", "../../../packages/pydantic_ai/src/providers.py", "../../../packages/pydantic_ai/src/models_openai.py", "../src/engine.py", "../src/transcript.py", "../src/highlight.py", "../../../packages/testing/src/check.py", "main.py"]
 default_namespace = "agent_tests"
 entry = "main.py"

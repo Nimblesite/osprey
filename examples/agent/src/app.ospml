@@ -243,4 +243,7 @@ module App
         token ("canvas", "#FBFBFC", "#141417"), token ("sidebar", "#EFEFF3", "#1B1B20"), token ("surface", "#FFFFFF", "#1E1E23"), token ("raised", "#F3F3F6", "#26262C"),
         token ("bubble", "#EEEEF3", "#2A2A31"), token ("line", "#E4E4EA", "#2C2C33"), token ("inset", "#F6F6F9", "#18181C"),
         token ("codeFill", "#F2F2F6", "#0E0E11"), token ("codeInk", "#5B45D6", "#C2B5FF"),
+        token ("codeKeyword", "#6D4AE0", "#A996FF"), token ("codeString", "#116D3F", "#7CE0A5"), token ("codeComment", "#62626E", "#8E8E9B"),
+        token ("codeNumber", "#9A5B00", "#F5B454"), token ("codeFunction", "#1D4FD7", "#82B1FF"), token ("codeType", "#0E7468", "#5FDFCB"),
+        token ("codeBuiltin", "#B02A62", "#FF9EC7"), token ("codeMeta", "#5551C9", "#AFAAFF"), token ("codeInserted", "#116D3F", "#7CE0A5"), token ("codeRemoved", "#BC2424", "#FF9E9E"),
     ], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)

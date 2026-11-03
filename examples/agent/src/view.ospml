@@ -12,6 +12,7 @@ import ui::Pick
 import ui::Symbols
 import ui::Ui
 import agent::Engine
+import agent::Highlight
 import agent::Transcript
 import agentapp::Model
 
@@ -75,6 +76,23 @@ module Blocks
         "em" => Ui::run (span.spanText, "", true)
         _ => Ui::run (span.spanText, "", false)
 
+    // The ink token a highlight kind draws with; plain inherits the frame's ink.
+    tokenInk kind = match kind
+        "keyword" => "codeKeyword"
+        "string" => "codeString"
+        "comment" => "codeComment"
+        "number" => "codeNumber"
+        "function" => "codeFunction"
+        "type" => "codeType"
+        "builtin" => "codeBuiltin"
+        "meta" => "codeMeta"
+        "inserted" => "codeInserted"
+        "removed" => "codeRemoved"
+        _ => ""
+
+    (** One highlight token as a run, with its ink. *)
+    export tokenRun token = Ui::run (token.tokenText, tokenInk token.tokenKind, false)
+
     runs spans = mapList (spans, \span => run span)
 
     paragraph spans = Ui::rich (runs spans, ui::Body)
@@ -99,7 +117,7 @@ module Blocks
 
     code block =
         head = Ui::framed (Look::sized (11, "secondary"), Ui::text (Pick::either (block.blockLanguage == "", "code", block.blockLanguage)))
-        body = Ui::framed (Look::mono (12, "primary"), Ui::text block.blockCode)
+        body = Ui::framed (Look::mono (12, "primary"), Ui::rich (mapList (Highlight::tokens_of (block.blockLanguage, block.blockCode), tokenRun), ui::Body))
         Ui::framed (Look::card ("codeFill", 12, 14, 10), Ui::column [head, body])
 
     cell (spans, header) =
@@ -166,11 +184,15 @@ module Items
             true => join (Lists::slice (lines, 0, shownLines ()), "\n") + "\n… ${length lines - shownLines ()} more lines"
             false => output
 
+    stepLines item =
+        language = Pick::either (item.stepTool == "read_file", Highlight::language_of_path (item.stepSummary), "")
+        Ui::framed (Look::mono (12, "secondary"), Ui::rich (mapList (Highlight::tokens_of (language, shown (trim item.stepOutput)), Blocks::tokenRun), ui::Body))
+
     step item =
         headInk = Look::mono (12, "primary")
         title = Ui::framed (headInk(frameHug = true), Ui::text "${verb item.stepTool} ${item.stepSummary}")
         head = Ui::row [Ui::framed (Look::sized (12, "secondary"), Ui::icon (symbol item.stepTool)), title, ui::Spacer, status item]
-        lines = Ui::framed (Look::mono (12, "secondary"), Ui::text (shown (trim item.stepOutput)))
+        lines = stepLines item
         Ui::framed (Look::card ("codeFill", 10, 12, 10), Ui::column (Pick::either (trim item.stepOutput == "", [head], [head, lines])))
 
     tools (expanded, item) =
@@ -216,7 +238,6 @@ module View
         Ui::split [Ui::slot "sidebar", detail]
 
     chatRow chat =
-        now = chat.chatStarted
         busy = Model::busy chat
         note = Pick::either (busy, "Working…", Pick::either (chat.chatStage == "failed", "Stopped by an error", modelName chat.chatModel))
         base3 = Frames::plain
