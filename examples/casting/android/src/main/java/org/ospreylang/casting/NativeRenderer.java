@@ -127,7 +127,9 @@ final class NativeRenderer extends FrameLayout {
     private void text(TextView view, JSONObject node, Map<String, Integer> theme) throws JSONException {
         String kind = node.getString("kind"), label = node.optString("label", node.optString("text"));
         String value = kind.equals("picker") ? label + ": " + selected(node) : label;
-        if (!value.contentEquals(view.getText())) view.setText(value);
+        boolean clock = kind.equals("text") && label.matches("[0-9]+:[0-9]{2}");
+        // Hidden TextViews still bubble text changes to their accessible parent.
+        if ((!clock || NativeRange.refresh(view, false)) && !value.contentEquals(view.getText())) view.setText(value);
         view.setTextColor(colour(theme, node.optString("tone"), colour(theme, "text", Color.BLACK)));
         if (view instanceof Button button) {
             button.setContentDescription(label); button.setEnabled(node.optBoolean("enabled", true));
@@ -141,7 +143,7 @@ final class NativeRenderer extends FrameLayout {
         } else {
             view.setTextSize(node.optString("role").equals("title") ? 24 : node.optString("role").equals("caption") ? 12 : 16);
             view.setTypeface(null, node.optString("role").equals("title") ? Typeface.BOLD : Typeface.NORMAL);
-            view.setImportantForAccessibility(label.matches("[0-9]+:[0-9]{2}") ? IMPORTANT_FOR_ACCESSIBILITY_NO : IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+            view.setImportantForAccessibility(clock ? IMPORTANT_FOR_ACCESSIBILITY_NO : IMPORTANT_FOR_ACCESSIBILITY_AUTO);
         }
     }
 

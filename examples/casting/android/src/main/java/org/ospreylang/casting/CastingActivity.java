@@ -3,6 +3,10 @@ package org.ospreylang.casting;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import androidx.activity.ComponentActivity;
 import androidx.activity.result.ActivityResultLauncher;
@@ -65,11 +69,14 @@ public final class CastingActivity extends ComponentActivity {
         discovery = new CastDiscovery(this);
         resident = new Resident(this::receive, this::fail);
         scene = new NativeRenderer(this, this::control);
-        scene.setFitsSystemWindows(true);
-        setContentView(scene);
+        FrameLayout host = new FrameLayout(this);
+        host.setFitsSystemWindows(true);
+        host.addView(scene, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(host);
         try {
             File folder = new File(getFilesDir(), "player");
             copyAssets("", folder);
+            appearance(host, new File(folder, "player.machine.json"));
             JSONArray arguments = new JSONArray().put("--machine").put(new File(folder, "player.machine.json").getAbsolutePath());
             String skin = getIntent().getStringExtra("skin");
             if (skin != null) arguments.put("--skin").put(skin);
@@ -77,7 +84,25 @@ public final class CastingActivity extends ComponentActivity {
                 "platform", "android", "home", getFilesDir().getAbsolutePath(), "arguments", arguments);
             resident.start(context);
             main.post(frame);
-        } catch (IOException | RuntimeException error) { fail(error); }
+        } catch (IOException | JSONException | RuntimeException error) { fail(error); }
+    }
+
+    // [CAST-MOBILE-SKINS] Keep native chrome outside the machine's artboard.
+    private void appearance(FrameLayout host, File machine) throws IOException, JSONException {
+        JSONArray choices = new JSONObject(new String(Files.readAllBytes(machine.toPath()), StandardCharsets.UTF_8)).getJSONObject("inputs").getJSONObject("skins").getJSONArray("value");
+        if (choices.length() == 0) throw new JSONException("The player has no appearance choices");
+        Button button = new Button(this); button.setText(R.string.appearance); button.setAllCaps(false); button.setContentDescription(getString(R.string.appearance));
+        PopupMenu menu = new PopupMenu(this, button);
+        for (int i = 0; i < choices.length(); i++) {
+            JSONObject choice = choices.getJSONObject(i);
+            String key = choice.getString("key"), label = choice.getString("label");
+            if (key.isEmpty() || label.isEmpty()) throw new JSONException("Invalid appearance choice");
+            menu.getMenu().add(label).setOnMenuItemClickListener(ignored -> { send(object("kind", "lifecycle", "phase", "skin:" + key)); return true; });
+        }
+        button.setOnClickListener(ignored -> menu.show());
+        FrameLayout.LayoutParams size = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        size.topMargin = size.rightMargin = Math.round(12 * getResources().getDisplayMetrics().density);
+        host.addView(button, size);
     }
 
     private void copyAssets(String path, File target) throws IOException {

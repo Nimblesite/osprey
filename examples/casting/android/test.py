@@ -156,6 +156,9 @@ def alternate_playback(output):
     tap("Volume 50%"); tap("25%")
     tap("Speed"); tap("0.75×")
     tap("Resume"); find("Pause")
+    tap("Appearance"); tap("Sherbet Signal"); find("Pause")
+    tap("Appearance"); tap("Poolside Pop"); find("Pause")
+    tap("Speed"); tap("1.25×")
     tap("Pause"); find("Resume")
     (output / "poolside-paused.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
     tap("Stop"); find("Play")
@@ -171,7 +174,9 @@ def main():
         track = Path(directory) / "Casting mobile test.mp3"
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(track)], check=True)
         adb("push", str(track), "/sdcard/Download/Casting mobile test.mp3")
-        launch("midnight")
+        launch()
+        tap("Appearance"); tap("Midnight Mint")
+        find("Skin")
         snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
         assert snapshot["node"]["kind"] == "themed", snapshot
         tap("Skin")
@@ -206,4 +211,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        output = ROOT / "examples/casting/build/android-test"
+        (output / "failed.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+        (output / "failed-envelope.json").write_text(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
+        raise

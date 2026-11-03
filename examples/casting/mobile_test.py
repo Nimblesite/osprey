@@ -96,7 +96,7 @@ def verify_log(path, platform):
         seeks = [item["currentTime"] for item in payloads if item.get("type") == "SEEK"]
         assert seeks[:2] == [10, 0] and abs(seeks[2] - 50) < 3, seeks
         rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
-        assert rates == [1.5, 0.75, 1.5], rates
+        assert rates == [1.5, 0.75, 1.25, 1.5], rates
         assert kinds.count("STOP") == 4, kinds
     else:
         assert abs(volumes[0] - 0.5) < 0.02 and volumes[1:] == [0.5, 0.25], volumes
