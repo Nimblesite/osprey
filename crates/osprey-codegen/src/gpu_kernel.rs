@@ -166,7 +166,6 @@ pub(crate) fn slot(elem: Option<LType>) -> LType {
 /// intrinsic value form. A known local lambda lifts with the environment fixed
 /// at its binding; an opaque computed cell retains its ordinary indirect call.
 pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result<Callback> {
-    if let Callback::Named(name) = &cb { eprintln!("NAMED {name} admissible={} slots={slots:?}", builtin::admissible(name, slots)); }
     if cg.gpu_kernels() == GpuKernelMode::Inline {
         return Ok(cb);
     }
@@ -239,7 +238,6 @@ fn lift(
 ) -> Result<Callback> {
     let caps = crate::closure::capture_list(cg, &parameters, &body);
     if !admissible(cg, &parameters, &body, own.as_ref(), &caps, slots) {
-        eprintln!("LIFT DECLINE slots={slots:?} bound={} caps={:?} body={body:?}", host_bound(cg, &crate::closure::free_names(&parameters, &body)), caps.iter().map(|c| (&c.name, c.val.ty, &c.val.osp_ty, c.val.result_inner)).collect::<Vec<_>>());
         return Ok(Callback::Lambda(parameters, body, own, position));
     }
     let params = param_sigs(&parameters, own.as_ref(), slots);
