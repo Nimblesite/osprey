@@ -18,7 +18,7 @@ def command(arguments, **options):
 
 
 def receiver_fixture(port):
-    text = f'Test._googlecast._tcp SRV 0 0 {port} 127.0.0.1\nTest._googlecast._tcp TXT "fn=Test receiver"\n'
+    text = f'Test._googlecast._tcp SRV 0 0 {port} 127.0.0.1\nTest._googlecast._tcp TXT "fn=Test receiver"\nZUnavailable._googlecast._tcp SRV 0 0 1 127.0.0.1\nZUnavailable._googlecast._tcp TXT "fn=Unavailable receiver"\n'
     return base64.b64encode(text.encode()).decode()
 
 
@@ -79,7 +79,7 @@ def verify_log(path, platform):
     kinds = [record["payload"].get("type") for record in records if record.get("event") == "recv"]
     for kind in ["LAUNCH", "LOAD", "PAUSE", "PLAY", "SEEK", "SET_VOLUME", "SET_PLAYBACK_RATE", "STOP"]:
         assert kind in kinds, (kind, kinds)
-    assert kinds.count("LOAD") == (5 if platform == "ios" else 4), kinds
+    assert kinds.count("LOAD") == (6 if platform == "ios" else 5), kinds
     payloads = [record["payload"] for record in records if record.get("event") == "recv"]
     assert any(item.get("type") == "SET_VOLUME" and abs(item["volume"]["level"] - 0.5) < 0.02 for item in payloads), payloads
     assert any(item.get("type") == "SEEK" and abs(item["currentTime"] - 50) < 3 for item in payloads), payloads
@@ -97,14 +97,14 @@ def verify_log(path, platform):
         assert seeks[:2] == [10, 0] and abs(seeks[2] - 50) < 3, seeks
         rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
         assert rates == [1.5, 0.75, 1.25, 1.5], rates
-        assert kinds.count("STOP") == 4, kinds
+        assert kinds.count("STOP") == 5, kinds
     else:
         assert abs(volumes[0] - 0.5) < 0.02 and volumes[1:] == [0.5, 0.25], volumes
         seeks = [item["currentTime"] for item in payloads if item.get("type") == "SEEK"]
         assert abs(seeks[0] - 50) < 3 and seeks[1:] == [10, 0], seeks
         rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
         assert rates == [1.5, 1.5, 0.75, 1.25], rates
-        assert kinds.count("STOP") == 5, kinds
+        assert kinds.count("STOP") == 6, kinds
     loads = [record for record in records if record.get("event") == "load"]
     assert all(record["title"] == "Casting mobile test" and record["contentType"] == "audio/mpeg" for record in loads), loads
     print("PASS: native app Cast commands, replay, metadata and real HTTP HEAD/range fetches")
@@ -158,7 +158,7 @@ def ios_pictures(output):
     command(["xcrun", "xcresulttool", "export", "attachments", "--path", str(result), "--output-path", str(folder)])
     manifest = json.loads((folder / "manifest.json").read_text())
     attachments = [item for test in manifest for item in test["attachments"]]
-    for name in ("ready", "restarted", "midnight-ready", "midnight-title", "poolside-ready", "poolside-title"):
+    for name in ("ready", "restarted", "midnight-ready", "midnight-title", "poolside-ready", "poolside-title", "midnight-loaded-title", "midnight-search", "midnight-receiver"):
         matching = [item for item in attachments if item["suggestedHumanReadableName"].startswith(f"casting-ios-{name}_")]
         assert len(matching) == 1, (name, matching)
         (output / f"{name}.png").write_bytes((folder / matching[0]["exportedFileName"]).read_bytes())
@@ -182,6 +182,13 @@ def verify_pictures(platform, output):
         print(f"PASS: {platform} {name} golden ({fraction:.3%} differing pixels)")
 
 
+def verify_foreground(path, colour):
+    width, height, raw = png_pixels(path)
+    foreground = tuple(int(colour[i:i + 2], 16) for i in (1, 3, 5))
+    matches = sum(all(abs(raw[i + channel] - foreground[channel]) <= 16 for channel in range(3)) for i in range(0, len(raw), 3))
+    assert matches > width * height * 0.01, (path.name, "foreground", matches, width * height)
+
+
 def verify_skin_palettes(output):
     skins = json.loads((APP / "player.machine.json").read_text())["skins"]
     for name in ("midnight", "poolside"):
@@ -189,11 +196,11 @@ def verify_skin_palettes(output):
         at = (int(height * 0.5) * width + int(width * 0.05)) * 3
         background = tuple(int(skins[name]["tokens"]["background"][i:i + 2], 16) for i in (1, 3, 5))
         assert all(abs(raw[at + channel] - background[channel]) <= 3 for channel in range(3)), (name, "background", tuple(raw[at:at + 3]), background)
-        width, height, raw = png_pixels(output / f"{name}-title.png")
-        foreground = tuple(int(skins[name]["tokens"]["text"][i:i + 2], 16) for i in (1, 3, 5))
-        matches = sum(all(abs(raw[i + channel] - foreground[channel]) <= 16 for channel in range(3)) for i in range(0, len(raw), 3))
-        assert matches > width * height * 0.01, (name, "foreground", matches, width * height)
+        verify_foreground(output / f"{name}-title.png", skins[name]["tokens"]["text"])
         print(f"PASS: {name} native background and foreground palette")
+    for name, token in [("loaded-title", "text"), ("search", "text"), ("receiver", "secondary")]:
+        verify_foreground(output / f"midnight-{name}.png", skins["midnight"]["tokens"][token])
+        print(f"PASS: midnight native {name} foreground palette")
 
 
 if __name__ == "__main__":

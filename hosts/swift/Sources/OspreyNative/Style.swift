@@ -17,6 +17,12 @@ public struct ThemeResolver: Sendable, Equatable {
         return ThemeResolver.parse(dark ? token.dark : token.light)
     }
 
+    // [UI-THEME] Explicit foreground styles resolve the application's text token.
+    func foreground(dark: Bool) -> AnyShapeStyle {
+        if let colour = color("text", dark: dark) { return AnyShapeStyle(colour) }
+        return AnyShapeStyle(.foreground)
+    }
+
     /// `#RRGGBB` as a colour; anything else is unresolved.
     public static func parse(_ hex: String) -> Color? {
         guard hex.count == 7, hex.hasPrefix("#"), let value = UInt32(hex.dropFirst(), radix: 16) else { return nil }

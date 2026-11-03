@@ -196,11 +196,11 @@ private struct SceneSlider: UIViewRepresentable {
     final class Coordinator: NSObject {
         var parent: SceneSlider
         init(_ parent: SceneSlider) { self.parent = parent }
-        @objc func moved(_ slider: UISlider) { parent.changed(Double(slider.value)) }
+        @objc func moved(_ slider: SceneUISlider) { parent.changed(Double(slider.takeValue())) }
     }
     func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeUIView(context: Context) -> UISlider {
-        let slider = UISlider()
+    func makeUIView(context: Context) -> SceneUISlider {
+        let slider = SceneUISlider()
         slider.isContinuous = false
         slider.isAccessibilityElement = true
         slider.accessibilityTraits = .adjustable
@@ -212,7 +212,7 @@ private struct SceneSlider: UIViewRepresentable {
         slider.addTarget(context.coordinator, action: #selector(Coordinator.moved(_:)), for: .valueChanged)
         return slider
     }
-    func updateUIView(_ slider: UISlider, context: Context) {
+    func updateUIView(_ slider: SceneUISlider, context: Context) {
         context.coordinator.parent = self
         guard !slider.isTracking else { return }
         slider.accessibilityLabel = item.text("label")
@@ -220,6 +220,42 @@ private struct SceneSlider: UIViewRepresentable {
         slider.minimumValue = Float(item["min"]?.scalar ?? 0)
         slider.maximumValue = Float(item["max"]?.scalar ?? 1)
         slider.value = Float(item["value"]?.scalar ?? 0)
+    }
+}
+
+// [UI-SCENE-STREAM] Preserve the actual endpoint across UIKit's delayed change
+// event; non-touch accessibility adjustments keep the native slider's value.
+private final class SceneUISlider: UISlider {
+    private var touchValue: Float?
+
+    private func remember(_ touch: UITouch) {
+        guard bounds.width > 0, maximumValue > minimumValue else { touchValue = nil; return }
+        let fraction = min(1, max(0, touch.location(in: self).x / bounds.width))
+        touchValue = minimumValue + Float(fraction) * (maximumValue - minimumValue)
+    }
+
+    func takeValue() -> Float {
+        defer { touchValue = nil }
+        return touchValue ?? value
+    }
+
+    override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+        touchValue = nil
+        let accepted = super.beginTracking(touch, with: event)
+        if accepted { remember(touch) }
+        return accepted
+    }
+    override func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+        remember(touch)
+        return super.continueTracking(touch, with: event)
+    }
+    override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
+        if let touch { remember(touch) }
+        super.endTracking(touch, with: event)
+    }
+    override func cancelTracking(with event: UIEvent?) {
+        touchValue = nil
+        super.cancelTracking(with: event)
     }
 }
 #endif

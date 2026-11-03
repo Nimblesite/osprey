@@ -301,6 +301,16 @@ def alternate_playback(output):
     tap("Play"); find("Pause")
     tap("Stop"); find("Play")
     print("PASS: native alternate skins preserve playback, seek, volume, rate and replay", flush=True)
+    tap("Receiver"); tap("Unavailable receiver")
+    tap("Play")
+    failure = "127.0.0.1:1: connection refused or timed out"
+    find(failure); find("Play")
+    tap("Skin"); tap("Midnight Mint"); find(failure)
+    (output / "connection-refused.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+    tap("Receiver"); tap("Test receiver")
+    tap("Play"); find("Pause")
+    tap("Stop"); find("Play")
+    print("PASS: native connection failure remains visible across skins and a reachable receiver recovers playback", flush=True)
 
 
 def main():

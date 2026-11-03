@@ -25,12 +25,18 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 - [ ] Add per-platform launch and test Makefile targets and required CI coverage gates.
 - [x] Rotate Android during playback, use landscape pause/resume and volume, preserve the connection, return to portrait and restore the previous system rotation policy.
 - [x] Send iOS to Home during live playback and reactivate the existing app; preserve Pause, the connection and the exact receiver command counts without another media load.
+- [x] Select an unavailable receiver on both hosts, read its connection error through native accessibility, retain the error across a skin change, and recover playback on a reachable receiver without restarting.
+- [x] Verify Midnight's loaded iOS title, ordinary button and receiver menu against the declared text colours, alongside both ready-state palettes and the unchanged Sherbet goldens.
+- [x] Preserve the actual iOS slider touch endpoint through UIKit's delayed change event; verify a 50-second seek, 50% volume and one Cast command per adjustment.
 - [x] Render the alternate themed tree on Android, verify both iOS palettes and exercise Midnight/Poolside playback with session-preserving skin changes.
 - [x] Expose a native Appearance menu from Sherbet on both hosts; switch through all three skins during playback without reloading and verify the complete screenshot/command gates.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
 - [x] Commit native ready/restart screenshot goldens and verify headless iOS plus visible and headless Android rendering with accessibility assertions.
 - [ ] Verify the same iOS goldens with the Simulator window visible.
 - [ ] Verify physical-device casting to a real receiver, including background playback and local network permissions.
+- [ ] Restore the selected skin after process restart; verify high contrast and reduced motion. [CAST-DESIGN-SKIN-CONTRACT]
+- [ ] Verify minimum mobile touch regions, scaled text and full accessible track titles in all skins. [CAST-DESIGN-TYPE]
+- [ ] Verify native share/open integration and unreadable, corrupt and replacement-file recovery. [CAST-DESIGN-STATE]
 
 The existing host-free casting suite simulates the receiver and drives the real resident application. It does not prove native mobile rendering, permission behavior, ABI linkage or real-device playback.
 
@@ -46,6 +52,10 @@ The existing host-free casting suite simulates the receiver and drives the real 
 The iOS simulator also passes Home-and-return recovery while casting: the same session remains playing, subsequent controls work, and the fixture rejects any additional media load. This verifies foreground recovery; it does not establish streaming during prolonged device suspension or background audio entitlement behavior.
 
 Android's latest headless journey passes after checking the installed APK for duplicate skin trees and replacing its generated resource cache on launch. Imported media lives outside that cache. The driver resolves the pushed MP3's canonical path and requires a successful native MediaStore scan before selection; shell arguments preserve spaces, apostrophes and Unicode. It verifies that the system picker has actually opened Downloads before touching the file, including when a navigation tap leaves the drawer open. Six focused driver regressions cover these interactions and fresh accessibility snapshots; the full TLS command and screenshot gates remain unchanged.
+
+Both native journeys also select an unavailable localhost receiver, verify its full connection-refused message, change from Poolside to Midnight while retaining the error, and select the working receiver to resume playback without a restart. The fixture requires one additional verified media load and Stop for that recovery; seek, volume and speed command counts remain exact. iOS screenshot checks include the loaded title, Search Again button and receiver menu, so an otherwise successful journey cannot hide unreadable dark-skin text. Native text, buttons and frame ink resolve the theme's text token explicitly; picker labels use its secondary token.
+
+The iOS scene uses a native UISlider that remembers the actual touch endpoint until UIKit emits its change event. UIKit's animated value had continued moving after the finger reached the target. Touch changes now submit that endpoint once; non-touch accessibility changes use the native value. The unchanged real receiver checks pass with a 50.0-second seek and approximately 50% volume. The 38 Swift host regressions also pass with coverage collection enabled; native UI coverage and CI thresholds remain to be wired.
 
 A physical iPhone is paired and has Developer Mode enabled. The current ARM64 bundle was signed with an installed development identity and matching provisioning profile, and `codesign --verify --strict` passed. The installation attempt failed with CoreDevice error 10003 because the phone was locked, preventing the developer disk image from mounting. Physical playback remains unverified. Android currently has emulator targets only. A fresh workspace format check also fails on another agent's in-progress GPU compiler edits; this branch is not ready to push.
 

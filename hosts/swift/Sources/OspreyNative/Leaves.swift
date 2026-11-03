@@ -29,7 +29,7 @@ struct LeafView: View {
     }
 
     private func tone(_ name: String) -> AnyShapeStyle {
-        if name == "primary" { return AnyShapeStyle(.foreground) }
+        if name == "primary" { return theme.foreground(dark: dark) }
         if let colour = theme.color(name, dark: dark) { return AnyShapeStyle(colour) }
         return AnyShapeStyle(.secondary)
     }

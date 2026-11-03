@@ -162,6 +162,27 @@ final class CastingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15))
         app.buttons["Stop"].tap()
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
+        app.buttons["Receiver"].tap()
+        app.buttons["Unavailable receiver"].tap()
+        app.buttons["Play"].tap()
+        let failure = app.staticTexts["127.0.0.1:1: connection refused or timed out"]
+        XCTAssertTrue(failure.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons["Play"].exists)
+        app.buttons["Skin"].tap()
+        app.buttons["Midnight Mint"].tap()
+        XCTAssertTrue(failure.waitForExistence(timeout: 5), app.debugDescription)
+        for (name, element) in [("loaded-title", app.staticTexts["Casting mobile test"]), ("search", app.buttons["Search again"]), ("receiver", app.buttons["Receiver"])] {
+            let image = XCTAttachment(screenshot: element.screenshot())
+            image.name = "casting-ios-midnight-\(name)"; image.lifetime = .keepAlways; add(image)
+        }
+        let refused = XCTAttachment(screenshot: app.screenshot())
+        refused.name = "casting-ios-connection-refused"; refused.lifetime = .keepAlways; add(refused)
+        app.buttons["Receiver"].tap()
+        app.buttons["Test receiver"].tap()
+        app.buttons["Play"].tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
+        app.buttons["Stop"].tap()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
     }
 
 }

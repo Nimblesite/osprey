@@ -91,7 +91,7 @@ struct Surface: ButtonStyle {
             switch style.role {
             case "filled", "prominent": return AnyShapeStyle(style.theme.color("onAccent", dark: style.dark) ?? .white)
             case "destructive": return AnyShapeStyle(style.theme.color("danger", dark: style.dark) ?? .red)
-            default: return AnyShapeStyle(.foreground)
+            default: return style.theme.foreground(dark: style.dark)
             }
         }
 
@@ -172,6 +172,8 @@ struct PickerView: View, Equatable {
     let node: JSONValue
     let choose: (String) -> Void
     @Environment(\.ospreyInherited) private var inherited
+    @Environment(\.ospreyTheme) private var theme
+    @Environment(\.colorScheme) private var scheme
 
     // Frame-only revisions must not replace an open native menu and restart its animation.
     static func == (left: Self, right: Self) -> Bool { left.node == right.node }
@@ -190,10 +192,10 @@ struct PickerView: View, Equatable {
                 Text(selected).font(Type.font("body", inherited))
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(theme.color("secondary", dark: scheme == .dark) ?? .secondary)
         }
         .menuStyle(.button)
-        .buttonStyle(Surface(role: "plain", quiet: true, round: false, height: inherited.controlHeight, padding: 8, theme: ThemeResolver(theme: nil), dark: false))
+        .buttonStyle(Surface(role: "plain", quiet: true, round: false, height: inherited.controlHeight, padding: 8, theme: theme, dark: scheme == .dark))
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel(node.text("label"))

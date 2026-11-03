@@ -198,7 +198,7 @@ struct FramedView: View {
 
     private var ink: AnyShapeStyle {
         if let colour = token("ink") { return AnyShapeStyle(colour) }
-        return AnyShapeStyle(.foreground)
+        return theme.foreground(dark: dark)
     }
 
     private func token(_ key: String) -> Color? {
