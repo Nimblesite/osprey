@@ -1,8 +1,8 @@
 # Workbench Lessons
 
-> **STOP — NOT YET IN FORCE.** This document was rewritten on 2026-10-31 for the `.lean`-only direction of [PROOF-SOURCE](../language/0049-DependentTypesAndProofs.md#proof-source-proof-source) while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores this rewrite until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test, lesson or screen because of this text before then; the previous revision in git history is the contract for that PR. After the merge, [plan 0044](../../plans/0044-lean-source-compatibility.md) is the order of work.
+> **STOP — NOT YET IN FORCE.** This document was rewritten on 2026-10-31 for the `.lean`-only direction of [PROOF-SOURCE](../language/0049-DependentTypesAndProofs.md#proof-source-proof-source) while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores this rewrite until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test, lesson or screen because of this text before then; the previous revision in git history is the contract for that PR. After the merge, [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) is the order of work.
 
-**Status:** rewritten for `.lean`; delivery under [plan 0044](../../plans/0044-lean-source-compatibility.md) phase 3, then [plan 0043](../../plans/0043-workbench-lessons.md). Lessons are a mode of the [proof workbench](0051-ProofWorkbench.md): the same application, the same store, the same checking services. They add one extension format, two framework components (`Image` and `Video`) and three regions.
+**Status:** rewritten for `.lean`; delivery under [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) phase 3, then [plan 0042](../../plans/0042-proof-workbench.md). Lessons are a mode of the [proof workbench](0051-ProofWorkbench.md): the same application, the same store, the same checking services. They add one extension format, two framework components (`Image` and `Video`) and three regions.
 
 ## Aim [LESSONS-AIM]
 

@@ -1,20 +1,20 @@
 # Plan 0042: the proof workbench
 
-> **STOP — NOT YET IN FORCE.** This plan was rewritten on 2026-10-31 for the `.lean`-only direction of [PROOF-SOURCE](../specs/language/0049-DependentTypesAndProofs.md#proof-source-proof-source) while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores this rewrite until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test, fixture or screen because of this text before then; the previous revision in git history is the plan for that PR. After the merge, [plan 0044](0044-lean-source-compatibility.md) runs first and this plan resumes behind it.
+> **STOP — NOT YET IN FORCE.** This plan was rewritten on 2026-10-31 for the `.lean`-only direction of [PROOF-SOURCE](../specs/language/0049-DependentTypesAndProofs.md#proof-source-proof-source) while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores this rewrite until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test, fixture or screen because of this text before then; the previous revision in git history is the plan for that PR. After the merge, [plan 0041](0041-dependent-types-and-mathlib.md) runs first and this plan resumes behind it.
 
-Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **the application exists at `apps/workbench/` and still carries the deleted formats; plan 0044 phase 0 removes them and phase 1 installs the `.lean` document and checking services. This plan picks up after that.** Every phase lands with tests in `apps/workbench/tests/` and must leave `make ci` green with the 90% coverage floor.
+Contract: [spec 0051](../specs/applications/0051-ProofWorkbench.md). Status: **the application exists at `apps/workbench/` and still carries the deleted formats; plan 0041 phase 0 removes them and phase 1 installs the `.lean` document and checking services. This plan picks up after that.** Every phase lands with tests in `apps/workbench/tests/` and must leave `make ci` green with the 90% coverage floor.
 
 Design reference: [Paper & Slate handoff](../designs/proof-workbench/README.md). Screens that showed the deleted English document or its generated pane are re-captured in phase 3 before they bind; the remaining screens are the oracle as before.
 
 ## Deleted
 
-Phase 1 of this plan as written before 2026-10-31 ("the proof language": `formula`, `statement`, `step`, `goals`, `emit`, the `and_swap` golden, the in-process prelude and step elaborator) built the formats that [PROOF-SOURCE-DELETED] now bans. Those modules and their tests are contamination and are removed by plan 0044 phase 0. Nothing from that phase is reused.
+Phase 1 of this plan as written before 2026-10-31 ("the proof language": `formula`, `statement`, `step`, `goals`, `emit`, the `and_swap` golden, the in-process prelude and step elaborator) built the formats that [PROOF-SOURCE-DELETED] now bans. Those modules and their tests are contamination and are removed by plan 0041 phase 0. Nothing from that phase is reused.
 
 ## Checklist
 
 A box is ticked only when its test exists in `apps/workbench/tests/`.
 
-### Phase 1 — the `.lean` document (with plan 0044 phase 1)
+### Phase 1 — the `.lean` document (with plan 0041 phase 1)
 - [ ] `src/document.ospml`: open, edit, cursor, save; byte-identical round trip over every `.lean` fixture
 - [ ] `src/lean.ospml`: `LeanCheck`/`LeanGoals` requests with revision tickets; stale completions dropped; the Unavailable path
 - [ ] `src/verdict.ospml`: kernel verdict over the completion's export; `Checked`/`Rejected`/`Unchecked` per declaration
@@ -28,7 +28,7 @@ A box is ticked only when its test exists in `apps/workbench/tests/`.
 
 ### Phase 3 — hosts
 - [ ] VS Code: WASI build, the `Lean` capability over the toolchain the extension finds; E2E opens `AndSwap.lean` and sees `Checked`; screens re-captured and compared
-- [ ] Browser: `hosts/web/`, wasm32 page, Unavailable until plan 0044 phase 2; headless smoke test
+- [ ] Browser: `hosts/web/`, wasm32 page, Unavailable until plan 0041 phase 2; headless smoke test
 - [ ] macOS and iPadOS: `hosts/apple/` SwiftUI host, toolchain bundled on macOS; simulator smoke test
 - [ ] ❓ Decide: `what-is-a-solver` has no prove challenge, which [LESSONS-CURRICULUM] requires unless noted — add one or note the exception in 0052's table
 - [ ] Road test recorded in `docs/reviews/review.md`: a newcomer writes and checks `and_swap` in a fresh `.lean` file in under ten minutes
@@ -58,7 +58,7 @@ Exit per host: the smoke test passes in CI where the platform is available; the 
 
 ## Later
 
-Statement-shape search over the full checked Mathlib, code actions (`cases`, `induction`, `constructor`, `exact?`) through Lean's server, and the browser and iPadOS verdicts, follow plan 0044 phase 2.
+Statement-shape search over the full checked Mathlib, code actions (`cases`, `induction`, `constructor`, `exact?`) through Lean's server, and the browser and iPadOS verdicts, follow plan 0041 phase 2.
 
 ## What this plan never does
 
@@ -67,3 +67,251 @@ Statement-shape search over the full checked Mathlib, code actions (`cases`, `in
 - Let a host filter, label, validate or decide; a host draws and completes capabilities.
 - Ship a monospaced formula in the reading view, or a flickering check.
 - Add a service only the workbench can call.
+
+# Plan 0042: workbench lessons
+
+> **STOP — NOT YET IN FORCE.** This plan was rewritten on 2026-10-31 for the `.lean`-only direction of [PROOF-SOURCE](../specs/language/0049-DependentTypesAndProofs.md#proof-source-proof-source) while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores this rewrite until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test or lesson because of this text before then; the previous revision in git history is the plan for that PR. After the merge, [plan 0041](0041-dependent-types-and-mathlib.md) phase 3 runs first and this plan resumes behind it.
+
+Contract: [spec 0052](../specs/applications/0052-WorkbenchLessons.md). Status: **lesson reader, tutor and Learn mode exist against the deleted format 1; plan 0041 phase 3 moves them to format 2 (`.lean` + extension JSON).** Lessons are a mode of the workbench of [plan 0042](0042-proof-workbench.md); Lean and the kernel judge every answer through the same `Lean` capability and `Verdicts` the workbench uses.
+
+## Checklist
+
+A box is ticked only when its test exists and passes.
+
+### Phase 1 — lessons as data, judged by Lean and the kernel
+- [ ] `src/lesson.ospml`: `Lesson`, `Block` and `Challenge` types and `Lessons::read` over format 2, every refusal tested; `decl` references resolved against the lesson's `.lean`
+- [ ] `src/judge.ospml`: `Judge::prove` builds the `.lean` document and issues the check; `Judge::state` elaborates and asks `Reduce::defeq`; `Judge::judge` checks the named declaration; each compares a ticketed completion
+- [ ] `src/tutor.ospml`: attempts, hints, reveal, clearing on edit, the completed set
+- [ ] Framework: `Maths::decode`; `Image` and `Video` with encodings; native README
+
+### Phase 2 — the curriculum
+- [ ] `lessons/catalogue.json`, seven `<slug>.lean` files and seven `<slug>.json` extensions
+- [ ] The integrity suite of [LESSONS-INTEGRITY] over every shipped lesson, toolchain present
+- [ ] Three films (`what-is-a-proof`, `what-is-a-solver`, `navier-stokes`) with posters and captions under the [LESSONS-MEDIA] budget; stills for image blocks
+
+### Phase 3 — Learn mode in the application
+- [ ] `Shelf`, `Tutor` and `Achieved`; the messages of [LESSONS-STORE]; the `catalogue`, `lesson` and `challenge:<lesson>/<id>` regions
+- [ ] Loading through `ReadTexts`; progress through `StoreRead` and `StoreWrite`
+- [ ] Fixture tests through `start`/`dispatch`: per-challenge region refresh, every submit result, stale completion dropped, progress round trip, **Open in the workbench** producing the `.lean` document
+
+### Phase 4 — hosts
+- [ ] The renderer draws `Image` and `Video`; the VS Code E2E opens `what-is-a-proof` and answers its first challenge
+- [ ] Browser and Apple hosts, with plan 0042 phase 3
+
+## Pi delegation
+
+Under the AGENTS.md rules: the reader's refusal cases, the lesson prose, the `.lean` files and their challenges, the films and the `Image`/`Video` renderer work go to pi, each against a skeleton and test written here first. The judge, the tutor transitions and the integrity case are written and reviewed here. A solution the checker refuses, a weakened test, a framework contract bent to fit a test, any proof text in a JSON file, or any claim in the Navier–Stokes lesson beyond [LESSONS-CURRICULUM] is thrown out.
+
+## What this plan never does
+
+- Store an answer key the checker does not confirm, or mark an answer right without a `Checked` completion.
+- Put proof text, a formula in a non-Lean notation, TeX, HTML or MathML in a lesson JSON.
+- Gate a lesson behind another; prerequisites are advice.
+- Autoplay a film, ship one without captions, or say the Navier–Stokes problem is solved.
+
+# Plan: formula code generation
+
+Contract: [FormulaCodeGeneration](../specs/applications/FormulaCodeGeneration.md). Status: **planned; no implementation started.** Nothing in this plan is ticked, and no phase below may be reported as delivered on the strength of these documents. The feature is a second document kind in the existing workbench application; the proof path of [plan 0042](0042-proof-workbench.md) and the lesson path of [plan 0042](0042-proof-workbench.md) are unchanged by it, and neither plan's status changes because this one exists.
+
+An agent picking this up reads the contract first, then [spec 0051](../specs/applications/0051-ProofWorkbench.md) sections [WORKBENCH-STORE](../specs/applications/0051-ProofWorkbench.md#store-workbench-store), [WORKBENCH-REGIONS](../specs/applications/0051-ProofWorkbench.md#regions-workbench-regions), [WORKBENCH-MATH](../specs/applications/0051-ProofWorkbench.md#typeset-mathematics-workbench-math) and [WORKBENCH-DESIGN-FEEDBACK](../specs/applications/0051-ProofWorkbench.md#proof-feedback-and-source-workbench-design-feedback), the [`@osprey/native` README](../../packages/native/README.md), then the arithmetic contract of [spec 0037](../specs/language/0037-ArithmeticEffects.md) and the numeric builtins of [spec 0012](../specs/runtime/0012-Built-InFunctions.md). Read the actual `apps/workbench/src/formula.ospml`, `notation.ospml` and `emit.ospml` before writing a line: they are the patterns to follow and the boundary not to cross.
+
+## Stabilization entry gate [WORKBENCH-CODEGEN-ENTRY-GATE]
+
+The repository is in stabilization mode. This feature adds a new document kind to an application that already has host and acceptance debt, so it starts only when all of the following hold, checked on the day work begins and recorded as this gate's evidence before phase 1 opens:
+
+- [ ] `apps/workbench/tests` passes under GC, ARC and wasm32 at the current source, with no skipped cases and no retained red test hidden by an exclusion.
+- [ ] The `apps/workbench` own-source coverage gate in `coverage-thresholds.json` passes at its registered threshold, and the measurement is not below the 90.8% baseline recorded in [plan 0042](0042-proof-workbench.md).
+- [ ] `make ci` is green on `main`, and no gate listed in [AGENTS.md](../../AGENTS.md) is red, waived or narrowed.
+- [ ] The application owner has recorded that `apps/workbench` accepts new modules; the open VSIX, screenshot and imported-proof acceptance items of plan 0042 are either closed or explicitly unaffected by a second document kind.
+- [ ] The `packages/native` component and capability contracts this feature uses — `Run`, `SaveFile`, slices, tickets, `Math` — are the shipped ones, and no host adapter needs a new framework component (see phase 4 for the one open question).
+
+If any box is unchecked the feature does not start. It does not start "in parallel", partially, behind a flag in a host adapter, or in TypeScript.
+
+## Checklist
+
+A box is ticked only when its exit evidence exists and passes; the evidence is listed per phase.
+
+### Phase 1 — terms and the definition reader
+- [ ] `src/terms.ospml`: `Expr`, `Arm`, `Guard`, `Comparison`, the closed `Call` table, `Terms::show`, `Terms::typeset`, canonical form
+- [ ] `src/definition.ospml`: `Function`/`Suppose`/`Constant`/definition/piecewise sentences, `Definitions::read`, `show`, every refusal code of [WORKBENCH-CODEGEN-REFUSALS](../specs/applications/FormulaCodeGeneration.md#refusals-are-neutral-workbench-codegen-refusals)
+- [ ] `tests/terms.ospml` and `tests/definition.ospml`: the generated-document corpus, round trip, column cases, one minimal near-miss per refusal code
+
+### Phase 2 — decisions and the emitter
+- [ ] `src/lower.ospml`: numeric mode, `Arithmetic` policy, exponent lowering, guard totality, `Result` typing, constant inlining, the binder pool
+- [ ] `src/generate.ospml`: `Generate::document`, the line map, no redundant annotations, no `?:`, no bare integer `+ - *`
+- [ ] `tests/golden/*.ospml.expected`: one byte-identical golden per fixture document, plus a determinism case
+
+### Phase 3 — statuses, receipts, invalidation
+- [ ] `src/codestatus.ospml`: the four statuses, the receipt fields, hashes over canonical IR and bytes, invalidation on every field of [WORKBENCH-CODEGEN-STATUS](../specs/applications/FormulaCodeGeneration.md#statuses-and-invalidation-workbench-codegen-status)
+- [ ] Ticket comparison: a completion for superseded bytes is dropped without touching state
+- [ ] `EquivalenceProved` is unreachable and displayed as unavailable, never as an empty success
+
+### Phase 4 — the validation boundary
+- [ ] A recorded decision on how the exact generated bytes reach the real compiler on a host that has one, and what happens on a host that does not
+- [ ] The unavailable path is tested first: no capability, no badge, one explanation
+- [ ] If a compiler-side addition is required, it is specified and planned separately; this phase does not add one silently
+
+### Phase 5 — application integration
+- [ ] `store.ospml`, `update.ospml`, `workview.ospml`, `app.ospml`: the document kind, the `Definitions` and `Program` slices, the messages, the `definition`, `preview`, `source` and `receipt` regions
+- [ ] Notation rows for arithmetic glyphs and abbreviations, added to the existing table only
+- [ ] Caret insertion and selection replacement over multi-byte symbols; the preview typeset from the same IR
+- [ ] Fixture cases through the real `start`/`dispatch`: entry, refresh isolation, every state of [WORKBENCH-CODEGEN-STATES](../specs/applications/FormulaCodeGeneration.md#states-the-interface-must-show-workbench-codegen-states), export
+
+### Phase 6 — hosts
+- [ ] VS Code: the actual compiled application in the webview performs accepted and refused flows; source pane, highlighting, numeric failure states and export verified
+- [ ] Browser: the same build as a page, with compiler validation unavailable when no verified capability is present; the unavailable state is visible and honest
+- [ ] Native: the actual Apple host completes the same accepted/refused interactions and numeric-error states, with screenshot and exported-byte evidence; supported additional native hosts retain their existing gates
+
+### Phase 7 — hardening
+- [ ] The acceptance matrix below runs in full, under GC, ARC and wasm32
+- [ ] The performance budgets are measured and recorded as measurements, not claims
+- [ ] The refusal vocabulary is closed: a new code without a test and a contract change fails the suite
+- [ ] Documentation registration in the specification and plan indexes is done by their owners; this plan does not edit them
+
+## Phase 1 — terms and the definition reader [WORKBENCH-CODEGEN-DOCUMENT] [WORKBENCH-CODEGEN-TERMS]
+
+Pure modules, no framework, no host, no generation.
+
+1. `src/terms.ospml`. The unions exactly as the contract writes them. Precedence and associativity live in one climber, the way `formula.ospml` does it. `Terms::show` writes minimal parentheses; `Terms::typeset` builds `@osprey/native` `Math` nodes and nothing else, so the preview needs no new framework component: `Root` covers the radical, `Frac` the horizontal bar, `Sup` the exponent, `Op` the spacing class, `Seq` application.
+2. `src/definition.ospml`. One grammar for headings, conditions, constants and definitions; a reading is a `Document` or a `Faulted Fault`, mirroring `Formulas::read` and for the same reason. Faults carry a code point column and a fix sentence.
+3. `tests/`. A generated corpus (a small generator over the term grammar, as `tests/corpus.ospml` already does for formulas), the round trip `read (show d) = d`, and one minimal near-miss per refusal code.
+
+Exit: the suite passes under GC, ARC and wasm32; `osprey apps/workbench --check` reports every export documented; every function under 20 lines and every file under 500; the coverage of the new modules is at or above the project gate. Do not add a framework component in this phase.
+
+## Phase 2 — decisions and the emitter [WORKBENCH-CODEGEN-UNDERDETERMINATION] [WORKBENCH-CODEGEN-DOMAINS] [WORKBENCH-CODEGEN-NUMERICS] [WORKBENCH-CODEGEN-EMIT]
+
+1. `src/lower.ospml`, written decision by decision, each with its own test, in the order of the contract's decision table. There is no default in any of them. Support the full finite binary64 literal range, including 17-digit round trips and subnormals. Record represented bits and exactness evidence, or explicitly unknown exactness; do not impose a narrower decimal window to simplify the implementation. Conversion overflow and underflow follow the contract's explicit refusal rules.
+2. `src/generate.ospml`. One writer, ML flavor, four-space layout, no redundant annotations, no `?:`, no bare integer operator, no placeholder. The line map is produced by the same traversal that writes each line, not reconstructed afterwards.
+3. Goldens. One fixture per document shape — plain real, real with a guard, integer wrapping, integer saturating, integer checked, piecewise, multi-input composition — each compared byte for byte, and each generated twice in the run to prove determinism.
+
+Exit: every golden matches byte for byte; every underdetermination row has a case that omits the decision and gets its named refusal; no golden contains a redundant annotation, `?:`, bare integer `+ - *` or an empty branch; the `and_swap` proof golden and its emitter are untouched.
+
+## Phase 3 — statuses, receipts, invalidation [WORKBENCH-CODEGEN-STATUS] [WORKBENCH-CODEGEN-PROVENANCE]
+
+1. `src/codestatus.ospml`. Four statuses, each carrying its own evidence and its own timestamp-free identity. The receipt has the fields the contract lists; a hash is over the exact bytes, computed by the shipped hashing implementation the package manager already uses, not a second one.
+2. Invalidation. One function maps a changed field to the statuses it clears; the test enumerates every field of the contract table and asserts that no field clears nothing.
+3. Tickets. A validation request carries the bytes' hash; a completion whose hash is not current is dropped, and the case asserts state is byte-identical before and after the stale completion.
+
+Exit: the invalidation table is exhausted by tests; no saved receipt can restore a status; `EquivalenceProved` is reported unavailable in every state.
+
+## Phase 4 — the validation boundary [WORKBENCH-CODEGEN-STATUS]
+
+This is the only genuinely unresolved engineering question in the feature, and it is resolved by decision, not by invention.
+
+Today the workbench can request `Run` (a shell-free executable with arguments, a deadline and an output limit) and `SaveFile`, and a VSIX ships a compiler. What is not established is the exact path by which the *bytes* reach that compiler: the CLI reads a source path, and there is no stdin `check` today. Do not claim one exists.
+
+1. Write down the options with their costs: a host-owned private temporary file written from a slice and removed after the run; a small, separately planned compiler-side addition; or, for a host with no compiler, no validation at all.
+2. Choose one, record the authority it adds (a process and a private temporary path, both user-initiated), and note that opening the workbench still implies no workspace, process or network authority.
+3. Implement and test the unavailable path first, because it is the state every host without a compiler will show.
+
+Exit: a recorded decision, a test for the unavailable path, and — if the chosen option needs compiler work — a separate plan item that this plan does not assume.
+
+## Phase 5 — application integration [WORKBENCH-CODEGEN-APP]
+
+`apps/workbench/src/` gains the document kind and the regions; nothing outside the application decides anything.
+
+1. `store.ospml` and `update.ospml`: the kind discriminator on the draft, the `Definitions` and `Program` slices, the messages (`Edited`, `Moved cursor`, `Chose symbol`, `Requested check`, `Saved`, `Exported`, `Forked`), and the derived values rebuilt inside `update`. Reading, lowering and generation run on the same keystroke; the existing region-refresh case is extended to prove a keystroke refreshes `definition`, `preview` and `source` and nothing else.
+2. `workview.ospml` and `app.ospml`: the four regions, the states table, the source pane closed initially, the receipt pane behind a disclosure.
+3. `notation.ospml`: additive rows only, tests for both directions of every new row, `expand` still total and idempotent.
+4. `tests/`: one case per state, one for each workflow of the contract's list, export through the capability boundary and back into the document.
+
+Exit: the fixture suite drives the whole flow through the real `start`/`dispatch`; no host is involved; the previous regions' cases still pass unchanged.
+
+## Phase 6 — hosts [WORKBENCH-CODEGEN-APP]
+
+VS Code first, because the renderer exists; then the browser, then native. Each host adds rendering and capability completion, never a decision, and reuses the same compiled application.
+
+1. **VS Code.** Bundle the WASI build as the workbench already is; extend the existing `compiled SDK renderer E2E` case with one accepted flow (type, preview, source, export) and one refused flow (relation, no source, text preserved). Assert highlighting roles and the diagnostic-to-formula mapping.
+2. **Browser.** The same build as a page with no compiler: `Generated` available, `Typechecked` and `Tested` unavailable with one explanation. A headless smoke test.
+3. **Native.** The Apple host renders the same regions; the WinUI host follows only inside its existing gates. No Swift, C# or TypeScript implementation of the grammar, the decisions or the emitter.
+
+Exit per host: its smoke test passes where the platform runs in CI; the unavailable path is exercised rather than assumed; no host holds a second generator.
+
+## Acceptance matrix [WORKBENCH-CODEGEN-MATRIX]
+
+Every row is a required case. Rows marked ★ are the ones that would fail if the feature were built carelessly; the phase that introduces a rule owns the case that tests it.
+
+| # | Case | Assertion |
+| --- | --- | --- |
+| 1 | Reading corpus | every sentence row reads; `read (show d) = d` |
+| 2 | Refusal coverage | one near-miss per code; the code, column and fix are exact |
+| 3 | Code-point columns ★ | diagnostics land on the right character across `π`, `≥`, `⁻¹`, `√`, superscripts and an astral-plane character |
+| 4 | Decision omissions ★ | omitting mode, policy, output, branch or constant yields the named refusal, never a default |
+| 5 | Byte determinism ★ | two generations byte-identical; a golden per fixture; regeneration after `show` identical |
+| 6 | Presentation equivalence ★ | `typeset`, `show` and `generate` share one IR for every fixture; the preview is never parsed from generated text |
+| 7 | Integer bounds | literals at `±(2^63−1)`, `-2^63` and just outside; the outside case refuses |
+| 8 | Real literals | full finite binary64 range, 17-digit round trips and subnormals; conversion failures refused; exactness disclosed only with evidence, otherwise unknown |
+| 9 | Exponent lowering | `x^2` is a multiplication chain; exact integer exponents preserve parity without lossy float conversion; a non-literal exponent is `pow` and the receipt records it |
+| 10 | Division | literal nonzero divisor omits only the zero check; finite-result checks remain; variable divisor without `Suppose` refuses; real mode returns `Result` |
+| 11 | Overflow policies | wrapping, saturating and checked produce the three distinct lowerings and the policy-appropriate result types |
+| 12 | Totality of the output ★ | no golden contains `?:`, a bare integer operator, a redundant annotation, a placeholder or an empty branch |
+| 13 | Piecewise order ★ | overlapping guards keep written order; removing `otherwise` refuses |
+| 14 | Non-integer result | an integral-valued real definition refuses rather than emitting a coercion |
+| 15 | Statuses | each fills only with its evidence; unavailable is unavailable, never green |
+| 16 | Invalidation ★ | every receipt field clears the statuses it must; no field clears nothing |
+| 17 | Stale ticket | a superseded completion changes no byte of state |
+| 18 | Adversarial mutation ★ | mutating a guard, constant, operator, mode, policy or branch order changes the bytes and clears statuses; no mutation is a silent no-op |
+| 19 | Refusal neutrality | text preserved verbatim, no source, no status, no danger styling, no false claim |
+| 20 | Export provenance | exported bytes equal the pane's bytes; the receipt's hashes match; a forked copy has no receipt and no statuses |
+| 21 | Application flow | accepted and refused workflows through the real `start`/`dispatch`; region refresh isolation |
+| 22 | Native and VSIX interaction | actual native and installed VSIX complete both flows, source mapping, export, focus and numeric-error states; renderer fixtures alone do not qualify |
+| 23 | Compiler agreement ★ | the fixture goldens are accepted by the real `osprey <generated-file> --check` where the host can run it; a rejection is a generator defect and blocks the phase |
+| 24 | Coverage | all new module groups are inside the suite's `source_roots` and the project gate does not fall |
+| 25 | Existing gates | `make ci`, the differential corpus, the proof suite, `packages/native` tests and VSIX packaging keep every existing case |
+
+Row 23 is the only claim this plan may make about the compiler, and it is verified by running the compiler, not by reading this document.
+
+## Risks and their owners
+
+| Risk | Why it bites | Mitigation |
+| --- | --- | --- |
+| Underdetermination pressure ★ | the first user asks for `x² + y² = 1` solved, and a "small" heuristic silently picks a branch | the refusal vocabulary is closed and tested; a follow-on fragment is a specification with its own algorithm |
+| Emitter shape drift | ML flavor details (builtin call spelling, module-level bindings) are only settled by compiling | goldens are pinned by the compiler in phase 2, before any host work |
+| Validation authority | running a compiler from a document editor is a new process surface | phase 4 decides it explicitly, user-initiated, bounded, tested unavailable first |
+| Numerical overclaim | "typechecked" reads as "correct mathematics" | four separate statuses, and [WORKBENCH-CODEGEN-EQUIVALENCE](../specs/applications/FormulaCodeGeneration.md#what-typechecking-does-not-prove-workbench-codegen-equivalence) stated in the pane |
+| Scope creep into a CAS | binders, solvers and derivatives are what everyone wants next | [WORKBENCH-CODEGEN-LIMITS](../specs/applications/FormulaCodeGeneration.md#limits-and-follow-on-fragments-workbench-codegen-limits) is normative |
+| Second implementation in a host | the browser and the VSIX each have a tempting renderer | one application; a host test that would fail on a forked rule |
+| Cost to the existing app | a new document kind touches the store every other region reads | phases 1–4 change no application module; phase 5 extends existing cases rather than replacing them |
+| Stabilization rule | new features are not the current priority | phase 0 gate, checklist all unchecked, and no tick without evidence |
+
+## File and module ownership candidates
+
+New, all under `apps/workbench/src/`, each under 500 lines with functions under 20:
+
+| File | Owner of | Depends on |
+| --- | --- | --- |
+| `terms.ospml` | the `Expr` IR, `show`, `typeset`, canonical form | `packages/native/src/math.ospml` |
+| `definition.ospml` | the document grammar, faults, `show` | `terms.ospml` |
+| `lower.ospml` | every semantic decision, guard totality, `Result` typing | `definition.ospml` |
+| `generate.ospml` | the emitted bytes and the line map | `lower.ospml` |
+| `codestatus.ospml` | statuses, receipts, hashes, invalidation | `generate.ospml` |
+
+Edited, minimally and additively: `store.ospml` (kind, two slices, messages), `update.ospml` (rebuild on edit, request validation), `workview.ospml` (the four regions), `app.ospml` (layout and theme wiring), `notation.ospml` (additive rows), and `apps/workbench/tests/osprey.toml` (`source_roots` for the new modules). No file under `crates/`, `packages/native/src/`, `packages/vscode/` or `vscode-extension/` changes in phases 1–5; if a phase believes it must, that is a contract change and a reviewed decision, not an implementation detail.
+
+## Pi delegation
+
+Under the [AGENTS.md](../../AGENTS.md) rules, delegated work is written against a skeleton and a test written here first, and every result is reviewed line by line before it stays.
+
+- To pi: the notation table rows and their two-direction tests; the generated-document corpus generator; the near-miss corpus, one per refusal code; the golden files' layout once phase 2's emitted shape is settled; the renderer/host smoke fixtures.
+- Written and reviewed here: `terms.ospml`, `definition.ospml`, `lower.ospml`, `generate.ospml`, `codestatus.ospml`, the invalidation function, the region wiring, and the phase-4 decision.
+- Thrown out on sight: a weakened assertion, a refusal turned into a default, a fabricated fallback value, a second generator in a host, a "verified" badge without a current receipt, or any claim of mathematical equivalence.
+
+## What this plan never does
+
+- Generate a function from an equation, a relation, a root, a solver or a binder form.
+- Pick a precision, an overflow policy, a branch order or a rounding mode on the user's behalf.
+- Emit a placeholder, a fabricated default, a panic, an `unwrap`-like builtin, or a bare integer operator.
+- Mark a document verified because it typechecked, or because an earlier revision typechecked.
+- Put a parsing rule, a decision or a generator in a host adapter, in any language.
+- Relax, skip or narrow any existing gate, test, threshold or check to make this feature fit.
+- Edit a document owned by another plan: [plan 0042](0042-proof-workbench.md), [plan 0042](0042-proof-workbench.md), [spec 0051](../specs/applications/0051-ProofWorkbench.md), [spec 0052](../specs/applications/0052-WorkbenchLessons.md) or the specification and plan indexes.
+
+## Boundary acceptance [WORKBENCH-CODEGEN-BOUNDARIES]
+
+- [ ] Accept Unicode mathematical variables with deterministic hygienic code aliases and a visible name map; test NFC collisions, Greek symbols, and supplementary-plane letters.
+- [ ] Cover zero-input definitions, exact large-exponent parity, the full finite binary64 literal range, 17-digit round trips and subnormals; test conversion overflow/underflow and unknown exactness without fabricating evidence.
+- [ ] Enforce the finite-real approximation profile with explicit `Result` failures for nonfinite input, intrinsic domain faults and nonfinite intermediates/results, including guard evaluation. Pin lazy unselected branches and backend/libm differences.
+- [ ] Permit only necessary type annotations when the numerical interface cannot be inferred (identity/unused parameters); compare actual inferred signatures with the declared domain. Do not insert arithmetic merely to constrain a type.
+- [ ] Prove that an invalid edit clears `Generated` as well as validation statuses, and that previous output is visibly stale and cannot export as current.
+
+These are proposed acceptance requirements. This plan adds no generator, CLI, app behavior or test implementation.

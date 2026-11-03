@@ -150,7 +150,7 @@ Each phase ends with its gate met, its tests in the suite, its spec IDs written,
 
 **Gate [LLM-SPEED]:** at least 5 tokens per second on this M4 Max, and at least 25% of the phase 0 Ollama rate on the same quant. The floor means a 2,000-token turn takes about 7 minutes.
 
-**This is the go/no-go.** If it misses, stop and report before porting the model. The next options are kernel fusion, which [plan 0023](0023-gpu-computation.md) still owes, and a multithreaded NEON path. Binding a native engine is not an option.
+**This is the go/no-go.** If it misses, stop and report before porting the model. The next options are kernel fusion, which [plan 0023](0023-gpu.md) still owes, and a multithreaded NEON path. Binding a native engine is not an option.
 
 ### Phase 3 — Model on a tiny checkpoint
 

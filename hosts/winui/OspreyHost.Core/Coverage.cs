@@ -30,7 +30,7 @@ public static class Coverage
     /// <summary>Capability kinds this host answers: the adapters', and the frame clock, which the window keeps.</summary>
     public static IReadOnlyList<string> Answered { get; } = [.. Capabilities.Answered, "animate"];
 
-    /// <summary>Capability kinds this host refuses with an error completion, not yet answered (plan 0038 phase 4).</summary>
+    /// <summary>Capability kinds this host refuses with an error completion, not yet answered (plan 0037).</summary>
     public static IReadOnlyList<string> Unanswered { get; } =
     [
         "list-directories", "read-plists", "read-texts", "fingerprint", "http", "host-call",

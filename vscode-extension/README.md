@@ -93,7 +93,7 @@ def main():
 
 ## In the editor
 
-The extension registers Default (`.osp`) and ML (`.ospml`) documents for its language server, commands, debugger and Test Explorer. Use the CLI for Python-flavor files while dedicated editor coverage remains unfinished; see [plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md). Select a flavor per file using its extension or a leading `// osprey: flavor=ml` marker. The Rust language server (`osprey lsp`, built on [lspkit](https://github.com/Nimblesite/lspkit)) runs the compiler frontend in-process.
+The extension registers Default (`.osp`) and ML (`.ospml`) documents for its language server, commands, debugger and Test Explorer. Use the CLI for Python-flavor files while dedicated editor coverage remains unfinished; see [plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python.md). Select a flavor per file using its extension or a leading `// osprey: flavor=ml` marker. The Rust language server (`osprey lsp`, built on [lspkit](https://github.com/Nimblesite/lspkit)) runs the compiler frontend in-process.
 
 - **Syntax highlighting** — keywords, types, string interpolation
   (`"Hello ${name}!"`), operators, and comments. Default (`.osp`) is fully

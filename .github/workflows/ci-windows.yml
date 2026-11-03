@@ -28,8 +28,8 @@ jobs:
       - uses: ./.github/actions/detect-ci-scope
         id: filter
 
-  # The WinUI host and its examples in a real window (plan 0038), and the GPUI host on each desktop
-  # system (plan 0036). ci.yml calls winui.yml and gpui.yml on every pull request; a manual run of
+  # The WinUI host and its examples in a real window (plan 0037), and the GPUI host on each desktop
+  # system (plan 0037). ci.yml calls winui.yml and gpui.yml on every pull request; a manual run of
   # this workflow also runs them, because a workflow not yet on main cannot be dispatched by itself.
   winui:
     if: ${{ github.event_name == 'workflow_dispatch' }}

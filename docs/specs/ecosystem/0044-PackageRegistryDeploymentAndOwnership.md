@@ -1,6 +1,6 @@
 # Package Registry Deployment and Ownership
 
-**Status:** normative delivery target; hosted authentication, ownership enforcement and deployment are not implemented. This completes the operational and tenancy requirements of [plan 0020](../../plans/0020-package-manager.md). The [rollout plan](../../plans/0020-package-manager-rollout.md) defines sequencing and required evidence. Existing [publication and trust requirements](0030-PackageRegistryTrustAndDiscovery.md) remain mandatory.
+**Status:** normative delivery target; hosted authentication, ownership enforcement and deployment are not implemented. This completes the operational and tenancy requirements of [plan 0020](../../plans/0020-package-manager.md). The [rollout plan](../../plans/0020-package-manager.md) defines sequencing and required evidence. Existing [publication and trust requirements](0030-PackageRegistryTrustAndDiscovery.md) remain mandatory.
 
 ## Security boundary `[PACKAGE-HOSTED-BOUNDARY]`
 

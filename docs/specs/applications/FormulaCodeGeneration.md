@@ -1,6 +1,6 @@
 # Formula code generation [WORKBENCH-CODEGEN]
 
-**Status:** proposed; formula-to-code generation is not implemented. The workbench of [spec 0051](0051-ProofWorkbench.md) implements a formula reader, a goal engine, a proof kernel and an emitter that writes a Lean-flavoured proof module ([WORKBENCH-EMIT]). That emitter writes proof source from the current proof document; kernel verdicts are obtained separately. It is not a numeric algorithm generator, it parses no arithmetic, and it types no `int` or `float` expression. This specification describes a second activity the same application will offer — mathematics in, executable Osprey out — and distinguishes the two. Delivery: [plan formula-code-generation](../../plans/formula-code-generation.md). Every new feature rule here is a delivery target. Existing primitives and the framework/application ownership model are reference contracts, not evidence of numeric code generation; see [spec 0051](0051-ProofWorkbench.md) and [NATIVE-HOSTS](0047-OspreyNativeHosts.md).
+**Status:** proposed; formula-to-code generation is not implemented. The workbench of [spec 0051](0051-ProofWorkbench.md) implements a formula reader, a goal engine, a proof kernel and an emitter that writes a Lean-flavoured proof module ([WORKBENCH-EMIT]). That emitter writes proof source from the current proof document; kernel verdicts are obtained separately. It is not a numeric algorithm generator, it parses no arithmetic, and it types no `int` or `float` expression. This specification describes a second activity the same application will offer — mathematics in, executable Osprey out — and distinguishes the two. Delivery: [plan formula-code-generation](../../plans/0042-proof-workbench.md). Every new feature rule here is a delivery target. Existing primitives and the framework/application ownership model are reference contracts, not evidence of numeric code generation; see [spec 0051](0051-ProofWorkbench.md) and [NATIVE-HOSTS](0047-OspreyNativeHosts.md).
 
 ## Aim [WORKBENCH-CODEGEN-AIM]
 
@@ -258,7 +258,7 @@ The preview is typeset from the same IR the emitter consumes. Structure that the
 
 ## Illustrative contracts [WORKBENCH-CODEGEN-CONTRACTS]
 
-**Every source shape and code block in this proposal is illustrative.** It is not the output of an implemented emitter, it is not typechecked by the compiler, and it is not a golden. The goldens are written in [plan formula-code-generation](../../plans/formula-code-generation.md) phase 2 and pass the compiler before any of these shapes is claimed to be valid Osprey.
+**Every source shape and code block in this proposal is illustrative.** It is not the output of an implemented emitter, it is not typechecked by the compiler, and it is not a golden. The goldens are written in [plan formula-code-generation](../../plans/0042-proof-workbench.md) phase 2 and pass the compiler before any of these shapes is claimed to be valid Osprey.
 
 **C1 — real function with a declared domain.**
 
@@ -336,7 +336,7 @@ New slices and regions, added the way [WORKBENCH-STORE](0051-ProofWorkbench.md#s
 
 ## Verification [WORKBENCH-CODEGEN-VERIFICATION]
 
-The suite lives in `apps/workbench/tests/`, runs under GC, ARC and wasm32 with no skips, and its own-source coverage must never fall below the gate already registered for `apps/workbench` in `coverage-thresholds.json`. Every case below is a delivery requirement; the matrix is [WORKBENCH-CODEGEN-MATRIX] in [plan formula-code-generation](../../plans/formula-code-generation.md#acceptance-matrix-workbench-codegen-matrix), which also carries the exit evidence per phase.
+The suite lives in `apps/workbench/tests/`, runs under GC, ARC and wasm32 with no skips, and its own-source coverage must never fall below the gate already registered for `apps/workbench` in `coverage-thresholds.json`. Every case below is a delivery requirement; the matrix is [WORKBENCH-CODEGEN-MATRIX] in [plan formula-code-generation](../../plans/0042-proof-workbench.md#acceptance-matrix-workbench-codegen-matrix), which also carries the exit evidence per phase.
 
 | Area | What must be proved |
 | --- | --- |

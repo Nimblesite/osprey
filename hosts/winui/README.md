@@ -1,6 +1,6 @@
 # WinUI host
 
-`OspreyHost.exe <app.dll> [arguments]` opens one window and draws the [Osprey Native](../../packages/native/README.md) application compiled into `app.dll` with WinUI, the native UI framework of the Windows App SDK. It uses Mica and Segoe Fluent Icons, with no XAML anywhere. The host is generic: every application decision, word and screen is Osprey, and the host only draws regions, returns events by the ids the framework issued and answers capabilities. The contract is [spec 0048](../../docs/specs/platforms/0048-WinUiHost.md) [WINUI-HOST]; delivery is [plan 0038](../../docs/plans/0038-winui-windows-hosts.md).
+`OspreyHost.exe <app.dll> [arguments]` opens one window and draws the [Osprey Native](../../packages/native/README.md) application compiled into `app.dll` with WinUI, the native UI framework of the Windows App SDK. It uses Mica and Segoe Fluent Icons, with no XAML anywhere. The host is generic: every application decision, word and screen is Osprey, and the host only draws regions, returns events by the ids the framework issued and answers capabilities. The contract is [spec 0048](../../docs/specs/platforms/0048-WinUiHost.md) [WINUI-HOST]; delivery is [plan 0037](../../docs/plans/0037-osprey-native.md).
 
 | Project | Holds |
 | --- | --- |

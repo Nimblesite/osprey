@@ -169,7 +169,7 @@ From the `2691d8dc` review: not spec-conformant, not to be presented as complete
 | P1 | Spec overstates: "each kernel" extraction, "fused" host loops, reductions that vary by backend versus byte-identical backends | Spec 0034:131-139,177-186,293-300,381-390 |
 | P1 | Staged effects: tail `resume` allowed by spec but always rejected; discharge is per file; handler-owned static state unimplemented; only one of three falsifiers exists | Spec 0035:141-167,457-471; plan 0024:29-41 |
 | P1 | `--deps` is approximate and drops parse errors | `stage.rs:304-387`; `crates/osprey-syntax/src/lib.rs:121-130` |
-| P1 | D3D12 "working" in plan 0023, never compiled per plan 0025; failures of `Present`, fence wait and drain are discarded; Windows CI runs no bridge check | `examples/graphics/ospgfx_d3d12.c:165-240`; `ci-windows.yml` |
+| P1 | D3D12 "working" in plan 0023, never compiled per plan 0023; failures of `Present`, fence wait and drain are discarded; Windows CI runs no bridge check | `examples/graphics/ospgfx_d3d12.c:165-240`; `ci-windows.yml` |
 | P1 | Wasm GPU differential non-required and absent from `make ci`; failed allocation becomes an empty buffer while loops keep the requested length; staged wasm rejection is an undefined-symbol skip | `ci.yml:370-385`; `gpu_runtime.c:26-51`; `gpu.rs:371-380`; spec 0035:325-330 |
 | P2 | Fusion claims not gated by IR goldens; purity tests miss filter, zip, scan and helper chains; `gpuFilter` loads each element twice; docs parity checks name and arity only | `gpu.rs:442-453`; `builtin_docs_lang.rs:523-545` |
 | P2 | `[GPU-IOTA]` omits `n <= 0`; `[GPU-SCAN]` omits how `initial` participates; `[GPU-KERNEL-ELEM-TYPING]`, `[GPU-KERNEL-FORM]`, `[GPU-ROADMAP]` and `[GPU-RESEARCH]` lack references | Spec 0034 |

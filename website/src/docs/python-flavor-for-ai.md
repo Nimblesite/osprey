@@ -450,7 +450,7 @@ entry = "src/main.py"
 | `if __name__ == "__main__":` | rejected | `def main():` |
 | `None` as a nullable value | `None` is `Unit`, never null | `Result` |
 
-Supported `for` loops, comprehensions, unions and renamed pattern bindings are documented above. The [Python flavor specification](/spec/0041-pythonflavorsyntax/) and [delivery plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md) record remaining limits; rejection of an explicitly unsupported construct is expected.
+Supported `for` loops, comprehensions, unions and renamed pattern bindings are documented above. The [Python flavor specification](/spec/0041-pythonflavorsyntax/) and [delivery plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python.md) record remaining limits; rejection of an explicitly unsupported construct is expected.
 
 ## Diagnostics you will see
 

@@ -1,4 +1,4 @@
-// Plan 0036 phase 1 step 5: the per-frame cost of the framework on its own,
+// Plan 0037: the per-frame cost of the framework on its own,
 // without a host. A flock of `count` birds moves once per frame event; every
 // dispatch parses the session, runs `update`, re-encodes the store and emits
 // a scene of `count` sprites. `mode` selects what the run times: 0 starts

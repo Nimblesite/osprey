@@ -1,6 +1,6 @@
 # GPUI Desktop Host [GPUI-HOST]
 
-**Status:** running on macOS in `hosts/gpui`: the window, renderer, scene painter, frame clock and recorded-event smoke run work, and two examples run on it (`examples/gpui/flock` and `examples/gpui/painting`, the latter pixel-identical to GPUI's own painting example). Linux and Windows have library targets and CI ([GPUI-HOST-TARGETS]). Delivery is tracked by [plan 0036](../../plans/0036-gpui-desktop-host.md).
+**Status:** running on macOS in `hosts/gpui`: the window, renderer, scene painter, frame clock and recorded-event smoke run work, and two examples run on it (`examples/gpui/flock` and `examples/gpui/painting`, the latter pixel-identical to GPUI's own painting example). Linux and Windows have library targets and CI ([GPUI-HOST-TARGETS]). Delivery is tracked by [plan 0037](../../plans/0037-osprey-native.md).
 
 GPUI is a UI framework that draws with the GPU. It is not Osprey's GPU compute surface ([0034](../runtime/0034-GPUComputation.md)): an Osprey program here never touches the GPU itself. It describes a scene as data, and the Rust host hands that scene to GPUI, which batches, tessellates and draws it with Metal (Vulkan, DirectX later). [GPU-VS-GPUI](../runtime/0034-GPUComputation.md#gpu-compute-and-gpui-rendering--gpu-vs-gpui) sets out the difference.
 

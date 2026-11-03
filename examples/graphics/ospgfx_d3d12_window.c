@@ -1,7 +1,7 @@
 // The Win32 window the Direct3D 12 backend draws into: its class, its procedure,
 // its DPI awareness and its title. `osp_gfx_open` makes it first, through
 // osp_gfx_make_window; ospgfx_d3d12_setup.c brings up everything that draws into
-// it, and ospgfx_d3d12.c pumps its messages between frames. Plan 0040 moves the
+// it, and ospgfx_d3d12.c pumps its messages between frames. Plan 0023 moves the
 // scenes into a WinUI panel, and this file is what that change deletes.
 
 #include "ospgfx_d3d12.h"

@@ -1,6 +1,6 @@
 # Python interoperability
 
-**Status:** Python-hosted native scalar calls, exception envelopes and opaque object handles are implemented and covered by the interop integration suite. Declarative `@python` bindings, standalone CPython embedding and tensor-storage interchange are delivery targets, not shipped behavior. [Plan 0032](../../plans/0032-python-interop.md) tracks those gaps. The Python flavor belongs to [spec 0041](../language/0041-PythonFlavorSyntax.md); the bridge does not execute Python-flavor source as CPython.
+**Status:** Python-hosted native scalar calls, exception envelopes and opaque object handles are implemented and covered by the interop integration suite. Declarative `@python` bindings, standalone CPython embedding and tensor-storage interchange are delivery targets, not shipped behavior. [Plan 0031](../../plans/0031-python.md) tracks those gaps. The Python flavor belongs to [spec 0041](../language/0041-PythonFlavorSyntax.md); the bridge does not execute Python-flavor source as CPython.
 
 ## Host and compilation — [PYTHON-HOST]
 
