@@ -100,7 +100,7 @@
     {"package": "micrograd", "reference_files": 3, "matches": []},
     {"package": "native", "reference_files": 0, "matches": []},
     {"package": "numpy", "reference_files": 4, "matches": []},
-    {"package": "pydantic_ai", "reference_files": 7, "matches": []},
+    {"package": "pydantic_ai", "reference_files": 7, "matches": [], "full_comparison": {"date": "2026-11-03", "local_files_compared": 15, "upstream_files_compared": 332, "matching_20_token_windows": 0, "longest_common_normalised_line_run": {"lines": 2, "local_file": "packages/pydantic_ai/src/messages.py", "local_line": 233, "upstream_path": "pydantic_ai/ui/_event_stream.py", "upstream_line": 545, "text": ["match part:", "case TextPart():"]}, "identical_string_literals": {"min_12_chars": 0, "min_80_chars": 0}, "longest_shared_literal_substring_chars": 89, "longest_shared_literal_substring": "for budget-aware patterns: https://pydantic.dev/docs/ai/core-concepts/agent/#usage-limits", "shared_literal_substrings_min_30_chars": 28, "of_which_exception_texts": 6, "of_which_profile_setting_identifiers": 16, "of_which_documentation_phrases": 6, "docstring_longest_shared_normalised_line_run": 1, "note": "Exception texts and profile-setting key identifiers are deliberately kept for compatibility per the package README; no other shared material identified."}},
     {"package": "re", "reference_files": 5, "matches": []},
     {"package": "rouge_score", "reference_files": 5, "matches": []},
     {"package": "sacrebleu", "reference_files": 7, "matches": []},
