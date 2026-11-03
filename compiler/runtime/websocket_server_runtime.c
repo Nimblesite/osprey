@@ -32,104 +32,134 @@ typedef struct {
   struct sockaddr_in client_addr;
 } ConnectionData;
 
-// Handle WebSocket client connection in separate thread
+// How often a handler looks up from a silent peer to see if the server is stopping,
+// and how long a send can stall on a peer that stopped reading before it fails.
+enum { WS_TICK_MS = 1000 };
+
+// recv, repeated while the peer is merely quiet: <= 0 when it left or the server stops.
+static int recv_until_stopped(const WebSocketServer *server, int fd, char *buffer, size_t size) {
+  for (;;) {
+    int received = (int)recv(fd, buffer, size, 0);
+    int error = osp_socket_error();
+    bool quiet = received < 0 && (osp_socket_timed_out(error) || error == EINTR);
+    if (!quiet || !atomic_load(&server->is_listening)) {
+      return received;
+    }
+  }
+}
+
+// Lists an upgraded connection, for broadcasts and for stop to find. NULL when the
+// server is full or out of memory, or has begun stopping and won't see it.
+static WebSocket *register_connection(WebSocketServer *server, int fd) {
+  WebSocket *ws = calloc(1, sizeof(WebSocket));
+  if (!ws) {
+    return NULL;
+  }
+  ws->socket_fd = fd;
+  ws->is_connected = true;
+  pthread_mutex_lock(&server->mutex);
+  bool room = server->connection_count < MAX_CONNECTIONS_PER_SERVER &&
+              atomic_load(&server->is_listening);
+  if (room) {
+    server->connections[server->connection_count++] = ws;
+  }
+  pthread_mutex_unlock(&server->mutex);
+  if (!room) {
+    free(ws);
+    return NULL;
+  }
+  return ws;
+}
+
+// Unlists it before its descriptor can close, so no broadcast can write to whatever
+// socket reuses that number.
+static void unregister_connection(WebSocketServer *server, WebSocket *ws) {
+  pthread_mutex_lock(&server->mutex);
+  for (int i = 0; i < server->connection_count; i++) {
+    if (server->connections[i] == ws) {
+      server->connections[i] = server->connections[--server->connection_count];
+      server->connections[server->connection_count] = NULL;
+      break;
+    }
+  }
+  pthread_mutex_unlock(&server->mutex);
+  free(ws);
+}
+
+static void send_welcome(int fd) {
+  char welcome[512];
+  snprintf(welcome, sizeof(welcome),
+           "{\"type\":\"welcome\",\"message\":\"Connected to "
+           "Osprey WebSocket Server!\",\"timestamp\":\"%lld\"}",
+           (long long)time(NULL));
+  send_websocket_frame(fd, welcome);
+}
+
+// Echoes each message back with server info until the peer goes or the server stops.
+static void serve_messages(const WebSocketServer *server, int fd) {
+  char frame_buffer[MAX_HTTP_BUFFER];
+  for (;;) {
+    int frame_bytes = recv_until_stopped(server, fd, frame_buffer, sizeof(frame_buffer));
+    if (frame_bytes <= 0) {
+      return;
+    }
+    char *payload = NULL;
+    int payload_len = parse_websocket_frame(frame_buffer, frame_bytes, &payload);
+    if (payload_len > 0 && payload) {
+      printf("WebSocket received: %s\n", payload);
+      char echo_response[1024];
+      snprintf(echo_response, sizeof(echo_response),
+               "{\"type\":\"echo\",\"original\":\"%s\",\"echo\":"
+               "\"Server received: %s\",\"timestamp\":\"%lld\"}",
+               payload, payload, (long long)time(NULL));
+      send_websocket_frame(fd, echo_response);
+      free(payload);
+    }
+  }
+}
+
+// Sends the handshake's answer and serves the connection while it lives.
+static void serve_upgrade(WebSocketServer *server, int fd, char *request) {
+  if (!strstr(request, "Upgrade: websocket") || !strstr(request, "Connection: Upgrade")) {
+    return;
+  }
+  char *key_line = strstr(request, "Sec-WebSocket-Key: ");
+  char *key_end = key_line ? strstr(key_line, "\r\n") : NULL;
+  if (!key_end) {
+    return;
+  }
+  *key_end = '\0';
+  char *response = create_websocket_handshake_response(key_line + strlen("Sec-WebSocket-Key: "));
+  if (response && osp_socket_send(fd, response, strlen(response)) > 0) {
+    send_welcome(fd); // first, so no broadcast can reach the peer ahead of it
+    WebSocket *ws = register_connection(server, fd);
+    if (ws) {
+      serve_messages(server, fd);
+      unregister_connection(server, ws);
+    }
+  }
+  free(response);
+}
+
+// Handle WebSocket client connection in separate thread. Its last act says it has
+// finished: stop frees the server as soon as the last one has.
 void *handle_websocket_connection(void *arg) {
   ConnectionData *data = (ConnectionData *)arg;
   WebSocketServer *server = data->server;
   int client_fd = data->client_fd;
-
-  char buffer[MAX_HTTP_BUFFER];
-  int bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
-
-  if (bytes_received <= 0) {
-    close(client_fd);
-    free(data);
-    return NULL;
-  }
-
-  buffer[bytes_received] = '\0';
-
-  // Check if it's a WebSocket handshake
-  if (strstr(buffer, "Upgrade: websocket") &&
-      strstr(buffer, "Connection: Upgrade")) {
-    // Extract WebSocket key
-    char *key_line = strstr(buffer, "Sec-WebSocket-Key: ");
-    if (key_line) {
-      key_line += strlen("Sec-WebSocket-Key: ");
-      char *key_end = strstr(key_line, "\r\n");
-      if (key_end) {
-        *key_end = '\0';
-
-        // Create handshake response
-        char *response = create_websocket_handshake_response(key_line);
-
-        if (response && osp_socket_send(client_fd, response, strlen(response)) > 0) {
-          // Create WebSocket connection
-          int64_t ws_id = get_next_id();
-          WebSocket *ws = malloc(sizeof(WebSocket));
-            if (ws) {
-              ws->id = ws_id;
-              ws->url = strdup("server-connection");
-              ws->socket_fd = client_fd;
-            ws->is_connected = true;
-            pthread_mutex_init(&ws->mutex, NULL);
-
-            // Add to server connections
-            pthread_mutex_lock(&server->mutex);
-            if (server->connection_count < MAX_CONNECTIONS_PER_SERVER) {
-              server->connections[server->connection_count++] = ws;
-              pthread_mutex_unlock(&server->mutex);
-
-              // Send welcome message
-              char welcome[512];
-              snprintf(welcome, sizeof(welcome),
-                       "{\"type\":\"welcome\",\"message\":\"Connected to "
-                       "Osprey WebSocket Server!\",\"timestamp\":\"%lld\"}",
-                       (long long)time(NULL));
-
-              send_websocket_frame(client_fd, welcome);
-
-              // Handle incoming messages
-              char frame_buffer[MAX_HTTP_BUFFER];
-              while (ws->is_connected) {
-                int frame_bytes =
-                    recv(client_fd, frame_buffer, sizeof(frame_buffer), 0);
-                if (frame_bytes <= 0)
-                  break;
-
-                char *payload = NULL;
-                int payload_len =
-                    parse_websocket_frame(frame_buffer, frame_bytes, &payload);
-
-                if (payload_len > 0 && payload) {
-                  printf("WebSocket received: %s\n", payload);
-
-                  // Echo message back with server info
-                  char echo_response[1024];
-                  snprintf(echo_response, sizeof(echo_response),
-                           "{\"type\":\"echo\",\"original\":\"%s\",\"echo\":"
-                           "\"Server received: %s\",\"timestamp\":\"%lld\"}",
-                           payload, payload, (long long)time(NULL));
-
-                  send_websocket_frame(client_fd, echo_response);
-                  free(payload);
-                }
-              }
-            } else {
-              pthread_mutex_unlock(&server->mutex);
-              free(ws);
-            }
-          }
-        }
-
-        if (response)
-          free(response);
-      }
-    }
-  }
-
-  close(client_fd);
   free(data);
+  osp_socket_deadline(client_fd, WS_TICK_MS);
+  char buffer[MAX_HTTP_BUFFER];
+  int bytes_received = recv_until_stopped(server, client_fd, buffer, sizeof(buffer) - 1);
+  if (bytes_received > 0) {
+    buffer[bytes_received] = '\0';
+    serve_upgrade(server, client_fd, buffer);
+  }
+  close(client_fd);
+  pthread_mutex_lock(&server->mutex);
+  server->handler_count--;
+  pthread_cond_broadcast(&server->handlers_gone);
+  pthread_mutex_unlock(&server->mutex);
   return NULL;
 }
 
@@ -155,6 +185,11 @@ void *websocket_server_thread(void *arg) {
 
     // Create connection data and spawn thread
     ConnectionData *data = malloc(sizeof(ConnectionData));
+    if (!data) {
+      close(client_fd);
+      continue;
+    }
+    (void)osp_socket_configure_no_sigpipe(client_fd);
     data->server = server;
     data->client_fd = client_fd;
     data->client_addr = client_addr;
@@ -163,11 +198,17 @@ void *websocket_server_thread(void *arg) {
     // The handler thread runs user callbacks that allocate on the shared heap
     // concurrently with this accept loop — lock the memory backend first.
     osp_mem_notify_multithreaded();
+    pthread_mutex_lock(&server->mutex);
+    server->handler_count++;
+    pthread_mutex_unlock(&server->mutex);
     if (pthread_create(&connection_thread, NULL, handle_websocket_connection,
                        data) != 0) {
       printf("Failed to create connection thread\n");
       close(client_fd);
       free(data);
+      pthread_mutex_lock(&server->mutex);
+      server->handler_count--;
+      pthread_mutex_unlock(&server->mutex);
     } else {
       pthread_detach(connection_thread);
     }
@@ -203,7 +244,9 @@ int64_t websocket_create_server(int64_t port, char *address, char *path) {
   server->is_listening = false;
   server->thread_started = false;
   server->connection_count = 0;
+  server->handler_count = 0;
   pthread_mutex_init(&server->mutex, NULL);
+  pthread_cond_init(&server->handlers_gone, NULL);
 
   // Initialize connections array
   for (int i = 0; i < MAX_CONNECTIONS_PER_SERVER; i++) {
@@ -303,12 +346,33 @@ int64_t websocket_server_broadcast(int64_t server_id, char *message) {
     if (ws && ws->is_connected) {
       if (send_websocket_frame(ws->socket_fd, message) > 0) {
         sent_count++;
+      } else {
+        // It missed a frame, or got part of one, so its stream can't go on. Its
+        // handler wakes to this and unlists it.
+        ws->is_connected = false;
+        (void)shutdown(ws->socket_fd, WS_SHUTDOWN_BOTH);
       }
     }
   }
   pthread_mutex_unlock(&server->mutex);
 
   return sent_count;
+}
+
+// Ends every connection and waits for the threads serving them, which read the server
+// to their last. The accept thread has gone, so no more can start. A handler still
+// shaking hands isn't listed, and notices the stop within a tick.
+static void end_connections(WebSocketServer *server) {
+  pthread_mutex_lock(&server->mutex);
+  for (int i = 0; i < server->connection_count; i++) {
+    WebSocket *ws = server->connections[i];
+    ws->is_connected = false;
+    (void)shutdown(ws->socket_fd, WS_SHUTDOWN_BOTH);
+  }
+  while (server->handler_count > 0) {
+    pthread_cond_wait(&server->handlers_gone, &server->mutex);
+  }
+  pthread_mutex_unlock(&server->mutex);
 }
 
 // Stop WebSocket server - returns 0 on success
@@ -318,50 +382,33 @@ int64_t websocket_stop_server(int64_t server_id) {
   }
   pthread_mutex_lock(&runtime_mutex);
   WebSocketServer *server = websocket_servers[server_id];
-  if (server) {
-    websocket_servers[server_id] = NULL;
-    server->is_listening = false;
-    bool thread_started = server->thread_started;
-
-    // Close all connections
-    pthread_mutex_lock(&server->mutex);
-    for (int i = 0; i < server->connection_count; i++) {
-      WebSocket *ws = server->connections[i];
-      if (ws) {
-        ws->is_connected = false;
-        close(ws->socket_fd);
-        free(ws->url);
-        pthread_mutex_destroy(&ws->mutex);
-        free(ws);
-      }
-    }
-    pthread_mutex_unlock(&server->mutex);
-
-    // SHUT DOWN before closing, or the join below never returns. A `close()`
-    // does NOT interrupt a thread already blocked in `accept()` on Linux — the
-    // descriptor goes away and the thread stays parked on it forever. macOS
-    // does wake it, which is why this suite passed here and hung for the whole
-    // 60-minute CI budget on the runner, killed as an orphan process with no
-    // failing assertion to name. `shutdown` wakes a blocked `accept()` on both,
-    // and `is_listening` is already false above, so the loop ends rather than
-    // spinning on the error.
-    if (server->socket_fd >= 0) {
-      (void)shutdown(server->socket_fd, WS_SHUTDOWN_BOTH);
-      close(server->socket_fd);
-    }
-
-    // Wait for server thread to finish
-    if (thread_started) {
-      pthread_join(server->server_thread, NULL);
-    }
-
-    free(server->address);
-    free(server->path);
-    pthread_mutex_destroy(&server->mutex);
-    free(server);
-  }
+  websocket_servers[server_id] = NULL;
   pthread_mutex_unlock(&runtime_mutex);
-
+  if (!server) {
+    return 0;
+  }
+  atomic_store(&server->is_listening, false);
+  // SHUT DOWN before closing, or the join below never returns. A `close()`
+  // does NOT interrupt a thread already blocked in `accept()` on Linux — the
+  // descriptor goes away and the thread stays parked on it forever. macOS
+  // does wake it, which is why this suite passed here and hung for the whole
+  // 60-minute CI budget on the runner, killed as an orphan process with no
+  // failing assertion to name. `shutdown` wakes a blocked `accept()` on both,
+  // and `is_listening` is already false above, so the loop ends rather than
+  // spinning on the error.
+  if (server->socket_fd >= 0) {
+    (void)shutdown(server->socket_fd, WS_SHUTDOWN_BOTH);
+    close(server->socket_fd);
+  }
+  if (server->thread_started) {
+    pthread_join(server->server_thread, NULL);
+  }
+  end_connections(server);
+  free(server->address);
+  free(server->path);
+  pthread_cond_destroy(&server->handlers_gone);
+  pthread_mutex_destroy(&server->mutex);
+  free(server);
   return 0;
 }
 
