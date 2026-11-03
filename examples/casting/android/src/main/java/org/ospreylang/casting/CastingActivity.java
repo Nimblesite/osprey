@@ -23,7 +23,17 @@ import org.json.JSONObject;
 public final class CastingActivity extends ComponentActivity {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private String state = "", choosing;
+    private String choosing;
+    private Resident resident;
+    private JSONObject permissionBrowse;
+    private final ActivityResultLauncher<String> localNetwork = registerForActivityResult(
+        new ActivityResultContracts.RequestPermission(), granted -> {
+            JSONObject request = permissionBrowse;
+            permissionBrowse = null;
+            if (request == null) return;
+            if (!granted) { complete(request.optString("ticket"), null, getString(R.string.local_network_denied)); return; }
+            try { request(request); } catch (JSONException error) { fail(error); }
+        });
     private final ActivityResultLauncher<String[]> picker = registerForActivityResult(
         new ActivityResultContracts.OpenDocument(), uri -> {
             String ticket = choosing;
@@ -44,7 +54,7 @@ public final class CastingActivity extends ComponentActivity {
     private final Runnable frame = new Runnable() {
         @Override public void run() {
             long now = System.nanoTime();
-            if (animate && lastFrame != 0) send(object("kind", "frame", "elapsed", Math.min(0.25, (now - lastFrame) / 1e9)));
+            if (animate && lastFrame != 0) resident.frame(Math.min(0.25, (now - lastFrame) / 1e9));
             lastFrame = now;
             if (alive) main.postDelayed(this, 33);
         }
@@ -53,6 +63,7 @@ public final class CastingActivity extends ComponentActivity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         discovery = new CastDiscovery(this);
+        resident = new Resident(this::receive, this::fail);
         scene = new SceneCanvas(this, this::control);
         scene.setFitsSystemWindows(true);
         setContentView(scene);
@@ -62,10 +73,9 @@ public final class CastingActivity extends ComponentActivity {
             JSONArray arguments = new JSONArray().put("--machine").put(new File(folder, "player.machine.json").getAbsolutePath());
             JSONObject context = object("now", System.currentTimeMillis() / 1000, "offset", 0,
                 "platform", "android", "home", getFilesDir().getAbsolutePath(), "arguments", arguments);
-            Native.pending = new JSONArray();
-            accept(Native.start(utf8(context.toString())));
+            resident.start(context);
             main.post(frame);
-        } catch (IOException | JSONException | RuntimeException error) { fail(error); }
+        } catch (IOException | RuntimeException error) { fail(error); }
     }
 
     private void copyAssets(String path, File target) throws IOException {
@@ -90,34 +100,26 @@ public final class CastingActivity extends ComponentActivity {
     }
 
     private void send(JSONObject event) {
-        if (!alive || state.isEmpty()) return;
-        try {
-            event.put("now", System.currentTimeMillis() / 1000);
-            Native.pending = new JSONArray();
-            accept(Native.dispatch(utf8(state), utf8(event.toString())));
-        } catch (IOException | JSONException | RuntimeException error) { fail(error); }
+        if (alive) resident.send(event);
     }
 
     private void control(int ordinal, long revision, JSONObject value) {
         send(object("kind", "ui", "region", "root", "revision", revision, "ordinal", ordinal, "value", value));
     }
 
-    private void accept(byte[] bytes) throws JSONException, IOException {
-        JSONObject envelope = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-        if (envelope.getInt("version") != 1) throw new JSONException("Unsupported native envelope version");
-        state = envelope.getString("state");
-        JSONArray slices = envelope.getJSONArray("slices");
-        for (int i = 0; i < slices.length(); i++) {
-            JSONObject slice = slices.getJSONObject(i);
-            Native.slices.put(slice.getString("key"), slice.getString("text"));
-        }
+    private void receive(JSONObject envelope, JSONArray streamed) {
+        if (!alive) return;
+        try { accept(envelope, streamed); } catch (IOException | JSONException | RuntimeException error) { fail(error); }
+    }
+
+    private void accept(JSONObject envelope, JSONArray streamed) throws JSONException, IOException {
         JSONArray diagnostics = envelope.getJSONArray("diagnostics");
         if (diagnostics.length() > 0) throw new JSONException(diagnostics.toString());
         JSONArray patches = envelope.getJSONArray("patches");
         for (int i = 0; i < patches.length(); i++) {
             JSONObject patch = patches.getJSONObject(i);
             if (patch.getString("key").equals("root")) {
-                scene.replace(patch.getJSONObject("node"), patch.getLong("revision"), Native.pending);
+                scene.replace(patch.getJSONObject("node"), patch.getLong("revision"), streamed);
                 if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent().getBooleanExtra("captureEnvelope", false))
                     Files.write(new File(getFilesDir(), "test-scene.json").toPath(), utf8(patch.toString()));
             }
@@ -133,6 +135,19 @@ public final class CastingActivity extends ComponentActivity {
         case "run":
             if (!ticket.equals("discover") || !request.getString("slice").equals("cast-browse")) {
                 main.post(() -> complete(ticket, null, "Mobile casting does not execute processes")); break;
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 37 && checkSelfPermission(android.Manifest.permission.ACCESS_LOCAL_NETWORK) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionBrowse = request;
+                localNetwork.launch(android.Manifest.permission.ACCESS_LOCAL_NETWORK);
+                break;
+            }
+            String fixture = getIntent().getStringExtra("testReceiver");
+            if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && fixture != null) {
+                byte[] decoded = java.util.Base64.getDecoder().decode(fixture);
+                if (decoded.length > 65536) throw new JSONException("Receiver fixture exceeds the browse limit");
+                Native.slices.put("cast-browse", new String(decoded, StandardCharsets.UTF_8));
+                main.post(() -> complete(ticket, object(), null));
+                break;
             }
             discovery.start(text -> {
                 Native.slices.put("cast-browse", text);
@@ -154,14 +169,16 @@ public final class CastingActivity extends ComponentActivity {
 
     private void fail(Exception error) {
         animate = false;
+        if (resident != null) resident.close();
         TextView message = new TextView(this);
-        message.setText("Casting could not continue: " + error.getMessage());
+        message.setText(getString(R.string.casting_failed, error.toString()));
         message.setPadding(24, 24, 24, 24);
         setContentView(message);
     }
 
     @Override protected void onDestroy() {
         alive = false;
+        if (resident != null) resident.close();
         main.removeCallbacks(frame);
         discovery.cancel();
         io.shutdownNow();

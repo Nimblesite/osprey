@@ -1,14 +1,14 @@
 package org.ospreylang.casting;
 
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import org.json.JSONArray;
 import org.json.JSONException;
 
-// [ANDROID-HOST-ABI] Osprey calls and streamed shapes stay on the UI thread.
+// [ANDROID-HOST-ABI] Osprey calls and streamed shapes stay on the dedicated engine thread.
 final class Native {
     static { System.loadLibrary("osprey_casting"); }
-    static final HashMap<String, String> slices = new HashMap<>();
+    static final ConcurrentHashMap<String, String> slices = new ConcurrentHashMap<>();
     static JSONArray pending = new JSONArray();
     static native byte[] start(byte[] context);
     static native byte[] dispatch(byte[] state, byte[] event);

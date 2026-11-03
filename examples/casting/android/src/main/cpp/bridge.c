@@ -4,11 +4,21 @@
 #include <string.h>
 #include "libOspreyApp.h"
 
-// [ANDROID-HOST-ABI] Every resident call is serialized on Android's UI thread.
+// [ANDROID-HOST-ABI] Every resident call is serialized on the dedicated engine thread.
 static JNIEnv *current;
 static jclass native_class;
 static jclass tls_class;
 static char *borrowed;
+static jthrowable host_fault;
+
+// Never hand a Java exception's null result to Osprey as a string. Preserve
+// the typed host failure and reject the complete envelope before rendering.
+static void capture_fault(JNIEnv *env) {
+  if ((*env)->ExceptionCheck(env)) {
+    if (!host_fault) host_fault = (*env)->ExceptionOccurred(env);
+    (*env)->ExceptionClear(env);
+  }
+}
 
 static void fail(JNIEnv *env, const char *message) {
   jclass kind = (*env)->FindClass(env, "java/lang/IllegalStateException");
@@ -29,6 +39,13 @@ static char *bytes(JNIEnv *env, jbyteArray input) {
 }
 
 static jbyteArray result(JNIEnv *env, const char *text) {
+  capture_fault(env);
+  if (host_fault) {
+    if (text) osprey_release_string(text);
+    (void)(*env)->Throw(env, host_fault);
+    (*env)->DeleteLocalRef(env, host_fault); host_fault = NULL;
+    return NULL;
+  }
   if (!text) { fail(env, "Osprey returned no envelope"); return NULL; }
   size_t length = strlen(text);
   if (length > INT32_MAX) { osprey_release_string(text); fail(env, "Envelope exceeds JNI limit"); return NULL; }
@@ -40,6 +57,7 @@ static jbyteArray result(JNIEnv *env, const char *text) {
 
 static bool prepare(JNIEnv *env, jclass owner) {
   current = env;
+  host_fault = NULL;
   if (!native_class) native_class = (*env)->NewGlobalRef(env, owner);
   if (!tls_class) {
     jclass found = (*env)->FindClass(env, "org/ospreylang/casting/CastTLS");
@@ -74,7 +92,8 @@ const char *native_slice(const char *key) {
   (*current)->DeleteLocalRef(current, name);
   free(borrowed); borrowed = value ? bytes(current, value) : NULL;
   if (value) (*current)->DeleteLocalRef(current, value);
-  return borrowed;
+  capture_fault(current);
+  return borrowed ? borrowed : "";
 }
 
 int64_t native_shape(int64_t code, int64_t index, double a, double b, double c, double d, double e, int64_t tint, int64_t layer) {
@@ -99,11 +118,13 @@ int64_t osprey_tls_send_hex(int64_t handle, const char *hex) {
 }
 
 static const char *text_result(jstring value) {
+  capture_fault(current);
   const char *text = value ? (*current)->GetStringUTFChars(current, value, NULL) : NULL;
   free(borrowed); borrowed = text ? strdup(text) : NULL;
   if (text) (*current)->ReleaseStringUTFChars(current, value, text);
   if (value) (*current)->DeleteLocalRef(current, value);
-  return borrowed;
+  capture_fault(current);
+  return borrowed ? borrowed : "";
 }
 
 const char *osprey_tls_recv_hex(int64_t handle, int64_t count, int64_t timeout) {

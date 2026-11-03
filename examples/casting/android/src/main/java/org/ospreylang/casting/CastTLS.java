@@ -7,6 +7,7 @@ import java.net.InetSocketAddress;
 import java.net.SocketTimeoutException;
 import java.security.GeneralSecurityException;
 import java.security.cert.X509Certificate;
+import java.security.cert.CertificateException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
@@ -58,12 +59,24 @@ public final class CastTLS {
         }
     }
 
+    // Implements [FFI-TLS-UNVERIFIED], matching the existing Cast-only Wire
+    // contract: device identity is unauthenticated, unlike HTTPS. The narrow
+    // exception permits this explicit local-device policy, not general trust bypass.
+    @android.annotation.SuppressLint("CustomX509TrustManager")
     private static SSLContext context() throws GeneralSecurityException {
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(null, new TrustManager[]{new X509TrustManager() {
-            // Cast receivers present self-signed certificates; this is the explicit local-device policy.
-            @Override public void checkClientTrusted(X509Certificate[] chain, String auth) {}
-            @Override public void checkServerTrusted(X509Certificate[] chain, String auth) {}
+            @Override public void checkClientTrusted(X509Certificate[] chain, String auth) throws CertificateException {
+                throw new CertificateException("This Cast sender never authenticates TLS clients");
+            }
+            @Override public void checkServerTrusted(X509Certificate[] chain, String auth) throws CertificateException {
+                if (chain == null || chain.length == 0) throw new CertificateException("Receiver sent no certificate");
+                for (X509Certificate certificate : chain) certificate.checkValidity();
+                try {
+                    for (int i = 0; i + 1 < chain.length; i++) chain[i].verify(chain[i + 1].getPublicKey());
+                    if (chain.length == 1) chain[0].verify(chain[0].getPublicKey());
+                } catch (GeneralSecurityException error) { throw new CertificateException("Invalid Cast certificate signature", error); }
+            }
             @Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
         }}, null);
         return context;

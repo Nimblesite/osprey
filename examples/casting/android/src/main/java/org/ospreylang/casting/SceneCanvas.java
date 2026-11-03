@@ -89,6 +89,12 @@ final class SceneCanvas extends View {
         setContentDescription("Casting player");
     }
 
+    public SceneCanvas(Context context) {
+        this(context, (ordinal, revision, value) -> {
+            throw new IllegalStateException("A scene must be attached to its resident event handler");
+        });
+    }
+
     void replace(JSONObject node, long revision, JSONArray pending) throws JSONException {
         if (!node.getString("kind").equals("scene")) throw new JSONException("Android does not draw " + node.optString("kind") + " yet");
         this.revision = revision;
@@ -97,7 +103,7 @@ final class SceneCanvas extends View {
         ordinal = node.getInt("event");
         JSONArray nextAccess = node.optJSONArray("access");
         if (nextAccess == null) nextAccess = new JSONArray();
-        boolean changed = !access.toString().equals(nextAccess.toString());
+        boolean changed = !structure(access).equals(structure(nextAccess));
         access = nextAccess;
         atlas = node.getJSONArray("atlas");
         if (pending.length() > 0) streamed = pending;
@@ -116,6 +122,18 @@ final class SceneCanvas extends View {
         }
         invalidate();
         if (changed) sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+    }
+
+    // Playback position changes every frame. Announce structural changes,
+    // while range values remain available through the live node provider.
+    private static String structure(JSONArray access) throws JSONException {
+        JSONArray result = new JSONArray();
+        for (int i = 0; i < access.length(); i++) {
+            JSONObject item = new JSONObject(access.getJSONObject(i).toString());
+            item.remove("value");
+            result.put(item);
+        }
+        return result.toString();
     }
 
     @Override protected void onDraw(Canvas canvas) {

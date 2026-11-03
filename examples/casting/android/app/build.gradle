@@ -1,16 +1,17 @@
 plugins { id 'com.android.application' }
 android {
     namespace 'org.ospreylang.casting'
-    compileSdk 36
+    compileSdk 37
     packaging { jniLibs { useLegacyPackaging true } }
     defaultConfig {
         applicationId 'org.ospreylang.casting'
         minSdk 34
-        targetSdk 35
+        targetSdk 37
         versionCode 1
         versionName '1.0'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    lint { warningsAsErrors true; abortOnError true }
     sourceSets {
         main {
             java.srcDirs = [rootProject.file('src/main/java')]
@@ -21,3 +22,4 @@ android {
     }
 }
 dependencies { implementation 'androidx.activity:activity:1.13.0' }
+tasks.withType(JavaCompile).configureEach { options.compilerArgs += ['-Xlint:all', '-Werror'] }
