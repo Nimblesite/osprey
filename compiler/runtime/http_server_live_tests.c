@@ -169,10 +169,8 @@ void test_server_handle_bounds(void) {
   assert(http_stop_server(MAX_SERVERS - 1) == 0); // in range, no server
 }
 
-// The fiber id space is shared by spawns and channels, and a channel costs no
-// thread -- so this is how a test can reach the state where no fiber can be
-// spawned without creating a thousand of them.
-extern int64_t channel_create(int64_t capacity);
+extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env);
+extern int64_t fiber_await(int64_t fiber_id);
 
 // A request whose line yields no method and no path is still LOGGED, with both
 // fields carrying HTTP_LOG_UNKNOWN rather than left empty. An empty field in a
@@ -260,24 +258,38 @@ static int open_descriptor_count(void) {
   return open_count;
 }
 
+static int64_t idle_fiber(void *ignored) {
+  (void)ignored;
+  return 0;
+}
+
+// The size of a fiber's record, found by failing each size in turn until a spawn
+// is refused: the runtime keeps the struct to itself.
+static size_t fiber_record_bytes(void) {
+  for (size_t bytes = 8; bytes <= 1024; bytes += 8) {
+    test_alloc_fail_size(bytes);
+    int64_t fiber = fiber_spawn_env(idle_fiber, NULL);
+    test_alloc_fail_off();
+    if (fiber == -2) {
+      return bytes;
+    }
+    assert(fiber > 0 && fiber_await(fiber) == 0);
+  }
+  assert(false && "a spawn must allocate a record");
+  return 0;
+}
+
 void test_listener_spawn_failure_is_reported(void) {
   int64_t server_id =
       http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
   assert(server_id > 0);
 
-  // Burn the id space with channels rather than fibers: same counter, no
-  // threads. It is exhausted the moment creation starts refusing.
-  int64_t created = 0;
-  for (int i = 0; i < 1100; i++) {
-    created = channel_create(1);
-    if (created < 0) {
-      break;
-    }
-  }
-  assert(created == -4 && "the fiber id space must report exhaustion");
-
+  // The one way left for a spawn to fail: no memory for the fiber's record.
+  size_t record = fiber_record_bytes();
   int before = open_descriptor_count();
+  test_alloc_fail_size(record);
   assert(http_listen(server_id, http_test_server_handler) == -6);
+  test_alloc_fail_off();
 
   // The socket was opened and BOUND before the spawn failed, so at the moment
   // -6 is returned it is a live listener on a real port. Unwinding it is the
@@ -297,7 +309,9 @@ void test_listener_spawn_failure_is_reported(void) {
   // listening, which is the state that can never be recovered from. And the
   // second attempt binds and unwinds its own socket, so a release that only
   // worked once is caught by the same count.
+  test_alloc_fail_size(record);
   assert(http_listen(server_id, http_test_server_handler) == -6);
+  test_alloc_fail_off();
   assert(open_descriptor_count() == before &&
          "every retry must release its socket too");
   assert(http_stop_server(server_id) == 0);

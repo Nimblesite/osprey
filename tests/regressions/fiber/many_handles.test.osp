@@ -1,0 +1,47 @@
+// [CONCURRENCY-HANDLES] A program can have as many fibers and channels as it likes
+// over its life, and each still answers its own value. Past 999 these once answered
+// -1 with exit 0, segfaulted for a string, or aborted for a channel.
+
+fn twice(i) = wrapAdd(i, i)
+fn word(i) = "w${i}"
+
+fn sumOfFibers(i, total) = match i {
+    3000 => total
+    _ => sumOfFibers(wrapAdd(i, 1), wrapAdd(total, await(spawn twice(i))))
+}
+
+fn lastWord(i, last) = match i {
+    3000 => last
+    _ => lastWord(wrapAdd(i, 1), await(spawn word(i)))
+}
+
+fn sumOfChannels(i, total) = match i {
+    3000 => total
+    _ => {
+        let channel = Channel(1)
+        send(channel, i)
+        sumOfChannels(wrapAdd(i, 1), wrapAdd(total, recv(channel)))
+    }
+}
+
+fn wordsThroughChannels(i, last) = match i {
+    3000 => last
+    _ => {
+        let channel = Channel(1)
+        send(channel, await(spawn word(i)))
+        wordsThroughChannels(wrapAdd(i, 1), recv(channel))
+    }
+}
+
+fn reusableHandles() = {
+    let fiber = spawn word(7)
+    let _pass = sumOfFibers(0, 0)
+    check("first await", "w7", await(fiber))
+    check("second await", "w7", await(fiber))
+}
+
+test("thousands of int fibers", fn() => check("sum", "8997000", "${sumOfFibers(0, 0)}"))
+test("thousands of string fibers", fn() => check("last", "w2999", lastWord(0, "")))
+test("thousands of channels", fn() => check("sum", "4498500", "${sumOfChannels(0, 0)}"))
+test("strings through fibers and channels", fn() => check("last", "w2999", wordsThroughChannels(0, "")))
+test("an old handle survives thousands more", reusableHandles)

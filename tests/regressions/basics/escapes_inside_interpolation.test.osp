@@ -1,0 +1,25 @@
+// [STRING-INTERPOLATION] An escape inside a string inside `${}` is that inner string's
+// business: an escaped quote doesn't end it, and each is decoded exactly once.
+
+fn pick(text, f) = f(text)
+fn same(n) = n
+fn twice(s) = "${s}${s}"
+
+fn quotes() = {
+    check("escaped quote through a lambda", "\"", "${pick("\"", fn(n) => n)}")
+    check("plain string through a lambda", "q", "${pick("q", fn(n) => n)}")
+    check("a quote among text", "a\"b", "${pick("a\"b", fn(n) => n)}")
+    check("two escaped quotes", "\"\"", "${pick("\"\"", fn(n) => n)}")
+    check("around a lambda result", "<\">", "<${pick("\"", fn(n) => n)}>")
+    check("twice nested", "\"\"", "${twice("${pick("\"", fn(n) => n)}")}")
+    check("backslash before the end", "\\", "${pick("\\", fn(n) => n)}")
+    check("named function", "\"", "${same("\"")}")
+}
+
+fn controls() = {
+    check("newline in nested text", "a\nb", "${pick("a\nb", fn(n) => n)}")
+    check("tab in nested text", "a\tb", "${pick("a\tb", fn(n) => n)}")
+}
+
+test("escaped quotes stay in their string", quotes)
+test("control escapes stay in their string", controls)
