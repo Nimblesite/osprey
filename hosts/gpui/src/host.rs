@@ -103,6 +103,11 @@ impl HostView {
                 "store-read" | "store-write" | "store-list" | "store-delete" => {
                     self.dispatch(store::completion(&request), window, cx);
                 }
+                // [CAST-MOBILE-DELIVERY] iOS has no GPUI path prompt: its document
+                // picker is answered across the OS bridge like any blocking adapter.
+                "choose-file" if cfg!(target_os = "ios") => {
+                    self.answer_in_background(request, window, cx);
+                }
                 "choose-file" | "choose-folder" | "save-file" | "reveal" => {
                     if let Some(completion) = adapters::dispatch_platform(&request, window, cx) {
                         self.dispatch(completion, window, cx);
@@ -186,15 +191,19 @@ impl HostView {
 }
 
 impl Render for HostView {
-    /// Draws the root region above the host-only diagnostic strip.
+    /// Draws the root region above the host-only diagnostic strip, both contained in the window's
+    /// safe area ([GPUI-HOST-RENDER]): the platform's insets clear the status bar, notch and home
+    /// indicator, and a window that reports zero insets (every desktop window) keeps its framed
+    /// padding unchanged.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         clock::schedule(self, window, cx);
         let framed = !bare();
+        let safe = window.insets().safe_area;
         div()
             .size_full()
             .flex()
             .flex_col()
-            .when(framed, |this| this.gap_4().p_4())
+            .when(framed, |this| this.p_4())
             .bg(self.background(window, cx))
             .text_color(cx.theme().foreground)
             .child(
@@ -203,9 +212,14 @@ impl Render for HostView {
                     .flex_col()
                     .flex_grow(1.)
                     .min_h_0()
-                    .child(render::region(self, "root", window, cx)),
+                    .pt(safe.top)
+                    .pr(safe.right)
+                    .pb(safe.bottom)
+                    .pl(safe.left)
+                    .when(framed, |this| this.gap_4())
+                    .child(render::region(self, "root", window, cx))
+                    .child(render::diagnostics(self, cx)),
             )
-            .child(render::diagnostics(self, cx))
     }
 }
 
@@ -251,11 +265,17 @@ fn start() -> Result<(Regions, Vec<Request>), String> {
 
 /// Opens the native window; this is the only permitted infallible window-open boundary.
 fn open(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) {
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let application = gpui_kit::application();
     // [CAST-MOBILE-GPUI] gpui-kit leaves the mobile backend to the application.
     #[cfg(target_os = "ios")]
     let application = gpui_kit::Application::with_platform(gpui_ios::current_platform(false));
+    // [CAST-MOBILE-GPUI] the same host code draws through the Android backend over gpui-pre-wgpu.
+    #[cfg(target_os = "android")]
+    let Some(application) = android_application() else {
+        eprintln!("GPUI host failed: no Android activity to draw through");
+        return;
+    };
     application.on_open_urls(|urls| opened().extend(urls));
     application.run(move |cx| {
         gpui_kit::init(cx);
@@ -293,6 +313,26 @@ fn new_view(
         }
     }
     view
+}
+
+/// The NativeActivity handle `android_main` installed before the host starts
+/// ([CAST-MOBILE-GPUI]).
+#[cfg(target_os = "android")]
+static ANDROID_APP: std::sync::OnceLock<android_activity::AndroidApp> = std::sync::OnceLock::new();
+
+/// Installs the activity the Android platform backend draws through.
+#[cfg(target_os = "android")]
+pub fn set_android_app(app: android_activity::AndroidApp) {
+    let _ = ANDROID_APP.set(app);
+}
+
+/// The application on this activity's GPUI backend.
+#[cfg(target_os = "android")]
+fn android_application() -> Option<gpui_kit::Application> {
+    let app = ANDROID_APP.get()?.clone();
+    Some(gpui_kit::Application::with_platform(gpui_android::current_platform(
+        &app,
+    )))
 }
 
 /// Files Finder asked the application to open and no frame has delivered yet ([GPUI-HOST-OPEN]).

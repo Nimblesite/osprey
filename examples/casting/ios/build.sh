@@ -10,6 +10,7 @@ case "$target" in
     *) echo 'Usage: build.sh [ios|ios-sim]' >&2; exit 2 ;;
 esac
 cd "$repo"
+export IPHONEOS_DEPLOYMENT_TARGET=18.0
 if [[ ${OSPREY_MOBILE_SKIP_LIBRARY:-0} != 1 ]]; then bash examples/casting/mobile-build.sh "$target"; fi
 output="$repo/examples/casting/build/$target"
 bundle="$output/Casting.app"
@@ -22,7 +23,8 @@ for unit in file_server_runtime media_render_runtime; do
 done
 xcrun --sdk "$sdk" swiftc -swift-version 5 -warnings-as-errors -parse-as-library \
     -target "$triple" -sdk "$sdk_path" -emit-library -static -module-name OspreyCastServices \
-    "$here/CastTLS.swift" "$output/file_server_runtime.o" "$output/media_render_runtime.o" \
+    "$here/CastTLS.swift" "$here/CastDiscovery.swift" "$here/PlatformServices.swift" \
+    "$output/file_server_runtime.o" "$output/media_render_runtime.o" \
     -o "$output/libosprey_cast_services.a"
 swift_search=$(xcrun --sdk "$sdk" swiftc -print-target-info -target "$triple" -sdk "$sdk_path" | \
     python3 -c 'import json,sys; print(":".join(json.load(sys.stdin)["paths"]["runtimeLibraryPaths"]))')

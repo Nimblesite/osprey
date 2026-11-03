@@ -4,15 +4,15 @@ The native casting apps are migrating to one renderer: the same Rust `hosts/gpui
 
 ## Current status [CAST-MOBILE-GPUI-STATUS]
 
-- `examples/casting/ios/build.sh` packages the shared `hosts/gpui` binary — the same crate the desktop app links — for `ios-sim` and `ios`, with native Swift cast services (`CastTLS.swift` plus the C file-server and media-render runtimes) linked in as `libosprey_cast_services.a`, alongside the machine document, skins and icon catalog. The resulting `Casting.app` links, installs and launches on the simulator.
-- The simulator now renders the desktop GPUI player. A pi verified the first frame appears after about two seconds; the earlier white image was the launch screen. Right-edge clipping remains under correction in the shared scene renderer. Rendering alone is not a passing playback journey.
-- The shared GPUI host crate passes its 70 in-crate tests (`cargo test --manifest-path hosts/gpui/Cargo.toml`). Those cover the host library only; they do not exercise the mobile UI, the native cast services or device transport.
+- `examples/casting/ios/build.sh` packages the shared `hosts/gpui` binary — the same crate the desktop app links — for `ios-sim` and `ios`, with native Swift cast services (`CastTLS.swift`, `CastDiscovery.swift` and `PlatformServices.swift`, plus the C file-server and media-render runtimes) linked in as `libosprey_cast_services.a`, alongside the machine document, skins and icon catalog. The resulting `Casting.app` links, installs and launches on the simulator.
+- The simulator now renders the desktop GPUI player. A pi verified the first frame appears after about two seconds; the earlier white image was the launch screen. The shared scene renderer now shrinks fixed zoom to fit narrow windows, and the host applies platform safe-area insets; the whole player is visible below the notch. The unused lower window still paints white pending the startup theme correction. Rendering alone is not a passing playback journey.
+- The shared GPUI host crate passes its 78 library tests (`cargo test --manifest-path hosts/gpui/Cargo.toml --lib`). Those cover the host library only; they do not exercise the mobile UI, the native cast services or device transport.
 - The shared C ABI still cross-compiles for `ios`, `ios-sim`, `android-arm64` and `android-x64` via `make -C apps/tests casting-mobile-build TARGET=…`. That is a build fact, not a journey.
-- The Android GPUI backend and the native service adapter (Bonjour discovery, document picker) are in progress under plan 0053 and are not proven here.
+- The iOS native service adapter discovers a real local receiver and opens, cancels and imports a generated MP3 through the native document picker into the GPUI player. Native bridge probes cover malformed requests and bounded reads; they do not prove playback. The Android GPUI backend remains in progress under plan 0053.
 
 ## Tests, goldens and coverage [CAST-MOBILE-GPUI-GATES]
 
-The five iOS XCTest journeys and the Android suite remain strict and unchanged in intent. The Xcode project no longer contains an app target — `build.sh` produces the app outside Xcode — so the UI-test runner now attaches to the installed bundle by explicit identifier, `org.ospreylang.casting`. Those tests and the committed `goldens/ios` and `goldens/android` screenshots passed only against the retired renderers; until the GPUI app renders, they are not green, and the goldens must be re-captured from the GPUI apps before any screenshot gate runs.
+The five iOS XCTest journeys and the Android suite remain strict and unchanged in intent. The Xcode project no longer contains an app target — `build.sh` produces the app outside Xcode — so the UI-test runner now attaches to the installed bundle by explicit identifier, `org.ospreylang.casting`. Those tests and the committed `goldens/ios` and `goldens/android` screenshots passed only against the retired renderers; until the GPUI apps pass those full journeys, they are not green, and the goldens must be re-captured from the GPUI apps before any screenshot gate runs.
 
 The Xcode coverage gate fails clearly while the GPUI app — a Rust binary built outside Xcode — reports no coverage. Wiring the Rust coverage export into that gate is pending work; weakening or bypassing the gate is not.
 
@@ -20,12 +20,12 @@ The retired production SwiftUI app was installed on a paired physical iPhone but
 
 ## Mandatory checklist [CAST-MOBILE-DELIVERY]
 
-Every item is open. A box is checked only by a passing run against the shared GPUI app on the platform named; a historical pass from a retired renderer never ticks a box.
+A box is checked only by a passing run against the shared GPUI app on the platform named; a historical pass from a retired renderer never ticks a box.
 
 Shared renderer and desktop parity:
 
 - [ ] Draw the casting machine on iOS and Android from the same `hosts/gpui` view code as desktop, with touch input and safe areas. [CAST-MOBILE-GPUI]
-- [ ] Diagnose and fix the white first frame on the iOS simulator; a visible, correct Sherbet scene is the entry criterion for every journey below.
+- [x] Diagnose the white first frame as the launch screen and verify the GPUI frame on the iOS simulator; a visible, correct Sherbet scene is the entry criterion for every journey below.
 - [ ] Match each skin's mobile pictures to the desktop's widgets at the same pixel width. [CAST-MOBILE-GPUI]
 
 File input:

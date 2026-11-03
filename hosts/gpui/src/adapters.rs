@@ -1,7 +1,13 @@
 //! Mechanical process, file and platform capabilities ([GPUI-HOST-CAPABILITIES]).
 
 mod files;
+// [CAST-MOBILE-DELIVERY] the iOS OS bridge; its protocol layer also compiles for
+// boundary tests, while the C calls themselves stay iOS-only.
+#[cfg(any(target_os = "ios", test))]
+mod mobile;
 mod platform;
+// iOS launches no processes: its `run` capability is OS discovery across the bridge.
+#[cfg(not(target_os = "ios"))]
 mod process;
 
 use serde_json::Value;
@@ -15,6 +21,12 @@ pub use platform::dispatch as dispatch_platform;
 /// Answers one synchronous non-store capability.
 pub fn answer(request: &Request) -> Result<Value, String> {
     match request.kind.as_str() {
+        // [CAST-MOBILE-DELIVERY] iOS launches no process and has no GPUI path
+        // prompt: its OS services answer run (discovery) and choose-file across
+        // the bridge, on the caller's background executor.
+        #[cfg(target_os = "ios")]
+        "run" | "choose-file" => mobile::answer(request),
+        #[cfg(not(target_os = "ios"))]
         "run" => process::run(request),
         "list-directories" => files::list_directories(request),
         "read-texts" => files::read_texts(request),
