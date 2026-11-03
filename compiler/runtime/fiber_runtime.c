@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -36,8 +37,7 @@ typedef struct Fiber {
   // scalar/float bits: they may coincidentally equal a live heap address.
   bool result_managed;
   bool completed;
-  pthread_t thread;
-  bool joined;
+  bool running; // sequential only: on some stack below this one, not finished
   pthread_mutex_t mutex;
   pthread_cond_t cond;
   bool uses_thread;
@@ -94,29 +94,79 @@ static void select_notify(void) {
   pthread_mutex_unlock(&select_mutex);
 }
 
-// Global runtime state
-static Fiber *fibers[1000];
-static Channel *channels[1000];
+// Global runtime state. Fibers and channels share one id space, and a handle is
+// never reused: a `Fiber<T>` can be awaited any number of times for as long as the
+// program holds it, so nothing says when its id could mean something else. The
+// tables grow to fit. They hold pointers, so what a lookup returns outlives the
+// lock even if they then move. All of it is under runtime_mutex.
+// [CONCURRENCY-HANDLES]
+static Fiber **fibers;
+static Channel **channels;
+static int64_t handle_capacity;
 static int64_t next_id = 1;
 static pthread_mutex_t runtime_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// Sequential execution mode [CONCURRENCY-DETERMINISTIC].
+// Sequential execution mode [CONCURRENCY-DETERMINISTIC]. Queued fibers run in
+// spawn order, which is id order, so the tables are the queue: nothing below
+// queue_start can still need running.
 static bool deterministic_mode = false;
-static int64_t execution_queue[1000];
-static int64_t queue_size = 0;
+static int64_t queue_start = 1;
 
 // Enable/disable deterministic fiber execution
 int64_t fiber_set_deterministic_mode(bool enabled) {
   pthread_mutex_lock(&runtime_mutex);
   deterministic_mode = enabled;
   if (enabled) {
-    queue_size = 0; // Reset queue when enabling
+    queue_start = next_id; // Reset queue when enabling
   }
   pthread_mutex_unlock(&runtime_mutex);
   return 0;
 }
 
-// Execute a fiber directly (for deterministic mode)
+static bool grow_table(void **table, int64_t capacity, size_t entry) {
+  char *grown = realloc(*table, (size_t)capacity * entry);
+  if (!grown) {
+    return false;
+  }
+  size_t kept = (size_t)handle_capacity * entry;
+  memset(grown + kept, 0, (size_t)capacity * entry - kept);
+  *table = grown;
+  return true;
+}
+
+// Makes room for next_id in both tables; false when out of memory.
+static bool reserve_handle(void) {
+  if (next_id < handle_capacity) {
+    return true;
+  }
+  int64_t capacity = handle_capacity > 0 ? handle_capacity * 2 : 1024;
+  void *grown_fibers = fibers;
+  void *grown_channels = channels;
+  bool grown = grow_table(&grown_fibers, capacity, sizeof(Fiber *));
+  fibers = grown_fibers;
+  grown = grown && grow_table(&grown_channels, capacity, sizeof(Channel *));
+  channels = grown_channels;
+  if (grown) {
+    handle_capacity = capacity;
+  }
+  return grown;
+}
+
+static Fiber *fiber_of(int64_t fiber_id) {
+  pthread_mutex_lock(&runtime_mutex);
+  Fiber *fiber = fiber_id >= 1 && fiber_id < next_id ? fibers[fiber_id] : NULL;
+  pthread_mutex_unlock(&runtime_mutex);
+  return fiber;
+}
+
+static Channel *channel_of(int64_t channel_id) {
+  pthread_mutex_lock(&runtime_mutex);
+  Channel *channel = channel_id >= 1 && channel_id < next_id ? channels[channel_id] : NULL;
+  pthread_mutex_unlock(&runtime_mutex);
+  return channel;
+}
+
+// Run a fiber on this thread's stack, holding no lock: its body can use the runtime.
 static void execute_fiber_directly(Fiber *fiber) {
   if (fiber->handler_snapshot != NULL) {
     __osprey_handler_restore(fiber->handler_snapshot);
@@ -155,27 +205,40 @@ static void *fiber_thread_func(void *arg) {
   return NULL;
 }
 
+// Starts the fiber's own thread, which is detached: completion is what `await` waits
+// for, and a fiber nobody awaits must not keep its stack for the life of the process.
+static bool start_fiber_thread(Fiber *fiber) {
+  pthread_t thread;
+  pthread_attr_t attributes;
+  if (pthread_attr_init(&attributes) != 0) {
+    return false;
+  }
+  pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
+  // A real fiber thread is about to touch the shared value heap: trip the
+  // memory backend off its single-threaded fast path BEFORE the thread that
+  // needs the lock can exist (pthread_create is the happens-before barrier).
+  osp_mem_notify_multithreaded();
+  bool started = pthread_create(&thread, &attributes, fiber_thread_func, fiber) == 0;
+  pthread_attr_destroy(&attributes);
+  return started;
+}
+
 // Create and schedule a fiber (shared by both spawn ABIs).
 // [CONCURRENCY-SPAWN-AWAIT]
 static int64_t fiber_spawn_internal(int64_t (*fn)(void),
                                     int64_t (*env_fn)(void *), void *env,
                                     bool result_managed) {
-  pthread_mutex_lock(&runtime_mutex);
-
-  int64_t id = next_id++;
-
-  // Check if we've exceeded the fiber array bounds
-  if (id >= 1000) {
-    pthread_mutex_unlock(&runtime_mutex);
-    return -4; // Fiber array full
-  }
-
   Fiber *fiber = malloc(sizeof(Fiber));
   if (!fiber) {
-    pthread_mutex_unlock(&runtime_mutex);
     return -2; // Memory allocation failed
   }
-
+  pthread_mutex_lock(&runtime_mutex);
+  if (!reserve_handle()) {
+    pthread_mutex_unlock(&runtime_mutex);
+    free(fiber);
+    return -2;
+  }
+  int64_t id = next_id++;
   fiber->id = id;
   fiber->function = fn;
   fiber->env_function = env_fn;
@@ -184,42 +247,22 @@ static int64_t fiber_spawn_internal(int64_t (*fn)(void),
   fiber->result_owned = false;
   fiber->result_managed = result_managed;
   fiber->completed = false;
-  fiber->uses_thread = false;
-  fiber->joined = false;
+  fiber->running = false;
+  fiber->uses_thread = !deterministic_mode;
   fiber->handler_snapshot = __osprey_handler_snapshot();
-
-  if (!deterministic_mode) {
-    // Normal concurrent mode - use threads
-    pthread_mutex_init(&fiber->mutex, NULL);
-    pthread_cond_init(&fiber->cond, NULL);
-    fiber->uses_thread = true;
-
-    fibers[id] = fiber;
-
-    // A real fiber thread is about to touch the shared value heap: trip the
-    // memory backend off its single-threaded fast path BEFORE the thread that
-    // needs the lock can exist (pthread_create is the happens-before barrier).
-    osp_mem_notify_multithreaded();
-
-    // Create thread to execute fiber
-    int result = pthread_create(&fiber->thread, NULL, fiber_thread_func, fiber);
-    if (result != 0) {
-      // Thread creation failed, clean up
-      fibers[id] = NULL;
-      pthread_mutex_destroy(&fiber->mutex);
-      pthread_cond_destroy(&fiber->cond);
-      free(fiber);
-      pthread_mutex_unlock(&runtime_mutex);
-      return -3; // Thread creation failed
-    }
-  } else {
-    // Deterministic mode - queue for sequential execution
-    fibers[id] = fiber;
-    execution_queue[queue_size++] = id;
+  pthread_mutex_init(&fiber->mutex, NULL);
+  pthread_cond_init(&fiber->cond, NULL);
+  fibers[id] = fiber;
+  bool queued = !fiber->uses_thread;
+  if (!queued && !start_fiber_thread(fiber)) {
+    // No thread left to give it, so it runs here, and spawn still means what it says.
+    fiber->uses_thread = false;
+    fiber->running = true;
+    pthread_mutex_unlock(&runtime_mutex);
+    execute_fiber_directly(fiber);
+    return id;
   }
-
   pthread_mutex_unlock(&runtime_mutex);
-
   return id;
 }
 
@@ -252,68 +295,73 @@ int64_t fiber_spawn_env_owned(int64_t (*fn)(void *), void *env,
   return fiber_spawn_internal(NULL, fn, env, result_managed != 0);
 }
 
+// Claims the first queued fiber at or below `last` that nothing has started.
+static Fiber *claim_queued(int64_t last) {
+  pthread_mutex_lock(&runtime_mutex);
+  Fiber *next = NULL;
+  for (int64_t id = queue_start; id < next_id && id <= last && !next; id++) {
+    Fiber *fiber = fibers[id];
+    if (fiber && !fiber->uses_thread && !fiber->completed && !fiber->running) {
+      fiber->running = true;
+      next = fiber;
+    }
+  }
+  while (queue_start < next_id && (!fibers[queue_start] || fibers[queue_start]->uses_thread ||
+                                   fibers[queue_start]->completed)) {
+    queue_start++;
+  }
+  pthread_mutex_unlock(&runtime_mutex);
+  return next;
+}
+
+// Sequential mode has no other thread to wait for: a queued fiber runs instead, in
+// spawn order. False once none is left to run. [CONCURRENCY-DETERMINISTIC]
+static bool run_queued(int64_t last) {
+  Fiber *next = claim_queued(last);
+  if (next) {
+    execute_fiber_directly(next);
+  }
+  return next != NULL;
+}
+
+// A fiber with no thread of its own finishes here, through every fiber queued before
+// it. One that can't is waiting on this very stack, so no await can ever answer it.
+static int64_t await_on_this_stack(Fiber *fiber) {
+  while (run_queued(fiber->id)) {
+  }
+  if (!fiber->completed) {
+    return -1;
+  }
+  int64_t result = fiber->result;
+  // The runtime keeps the thunk's transferred +1 until final cleanup. Every
+  // await receives an independent +1 so repeated awaits cannot observe a
+  // result reclaimed by an earlier caller [MEM-FIBER-ISOLATION]. Scalars and
+  // foreign words are safe no-ops in every memory backend.
+  if (fiber->result_managed) {
+    osp_retain((void *)(uintptr_t)result);
+  }
+  return result;
+}
+
 // Wait for fiber completion [CONCURRENCY-SPAWN-AWAIT].
 int64_t fiber_await(int64_t fiber_id) {
-  // Check bounds first to prevent buffer overflow
-  if (fiber_id < 1 || fiber_id >= 1000) {
+  Fiber *fiber = fiber_of(fiber_id);
+  if (!fiber) {
     return -1;
   }
-
-  pthread_mutex_lock(&runtime_mutex);
-  Fiber *fiber = fibers[fiber_id];
-  bool is_deterministic = deterministic_mode;
-  pthread_mutex_unlock(&runtime_mutex);
-
-  if (!fiber)
-    return -1;
-
-  if (is_deterministic) {
-    // Deterministic mode - execute fibers in queue order up to the requested one
-    pthread_mutex_lock(&runtime_mutex);
-    for (int64_t i = 0; i < queue_size; i++) {
-      int64_t current_id = execution_queue[i];
-      Fiber *current_fiber = fibers[current_id];
-      if (current_fiber && !current_fiber->completed) {
-        execute_fiber_directly(current_fiber);
-      }
-      if (current_id == fiber_id) {
-        break; // Stop once we've executed the requested fiber
-      }
-    }
-    int64_t result = fiber->result;
-    // The runtime keeps the thunk's transferred +1 until final cleanup. Every
-    // await receives an independent +1 so repeated awaits cannot observe a
-    // result reclaimed by an earlier caller [MEM-FIBER-ISOLATION]. Scalars and
-    // foreign words are safe no-ops in every memory backend.
-    if (fiber->result_managed) {
-      osp_retain((void *)(uintptr_t)result);
-    }
-    pthread_mutex_unlock(&runtime_mutex);
-    return result;
-  } else {
-    // Normal concurrent mode - wait for thread completion
-    pthread_mutex_lock(&fiber->mutex);
-    while (!fiber->completed) {
-      pthread_cond_wait(&fiber->cond, &fiber->mutex);
-    }
-    int64_t result = fiber->result;
-    if (fiber->result_managed) {
-      osp_retain((void *)(uintptr_t)result);
-    }
-    bool should_join = fiber->uses_thread && !fiber->joined;
-    if (should_join) {
-      fiber->joined = true;
-    }
-    pthread_mutex_unlock(&fiber->mutex);
-
-    // A completed pthread is joined exactly once even when several callers
-    // await the same reusable Fiber handle.
-    if (should_join) {
-      pthread_join(fiber->thread, NULL);
-    }
-
-    return result;
+  if (!fiber->uses_thread) {
+    return await_on_this_stack(fiber);
   }
+  pthread_mutex_lock(&fiber->mutex);
+  while (!fiber->completed) {
+    pthread_cond_wait(&fiber->cond, &fiber->mutex);
+  }
+  int64_t result = fiber->result;
+  if (fiber->result_managed) {
+    osp_retain((void *)(uintptr_t)result);
+  }
+  pthread_mutex_unlock(&fiber->mutex);
+  return result;
 }
 
 // Release the runtime roots of completed fiber results. Codegen calls this
@@ -326,7 +374,7 @@ void fiber_cleanup_results(void) {
   // await against it. Unstructured, still-running fibers are terminated by
   // process exit; their roots intentionally remain process-owned here. Once
   // every thunk is quiescent no more language code can race this teardown.
-  for (int64_t id = 1; id < next_id && id < 1000; id++) {
+  for (int64_t id = 1; id < next_id; id++) {
     Fiber *fiber = fibers[id];
     if (!fiber)
       continue;
@@ -345,7 +393,7 @@ void fiber_cleanup_results(void) {
     }
   }
 
-  for (int64_t id = 1; id < next_id && id < 1000; id++) {
+  for (int64_t id = 1; id < next_id; id++) {
     Fiber *fiber = fibers[id];
     if (!fiber)
       continue;
@@ -376,9 +424,8 @@ void fiber_cleanup_results(void) {
 // Cooperative hand-off [CONCURRENCY-YIELD]. In concurrent (threaded) mode,
 // donate the rest of this
 // fiber's time slice to the scheduler so a peer fiber can run, then resume and
-// forward `value`. In deterministic mode fibers run sequentially to completion
-// while `fiber_await` holds `runtime_mutex`, so there is no peer to switch to
-// and taking the lock here would deadlock — yield forwards `value` unchanged,
+// forward `value`. In deterministic mode fibers run sequentially to completion,
+// so there is no peer to switch to and yield forwards `value` unchanged,
 // preserving the differential harness's reproducible ordering. (`deterministic_mode`
 // is set once at startup before any fiber runs, so this lock-free read is safe.)
 // True cross-fiber interleaving under deterministic mode would need stackful
@@ -410,11 +457,11 @@ int64_t channel_create(int64_t capacity) {
   }
 
   pthread_mutex_lock(&runtime_mutex);
-  if (next_id >= 1000) {
+  if (!reserve_handle()) {
     pthread_mutex_unlock(&runtime_mutex);
     free(channel->buffer);
     free(channel);
-    return -4;
+    return -2;
   }
 
   int64_t id = next_id++;
@@ -453,7 +500,7 @@ int64_t channel_create_checked(int64_t capacity) {
   }
   fprintf(stderr,
           "FATAL: Channel(%lld) has no channel to give: capacity must be "
-          "positive and a handle must be free (code %lld)\n",
+          "positive and memory must be free (code %lld)\n",
           (long long)capacity, (long long)id);
   abort();
 }
@@ -468,19 +515,25 @@ static int64_t channel_send_rejected(int64_t value, int64_t managed) {
   return 0;
 }
 
+// Waits for a blocked channel to change: for another thread, or in sequential mode
+// by running what is queued, as nothing else will. The channel's lock is held.
+static void channel_wait(Channel *channel, pthread_cond_t *changed) {
+  if (deterministic_mode) {
+    pthread_mutex_unlock(&channel->mutex);
+    bool ran = run_queued(INT64_MAX);
+    pthread_mutex_lock(&channel->mutex);
+    if (ran) {
+      return;
+    }
+  }
+  pthread_cond_wait(changed, &channel->mutex);
+}
+
 // Send value to channel. `managed` says the value is a heap object whose
 // reference the channel now owns until a `recv` adopts it, or until
 // `channel_cleanup` releases what was never received [CONCURRENCY-CHANNEL].
 int64_t channel_send(int64_t channel_id, int64_t value, int64_t managed) {
-  // Check bounds first to prevent buffer overflow
-  if (channel_id < 1 || channel_id >= 1000) {
-    return channel_send_rejected(value, managed);
-  }
-
-  pthread_mutex_lock(&runtime_mutex);
-  Channel *channel = channels[channel_id];
-  pthread_mutex_unlock(&runtime_mutex);
-
+  Channel *channel = channel_of(channel_id);
   if (!channel)
     return channel_send_rejected(value, managed);
 
@@ -491,7 +544,7 @@ int64_t channel_send(int64_t channel_id, int64_t value, int64_t managed) {
 
   // Wait while channel is full
   while (channel->count == channel->capacity) {
-    pthread_cond_wait(&channel->not_full, &channel->mutex);
+    channel_wait(channel, &channel->not_full);
   }
 
   // Add value to buffer
@@ -510,15 +563,7 @@ int64_t channel_send(int64_t channel_id, int64_t value, int64_t managed) {
 
 // Receive from channel
 int64_t channel_recv(int64_t channel_id) {
-  // Check bounds first to prevent buffer overflow
-  if (channel_id < 1 || channel_id >= 1000) {
-    return -1;
-  }
-
-  pthread_mutex_lock(&runtime_mutex);
-  Channel *channel = channels[channel_id];
-  pthread_mutex_unlock(&runtime_mutex);
-
+  Channel *channel = channel_of(channel_id);
   if (!channel)
     return -1;
 
@@ -526,7 +571,7 @@ int64_t channel_recv(int64_t channel_id) {
 
   // Wait while channel is empty
   while (channel->count == 0) {
-    pthread_cond_wait(&channel->not_empty, &channel->mutex);
+    channel_wait(channel, &channel->not_empty);
   }
 
   // Get value from buffer
@@ -547,19 +592,9 @@ int64_t channel_recv(int64_t channel_id) {
 #define SELECT_SEND 1
 #define SELECT_SEND_MANAGED 2
 
-static Channel *select_channel(int64_t channel_id) {
-  if (channel_id < 1 || channel_id >= 1000) {
-    return NULL;
-  }
-  pthread_mutex_lock(&runtime_mutex);
-  Channel *channel = channels[channel_id];
-  pthread_mutex_unlock(&runtime_mutex);
-  return channel;
-}
-
 // Perform one arm's operation if its channel is ready right now.
 static bool select_try(int64_t kind, int64_t channel_id, int64_t word, int64_t *received) {
-  Channel *channel = select_channel(channel_id);
+  Channel *channel = channel_of(channel_id);
   if (!channel) {
     return false;
   }
@@ -610,27 +645,11 @@ static bool select_wait(uint64_t seen, bool bounded, const struct timespec *dead
   return in_time;
 }
 
-// Deterministic mode has no other thread to wait for: a queued fiber runs instead,
-// in spawn order. False once none is left to run. [CONCURRENCY-DETERMINISTIC]
-static bool select_run_queued(void) {
-  pthread_mutex_lock(&runtime_mutex);
-  Fiber *next = NULL;
-  for (int64_t i = 0; i < queue_size && !next; i++) {
-    Fiber *fiber = fibers[execution_queue[i]];
-    next = fiber && !fiber->completed ? fiber : NULL;
-  }
-  pthread_mutex_unlock(&runtime_mutex);
-  if (next) {
-    execute_fiber_directly(next);
-  }
-  return next != NULL;
-}
-
 static int64_t select_deterministic(int64_t count, const int64_t *kinds, const int64_t *ids,
                                     const int64_t *words, int64_t *received,
                                     int64_t timeout_ms) {
   int64_t chosen = select_scan(count, kinds, ids, words, received);
-  while (chosen == count && timeout_ms != 0 && select_run_queued()) {
+  while (chosen == count && timeout_ms != 0 && run_queued(INT64_MAX)) {
     chosen = select_scan(count, kinds, ids, words, received);
   }
   return chosen;
@@ -691,7 +710,7 @@ int64_t channel_select(int64_t count, const int64_t *kinds, const int64_t *ids,
 // main, after language owners have dropped. [GC-ARC-PERCEUS]
 void channel_cleanup(void) {
   pthread_mutex_lock(&runtime_mutex);
-  for (int64_t id = 1; id < next_id && id < 1000; id++) {
+  for (int64_t id = 1; id < next_id; id++) {
     Channel *channel = channels[id];
     if (!channel || !channel->elem_managed) {
       continue;
@@ -742,21 +761,13 @@ int64_t fiber_sleep(int64_t milliseconds) {
 // while a fiber does real work, then `fiber_await` it the instant it reports
 // done - without ever blocking the animating thread on a join or condvar.
 int64_t fiber_done(int64_t fiber_id) {
-  if (fiber_id < 1 || fiber_id >= 1000) {
-    return -1;
-  }
-
-  pthread_mutex_lock(&runtime_mutex);
-  Fiber *fiber = fibers[fiber_id];
-  bool is_deterministic = deterministic_mode;
-  pthread_mutex_unlock(&runtime_mutex);
-
+  Fiber *fiber = fiber_of(fiber_id);
   if (!fiber)
     return -1;
 
   // Deterministic fibers only run when awaited, so report "ready" immediately;
   // the subsequent fiber_await drives execution. Avoids an infinite spin.
-  if (is_deterministic)
+  if (!fiber->uses_thread)
     return 1;
 
   pthread_mutex_lock(&fiber->mutex);

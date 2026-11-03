@@ -65,3 +65,5 @@ One recorded-event fixture set, kept beside the framework in `packages/native/co
 ## Framework neutrality [NATIVE-HOSTS-NEUTRAL]
 
 `@osprey/native` carries nothing that only one host or one product can honour. Platform-specific work goes through `HostCall` with a namespace the host answers or rejects. Constructors and capabilities that exist for one product are moved out or generalized; [plan 0037](../../plans/0037-osprey-native.md) lists the current ones.
+
+Storage's Apple-only requests are `HostCall`s only the in-repo SwiftUI host answers: the Photos summary is `HostCall "photos" "summary"`, and the Photos section appears only when the answer arrives; Full Disk Access is `HostCall "macos" "privacy-settings"`. Not implemented yet: no host answers the `photos` or `macos` namespaces.

@@ -13,3 +13,4 @@ Package registry, evidence and GitHub automation.
 - [Package Evidence and Fair Discovery](0032-PackageEvidenceAndDiscovery.md)
 - [Osprey GitHub Action](0033-OspreyGitHubAction.md)
 - [Python-Flavor Package Ports](0043-PythonFlavorPorts.md)
+- [Performance Gate](PerformanceGate.md)

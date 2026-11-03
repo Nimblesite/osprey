@@ -210,7 +210,8 @@ test.describe("mobile interactions", () => {
       if (viewport.font) await page.addStyleTag({ content: `:root { --font-sans: ${viewport.font}; }` });
       await page.locator("#mobile-menu-toggle").click();
       const controls = page.locator("#site-navigation > li > a, #site-navigation > li > details > summary");
-      await expect(controls).toHaveCount(5);
+      // Docs group + Playground, Blog, Credits, Discord, GitHub.
+      await expect(controls).toHaveCount(6);
       await expectNavigationFits(controls);
       for (const group of await page.locator(".nav-group").all()) {
         await group.locator("summary").click();

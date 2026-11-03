@@ -63,6 +63,19 @@ public struct Request: Sendable, Equatable {
             return value
         }
     }
+
+    /// The `env` array of `{name, value}` objects as one merged dictionary ([UI-EFFECTS-PROCESS]).
+    public func env() throws -> [String: String] {
+        guard case let .array(items)? = members["env"] else { throw ProtocolError.missingMember("array", "env") }
+        var merged: [String: String] = [:]
+        for item in items {
+            guard case let .object(pair) = item, let name = pair["name"]?.string, let value = pair["value"]?.string else {
+                throw ProtocolError.missingMember("string", "env")
+            }
+            merged[name] = value
+        }
+        return merged
+    }
 }
 
 extension Request: Decodable {

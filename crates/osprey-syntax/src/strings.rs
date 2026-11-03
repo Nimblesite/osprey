@@ -198,8 +198,14 @@ struct Scope {
 }
 
 enum Frame {
-    Code { braces: usize },
-    Text,
+    Code {
+        braces: usize,
+    },
+    /// A string inside `${}`. `escaped` says an escaped quote opened it, the
+    /// old spelling `"${f(\"x\")}"`, which only an escaped quote can end.
+    Text {
+        escaped: bool,
+    },
 }
 
 impl Scope {
@@ -208,6 +214,27 @@ impl Scope {
         matches!(self.open.last(), Some(Frame::Code { .. }))
             && !self.previous.is_alphanumeric()
             && self.previous != '_'
+    }
+
+    /// In a string whose escapes are its own: the fragment keeps them, and the
+    /// parser decodes them once, when it reads that string.
+    fn in_own_string(&self) -> bool {
+        matches!(self.open.last(), Some(Frame::Text { escaped: false }))
+    }
+
+    fn observe_escaped(&mut self, character: char) {
+        match (self.open.last(), character) {
+            (Some(Frame::Text { escaped: false }), _) => self.previous = character,
+            (Some(Frame::Code { .. }), '"') => {
+                self.open.push(Frame::Text { escaped: true });
+                self.previous = character;
+            }
+            (Some(Frame::Text { escaped: true }), '"') => {
+                let _ = self.open.pop();
+                self.previous = character;
+            }
+            _ => self.observe(character),
+        }
     }
 
     fn observe(&mut self, character: char) {
@@ -219,11 +246,11 @@ impl Scope {
                     let _ = self.open.pop();
                 }
             }
-            (Some(Frame::Code { .. }), '"') => self.open.push(Frame::Text),
-            (Some(Frame::Text), '"') => {
+            (Some(Frame::Code { .. }), '"') => self.open.push(Frame::Text { escaped: false }),
+            (Some(Frame::Text { .. }), '"') => {
                 let _ = self.open.pop();
             }
-            (Some(Frame::Text) | None, '{') if self.previous == '$' => {
+            (Some(Frame::Text { .. }) | None, '{') if self.previous == '$' => {
                 self.open.push(Frame::Code { braces: 1 });
             }
             _ => {}
@@ -256,11 +283,11 @@ fn decode(raw: &str) -> Decoded {
     while let Some((index, character)) = chars.next() {
         if character == '\\' {
             if let Some((next, escaped)) = chars.next() {
-                let lambda =
-                    scope.opens_word() && opens_lambda(text.get(next..).unwrap_or_default());
-                let meaning = escape_meaning(escaped).filter(|_| !lambda);
+                let verbatim = scope.in_own_string()
+                    || (scope.opens_word() && opens_lambda(text.get(next..).unwrap_or_default()));
+                let meaning = escape_meaning(escaped).filter(|_| !verbatim);
                 append_escape(&mut decoded, text, start, index..next, escaped, meaning);
-                scope.observe(escaped);
+                scope.observe_escaped(escaped);
                 continue;
             }
         }
@@ -371,11 +398,17 @@ mod tests {
             ("${f(\\row => row)}", "${f(\\row => row)}"),
             ("${f(\\n => n)}\\n", "${f(\\n => n)}\n"),
             ("${f(\\row, x => row)}", "${f(\\row, x => row)}"),
-            ("${f (\"a\\tb\")}", "${f (\"a\tb\")}"),
+            // A nested string's escapes wait for the parser that reads that string.
+            ("${f (\"a\\tb\")}", "${f (\"a\\tb\")}"),
+            ("${f(\"\\\"\")}", "${f(\"\\\"\")}"),
+            ("${f(\"\\\\\")}", "${f(\"\\\\\")}"),
             (
                 "${\"in\\t${f(\\row => row)}\"}",
-                "${\"in\t${f(\\row => row)}\"}",
+                "${\"in\\t${f(\\row => row)}\"}",
             ),
+            // The old spelling of a nested string is decoded here, once.
+            ("${f(\\\"a\\\")}", "${f(\"a\")}"),
+            ("${f(\\\"a\\\")}\\t", "${f(\"a\")}\t"),
             ("${1\\n x => y}", "${1\n x => y}"),
             ("${a\\tb}", "${a\tb}"),
             ("no fragment \\row => x", "no fragment \row => x"),

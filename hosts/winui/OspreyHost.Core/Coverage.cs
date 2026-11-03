@@ -35,6 +35,7 @@ public static class Coverage
     [
         "list-directories", "read-plists", "read-texts", "fingerprint", "http", "host-call",
         "running-applications", "save-file", "open-settings", "recognise",
+        "process-start", "process-write", "process-read", "process-stop",
     ];
 
     /// <summary>The visible diagnostic shown in place of a node kind this host does not draw.</summary>

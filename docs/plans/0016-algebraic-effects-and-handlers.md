@@ -1,200 +1,44 @@
-# Plan 0016 — Managing effects
+# Plan 0016 — Algebraic effects and handlers
 
-**Contract:** [Algebraic Effects](../specs/language/0017-AlgebraicEffects.md).
-**Try it:** [runnable handler examples](../../examples/handlers/README.md), [banking application](../../examples/projects/modules/README.md), and [mobile application](../../examples/mobile/README.md).
-**Status:** callable handlers, block-scoped handling, declared operation modes, return transformations, and static handler selection are implemented. Full scoped row polymorphism and continuation ownership/replay remain unfinished; the evidence and gates below define their status. This plan owns delivery of handlers, rows, staging, and continuations, replacing plans 0008, 0024, and 0028.
+**Contract:** [Algebraic Effects](../specs/language/0017-AlgebraicEffects.md). Tooling tasks also touch [Language Server](../specs/tooling/0020-LanguageServerAndEditors.md), [Debugger](../specs/tooling/0021-Debugger.md), [WebAssembly target](../specs/compiler/0022-WebAssemblyTarget.md).
+**Depends on:** [Plan 0026 — Structured Concurrency](0026-structured-concurrency.md) (region unwinding and cancellation-time finalization for `control abort`).
 
-## Outcome
+## Prerequisites in place
 
-An application declares the operations it needs; its caller chooses how to
-provide them. Start with logging, configuration, storage and test substitutes.
-The same business function must work under different handlers without edits,
-and a missing implementation must be a useful compile error. Default users
-should be able to begin with ordinary functions and calls: create `h`, then
-call `h(work)`. Installing a handler for the rest of a block needs no `in`/`do`.
+Callable handler values, block-scoped `handle`, declared value/control modes, return transformations, static handler selection, `finally`/`mask`/`instance`, transport fixes, reactive signals, checker-backed LSP effect-requirement and implementation views, and the closed-program open-row prototype are implemented; see audit for evidence. The compile-time rejections for `many` replay safety and for `abort`/`once` misuse already exist and stay.
 
-Advanced users retain explicit continuation control, safe repeated resumption,
-scoped instances, result transformations and compile-time interpretation. These
-are parts of the same effects model, not competing frameworks. No claim of
-parity, completeness or superior performance is earned by syntax alone.
+## Phase 1 — Scoped row polymorphism
 
-## Current evidence
+- [ ] Put latent effect rows into `Type::Fun` and independently quantify, unify and discharge scoped row tails ([EFFECTS-ROW-POLY], [EFFECTS-GENERIC-ROWS], [STAGE-POLY-PREREQ]). Files: `crates/osprey-types/src/ty.rs` (`Type::Fun` has no row field today), `crates/osprey-types/src/effect_rows/{check,solver}.rs`. Cover upper bounds, duplicate labels, exact operation/instance discharge, occurs checks, shared-tail unification (`<E|r> = <F|r>` has no finite solution; freshening must not discard the shared-tail constraint), callbacks returning callbacks, record fields, shadowing, separate compilation. Reuse old inference cases as regression evidence only. Acceptance: new cases in `crates/osprey-types/src/effect_rows_tests.rs` and `crates/osprey-types/src/effect_rows_exports_tests.rs` pass; one `!e` helper instantiates at distinct call sites with distinct rows.
 
-The replacement grammar accepts callable `handler` values and block-scoped
-`handle` statements only. Explicit `handle … in/do …` applications, inferred
-arm modes, runtime ABI aliases and missing-signature fallbacks are deleted.
-Historical review reproductions may retain removed syntax; current guides and applications use callable or block-scoped handlers. The compiler rejects absent or unresolved operation metadata.
+- [ ] Implement invocation-time specialization so an escaping callable or lazy iterator carrying a statically handled latent operation is discharged against its invocation handler, not its construction handler ([EFFECTS-STATIC-DISCHARGE], [STAGE-LOWER-ORDER]). Files: `crates/osprey-types/src/effect_rows/validate_handlers.rs` (`validate_static_escape` fails closed today), `crates/osprey-codegen/src/effects.rs`. Acceptance: an escaped callable/lazy iterator under a static handler compiles with no effect dispatch in the emitted IR; add cases to `crates/osprey-cli/tests/staged_hygiene.rs`.
 
-| Area | Observed state | Evidence |
-| --- | --- | --- |
-| Existing runtime | Value substitution, deep single-shot resume, generic operation identity, shared handler state and native fiber serialization exist. Native continuation storage uses pthreads. | `tests/effects/resume/`, `tests/effects/errors/`, `tests/regressions/effects/fiber_effects.test.osp` |
-| Transport fixes | Operation arity is length-carrying; whole `Result` values and managed answers have regression coverage. | `resume_error_policies.test.{osp,ospml}`, `direct_recovery.test.{osp,ospml}`, `compiler/runtime/effects_runtime_tests.c`; issues #182, #183, #185 |
-| Callable handlers | Both flavors run reusable handlers, captured factory values and rest-of-block installation, through generic/typed callbacks, in every memory mode. The same storage and logging work runs under real and test implementations. | `examples/handlers/handlers.*`, `crates/osprey-cli/tests/handler_values.rs`, `tests/effects/injection/` |
-| Application examples | Talon Bank selects callable SQLite/audit/render policies. Issue Inbox handles typed SQL/HTTP requests at its application boundary; tests capture requests. The iOS counter handles Swift logging through a value effect. | `examples/projects/modules/`, `examples/mobile/`, `examples/ios/` |
-| Runtime dispatch | Codegen interns each `(effect instance, operation)` to a dense id; the thread-local handler stack keeps an evidence slot per id, so a perform is one array read. Full evidence passing waits on effect rows in `Type::Fun`. | `compiler/runtime/effects_runtime.c`, `effects_runtime_tests.c`, `crates/osprey-codegen/src/effects.rs` |
-| Effects checker | Closed-program operation propagation, partial generic discharge and explicit closed empty `![]` bounds exist in both flavors, including ascribed module signatures. A first open-row prototype parses and preserves `!e` and `![Log | e]`, permits unknown callback effects and keeps fixed labels checked. It does not put latent rows in function types or independently quantify, unify and discharge scoped row tails; the full row-polymorphism gate remains open. | `crates/osprey-types/src/effect_rows.rs`, `generic_effects_tests.rs`, `effect_rows_tests.rs`, `crates/osprey-project/tests/module_diagnostics.rs` |
-| Modes and continuations | Declared value/control modes replace arm-body classification. Arms run outside their activation; deep resume restores it. Owned escaping continuations, `many`, finalizers and masking remain unfinished. | `operation_modes.rs`: both flavors, default/GC/ARC; independent comparison below |
-| Scope and lifetime | `finally` cleanup runs once per runtime activation, after the return clause, inner to outer, and when a dropped continuation abandons its body. A static region discharges it after its answer. `mask E` skips one answering activation per level in the runtime and in the static proof, and is rejected when it would skip into a compile-time handler. `instance E` creates a capability typed per `instance` site; only its own handlers answer it, and a compile-time handler cannot. Saved resumptions invoked after the arm returns, cancellation and fiber ownership are not yet covered. | `tests/effects/scope/`: both flavors, default/GC/ARC; `compiler/runtime/effects_runtime_tests.c`; `examples/failscompilation/*mask_crosses_static_handler*` |
-| Answer transformations | `return value => expression` transforms normal completion A to B outside its activation, preserving managed and callable values. Deep resume returns B; a control arm's answer bypasses the transform. Directly resolved static handler values and aliases specialize their computation before erasure. | `handler_returns.rs`: both flavors, default/GC/ARC; `returns.*` comparison |
-| Staging | Explicit static selection accepts ordinary all-value effects. Source validation tracks builtin I/O through aliases/callbacks and rejects runtime dispatch hidden inside a locally handled helper. Capture/cell identity and dynamically used originals are preserved. Escaping callables and lazy iterators with a statically handled latent operation fail before erasure: the existing pass bound deferred work to the construction handler, instead of its invocation handler. Invocation-time specialization remains a blocker. A runtime handler nested inside a static interpretation shadows only the operations its arms supply; an uncovered operation still reaches the static answer, directly and through helpers. | `static_selection.rs`, `staged_hygiene.rs`, `effect_rows_exports_tests.rs` and `static_discharge.test.osp` |
-| Shared staged callback | One `!e`-annotated helper runs the same `Read` callback under a statically discharged handler and a runtime-selected handler in both flavors and all three native memory backends. A static-only IR check finds no effect dispatch. The static case has byte-exact native, wasm32 and mobile goldens. This is a closed-program prototype, not independently quantified stage/row polymorphism. | `examples/handlers/staged-rows.*`, `handler_values.rs`, `staged_effects.rs`, `open_row_static.test.osp{,ml}` |
-| Reactive signals | Checked may-read dependencies drive immutable snapshots and selective synchronous refresh. Generic identities, callback resolution, branch unions and unknown remainders survive static discharge; old values remain owned independently. Default/ML dashboard and native fiber/control compositions are executable gates. | `reactive_signals.test.*`, `staged_shared.test.*`, `staged_hygiene.rs`, `signalDependencies`, `signalSnapshot`, `signalRefresh` |
-| Editor and docs row display | Written function-row bounds survive inference in every signature view. Separate checker-backed descriptions now show transitive required operations, concrete generic instances, host runtime operations and unresolved callback effects in hover, signature help, completion, `--symbols` and API pages. Both-flavor transport tests prove unsaved edits replace stale descriptions. Scoped handler-instance and replay-boundary views remain open; this does not close step 4's row-polymorphism gate. | `effect_rows_exports_tests.rs`, `analysis/more_tests.rs`, `server/tests/features.rs`, `crates/osprey-cli/tests/cases/api_docs_extra.rs`, `[LSP-EFFECT-REQUIREMENTS]` in spec 0020 |
-| Targets | Static discharge and dynamic value handlers have portable paths. Explicit dynamic resumption is unavailable in the current wasm backend and must be rejected before linking. Target limitations do not change language semantics. | [WebAssembly](../specs/compiler/0022-WebAssemblyTarget.md), target capability tests |
+## Phase 2 — Continuation ownership and lifetime
 
-The curried-ML effect-loss report
-[#184](https://github.com/Nimblesite/osprey/issues/184) now passes with the
-current block-handler syntax: its four validation reports produce a count of
-four. A stronger native regression executes full and partial calls at arities
-one through five through both value and resuming handlers under default, GC
-and ARC. Abandoning native continuation frames still requires a resource audit:
-cancelling a pthread is not proof of source finalization or release of every
-owned operand.
+- [ ] Implement owned continuation values: bare `resume` denotes the continuation; transferring it removes the former owner's right; `drop(k)`; a `once` call consumes it, a `many` call borrows a reusable snapshot ([EFFECTS-CONTINUATION-OWNERSHIP], [EFFECTS-RESUME-NESTING]). Files: `crates/osprey-ast/src/resume.rs` (only counts syntactic uses today), `crates/osprey-types/src/multiplicity.rs`, codegen/runtime continuation layout. Cover saved resumptions invoked after the arm returns, rejected borrowed escape, double consumption, deep nesting, cancellation, abandonment, HTTP callbacks, fiber ownership. Audit default/GC/ARC; output correctness alone cannot prove resource correctness (zero ARC leak). Acceptance: both-flavor positive and negative cases for each shape above, plus ARC zero-leak on transferred and dropped continuations.
 
-### Independent evidence
+- [ ] Give `control abort` a runnable case: an `abort` arm abandons the region, runs its finalizers inner to outer, releases owned operands, and its `perform` never returns ([MULTI-DECL-ABORT-RESULT], [MULTI-HANDLE-ABORT-MODE], [MULTI-COST-ABORT], [EFFECTS-FINALIZATION]). Files: remove `unimplemented_abort` in `crates/osprey-types/src/multiplicity.rs`; add unwinding/release in `compiler/runtime/effects_runtime.c` / `effects_coro.c`. Blocked on [Plan 0026](0026-structured-concurrency.md) unwinding. Acceptance: a runnable abort case in `crates/osprey-cli/tests/staged_multiplicity.rs` replaces the current rejection assertions and proves finalizers and operand release.
 
-`python3 examples/handlers/run.py all --check` was executed with Osprey in both
-flavors, Koka 3.2.3, OCaml 5.4.1, Eff 5.1 (commit
-`503da71b9cb927af04fc62e28511e63cd7199151`) and Effekt 0.80.0. The common handler
-examples produced `42`, `42`, then greetings for Ada, Grace and Ada.
+- [ ] Audit abandoned native continuation frames: prove a dropped/cancelled continuation releases every owned operand and runs its finalizers exactly once; pthread cancellation/exit alone is not evidence ([MULTI-COST-ABORT], [EFFECTS-FINALIZATION]). Acceptance: finalizer order and zero ARC leak asserted for abandoned continuations under default/GC/ARC; shared with [Plan 0026](0026-structured-concurrency.md) kill-safety.
 
-The stronger `--demo semantics --check` comparison now passes in both Osprey
-flavors and real Koka, OCaml, Eff and Effekt executables: all produce
-`42/142/0/0`. Declared control operations fixed the former Osprey result
-`42/142/1/0`. Returning without resuming abandons the computation; adding an
-unreachable resume no longer changes its meaning. The independent golden was
-preserved.
+## Phase 3 — Reusable continuations
 
-The `--demo returns --check` comparison also passes in every listed language:
-`done=42`, `done=42!`, `stopped`. It distinguishes normal completion from code
-after resumption and an answer that abandons the computation. Effekt places
-the transform inside the handled computation; the other examples use explicit
-normal-return clauses. This probe's transform is pure, so it does not establish
-equivalent effect scope for those two encodings.
+- [ ] Build a reusable continuation representation (CPS/frames or another portable backend) that preserves the captured remainder independently per branch, replacing the single-shot pthread stack ([MULTI-HANDLE-MANY], [MULTI-HANDLE-MANY-LEXICAL], [MULTI-COST]). Files: `compiler/runtime/effects_coro.c` / `effects_runtime.c`, `crates/osprey-codegen`. Remove `unimplemented_many` in `crates/osprey-types/src/multiplicity.rs`. Keep the existing handle-site rejections (`many` over a non-replayable body, captured mutable state, or a fiber-spanning continuation) as fixtures ([MULTI-REPLAY-CHECK], [MULTI-REPLAY-STATE], [MULTI-REPLAY-FIBER]). Acceptance: a pure search yields all alternatives; independent branch state; no replay of work before capture; retrying one operation does not replay later work; add a positive `many` case to `crates/osprey-cli/tests/staged_multiplicity.rs` and `tests/effects/multiplicity/`.
 
-Two retained staging probes, written in the removed `in` syntax, falsified the
-former implementation; current staging coverage uses the replacement grammar:
+## Phase 4 — Targets, traces, editor
 
-- `staging-scope.osp`: static interpretation captured the caller's shadowing
-  binding (`static=2 dynamic=1`), instead of both producing 1.
-- `staging-type.osp`: an `int` operation accepted a `string` arm and printed 10;
-  it must fail before erasure, including when the arm is unused.
+- [ ] Run continuation programs on native and wasm32 with identical answers; support `once` on wasm32 when the stack-switching backend provides it and keep `many` portable (no permanent ban); keep rejecting missing capabilities before linking, naming the operation ([MULTI-WASM], [STAGE-WASM]). Files: `crates/osprey-cli/src/target_capabilities.rs`, `crates/osprey-cli/tests/target_capabilities.rs`, `crates/osprey-cli/tests/staged_multiplicity.rs`. Acceptance: `ONCE_ON_WASM` compiles and runs; `MANY_ON_WASM` runs once a portable representation exists; capability rejections still name the operation.
 
-Historical staging measurements (114 versus 148 IR lines; a 27 KB wasm module)
-are isolated observations, not performance promises. Previous claims that
-staging eliminates the need for row inference, that dependency sets are exact
-runtime reads, or that static-origin state is automatically replayable were
-incorrect. The original higher-order staging gate passed; generic reactive
-rebuild and nested parallel-matrix gates did not yet demonstrate the full
-contract.
+- [ ] Ship the effect trace: a debug build and DAP view record the resolved perform site, actual runtime handler instance and resumption branch, innermost first; static-discharged sites are excluded ([MULTI-TRACE], [DEBUGGER-EFFECT-TRACE]). Files: `crates/osprey-debug`, debug codegen, VS Code extension DAP view. Acceptance: a paused session shows the trace and selecting an entry navigates to the perform or arm.
 
-The new mode and hygiene suites passed 54 native executions across both
-flavors and three memory backends, with zero live ARC objects. Scoped-runtime
-checks passed 2,194 assertions. Control-without-resume target rejection also
-passed. These focused checks establish the replacement behavior; they do not
-claim full implementation of the remaining contract or a green legacy corpus.
+- [ ] Ship the LSP replay-boundary view ([LSP-EFFECT-MULTIPLICITY]): on a `many` handler arm, `textDocument/implementation` returns the perform sites that arm can answer (its replay set); a handler region whose arms are all tail-resumptive over `once` operations publishes the "declaring Log static would remove it from the runtime" hint. Files: `crates/osprey-lsp/src/effects/implementations.rs`, `crates/osprey-lsp/src/effects/tests.rs`. Acceptance: tests pin both reports.
 
-## Delivery order and gates
+- [ ] Align `tree-sitter-osprey-ml/grammar.js` `operation_declaration` with the parser: the editor grammar accepts a multiplicity without `control` (`many op : …`), which the ML parser (`crates/osprey-syntax/src/ml/parser/effect_declarations.rs`, `operation_markers`) and [MULTI-DECL] reject; nest `multiplicity` under `operation_mode` in the editor grammar ([MULTI-DECL]). Acceptance: `many op : int => int` fails to parse as an operation declaration in the ML grammar corpus.
 
-Each step must have executable positive and negative cases in both flavors.
-Keep the existing implementation where it satisfies the contract. Do not add a
-separate handler-object hierarchy when an ordinary closure is sufficient.
+## Constraints
 
-1. **Freeze the contract and remove contradictions.** One effects spec, this
-   plan, and a practical runnable guide. Resolve declaration modes, scoped rows,
-   ownership, replay, finalization and target rules together. Agreement recorded with OspreyOpus1 on TMC on 2026-09-17 after correcting its five findings; local link and spec-ID checks complete.
-2. **Make ordinary effect management trustworthy.** Implement value/control
-   mode from the operation declaration, remove AST-search mode selection,
-   replace contradictory semantics directly, and pass the `42/142/0/0`
-   comparison. Pin no-`in`/`do` handler values, independent factories,
-   higher-order transport, same-operation forwarding to an outer handler,
-   result preservation and curried-ML calls. Add real/test logging and storage
-   examples using the same unchanged business function.
-3. **Validate before specializing.** Assemble imports, resolve bindings and
-   generic instances, then validate every source arm and transitive requirement
-   before static discharge. Preserve capture/cell identity, source locations,
-   left-to-right once-only argument evaluation, unused-arm checking and
-   original callable definitions. Recheck residual effects and target legality.
-   Both staging probes and captured-state tests must pass; emitted code must
-   contain no effect dispatch for discharged operations. Ordinary residual
-   computation and closure allocation are permitted.
-4. **Make effects part of reusable types.** Add generalized open scoped rows to
-   function types and interfaces. Test upper bounds, duplicate labels, exact
-   operation/instance discharge, occurs checks, shared-tail unification,
-   callbacks returning callbacks and record fields, shadowing and separate
-   compilation. Reuse old inference cases as regression evidence, not as the
-   definition or sole oracle of the new solver. Diagnostics show the missing
-   operation and why it escaped its handler.
-5. **Complete scope and lifetime control.** Named instances, masking, answer
-   transformations and handler finalization have shipped (see the status table).
-   Remaining: owned continuation transfer, with finalization that follows the
-   transfer. Test saved resumptions invoked after the arm returns, rejected
-   borrowed escape and double consumption, deep nesting, cancellation,
-   abandonment, HTTP callbacks and fiber ownership. Audit default, GC and ARC;
-   output correctness alone cannot prove resource correctness.
-   Gap: every `control abort` operation is still rejected at compile time
-   (`unimplemented_abort`, crates/osprey-types/src/multiplicity.rs) because
-   abandoning a region does not yet unwind it; [MULTI-DECL-ABORT-RESULT] and
-   [MULTI-HANDLE-ABORT-MODE] have no runnable case until it does.
-   ❓ Decide: `tree-sitter-osprey-ml/grammar.js` accepts a multiplicity without
-   `control` (`many op : …`), which the ML parser and [MULTI-DECL]'s `opDecl` reject —
-   tighten the editor grammar or keep it lenient.
-6. **Provide reusable continuations.** Use a representation that can preserve
-   the captured remainder independently for each branch; a consumed pthread
-   cannot provide it. Prefer explicit continuation frames/CPS with a portable
-   backend path; select the concrete runtime layout from the smallest working
-   search and stored-resumption prototypes. Test pure search, independent
-   branch state and no replay of work before capture. Reject replay of email,
-   payment or an unproven captured resource, including operations sharing the
-   handled effect's name. Retrying one operation must not replay later work.
-7. **Prove target and tooling support.** Run accepted programs on native and
-   wasm with the same answers; reject missing target capabilities before
-   linking. Add logical continuation/handler-instance traces ([MULTI-TRACE],
-   [DEBUGGER-EFFECT-TRACE]; not built: no debug build or DAP view carries one) and LSP views of
-   required operations, possible handlers and replay boundaries. No backend
-   may silently weaken multiplicity or cleanup guarantees.
-
-Steps 2–3 are the shortest useful prototype path. Full completion requires the
-later steps; neither multi-shot nor wasm continuation parity is out of scope.
-Safe cleanup integrates with [structured concurrency](0026-structured-concurrency.md).
-This plan owns continuation lifetime; that plan owns scheduling and cancellation
-integration.
-
-## Comparison and distinguishing goals
-
-The baseline comes from primary contracts and executed examples, not from
-existing Osprey goldens. These are acceptance targets until their gates pass.
-
-| Capability | Reference baseline | Osprey acceptance |
-| --- | --- | --- |
-| Replace an implementation without changing business code | Koka handler functions; OCaml `Effect.Deep`; Eff handlers; Effekt scoped handlers | Callable handlers in both flavors; real and test implementations |
-| Control continuation explicitly | Koka `ctl`, OCaml continuations, Eff and Effekt continuation clauses | Declaration-based control, deep resume, no-resume abandonment |
-| Reusable effectful abstractions | Koka open effect rows | Published open-row signatures, generic callbacks and scoped duplicates |
-| Rich handler composition | Koka return clauses, masking and named handlers | Defined answer types, explicit scope and instance routing |
-| Saved and repeated resumptions | Koka and Eff; OCaml continuations are one-shot | Owned affine and reusable continuations with capture/replay checks |
-| Manage effects at compile time | Osprey design goal | The same typed-operation discipline drives checked static lowering and dynamic interpretation |
-| Accessible experience | Osprey product goal | Default-first examples, ordinary calls, optional advanced notation and useful diagnostics |
-
-References: [Koka book](https://koka-lang.github.io/koka/doc/book.html),
-[OCaml Effect.Deep](https://ocaml.org/manual/5.3/api/Effect.Deep.html),
-[Eff](https://www.eff-lang.org/handlers-tutorial.pdf),
-[Effekt handlers](https://effekt-lang.org/docs/concepts/effect-handlers).
-Osprey aims to combine this baseline with checked staging, replay safety and
-both approachable and ML surfaces. Unmeasured speed, universal superiority and
-unimplemented capabilities must not be presented as established facts.
-
-## Downstream work and release
-
-Reactive dependency reporting now uses checked operation identities and sound may-read sets. Immutable snapshots selectively rebuild on changed identities or unknown remainders, with both-flavor dashboard and fiber/control regression programs.
-Device effects (`Parallel`, `Tensor`, `Alloc`) depend on
-[GPU delivery](0023-gpu.md); a host fallback is not a device proof.
-Keep static discharge a separate checked pass. MLIR remains a backend option
-when measured device-lowering needs justify its dependency; adopting it cannot
-change source semantics.
-
-Release requires workspace tests, native goldens under all memory modes, wasm
-capability/conformance checks, both-flavor syntax and editor tests, docs checks,
-formatting, linting and repository-required CI. Keep ownership/IR checks where
-observable output cannot detect a defect. Review changed goldens against the
-new contract and independent evidence; never weaken a failure into a skip to
-claim a completed milestone.
+- Each task needs executable positive and negative cases in both flavors.
+- No backend may silently weaken multiplicity or cleanup guarantees; reject before linking when a capability is absent.
+- Keep static discharge a separate checked pass; MLIR stays an optional backend and cannot change source semantics.
+- Keep the existing implementation where it satisfies the contract; do not add a separate handler-object hierarchy when an ordinary closure is sufficient.
+- Never weaken a failure into a skip to claim a milestone; ownership/IR checks stay where observable output cannot detect a defect.

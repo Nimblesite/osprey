@@ -61,6 +61,12 @@ to synchronized retain/release operations, while the conservative GC disables
 collection after a second allocator thread appears. Deterministic fiber mode
 runs the same ownership protocol without creating a thread.
 
+Under the planned compile-time ownership backend
+([MEM-OWNERSHIP-STATIC](#compile-time-ownership-mem-ownership-static)) this
+runtime co-ownership is replaced: ownership must transfer to exactly one
+side, or repeated `await` of a managed result is rejected. That backend is
+not implemented yet.
+
 ## Backend Selection [MEM-BACKENDS]
 
 ### Why GC is the native default
@@ -159,6 +165,26 @@ and its conflicting uses. The acyclic heap ([MEM-ACYCLIC]) makes a single-owner
 tree sufficient. Collection stays unobservable ([MEM-OPAQUE]): the backend
 decides which programs compile and when memory is freed, never a compiled
 program's output.
+
+Design points still open for this backend; none is implemented yet:
+
+- **Sharing.** Persistent lists and maps share structure between versions.
+  Either the backend rejects programs that keep two live versions, or shared
+  nodes are copied on the second use (an implicit clone the diagnostic can
+  recommend instead).
+- **Fibers and channels.** `spawn`, `await` and channel sends currently
+  co-own values with the runtime
+  ([MEM-FIBER-ISOLATION](#fiber-boundary-ownership-mem-fiber-isolation)).
+  Ownership must transfer to exactly one side, or repeated `await` of a
+  managed result is rejected.
+- **Closures and effects.** Captured values, resumptions and handler state
+  need an owner the analysis can see across `perform`/`resume`.
+- **Host libraries.** Exported globals and C ABI results
+  ([MEM-BACKENDS](#backend-selection-mem-backends)) need a documented
+  transfer rule for WASM, iOS, Android and Python callers.
+- **Diagnostics.** The rejection must say what to change in source with no
+  annotation syntax available, for example binding a copy or restructuring
+  the second use.
 
 When shipped, `ownership` replaces the unmanaged `none` backend, which is then
 deleted and its spelling rejected.

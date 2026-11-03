@@ -1,6 +1,6 @@
 # Application frameworks
 
-Reactive mobile applications, the proof workbench and its lessons, and host protocols.
+Reactive mobile applications, the proof workbench and its lessons, the Osprey Agent, host protocols, and the local coding model.
 
 [All specification subjects](../README.md)
 
@@ -9,3 +9,5 @@ Reactive mobile applications, the proof workbench and its lessons, and host prot
 - [Proof Workbench](0051-ProofWorkbench.md)
 - [Workbench Lessons](0052-WorkbenchLessons.md)
 - [Osprey Native and its hosts [NATIVE-HOSTS]](0047-OspreyNativeHosts.md)
+- [Osprey Agent](OspreyAgent.md)
+- [Local coding model [LLM]](LocalCodingModel.md)

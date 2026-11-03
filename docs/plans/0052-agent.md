@@ -1,73 +1,47 @@
-# Plan 0052 — Osprey Agent: providers, models, effort, a settings screen, and code that looks like code
+# Plan 0052 — Osprey Agent
 
-Specs: [UI-EFFECTS], [UI-STORE], [UI-MACHINE-SELF-TEST]. Follows from: plan [0051](0052-agent.md), whose MCP work surfaces in this plan's settings screen.
+Contract: [OspreyAgent](../specs/applications/OspreyAgent.md); [UI-EFFECTS], [UI-STORE], [UI-EFFECTS-PROCESS] in [packages/native/README.md](../../packages/native/README.md); [UI-MACHINE-SELF-TEST] in [UiMachines](../specs/platforms/UiMachines.md); [Model Context Protocol specification](https://modelcontextprotocol.io/specification).
 
-## Goal
+Out of scope: OAuth logins, fetching model lists, streaming replies, tool approval; MCP resources, prompts, sampling, elicitation.
 
-Osprey Agent only speaks DeepSeek, keeps its key in memory, draws fenced code in one colour and selects one line at a time. After this plan a person opens Settings, configures a provider (DeepSeek, Kimi or GLM, each with its API and coding plan endpoints), adds and removes MCP servers, picks a model and its effort in the composer, reads highlighted code and selects any run of the transcript. Every claim has an automated test: host-free checks, doubled window runs with goldens, and a `--live` run when a provider's key is present.
+## Prerequisites in place
 
-## Decisions
+- `@osprey/pydantic-ai` ships the Kimi/GLM providers, profiles and unified `thinking` (`packages/pydantic_ai/src/profiles.py`, `providers_http.py`) and the sans-IO MCP client `packages/pydantic_ai/src/mcp.py`, with tests and licence references.
+- `examples/agent/src/highlight.py` and its `Ui::rich` drawing in `examples/agent/src/view.ospml` are done.
+- Framework process capabilities `ProcessStart/Write/Read/Stop` are declared in `packages/native/src/capability.ospml` and specified as [UI-EFFECTS-PROCESS] in `packages/native/README.md`, but the SwiftUI host has no adapter for them.
+- `examples/agent/self-test/mcp_server.py` (stdlib, stdio + streamable HTTP) exists.
 
-| Question | Decision | Why |
-| --- | --- | --- |
-| Package surface | `MoonshotAIProvider`, `ZaiProvider`, `moonshotai_model_profile`, `zai_model_profile` and the unified `thinking` setting in `packages/pydantic_ai`, under upstream's names | They exist upstream in 2.46.0; the app stays a thin caller |
-| Coding plan endpoints | App catalogue entries that reuse the upstream provider's profile with another base URL: `https://api.kimi.com/coding/v1`, `https://api.z.ai/api/coding/paas/v4` | Upstream has no such providers, and coding plan keys only work there |
-| Model identity | `provider/model` in `chatModel`; a value with no `/` is DeepSeek, which is what saved conversations hold | One field, one rule |
-| Effort | A per-conversation `chatEffort`, whose choices come from the model's profile. No control when the model has none. GLM-5.3 offers Low, High, Max; GLM-5.2 every level; older GLM on or off; Kimi reasoning models Minimal to High and never off | Each model's real, peculiar settings, taken from upstream's profiles |
-| Settings | A pane replacing the conversation column, opened from the sidebar foot, with Providers and MCP servers tabs | A pane is drawn by the headless self-test, so it has goldens |
-| Keys | `providers.json` in the app's private store, mode 0600, never `chats.json`, never records. `.env` names `DEEPSEEKKEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`, `KIMI_API_KEY`, `ZAI_API_KEY`, `GLM_API_KEY` still seed an empty slot | Survives a restart; same secrecy check as today, extended to every provider |
-| MCP add and remove | The MCP tab writes `mcp.json` in the private store; `.mcp.json` servers appear off until turned on (plan 0052) | The window is the normal way, the file stays pasteable |
-| Highlighting | A pure table-driven scanner, `examples/agent/src/highlight.py`, drawn as `Ui::rich` runs | No dependency; host-free tests see every token |
-| Selection | AppKit text views with one selection group per transcript | SwiftUI's selection stops at each `Text` |
+## Selection
 
-## Phases
+- [ ] [UI-MACHINE-SELF-TEST] Render the transcript as one selectable group of AppKit text views in the SwiftUI host, so selection crosses blocks (today `.textSelection` is per `Text` in `hosts/swift/Sources/OspreyNative/Leaves.swift`); add Cmd-A and Cmd-C. Acceptance: a new self-test drives real key events to select a run spanning transcript blocks and copies it, asserted in the records.
 
-- [ ] **Package.** Providers, profiles and `thinking` mapping, the MCP protocol module finished (`osprey.toml`, tests, README, audit). Golden totals rise.
-- [ ] **Highlighting.** `highlight.py`, drawing, theme tokens with contrast of at least 4.5:1, tool output by file extension, `self-test/code-blocks.json`, goldens.
-- [ ] **Selection.** Multi-line selection across blocks, Cmd-A and Cmd-C, proved by real events in a self-test.
-- [ ] **Providers and settings.** Catalogue, settings pane, key persistence, composer's model and effort pickers, request shape per provider against a strict double, `self-test/settings.json`, goldens.
-- [ ] **MCP in the app.** Process capabilities, config, connect and call, add, remove and toggle in Settings, inspector section, `self-test/mcp.json` with the stdlib test server on both transports (plan 0052).
-- [ ] **Live proof.** `self-test.sh --live` picks whichever provider has a key, runs a real coding task and an MCP task with acceptance checks the model never sees.
-- [ ] **Credits.** The website's announcements and credits page.
-- [ ] **Docs.** README sections for providers, effort, MCP.
+## Providers, models and effort
 
-## Out of scope
+- [ ] Replace DeepSeek-only `DEEPSEEK_URL`, `url` and `profile_of` in `examples/agent/src/engine.py` with a catalogue of DeepSeek, Kimi and GLM entries; the coding-plan entries reuse the provider's profile at base URLs `https://api.kimi.com/coding/v1` and `https://api.z.ai/api/coding/paas/v4`. Acceptance: host-free tests that `Engine.url`/`Engine.profile_of` return the right endpoint and profile per entry.
+- [ ] `examples/agent/src/model.ospml`: `chatModel` becomes `provider/model` (a value with no `/` reads as DeepSeek), and add a per-conversation `chatEffort` whose choices come from `Profiles.thinking_levels` (no picker when it returns none). Acceptance: a saved conversation with no `/` restores as DeepSeek, and `chatEffort` round-trips through `chatJson`/`chatOf`.
 
-OAuth logins, fetching model lists from a provider, streaming replies, tool approval.
+## Settings and keys
 
-# Plan 0052 — MCP servers in Osprey Agent
+- [ ] `examples/agent/src/view.ospml` + `model.ospml`: a Settings pane replacing the conversation column, opened from the sidebar foot, with Providers and MCP servers tabs; the composer's model picker gains the provider catalogue and an effort picker. Acceptance: `self-test/settings.json` drives provider + model + effort and matches goldens.
+- [ ] Key persistence in `examples/agent/src/app.ospml` + `model.ospml`: write `providers.json` in the app's private store (mode 0600), never `chats.json`, never records; seed an empty slot from `.env` names `DEEPSEEKKEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`, `KIMI_API_KEY`, `ZAI_API_KEY`, `GLM_API_KEY`. Acceptance: a restart self-test shows a saved provider key and `grep -rq` finds it in neither `chats.json` nor the records.
 
-Specs: [UI-EFFECTS] and [UI-MACHINE-SELF-TEST] in `packages/native/README.md`; the [Model Context Protocol specification](https://modelcontextprotocol.io/specification).
-Follows from: the `@osprey/pydantic-ai` port and Osprey Agent in [`examples/agent`](../../examples/agent/README.md).
+## MCP in the app
 
-## Goal
+- [ ] Implement the four process capabilities [UI-EFFECTS-PROCESS] in the SwiftUI host: an adapter for `process-start/process-write/process-read/process-stop` (`hosts/swift/Sources/OspreyNative/ProcessAdapter.swift` currently only `run`), registered in `Adapters.standard` (`hosts/swift/Sources/OspreyNative/RegionStore.swift`), with every process stopped on quit. Acceptance: host tests for the four kinds and stop-on-quit; an unregistered kind still completes with the typed unknown-kind error.
+- [ ] `examples/agent/src/app.ospml` + `engine.py`: read and merge `mcp.json` (private store) and `.mcp.json` (project; the project entry wins on a name clash), connect on launch and folder change, list tools, dispatch `<server>_<tool>` calls through `Turn`, restart an exited server once a person asks; a slow or dead server fails only its call, never the turn or other servers; project servers stay off until turned on. Acceptance: `self-test/mcp.json` doubled run covers connect, a tool call, a tool error, a dead server, and a project server off then on.
+- [ ] Secrecy: MCP `env` and `headers` values never reach `chats.json`, the records or the transcript. Acceptance: extend `self-test.sh`'s existing `grep -rq` key check to a planted MCP secret.
+- [ ] `examples/agent/src/view.ospml`: the MCP tab adds, removes and toggles servers; an inspector section shows each server's state, tool count, its problem in words, a switch, and buttons to open the config file and reload; tool steps show the server's name.
 
-Osprey Agent's model has four hardcoded tools in `examples/agent/src/engine.py`, and neither the app nor `packages/pydantic_ai` knows MCP. After this plan, a person configures MCP servers the way other agents do, sees each server's state in the window, and the model can call those servers' tools in a real conversation.
+## Self-tests and goldens
 
-## Decisions
+- [ ] `examples/agent/self-test/code-blocks.json` + goldens: a doubled run draws fenced code and tool output through `Highlight.tokens_of`; assert the `Ui::rich` runs and that every code token pair meets 4.5:1 via `packages/native` `Contrast::ratio` (`packages/native/src/theme.ospml`).
+- [ ] `examples/agent/self-test/settings.json` + goldens: configure each provider, pick a model and effort, and check the per-provider request shape against a strict double.
+- [ ] `examples/agent/self-test/mcp.json` + goldens per OS: run the doubled model through config, connect, a tool call, a tool error, a dead server, a project server off then on, and a secret kept out of the records, using `self-test/mcp_server.py` on stdio and streamable HTTP.
 
-| Question | Decision | Why |
-| --- | --- | --- |
-| Config format | The common `{"mcpServers": {name: {command, args, env} or {url, headers}}}` | A person can paste the block every MCP server's README already gives |
-| Config location | `mcp.json` in the app's support folder for every project; `.mcp.json` in the project folder for one | Same split as other agents; the project entry wins on a name clash |
-| Project servers | Listed but off until the person turns them on, remembered per folder | A cloned repo's `.mcp.json` starts commands: changing folder must never run them unasked, whatever the agent may do once asked |
-| Transports | stdio and streamable HTTP | HTTP fits the existing `Http` capability; most local servers are stdio |
-| Long-lived processes | New `@osprey/native` capabilities `ProcessStart`, `ProcessWrite`, `ProcessRead`, `ProcessStop` | `Run` is one shot. Every request stays bounded: a read returns the output so far, within a limit and a deadline, as one completion |
-| Protocol code | `packages/pydantic_ai/src/mcp.py`: JSON-RPC messages and results, sans-IO, following upstream `pydantic_ai.mcp` names | Testable without a process; the app owns the IO through capabilities |
-| Tool names | `<server>_<tool>`, each joining the engine's tool list | What upstream's `PrefixedToolset` does; the transcript can name the server |
-| Approval | None, the same as the built-in tools; the "Not sandboxed" note stays true | An approval step is its own feature |
-| Secrets | `env` and `headers` values never reach `chats.json`, the records or the transcript | Same rule the API key follows, same self-test check |
+## Live proof
 
-## Phases
+- [ ] `examples/agent/self-test.sh --live`: pick whichever provider has a key, run a real coding task and an MCP task, each with acceptance checks the model never sees (today it is DeepSeek-only, `coding.json` + `tasks/`).
 
-- [ ] **Protocol.** `mcp.py`: `initialize`, `tools/list` with pagination, `tools/call`, error and `isError` results, text and non-text content. Tests in `packages/pydantic_ai/tests`. Licence: add the upstream module and the MCP specification to `references` in `packages/license-audit.json`, with a recorded comparison in `source-audit.json`.
-- [ ] **Process capabilities.** The four capabilities in `packages/native/src/capability.ospml` and README, `ProcessAdapter.swift` on the SwiftUI host, with every process stopped on quit; hosts without them complete with a typed error.
-- [ ] **Config.** Read and merge both files, with plain messages for a broken file, a missing command, or an unsupported entry. Host-free tests, with many permutations.
-- [ ] **Connect and call.** Connect on launch and on folder change; list tools; dispatch server tool calls through `Turn`; restart a server that exited, once a person asks. A slow or dead server fails that call and never blocks the turn or other servers.
-- [ ] **Window.** An inspector section: each server's state, its tool count, its problem in words, a switch for each server, and buttons to open the config file and reload. Tool steps show the server's name.
-- [ ] **Proof.** An in-repo test MCP server, python standard library only, on both transports. `self-test/mcp.json` runs the doubled model through config, connect, a tool call, a tool error, a dead server, a project server left off and then turned on, a secret kept out of the records, goldens per OS. `self-test.sh --live` gives DeepSeek a task that it can only solve through the server, with acceptance checks it never sees.
-- [ ] **Docs.** The README section "MCP servers", with a pasteable example.
+## Docs
 
-## Out of scope
-
-MCP resources, prompts, sampling, OAuth login flows and any tool approval step: each gets its own plan if wanted.
+- [ ] `examples/agent/README.md`: sections for providers, effort, and MCP servers, with a pasteable MCP config example.

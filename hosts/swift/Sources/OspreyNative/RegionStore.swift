@@ -120,7 +120,7 @@ public final class RegionStore: ObservableObject {
 /// The standard adapters this host answers ([GPUI-HOST-CAPABILITIES] names the same kinds).
 public enum Adapters {
     public static func standard(store: StoreAdapter) -> [CapabilityAdapter] {
-        [RunAdapter(), HttpAdapter(), store, ChooseFolderAdapter()]
+        [RunAdapter(), ProcessAdapter(), HttpAdapter(), store, ChooseFolderAdapter()]
     }
 }
 
