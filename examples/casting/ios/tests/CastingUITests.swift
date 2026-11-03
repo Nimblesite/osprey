@@ -3,6 +3,29 @@ import XCTest
 // [CAST-MOBILE-DELIVERY] Drive the real native shell and resident Osprey library.
 final class CastingUITests: XCTestCase {
     @MainActor
+    func testNativeBonjourDiscoveryAndRescan() throws {
+        let app = XCUIApplication()
+        defer { app.terminate() }
+        app.launchArguments = ["--skin", "midnight"]
+        app.launchEnvironment["CAST_TEST_AUDIO"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
+        app.launch()
+        XCTAssertTrue(app.buttons["Receiver"].waitForExistence(timeout: 15), app.debugDescription)
+        app.buttons["Receiver"].tap()
+        XCTAssertTrue(app.buttons["Osprey native test receiver"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(app.buttons["Test receiver"].exists, "Native discovery must not use the injected transcript")
+        app.buttons["Osprey native test receiver"].tap()
+        app.buttons["Search again"].tap()
+        XCTAssertTrue(app.buttons["Receiver"].waitForExistence(timeout: 10))
+        app.buttons["Receiver"].tap()
+        XCTAssertTrue(app.buttons["Osprey native test receiver"].waitForExistence(timeout: 10), app.debugDescription)
+        app.buttons["Osprey native test receiver"].tap()
+        app.buttons["Play"].tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
+        app.buttons["Stop"].tap()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     private func touchRegions(_ elements: [XCUIElement]) {
         for element in elements {
             // AX snapshots can represent 44 points as 43.99999999999999.

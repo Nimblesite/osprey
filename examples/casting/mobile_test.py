@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """[CAST-MOBILE-DELIVERY] Native app journeys against a real TLS Cast receiver."""
 import base64
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,29 @@ def command(arguments, **options):
 def receiver_fixture(port):
     text = f'Test._googlecast._tcp SRV 0 0 {port} 127.0.0.1\nTest._googlecast._tcp TXT "fn=Test receiver"\nZUnavailable._googlecast._tcp SRV 0 0 1 127.0.0.1\nZUnavailable._googlecast._tcp TXT "fn=Unavailable receiver"\n'
     return base64.b64encode(text.encode()).decode()
+
+
+def stop_process(process):
+    process.terminate()
+    try: process.wait(timeout=5)
+    except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=5)
+
+
+@contextmanager
+def bonjour_fixture(port, work):
+    path = work / "bonjour.log"
+    with path.open("w") as log:
+        process = subprocess.Popen(["/usr/bin/dns-sd", "-P", "OspreyCasting-" + str(os.getpid()),
+            "_googlecast._tcp", "local.", str(port), f"osprey-casting-{os.getpid()}.local.",
+            "127.0.0.1", "fn=Osprey native test receiver"], stdout=log, stderr=subprocess.STDOUT)
+        try:
+            for _ in range(100):
+                if process.poll() is not None: raise RuntimeError("Bonjour publisher exited: " + path.read_text())
+                if "reply for service" in path.read_text() and "registered and active" in path.read_text(): break
+                time.sleep(0.05)
+            else: raise RuntimeError("Bonjour registration timed out: " + path.read_text())
+            yield
+        finally: stop_process(process)
 
 
 def run(platform):
@@ -51,7 +75,7 @@ def run(platform):
                 finally: command(adb + ["reverse", "--remove", f"tcp:{port}"])
             else:
                 env.pop("OSPREY_ANDROID_SERIAL", None)
-                command(["bash", str(APP / "ios/ui-test.sh")], env=env)
+                with bonjour_fixture(port, work): command(["bash", str(APP / "ios/ui-test.sh")], env=env)
             verify_log(log, platform)
             verify_pictures(platform, output)
             if platform == "ios": verify_skin_palettes(output)
@@ -59,9 +83,7 @@ def run(platform):
             try:
                 if adb is not None: command(adb + ["shell", "am", "force-stop", "org.ospreylang.casting"], timeout=15)
             finally:
-                process.terminate()
-                try: process.wait(timeout=5)
-                except subprocess.TimeoutExpired: process.kill(); process.wait()
+                stop_process(process)
 
 
 def wait_port(process, path):
@@ -79,7 +101,7 @@ def verify_log(path, platform):
     kinds = [record["payload"].get("type") for record in records if record.get("event") == "recv"]
     for kind in ["LAUNCH", "LOAD", "PAUSE", "PLAY", "SEEK", "SET_VOLUME", "SET_PLAYBACK_RATE", "STOP"]:
         assert kind in kinds, (kind, kinds)
-    assert kinds.count("LOAD") == (6 if platform == "ios" else 5), kinds
+    assert kinds.count("LOAD") == (7 if platform == "ios" else 5), kinds
     payloads = [record["payload"] for record in records if record.get("event") == "recv"]
     assert any(item.get("type") == "SET_VOLUME" and abs(item["volume"]["level"] - 0.5) < 0.02 for item in payloads), payloads
     assert any(item.get("type") == "SEEK" and abs(item["currentTime"] - 50) < 3 for item in payloads), payloads
@@ -104,7 +126,7 @@ def verify_log(path, platform):
         assert abs(seeks[0] - 50) < 3 and seeks[1:] == [10, 0], seeks
         rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
         assert rates == [1.5, 1.5, 0.75, 1.25], rates
-        assert kinds.count("STOP") == 6, kinds
+        assert kinds.count("STOP") == 7, kinds
     loads = [record for record in records if record.get("event") == "load"]
     assert all(record["title"] == "Casting mobile test" and record["contentType"] == "audio/mpeg" for record in loads), loads
     print("PASS: native app Cast commands, replay, metadata and real HTTP HEAD/range fetches")
