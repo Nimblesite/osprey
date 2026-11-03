@@ -67,7 +67,9 @@ fn element(item: &Value) -> Option<Access> {
 pub fn target(access: &Access, action: Action, data: Option<&ActionData>) -> Option<(f64, f64)> {
     let step = (access.max - access.min) / STEPS;
     match (action, data) {
-        (Action::Click, _) => Some((access.x + access.w / 2., access.y + access.h / 2.)),
+        (Action::Click, _) if access.role != Role::Label => {
+            Some((access.x + access.w / 2., access.y + access.h / 2.))
+        }
         (Action::SetValue, Some(ActionData::NumericValue(value))) => along(access, *value),
         (Action::Increment, _) => along(access, access.value + step),
         (Action::Decrement, _) => along(access, access.value - step),
@@ -87,6 +89,7 @@ fn along(access: &Access, value: f64) -> Option<(f64, f64)> {
 /// The actions an element takes: every element clicks; a slider also sets and steps its value.
 fn actions(access: &Access) -> &'static [Action] {
     match access.role {
+        Role::Label => &[],
         Role::Slider => &[
             Action::Click,
             Action::SetValue,
@@ -178,7 +181,7 @@ fn acted(
 
 #[cfg(test)]
 mod tests {
-    use super::{decode, target, Access, Action, ActionData, Role};
+    use super::{actions, decode, target, Access, Action, ActionData, Role};
     use serde_json::Value;
 
     fn tree() -> Vec<Access> {
@@ -260,5 +263,13 @@ mod tests {
         );
         assert_eq!(target(volume, Action::Click, None), Some((250., 1045.)));
         assert_eq!(target(volume, Action::Focus, None), None);
+        // [GPUI-HOST-SCENE-TEXT-A11Y] Reading a title cannot activate a player.
+        let title = Access {
+            role: Role::Label,
+            ..play.clone()
+        };
+        assert_eq!(target(&title, Action::Click, None), None);
+        assert_eq!(target(&title, Action::Increment, None), None);
+        assert!(actions(&title).is_empty());
     }
 }

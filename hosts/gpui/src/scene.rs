@@ -13,6 +13,7 @@ pub mod atlas;
 mod decode;
 mod input;
 mod paint;
+mod text;
 
 /// One decoded scene, replaced only when its region revision changes.
 #[derive(Clone)]

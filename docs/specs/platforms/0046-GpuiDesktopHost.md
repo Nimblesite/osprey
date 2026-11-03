@@ -67,6 +67,7 @@ A `Scene` node is a surface in the application's own unit space, `width` by `hei
 | 3 | sprite | atlas index, x, y, w, h, angle, tint colour, depth |
 | 4 | glyphs | text, x, y, size, colour, depth |
 | 5 | path | steps, outline, paint, transform, depth (each of the first four an array, below) |
+| 6 | lettering | text, x, y, size, colour, depth, anchor (left 0, centre 1, right 2), weight |
 
 A path's `steps` are arrays in the order a path builder takes them: `[0,x,y]` move, `[1,x,y]` line, `[2,x,y,cx,cy]` quadratic curve (end point first), `[3,x,y,ax,ay,bx,by]` cubic, `[4,rx,ry,rotation,large,sweep,x,y]` elliptical arc, `[5,closed,x0,y0,…]` polygon, `[6]` close. `outline` is `[0]` fill or `[1,width,bevel,dash…]` stroke. `paint` is `[0,tint]` solid or `[1,angle,tint,at,tint,at,oklab]`, a two-stop linear gradient in degrees. A tint is `[0,r,g,b,a]` sRGB or `[1,h,s,l,a]`, float channels from 0 to 1, kept in the application's space so no conversion rounds it. `transform` is `[]` or `[tx,ty,scale]`, applied as a translation then a scale. The host replays the steps on its own path builder in that order and adds no call of its own when the scene is in window pixels, so a path built the same way in a native GPUI program and in Osprey tessellates to the same pixels.
 
@@ -79,6 +80,10 @@ The node carries one binding (`event`). The host sends keys as `{"key":<name>,"d
 A resident application ([UI-RESIDENT](../../../packages/native/README.md)) streams a changed scene's rects, discs and sprites through the `native_shape` import instead of the envelope ([UI-SCENE-STREAM](../../../packages/native/README.md)). The host clears the stream before every `start` and `dispatch`, gives each scene node with a nonzero `streamed` the next run of that many shapes in the encoder's walk order (a screen's toolbar before its children, an aside's pane before its column), and paints the node's own shapes then the streamed ones, stably sorted by depth. A run of 64 or more quads that share a depth paints inside one GPUI layer, so it takes one draw order rather than one bounds-tree insertion per quad; shorter runs, paths, strips and glyphs keep their own orders, so a scene of a few shapes paints exactly as a native GPUI program paints it.
 
 A scene is the only node whose patch may be large every frame. The host measures the time from `dispatch` return to the end of paint and reports it in its diagnostics overlay. The acceptance gate in the plan sets the entity count and frame rate the macOS build must hold; the framework's own per-frame cost is measured by `hosts/gpui/bench` and recorded in the plan.
+
+### Text accessibility [GPUI-HOST-SCENE-TEXT-A11Y]
+
+Visible glyph and lettering runs containing words or numbers contribute passive AccessKit `Label` nodes. Each label carries its rendered string and bounds measured through the painter's text shaper, with the same font, weight, anchor and fitted scale. Passive labels have no activation or value-adjustment actions; described controls retain their own roles, ranges and action bindings. Platform adapters expose these shared semantics through the native accessibility API.
 
 ## Capabilities [GPUI-HOST-CAPABILITIES]
 
