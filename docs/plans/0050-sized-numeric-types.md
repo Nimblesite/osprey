@@ -21,6 +21,7 @@ No legacy path survives: every call site in `examples/`, `packages/`, `tests/` a
 | Question | Decision | Why |
 | --- | --- | --- |
 | Which types | `int8 int16 int32 uint8 uint16 uint32 float16 float32`, with `int` and `float` unchanged | One descriptor (`kind`, `bits`) drives every rule, so each type is a table row. `uint64` is left out: it would need its own `/` and comparison rules against `int` |
+| Spelling | `int` and `float` stay the concise defaults; a sized type spells its kind and width in full (`int32`, `uint8`, `float16`), never `i32` or `f32` | The name says what the value is at a glance, and the common case stays short |
 | Mixing widths | A binary operator needs both operands at one numeric type; the existing `int`→`float` promotion is the only implicit conversion | Rust's rule. Implicit widening among eight types is where C's bugs come from |
 | Literals | A literal takes the numeric type its context asks for and `int`/`float` otherwise; out of range is a compile error | `let x: uint8 = 300` must not compile. Uses the same open-obligation machinery as `deferred_arith` |
 | Overflow | Checked at the type's own width through the same `Arith` effect as `int`; narrowing conversions are `Arith` operations too | [ARITH-TOTAL] already covers it; the device fault word covers kernels |
@@ -85,25 +86,25 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - [x] Float literals stay open like integer literals: a `float32` or `float16` sibling or slot decides them, and between two literals or next to anything else they are `float`. Spec sentence added to `[TYPE-NUMERIC-LITERAL]`.
 - [x] A float literal too big for its slot is rejected (`1e40` at `float32`; `70000.0` and `65520.0` at `float16`), through one check shared with integer literals.
 - [x] `float32` with `int`, `float` or `float16` is a mismatch; `fn half(x) = x / 2.0` applied to a `float32` is rejected; the `[TYPE-NUMERIC-SAME-TYPE]` example is corrected.
-- [x] `conv.rs` converts to and from `float32` and `float16`, with the quarantine removed. (Written by an agent, not yet reviewed.)
-- [ ] One float arithmetic path: `+ - * / %`, comparison, unary minus and `abs` at each width, with `float16` through binary32 and a single final rounding.
-- [ ] `sqrt` and every other [BUILTIN-MATH] function open over floats, through the `f32` intrinsics and `libm`'s `f` entry points; an undecided operand defaults to `float`.
-- [ ] The compiler prints `float32` and `float16` through the runtime functions above, with the printing quarantine removed.
-- [ ] `toFloat`, `toFloat32`, `toFloat16` open over every numeric source; `floatToInt` open over float sources; `floatBits`/`floatFromBits` at 64, `float32Bits`/`float32FromBits` as `float32 ↔ int32`, `float16Bits`/`float16FromBits` as `float16 ↔ int16`, with docs for each.
+- [x] `conv.rs` converts to and from `float32` and `float16`, with the quarantine removed.
+- [x] One float arithmetic path: `+ - * / %`, comparison, unary minus and `abs` at each width, with `float16` through binary32 and a single final rounding.
+- [x] `sqrt` and every other [BUILTIN-MATH] function open over floats, through the `f32` intrinsics and `libm`'s `f` entry points; an undecided operand defaults to `float`.
+- [x] The compiler prints `float32` and `float16` through the runtime functions above, with the printing quarantine removed.
+- [x] `toFloat`, `toFloat32`, `toFloat16` open over every numeric source; `floatToInt` open over float sources; `floatBits`/`floatFromBits` at 64, `float32Bits`/`float32FromBits` as `float32 ↔ int32`, `float16Bits`/`float16FromBits` as `float16 ↔ int16`, with docs for each.
 - [x] One shared literal-fitting helper replaces `fit_literal` in `stmt/bindings.rs` and `fit_literal_arms` in `pattern.rs`, and covers float literals. It lands together with its callers: a callerless copy broke `make agent`.
-- [ ] Float literals reach the right width in list, map, `Result`, record and generic record values, closures and match arms; where the type is unknown the backend reports an error, never a wrong word.
-- [ ] Kernels over sized types: the device emitter declines them by name until Phase 5, so the host path runs; `toGpu` of `List<float32>` either works on the host or is rejected cleanly, and the spec says which.
-- [ ] Delete `float32(x: float) -> float`, `float32_round`, the old `float32Bits` lowering, `float32_64` in `gpu_f64.metal`, their docs pages, and `[BUILTIN-FLOAT32]` and `[BUILTIN-TOFLOAT]` citations in every crate.
+- [x] Float literals reach the right width in list, map, `Result`, record and generic record values, closures and match arms; where the type is unknown the backend reports an error, never a wrong word.
+- [x] Kernels over sized types: the device emitter declines them by name until Phase 5, so the host path runs; `toGpu` of `List<float32>` either works on the host or is rejected cleanly, and the spec says which.
+- [x] Delete `float32(x: float) -> float`, `float32_round`, the old `float32Bits` lowering, `float32_64` in `gpu_f64.metal`, their docs pages, and `[BUILTIN-FLOAT32]` and `[BUILTIN-TOFLOAT]` citations in every crate.
 - [x] Move to the typed forms: `math_builtins.test.*`.
 - [x] Move to the typed forms: `packages/faiss`.
 - [x] Move to the typed forms: `packages/safetensors` (`src/bytes.py`).
 - [x] Move to the typed forms: `examples/python/ports/vector-search`, and anything else `grep -rn 'float32(' tests examples packages website` finds.
-- [ ] Tests: `tests/regressions/basics/types/sized_floats.test.osp` and twin — rounding boundaries, subnormals, `-0.0`, NaN comparison table at each width, printing, bit views, conversions in every direction, division by zero under a handler, literals in every container, builtins passed by name.
-- [ ] Tests: `sized_float_literal_range.ospo` and its `ml_` twin with goldens.
-- [ ] Review every line the agents wrote against this plan and correct it; `grep -rn 'names::FLOAT' crates` outside `numeric.rs` shows only rendering and float defaulting.
+- [x] Tests: `tests/regressions/basics/types/sized_floats.test.osp` and twin — rounding boundaries, subnormals, `-0.0`, NaN comparison table at each width, printing, bit views, conversions in every direction, division by zero under a handler, literals in every container, builtins passed by name.
+- [x] Tests: `sized_float_literal_range.ospo` and its `ml_` twin with goldens.
+- [x] Review every line the agents wrote against this plan and correct it; `grep -rn 'names::FLOAT' crates` outside `numeric.rs` shows only rendering and float defaulting.
 - [ ] A complete `cargo test -p osprey-cli` run, which Phase 2's last goldens never got; `cargo test -p osprey-types -p osprey-codegen`; clippy clean.
-- [ ] GC, ARC and wasm corpus lanes green, with `target/release/osprey` rebuilt only after OspreyMemoryAndSafety's suite has ended.
-- [ ] Merge `wip/sized-numerics` into the feature branch only once it compiles and passes, push, delete that branch and its worktree `.claude/worktrees/sized-numerics`, then clean its build files.
+- [x] GC 312/312, ARC 312/312 and wasm 232/232 corpus lanes green with goldens, on the debug compiler (2026-11-03): release builds were on hold for another agent's suite.
+- [ ] Merge `wip/sized-numerics` into the feature branch only once it compiles and passes, and push. The branch and worktree stay for Phases 4 to 6, because agents must not work in the primary tree; Phase 6 deletes them.
 **Gate:** twins green on all lanes; `grep -rn 'float32(' tests examples packages` finds no emulation call.
 
 ### Phase 4 — Dense buffers `[GPU-BUFFER-ELEM]` `[GPU-BUFFER-LOAD]` `[GPU-BUFFER-TENSOR]`
@@ -133,6 +134,7 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - [ ] Website: regenerate builtin pages (`make` target that owns `website/src/docs/functions`), delete the three emulation pages, add the conversion pages.
 - [ ] `deslop top-offenders` over `crates/osprey-codegen` and `compiler/runtime`; `coverage-thresholds.json` only rises; `/spec-check` over 0004, 0012, 0019, 0034, 0041, 0043.
 - [ ] Plan 0049 phase 1 loses its two storage items and cites this plan.
+- [ ] Merge `wip/sized-numerics` into the feature branch, push, delete that branch and its worktree `.claude/worktrees/sized-numerics`.
 - [ ] Clean caches and build files left by this plan, and check free disk (98% full when Phase 3 started).
 
 **Gate:** `make ci` green; CI green on the branch.
