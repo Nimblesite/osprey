@@ -94,6 +94,9 @@ final class NativeRenderer extends FrameLayout {
     }
 
     private void choose(Button button, JSONObject node) {
+        // [CAST-MOBILE-POPUP-FRESHNESS] A choice belongs to the menu's opening binding.
+        long openingRevision = revision;
+        String openingBinding = node.toString();
         JSONArray choices = node.optJSONArray("choices");
         PopupMenu popup = new PopupMenu(getContext(), button);
         for (int i = 0; choices != null && i < choices.length(); i++) {
@@ -101,7 +104,8 @@ final class NativeRenderer extends FrameLayout {
             String key = item.optString("key");
             popup.getMenu().add(item.optString("label")).setOnMenuItemClickListener(ignored -> {
                 JSONObject current = nodes.get(button);
-                control.send(current.optInt("event"), revision, key, current);
+                if (button.isAttachedToWindow() && current != null && openingBinding.equals(current.toString()))
+                    control.send(node.optInt("event"), openingRevision, key, node);
                 return true;
             });
         }

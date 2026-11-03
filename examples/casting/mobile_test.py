@@ -26,6 +26,37 @@ def verify_native_inputs(folder, library):
     assert library == (folder / "libosprey_casting.stripped.so").read_bytes(), "APK contains a stale native library"
 
 
+def native_picker(value, label):
+    if isinstance(value, dict):
+        if value.get("kind") == "picker" and value.get("label") == label: return [value]
+        return [node for child in value.values() for node in native_picker(child, label)]
+    return [node for child in value for node in native_picker(child, label)] if isinstance(value, list) else []
+
+
+def wait_native_picker(snapshot, label):
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        try:
+            if native_picker(snapshot(), label): return
+        except json.JSONDecodeError: pass  # A frame can replace the capture while it is read.
+        time.sleep(0.1)
+    raise AssertionError("Native picker never updated: " + label)
+
+
+def stale_volume_popup(tap, find, snapshot):
+    # [CAST-MOBILE-POPUP-FRESHNESS] The receiver changes an open menu's binding.
+    control = Path(os.environ["CAST_TEST_VOLUME_FILE"])
+    tap("Volume 100%")
+    pending = control.with_suffix(".pending"); pending.write_text("0.25"); pending.replace(control)
+    wait_native_picker(snapshot, "Volume 25%")
+    assert not control.exists(), "The remote volume change must be consumed once"
+    tap("50%")
+    find("Volume 25%", timeout=5)
+    tap("Volume 25%"); tap("50%")
+    find("Volume 50%")
+    print("PASS: changed popup binding rejects its old choice and a fresh menu still controls volume", flush=True)
+
+
 def verify_android_package(archive):
     paths = archive.namelist()
     assert len(paths) == len(set(paths)), "Duplicate APK archive entries"
@@ -284,6 +315,7 @@ def run(platform):
                  "-out", str(work / "cert.pem"), "-subj", "/CN=localhost", "-days", "1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         command(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(work / "Casting mobile test.mp3")])
         env["CAST_TEST_AUDIO_SOURCE"] = str(work / "Casting mobile test.mp3")
+        env["CAST_TEST_VOLUME_FILE"] = str(work / "remote-volume")
         if platform == "android": env["CAST_TEST_NATIVE_JAR"] = android_java_path("CastingNsdPublisher")
         process = subprocess.Popen([sys.executable, str(APP / "mobile_receiver.py"), "--cert", str(work / "cert.pem"),
             "--key", str(work / "key.pem"), "--port-file", str(work / "port"), "--log", str(log)], env=env)
@@ -326,6 +358,8 @@ def verify_log(path, platform):
     records = [json.loads(line) for line in path.read_text().splitlines()]
     errors = [record for record in records if record.get("event") == "error"]
     assert not errors, errors
+    remote = [record["level"] for record in records if record.get("event") == "remote-volume"]
+    assert remote == ([0.25] if platform == "android" else []), remote
     kinds = [record["payload"].get("type") for record in records if record.get("event") == "recv"]
     for kind in ["LAUNCH", "LOAD", "PAUSE", "PLAY", "SEEK", "SET_VOLUME", "SET_PLAYBACK_RATE", "STOP"]:
         assert kind in kinds, (kind, kinds)
@@ -339,10 +373,10 @@ def verify_log(path, platform):
     assert kinds.count("PLAY") == (3 if platform == "android" else 2), kinds
     assert kinds.count("SEEK") == 3, kinds
     volumes = [item["volume"]["level"] for item in payloads if item.get("type") == "SET_VOLUME"]
-    assert len(volumes) == (4 if platform == "android" else 3), volumes
+    assert len(volumes) == (5 if platform == "android" else 3), volumes
     if platform == "android":
-        assert volumes[:2] == [0.5, 0.25] and abs(volumes[2] - 0.5) < 0.02, volumes
-        assert abs(volumes[3] - volumes[2] - 0.01) < 0.001, volumes
+        assert volumes[:3] == [0.5, 0.5, 0.25] and abs(volumes[3] - 0.5) < 0.02, volumes
+        assert abs(volumes[4] - volumes[3] - 0.01) < 0.001, volumes
         seeks = [item["currentTime"] for item in payloads if item.get("type") == "SEEK"]
         assert seeks[:2] == [10, 0] and abs(seeks[2] - 50) < 3, seeks
         rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]

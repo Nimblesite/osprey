@@ -289,12 +289,24 @@ def process_frames(session, buffer, tls, log):
     return buffer
 
 
+def remote_volume(session, tls, log):
+    name = os.environ.get("CAST_TEST_VOLUME_FILE")
+    if not name or not Path(name).exists(): return
+    level = float(Path(name).read_text())
+    if not 0 <= level <= 1: raise ValueError("Remote volume must be between zero and one")
+    Path(name).unlink()
+    session["volume"] = level
+    log_event(log, event="remote-volume", level=level)
+    tls.sendall(build_frame("receiver-0", "*", NS_PREFIX + "receiver", json.dumps(receiver_status(session, 0))))
+
+
 def run_session(tls, log):
     """One TLS session: read frames until EOF, an error, or the idle limit."""
     session = {"position": 0.0, "rate": 1.0, "volume": 1.0, "state": "IDLE", "idle_reason": ""}
     buffer, idle = b"", 0.0
     while True:
         try:
+            remote_volume(session, tls, log)
             chunk = tls.recv(4096)
         except socket.timeout:
             idle += TLS_DEADLINE
@@ -302,7 +314,7 @@ def run_session(tls, log):
                 log_event(log, event="idle")
                 return
             continue
-        except OSError as error:
+        except (OSError, ValueError) as error:
             log_event(log, event="error", message=f"recv: {error}")
             return
         if not chunk:

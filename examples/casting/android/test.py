@@ -17,7 +17,7 @@ import time
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from mobile_test import BINDING_CHECK, CastingArtifactContracts, android_java, verify_android_package
+from mobile_test import BINDING_CHECK, CastingArtifactContracts, android_java, native_picker, stale_volume_popup, verify_android_package
 
 ROOT = Path(__file__).resolve().parents[3]
 SDK = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
@@ -285,14 +285,9 @@ def alternate_playback(output):
 
 
 def receiver_selection():
-    def collect(value):
-        if isinstance(value, dict):
-            if value.get("kind") == "picker" and value.get("label") == "Receiver": return [value["selected"]]
-            return [key for child in value.values() for key in collect(child)]
-        return [key for child in value for key in collect(child)] if isinstance(value, list) else []
-    choices = collect(json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")))
+    choices = native_picker(json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")), "Receiver")
     assert len(choices) == 1, choices
-    return choices[0]
+    return choices[0]["selected"]
 
 
 def native_discovery(output):
@@ -308,6 +303,7 @@ def native_discovery(output):
     tap("Android native test receiver")
     import_track()
     tap("Play"); find("Pause")
+    stale_volume_popup(tap, find, lambda: json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")))
     (output / "native-nsd-playing.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
     tap("Stop"); find("Play")
     print("PASS: real Android NSD discovery, service resolution, rescan and selected-receiver playback", flush=True)
