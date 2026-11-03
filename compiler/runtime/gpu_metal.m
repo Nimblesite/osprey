@@ -55,7 +55,8 @@ static bool ensure_library(const char *source) {
   NSError *error = nil;
   // [GPU-DEVICE-NATIVE]: preserve IEEE arithmetic independently of driver defaults.
   MTLCompileOptions *options = [MTLCompileOptions new];
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 150000 || __IPHONE_OS_VERSION_MIN_REQUIRED >= 180000
+#if (defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 150000) || \
+    (defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 180000)
   use_safe_math(options);
 #else
   if (@available(macOS 15.0, iOS 18.0, *)) {
