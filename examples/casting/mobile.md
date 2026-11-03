@@ -80,7 +80,7 @@ Use `make -C apps/ios/tests casting-headless` or `make -C apps/android/tests cas
 
 The iOS test entry point enables Xcode coverage during the same native journey, then exports [coverage.json](build/ios-test/coverage.json) with `xccov`. It removes the old report before running and publishes the replacement only after checking that the Casting application target has nonzero covered lines and source-file entries. The UI test runner's own counters cannot satisfy that check.
 
-The current report covers 1,625 of 2,853 executable native target lines, approximately 57%. `CastDiscovery.swift` reports only 3 of 71 covered lines: receiver injection exercises the player without proving real Bonjour discovery. This is reported line coverage of the instrumented Xcode target; it excludes the prebuilt Osprey archive and is not proof of branch coverage. Android native coverage collection and required CI coverage gates remain incomplete. No coverage threshold has been lowered.
+The current report covers 1,689 of 2,853 executable native target lines, approximately 59%. `CastDiscovery.swift` covers 57 of 71 lines after adding real Bonjour discovery and rescanning; the earlier injected-only journey covered 3. This is reported line coverage of the instrumented Xcode target; it excludes the prebuilt Osprey archive and is not proof of branch coverage. Android native coverage collection and required CI coverage gates remain incomplete. No coverage threshold has been lowered.
 
 ## Alternate skins [CAST-MOBILE-SKINS]
 
