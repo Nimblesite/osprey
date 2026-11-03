@@ -38,10 +38,11 @@ bool http_chunks_complete(ChunkWalk *walk, const char *raw, size_t len, size_t *
 const char *http_find_crlf(const char *p, const char *end);
 bool http_has_control_byte(const char *p, const char *end);
 
-// Performs the request over http:// or https:// and returns the ENTIRE raw
-// response in a freshly allocated, NUL-terminated buffer (caller frees
-// *out_raw). *out_closed says the peer closed in good order, not that a read
-// failed or timed out. Returns 0 on success or a negative error code.
+// Performs the request over http:// or https:// and returns the raw response, up
+// to the end of its framing, in a freshly allocated, NUL-terminated buffer (caller
+// frees *out_raw). *out_closed says the peer closed in good order, not that a read
+// failed or timed out, or that the framing ended first. Returns 0 on success or a
+// negative error code.
 int64_t http_perform(int64_t client_id, int64_t method, char *path,
                      char *headers, char *body, char **out_raw,
                      size_t *out_len, bool *out_closed);

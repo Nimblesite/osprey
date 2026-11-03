@@ -81,8 +81,7 @@ static const char *parse_chunk_size(const char **cursor, const char *end,
 
 // Decodes every chunk of [p, end) into out, which holds end - p + 1 bytes: the
 // decoded bytes can't outnumber the framed ones. The body ends at the blank line
-// after the zero chunk's trailers, and bytes after it are ignored, as the
-// connection closes there. Returns NULL, or why the framing is malformed.
+// after the zero chunk's trailers. Returns NULL, or why the framing is malformed.
 static const char *decode_chunks(const char *p, const char *end, char *out) {
   size_t out_len = 0;
   for (;;) {
