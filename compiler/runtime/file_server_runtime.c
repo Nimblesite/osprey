@@ -26,7 +26,7 @@
 #include <stdatomic.h>
 #include <sys/stat.h>
 
-#include "http_shared.h"
+#include "socket_platform.h"
 #include "socket_safety.h"
 
 enum { FS_TICK_MS = 100 }; // how soon a connection blocked on its peer notices a stop
