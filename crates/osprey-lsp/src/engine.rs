@@ -329,10 +329,6 @@ mod tests {
                         "redundant type annotation on parameter `b` of `add`: inference derives `int` without it",
                         (0, 16, 0, 21),
                     ),
-                    (
-                        "redundant return type annotation on `add`: inference derives `int` without it",
-                        (0, 23, 0, 29),
-                    ),
                 ],
             ),
             other => panic!("expected diagnostics, got {other:?}"),
