@@ -11,6 +11,7 @@
 #define CL_MAX_NAMES 512
 static unsigned calls, fail_at, live, next_handle, programs, kernels;
 static size_t expected_threads = 1;
+static size_t dense_bytes;
 static int status(void) { return ++calls == fail_at ? -7 : 0; }
 static void *handle(int *error) {
   *error = status();
@@ -64,7 +65,7 @@ static void *OSP_CL_CALL kernel(void *p, const char *name, int *error) {
   return handle(error);
 }
 static void *OSP_CL_CALL buffer(void *ctx, uint64_t flags, size_t bytes, const void *source, int *error) {
-  assert(ctx && bytes >= 8 && (flags == 36 || flags == 33) && source != NULL);
+  assert(ctx && (dense_bytes ? bytes == dense_bytes : bytes >= 8) && (flags == 36 || flags == 33) && source != NULL);
   return handle(error);
 }
 static int OSP_CL_CALL arg(void *k, unsigned i, size_t bytes, const void *value) {
@@ -78,8 +79,9 @@ static int OSP_CL_CALL launch(void *q, void *k, unsigned rank, const size_t *off
 }
 static int OSP_CL_CALL read_buffer(void *q, void *b, unsigned blocking, size_t offset, size_t size,
                                   void *out, unsigned count, const void *events, void *event) {
-  assert(q && b && blocking == 1 && !offset && size >= 8 && !count && !events && !event);
-  for (size_t i = 0; i < size / 8; i++) ((int64_t *)out)[i] = MOCK_MARK;
+  assert(q && b && blocking == 1 && !offset && (dense_bytes ? size == dense_bytes : size >= 8) && !count && !events && !event);
+  if (dense_bytes) memset(out, MOCK_MARK, size);
+  else for (size_t i = 0; i < size / 8; i++) ((int64_t *)out)[i] = MOCK_MARK;
   return status();
 }
 static int OSP_CL_CALL release(void *object) { assert(object && live); live--; return 0; }
@@ -170,12 +172,42 @@ static void resident_case(void) {
   assert(live == held - 2);
 }
 
+// [GPU-BUFFER-ELEM]: exact transfers, including one-element empty allocations.
+static void dense_transfers(void) {
+  osprey_gpu_opencl_test_driver(&mock);
+  calls = 0; fail_at = 0; expected_threads = 1;
+  for (uint64_t width = 1; width <= 8; width *= 2) {
+    for (uint64_t count = 0; count <= 3; count += 3) {
+      for (unsigned resident = 0; resident <= 1; resident++) {
+        unsigned char input[24] = {0}, output[26];
+        void *slot = NULL;
+        memset(output, 0xa5, sizeof output);
+        dense_bytes = (size_t)((count ? count : 1) * width);
+        OspreyGpuDispatch d = {"dense_transfer", "kernel void dense_transfer() {}", {{0}}, 0, 1};
+        osprey_gpu_arg(&d, OSPREY_GPU_INPUT, input, NULL, count, width);
+        osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, output + 1, resident ? NULL : output + 1,
+                          count, width, resident ? &slot : NULL);
+        assert(osprey_gpu_opencl_dispatch(&d) == 1);
+        if (resident) {
+          for (size_t i = 0; i < sizeof output; i++) assert(output[i] == 0xa5);
+          if (count) assert(osprey_gpu_opencl_download(slot, output + 1, count * width) == 1);
+          osprey_gpu_opencl_release(slot);
+        }
+        for (size_t i = 0; i < sizeof output; i++)
+          assert(output[i] == (i > 0 && i <= count * width ? MOCK_MARK : 0xa5));
+      }
+    }
+  }
+  dense_bytes = 0;
+}
+
 int main(void) {
   // Exercise the real dynamic loader even on a machine without a compute GPU.
   assert(osprey_gpu_opencl_name() != NULL);
   for (unsigned point = 0; point <= 20; point++) failure_case(point);
   compiled_case();
   resident_case();
+  dense_transfers();
   osprey_gpu_opencl_test_driver(&mock);
   assert(live == 0);
   puts("[ok] OpenCL driver: product and compiled-kernel dispatch, program recompilation, kernel reuse, resident buffers created once and read back on demand, every initialization/transfer/launch/readback failure releases resources");
