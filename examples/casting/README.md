@@ -11,6 +11,10 @@ make -C apps/windows casting        # Windows: the same player in its sandbox, o
 
 On macOS `run.sh` compiles the app to a C archive and links it, with the TLS and media-server runtime and OpenSSL, into the GPUI host, then runs it from `build/Casting.app` so the Dock shows its name and icon. `bundle.sh` also makes that bundle the default MP3 application. On Windows, `hosts/winui/app.ps1` builds the app as a DLL with the same runtime and OpenSSL linked in, and packages it with `windows/cast-browse.c`, a DnsServiceBrowse helper that prints the lines `dns-sd` would. The host runs `dns-sd`, or the helper `--browse` names, to find TVs and opens the file picker, so the window never waits on the network. Each frame polls the TV for at most a millisecond.
 
+## Mobile
+
+The iPhone and Android apps are migrating to this same GPUI host. The iOS build already packages the shared `hosts/gpui` binary with native Swift cast services and launches on the simulator, and renders through GPUI; viewport fitting and platform-service integration remain in progress; the Android GPUI backend is in progress. The retired SwiftUI renderer and its evidence are archived in [archive/casting-swiftui](../../archive/casting-swiftui/README.md). Current status and the mandatory delivery checklist: [mobile.md](mobile.md).
+
 ## How it fits together
 
 | Piece | Role |

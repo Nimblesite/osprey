@@ -3,12 +3,14 @@
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ..
 
-## casting-ios: Build and open the casting player in an iPhone simulator.
+## casting-ios: Install and launch the shared-GPUI casting player in an iPhone simulator.
+##            Shared viewport fitting and service integration are in progress; see examples/casting/mobile.md.
 .PHONY: casting-ios casting-android
 casting-ios:
 	$(MAKE) -C ios casting
 
 ## casting-android: Build and open casting on the selected Android emulator or device.
+##                  The shared-GPUI Android backend is in progress; see examples/casting/mobile.md.
 casting-android:
 	$(MAKE) -C android casting
 
