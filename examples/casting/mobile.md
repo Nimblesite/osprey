@@ -35,7 +35,7 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 - [ ] Verify the same iOS goldens with the Simulator window visible.
 - [ ] Verify physical-device casting to a real receiver, including background playback and local network permissions.
 - [ ] Restore the selected skin after process restart; verify high contrast and reduced motion. [CAST-DESIGN-SKIN-CONTRACT]
-- [ ] Verify minimum mobile touch regions, scaled text and full accessible track titles in all skins. [CAST-DESIGN-TYPE]
+- [ ] Verify minimum mobile touch regions, scaled text and full accessible track titles in all skins. [CAST-DESIGN-TOKENS], [CAST-DESIGN-NATIVE]
 - [ ] Verify native share/open integration and unreadable, corrupt and replacement-file recovery. [CAST-DESIGN-STATE]
 
 The existing host-free casting suite simulates the receiver and drives the real resident application. It does not prove native mobile rendering, permission behavior, ABI linkage or real-device playback.
