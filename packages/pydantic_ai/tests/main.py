@@ -662,7 +662,7 @@ def reasoning_round_trip_cases():
 
 
 # The MCP client (pydantic_ai.mcp as a sans-IO port; the recorded flows follow upstream's
-# mcp.py and the MCP specification, per docs/plans/0051-agent-mcp.md)
+# mcp.py and the MCP specification, per docs/plans/0052-agent.md)
 
 INIT_REPLY = '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":true},"logging":{},"experimental":{"e1":{}}},"serverInfo":{"name":"srv","title":"Server","version":"2.0"},"instructions":"be helpful"}}'
 """A recorded `initialize` reply."""
