@@ -37,13 +37,31 @@ pub(crate) fn as_num(cg: &mut Codegen, v: Value, to: Numeric) -> Result<Value> {
         }
         LType::Any => return Err(read_through_erasure()),
     };
-    if from == Numeric::FLOAT16 || to == Numeric::FLOAT16 {
-        // Quarantine until [TYPE-NUMERIC-ARITH-WIDTH]'s binary16 runtime
-        // conversions land (plan 0050 phase 3).
-        return Err(CodegenError::unsupported("float16 conversions"));
+    Ok(cast_num(cg, &v.operand, from, to))
+}
+
+/// One numeric value at another numeric type: total, since both are numbers.
+/// `float16` goes through the runtime's correctly rounded conversions and
+/// every other pair through one LLVM cast [TYPE-NUMERIC-ARITH-WIDTH].
+pub(crate) fn cast_num(cg: &mut Codegen, operand: &str, from: Numeric, to: Numeric) -> Value {
+    if from == to {
+        return Value::new(operand, LType::Num(to));
     }
-    let reg = numeric_cast(cg, &v.operand, from, to);
-    Ok(Value::new(reg, LType::Num(to)))
+    if from == Numeric::FLOAT16 {
+        cg.add_extern("declare float @osp_f16_to_f32(i16 zeroext)");
+        let wide = cg.emit_reg(format!("call float @osp_f16_to_f32(i16 zeroext {operand})"));
+        return cast_num(cg, &wide, Numeric::FLOAT32, to);
+    }
+    if to == Numeric::FLOAT16 {
+        let wide = cast_num(cg, operand, from, Numeric::FLOAT);
+        cg.add_extern("declare zeroext i16 @osp_float_to_f16(double)");
+        let reg = cg.emit_reg(format!(
+            "call zeroext i16 @osp_float_to_f16(double {})",
+            wide.operand
+        ));
+        return Value::new(reg, LType::Num(to));
+    }
+    Value::new(numeric_cast(cg, operand, from, to), LType::Num(to))
 }
 
 /// The bits of an `int` word read as the integer type `to`: its wrap, which is
@@ -120,8 +138,10 @@ pub(crate) fn box_to_i64(cg: &mut Codegen, v: Value) -> Value {
         }
         LType::I1 => cg.emit_reg(format!("zext i1 {} to i64", v.operand)),
         // [TYPE-NUMERIC-WORD]: a float is its bits, a signed integer sign-
-        // extends, an unsigned one zero-extends.
+        // extends, an unsigned one zero-extends. A binary16 value already IS
+        // its `i16` bits [TYPE-NUMERIC-SIZED].
         LType::F64 => cg.emit_reg(format!("bitcast double {} to i64", v.operand)),
+        LType::Num(Numeric::FLOAT16) => cg.emit_reg(format!("zext i16 {} to i64", v.operand)),
         LType::Num(n) if n.is_float() => {
             let bits = cg.emit_reg(format!("bitcast {} {} to i{}", n.llvm(), v.operand, n.bits));
             cg.emit_reg(format!("zext i{} {bits} to i64", n.bits))
@@ -134,6 +154,24 @@ pub(crate) fn box_to_i64(cg: &mut Codegen, v: Value) -> Value {
     Value::new(reg, LType::I64)
 }
 
+/// [TYPE-NUMERIC-LITERAL] A literal still spelled at its default type — `int`
+/// as `i64`, `float` as `double` — takes the sized type its context resolved,
+/// exactly. The one fitting a let annotation, a match-arm join and a
+/// container's element slot all route through.
+pub(crate) fn fit_literal(
+    cg: &mut Codegen,
+    value: Value,
+    wanted: Option<Numeric>,
+) -> Result<Value> {
+    let sized = wanted.filter(|n| {
+        n.is_sized() && matches!(value.ty, LType::I64 | LType::F64) && LType::Num(*n) != value.ty
+    });
+    match sized {
+        Some(to) => as_num(cg, value, to),
+        None => Ok(value),
+    }
+}
+
 /// Inverse of [`box_to_i64`]: recover a value of `ty` from the uniform `i64`
 /// ABI (fiber results). Pointers `inttoptr`, narrow ints `trunc`, `double`
 /// `bitcast`; an `i64` element passes through unchanged.
@@ -142,6 +180,8 @@ pub(crate) fn unbox_from_i64(cg: &mut Codegen, raw: &str, ty: LType) -> Value {
         LType::I64 => return Value::new(raw.to_string(), LType::I64),
         LType::Str | LType::Ptr | LType::Any => cg.emit_reg(format!("inttoptr i64 {raw} to i8*")),
         LType::I1 => cg.emit_reg(format!("trunc i64 {raw} to i1")),
+        // A binary16 value IS its `i16` bits [TYPE-NUMERIC-SIZED].
+        LType::Num(Numeric::FLOAT16) => cg.emit_reg(format!("trunc i64 {raw} to i16")),
         LType::F64 => cg.emit_reg(format!("bitcast i64 {raw} to double")),
         LType::Num(n) if n.is_float() => {
             let bits = cg.emit_reg(format!("trunc i64 {raw} to i{}", n.bits));
@@ -164,11 +204,6 @@ pub(crate) fn from_word(cg: &mut Codegen, raw: impl Into<String>, elem: Option<&
     };
     let (ty, owner) = crate::llty::elem_of_spelling(tag);
     unbox_from_i64(cg, &raw, ty).with_owner(owner)
-}
-
-/// Coerce to `double` (promoting an integer operand for mixed arithmetic).
-pub(crate) fn as_double(cg: &mut Codegen, v: Value) -> Result<Value> {
-    as_num(cg, v, Numeric::FLOAT)
 }
 
 #[cfg(test)]
@@ -194,7 +229,7 @@ mod tests {
         let _ = unbox_from_i64(cg, "1", LType::I1);
         let _ = unbox_from_i64(cg, "9", LType::I32);
         let _ = unbox_from_i64(cg, "123", LType::F64);
-        let _ = as_double(cg, Value::new("false", LType::I1));
+        let _ = as_num(cg, Value::new("false", LType::I1), Numeric::FLOAT);
     }
 
     #[test]
@@ -267,8 +302,9 @@ mod tests {
         let mut cg = Codegen::new();
         let integer = as_i64(&mut cg, Value::new("null", LType::Str));
         let boolean = as_i1(&mut cg, Value::new("0.0", LType::F64));
-        let number = as_double(&mut cg, Value::new("null", LType::Ptr));
-        let widened = as_double(&mut cg, Value::new("0", LType::I32)).expect("int32 is a number");
+        let number = as_num(&mut cg, Value::new("null", LType::Ptr), Numeric::FLOAT);
+        let widened = as_num(&mut cg, Value::new("0", LType::I32), Numeric::FLOAT)
+            .expect("int32 is a number");
         assert_eq!(widened.ty, LType::F64);
         assert_eq!(
             integer.unwrap_err(),

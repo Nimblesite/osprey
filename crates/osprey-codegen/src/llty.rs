@@ -62,6 +62,8 @@ pub(crate) fn param_register(index: usize) -> String {
 /// new [`LType`] cannot acquire a different zero in each caller.
 pub(crate) const fn zero_literal(ty: LType) -> &'static str {
     match ty {
+        // A binary16 value travels as its `i16` bits [TYPE-NUMERIC-SIZED].
+        LType::Num(Numeric::FLOAT16) => "0",
         LType::Num(n) if n.is_float() => "0.0",
         LType::Num(_) => "0",
         LType::Str | LType::Ptr | LType::Any => "null",
@@ -127,6 +129,14 @@ pub(crate) const PTR_TAG_SPELLING: &str = "ptr";
 /// `List<int>` — without it the retrieved word was typed `int`, and
 /// `listLength` of it, or a `?: [0]` default beside it, could not be emitted at
 /// all. [BUILTIN-MAP-GET] [BUILTIN-LIST-GET]
+/// The sized numeric an element tag names, if any: what a literal still at its
+/// default spelling must be fitted to before it boxes [TYPE-NUMERIC-WORD].
+pub(crate) fn sized_of_spelling(tag: &str) -> Option<Numeric> {
+    Numeric::ALL
+        .into_iter()
+        .find(|n| n.is_sized() && n.tag() == tag)
+}
+
 pub(crate) fn elem_of_spelling(tag: &str) -> (LType, Option<String>) {
     if let Some(n) = Numeric::ALL.into_iter().find(|n| n.tag() == tag) {
         return (LType::Num(n), None);

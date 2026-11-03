@@ -336,6 +336,7 @@ pub(in crate::ml) fn lower_pattern(pattern: MlPattern) -> Pattern {
     match pattern {
         MlPattern::Wildcard => Pattern::Wildcard,
         MlPattern::Int(n) => Pattern::Literal(Box::new(Expr::Integer(n))),
+        MlPattern::Float(x) => Pattern::Literal(Box::new(Expr::Float(x))),
         MlPattern::Str(raw) => Pattern::Literal(Box::new(lower_string(&raw, None))),
         MlPattern::Bool(b) => Pattern::Literal(Box::new(Expr::Bool(b))),
         MlPattern::Bind(name) => Pattern::Binding(crate::ml::binding_ranges::pattern(name)),

@@ -183,6 +183,18 @@ impl Numeric {
         self != Numeric::INT && self != Numeric::FLOAT
     }
 
+    /// The width a float operation computes at: `float16` through binary32
+    /// with one final rounding, every other float its own width
+    /// [TYPE-NUMERIC-ARITH-WIDTH].
+    #[must_use]
+    pub const fn float_compute(self) -> Numeric {
+        if self.is_float() && self.bits == 16 {
+            Numeric::FLOAT32
+        } else {
+            self
+        }
+    }
+
     /// An IEEE float of any width.
     #[must_use]
     pub const fn is_float(self) -> bool {

@@ -1,1 +1,1 @@
-3:3: type mismatch: cannot unify float with int
+3:3: `exp` requires a float; got int

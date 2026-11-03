@@ -128,15 +128,22 @@ impl Parser<'_> {
     /// binding.
     pub(in crate::ml) fn pattern_atom(&mut self) -> MlPattern {
         match self.peek().clone() {
-            // `-N` — a negative integer literal pattern. The lexer splits this
+            // `-N` — a negative number literal pattern. The lexer splits this
             // into `-` then the magnitude, so fold the sign into the literal so
             // `-5` matches `-5`, mirroring the Default flavor ([FLAVOR-ML-MATCH]).
-            TokKind::Op(op) if op == MINUS_OP && matches!(self.peek_at(1), TokKind::Int(_)) => {
+            TokKind::Op(op)
+                if op == MINUS_OP
+                    && matches!(self.peek_at(1), TokKind::Int(_) | TokKind::Float(_)) =>
+            {
                 self.advance(); // `-`
                 match self.peek().clone() {
                     TokKind::Int(n) => {
                         self.advance();
                         MlPattern::Int(-n)
+                    }
+                    TokKind::Float(x) => {
+                        self.advance();
+                        MlPattern::Float(-x)
                     }
                     _ => MlPattern::Wildcard,
                 }
@@ -144,6 +151,10 @@ impl Parser<'_> {
             TokKind::Int(n) => {
                 self.advance();
                 MlPattern::Int(n)
+            }
+            TokKind::Float(x) => {
+                self.advance();
+                MlPattern::Float(x)
             }
             TokKind::Str(raw) => {
                 self.advance();

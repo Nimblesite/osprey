@@ -45,7 +45,22 @@ Osprey function values retain their normal calling convention. A wrapper around 
 
 ## Numeric widths [FFI-NUMERIC-WIDTH]
 
-An `extern` parameter or return of a numeric type crosses the boundary as the C type of its row in [TYPE-NUMERIC-SIZED](../language/0004-TypeSystem.md#sized-numeric-types--type-numeric-sized): `int` is `int64_t`, `int32` is `int32_t`, `uint8` is `uint8_t`, `float` is `double`, `float32` is `float`, and `float16` is `uint16_t` holding the binary16 bits. The LLVM declaration uses the row's LLVM type, so a C function taking `float` receives a `float` register, never a widened double. `bool` remains `i1`. No numeric conversion is inserted on either side; a C signature that differs from the declaration is the program's error, as it is for any other extern.
+An `extern` parameter or return of a numeric type crosses the boundary as the C type of its row in [TYPE-NUMERIC-SIZED](../language/0004-TypeSystem.md#sized-numeric-types--type-numeric-sized): the LLVM type and the C type both come from the one numeric table (`crates/osprey-types/src/numeric.rs`), and the mobile ABI tables read the same row. `bool` remains `i1`.
+
+| Type | LLVM | C | Parameter ABI |
+| --- | --- | --- | --- |
+| `int8` | `i8` | `int8_t` | `signext` |
+| `int16` | `i16` | `int16_t` | `signext` |
+| `int32` | `i32` | `int32_t` | `signext` |
+| `int` | `i64` | `int64_t` | — |
+| `uint8` | `i8` | `uint8_t` | `zeroext` |
+| `uint16` | `i16` | `uint16_t` | `zeroext` |
+| `uint32` | `i32` | `uint32_t` | `zeroext` |
+| `float16` | `i16` (bits) | `uint16_t` (bits) | `zeroext` |
+| `float32` | `float` | `float` | — |
+| `float` | `double` | `double` | — |
+
+A signed narrow parameter (`int8`, `int16`, `int32`) is passed `signext`, and an unsigned or `float16` parameter is passed `zeroext`, per the platform C ABI: the argument is a sub-register integer the caller widens by its kind, and `float16` travels as its binary16 bits, so it widens like an unsigned 16-bit integer. A C function taking `float` receives a `float` register, never a widened double. No numeric conversion is inserted on either side; a C signature that differs from the declaration is the program's error, as it is for any other extern.
 
 ```osprey
 extern fn sqrtf(x: float32) -> float32

@@ -1,15 +1,15 @@
 # osprey: flavor=python
 # osprey: namespace=safetensors
 # osprey: module=Bytes
-"""Little-endian byte readers and exact float-from-bits decoding shared by the
+"""Little-endian byte readers and float-from-bits decoding shared by the
 safetensors and gguf ports.
 
-A file is a `list[int]` of byte values 0..255. The four decoders rebuild the
-binary64 a binary16/binary32/bfloat16/binary64 word holds using exact integer
-and power-of-two arithmetic (sign, exponent, mantissa times a power of two by
-repeated doubling/halving), including subnormals, +-0, +-inf and NaN. They are
-named so they can be swapped for the `floatFromBits`/`float32FromBits` builtins
-once those land in the compiler. Implements [BUILTIN-FLOAT-BITS].
+A file is a `list[int]` of byte values 0..255. The binary16 and binary32
+decoders are the `float16FromBits`/`float32FromBits` bit views widened with
+`toFloat` only where the caller wants a binary64; bfloat16, which has no sized
+type, widens exactly through arithmetic. Encoders round through
+`toFloat16`/`toFloat32` and read the bits back, so the bytes are the host's own
+correctly rounded spelling. Implements [BUILTIN-FLOAT-BITS].
 """
 
 __all__ = ["pow2i", "pow2", "le_bytes", "le16", "le32", "le64", "read_bytes", "read_u64", "f16_from_bits", "bf16_from_bits", "f32_from_bits", "f64_from_parts", "decode_f16", "decode_bf16", "decode_f32", "decode_f64", "bytes_to_string", "int_bytes", "f64_bytes", "f32_bytes", "f16_bytes", "bf16_bytes"]
@@ -39,6 +39,24 @@ def le64(data, off):
     """Eight little-endian bytes at `off` as one int; callers ensure bytes 6 and 7
     are zero so the value stays in range."""
     return le_bytes(data, off, 8)
+
+
+def le16s(data, off):
+    """The int16 whose bits are the two little-endian bytes at `off`."""
+    v = le16(data, off)
+    if v >= 32768:
+        return toInt16(v - 65536)
+    else:
+        return toInt16(v)
+
+
+def le32s(data, off):
+    """The int32 whose bits are the four little-endian bytes at `off`."""
+    v = le32(data, off)
+    if v >= 2147483648:
+        return toInt32(v - 4294967296)
+    else:
+        return toInt32(v)
 
 
 def read_bytes(data, off, n):
@@ -87,9 +105,9 @@ def narrow_from_bits(bits, sign_bit, fraction_base, exponent_count, shift):
     return float_from_fields(intDiv(bits, sign_bit), intDiv(bits, fraction_base) % exponent_count, bits % fraction_base, exponent_count - 1, fraction_base, shift)
 
 
-def f16_from_bits(bits):
-    """The binary64 the binary16 word `bits` holds, reconstructed exactly."""
-    return narrow_from_bits(bits, 32768, 1024, 32, 25)
+def f16_from_bits(bits: int16) -> float16:
+    """The binary16 value whose bits are `bits`."""
+    return float16FromBits(bits)
 
 
 def bf16_from_bits(bits):
@@ -97,9 +115,9 @@ def bf16_from_bits(bits):
     return narrow_from_bits(bits, 32768, 128, 256, 134)
 
 
-def f32_from_bits(bits):
-    """The binary64 the binary32 word `bits` holds, reconstructed exactly."""
-    return narrow_from_bits(bits, 2147483648, 8388608, 256, 150)
+def f32_from_bits(bits: int32) -> float32:
+    """The binary32 value whose bits are `bits`."""
+    return float32FromBits(bits)
 
 
 def f64_from_parts(sign, exp, frac):
@@ -110,7 +128,7 @@ def f64_from_parts(sign, exp, frac):
 
 def decode_f16(data, off):
     """The binary16 stored little-endian at `off` as a binary64."""
-    return f16_from_bits(le16(data, off))
+    return toFloat(f16_from_bits(le16s(data, off)))
 
 
 def decode_bf16(data, off):
@@ -120,7 +138,7 @@ def decode_bf16(data, off):
 
 def decode_f32(data, off):
     """The binary32 stored little-endian at `off` as a binary64."""
-    return f32_from_bits(le32(data, off))
+    return toFloat(f32_from_bits(le32s(data, off)))
 
 
 def decode_f64(data, off):
@@ -149,10 +167,7 @@ def u8_of(v):
 
 def floor_div_256(v):
     """Floor division of v by 256 (arithmetic shift right)."""
-    if v >= 0:
-        return intDiv(v, 256)
-    else:
-        return intDiv(v - 255, 256)
+    return shiftRight(v, 8)
 
 
 def int_bytes_from(v, n, acc):
@@ -316,44 +331,19 @@ def narrow_float_bytes(x, exp_bits, frac_bits, bias):
             return pack_float(fields.sign, narrowed.exponent, narrowed.fraction, exp_bits, frac_bits)
 
 
-def f64_fields_bytes(sign, exp, frac):
-    """8 LE bytes of a float64 with the given sign, 11-bit exp, 52-bit frac."""
-    b0 = frac % 256
-    b1 = intDiv(frac, 256) % 256
-    b2 = intDiv(frac, 65536) % 256
-    b3 = intDiv(frac, 16777216) % 256
-    b4 = intDiv(frac, 4294967296) % 256
-    b5 = intDiv(frac, 1099511627776) % 256
-    b6 = intDiv(frac, 281474976710656) % 16 + (exp % 16) * 16
-    b7 = sign * 128 + intDiv(exp, 16)
-    return [b0, b1, b2, b3, b4, b5, b6, b7]
-
-
 def f64_bytes(x):
-    """8 little-endian bytes of the double x."""
-    if x == 0.0:
-        return [0, 0, 0, 0, 0, 0, 0, 128 if is_neg_zero(x) else 0]
-    elif is_nan(x):
-        return [0, 0, 0, 0, 0, 0, 248, 127]
-    elif is_inf(x):
-        sign = 1 if x < 0.0 else 0
-        return [0, 0, 0, 0, 0, 0, 240, 127 + sign * 128]
-    else:
-        fields = split_double(x)
-        if fields.significand >= pow2i(52):
-            return f64_fields_bytes(fields.sign, fields.exponent + 1075, fields.significand - pow2i(52))
-        else:
-            return f64_fields_bytes(fields.sign, 0, fields.significand)
+    """8 little-endian bytes of the binary64 x."""
+    return int_bytes(floatBits(x), 8)
 
 
-def f32_bytes(x):
+def f32_bytes(x: float):
     """4 little-endian bytes of x rounded to binary32."""
-    return narrow_float_bytes(x, 8, 23, 127)
+    return int_bytes(toInt(float32Bits(toFloat32(x))), 4)
 
 
-def f16_bytes(x):
+def f16_bytes(x: float):
     """2 little-endian bytes of x rounded to binary16."""
-    return narrow_float_bytes(x, 5, 10, 15)
+    return int_bytes(toInt(float16Bits(toFloat16(x))), 2)
 
 
 def bf16_bytes(x):

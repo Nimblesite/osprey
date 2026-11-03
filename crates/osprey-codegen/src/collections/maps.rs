@@ -11,6 +11,7 @@ use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
 use osprey_ast::Expr;
+use osprey_types::numeric::Numeric;
 
 /// `mapSet(m, k, v) -> Map`. Both key and value are STORED; the key's kind is
 /// already carried by the map's `OspreyKeyType`, so only the value's flag
@@ -19,8 +20,12 @@ pub(super) fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let m = handle_arg(cg, args, 0)?;
     let (k, _) = stored_boxed_arg(cg, args, 1)?;
     // Read the value's type BEFORE the `i64` erasure: it is what the new
-    // handle's tag records, and the only place it is still visible.
+    // handle's tag records, and the only place it is still visible. A literal
+    // still spelled at its default type is fitted to the width the map already
+    // records, so `Map<string, float32>` never stores double bits
+    // ([TYPE-NUMERIC-WORD]).
     let raw = unboxed_arg(cg, args, 2)?;
+    let raw = crate::conv::fit_literal(cg, raw, map_value_numeric(cg, &m))?;
     let elem = crate::llty::elem_spelling(&raw).or_else(|| tagged_map_elem(&m));
     let (v, managed) = stored_element(cg, raw)?;
     let r = cg.call(
@@ -30,6 +35,21 @@ pub(super) fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         &[&m.operand, &k.operand, &v.operand, managed],
     );
     Ok(own_handle(cg, Value::handle(r, map_owner(elem.as_deref()))))
+}
+
+/// The sized numeric value type a map's handle records: the checker's
+/// annotation on the receiver first, else the element tag an earlier entry
+/// established ([TYPE-NUMERIC-WORD]: a sized value element boxes at its own
+/// width, so a literal's default spelling must not stand).
+fn map_value_numeric(cg: &Codegen, m: &Value) -> Option<Numeric> {
+    let annotated = m.inferred_type.as_ref().and_then(|ty| match ty {
+        osprey_types::Type::Con { name, args } if name == osprey_types::names::MAP => args.get(1),
+        _ => None,
+    });
+    let tag = annotated
+        .and_then(|ty| crate::types::elem_tag(&cg.prog, Some(ty)))
+        .or_else(|| tagged_map_elem(m))?;
+    crate::llty::sized_of_spelling(&tag)
 }
 
 /// `mapRemove(m, k) -> Map`.
@@ -162,6 +182,11 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
                 "Result-valued map entries are not yet supported; handle the Result before storing it",
             ));
         }
+        // The first entry fixes the value's width; a later literal still
+        // spelled at its default type is fitted to it, so every entry boxes
+        // at the width the map's tag will record ([TYPE-NUMERIC-WORD]).
+        let established = elem.as_deref().and_then(crate::llty::sized_of_spelling);
+        let v = crate::conv::fit_literal(cg, v, established)?;
         let managed = managed_flag(&v);
         crate::arc::escape_retain(cg, &v);
         elem = crate::llty::elem_spelling(&v);

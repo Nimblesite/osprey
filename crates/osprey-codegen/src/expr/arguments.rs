@@ -1,8 +1,8 @@
 //! Expression arguments lowering.
 use super::{
-    as_double, checked_intrinsic, fn_pointer, gen_checked_arith, gen_expr, gen_print,
-    to_string_value, with_application, with_lambda_captures, Codegen, CodegenError, Expr, FnSig,
-    LType, NamedArgument, Result, Value,
+    checked_intrinsic, fn_pointer, gen_checked_arith, gen_expr, gen_print, to_string_value,
+    with_application, with_lambda_captures, Codegen, CodegenError, Expr, FnSig, LType,
+    NamedArgument, Result, Value,
 };
 
 /// A call to a user-defined or runtime function. Parameter types come from
@@ -53,20 +53,12 @@ pub(super) fn binary_integer_builtin(
 /// already-evaluated values. Any other builtin named as a callback is
 /// eta-expanded into an ordinary call instead ([`crate::iter`]).
 pub(crate) fn has_value_form(name: &str) -> bool {
-    matches!(name, "print" | "toString" | "toFloat" | "abs" | "bitNot")
-        || crate::arithmetic::integer_conversion_target(name).is_some()
+    matches!(name, "print" | "toString" | "abs" | "bitNot" | "floatToInt")
+        || osprey_types::numeric::Numeric::conversion_target(name).is_some()
         || crate::arithmetic::is_float_function(name)
         || crate::arithmetic::is_binary_float_function(name)
         || crate::arithmetic::is_word_builtin(name)
-        || matches!(
-            name,
-            "float32"
-                | "floatBits"
-                | "floatFromBits"
-                | "float32Bits"
-                | "float32FromBits"
-                | "floatToInt"
-        )
+        || crate::arithmetic::is_float_bits_builtin(name)
         || is_binary_integer_builtin(name)
 }
 
@@ -91,12 +83,19 @@ pub(super) fn call_builtin_with_values(
     Some(match name {
         "print" => gen_print(cg, arg()),
         "toString" => to_string_value(cg, arg()),
-        // [BUILTIN-CONVERT-FLOAT] [GPU-CONVERT] the canonical float-pipeline
-        // seed `gpuIota(n) |> gpuMap(toFloat)` lowers through this arm.
-        "toFloat" => as_double(cg, arg()),
+        // [BUILTIN-CONVERT-INT] the integer conversions, overflow-checked at
+        // the target's width.
         name if crate::arithmetic::integer_conversion_target(name).is_some() => {
             match crate::arithmetic::integer_conversion_target(name) {
                 Some(to) => crate::arithmetic::integer_conversion(cg, name, to, arg()),
+                None => Err(CodegenError::invalid("not a conversion")),
+            }
+        }
+        // [BUILTIN-CONVERT-FLOAT] [GPU-CONVERT] the float conversions named as
+        // kernels: `gpuMap(toFloat32)` lowers through this arm.
+        name if osprey_types::numeric::Numeric::conversion_target(name).is_some() => {
+            match osprey_types::numeric::Numeric::conversion_target(name) {
+                Some(to) => crate::conv::as_num(cg, arg(), to),
                 None => Err(CodegenError::invalid("not a conversion")),
             }
         }
@@ -109,13 +108,11 @@ pub(super) fn call_builtin_with_values(
             Some((left, right)) => crate::arithmetic::binary_float_function(cg, name, left, right),
             None => Err(CodegenError::invalid(format!("{name} needs two arguments"))),
         },
-        // [BUILTIN-FLOAT32] [BUILTIN-FLOAT-BITS] [BUILTIN-FLOATTOINT] the
-        // conversions named as kernels: `gpuMap(float32)` and friends.
-        "float32" => crate::arithmetic::float32_round(cg, arg()),
-        "floatBits" => crate::arithmetic::float_bits(cg, arg()),
-        "floatFromBits" => crate::arithmetic::float_from_bits(cg, arg()),
-        "float32Bits" => crate::arithmetic::float32_bits(cg, arg()),
-        "float32FromBits" => crate::arithmetic::float32_from_bits(cg, arg()),
+        // [BUILTIN-FLOAT-BITS] the six bit-level views of the float formats.
+        name if crate::arithmetic::is_float_bits_builtin(name) => {
+            crate::arithmetic::float_bits_view(cg, name, arg())
+        }
+        // [BUILTIN-FLOATTOINT] checked truncation from any float width.
         "floatToInt" => crate::arithmetic::float_to_int(cg, arg()),
         // [BUILTIN-BITWISE]
         "bitNot" => crate::arithmetic::bit_not(cg, arg()),

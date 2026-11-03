@@ -142,18 +142,30 @@ fn compare_scalar(cg: &mut Codegen, ty: &Type, a: &str, b: &str) -> Option<Strin
         integer if Numeric::of_name(integer).is_some_and(Numeric::is_integer) => {
             cg.emit_reg(format!("icmp eq i64 {a}, {b}"))
         }
-        names::FLOAT => floats_equal(cg, a, b),
+        float if Numeric::of_name(float).is_some_and(Numeric::is_float) => {
+            floats_equal(cg, a, b, Numeric::of_name(float).unwrap_or(Numeric::FLOAT))
+        }
         names::STRING => strings_equal(cg, a, b),
         _ => return None,
     };
     Some(r)
 }
 
-/// [FLOAT-COMPARE]: ordered equality, so NaN is unequal to itself.
-fn floats_equal(cg: &mut Codegen, a: &str, b: &str) -> String {
-    let da = crate::conv::unbox_from_i64(cg, a, LType::F64);
-    let db = crate::conv::unbox_from_i64(cg, b, LType::F64);
-    cg.emit_reg(format!("fcmp oeq double {}, {}", da.operand, db.operand))
+/// [FLOAT-COMPARE]: ordered equality at the width the words carry, so NaN is
+/// unequal to itself at every width; a binary16 pair compares through binary32
+/// [TYPE-NUMERIC-ARITH-WIDTH].
+fn floats_equal(cg: &mut Codegen, a: &str, b: &str, n: Numeric) -> String {
+    let compute = n.float_compute();
+    let [fa, fb] = [a, b].map(|word| {
+        let value = crate::conv::unbox_from_i64(cg, word, LType::Num(n));
+        crate::conv::cast_num(cg, &value.operand, n, compute)
+    });
+    cg.emit_reg(format!(
+        "fcmp oeq {} {}, {}",
+        compute.llvm(),
+        fa.operand,
+        fb.operand
+    ))
 }
 
 fn strings_equal(cg: &mut Codegen, a: &str, b: &str) -> String {

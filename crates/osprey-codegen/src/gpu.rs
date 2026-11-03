@@ -25,12 +25,19 @@ use osprey_ast::{Expr, NamedArgument};
 /// not statically known.
 const GPU_OWNER: &str = "GpuBuffer";
 
-/// Whether `ty` is a buffer word — `int`, `float` or `bool`. This is the
-/// device sublanguage's element restriction [GPU-BUFFER-ELEM], spelled ONCE:
-/// element data, kernel results, reduction accumulators and extracted-kernel
-/// uniforms ([`crate::gpu_kernel`]) all consult this predicate.
+/// Whether `ty` is a buffer word the DEVICE sublanguage can hold — `int`,
+/// `float`, or `bool`. Kernels over the sized types are not device-capable
+/// until Phase 5, so their extraction declines here and the host loop runs
+/// [GPU-BUFFER-ELEM].
 pub(crate) fn is_scalar(ty: LType) -> bool {
     matches!(ty, LType::I64 | LType::F64 | LType::I1)
+}
+
+/// Whether `ty` boxes into a buffer's 8-byte word on the host: every numeric
+/// ([TYPE-NUMERIC-WORD] — a sized integer sign- or zero-extended, a sized
+/// float its bit pattern zero-extended) and `bool`.
+fn is_word(ty: LType) -> bool {
+    matches!(ty, LType::Num(_) | LType::I1)
 }
 
 /// Whether `v` is a bare scalar word — [`is_scalar`] with no `Result` wrapper,
@@ -154,17 +161,18 @@ fn elem_value(cg: &mut Codegen, raw: String, elem: Option<LType>) -> Value {
     crate::conv::from_word(cg, raw, elem.map(crate::llty::scalar_spelling))
 }
 
-/// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer word is an `int`,
-/// `float`, or `bool`, boxed to its raw `i64` word. An unhandled `Result` gets
-/// its own diagnostic, because the fix (handle it inside the kernel) differs
-/// from a non-scalar's.
+/// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer word is a numeric
+/// or `bool`, boxed to its raw `i64` word — the host path stores 8-byte words
+/// at every width ([TYPE-NUMERIC-WORD]). An unhandled `Result` gets its own
+/// diagnostic, because the fix (handle it inside the kernel) differs from a
+/// non-scalar's.
 fn scalar_word(cg: &mut Codegen, v: Value, what: &str) -> Result<Value> {
     if v.result_inner.is_some() {
         return Err(CodegenError::unsupported(format!(
             "{what} cannot be an unhandled Result; handle it inside the kernel"
         )));
     }
-    if !is_scalar(v.ty) {
+    if !is_word(v.ty) {
         return Err(CodegenError::unsupported(format!(
             "{what} must be a scalar (int, float, or bool)"
         )));

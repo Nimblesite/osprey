@@ -3,6 +3,7 @@ use super::{
     boxed_field, comma_join, ensure_to_string, owned_call, row_block_ty, Codegen, DescKey, LType,
     Result, Value, TO_STRING_FN,
 };
+use osprey_types::numeric::Numeric;
 
 /// Emit the render function for `key`:
 /// `define i8* @osp.any.str.<slug>(i8* %desc, i64 %payload)`.
@@ -33,6 +34,17 @@ fn render_body(cg: &mut Codegen, key: &DescKey) -> Result<Value> {
         DescKey::Float => {
             let d = crate::conv::unbox_from_i64(cg, "%payload", LType::F64);
             crate::runtime::to_string_value(cg, d)
+        }
+        // A sized float's bits sit zero-extended in the payload word and
+        // render through its own shortest-spelling function
+        // [TYPE-NUMERIC-PRINT].
+        DescKey::Float32 => {
+            let f = crate::conv::unbox_from_i64(cg, "%payload", LType::Num(Numeric::FLOAT32));
+            crate::runtime::to_string_value(cg, f)
+        }
+        DescKey::Float16 => {
+            let h = crate::conv::unbox_from_i64(cg, "%payload", LType::Num(Numeric::FLOAT16));
+            crate::runtime::to_string_value(cg, h)
         }
         DescKey::Str => {
             // The payload stays owned by the box; the epilogue's borrowed-

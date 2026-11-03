@@ -18,6 +18,7 @@ use render::emit_renderer;
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
 use crate::llty::{comma_join, LType, Value};
+use osprey_types::numeric::Numeric;
 use std::collections::HashMap;
 
 /// LLVM spelling of the box.
@@ -40,6 +41,8 @@ const ROW: i64 = 4;
 const KIND_UNION: i64 = 5;
 const KIND_RESULT: i64 = 6;
 const KIND_OPAQUE: i64 = 7;
+const KIND_FLOAT32: i64 = 8;
+const KIND_FLOAT16: i64 = 9;
 
 /// The identity of a descriptor. One global per key; two erasure sites with
 /// the same key share it, which is what descriptor-pointer narrowing relies
@@ -49,6 +52,11 @@ pub(crate) enum DescKey {
     Int,
     Bool,
     Float,
+    /// A `float32` erased whole: its binary32 bits in the payload word,
+    /// rendered at its own width [TYPE-NUMERIC-WORD].
+    Float32,
+    /// A `float16`: its `i16` bits in the payload word.
+    Float16,
     Str,
     /// Field names in layout order — the ONLY identity a row has once erased.
     Row(Vec<String>),
@@ -144,6 +152,8 @@ fn key_kind(key: &DescKey) -> i64 {
         DescKey::Int => KIND_INT,
         DescKey::Bool => KIND_BOOL,
         DescKey::Float => KIND_FLOAT,
+        DescKey::Float32 => KIND_FLOAT32,
+        DescKey::Float16 => KIND_FLOAT16,
         DescKey::Str => KIND_STRING,
         DescKey::Row(_) => ROW,
         DescKey::Union(..) => KIND_UNION,
@@ -161,6 +171,8 @@ fn key_slug(key: &DescKey, serial: usize) -> String {
         DescKey::Int => "int".into(),
         DescKey::Bool => "bool".into(),
         DescKey::Float => "float".into(),
+        DescKey::Float32 => "float32".into(),
+        DescKey::Float16 => "float16".into(),
         DescKey::Str => "string".into(),
         DescKey::Row(names) => format!("row.{}", names.join(".")),
         DescKey::Union(owner, None) => format!("union.{owner}"),
@@ -285,6 +297,8 @@ fn classify(cg: &mut Codegen, v: Value) -> Result<(DescKey, Value, bool)> {
         return Ok((DescKey::Result, boxed, true));
     }
     Ok(match v.ty {
+        LType::Num(Numeric::FLOAT32) => (DescKey::Float32, v, false),
+        LType::Num(Numeric::FLOAT16) => (DescKey::Float16, v, false),
         LType::Num(n) if n.is_float() => (DescKey::Float, v, false),
         LType::Num(_) => (DescKey::Int, v, false),
         LType::I1 => (DescKey::Bool, v, false),

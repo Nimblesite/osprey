@@ -1,0 +1,8 @@
+// [TYPE-NUMERIC-LITERAL] A float literal must fit the type its context gives it.
+// osprey: flavor=ml
+a : float32
+a = 10000000000000000000000000000000000000000.0
+b : float16
+b = 70000.0
+c : float16
+c = 65520.0

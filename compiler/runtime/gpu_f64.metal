@@ -294,7 +294,7 @@ ulong fmod64(ulong x, ulong y) {
     return x;
 }
 
-// ---- Binary32 emulation [BUILTIN-FLOAT32] ----
+// ---- Binary32 from and to the binary64 word [GPU-DEVICE-NATIVE] ----
 // narrow32 is the arm64 fcvt d->s contract: the top 23 mantissa bits with the
 // quiet bit forced for NaNs; widen32 is its exact inverse for non-NaNs.
 
@@ -332,16 +332,6 @@ ulong widen32(uint w) {
     }
     return sign | ((ulong)(e + 896) << 52) | ((ulong)m << 29);
 }
-
-// Round to the nearest binary32 and widen back: the value a float32 pipeline
-// holds [BUILTIN-FLOAT32].
-ulong float32_64(ulong x) { return widen32(narrow32(x)); }
-
-// The binary32 pattern of the nearest float32 to x [BUILTIN-FLOAT-BITS].
-ulong float32_bits(ulong x) { return narrow32(x); }
-
-// The double the binary32 pattern `bits` holds, widened exactly.
-ulong float32_from_bits(ulong bits) { return widen32((uint)bits); }
 
 // ---- Total shifts [BUILTIN-BITWISE] ----
 // A count outside 0..63 is the limit of repeated shifting: 0, and -1 for a

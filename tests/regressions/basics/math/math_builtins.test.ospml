@@ -23,11 +23,13 @@ exactCase () =
     print ("round(-2.5)=" + toString (round (-2.5)))
     print ("fmod(-7.5,2)=" + toString (fmod (-7.5) 2.0))
     print ("copysign(3,-1)=" + toString (copysign 3.0 (-1.0)))
-    print ("float32(0.1)=" + toString (float32 0.1))
+    print ("toFloat32(0.1)=" + toString (toFloat32 0.1))
     print ("floatBits(1)=" + toString (floatBits 1.0))
     print ("floatFromBits=" + toString (floatFromBits 4607182418800017408))
-    print ("float32Bits(0.1)=" + toString (float32Bits 0.1))
+    print ("float32Bits(toFloat32(0.1))=" + toString (float32Bits (toFloat32 0.1)))
     print ("float32FromBits=" + toString (float32FromBits 1036831949))
+    print ("float16Bits(toFloat16(1.0))=" + toString (float16Bits (toFloat16 1.0)))
+    print ("float16FromBits=" + toString (float16FromBits 15360))
     print ("floatToInt(-2.9)=" + showFloatToInt (-2.9))
     print ("floatToInt(2.9)=" + showFloatToInt 2.9)
     print ("floatToInt(nan)=" + showFloatToInt (sqrt (-1.0)))
@@ -52,11 +54,13 @@ exactCase () =
         round (-2.5) == -2.0,
         fmod (-7.5) 2.0 == -1.5,
         copysign 3.0 (-1.0) == -3.0,
-        float32 0.1 == 0.10000000149011612,
+        toFloat32 0.1 == 0.1,
         floatBits 1.0 == 4607182418800017408,
         floatFromBits 4607182418800017408 == 1.0,
-        float32Bits 0.1 == 1036831949,
-        float32FromBits 1036831949 == 0.10000000149011612,
+        float32Bits (toFloat32 0.1) == 1036831949,
+        float32FromBits 1036831949 == toFloat32 0.1,
+        float16Bits (toFloat16 1.0) == 15360,
+        float16FromBits 15360 == toFloat16 1.0,
         bitAnd 12 10 == 8,
         bitOr 12 10 == 14,
         bitXor 12 10 == 6,

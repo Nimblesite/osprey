@@ -16,6 +16,7 @@ use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
 use crate::result::make_result;
 use osprey_ast::Expr;
+use osprey_types::numeric::Numeric;
 
 /// Owner-tag prefix marking a flat list-literal handle; the suffix is the
 /// element type's LLVM spelling, so index access can reload it.
@@ -93,6 +94,18 @@ pub(crate) fn inferred_elem(
     )
 }
 
+/// The sized numeric element type inference resolved for the list literal at
+/// `position`, when it resolved to one ([TYPE-NUMERIC-WORD]: a sized element
+/// boxes at its own width, so a literal's default spelling must not stand).
+fn sized_elem(cg: &Codegen, position: Option<osprey_ast::Position>) -> Option<Numeric> {
+    let tag = crate::types::elem_tag(
+        &cg.prog,
+        cg.prog
+            .list_elem_type(cg.source_function.as_deref(), position),
+    )?;
+    crate::llty::sized_of_spelling(&tag)
+}
+
 /// `[e0, e1, …]` → a flat `{ length, data }` block. `position` is the literal's
 /// own source position, which an EMPTY literal needs: with no element to lower,
 /// the element type inference published there is the only thing that can tag
@@ -103,6 +116,7 @@ pub(crate) fn gen_list(
     elements: &[Expr],
     position: Option<osprey_ast::Position>,
 ) -> Result<Value> {
+    let sized = sized_elem(cg, position);
     if elements.is_empty() {
         // No data block, no elements: nothing for the drop walk to release.
         let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(false));
@@ -131,16 +145,21 @@ pub(crate) fn gen_list(
     let Some(first) = vals.first() else {
         return Err(CodegenError::unsupported("empty list literal"));
     };
-    let elem = match first.ty {
-        LType::F64 => LType::F64,
-        LType::I1 => LType::I1,
-        LType::Str | LType::Ptr => LType::Str,
-        // An erased box keeps its own slot type: folding it into `I64` here
-        // turned the box POINTER into an integer word, tagged the block an
-        // integer list and marked its slots unmanaged, so the element neither
-        // rendered through its descriptor nor was ever released.
-        LType::Any => LType::Any,
-        LType::Num(_) => LType::I64,
+    let elem = match sized {
+        // The published sized element also fixes the slot type, so the
+        // literal's block and its runtime conversion agree on the width.
+        Some(n) => LType::Num(n),
+        None => match first.ty {
+            LType::F64 => LType::F64,
+            LType::I1 => LType::I1,
+            LType::Str | LType::Ptr => LType::Str,
+            // An erased box keeps its own slot type: folding it into `I64` here
+            // turned the box POINTER into an integer word, tagged the block an
+            // integer list and marked its slots unmanaged, so the element neither
+            // rendered through its descriptor nor was ever released.
+            LType::Any => LType::Any,
+            LType::Num(_) => LType::I64,
+        },
     };
     // A handle element (nested list / record) carries its own owner so access can
     // recover it; scalars carry none.
@@ -150,6 +169,13 @@ pub(crate) fn gen_list(
     let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
     for (i, v) in vals.into_iter().enumerate() {
         let v = crate::cast::erase_result(cg, v);
+        // [TYPE-NUMERIC-WORD] coerce to the published element BEFORE boxing: a
+        // float literal arrives as its `double` default spelling and would
+        // otherwise box as double bits, to be read back as `float32` bits.
+        let v = match sized {
+            Some(n) => crate::conv::as_num(cg, v, n)?,
+            None => v,
+        };
         let v = coerce_to(cg, v, elem)?;
         // The header's drop releases pointer elements, so each store is a new
         // reference [GC-ARC-PERCEUS].
