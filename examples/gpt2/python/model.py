@@ -6,8 +6,8 @@
 This is Python concrete syntax with Osprey semantics, not a CPython module. The
 model performs `build`, `get`, `mat_mul` and friends and never names a buffer
 type: the handler a program installs, `on_lists` or `on_gpu`, decides whether a
-tensor is a host list or a GPU buffer, and both compute the same doubles in the
-same order as examples/gpt2/reference.py. The forward pass keeps every block's
+tensor is a host list or a GPU buffer, and both compute the same binary32 values
+in the same order as examples/gpt2/reference.py. The forward pass keeps every block's
 activations, and the KV-cached step runs the newest position alone over each
 block's cached qkv rows ([STAGE-BACKEND], [GPU-DEVICE], [FLAVOR-PYTHON-GPU]).
 """
@@ -36,13 +36,13 @@ MLP_WIDTH = 3072
 LAYER_COUNT = 12
 POSITIONS = 1024
 END_OF_TEXT = 50256
-EPSILON = 0.00001
-WIDTH_F = 768.0
+EPSILON: float32 = 0.00001
+WIDTH_F: float32 = 768.0
 # 1 / sqrt(HEAD_WIDTH)
-SCORE_SCALE = 0.125
+SCORE_SCALE: float32 = 0.125
 # sqrt(2 / pi) and the cubic coefficient of the tanh GELU approximation.
-GELU_SCALE = 0.7978845608028654
-GELU_CUBIC = 0.044715
+GELU_SCALE: float32 = 0.7978845608028654
+GELU_CUBIC: float32 = 0.044715
 
 
 class Layer[B]:
@@ -147,7 +147,7 @@ def max_f(a, x):
 
 
 def gelu(x):
-    return 0.5 * x * (1.0 + tanh(GELU_SCALE * (x + GELU_CUBIC * x * x * x)))
+    return toFloat32(0.5) * x * (toFloat32(1.0) + tanh(GELU_SCALE * (x + GELU_CUBIC * x * x * x)))
 
 
 def gelus(f):

@@ -214,10 +214,13 @@ fn is_float_buffer(ty: &Type) -> bool {
 /// `float` or `float32` — the two widths the product's device and host kernels
 /// compute at [GPU-MATMUL].
 fn is_float_elem(ty: &Type) -> bool {
-    matches!(
-        crate::numeric::Numeric::of_type(ty),
-        Some(n) if n == crate::numeric::Numeric::FLOAT || n == crate::numeric::Numeric::FLOAT32
-    )
+    match ty {
+        Type::Var(_) => true,
+        _ => matches!(
+            crate::numeric::Numeric::of_type(ty),
+            Some(n) if n == crate::numeric::Numeric::FLOAT || n == crate::numeric::Numeric::FLOAT32
+        ),
+    }
 }
 
 /// Unresolved variables are deferred by the checker and remain accepted when
@@ -360,6 +363,10 @@ mod tests {
         // Still-unresolved receivers are deferred, exactly as `is_sized` defers.
         assert!(invalid_use("fromGpu", &Type::Var(9)).is_none());
         assert!(invalid_use("gpuFold", &Type::gpu_buffer(Type::Var(9))).is_none());
+        assert!(invalid_use("gpuMatMul", &Type::gpu_buffer(Type::Var(9))).is_none());
+        assert!(invalid_use("gpuMatMul", &Type::gpu_buffer(Type::float())).is_none());
+        assert!(invalid_use("gpuMatMul", &Type::gpu_buffer(Type::prim("float32"))).is_none());
+        assert!(invalid_use("gpuMatMul", &Type::gpu_buffer(Type::prim("float16"))).is_some());
         assert_eq!(display_param_type("toGpu", 0), Some(GPU_SOURCE_DISPLAY));
         assert_eq!(display_param_type("gpuFold", 0), Some(GPU_BUFFER_DISPLAY));
         assert_eq!(display_param_type("gpuFold", 1), None);

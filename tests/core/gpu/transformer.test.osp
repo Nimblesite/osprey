@@ -1,5 +1,5 @@
 // A GPT-2 shaped transformer at width 4, written with the kernels of the GPT-2
-// port in examples/gpt2: gpuMatMul products [GPU-MATMUL], the float
+// port in examples/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
 // functions [BUILTIN-MATH] inside kernels and as kernels, LayerNorm, GELU,
 // causal multi-head attention with its softmax, token and position embeddings,
 // one pre-norm block and the tied greedy readout — plus the weight loaders
@@ -13,31 +13,33 @@
 // rounded everywhere ([FLOAT-IEEE-RESULTS]).
 
 let width = 4
-let widthF = 4.0
+let widthF = toFloat32(4.0)
 let heads = 2
 let headWidth = 2
 let qkvWidth = 12
 let mlpWidth = 8
 let vocab = 5
-let epsilon = 0.00001
+let epsilon = toFloat32(0.00001)
 /// 1 / sqrt(headWidth), the attention score scale.
-let scoreScale = 0.5
+let scoreScale = toFloat32(0.5)
 /// sqrt(2 / pi), the GELU tanh-approximation constant.
-let geluScale = 0.7978845608028654
-let geluCubic = 0.044715
-let tolerance = 0.000000001
+let geluScale = toFloat32(0.7978845608028654)
+let geluCubic = toFloat32(0.044715)
+let tolerance = toFloat32(0.000000001)
 /// Scratch files are named per run so the twins never race on one path.
 let scratch = "osprey_transformer_${random()}_${random()}"
 
-fn at(m, i) = gpuGet(m, i) ?: 0.0
+fn at(m, i) = gpuGet(m, i) ?: toFloat32(0.0)
 fn addF(a, x) = a + x
 fn subF(a, x) = a - x
 fn maxF(a, x) = match x > a { true => x  false => a }
-fn near(actual, expected) = abs(actual - expected) < tolerance
-fn gelu(x) = 0.5 * x * (1.0 + tanh(geluScale * (x + geluCubic * x * x * x)))
+fn floats(xs) = toGpu(mapList(xs, toFloat32))
+fn exact(actual, expected) = actual == toFloat32(expected)
+fn near(actual, expected) = abs(actual - toFloat32(expected)) < tolerance
+fn gelu(x) = toFloat32(0.5) * x * (toFloat32(1.0) + tanh(geluScale * (x + geluCubic * x * x * x)))
 
 /// Deterministic test weights: ((i * step) % modulus - shift) / scale for element i.
-fn weight(n, step, modulus, shift, scale) = gpuIota(n) |> gpuMap(fn(i) => toFloat((i * step) % modulus - shift) / scale)
+fn weight(n, step, modulus, shift, scale) = gpuIota(n) |> gpuMap(fn(i) => toFloat32((i * step) % modulus - shift) / scale)
 
 /// The block's parameters, named as GPT-2's checkpoint names them.
 fn ln1g() = weight(width, 3, 5, 1, 2.0)
@@ -55,7 +57,7 @@ fn outB() = weight(width, 3, 7, 3, 4.0)
 fn tokenTable() = weight(vocab * width, 9, 17, 8, 4.0)
 fn positionTable() = weight(3 * width, 4, 9, 4, 8.0)
 fn miniTokens() = toGpu([3, 1])
-fn noBias() = toGpu([0.0, 0.0, 0.0, 0.0, 0.0])
+fn noBias() = floats([0.0, 0.0, 0.0, 0.0, 0.0])
 
 /// The product, or the empty buffer when the shapes disagree.
 fn product(l, r, rows, inner, cols) = gpuMatMul(l, r, rows, inner, cols) ?: toGpu([])
@@ -153,43 +155,47 @@ fn loadFailure(path, offset, count) = match gpuLoad(path, offset, count) {
     Success _ => "no error"
     Error { message } => message
 }
-fn tensorFailure(path, name) = match gpuLoadTensor(path, name) {
-    Success _ => "no error"
-    Error { message } => message
+fn tensorFailure(path, name) = {
+    let result: Result<GpuBuffer<float32>, Error> = gpuLoadTensor(path, name)
+    match result {
+        Success _ => "no error"
+        Error { message } => message
+    }
 }
 
 fn matMulExactCase() = {
-    let left = toGpu([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-    let right = toGpu([7.0, 8.0, 9.0, 10.0, 11.0, 12.0])
+    let left = floats([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    let right = floats([7.0, 8.0, 9.0, 10.0, 11.0, 12.0])
     let square = product(left, right, 2, 3, 2)
-    let outer = product(toGpu([2.0, 3.0]), toGpu([5.0, 7.0]), 2, 1, 2)
-    let hollow = product(toGpu([]), toGpu([]), 2, 0, 2)
+    let outer = product(floats([2.0, 3.0]), floats([5.0, 7.0]), 2, 1, 2)
+    let hollow = product(floats([]), floats([]), 2, 0, 2)
     checkAll("gpuMatMul forms the row-major product of the stated shapes", [
-        gpuLength(square) == 4, at(square, 0) == 58.0, at(square, 1) == 64.0, at(square, 2) == 139.0, at(square, 3) == 154.0,
-        at(outer, 0) == 10.0, at(outer, 1) == 14.0, at(outer, 2) == 15.0, at(outer, 3) == 21.0,
-        gpuLength(hollow) == 4, (hollow |> gpuFold(0.0, addF)) == 0.0,
+        gpuLength(square) == 4, exact(at(square, 0), 58.0), exact(at(square, 1), 64.0), exact(at(square, 2), 139.0), exact(at(square, 3), 154.0),
+        exact(at(outer, 0), 10.0), exact(at(outer, 1), 14.0), exact(at(outer, 2), 15.0), exact(at(outer, 3), 21.0),
+        gpuLength(hollow) == 4, exact(hollow |> gpuFold(0.0, addF), 0.0),
         gpuLength(product(toGpu([]), right, 0, 3, 2)) == 0
     ])
 }
 
-/// 2^53 + 1 - 2^53 is 0.0 in k order and 1.0 in any other association; the
-/// last pin is 3 units in the last place only when the product is rounded
-/// before it is added — a fused multiply-add keeps one more bit.
+/// 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other
+/// association; the last pin is 3 units in the last place only when the
+/// product is rounded before it is added — a fused multiply-add keeps one
+/// more bit.
 fn matMulOrderCase() = {
-    let big = 9007199254740992.0
-    let ulp = 1.0 / 4503599627370496.0
-    let ones = toGpu([1.0, 1.0, 1.0])
-    let forward = product(toGpu([big, 1.0, 0.0 - big]), ones, 1, 3, 1)
-    let backward = product(toGpu([0.0 - big, 1.0, big]), ones, 1, 3, 1)
-    let unfused = product(toGpu([-1.0, 1.0 + ulp]), toGpu([1.0, 1.0 + 2.0 * ulp]), 1, 2, 1)
+    let big = toFloat32(16777216.0)
+    let ulp = toFloat32(1.0) / toFloat32(8388608.0)
+    let ones = floats([1.0, 1.0, 1.0])
+    let forward = product(toGpu([big, toFloat32(1.0), toFloat32(0.0) - big]), ones, 1, 3, 1)
+    let backward = product(toGpu([toFloat32(0.0) - big, toFloat32(1.0), big]), ones, 1, 3, 1)
+    let unfused = product(toGpu([toFloat32(-1.0), toFloat32(1.0) + ulp]), toGpu([toFloat32(1.0), toFloat32(1.0) + toFloat32(2.0) * ulp]), 1, 2, 1)
     checkAll("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", [
-        at(forward, 0) == 0.0, at(backward, 0) == 1.0, at(unfused, 0) == 3.0 * ulp
+        exact(at(forward, 0), 0.0), exact(at(backward, 0), 1.0), at(unfused, 0) == 3.0 * ulp
     ])
 }
 
 fn matMulShapeCase() = {
-    let four = toGpu([1.0, 2.0, 3.0, 4.0])
-    let three = toGpu([1.0, 2.0, 3.0])
+    let four = floats([1.0, 2.0, 3.0, 4.0])
+    let three = floats([1.0, 2.0, 3.0])
     checkAll("gpuMatMul names the operand whose length disagrees with the stated shape", [
         matMulFailure(three, four, 2, 2, 2) == "gpuMatMul: left operand: has 3 elements, the stated shape needs 4",
         matMulFailure(four, three, 2, 2, 2) == "gpuMatMul: right operand: has 3 elements, the stated shape needs 4",
@@ -202,70 +208,70 @@ fn matMulShapeCase() = {
 }
 
 fn mathKernelsCase() = {
-    let roots = toGpu([0.0, 1.0, 2.25, 0.0625, 10000000000000000.0, -1.0]) |> gpuMap(sqrt)
-    let grown = toGpu([0.0, 1.0, -1000.0, 1000.0]) |> gpuMap(exp)
-    let logs = toGpu([1.0, 0.0, 10.0, -1.0]) |> gpuMap(ln)
-    let squashed = toGpu([0.0, 1000.0, -1000.0, 0.5]) |> gpuMap(tanh)
-    checkAll("sqrt, exp, ln and tanh are total kernels over IEEE doubles", [
-        at(roots, 0) == 0.0, at(roots, 1) == 1.0, at(roots, 2) == 1.5, at(roots, 3) == 0.25,
-        at(roots, 4) == 100000000.0, at(roots, 5) != at(roots, 5),
-        at(grown, 0) == 1.0, near(at(grown, 1), 2.718281828459045), at(grown, 2) == 0.0, at(grown, 3) > 1000000000000000000.0,
-        at(logs, 0) == 0.0, at(logs, 1) < -1000000000000000000.0, near(at(logs, 2), 2.302585092994046), at(logs, 3) != at(logs, 3),
-        at(squashed, 0) == 0.0, at(squashed, 1) == 1.0, at(squashed, 2) == -1.0, near(at(squashed, 3), 0.46211715726000974),
-        near(ln(exp(2.0)), 2.0), near(sqrt(2.0) * sqrt(2.0), 2.0)
+    let roots = floats([0.0, 1.0, 2.25, 0.0625, 10000000000000000.0, -1.0]) |> gpuMap(sqrt)
+    let grown = floats([0.0, 1.0, -1000.0, 1000.0]) |> gpuMap(exp)
+    let logs = floats([1.0, 0.0, 10.0, -1.0]) |> gpuMap(ln)
+    let squashed = floats([0.0, 1000.0, -1000.0, 0.5]) |> gpuMap(tanh)
+    checkAll("sqrt, exp, ln and tanh are total kernels over IEEE binary32 values", [
+        exact(at(roots, 0), 0.0), exact(at(roots, 1), 1.0), exact(at(roots, 2), 1.5), exact(at(roots, 3), 0.25),
+        exact(at(roots, 4), 100000000.0), at(roots, 5) != at(roots, 5),
+        exact(at(grown, 0), 1.0), near(at(grown, 1), 2.718281828459045), exact(at(grown, 2), 0.0), at(grown, 3) > toFloat32(1000000000000000000.0),
+        exact(at(logs, 0), 0.0), at(logs, 1) < toFloat32(-1000000000000000000.0), near(at(logs, 2), 2.302585092994046), at(logs, 3) != at(logs, 3),
+        exact(at(squashed, 0), 0.0), exact(at(squashed, 1), 1.0), exact(at(squashed, 2), -1.0), near(at(squashed, 3), 0.46211715726000974),
+        near(ln(exp(toFloat32(2.0))), 2.0), exact(sqrt(toFloat32(2.0)) * sqrt(toFloat32(2.0)), 1.9999998807907104)
     ])
 }
 
 /// gelu(x) - gelu(-x) is x: the tanh term cancels.
 fn geluCase() = {
-    let inputs = toGpu([0.0, 1.0, -1.0, 2.0, -3.0])
+    let inputs = floats([0.0, 1.0, -1.0, 2.0, -3.0])
     let outputs = inputs |> gpuMap(gelu)
-    let negated = inputs |> gpuMap(fn(x) => gelu(0.0 - x))
+    let negated = inputs |> gpuMap(fn(x) => gelu(toFloat32(0.0) - x))
     let odd = gpuZipWith(outputs, negated, subF)
     checkAll("gelu is the tanh approximation GPT-2 was trained with", [
-        at(outputs, 0) == 0.0, near(at(outputs, 1), 0.8411919906082768), near(at(outputs, 2), -0.15880800939172324),
-        near(at(outputs, 3), 1.954597694087775), near(at(outputs, 4), -0.0036373920817729943),
+        exact(at(outputs, 0), 0.0), near(at(outputs, 1), 0.8411920070648193), near(at(outputs, 2), -0.15880799293518066),
+        near(at(outputs, 3), 1.9545977115631104), near(at(outputs, 4), -0.0036374330520629883),
         near(at(odd, 1), 1.0), near(at(odd, 3), 2.0), near(at(odd, 4), -3.0)
     ])
 }
 
 /// Only the four operations and sqrt are involved, so every digit is pinned.
 fn layerNormCase() = {
-    let gain = toGpu([2.0, 1.0, 0.5, 1.0])
-    let bias = toGpu([0.5, 0.0, -0.5, 0.0])
-    let rows = layerNorm(toGpu([1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 6.0, 6.0]), 2, gain, bias)
-    let flat = layerNorm(toGpu([7.0, 7.0, 7.0, 7.0]), 1, gain, bias)
+    let gain = floats([2.0, 1.0, 0.5, 1.0])
+    let bias = floats([0.5, 0.0, -0.5, 0.0])
+    let rows = layerNorm(floats([1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 6.0, 6.0]), 2, gain, bias)
+    let flat = layerNorm(floats([7.0, 7.0, 7.0, 7.0]), 1, gain, bias)
     checkAll("layerNorm normalises each row and applies the column gain and bias", [
         gpuLength(rows) == 8,
-        at(rows, 0) == -2.1832708399378538, at(rows, 1) == -0.447211806656309,
-        at(rows, 2) == -0.2763940966718455, at(rows, 3) == 1.3416354199689269,
-        at(rows, 4) == -1.4999988888898148, at(rows, 5) == -0.9999994444449074,
-        at(rows, 6) == -0.0000002777775462980969, at(rows, 7) == 0.9999994444449074,
-        at(flat, 0) == 0.5, at(flat, 1) == 0.0, at(flat, 2) == -0.5, at(flat, 3) == 0.0
+        exact(at(rows, 0), -2.1832709312438965), exact(at(rows, 1), -0.4472118318080902),
+        exact(at(rows, 2), -0.2763940691947937), exact(at(rows, 3), 1.3416354656219482),
+        exact(at(rows, 4), -1.499998927116394), exact(at(rows, 5), -0.999999463558197),
+        exact(at(rows, 6), -0.0000002682209014892578), exact(at(rows, 7), 0.999999463558197),
+        exact(at(flat, 0), 0.5), exact(at(flat, 1), 0.0), exact(at(flat, 2), -0.5), exact(at(flat, 3), 0.0)
     ])
 }
 
 /// Two heads, three positions: a lone score is certain, equal scores split
 /// evenly, [1, 2, 3] and its reverse are the textbook row, masked columns are 0.
 fn softmaxCase() = {
-    let scores = toGpu([
+    let scores = floats([
         4.0, 0.0, 0.0, 5.0, 5.0, 0.0, 1.0, 2.0, 3.0,
         -2.0, 0.0, 0.0, 1.0, 1.0, 0.0, 3.0, 2.0, 1.0
     ])
     let probs = probsOf(scores, 3, 3, 0)
     checkAll("softmax normalises every causal row, shifted by its peak", [
         gpuLength(probs) == 18,
-        at(probs, 0) == 1.0, at(probs, 1) == 0.0, at(probs, 2) == 0.0,
-        at(probs, 3) == 0.5, at(probs, 4) == 0.5, at(probs, 5) == 0.0,
+        exact(at(probs, 0), 1.0), exact(at(probs, 1), 0.0), exact(at(probs, 2), 0.0),
+        exact(at(probs, 3), 0.5), exact(at(probs, 4), 0.5), exact(at(probs, 5), 0.0),
         near(at(probs, 6), 0.09003057317038046), near(at(probs, 7), 0.24472847105479764), near(at(probs, 8), 0.6652409557748218),
-        at(probs, 9) == 1.0, at(probs, 12) == 0.5, at(probs, 13) == 0.5, at(probs, 14) == 0.0,
+        exact(at(probs, 9), 1.0), exact(at(probs, 12), 0.5), exact(at(probs, 13), 0.5), exact(at(probs, 14), 0.0),
         near(at(probs, 15), 0.6652409557748218), near(at(probs, 16), 0.24472847105479764), near(at(probs, 17), 0.09003057317038046),
         near(sumRange(probs, 6, 3), 1.0), near(sumRange(probs, 15, 3), 1.0)
     ])
 }
 
 /// Two positions whose keys are equal, so the second attends half to each value.
-fn pairQkv() = toGpu([
+fn pairQkv() = floats([
     1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 2.0, 1.0, 2.0, 3.0, 4.0,
     2.0, 3.0, 4.0, 5.0, 1.0, 1.0, 2.0, 2.0, 5.0, 6.0, 7.0, 8.0
 ])
@@ -273,20 +279,20 @@ fn pairQkv() = toGpu([
 /// A lone token attends only to itself, so attention returns its value
 /// columns; a second token whose keys equal the first's averages the values.
 fn attentionExactCase() = {
-    let single = attention(toGpu([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]), 1)
+    let single = attention(floats([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]), 1)
     let pair = attention(pairQkv(), 2)
     checkAll("attention returns a lone token's value and averages equal keys", [
-        gpuLength(single) == 4, at(single, 0) == 8.0, at(single, 1) == 9.0, at(single, 2) == 10.0, at(single, 3) == 11.0,
-        gpuLength(pair) == 8, at(pair, 0) == 1.0, at(pair, 1) == 2.0, at(pair, 2) == 3.0, at(pair, 3) == 4.0,
-        at(pair, 4) == 3.0, at(pair, 5) == 4.0, at(pair, 6) == 5.0, at(pair, 7) == 6.0
+        gpuLength(single) == 4, exact(at(single, 0), 8.0), exact(at(single, 1), 9.0), exact(at(single, 2), 10.0), exact(at(single, 3), 11.0),
+        gpuLength(pair) == 8, exact(at(pair, 0), 1.0), exact(at(pair, 1), 2.0), exact(at(pair, 2), 3.0), exact(at(pair, 3), 4.0),
+        exact(at(pair, 4), 3.0), exact(at(pair, 5), 4.0), exact(at(pair, 6), 5.0), exact(at(pair, 7), 6.0)
     ])
 }
 
 fn embedCase() = {
     let x = embed(tokenTable(), positionTable(), miniTokens(), 2)
     checkAll("embed gathers each token's row and adds its position's row", [
-        gpuLength(x) == 8, at(x, 0) == -1.0, at(x, 1) == 1.75, at(x, 2) == 0.25, at(x, 3) == 1.875,
-        at(x, 4) == -1.125, at(x, 5) == 0.5, at(x, 6) == -1.0, at(x, 7) == 0.625
+        gpuLength(x) == 8, exact(at(x, 0), -1.0), exact(at(x, 1), 1.75), exact(at(x, 2), 0.25), exact(at(x, 3), 1.875),
+        exact(at(x, 4), -1.125), exact(at(x, 5), 0.5), exact(at(x, 6), -1.0), exact(at(x, 7), 0.625)
     ])
 }
 
@@ -296,10 +302,10 @@ fn attentionCase() = {
     let a = attention(qkv, 2)
     checkAll("attention over the embedded pair matches the reference pass", [
         gpuLength(a) == 8,
-        near(at(a, 0), -0.0796458429080088), near(at(a, 1), 0.4373441344427571),
-        near(at(a, 2), -1.2230308087437807), near(at(a, 3), 1.2129035308112646),
-        near(at(a, 4), -0.06741551961608724), near(at(a, 5), 0.4164761656826965),
-        near(at(a, 6), -1.243087625638697), near(at(a, 7), 1.3210809841254196)
+        near(at(a, 0), -0.07964593172073364), near(at(a, 1), 0.43734419345855713),
+        near(at(a, 2), -1.2230308055877686), near(at(a, 3), 1.212903618812561),
+        near(at(a, 4), -0.06741555035114288), near(at(a, 5), 0.41647619009017944),
+        near(at(a, 6), -1.243087649345398), near(at(a, 7), 1.3210810422897339)
     ])
 }
 
@@ -319,8 +325,8 @@ fn cachedStepCase() = {
     let pairStep = attentionFrom(pairQkv(), 2, 1)
     checkAll("the newest position attends through the cache exactly as the full pass does", [
         gpuLength(newest) == width, sameRow(newest, attention(qkv, 2), 1, width),
-        near(at(newest, 0), -0.06741551961608724), near(at(newest, 3), 1.3210809841254196),
-        gpuLength(pairStep) == width, at(pairStep, 0) == 3.0, at(pairStep, 1) == 4.0, at(pairStep, 2) == 5.0, at(pairStep, 3) == 6.0,
+        near(at(newest, 0), -0.06741555035114288), near(at(newest, 3), 1.3210810422897339),
+        gpuLength(pairStep) == width, exact(at(pairStep, 0), 3.0), exact(at(pairStep, 1), 4.0), exact(at(pairStep, 2), 5.0), exact(at(pairStep, 3), 6.0),
         sameRow(layerNorm(rowOf(x, 1, width), 1, ln1g(), ln1b()), normed, 1, width),
         sameRow(linear(rowOf(normed, 1, width), 1, width, qkvWidth, qkvW(), qkvB()), qkv, 1, qkvWidth)
     ])
@@ -330,11 +336,11 @@ fn blockCase() = {
     let y = block(embed(tokenTable(), positionTable(), miniTokens(), 2), 2)
     checkAll("one pre-norm block matches the reference pass", [
         gpuLength(y) == 8,
-        near(at(y, 0), -1.6005739040598597), near(at(y, 1), 1.6570609567125532),
-        near(at(y, 2), 0.7819120177177687), near(at(y, 3), 2.600026966458822),
-        near(at(y, 4), -1.4874618953251921), near(at(y, 5), 0.04813056859620782),
-        near(at(y, 6), -0.6083624491502386), near(at(y, 7), 1.4214195552139615),
-        near(y |> gpuFold(0.0, addF), 2.8121518161640227)
+        near(at(y, 0), -1.6005736589431763), near(at(y, 1), 1.6570606231689453),
+        near(at(y, 2), 0.7819118499755859), near(at(y, 3), 2.600027084350586),
+        near(at(y, 4), -1.487461805343628), near(at(y, 5), 0.04813048243522644),
+        near(at(y, 6), -0.6083625555038452), near(at(y, 7), 1.421419620513916),
+        near(y |> gpuFold(0.0, addF), 2.8121519088745117)
     ])
 }
 
@@ -343,10 +349,10 @@ fn nextTokenCase() = {
     let logits = logitsOf(layerNorm(y, 2, ln1g(), ln1b()), 2, tokenTable())
     checkAll("the tied readout scores every token row and argmax picks the first peak", [
         gpuLength(logits) == vocab,
-        near(at(logits, 0), 1.284350197882154), near(at(logits, 1), 2.4340966623448166),
-        near(at(logits, 2), 3.583843126807479), near(at(logits, 3), 4.733589591270141),
-        near(at(logits, 4), -4.412789714948583),
-        argmax(logits) == 3, argmax(toGpu([1.0, 9.0, 9.0, 2.0])) == 1
+        near(at(logits, 0), 1.2843501567840576), near(at(logits, 1), 2.434096336364746),
+        near(at(logits, 2), 3.5838427543640137), near(at(logits, 3), 4.733589172363281),
+        near(at(logits, 4), -4.4127888679504395),
+        argmax(logits) == 3, argmax(floats([1.0, 9.0, 9.0, 2.0])) == 1
     ])
 }
 
@@ -358,10 +364,10 @@ fn loadCase() = {
     let ready = written(raw, "ABCDEFGHIJKL")
     let words = gpuLoad(raw, 0, 3) ?: toGpu([])
     let tail = gpuLoad(raw, 4, 2) ?: toGpu([])
-    checkAll("gpuLoad widens little-endian binary32 words and refuses a short read", [
-        ready, gpuLength(words) == 3, at(words, 0) == 781.0352172851562, at(words, 1) == 204057.078125, at(words, 2) == 53291300.0,
-        gpuLength(tail) == 2, at(tail, 0) == 204057.078125, at(tail, 1) == 53291300.0,
-        gpuLength(gpuLoad(raw, 12, 0) ?: toGpu([1.0])) == 0,
+    checkAll("gpuLoad keeps little-endian binary32 words and refuses a short read", [
+        ready, gpuLength(words) == 3, exact(at(words, 0), 781.0352172851562), exact(at(words, 1), 204057.078125), exact(at(words, 2), 53291300.0),
+        gpuLength(tail) == 2, exact(at(tail, 0), 204057.078125), exact(at(tail, 1), 53291300.0),
+        gpuLength(gpuLoad(raw, 12, 0) ?: floats([1.0])) == 0,
         loadFailure(raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
         loadFailure(raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",
         loadFailure(raw, 0, -1) == "gpuLoad: " + raw + ": a negative element count",
@@ -409,7 +415,7 @@ fn exactArithmetic(work) = {
 test("gpuMatMul forms the row-major product of the stated shapes", fn() => exactArithmetic(matMulExactCase))
 test("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", fn() => exactArithmetic(matMulOrderCase))
 test("gpuMatMul names the operand whose length disagrees with the stated shape", fn() => exactArithmetic(matMulShapeCase))
-test("sqrt, exp, ln and tanh are total kernels over IEEE doubles", fn() => exactArithmetic(mathKernelsCase))
+test("sqrt, exp, ln and tanh are total kernels over IEEE binary32 values", fn() => exactArithmetic(mathKernelsCase))
 test("gelu is the tanh approximation GPT-2 was trained with", fn() => exactArithmetic(geluCase))
 test("layerNorm normalises each row and applies the column gain and bias", fn() => exactArithmetic(layerNormCase))
 test("softmax normalises every causal row, shifted by its peak", fn() => exactArithmetic(softmaxCase))
@@ -419,5 +425,5 @@ test("attention over the embedded pair matches the reference pass", fn() => exac
 test("the newest position attends through the cache exactly as the full pass does", fn() => exactArithmetic(cachedStepCase))
 test("one pre-norm block matches the reference pass", fn() => exactArithmetic(blockCase))
 test("the tied readout scores every token row and argmax picks the first peak", fn() => exactArithmetic(nextTokenCase))
-test("gpuLoad widens little-endian binary32 words and refuses a short read", fn() => exactArithmetic(loadCase))
+test("gpuLoad keeps little-endian binary32 words and refuses a short read", fn() => exactArithmetic(loadCase))
 test("gpuLoadTensor names the file and the reason its header cannot be read", fn() => exactArithmetic(tensorHeaderCase))
