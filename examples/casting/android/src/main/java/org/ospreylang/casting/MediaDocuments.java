@@ -1,7 +1,6 @@
 package org.ospreylang.casting;
 
 import android.content.Context;
-import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
@@ -16,12 +15,6 @@ import java.nio.file.Files;
 public final class MediaDocuments {
     private static final long LIMIT = 1L << 30;
     private MediaDocuments() {}
-
-    public static Intent choose() {
-        return new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("audio/mpeg")
-            .addCategory(Intent.CATEGORY_OPENABLE)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-    }
 
     public static File importAudio(Context context, Uri source) throws IOException {
         File folder = Files.createTempDirectory(context.getFilesDir().toPath(), "media-").toFile();

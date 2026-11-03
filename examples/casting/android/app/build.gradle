@@ -1,0 +1,23 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'org.ospreylang.casting'
+    compileSdk 36
+    packaging { jniLibs { useLegacyPackaging true } }
+    defaultConfig {
+        applicationId 'org.ospreylang.casting'
+        minSdk 34
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    sourceSets {
+        main {
+            java.srcDirs = [rootProject.file('src/main/java')]
+            jni.srcDirs = []
+            jniLibs.srcDirs = [rootProject.file('build/generated/jniLibs')]
+            assets.srcDirs = [rootProject.file('build/generated/assets')]
+        }
+    }
+}
+dependencies { implementation 'androidx.activity:activity:1.13.0' }
