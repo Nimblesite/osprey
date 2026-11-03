@@ -155,12 +155,10 @@ fn loadFailure(path, offset, count) = match gpuLoad(path, offset, count) {
     Success _ => "no error"
     Error { message } => message
 }
-fn tensorFailure(path, name) = {
-    let result: Result<GpuBuffer<float32>, Error> = gpuLoadTensor(path, name)
-    match result {
-        Success _ => "no error"
-        Error { message } => message
-    }
+fn tensorFailure(path, name) = tensorFailure32(gpuLoadTensor(path, name))
+fn tensorFailure32(result: Result<GpuBuffer<float32>, Error>) = match result {
+    Success _ => "no error"
+    Error { message } => message
 }
 
 fn matMulExactCase() = {
