@@ -13,7 +13,7 @@ const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
 const proofVideos = require("../src/_data/proofVideos.js");
 const proofWatch = (id) => `/docs/proofs/videos/${id}/`;
-const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/", "/docs/tutorials/chromecast-from-mac/", "/docs/tutorials/static-typing-python/", "/docs/tutorials/ui-testing-by-label/", "/docs/tutorials/rust-ui-framework-without-rust/", "/docs/packages-in-vscode/", ...proofVideos.map(({ id }) => proofWatch(id))];
+const WATCH_PAGES = [WATCH, "/docs/tutorials/agent-native/", "/docs/tutorials/profiler/", "/docs/tutorials/chromecast-from-mac/", "/docs/tutorials/static-typing-python/", "/docs/tutorials/ui-testing-by-label/", "/docs/tutorials/rust-ui-framework-without-rust/", "/docs/packages-in-vscode/", ...proofVideos.map(({ id }) => proofWatch(id))];
 const read = (file) => fs.readFileSync(path.join(SITE, file), "utf8");
 const jsonLd = (html) =>
   [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
@@ -268,4 +268,39 @@ test("proof watch titles and descriptions preserve punctuation once", async ({ p
   const graph = jsonLd(await page.content()).find(item => item["@graph"])["@graph"];
   const breadcrumb = graph.find(item => item["@type"] === "BreadcrumbList");
   expect(breadcrumb.itemListElement.at(-1).name).toBe(entry.name);
+});
+
+test("video duration metadata matches the delivered media", async () => {
+  const { execFileSync } = require("node:child_process");
+  const { video } = await import("../lib/videos.mjs");
+  const entries = require("../src/_data/videos.json");
+  for (const id of Object.keys(entries).filter(id => !id.startsWith("_"))) {
+    const v = video(id);
+    const file = path.resolve(__dirname, "../src", v.content.slice(1));
+    const seconds = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" }));
+    expect(v.duration, id).toBe(Math.ceil(seconds));
+  }
+});
+
+for (const width of [390, 1440]) test(`Osprey Native shows real apps and plays the agent film at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto("/docs/osprey-native/");
+  const article = page.locator("article");
+  await expect(article).toContainText("macOS · Windows · iOS · Android · Web");
+  const player = article.locator('[data-video="agent-native"] video');
+  await expect(player).toBeVisible();
+  await player.evaluate(video => video.play());
+  await expect.poll(() => player.evaluate(video => video.currentTime)).toBeGreaterThan(0.5);
+  await expect(player.locator('track[kind="captions"]')).toHaveAttribute("src", /agent-native.en.vtt$/);
+  expect(await player.evaluate(video => video.duration)).toBeGreaterThan(60);
+  const images = article.locator("img");
+  expect(await images.count()).toBeGreaterThanOrEqual(10);
+  for (const image of await images.all()) {
+    await image.scrollIntoViewIfNeeded();
+    expect(await image.evaluate(async el => { await el.decode(); return el.naturalWidth; })).toBeGreaterThan(0);
+    await expect(image).toHaveAttribute("alt", /\S/);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.screenshot({ path: `/tmp/osprey-native-${width}-review.png` });
 });

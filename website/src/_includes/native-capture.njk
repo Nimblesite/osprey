@@ -1,0 +1,6 @@
+{% macro capture(src, alt, caption, width, height) %}
+<figure>
+  <a href="{{ src }}" aria-label="Open full-size screenshot: {{ caption }}"><img src="{{ src }}" alt="{{ alt }}" width="{{ width }}" height="{{ height }}" loading="lazy" decoding="async"></a>
+  <figcaption>{{ caption }}</figcaption>
+</figure>
+{% endmacro %}

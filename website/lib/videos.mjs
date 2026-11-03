@@ -56,10 +56,11 @@ export const isoDuration = (value) => {
 export const video = (id) => {
   const entry = VIDEOS[id];
   if (!entry || id.startsWith("_")) throw new Error(`No video "${id}" in src/_data/videos.json`);
+  if (!(entry.durationSeconds > 0)) throw new Error(`Video "${id}" needs its measured duration; run make -C website video-metadata`);
   const chapters = cues(entry.chapters);
   const starts = chapters.map((chapter) => Math.floor(chapter.start));
   if (new Set(starts).size !== starts.length) throw new Error(`Video "${id}" has two chapters starting at the same second`);
-  return { id, ...entry, chapterTrack: entry.chapters, chapters, transcript: cues(entry.captions), duration: Math.floor(chapters.at(-1).end) };
+  return { id, ...entry, chapterTrack: entry.chapters, chapters, transcript: cues(entry.captions), duration: Math.ceil(entry.durationSeconds) };
 };
 
 // A link that starts the video at `start`: `?t=` is what Google's key moments
@@ -119,6 +120,8 @@ export const videoObject = (id, pageUrl, site) => {
     width: v.width,
     height: v.height,
     inLanguage: "en",
+    isAccessibleForFree: true,
+    accessibilityFeature: ["captions", "transcript"],
     isFamilyFriendly: true,
     keywords: v.tags.join(", "),
     url: pageUrl,

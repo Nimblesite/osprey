@@ -3,6 +3,11 @@
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ..
 
+## video-metadata: Measure delivered MP4 durations for VideoObject and video sitemap metadata (requires ffprobe).
+.PHONY: video-metadata
+video-metadata:
+	node scripts/measure-video-metadata.mjs
+
 .PHONY: wasm wasm-site wasm-serve docs docs-html-test
 
 ## docs: Rebuild the compiler and regenerate built-in reference pages and ML twins.
