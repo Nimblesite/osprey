@@ -20,6 +20,7 @@ container=$(xcrun simctl get_app_container "$device" org.ospreylang.casting data
 mkdir -p "$container/Documents"
 cp "$CAST_TEST_AUDIO_SOURCE" "$container/Documents/Casting mobile test.mp3"
 export TEST_RUNNER_CAST_TEST_AUDIO="Casting mobile test.mp3"
+export TEST_RUNNER_CAST_TEST_AUDIO_PATH="$container/Documents/Casting mobile test.mp3"
 export TEST_RUNNER_CAST_TEST_RECEIVER="$CAST_TEST_RECEIVER"
 export TEST_RUNNER_CAST_TEST_NATIVE_HOST="$CAST_TEST_NATIVE_HOST"
 export TEST_RUNNER_CAST_TEST_NATIVE_PORT="$CAST_TEST_NATIVE_PORT"
