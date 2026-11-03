@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# [CAST-MOBILE-DELIVERY] Live TLS receiver test of the exact iOS transport source.
+# [CAST-MOBILE-DELIVERY] Live TLS receiver test of the native transport sources.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
+platform=${1:-ios}
 work=$(mktemp -d)
 server_pid=
 cleanup() {
@@ -47,10 +48,37 @@ do {
     _ = castRead(handle, 1, 3000)
     try require(castStatus(handle) == 2, "peer EOF")
     try require(castClose(handle) == 0 && castClose(handle) == -1, "close and duplicate close")
-    print("PASS: handshake, partial-read timeout, retained bytes, write, EOF and cleanup")
+    let route = "127.0.0.1".withCString { castRoute($0, 8009).map { String(cString: $0) } }
+    try require(route == "127.0.0.1", "local route")
+    print("PASS: handshake, partial-read timeout, retained bytes, write, EOF, cleanup and route")
 } catch { fputs("FAIL: \(error)\n", stderr); exit(1) }
 SWIFT
-xcrun swiftc -swift-version 5 -warnings-as-errors "$here/CastTLS.swift" "$work/main.swift" -o "$work/check"
+cat > "$work/Check.java" <<'JAVA'
+import org.ospreylang.casting.CastTLS;
+public final class Check {
+    private static void require(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+    public static void main(String[] args) {
+        long handle = CastTLS.connect("127.0.0.1", Long.parseLong(args[0]), 3000);
+        require(handle > 0, "TLS handshake");
+        require(CastTLS.status(999) == -1, "unknown handle");
+        require(CastTLS.read(handle, 4, 10).isEmpty() && CastTLS.status(handle) == 1, "partial timeout");
+        require(CastTLS.read(handle, 4, 3000).equals("01020304"), "retained bytes");
+        require(CastTLS.write(handle, "0506") == 0, "write");
+        require(CastTLS.read(handle, 1, 3000).isEmpty() && CastTLS.status(handle) == 2, "peer EOF");
+        require(CastTLS.close(handle) == 0 && CastTLS.close(handle) == -1, "cleanup");
+        require(CastTLS.connect("", 0, 0) == -1, "invalid connection");
+        require(!CastTLS.route("127.0.0.1", 8009).isEmpty(), "local route");
+        System.out.println("PASS: Android TLS handshake, timeout recovery, bytes, write, EOF, cleanup and route");
+    }
+}
+JAVA
+case "$platform" in
+    ios) xcrun swiftc -swift-version 5 -warnings-as-errors "$here/ios/CastTLS.swift" "$work/main.swift" -o "$work/check" ;;
+    android) javac -Xlint:all -Werror -d "$work" "$here/android/src/main/java/org/ospreylang/casting/CastTLS.java" "$work/Check.java" ;;
+    *) echo 'Usage: mobile-transport-test.sh [ios|android]' >&2; exit 2 ;;
+esac
 python3 "$work/server.py" "$work" &
 server_pid=$!
 for ((attempt=0; attempt<100; attempt++)); do
@@ -58,8 +86,11 @@ for ((attempt=0; attempt<100; attempt++)); do
     sleep 0.05
 done
 [[ -f "$work/port" ]] || { echo 'TLS fixture did not start' >&2; exit 1; }
-"$work/check" "$(cat "$work/port")"
+if [[ "$platform" == ios ]]; then "$work/check" "$(cat "$work/port")"
+else java -cp "$work" Check "$(cat "$work/port")"; fi
 wait "$server_pid"
 server_pid=
-sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
-xcrun swiftc -swift-version 6 -warnings-as-errors -typecheck -target arm64-apple-ios18.0-simulator -sdk "$sdk" "$here"/*.swift
+if [[ "$platform" == ios ]]; then
+    sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
+    xcrun swiftc -swift-version 6 -warnings-as-errors -typecheck -target arm64-apple-ios18.0-simulator -sdk "$sdk" "$here/ios"/*.swift
+fi

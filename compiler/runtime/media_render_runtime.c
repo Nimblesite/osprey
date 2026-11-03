@@ -23,7 +23,13 @@
 // On Windows the casting app runs in an AppContainer ([WINUI-HOST-SANDBOX]),
 // which cannot start ffmpeg, so render always returns "" there.
 
-#ifdef _WIN32
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
+// Sandboxed mobile apps cannot launch the desktop ffmpeg process. The media
+// contract explicitly falls back to the original audio when rendering is absent.
+#if defined(_WIN32) || defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
 #include <stdint.h>
 #include <string.h>
 

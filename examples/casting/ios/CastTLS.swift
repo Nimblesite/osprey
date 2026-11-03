@@ -148,3 +148,22 @@ func castClose(_ handle: Int64) -> Int64 {
     socket.close()
     return 0
 }
+
+@_cdecl("osprey_net_local_address")
+func castRoute(_ host: UnsafePointer<CChar>?, _ port: Int64) -> UnsafePointer<CChar>? {
+    guard let host, port > 0, port <= 65535, let endpoint = NWEndpoint.Port(rawValue: UInt16(port)) else { return CastTLS.shared.text("") }
+    let connection = NWConnection(host: NWEndpoint.Host(String(cString: host)), port: endpoint, using: .udp)
+    let ready = DispatchSemaphore(value: 0)
+    connection.stateUpdateHandler = { state in
+        switch state { case .ready, .failed, .cancelled: ready.signal(); default: break }
+    }
+    connection.start(queue: DispatchQueue(label: "casting.route"))
+    defer { connection.cancel() }
+    guard ready.wait(timeout: .now() + .seconds(3)) == .success,
+          case let .hostPort(address, _)? = connection.currentPath?.localEndpoint else { return CastTLS.shared.text("") }
+    switch address {
+    case let .ipv4(ip): return CastTLS.shared.text(String(describing: ip))
+    case let .ipv6(ip): return CastTLS.shared.text(String(describing: ip))
+    default: return CastTLS.shared.text("")
+    }
+}
