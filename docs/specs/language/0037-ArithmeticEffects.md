@@ -1,6 +1,6 @@
 # Arithmetic Effects
 
-**Status:** runtime arithmetic policies shipped in [PR #241](https://github.com/Nimblesite/osprey/pull/241). Device-kernel fault recovery remains a delivery gap: Metal/OpenCL faults abort instead of invoking the installed runtime policy. See [device recovery](#device-recovery-arith-device-recovery) and the verification matrix below.
+**Status:** runtime arithmetic policies shipped in [PR #241](https://github.com/Nimblesite/osprey/pull/241). Device-kernel fault recovery remains a delivery gap: Metal/OpenCL faults return `Error` instead of invoking the installed runtime policy. See [device recovery](#device-recovery-arith-device-recovery) and the verification matrix below.
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals. A feature is not implemented merely because this document specifies it.
 
@@ -200,13 +200,13 @@ Shared handler and staging delivery belongs to [plan 0016](../../plans/0016-alge
 
 ## Device recovery `[ARITH-DEVICE-RECOVERY]`
 
-A device kernel cannot call a runtime `Arith` handler. Its checked operations record a fault word; the current runtime aborts with the kernel name and fault after dispatch ([GPU-DEVICE-FAULT](../runtime/0034-GPUComputation.md#faults--gpu-device-fault)). Installing a recovering host handler does not prevent that abort. This leaves the required no-trap/policy-preservation guarantee above unfinished for faulting device kernels.
+A device kernel cannot call a runtime `Arith` handler. Its checked operations record a fault word; the current runtime returns `Error` with the kernel name and fault after dispatch ([GPU-DEVICE-FAULT](../runtime/0034-GPUComputation.md#faults--gpu-device-fault)). Installing a recovering host handler does not change that. This leaves the required no-trap/policy-preservation guarantee above unfinished for faulting device kernels.
 
 Rechecked on 25 October 2026, Apple M4 Max, `--memory=arc`, with completed Metal/OpenCL dispatch traces. For a one-element buffer containing `9223372036854775807` and an installed wrapping handler:
 
 | Kernel expression | Host backend | Metal and OpenCL |
 | --- | --- | --- |
-| `n + 1` | `-9223372036854775808` from the policy | `SIGABRT`, integer-overflow diagnostic |
+| `n + 1` | `-9223372036854775808` from the policy | `Error`, integer-overflow diagnostic |
 | `wrapAdd(n, 1)` | `-9223372036854775808` | `-9223372036854775808` |
 
 Use the host backend when runtime recovery is required. Explicit total wrapping helpers express wrapping directly and remain device-admissible. Device policy preservation or rejection of unsupported recovering regions remains tracked in [plan 0023](../../plans/0023-gpu.md); the no-trap conformance requirements remain binding.

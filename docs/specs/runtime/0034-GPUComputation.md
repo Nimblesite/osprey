@@ -26,9 +26,9 @@ The restriction has one spelling in the compiler: inference enforces it at the c
 
 ## Buffer built-ins
 
-### `toGpu(source) -> GpuBuffer<T>` — [GPU-BUFFER-FROM-LIST]
+### `toGpu(source) -> Result<GpuBuffer<T>, Error>` — [GPU-BUFFER-FROM-LIST]
 
-Produces a dense buffer from a host `List<T>` — or, per [GPU-BUFFER-FUSE], from an `Iterator<T>`. `T` must satisfy [GPU-BUFFER-ELEM]. The element type comes from the source, whether that source is a literal, a list value returned by a function, or a list built at runtime — a float list copies in as a float buffer, never as raw words, and a `List<float32>`'s 8-byte words pack into a 4-byte-per-element buffer ([TYPE-NUMERIC-WORD](../language/0004-TypeSystem.md#container-words--type-numeric-word)).
+Produces a dense buffer from a host `List<T>` — or, per [GPU-BUFFER-FUSE], from an `Iterator<T>`. `T` must satisfy [GPU-BUFFER-ELEM]. An allocation the runtime cannot satisfy is an `Error`, never a silently empty buffer ([FAILURE-EXPLICIT]). The element type comes from the source, whether that source is a literal, a list value returned by a function, or a list built at runtime — a float list copies in as a float buffer, never as raw words, and a `List<float32>`'s 8-byte words pack into a 4-byte-per-element buffer ([TYPE-NUMERIC-WORD](../language/0004-TypeSystem.md#container-words--type-numeric-word)).
 
 ```osprey
 let buf = toGpu([1, 2, 3, 4])
@@ -58,9 +58,9 @@ A `filter` stage leaves the kept count unknown until the loop has run, so the bu
 
 This is fusion in the [Futhark](https://futhark-lang.org)/Accelerate sense, and the reason the surface needs no separate buffer builder: the iterator pipeline is one.
 
-### `fromGpu(buffer: GpuBuffer<T>) -> List<T>` — [GPU-BUFFER-TO-LIST]
+### `fromGpu(buffer: GpuBuffer<T>) -> Result<List<T>, Error>` — [GPU-BUFFER-TO-LIST]
 
-Materializes a buffer back into a host list. The element type crosses with the values: a `GpuBuffer<float>` becomes a `List<float>` whose elements read back as floats, not as the machine words the list runtime stores them in, and a `GpuBuffer<uint8>` becomes a `List<uint8>` whose words are the zero-extended bytes. Round-tripping is therefore lossless in both directions for every scalar [GPU-BUFFER-ELEM] admits.
+Materializes a buffer back into a host list. A readback the selected device cannot complete is an `Error` naming the device, never a partial or zero-filled list ([FAILURE-EXPLICIT]). The element type crosses with the values: a `GpuBuffer<float>` becomes a `List<float>` whose elements read back as floats, not as the machine words the list runtime stores them in, and a `GpuBuffer<uint8>` becomes a `List<uint8>` whose words are the zero-extended bytes. Round-tripping is therefore lossless in both directions for every scalar [GPU-BUFFER-ELEM] admits.
 
 ### `gpuLength(buffer: GpuBuffer<T>) -> int` — [GPU-BUFFER-LENGTH]
 
@@ -73,12 +73,19 @@ Reads `count` little-endian IEEE-754 binary32 values starting at byte `offset` o
 Every failure is an `Error` whose message names the operation, the path and the reason, through the channel `readFile` uses ([BUILTIN-FILE-ERRMSG](0012-Built-InFunctions.md#failure-reasons--builtin-file-errmsg)): the operating system's own wording for a file that is missing or unreadable and for a negative `offset` (`Invalid argument`), `a negative element count`, the short-read sentence above, and `read failed` when the stream reports an error mid-way.
 
 ```osprey
-let wte = gpuLoad("gpt2_124M.bin", 1024, 50257 * 768) ?: toGpu([toFloat32(0.0)])
+let wte = match gpuLoad("gpt2_124M.bin", 1024, 50257 * 768) {
+    Success { value } => value
+    Error { message } => zeroFloat32()
+}
 ```
 
 ```osprey-ml
-wte = gpuLoad ("gpt2_124M.bin", 1024, 50257 * 768) ?: toGpu [toFloat32 0.0]
+wte = match gpuLoad ("gpt2_124M.bin", 1024, 50257 * 768)
+    Success value => value
+    Error message => zeroFloat32 ()
 ```
+
+`zeroFloat32` names the program's own fallback buffer. Every buffer-producing builtin now returns `Result` ([FAILURE-EXPLICIT]), so a fallback is obtained from a `Success` arm — a silent zero fallback has no expression.
 
 ### `gpuLoadTensor(path: string, name: string) -> Result<GpuBuffer<T>, Error>` — [GPU-BUFFER-TENSOR]
 
@@ -89,20 +96,25 @@ The tensor's `shape` is read past but **not returned**: a buffer is rank-1, whic
 Errors are an `Error` naming the file or the tensor and one of: `shorter than a safetensors header prefix`, `header length is not plausible for safetensors` (above 100 MiB), `file ends inside the header`, `no tensor of that name in the header`, `dtype is not F64, F32, F16 or BF16`, the dtype mismatch sentence above, `data_offsets are missing or inverted`, `byte span is not a whole number of elements` — plus every reason [GPU-BUFFER-LOAD] reports for reading the bytes themselves.
 
 ```osprey
-let wte: GpuBuffer<float32> = gpuLoadTensor("model.safetensors", "wte.weight") ?: toGpu([toFloat32(0.0)])
+let wte: GpuBuffer<float32> = match gpuLoadTensor("model.safetensors", "wte.weight") {
+    Success { value } => value
+    Error { message } => zeroFloat32()
+}
 ```
 
 ```osprey-ml
-wte : GpuBuffer<float32> = gpuLoadTensor ("model.safetensors", "wte.weight") ?: toGpu [toFloat32 0.0]
+wte : GpuBuffer<float32> = match gpuLoadTensor ("model.safetensors", "wte.weight")
+    Success value => value
+    Error message => zeroFloat32 ()
 ```
 
 ## Kernels
 
 A *kernel* is the function value passed to a GPU combinator. Kernels are written as ordinary Osprey functions or lambdas — there is no separate kernel language, no annotation, and no restrictions beyond purity and the element restriction at the boundary.
 
-### `gpuMap(buffer: GpuBuffer<T>, kernel: fn(T) -> U) -> GpuBuffer<U>` — [GPU-MAP]
+### `gpuMap(buffer: GpuBuffer<T>, kernel: fn(T) -> U) -> Result<GpuBuffer<U>, Error>` — [GPU-MAP]
 
-Applies `kernel` independently to every element. Because the checker proves `kernel` performs no effects, every application is independent by construction and the combinator is parallelizable without analysis. `U` must satisfy [GPU-BUFFER-ELEM].
+Applies `kernel` independently to every element. Because the checker proves `kernel` performs no effects, every application is independent by construction and the combinator is parallelizable without analysis. `U` must satisfy [GPU-BUFFER-ELEM]. A launch the selected device cannot run — allocation, compilation, dispatch or readback failure, a recorded fault, or a kernel with no device form — is an `Error` naming the reason ([FAILURE-EXPLICIT]).
 
 ```osprey
 fn square(x) = x * x
@@ -114,7 +126,7 @@ square x = x * x
 let squares = toGpu [1, 2, 3, 4] |> gpuMap square
 ```
 
-### `gpuFold(buffer: GpuBuffer<T>, initial: U, combine: fn(U, T) -> U) -> U` — [GPU-FOLD]
+### `gpuFold(buffer: GpuBuffer<T>, initial: U, combine: fn(U, T) -> U) -> Result<U, Error>` — [GPU-FOLD]
 
 Reduces a buffer to one value. The accumulator must itself be a scalar ([GPU-BUFFER-ELEM]) so the reduction can execute on device hardware; a record accumulator is a compile error at the `gpuFold` call. `combine` is applied left-to-right, and that order is the contract, not a host detail: [GPU-BACKEND-HOST] is the reference semantics and [GPU-ROADMAP] holds every later backend to the host's bytes, so a device backend may reassociate a reduction only where it produces the host's exact result and must otherwise run it in the host's order. A non-associative combine therefore means the same thing on every backend — it is slower to offload, never different. On a device that order is one thread walking the buffer, so a reduction over a large buffer is written as a per-element kernel that folds each row with `fold` over a `range` and a `gpuFold` over the rows: the same two-level sum under every backend, computed in parallel. GPT-2's gradient checksums take this shape.
 
@@ -128,7 +140,7 @@ add (a, b) = a + b
 total = toGpu [1, 2, 3, 4] |> gpuFold 0 add
 ```
 
-### `gpuZipWith(a: GpuBuffer<T>, b: GpuBuffer<U>, kernel: fn(T, U) -> V) -> GpuBuffer<V>` — [GPU-ZIPWITH]
+### `gpuZipWith(a: GpuBuffer<T>, b: GpuBuffer<U>, kernel: fn(T, U) -> V) -> Result<GpuBuffer<V>, Error>` — [GPU-ZIPWITH]
 
 Elementwise binary combination — the primitive every vector, tensor, and particle workload builds on. The result takes the shorter operand's length, so a ragged pair truncates rather than reading past the end. The kernel is held to [GPU-KERNEL-PURE] exactly as `gpuMap`'s is.
 
@@ -153,13 +165,13 @@ let total = toGpu([1.5, 2.5]) |> gpuFold(0.0, fn(a, v) => a + v)
 total = toGpu [1.5, 2.5] |> gpuFold 0.0 (\(a, v) => a + v)
 ```
 
-### `gpuIota(n: int) -> GpuBuffer<int>` — [GPU-IOTA]
+### `gpuIota(n: int) -> Result<GpuBuffer<int>, Error>` — [GPU-IOTA]
 
-The index buffer `[0, n)`. Kernels see element values, not positions, so gather, stencil, and matrix addressing all start from `gpuIota`: map over the indices and read neighbours with `gpuGet`. A non-positive `n` names an empty range, so it yields an empty buffer rather than an error — the half-open interval `[0, n)` is empty for every `n <= 0`.
+The index buffer `[0, n)`. Kernels see element values, not positions, so gather, stencil, and matrix addressing all start from `gpuIota`: map over the indices and read neighbours with `gpuGet`. A negative `n` is an `Error` (`negative element count`); `n` of zero yields the empty buffer ([FAILURE-EXPLICIT]).
 
 ### `gpuGet(buffer: GpuBuffer<T>, index: int) -> Result<T, Error>` — [GPU-GET]
 
-Bounds-checked read of one element at the buffer's element type. An out-of-bounds index returns `Error` rather than a sentinel value, so a wrong gather is a visible failure, not silent zeros. Usable inside a kernel — reading a buffer is pure — which is how a `gpuIota`-driven kernel expresses matrix rows and stencils.
+Bounds-checked read of one element at the buffer's element type. An out-of-bounds index returns `Error` rather than a sentinel value, so a wrong gather is a visible failure, not silent zeros; a readback the selected device cannot complete is an `Error` too, never fabricated zeros ([FAILURE-EXPLICIT]). Usable inside a kernel — reading a buffer is pure — which is how a `gpuIota`-driven kernel expresses matrix rows and stencils.
 
 ```osprey
 fn at(m, i) = gpuGet(m, i) ?: 0.0
@@ -171,13 +183,13 @@ at (m, i) = gpuGet (m, i) ?: 0.0
 rowSum (m, r) = at (m, r * 3) + at (m, r * 3 + 1)
 ```
 
-### `gpuScan(buffer: GpuBuffer<T>, initial: T, combine: fn(T, T) -> T) -> GpuBuffer<T>` — [GPU-SCAN]
+### `gpuScan(buffer: GpuBuffer<T>, initial: T, combine: fn(T, T) -> T) -> Result<GpuBuffer<T>, Error>` — [GPU-SCAN]
 
-Inclusive prefix scan: element `i` of the result is `combine` folded over the source through element `i`, seeded with `initial` — so the first element is `combine(initial, src[0])`, not `src[0]`, and the result always has the source's length. Scan is *the* classic parallel primitive — segmented scans and flag vectors are how nested data parallelism flattens onto flat hardware ([Blelloch, CACM 1996](https://doi.org/10.1145/227234.227246); [NESL](https://www.cs.cmu.edu/~scandal/nesl.html)). The order contract is `gpuFold`'s: element `i` is the left-to-right fold through `i` on every backend. A device backend may substitute the work-efficient parallel scan only where it reproduces the host's exact bytes, and falls back to the sequential order where it cannot. No device form exists yet: a selected device declines `gpuScan`, and the run stops naming it ([GPU-BACKEND-DEVICE]).
+Inclusive prefix scan: element `i` of the result is `combine` folded over the source through element `i`, seeded with `initial` — so the first element is `combine(initial, src[0])`, not `src[0]`, and the result always has the source's length. Scan is *the* classic parallel primitive — segmented scans and flag vectors are how nested data parallelism flattens onto flat hardware ([Blelloch, CACM 1996](https://doi.org/10.1145/227234.227246); [NESL](https://www.cs.cmu.edu/~scandal/nesl.html)). The order contract is `gpuFold`'s: element `i` is the left-to-right fold through `i` on every backend. A device backend may substitute the work-efficient parallel scan only where it reproduces the host's exact bytes, and falls back to the sequential order where it cannot. No device form exists yet: a selected device declines `gpuScan` with an `Error` naming it ([GPU-BACKEND-DEVICE]).
 
-### `gpuFilter(buffer: GpuBuffer<T>, predicate: fn(T) -> bool) -> GpuBuffer<T>` — [GPU-FILTER]
+### `gpuFilter(buffer: GpuBuffer<T>, predicate: fn(T) -> bool) -> Result<GpuBuffer<T>, Error>` — [GPU-FILTER]
 
-Stream compaction: keeps the elements the pure predicate accepts, preserving source order. The host backend fills a source-length scratch buffer and publishes the kept prefix; a device backend implements the same contract with a scan-based compaction. No device form exists yet: a selected device declines `gpuFilter`, and the run stops naming it ([GPU-BACKEND-DEVICE]).
+Stream compaction: keeps the elements the pure predicate accepts, preserving source order. The host backend fills a source-length scratch buffer and publishes the kept prefix; a device backend implements the same contract with a scan-based compaction. No device form exists yet: a selected device declines `gpuFilter` with an `Error` naming it ([GPU-BACKEND-DEVICE]).
 
 ## Dense linear algebra
 
@@ -191,12 +203,17 @@ A matrix is a flat buffer plus the shape the program states, because a buffer is
 
 ```osprey
 fn linear(x, w, tokens, inputs, outputs) = gpuMatMul(x, w, tokens, inputs, outputs)
-let logits = linear(hidden, wte, 64, 768, 50257) ?: toGpu([0.0])
+let logits = match linear(hidden, wte, 64, 768, 50257) {
+    Success { value } => value
+    Error { message } => zeroFloat32()
+}
 ```
 
 ```osprey-ml
 linear (x, w, tokens, inputs, outputs) = gpuMatMul (x, w, tokens, inputs, outputs)
-logits = linear (hidden, wte, 64, 768, 50257) ?: toGpu [0.0]
+logits = match linear (hidden, wte, 64, 768, 50257)
+    Success value => value
+    Error message => zeroFloat32 ()
 ```
 
 ## Kernel purity — [GPU-KERNEL-PURE]
@@ -311,7 +328,7 @@ There is **no environment pointer and no closure struct**. A capturing kernel co
 
 A kernel that would return an unhandled `Result` is rejected before the program links, at one of two gates. `gpuFold`, `gpuScan` and `gpuFilter` have signatures that pin the kernel's result — the accumulator's own type, or `bool` — so inference rejects such a kernel at the call (`cannot unify int with Result<int, Error>`). `gpuMap` and `gpuZipWith` leave the result type `U` free, so the gate is codegen's scalar backstop on the stored element: `a gpuMap kernel result cannot be an unhandled Result; handle it inside the kernel`. Handle failure inside the kernel with `?:` or `match`.
 
-Arithmetic MUST preserve the region's policy at the kernel boundary ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)). Current selected-device fault recovery does not satisfy that requirement: a fault aborts instead of invoking the runtime policy. On the host backend a kernel's `Arith` operations are exempt from the stage-legality row ([STAGE-GPU-LEGAL](../language/0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal)) and dispatch to the enclosing policy exactly as any lambda's do, so a kernel with fallible arithmetic compiles only where a region installs a policy; with none, the program is rejected at its entry. A device fault records a fault word and aborts the launch ([GPU-DEVICE-FAULT]); callers needing recovery must select the host backend explicitly. `handle static Arith` is rejected.
+Arithmetic MUST preserve the region's policy at the kernel boundary ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)). Current selected-device fault recovery does not satisfy that requirement: a fault returns `Error` instead of invoking the runtime policy. On the host backend a kernel's `Arith` operations are exempt from the stage-legality row ([STAGE-GPU-LEGAL](../language/0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal)) and dispatch to the enclosing policy exactly as any lambda's do, so a kernel with fallible arithmetic compiles only where a region installs a policy; with none, the program is rejected at its entry. A device fault records a fault word and the launch returns `Error` naming the kernel and the fault ([GPU-DEVICE-FAULT]); callers needing recovery must select the host backend explicitly. `handle static Arith` is rejected.
 
 ### Which kernels are extracted
 
@@ -372,7 +389,7 @@ Each device-admissible kernel is compiled to the **device dialect**; host extrac
 
 The emitter lowers a kernel body from its AST: literals, parameters, captured uniforms, file-scope literal constants, `+ - * / %` and the comparisons, `&&`/`||` with the host's short circuit, unary minus and `!`, `intDiv`, `toFloat`, `abs`, `wrapAdd`/`wrapSub`/`wrapMul`, `sqrt`/`exp`/`ln`/`tanh` and every other function of [BUILTIN-MATH] and its sections, the `toFloat*`/`toInt*` conversions and the `floatBits` families, the bitwise builtins, `gpuLength` of a captured buffer, `gpuGet(buffer, index) ?: default` over a captured buffer, a `match` with `true`/`false` arms, an immutable `let`, a `fold` over a `range(start, end)` as an in-order loop, and calls to the program's own functions, inlined at the AST level with each scalar argument bound once and each lambda or named-function argument inlined wherever the helper calls it, in the scopes it closed over — so a reduction written through a higher-order helper (`addAll(size, fn(c) => …)`) keeps its device form. Everything else — a string, a list, a record, a computed function value (a record field or an unknown call result), a `fold` over anything but a range, a `match` over anything but a boolean or a `gpuGet` result, recursion — **declines**: the kernel keeps its host lowering and its launch site records the reason. `gpuScan` and `gpuFilter` have no device form yet and decline as a whole.
 
-Every launch site asks the runtime first (`osprey_gpu_launch`). The answer is 1 when the selected device completed the work, in which case the result buffer holds it on the device ([GPU-BUFFER-RESIDENT]) or the reduction's accumulator holds it on the host, or 0 when the host is selected, in which case the host loop runs. `gpuMap` and `gpuZipWith` run one thread per element; `gpuFold` runs one thread that folds in element order, so [GPU-FOLD]'s host-order result is preserved exactly. A declined launch site asks the runtime too (`osprey_gpu_declined`): the host runs the host loop, and a selected device aborts the program naming the launch and the reason — a kernel inside a region that selected a device is never silently run on the CPU.
+Every launch site asks the runtime first (`osprey_gpu_launch`). The answer is 1 when the selected device completed the work, in which case the result buffer holds it on the device ([GPU-BUFFER-RESIDENT]) or the reduction's accumulator holds it on the host, or 0 when the host is selected, in which case the host loop runs. A negative answer is an `Error` whose reason the io_error channel records, which codegen wraps as `Result` ([FAILURE-EXPLICIT]); the runtime never aborts. `gpuMap` and `gpuZipWith` run one thread per element; `gpuFold` runs one thread that folds in element order, so [GPU-FOLD]'s host-order result is preserved exactly. A declined launch site asks the runtime too (`osprey_gpu_declined`): the host runs the host loop, and a selected device returns `Error` naming the launch and the reason — a kernel inside a region that selected a device is never silently run on the CPU.
 
 #### Native arithmetic — [GPU-DEVICE-NATIVE]
 
@@ -386,7 +403,7 @@ The rounding, bit-view and shift families retain their exact-result contract. Th
 
 #### Faults — [GPU-DEVICE-FAULT]
 
-A device kernel cannot reach a runtime `Arith` policy ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)). An integer operation that would overflow, an `intDiv` or `%` by zero, or a float division by zero records a fault word instead (`FAULT_OVERFLOW`, `FAULT_DIVIDE_BY_ZERO`, `FAULT_REMAINDER_BY_ZERO` in `gpu_device_lib.metal`), and when the dispatch completes with a fault the runtime aborts the program naming the kernel and the fault. The caller must select the host backend when runtime recovery is required; the implementation does not automatically route a faulting device kernel to that policy. An accepted kernel containing `n + 1` under a wrapping handler returns the wrapped value on the host but aborts on Metal/OpenCL when `n` is the maximum integer. Explicit `wrapAdd` succeeds on all three. This is the [device-recovery delivery gap](../language/0037-ArithmeticEffects.md#device-recovery-arith-device-recovery) against the required arithmetic contract.
+A device kernel cannot reach a runtime `Arith` policy ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)). An integer operation that would overflow, an `intDiv` or `%` by zero, or a float division by zero records a fault word instead (`FAULT_OVERFLOW`, `FAULT_DIVIDE_BY_ZERO`, `FAULT_REMAINDER_BY_ZERO` in `gpu_device_lib.metal`), and when the dispatch completes with a fault the launch returns `Error` naming the kernel and the fault. The caller must select the host backend when runtime recovery is required; the implementation does not automatically route a faulting device kernel to that policy. An accepted kernel containing `n + 1` under a wrapping handler returns the wrapped value on the host but is an `Error` on Metal/OpenCL when `n` is the maximum integer. Explicit `wrapAdd` succeeds on all three. This is the [device-recovery delivery gap](../language/0037-ArithmeticEffects.md#device-recovery-arith-device-recovery) against the required arithmetic contract.
 
 `gpuIota`, `toGpu`, `gpuLoad` and `gpuLoadTensor` build their buffers on the host; from the first launch that reads one, the buffer is resident on the device ([GPU-BUFFER-RESIDENT]). The kernel-to-kernel fusion the host backend also lacks remains roadmap work in [plan 0023](../../plans/0023-gpu.md). Backend selection must satisfy [GPU-BACKEND-PORTABILITY]; the Metal and OpenCL adapters are the two that exist, and SPIR-V and WebGPU adapters implement the same dispatch contract over the same dialect.
 
@@ -394,7 +411,7 @@ A device kernel cannot reach a runtime `Arith` policy ([ARITH-TOTAL](../language
 
 A buffer has one copy on the selected device, created from its words the first time a launch reads or writes it and bound to every later launch without another transfer. A launch's result buffer stays on the device: no words come back until the host reads them, through `gpuGet`, `fromGpu`, a product's host fallback or a loader, and then the whole buffer comes down once. A `gpuFold` result is a scalar, so it comes straight back to the accumulator. The weights of a model upload once, every intermediate buffer of a layer stays where the next kernel reads it, and the only downloads are the values the program itself inspects.
 
-A buffer is immutable at the language surface, so the two copies never diverge; the one write path, the runtime's own fill of a fresh buffer, forgets the device copy, which a later launch recreates. The device copy belongs to the buffer: when the memory backend reclaims the buffer, its finalizer releases the device object ([MEM-BACKENDS-CUSTOM](../compiler/0018-MemoryManagement.md#backend-hook-abi-mem-backends-custom)), so under ARC a device buffer dies at the last release and under the tracing GC at the sweep that reclaims its owner. A download that fails aborts the program naming the device; a buffer never reads back as zeros.
+A buffer is immutable at the language surface, so the two copies never diverge; the one write path, the runtime's own fill of a fresh buffer, forgets the device copy, which a later launch recreates. The device copy belongs to the buffer: when the memory backend reclaims the buffer, its finalizer releases the device object ([MEM-BACKENDS-CUSTOM](../compiler/0018-MemoryManagement.md#backend-hook-abi-mem-backends-custom)), so under ARC a device buffer dies at the last release and under the tracing GC at the sweep that reclaims its owner. A download that fails is an `Error` naming the device; a buffer never reads back as zeros.
 
 ### Device selection — [GPU-DEVICE]
 
@@ -462,7 +479,7 @@ print "${onLists report} / ${onGpu report}"  // lists: 4.5 / host: 4.5
 
 A static handler must answer every operation of its effect ([STAGE-STATIC-TOTAL]); an instantiation never answers another ([EFFECTS-GENERIC-INSTANTIATION]); a callback an arm forwards to `gpuMap`, `gpuZipWith` or `gpuFold` is held to [GPU-KERNEL-PURE], and one that performs a runtime effect is rejected by name. The reference program is GPT-2 (`examples/gpt2`): generation and a training step written once against a ten-operation `Tensor<B>` effect, run by `onLists` and `onGpu` with identical tokens, loss and gradient sums on the host. Tested device runs produce the same tokens with small numeric differences from host transcendental evaluation. `gpuDevice()` reports which backend the GPU-surface handler is executing on and the model prints that answer on its first line, so a run never claims hardware it did not use ([GPU-BACKEND-DEVICE]).
 
-Within the GPU-surface handler, `OSPREY_GPU=host|auto|metal|opencl` is the bootstrap selection of the device every kernel and product runs on ([GPU-BACKEND-DEVICE]). Unset or `host` preserves the host oracle; `auto` selects Metal in a macOS runtime and OpenCL elsewhere. The iOS, Android and wasm32 runtimes carry no adapter, so any other selection there is the no-adapter `Error`. Explicit GPU selection never substitutes CPU execution when device initialization, compilation, allocation, dispatch, or readback fails: `gpuMatMul` returns `Error`, a kernel launch aborts naming the kernel, and an unknown selection is an `Error` naming the expected backends. `gpuDevice()` reports the resolved adapter (`metal:0 (<device>)`, `opencl:0 (<device>)`). `OSPREY_GPU_TRACE=1` reports every completed dispatch with its kernel and thread count; the first is always reported. A handler that selects the device lexically will replace this bootstrap selection.
+Within the GPU-surface handler, `OSPREY_GPU=host|auto|metal|opencl` is the bootstrap selection of the device every kernel and product runs on ([GPU-BACKEND-DEVICE]). Unset or `host` preserves the host oracle; `auto` selects Metal in a macOS runtime and OpenCL elsewhere. The iOS, Android and wasm32 runtimes carry no adapter, so any other selection there is the no-adapter `Error`. Explicit GPU selection never substitutes CPU execution when device initialization, compilation, allocation, dispatch, or readback fails: `gpuMatMul` returns `Error`, a kernel launch returns `Error` naming the kernel, and an unknown selection is an `Error` naming the expected backends. `gpuDevice()` reports the resolved adapter (`metal:0 (<device>)`, `opencl:0 (<device>)`). `OSPREY_GPU_TRACE=1` reports every completed dispatch with its kernel and thread count; the first is always reported. A handler that selects the device lexically will replace this bootstrap selection.
 
 ## Roadmap invariant — [GPU-ROADMAP]
 
