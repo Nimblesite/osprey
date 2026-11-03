@@ -21,3 +21,5 @@ Android: `gpui-pre` 0.3.10 has no backend, and `gpui-pre-platform` has no Androi
 - [ ] Keep what only the platform can do behind the capability boundary: Bonjour and NSD discovery, document pickers, TLS, media serving, lifecycle, accessibility.
 - [ ] Prove it: the existing native journeys still pass, and each skin's mobile pictures match the desktop's widgets at the same width.
 - [ ] Delete the SwiftUI and Java casting renderers once GPUI passes those journeys. `hosts/swift` stays for Osprey Agent.
+- [ ] A fixed scene `zoom` is an upper bound: a narrower region fits the whole scene instead of clipping it, on every platform. The region around a scene takes the skin's colour, and the scene honours the safe area.
+- [ ] Windows: casting still runs on `hosts/winui` (`examples/casting/README.md`). Audit whether `hosts/gpui` can replace it there, and report.
