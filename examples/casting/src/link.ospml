@@ -147,9 +147,20 @@ module Link
         fed (store, listConcat skinned (ui::Pick::either (path == "", [], fileFacts path)))
 
     (** A lifecycle phase: `open:<path>` is an MP3 Finder opened while the app runs, loaded as the file ([GPUI-HOST-OPEN]); other phases change nothing. *)
-    export phased (store, phase) = match startsWith phase "open:"
-        true => settled (fed (store, fileFacts (drop phase 5)))
+    export phased (store, phase) = match phase == "closed"
+        true => closed store
+        false => match startsWith phase "open:"
+            true => settled (fed (store, fileFacts (drop phase 5)))
+            false => Runtime::step store
+
+    // [CAST-MOBILE-DELIVERY] A native shell releases both services once, even
+    // when one cleanup fails; the failure stays visible in the returned store.
+    closed store = match store.link.linked
         false => Runtime::step store
+        true =>
+            code = Player::end store.link.player
+            ended = relinked (store, false, Player::idle (), store.link.polled)
+            Runtime::step (ui::Pick::either (code < 0, failed (ended, "Cannot close cast services (${toString code})"), ended))
 
     pointer (store, x, y, down) = settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down))))
 

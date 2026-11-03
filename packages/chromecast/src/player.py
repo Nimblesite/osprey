@@ -242,5 +242,6 @@ def volume(player, level) -> Result[Player, str]:
 def end(player):
     """Closes the session and stops serving the file; the device keeps
     playing whatever it has buffered unless it was stopped first."""
-    _closed = Session.close(player.session)
-    return Media.unserve(player.served)
+    closed = Session.close(player.session)
+    stopped = Media.unserve(player.served)
+    return closed if closed < 0 else stopped

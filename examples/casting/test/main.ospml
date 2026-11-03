@@ -29,6 +29,9 @@ type Fake =
     fakeReachable : bool
     fakeRender : string
     fakeLoaded : string
+    fakeClosed : int
+    fakeCloseCode : int
+    fakeStopped : int
 
 (** Changes the bench: the device, the driven session and the browse text the host returns; only these arms write the cells. *)
 effect Bench
@@ -36,7 +39,7 @@ effect Bench
     drive : uitest::Driven<casting::Store> => Unit
     list : string => Unit
 
-fresh () = Fake(fakeInbox = "", fakeSaid = "", fakeOut = "", fakeRead = 0, fakePosition = 0.0, fakeVolume = 1.0, fakeRate = 1.0, fakePlaying = "IDLE", fakeReason = "", fakeReachable = true, fakeRender = "", fakeLoaded = "")
+fresh () = Fake(fakeInbox = "", fakeSaid = "", fakeOut = "", fakeRead = 0, fakePosition = 0.0, fakeVolume = 1.0, fakeRate = 1.0, fakePlaying = "IDLE", fakeReason = "", fakeReachable = true, fakeRender = "", fakeLoaded = "", fakeClosed = 0, fakeCloseCode = 0, fakeStopped = 0)
 
 browse = "Living\\032Room\\032TV._googlecast._tcp SRV 0 0 8009 living-room.local. ;\nLiving\\032Room\\032TV._googlecast._tcp TXT \"id=1\" \"fn=Living Room TV\"\nKitchen._googlecast._tcp SRV 0 0 8009 kitchen.local. ;\nKitchen._googlecast._tcp TXT \"fn=Kitchen\"\n"
 
@@ -112,10 +115,14 @@ onDevice work =
             fake := taken (fake, count)
             fake.fakeOut
         status _ => fake.fakeRead
-        close _ => 0
+        close _ =>
+            fake := fake(fakeClosed = satAdd fake.fakeClosed 1)
+            fake.fakeCloseCode
         route _ => "192.168.1.20"
         serve _ _ _ => 5123
-        unserve _ => 0
+        unserve _ =>
+            fake := fake(fakeStopped = satAdd fake.fakeStopped 1)
+            0
         render _ => fake.fakeRender
         unrender _ => 0
     work ()
@@ -438,3 +445,34 @@ test ("the player's accessibility tree reads clearly to an agent while it search
     expect (letters "No TVs found", false)
     expect (offers "Receiver: Living Room TV", true)
     expect (Semantics::unclear (elements ()), "")))
+
+
+// [CAST-MOBILE-DELIVERY] A native shell can be closed during launch or playback.
+test ("closing the native shell releases its connection and media server exactly once", \() => bench (\() =>
+    started ()
+    discovered ()
+    picked "/music/Sunroom.mp3"
+    press "Play"
+    expect (fake.fakeClosed, 0)
+    expect (fake.fakeStopped, 0)
+    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":3}"
+    expect (fake.fakeClosed, 1)
+    expect (fake.fakeStopped, 1)
+    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":4}"
+    expect (fake.fakeClosed, 1)
+    expect (fake.fakeStopped, 1)
+    started ()
+    discovered ()
+    picked "/music/Sunroom.mp3"
+    press "Play"
+    frame 0.2
+    frame 0.2
+    expect (shows "Playing on Living Room TV", true)
+    perform Bench.rig (fake(fakeCloseCode = 0 - 1))
+    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":5}"
+    expect (fake.fakeClosed, 1)
+    expect (fake.fakeStopped, 1)
+    expect (shows "Cannot close cast services (-1)", true)
+    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":6}"
+    expect (fake.fakeClosed, 1)
+    expect (fake.fakeStopped, 1)))
