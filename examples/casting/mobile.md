@@ -1,6 +1,6 @@
 # Native mobile delivery [CAST-MOBILE]
 
-Both native apps build and run in the simulator/emulator. Both platforms pass the full native playback journey against a TLS Cast receiver fixture, including exact HTTP media bytes, seek, volume, speed, stop and replay. Native screenshot goldens now gate the ready and restarted player. CI coverage, broader error/lifecycle cases, the visible iOS Simulator run and physical-device verification remain incomplete.
+Both native apps build and run in the simulator/emulator. Both platforms' Sherbet player passes the full native playback journey against a TLS Cast receiver fixture, including exact HTTP media bytes, seek, volume, speed, stop and replay. Native screenshot goldens now gate the ready and restarted player. CI coverage, broader error/lifecycle cases, the visible iOS Simulator run and physical-device verification remain incomplete.
 
 ## Shared boundary [CAST-MOBILE-ABI]
 
@@ -20,6 +20,8 @@ Both native apps build and run in the simulator/emulator. Both platforms pass th
 - [ ] Link native TLS, local HTTP serving and media rendering without shelling out to desktop tools; surface unsupported formats and service failures.
 - [ ] Handle foreground/background transitions, connection loss, interrupted playback and cleanup of network/file resources.
 - [ ] Add per-platform launch and test Makefile targets and required CI coverage gates.
+- [x] Rotate Android during playback, use landscape pause/resume and volume, preserve the connection, return to portrait and restore the previous system rotation policy.
+- [ ] Complete the alternate skins: Android needs the generic themed UI tree; iOS needs the Midnight background/foreground palette verified and corrected.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
 - [x] Commit native ready/restart screenshot goldens and verify headless iOS plus visible and headless Android rendering with accessibility assertions.
 - [ ] Verify the same iOS goldens with the Simulator window visible.
@@ -44,3 +46,7 @@ The platform test targets compare both ready and restarted captures with one rev
 The checked references use an iPhone 17 simulator on iOS 27 at 1206 pixels wide and a Pixel 7 emulator on API 34 at 1080 pixels wide. Start the Android emulator with `-gpu swiftshader_indirect` in both visible and headless modes so the renderer is consistent. The host GPU backend produced an entirely black framebuffer while the control journey passed; the image gate correctly rejected that run. With SwiftShader, both Android modes match the reference exactly. iOS headless captures also match exactly; this build host lacks the selected Xcode's `Simulator.app`, so its visible Simulator run remains unverified.
 
 Use `make -C apps/ios/tests casting-headless` or `make -C apps/android/tests casting-headless` for comparison. Each platform also has `casting-update`, which runs the native journey, rewrites only the ready reference, and checks that restarting still matches it. Review the images under `examples/casting/goldens/<platform>` before committing an update. A missing reference or changed dimensions fails; tests never silently create a baseline. The runner uses the ffmpeg already required for its audio fixture, without an extra image-library dependency.
+
+## Alternate skin gap [CAST-MOBILE-SKINS]
+
+The native playback and golden results above cover Sherbet. Capturing an iOS launch with `--skin midnight` proves the alternate skin exports a `themed` tree containing stacks, an inline scene, empty state, progress, buttons and pickers. Android currently accepts only a top-level scene and must support that tree before the other skins can work. The captured iOS Midnight screen renders its controls but retains a white background and dark text despite the exported navy background and light text tokens; its palette is not complete. These gaps remain part of delivery, alongside native access to skin selection and full playback checks for every skin.

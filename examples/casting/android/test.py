@@ -21,10 +21,23 @@ def adb(*arguments, binary=False):
     return subprocess.check_output(ADB + list(arguments), text=not binary)
 
 
-def nodes():
+def window():
     response = adb("shell", "uiautomator", "dump", "/sdcard/casting-test-window.xml")
-    if "dumped to:" not in response: return []
-    return list(ElementTree.fromstring(adb("exec-out", "cat", "/sdcard/casting-test-window.xml")).iter("node"))
+    if "dumped to:" not in response: return None
+    return ElementTree.fromstring(adb("exec-out", "cat", "/sdcard/casting-test-window.xml"))
+
+
+def nodes():
+    tree = window()
+    return list(tree.iter("node")) if tree is not None else []
+
+
+def wait_rotation(expected):
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        tree = window()
+        if tree is not None and tree.get("rotation") == str(expected): return
+    raise AssertionError(f"Native display did not rotate to {expected}")
 
 
 def find(label, timeout=20):
@@ -78,7 +91,22 @@ def playback(output):
     tap("Pause")
     tap("Resume")
     find("Pause")
-    slide("Volume", 0.5)
+    previous = adb("shell", "wm", "user-rotation").strip().split()
+    assert previous and previous[0] in ("free", "lock"), previous
+    try:
+        adb("shell", "wm", "user-rotation", "lock", "1")
+        wait_rotation(1)
+        find("Pause")
+        assert find("Volume").get("class") == "android.widget.SeekBar"
+        tap("Pause")
+        tap("Resume")
+        find("Pause")
+        slide("Volume", 0.5)
+        (output / "landscape-playing.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+    finally:
+        adb("shell", "wm", "user-rotation", *previous)
+    wait_rotation(0)
+    find("Pause")
     slide("Position", 0.25)
     tap("Speed: 1×")
     tap("1.5×")

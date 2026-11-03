@@ -80,6 +80,8 @@ def verify_log(path, platform):
     assert any(item.get("type") == "SEEK" and abs(item["currentTime"] - 50) < 3 for item in payloads), payloads
     assert any(item.get("type") == "SET_PLAYBACK_RATE" and item["playbackRate"] == 1.5 for item in payloads), payloads
     assert kinds.count("STOP") >= 2, kinds
+    assert kinds.count("PAUSE") == (2 if platform == "android" else 1), kinds
+    assert kinds.count("PLAY") == (2 if platform == "android" else 1), kinds
     assert kinds.count("SEEK") == 1, kinds
     volumes = [item["volume"]["level"] for item in payloads if item.get("type") == "SET_VOLUME"]
     assert len(volumes) == (2 if platform == "android" else 1), volumes
