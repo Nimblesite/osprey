@@ -394,6 +394,14 @@ test ("the canvas: every control is reached by its accessible label, through poi
     expect (Semantics::role (elements (), "Position"), "slider")
     expect (Semantics::role (elements (), "Pause"), "button")
     expect ((element "Volume").accessWidth, 302.0)
+    beforeResize = heardTypes ()
+    post (Drive::viewed (driven, 868.0, 1670.0))
+    expect ((element "Open file…").accessTop, 1564.0)
+    expect ((element "Volume").accessTop, 1582.0)
+    post (Drive::viewed (driven, 1080.0, 1800.0))
+    expect ((element "Open file…").accessLeft, 763.0)
+    expect ((element "Volume").accessTop, 1712.0)
+    expect (heardTypes (), beforeResize)
     tap "Pause"
     frame 0.2
     expect (letters "Paused", true)

@@ -186,8 +186,11 @@ module Link
 
     pointer (store, x, y, down) = settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down))))
 
-    (** A canvas pointer event ([UI-MACHINE-CANVAS]): a press grips, a drag slides, the release acts once on the listener under it, and a hover changes nothing; keys change nothing. *)
-    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pointer (store, x, y, down), \(_, _) => Runtime::step store)
+    // A resize is room, never a cast command: the machine keeps the region and the artboard reflows from it.
+    viewed (store, width, height) = Runtime::step (store(screen = Screen(screenMachine = Canvases::viewed (machineOf store, width, height))))
+
+    (** A canvas event ([UI-MACHINE-CANVAS]): a press grips, a drag slides, the release acts once on the listener under it, a hover or key changes nothing, and a resize moves the artboard into the region's room without touching the cast. *)
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pointer (store, x, y, down), \(width, height) => viewed (store, width, height))
 
     // ---- completions ----
 
