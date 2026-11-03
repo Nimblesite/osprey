@@ -10,6 +10,7 @@ public struct Drawing {
     let region: String
     let revision: Int
     let send: (Int, JSONValue) -> Void
+    let point: (Int, JSONValue) -> Void
 }
 
 extension JSONValue {
@@ -227,7 +228,9 @@ struct CellView: View {
 
     private var drawing: Drawing {
         let region = cell.key, revision = cell.revision
-        return Drawing(region: region, revision: revision) { ordinal, value in store.send(region: region, revision: revision, ordinal: ordinal, value: value) }
+        return Drawing(region: region, revision: revision,
+                       send: { ordinal, value in store.send(region: region, revision: revision, ordinal: ordinal, value: value) },
+                       point: { ordinal, value in store.send(region: region, revision: cell.revision, ordinal: ordinal, value: value) })
     }
 }
 

@@ -1,0 +1,50 @@
+name: Casting
+options:
+  bundleIdPrefix: org.ospreylang
+settings:
+  base:
+    IPHONEOS_DEPLOYMENT_TARGET: '18.0'
+    SWIFT_VERSION: '5.0'
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+targets:
+  Casting:
+    type: application
+    platform: iOS
+    sources:
+      - path: .
+        includes: ['*.swift']
+        excludes: [tests]
+      - path: ../../../hosts/swift/Sources/OspreyNative
+      - path: ../../../compiler/runtime/file_server_runtime.c
+      - path: ../../../compiler/runtime/media_render_runtime.c
+      - path: ../player.machine.json
+        buildPhase: resources
+      - path: ../skins
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.ospreylang.casting
+        INFOPLIST_FILE: ../build/ios-sim/Casting.app/Info.plist
+        SWIFT_OBJC_BRIDGING_HEADER: Bridge.h
+        OTHER_LDFLAGS: ['-L$(SRCROOT)/../build/ios-sim', '-lOspreyApp', '-lsqlite3', '-lz']
+        CODE_SIGNING_ALLOWED: NO
+  CastingUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [tests]
+    dependencies:
+      - target: Casting
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Casting
+        CODE_SIGNING_ALLOWED: NO
+schemes:
+  Casting:
+    build:
+      targets:
+        Casting: all
+    test:
+      targets:
+        - CastingUITests

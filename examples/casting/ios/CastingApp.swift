@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import QuartzCore
 
 // [CAST-MOBILE-DELIVERY] A native shell around the exact resident casting app.
 @_cdecl("native_slice")
@@ -21,6 +22,11 @@ func castingShape(_ code: Int64, _ index: Int64, _ a: Double, _ b: Double, _ c: 
 func residentStart(_ context: UnsafePointer<CChar>?) -> UnsafePointer<CChar>? {
     MainActor.assumeIsolated { SceneStream.shared.begin() }
     let result = osprey_app_start(context)
+    if CommandLine.arguments.contains("--capture-envelope"), let result {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("start-envelope.json")
+        do { try String(cString: result).write(to: url, atomically: true, encoding: .utf8) }
+        catch { NSLog("Cannot capture test envelope: %@", error.localizedDescription) }
+    }
     MainActor.assumeIsolated { SceneStream.shared.commit() }
     return result
 }
@@ -67,12 +73,17 @@ private func castingStore() -> RegionStore {
 struct CastingHost: App {
     @StateObject private var store = castingStore()
     @Environment(\.scenePhase) private var phase
+    @State private var previousFrame = 0.0
     private let frames = Timer.publish(every: 1.0 / 30, on: .main, in: .common).autoconnect()
 
     var body: some Scene {
         WindowGroup {
             RootView(store: store)
-                .onReceive(frames) { _ in if phase == .active { store.frame(elapsed: 1.0 / 30) } }
+                .onReceive(frames) { _ in
+                    let now = CACurrentMediaTime()
+                    if phase == .active, previousFrame > 0 { store.frame(elapsed: min(0.25, max(0, now - previousFrame))) }
+                    previousFrame = now
+                }
                 .onChange(of: phase) { _, next in store.lifecycle(next == .active ? "active" : "inactive") }
         }
     }
