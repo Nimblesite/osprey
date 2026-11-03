@@ -403,9 +403,9 @@ A sized scalar stored in a `List`, `Map`, `Result` payload, `any` box, fiber res
 ### Numeric operand constraints — [FLOAT-OPERANDS]
 
 The float-producing branches of `+`, `-`, `*`, `/` and `%` require numeric
-operands. A known operand must be `int` or `float`; an inferred parameter
-carries that requirement through function generalization and each call-site
-instantiation. The same `fn scale(x) = x * 1.5` can therefore serve integer
+operands. Known operands obey [TYPE-NUMERIC-SAME-TYPE], including sized numeric
+values. An undecided arithmetic helper carries the default `int`/`float`
+requirement through function generalization and each call-site instantiation. The same `fn scale(x) = x * 1.5` can therefore serve integer
 and float callers, while `scale("text")`, `scale(true)` and `scale([1])`
 fail type checking before code generation. Aliases and higher-order calls
 preserve the requirement. Division constrains both operands even when neither

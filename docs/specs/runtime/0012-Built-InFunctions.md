@@ -164,8 +164,9 @@ gpuIota 1000 |> gpuMap toFloat32  // GpuBuffer<float32>, 0.0 .. 999.0
 ```
 
 ### `sqrt` / `exp` / `ln` / `tanh` — [BUILTIN-MATH]
-Each has signature `(x: float) -> float` and is total over IEEE doubles, so
-it returns a bare `float` and never performs an `Arith` operation
+Each has signature `(x: T) -> T`, where `T` is `float`, `float32` or `float16`.
+An undecided argument defaults to `float`. Each is total over IEEE values,
+returns the argument's floating-point type and never performs an `Arith` operation
 ([FLOAT-IEEE-RESULTS](../language/0037-ArithmeticEffects.md#floating-point-results--float-ieee-results)):
 a domain error yields NaN (`sqrt(-1.0)`, `ln(-1.0)`), `ln(0.0)` is negative
 infinity, an `exp` too large for a double is positive infinity, and `tanh`
@@ -174,11 +175,15 @@ so a program keeps `log` for its own logger. `sqrt`, `exp`, `ln` and `tanh`
 are reserved builtin names like every other builtin: a program may not define
 its own function under one of them (`cannot redefine built-in function`).
 
-The argument is a `float` and nothing else. There is no implicit widening:
-`exp(3)` is a type error (`cannot unify float with int`), and the program
-writes `exp(toFloat(3))`. Each function is pure, so a GPU kernel may call it
+The argument must be a floating-point value. There is no implicit integer conversion:
+`exp(3)` is a type error, and the program writes `exp(toFloat(3))`
+or `exp(toFloat32(3))`. Each function is pure, so a GPU kernel may call it
 or *be* it, passed by name ([GPU-KERNEL-FORM](0034-GPUComputation.md)):
 `scores |> gpuMap(exp)` extracts a kernel whose body is the function.
+
+At `float32`, intrinsic names end in `.f32` and C math symbols take the `f` suffix.
+At `float16`, the operation computes in binary32 and rounds back once.
+The `f64` symbols below describe the default `float` case.
 
 Lowering: `sqrt`, `exp` and `ln` are the LLVM `llvm.sqrt.f64`,
 `llvm.exp.f64` and `llvm.log.f64` intrinsics; `tanh` is the C library's
@@ -200,9 +205,9 @@ probabilities = scores |> gpuMap exp
 ### Trigonometric functions — [BUILTIN-MATH-TRIG]
 `sin`, `cos`, `tan`, `asin`, `acos`, `atan` and the two-argument `atan2`
 extend [BUILTIN-MATH] with the elementary trigonometric functions. Each
-unary one has signature `(x: float) -> float`; `atan2` is
-`(y: float, x: float) -> float`. All are total over IEEE doubles and return a
-bare `float`, never an `Arith` operation ([FLOAT-IEEE-RESULTS]): `asin` and
+unary one has signature `(x: T) -> T`; `atan2` is
+`(y: T, x: T) -> T`, with the float types and width rules of [BUILTIN-MATH]. All are total over IEEE values and return
+the same floating-point type, never an `Arith` operation ([FLOAT-IEEE-RESULTS]): `asin` and
 `acos` of an argument outside `[-1.0, 1.0]` yield NaN, `tan` at a pole yields
 the large finite neighbour (the argument is an approximation of π/2, so the
 exact pole is unreachable). `atan2(y, x)` returns the angle of `(x, y)` in `[-π, π]`, including signed-zero quadrants: `atan2(0.0, 0.0)` is `0.0`, `atan2(±0.0, -1.0)` is `±π`, and `atan2(±0.0, 1.0)` is `±0.0`. Each function can be called inside a GPU kernel or passed by name, as in `gpuMap(sin)` ([GPU-KERNEL-FORM]).
@@ -221,7 +226,7 @@ atan2(1.0, -1.0)  // 2.356194490192345
 ### Hyperbolic functions — [BUILTIN-MATH-HYPERBOLIC]
 `sinh`, `cosh`, `asinh`, `acosh` and `atanh` complete the hyperbolic family
 started by `tanh` in [BUILTIN-MATH]. Each has signature
-`(x: float) -> float`, is total over IEEE doubles and returns a bare `float`:
+`(x: T) -> T` at the float types and widths of [BUILTIN-MATH], is total over IEEE values and returns the same type:
 `sinh` and `cosh` of a large argument yield infinity, `acosh` of an argument
 below `1.0` yields NaN, `atanh` of a magnitude above `1.0` yields NaN and
 `atanh(±1.0)` yields `±infinity`. Pure, so a kernel may call or name them.
@@ -238,7 +243,7 @@ asinh(1.0)   // 0.881373587019543
 ### Logarithmic and exponential families — [BUILTIN-MATH-LOG]
 `log2`, `log10`, `log1p` and `expm1` extend [BUILTIN-MATH] with the base-2
 and base-10 logarithms and the cancellation-avoiding companions of `ln` and
-`exp`. Each has signature `(x: float) -> float` and is total: `log2(0.0)` and
+`exp`. Each has signature `(x: T) -> T` and is total: `log2(0.0)` and
 `log10(0.0)` are negative infinity, `log2`/`log10` of a negative argument are
 NaN, `log1p(-1.0)` is negative infinity, `log1p` below `-1.0` is NaN, and
 `expm1` of a large argument is infinity. `log1p(x)` is `ln(1.0 + x)` computed
@@ -258,7 +263,7 @@ log1p(1e-16)  // 1e-16
 
 ### Error functions — [BUILTIN-MATH-SPECIAL]
 `erf` and `erfc` are the Gaussian error function and its complement. Each has
-signature `(x: float) -> float` and is total: `erf(±infinity)` is `±1.0`,
+signature `(x: T) -> T` and is total: `erf(±infinity)` is `±1.0`,
 `erfc(+infinity)` is `0.0`, `erfc(-infinity)` is `2.0`. `erfc` is computed
 as `1.0 - erf(x)` without cancellation, so the tail keeps its relative
 precision. Pure, so a kernel may call or name them. Both are the C library's
@@ -270,13 +275,13 @@ erfc(1.0)  // 0.15729920705028516
 ```
 
 ### Rounding and floating-point classification — [BUILTIN-MATH-ROUNDING]
-`floor`, `ceil`, `trunc` and `round` have signature `(x: float) -> float`;
+`floor`, `ceil`, `trunc` and `round` have signature `(x: T) -> T`;
 `pow`, `atan2` (see [BUILTIN-MATH-TRIG]), `hypot`, `fmod` and `copysign`
-have signature `(x: float, y: float) -> float`. All are total and pure, so a
+have signature `(x: T, y: T) -> T` at one float type `T` ([BUILTIN-MATH]). All are total and pure, so a
 kernel may call or name them.
 
 - `floor` is the greatest integer `<= x`, `ceil` the least `>= x`, `trunc`
-  the integer part toward zero. Each returns a `float`, so
+  the integer part toward zero. Each returns its input type, so
   `floor(-2.7)` is `-3.0`. `floor`/`ceil`/`trunc` of an infinity or NaN is
   that value itself; a signed zero is preserved.
 - `round` rounds to the nearest integer, with **halfway cases rounded to

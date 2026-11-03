@@ -135,7 +135,7 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - [x] Python-hosted libraries: support sized numeric descriptors in ctypes and reject out-of-range host arguments before crossing the C boundary. RED `KeyError: int8`; all 20 real native-library interop tests pass after the fix (2026-11-03).
 - [x] Website: regenerate builtin pages (`make` target that owns `website/src/docs/functions`), delete the three emulation pages, add the conversion pages. `make -C website docs` regenerated 220 pages and ML twins; `float32.md` is gone and the bit-view pages now carry typed signatures (2026-11-03).
 - [ ] `deslop top-offenders` over `crates/osprey-codegen` and `compiler/runtime`; `coverage-thresholds.json` only rises; `/spec-check` over 0004, 0012, 0019, 0034, 0041, 0043.
-- [ ] Plan 0049 phase 1 loses its two storage items and cites this plan.
+- [x] Plan 0049 phase 1 delegates sized buffers and native arithmetic to this plan and waits for its Phase 5 gate; mapped weights, block quantization and mutable state remain with 0049. Verified against the current plan (2026-11-03).
 - [ ] Merge `wip/sized-numerics` into the feature branch, push, delete that branch and its worktree `.claude/worktrees/sized-numerics`.
 - [ ] Clean caches and build files left by this plan, and check free disk (98% full when Phase 3 started).
 
@@ -147,3 +147,9 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - **ARC layout words.** Buffers hold raw bytes (`OSP_MEM_RAW`), so the width change does not touch layout words; lists keep their 8-byte words. The ARC lane's zero-leak sentinel is the check.
 - **Device parity for transcendental functions** keeps today's tolerance rule; only `+ - * /`, `sqrt`, comparisons, conversions and the integer family are bit-exact contracts.
 - **Goldens change** for GPT-2 and the transformer tests when they move to `float32`. Each new golden is produced on the host and confirmed on Metal before commit.
+
+### Verification notes (2026-11-03)
+
+Phase 6 spec review has checked numeric sections of 0004, 0012, 0019, 0041 and 0043 against the shared numeric descriptor, inference, arithmetic lowering, C thunks and regressions. Corrected stale binary64-only math signatures and the 32-bit C extension rule. Eight Default/ML GC/ARC math runs match their existing goldens; all four ARC runs report zero live objects. Spec 0034 and the final whole-plan audit await the Phase 4/5 implementation and hardware receipts.
+
+Deslop 0.40.1 scanned 117 codegen files: 536/28,658 duplicated LOC (1.9%); the highest-ranked groups are test scaffolding and structural similarities. It scanned zero C runtime files because C is unsupported by the installed CLI: this is an engine limitation, not a clean-runtime result. The C runtime still requires independent duplication review. Coverage thresholds have not been lowered. Logs are under `target/logs/plan-0050/`.

@@ -64,8 +64,8 @@ fn numbers(e: &mut TypeEnv) {
         );
     }
     // The unary float functions every numeric kernel is written from. Total
-    // over IEEE doubles (a domain error yields NaN, an overflow infinity), so
-    // bare `float`; pure, so a kernel may call or name them [BUILTIN-MATH],
+    // over each float width (a domain error yields NaN, an overflow infinity),
+    // returning that width; pure, so a kernel may call or name them [BUILTIN-MATH],
     // [BUILTIN-MATH-TRIG], [BUILTIN-MATH-HYPERBOLIC], [BUILTIN-MATH-LOG],
     // [BUILTIN-MATH-ROUNDING], [BUILTIN-MATH-SPECIAL].
     for name in crate::arithmetic::UNARY_FLOAT_BUILTINS {
