@@ -143,7 +143,8 @@ Verified storage evidence, 2026-11-03: `memory_golden_tests.c` measures exact AR
 - [x] `deslop top-offenders` over `crates/osprey-codegen` and `compiler/runtime`: 117 Rust files scanned; the C scan finds zero supported files, an engine limitation requiring the separate manual review below (2026-11-03).
 - [ ] Independently review runtime duplication where Deslop cannot scan C.
 - [x] `coverage-thresholds.json` only rises: all existing keys remain and no threshold is lower than `origin/main`; the only additions are two C projects at 100% (2026-11-03).
-- [ ] `/spec-check` over 0004, 0012, 0019, 0034, 0041, 0043; GPU 0034 awaits the completed Phase 4/5 implementation and hardware receipts.
+- [x] `/spec-check` over numeric sections of 0004, 0012, 0019, 0041 and 0043. Corrected stale math signatures and C extension rules; math corpus runs and host ABI regressions verify the documented behavior (2026-11-03).
+- [ ] `/spec-check` over GPU 0034 against the completed Phase 4/5 implementation and hardware receipts, then cross-check the complete numeric contract across all six specs.
 - [x] Plan 0049 phase 1 delegates sized buffers and native arithmetic to this plan and waits for its Phase 5 gate; mapped weights, block quantization and mutable state remain with 0049. Verified against the current plan (2026-11-03).
 - [ ] Merge `wip/sized-numerics` into the feature branch, push, delete that branch and its worktree `.claude/worktrees/sized-numerics`.
 - [ ] Clean caches and build files left by this plan, and check free disk (98% full when Phase 3 started).
