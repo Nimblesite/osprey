@@ -3,6 +3,7 @@
 use super::selection::{host_abi, host_abi_selected};
 use super::tests::{abi_of, checked};
 use super::ExportScope;
+use std::fmt::Write as _;
 
 #[test]
 fn numeric_exports_and_imports_execute_against_real_c() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,19 +26,22 @@ fn numeric_exports_and_imports_execute_against_real_c() -> Result<(), Box<dyn st
     .into_iter()
     .enumerate()
     {
-        source.push_str(&format!(
-            "extern fn host{i}(value: {ty}) -> {ty}\nfn relay{i}(value) = host{i}(value)\n"
-        ));
-        host.push_str(&format!(
-            "{c} osprey_relay{i}({c});\n{c} host{i}({c} value){{return value;}}\n"
-        ));
+        writeln!(
+            source,
+            "extern fn host{i}(value: {ty}) -> {ty}\nfn relay{i}(value) = host{i}(value)"
+        )?;
+        writeln!(
+            host,
+            "{c} osprey_relay{i}({c});\n{c} host{i}({c} value){{return value;}}"
+        )?;
         for value in values.split(',') {
-            assertions.push_str(&format!(
-                "assert(osprey_relay{i}(({c})({value})) == ({c})({value}));\n"
-            ));
+            writeln!(
+                assertions,
+                "assert(osprey_relay{i}(({c})({value})) == ({c})({value}));"
+            )?;
         }
     }
-    host.push_str(&format!("{assertions}return 0;}}\n"));
+    writeln!(host, "{assertions}return 0;}}")?;
     let (abi, ir) = abi_of(&source);
     let extended = !cfg!(any(
         target_os = "windows",
@@ -99,7 +103,7 @@ fn every_numeric_width_crosses_the_host_boundary_without_widening() -> Result<()
             "extern fn host(value: {ty}) -> {ty}\nfn relay(value) = host(value)\n"
         ));
         assert_eq!(abi.exports.len(), 1, "missing {ty} export");
-        assert_eq!(abi.exports[0].ret.c(), c);
+        assert_eq!(abi.exports.first().map(|export| export.ret.c()), Some(c));
         for extended in [true, false] {
             let ext = if extended { extension } else { "" };
             let adapted = super::with_host_abi_for_target(&ir, &abi, extended)?;
