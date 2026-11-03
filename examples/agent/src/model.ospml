@@ -10,6 +10,7 @@ import ui::Pick
 import ui::Requests
 import ui::Runtime
 import agent::Engine
+import agentapp::McpModel
 
 (** Every control's action ([UI-EVENTS]). *)
 type AgentAction =
@@ -41,6 +42,25 @@ type AgentAction =
     ResizePanel
     ToggleSteps
         stepsKey : string
+    OpenMcpSettings
+    AddMcpServer
+    PasteMcpServers
+    RemoveMcp
+        mcpActionName : string
+    ReconnectMcp
+        mcpActionName : string
+    ToggleMcp
+        mcpActionName : string
+    ToggleMcpTools
+        mcpActionName : string
+    McpName
+    McpCommand
+    McpArguments
+    McpUrl
+    McpEnvironment
+    McpHeaders
+    McpPaste
+    PickMcpType
 
 (** One provider's saved or drafted key. *)
 type ProviderKey =
@@ -96,6 +116,7 @@ type Settings =
 
 (** Osprey Agent's whole store. *)
 type Store =
+    mcp : McpState
     chats : List<Chat>
     draft : Draft
     panel : Panel
@@ -155,7 +176,7 @@ module Model
     (** The store at launch: one empty conversation in `folder`. *)
     export launched (system, home, folder, now) =
         settings = Settings(platform = system, homeFolder = home, keys = [], keyDrafts = seedDrafts (), defaultModel = defaultModel, defaultEffort = "", settingsOpen = false, settingsTab = "providers", providerOpen = "deepseek", saveProblem = "", saving = false, savePending = [], saveName = "")
-        Store(chats = [blank ("launch${now}", folder, settings.defaultModel, settings.defaultEffort, now)], draft = Draft(draftText = ""), panel = Panel(panelActive = "launch${now}", panelOpen = true, panelWidth = 288, panelExpanded = []), settings = settings, ticketCount = 2, clock = now)
+        Store(mcp = McpModel::fresh folder, chats = [blank ("launch${now}", folder, settings.defaultModel, settings.defaultEffort, now)], draft = Draft(draftText = ""), panel = Panel(panelActive = "launch${now}", panelOpen = true, panelWidth = 288, panelExpanded = []), settings = settings, ticketCount = 2, clock = now)
 
     (** The open conversation. *)
     export active store = Lists::find (store.chats, \chat => chat.chatId == store.panel.panelActive) ?: (listGet store.chats 0 ?: blank ("c0", store.settings.homeFolder, store.settings.defaultModel, store.settings.defaultEffort, store.clock))
@@ -181,10 +202,12 @@ module Model
     (** The call with `id` in the last response. *)
     export callNamed (chat, id) = Lists::find (Engine::last_calls chat.chatHistory, \call => call.callId == id) ?: Engine::ToolCall(callId = id, callName = "", callArgs = "{}")
 
-    (** The capability reading a small text file: `Run` is the one every desktop host answers. *)
-    export readText (system, path) = match system == "windows"
-        true => ui::Run(executable = "C:\\Windows\\System32\\cmd.exe", arguments = ["/d", "/c", "type", path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = "env")
-        false => ui::Run(executable = "/bin/cat", arguments = [path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = "env")
+    (** The capability reading a small text file into `slice`: `Run` is the one every desktop host answers. *)
+    export readTextAt (system, path, slice) = match system == "windows"
+        true => ui::Run(executable = "C:\\Windows\\System32\\cmd.exe", arguments = ["/d", "/c", "type", path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = slice)
+        false => ui::Run(executable = "/bin/cat", arguments = [path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = slice)
+
+    export readText (system, path) = readTextAt (system, path, "env")
 
     resultJson result = JsonObject [Doc::str ("id", result.resultId), Doc::str ("name", result.resultName), Doc::str ("content", result.resultContent)]
 
@@ -222,14 +245,14 @@ module Model
     ]
 
     (** The store as the session document, which lives only in this process. *)
-    export storeJson store = JsonObject [JsonMember "chats" (JsonArray (mapList (store.chats, \chat => chatJson chat))), Doc::str ("draft", store.draft.draftText), JsonMember "panel" (panelJson store.panel), JsonMember "settings" (settingsJson store.settings), Doc::num ("tickets", store.ticketCount), Doc::num ("clock", store.clock)]
+    export storeJson store = JsonObject [JsonMember "mcp" (McpModel::storeJson store.mcp), JsonMember "chats" (JsonArray (mapList (store.chats, \chat => chatJson chat))), Doc::str ("draft", store.draft.draftText), JsonMember "panel" (panelJson store.panel), JsonMember "settings" (settingsJson store.settings), Doc::num ("tickets", store.ticketCount), Doc::num ("clock", store.clock)]
 
     (** The store from its session document. *)
     export storeOf doc =
         panel = Doc::field (doc, "panel")
         settingsDoc = Doc::field (doc, "settings")
         settings = Settings(platform = Doc::text (settingsDoc, "platform"), homeFolder = Doc::text (settingsDoc, "home"), keys = mapList (Doc::items (Doc::field (settingsDoc, "keys")), \item => keyOfJson item), keyDrafts = mapList (Doc::items (Doc::field (settingsDoc, "drafts")), \item => keyOfJson item), defaultModel = Doc::text (settingsDoc, "model"), defaultEffort = Doc::text (settingsDoc, "effort"), settingsOpen = Doc::flag (settingsDoc, "open"), settingsTab = Doc::text (settingsDoc, "tab"), providerOpen = Doc::text (settingsDoc, "provider"), saveProblem = Doc::text (settingsDoc, "saveProblem"), saving = false, savePending = [], saveName = "")
-        Store(chats = mapList (Doc::items (Doc::field (doc, "chats")), \item => chatOf item), draft = Draft(draftText = Doc::text (doc, "draft")), panel = Panel(panelActive = Doc::text (panel, "active"), panelOpen = Doc::flag (panel, "open"), panelWidth = Doc::number (panel, "width"), panelExpanded = Doc::texts (panel, "expanded")), settings = settings, ticketCount = Doc::number (doc, "tickets"), clock = Doc::number (doc, "clock"))
+        Store(mcp = McpModel::storeOf (Doc::field (doc, "mcp")), chats = mapList (Doc::items (Doc::field (doc, "chats")), \item => chatOf item), draft = Draft(draftText = Doc::text (doc, "draft")), panel = Panel(panelActive = Doc::text (panel, "active"), panelOpen = Doc::flag (panel, "open"), panelWidth = Doc::number (panel, "width"), panelExpanded = Doc::texts (panel, "expanded")), settings = settings, ticketCount = Doc::number (doc, "tickets"), clock = Doc::number (doc, "clock"))
 
     // A conversation with no words in it is not worth keeping.
     kept chat = Engine::has_turns chat.chatHistory
@@ -252,11 +275,15 @@ module Model
     (** What one save failure names: the settings or the conversations. *)
     export saveLabel name = match name
         "providers.json" => "settings"
+        "mcp.json" => "MCP servers"
+        "mcp-state.json" => "MCP switches"
         _ => "conversations"
 
     (** The document `name` holds. *)
     export saveDoc (store, name) = match name
         "providers.json" => providersJson store.settings
+        "mcp.json" => Doc::parse store.mcp.stateGlobal
+        "mcp-state.json" => McpModel::switchesJson store.mcp
         _ => fileJson store
 
     (** The conversations or the providers written to the app's private store: never the keys into the conversations file. One write runs at a time, so an older one cannot land after a newer one; a change during a write waits, by file, and is saved when it ends. *)

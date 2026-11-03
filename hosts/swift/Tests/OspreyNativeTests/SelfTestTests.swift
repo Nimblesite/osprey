@@ -227,12 +227,17 @@ final class SelfTestTests: XCTestCase {
         let file = folder.appendingPathComponent("double.json")
         try #"{"replies": [{"status": 200, "body": "a"}, {"status": 200, "body": "b"}, {"status": 200, "body": "c"}]}"#.write(to: file, atomically: true, encoding: .utf8)
         let double = try HttpDoubleAdapter(file: file.path, requests: folder.appendingPathComponent("requests.jsonl"))
-        for bad in [httpRequest("x", "s", url: "http://example.test/chat"), httpRequest("x", "s", method: "GET"), httpRequest("x", "s", authorized: false)] {
+        for bad in [httpRequest("x", "s", url: "http://example.test/chat"), httpRequest("x", "s", url: "http://127.0.0.1.example.test/chat"), httpRequest("x", "s", method: "GET"), httpRequest("x", "s", authorized: false)] {
             do {
                 _ = try await double.perform(bad, slices: SliceStore())
                 XCTFail("The double took \(bad.members)")
             } catch is CapabilityError {}
         }
+        for loopback in ["http://localhost:1/mcp", "http://127.0.0.1:1/mcp", "http://[::1]:1/mcp"] {
+            XCTAssertNoThrow(try HttpAdapter.outgoing(httpRequest("x", "s", url: loopback), timeout: 1000))
+        }
+        XCTAssertThrowsError(try HttpAdapter.outgoing(httpRequest("x", "s", url: "http://example.test/mcp"), timeout: 1000))
+        XCTAssertThrowsError(try HttpAdapter.outgoing(httpRequest("x", "s", url: "ftp://localhost/mcp"), timeout: 1000))
     }
 
     func testHttpDoubleRepliesInOrderRecordsBodiesAndRejectsExtraRequests() async throws {

@@ -16,6 +16,7 @@ runs on except `tool_command`, which names the platform's shell.
 from pydantic_ai import Exceptions as E
 from pydantic_ai import JsonUtil as J
 from pydantic_ai import Messages as M
+from pydantic_ai import Mcp
 from pydantic_ai import Models
 from pydantic_ai import ModelsOpenai
 from pydantic_ai import Profiles
@@ -23,7 +24,7 @@ from pydantic_ai import Settings
 from pydantic_ai import Tools
 
 __all__ = [
-    "ToolCall", "ToolResult", "Reply", "Command", "new_history", "add_user", "add_returns", "request_body",
+    "ToolCall", "ToolResult", "Reply", "Command", "new_history", "add_user", "add_returns", "request_body", "request_body_with_tools", "request_body_with_mcp", "definitions_of",
     "accept", "tool_command", "tool_summary", "tool_result_text", "url", "profile_of", "usage_of", "Totals",
     "files_changed", "pending", "last_calls", "OUTPUT_LIMIT", "cut_text", "has_turns",
     "Provider", "ModelEntry", "Wire", "PROVIDERS", "provider_id_of", "model_id_of", "provider_label", "provider_base",
@@ -284,14 +285,14 @@ def schema(text):
     return unwrap_or(jsonDecode(text), JsonNull())
 
 
-def definitions():
-    """The tools the model may call."""
-    return [
+def definitions(extra):
+    """The built-in tools followed by every connected server's MCP tools."""
+    return listConcat([
         Tools.tool_definition("list_files", "Lists every file in the project.", schema("{\"type\":\"object\",\"properties\":{},\"required\":[]}")),
         Tools.tool_definition("read_file", "Reads a text file.", schema("{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Path relative to the project\"}},\"required\":[\"path\"]}")),
         Tools.tool_definition("write_file", "Replaces a whole text file, creating folders as needed.", schema("{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Path relative to the project\"},\"content\":{\"type\":\"string\",\"description\":\"The whole new content\"}},\"required\":[\"path\",\"content\"]}")),
         Tools.tool_definition("run_command", "Runs a shell command in the project and returns its exit status and output.", schema("{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The command line\"}},\"required\":[\"command\"]}")),
-    ]
+    ], extra)
 
 
 def base_profile(kind, model_id):
@@ -330,12 +331,44 @@ def effort_setting(effort):
     return JsonBool(False) if effort == "off" else JsonString(effort)
 
 
-def request_body(history, model, effort):
-    """The Chat Completions request for the next model step, as JSON text."""
-    entry = entry_of(model)
-    profile = profile_of(model)
+def entry_tools(acc, entry):
+    """One server's listed tools as prefixed model definitions; an entry that cannot be used was already reported when it was listed."""
+    name = J.text_at(entry, "name", "")
+    return foldList(J.list_at(entry, "tools"), acc, lambda tools, tool_json: tool_step(tools, name, tool_json))
+
+
+def tool_step(acc, name, tool_json):
+    match Mcp.tool_of(tool_json):
+        case Success(value=tool):
+            return listAppend(acc, Mcp.tool_definition_of(name, tool))
+        case Error():
+            return acc
+
+
+def definitions_of(servers_json):
+    """Every connected server's tools as model definitions, named `<server>_<tool>`."""
+    return foldList(J.list_at(servers_json, "servers"), [], entry_tools)
+
+
+def completions(entry, profile, history, settings, tools):
+    return J.encode(ModelsOpenai.completions_body(entry.id, profile, messages_of(history), settings, Models.with_tools(tools)))
+
+
+def request_body_with_tools(history, model, effort, extra_tools):
+    """The Chat Completions request with the built-in and given tools."""
     settings = Settings.model_settings() if effort == "" else mapSet(Settings.model_settings(), "thinking", effort_setting(effort))
-    return J.encode(ModelsOpenai.completions_body(entry.id, profile, messages_of(history), settings, Models.with_tools(definitions())))
+    return completions(entry_of(model), profile_of(model), history, settings, definitions(extra_tools))
+
+
+def request_body_with_mcp(history, model, effort, servers_json):
+    """The Chat Completions request with the built-in tools and every connected MCP server's."""
+    settings = Settings.model_settings() if effort == "" else mapSet(Settings.model_settings(), "thinking", effort_setting(effort))
+    return completions(entry_of(model), profile_of(model), history, settings, definitions(definitions_of(servers_json)))
+
+
+def request_body(history, model, effort):
+    """A request with no MCP servers, kept as the engine's small pure surface."""
+    return request_body_with_tools(history, model, effort, [])
 
 
 def call_of(part):

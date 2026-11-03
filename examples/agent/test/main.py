@@ -8,6 +8,8 @@ from agent import Highlight
 from agent import Transcript
 from pydantic_ai import JsonUtil as J
 from pydantic_ai import Messages as M
+from pydantic_ai import Mcp
+from agent import McpClient
 from testing import Check
 
 MODEL = "deepseek-chat"
@@ -475,8 +477,79 @@ def highlight_cases():
     return listConcat(listConcat(listConcat(listConcat(kinds, rules), aliases), listConcat(same, paths)), listConcat(size, hl_roundtrip_checks()))
 
 
+def mcp_cases():
+    tricky = Mcp.parse_config('{"mcpServers":{"same":{"command":"global"},"private":{"command":"python3","env":{"TOKEN":"mcp-secret"}}}}', {})
+    load = McpClient.parse_config('{"mcpServers":{"demo":{"command":"python3","args":["server.py"],"env":{"TOKEN":"configured-secret"}}}}')
+    tool = Mcp.Tool(name="secret_word", description="Reads the word.", input_schema=unwrap_or(jsonDecode('{"type":"object","properties":{}}'), JsonNull()))
+    history = Engine.add_user(Engine.new_history(), FOLDER, "Use MCP")
+    body = Engine.request_body_with_tools(history, MODEL, "", [Mcp.tool_definition_of("demo", tool)])
+    saved = McpClient.config_json(load.servers)
+    restored = McpClient.parse_config(saved)
+    ok_text = McpClient.message_json('{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"planet"}]}}')
+    failed_text = McpClient.message_json('{"jsonrpc":"2.0","id":8,"result":{"content":[{"type":"text","text":"tool failed"}],"isError":true}}')
+    error_text = McpClient.message_json('{"jsonrpc":"2.0","id":9,"error":{"code":-32000,"message":"no such tool"}}')
+    ping_text = McpClient.message_json('{"jsonrpc":"2.0","id":"server-ping-1","method":"ping"}')
+    initialize_text = McpClient.message_json('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","serverInfo":{"name":"s","version":"1"},"capabilities":{}}}')
+    refused_text = McpClient.message_json('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1999-01-01"}}')
+    page_text = McpClient.message_json('{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"secret_word","description":"The word.","inputSchema":{"type":"object"}}],"nextCursor":"3"}}')
+    headers = JsonObject([JsonMember("headers", JsonArray([JsonObject([JsonMember("name", JsonString("Content-Type")), JsonMember("value", JsonString("text/event-stream"))]), JsonObject([JsonMember("name", JsonString("Mcp-Session-Id")), JsonMember("value", JsonString("session-1"))])]))])
+    messages = McpClient.http_messages(headers, 'event: message\ndata: {"jsonrpc":"2.0","id":7,"result":{}}\n\n')
+    merged = McpClient.merge_view(saved, '{"mcpServers":{"same":{"command":"project"},"local":{"command":"local"}}}')
+    added = McpClient.add_global(saved, "extra", '{"command":"node","args":["server.js"]}')
+    clash = McpClient.add_global(saved, "demo", '{"command":"node"}')
+    pasted = McpClient.paste_global("{}", '{"mcpServers":{"one":{"command":"one"},"two":{"url":"https://example.test/mcp"}}}')
+    bad_paste = McpClient.paste_global("{}", '{"mcpServers":{"ok":{"command":"one"},"bad":{}}}')
+    form = McpClient.form_config("httpd", "url", "", "", "http://127.0.0.1:8919/mcp", "", "Authorization=Bearer mcp-token")
+    brief = McpClient.start_brief(form.text)
+    step = McpClient.read_step("par", "tial\n{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{}}\nfrag")
+    wire = McpClient.call_line(5, "add", '{"a":1,"b":2}')
+    bad_wire = McpClient.call_line(5, "add", "[1]")
+    return [
+        Check.equal("mcp.two_servers_with_env", len(tricky.servers), 2),
+        Check.equal("mcp.app_config_roundtrip", join(mapList(restored.servers, Mcp.name_of), ","), "demo"),
+        Check.truth("mcp.app_config_keeps_secret_only_in_mcp", contains(saved, "configured-secret"), saved),
+        Check.equal("mcp.app_form_empty_name", McpClient.form_problem("", "command", "python3", "", "", ""), "Enter a server name."),
+        Check.equal("mcp.app_form_empty_command", McpClient.form_problem("demo", "command", "", "", "", ""), "Enter a command."),
+        Check.equal("mcp.app_form_bad_url", McpClient.form_problem("demo", "url", "", "ftp://example.test/mcp", "", ""), "Enter an HTTPS URL, or an HTTP URL on this machine."),
+        Check.equal("mcp.app_form_bad_env", McpClient.form_problem("demo", "command", "python3", "", "BROKEN", ""), "Environment lines must look like NAME=value."),
+        Check.equal("mcp.app_form_valid", McpClient.form_problem("demo", "url", "", "http://127.0.0.1:8000/mcp", "Authorization=Bearer secret", ""), ""),
+        Check.truth("mcp.app_model_tool", contains(body, '"name":"demo_secret_word"'), body),
+        Check.equal("mcp.app_response_by_id", McpClient.call_text_of(McpClient.find_response([ok_text], "7")), "planet"),
+        Check.equal("mcp.app_is_error_is_tool_text", McpClient.call_text_of(McpClient.find_response([failed_text], "8")), "tool failed"),
+        Check.equal("mcp.app_error_response_words", McpClient.call_text_of(McpClient.find_response([error_text], "9")), "no such tool (code: -32000)"),
+        Check.equal("mcp.app_no_response", McpClient.find_response([ok_text], "4"), "{}"),
+        Check.truth("mcp.app_server_ping", contains(McpClient.ping_replies([ping_text]), '"id":"server-ping-1"'), McpClient.ping_replies([ping_text])),
+        Check.equal("mcp.app_no_ping", McpClient.ping_replies([ok_text]), ""),
+        Check.equal("mcp.app_initialize_ok", McpClient.initialize_outcome(initialize_text), '{"ok":true,"problem":""}'),
+        Check.truth("mcp.app_initialize_refused", contains(McpClient.initialize_outcome(refused_text), "does not support"), McpClient.initialize_outcome(refused_text)),
+        Check.truth("mcp.app_tools_page", contains(McpClient.tools_page(page_text), '"name":"secret_word"'), McpClient.tools_page(page_text)),
+        Check.truth("mcp.app_tools_page_cursor", contains(McpClient.tools_page(page_text), '"cursor":"3"'), McpClient.tools_page(page_text)),
+        Check.equal("mcp.app_http_session", McpClient.header_value(headers, "mcp-session-id"), "session-1"),
+        Check.equal("mcp.app_http_sse", len(messages), 1),
+        Check.equal("mcp.app_merge_names", join(mapList(merged.mergedServers, lambda view: view.viewName + ":" + view.viewOrigin + ":" + ("on" if view.viewEnabled else "off")), ","), "demo:global:on,same:project:off,local:project:off"),
+        Check.equal("mcp.app_merge_project_wins", join(mapList(filterList(merged.mergedServers, lambda view: view.viewName == "same"), lambda view: view.viewOrigin), ","), "project"),
+        Check.truth("mcp.app_add_keeps_secret", contains(added.text, "configured-secret") and contains(added.text, "extra"), added.text),
+        Check.equal("mcp.app_add_clash", clash.problem, "An MCP server named 'demo' already exists."),
+        Check.equal("mcp.app_paste_atomic", len(McpClient.parse_config(pasted.text).servers), 2),
+        Check.truth("mcp.app_paste_bad_reports", contains(bad_paste.problem, "must have either"), bad_paste.problem),
+        Check.truth("mcp.app_paste_repeated_reports", contains(McpClient.paste_global("{}", '{"mcpServers":{"twice":{"command":"a"},"twice":{"command":"b"}}}').problem, "not valid JSON"), McpClient.paste_global("{}", '{"mcpServers":{"twice":{"command":"a"},"twice":{"command":"b"}}}').problem),
+        Check.equal("mcp.app_remove_keeps_rest", join(mapList(McpClient.parse_config(McpClient.remove_global_text(added.text, "extra")).servers, Mcp.name_of), ","), "demo"),
+        Check.truth("mcp.app_form_entry", contains(form.text, "127.0.0.1:8919") and contains(form.text, "mcp-token"), form.text),
+        Check.equal("mcp.app_form_problem_words", McpClient.form_config("x", "url", "", "", "nope", "", "").problem, "Enter an HTTPS URL, or an HTTP URL on this machine."),
+        Check.truth("mcp.app_brief_http", contains(brief, '"kind":"http"') and contains(brief, '"name":"Authorization"') and contains(brief, "mcp-token"), brief),
+        Check.truth("mcp.app_brief_stdio", contains(McpClient.start_brief('{"command":"python3","args":["-u","s.py"],"env":{"A":"b"}}'), '"kind":"stdio"'), McpClient.start_brief('{"command":"python3","args":["-u","s.py"],"env":{"A":"b"}}')),
+        Check.equal("mcp.app_read_step", join(step.lines, "|") + "/" + step.buffer, 'partial|{"jsonrpc":"2.0","id":7,"result":{}}/frag'),
+        Check.truth("mcp.app_call_line", contains(wire.text, '"name":"add"') and contains(wire.text, '"a":1') and contains(wire.text, '"b":2'), wire.text),
+        Check.truth("mcp.app_call_line_bad_args", len(bad_wire.problem) > 0, bad_wire.problem),
+        Check.truth("mcp.app_initialize_line", contains(McpClient.initialize_line(1), '"method":"initialize"'), McpClient.initialize_line(1)),
+        Check.truth("mcp.app_initialized_line", contains(McpClient.initialized_line(), "notifications/initialized"), McpClient.initialized_line()),
+        Check.truth("mcp.app_list_line_pages", contains(McpClient.list_tools_line(2, "3"), '"cursor":"3"'), McpClient.list_tools_line(2, "3")),
+        Check.equal("mcp.app_protocol_version", McpClient.protocol_version(), "2025-06-18"),
+    ]
+
+
 def suite():
-    return listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(conversation_cases(), folder_prompt_cases()), in_flight_cases()), listConcat(failure_cases(), command_cases())), prov_cases()), markdown_cases()), highlight_cases())
+    return listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(conversation_cases(), folder_prompt_cases()), in_flight_cases()), listConcat(failure_cases(), command_cases())), prov_cases()), markdown_cases()), highlight_cases()), mcp_cases())
 
 
 def report_suite():

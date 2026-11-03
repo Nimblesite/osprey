@@ -51,6 +51,7 @@ cat > "$bundle/Contents/Info.plist" <<PLIST
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>CFBundleIconFile</key><string>AppIcon</string>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 PLIST
 codesign --force --sign - "$bundle" 2>/dev/null

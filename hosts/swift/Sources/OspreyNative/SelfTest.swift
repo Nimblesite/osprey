@@ -249,6 +249,8 @@ public struct HttpDoubleAdapter: CapabilityAdapter {
     }
 
     public func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue {
+        // A server on this machine is real in a doubled run: only the model is the double.
+        if let url = URL(string: try request.text("url")), HttpAdapter.isLoopback(url) { return try await HttpAdapter().perform(request, slices: slices) }
         let index = position.take()
         guard index < replies.count else { throw CapabilityError.platform("The double has no reply for request \(index + 1)") }
         let outgoing = try HttpAdapter.outgoing(request, timeout: max(try request.number("timeout"), 1))

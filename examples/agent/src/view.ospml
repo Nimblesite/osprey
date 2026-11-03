@@ -14,6 +14,7 @@ import ui::Ui
 import agent::Engine
 import agent::Highlight
 import agent::Transcript
+import agentapp::McpModel
 import agentapp::Model
 
 (** Frame recipes: this application's whole visual language. *)
@@ -189,8 +190,10 @@ module Items
         Ui::framed (Look::mono (12, "secondary"), Ui::rich (mapList (Highlight::tokens_of (language, shown (trim item.stepOutput)), Blocks::tokenRun), ui::Body))
 
     step item =
+        mcp = View::mcpNow ()
+        server = McpModel::serverLabel (mcp, item.stepTool)
         headInk = Look::mono (12, "primary")
-        title = Ui::framed (headInk(frameHug = true), Ui::text "${verb item.stepTool} ${item.stepSummary}")
+        title = Ui::framed (headInk(frameHug = true), Ui::text (Pick::either (server == "", "${verb item.stepTool} ${item.stepSummary}", "${server} · ${verb item.stepTool} ${item.stepSummary}")))
         head = Ui::row [Ui::framed (Look::sized (12, "secondary"), Ui::icon (symbol item.stepTool)), title, ui::Spacer, status item]
         lines = stepLines item
         Ui::framed (Look::card ("codeFill", 10, 12, 10), Ui::column (Pick::either (trim item.stepOutput == "", [head], [head, lines])))
@@ -213,6 +216,8 @@ module View
     panelNow () = perform Signal<Panel>.read ()
 
     settingsNow () = perform Signal<Settings>.read ()
+
+    export mcpNow () = (perform Signal<McpSignal>.read ()).signalState
 
     draftNow () = (perform Signal<Draft>.read ()).draftText
 
@@ -437,7 +442,60 @@ module View
         cards = Ui::framed (Look::gapped 12, Ui::column (mapList (Engine::provider_ids (), \provider => providerCard (settings, provider))))
         Ui::column [cards, defaultModelSection settings]
 
-    mcpState () = Ui::empty ("package", "No MCP servers yet", "Add a server to give the agent more tools.")
+    (** The Add server form: name, type, command or URL, environment, validated in words. *)
+    (** The MCP servers tab: a card per server, the problems from both files, and the Add server form. The empty state is one function. *)
+    // One server's coloured state, with its tool count when connected.
+    mcpBadge server = match server.serverPhase
+        "connected" => Ui::badge ("Connected · ${toString (length (Doc::items (Doc::parse (server.serverTools))))} tools", Symbols::name ui::Check, ui::Good)
+        "connecting" => Ui::badge ("Connecting", Symbols::name ui::Clock, ui::Caution)
+        "failed" => Ui::badge ("Failed", Symbols::name ui::Warning, ui::Danger)
+        _ => Ui::badge ("Off", Symbols::name ui::NoSymbol, ui::Secondary)
+
+    mcpProblem server = Pick::either (server.serverProblem == "", [], [Ui::framed (Look::sized (12, "danger"), Ui::text server.serverProblem)])
+
+    mcpToolRow tool =
+        base = Frames::plain
+        Ui::framed (Look::gapped 4, Ui::column [Ui::framed (base(frameHug = true, frameTextSize = 12), Ui::styled (Doc::text (tool, "name"), ui::Headline, ui::Primary)), Ui::framed (Look::sized (12, "secondary"), Ui::text (Pick::either (Doc::text (tool, "description") == "", "No description.", Doc::text (tool, "description"))))])
+
+    mcpCard server =
+        mcp = mcpNow ()
+        base = Frames::plain
+        projectLabel = Pick::either (server.serverOrigin == "project", [Ui::framed (base(frameHug = true), Ui::badge (".mcp.json", Symbols::name ui::Document, ui::Secondary))], [])
+        head = Ui::row (listConcat [Ui::framed (Look::sized (14, "primary"), Ui::text server.serverName)] (listConcat projectLabel [ui::Spacer, mcpBadge server]))
+        endpoint = Ui::framed (Look::mono (11, "secondary"), Ui::text (Pick::either (server.serverKind == "url", server.serverEndpoint, "${server.serverEndpoint}  ·  environment values are never shown")))
+        switch = Ui::framed (base(frameHug = true), ui::Toggle(label = server.serverName, on = server.serverEnabled, bind = ToggleMcp(mcpActionName = server.serverName)))
+        reconnect = Ui::framed (base(frameHug = true), Ui::action ("Reconnect", Symbols::name ui::Refresh, ui::Plain, server.serverPhase == "failed" || server.serverPhase == "connected", ReconnectMcp(mcpActionName = server.serverName)))
+        remove = Pick::either (server.serverOrigin == "global", [Ui::framed (base(frameHug = true), Ui::action ("Remove", Symbols::name ui::Delete, ui::Destructive, true, RemoveMcp(mcpActionName = server.serverName)))], [])
+        tools = Ui::disclosure ("Tools", listContains (mcp.stateExpanded, server.serverName), ToggleMcpTools(mcpActionName = server.serverName), mapList (Doc::items (Doc::parse (server.serverTools)), \tool => mcpToolRow tool))
+        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column (listConcat [head, endpoint] (listConcat (mcpProblem server) [Ui::framed (Look::gapped 8, Ui::row (listConcat [switch, reconnect] remove)), tools])))
+
+    mcpProblems mcp = mapList (mcp.stateProblems, \problem => Ui::framed (Look::sized (12, "danger"), Ui::text problem))
+
+    (** The Add server form: name, type, command or URL, environment, validated in words. *)
+    mcpForm mcp =
+        form = mcp.stateForm
+        base = Frames::plain
+        heading = Ui::framed (base(frameHug = true), Ui::styled ("Add server", ui::Eyebrow, ui::Secondary))
+        name = Ui::framed (base(frameGrow = true), ui::Field(label = "Name", value = form.formName, prompt = "demo", secure = false, multiline = false, commit = ui::OnEdit, bind = McpName))
+        typePicker = Ui::framed (base(frameHug = true), ui::Picker(label = "Type", choices = [Ui::choice ("command", "Command"), Ui::choice ("url", "URL")], selected = form.formType, bind = PickMcpType))
+        command = match form.formType
+            "url" => [Ui::framed (base(frameGrow = true), ui::Field(label = "URL", value = form.formUrl, prompt = "https://example.com/mcp", secure = false, multiline = false, commit = ui::OnEdit, bind = McpUrl)), Ui::framed (base(frameGrow = true), ui::Field(label = "Headers", value = form.formHeaders, prompt = "Authorization=Bearer token", secure = false, multiline = true, commit = ui::OnEdit, bind = McpHeaders))]
+            _ => [Ui::framed (base(frameGrow = true), ui::Field(label = "Command", value = form.formCommand, prompt = "npx", secure = false, multiline = false, commit = ui::OnEdit, bind = McpCommand)), Ui::framed (base(frameGrow = true), ui::Field(label = "Arguments", value = form.formArguments, prompt = "One argument per line", secure = false, multiline = true, commit = ui::OnEdit, bind = McpArguments))]
+        environment = Ui::framed (base(frameGrow = true), ui::Field(label = "Environment", value = form.formEnvironment, prompt = "NAME=value", secure = false, multiline = true, commit = ui::OnEdit, bind = McpEnvironment))
+        problem = Pick::either (form.formProblem == "", [], [Ui::framed (Look::sized (12, "danger"), Ui::text form.formProblem)])
+        add = Ui::framed (base(frameHug = true), Ui::action ("Add", Symbols::name ui::Add, ui::Filled, true, AddMcpServer))
+        paste = Ui::framed (base(frameGrow = true), ui::Field(label = "JSON config", value = form.formPaste, prompt = "{\"mcpServers\":{...}}", secure = false, multiline = true, commit = ui::OnEdit, bind = McpPaste))
+        pasteButton = Ui::framed (base(frameHug = true), Ui::action ("Paste JSON", Symbols::name ui::Document, ui::Plain, trim form.formPaste != "", PasteMcpServers))
+        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column (listConcat [heading, Ui::framed (Look::gapped 8, Ui::row [name, typePicker])] (listConcat command (listConcat [environment] (listConcat problem [Ui::framed (Look::gapped 8, Ui::row [ui::Spacer, add]), paste, pasteButton])))))
+
+    (** The MCP servers tab: a card per server, the problems from both files, and the Add server form. The empty state is one function. *)
+    mcpState () =
+        mcp = mcpNow ()
+        servers = match length mcp.stateServers == 0 && length mcp.stateProblems == 0
+            true => [Ui::empty ("package", "No MCP servers yet", "Add a server to give the agent more tools.")]
+            false => listConcat (mcpProblems mcp) (mapList (mcp.stateServers, \server => mcpCard server))
+        Ui::column (listConcat servers [mcpForm mcp])
+
 
     settingsTab (settings, key, label, symbol) = Ui::action (label, Symbols::name symbol, Pick::either (settings.settingsTab == key, ui::Filled, ui::Plain), true, ShowSettingsTab(tabKey = key))
 
@@ -453,6 +511,16 @@ module View
         body = Frames::inset (20, 24, 20, 24)
         Ui::framed (Look::filled "canvas", Ui::column [Ui::framed (bar(frameHeight = 52, frameLine = "line", frameLineEdge = "bottom", frameAlign = "center"), Ui::row [title, ui::Spacer, close]), Ui::framed (body(frameGrow = true, frameScrollY = true), Ui::framed (Look::gapped 16, Ui::column [tabs, pane]))])
 
+    (** One enabled server's line in the inspector: its state and tool count, opening Settings when pressed. *)
+    mcpLine one =
+        words = match one.serverPhase
+            "connected" => "Connected · ${toString (length (Doc::items (Doc::parse (one.serverTools))))} tools"
+            "connecting" => "Connecting"
+            "failed" => "Failed"
+            _ => "Off"
+        look = Frames::plain
+        Ui::framed (look(frameQuietControls = true, frameTextSize = 12, frameControlHeight = 24, frameCross = "start"), Ui::button ("${one.serverName} — ${words}", Symbols::name ui::Package, OpenMcpSettings))
+
     fact (label, value) = Ui::pair (label, value)
 
     heading text =
@@ -465,7 +533,6 @@ module View
             true => "${intDiv n 1000}.${intDiv (n % 1000) 100}k"
             false => whole
 
-    (** What this conversation has done: its environment, what it cost and the files it touched. *)
     export inspector () =
         chat = activeChat ()
         usage = Engine::usage_of chat.chatHistory
@@ -475,7 +542,11 @@ module View
         changed = match length files == 0
             true => [Ui::framed (Look::sized (12, "faint"), Ui::text "Nothing yet")]
             false => mapList (files, \file => Ui::framed (fileLook(frameTextSize = 12), Ui::label (file, Symbols::name ui::Document)))
-        Ui::framed (side(frameFill = "inset", frameLine = "line", frameLineEdge = "left", frameGrow = true, frameGap = 8, frameTextSize = 12), Ui::column (listConcat [
+        mcp = mcpNow ()
+        servers = match length (filterList (mcp.stateServers, \server => server.serverEnabled)) == 0
+            true => [Ui::framed (Look::sized (12, "faint"), Ui::text "None enabled")]
+            false => mapList (filterList (mcp.stateServers, \server => server.serverEnabled), \server => mcpLine server)
+        Ui::framed (side(frameFill = "inset", frameLine = "line", frameLineEdge = "left", frameGrow = true, frameGap = 8, frameTextSize = 12), Ui::column (listConcat (listConcat [
             heading "Usage",
             fact ("Context", grouped usage.lastInput),
             fact ("Requests", toString usage.totalRequests),
@@ -483,4 +554,4 @@ module View
             fact ("Tokens in", grouped usage.totalInput),
             fact ("Tokens out", grouped usage.totalOutput),
             heading "Files changed",
-        ] changed))
+        ] changed) (listConcat [heading "MCP"] servers)))

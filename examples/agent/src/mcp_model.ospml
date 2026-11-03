@@ -1,0 +1,216 @@
+// Implements [AGENT-MCP]: typed MCP configuration, opt-in memory and runtime
+// state. Only strings, numbers, booleans and Json cross the flavor boundary:
+// MCP's unions stay in `mcp_client.py`, serialized as JSON text. Secrets live
+// only in these in-memory values and the private `mcp.json`; view code
+// receives transport names and endpoints, never environment values.
+namespace agentapp
+
+import ui::Doc
+import ui::Lists
+import ui::Pick
+import agent::McpClient
+
+(** A person's remembered switch: global servers use an empty folder; project servers use their project folder. *)
+type McpMemory =
+    memoryName : string
+    memoryFolder : string
+    memoryEnabled : bool
+
+(** The Add server and Paste JSON drafts. *)
+type McpForm =
+    formName : string
+    formType : string
+    formCommand : string
+    formArguments : string
+    formUrl : string
+    formEnvironment : string
+    formHeaders : string
+    formPaste : string
+    formProblem : string
+
+(** One configured server and its connection. `mcpConfig` is the JSON text of its `mcp.json` entry, secrets included; `mcpTools` is the JSON text of its listed tools. *)
+type McpServer =
+    serverName : string
+    serverOrigin : string
+    serverKind : string
+    serverEndpoint : string
+    serverConfig : string
+    serverEnabled : bool
+    serverPhase : string
+    serverTools : string
+    serverProblem : string
+    serverBuffer : string
+    serverSession : string
+    serverRpc : string
+    serverAwait : string
+    serverNextId : int
+    serverReadTicket : string
+    serverCallChat : string
+    serverCallId : string
+    serverCallUntil : int
+    serverCallText : string
+    serverCallDone : bool
+
+(** The MCP signal payload. *)
+type McpSignal =
+    signalState : McpState
+
+(** All MCP state held by the application store. *)
+type McpState =
+    stateGlobal : string
+    stateProject : string
+    stateServers : List<McpServer>
+    stateMemories : List<McpMemory>
+    stateForm : McpForm
+    stateExpanded : List<string>
+    stateProblems : List<string>
+    stateFolder : string
+    stateGlobalLoaded : bool
+    stateProjectLoaded : bool
+    stateStateLoaded : bool
+
+module McpModel
+    export blankForm () = McpForm(formName = "", formType = "command", formCommand = "", formArguments = "", formUrl = "", formEnvironment = "", formHeaders = "", formPaste = "", formProblem = "")
+
+    (** Empty state for one project folder. *)
+    // A document that does not exist configures no servers, and is no problem.
+    noDocument = "{\"mcpServers\":{}}"
+
+    export fresh folder = McpState(stateGlobal = noDocument, stateProject = noDocument, stateServers = [], stateMemories = [], stateForm = blankForm (), stateExpanded = [], stateProblems = [], stateFolder = folder, stateGlobalLoaded = false, stateProjectLoaded = false, stateStateLoaded = false)
+
+    export memory (name, folder, enabled) = McpMemory(memoryName = name, memoryFolder = folder, memoryEnabled = false)
+
+    memoryOf (mcp, name, folder) = listGet (filterList (mcp.stateMemories, \item => item.memoryName == name && item.memoryFolder == folder)) 0
+
+    (** Global servers default on; cloned project commands default off until opted in for this folder. *)
+    export enabledFor (mcp, name, origin) =
+        folder = Pick::either (origin == "project", mcp.stateFolder, "")
+        match memoryOf (mcp, name, folder)
+            Success found => found.memoryEnabled
+            Error _ => origin != "project"
+
+    export offline (view, enabled) = McpServer(serverName = view.viewName, serverOrigin = view.viewOrigin, serverKind = view.viewKind, serverEndpoint = view.viewEndpoint, serverConfig = view.viewConfig, serverEnabled = enabled, serverPhase = "off", serverTools = "[]", serverProblem = "", serverBuffer = "", serverSession = "", serverRpc = "", serverAwait = "", serverNextId = 1, serverReadTicket = "", serverCallChat = "", serverCallId = "", serverCallUntil = 0, serverCallText = "", serverCallDone = false)
+
+    // A server keeps its runtime connection when the merged view still names it with the same entry.
+    sameEntry : (McpServer, McpClient::ServerView) -> bool
+    sameEntry (item, view) = item.serverName == view.viewName && item.serverOrigin == view.viewOrigin && item.serverConfig == view.viewConfig
+
+    carried (mcp, view) =
+        found = listGet (filterList (mcp.stateServers, \item => sameEntry (item, view))) 0 ?: offline (view, enabledFor (mcp, view.viewName, view.viewOrigin))
+        found(serverEnabled = enabledFor (mcp, view.viewName, view.viewOrigin))
+
+    (** Merges `mcp.json` and `.mcp.json`; a project entry wins a name clash, and each server keeps its connection when its entry did not change. *)
+    projectViews : List<McpClient::ServerView> -> List<McpClient::ServerView>
+    projectViews (views) = filterList (views, \view => view.viewOrigin == "project")
+
+    carriedAll : (McpState, List<McpClient::ServerView>) -> List<McpServer>
+    carriedAll (mcp, views) = mapList (views, \view => carried (mcp, view))
+
+    notShadowed : (List<McpClient::ServerView>, McpServer) -> bool
+    notShadowed (projects, item) = Lists::any (projects, \view => view.viewName == item.serverName) == false
+
+    globalsKept : (List<McpClient::ServerView>, List<McpServer>) -> List<McpServer>
+    globalsKept (projects, globals) = filterList (globals, \item => notShadowed (projects, item))
+
+    export reconcile mcp =
+        merged = McpClient::merge_view (mcp.stateGlobal, mcp.stateProject)
+        projects = projectViews (merged.mergedServers)
+        mcp(stateServers = listConcat (globalsKept (projects, carriedAll (mcp, merged.mergedServers))) (carriedAll (mcp, projects)), stateProblems = merged.mergedProblems)
+
+    export globalLoaded (mcp, text) = reconcile (mcp(stateGlobal = text, stateGlobalLoaded = true))
+
+    export globalMissing mcp = reconcile (mcp(stateGlobal = noDocument, stateGlobalLoaded = true))
+
+    export projectLoaded (mcp, text) = reconcile (mcp(stateProject = text, stateProjectLoaded = true))
+
+    export projectMissing mcp = reconcile (mcp(stateProject = noDocument, stateProjectLoaded = true))
+
+    export ready mcp = mcp.stateGlobalLoaded && mcp.stateProjectLoaded && mcp.stateStateLoaded
+
+    byName : (List<McpServer>, string) -> List<McpServer>
+    byName (servers, name) = filterList (servers, \server => server.serverName == name)
+
+    export named (mcp, name) = listGet (byName (mcp.stateServers, name)) 0
+
+    placeOf : (List<McpServer>, string) -> int
+    placeOf (servers, name) = Lists::position (servers, \server => server.serverName == name)
+
+    export putServer (mcp, changed) =
+        at = placeOf (mcp.stateServers, changed.serverName)
+        match at < 0
+            true => mcp
+            false => mcp(stateServers = listConcat (listAppend (Lists::slice (mcp.stateServers, 0, at)) changed) (Lists::slice (mcp.stateServers, satAdd at 1, length mcp.stateServers)))
+
+    (** The tools document the engine reads: every enabled, connected server's tools under its name. *)
+    export toolsDocument mcp = JsonObject [
+        JsonMember "servers" (JsonArray (foldList (mcp.stateServers, [], \(acc, server) =>
+            match server.serverEnabled && server.serverPhase == "connected"
+                true => listAppend acc (JsonObject [Doc::str ("name", server.serverName), JsonMember "tools" (Doc::parse server.serverTools)])
+                false => acc))),
+    ]
+
+    hasTool (server, name) = Lists::any (Doc::items (Doc::parse server.serverTools), \tool => "${server.serverName}_${Doc::text (tool, "name")}" == name)
+
+    (** The enabled, connected server owning a fully prefixed tool name, and the tool's own name. *)
+    connectedWith : (List<McpServer>, string) -> List<McpServer>
+    connectedWith (servers, name) = filterList (servers, \server => server.serverEnabled && server.serverPhase == "connected" && hasTool (server, name))
+
+    export forTool (mcp, name) = listGet (connectedWith (mcp.stateServers, name)) 0
+
+    (** The server name a prefixed tool name begins with, for labelling a tool step. *)
+    labelled : (List<McpServer>, string) -> List<McpServer>
+    labelled (servers, name) = filterList (servers, \server => server.serverEnabled && hasTool (server, name))
+
+    export serverLabel (mcp, name) = (listGet (labelled (mcp.stateServers, name)) 0 ?: offline (McpClient::ServerView(viewName = "", viewOrigin = "", viewKind = "", viewEndpoint = "", viewConfig = "", viewEnabled = false), false)).serverName
+
+    remember : (List<McpMemory>, string, string, bool) -> List<McpMemory>
+    remember (memories, name, folder, enabled) = listPrepend (filterList (memories, \item => item.memoryName != name || item.memoryFolder != folder)) (McpMemory(memoryName = name, memoryFolder = folder, memoryEnabled = enabled))
+
+    switched : (McpServer, bool) -> McpServer
+    switched (found, enabled) = found(serverEnabled = enabled, serverProblem = "", serverPhase = Pick::either (enabled, found.serverPhase, "off"), serverTools = Pick::either (enabled, found.serverTools, "[]"))
+
+    export withMemory (mcp, name, enabled) =
+        found = named (mcp, name) ?: offline (McpClient::ServerView(viewName = "", viewOrigin = "", viewKind = "", viewEndpoint = "", viewConfig = "", viewEnabled = false), false)
+        folder = Pick::either (found.serverOrigin == "project", mcp.stateFolder, "")
+        putServer (mcp(stateMemories = remember (mcp.stateMemories, name, folder, enabled)), switched (found, enabled))
+
+    memoryJson item = JsonObject [Doc::str ("name", item.memoryName), Doc::str ("folder", item.memoryFolder), Doc::bit ("enabled", item.memoryEnabled)]
+
+    memoryOfJson doc = McpMemory(memoryName = Doc::text (doc, "name"), memoryFolder = Doc::text (doc, "folder"), memoryEnabled = Doc::flag (doc, "enabled"))
+
+    (** The non-secret switch document beside providers.json. *)
+    export switchesJson mcp = JsonObject [JsonMember "servers" (JsonArray (memoryList (mcp.stateMemories)))]
+
+    memoryList : List<McpMemory> -> List<Json>
+    memoryList (memories) = mapList (memories, \item => memoryJson item)
+
+    export memoriesOf (mcp, doc) = reconcile (mcp(stateMemories = mapList (Doc::items (Doc::field (doc, "servers")), \item => memoryOfJson item), stateStateLoaded = true))
+
+    serverJson server = JsonObject [
+        Doc::str ("name", server.serverName), Doc::str ("origin", server.serverOrigin), Doc::str ("kind", server.serverKind), Doc::str ("endpoint", server.serverEndpoint), Doc::str ("config", server.serverConfig),
+        Doc::bit ("enabled", server.serverEnabled), Doc::str ("phase", server.serverPhase), Doc::str ("tools", server.serverTools), Doc::str ("problem", server.serverProblem), Doc::str ("buffer", server.serverBuffer),
+        Doc::str ("session", server.serverSession), Doc::str ("rpc", server.serverRpc), Doc::str ("await", server.serverAwait), Doc::num ("nextId", server.serverNextId), Doc::str ("readTicket", server.serverReadTicket), Doc::str ("callChat", server.serverCallChat), Doc::str ("callId", server.serverCallId), Doc::num ("callUntil", server.serverCallUntil), Doc::str ("callText", server.serverCallText), Doc::bit ("callDone", server.serverCallDone),
+    ]
+
+    serverOf doc = McpServer(serverName = Doc::text (doc, "name"), serverOrigin = Doc::text (doc, "origin"), serverKind = Doc::text (doc, "kind"), serverEndpoint = Doc::text (doc, "endpoint"), serverConfig = Doc::text (doc, "config"), serverEnabled = Doc::flag (doc, "enabled"), serverPhase = Doc::text (doc, "phase"), serverTools = Doc::text (doc, "tools"), serverProblem = Doc::text (doc, "problem"), serverBuffer = Doc::text (doc, "buffer"), serverSession = Doc::text (doc, "session"), serverRpc = Doc::text (doc, "rpc"), serverAwait = Doc::text (doc, "await"), serverNextId = Doc::number (doc, "nextId"), serverReadTicket = Doc::text (doc, "readTicket"), serverCallChat = Doc::text (doc, "callChat"), serverCallId = Doc::text (doc, "callId"), serverCallUntil = Doc::number (doc, "callUntil"), serverCallText = Doc::text (doc, "callText"), serverCallDone = Doc::flag (doc, "callDone"))
+
+    formJson form = JsonObject [Doc::str ("name", form.formName), Doc::str ("type", form.formType), Doc::str ("command", form.formCommand), Doc::str ("arguments", form.formArguments), Doc::str ("url", form.formUrl), Doc::str ("environment", form.formEnvironment), Doc::str ("headers", form.formHeaders), Doc::str ("paste", form.formPaste), Doc::str ("problem", form.formProblem)]
+
+    formOf doc = McpForm(formName = Doc::text (doc, "name"), formType = Doc::text (doc, "type"), formCommand = Doc::text (doc, "command"), formArguments = Doc::text (doc, "arguments"), formUrl = Doc::text (doc, "url"), formEnvironment = Doc::text (doc, "environment"), formHeaders = Doc::text (doc, "headers"), formPaste = Doc::text (doc, "paste"), formProblem = Doc::text (doc, "problem"))
+
+    (** The opaque session encoding; the runtime needs these values across dispatches. *)
+    serverJsonList : List<McpServer> -> List<Json>
+    serverJsonList (servers) = mapList (servers, \item => serverJson item)
+
+    serverList : List<Json> -> List<McpServer>
+    serverList (items) = mapList (items, \item => serverOf item)
+
+    export storeJson mcp = JsonObject [
+        Doc::str ("global", mcp.stateGlobal), Doc::str ("project", mcp.stateProject), JsonMember "servers" (JsonArray (serverJsonList (mcp.stateServers))),
+        JsonMember "memories" (JsonArray (memoryList (mcp.stateMemories))), JsonMember "form" (formJson mcp.stateForm), JsonMember "expanded" (Doc::strings mcp.stateExpanded), JsonMember "problems" (Doc::strings mcp.stateProblems), Doc::str ("folder", mcp.stateFolder),
+        Doc::bit ("globalLoaded", mcp.stateGlobalLoaded), Doc::bit ("projectLoaded", mcp.stateProjectLoaded), Doc::bit ("stateLoaded", mcp.stateStateLoaded),
+    ]
+
+    export storeOf doc = match Doc::has (doc, "servers")
+        false => fresh ""
+        true => McpState(stateGlobal = Doc::text (doc, "global"), stateProject = Doc::text (doc, "project"), stateServers = serverList (Doc::items (Doc::field (doc, "servers"))), stateMemories = mapList (Doc::items (Doc::field (doc, "memories")), \item => memoryOfJson item), stateForm = formOf (Doc::field (doc, "form")), stateExpanded = Doc::texts (doc, "expanded"), stateProblems = Doc::texts (doc, "problems"), stateFolder = Doc::text (doc, "folder"), stateGlobalLoaded = Doc::flag (doc, "globalLoaded"), stateProjectLoaded = Doc::flag (doc, "projectLoaded"), stateStateLoaded = Doc::flag (doc, "stateLoaded"))
