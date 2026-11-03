@@ -1,107 +1,63 @@
 # Plan 0026 — Structured Concurrency: Cancellation and Turn Isolation
 
-**Subsystem:** `tree-sitter-osprey` + `crates/osprey-syntax` (both flavors) +
-`crates/osprey-ast` + `crates/osprey-types` (effect rows, turn graph) +
-`crates/osprey-codegen` + native runtime (`fiber_runtime.c`,
-`effects_coro.c`)
-**Status:** design spec written; **no implementation started**
-**Spec:** [0036-StructuredConcurrency.md](../specs/language/0036-StructuredConcurrency.md)
+Contract: [0036-StructuredConcurrency](../specs/language/0036-StructuredConcurrency.md) [0017-AlgebraicEffects](../specs/language/0017-AlgebraicEffects.md) [0011-LightweightFibersAndConcurrency](../specs/language/0011-LightweightFibersAndConcurrency.md) [0018-MemoryManagement](../specs/compiler/0018-MemoryManagement.md)
 
-## Summary
+## Constraints
 
-One mechanism carries the whole design: a suspended fiber is a continuation a
-handler holds, so cancellation is *declining to resume* plus finalizers, and
-serialization is *resuming one performer at a time*. Both halves grow from
-shipped behavior — the thread-as-continuation resume runtime and the
-[EFFECTS-FIBER-PERFORM](../specs/language/0017-AlgebraicEffects.md#resuming-handlers)
-round-trip serialization — rather than adding a parallel subsystem.
+- Native-only at first: the whole design rides the pthread/continuation runtime; keep spec 0036 claims qualified until a wasm story exists ([0022-WebAssemblyTarget](../specs/compiler/0022-WebAssemblyTarget.md)).
+- Deterministic mode ([CONCURRENCY-DETERMINISTIC]) is sequential: `cancel` before the victim's driving `await` must still dequeue it; turn order must be spawn order.
+- Staged effects: retain captured-state ownership and alias evidence through discharge; erased dispatch is absent from the runtime turn graph; residual memory access still requires the same synchronization/exclusivity proof.
+- Dropped continuations are a new ARC leak surface: every corpus program runs under `gc` and `arc`; the ARC lane's zero-leak sentinel is the oracle.
+- Do not add an Orleans-style runtime deadlock timeout; cycles are rejected statically.
 
-## Existing seams this builds on
+## Prerequisites in place
 
-- `effects_coro.c` / `__osprey_coro_*`: the continuation representation to
-  drop instead of resume; its per-handler serialization is the proto-turn.
-- `crates/osprey-types/src/effect_rows.rs`: the closed-program fixed point
-  that already knows which operations a body can reach — reused twice, for
-  [CANCEL-POINTS] (suspension visibility) and [SERIAL-REENTRANCY] (turn-graph
-  cycles).
-- `fiber_runtime.c`: channel wait queues that [CANCEL-KILLSAFE] must make
-  dequeue-safe; the completed-result roots that scope teardown generalizes.
-- `channel_select` ([CONCURRENCY-SELECT](../specs/language/0011-LightweightFibersAndConcurrency.md#choosing-among-channel-operations-concurrency-select)): the multi-channel wait primitive `race`
-  and `within` are specified over.
-- ARC leak discipline (`make test` zero-leak gate): a dropped continuation
-  must release its captures — same family as
-  [issue #185](https://github.com/Nimblesite/osprey/issues/185).
+- `compiler/runtime/effects_coro.c` (`__osprey_coro_*`): thread-as-continuation resume; `in_flight` is the per-handler serialization ([EFFECTS-FIBER-PERFORM]) proto-turn; `abandon_body()` already runs handler finalizers inner→outer ([MULTI-COST-ABORT]).
+- Handler `finally` syntax ships in both flavors (`tree-sitter-osprey/grammar.js` `handler_finally`, `tree-sitter-osprey-ml/grammar.js`), tested in `compiler/runtime/effects_finally_tests.h`.
+- `crates/osprey-types/src/effect_rows/`: closed-program fixed point reused for [CANCEL-POINTS] and [SERIAL-REENTRANCY].
+- `compiler/runtime/fiber_runtime.c`: channel wait queues, completed-result roots, and the `select` primitive ([CONCURRENCY-SELECT]) with source-order deterministic tie-break.
 
-## Phases
+## Phase 1 — Scopes [CANCEL-SCOPE]
 
-1. **Scopes** — `scope` in both grammars, `Expr::Scope`, child registry in the
-   runtime, normal-exit wait, root-scope compatibility (no corpus program
-   changes meaning). [CANCEL-SCOPE]
-2. **Cancellation core** — `cancel(fiber)`, delivery only at suspension
-   points, continuation drop + unwinding, cancelled completion state,
-   `join`/`Outcome<T>`, await-edge propagation, entry-diagnostic exit.
-   [CANCEL-REQUEST] [CANCEL-POINTS] [CANCEL-DELIVERY] [CANCEL-JOIN]
-3. **Finalizers** — `finally` arm in both flavors, innermost-first ordering,
-   one-shot shielding. [CANCEL-FINALLY]
-4. **Kill-safety** — channel wait-queue removal without element loss, turn
-   completion under performer cancellation, ARC/GC release of dropped
-   continuations. [CANCEL-KILLSAFE]
-5. **Deadlines and races** — `within`, `race`; build on
-   `channel_select`; deterministic tie-breaking shared with it.
-   [CANCEL-DEADLINE]
-6. **Turn isolation** — name the shipped serialization as turns; flat-combining
-   turn queue with single-CAS fast path; deterministic-mode total turn order.
-   [SERIAL-TURN] [SERIAL-CONTENTION]
-7. **Static reentrancy** — turn graph over effect-row summaries, cycle
-   rejection with a named-cycle diagnostic, `reentrant` surface (Unit-only,
-   enqueue-as-new-turn). [SERIAL-REENTRANCY]
-8. **`atomic` / `retry`** — last; multi-region turn acquisition in canonical
-   order first, optimistic logging later; row-checked isolation (no
-   suspending or outward operations inside the block). [SERIAL-ATOMIC]
+- [ ] Add `scope` keyword and `scope_expression` to `tree-sitter-osprey/grammar.js` and `tree-sitter-osprey-ml/grammar.js`; lower both flavors to one `Expr::Scope` in `crates/osprey-syntax/src/default/expr.rs` and `crates/osprey-syntax/src/ml/`; add `Expr::Scope` to `enum Expr` in `crates/osprey-ast/src/lib.rs`. Check: `cargo test -p osprey-syntax` parses `scope { ... }` in both flavors to `Expr::Scope`.
+- [ ] Scope registry in `compiler/runtime/fiber_runtime.c`: `spawn` attaches to the innermost scope, normal exit waits for children, and the implicit root scope wraps program entry. Check: `crates/run_test_corpus.sh gc` and `arc` reproduce every existing golden byte-for-byte.
 
-## Interactions and risks
+## Phase 2 — Cancellation core [CANCEL-REQUEST] [CANCEL-POINTS] [CANCEL-DELIVERY] [CANCEL-JOIN]
 
-- **WebAssembly:** everything here rides the pthread/continuation runtime, so
-  it is native-only at first — the same boundary resume already has
-  ([0022](../specs/compiler/0022-WebAssemblyTarget.md)). Spec 0036 claims must stay
-  qualified until a wasm story exists.
-- **Deterministic mode** is sequential; `cancel` before the victim's driving
-  `await` must still dequeue it, and turn order must be spawn order, or
-  goldens diverge between modes.
-- **Staged effects:** retain captured-state ownership and alias evidence through
-  discharge ([Algebraic Effects](../specs/language/0017-AlgebraicEffects.md)). Erased
-  dispatch is absent from the runtime turn graph; residual memory access still
-  requires the same synchronization or exclusivity proof.
-- **Memory backends:** the differential harness runs every corpus program
-  under all three backends; dropped continuations are a new ARC leak surface.
+- [ ] Add `cancel` and `join` keywords (both grammars), `Expr::Cancel`/`Expr::Join`, and `Outcome<T>` + `join`/`cancel` builtins in `crates/osprey-types/src/builtins.rs`. Runtime in `fiber_runtime.c`/`effects_coro.c`: cancellation is observed only at suspension points (`await`, `send`, `recv`, `sleep`, `yield`, control ops), declines to resume (drop continuation + finalizers), and completes the fiber as cancelled. Check: both-flavor corpus suite in `tests/regressions/fiber/`.
+- [ ] Await propagation: `await` of a cancelled fiber unwinds the awaiter as cancelled; at program entry it runs entry finalizers and exits nonzero with a one-line diagnostic naming the spawn site. Check: must-reject fixture that no pattern can match cancellation (no "caught" surface); golden pins exit status and diagnostic.
+- [ ] Dropped continuations release captures: zero ARC leak under `--memory=arc` (`[osp-arc] exit: 0 live objects` sentinel via `crates/run_test_corpus.sh arc`).
 
-## TODO
+## Phase 3 — Finalizers and shielding [CANCEL-FINALLY]
 
-- [ ] `scope` parsed in both flavors to one `Expr::Scope`; spawn attaches to
-      the innermost scope; normal exit waits for children; root scope
-      preserves every existing golden byte-for-byte.
-- [ ] `cancel`, cancelled completion, `join` returning `Outcome<T>`, await
-      propagation; assertion suites in both flavors under all three memory
-      backends, ARC zero-leak on dropped continuations.
-- [ ] Must-reject fixtures: cancellation "caught" surface does not exist
-      (no pattern can match it), `reentrant` op with a non-`Unit` result,
-      turn-graph cycle (direct and through a helper lambda), suspending
-      operation inside `atomic`, `retry` outside `atomic`.
-- [ ] `finally` in both flavors; ordering and shielding pinned by a test that
-      cancels a fiber suspended two regions deep.
-- [ ] Kill-safe channels: cancel a blocked sender and receiver; element count
-      proven conserved in the golden.
-- [ ] `within` / `race` on `channel_select`; deterministic
-      tie-break golden shared with that plan.
-- [ ] Flat-combining turn queue benchmarked against the current round-trip
-      serialization in `benchmarks/` before it replaces anything.
-- [ ] Turn-graph cycle rejection wired into `effect_rows.rs` with a
-      named-cycle diagnostic; Orleans-style runtime timeout explicitly *not*
-      added.
-- [ ] `atomic`/`retry` with row-checked isolation; a blocking-condition test
-      (bounded-buffer via `retry`) in both flavors.
-- [ ] Spec 0036 sections updated from *normative target* to shipped as each
-      phase lands; spec 0011's [CONCURRENCY-CANCEL-DESIGN] pointer replaced
-      by real semantics; `[EFFECTS-FIBER-PERFORM]` cross-reference kept
-      truthful.
+- [ ] Make `cancel` run the existing handler finalizers innermost-first through `abandon_body()` in `compiler/runtime/effects_coro.c`, and add one-shot shielding so a further cancel cannot interrupt cleanup (including at its suspension points). Check: test cancelling a fiber suspended two handler regions deep records finalizer order and shielding.
+
+## Phase 4 — Kill-safety [CANCEL-KILLSAFE]
+
+- [ ] Channel wait-queue removal in `compiler/runtime/fiber_runtime.c`: cancelling a blocked sender or receiver removes it without consuming, duplicating, or losing an element. Check: golden proves element count conserved, under both corpus backends.
+- [ ] Turn completion under performer cancellation: a turn whose arm is already running completes and the answer is discarded; a performer still queued is dequeued without the arm running.
+- [ ] Dropped continuations release captures under GC and ARC ownership paths (`memory_gc.c`, `memory_arc.c`).
+
+## Phase 5 — Deadlines and races [CANCEL-DEADLINE]
+
+- [ ] `within(ms) { ... } -> Result<T, TimedOut>` and `race(a, b) -> T`: grammar + `Expr` variants; implement over the existing `select` primitive in `fiber_runtime.c`; reuse its source-order deterministic tie-break. Check: golden shared with `tests/regressions/fiber/channel_select.test.osp`.
+
+## Phase 6 — Turn isolation [SERIAL-TURN] [SERIAL-CONTENTION]
+
+- [ ] Name the shipped `in_flight` serialization as turns; implement a flat-combining turn queue with a single-CAS fast path.
+- [ ] Before it replaces anything, add a `benchmarks/cases/<name>/` microbenchmark comparing the flat-combining turn queue against the current round-trip serialization.
+- [ ] Deterministic mode: total turn order = spawn order of performers.
+
+## Phase 7 — Static reentrancy [SERIAL-REENTRANCY]
+
+- [ ] Turn graph over effect-row summaries in `crates/osprey-types/src/effect_rows/`; reject waiting cycles between distinct owners with a named-cycle diagnostic (direct cycle and cycle through a helper lambda). Check: must-reject fixtures.
+- [ ] `reentrant` surface: a `reentrant` op must return `Unit`; performing it inside its own active turn enqueues a new turn. Check: must-reject fixture for a non-`Unit` `reentrant`.
+
+## Phase 8 — atomic / retry [SERIAL-ATOMIC]
+
+- [ ] `atomic { ... }` and `retry`: grammar + `Expr` variants; multi-region turn acquisition in canonical order (optimistic logging later); row-checked isolation rejecting `spawn`/`await`/`send`/`recv`/`sleep` and outward operations inside the block. Check: must-reject fixtures (suspending op inside `atomic`, `retry` outside `atomic`); bounded-buffer blocking-condition test via `retry` in both flavors.
+
+## Phase 9 — Spec bookkeeping and CI
+
+- [ ] Update `docs/specs/language/0036-StructuredConcurrency.md` sections from "normative target" to shipped as each phase lands; replace `docs/specs/language/0011-LightweightFibersAndConcurrency.md` [CONCURRENCY-CANCEL-DESIGN] with real semantics; keep [EFFECTS-FIBER-PERFORM] truthful.
 - [ ] `make ci` green.
