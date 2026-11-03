@@ -441,7 +441,7 @@ fn wire(now: i64) -> Result<(), String> {
 /// home folder and the arguments the application was opened with.
 fn launch_context(now: i64) -> Result<String, String> {
     let home = crate::home()?;
-    let arguments = crate::self_test::app_arguments();
+    let arguments = crate::launch::arguments()?;
     // The probe reads the platform and ignores the offset, so the smoke run
     // reports UTC rather than take a dependency to resolve local time.
     Ok(events::start_context(

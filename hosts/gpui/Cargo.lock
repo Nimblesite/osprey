@@ -4259,6 +4259,7 @@ dependencies = [
  "gpui-kit",
  "gpui-pre-ios",
  "image",
+ "libc",
  "lyon",
  "serde",
  "serde_json",

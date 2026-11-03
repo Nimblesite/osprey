@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# [CAST-MOBILE-DELIVERY] Build the native SwiftUI player against the shared C ABI.
+# [CAST-MOBILE-GPUI] Package the shared desktop GPUI host with iOS platform services.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../.." && pwd)
 target=${1:-ios-sim}
 case "$target" in
-    ios-sim) sdk=iphonesimulator; triple=arm64-apple-ios18.0-simulator ;;
-    ios) sdk=iphoneos; triple=arm64-apple-ios18.0 ;;
+    ios-sim) sdk=iphonesimulator; triple=arm64-apple-ios18.0-simulator; rust_target=aarch64-apple-ios-sim ;;
+    ios) sdk=iphoneos; triple=arm64-apple-ios18.0; rust_target=aarch64-apple-ios ;;
     *) echo 'Usage: build.sh [ios|ios-sim]' >&2; exit 2 ;;
 esac
 cd "$repo"
@@ -21,11 +21,21 @@ for unit in file_server_runtime media_render_runtime; do
         -c "compiler/runtime/$unit.c" -o "$output/$unit.o"
 done
 xcrun --sdk "$sdk" swiftc -swift-version 5 -warnings-as-errors -parse-as-library \
-    -target "$triple" -sdk "$sdk_path" -import-objc-header "$output/libOspreyApp.h" \
-    hosts/swift/Sources/OspreyNative/*.swift "$here"/*.swift \
-    "$output/libOspreyApp.a" "$output/file_server_runtime.o" "$output/media_render_runtime.o" \
-    -framework Network -framework Security -framework SwiftUI -framework UIKit \
-    -lsqlite3 -lz -o "$bundle/Casting"
+    -target "$triple" -sdk "$sdk_path" -emit-library -static -module-name OspreyCastServices \
+    "$here/CastTLS.swift" "$output/file_server_runtime.o" "$output/media_render_runtime.o" \
+    -o "$output/libosprey_cast_services.a"
+swift_search=$(xcrun --sdk "$sdk" swiftc -print-target-info -target "$triple" -sdk "$sdk_path" | \
+    python3 -c 'import json,sys; print(":".join(json.load(sys.stdin)["paths"]["runtimeLibraryPaths"]))')
+python3 hosts/gpui/dependencies.py
+OSPREY_GPUI_APP_DIR="$output" OSPREY_GPUI_LINK_SEARCH="$output:$swift_search" \
+OSPREY_GPUI_LINK_LIBS="static=osprey_cast_services,framework=Network,framework=Security,framework=Foundation" \
+    cargo build --manifest-path hosts/gpui/Cargo.toml --target "$rust_target" --locked
+cp "$repo/hosts/gpui/target/$rust_target/debug/osprey-gpui" "$bundle/Casting"
+python3 - "$bundle/osprey-arguments.json" <<'ARGS'
+import json,sys
+with open(sys.argv[1], 'w') as file:
+    json.dump(["--machine", "${RESOURCES}/player.machine.json"], file)
+ARGS
 cp examples/casting/player.machine.json "$bundle/player.machine.json"
 rm -rf "$bundle/skins"
 cp -R examples/casting/skins "$bundle/"
@@ -43,7 +53,11 @@ with open(sys.argv[1], 'wb') as file:
     plistlib.dump(dict(CFBundleIdentifier='org.ospreylang.casting', CFBundleName='Casting',
         CFBundleExecutable='Casting', CFBundlePackageType='APPL', CFBundleVersion='1',
         CFBundleShortVersionString='1.0', MinimumOSVersion='18.0', LSRequiresIPhoneOS=True,
-        UILaunchScreen={}, UIFileSharingEnabled=True, LSSupportsOpeningDocumentsInPlace=True, NSLocalNetworkUsageDescription='Find your Chromecast or Google TV and play your selected audio.',
+        UILaunchScreen={}, UIRequiresFullScreen=True,
+        UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes': False, 'UISceneConfigurations': {
+            'UIWindowSceneSessionRoleApplication': [{'UISceneConfigurationName': 'Default Configuration',
+                'UISceneDelegateClassName': 'GPUIIosSceneDelegate'}]}},
+        UIFileSharingEnabled=True, LSSupportsOpeningDocumentsInPlace=True, NSLocalNetworkUsageDescription='Find your Chromecast or Google TV and play your selected audio.',
         NSBonjourServices=['_googlecast._tcp'], UISupportedInterfaceOrientations=['UIInterfaceOrientationPortrait'],
         UIDeviceFamily=[1,2], **icons), file)
 PY

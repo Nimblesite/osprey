@@ -10,6 +10,7 @@ mod envelope;
 mod events;
 mod ffi;
 mod host;
+mod launch;
 mod regions;
 mod render;
 mod scene;
