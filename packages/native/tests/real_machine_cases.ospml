@@ -114,7 +114,8 @@ realPlayerJourney () =
     expect (nativeShows (native, "Looking for TVs…"), true)
     expect (nativeShows (native, "Choose an audio file"), true)
     ready = Machines::feed (native, [
-        Machines::fact ("receiver", Values::text "Living Room TV"),
+        Machines::fact ("receiver", Values::text "192.168.1.20:8009"),
+        Machines::fact ("receiverName", Values::text "Living Room TV"),
         Machines::fact ("file", Values::text "/music/demo.mp3"),
         Machines::fact ("title", Values::text "A very long track name that will not fit on one line at all.mp3"),
     ])
