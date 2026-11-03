@@ -305,7 +305,10 @@ module Answers
         Error _ => Runtime::step store
         Success result => match Doc::flag (result, "found")
             false => Runtime::step store
-            true => Runtime::step (store(settings = Model::providersOf (store.settings, Doc::parse (perform ui::Slices.fetch "providers-file"))))
+            true =>
+                settings = Model::providersOf (store.settings, Doc::parse (perform ui::Slices.fetch "providers-file"))
+                // A conversation with nothing said yet was opened before the saved default was known.
+                Runtime::step (store(settings = settings, chats = mapList (store.chats, \chat => Model::withDefaultModel (chat, settings))))
 
     chatsLoaded (store, outcome) = match outcome
         Error _ => Runtime::step store

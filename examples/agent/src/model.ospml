@@ -10,6 +10,7 @@ import ui::Pick
 import ui::Requests
 import ui::Runtime
 import agent::Engine
+import agent::Transcript
 import agentapp::McpModel
 
 (** Every control's action ([UI-EVENTS]). *)
@@ -192,6 +193,9 @@ module Model
         match Engine::has_turns current.chatHistory == false && current.chatFolder == folder && Busy::idle current
             true => Model::putChat (store, current(chatModel = store.settings.defaultModel, chatEffort = store.settings.defaultEffort))
             false => store(chats = listPrepend store.chats (blank (id, folder, store.settings.defaultModel, store.settings.defaultEffort, store.clock)), ticketCount = satAdd store.ticketCount 1, panel = panel(panelActive = id), draft = Draft(draftText = ""))
+
+    (** `chat` on the default model and effort of `settings`, when nothing has been said in it yet. *)
+    export withDefaultModel (chat, settings) = Pick::either (length (Transcript::items_of chat.chatHistory) == 0, chat(chatModel = settings.defaultModel, chatEffort = settings.defaultEffort), chat)
 
     (** Whether a conversation is waiting on the model or a tool. *)
     export busy chat = Busy::idle chat == false

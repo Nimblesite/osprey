@@ -15,9 +15,9 @@ Each request, in the words it was made, with the section that holds it. A reques
 | "why is this locked! Does the app actually KNOW that there is no credit… This is no good unless it can be 100% sure that there is no fucking credit left and becomes unlocked reacreively"; "at least put a tooltiop there telling them wtf the is WRONG" | [AGENT-COMPOSER] | Done, doubled; no live call yet |
 | "We need to be able to select the model and its peculiar settings like effort/reasoning here" (the composer, beside the folder chip) | [AGENT-COMPOSER] | Done, doubled; no live call yet |
 | "Where are the fucking settings?" | [AGENT-SETTINGS]: always visible at the sidebar's foot | Done |
-| "finish the pydanticai app, including mcp support and the settings UI that allows the user to add/remove MCPs" | [AGENT-MCP] | Open |
-| "port the MCP aspect of pydanticai into python flavor osprey and bring the MCP functionality into the app with a beautiful ui" | [AGENT-MCP] | Package done, app open |
-| "How do I configure MCPs in this app?" | [AGENT-MCP], and the README's MCP section | Open |
+| "finish the pydanticai app, including mcp support and the settings UI that allows the user to add/remove MCPs" | [AGENT-MCP] | Done, with real servers and a doubled model; no live call yet |
+| "port the MCP aspect of pydanticai into python flavor osprey and bring the MCP functionality into the app with a beautiful ui" | [AGENT-MCP] | Done, with real servers and a doubled model; no live call yet |
+| "How do I configure MCPs in this app?" | [AGENT-MCP], and the README's MCP section | Done |
 | "I can only select one line of text. I need to be able to select a whole bunch of text in one hit" | [AGENT-SELECTION] | Open |
 | "make sure that the syntax higlighting works good, verify in tests"; "no fucking syntax highlighting" | [AGENT-HIGHLIGHT] | Done |
 | "the button that says calc here should allow the user to change the path" | [AGENT-FOLDER] | Done |
@@ -60,13 +60,11 @@ A refused request says what to do in one sentence with an `Open Settings` button
 
 ## MCP servers [AGENT-MCP]
 
-Not implemented yet: the app reads no `mcp.json` or `.mcp.json`, connects to no server and lists no MCP tools. The sans-IO client (`packages/pydantic_ai/src/mcp.py`) and the stdio and streamable-HTTP test server (`examples/agent/self-test/mcp_server.py`) exist unused by it.
-
 `mcp.json` in the app's support folder configures servers for every project; `.mcp.json` in the project folder configures servers for that one project. The app reads and merges both, and the project entry wins on a name clash. Servers connect on launch and folder change.
 
 The MCP tab of the Settings pane has a card per server: name, transport and command or URL (`env` and header values never shown), a coloured state (Off, Connecting, Connected with its tool count, Failed), the problem in words, a switch, `Reconnect`, `Remove`, and a disclosure listing its tools. `Add server` is a form with Name, Type (`Command` or `URL`), Command and Arguments or URL and Headers, and Environment, validated in words; `Paste JSON` takes the standard `{"mcpServers": ...}` block. Adding connects at once. Removing stops the process and takes its tools out of the next request. The tab writes `mcp.json` in the private store. `.mcp.json` servers are listed with a `.mcp.json` label and no `Remove`, and stay off until the person turns them on, because a cloned repository's file starts commands. Both per-server switches and the per-folder memory live in `mcp-state.json` beside `providers.json`.
 
-A broken file, a missing command and an unsupported entry each get a plain message. `Reconnect` restarts a server that exited, only when a person presses it. A slow or dead server fails that one call, with a deadline, and never blocks the turn or other servers. `isError` goes back to the model as the tool's text. A server's `ping` is answered. `${VAR}` expands from what a person configured, never the app's own secrets. Streamable HTTP keeps session ids and reads SSE, through the `Http` capability.
+A missing document configures nothing and is no problem. A broken file, a missing command and an unsupported entry (`cwd`, or a URL that is neither HTTPS nor HTTP on this machine) each get a plain message, and an unusable entry never starts. The host allows plain HTTP to loopback only. The form forgets what it was given after `Add`, and shows with no servers. `Reconnect` restarts a server that exited, only when a person presses it. A slow or dead server fails that one call, with a deadline, and never blocks the turn or other servers. `isError` goes back to the model as the tool's text. A server's `ping` is answered. `${VAR}` expands from what a person configured, never the app's own secrets. Streamable HTTP keeps session ids and reads SSE, through the `Http` capability.
 
 The inspector has an `MCP` section with each enabled server's state and tool count, opening Settings when pressed. A tool step names its server.
 

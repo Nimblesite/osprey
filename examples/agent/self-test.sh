@@ -2,7 +2,8 @@
 # Osprey Agent's whole UI on the SwiftUI host ([UI-MACHINE-SELF-TEST]). The same coding script runs
 # two ways, and the tests the agent was asked to fix are run here, not taken on its word:
 #   self-test.sh                   no window on screen, the model a test double, pictures against goldens
-#   self-test.sh --live [dotenv]   a real window and real DeepSeek calls, and an LLM judge; spends tokens
+#   self-test.sh --live [dotenv] [provider/model]   a real window and real calls to that model, default
+#                                  deepseek/deepseek-chat, and an LLM judge when a DeepSeek key is there; spends tokens
 #   self-test.sh --update-goldens  writes the pictures of a doubled run as this OS's goldens
 # Records go to OSPREY_AGENT_RECORDS, or a new temporary folder.
 set -euo pipefail
@@ -13,7 +14,7 @@ mode=double
 env_file=""
 goldens_flag=()
 case "${1:-}" in
-    --live) mode=live; env_file=${2:-"$repo/.env"} ;;
+    --live) mode=live; env_file=${2:-"$repo/.env"}; live_model=${3:-deepseek/deepseek-chat} ;;
     --update-goldens) goldens_flag=(--update-goldens) ;;
     "") ;;
     *) echo "Usage: self-test.sh [--live [dotenv] | --update-goldens]" >&2; exit 2 ;;
@@ -33,21 +34,28 @@ os_goldens="$here/goldens/macos-$(sw_vers -productVersion | cut -d. -f1)"
 
 if [ "$mode" = live ]; then
     # The key leaves ~/Documents first: the app reading a file there would raise a privacy prompt.
-    (umask 077; grep '^DEEPSEEKKEY=' "$env_file" > "$work/key.env")
+    (umask 077; grep -E '^(DEEPSEEKKEY|[A-Z_]+_API_KEY)=' "$env_file" > "$work/key.env")
+    # A store that opens on the chosen model, with the keys coming from the dotenv file.
+    seed_store() { mkdir -p "$1"; printf '{"keys":[],"model":"%s","effort":""}' "$live_model" > "$1/providers.json"; }
+    seed_store "$work/store"
     "$host" --self-test "$here/self-test/coding.json" "$records/coding" --store "$work/store" --patience 400 "$project" "$work/key.env"
     verdict=$(python3 "$here/self-test/verify_calc.py" "$project" --tests 2>&1) || { echo "$verdict"; exit 1; }
     echo "$verdict" | tail -5
-    python3 "$here/drive/judge.py" "$work/key.env" "$records/coding/04-feature.access.txt" "$verdict"
+    if grep -q '^DEEPSEEKKEY=' "$work/key.env"; then python3 "$here/drive/judge.py" "$work/key.env" "$records/coding/04-feature.access.txt" "$verdict"; else echo "no DeepSeek key: the LLM judge did not run"; fi
     # Harder tasks, each checked by acceptance tests the agent never sees.
     for task in "$here"/self-test/tasks/*/; do
         task_name=$(basename "$task")
         echo "task: $task_name"
         cp -R "$task/project" "$work/$task_name"
+        seed_store "$work/store-$task_name"
+        export MCP_LIVE_WORD="word-$RANDOM$RANDOM"
+        if [ -f "$task/mcp.json" ]; then sed -e "s|@SERVER@|$here/self-test/mcp_server.py|" -e "s|@WORD@|$MCP_LIVE_WORD|" "$task/mcp.json" > "$work/store-$task_name/mcp.json"; fi
         "$host" --self-test "$task/task.json" "$records/$task_name" --store "$work/store-$task_name" --patience 400 "$work/$task_name" "$work/key.env"
         python3 "$task/verify.py" "$work/$task_name"
     done
-    key=$(sed -n 's/^DEEPSEEKKEY=//p' "$work/key.env")
-    if grep -rqF -- "$key" "$records"; then echo "FAILED: the key reached the records" >&2; exit 1; fi
+    while IFS= read -r key; do
+        if grep -rqF -- "$key" "$records"; then echo "FAILED: a key reached the records" >&2; exit 1; fi
+    done < <(sed 's/^[^=]*=//' "$work/key.env")
     echo "live self-test passed; pictures are in $records"
     exit 0
 fi

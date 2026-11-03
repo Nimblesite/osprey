@@ -32,9 +32,9 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 
 ## MCP in the app
 
-- [ ] `examples/agent/src/app.ospml` + `engine.py`: read and merge `mcp.json` (private store) and `.mcp.json` (project; the project entry wins on a name clash), connect on launch and folder change, list tools, dispatch `<server>_<tool>` calls through `Turn`, restart an exited server once a person asks; a slow or dead server fails only its call, never the turn or other servers; project servers stay off until turned on. Acceptance: `self-test/mcp.json` doubled run covers connect, a tool call, a tool error, a dead server, and a project server off then on.
-- [ ] Secrecy: MCP `env` and `headers` values never reach `chats.json`, the records or the transcript. Acceptance: extend `self-test.sh`'s existing `grep -rq` key check to a planted MCP secret.
-- [ ] `examples/agent/src/view.ospml`: the MCP tab adds, removes and toggles servers; an inspector section shows each server's state, tool count, its problem in words, a switch, and buttons to open the config file and reload; tool steps show the server's name.
+- [x] `examples/agent/src/app.ospml` + `engine.py`: read and merge `mcp.json` (private store) and `.mcp.json` (project; the project entry wins on a name clash), connect on launch and folder change, list tools, dispatch `<server>_<tool>` calls through `Turn`, restart an exited server once a person asks; a slow or dead server fails only its call, never the turn or other servers; project servers stay off until turned on. Acceptance: `self-test/mcp.json` doubled run covers connect, a tool call, a tool error, a dead server, and a project server off then on.
+- [x] Secrecy: MCP `env` and `headers` values never reach `chats.json`, the records or the transcript. Acceptance: extend `self-test.sh`'s existing `grep -rq` key check to a planted MCP secret.
+- [x] `examples/agent/src/view.ospml`: the MCP tab adds, removes and toggles servers, with each server's state, tool count, its problem in words, a switch and Reconnect; an inspector section lists each enabled server and opens Settings; tool steps show the server's name.
 
 ## Self-tests and goldens
 
@@ -45,12 +45,12 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 
 - [x] `examples/agent/self-test/code-blocks.json` + goldens: a doubled run draws fenced code and tool output through `Highlight.tokens_of`; assert the `Ui::rich` runs and that every code token pair meets 4.5:1 via `packages/native` `Contrast::ratio` (`packages/native/src/theme.ospml`).
 - [x] `examples/agent/self-test/settings.json` + goldens: configure each provider, pick a model and effort, and check the per-provider request shape against a strict double.
-- [ ] `examples/agent/self-test/mcp.json` + goldens per OS: run the doubled model through config, connect, a tool call, a tool error, a dead server, a project server off then on, and a secret kept out of the records, using `self-test/mcp_server.py` on stdio and streamable HTTP.
+- [x] `examples/agent/self-test/mcp.json` + goldens per OS: run the doubled model through config, connect, a tool call, a tool error, a dead server, a project server off then on, and a secret kept out of the records, using `self-test/mcp_server.py` on stdio and streamable HTTP.
 
 ## Live proof
 
-- [ ] `examples/agent/self-test.sh --live`: pick whichever provider has a key, run a real coding task and an MCP task, each with acceptance checks the model never sees (today it is DeepSeek-only, `coding.json` + `tasks/`).
+- [ ] `examples/agent/self-test.sh --live [dotenv] [provider/model]`: on the named model (script ready; waiting on a provider key with credit in `.env`), run a real coding task and an MCP task, each with acceptance checks the model never sees (today it is DeepSeek-only, `coding.json` + `tasks/`).
 
 ## Docs
 
-- [ ] `examples/agent/README.md`: sections for providers, keys, effort, and MCP servers ("How do I configure MCPs in this app?"), with a pasteable MCP config example.
+- [x] `examples/agent/README.md`: sections for providers, keys, effort, and MCP servers ("How do I configure MCPs in this app?"), with a pasteable MCP config example.

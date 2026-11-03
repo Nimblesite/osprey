@@ -321,6 +321,17 @@ testing ("the default model, provider and effort chosen in Settings are inherite
     expect ((Model::active fresh).chatModel, "zai/glm-5.3")
     expect ((Model::active fresh).chatEffort, "high"))
 
+testing ("the conversation a launch opens takes the saved default model, and a conversation already under way keeps its own", \() =>
+    launched = (App::initial (context 100)).stepStore
+    saved = "{\"keys\":[{\"provider\":\"zai\",\"value\":\"sk-glm\"}],\"model\":\"zai/glm-5.3\",\"effort\":\"high\"}"
+    loaded = (Drive::deliver (launched, ui::Completed(ticket = "providers", outcome = okJson [Doc::bit ("found", true)]), saved)).stepStore
+    expect ((Model::active loaded).chatModel, "zai/glm-5.3")
+    expect ((Model::active loaded).chatEffort, "high")
+    busy = (Drive::typing (Drive::started (), "Go\n")).stepStore
+    keptModel = (Model::active busy).chatModel
+    after = (Drive::deliver (busy, ui::Completed(ticket = "providers", outcome = okJson [Doc::bit ("found", true)]), saved)).stepStore
+    expect ((Model::active after).chatModel, keptModel))
+
 testing ("the composer lists keyed providers' models and an Add an API key button with none", \() =>
     launched = (App::initial (context 100)).stepStore
     noKey = Drive::showing (launched, View::composer)
