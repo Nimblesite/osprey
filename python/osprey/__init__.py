@@ -2,6 +2,7 @@
 
 import ctypes
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -16,6 +17,9 @@ _LIBRARIES = {}
 _FILES = {}
 _LOADING = set()
 _CTYPES = {"int": ctypes.c_int64, "float": ctypes.c_double,
+           "int8": ctypes.c_int8, "int16": ctypes.c_int16, "int32": ctypes.c_int32,
+           "uint8": ctypes.c_uint8, "uint16": ctypes.c_uint16, "uint32": ctypes.c_uint32,
+           "float16": ctypes.c_uint16, "float32": ctypes.c_float,
            "bool": ctypes.c_bool, "string": ctypes.c_char_p, "Unit": None}
 
 
@@ -26,11 +30,17 @@ def _argument(value, kind):
         if "\0" in value:
             raise ValueError("Osprey C ABI strings cannot contain NUL")
         return value.encode("utf-8")
-    expected = {"int": int, "float": float, "bool": bool}[kind]
+    expected = bool if kind == "bool" else float if kind in ("float", "float32") else int
     if type(value) is not expected:
         raise TypeError(f"Osprey {kind} arguments require {expected.__name__}")
-    if kind == "int" and not -(2**63) <= value < 2**63:
-        raise OverflowError("Osprey int arguments must fit signed 64 bits")
+    if expected is int:
+        bits = ctypes.sizeof(_CTYPES[kind]) * 8
+        signed = kind.startswith("int")
+        low, high = (-(2**(bits - 1)), 2**(bits - 1)) if signed else (0, 2**bits)
+        if not low <= value < high:
+            raise OverflowError(f"Osprey {kind} arguments must fit {'signed' if signed else 'unsigned'} {bits} bits")
+    if kind == "float32" and math.isfinite(value) and not math.isfinite(ctypes.c_float(value).value):
+        raise OverflowError("Osprey float32 arguments must fit binary32")
     return value
 
 

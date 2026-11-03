@@ -9,10 +9,10 @@ Build the compiler/runtime first. Install this local package and select that com
 ```sh
 python3 -m pip install -e ./python
 export OSPREY=/absolute/path/to/Osprey/target/debug/osprey
-"$OSPREY" examples/python/interop.osp --compile --target=python --memory=none -o interop.so
+"$OSPREY" examples/python/interop.osp --compile --target=python --memory=arc -o interop.so
 ```
 
-The Python-library target requires explicit `--memory=none`. The current `osprey.build` helper omits that flag, so it and `python3 -m osprey` need updating for the GC-default compiler. Until then, compile explicitly as above and use `osprey.load` below. Loading installs the Python callbacks before running the entry. The package needs only Python's standard library; compiling an artifact also needs Osprey and clang.
+The Python-library target defaults to ARC. `osprey.build` and `python3 -m osprey` compile and load through that target; `osprey.load` loads an existing library. Loading installs the Python callbacks before running the entry. The package needs only Python's standard library; compiling an artifact also needs Osprey and clang.
 
 ```python
 import osprey
@@ -26,6 +26,8 @@ Python exceptions return explicit error data for Osprey to handle. `library.keep
 
 The [Python-flavor example](../examples/python/interop.py) also compiles and calls Python through typed `@extern` signatures. The bridge is shared by Default, ML and the implemented Python frontend subset. The proposed `@python("module", "callable")` marker is not delivered syntax.
 
-Current boundaries: Linux/macOS, scalar native exports, one loading thread, retained GIL, explicit unmanaged `--memory=none` allocation and explicit object release. [Spec 0042](../docs/specs/platforms/0042-PythonInterop.md) defines the exact supported protocol and [plan 0031](../docs/plans/0031-python.md) tracks typed direct calls and tensor storage.
+Sized integer exports accept Python integers within their declared range; `float32` accepts Python floats and rounds to binary32, rejecting finite overflow. `float16` crosses the C ABI as raw unsigned 16-bit bits, so its Python arguments and results are integers from 0 to 65535. These calls cross Osprey's C memory-safety boundary.
+
+Current boundaries: Linux/macOS, scalar native exports, one loading thread, retained GIL, ARC memory management and explicit Python object release. [Spec 0042](../docs/specs/platforms/0042-PythonInterop.md) defines the exact supported protocol and [plan 0031](../docs/plans/0031-python.md) tracks typed direct calls and tensor storage.
 
 Run integration tests with `cargo test -p osprey-cli --test python_interop`. They use the compiler Cargo builds and do not require PyTorch, NumPy or a GPU.

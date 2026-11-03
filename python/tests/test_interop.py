@@ -30,6 +30,8 @@ fn object(operation, objectId, name, args) = osprey_python_object(operation, obj
 let started = osprey_python_call("builtins", "setattr", "[null, null, null]")
 fn startup() = started
 '''
+SOURCE += "".join(f"fn numeric_{kind}(value: {kind}) = value\n" for kind in
+                  ["int8", "int16", "int32", "uint8", "uint16", "uint32", "float16", "float32"])
 
 
 class InteropTests(unittest.TestCase):
@@ -44,6 +46,30 @@ class InteropTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.scratch.cleanup()
+
+    def test_sized_numbers_keep_their_width_and_validate_before_native_calls(self):
+        # [FFI-NUMERIC-WIDTH] Binary16 crosses the C boundary as uint16 bits.
+        for kind, low, high in [
+            ("int8", -128, 127), ("int16", -32768, 32767),
+            ("int32", -(2**31), 2**31 - 1), ("uint8", 0, 255),
+            ("uint16", 0, 65535), ("uint32", 0, 2**32 - 1), ("float16", 0, 65535),
+        ]:
+            function = getattr(self.library, "numeric_" + kind)
+            for value in [low, high, 0]:
+                with self.subTest(kind=kind, value=value):
+                    self.assertEqual(function(value), value)
+            for value in [low - 1, high + 1]:
+                with self.assertRaises(OverflowError):
+                    function(value)
+            for value in [True, 1.0, "1"]:
+                with self.assertRaises(TypeError):
+                    function(value)
+        self.assertEqual(self.library.numeric_float32(0.1), 0.10000000149011612)
+        self.assertEqual(self.library.numeric_float32(-123.5), -123.5)
+        with self.assertRaises(OverflowError):
+            self.library.numeric_float32(1e40)
+        with self.assertRaises(TypeError):
+            self.library.numeric_float32(1)
 
     def test_scalars_and_utf8_are_checked_before_native_calls(self):
         lib = self.library
