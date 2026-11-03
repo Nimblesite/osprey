@@ -931,3 +931,78 @@ The Osprey debugger is complete when:
   once those modes are enabled.
 - `make ci` includes the non-GUI debugger checks; GUI/VS Code checks remain in
   the extension test lane.
+
+# Plan 0012: Native profiler backends
+
+The shared profiler UI from lspkit is mounted, live CPU attach works on macOS and Linux, and every view draws in Osprey's palette ([0028-Profiler](../specs/tooling/0028-Profiler.md) `[PROF-VSCODE-SHARED]`). Two things the shared UI can show have no Osprey runtime behind them yet: a live endpoint on Windows, and heap data. Until they exist, a Windows program is absent from the Processes view, and `memory: false` hides every memory surface rather than faking one ([PROF-LSP-RUNTIME]).
+
+## Windows live attach
+
+Windows builds carry inactive profiler stubs and open no diagnostics endpoint, so `crates/lsp-profiler-osprey/src/attach_none.rs` recognises nothing there ([PROF-ATTACH-ENDPOINT]).
+
+- [ ] A Windows sampler: suspend each registered thread, read its context and walk the stack, at the rate `[PROF-COLLECT-SAMPLER]` sets for Unix.
+- [ ] A Windows endpoint: a named pipe per process, speaking the same `[PROF-ATTACH-PROTOCOL]`, discoverable by a listing as the Unix socket directory is.
+- [ ] `attach_windows.rs` beside `attach.rs`, and the live profiler e2e tests (`crates/osprey-cli/tests/live_profiler*.rs`) on the Windows CI job.
+
+## Heap data for the shared memory views
+
+The shared UI already has the views: snapshots, allocation sites, diffs, leak evidence and retention graphs, run by lspkit's memory contracts in SharpLsp. Osprey needs a `MemoryBackend` that answers them for both reclaiming memory modes, ARC and GC ([spec 0018](../specs/compiler/0018-MemoryManagement.md)).
+
+- [ ] The heap model the backend serves: object kinds, typed outgoing edges and roots. It is the debugger's object graph, specified once, in [plan 0012](0012-developer-tools.md)'s object-graph phase.
+- [ ] Allocation-site attribution, recorded only while a memory session is open, so a program that is not being profiled pays nothing.
+- [ ] A `MemoryBackend` in `crates/lsp-profiler-osprey` over the endpoint: snapshot, diff and references.
+- [ ] Drop `memory: false` from `PROFILER_HOST`, regenerate the contributions, and run lspkit's memory contracts in Osprey's extension suite.
+- [ ] Debugger type retention: the Watch/Variables "Inspect type retainers" action, which `[PROF-UI-DEBUG-LINK]` offers only with a backend callback.
+
+# Shared profiler integration
+
+Osprey keeps its runtime and compiler layer: optimized native builds, DWARF symbolization, the platform sampler, the live-attach endpoint every native program serves ([PROF-ATTACH-ENDPOINT] in [0028-Profiler](../specs/tooling/0028-Profiler.md)), compiler invocation, cancellation and source classification (`isOspreySource`). lspkit owns everything above that: the `lsp-profiler` service mounted by `osprey lsp` through `crates/lsp-profiler-osprey`, and the `@nimblesite/lsp-profiler-ui` package whose views, palette, debugger links and VSIX contracts both Osprey and SharpLsp mount. The behaviour is specified in lspkit's [LSP-PROFILER-SPEC](../../lspkit/docs/specs/LSP-PROFILER-SPEC.md).
+
+## Remaining
+
+- [ ] Merge [lspkit #27](https://github.com/Nimblesite/lspkit/pull/27) (`feature/shared-profiler-ui`, green on every check) into lspkit `main`, repin Osprey's and SharpLsp's `lspkit` submodules to the merged commit, and delete this plan. With a merge commit the pinned `10e2a37` is already on `main`; a squash merge needs both repins.
+
+## Done
+
+- [x] The review of 2026-10-24: malformed speedscope exports are classified errors; search is one sort and sweep; labels fit their narrowest width; frame ranking, search and the palette's names and defaults have one definition each; every memory and retention colour reads the palette; malformed webview posts never reach a handler; Osprey's flame panel is lspkit's `SingletonWebviewPanel`.
+- [x] Every view draws in the host palette, pinned by a contract both hosts run (`testing/webview-contract-palette.ts`): the dashboard's warm and base bars and its toggle labels, the retention graph's roots and edges, the editor's leak decorations at every confidence, and text on an accent, which takes the accent's ink on a dark palette.
+- [x] No production module or shipped contract in the UI package has a function of 20 lines or more, and no file is over 500 lines. `profiler.ts` and `memory-profiler.ts` are split; error reporting and server commands have one definition each; `buildFlameHtml`, a document builder no product code called, is deleted, and Osprey's `profiler-html.test.ts` tests the document `showFlamePanel` renders. The suites' own long bodies are recorded in lspkit's plan.
+- [x] The UI package lints with SharpLsp's ESLint rules, rule for rule, in `make lint`. Meeting them replaced every type assertion with a check where the value is read.
+- [x] The UI suite's host manifest is generated before every `npm test` instead of committed; the committed copy had drifted.
+- [x] The UI package's own suite runs against a mock language server, an exception lspkit's spec records: server-backed flows are tested in each host against its real runtime.
+- [x] SharpLsp's `lspkit` submodule follows this branch, and its tests read SharpLsp's palette and advertise CPython's profilers the way the capability rules require.
+- [x] The live profiler e2e tests wait for samples, not seconds.
+- [x] `tests/effects/scope/finalizers_masks_instances` passes in both flavors.
+
+## Moved
+
+- Windows live attach and a native heap backend, with debugger type retention: [plan 0012](0012-developer-tools.md).
+- npm publication of the UI package: lspkit's plan, Phase 4.
+- The integrated-terminal debug e2e failures: Xcode's lldb-dap cannot complete a terminal launch, now the adapter the resolver finds once Homebrew's LLVM 23 dropped lldb-dap from the `llvm` keg: [plan 0012](0012-developer-tools.md).
+
+# Module explorer delivery plan
+
+**Status: the sidebar view runs on real compiler data; an automated keyboard test remains.** Record this requirement during stabilization; implementation starts after existing delivery gates are green. The binding contract is [EDITOR-MODULE-EXPLORER](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer). This is the Osprey counterpart to the module/solution explorers in Basilisk and SharpLsp.
+
+## Delivery steps
+
+- [x] Inventory: `osprey <project> --source-graph` already gives sources and checked dependency edges, and now gives each source's namespaces and modules with positions (`declarations`). Direct and transitive packages, locked versions, overrides and verification findings come from the package frontend behind `osprey.packages.open`, so no second resolver is needed.
+- [x] Add the Module Explorer to the existing Osprey sidebar with project, module, namespace and source nodes and organization-qualified direct dependencies (`client/src/module-explorer.ts`). The tree holds no application decisions: membership comes from the compiler and dependencies from the Osprey package client.
+- [x] Transitive dependencies nest from `osprey-pkg tree --graph`, showing each locked release and what is not locked.
+- [x] Local overrides are named on their package, from the development lock through `tree --graph`.
+- [x] Document/declaration navigation, active-file reveal, refresh on edits, stable ids across refreshes, one node per project, generated caches excluded, and keyboard operation through the native tree.
+- [x] In an untrusted workspace the view runs nothing, says why, and still navigates source files; traversal and symlink escapes outside the workspace are refused.
+- [x] The existing Manage Packages command is on the view's toolbar, and manifest and lock changes refresh the tree without duplicating mutation logic.
+- [x] Each project row has a Manage Packages action carrying that project.
+- [x] Real analysis and dependency errors show as items, and an incomplete graph or report is refused rather than read as an empty result.
+- [x] Missing-lock, stale and loading states, and package verification findings on the affected items.
+- [x] Editor E2E coverage against the actual compiler graph for cross-flavor membership, source navigation, refresh after edits, analysis failures and untrusted refusal (`test/suite/module-explorer.test.ts`).
+- [x] E2E coverage for the locked graph, verification findings, unsaved edits and root containment.
+- [x] Local dependencies are covered through the graph report (`tree_graph_tests.osp`) and the view.
+- [x] E2E coverage through the real package client: per-project answers, a manifest change after refresh, and a rejected manifest.
+- [ ] An automated keyboard test; the view is VS Code's native tree, whose keyboard operation is not separately exercised here.
+- [x] The installed VSIX contributes the view and its commands (`test/installed/packages.test.ts`, run by `npm run test:vsix` in the required extension job).
+
+## Completion evidence
+
+`test/suite/module-explorer.test.ts` runs against the real compiler and package client, and `test/installed/packages.test.ts` against the installed VSIX, both in the required extension job.
