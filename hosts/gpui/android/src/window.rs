@@ -184,6 +184,7 @@ impl AndroidWindow {
         let insets = {
             let state = locked(&self.state);
             let rect = app.content_rect();
+            log::info!("safe area top {} bottom {} px", rect.top, state.size.height.0 - rect.bottom);
             WindowInsets {
                 safe_area: Edges {
                     top: px(rect.top as f32 / state.scale_factor),

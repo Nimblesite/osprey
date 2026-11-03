@@ -33,35 +33,12 @@ def adb(*arguments, binary=False):
     return subprocess.check_output(ADB + list(arguments), text=not binary)
 
 
-def touch_regions(labels):
-    density = int(re.findall(r"density: (\d+)", adb("shell", "wm", "density"))[-1]) / 160
-    for label in labels:
-        node = find(label)
-        x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.attrib["bounds"]))
-        assert min(x2 - x1, y2 - y1) >= 48 * density, (label, node.attrib["bounds"], density)
-    print("PASS: native controls meet the 48-dp minimum touch region", flush=True)
-
-
 def index_audio(path):
     canonical = adb("shell", "readlink", "-f", path).strip()
     assert canonical.startswith("/"), f"Cannot resolve the audio fixture: {canonical}"
     result = adb("shell", "content", "call", "--uri", "content://media", "--method", "scan_file", "--arg", canonical)
     assert result.startswith("Result: Bundle[") and "android.intent.extra.STREAM=" in result and "android.intent.extra.STREAM=null" not in result, result
     print("PASS: Android MediaStore indexed the audio fixture before document selection", flush=True)
-
-
-def packaged_assets(apk):
-    with zipfile.ZipFile(io.BytesIO(adb("exec-out", "cat", apk, binary=True))) as archive:
-        verify_android_package(archive)
-
-
-def bindings():
-    installed = adb("shell", "pm", "path", PACKAGE).strip().splitlines()
-    assert len(installed) == 1 and installed[0].startswith("package:"), installed
-    packaged_assets(installed[0][8:])
-    with tempfile.TemporaryDirectory(prefix="casting-bindings-") as directory:
-        with android_java(SDK, ADB, BINDING_CHECK, "CastingBindingCheck", Path(directory)) as remote:
-            print(adb("shell", "env", "CLASSPATH=" + installed[0][8:] + ":" + remote, "app_process", "/", "CastingBindingCheck"), flush=True)
 
 
 def window():
@@ -128,89 +105,6 @@ def tap_node(node):
     adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
 
 
-def slide(label, fraction):
-    node = find(label)
-    assert node.get("class") == "android.widget.SeekBar", node.attrib
-    x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.attrib["bounds"]))
-    x = round(x1 + (x2 - x1) * fraction)
-    y = (y1 + y2) // 2
-    adb("shell", "input", "swipe", str((x1 + x2) // 2), str(y), str(x), str(y), "150")
-
-
-def focus(label):
-    for _ in range(12):
-        adb("shell", "input", "keyevent", "KEYCODE_TAB")
-        focused = [item for item in nodes() if item.get("focused") == "true"]
-        if any(item.get("content-desc") == label for item in focused): return
-    raise AssertionError(f"{label} never received native keyboard focus")
-
-
-def keyboard_picker():
-    focus("Open file…")
-    adb("shell", "input", "keyevent", "KEYCODE_ENTER")
-    find("Show roots")
-    adb("shell", "input", "keyevent", "KEYCODE_BACK")
-    find("Open file…")
-    print("PASS: native Tab focus and Enter open the Android file picker", flush=True)
-
-
-def playback(output):
-    tap("Play")
-    find("Pause")
-    assert find("Position").get("class") == "android.widget.SeekBar"
-    assert find("Volume").get("class") == "android.widget.SeekBar"
-    touch_regions(["Stop", "Position", "Volume", "Speed: 1×"])
-    tap("Pause")
-    tap("Resume")
-    find("Pause")
-    previous = adb("shell", "wm", "user-rotation").strip().split()
-    assert previous and previous[0] in ("free", "lock"), previous
-    try:
-        adb("shell", "wm", "user-rotation", "lock", "1")
-        wait_rotation(1)
-        touch_regions(["Pause", "Stop", "Position", "Volume", "Open file…", "Speed: 1×"])
-        find("Pause")
-        assert find("Volume").get("class") == "android.widget.SeekBar"
-        tap("Pause")
-        tap("Resume")
-        find("Pause")
-        slide("Volume", 0.5)
-        (output / "landscape-playing.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-    finally:
-        adb("shell", "wm", "user-rotation", *previous)
-    wait_rotation(0)
-    find("Pause")
-    slide("Position", 0.25)
-    tap("Speed: 1×")
-    tap("1.5×")
-    find("Speed: 1.5×")
-    (output / "playing.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-    focus("Volume")
-    adb("shell", "input", "keyevent", "KEYCODE_DPAD_RIGHT")
-    (output / "keyboard-volume.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-    tap("Stop")
-    find("Play")
-    tap("Play")
-    find("Pause")
-    tap("Stop")
-    find("Play")
-
-
-def launch(skin="sherbet", fixture=None, native=False, notice=False):
-    adb("shell", "am", "force-stop", PACKAGE)
-    fixture = fixture if fixture is not None else os.environ.get("CAST_TEST_RECEIVER", base64.b64encode(b"\n").decode())
-    arguments = ["shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true"]
-    if skin is not None: arguments += ["--es", "skin", skin]
-    if not native: arguments += ["--es", "testReceiver", fixture]
-    adb(*arguments)
-    if notice: return
-    assert find("Open file…").get("class") == "android.widget.Button"
-    assert find("Play").get("class") == "android.widget.Button"
-    assert "files/player/skins/skins" not in adb("exec-out", "run-as", PACKAGE, "find", "files/player/skins", "-type", "d").splitlines()
-    adb("shell", "input", "tap", "10", "150")
-    if os.environ.get("CAST_TEST_RECEIVER") and not native: find("Receiver: Test receiver" if skin == "sherbet" else "Receiver")
-
-
 def open_roots():
     deadline, requested = time.monotonic() + 20, False
     while time.monotonic() < deadline:
@@ -241,153 +135,163 @@ def select_root(label):
 
 
 def import_track():
-    tap("Open file…")
+    scene_tap("Open file\u2026")
     open_roots()
     select_root("Downloads")
     tap("Casting mobile test.mp3")
-    find("Open file…")
+    wait_focus()
 
 
-def alternate_playback(output):
-    tap("Skin"); tap("Midnight Mint")
-    import_track()
-    tap("Play"); find("Pause")
-    touch_regions(["Pause", "Stop", "Speed", "Volume 100%", "Forward 10 seconds", "Back 10 seconds"])
-    tap("Pause"); find("Resume")
-    tap("Forward 10 seconds")
-    tap("Volume 100%"); tap("50%")
-    tap("Speed"); tap("1.5×")
-    tap("Skin"); tap("Poolside Pop")
-    find("Resume")
-    find("Casting mobile test")
-    tap("Back 10 seconds")
-    tap("Volume 50%"); tap("25%")
-    tap("Speed"); tap("0.75×")
-    tap("Resume"); find("Pause")
-    tap("Appearance"); tap("Sherbet Signal"); find("Pause")
-    tap("Appearance"); tap("Poolside Pop"); find("Pause")
-    tap("Speed"); tap("1.25×")
-    tap("Pause"); find("Resume")
-    (output / "poolside-paused.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-    tap("Stop"); find("Play")
-    tap("Play"); find("Pause")
-    tap("Stop"); find("Play")
-    print("PASS: native alternate skins preserve playback, seek, volume, rate and replay", flush=True)
-    tap("Receiver"); tap("Unavailable receiver")
-    tap("Play")
-    failure = "127.0.0.1:1: connection refused or timed out"
-    find(failure); find("Play")
-    tap("Skin"); tap("Midnight Mint"); find(failure)
-    (output / "connection-refused.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-    tap("Receiver"); tap("Test receiver")
-    tap("Play"); find("Pause")
-    tap("Stop"); find("Play")
-    print("PASS: native connection failure remains visible across skins and a reachable receiver recovers playback", flush=True)
+APP = ROOT / "examples/casting"
+OUTPUT = APP / "build/android-test"
+LISTENERS = json.loads((APP / "player.machine.json").read_text())["skins"]["sherbet"]["canvas"]
+RATES = ["0.75", "1", "1.25", "1.5", "2"]
+SCENE_WIDTH, SCENE_HEIGHT, SCENE_ZOOM = LISTENERS["width"], LISTENERS["height"], LISTENERS["zoom"]
 
 
-def receiver_selection():
-    choices = native_picker(json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")), "Receiver")
-    assert len(choices) == 1, choices
-    return choices[0]["selected"]
+def listener(label):
+    return next(item for item in LISTENERS["listeners"] if item["label"].startswith(label))
 
 
-def native_discovery(output):
-    # [CAST-MOBILE-DELIVERY] No testReceiver extra: real NSD and service-info callbacks.
-    invalid_appearance(adb, launch, tap, find, PACKAGE, read_window)
-    launch("midnight", native=True)
-    # [CAST-MOBILE-SKIN-PERSISTENCE] Restart without an injected skin override.
-    for trigger, skin, label in [("Skin", "poolside", "Poolside Pop"), ("Skin", "sherbet", "Sherbet Signal"), ("Appearance", "midnight", "Midnight Mint")]:
-        tap(trigger); tap(label)
-        wait_native_skin(lambda: json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")), skin)
-        launch(skin=None, native=True)
-        snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
-        selected = native_picker(snapshot, "Skin")
-        assert [node["selected"] for node in selected] == ([] if skin == "sherbet" else [skin]), selected
-        assert snapshot["node"]["kind"] == ("scene" if skin == "sherbet" else "themed"), snapshot
-    tap("Receiver"); tap("Android native test receiver")
-    find("Receiver: Android native test receiver")
-    key = receiver_selection()
-    assert key.endswith(":" + os.environ["CAST_TEST_NATIVE_PORT"]), key
-    tap("Search again"); tap("Receiver")
-    find("Android native test receiver")
-    assert receiver_selection() == key, "Native NSD rescan lost the selected endpoint"
-    tap("Android native test receiver")
-    import_track()
-    tap("Play"); find("Pause")
-    stale_volume_popup(tap, find, lambda: json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")))
-    (output / "native-nsd-playing.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-    tap("Stop"); find("Play")
-    print("PASS: real Android NSD discovery, service resolution, rescan and selected-receiver playback", flush=True)
+def screen():
+    width, height = map(int, re.search(r"(\d+)x(\d+)", adb("shell", "wm", "size")).groups())
+    rotation = re.search(r"mRotation=(\d)", adb("shell", "dumpsys", "window", "displays")).group(1)
+    return (height, width) if rotation in ("1", "3") else (width, height)
 
 
-def duplicate_receivers():
-    # [CAST-MOBILE-RECEIVER-IDENTITY] The first equal-name device is unavailable.
-    port = os.environ["CAST_TEST_NATIVE_PORT"]
-    launch("midnight", os.environ["CAST_TEST_DUPLICATE_RECEIVER"])
-    for attempt in range(2):
-        tap("Receiver")
-        find("Same name receiver (127.0.0.1:1)")
-        if attempt == 1:
-            snapshot = adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")
-            assert f'"selected":"127.0.0.1:{port}"' in snapshot, "Rescan lost the selected endpoint"
-        tap(f"Same name receiver (127.0.0.1:{port})")
-        if attempt == 0: tap("Search again")
-    import_track()
-    tap("Play"); find("Pause")
-    tap("Stop"); find("Play")
-    print("PASS: equal receiver names retain distinct endpoints across rescan and play on the selected receiver", flush=True)
+def safe_area():
+    """The last safe area the GPUI backend reported, top and bottom, in device pixels."""
+    lines = re.findall(r"safe area top (\d+) bottom (\d+) px", adb("logcat", "-d"))
+    return tuple(map(int, lines[-1])) if lines else (0, 0)
+
+
+def scene_point(x, y):
+    """A scene point in device pixels: the same fit and origin hosts/gpui/src/scene.rs draws with."""
+    width, height = screen()
+    top, bottom = safe_area()
+    density = int(re.search(r"(\d+)", adb("shell", "wm", "density")).group(1)) / 160
+    scale = min(SCENE_ZOOM * density, width / SCENE_WIDTH, (height - top - bottom) / SCENE_HEIGHT)
+    return round(x * scale), round(top + y * scale)
+
+
+def scene_tap(label, offset=0):
+    item = listener(label)
+    x, y = scene_point(item["x"] + item["w"] / 2, item["y"] + offset + item["h"] / 2)
+    print("TAP:", label, flush=True)
+    adb("shell", "input", "tap", str(x), str(y))
+
+
+def scene_slide(label, fraction):
+    item = listener(label)
+    y = item["y"] + item["h"] / 2
+    x1, y1 = scene_point(item["x"] + item["w"] * fraction, y)
+    print("SLIDE:", label, fraction, flush=True)
+    adb("shell", "input", "swipe", str(x1), str(y1), str(x1 + 1), str(y1), "150")
+
+
+def records():
+    return [json.loads(line) for line in (OUTPUT / "receiver.jsonl").read_text().splitlines()]
+
+
+def sent(kind):
+    return [record["payload"] for record in records() if record.get("event") == "recv" and record["payload"].get("type") == kind]
+
+
+def wait_sent(kind, count, timeout=25):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if len(sent(kind)) >= count: return sent(kind)[-1]
+        time.sleep(0.2)
+    raise AssertionError(f"The receiver never got {count} {kind}: {[record for record in records() if record.get('event') == 'recv'][-5:]}")
+
+
+def wait_focus(timeout=20):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if PACKAGE + "/" in adb("shell", "dumpsys", "window").split("mCurrentFocus", 1)[1].split("\n", 1)[0]: return
+        time.sleep(0.2)
+    raise AssertionError("The player did not come back to the front")
+
+
+def shot(name):
+    (OUTPUT / name).write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+
+
+def launch():
+    # Always the fixture receiver: a journey must never reach a real TV on this network.
+    adb("shell", "am", "force-stop", PACKAGE)
+    adb("logcat", "-c")
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.CastingActivity", "--es", "testReceiver", os.environ["CAST_TEST_RECEIVER"])
+    wait_focus()
+    deadline = time.monotonic() + 30
+    while safe_area()[0] == 0 and time.monotonic() < deadline: time.sleep(0.3)
+    assert safe_area()[0] > 0, "The GPUI backend never reported the safe area"
+    time.sleep(5)
 
 
 def main():
-    output = ROOT / "examples/casting/build/android-test"
-    output.mkdir(parents=True, exist_ok=True)
-    bindings()
+    OUTPUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="casting-mobile-") as directory:
         track = Path(directory) / "Casting mobile test.mp3"
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(track)], check=True)
         adb("push", str(track), "/sdcard/Download/Casting mobile test.mp3")
         index_audio("/sdcard/Download/Casting mobile test.mp3")
-        if os.environ.get("CAST_TEST_RECEIVER"): native_discovery(output)
-        if os.environ.get("CAST_TEST_RECEIVER"): duplicate_receivers()
-        launch()
-        touch_regions(["Play", "Open file…", "Receiver: Test receiver", "Appearance"])
-        tap("Appearance"); tap("Midnight Mint")
-        find("Skin")
-        touch_regions(["Play", "Open file…", "Receiver", "Skin", "Appearance"])
-        snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
-        assert snapshot["node"]["kind"] == "themed", snapshot
-        tap("Skin")
-        tap("Poolside Pop")
-        find("Skin")
-        touch_regions(["Play", "Open file…", "Receiver", "Skin"])
-        snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
-        assert any(token["name"] == "background" and token["light"] == "#D9EEFF" for token in snapshot["node"]["theme"]["tokens"]), snapshot
-        (output / "poolside-ready.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-        if os.environ.get("CAST_TEST_RECEIVER"): alternate_playback(output)
-        launch()
-        (output / "ready.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-        keyboard_picker()
-        for _ in range(2):
-            node = find("Open file…")
-            x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.attrib["bounds"]))
-            adb("shell", "input", "tap", str((x1 + x2) // 2), str(round(y1 + 0.85 * (y2 - y1))))
-            find("Show roots")
-            adb("shell", "input", "keyevent", "KEYCODE_BACK")
-            assert find("Open file…").get("clickable") == "true"
-        import_track()
-        snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
-        text = json.dumps(snapshot, ensure_ascii=False)
-        assert "Casting mobile test" in text, text[:1000]
-        assert snapshot["node"]["kind"] == "scene"
-        controls = snapshot["node"]["access"]
-        assert any(item["label"] == "Play" for item in controls), controls
-        (output / "imported.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-        if os.environ.get("CAST_TEST_RECEIVER"):
-            playback(output)
-        launch()
-        assert find("Open file…").get("clickable") == "true"
-        (output / "restarted.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-    print("PASS: Android native controls, two picker cancellations, MP3 import, scene title and restart")
+    launch()
+    shot("ready.png")
+    for _ in range(2):
+        scene_tap("Open file\u2026")
+        find("Show roots")
+        adb("shell", "input", "keyevent", "KEYCODE_BACK")
+        wait_focus()
+        # The host answers the cancelled pick on its background thread before a press means anything.
+        time.sleep(2)
+    import_track()
+    time.sleep(1)
+    shot("imported.png")
+    scene_tap("Play")
+    wait_sent("LOAD", 1)
+    time.sleep(1)
+    scene_tap("Pause")
+    wait_sent("PAUSE", 1)
+    time.sleep(1)
+    scene_tap("Resume")
+    wait_sent("PLAY", 1)
+    time.sleep(1)
+    scene_slide("Volume", 0.5)
+    assert abs(wait_sent("SET_VOLUME", 1)["volume"]["level"] - 0.5) < 0.03
+    scene_slide("Position", 0.25)
+    assert abs(wait_sent("SEEK", 1)["currentTime"] - 50) < 5
+    scene_tap("Speed")
+    time.sleep(1)
+    rate = next(item for item in LISTENERS["listeners"] if item.get("each", {}).get("in") == "rates")
+    x, y = scene_point(rate["x"] + rate["w"] / 2, rate["y"] + rate["each"]["dy"] * RATES.index("1.5") + rate["h"] / 2)
+    adb("shell", "input", "tap", str(x), str(y))
+    assert wait_sent("SET_PLAYBACK_RATE", 1)["playbackRate"] == 1.5
+    shot("playing.png")
+    previous = adb("shell", "wm", "user-rotation").strip().split()
+    try:
+        adb("shell", "wm", "user-rotation", "lock", "1")
+        time.sleep(4)
+        shot("landscape-playing.png")
+        scene_tap("Pause")
+        wait_sent("PAUSE", 2)
+    finally:
+        adb("shell", "wm", "user-rotation", *previous)
+    time.sleep(3)
+    scene_tap("Resume")
+    wait_sent("PLAY", 2)
+    time.sleep(1)
+    scene_tap("Stop")
+    wait_sent("STOP", 1)
+    time.sleep(1)
+    scene_tap("Play")
+    wait_sent("LOAD", 2)
+    time.sleep(1)
+    scene_tap("Stop")
+    wait_sent("STOP", 2)
+    launch()
+    shot("restarted.png")
+    print("PASS: Android GPUI player: two picker cancellations, MP3 import, Cast playback, rotation, restart")
 
 
 class NativeReadContracts(unittest.TestCase):
@@ -424,7 +328,7 @@ class NativeReadContracts(unittest.TestCase):
             if label == "Downloads": select(None)
             if label == "Casting mobile test.mp3": self.assertEqual(len(selections), 2, "File is still covered by the roots drawer")
         def snapshot(): return drawer if len(selections) < 2 else directory
-        with mock.patch(__name__ + ".open_roots"), mock.patch(__name__ + ".find"), mock.patch(__name__ + ".tap", side_effect=tap_label), mock.patch(__name__ + ".tap_node", side_effect=select), mock.patch(__name__ + ".window", side_effect=snapshot), mock.patch(__name__ + ".time.sleep"):
+        with mock.patch(__name__ + ".scene_tap"), mock.patch(__name__ + ".wait_focus"), mock.patch(__name__ + ".open_roots"), mock.patch(__name__ + ".find"), mock.patch(__name__ + ".tap", side_effect=tap_label), mock.patch(__name__ + ".tap_node", side_effect=select), mock.patch(__name__ + ".window", side_effect=snapshot), mock.patch(__name__ + ".time.sleep"):
             import_track()
 
     def test_shell_keeps_audio_paths_as_single_arguments(self):

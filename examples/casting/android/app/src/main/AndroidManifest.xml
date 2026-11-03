@@ -1,13 +1,18 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
-    <application android:label="Osprey Casting" android:theme="@android:style/Theme.Material.Light.NoActionBar"
-        android:icon="@mipmap/casting_logo" android:dataExtractionRules="@xml/data_extraction_rules"
-        android:allowBackup="false" android:usesCleartextTraffic="false">
-        <activity android:name=".CastingActivity" android:exported="true" android:windowSoftInputMode="adjustResize"
-            android:configChanges="orientation|screenSize|keyboardHidden">
-            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
-        </activity>
-    </application>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The shared GPUI host as a NativeActivity: hosts/gpui draws everything ([CAST-MOBILE-GPUI]). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.ospreylang.casting">
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK"/>
+  <application android:label="Osprey Casting" android:icon="@mipmap/casting_logo" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+      android:dataExtractionRules="@xml/data_extraction_rules" android:allowBackup="false" android:usesCleartextTraffic="false" android:debuggable="true">
+    <activity android:name=".CastingActivity" android:exported="true" android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode">
+      <meta-data android:name="android.app.lib_name" android:value="osprey_gpui"/>
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+  </application>
 </manifest>

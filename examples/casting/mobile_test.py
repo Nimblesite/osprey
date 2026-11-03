@@ -329,8 +329,15 @@ def verify_log(path, platform):
     errors = [record for record in records if record.get("event") == "error"]
     assert not errors, errors
     remote = [record["level"] for record in records if record.get("event") == "remote-volume"]
-    assert remote == ([0.25] if platform == "android" else []), remote
+    assert remote == [], remote
     kinds = [record["payload"].get("type") for record in records if record.get("event") == "recv"]
+    if platform == "android":
+        # [CAST-MOBILE-GPUI] the journey in android/test.py waits for each command itself.
+        for kind in ["LAUNCH", "LOAD", "PAUSE", "PLAY", "SEEK", "SET_VOLUME", "SET_PLAYBACK_RATE", "STOP"]:
+            assert kind in kinds, (kind, kinds)
+        assert kinds.count("LOAD") == 2 and kinds.count("PAUSE") == 2 and kinds.count("PLAY") == 2 and kinds.count("STOP") == 2, kinds
+        print("PASS: Android GPUI Cast commands")
+        return
     for kind in ["LAUNCH", "LOAD", "PAUSE", "PLAY", "SEEK", "SET_VOLUME", "SET_PLAYBACK_RATE", "STOP"]:
         assert kind in kinds, (kind, kinds)
     assert kinds.count("LOAD") == 7, kinds

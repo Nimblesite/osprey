@@ -1,45 +1,71 @@
 #!/usr/bin/env bash
-# [CAST-MOBILE-ABI] Relink both supported ABIs before packaging the universal APK.
+# [CAST-MOBILE-GPUI] Package the shared desktop GPUI host as an Android APK: no Java views,
+# the same hosts/gpui view code, and the same TLS and media runtime as desktop.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../.." && pwd)
-if (( $# )); then echo 'Usage: build.sh (builds ARM64 and x64)' >&2; exit 2; fi
+target=${1:-android-arm64}
+case "$target" in
+    android-arm64) rust_target=aarch64-linux-android; abi=arm64-v8a; openssl_target=android-arm64; clang_target=aarch64-linux-android26 ;;
+    android-x64) rust_target=x86_64-linux-android; abi=x86_64; openssl_target=android-x86_64; clang_target=x86_64-linux-android26 ;;
+    *) echo 'Usage: build.sh [android-arm64|android-x64]' >&2; exit 2 ;;
+esac
+sdk=${ANDROID_HOME:-$HOME/Library/Android/sdk}
+ndk=$sdk/ndk/27.0.12077973
+tools=$ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin
+build_tools=$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)
+output="$repo/examples/casting/build/$target"
 cd "$repo"
-source scripts/android-env.sh
+if [[ ${OSPREY_MOBILE_SKIP_LIBRARY:-0} != 1 ]]; then bash examples/casting/mobile-build.sh "$target"; fi
+mkdir -p "$output"
 
-record_inputs() {
-    python3 - "$@" <<'PY'
-import hashlib,sys
-from pathlib import Path
-output,*files=sys.argv[1:]
-Path(output).write_text(''.join(f'{hashlib.sha256(Path(name).read_bytes()).hexdigest()}  {Path(name).resolve()}\n' for name in files))
-PY
-}
+# OpenSSL, pinned, for the same TLS client desktop links.
+openssl_version=3.4.1
+openssl_sha256=002a2d6b30b58bf4bea46c43bdd96365aaf8daa6c428782aa4feee06da197df3
+openssl="$output/openssl"
+if [[ ! -f $openssl/lib/libssl.a ]]; then
+    source_archive="$output/openssl-$openssl_version.tar.gz"
+    curl -sSfL -o "$source_archive" "https://github.com/openssl/openssl/releases/download/openssl-$openssl_version/openssl-$openssl_version.tar.gz"
+    echo "$openssl_sha256  $source_archive" | shasum -a 256 -c - >/dev/null
+    tar -xzf "$source_archive" -C "$output"
+    (cd "$output/openssl-$openssl_version" && ANDROID_NDK_ROOT=$ndk PATH="$tools:$PATH" ./Configure "$openssl_target" -D__ANDROID_API__=26 \
+        no-shared no-tests no-docs --prefix="$openssl" >/dev/null && PATH="$tools:$PATH" make -j10 build_sw >/dev/null && PATH="$tools:$PATH" make install_sw >/dev/null)
+fi
 
-build_native() {
-    local target=$1 abi=$2 triple=$3
-    if [[ ${OSPREY_MOBILE_SKIP_LIBRARY:-0} != 1 ]]; then bash examples/casting/mobile-build.sh "$target"; fi
-    local output="$repo/examples/casting/build/$target" native="$here/build/generated/jniLibs/$abi"
-    mkdir -p "$native"
-    "$android_tools/clang" --target="$triple" -shared -fPIC -O2 -std=c11 \
-        -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Wall -Wextra -Werror \
-        -Wl,--no-undefined -Wl,-z,max-page-size=16384 -I"$output" \
-        "$here/src/main/cpp/bridge.c" "$output/libOspreyApp.a" \
-        compiler/runtime/file_server_runtime.c compiler/runtime/media_render_runtime.c \
-        -lm -ldl -llog -o "$native/libosprey_casting.so"
-    "$android_tools/llvm-strip" --strip-unneeded -o "$output/libosprey_casting.stripped.so" "$native/libosprey_casting.so"
-    record_inputs "$output/native-inputs.sha256" "$output/libOspreyApp.a" "$output/libOspreyApp.h" \
-        "$here/src/main/cpp/bridge.c" compiler/runtime/file_server_runtime.c compiler/runtime/media_render_runtime.c \
-        "$here/build.sh" scripts/android-env.sh "$native/libosprey_casting.so" "$output/libosprey_casting.stripped.so"
-}
+for unit in tls_client file_server media_render; do
+    "$tools/clang" --target="$clang_target" -fPIC -O2 -std=c11 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Wall -Wextra -Werror \
+        -Icompiler/runtime -I"$openssl/include" -c "compiler/runtime/${unit}_runtime.c" -o "$output/${unit}_runtime.o"
+done
+rm -f "$output/libosprey_cast_net.a"
+"$tools/llvm-ar" rcs "$output/libosprey_cast_net.a" "$output/tls_client_runtime.o" "$output/file_server_runtime.o" "$output/media_render_runtime.o"
 
-build_native android-arm64 arm64-v8a aarch64-linux-android26
-build_native android-x64 x86_64 x86_64-linux-android26
-assets="$here/build/generated/assets"
-mkdir -p "$assets"
-cp examples/casting/player.machine.json "$assets/player.machine.json"
-rm -rf "$assets/skins"
-cp -R examples/casting/skins "$assets/"
-cd "$here"
-bash "$repo/examples/mobile/android/gradlew" --console=plain :app:assembleDebug
-echo "$here/app/build/outputs/apk/debug/app-debug.apk"
+python3 hosts/gpui/dependencies.py
+linker_variable=CARGO_TARGET_$(echo "$rust_target" | tr 'a-z-' 'A-Z_')_LINKER
+env "$linker_variable=$tools/$clang_target-clang" OSPREY_GPUI_APP_DIR="$output" \
+    OSPREY_GPUI_LINK_SEARCH="$output:$openssl/lib" OSPREY_GPUI_LINK_LIBS="static=osprey_cast_net,static=ssl,static=crypto" \
+    cargo build --manifest-path hosts/gpui/Cargo.toml --target "$rust_target" --lib --release --locked
+
+export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}" PATH="$JAVA_HOME/bin:$PATH"
+apk="$output/apk"
+rm -rf "$apk"
+mkdir -p "$apk/lib/$abi" "$apk/assets" "$apk/generated"
+"$tools/llvm-strip" --strip-unneeded "hosts/gpui/target/$rust_target/release/libosprey_gpui.so" -o "$apk/lib/$abi/libosprey_gpui.so"
+cp examples/casting/player.machine.json "$apk/assets/"
+cp -R examples/casting/skins "$apk/assets/"
+echo '["--machine", "${RESOURCES}/player.machine.json"]' > "$apk/assets/osprey-arguments.json"
+(cd "$apk/assets" && find . -type f ! -name osprey-files.txt | sed 's|^\./||' | sort > osprey-files.txt)
+"$build_tools/aapt2" compile --dir "$here/app/src/main/res" -o "$apk/resources.zip"
+platform=$(ls -d "$sdk"/platforms/android-* | sort -V | tail -1)/android.jar
+"$build_tools/aapt2" link -o "$apk/base.apk" --manifest "$here/app/src/main/AndroidManifest.xml" -I "$platform" -A "$apk/assets" \
+    --min-sdk-version 34 --target-sdk-version 37 --java "$apk/generated" "$apk/resources.zip"
+# Only the services the platform alone provides; hosts/gpui draws everything.
+mkdir -p "$apk/classes"
+javac -nowarn --release 11 -classpath "$platform" -d "$apk/classes" "$apk/generated/org/ospreylang/casting/R.java" \
+    "$here/src/main/java/org/ospreylang/casting/CastingActivity.java" "$here/src/main/java/org/ospreylang/casting/CastDiscovery.java" \
+    "$here/src/main/java/org/ospreylang/casting/MediaDocuments.java"
+"$build_tools/d8" --lib "$platform" --min-api 34 --output "$apk" $(find "$apk/classes" -name '*.class')
+(cd "$apk" && zip -q base.apk classes.dex)
+(cd "$apk" && zip -q -0 base.apk "lib/$abi/libosprey_gpui.so")
+"$build_tools/zipalign" -f -P 16 4 "$apk/base.apk" "$apk/aligned.apk"
+"$build_tools/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --out "$output/Casting.apk" "$apk/aligned.apk"
+echo "$output/Casting.apk"

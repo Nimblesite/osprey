@@ -1,251 +1,137 @@
 package org.ospreylang.casting;
 
+import android.app.NativeActivity;
+import android.content.Intent;
+import android.graphics.Insets;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.Gravity;
-import android.widget.Button;
-import android.widget.FrameLayout;
-import android.widget.PopupMenu;
-import android.widget.TextView;
-import androidx.activity.ComponentActivity;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
+import android.view.View;
+import android.view.WindowInsets;
 import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Base64;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-// [CAST-MOBILE-DELIVERY] Android owns platform services; Osprey owns the player.
-public final class CastingActivity extends ComponentActivity {
+// [CAST-MOBILE-GPUI] No interface lives here: hosts/gpui draws everything. This activity only
+// answers what the platform alone can do, one JSON request in and one JSON answer out, on the
+// host's background thread: browsing for receivers and picking a document.
+public final class CastingActivity extends NativeActivity {
+    private static final int PICK_DOCUMENT = 1;
+    private static final int LOCAL_NETWORK = 2;
+    private static final long BROWSE_SECONDS = 10;
+    private static final long PICKER_SECONDS = 600;
+    private static final int FIXTURE_LIMIT = 65536;
+
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private String choosing;
-    private Resident resident;
-    private JSONObject permissionBrowse;
-    private final ActivityResultLauncher<String> localNetwork = registerForActivityResult(
-        new ActivityResultContracts.RequestPermission(), granted -> {
-            JSONObject request = permissionBrowse;
-            permissionBrowse = null;
-            if (request == null) return;
-            if (!granted) { complete(request.optString("ticket"), null, getString(R.string.local_network_denied)); return; }
-            try { request(request); } catch (JSONException error) { fail(error); }
-        });
-    private final ActivityResultLauncher<String[]> picker = registerForActivityResult(
-        new ActivityResultContracts.OpenDocument(), uri -> {
-            String ticket = choosing;
-            choosing = null;
-            if (ticket == null) return;
-            if (uri == null) { complete(ticket, object("cancelled", true, "path", ""), null); return; }
-            io.execute(() -> {
-                try {
-                    File file = MediaDocuments.importAudio(this, uri);
-                    main.post(() -> complete(ticket, object("cancelled", false, "path", file.getAbsolutePath()), null));
-                } catch (IOException | RuntimeException error) { main.post(() -> complete(ticket, null, error.getMessage())); }
-            });
-        });
-    private CastDiscovery discovery;
-    private NativeRenderer scene;
-    private boolean alive = true, animate;
-    private long lastFrame;
-    private final Runnable frame = new Runnable() {
-        @Override public void run() {
-            long now = System.nanoTime();
-            if (animate && lastFrame != 0) resident.frame(Math.min(0.25, (now - lastFrame) / 1e9));
-            lastFrame = now;
-            if (alive) main.postDelayed(this, 33);
-        }
-    };
+    private CompletableFuture<Uri> picking;
+    private CompletableFuture<Boolean> permitting;
 
-    @Override public void onCreate(Bundle saved) {
+    // Android draws edge to edge: margins on the content view move NativeActivity's content rect,
+    // which the GPUI backend reports as the safe area, so the shared layout clears the system bars.
+    @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
-        discovery = new CastDiscovery(this);
-        resident = new Resident(this::receive, this::fail);
-        scene = new NativeRenderer(this, this::control);
-        FrameLayout host = new FrameLayout(this);
-        host.setFitsSystemWindows(true);
-        host.addView(scene, new FrameLayout.LayoutParams(-1, -1));
-        setContentView(host);
-        try {
-            File folder = new File(getFilesDir(), "player");
-            refreshAssets(folder);
-            appearance(host, new File(folder, "player.machine.json"));
-            JSONArray arguments = new JSONArray().put("--machine").put(new File(folder, "player.machine.json").getAbsolutePath());
-            String skin = getIntent().getStringExtra("skin");
-            if (skin == null) skin = getSharedPreferences("casting", MODE_PRIVATE).getString("casting.selected-skin", null);
-            if (skin != null) arguments.put("--skin").put(skin);
-            JSONObject context = object("now", System.currentTimeMillis() / 1000, "offset", 0,
-                "platform", "android", "home", getFilesDir().getAbsolutePath(), "arguments", arguments);
-            resident.start(context);
-            main.post(frame);
-        } catch (IOException | JSONException | RuntimeException error) { fail(error); }
-    }
-
-    // [CAST-MOBILE-SKINS] Keep native chrome outside the machine's artboard.
-    private void appearance(FrameLayout host, File machine) throws IOException, JSONException {
-        JSONArray choices = new JSONObject(new String(Files.readAllBytes(machine.toPath()), StandardCharsets.UTF_8)).getJSONObject("inputs").getJSONObject("skins").getJSONArray("value");
-        if (choices.length() == 0) throw new JSONException("The player has no appearance choices");
-        Button button = new Button(this); button.setText(R.string.appearance); button.setAllCaps(false); button.setContentDescription(getString(R.string.appearance));
-        PopupMenu menu = new PopupMenu(this, button);
-        for (int i = 0; i < choices.length(); i++) {
-            JSONObject choice = choices.getJSONObject(i);
-            String key = choice.getString("key"), label = choice.getString("label");
-            if (key.isEmpty() || label.isEmpty()) throw new JSONException("Invalid appearance choice");
-            menu.getMenu().add(label).setOnMenuItemClickListener(ignored -> { send(object("kind", "lifecycle", "phase", "skin:" + key)); return true; });
-        }
-        button.setOnClickListener(ignored -> menu.show());
-        FrameLayout.LayoutParams size = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-        size.topMargin = size.rightMargin = Math.round(12 * getResources().getDisplayMetrics().density);
-        host.addView(button, size);
-    }
-
-    // [CAST-MOBILE-ABI] Replace generated resources without touching imported media.
-    private void refreshAssets(File target) throws IOException {
-        if (target.exists()) {
-            try (var paths = Files.walk(target.toPath())) {
-                var files = paths.sorted(java.util.Comparator.reverseOrder()).iterator();
-                while (files.hasNext()) Files.delete(files.next());
-            }
-        }
-        copyAssets("", target);
-    }
-
-    private void copyAssets(String path, File target) throws IOException {
-        String[] children = getAssets().list(path);
-        if (children == null) throw new IOException("Cannot enumerate player assets");
-        if (children.length == 0) {
-            File parent = target.getParentFile();
-            if (parent == null || (!parent.isDirectory() && !parent.mkdirs())) throw new IOException("Cannot create player asset folder");
-            try (InputStream input = getAssets().open(path)) { Files.copy(input, target.toPath(), StandardCopyOption.REPLACE_EXISTING); }
-        } else {
-            for (String child : children) copyAssets(path.isEmpty() ? child : path + "/" + child, new File(target, child));
-        }
-    }
-
-    private static byte[] utf8(String text) { return text.getBytes(StandardCharsets.UTF_8); }
-
-    static JSONObject object(Object... pairs) {
-        JSONObject object = new JSONObject();
-        try { for (int i = 0; i < pairs.length; i += 2) object.put((String) pairs[i], pairs[i + 1]); }
-        catch (JSONException error) { throw new IllegalArgumentException("Invalid host event", error); }
-        return object;
-    }
-
-    private void send(JSONObject event) {
-        if (alive) resident.send(event);
-    }
-
-    private void control(int ordinal, long revision, Object value, JSONObject binding) {
-        send(object("kind", "ui", "region", "root", "revision", revision, "ordinal", ordinal, "value", value, "binding", binding));
-    }
-
-    private void receive(JSONObject envelope, JSONArray streamed) {
-        if (!alive) return;
-        try { accept(envelope, streamed); } catch (IOException | JSONException | RuntimeException error) { fail(error); }
-    }
-
-    private void accept(JSONObject envelope, JSONArray streamed) throws JSONException, IOException {
-        JSONArray diagnostics = envelope.getJSONArray("diagnostics");
-        if (diagnostics.length() > 0) throw new JSONException(diagnostics.toString());
-        rememberAppearance(envelope.getJSONArray("slices"));
-        JSONArray patches = envelope.getJSONArray("patches");
-        for (int i = 0; i < patches.length(); i++) {
-            JSONObject patch = patches.getJSONObject(i);
-            if (patch.getString("key").equals("root")) {
-                scene.replace(patch.getJSONObject("node"), patch.getLong("revision"), streamed);
-                if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent().getBooleanExtra("captureEnvelope", false))
-                    Files.write(new File(getFilesDir(), "test-scene.json").toPath(), utf8(patch.toString()));
-            }
-        }
-        JSONArray requests = envelope.getJSONArray("requests");
-        for (int i = 0; i < requests.length(); i++) request(requests.getJSONObject(i));
-    }
-
-    // [CAST-MOBILE-SKIN-PERSISTENCE] Save only the shared app's accepted choice.
-    private void rememberAppearance(JSONArray slices) throws JSONException, IOException {
-        var settings = getSharedPreferences("casting", MODE_PRIVATE);
-        for (int i = 0; i < slices.length(); i++) {
-            JSONObject slice = slices.getJSONObject(i);
-            if (slice.getString("key").equals("casting.appearance-warning")) { appearanceNotice(slice.getString("text")); continue; }
-            if (!slice.getString("key").equals("casting.selected-skin")) continue;
-            String skin = slice.getString("text");
-            if (skin.isEmpty()) throw new JSONException("The selected appearance is empty");
-            if (!skin.equals(settings.getString("casting.selected-skin", null)) &&
-                !settings.edit().putString("casting.selected-skin", skin).commit())
-                throw new IOException("Cannot save the selected appearance");
-        }
-    }
-
-    // [CAST-MOBILE-APPEARANCE-RECOVERY] Present after applying the usable fallback tree.
-    private void appearanceNotice(String message) {
-        if (message.isEmpty()) return;
-        main.post(() -> {
-            if (alive) new android.app.AlertDialog.Builder(this).setTitle(R.string.appearance_restored)
-                .setMessage(message).setPositiveButton(android.R.string.ok, null).show();
+        View content = findViewById(android.R.id.content);
+        content.setOnApplyWindowInsetsListener((view, insets) -> {
+            Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return insets;
         });
     }
 
-    private void request(JSONObject request) throws JSONException {
-        String ticket = request.getString("ticket");
-        switch (request.getString("kind")) {
-        case "animate": animate = request.getBoolean("on"); main.post(() -> complete(ticket, object(), null)); break;
-        case "run":
-            if (!ticket.equals("discover") || !request.getString("slice").equals("cast-browse")) {
-                main.post(() -> complete(ticket, null, "Mobile casting does not execute processes")); break;
+    /** Called by the GPUI host, never on the main thread. Every failure is a typed answer. */
+    public String answer(String request) {
+        try {
+            JSONObject members = new JSONObject(request);
+            switch (members.getString("kind")) {
+                case "run": return browse(members).toString();
+                case "choose-file": return choose().toString();
+                default: return failed("unsupported capability " + members.getString("kind"));
             }
-            if (android.os.Build.VERSION.SDK_INT >= 37 && checkSelfPermission(android.Manifest.permission.ACCESS_LOCAL_NETWORK) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                permissionBrowse = request;
-                localNetwork.launch(android.Manifest.permission.ACCESS_LOCAL_NETWORK);
-                break;
-            }
-            String fixture = getIntent().getStringExtra("testReceiver");
-            if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && fixture != null) {
-                byte[] decoded = java.util.Base64.getDecoder().decode(fixture);
-                if (decoded.length > 65536) throw new JSONException("Receiver fixture exceeds the browse limit");
-                Native.slices.put("cast-browse", new String(decoded, StandardCharsets.UTF_8));
-                main.post(() -> complete(ticket, object(), null));
-                break;
-            }
-            discovery.start(text -> {
-                Native.slices.put("cast-browse", text);
-                complete(ticket, object(), null);
-            }, error -> complete(ticket, null, error.toString()));
-            break;
-        case "choose-file":
-            if (choosing != null) main.post(() -> complete(ticket, null, "A file picker is already open"));
-            else { choosing = ticket; picker.launch(new String[]{"audio/mpeg"}); }
-            break;
-        default: main.post(() -> complete(ticket, null, "Unsupported mobile capability: " + request.optString("kind")));
+        } catch (Exception error) {
+            return failed(String.valueOf(error.getMessage()));
         }
     }
 
-    private void complete(String ticket, JSONObject value, String error) {
-        send(error == null ? object("kind", "completed", "ticket", ticket, "ok", true, "result", value) :
-            object("kind", "completed", "ticket", ticket, "ok", false, "error", error));
+    private JSONObject browse(JSONObject members) throws Exception {
+        if (!"discover".equals(members.optString("ticket")) || !"cast-browse".equals(members.optString("slice"))) {
+            throw new IllegalArgumentException("Mobile casting does not execute processes");
+        }
+        if (!localNetworkAllowed()) throw new SecurityException(getString(R.string.local_network_denied));
+        String fixture = getIntent().getStringExtra("testReceiver");
+        if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && fixture != null) {
+            byte[] decoded = Base64.getDecoder().decode(fixture);
+            if (decoded.length > FIXTURE_LIMIT) throw new IllegalArgumentException("Receiver fixture exceeds the browse limit");
+            return browsed(new String(decoded, StandardCharsets.UTF_8));
+        }
+        CompletableFuture<String> found = new CompletableFuture<>();
+        main.post(() -> new CastDiscovery(this).start(found::complete, found::completeExceptionally));
+        return browsed(found.get(BROWSE_SECONDS, TimeUnit.SECONDS));
     }
 
-    private void fail(Exception error) {
-        animate = false;
-        if (resident != null) resident.close();
-        TextView message = new TextView(this);
-        message.setText(getString(R.string.casting_failed, error.toString()));
-        message.setPadding(24, 24, 24, 24);
-        setContentView(message);
+    private static JSONObject browsed(String transcript) throws JSONException {
+        JSONObject slice = new JSONObject().put("key", "cast-browse").put("text", transcript);
+        return new JSONObject().put("ok", true).put("result", new JSONObject()).put("slices", new JSONArray().put(slice));
     }
 
-    @Override protected void onDestroy() {
-        alive = false;
-        if (resident != null) resident.close();
-        main.removeCallbacks(frame);
-        discovery.cancel();
-        io.shutdownNow();
-        super.onDestroy();
+    private boolean localNetworkAllowed() throws Exception {
+        String permission = android.Manifest.permission.ACCESS_LOCAL_NETWORK;
+        if (android.os.Build.VERSION.SDK_INT < 37 || checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) return true;
+        CompletableFuture<Boolean> asked = new CompletableFuture<>();
+        main.post(() -> {
+            permitting = asked;
+            requestPermissions(new String[]{permission}, LOCAL_NETWORK);
+        });
+        return asked.get(PICKER_SECONDS, TimeUnit.SECONDS);
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(code, permissions, results);
+        if (code == LOCAL_NETWORK && permitting != null) {
+            permitting.complete(results.length > 0 && results[0] == android.content.pm.PackageManager.PERMISSION_GRANTED);
+            permitting = null;
+        }
+    }
+
+    private JSONObject choose() throws Exception {
+        CompletableFuture<Uri> chosen = new CompletableFuture<>();
+        main.post(() -> {
+            if (picking != null) {
+                chosen.completeExceptionally(new IllegalStateException("A file picker is already open"));
+                return;
+            }
+            picking = chosen;
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/mpeg"), PICK_DOCUMENT);
+        });
+        Uri uri = chosen.get(PICKER_SECONDS, TimeUnit.SECONDS);
+        JSONObject result = new JSONObject();
+        if (uri == null) {
+            result.put("cancelled", true).put("path", "");
+        } else {
+            File file = MediaDocuments.importAudio(this, uri);
+            result.put("cancelled", false).put("path", file.getAbsolutePath());
+        }
+        return new JSONObject().put("ok", true).put("result", result).put("slices", new JSONArray());
+    }
+
+    @Override protected void onActivityResult(int code, int result, Intent data) {
+        super.onActivityResult(code, result, data);
+        if (code == PICK_DOCUMENT && picking != null) {
+            picking.complete(result == RESULT_OK && data != null ? data.getData() : null);
+            picking = null;
+        }
+    }
+
+    private static String failed(String problem) {
+        try {
+            return new JSONObject().put("ok", false).put("error", problem).toString();
+        } catch (JSONException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 }
