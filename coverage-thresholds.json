@@ -221,6 +221,10 @@
         "threshold": 100,
         "language": "c"
       },
+      "http_client_chunks": {
+        "threshold": 100,
+        "language": "c"
+      },
       "http_server_request": {
         "threshold": 95,
         "language": "c"

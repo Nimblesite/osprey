@@ -13,7 +13,6 @@
 #include <stdio.h>
 #include <unistd.h>
 
-static const char NUL_REFUSED[] = "http response: NUL byte: a string cannot hold it";
 static const char TOO_BIG_REFUSED[] =
     "http response: chunked body: chunk size exceeds the remaining body";
 static const char HEAD_CUT[] = "http response: head: truncated";
@@ -21,67 +20,10 @@ static const char HEAD_BAD[] = "http response: head: malformed";
 static const char BODY_CUT[] = "http response: body: truncated";
 static const char LENGTH_BAD[] = "http response: body: invalid Content-Length";
 
-// Handles are never reused, and servers share their numbering with clients, so
-// these hundreds of cases share one client rather than spend hundreds of handles.
-static int64_t client_id;
-static bool hold_connections_open;
-
-static int64_t exchange(const char *reply, size_t len) {
-  ScriptedOrigin origin;
-  origin_start_bytes(&origin, reply, len);
-  origin.hold_open = hold_connections_open; // read only once the request arrives
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/f",
-                                     (char *)(uintptr_t) "");
-  origin_stop(&origin);
-  return handle;
-}
-
-static void expect_response_n(const char *reply, size_t len, int64_t status,
-                              const char *body) {
-  long live = test_alloc_live();
-  osp_io_error_clear();
-  int64_t handle = exchange(reply, len);
-  assert(handle >= 1);
-  assert(osp_io_error() == NULL);
-  assert(http_response_status(handle) == status);
-  char *got = http_response_body(handle);
-  assert(got != NULL && strcmp(got, body) == 0);
-  free(got);
-  assert(http_response_free(handle) == 0);
-  assert(test_alloc_live() == live);
-}
-
-// Answered with this code and message, nothing leaked, the client still usable.
-static void expect_failure_n(const char *reply, size_t len, int64_t code,
-                             const char *message) {
-  static const char good[] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
-  long live = test_alloc_live();
-  osp_io_error_clear();
-  assert(exchange(reply, len) == code);
-  assert(osp_io_error() != NULL && strcmp(osp_io_error(), message) == 0);
-  assert(test_alloc_live() == live);
-  osp_io_error_clear();
-  int64_t handle = exchange(good, sizeof(good) - 1);
-  assert(handle >= 1 && osp_io_error() == NULL);
-  assert(http_response_free(handle) == 0);
-}
-
-static void expect_refused_n(const char *reply, size_t len, const char *message) {
-  expect_failure_n(reply, len, -14, message);
-}
-
-#define EXPECT_REFUSED(reply, message)                                         \
-  expect_refused_n(reply, sizeof(reply) - 1, message)
-#define EXPECT_RESPONSE(reply, status, body)                                   \
-  expect_response_n(reply, sizeof(reply) - 1, status, body)
-#define EXPECT_NUL_REFUSED(reply)                                              \
-  expect_refused_n(reply, sizeof(reply) - 1, NUL_REFUSED)
-
 // 204 and 304 end at the blank line whatever their headers say (RFC 9112 6.3).
 static void check_statuses_without_a_body(void) {
   EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n", 304, "");
   EXPECT_RESPONSE("HTTP/1.1 204 No Content\r\nTransfer-Encoding: chunked\r\n\r\n", 204, "");
-  EXPECT_RESPONSE("HTTP/1.0 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n", 304, "");
   EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\n\r\n", 304, "");
   EXPECT_RESPONSE("HTTP/1.1 204 No Content\r\n\r\n", 204, "");
   EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\nETag: \"a\"\r\nContent-Length: 5\r\n\r\n", 304, "");
@@ -112,7 +54,10 @@ static void check_nul_bytes(void) {
   EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\n\0\r\n\r\nhello");
   EXPECT_NUL_REFUSED("HTTP/1.1 2\0 OK\r\n\r\nhello");
   EXPECT_NUL_REFUSED("\0HTTP/1.1 200 OK\r\n\r\nhello");
-  EXPECT_NUL_REFUSED("HTTP/1.1 304 Not Modified\r\n\r\n\0");
+  // Past the end of the framing, it isn't part of the response.
+  EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\n\r\n\0", 304, "");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok\0", 200, "ok");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n\0", 200, "");
 }
 
 // Repeated Transfer-Encoding lines are one list, so the last line's last coding
@@ -173,10 +118,10 @@ static void check_interim_heads_are_checked(void) {
 // reporting what arrived so far as the whole body is how a cut goes unnoticed.
 // Framing that is complete needs no close, and framing that isn't stays refused.
 static void check_reads_that_never_saw_the_close(void) {
-  int64_t patient = client_id;
-  client_id = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", 150);
-  assert(client_id > 0);
-  hold_connections_open = true;
+  int64_t patient = shared_origin_client;
+  shared_origin_client = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", 150);
+  assert(shared_origin_client > 0);
+  origin_holds_connections = true;
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\n\r\nhalf a bo", BODY_CUT);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nhalf a bo", BODY_CUT);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nhalf", BODY_CUT);
@@ -186,9 +131,9 @@ static void check_reads_that_never_saw_the_close(void) {
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n", 200, "ok");
   EXPECT_RESPONSE("HTTP/1.1 204 No Content\r\n\r\n", 204, "");
   EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\n\r\n", 304, "");
-  hold_connections_open = false;
-  http_close_client(client_id);
-  client_id = patient;
+  origin_holds_connections = false;
+  http_close_client(shared_origin_client);
+  shared_origin_client = patient;
 }
 
 static void ignore_signal(int signo) {
@@ -209,7 +154,7 @@ static int64_t exchange_interrupted(void) {
   ScriptedOrigin origin;
   origin_start(&origin, "HTTP/1.1 200 OK\r\n\r\nok");
   origin.reply_delay_us = 200000; // read only once the request arrives
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/f",
+  int64_t handle = http_get_response(shared_origin_client, (char *)(uintptr_t) "/f",
                                      (char *)(uintptr_t) "");
   origin_stop(&origin);
   assert(pthread_join(interrupter, NULL) == 0);
@@ -245,10 +190,10 @@ static void check_header_allocation_failure(void) {
   int len = snprintf(reply, sizeof(reply), "HTTP/1.1 200 OK\r\n%s\r\n\r\n2\r\nhi\r\n0\r\n\r\n", head);
   long live = test_alloc_live();
   test_alloc_fail_size((size_t)block + 1);
-  assert(exchange(reply, (size_t)len) == -9);
+  assert(origin_exchange(reply, (size_t)len) == -9);
   test_alloc_fail_off();
   assert(test_alloc_live() == live);
-  int64_t handle = exchange(reply, (size_t)len);
+  int64_t handle = origin_exchange(reply, (size_t)len);
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, "hi") == 0);
@@ -334,7 +279,7 @@ static void check_interim_responses(void) {
   static const char interim[] = "HTTP/1.1 100 a\r\n\r\nHTTP/1.1 201 b\r\n\r\n";
   ScriptedOrigin origin;
   origin_start(&origin, interim);
-  assert(http_get(client_id, (char *)(uintptr_t) "/s", (char *)(uintptr_t) "") == 201);
+  assert(http_get(shared_origin_client, (char *)(uintptr_t) "/s", (char *)(uintptr_t) "") == 201);
   origin_stop(&origin);
 }
 
@@ -469,7 +414,7 @@ static void check_every_response_mutation(void) {
 }
 
 void test_response_framing(void) {
-  client_id = origin_client();
+  shared_origin_client = origin_client();
   check_every_response_mutation();
   check_status_lines();
   check_interim_responses();
@@ -485,5 +430,5 @@ void test_response_framing(void) {
   check_interrupted_read();
   check_header_allocation_failure();
   check_bodies_past_the_transport_buffer();
-  http_close_client(client_id);
+  http_close_client(shared_origin_client);
 }

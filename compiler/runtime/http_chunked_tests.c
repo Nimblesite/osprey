@@ -35,7 +35,7 @@ static void expect_body_n(const char *bytes, size_t len, const char *body,
   free(out);
 }
 
-static void expect_refused_n(const char *bytes, size_t len, const char *why) {
+static void expect_decode_refused_n(const char *bytes, size_t len, const char *why) {
   const char *reason = NULL;
   char *out = decode(bytes, len, &reason);
   assert(out == NULL);
@@ -45,8 +45,8 @@ static void expect_refused_n(const char *bytes, size_t len, const char *why) {
 // String-literal forms; the _n forms take the literals that hold a NUL.
 #define EXPECT_BODY(bytes, body)                                               \
   expect_body_n(bytes, sizeof(bytes) - 1, body, sizeof(body) - 1)
-#define EXPECT_REFUSED(bytes, why)                                             \
-  expect_refused_n(bytes, sizeof(bytes) - 1, why)
+#define EXPECT_DECODE_REFUSED(bytes, why)                                             \
+  expect_decode_refused_n(bytes, sizeof(bytes) - 1, why)
 
 static void check_table(void) {
   EXPECT_BODY("0\r\n\r\n", "");
@@ -66,67 +66,67 @@ static void check_table(void) {
   EXPECT_BODY("3\r\nabc\r\n0\r\n\r\nleft over", "abc");
   EXPECT_BODY("5\r\nhe\0lo\r\n0\r\n\r\n", "he\0lo");
 
-  EXPECT_REFUSED("10\r\nhi\r\n0\r\n\r\n", TOO_BIG);
-  EXPECT_REFUSED("6\r\nhello", TOO_BIG);
-  EXPECT_REFUSED("1\r\n", TOO_BIG);
-  EXPECT_REFUSED("7FFFFFFF\r\nhi\r\n0\r\n\r\n", TOO_BIG);
-  EXPECT_REFUSED("80000000\r\nhi\r\n0\r\n\r\n", TOO_BIG);
-  EXPECT_REFUSED("FFFFFFFF\r\nhi\r\n0\r\n\r\n", TOO_BIG);
-  EXPECT_REFUSED("7FFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", TOO_BIG);
-  EXPECT_REFUSED("8000000000000000\r\nhi\r\n0\r\n\r\n", TOO_BIG);
-  EXPECT_REFUSED("FFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", TOO_BIG);
-  EXPECT_REFUSED("3\r\nabc\r\n100\r\nhi\r\n0\r\n\r\n", TOO_BIG);
+  EXPECT_DECODE_REFUSED("10\r\nhi\r\n0\r\n\r\n", TOO_BIG);
+  EXPECT_DECODE_REFUSED("6\r\nhello", TOO_BIG);
+  EXPECT_DECODE_REFUSED("1\r\n", TOO_BIG);
+  EXPECT_DECODE_REFUSED("7FFFFFFF\r\nhi\r\n0\r\n\r\n", TOO_BIG);
+  EXPECT_DECODE_REFUSED("80000000\r\nhi\r\n0\r\n\r\n", TOO_BIG);
+  EXPECT_DECODE_REFUSED("FFFFFFFF\r\nhi\r\n0\r\n\r\n", TOO_BIG);
+  EXPECT_DECODE_REFUSED("7FFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", TOO_BIG);
+  EXPECT_DECODE_REFUSED("8000000000000000\r\nhi\r\n0\r\n\r\n", TOO_BIG);
+  EXPECT_DECODE_REFUSED("FFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", TOO_BIG);
+  EXPECT_DECODE_REFUSED("3\r\nabc\r\n100\r\nhi\r\n0\r\n\r\n", TOO_BIG);
 
-  EXPECT_REFUSED("10000000000000000\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("10000000000000005\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("FFFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("-1\r\nhi\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("-0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("+5\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("0x5\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED(" 5\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("\t5\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("zz\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5z\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5 z\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("\r\n", BAD_SIZE);
-  EXPECT_REFUSED(";a\r\nhi\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5\nhello\n0\n\n", BAD_SIZE);
-  EXPECT_REFUSED("3\r\nabc\r\nzz\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5\r\nhello\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("\0", BAD_SIZE);
-  EXPECT_REFUSED("5\0\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5;a\nb\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5;a\rb\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5;\n\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5;a\x01\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5;a\x7f\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("5;a\0b\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("0;a\nb\r\n\r\n", BAD_SIZE);
-  EXPECT_REFUSED("0\r\nX\nY: 1\r\n\r\n", BAD_TRAILER);
-  EXPECT_REFUSED("2\r\nhi\r\n0\r\nX: a\rb\r\n\r\n", BAD_TRAILER);
-  EXPECT_REFUSED("0\r\nX: 1\r\nY\x01: 2\r\n\r\n", BAD_TRAILER);
-  EXPECT_REFUSED("0\0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("10000000000000000\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("10000000000000005\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("FFFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("-1\r\nhi\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("-0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("+5\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("0x5\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED(" 5\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("\t5\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("zz\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5z\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5 z\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED(";a\r\nhi\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5\nhello\n0\n\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("3\r\nabc\r\nzz\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5\r\nhello\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("\0", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5\0\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5;a\nb\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5;a\rb\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5;\n\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5;a\x01\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5;a\x7f\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("5;a\0b\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("0;a\nb\r\n\r\n", BAD_SIZE);
+  EXPECT_DECODE_REFUSED("0\r\nX\nY: 1\r\n\r\n", BAD_TRAILER);
+  EXPECT_DECODE_REFUSED("2\r\nhi\r\n0\r\nX: a\rb\r\n\r\n", BAD_TRAILER);
+  EXPECT_DECODE_REFUSED("0\r\nX: 1\r\nY\x01: 2\r\n\r\n", BAD_TRAILER);
+  EXPECT_DECODE_REFUSED("0\0\r\n\r\n", BAD_SIZE);
 
-  EXPECT_REFUSED("5\r\nhelloXX0\r\n\r\n", NO_CRLF);
-  EXPECT_REFUSED("5\r\nhello\n0\r\n\r\n", NO_CRLF);
-  EXPECT_REFUSED("5\r\nhello\rX0\r\n\r\n", NO_CRLF);
-  EXPECT_REFUSED("4\r\nhello\r\n0\r\n\r\n", NO_CRLF);
-  EXPECT_REFUSED("6\r\nhello\r\n0\r\n\r\n", NO_CRLF);
+  EXPECT_DECODE_REFUSED("5\r\nhelloXX0\r\n\r\n", NO_CRLF);
+  EXPECT_DECODE_REFUSED("5\r\nhello\n0\r\n\r\n", NO_CRLF);
+  EXPECT_DECODE_REFUSED("5\r\nhello\rX0\r\n\r\n", NO_CRLF);
+  EXPECT_DECODE_REFUSED("4\r\nhello\r\n0\r\n\r\n", NO_CRLF);
+  EXPECT_DECODE_REFUSED("6\r\nhello\r\n0\r\n\r\n", NO_CRLF);
 
-  EXPECT_REFUSED("", CUT_SHORT);
-  EXPECT_REFUSED("5", CUT_SHORT);
-  EXPECT_REFUSED("5\r", CUT_SHORT);
-  EXPECT_REFUSED("5 ", CUT_SHORT);
-  EXPECT_REFUSED("5;a", CUT_SHORT);
-  EXPECT_REFUSED("5\r\nhello", CUT_SHORT);
-  EXPECT_REFUSED("5\r\nhello\r", CUT_SHORT);
-  EXPECT_REFUSED("5\r\nhello\r\n", CUT_SHORT);
-  EXPECT_REFUSED("0", CUT_SHORT);
-  EXPECT_REFUSED("0\r\n", CUT_SHORT);
-  EXPECT_REFUSED("0\r\n\r", CUT_SHORT);
-  EXPECT_REFUSED("0\r\nX-A: 1", CUT_SHORT);
-  EXPECT_REFUSED("0\r\nX-A: 1\r\n", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("5", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("5\r", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("5 ", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("5;a", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("5\r\nhello", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("5\r\nhello\r", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("5\r\nhello\r\n", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("0", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("0\r\n", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("0\r\n\r", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("0\r\nX-A: 1", CUT_SHORT);
+  EXPECT_DECODE_REFUSED("0\r\nX-A: 1\r\n", CUT_SHORT);
 }
 
 // A body is only complete at its final CRLF, so every shorter cut is refused.
@@ -186,21 +186,21 @@ static void check_every_bit_width(void) {
       int n = snprintf(framing, sizeof(framing), "%llx\r\nhello\r\n0\r\n\r\n",
                        (unsigned long long)forms[form]);
       assert(n > 0);
-      expect_refused_n(framing, (size_t)n, TOO_BIG);
+      expect_decode_refused_n(framing, (size_t)n, TOO_BIG);
       n = snprintf(framing, sizeof(framing), "%llX;x\r\nhello\r\n0\r\n\r\n",
                    (unsigned long long)forms[form]);
       assert(n > 0);
-      expect_refused_n(framing, (size_t)n, TOO_BIG);
+      expect_decode_refused_n(framing, (size_t)n, TOO_BIG);
     }
   }
   for (size_t digits = 17; digits <= 40; digits++) {
     char framing[80];
     memset(framing, 'F', digits);
     memcpy(framing + digits, "\r\nhi\r\n0\r\n\r\n", 11);
-    expect_refused_n(framing, digits + 11, BAD_SIZE);
+    expect_decode_refused_n(framing, digits + 11, BAD_SIZE);
     framing[0] = '1';
     memset(framing + 1, '0', digits - 1);
-    expect_refused_n(framing, digits + 11, BAD_SIZE);
+    expect_decode_refused_n(framing, digits + 11, BAD_SIZE);
   }
 }
 
@@ -303,7 +303,7 @@ static void check_large_bodies(void) {
   memcpy(framing + (size_t)head + payload_len, "\r\n0\r\n\r\n", 7);
   size_t whole = (size_t)head + payload_len + 7;
   expect_body_n(framing, whole, payload, payload_len);
-  expect_refused_n(framing, whole - 7 - 1, TOO_BIG);
+  expect_decode_refused_n(framing, whole - 7 - 1, TOO_BIG);
 
   size_t at = 0;
   for (size_t i = 0; i < 100000; i++) {

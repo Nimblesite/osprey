@@ -347,6 +347,7 @@ void run_all_http_tests(void) {
   test_client_malformed_chunks();
   test_chunked_decoder();
   test_response_framing();
+  test_response_read_bounds();
   test_client_response_allocation_failures(); // arms the alloc injector; runs before anything reallocate-hungry
   test_client_tls_handshake_failure();
   test_client_handle_bounds();

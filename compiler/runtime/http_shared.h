@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // Sockets: Winsock2 on Windows (via the compat header), BSD sockets elsewhere.
 #ifdef _WIN32
@@ -28,6 +29,17 @@
 // Winsock needs starting before the first socket call; BSD sockets do not.
 static inline void osprey_wsa_init(void) {}
 #endif
+
+static inline uint64_t osp_monotonic_ms(void) {
+#ifdef _WIN32
+  return (uint64_t)GetTickCount64();
+#else
+  struct timespec now;
+  return clock_gettime(CLOCK_MONOTONIC, &now) == 0
+             ? (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U
+             : 0;
+#endif
+}
 
 // Constants
 #define MAX_HTTP_BUFFER 8192

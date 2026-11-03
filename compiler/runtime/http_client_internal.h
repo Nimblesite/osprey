@@ -9,6 +9,35 @@
 // (http_client_runtime.c) and the generic response-handle TU
 // (http_client_response.c). Not part of the Osprey-visible builtin surface.
 
+// What the client will read of one response. Implements [HTTP-RESPONSE-FRAMING].
+#define HTTP_MAX_RESPONSE_BYTES ((size_t)64 * 1024 * 1024)
+#define HTTP_READ_BOUND_FACTOR 10 // times the client's timeout: the whole read
+#define HTTP_READ_BOUND_UNTIMED_MS ((int64_t)10 * 60 * 1000) // with a timeout of 0
+
+// Where a walk over a chunked body has got to, within the whole response.
+typedef struct {
+  size_t pos;      // start of the line or chunk data awaited
+  size_t searched; // how far the awaited line has been searched for its end
+  size_t size;     // the chunk data awaited, when not 0
+  bool in_trailers;
+} ChunkWalk;
+
+typedef enum { FRAME_HEAD, FRAME_CHUNKS, FRAME_LENGTH, FRAME_CLOSE } FramePhase;
+
+// Where the search for the end of a response's framing has got to. Zero to start.
+typedef struct {
+  FramePhase phase;
+  size_t head;      // start of the head awaited
+  size_t searched;  // how far that head has been searched for its blank line
+  size_t frame_end; // FRAME_LENGTH: where the response ends
+  ChunkWalk chunks;
+} HttpFrameScan;
+
+bool http_frame_complete(HttpFrameScan *scan, const char *raw, size_t len, size_t *frame_end);
+bool http_chunks_complete(ChunkWalk *walk, const char *raw, size_t len, size_t *frame_end);
+const char *http_find_crlf(const char *p, const char *end);
+bool http_has_control_byte(const char *p, const char *end);
+
 // Performs the request over http:// or https:// and returns the ENTIRE raw
 // response in a freshly allocated, NUL-terminated buffer (caller frees
 // *out_raw). *out_closed says the peer closed in good order, not that a read

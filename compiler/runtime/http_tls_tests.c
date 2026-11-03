@@ -1,9 +1,11 @@
 // TLS origin tests, split from http_runtime_tests.c: a real OpenSSL server
 // presenting test-generated certificate chains, so peer verification is
 // asserted end to end [HTTP-STATUS-CLIENT].
+#include "http_client_internal.h"
 #include "http_runtime_tests.h"
 #include "io_error.h"
 #include "http_shared.h"
+#include "socket_safety.h"
 
 #include <assert.h>
 #include <openssl/err.h>
@@ -60,6 +62,8 @@ typedef struct {
   SSL_CTX *ctx;
   const char *reply;
   bool abrupt; // close without the close_notify, as a cut connection does
+  bool hold_open; // keep the session open after replying, until the client leaves
+  unsigned drip_us; // send the reply's TLS records a byte at a time, this far apart
   char request[MAX_HTTP_BUFFER];
 } TlsOrigin;
 
@@ -94,20 +98,39 @@ static void tls_origin_read_request(SSL *ssl, char *out, size_t capacity) {
   }
 }
 
+// Writes the reply's records into memory, then puts them on the wire one byte at a
+// time: a client's SSL_read can sit inside one record for as long as this goes on.
+static void tls_origin_drip(SSL *ssl, int fd, const char *reply, unsigned drip_us) {
+  BIO *pending = BIO_new(BIO_s_mem());
+  assert(pending != NULL);
+  SSL_set0_wbio(ssl, pending); // the session owns it now
+  assert(SSL_write(ssl, reply, (int)strlen(reply)) > 0);
+  char byte;
+  while (BIO_read(pending, &byte, 1) == 1 && osp_socket_send(fd, &byte, 1) == 1) {
+    usleep(drip_us);
+  }
+}
+
 static void *tls_origin_thread(void *arg) {
   TlsOrigin *origin = (TlsOrigin *)arg;
   int fd = accept(origin->listen_fd, NULL, NULL);
   if (fd < 0) {
     return NULL;
   }
+  (void)osp_socket_configure_no_sigpipe(fd); // the client may leave mid-reply
   SSL *ssl = SSL_new(origin->ctx);
   if (ssl) {
     SSL_set_fd(ssl, fd);
     if (SSL_accept(ssl) == 1) {
       tls_origin_read_request(ssl, origin->request,
                               sizeof(origin->request));
-      if (origin->reply) {
+      if (origin->drip_us) {
+        tls_origin_drip(ssl, fd, origin->reply, origin->drip_us);
+      } else if (origin->reply) {
         SSL_write(ssl, origin->reply, (int)strlen(origin->reply));
+      }
+      char byte;
+      while (origin->hold_open && SSL_read(ssl, &byte, 1) > 0) {
       }
     }
     if (!origin->abrupt) {
@@ -277,6 +300,50 @@ static void tls_expect_truncation_refused(EVP_PKEY *key, X509 *leaf) {
   osp_io_error_clear();
 }
 
+static int64_t tls_bounded_exchange(EVP_PKEY *key, X509 *leaf, const char *reply,
+                                    int64_t timeout_ms, bool hold_open, unsigned drip_us) {
+  TlsOrigin origin;
+  tls_origin_start(&origin, leaf, key, reply);
+  origin.hold_open = hold_open; // read only once the request below has arrived
+  origin.drip_us = drip_us;
+  int64_t client_id = http_create_client((char *)(uintptr_t) "https://127.0.0.1:18090", timeout_ms);
+  assert(client_id > 0);
+  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/x",
+                                     (char *)(uintptr_t) "");
+  tls_origin_stop(&origin);
+  http_close_client(client_id);
+  return handle;
+}
+
+// TLS reads to the same bounds. A record dripped a byte at a time never returns from
+// a blocking SSL_read, so this is what proves the bound isn't only checked between
+// reads [HTTP-RESPONSE-FRAMING].
+static void tls_expect_read_bounds(EVP_PKEY *key, X509 *leaf) {
+  uint64_t started = osp_monotonic_ms();
+  int64_t handle = tls_bounded_exchange(key, leaf,
+      "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 20000, true, 0);
+  assert(handle >= 1 && http_response_status(handle) == 200);
+  assert(http_response_free(handle) == 0);
+  handle = tls_bounded_exchange(key, leaf,
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n", 20000, true, 0);
+  assert(handle >= 1);
+  assert(http_response_free(handle) == 0);
+  assert((int64_t)(osp_monotonic_ms() - started) < 3000);
+
+  osp_io_error_clear();
+  started = osp_monotonic_ms();
+  assert(tls_bounded_exchange(key, leaf,
+      "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 100, false, 40000) == -16);
+  int64_t took = (int64_t)(osp_monotonic_ms() - started);
+  assert(took >= 100 * HTTP_READ_BOUND_FACTOR - 100 && took < 100 * (HTTP_READ_BOUND_FACTOR + 5));
+  assert(strcmp(osp_io_error(), "http response: read: over the time limit") == 0);
+  osp_io_error_clear();
+  assert(tls_bounded_exchange(key, leaf,
+      "HTTP/1.0 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nok", 3000, false, 0) == -14);
+  assert(strcmp(osp_io_error(), "http response: head: Transfer-Encoding on HTTP/1.0") == 0);
+  osp_io_error_clear();
+}
+
 // TLS is only a different pipe: hostile framing arriving through it is decoded or
 // refused exactly as in the clear [HTTP-CHUNKED-DECODE], [HTTP-RESPONSE-FRAMING].
 static void tls_expect_framing_enforced(EVP_PKEY *ca_key, X509 *ca) {
@@ -298,6 +365,7 @@ static void tls_expect_framing_enforced(EVP_PKEY *ca_key, X509 *ca) {
   assert(tls_exchange(key, leaf, "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nhel", false) == -14);
   assert(tls_exchange(key, leaf, "HTTP/1.1 -14 X\r\n\r\nhel", false) == -8);
   tls_expect_truncation_refused(key, leaf);
+  tls_expect_read_bounds(key, leaf);
   osp_io_error_clear();
   X509_free(leaf);
   EVP_PKEY_free(key);

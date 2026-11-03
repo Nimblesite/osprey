@@ -34,163 +34,31 @@ static TransferCoding last_coding(const char *value, const char *end,
 }
 
 // Repeated lines are one list, so the last coding on any of them decides. Any other
-// header that merely mentions either word does not count.
-static TransferCoding final_coding(const char *headers) {
+// header that merely mentions either word does not count. Lines end at CRLF or at
+// stop, which is where the header block ends.
+static TransferCoding final_coding(const char *lines, const char *stop) {
   static const size_t name_len = 18;
   TransferCoding coding = CODING_NONE;
-  for (const char *line = headers; line && *line;) {
+  for (const char *line = lines; line && line < stop;) {
     const char *eol = strstr(line, "\r\n");
     if (strncasecmp(line, "Transfer-Encoding:", name_len) == 0) {
-      const char *value = line + name_len;
-      coding = last_coding(value, eol ? eol : value + strlen(value), coding);
+      coding = last_coding(line + name_len, eol ? eol : stop, coding);
     }
     line = eol ? eol + 2 : NULL;
   }
   return coding;
 }
 
+// The end of a NUL-terminated header block, which may be absent.
+static const char *block_end(const char *headers) {
+  return headers ? headers + strlen(headers) : NULL;
+}
+
 // http_header_is_chunked reports whether the response header block names chunked
 // as the final coding of its Transfer-Encoding header (case-insensitive, per
 // RFC 9112 6.1).
 bool http_header_is_chunked(const char *headers) {
-  return final_coding(headers) == CODING_CHUNKED;
-}
-
-static const char CHUNK_TOO_BIG[] = "chunk size exceeds the remaining body";
-static const char CHUNK_BAD_SIZE[] = "invalid chunk size";
-static const char CHUNK_NO_CRLF[] = "chunk data not followed by CRLF";
-static const char CHUNK_CUT_SHORT[] = "truncated";
-static const char CHUNK_BAD_TRAILER[] = "invalid trailer";
-
-static const char *find_crlf(const char *p, const char *end) {
-  for (; end - p >= 2; p++) {
-    if (p[0] == '\r' && p[1] == '\n') {
-      return p;
-    }
-  }
-  return NULL;
-}
-
-static bool has_control_byte(const char *p, const char *end) {
-  for (; p < end; p++) {
-    if (((unsigned char)*p < 0x20 && *p != '\t') || *p == 0x7f) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static int hex_digit(char c) {
-  if (c >= '0' && c <= '9') {
-    return c - '0';
-  }
-  if (c >= 'a' && c <= 'f') {
-    return c - 'a' + 10;
-  }
-  return c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
-}
-
-// Parses "<hex-size>[ws][;ext]\r\n" at *cursor and moves past it. Returns NULL,
-// or why the line is malformed. A size that overflows is malformed, so it can
-// never wrap round to a small value that passes the caller's bound.
-static const char *parse_chunk_size(const char **cursor, const char *end,
-                                    size_t *size) {
-  const char *p = *cursor;
-  const char *digits = p;
-  *size = 0;
-  for (; p < end && hex_digit(*p) >= 0; p++) {
-    if (*size > SIZE_MAX / 16) {
-      return CHUNK_BAD_SIZE;
-    }
-    *size = *size * 16 + (size_t)hex_digit(*p);
-  }
-  if (p == end) {
-    return CHUNK_CUT_SHORT;
-  }
-  if (p == digits) {
-    return CHUNK_BAD_SIZE;
-  }
-  while (p < end && (*p == ' ' || *p == '\t')) {
-    p++;
-  }
-  if (p == end) {
-    return CHUNK_CUT_SHORT;
-  }
-  if (*p != ';' && *p != '\r') {
-    return CHUNK_BAD_SIZE;
-  }
-  const char *line_end = find_crlf(p, end);
-  if (!line_end) {
-    return *p == ';' || end - p == 1 ? CHUNK_CUT_SHORT : CHUNK_BAD_SIZE;
-  }
-  if (has_control_byte(p, line_end)) {
-    return CHUNK_BAD_SIZE; // a bare CR or LF here is how smuggled framing hides
-  }
-  *cursor = line_end + 2;
-  return NULL;
-}
-
-// Decodes every chunk of [p, end) into out, which holds end - p + 1 bytes: the
-// decoded bytes can't outnumber the framed ones. The body ends at the blank line
-// after the zero chunk's trailers, and bytes after it are ignored, as the
-// connection closes there. Returns NULL, or why the framing is malformed.
-static const char *decode_chunks(const char *p, const char *end, char *out) {
-  size_t out_len = 0;
-  for (;;) {
-    size_t size = 0;
-    const char *malformed = parse_chunk_size(&p, end, &size);
-    if (malformed) {
-      return malformed;
-    }
-    if (size == 0) {
-      break;
-    }
-    if (size > (size_t)(end - p)) {
-      return CHUNK_TOO_BIG;
-    }
-    memcpy(out + out_len, p, size);
-    out_len += size;
-    p += size;
-    if (end - p < 2) {
-      return CHUNK_CUT_SHORT;
-    }
-    if (p[0] != '\r' || p[1] != '\n') {
-      return CHUNK_NO_CRLF;
-    }
-    p += 2;
-  }
-  out[out_len] = '\0';
-  for (;;) {
-    const char *line_end = find_crlf(p, end);
-    if (!line_end) {
-      return CHUNK_CUT_SHORT;
-    }
-    if (line_end == p) {
-      return NULL;
-    }
-    if (has_control_byte(p, line_end)) {
-      return CHUNK_BAD_TRAILER;
-    }
-    p = line_end + 2;
-  }
-}
-
-// http_decode_chunked decodes the len bytes of an HTTP/1.1 chunked body. Returns
-// a freshly allocated, NUL-terminated body (caller frees), or NULL with *malformed
-// saying what is wrong with the framing, or NULL with *malformed NULL when out of
-// memory. Nothing partial comes back. Implements [HTTP-CHUNKED-DECODE].
-char *http_decode_chunked(const char *body, size_t len, const char **malformed) {
-  *malformed = NULL;
-  char *out = malloc(len + 1);
-  if (!out) {
-    return NULL;
-  }
-  *malformed = decode_chunks(body, body + len, out);
-  if (*malformed) {
-    free(out);
-    return NULL;
-  }
-  return out;
+  return final_coding(headers, block_end(headers)) == CODING_CHUNKED;
 }
 
 // http_parse_status_line returns the status from an HTTP/1.x status line, or -8.
@@ -213,20 +81,31 @@ int64_t http_parse_status_line(const char *raw) {
 // from the header scan: no stray control byte, folded line or space in a name.
 static bool head_is_well_formed(const char *head, const char *sep) {
   const char *eol = strstr(head, "\r\n");
-  if (has_control_byte(head, eol)) {
+  if (http_has_control_byte(head, eol)) {
     return false;
   }
   while (eol != sep) {
     const char *line = eol + 2;
     eol = strstr(line, "\r\n");
     const char *colon = memchr(line, ':', (size_t)(eol - line));
-    if (!colon || colon == line || has_control_byte(line, eol) ||
+    if (!colon || colon == line || http_has_control_byte(line, eol) ||
         memchr(line, ' ', (size_t)(colon - line)) ||
         memchr(line, '\t', (size_t)(colon - line))) {
       return false;
     }
   }
   return true;
+}
+
+// Interim statuses are skipped; 101 is final, as nothing after it is HTTP.
+static bool status_is_interim(int64_t status) {
+  return status >= 100 && status < 200 && status != 101;
+}
+
+// RFC 9112 6.1: a coding on HTTP/1.0 is faulty framing, even with a Content-Length.
+static bool coding_on_http_1_0(const char *head, const char *sep) {
+  return strncmp(head, "HTTP/1.0 ", 9) == 0 &&
+         final_coding(strstr(head, "\r\n") + 2, sep) != CODING_NONE;
 }
 
 // http_final_response skips interim 1xx responses, which aren't the answer. 101 is
@@ -237,8 +116,7 @@ const char *http_final_response(const char *raw) {
   for (;;) {
     int64_t status = http_parse_status_line(head);
     const char *sep = strstr(head, "\r\n\r\n");
-    if (status < 100 || status >= 200 || status == 101 || !sep ||
-        !head_is_well_formed(head, sep)) {
+    if (!status_is_interim(status) || !sep || !head_is_well_formed(head, sep)) {
       return head;
     }
     head = sep + 4;
@@ -285,15 +163,15 @@ static bool parse_content_length(const char *value, const char *end, size_t *out
 
 // Reads the Content-Length lines of a header block. False when one is malformed or
 // they disagree; otherwise *declared says whether there was one, of *length.
-static bool declared_length(const char *headers, bool *declared, size_t *length) {
+static bool declared_length(const char *lines, const char *stop, bool *declared,
+                            size_t *length) {
   static const size_t name_len = 15;
   *declared = false;
-  for (const char *line = headers; line && *line;) {
+  for (const char *line = lines; line && line < stop;) {
     const char *eol = strstr(line, "\r\n");
     if (strncasecmp(line, "Content-Length:", name_len) == 0) {
-      const char *value = line + name_len;
       size_t parsed = 0;
-      if (!parse_content_length(value, eol ? eol : value + strlen(value), &parsed) ||
+      if (!parse_content_length(line + name_len, eol ? eol : stop, &parsed) ||
           (*declared && parsed != *length)) {
         return false;
       }
@@ -313,13 +191,14 @@ static char *plain_body(const char *headers, const char *body, size_t body_len,
                         bool closed, const char **malformed) {
   bool declared = false;
   size_t length = body_len;
-  if (final_coding(headers) == CODING_NONE &&
-      !declared_length(headers, &declared, &length)) {
+  const char *stop = block_end(headers);
+  if (final_coding(headers, stop) == CODING_NONE &&
+      !declared_length(headers, stop, &declared, &length)) {
     *malformed = "invalid Content-Length";
     return NULL;
   }
   if (declared ? length > body_len : !closed) {
-    *malformed = CHUNK_CUT_SHORT;
+    *malformed = "truncated";
     return NULL;
   }
   char *out = malloc(length + 1);
@@ -377,10 +256,89 @@ const char *http_checked_head(const char *raw, size_t len, const char **sep,
     reason = "truncated";
   } else if (!head_is_well_formed(head, *sep)) {
     reason = "malformed";
+  } else if (coding_on_http_1_0(head, *sep)) {
+    reason = "Transfer-Encoding on HTTP/1.0";
   }
   if (reason) {
     osp_io_error_text("http response", subject, reason);
     return NULL;
   }
   return head;
+}
+
+// head_is_well_formed scans with strstr, so a NUL must rule first.
+static bool head_is_sound(const char *head, const char *sep) {
+  return !memchr(head, '\0', (size_t)(sep - head)) && head_is_well_formed(head, sep);
+}
+
+static const char *find_blank_line(const char *p, const char *end) {
+  for (p = http_find_crlf(p, end); p; p = http_find_crlf(p + 2, end)) {
+    if (end - p >= 4 && p[2] == '\r' && p[3] == '\n') {
+      return p;
+    }
+  }
+  return NULL;
+}
+
+// How the final head at [head, sep) frames what follows it. Whatever the client is
+// going to refuse ends the read where it stands, at len.
+static void settle_framing(HttpFrameScan *scan, const char *raw, size_t len,
+                           const char *head, const char *sep) {
+  size_t body = (size_t)(sep + 4 - raw);
+  bool declared = false;
+  size_t length = 0;
+  scan->phase = FRAME_LENGTH;
+  scan->frame_end = len;
+  if (http_parse_status_line(head) < 0 || !head_is_sound(head, sep) ||
+      coding_on_http_1_0(head, sep)) {
+    return;
+  }
+  const char *lines = strstr(head, "\r\n") + 2;
+  TransferCoding coding = final_coding(lines, sep);
+  if (status_has_no_body(http_parse_status_line(head))) {
+    scan->frame_end = body;
+  } else if (coding == CODING_CHUNKED) {
+    scan->phase = FRAME_CHUNKS;
+    scan->chunks.pos = body;
+  } else if (coding == CODING_OTHER) {
+    scan->phase = FRAME_CLOSE;
+  } else if (declared_length(lines, sep, &declared, &length)) {
+    bool fits = declared && length <= SIZE_MAX - body;
+    scan->phase = fits ? FRAME_LENGTH : FRAME_CLOSE;
+    scan->frame_end = fits ? body + length : len;
+  }
+}
+
+// Moves past each head that has arrived, picking up where the last look stopped.
+static void scan_heads(HttpFrameScan *scan, const char *raw, size_t len) {
+  while (scan->phase == FRAME_HEAD) {
+    const char *head = raw + scan->head;
+    size_t from = scan->searched > scan->head ? scan->searched : scan->head;
+    const char *sep = find_blank_line(raw + from, raw + len);
+    if (!sep) {
+      scan->searched = len > 3 ? len - 3 : 0; // a blank line may be arriving in pieces
+      return;
+    }
+    if (status_is_interim(http_parse_status_line(head)) && head_is_sound(head, sep)) {
+      scan->head = (size_t)(sep + 4 - raw);
+    } else {
+      settle_framing(scan, raw, len, head, sep);
+    }
+  }
+}
+
+// http_frame_complete says whether raw[0, len), NUL-terminated, holds the end of the
+// response's framing, and where. Call it after every read with the same scan: it
+// moves on from where it stopped, so the cost of a response is linear in its size
+// however it is cut up. Implements [HTTP-RESPONSE-FRAMING].
+bool http_frame_complete(HttpFrameScan *scan, const char *raw, size_t len, size_t *frame_end) {
+  scan_heads(scan, raw, len);
+  if (scan->phase == FRAME_CHUNKS) {
+    return http_chunks_complete(&scan->chunks, raw, len, frame_end);
+  }
+  if (scan->phase == FRAME_LENGTH && len >= scan->frame_end) {
+    *frame_end = scan->frame_end;
+    return true;
+  }
+  return false;
 }
