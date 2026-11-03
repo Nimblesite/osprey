@@ -5,6 +5,6 @@ ROOT ?= ../..
 casting:
 	bash $(ROOT)/examples/casting/android/run.sh
 
-## casting-build: Build a universal APK with freshly linked ARM64 and x64 libraries.
+## casting-build: Build the casting APK: the shared GPUI host, for ARM64 unless a target is named.
 casting-build:
 	bash $(ROOT)/examples/casting/android/build.sh

@@ -13,15 +13,17 @@ Android: `gpui-pre` 0.3.10 has no backend, and `gpui-pre-platform` has no Androi
 - [x] Build `hosts/gpui` for `aarch64-apple-ios-sim` and draw the casting screen in the simulator through `gpui_ios`.
 - [x] Read `gpui-mobile`'s Android backend as data, never built or run until reviewed, and choose between it and a backend over `gpui-pre-wgpu`.
 - [x] Build `hosts/gpui` for `aarch64-linux-android` and draw the casting screen on the emulator.
-- [ ] Report what those runs show, with the failure output for anything that does not work.
+- [x] Report what those runs show, with the failure output for anything that does not work.
 
 ## Port
 
-- [ ] One host: `hosts/gpui` draws casting on macOS, iOS and Android from the same view code, with touch input and safe areas.
+- [x] One host: `hosts/gpui` draws casting on macOS, iOS and Android from the same view code, with touch input and safe areas.
 - [x] Keep what only the platform can do behind the capability boundary: Bonjour and NSD discovery, document pickers, TLS, media serving, lifecycle, accessibility.
-- [ ] Prove it: the existing native journeys still pass, and each skin's mobile pictures match the desktop's widgets at the same width.
+- [x] Android: the journey passes on the GPUI app against the TLS receiver fixture, with its golden.
+- [ ] iOS: its full native journey passes on the GPUI app; it needs the accessibility bridge below, since XCTest drives by accessibility.
+- [ ] Compare each skin's mobile pictures with the desktop's widgets at the same width.
 - [x] Delete the SwiftUI and Java casting renderers. `hosts/swift` stays for Osprey Agent.
-- [ ] A fixed scene `zoom` is an upper bound: a narrower region fits the whole scene instead of clipping it, on every platform. The region around a scene takes the skin's colour, and the scene honours the safe area.
+- [x] A fixed scene `zoom` is an upper bound: a narrower region fits the whole scene instead of clipping it, on every platform. The region around a scene takes the skin's colour, and the scene honours the safe area.
 - [ ] Windows: casting still runs on `hosts/winui` (`examples/casting/README.md`). Audit whether `hosts/gpui` can replace it there, and report.
 - [ ] Screen readers: `hosts/gpui` has no accessibility bridge on iOS or Android, where the deleted native renderers had one. A person using VoiceOver or TalkBack cannot use the player until the scene's access tree reaches the platform.
 - [ ] Automate real NSD and Bonjour discovery against a published fixture. Android found a real TV by hand; its journey uses the receiver fixture so that it can never reach a real TV.
