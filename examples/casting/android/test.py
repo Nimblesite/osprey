@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """[CAST-MOBILE-DELIVERY] Real Android picker, file import, accessibility and restart."""
 import json
+import io
+import zipfile
 import base64
 import os
 from pathlib import Path
 import re
 import subprocess
+import shlex
 import sys
 import unittest
 from unittest import mock
@@ -54,6 +57,7 @@ public final class CastingBindingCheck {
 
 def adb(*arguments, binary=False):
     if not SERIAL: raise ValueError("Set OSPREY_ANDROID_SERIAL to the Android device under test")
+    if arguments[:1] == ("shell",): arguments = ("shell", shlex.join(arguments[1:]))
     return subprocess.check_output(ADB + list(arguments), text=not binary)
 
 
@@ -63,11 +67,31 @@ def sdk_tool(pattern):
     return max(paths, key=lambda path: tuple(map(int, re.findall(r"\d+", path.parent.name))))
 
 
+def index_audio(path):
+    canonical = adb("shell", "readlink", "-f", path).strip()
+    assert canonical.startswith("/"), f"Cannot resolve the audio fixture: {canonical}"
+    result = adb("shell", "content", "call", "--uri", "content://media", "--method", "scan_file", "--arg", canonical)
+    assert result.startswith("Result: Bundle[") and "android.intent.extra.STREAM=" in result and "android.intent.extra.STREAM=null" not in result, result
+    print("PASS: Android MediaStore indexed the audio fixture before document selection", flush=True)
+
+
+
+def packaged_assets(apk):
+    with zipfile.ZipFile(io.BytesIO(adb("exec-out", "cat", apk, binary=True))) as archive:
+        paths = archive.namelist()
+    assert len(paths) == len(set(paths)), "Duplicate APK archive entries"
+    assert "assets/player.machine.json" in paths
+    for name in ("backdrop", "disc", "transport"):
+        assert f"assets/skins/sherbet/{name}.png" in paths, name
+    assert not any(path.startswith("assets/skins/skins/") for path in paths), "Nested duplicate skin assets in the APK"
+
+
 def bindings():
     platform = sdk_tool("platforms/*/android.jar")
     compiler = sdk_tool("build-tools/*/d8")
     installed = adb("shell", "pm", "path", PACKAGE).strip().splitlines()
     assert len(installed) == 1 and installed[0].startswith("package:"), installed
+    packaged_assets(installed[0][8:])
     remote = "/data/local/tmp/osprey-casting-bindings.jar"
     with tempfile.TemporaryDirectory(prefix="casting-bindings-") as directory:
         work = Path(directory)
@@ -98,9 +122,15 @@ def window():
     return ElementTree.fromstring(adb("exec-out", "cat", WINDOW_PATH))
 
 
-def nodes():
+def picker_drawer(tree):
+    return None if tree is None else next((node for node in tree.iter("node") if node.get("resource-id", "").endswith(":id/drawer_roots")), None)
+
+
+def nodes(interactive=False):
     tree = window()
-    return list(tree.iter("node")) if tree is not None else []
+    if tree is None: return []
+    drawer = picker_drawer(tree) if interactive else None
+    return list((tree if drawer is None else drawer).iter("node"))
 
 
 def wait_rotation(expected):
@@ -111,10 +141,10 @@ def wait_rotation(expected):
     raise AssertionError(f"Native display did not rotate to {expected}")
 
 
-def find(label, timeout=20):
+def find(label, timeout=20, interactive=False):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        matches = [node for node in nodes() if label in (node.get("text"), node.get("content-desc"))]
+        matches = [node for node in nodes(interactive) if label in (node.get("text"), node.get("content-desc"))]
         # The drawer is the last layer; its Downloads row can share the toolbar's label.
         if matches: return matches[-1]
         time.sleep(0.2)
@@ -123,9 +153,13 @@ def find(label, timeout=20):
 
 def tap(label):
     print(f"TAP: {label}", flush=True)
-    node = find(label)
+    tap_node(find(label, interactive=True))
+
+
+def tap_node(node):
     x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.attrib["bounds"]))
     assert x2 > x1 and y2 > y1, node.attrib
+    print(f"POINTER: {node.get('bounds')} {node.get('resource-id', '')}", flush=True)
     adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
 
 
@@ -201,14 +235,44 @@ def launch(skin="sherbet"):
     adb("shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "testReceiver", fixture, "--es", "skin", skin)
     assert find("Open file…").get("class") == "android.widget.Button"
     assert find("Play").get("class") == "android.widget.Button"
+    assert "files/player/skins/skins" not in adb("exec-out", "run-as", PACKAGE, "find", "files/player/skins", "-type", "d").splitlines()
     adb("shell", "input", "tap", "10", "150")
     if os.environ.get("CAST_TEST_RECEIVER"): find("Receiver: Test receiver" if skin == "sherbet" else "Receiver")
 
 
+def open_roots():
+    deadline, requested = time.monotonic() + 20, False
+    while time.monotonic() < deadline:
+        tree = window()
+        if picker_drawer(tree) is not None: return
+        if tree is not None and not requested:
+            controls = [node for node in tree.iter("node") if node.get("content-desc") == "Show roots"]
+            if controls:
+                print("TAP: Show roots", flush=True)
+                tap_node(controls[-1]); requested = True
+        time.sleep(0.2)
+    raise AssertionError("The native picker roots drawer never opened")
+
+
+def select_root(label):
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        tree = window()
+        if tree is None: continue
+        drawer = picker_drawer(tree)
+        if drawer is None:
+            assert any(node.get("text") == label for node in tree.iter("node")), "Picker opened the wrong directory"
+            return
+        choices = [node for node in drawer.iter("node") if node.get("text") == label and node.get("enabled", "true") == "true"]
+        if choices: tap_node(choices[-1])
+        time.sleep(0.2)
+    raise AssertionError(f"The native picker did not open {label}")
+
+
 def import_track():
     tap("Open file…")
-    tap("Show roots")
-    tap("Downloads")
+    open_roots()
+    select_root("Downloads")
     tap("Casting mobile test.mp3")
     find("Open file…")
 
@@ -247,6 +311,7 @@ def main():
         track = Path(directory) / "Casting mobile test.mp3"
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(track)], check=True)
         adb("push", str(track), "/sdcard/Download/Casting mobile test.mp3")
+        index_audio("/sdcard/Download/Casting mobile test.mp3")
         launch()
         tap("Appearance"); tap("Midnight Mint")
         find("Skin")
@@ -284,6 +349,44 @@ def main():
 
 
 class NativeReadContracts(unittest.TestCase):
+    def test_import_waits_until_the_root_drawer_really_closes(self):
+        drawer = ElementTree.fromstring('<hierarchy><node resource-id="picker:id/drawer_roots"><node text="Downloads" bounds="[0,100][200,200]"/></node></hierarchy>')
+        directory = ElementTree.fromstring('<hierarchy><node text="Downloads"/></hierarchy>')
+        selections = []
+        def select(_): selections.append("Downloads")
+        def tap_label(label):
+            if label == "Downloads": select(None)
+            if label == "Casting mobile test.mp3": self.assertEqual(len(selections), 2, "File is still covered by the roots drawer")
+        def snapshot(): return drawer if len(selections) < 2 else directory
+        with mock.patch(__name__ + ".open_roots"), mock.patch(__name__ + ".find"), mock.patch(__name__ + ".tap", side_effect=tap_label), mock.patch(__name__ + ".tap_node", side_effect=select), mock.patch(__name__ + ".window", side_effect=snapshot), mock.patch(__name__ + ".time.sleep"):
+            import_track()
+
+    def test_shell_keeps_audio_paths_as_single_arguments(self):
+        for path in ("clip.mp3", "/sdcard/Download/Now playing 'mix'.mp3", "/sdcard/Download/海 🌊.mp3"):
+            with self.subTest(path=path), mock.patch(__name__ + ".SERIAL", "device"), mock.patch(__name__ + ".ADB", ["adb", "-s", "device"]), mock.patch(__name__ + ".subprocess.check_output", return_value="") as command:
+                adb("shell", "content", "call", "--arg", path)
+                arguments = command.call_args.args[0]
+                self.assertEqual(arguments[:4], ["adb", "-s", "device", "shell"])
+                self.assertEqual(shlex.split(" ".join(arguments[4:])), ["content", "call", "--arg", path])
+
+    def test_picker_waits_for_the_drawer_not_the_directory_toolbar(self):
+        toolbar = ElementTree.fromstring('<hierarchy><node text="Downloads"/><node content-desc="Show roots" bounds="[0,0][100,100]"/></hierarchy>')
+        drawer = ElementTree.fromstring('<hierarchy><node resource-id="com.google.android.documentsui:id/drawer_roots"><node text="Downloads"/></node></hierarchy>')
+        with mock.patch(__name__ + ".window", side_effect=[None, toolbar, drawer]) as snapshots, mock.patch(__name__ + ".adb") as commands, mock.patch(__name__ + ".time.sleep"):
+            open_roots()
+            self.assertEqual(snapshots.call_count, 3)
+            commands.assert_called_once_with("shell", "input", "tap", "50", "50")
+        with mock.patch(__name__ + ".window", return_value=drawer), mock.patch(__name__ + ".adb") as commands:
+            open_roots(); commands.assert_not_called()
+
+    def test_pointer_never_selects_a_file_behind_the_picker_drawer(self):
+        covered = ElementTree.fromstring('<hierarchy><node text="track.mp3" bounds="[10,10][60,60]"/><node resource-id="com.google.android.documentsui:id/drawer_roots"><node text="Downloads" bounds="[0,0][100,100]"/></node></hierarchy>')
+        visible = ElementTree.fromstring('<hierarchy><node text="track.mp3" bounds="[100,100][200,200]"/></hierarchy>')
+        with mock.patch(__name__ + ".window", side_effect=[covered, visible]) as snapshots, mock.patch(__name__ + ".adb") as commands, mock.patch(__name__ + ".time.sleep"):
+            tap("track.mp3")
+            self.assertEqual(snapshots.call_count, 2)
+            commands.assert_called_once_with("shell", "input", "tap", "150", "150")
+
     def queries(self, completed, xml="broken XML"):
         def answer(*arguments):
             if arguments[:2] == ("shell", "rm"): return ""

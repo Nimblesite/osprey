@@ -23,7 +23,8 @@ mkdir -p "$native" "$assets"
     compiler/runtime/file_server_runtime.c compiler/runtime/media_render_runtime.c \
     -lm -ldl -llog -o "$native/libosprey_casting.so"
 cp examples/casting/player.machine.json "$assets/player.machine.json"
-cp -R examples/casting/skins "$assets/skins"
+rm -rf "$assets/skins"
+cp -R examples/casting/skins "$assets/"
 cd "$here"
 bash "$repo/examples/mobile/android/gradlew" --console=plain :app:assembleDebug
 echo "$here/app/build/outputs/apk/debug/app-debug.apk"

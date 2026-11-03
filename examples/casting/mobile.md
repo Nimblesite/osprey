@@ -20,6 +20,7 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 - [ ] Implement document selection and copying scoped files into app storage, including cancellation and failed reads.
 - [ ] Link native TLS, local HTTP serving and media rendering without shelling out to desktop tools; surface unsupported formats and service failures.
 - [x] Tear down the Android app and TLS fixture after native journeys, leaving no port forwards; reject malformed fixture payloads and report port cleanup failures.
+- [x] Reject duplicate packaged skin trees, refresh generated Android resources on launch, and verify document selection only after the native roots drawer closes.
 - [ ] Handle foreground/background transitions, connection loss, interrupted playback and cleanup of network/file resources.
 - [ ] Add per-platform launch and test Makefile targets and required CI coverage gates.
 - [x] Rotate Android during playback, use landscape pause/resume and volume, preserve the connection, return to portrait and restore the previous system rotation policy.
@@ -37,12 +38,14 @@ The existing host-free casting suite simulates the receiver and drives the real 
 
 - iOS: the unsigned physical-device app and simulator app link successfully; the real iPhone simulator UI test passes launch, two document-picker cancellations, actual Files selection and import, fixture-file loading, play/pause/resume, seek, volume, speed, stop, replay and restart. Native sliders and speed-menu buttons are verified through XCTest. The receiver checks the requested control values and rejects duplicate slider commands.
 
-The iOS simulator also passes Home-and-return recovery while casting: the same session remains playing, subsequent controls work, and the fixture rejects any additional media load. This verifies foreground recovery; it does not establish streaming during prolonged device suspension or background audio entitlement behavior.
-
 - Android: real `Button` and `SeekBar` widgets provide touch, keyboard navigation, native accessibility and focus indicators beneath the shared skin artwork. Programmatic native range updates are paced every two seconds while the canvas keeps animating; focusing or dragging a slider synchronizes it immediately. The keyboard journey opens and cancels the native file picker. ARM64 and x64 JNI libraries link into the APK; the ARM64 emulator discovers a real LAN TV and passes two document-picker cancellations, MP3 import, scene-title verification, play/pause/resume, seek, volume, speed, stop, replay and restart. The fixture verifies exact MP3 bytes over HTTP HEAD and range requests. Android lint passes with warnings treated as errors.
 - Both TLS implementations pass a live loopback test covering handshake, fragmented reads, timeout recovery, byte preservation, writes, EOF, cleanup and route selection.
 - The shared casting suite passes all seven journeys; the Swift host passes 38 regression tests. Native network and media-render runtime suites pass.
 - The mobile media runtime uses the existing contract's original-audio fallback because sandboxed apps cannot launch desktop ffmpeg. A native TV visualization renderer is not implemented.
+
+The iOS simulator also passes Home-and-return recovery while casting: the same session remains playing, subsequent controls work, and the fixture rejects any additional media load. This verifies foreground recovery; it does not establish streaming during prolonged device suspension or background audio entitlement behavior.
+
+Android's latest headless journey passes after checking the installed APK for duplicate skin trees and replacing its generated resource cache on launch. Imported media lives outside that cache. The driver resolves the pushed MP3's canonical path and requires a successful native MediaStore scan before selection; shell arguments preserve spaces, apostrophes and Unicode. It verifies that the system picker has actually opened Downloads before touching the file, including when a navigation tap leaves the drawer open. Six focused driver regressions cover these interactions and fresh accessibility snapshots; the full TLS command and screenshot gates remain unchanged.
 
 Entry points: `make -C apps/ios casting`, `make -C apps/android casting`, and each platform's `tests` directory with `casting` or `casting-headless`. Android selects a connected device with `OSPREY_ANDROID_SERIAL`; `OSPREY_BIN` selects the compiler binary.
 

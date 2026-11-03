@@ -75,7 +75,7 @@ public final class CastingActivity extends ComponentActivity {
         setContentView(host);
         try {
             File folder = new File(getFilesDir(), "player");
-            copyAssets("", folder);
+            refreshAssets(folder);
             appearance(host, new File(folder, "player.machine.json"));
             JSONArray arguments = new JSONArray().put("--machine").put(new File(folder, "player.machine.json").getAbsolutePath());
             String skin = getIntent().getStringExtra("skin");
@@ -103,6 +103,17 @@ public final class CastingActivity extends ComponentActivity {
         FrameLayout.LayoutParams size = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
         size.topMargin = size.rightMargin = Math.round(12 * getResources().getDisplayMetrics().density);
         host.addView(button, size);
+    }
+
+    // [CAST-MOBILE-ABI] Replace generated resources without touching imported media.
+    private void refreshAssets(File target) throws IOException {
+        if (target.exists()) {
+            try (var paths = Files.walk(target.toPath())) {
+                var files = paths.sorted(java.util.Comparator.reverseOrder()).iterator();
+                while (files.hasNext()) Files.delete(files.next());
+            }
+        }
+        copyAssets("", target);
     }
 
     private void copyAssets(String path, File target) throws IOException {
