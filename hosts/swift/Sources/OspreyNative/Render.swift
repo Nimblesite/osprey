@@ -119,6 +119,10 @@ struct FramedView: View {
     @Environment(\.ospreyTheme) private var theme
     @Environment(\.colorScheme) private var scheme
     @Environment(\.ospreyInRow) private var inRow
+    #if os(macOS)
+    @Environment(\.ospreySelectionGroup) private var outerGroup
+    @State private var selection = SelectionGroup()
+    #endif
 
     private var style: JSONValue { node["style"] ?? .null }
     private var dark: Bool { scheme == .dark }
@@ -137,18 +141,35 @@ struct FramedView: View {
     }
 
     private var content: some View {
-        NodeView(node: node["body"] ?? .null, drawing: drawing)
+        let leaf = NodeView(node: node["body"] ?? .null, drawing: drawing)
             .environment(\.ospreyInherited, inherited.merging(style.object ?? [:]))
             .environment(\.ospreyInRow, false)
+        #if os(macOS)
+        return leaf.environment(\.ospreySelectionGroup, style.flag("selectionGroup") ? selection : outerGroup)
+        #else
+        return leaf
+        #endif
     }
 
     var body: some View {
-        sized
+        let dressed = sized
             .background { surface }
             .overlay { outline }
             .modifier(Lifted(on: style.text("shadow") == "floating", radius: radius))
             .foregroundStyle(ink)
+        #if os(macOS)
+        return dressed.modifier(FrameInk(colour: inkColour))
+        #else
+        return dressed
+        #endif
     }
+
+    #if os(macOS)
+    /// The frame's ink as AppKit ink, for the leaves a selection group draws.
+    private var inkColour: NSColor {
+        token("ink").map(NSColor.init) ?? theme.color("text", dark: dark).map(NSColor.init) ?? .labelColor
+    }
+    #endif
 
     private func revealing(_ proxy: ScrollViewProxy) -> (@MainActor (UUID) -> Void)? {
         guard style.text("align") == "end" else { return nil }

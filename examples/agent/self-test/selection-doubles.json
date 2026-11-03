@@ -1,0 +1,16 @@
+{
+  "replies": [
+    {
+      "status": 200,
+      "body": "{\"id\": \"s1\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"The quick brown fox jumps over the lazy dog.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 20, \"completion_tokens\": 10, \"total_tokens\": 30}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"s2\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Here is the full page.\", \"tool_calls\": [{\"id\": \"c1\", \"type\": \"function\", \"function\": {\"name\": \"run_command\", \"arguments\": \"{\\\"command\\\":\\\"echo done\\\"}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 12, \"total_tokens\": 52}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"s3\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Alpha paragraph one talks about the harbour bridge and its steel.\\n\\nAlpha paragraph two explains the tide tables for the quay.\\n\\n- The first bullet lists anchors.\\n- The second bullet lists moorings.\\n- The third bullet lists buoys.\\n\\n```python\\ndef spaced():\\n    return 1\\n```\\n\\n| Head one | Head two |\\n| --- | --- |\\n| Cell one | Cell two |\\n| Cell three | Cell four |\\n\\nThe last paragraph mentions the lighthouse.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 90, \"completion_tokens\": 90, \"total_tokens\": 180}}"
+    }
+  ]
+}

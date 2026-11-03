@@ -348,7 +348,7 @@ module View
             true => welcome chat
             false => Ui::column (listConcat (mapList (items, \item => Items::node (panel.panelExpanded, item))) (listConcat (working chat) (listConcat (trouble chat) (saveTrouble ()))))
         centred = Frames::inset (28, 24, 18, 24)
-        Ui::framed (centred(frameGrow = true, frameScrollY = length items > 0, frameAlign = Pick::either (length items > 0, "end", "center"), frameCross = "center"), Ui::framed (reading(frameWidth = Look::column, frameGrow = length items == 0), body))
+        Ui::framed (centred(frameGrow = true, frameScrollY = length items > 0, frameAlign = Pick::either (length items > 0, "end", "center"), frameCross = "center"), Ui::framed (reading(frameWidth = Look::column, frameSelectionGroup = length items > 0, frameGrow = length items == 0), body))
 
     effortLabel level = match level
         "off" => "Off"

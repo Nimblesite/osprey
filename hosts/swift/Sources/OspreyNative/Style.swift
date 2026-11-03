@@ -114,13 +114,34 @@ extension EnvironmentValues {
 }
 
 enum Type {
+    /// A role's size, weight, family and slant; the one table both font systems read.
+    private static func face(_ role: String, _ inherited: Inherited) -> (size: CGFloat, bold: Bool, serif: Bool, mono: Bool) {
+        (inherited.size > 0 ? inherited.size : scale(role), bold(role), inherited.family == "serif", inherited.family == "mono" || role == "mono")
+    }
+
     /// A role's face at the size and family a frame chose, else the platform's type scale.
     static func font(_ role: String, _ inherited: Inherited) -> Font {
-        let design: Font.Design = inherited.family == "mono" || role == "mono" ? .monospaced : inherited.family == "serif" ? .serif : .default
-        let size = inherited.size > 0 ? inherited.size : scale(role)
-        let face = Font.system(size: size, weight: weight(role), design: design)
-        return inherited.italic ? face.italic() : face
+        let face = self.face(role, inherited)
+        let base = Font.system(size: face.size, weight: face.bold ? .semibold : .regular, design: face.mono ? .monospaced : face.serif ? .serif : .default)
+        return inherited.italic ? base.italic() : base
     }
+
+    #if os(macOS)
+    /// The same face as an AppKit font, for a leaf a selection group draws.
+    static func nsFont(_ role: String, _ inherited: Inherited) -> NSFont {
+        let face = self.face(role, inherited)
+        let weight: NSFont.Weight = face.bold ? .semibold : .regular
+        let base: NSFont
+        if face.mono {
+            base = NSFont.monospacedSystemFont(ofSize: face.size, weight: weight)
+        } else if face.serif, let design = NSFont.systemFont(ofSize: face.size, weight: weight).fontDescriptor.withDesign(.serif) {
+            base = NSFont(descriptor: design, size: face.size) ?? NSFont.systemFont(ofSize: face.size, weight: weight)
+        } else {
+            base = NSFont.systemFont(ofSize: face.size, weight: weight)
+        }
+        return inherited.italic ? NSFontManager.shared.convert(base, toHaveTrait: .italicFontMask) : base
+    }
+    #endif
 
     private static func scale(_ role: String) -> CGFloat {
         switch role {
@@ -138,11 +159,10 @@ enum Type {
         }
     }
 
-    private static func weight(_ role: String) -> Font.Weight {
+    private static func bold(_ role: String) -> Bool {
         switch role {
-        case "display", "large": return .semibold
-        case "title", "heading", "headline", "eyebrow": return .semibold
-        default: return .regular
+        case "display", "large", "title", "heading", "headline", "eyebrow": return true
+        default: return false
         }
     }
 }

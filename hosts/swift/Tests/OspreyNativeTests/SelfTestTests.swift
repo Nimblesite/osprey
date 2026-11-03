@@ -146,6 +146,18 @@ final class SelfTestTests: XCTestCase {
         XCTAssertThrowsError(try regions().attempt(step("panel", "open")))
     }
 
+    func testSelectionStepsParseIntoTheirAttempts() throws {
+        let steps = try SelfTestStep.parse(#"{"steps":[{"select":["quick","lazy"]},{"selected":"quick brown"},{"selected-contains":"brown"},{"copy":"quick brown"},{"click":"lazy"},{"select-all":""}]}"#)
+        let regions = regions()
+        XCTAssertEqual(try regions.attempt(steps[0]), .selecting(["quick", "lazy"]))
+        XCTAssertEqual(try regions.attempt(steps[1]), .checkingSelected("quick brown", contains: false))
+        XCTAssertEqual(try regions.attempt(steps[2]), .checkingSelected("brown", contains: true))
+        XCTAssertEqual(try regions.attempt(steps[3]), .copying("quick brown"))
+        XCTAssertEqual(try regions.attempt(steps[4]), .clicking("lazy"))
+        XCTAssertEqual(try regions.attempt(steps[5]), .keyPress("a"))
+        XCTAssertThrowsError(try regions.attempt(step("select", "quick")))
+    }
+
     func testChooseShotSleepAndUnknownSteps() throws {
         let regions = regions()
         XCTAssertEqual(try regions.attempt(step("choose", "Alpha")), send(13, .string("alpha")))

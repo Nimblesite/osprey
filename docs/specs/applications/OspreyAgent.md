@@ -74,9 +74,7 @@ MCP `env` and `headers` values never reach `chats.json`, the records or the tran
 
 ## Selection [AGENT-SELECTION]
 
-Not implemented yet: the SwiftUI host enables `.textSelection` per `Text` (`hosts/swift/Sources/OspreyNative/Leaves.swift`), so selection stops at a block.
-
-The transcript renders as one selectable group of AppKit text views in the SwiftUI host, so a selection crosses transcript blocks, with Cmd-A and Cmd-C.
+The transcript renders as one selectable group of AppKit text views in the SwiftUI host, so a selection crosses transcript blocks, with Cmd-A and Cmd-C. Each text view lies over its hidden SwiftUI twin, which keeps doing the layout, so a screen does not move and highlighting and inline code keep their colours.
 
 ## Highlighting [AGENT-HIGHLIGHT]
 

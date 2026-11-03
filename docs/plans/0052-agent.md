@@ -13,7 +13,7 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 
 ## Selection
 
-- [ ] [UI-MACHINE-SELF-TEST] Render the transcript as one selectable group of AppKit text views in the SwiftUI host, so selection crosses blocks (today `.textSelection` is per `Text` in `hosts/swift/Sources/OspreyNative/Leaves.swift`); add Cmd-A and Cmd-C. Acceptance: a new self-test drives real key events to select a run spanning transcript blocks and copies it, asserted in the records.
+- [x] [UI-MACHINE-SELF-TEST] Render the transcript as one selectable group of AppKit text views in the SwiftUI host, so selection crosses blocks (today `.textSelection` is per `Text` in `hosts/swift/Sources/OspreyNative/Leaves.swift`); add Cmd-A and Cmd-C. Acceptance: a new self-test drives real key events to select a run spanning transcript blocks and copies it, asserted in the records.
 
 ## Providers, models and effort
 

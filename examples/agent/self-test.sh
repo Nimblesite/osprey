@@ -71,6 +71,8 @@ mkdir -p "$work/other-project"
 "$host" --self-test "$here/self-test/controls.json" "$records/controls" --headless --store "$work/store-controls" --http-double "$here/self-test/controls-doubles.json" --folder-double "$work/other-project" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 "$host" --self-test "$here/self-test/restart.json" "$records/restart" --headless --store "$work/store-controls" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 "$host" --self-test "$here/self-test/code-blocks.json" "$records/code-blocks" --headless --store "$work/store-code-blocks" --http-double "$here/self-test/code-blocks-doubles.json" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
+# One selection group across the transcript: drags, Cmd-A, copy and a click through real window events.
+"$host" --self-test "$here/self-test/selection.json" "$records/selection" --headless --store "$work/store-selection" --http-double "$here/self-test/selection-doubles.json" "$project"
 "$host" --self-test "$here/self-test/settings.json" "$records/settings" --headless --store "$work/store-settings" --http-double "$here/self-test/settings-doubles.json" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 python3 "$here/self-test/verify_providers.py" "$records/settings/requests.jsonl"
 "$host" --self-test "$here/self-test/settings-restart.json" "$records/settings-restart" --headless --store "$work/store-settings" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"

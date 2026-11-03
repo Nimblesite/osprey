@@ -87,6 +87,7 @@ examples/agent/self-test.sh --update-goldens  # writes this macOS version's gold
 | `self-test/controls.json` | Every control: the key field, suggestions, a failed request and Try again, the model picker, Thought and tool disclosures, Stop, switching, the inspector and its splitter, and Open folder. Doubled only, because a model's words cannot be scripted |
 | `self-test/code-blocks.json` | One answer with fenced python, typescript, rust, bash, json and diff blocks, drawn with their syntax colours. Doubled only |
 | `self-test/restart.json` | What `controls.json` saved comes back after a restart, without the key |
+| `self-test/selection.json` | Dragging across paragraphs, lists, code blocks, tables and bubbles with real mouse events inside the window, Cmd-A and Cmd-C on a named pasteboard |
 | `self-test/mcp.json` | Real MCP servers over stdio, HTTP and SSE with the model doubled: add through the form and Paste JSON, tool calls, a tool error, a dead server and Reconnect, a project server off then on, remove. `verify_mcp.py` checks what the model was sent, and `self-test.sh` keeps planted secrets out of the records |
 | `self-test/mcp-restart.json` | The servers and switches come back after a restart |
 | `self-test/settings.json` | Each provider's key, model and effort against a strict double, a 402 and removing a key |

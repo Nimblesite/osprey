@@ -88,6 +88,13 @@ public enum SelfTestAttempt: Equatable {
     case recording(String)
     case sleeping(Double)
     case panel
+    /// A drag between two words, or `click` on one, through the window's real events; a frame's
+    /// selection group ([UI-COMPONENTS-FRAMED]) answers.
+    case selecting([String])
+    case checkingSelected(String, contains: Bool)
+    case copying(String)
+    case clicking(String)
+    case keyPress(String)
 }
 
 /// The regions as words and controls, with no host or window behind them.
@@ -198,6 +205,14 @@ public struct SelfTestRegions {
         case "panel":
             guard try word(0) == "cancel" else { throw SelfTestProblem("panel needs cancel") }
             return .panel
+        case "select":
+            guard step.words.count == 2 else { throw SelfTestProblem("select needs two words") }
+            return .selecting(step.words)
+        case "selected", "selected-contains":
+            return .checkingSelected(try word(0), contains: step.verb == "selected-contains")
+        case "copy": return .copying(try word(0))
+        case "click": return .clicking(try word(0))
+        case "select-all": return .keyPress("a")
         case "sleep":
             guard let seconds = Double(try word(0)) else { throw SelfTestProblem("sleep needs a number of seconds") }
             return .sleeping(seconds)
@@ -364,6 +379,89 @@ public final class SelfTestRun {
         window.contentView?.layoutSubtreeIfNeeded()
     }
 
+    /// Every text view the window's selection groups hold, in the tree's order.
+    private func selectableTexts() -> [SelectableTextView] {
+        var found: [SelectableTextView] = []
+        var pending = window.contentView.map { [$0] } ?? []
+        while let view = pending.popLast() {
+            if let text = view as? SelectableTextView { found.append(text) }
+            pending.append(contentsOf: view.subviews)
+        }
+        return found
+    }
+
+    /// The groups' selected words, each group once, in the tree's order.
+    private var selectedText: String {
+        var seen: Set<ObjectIdentifier> = []
+        var text = ""
+        for view in selectableTexts() {
+            guard let group = view.group, seen.insert(ObjectIdentifier(group)).inserted else { continue }
+            if !text.isEmpty { text += "\n" }
+            text += group.selectedText
+        }
+        return text
+    }
+
+    // In-process events built with the window's own number, so real hit testing runs through
+    // SwiftUI; never global input.
+    private func send(_ type: NSEvent.EventType, at point: NSPoint) {
+        guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) else { return }
+        window.sendEvent(event)
+    }
+
+    /// A drag from the first word to the second; nil once sent, a reason while the words are not on show.
+    /// A drag from the first word to the second through the window's real events, so SwiftUI's
+    /// own hit testing runs; the span covers both words whether the drag runs up or down.
+    private func selectAcross(_ words: [String]) -> String? {
+        guard let from = selectableTexts().first(where: { $0.holds(words[0]) }), let group = from.group,
+              let to = group.ordered.first(where: { $0.holds(words[1]) }),
+              let fromAt = group.ordered.firstIndex(where: { $0 === from }), let toAt = group.ordered.firstIndex(where: { $0 === to }),
+              let start = from.point(words[0], after: fromAt > toAt), let end = to.point(words[1], after: fromAt <= toAt) else {
+            return "no selection group shows both \"\(words[0])\" and \"\(words[1])\""
+        }
+        send(.leftMouseDown, at: start)
+        send(.leftMouseDragged, at: end)
+        send(.leftMouseUp, at: end)
+        return nil
+    }
+
+    /// A click on one word, which clears whatever was selected.
+    private func clickOn(_ words: String) -> String? {
+        guard let view = selectableTexts().first(where: { $0.holds(words) }), let at = view.point(words, after: true) else { return "no text in a selection group shows \"\(words)\"" }
+        send(.leftMouseDown, at: at)
+        send(.leftMouseUp, at: at)
+        return nil
+    }
+
+    /// Cmd-A: the key event goes to the window, and to the responder holding the selection,
+    /// because a window that is not key drops key events before the responder chain runs.
+    private func pressCommand(_ letter: String) -> String? {
+        guard let responder = window.firstResponder, responder !== window,
+              let character = letter.first,
+              let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, characters: String(character), charactersIgnoringModifiers: String(character), isARepeat: false, keyCode: 0) else { return "no first responder answers a key" }
+        window.sendEvent(event)
+        responder.keyDown(with: event)
+        // A window that is not key drops the key before its event loop reads it, so the command
+        // travels the rest of the way as the action the key would have sent.
+        NSApp.sendAction(#selector(NSTextView.selectAll(_:)), to: responder, from: nil)
+        return nil
+    }
+
+    /// Copy through the responder chain, checked against the pasteboard this run named.
+    private func copySelected(_ expected: String) -> String? {
+        guard let board = SelectionGroup.pasteboard else { return "the self-test named no pasteboard" }
+        guard let responder = window.firstResponder, responder !== window, NSApp.sendAction(#selector(NSTextView.copy(_:)), to: responder, from: nil) else {
+            return "no responder in the window answers copy"
+        }
+        let copied = board.string(forType: .string) ?? ""
+        return copied == expected ? nil : "copied \"\(copied)\" where \"\(expected)\" was wanted"
+    }
+
+    private func hold(_ reason: String, until deadline: Date) async throws {
+        guard Date() < deadline else { throw SelfTestProblem("Gave up after \(Int(options.patience)) s: \(reason)") }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+
     // Always twice the window's points, whatever screen the runner has.
     private func picture() throws -> Data {
         guard let view = window.contentView, let representation = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(Self.size.width) * 2, pixelsHigh: Int(Self.size.height) * 2, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
@@ -429,6 +527,25 @@ public final class SelfTestRun {
             case .panel:
                 try await Self.cancelOpenPanel(deadline: deadline, message: "Gave up after \(Int(options.patience)) s: no open panel is showing")
                 return
+            case let .selecting(words):
+                guard let problem = selectAcross(words) else { return }
+                try await hold(problem, until: deadline)
+            case let .checkingSelected(words, contains):
+                let selected = selectedText
+                guard contains ? selected.contains(words) : selected == words else {
+                    try await hold("the selection is \"\(selected)\"", until: deadline)
+                    break
+                }
+                return
+            case let .copying(expected):
+                guard let problem = copySelected(expected) else { return }
+                try await hold(problem, until: deadline)
+            case let .clicking(words):
+                guard let problem = clickOn(words) else { return }
+                try await hold(problem, until: deadline)
+            case let .keyPress(letter):
+                guard let problem = pressCommand(letter) else { return }
+                try await hold(problem, until: deadline)
             case let .waiting(reason):
                 guard Date() < deadline else { throw SelfTestProblem("Gave up after \(Int(options.patience)) s: \(reason)") }
                 try await Task.sleep(for: .milliseconds(50))
@@ -441,6 +558,9 @@ public final class SelfTestRun {
         do {
             let steps = try SelfTestStep.parse(String(contentsOfFile: options.script, encoding: .utf8))
             try FileManager.default.createDirectory(atPath: options.shots, withIntermediateDirectories: true)
+            // The person's clipboard stays theirs: copy checks read a pasteboard this run names.
+            SelectionGroup.pasteboard = NSPasteboard(name: NSPasteboard.Name("Osprey self-test"))
+            defer { SelectionGroup.pasteboard = nil }
             NSApp.setActivationPolicy(options.headless ? .accessory : .regular)
             window.orderFrontRegardless()
             store.start()
