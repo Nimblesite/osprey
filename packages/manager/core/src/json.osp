@@ -134,10 +134,7 @@ module Json {
         else { err(unexpectedToken, j) }
     }
 
-    fn parseStr(text, j) = match JsonScan::scan(text, j + 1) {
-        Success { value } => Success { value: Step { value: Str { text: value.text }, next: value.next } }
-        Error { message } => Error { message: message }
-    }
+    fn parseStr(text, j) = Checked::andThen(JsonScan::scan(text, j + 1), fn(value) => Success { value: Step { value: Str { text: value.text }, next: value.next } })
 
     fn membersOf(seen) = mapList(seen, fn(s) => s.member)
     fn hasKey(seen, key) = foldList(seen, false, fn(found, s) => found || s.member.key == key)
@@ -279,22 +276,13 @@ module Json {
     }
 
     /// The string at `key`, or `json.missing-key` / `json.not-an-object` / `json.wrong-type`.
-    export fn textAt(object, key) = match get(object, key) {
-        Success { value } => textOf(value)
-        Error { message } => Error { message: message }
-    }
+    export fn textAt(object, key) = Checked::andThen(get(object, key), fn(value) => textOf(value))
 
     /// The integer at `key`, with the same failure codes as `textAt`.
-    export fn intAt(object, key) = match get(object, key) {
-        Success { value } => intOf(value)
-        Error { message } => Error { message: message }
-    }
+    export fn intAt(object, key) = Checked::andThen(get(object, key), fn(value) => intOf(value))
 
     /// The array items at `key`, with the same failure codes as `textAt`.
-    export fn itemsAt(object, key) = match get(object, key) {
-        Success { value } => itemsOf(value)
-        Error { message } => Error { message: message }
-    }
+    export fn itemsAt(object, key) = Checked::andThen(get(object, key), fn(value) => itemsOf(value))
 
     /// `"${code} at byte ${offset}"` — the one human-facing rendering of a
     /// parse problem. Implements [PACKAGE-PUBLISH].

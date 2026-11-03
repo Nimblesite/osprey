@@ -25,10 +25,7 @@ module ReleaseFiles {
     /// receiver spelled out when reading that shared field.
     fn withDigest(id: Identity::ReleaseId, digest) = Identity::ReleaseId { key: id.key, epoch: id.epoch, ordinal: id.ordinal, digest: digest }
 
-    fn digested(id, files) = match Source::digest(mapList(files, fn(file) => Source::entryOf(file.relPath, Bytes::ofString(file.content)))) {
-        Success { value } => Success { value: Release::Served { id: withDigest(id, value), files: sorted(files) } }
-        Error { message } => Error { message: message }
-    }
+    fn digested(id, files) = Checked::andThen(Source::digest(mapList(files, fn(file) => Source::entryOf(file.relPath, Bytes::ofString(file.content)))), fn(value) => Success { value: Release::Served { id: withDigest(id, value), files: sorted(files) } })
 
     fn totalBytes(files) = foldList(files, 0, fn(sum, file) => sum + byteLength(file.content))
 

@@ -238,10 +238,7 @@ module Fetch {
     // `ReleaseFiles::assemble` does: an effectful recursive function that
     // constructs `Source::Entry` (whose `path` is shared with `Asset`) trips
     // the issue-#273 codegen quarantine.
-    fn readNext(dir, relPaths, i, files, rel) = match perform Host::Files.read("${dir}/${rel}") {
-        Success { value } => readFiles(dir, relPaths, i + 1, listAppend(files, Release::File { relPath: rel, content: value }))
-        Error { message } => Error { message: message }
-    }
+    fn readNext(dir, relPaths, i, files, rel) = Checked::andThen(perform Host::Files.read("${dir}/${rel}"), fn(value) => readFiles(dir, relPaths, i + 1, listAppend(files, Release::File { relPath: rel, content: value })))
 
     fn readFiles(dir, relPaths, i, files) -> Result<List<Release::File>, string> = if i >= length(relPaths) {
         Success { value: files }

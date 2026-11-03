@@ -23,10 +23,7 @@ module ReleasePath {
 
     fn build(keyText, versionText) = Checked::andThen(Names::parse(keyText), fn(value) => withVersion(value, versionText))
 
-    fn withVersion(key, versionText) = match version(versionText) {
-        Success { value } => Success { value: Identity::ReleaseId { key: key, epoch: listGet(value, 0) ?: 0, ordinal: listGet(value, 1) ?: 0, digest: "" } }
-        Error { message } => Error { message: message }
-    }
+    fn withVersion(key, versionText) = Checked::andThen(version(versionText), fn(value) => Success { value: Identity::ReleaseId { key: key, epoch: listGet(value, 0) ?: 0, ordinal: listGet(value, 1) ?: 0, digest: "" } })
 
     /// `ReleaseId` and `Json::Member` share `key`; issue #273 needs the
     /// receiver spelled out when reading that shared field.

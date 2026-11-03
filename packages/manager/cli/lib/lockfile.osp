@@ -279,10 +279,7 @@ module Lockfile {
         Error => Error { message: shapeCode }
     }
 
-    fn surfaceOf(pkg) = match arrMember(pkg, "surface") {
-        Error { message } => Error { message: message }
-        Success { value } => Checked::andThen(textsOf(value), fn(value) => canonicalSurface(value))
-    }
+    fn surfaceOf(pkg) = Checked::andThen(arrMember(pkg, "surface"), fn(value) => Checked::andThen(textsOf(value), fn(value) => canonicalSurface(value)))
 
     fn packageWithSurface(pkg, release, deps) = Checked::andThen(surfaceOf(pkg), fn(value) => Success { value: Package { release: release, dependencies: deps, surface: value } })
 
@@ -306,10 +303,7 @@ module Lockfile {
 
     fn overrideDigest(object, key, path, epoch) = Checked::andThen(digestMember(object, "manifestDigest"), fn(value) => Success { value: Override { package: key, path: path, epoch: epoch, manifestDigest: value } })
 
-    fn overrideOf(object) = match objMember(object, "package") {
-        Error { message } => Error { message: message }
-        Success { value } => Checked::andThen(readKey(value), fn(value) => overridePath(object, value))
-    }
+    fn overrideOf(object) = Checked::andThen(objMember(object, "package"), fn(value) => Checked::andThen(readKey(value), fn(value) => overridePath(object, value)))
 
     fn overridesAt(items, i, acc) -> Result<List<Override>, string> = match i >= length(items) {
         true => Success { value: acc }

@@ -147,18 +147,12 @@ module TomlValues {
 
     fn parseBasicValue(c) = match TomlLexer::peek(c, 1) == byteQuote && TomlLexer::peek(c, 2) == byteQuote {
         true => Error { message: Toml::fail(c, "toml.unsupported-multiline-string") }
-        false => match TomlLexer::basicString(c) {
-            Success { value } => Success { value: Val { value: Toml::Str { text: value.text }, at: value.at } }
-            Error { message } => Error { message: message }
-        }
+        false => Checked::andThen(TomlLexer::basicString(c), fn(value) => Success { value: Val { value: Toml::Str { text: value.text }, at: value.at } })
     }
 
     fn parseLiteralValue(c) = match TomlLexer::peek(c, 1) == byteApostrophe && TomlLexer::peek(c, 2) == byteApostrophe {
         true => Error { message: Toml::fail(c, "toml.unsupported-multiline-string") }
-        false => match TomlLexer::literalString(c) {
-            Success { value } => Success { value: Val { value: Toml::Str { text: value.text }, at: value.at } }
-            Error { message } => Error { message: message }
-        }
+        false => Checked::andThen(TomlLexer::literalString(c), fn(value) => Success { value: Val { value: Toml::Str { text: value.text }, at: value.at } })
     }
 
     fn parseNumber(c) = Checked::andThen(TomlLexer::scanBare(c), fn(value) => classifyNumber(value.token, value.at, c))

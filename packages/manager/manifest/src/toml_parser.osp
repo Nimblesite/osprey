@@ -55,10 +55,7 @@ module TomlParser {
 
     fn tableHeaderDefine(doc, path, tail, start) = {
         let segs = headerSegs(path.segs, start)
-        match TomlTree::defineTable(doc, segs) {
-            Success { value } => Success { value: Step { doc: value, at: tail } }
-            Error { message } => Error { message: message }
-        }
+        Checked::andThen(TomlTree::defineTable(doc, segs), fn(value) => Success { value: Step { doc: value, at: tail } })
     }
 
     fn parseArrayHeader(doc, c, start) = Checked::andThen(TomlValues::parseKeyPath(c), fn(value) => arrayHeaderClose(doc, value, start))
@@ -69,10 +66,7 @@ module TomlParser {
 
     fn arrayHeaderDefine(doc, path, tail, start) = {
         let segs = headerSegs(path.segs, start)
-        match TomlTree::defineArrayTable(doc, segs) {
-            Success { value } => Success { value: Step { doc: value, at: tail } }
-            Error { message } => Error { message: message }
-        }
+        Checked::andThen(TomlTree::defineArrayTable(doc, segs), fn(value) => Success { value: Step { doc: value, at: tail } })
     }
 
     fn parseKeyValue(doc, c) = Checked::andThen(TomlValues::parseKeyPath(c), fn(value) => kvEquals(doc, value))
@@ -89,19 +83,13 @@ module TomlParser {
 
     fn kvTail(doc, path, v) = Checked::andThen(TomlLexer::skipLineTail(v.at), fn(value) => kvInsert(doc, path, v.value, value))
 
-    fn kvInsert(doc, path, val, tail) = match TomlTree::insertAtFocus(doc, path.segs, val) {
-        Success { value } => Success { value: Step { doc: value, at: tail } }
-        Error { message } => Error { message: message }
-    }
+    fn kvInsert(doc, path, val, tail) = Checked::andThen(TomlTree::insertAtFocus(doc, path.segs, val), fn(value) => Success { value: Step { doc: value, at: tail } })
 
     fn parseDocument(doc, c) = {
         let c1 = TomlLexer::skipTrivia(c)
         match TomlLexer::eof(c1) {
             true => Success { value: doc.root }
-            false => match parseStatement(doc, c1) {
-                Success { value } => parseDocument(value.doc, value.at)
-                Error { message } => Error { message: message }
-            }
+            false => Checked::andThen(parseStatement(doc, c1), fn(value) => parseDocument(value.doc, value.at))
         }
     }
 

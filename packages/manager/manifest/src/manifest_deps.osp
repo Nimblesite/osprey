@@ -52,16 +52,10 @@ module ManifestDeps {
     })
 
     /// An integer pair at or above `floor`, else `code` at `span`.
-    fn boundedInt(pair: Toml::Pair, floor, code, span) = match ManifestSections::intOf(pair, code) {
-        Success { value } => if value >= floor { Success { value: value } } else { fail(code, span) }
-        Error { message } => Error { message: message }
-    }
+    fn boundedInt(pair: Toml::Pair, floor, code, span) = Checked::andThen(ManifestSections::intOf(pair, code), fn(value) => if value >= floor { Success { value: value } } else { fail(code, span) })
 
     /// Append a successful element, or keep the failure.
-    fn appended(sofar, result) = match result {
-        Success { value } => Success { value: listAppend(sofar, value) }
-        Error { message } => Error { message: message }
-    }
+    fn appended(sofar, result) = Checked::andThen(result, fn(value) => Success { value: listAppend(sofar, value) })
 
     fn epochOf(pairs, span) = match ManifestSections::find(pairs, "epoch") {
         Error => fail("manifest.dependency.epoch", span)
@@ -102,17 +96,11 @@ module ManifestDeps {
         _ => ManifestModel::Runtime { requirement: requirement }
     }
 
-    fn edgePair(kind, pair) = match requirementPair(pair) {
-        Success { value } => Success { value: edgeOf(kind, value) }
-        Error { message } => Error { message: message }
-    }
+    fn edgePair(kind, pair) = Checked::andThen(requirementPair(pair), fn(value) => Success { value: edgeOf(kind, value) })
 
     fn edgesOf(kind, pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => Checked::andThen(acc, fn(value) => appended(value, edgePair(kind, pair))))
 
-    fn concatenated(sofar, result) = match result {
-        Success { value } => Success { value: listConcat(sofar, value) }
-        Error { message } => Error { message: message }
-    }
+    fn concatenated(sofar, result) = Checked::andThen(result, fn(value) => Success { value: listConcat(sofar, value) })
 
     fn tableEdges(root, kind, sofar) = match ManifestSections::find(ManifestSections::pairsOf(root), kind) {
         Error => Success { value: sofar }
@@ -207,13 +195,7 @@ module ManifestDeps {
     /// The root's grants from all three dependency tables, one per key,
     /// sorted by key with canonical capability sets; a bad capability is
     /// `manifest.dependency.capability`.
-    export fn grants(root) = match tableGrants(root, "dependencies", []) {
-        Error { message } => Error { message: message }
-        Success { value } => match tableGrants(root, "build-dependencies", value) {
-            Error { message } => Error { message: message }
-            Success { value } => Checked::andThen(tableGrants(root, "test-dependencies", value), fn(value) => Success { value: nonEmpty(mergedGrants(value)) })
-        }
-    }
+    export fn grants(root) = Checked::andThen(tableGrants(root, "dependencies", []), fn(value) => Checked::andThen(tableGrants(root, "build-dependencies", value), fn(value) => Checked::andThen(tableGrants(root, "test-dependencies", value), fn(value) => Success { value: nonEmpty(mergedGrants(value)) })))
 
     /// All three dependency tables as canonical, sorted edges.
     export fn dependencies(root) = Checked::andThen(tableEdges(root, "dependencies", []), fn(value) => withBuild(root, value))
@@ -240,10 +222,7 @@ module ManifestDeps {
             Success { value } => systemRevision(capability, boundedInt(value, 0, "manifest.system.min-revision", spanOfPair(value)))
         } }
 
-    fn systemRevision(capability, result) = match result {
-        Success { value } => Success { value: ManifestModel::SystemRequirement { capability: capability, minimumRevision: value } }
-        Error { message } => Error { message: message }
-    }
+    fn systemRevision(capability, result) = Checked::andThen(result, fn(value) => Success { value: ManifestModel::SystemRequirement { capability: capability, minimumRevision: value } })
 
     fn systemsOf(pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => Checked::andThen(acc, fn(value) => appended(value, systemOf(pair))))
 
