@@ -54,7 +54,11 @@ impl Codegen {
     }
 
     pub(crate) fn foreign_return(&self, name: &str) -> String {
-        let ty = self.fn_ret_ltype(name).unwrap_or(crate::llty::LType::I64);
+        let ty = if self.fn_ret_result_inner(name).is_some() {
+            crate::llty::LType::Ptr
+        } else {
+            self.fn_ret_ltype(name).unwrap_or(crate::llty::LType::I64)
+        };
         format!(
             "{}{}",
             self.foreign_extension(name, ty),

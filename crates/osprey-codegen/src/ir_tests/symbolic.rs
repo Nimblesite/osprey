@@ -3,6 +3,19 @@
 use super::*;
 
 #[test]
+fn a_result_with_a_narrow_payload_is_a_pointer_at_the_c_boundary() {
+    // [FFI-NUMERIC-WIDTH] Extension belongs to scalar values, never Result pointers.
+    let ir = module("extern fn returned(value: Result<int8, string>) -> Result<int8, string>\nextern fn run(callback: fn() -> Result<int8, string>) -> Result<int8, string>\nlet result = returned(Success { value: toInt8(7) })\nlet callbackResult = run(fn() => Success { value: toInt8(7) })\n");
+    for line in ir.lines().filter(|line| line.contains("@returned(") || line.contains("@run(") || line.contains("@__callback_")) {
+        assert!(
+            !line.contains("signext") && !line.contains("zeroext"),
+            "{line}"
+        );
+    }
+    assert!(ir.contains("@returned("), "{ir}");
+}
+
+#[test]
 fn narrow_c_callbacks_have_the_same_signature_as_the_c_caller() {
     // [FFI-NUMERIC-WIDTH] The callback definition, not just its code pointer, is C ABI.
     let ir = module("extern fn run(callback: fn(int8) -> int8, value: int8) -> int8\nfn relay(value: int8) = run(fn(x) => x, value)\n");

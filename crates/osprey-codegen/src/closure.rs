@@ -164,7 +164,8 @@ pub(crate) fn raw_callback_lambda(
     let params = bind_params_from(cg, parameters, param_tys, 0);
     source_parameters(cg, parameters, 0);
     let emitted = closure_return(cg, body, sig);
-    cg.exit_c_callback(saved, (&ret_spelling, sig.1), &name, &params);
+    let boundary_type = if sig.2.is_some() { LType::Ptr } else { sig.1 };
+    cg.exit_c_callback(saved, (&ret_spelling, boundary_type), &name, &params);
     emitted?;
     let reg = cg.emit_reg(format!("bitcast {ret_spelling} ({plist})* @{name} to i8*"));
     Ok(Value::new(reg, LType::Ptr))
