@@ -348,6 +348,7 @@ static void check_content_length(void) {
 // build traps any read past the end. It may be refused or accepted, never anything
 // else, and whatever is accepted obeys the rules callers rely on.
 static void parse_damaged(const char *bytes, size_t len) {
+  expect_scan_agrees(bytes, len);
   char *raw = malloc(len + 1);
   assert(raw != NULL);
   memcpy(raw, bytes, len);

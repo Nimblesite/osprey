@@ -238,8 +238,151 @@ static void check_status_only_builtins(void) {
   http_close_client(client);
 }
 
+// The bytes as they would be seen a read at a time, `step` bytes to a read. Returns
+// whether the framing ended, and where, in a block of exactly the size the transport
+// would have, so a sanitizer build traps any read past the end.
+static bool scan_in_steps(const char *bytes, size_t len, size_t step, size_t *end) {
+  char *raw = malloc(len + 1);
+  assert(raw != NULL);
+  HttpFrameScan scan;
+  memset(&scan, 0, sizeof(scan));
+  bool done = false;
+  for (size_t have = 0; have < len && !done;) {
+    size_t next = len - have < step ? len : have + step;
+    memcpy(raw + have, bytes + have, next - have);
+    raw[next] = '\0';
+    have = next;
+    done = http_frame_complete(&scan, raw, have, end);
+    assert(!done || *end <= have);
+  }
+  free(raw);
+  return done;
+}
+
+// However a response is cut up the scan reaches one answer, and it never stops at a
+// point the decoder would call truncated: stopping there would refuse a good response.
+void expect_scan_agrees(const char *bytes, size_t len) {
+  size_t whole_end = 0;
+  size_t byte_end = 0;
+  bool whole = scan_in_steps(bytes, len, len + 1, &whole_end);
+  bool by_byte = scan_in_steps(bytes, len, 1, &byte_end);
+  assert(whole == by_byte);
+  if (!whole) {
+    return;
+  }
+  assert(whole_end == byte_end || whole_end == len); // a fault ends the scan where it stands
+  char *raw = malloc(byte_end + 1);
+  assert(raw != NULL);
+  memcpy(raw, bytes, byte_end);
+  raw[byte_end] = '\0';
+  const char *sep = NULL;
+  int64_t status = 0;
+  int64_t rc = 0;
+  osp_io_error_clear();
+  const char *head = http_checked_head(raw, byte_end, &sep, &status, &rc);
+  if (head) {
+    char *headers = NULL;
+    assert(http_copy_response_headers(head, sep, &headers));
+    char *body = NULL;
+    rc = http_response_body_of(status, headers, sep + 4, byte_end - (size_t)(sep + 4 - raw), false, &body);
+    free(body);
+    free(headers);
+  }
+  assert(osp_io_error() == NULL || strstr(osp_io_error(), "truncated") == NULL);
+  osp_io_error_clear();
+  free(raw);
+}
+
+static void expect_frame_end(const char *bytes, size_t len, size_t expected) {
+  for (size_t step = 1; step <= len + 1; step = step < 8 ? step + 1 : step * 2) {
+    size_t end = 0;
+    assert(scan_in_steps(bytes, len, step, &end));
+    assert(end == expected);
+  }
+  size_t end = 0;
+  assert(!scan_in_steps(bytes, expected - 1, 1, &end)); // one byte short is not the end
+}
+
+// Exactly where each kind of framing ends, past which nothing is read.
+static void check_frame_ends(void) {
+  static const struct { const char *frame; const char *past; } framed[] = {
+      {"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", "EXTRA"},
+      {"HTTP/1.1 200 OK\r\nContent-Length: 00\r\n\r\n", "EXTRA"},
+      {"HTTP/1.0 200 OK\r\nContent-Length:\t2 \r\n\r\nok", "\r\n\r\n"},
+      {"HTTP/1.1 204 No\r\n\r\n", "EXTRA"},
+      {"HTTP/1.1 304 No\r\nContent-Length: 9\r\n\r\n", "EXTRA"},
+      {"HTTP/1.1 101 Up\r\nUpgrade: x\r\n\r\n", "not http"},
+      {"HTTP/1.1 100 Go\r\n\r\nHTTP/1.1 102 Go\r\nA: b\r\n\r\nHTTP/1.1 204 No\r\n\r\n", "X"},
+      {"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", "0\r\n\r\n"},
+      {"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\n\r\r\n2\r\n\r\n\r\n0\r\n\r\n", "X"},
+      {"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nA;x=y\r\n0123456789\r\n0;z\r\nA: b\r\nC: d\r\n\r\n", "X"},
+      {"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\n\r\n0\r\n\r\n", "X"},
+  };
+  char joined[256];
+  for (size_t i = 0; i < sizeof(framed) / sizeof(framed[0]); i++) {
+    size_t frame_len = strlen(framed[i].frame);
+    int total = snprintf(joined, sizeof(joined), "%s%s", framed[i].frame, framed[i].past);
+    assert(total > 0 && (size_t)total < sizeof(joined));
+    expect_frame_end(joined, (size_t)total, frame_len);
+    expect_frame_end(framed[i].frame, frame_len, frame_len);
+  }
+  static const char *const never[] = {
+      "HTTP/1.1 200 OK\r\n\r\nonly the close ends this",
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: 1\r\n\r\nnor this",
+      "HTTP/1.1 200 OK\r\nContent-Length: 18446744073709551615\r\n\r\ntoo long to arrive",
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nFFFFFFFFFFFFFFFF\r\nmore",
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nA: unfinished trailer\r\n",
+      "HTTP/1.1 200 OK\r\nno blank line yet\r\n",
+      "HTTP/1.1 100 Go\r\n\r\n",
+  };
+  for (size_t i = 0; i < sizeof(never) / sizeof(never[0]); i++) {
+    size_t end = 0;
+    assert(!scan_in_steps(never[i], strlen(never[i]), 1, &end));
+    assert(!scan_in_steps(never[i], strlen(never[i]), strlen(never[i]) + 1, &end));
+  }
+}
+
+// Fills a limit's worth of `unit`, read in transport-sized steps. A scan that went
+// back to the start after each read would take minutes over this, and this is what a
+// hostile server would send to burn the client's CPU instead of its memory.
+static void expect_linear_scan(const char *head, const char *unit, const char *tail) {
+  size_t size = HTTP_MAX_RESPONSE_BYTES;
+  char *bytes = malloc(size + 1);
+  assert(bytes != NULL);
+  size_t head_len = strlen(head);
+  size_t unit_len = strlen(unit);
+  size_t tail_len = strlen(tail);
+  memcpy(bytes, head, head_len);
+  size_t at = head_len;
+  while (at + unit_len + tail_len < size) {
+    memcpy(bytes + at, unit, unit_len);
+    at += unit_len;
+  }
+  memcpy(bytes + at, tail, tail_len);
+  at += tail_len;
+  size_t end = 0;
+  uint64_t started = osp_monotonic_ms();
+  (void)scan_in_steps(bytes, at, CHUNK_SIZE, &end);
+  assert(elapsed_ms_since(started) < 20000);
+  free(bytes);
+}
+
+static void check_scan_costs_stay_linear(void) {
+  static const char chunked[] = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+  expect_linear_scan(chunked, "1\r\nx\r\n", "0\r\n\r\n");
+  expect_linear_scan("HTTP/1.1 200 OK\r\nX-Long: ", "x", "\r\n\r\n");
+  expect_linear_scan("HTTP/1.1 200 OK\r\n", "X: y\r\n", "\r\n");
+  expect_linear_scan("", "HTTP/1.1 100 Go\r\n\r\n", "HTTP/1.1 204 No\r\n\r\n");
+  expect_linear_scan(chunked, "1;", "\r\nx\r\n0\r\n\r\n");
+  expect_linear_scan(chunked, "0", "\r\n\r\n");
+  expect_linear_scan("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n", "A: b\r\n", "\r\n");
+  expect_linear_scan("HTTP/1.1 200 OK\r\n", "\r", "\n\r\n");
+}
+
 void test_response_read_bounds(void) {
   int64_t previous = shared_origin_client;
+  check_frame_ends();
+  check_scan_costs_stay_linear();
   check_stops_once_framed();
   check_stops_at_the_fault();
   check_what_framing_cannot_end();

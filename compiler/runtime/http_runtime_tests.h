@@ -100,6 +100,7 @@ void test_client_malformed_chunks(void);
 void test_chunked_decoder(void);
 void test_response_framing(void);
 void test_response_read_bounds(void);
+void expect_scan_agrees(const char *bytes, size_t len);
 void test_client_response_allocation_failures(void);
 void test_client_tls_handshake_failure(void);
 void test_client_tls_peer_verification(void);
