@@ -120,7 +120,8 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 ### Phase 5 — Native device arithmetic `[GPU-DEVICE-NATIVE]` `[GPU-MATMUL]`
 
 - [ ] The dialect spells each row: `char uchar short ushort int uint long`, `half` storage read and written as `float`, native `float`, `ulong` for binary64. `FIXED_PARAMETERS` and `gpuGet` captures are typed per buffer.
-- [ ] Metal: `MTLCompileOptions` with safe math and `#pragma METAL fp contract(off)` in the library source; OpenCL: `#pragma OPENCL FP_CONTRACT OFF`. Checked integer ops at each width in `gpu_device_lib.metal`, one template instantiated per width, no copies.
+- [x] Metal: `MTLCompileOptions` with safe math and `#pragma METAL fp contract(off)` in the library source; OpenCL: `#pragma OPENCL FP_CONTRACT OFF`. Verified 2026-11-03: Metal and OpenCL driver regressions failed before the fix; both pass after, as do 28,802,095 shader checks and the forced-Metal hardware suite (6,741 checks, including binary32 FMA and `2^24 + 1 - 2^24` discriminators) on Apple M4 Max. OpenCL hardware is not verified by its mock driver.
+- [ ] Checked integer ops at each width in `gpu_device_lib.metal`, one template instantiated per width, no copies.
 - [ ] `gpuMatMul` is open over `float` and `float32` with one element type for all three buffers; `osprey_matmul32` accumulates in binary32 in `k` order with no FMA; the order test at `2^24 + 1 - 2^24`.
 - [ ] Conversions in kernels: `toFloat32` of a `float` is `narrow32`, `toFloat` of a `float32` is `widen32` (both exist), every other conversion is the device's own cast.
 - [ ] `gpu_shader_tests.c` compiles the dialect as host C and checks every `float32` operation, conversion and width-checked integer op bit for bit against the host; a forced Metal run of `tests/core/gpu/*` is recorded in the spec with the date and device.

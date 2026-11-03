@@ -24,7 +24,12 @@ static NSMutableArray *encoded;
 - (void)dealloc { if (self.data) deallocs++; }
 - (id)newCommandQueue { return failure == 2 ? nil : [OspreyMockMetal new]; }
 - (id)newLibraryWithSource:(NSString *)source options:(id)options error:(NSError **)error {
-  assert([source containsString:@"osprey_matmul64"] && !options); (void)error;
+  assert([source containsString:@"osprey_matmul64"]); (void)error;
+  // [GPU-DEVICE-NATIVE]: the driver must request safe math for every library.
+  assert([options isKindOfClass:[MTLCompileOptions class]]);
+  MTLCompileOptions *compile = options;
+  assert(compile.mathMode == MTLMathModeSafe);
+  assert([source containsString:@"#pragma METAL fp contract(off)"]);
   libraries++;
   return failure == 3 ? nil : [OspreyMockMetal new];
 }

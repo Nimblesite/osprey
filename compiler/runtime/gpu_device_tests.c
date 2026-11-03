@@ -44,7 +44,12 @@ static const char KERNELS[] =
     "kernel void osprey_kernel_fault(GPU_GLOBAL const ulong *in0 GPU_BUFFER(0), GPU_GLOBAL const ulong *in1 GPU_BUFFER(1),"
     " GPU_GLOBAL ulong *out GPU_BUFFER(2), GPU_GLOBAL ulong *fault GPU_BUFFER(3), GPU_PARAM count GPU_BUFFER(4) GPU_THREAD) {\n"
     "  ulong i = GPU_INDEX;\n  if (i >= count) return;\n"
-    "  out[i] = (ulong)osprey_add((long)in0[i], (long)in0[i], fault);\n}\n";
+    "  out[i] = (ulong)osprey_add((long)in0[i], (long)in0[i], fault);\n}\n"
+    "kernel void osprey_kernel_float32(GPU_GLOBAL const float *a GPU_BUFFER(0),"
+    " GPU_GLOBAL const float *b GPU_BUFFER(1), GPU_GLOBAL float *out GPU_BUFFER(2) GPU_THREAD) {\n"
+    "  if (GPU_INDEX != 0) return;\n"
+    "  out[0] = a[0] * b[0] + a[1];\n"
+    "  out[1] = (a[2] + a[3]) - a[2];\n}\n";
 
 static uint64_t random_word(void) {
   state ^= state << 13;
@@ -166,6 +171,25 @@ static void compiled_fault(void) {
   checks += 5;
 }
 
+// [GPU-DEVICE-NATIVE]: FMA and reassociation each change these binary32 results.
+// Raw ABI storage here tests the driver independently of typed-buffer lowering.
+static void native_float32_rounding(void) {
+  float a[4] = {0x1.000002p0f, -1.0f, 0x1p24f, 1.0f};
+  float b[4] = {0x1.fffffcp-1f, 0.0f, 0.0f, 0.0f}, actual[2] = {99.0f, 99.0f};
+  int64_t left[2], right[2], output = 0;
+  memcpy(left, a, sizeof left);
+  memcpy(right, b, sizeof right);
+  OspreyGpuDispatch d = {"osprey_kernel_float32", KERNELS, {{0, NULL, NULL, 0, NULL}}, 0, 1};
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, left, NULL, 2);
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, right, NULL, 2);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &output, &output, 1);
+  assert(osprey_gpu_device_dispatch(&d) == 1);
+  memcpy(actual, &output, sizeof actual);
+  assert(actual[0] == 0.0f && !signbit(actual[0]));
+  assert(actual[1] == 0.0f && !signbit(actual[1]));
+  checks += 2;
+}
+
 int main(void) {
   selected = getenv("OSPREY_GPU");
   (void)snprintf(selected_storage, sizeof selected_storage, "%s", selected ? selected : "auto");
@@ -180,6 +204,10 @@ int main(void) {
   compiled_fault();
 #if defined(OSPREY_GPU_METAL)
   if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 9);
+#endif
+  native_float32_rounding();
+#if defined(OSPREY_GPU_METAL)
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 10);
 #endif
   printf("[ok] device binary64 parity: %u results over five products, a compiled kernel chained into a reduction on the device, a sequential reduction and a faulting kernel\n", checks);
   return 0;

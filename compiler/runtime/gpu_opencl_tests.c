@@ -44,6 +44,8 @@ static void *OSP_CL_CALL queue(void *ctx, void *device, uint64_t properties, int
 }
 static void *OSP_CL_CALL program(void *ctx, unsigned count, const char **source, const size_t *size, int *error) {
   assert(ctx && count == 1 && *size && strstr(*source, "osprey_matmul64") && (*source)[*size] == '\0');
+  // [GPU-DEVICE-NATIVE]: an OpenCL build must preserve separate multiply/add rounding.
+  assert(strstr(*source, "#pragma OPENCL FP_CONTRACT OFF"));
   programs++;
   return handle(error);
 }

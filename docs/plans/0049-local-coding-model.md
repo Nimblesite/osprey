@@ -10,7 +10,7 @@ Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0048-runtime-memory-safe
 - `HttpResponse` has `streamFd` (compiler/runtime/http_shared.h:57); `gpuLoad`/`gpuLoadTensor` copy and widen (compiler/runtime/gpu_host.c), and `GpuBuffer<float>` stores binary64.
 
 ## Phase 0 — Baseline, before any port code
-- [ ] Free disk: 16 GiB free (99% full) — needs 60 GB for two GGUFs. `target` (13 GB) and `hosts/gpui/target` (14 GB) are shared with other agents, so coordinate through Too Many Cooks first.
+- [x] Free disk: `df -h .` reports 67 GiB available on 2026-11-03, above the 60 GB requirement. Recheck before each GGUF download; shared build outputs must not be deleted during another process's work.
 - [ ] `apps/llm/eval/`: 30 coding tasks with deterministic pass/fail scripts (this repo's closed bugs and small features) + 200 tool-call cases covering nested objects, multi-line strings, enums and error recovery over 15+ turns.
 - [ ] Run them on real Ollama with the unmodified GGUFs `UD-Q4_K_XL`, `UD-Q5_K_M`, `UD-IQ3_XXS`, at temperature 1.0 vs 0.6.
 - [ ] Record pass rate, tool-call validity, tokens/s, prompt-processing rate and peak RSS in `docs/reviews/review.md`.

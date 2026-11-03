@@ -4,6 +4,7 @@
 // holds every function to the host's own IEEE results, bit for bit).
 #if defined(__METAL_VERSION__)
 #include <metal_stdlib>
+#pragma METAL fp contract(off)
 using namespace metal;
 #define GPU_GLOBAL device
 #define GPU_BUFFER(N) [[buffer(N)]]
@@ -11,6 +12,7 @@ using namespace metal;
 #define GPU_THREAD , uint index [[thread_position_in_grid]]
 #define GPU_INDEX (ulong)(index)
 #elif defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
+#pragma OPENCL FP_CONTRACT OFF
 #define GPU_GLOBAL global
 #define GPU_BUFFER(N)
 #define GPU_PARAM ulong

@@ -46,7 +46,10 @@ static bool ensure_library(const char *source) {
   if (gpu_library != nil && (!source || source == gpu_source)) return true;
   NSString *text = [NSString stringWithFormat:@"%s\n%s", osprey_gpu_shader, source ? source : ""];
   NSError *error = nil;
-  gpu_library = [gpu_device newLibraryWithSource:text options:nil error:&error];
+  // [GPU-DEVICE-NATIVE]: preserve IEEE arithmetic independently of driver defaults.
+  MTLCompileOptions *options = [MTLCompileOptions new];
+  options.mathMode = MTLMathModeSafe;
+  gpu_library = [gpu_device newLibraryWithSource:text options:options error:&error];
   [gpu_pipelines removeAllObjects];
   gpu_source = source;
   if (gpu_library == nil)
