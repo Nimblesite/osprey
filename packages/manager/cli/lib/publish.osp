@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry_host::Host
 import registry_cli::Flags
 import registry_cli::Reports
@@ -68,10 +69,7 @@ module Publish {
         special: filterList(walk.special, fn(p) => selected(mf, p))
     }
 
-    fn treeFiles(project, mf) = match perform Host::Tree.walk(project) {
-        Error { message } => Error { message: message }
-        Success { value } => Install::filesOfWalked(selectedWalk(mf, value), project)
-    }
+    fn treeFiles(project, mf) = Checked::andThen(perform Host::Tree.walk(project), fn(value) => Install::filesOfWalked(selectedWalk(mf, value), project))
 
     // ---- the next identity ----
 

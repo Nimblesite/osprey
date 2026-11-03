@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry_host::Host
 import registry_cli::Flags
 import registry_cli::Reports
@@ -44,10 +45,7 @@ module Install {
     export fn manifestTextIn(fileList) = foldList(fileList, "", fn(found, f: Release::File) => if f.relPath == "osprey.toml" { f.content } else { found })
 
     /// The canonical manifest digest of a tree's manifest, or its rejection.
-    export fn manifestDigestOf(fileList) = match Manifest::accepted(Manifest::parse(manifestTextIn(fileList))) {
-        Error { message } => Error { message: message }
-        Success { value } => ManifestJson::digest(value)
-    }
+    export fn manifestDigestOf(fileList) = Checked::andThen(Manifest::accepted(Manifest::parse(manifestTextIn(fileList))), fn(value) => ManifestJson::digest(value))
 
     fn systemCapabilities(fileList) = match Manifest::accepted(Manifest::parse(manifestTextIn(fileList))) {
         Success { value } => mapList(value.systemRequirements, fn(s: ManifestModel::SystemRequirement) => s.capability)

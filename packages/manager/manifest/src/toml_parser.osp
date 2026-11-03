@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::TomlLexer
 import registry::Toml
 import registry::TomlTree
@@ -46,20 +47,11 @@ module TomlParser {
         }
     }
 
-    fn parseTableHeader(doc, c, start) = match TomlValues::parseKeyPath(c) {
-        Error { message } => Error { message: message }
-        Success { value } => tableHeaderClose(doc, value, start)
-    }
+    fn parseTableHeader(doc, c, start) = Checked::andThen(TomlValues::parseKeyPath(c), fn(value) => tableHeaderClose(doc, value, start))
 
-    fn tableHeaderClose(doc, path, start) = match expectClose(path.at) {
-        Error { message } => Error { message: message }
-        Success { value } => tableHeaderTail(doc, path, value, start)
-    }
+    fn tableHeaderClose(doc, path, start) = Checked::andThen(expectClose(path.at), fn(value) => tableHeaderTail(doc, path, value, start))
 
-    fn tableHeaderTail(doc, path, close, start) = match TomlLexer::skipLineTail(close) {
-        Error { message } => Error { message: message }
-        Success { value } => tableHeaderDefine(doc, path, value, start)
-    }
+    fn tableHeaderTail(doc, path, close, start) = Checked::andThen(TomlLexer::skipLineTail(close), fn(value) => tableHeaderDefine(doc, path, value, start))
 
     fn tableHeaderDefine(doc, path, tail, start) = {
         let segs = headerSegs(path.segs, start)
@@ -69,20 +61,11 @@ module TomlParser {
         }
     }
 
-    fn parseArrayHeader(doc, c, start) = match TomlValues::parseKeyPath(c) {
-        Error { message } => Error { message: message }
-        Success { value } => arrayHeaderClose(doc, value, start)
-    }
+    fn parseArrayHeader(doc, c, start) = Checked::andThen(TomlValues::parseKeyPath(c), fn(value) => arrayHeaderClose(doc, value, start))
 
-    fn arrayHeaderClose(doc, path, start) = match expectDoubleClose(path.at) {
-        Error { message } => Error { message: message }
-        Success { value } => arrayHeaderTail(doc, path, value, start)
-    }
+    fn arrayHeaderClose(doc, path, start) = Checked::andThen(expectDoubleClose(path.at), fn(value) => arrayHeaderTail(doc, path, value, start))
 
-    fn arrayHeaderTail(doc, path, close, start) = match TomlLexer::skipLineTail(close) {
-        Error { message } => Error { message: message }
-        Success { value } => arrayHeaderDefine(doc, path, value, start)
-    }
+    fn arrayHeaderTail(doc, path, close, start) = Checked::andThen(TomlLexer::skipLineTail(close), fn(value) => arrayHeaderDefine(doc, path, value, start))
 
     fn arrayHeaderDefine(doc, path, tail, start) = {
         let segs = headerSegs(path.segs, start)
@@ -92,31 +75,19 @@ module TomlParser {
         }
     }
 
-    fn parseKeyValue(doc, c) = match TomlValues::parseKeyPath(c) {
-        Error { message } => Error { message: message }
-        Success { value } => kvEquals(doc, value)
-    }
+    fn parseKeyValue(doc, c) = Checked::andThen(TomlValues::parseKeyPath(c), fn(value) => kvEquals(doc, value))
 
-    fn kvEquals(doc, path) = match TomlValues::expectEquals(path.at) {
-        Error { message } => Error { message: message }
-        Success { value } => kvValue(doc, path, value)
-    }
+    fn kvEquals(doc, path) = Checked::andThen(TomlValues::expectEquals(path.at), fn(value) => kvValue(doc, path, value))
 
     fn kvValue(doc, path, eq) = {
         let c1 = TomlLexer::skipSpaces(eq)
         match TomlValues::missingValueAt(c1) {
             true => Error { message: Toml::fail(c1, "toml.expected-value") }
-            false => match TomlValues::parseValue(c1) {
-                Error { message } => Error { message: message }
-                Success { value } => kvTail(doc, path, value)
-            }
+            false => Checked::andThen(TomlValues::parseValue(c1), fn(value) => kvTail(doc, path, value))
         }
     }
 
-    fn kvTail(doc, path, v) = match TomlLexer::skipLineTail(v.at) {
-        Error { message } => Error { message: message }
-        Success { value } => kvInsert(doc, path, v.value, value)
-    }
+    fn kvTail(doc, path, v) = Checked::andThen(TomlLexer::skipLineTail(v.at), fn(value) => kvInsert(doc, path, v.value, value))
 
     fn kvInsert(doc, path, val, tail) = match TomlTree::insertAtFocus(doc, path.segs, val) {
         Success { value } => Success { value: Step { doc: value, at: tail } }

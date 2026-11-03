@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Names
 import registry::Order
 import registry::Digests
@@ -67,10 +68,7 @@ module Identity {
         Success { value } => withParts(take(head, value + 1), drop(head, value + 2), digest)
     }
 
-    fn withParts(keyText, versionText, digest) = match Names::parse(keyText) {
-        Error { message } => Error { message: message }
-        Success { value } => withVersion(value, versionText, digest)
-    }
+    fn withParts(keyText, versionText, digest) = Checked::andThen(Names::parse(keyText), fn(value) => withVersion(value, versionText, digest))
 
     fn withVersion(key, versionText, digest) = match version(versionText) {
         Success { value } => Success { value: assemble(key, value, digest) }
@@ -86,10 +84,7 @@ module Identity {
         }
     }
 
-    fn parseHalves(head, digestText) = match Digests::parse(digestText) {
-        Error { message } => Error { message: message }
-        Success { value } => withKey(head, value)
-    }
+    fn parseHalves(head, digestText) = Checked::andThen(Digests::parse(digestText), fn(value) => withKey(head, value))
 
     /// Canonical `(package, epoch, ordinal, digest)` order.
     export fn compare(a: ReleaseId, b: ReleaseId) = Order::thenCompare(Names::compare(a.key, b.key),

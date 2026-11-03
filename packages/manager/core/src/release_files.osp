@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Bytes
 import registry::Identity
 import registry::Order
@@ -61,8 +62,5 @@ module ReleaseFiles {
 
     /// Parse the directory, apply the shared source rules, then hash and
     /// sort; the first failure wins. Implements [PACKAGE-SOURCE-CANONICAL].
-    export fn assemble(dir, files) = match ReleasePath::parse(dir) {
-        Error { message } => Error { message: message }
-        Success { value } => checked(value, files)
-    }
+    export fn assemble(dir, files) = Checked::andThen(ReleasePath::parse(dir), fn(value) => checked(value, files))
 }

@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Bytes
 import registry::JsonScan
 
@@ -160,10 +161,7 @@ module Json {
         }
     }
 
-    fn parseMember(text, j, depth, seen) = match JsonScan::scan(text, j + 1) {
-        Error { message } => Error { message: message }
-        Success { value } => afterKey(text, value, j, depth, seen)
-    }
+    fn parseMember(text, j, depth, seen) = Checked::andThen(JsonScan::scan(text, j + 1), fn(value) => afterKey(text, value, j, depth, seen))
 
     fn afterKey(text, scan, keyAt, depth, seen) = {
         let colon = skipWs(text, scan.next)
@@ -177,10 +175,7 @@ module Json {
         }
     }
 
-    fn afterColon(text, colon, keyAt, key, depth, seen) = match parseValue(text, colon + 1, depth) {
-        Error { message } => Error { message: message }
-        Success { value } => addMember(text, value, keyAt, key, depth, seen)
-    }
+    fn afterColon(text, colon, keyAt, key, depth, seen) = Checked::andThen(parseValue(text, colon + 1, depth), fn(value) => addMember(text, value, keyAt, key, depth, seen))
 
     /// A repeated key is refused at the byte of its opening quote.
     fn addMember(text, step, keyAt, key, depth, seen) = match hasKey(seen, key) {
@@ -220,10 +215,7 @@ module Json {
         }
     }
 
-    fn parseItem(text, j, depth, items) = match parseValue(text, j, depth) {
-        Error { message } => Error { message: message }
-        Success { value } => nextItem(text, skipWs(text, value.next), depth, listAppend(items, value.value))
-    }
+    fn parseItem(text, j, depth, items) = Checked::andThen(parseValue(text, j, depth), fn(value) => nextItem(text, skipWs(text, value.next), depth, listAppend(items, value.value)))
 
     fn nextItem(text, j, depth, items) = {
         let b = byteAt(text, j) ?: 0

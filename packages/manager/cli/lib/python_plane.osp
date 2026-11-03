@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry_host::Host
 import registry_cli::Lockfile
 import registry_cli::PythonMirror
@@ -245,33 +246,18 @@ module PythonPlane {
         Error => Error { message: sourceForbidden }
     }
 
-    fn appendedPath(paths, source) = match sourcePath(source) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: listAppend(paths, value) }
-    }
+    fn appendedPath(paths, source) = Checked::andThen(sourcePath(source), fn(value) => Success { value: listAppend(paths, value) })
 
     fn pathsIn(root) = {
         let sources = valueAt(uvTable(root), "sources")
-        foldList(Toml::keys(sources), Success { value: [] }, fn(acc, key) => match acc {
-            Error { message } => Error { message: message }
-            Success { value } => appendedPath(value, valueAt(sources, key))
-        })
+        foldList(Toml::keys(sources), Success { value: [] }, fn(acc, key) => Checked::andThen(acc, fn(value) => appendedPath(value, valueAt(sources, key))))
     }
 
-    fn syncedPaths(project, pins, paths) = match paths {
-        Error { message } => Error { message: message }
-        Success { value } => syncVerified(project, pins, value)
-    }
+    fn syncedPaths(project, pins, paths) = Checked::andThen(paths, fn(value) => syncVerified(project, pins, value))
 
-    fn parsedSources(project, pins, text) = match Toml::parse(text) {
-        Error { message } => Error { message: message }
-        Success { value } => syncedPaths(project, pins, pathsIn(value))
-    }
+    fn parsedSources(project, pins, text) = Checked::andThen(Toml::parse(text), fn(value) => syncedPaths(project, pins, pathsIn(value)))
 
-    fn syncFromProject(project, pins) = match perform Host::Files.read(pyprojectPath(project)) {
-        Error { message } => Error { message: message }
-        Success { value } => parsedSources(project, pins, value)
-    }
+    fn syncFromProject(project, pins) = Checked::andThen(perform Host::Files.read(pyprojectPath(project)), fn(value) => parsedSources(project, pins, value))
 
     /// No uv process may consume generated files that differ from the folder lock.
     export fn synced(project, pins) = {

@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::TomlLexer
 import registry::Toml
 import registry::TomlTree
@@ -98,18 +99,12 @@ module TomlValues {
     }
 
     /// Parse a (possibly dotted) key path from the cursor. [PACKAGE-MANIFEST]
-    export fn parseKeyPath(c) = match parseKeySeg(c) {
-        Error { message } => Error { message: message }
-        Success { value } => keyPathTail(value.at, [value.seg])
-    }
+    export fn parseKeyPath(c) = Checked::andThen(parseKeySeg(c), fn(value) => keyPathTail(value.at, [value.seg]))
 
     // Self-recursive: codegen needs the return type spelled out.
     fn keyPathTail(c, segs) -> Result<Path, string> = match TomlLexer::cur(c) == byteDot {
         false => Success { value: Path { segs: segs, at: c } }
-        true => match parseKeySeg(TomlLexer::advance(c)) {
-            Error { message } => Error { message: message }
-            Success { value } => keyPathTail(value.at, listAppend(segs, value.seg))
-        }
+        true => Checked::andThen(parseKeySeg(TomlLexer::advance(c)), fn(value) => keyPathTail(value.at, listAppend(segs, value.seg)))
     }
 
     // -- values -------------------------------------------------------------
@@ -166,10 +161,7 @@ module TomlValues {
         }
     }
 
-    fn parseNumber(c) = match TomlLexer::scanBare(c) {
-        Error { message } => Error { message: message }
-        Success { value } => classifyNumber(value.token, value.at, c)
-    }
+    fn parseNumber(c) = Checked::andThen(TomlLexer::scanBare(c), fn(value) => classifyNumber(value.token, value.at, c))
 
     fn classifyNumber(token, after, start) = match intShape(token) {
         "" => match parseInt(stripUnderscores(token)) {
@@ -235,10 +227,7 @@ module TomlValues {
             true => Error { message: Toml::fail(start, "toml.unterminated-array") }
             false => match TomlLexer::cur(c1) == byteRBracket {
                 true => Success { value: Val { value: Toml::Arr { items: items }, at: TomlLexer::advance(c1) } }
-                false => match parseValue(c1) {
-                    Error { message } => Error { message: message }
-                    Success { value } => parseArrayNext(value.at, listAppend(items, value.value), start)
-                }
+                false => Checked::andThen(parseValue(c1), fn(value) => parseArrayNext(value.at, listAppend(items, value.value), start))
             }
         }
     }
@@ -295,25 +284,13 @@ module TomlValues {
         }
     }
 
-    fn parseInlineEntry(c, pairs, start) = match parseKeySeg(c) {
-        Error { message } => Error { message: message }
-        Success { value } => inlineValue(value.seg, value.at, pairs, start)
-    }
+    fn parseInlineEntry(c, pairs, start) = Checked::andThen(parseKeySeg(c), fn(value) => inlineValue(value.seg, value.at, pairs, start))
 
-    fn inlineValue(seg, keyAt, pairs, start) = match expectEquals(keyAt) {
-        Error { message } => Error { message: message }
-        Success { value } => inlineEqValue(seg, value, pairs, start)
-    }
+    fn inlineValue(seg, keyAt, pairs, start) = Checked::andThen(expectEquals(keyAt), fn(value) => inlineEqValue(seg, value, pairs, start))
 
-    fn inlineEqValue(seg, eq, pairs, start) = match parseValue(skipInlineSpaces(eq)) {
-        Error { message } => Error { message: message }
-        Success { value } => inlineTail(seg, value, pairs, start)
-    }
+    fn inlineEqValue(seg, eq, pairs, start) = Checked::andThen(parseValue(skipInlineSpaces(eq)), fn(value) => inlineTail(seg, value, pairs, start))
 
-    fn inlineTail(seg, v, pairs, start) = match inlineAdd(pairs, seg, v.value) {
-        Error { message } => Error { message: message }
-        Success { value } => inlineAfterComma(v.at, value, start)
-    }
+    fn inlineTail(seg, v, pairs, start) = Checked::andThen(inlineAdd(pairs, seg, v.value), fn(value) => inlineAfterComma(v.at, value, start))
 
     fn inlineAdd(pairs, seg, val) = match TomlTree::findPair(pairs, seg.name) >= 0 {
         true => Error { message: Toml::failSpan(seg.span, "toml.duplicate-key") }

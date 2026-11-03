@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Identity
 import registry::Names
 
@@ -20,10 +21,7 @@ module ReleasePath {
         Success { value } => build(keyText(dir, first, value), versionText(dir, first, value))
     }
 
-    fn build(keyText, versionText) = match Names::parse(keyText) {
-        Error { message } => Error { message: message }
-        Success { value } => withVersion(value, versionText)
-    }
+    fn build(keyText, versionText) = Checked::andThen(Names::parse(keyText), fn(value) => withVersion(value, versionText))
 
     fn withVersion(key, versionText) = match version(versionText) {
         Success { value } => Success { value: Identity::ReleaseId { key: key, epoch: listGet(value, 0) ?: 0, ordinal: listGet(value, 1) ?: 0, digest: "" } }

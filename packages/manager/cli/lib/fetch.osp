@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry_host::Host
 import registry_cli::Reports
 import registry::Bundle
@@ -121,10 +122,7 @@ module Fetch {
 
     /// One GET body, or the stable code of a non-200/404 status; `lock`
     /// reuses this for the listing endpoints.
-    export fn getBody(base, path) = match perform Host::Web.get(base, path) {
-        Error { message } => Error { message: message }
-        Success { value } => bodyOf(value)
-    }
+    export fn getBody(base, path) = Checked::andThen(perform Host::Web.get(base, path), fn(value) => bodyOf(value))
 
     // `Names::Key` shares no field, but the receiver is annotated to match
     // the other shared-field readers below.
@@ -146,25 +144,13 @@ module Fetch {
         _ => Error { message: shapeCode }
     }
 
-    fn rowWith(item, digest, epoch) = match intField(item, "ordinal") {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Row { digest: digest, epoch: epoch, ordinal: value } }
-    }
+    fn rowWith(item, digest, epoch) = Checked::andThen(intField(item, "ordinal"), fn(value) => Success { value: Row { digest: digest, epoch: epoch, ordinal: value } })
 
-    fn rowFrom(item, digest) = match intField(item, "epoch") {
-        Error { message } => Error { message: message }
-        Success { value } => rowWith(item, digest, value)
-    }
+    fn rowFrom(item, digest) = Checked::andThen(intField(item, "epoch"), fn(value) => rowWith(item, digest, value))
 
-    fn rowOf(item) = match stringField(item, "digest") {
-        Error { message } => Error { message: message }
-        Success { value } => rowFrom(item, value)
-    }
+    fn rowOf(item) = Checked::andThen(stringField(item, "digest"), fn(value) => rowFrom(item, value))
 
-    fn appendOne(rows, item) = match rowOf(item) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: listAppend(rows, value) }
-    }
+    fn appendOne(rows, item) = Checked::andThen(rowOf(item), fn(value) => Success { value: listAppend(rows, value) })
 
     fn appendRow(acc, item) = match acc {
         Error => acc
@@ -187,10 +173,7 @@ module Fetch {
 
     fn releaseOf(key, row: Row) = Identity::ReleaseId { key: key, epoch: row.epoch, ordinal: row.ordinal, digest: row.digest }
 
-    fn keyedRows(key, rows) = match rows {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: mapList(value, fn(row: Row) => releaseOf(key, row)) }
-    }
+    fn keyedRows(key, rows) = Checked::andThen(rows, fn(value) => Success { value: mapList(value, fn(row: Row) => releaseOf(key, row)) })
 
     fn keyOfItem(item) = match stringField(item, "key") {
         Error { message } => Error { message: message }
@@ -201,15 +184,9 @@ module Fetch {
     }
 
     /// The releases of one `{"key","releases"}` package item as identities.
-    fn packageReleases(item) = match keyOfItem(item) {
-        Error { message } => Error { message: message }
-        Success { value } => keyedRows(value, releasesOf(item))
-    }
+    fn packageReleases(item) = Checked::andThen(keyOfItem(item), fn(value) => keyedRows(value, releasesOf(item)))
 
-    fn concatPackage(done, item) = match packageReleases(item) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: listConcat(done, value) }
-    }
+    fn concatPackage(done, item) = Checked::andThen(packageReleases(item), fn(value) => Success { value: listConcat(done, value) })
 
     fn appendPackage(acc, item) = match acc {
         Error => acc
@@ -289,10 +266,7 @@ module Fetch {
     /// the release digest ([PACKAGE-SOURCE-CANONICAL]).
     export fn digestOfFiles(fileList) = Source::digest(entriesOf(fileList))
 
-    export fn installedFiles(dir) = match perform Host::Tree.walk(dir) {
-        Error { message } => Error { message: message }
-        Success { value } => filesOfWalked(value, dir)
-    }
+    export fn installedFiles(dir) = Checked::andThen(perform Host::Tree.walk(dir), fn(value) => filesOfWalked(value, dir))
 
     fn lastSlash(path) = fold(range(0, byteLength(path)), -1, fn(best, i) => if (byteAt(path, i) ?: 0) == slashByte { i } else { best })
 
@@ -365,19 +339,13 @@ module Fetch {
         }
     }
 
-    fn verifiedAt(project, body, digest) = match Bundle::verify(body, digest) {
-        Error { message } => Error { message: message }
-        Success { value } => written(project, value)
-    }
+    fn verifiedAt(project, body, digest) = Checked::andThen(Bundle::verify(body, digest), fn(value) => written(project, value))
 
     /// Download, verify and install one release by digest under
     /// `<project>/.osprey/packages`, answering the verified release so `lock`
     /// and `Install` can read its files without touching the disk again
     /// ([PACKAGE-HARDENING] C2).
-    export fn fetched(project, base, digest) = match getBody(base, sourcePath(digest)) {
-        Error { message } => Error { message: message }
-        Success { value } => verifiedAt(project, value, digest)
-    }
+    export fn fetched(project, base, digest) = Checked::andThen(getBody(base, sourcePath(digest)), fn(value) => verifiedAt(project, value, digest))
 
     fn fetchedReport(project, served: Release::Served) = Reports::success([
         Reports::field("fetched", Identity::display(served.id)),

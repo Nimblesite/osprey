@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Toml
 import registry::TomlValues
 
@@ -79,10 +80,7 @@ module TomlTree {
 
     fn insertNested(table, segs, val) = {
         let seg = listGet(segs, 0) ?: TomlValues::missingKeySeg
-        match childOrCreate(table, seg) {
-            Error { message } => Error { message: message }
-            Success { value } => insertDeep(table, seg, segs, value, val)
-        }
+        Checked::andThen(childOrCreate(table, seg), fn(value) => insertDeep(table, seg, segs, value, val))
     }
 
     fn insertDeep(table, seg, segs, child, val) = match insertInto(child, dropSeg(segs), val) {
@@ -140,19 +138,13 @@ module TomlTree {
 
     // Recursive header resolution retains every array element in its typed path.
     fn headerParent(parent, arrays, segs) -> Result<Parent, string> = if isEmpty(segs) { Success { value: parent } } else {
-        match descendParent(parent, arrays, listGet(segs, 0) ?: TomlValues::missingKeySeg) {
-            Error { message } => Error { message: message }
-            Success { value } => headerParent(value, arrays, dropSeg(segs))
-        }
+        Checked::andThen(descendParent(parent, arrays, listGet(segs, 0) ?: TomlValues::missingKeySeg), fn(value) => headerParent(value, arrays, dropSeg(segs)))
     }
 
     fn parentSegs(segs) = range(0, length(segs) - 1) |> map(fn(i) => listGet(segs, i) ?: TomlValues::missingKeySeg) |> toList
     fn withTable(parent, table, focus, arrays) = Doc { root: setTableAt(parent.root, parent.path, table), focus: focus, arrays: arrays }
 
-    fn tableHeader(doc, parent, seg) = match defineLeaf(tableAt(parent.root, parent.path), seg) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: withTable(parent, value, keyPath(parent, seg), doc.arrays) }
-    }
+    fn tableHeader(doc, parent, seg) = Checked::andThen(defineLeaf(tableAt(parent.root, parent.path), seg), fn(value) => Success { value: withTable(parent, value, keyPath(parent, seg), doc.arrays) })
 
     fn hasKey(table, key) = match table {
         Toml::Table { pairs } => findPair(pairs, key) >= 0
@@ -164,10 +156,7 @@ module TomlTree {
         let path = keyPath(parent, seg)
         let known = knownArray(doc.arrays, path)
         if hasKey(table, seg.name) && !known { Error { message: Toml::failSpan(seg.span, "toml.not-a-table") } }
-        else { match appendArrayLeaf(table, seg) {
-            Error { message } => Error { message: message }
-            Success { value } => Success { value: withTable(parent, value.root, listAppend(path, Item { index: value.index }), if known { doc.arrays } else { listAppend(doc.arrays, path) }) }
-        } }
+        else { Checked::andThen(appendArrayLeaf(table, seg), fn(value) => Success { value: withTable(parent, value.root, listAppend(path, Item { index: value.index }), if known { doc.arrays } else { listAppend(doc.arrays, path) }) }) }
     }
 
     fn defineHeader(doc, segs, array) = match headerParent(Parent { root: doc.root, path: [] }, doc.arrays, parentSegs(segs)) {

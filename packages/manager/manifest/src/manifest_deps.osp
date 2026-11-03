@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Toml
 import registry::Names
 import registry::Paths
@@ -74,16 +75,10 @@ module ManifestDeps {
 
     fn requirementOf(key, pairs, span) = match forbiddenKeys(pairs, span) {
         Error { message } => Error { message: message }
-        Success => match epochOf(pairs, span) {
-            Error { message } => Error { message: message }
-            Success { value } => requirementWith(key, pairs, value, span)
-        }
+        Success => Checked::andThen(epochOf(pairs, span), fn(value) => requirementWith(key, pairs, value, span))
     }
 
-    fn requirementWith(key, pairs, epoch, span) = match floorOf(pairs, span) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: value } }
-    }
+    fn requirementWith(key, pairs, epoch, span) = Checked::andThen(floorOf(pairs, span), fn(value) => Success { value: ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: value } })
 
     fn isString(value) = match value {
         Toml::Str { text } => byteLength(text) >= 0
@@ -112,10 +107,7 @@ module ManifestDeps {
         Error { message } => Error { message: message }
     }
 
-    fn edgesOf(kind, pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => match acc {
-        Error { message } => Error { message: message }
-        Success { value } => appended(value, edgePair(kind, pair))
-    })
+    fn edgesOf(kind, pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => Checked::andThen(acc, fn(value) => appended(value, edgePair(kind, pair))))
 
     fn concatenated(sofar, result) = match result {
         Success { value } => Success { value: listConcat(sofar, value) }
@@ -163,10 +155,7 @@ module ManifestDeps {
         _ => fail(grantCode, span)
     }
 
-    fn capabilityList(items, span) = foldList(items, Success { value: [] }, fn(acc, item) => match acc {
-        Error { message } => Error { message: message }
-        Success { value } => appended(value, capabilityValue(item, span))
-    })
+    fn capabilityList(items, span) = foldList(items, Success { value: [] }, fn(acc, item) => Checked::andThen(acc, fn(value) => appended(value, capabilityValue(item, span))))
 
     fn grantValue(pair: Toml::Pair) = match pair.value {
         Toml::Arr { items } => capabilityList(items, pair.span)
@@ -188,17 +177,11 @@ module ManifestDeps {
         Success { value } => Success { value: [ManifestModel::Grant { package: value, capabilities: capabilities }] }
     }
 
-    fn grantWith(keyText, capabilities) = match capabilities {
-        Error { message } => Error { message: message }
-        Success { value } => grantFor(Names::parse(keyText), value)
-    }
+    fn grantWith(keyText, capabilities) = Checked::andThen(capabilities, fn(value) => grantFor(Names::parse(keyText), value))
 
     fn tableGrants(root, kind, sofar) = match ManifestSections::find(ManifestSections::pairsOf(root), kind) {
         Error => Success { value: sofar }
-        Success { value } => foldList(ManifestSections::pairsOf(valueOf(value)), Success { value: sofar }, fn(acc, pair) => match acc {
-            Error { message } => Error { message: message }
-            Success { value } => concatenated(value, grantOf(pair))
-        })
+        Success { value } => foldList(ManifestSections::pairsOf(valueOf(value)), Success { value: sofar }, fn(acc, pair) => Checked::andThen(acc, fn(value) => concatenated(value, grantOf(pair))))
     }
 
     fn missingGrant() = ManifestModel::Grant { package: Names::Key { scope: "", name: "" }, capabilities: [] }
@@ -228,28 +211,16 @@ module ManifestDeps {
         Error { message } => Error { message: message }
         Success { value } => match tableGrants(root, "build-dependencies", value) {
             Error { message } => Error { message: message }
-            Success { value } => match tableGrants(root, "test-dependencies", value) {
-                Error { message } => Error { message: message }
-                Success { value } => Success { value: nonEmpty(mergedGrants(value)) }
-            }
+            Success { value } => Checked::andThen(tableGrants(root, "test-dependencies", value), fn(value) => Success { value: nonEmpty(mergedGrants(value)) })
         }
     }
 
     /// All three dependency tables as canonical, sorted edges.
-    export fn dependencies(root) = match tableEdges(root, "dependencies", []) {
-        Error { message } => Error { message: message }
-        Success { value } => withBuild(root, value)
-    }
+    export fn dependencies(root) = Checked::andThen(tableEdges(root, "dependencies", []), fn(value) => withBuild(root, value))
 
-    fn withBuild(root, sofar) = match tableEdges(root, "build-dependencies", sofar) {
-        Error { message } => Error { message: message }
-        Success { value } => withTest(root, value)
-    }
+    fn withBuild(root, sofar) = Checked::andThen(tableEdges(root, "build-dependencies", sofar), fn(value) => withTest(root, value))
 
-    fn withTest(root, sofar) = match tableEdges(root, "test-dependencies", sofar) {
-        Error { message } => Error { message: message }
-        Success { value } => checkedEdges(value, root)
-    }
+    fn withTest(root, sofar) = Checked::andThen(tableEdges(root, "test-dependencies", sofar), fn(value) => checkedEdges(value, root))
 
     fn segmentByte(b) = (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 46 || b == 45
     fn segmentOk(s) = byteLength(s) >= 1 && byteLength(s) <= segmentMax && !startsWith(s, ".") && !startsWith(s, "-")
@@ -260,10 +231,7 @@ module ManifestDeps {
 
     fn systemOf(pair: Toml::Pair) = match ManifestSections::unknownKeys(ManifestSections::pairsOf(pair.value), systemKeys, "manifest.system.unknown-key") {
         Error { message } => Error { message: message }
-        Success => match ManifestSections::requiredString(ManifestSections::pairsOf(pair.value), "capability", "manifest.system.capability", pair.span) {
-            Error { message } => Error { message: message }
-            Success { value } => systemWith(pair, value)
-        }
+        Success => Checked::andThen(ManifestSections::requiredString(ManifestSections::pairsOf(pair.value), "capability", "manifest.system.capability", pair.span), fn(value) => systemWith(pair, value))
     }
 
     fn systemWith(pair: Toml::Pair, capability) = if !capabilityOk(capability) { fail("manifest.system.capability", pair.span) }
@@ -277,10 +245,7 @@ module ManifestDeps {
         Error { message } => Error { message: message }
     }
 
-    fn systemsOf(pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => match acc {
-        Error { message } => Error { message: message }
-        Success { value } => appended(value, systemOf(pair))
-    })
+    fn systemsOf(pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => Checked::andThen(acc, fn(value) => appended(value, systemOf(pair))))
 
     fn compareSystems(a, b) = Order::thenCompare(Order::compareStrings(a.capability, b.capability), Order::compareInts(a.minimumRevision, b.minimumRevision))
 
@@ -302,10 +267,7 @@ module ManifestDeps {
         Success { value } => systemsSorted(systemsOf(ManifestSections::pairsOf(valueOf(value))), spanOfPair(value))
     }
 
-    fn systemsSorted(result, span) = match result {
-        Error { message } => Error { message: message }
-        Success { value } => uniqueCapabilities(value, span)
-    }
+    fn systemsSorted(result, span) = Checked::andThen(result, fn(value) => uniqueCapabilities(value, span))
 
     fn roleOf(role, kind, capability, span) = match role {
         "documentation" => if capability == "" { Success { value: ManifestModel::Documentation { kind: kind } } } else { fail("manifest.asset.capability", span) }
@@ -318,10 +280,7 @@ module ManifestDeps {
         Error { message } => fail(message, span)
     }
 
-    fn assetKind(pairs, span) = match ManifestSections::requiredString(pairs, "kind", "manifest.asset.kind", span) {
-        Error { message } => Error { message: message }
-        Success { value } => located(ManifestModel::kindOf(value), ManifestSections::spanOf(pairs, "kind", span))
-    }
+    fn assetKind(pairs, span) = Checked::andThen(ManifestSections::requiredString(pairs, "kind", "manifest.asset.kind", span), fn(value) => located(ManifestModel::kindOf(value), ManifestSections::spanOf(pairs, "kind", span)))
 
     fn assetPath(pairs, kind, span) = match ManifestSections::requiredString(pairs, "path", "manifest.asset.path", span) {
         Error { message } => Error { message: message }
@@ -344,10 +303,7 @@ module ManifestDeps {
         Success { value } => boundedInt(value, 0, "manifest.asset.byte-length", spanOfPair(value))
     }
 
-    fn assetRole(pairs, kind, span) = match ManifestSections::requiredString(pairs, "role", "manifest.asset.role", span) {
-        Error { message } => Error { message: message }
-        Success { value } => roleOf(value, kind, capabilityText(pairs), ManifestSections::spanOf(pairs, "role", span))
-    }
+    fn assetRole(pairs, kind, span) = Checked::andThen(ManifestSections::requiredString(pairs, "role", "manifest.asset.role", span), fn(value) => roleOf(value, kind, capabilityText(pairs), ManifestSections::spanOf(pairs, "role", span)))
 
     /// `!` is not a capability character, so a non-string value fails as one.
     fn capabilityText(pairs) = match ManifestSections::find(pairs, "required_capability") {
@@ -360,31 +316,16 @@ module ManifestDeps {
 
     fn assetOf(pairs, span) = match ManifestSections::unknownKeys(pairs, assetKeys, "manifest.asset.unknown-key") {
         Error { message } => Error { message: message }
-        Success => match assetKind(pairs, span) {
-            Error { message } => Error { message: message }
-            Success { value } => assetWithKind(pairs, span, value)
-        }
+        Success => Checked::andThen(assetKind(pairs, span), fn(value) => assetWithKind(pairs, span, value))
     }
 
-    fn assetWithKind(pairs, span, kind) = match assetPath(pairs, kind, span) {
-        Error { message } => Error { message: message }
-        Success { value } => assetRoled(pairs, span, kind, value)
-    }
+    fn assetWithKind(pairs, span, kind) = Checked::andThen(assetPath(pairs, kind, span), fn(value) => assetRoled(pairs, span, kind, value))
 
-    fn assetRoled(pairs, span, kind, path) = match assetRole(pairs, kind, span) {
-        Error { message } => Error { message: message }
-        Success { value } => assetSized(pairs, span, path, value)
-    }
+    fn assetRoled(pairs, span, kind, path) = Checked::andThen(assetRole(pairs, kind, span), fn(value) => assetSized(pairs, span, path, value))
 
-    fn assetSized(pairs, span, path, role) = match assetLength(pairs, span) {
-        Error { message } => Error { message: message }
-        Success { value } => assetDigested(pairs, span, path, role, value)
-    }
+    fn assetSized(pairs, span, path, role) = Checked::andThen(assetLength(pairs, span), fn(value) => assetDigested(pairs, span, path, role, value))
 
-    fn assetDigested(pairs, span, path, role, size) = match assetDigest(pairs, span) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: ManifestModel::Asset { path: path, byteLength: size, digest: value, role: role } }
-    }
+    fn assetDigested(pairs, span, path, role, size) = Checked::andThen(assetDigest(pairs, span), fn(value) => Success { value: ManifestModel::Asset { path: path, byteLength: size, digest: value, role: role } })
 
     fn assetItems(items, span) = foldList(items, Success { value: [] }, fn(acc, item) => match acc {
         Error { message } => Error { message: message }
@@ -417,8 +358,5 @@ module ManifestDeps {
         }
     }
 
-    fn assetsFrom(items, span) = match assetItems(items, span) {
-        Error { message } => Error { message: message }
-        Success { value } => uniqueAssets(value, span)
-    }
+    fn assetsFrom(items, span) = Checked::andThen(assetItems(items, span), fn(value) => uniqueAssets(value, span))
 }

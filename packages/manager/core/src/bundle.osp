@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Canonical
 import registry::Identity
 import registry::Json
@@ -46,24 +47,15 @@ module Bundle {
 
     fn intField(root, field) = shaped(Json::intAt(root, field))
 
-    fn fileOf(root) = match stringField(root, "path") {
-        Error { message } => Error { message: message }
-        Success { value } => withText(root, value)
-    }
+    fn fileOf(root) = Checked::andThen(stringField(root, "path"), fn(value) => withText(root, value))
 
-    fn withText(root, path) = match stringField(root, "text") {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Release::File { relPath: path, content: value } }
-    }
+    fn withText(root, path) = Checked::andThen(stringField(root, "text"), fn(value) => Success { value: Release::File { relPath: path, content: value } })
 
     // A recursive accumulator avoids `foldList` over a `Result<List<…>>`,
     // which crashes the runtime under the current codegen.
     fn filesAt(items, i, acc) -> Result<List<Release::File>, string> = match i >= length(items) {
         true => Success { value: acc }
-        false => match fileOf(listGet(items, i) ?: Json::Null) {
-            Error { message } => Error { message: message }
-            Success { value } => filesAt(items, i + 1, listAppend(acc, value))
-        }
+        false => Checked::andThen(fileOf(listGet(items, i) ?: Json::Null), fn(value) => filesAt(items, i + 1, listAppend(acc, value)))
     }
 
     fn filesOf(items) = {
@@ -76,30 +68,15 @@ module Bundle {
         Error => Error { message: shapeError }
     }
 
-    fn ofValue(root) = match stringField(root, "digest") {
-        Error { message } => Error { message: message }
-        Success { value } => withEpoch(root, value)
-    }
+    fn ofValue(root) = Checked::andThen(stringField(root, "digest"), fn(value) => withEpoch(root, value))
 
-    fn withEpoch(root, digest) = match intField(root, "epoch") {
-        Error { message } => Error { message: message }
-        Success { value } => withFiles(root, digest, value)
-    }
+    fn withEpoch(root, digest) = Checked::andThen(intField(root, "epoch"), fn(value) => withFiles(root, digest, value))
 
-    fn withFiles(root, digest, epoch) = match filesField(root) {
-        Error { message } => Error { message: message }
-        Success { value } => withKey(root, digest, epoch, value)
-    }
+    fn withFiles(root, digest, epoch) = Checked::andThen(filesField(root), fn(value) => withKey(root, digest, epoch, value))
 
-    fn withKey(root, digest, epoch, files) = match stringField(root, "key") {
-        Error { message } => Error { message: message }
-        Success { value } => withOrdinal(root, digest, epoch, files, value)
-    }
+    fn withKey(root, digest, epoch, files) = Checked::andThen(stringField(root, "key"), fn(value) => withOrdinal(root, digest, epoch, files, value))
 
-    fn withOrdinal(root, digest, epoch, files, keyText) = match intField(root, "ordinal") {
-        Error { message } => Error { message: message }
-        Success { value } => makeServed(digest, epoch, files, keyText, value)
-    }
+    fn withOrdinal(root, digest, epoch, files, keyText) = Checked::andThen(intField(root, "ordinal"), fn(value) => makeServed(digest, epoch, files, keyText, value))
 
     fn makeServed(digest, epoch, files, keyText, ordinal) = match Names::parse(keyText) {
         Error => Error { message: shapeError }
@@ -116,10 +93,7 @@ module Bundle {
         Success { value } => ofValue(value)
     }
 
-    fn checkClaim(served, expectedDigest) = match ReleaseFiles::assemble(ReleasePath::format(served.id), served.files) {
-        Error { message } => Error { message: message }
-        Success { value } => compare(served, value.id.digest, expectedDigest)
-    }
+    fn checkClaim(served, expectedDigest) = Checked::andThen(ReleaseFiles::assemble(ReleasePath::format(served.id), served.files), fn(value) => compare(served, value.id.digest, expectedDigest))
 
     fn compare(served: Release::Served, recomputed, expectedDigest) = match recomputed == served.id.digest {
         false => Error { message: "bundle.digest-mismatch" }
@@ -134,10 +108,7 @@ module Bundle {
     /// [PACKAGE-HARDENING]); `""` within the bound.
     export fn sizeCode(byteCount) = if byteCount > maxBytes { tooLarge } else { "" }
 
-    fn verifyParsed(text, expectedDigest) = match decode(text) {
-        Error { message } => Error { message: message }
-        Success { value } => checkClaim(value, expectedDigest)
-    }
+    fn verifyParsed(text, expectedDigest) = Checked::andThen(decode(text), fn(value) => checkClaim(value, expectedDigest))
 
     /// Bound the body, decode, recompute the digest from the files and return
     /// the release only when the recomputed digest equals both the bundle's
