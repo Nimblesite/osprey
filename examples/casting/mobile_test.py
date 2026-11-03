@@ -4,6 +4,7 @@ import base64
 from contextlib import contextmanager
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -14,8 +15,139 @@ ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "examples/casting"
 
 
+# Isolate the event-binding guard on Android's real JSON/runtime implementation.
+BINDING_CHECK = r"""
+import java.lang.reflect.Method;
+import org.json.JSONArray;
+import org.json.JSONObject;
+public final class CastingBindingCheck {
+    private static void require(boolean ok, String message) {
+        if (!ok) throw new AssertionError(message);
+    }
+    public static void main(String[] arguments) throws Exception {
+        Method matches = Class.forName("org.ospreylang.casting.Resident")
+            .getDeclaredMethod("containsBinding", Object.class, String.class);
+        matches.setAccessible(true);
+        JSONObject expected = new JSONObject("{\"kind\":\"picker\",\"label\":\"Speed\",\"selected\":\"1\",\"event\":8,\"enabled\":true,\"choices\":[{\"key\":\"1.5\",\"label\":\"1.5×\"}]}");
+        String descriptor = expected.toString();
+        JSONObject tree = new JSONObject().put("body", new JSONObject().put("children", new JSONArray().put(expected)));
+        require(Boolean.TRUE.equals(matches.invoke(null, tree, descriptor)), "unchanged nested binding");
+        require(Boolean.TRUE.equals(matches.invoke(null, new JSONObject(tree.toString()), descriptor)), "independent frame snapshot");
+        String[] fields = {"event", "label", "selected", "enabled", "choices", "kind"};
+        Object[] values = {9, "Volume", "1.5", false, new JSONArray(), "button"};
+        for (int i = 0; i < fields.length; i++) {
+            JSONObject changed = new JSONObject(descriptor).put(fields[i], values[i]);
+            require(Boolean.FALSE.equals(matches.invoke(null, changed, descriptor)), "changed " + fields[i]);
+        }
+        require(Boolean.FALSE.equals(matches.invoke(null, JSONObject.NULL, descriptor)), "removed binding");
+        System.out.println("PASS: Android binding snapshots reject changed ordinals, labels, selection, enabled state, choices, kind and removal");
+    }
+}
+"""
+
+
+ANDROID_PUBLISHER = r"""
+import android.content.Context;
+import android.net.nsd.NsdManager;
+import android.net.nsd.NsdServiceInfo;
+import android.os.Handler;
+import android.os.Looper;
+public final class CastingNsdPublisher {
+    public static final class MediaCheck {
+        public static void main(String[] arguments) throws Exception {
+            java.net.URL url = new java.net.URL(arguments[1]);
+            java.net.InetAddress host = java.net.InetAddress.getByName(url.getHost());
+            if (!url.getProtocol().equals("http") || url.getUserInfo() != null ||
+                    java.net.NetworkInterface.getByInetAddress(host) == null)
+                throw new java.io.IOException("Media URL must address this device's HTTP server");
+            java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
+            connection.setInstanceFollowRedirects(false);
+            connection.setConnectTimeout(5000); connection.setReadTimeout(5000);
+            connection.setRequestMethod(arguments[0]);
+            if (!arguments[2].isEmpty()) connection.setRequestProperty("Range", arguments[2]);
+            try {
+                System.out.print("HTTP/1.1 " + connection.getResponseCode() + " " + connection.getResponseMessage() + "\r\n");
+                for (var field : connection.getHeaderFields().entrySet()) {
+                    if (field.getKey() != null)
+                        for (String value : field.getValue()) System.out.print(field.getKey() + ": " + value + "\r\n");
+                }
+                System.out.print("\r\n"); System.out.flush();
+                if (!arguments[0].equals("HEAD")) {
+                    try (var input = connection.getInputStream()) { input.transferTo(System.out); }
+                }
+            } finally { connection.disconnect(); }
+        }
+    }
+    @SuppressWarnings("deprecation")
+    public static void main(String[] arguments) throws Exception {
+        System.out.println("PID: " + android.os.Process.myPid());
+        Looper.prepareMainLooper();
+        Handler main = new Handler(Looper.getMainLooper());
+        Class<?> type = Class.forName("android.app.ActivityThread");
+        Object thread = type.getMethod("systemMain").invoke(null);
+        Context system = (Context) type.getMethod("getSystemContext").invoke(thread);
+        Context context = system.createPackageContext("com.android.shell", 0);
+        NsdManager manager = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
+        NsdServiceInfo info = new NsdServiceInfo();
+        info.setServiceName("OspreyCastingAndroid-" + arguments[0]);
+        info.setServiceType("_googlecast._tcp.");
+        info.setPort(Integer.parseInt(arguments[0]));
+        info.setAttribute("fn", "Android native test receiver");
+        NsdManager.RegistrationListener listener = new NsdManager.RegistrationListener() {
+            public void onServiceRegistered(NsdServiceInfo service) { System.out.println("REGISTERED"); }
+            public void onServiceUnregistered(NsdServiceInfo service) {
+                System.out.println("UNREGISTERED"); Looper.myLooper().quitSafely();
+            }
+            public void onRegistrationFailed(NsdServiceInfo service, int code) {
+                System.err.println("FAILED registration: " + code); Looper.myLooper().quitSafely();
+            }
+            public void onUnregistrationFailed(NsdServiceInfo service, int code) {
+                System.err.println("FAILED unregistration: " + code); Looper.myLooper().quitSafely();
+            }
+        };
+        manager.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener);
+        Thread stop = new Thread(() -> {
+            try { System.in.read(); }
+            catch (java.io.IOException error) { System.err.println("FAILED control: " + error); }
+            main.post(() -> manager.unregisterService(listener));
+        });
+        stop.setDaemon(true); stop.start();
+        Looper.loop();
+    }
+}
+"""
+
+
+def sdk_tool(sdk, pattern):
+    paths = list(sdk.glob(pattern))
+    assert paths, f"Missing Android SDK tool: {pattern}"
+    return max(paths, key=lambda path: tuple(map(int, re.findall(r"\d+", path.parent.name))))
+
+
 def command(arguments, **options):
     return subprocess.run(arguments, check=True, **options)
+
+
+def android_java_path(name):
+    return f"/data/local/tmp/osprey-casting-{name}-{os.getpid()}.jar"
+
+
+@contextmanager
+def android_java(sdk, adb, text, name, work):
+    platform = sdk_tool(sdk, "platforms/*/android.jar")
+    compiler = sdk_tool(sdk, "build-tools/*/d8")
+    folder = work / name
+    folder.mkdir()
+    source = folder / (name + ".java"); source.write_text(text)
+    command(["javac", "-Xlint:all", "-Werror", "-classpath", str(platform), "-d", str(folder), str(source)])
+    archive = folder / "check.jar"
+    command([str(compiler), "--lib", str(platform), "--output", str(archive), *map(str, sorted(folder.glob(name + "*.class")))])
+    remote = android_java_path(name)
+    try:
+        command(adb + ["push", str(archive), remote])
+        command(adb + ["shell", "chmod", "444", remote])
+        yield remote
+    finally: command(adb + ["shell", "rm", "-f", remote])
 
 
 def receiver_fixture(port, duplicate=False):
@@ -30,6 +162,42 @@ def stop_process(process):
     except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=5)
 
 
+def wait_publisher(process, path, marker, alive=True):
+    for _ in range(100):
+        if marker in path.read_text() and (not alive or process.poll() is None): return
+        if process.poll() is not None: raise RuntimeError("Publisher exited: " + path.read_text())
+        time.sleep(0.05)
+    raise RuntimeError("Publisher registration timed out: " + path.read_text())
+
+
+def finish_android_publisher(process, adb, path):
+    try:
+        process.stdin.write(b"stop\n"); process.stdin.flush()
+        wait_publisher(process, path, "UNREGISTERED", alive=False)
+    finally:
+        if process.poll() is None:
+            pid = re.search(r"^PID: (\d+)$", path.read_text(), re.M)
+            if not pid: raise RuntimeError("Android publisher did not report its process ID")
+            # ActivityThread leaves Binder threads alive after its looper returns.
+            command(adb + ["shell", "kill", pid[1]])
+            process.communicate(timeout=5)
+    if process.returncode not in (0, 143) or "UNREGISTERED" not in path.read_text() or "FAILED" in path.read_text():
+        raise RuntimeError("Android publisher cleanup failed: " + path.read_text())
+
+
+@contextmanager
+def android_publisher(port, work, adb, sdk):
+    with android_java(sdk, adb, ANDROID_PUBLISHER, "CastingNsdPublisher", work) as remote:
+        path = work / "android-publisher.log"
+        with path.open("w") as log:
+            process = subprocess.Popen(adb + ["shell", "env", "CLASSPATH=" + remote, "app_process", "/", "CastingNsdPublisher", str(port)],
+                stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                wait_publisher(process, path, "REGISTERED")
+                yield
+            finally: finish_android_publisher(process, adb, path)
+
+
 @contextmanager
 def bonjour_publisher(port, name, work):
     path = work / (name + ".log")
@@ -38,11 +206,7 @@ def bonjour_publisher(port, name, work):
             "_googlecast._tcp", "local.", str(port), f"osprey-casting-{os.getpid()}.local.",
             "127.0.0.1", "fn=Osprey native test receiver"], stdout=log, stderr=subprocess.STDOUT)
         try:
-            for _ in range(100):
-                if process.poll() is not None: raise RuntimeError("Bonjour publisher exited: " + path.read_text())
-                if any("reply for service" in line and "Name now registered and active" in line for line in path.read_text().splitlines()): break
-                time.sleep(0.05)
-            else: raise RuntimeError("Bonjour registration timed out: " + path.read_text())
+            wait_publisher(process, path, f"reply for service {name}-{os.getpid()}._googlecast._tcp.local.: Name now registered and active")
             yield
         finally: stop_process(process)
 
@@ -69,6 +233,7 @@ def run(platform):
                  "-out", str(work / "cert.pem"), "-subj", "/CN=localhost", "-days", "1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         command(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(work / "Casting mobile test.mp3")])
         env["CAST_TEST_AUDIO_SOURCE"] = str(work / "Casting mobile test.mp3")
+        if platform == "android": env["CAST_TEST_NATIVE_JAR"] = android_java_path("CastingNsdPublisher")
         process = subprocess.Popen([sys.executable, str(APP / "mobile_receiver.py"), "--cert", str(work / "cert.pem"),
             "--key", str(work / "key.pem"), "--port-file", str(work / "port"), "--log", str(log)], env=env)
         adb = None
@@ -82,7 +247,8 @@ def run(platform):
                 serial = env["OSPREY_ANDROID_SERIAL"]
                 adb = [str(sdk / "platform-tools/adb"), "-s", serial]
                 command(adb + ["reverse", f"tcp:{port}", f"tcp:{port}"])
-                try: command([sys.executable, str(APP / "android/test.py")], env=env)
+                try:
+                    with android_publisher(port, work, adb, sdk): command([sys.executable, str(APP / "android/test.py")], env=env)
                 finally: command(adb + ["reverse", "--remove", f"tcp:{port}"])
             else:
                 env.pop("OSPREY_ANDROID_SERIAL", None)
@@ -112,12 +278,12 @@ def verify_log(path, platform):
     kinds = [record["payload"].get("type") for record in records if record.get("event") == "recv"]
     for kind in ["LAUNCH", "LOAD", "PAUSE", "PLAY", "SEEK", "SET_VOLUME", "SET_PLAYBACK_RATE", "STOP"]:
         assert kind in kinds, (kind, kinds)
-    assert kinds.count("LOAD") == (7 if platform == "ios" else 6), kinds
+    assert kinds.count("LOAD") == 7, kinds
     payloads = [record["payload"] for record in records if record.get("event") == "recv"]
     assert any(item.get("type") == "SET_VOLUME" and abs(item["volume"]["level"] - 0.5) < 0.02 for item in payloads), payloads
     assert any(item.get("type") == "SEEK" and abs(item["currentTime"] - 50) < 3 for item in payloads), payloads
     assert any(item.get("type") == "SET_PLAYBACK_RATE" and item["playbackRate"] == 1.5 for item in payloads), payloads
-    assert kinds.count("STOP") >= 2, kinds
+    assert kinds.count("STOP") == 7, kinds
     assert kinds.count("PAUSE") == (4 if platform == "android" else 3), kinds
     assert kinds.count("PLAY") == (3 if platform == "android" else 2), kinds
     assert kinds.count("SEEK") == 3, kinds
@@ -130,14 +296,12 @@ def verify_log(path, platform):
         assert seeks[:2] == [10, 0] and abs(seeks[2] - 50) < 3, seeks
         rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
         assert rates == [1.5, 0.75, 1.25, 1.5], rates
-        assert kinds.count("STOP") == 6, kinds
     else:
         assert abs(volumes[0] - 0.5) < 0.02 and volumes[1:] == [0.5, 0.25], volumes
         seeks = [item["currentTime"] for item in payloads if item.get("type") == "SEEK"]
         assert abs(seeks[0] - 50) < 3 and seeks[1:] == [10, 0], seeks
         rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
         assert rates == [1.5, 1.5, 0.75, 1.25], rates
-        assert kinds.count("STOP") == 7, kinds
     loads = [record for record in records if record.get("event") == "load"]
     assert all(record["title"] == "Casting mobile test" and record["contentType"] == "audio/mpeg" for record in loads), loads
     print("PASS: native app Cast commands, replay, metadata and real HTTP HEAD/range fetches")

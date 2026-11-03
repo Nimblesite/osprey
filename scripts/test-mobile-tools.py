@@ -451,7 +451,8 @@ class CastingGoldenVerdict(unittest.TestCase):
             module.http_checks.return_value = "bad media"
             self.assertEqual(module.verify_media("http://127.0.0.1:8000/media"), "bad media; cannot remove forward")
             self.assertEqual(adb.call_count, 2)
-
+            module.forward_port.reset_mock()
+            self.assertEqual(module.verify_media("http://10.0.2.16:8000/media"), "bad media"); module.forward_port.assert_not_called()
     def test_golden_gate_rejects_a_missing_small_control(self):
         module = casting_tool("mobile_test")
         baseline = (256, 256, bytes([250, 245, 240]) * 65536)

@@ -16,6 +16,9 @@ import tempfile
 import time
 from xml.etree import ElementTree
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from mobile_test import BINDING_CHECK, android_java
+
 ROOT = Path(__file__).resolve().parents[3]
 SDK = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
 SERIAL = os.environ.get("OSPREY_ANDROID_SERIAL", "")
@@ -24,47 +27,10 @@ PACKAGE = "org.ospreylang.casting"
 WINDOW_PATH = "/sdcard/casting-test-window.xml"
 
 
-# Isolate the event-binding guard on Android's real JSON/runtime implementation.
-BINDING_CHECK = r"""
-import java.lang.reflect.Method;
-import org.json.JSONArray;
-import org.json.JSONObject;
-public final class CastingBindingCheck {
-    private static void require(boolean ok, String message) {
-        if (!ok) throw new AssertionError(message);
-    }
-    public static void main(String[] arguments) throws Exception {
-        Method matches = Class.forName("org.ospreylang.casting.Resident")
-            .getDeclaredMethod("containsBinding", Object.class, String.class);
-        matches.setAccessible(true);
-        JSONObject expected = new JSONObject("{\"kind\":\"picker\",\"label\":\"Speed\",\"selected\":\"1\",\"event\":8,\"enabled\":true,\"choices\":[{\"key\":\"1.5\",\"label\":\"1.5×\"}]}");
-        String descriptor = expected.toString();
-        JSONObject tree = new JSONObject().put("body", new JSONObject().put("children", new JSONArray().put(expected)));
-        require(Boolean.TRUE.equals(matches.invoke(null, tree, descriptor)), "unchanged nested binding");
-        require(Boolean.TRUE.equals(matches.invoke(null, new JSONObject(tree.toString()), descriptor)), "independent frame snapshot");
-        String[] fields = {"event", "label", "selected", "enabled", "choices", "kind"};
-        Object[] values = {9, "Volume", "1.5", false, new JSONArray(), "button"};
-        for (int i = 0; i < fields.length; i++) {
-            JSONObject changed = new JSONObject(descriptor).put(fields[i], values[i]);
-            require(Boolean.FALSE.equals(matches.invoke(null, changed, descriptor)), "changed " + fields[i]);
-        }
-        require(Boolean.FALSE.equals(matches.invoke(null, JSONObject.NULL, descriptor)), "removed binding");
-        System.out.println("PASS: Android binding snapshots reject changed ordinals, labels, selection, enabled state, choices, kind and removal");
-    }
-}
-"""
-
-
 def adb(*arguments, binary=False):
     if not SERIAL: raise ValueError("Set OSPREY_ANDROID_SERIAL to the Android device under test")
     if arguments[:1] == ("shell",): arguments = ("shell", shlex.join(arguments[1:]))
     return subprocess.check_output(ADB + list(arguments), text=not binary)
-
-
-def sdk_tool(pattern):
-    paths = list(SDK.glob(pattern))
-    assert paths, f"Missing Android SDK tool: {pattern}"
-    return max(paths, key=lambda path: tuple(map(int, re.findall(r"\d+", path.parent.name))))
 
 
 def touch_regions(labels):
@@ -96,24 +62,12 @@ def packaged_assets(apk):
 
 
 def bindings():
-    platform = sdk_tool("platforms/*/android.jar")
-    compiler = sdk_tool("build-tools/*/d8")
     installed = adb("shell", "pm", "path", PACKAGE).strip().splitlines()
     assert len(installed) == 1 and installed[0].startswith("package:"), installed
     packaged_assets(installed[0][8:])
-    remote = "/data/local/tmp/osprey-casting-bindings.jar"
     with tempfile.TemporaryDirectory(prefix="casting-bindings-") as directory:
-        work = Path(directory)
-        source = work / "CastingBindingCheck.java"; source.write_text(BINDING_CHECK)
-        subprocess.run(["javac", "-Xlint:all", "-Werror", "-classpath", str(platform), "-d", str(work), str(source)], check=True)
-        archive = work / "check.jar"
-        subprocess.run([str(compiler), "--lib", str(platform), "--output", str(archive), str(work / "CastingBindingCheck.class")], check=True)
-        adb("push", str(archive), remote)
-        try:
-            adb("shell", "chmod", "444", remote)
+        with android_java(SDK, ADB, BINDING_CHECK, "CastingBindingCheck", Path(directory)) as remote:
             print(adb("shell", "env", "CLASSPATH=" + installed[0][8:] + ":" + remote, "app_process", "/", "CastingBindingCheck"), flush=True)
-        finally:
-            adb("shell", "rm", "-f", remote)
 
 
 def window():
@@ -248,15 +202,17 @@ def playback(output):
     find("Play")
 
 
-def launch(skin="sherbet", fixture=None):
+def launch(skin="sherbet", fixture=None, native=False):
     adb("shell", "am", "force-stop", PACKAGE)
     fixture = fixture if fixture is not None else os.environ.get("CAST_TEST_RECEIVER", base64.b64encode(b"\n").decode())
-    adb("shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "testReceiver", fixture, "--es", "skin", skin)
+    arguments = ["shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "skin", skin]
+    if not native: arguments += ["--es", "testReceiver", fixture]
+    adb(*arguments)
     assert find("Open file…").get("class") == "android.widget.Button"
     assert find("Play").get("class") == "android.widget.Button"
     assert "files/player/skins/skins" not in adb("exec-out", "run-as", PACKAGE, "find", "files/player/skins", "-type", "d").splitlines()
     adb("shell", "input", "tap", "10", "150")
-    if os.environ.get("CAST_TEST_RECEIVER"): find("Receiver: Test receiver" if skin == "sherbet" else "Receiver")
+    if os.environ.get("CAST_TEST_RECEIVER") and not native: find("Receiver: Test receiver" if skin == "sherbet" else "Receiver")
 
 
 def open_roots():
@@ -333,6 +289,35 @@ def alternate_playback(output):
     print("PASS: native connection failure remains visible across skins and a reachable receiver recovers playback", flush=True)
 
 
+def receiver_selection():
+    def collect(value):
+        if isinstance(value, dict):
+            if value.get("kind") == "picker" and value.get("label") == "Receiver": return [value["selected"]]
+            return [key for child in value.values() for key in collect(child)]
+        return [key for child in value for key in collect(child)] if isinstance(value, list) else []
+    choices = collect(json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")))
+    assert len(choices) == 1, choices
+    return choices[0]
+
+
+def native_discovery(output):
+    # [CAST-MOBILE-DELIVERY] No testReceiver extra: real NSD and service-info callbacks.
+    launch("midnight", native=True)
+    tap("Receiver"); tap("Android native test receiver")
+    find("Receiver: Android native test receiver")
+    key = receiver_selection()
+    assert key.endswith(":" + os.environ["CAST_TEST_NATIVE_PORT"]), key
+    tap("Search again"); tap("Receiver")
+    find("Android native test receiver")
+    assert receiver_selection() == key, "Native NSD rescan lost the selected endpoint"
+    tap("Android native test receiver")
+    import_track()
+    tap("Play"); find("Pause")
+    (output / "native-nsd-playing.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+    tap("Stop"); find("Play")
+    print("PASS: real Android NSD discovery, service resolution, rescan and selected-receiver playback", flush=True)
+
+
 def duplicate_receivers():
     # [CAST-MOBILE-RECEIVER-IDENTITY] The first equal-name device is unavailable.
     port = os.environ["CAST_TEST_NATIVE_PORT"]
@@ -360,6 +345,7 @@ def main():
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(track)], check=True)
         adb("push", str(track), "/sdcard/Download/Casting mobile test.mp3")
         index_audio("/sdcard/Download/Casting mobile test.mp3")
+        if os.environ.get("CAST_TEST_RECEIVER"): native_discovery(output)
         if os.environ.get("CAST_TEST_RECEIVER"): duplicate_receivers()
         launch()
         touch_regions(["Play", "Open file…", "Receiver: Test receiver", "Appearance"])
@@ -403,6 +389,19 @@ def main():
 
 
 class NativeReadContracts(unittest.TestCase):
+    def test_native_http_preserves_binary_response_and_quotes_shell_arguments(self):
+        import mobile_receiver as receiver
+        data = b"HTTP/1.1 206 Partial Content\r\nContent-Length: 4\r\nContent-Type: audio/mpeg\r\n\r\n\x00\xff\r\n"
+        request = receiver.urllib.request.Request("http://10.0.2.16:8000/media?x=$(private)", headers={"Range": "bytes=0-3"})
+        result = mock.Mock(returncode=0, stdout=data, stderr=b"")
+        with mock.patch.dict(os.environ, {"CAST_TEST_NATIVE_JAR": "/tmp/fixture's path.jar"}), mock.patch.object(receiver.subprocess, "run", return_value=result) as run:
+            with receiver.native_http("stub", request, 3) as response:
+                self.assertEqual((response.status, response.headers.get_content_type(), response.read()), (206, "audio/mpeg", b"\x00\xff\r\n"))
+            expected = ["env", "CLASSPATH=/tmp/fixture's path.jar", "app_process", "/", "CastingNsdPublisher$MediaCheck", "GET", request.full_url, "bytes=0-3"]
+            self.assertEqual(shlex.split(run.call_args.args[0][-1]), expected)
+            result.stdout = b"invalid HTTP"
+            with self.assertRaises(receiver.http.client.HTTPException): receiver.native_http("stub", request, 3)
+
     def test_transient_automation_failure_requests_a_new_snapshot(self):
         failure = subprocess.CalledProcessError(137, "uiautomator", output="interrupted before dump")
         good = ElementTree.fromstring('<hierarchy><node text="Play"/></hierarchy>')

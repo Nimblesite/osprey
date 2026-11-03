@@ -9,13 +9,18 @@ over HTTP (`adb forward` for Android, the content URL for iOS) and answers
 LOAD_FAILED rather than faking success. No sound plays; no real TV involved.
 """
 import argparse
+import http.client
+import io
+import ipaddress
 import json
 import os
 from pathlib import Path
 import socket
+import shlex
 import ssl
 import struct
 import subprocess
+from types import SimpleNamespace
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -184,31 +189,52 @@ def forward_port(serial, device_port):
         return 0, f"adb forward failed: {output}"
 
 
-def http_checks(url):
+def native_http(serial, request, timeout):
+    jar = os.environ["CAST_TEST_NATIVE_JAR"]
+    arguments = ["env", "CLASSPATH=" + jar, "app_process", "/", "CastingNsdPublisher$MediaCheck",
+                 request.get_method(), request.full_url, request.get_header("Range") or ""]
+    try:
+        result = subprocess.run(["adb", "-s", serial, "exec-out", shlex.join(arguments)],
+                                capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise urllib.error.URLError(str(error)) from error
+    if result.returncode != 0: raise urllib.error.URLError(result.stderr.decode(errors="replace"))
+    response = http.client.HTTPResponse(SimpleNamespace(makefile=lambda _: io.BytesIO(result.stdout)))
+    response.begin()
+    return response
+
+
+def http_checks(url, opener=None):
     """Require exact fixture metadata and bytes, not merely successful headers."""
     try:
+        open_url = opener or urllib.request.urlopen
         expected = Path(os.environ["CAST_TEST_AUDIO_SOURCE"]).read_bytes()
-        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=TLS_DEADLINE) as head:
+        with open_url(urllib.request.Request(url, method="HEAD"), timeout=TLS_DEADLINE) as head:
             if (head.status, head.headers.get_content_type(), head.headers.get("Content-Length")) != (200, "audio/mpeg", str(len(expected))):
                 return f"Incorrect HEAD response: {head.status} {head.headers}"
         request = urllib.request.Request(url, headers={"Range": "bytes=0-15"})
-        with urllib.request.urlopen(request, timeout=TLS_DEADLINE) as ranged:
+        with open_url(request, timeout=TLS_DEADLINE) as ranged:
             if (ranged.status, ranged.headers.get("Content-Range"), ranged.read()) != (206, f"bytes 0-15/{len(expected)}", expected[:16]):
                 return "Range response did not contain the exact requested MP3 bytes"
         return None
-    except (urllib.error.URLError, OSError, ValueError, KeyError) as error:
+    except (urllib.error.URLError, OSError, ValueError, KeyError, http.client.HTTPException) as error:
         return f"media fetch failed: {error}"
 
 
 def verify_media(content_id):
-    """Check the media is really served: adb-forwarded for Android, direct for iOS."""
+    """Fetch routed Android URLs on-device; forward loopback fixtures; fetch iOS directly."""
     serial = os.environ.get("OSPREY_ANDROID_SERIAL", "")
     if not serial:
         return http_checks(content_id)
     try:
-        device_port = urllib.parse.urlsplit(content_id).port
+        location = urllib.parse.urlsplit(content_id)
+        device_port = location.port
     except ValueError:
         return f"contentId has no port to forward: {content_id}"
+    try: loopback = ipaddress.ip_address(location.hostname).is_loopback
+    except ValueError: loopback = location.hostname == "localhost"
+    if not loopback:
+        return http_checks(content_id, opener=lambda request, timeout: native_http(serial, request, timeout))
     local_port, error = forward_port(serial, device_port)
     if error:
         return error
