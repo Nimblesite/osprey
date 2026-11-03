@@ -2,6 +2,7 @@
 // presenting test-generated certificate chains, so peer verification is
 // asserted end to end [HTTP-STATUS-CLIENT].
 #include "http_runtime_tests.h"
+#include "io_error.h"
 #include "http_shared.h"
 
 #include <assert.h>
@@ -231,6 +232,44 @@ static void tls_expect_served(EVP_PKEY *ca_key, X509 *ca, const char *cn,
   http_close_client(client_id);
 }
 
+// One exact reply over a trusted TLS connection, returning what the client made of
+// it. The caller frees any handle.
+static int64_t tls_exchange(EVP_PKEY *key, X509 *leaf, const char *reply) {
+  TlsOrigin origin;
+  tls_origin_start(&origin, leaf, key, reply);
+  int64_t client_id = tls_client("127.0.0.1");
+  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/x",
+                                     (char *)(uintptr_t) "");
+  tls_origin_stop(&origin);
+  http_close_client(client_id);
+  return handle;
+}
+
+// TLS is only a different pipe: hostile framing arriving through it is decoded or
+// refused exactly as in the clear [HTTP-CHUNKED-DECODE], [HTTP-RESPONSE-FRAMING].
+static void tls_expect_framing_enforced(EVP_PKEY *ca_key, X509 *ca) {
+  EVP_PKEY *key = EVP_RSA_gen(2048);
+  X509 *leaf = tls_test_cert(ca_key, ca, key, "127.0.0.1", "IP:127.0.0.1");
+  assert(leaf != NULL);
+  int64_t handle = tls_exchange(key, leaf,
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+      "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n");
+  assert(handle >= 1);
+  char *body = http_response_body(handle);
+  assert(body != NULL && strcmp(body, "hello world") == 0);
+  free(body);
+  assert(http_response_free(handle) == 0);
+  assert(tls_exchange(key, leaf,
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n") == -14);
+  assert(tls_exchange(key, leaf,
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhel") == -14);
+  assert(tls_exchange(key, leaf, "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nhel") == -14);
+  assert(tls_exchange(key, leaf, "HTTP/1.1 -14 X\r\n\r\nhel") == -8);
+  osp_io_error_clear();
+  X509_free(leaf);
+  EVP_PKEY_free(key);
+}
+
 // A https:// request must accept ONLY a certificate that is (a) issued by a
 // trusted CA and (b) valid for the identity dialed -- an IP literal OR a DNS
 // name such as localhost. An untrusted issuer, a wrong host or a wrong DNS
@@ -278,6 +317,7 @@ void test_client_tls_peer_verification(void) {
                     "trust");
   tls_expect_served(ca_key, ca, "local", "DNS:localhost", "localhost",
                     "dns-ok");
+  tls_expect_framing_enforced(ca_key, ca);
 
   X509_free(ca);
   EVP_PKEY_free(ca_key);

@@ -246,6 +246,7 @@ static void check_heads(void) {
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip,\r\n chunked\r\n\r\n2\r\nhi\r\n0\r\n\r\n", HEAD_BAD);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nX: a\r\n\ty\r\n\r\nb", HEAD_BAD);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nno colon\r\n\r\nb", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nZ\r\n\r\nb", HEAD_BAD);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\n: no name\r\n\r\nb", HEAD_BAD);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nX: y\r\nZ\r\n\r\nb", HEAD_BAD);
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\n\r\n", 200, "");
@@ -260,6 +261,8 @@ static void check_content_length(void) {
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello", 200, "hello");
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\ncontent-length:5  \r\n\r\nhello", 200, "hello");
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", 200, "");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nhello", 200, "he");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nCONTENT-LENGTH: 2\r\n\r\nhello", 200, "he");
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 0005\r\n\r\nhello", 200, "hello");
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhello", 200, "he");
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nhello", 200, "");
@@ -271,6 +274,7 @@ static void check_content_length(void) {
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Lengths: 99\r\n\r\nhello", 200, "hello");
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort", BODY_CUT);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\n", BODY_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nCONTENT-LENGTH: 100\r\n\r\nshort", BODY_CUT);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 18446744073709551615\r\n\r\nshort", BODY_CUT);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 18446744073709551616\r\n\r\nshort", LENGTH_BAD);
   EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 99999999999999999999999\r\n\r\nshort", LENGTH_BAD);
