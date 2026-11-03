@@ -94,6 +94,41 @@ fn file_builtins_include_the_host_tensor_loader() {
     );
 }
 
+/// [GPU-BUFFER-TENSOR] Reject unsupported requested storage before codegen.
+#[test]
+fn tensor_loader_result_obligations_survive_aliases_and_helpers() {
+    for (prefix, callee) in [
+        ("", "gpuLoadTensor"),
+        ("let load = gpuLoadTensor\n", "load"),
+        ("fn load(path, name) = gpuLoadTensor(path, name)\n", "load"),
+    ] {
+        for name in ["float", "float32", "float16"].into_iter().chain(
+            crate::numeric::Numeric::ALL
+                .into_iter()
+                .filter(|n| !n.is_float())
+                .map(crate::numeric::Numeric::name)
+                .chain(["bool", "string"]),
+        ) {
+            assert_tensor_request(prefix, callee, name);
+        }
+    }
+}
+
+fn assert_tensor_request(prefix: &str, callee: &str, name: &str) {
+    let source = format!(
+        "{prefix}fn wanted() -> Result<GpuBuffer<{name}>, Error> = {callee}(\"x\", \"w\")\n"
+    );
+    let errors = crate::testutil::check(&source);
+    if matches!(name, "float" | "float32" | "float16") {
+        assert!(errors.is_empty(), "{source}: {errors:?}");
+    } else {
+        assert!(
+            !errors.is_empty(),
+            "unsupported tensor element accepted: {source}"
+        );
+    }
+}
+
 #[test]
 fn network_builtins_match_the_runtime_status_abi() {
     let expected = [
