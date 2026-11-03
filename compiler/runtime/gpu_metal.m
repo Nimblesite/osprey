@@ -39,6 +39,13 @@ static void init_device(void) {
   }
 }
 
+// The math options that replaced `fastMathEnabled`, which fails the build once
+// the deployment target reaches the release that deprecated it.
+static void use_safe_math(MTLCompileOptions *options) API_AVAILABLE(macos(15.0), ios(18.0)) {
+  options.mathMode = MTLMathModeSafe;
+  options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
+}
+
 // Compile the library when there is none, or when a dispatch brings program
 // kernels the current one lacks; the pipelines of the old library are dropped.
 static bool ensure_library(const char *source) {
@@ -48,12 +55,15 @@ static bool ensure_library(const char *source) {
   NSError *error = nil;
   // [GPU-DEVICE-NATIVE]: preserve IEEE arithmetic independently of driver defaults.
   MTLCompileOptions *options = [MTLCompileOptions new];
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 150000 || __IPHONE_OS_VERSION_MIN_REQUIRED >= 180000
+  use_safe_math(options);
+#else
   if (@available(macOS 15.0, iOS 18.0, *)) {
-    options.mathMode = MTLMathModeSafe;
-    options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
+    use_safe_math(options);
   } else {
     options.fastMathEnabled = NO;
   }
+#endif
   gpu_library = [gpu_device newLibraryWithSource:text options:options error:&error];
   [gpu_pipelines removeAllObjects];
   gpu_source = source;
