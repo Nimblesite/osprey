@@ -992,6 +992,71 @@ def mcp_merge_cases():
     ]
 
 
+def initialized_version(result: Mcp.InitializeResult) -> str:
+    """The protocol version of a successful `initialize_result`, empty on failure."""
+    match result:
+        case Mcp.Ok(session=session):
+            return session.protocol_version
+        case Mcp.Failed(error=_e):
+            return ""
+
+
+def completed_lines(chunk: Mcp.Lines) -> str:
+    return join(chunk.lines, "|") + "/" + chunk.buffer.pending
+
+
+def listed_names(listing: Mcp.ToolList) -> str:
+    return join(mapList(listing.tools, lambda tool: tool.name), ",") + "/" + listing.next_cursor
+
+
+def server_names(load: Mcp.ConfigLoad) -> str:
+    return join(mapList(load.servers, server_name), ",")
+
+
+def server_name(server: Mcp.MCPServerConfig) -> str:
+    return Mcp.name_of(server)
+
+
+def capability_flags(found: Mcp.ServerCapabilities) -> list[bool]:
+    return [found.logging, found.prompts, found.prompts_list_changed, found.resources, found.resources_list_changed, found.tools, found.tools_list_changed, found.completions]
+
+
+def collected_text(result) -> str:
+    match result:
+        case Success(value=items):
+            return join(mapList(items, toString), ",")
+        case Error(message=message):
+            return f"error:{message}"
+
+
+def positive(value):
+    return Success(value=value) if value > 0 else Error(message=f"not positive: {value}")
+
+
+def mcp_surface_cases():
+    found = Mcp.capabilities_of(decode('{"tools":{"listChanged":true},"prompts":{},"resources":{"listChanged":false},"experimental":{"b":{},"a":{}}}'))
+    empty = Mcp.capabilities_of(decode('{}'))
+    me = Mcp.Implementation(name="osprey", title="Osprey", version="1")
+    return [
+        Check.equal("mcp.protocol_version", Mcp.PROTOCOL_VERSION, "2025-06-18"),
+        Check.equal("mcp.error_text", Mcp.message_of(Mcp.MCPError(message="boom", code=-32000, data=JsonNull())), "boom (code: -32000)"),
+        Check.equal("mcp.error_text_data", Mcp.message_of(Mcp.MCPError(message="boom", code=1, data=decode('{"a":1}'))), 'boom (code: 1, data: {"a":1})'),
+        Check.equal("mcp.implementation", me.name + "/" + me.title + "/" + me.version, "osprey/Osprey/1"),
+        same("mcp.capabilities_of", capability_flags(found), [False, True, False, True, False, True, True, False]),
+        same("mcp.capabilities_of_experimental", found.experimental, ["a", "b"]),
+        same("mcp.capabilities_of_empty", capability_flags(empty), [False, False, False, False, False, False, False, False]),
+        Check.equal("mcp.capabilities_of_empty_experimental", len(empty.experimental), 0),
+        Check.equal("mcp.initialize_version", initialized_version(Mcp.initialize_result(decode('{"protocolVersion":"2025-06-18","serverInfo":{"name":"s","version":"1"},"capabilities":{}}'))), Mcp.PROTOCOL_VERSION),
+        Check.equal("mcp.initialize_version_refused", initialized_version(Mcp.initialize_result(decode('{"protocolVersion":"1999-01-01"}'))), ""),
+        Check.equal("mcp.lines_named", completed_lines(Mcp.lines_of(Mcp.LineBuffer(pending="a"), "b\r\nc\nd")), "ab|c/d"),
+        Check.equal("mcp.tool_list_named", listed_names(Mcp.list_tools_result(decode('{"tools":[{"name":"add","inputSchema":{"type":"object"}}],"nextCursor":"n"}'))), "add/n"),
+        Check.equal("mcp.config_names", server_names(Mcp.parse_config('{"mcpServers":{"a":{"command":"c"},"b":{"url":"https://b/mcp"}}}', {})), "a,b"),
+        Check.equal("messages.collect", collected_text(M.collect([1, 2, 3], positive)), "1,2,3"),
+        Check.equal("messages.collect_empty", collected_text(M.collect([], positive)), ""),
+        Check.equal("messages.collect_first_error", collected_text(M.collect([1, 0, -1], positive)), "error:not positive: 0"),
+    ]
+
+
 def usage_cases():
     first = Usage.RequestUsage(input_tokens=10, cache_write_tokens=1, cache_read_tokens=2, output_tokens=3, input_audio_tokens=0, cache_audio_read_tokens=0, output_audio_tokens=0, details={"reasoning_tokens": 4})
     second = Usage.RequestUsage(input_tokens=20, cache_write_tokens=0, cache_read_tokens=0, output_tokens=5, input_audio_tokens=0, cache_audio_read_tokens=0, output_audio_tokens=0, details={"reasoning_tokens": 1, "other": 2})
@@ -1300,6 +1365,7 @@ def suite():
         mcp_http_cases(),
         cases(len(CONFIG_TEXTS), mcp_config_case),
         mcp_merge_cases(),
+        mcp_surface_cases(),
         usage_cases(),
         direct_cases(),
         exception_cases(),

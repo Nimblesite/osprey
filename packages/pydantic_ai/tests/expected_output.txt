@@ -375,6 +375,22 @@ ok mcp.config[20]
 ok mcp.config[21]
 ok mcp.merge
 ok mcp.merge_empty
+ok mcp.protocol_version
+ok mcp.error_text
+ok mcp.error_text_data
+ok mcp.implementation
+ok mcp.capabilities_of
+ok mcp.capabilities_of_experimental
+ok mcp.capabilities_of_empty
+ok mcp.capabilities_of_empty_experimental
+ok mcp.initialize_version
+ok mcp.initialize_version_refused
+ok mcp.lines_named
+ok mcp.tool_list_named
+ok mcp.config_names
+ok messages.collect
+ok messages.collect_empty
+ok messages.collect_first_error
 ok usage.incr
 ok usage.details
 ok usage.total
@@ -456,4 +472,4 @@ ok typed.http_reply
 ok typed.settings
 ok typed.tool_definition
 ok typed.run_usage
-458 passed, 0 failed
+474 passed, 0 failed
