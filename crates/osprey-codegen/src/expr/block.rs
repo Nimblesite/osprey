@@ -52,7 +52,15 @@ fn gen_block_contents(
     // A child scope preserves outer bindings across nested blocks [BLOCK-SCOPE].
     cg.with_local_scope(|cg| {
         for (i, s) in statements.iter().enumerate() {
-            crate::stmt::gen_local_stmt(cg, s)?;
+            // The statement's own position anchors its positionless calls,
+            // mirroring the checker's `infer_block_stmt` — the key
+            // [GPU-BUFFER-TENSOR] publishes a `gpuLoadTensor` call's
+            // asked-for element type under.
+            let outer = cg.current_position;
+            cg.current_position = crate::stmt::stmt_position(s).or(outer);
+            let lowered = crate::stmt::gen_local_stmt(cg, s);
+            cg.current_position = outer;
+            lowered?;
             // Last-use drops: names the continuation no longer references die
             // here, not at function end [GC-ARC-PERCEUS].
             crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);

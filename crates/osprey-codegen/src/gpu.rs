@@ -15,7 +15,7 @@ use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::gpu_device::{declined, launch_fold, launch_map};
 use crate::gpu_kernel::{extract, kernel_elem, kernel_of, slot};
-use crate::iter::{acc_init, acc_result, acc_step, invoke, nth, Callback};
+use crate::iter::{acc_init, acc_result, acc_step, callback_result, invoke, nth, Callback};
 use crate::llty::{LType, Value};
 use crate::loops::{close_range_loop, open_range_loop};
 use buffer::{kept_counter, push_if_kept, take_kept};
@@ -25,23 +25,29 @@ use osprey_ast::{Expr, NamedArgument};
 /// not statically known.
 const GPU_OWNER: &str = "GpuBuffer";
 
-/// Whether `ty` is a buffer word the DEVICE sublanguage can hold — `int`,
-/// `float`, or `bool`. Kernels over the sized types are not device-capable
-/// until Phase 5, so their extraction declines here and the host loop runs
-/// [GPU-BUFFER-ELEM].
+/// Whether `ty` is a scalar a buffer may hold [GPU-BUFFER-ELEM]: every numeric
+/// type of the one table and `bool`. The DEVICE dialect can only carry the
+/// 8-byte rows until plan 0050 phase 5, so `gpu_device` declines a kernel
+/// whose slot or uniform is narrower and the host loop runs it.
 pub(crate) fn is_scalar(ty: LType) -> bool {
-    matches!(ty, LType::I64 | LType::F64 | LType::I1)
-}
-
-/// Whether `ty` boxes into a buffer's 8-byte word on the host: every numeric
-/// ([TYPE-NUMERIC-WORD] — a sized integer sign- or zero-extended, a sized
-/// float its bit pattern zero-extended) and `bool`.
-fn is_word(ty: LType) -> bool {
     matches!(ty, LType::Num(_) | LType::I1)
 }
 
-/// Whether `v` is a bare scalar word — [`is_scalar`] with no `Result` wrapper,
-/// which would travel as an erased pointer the flat ABI has no slot for.
+/// The byte width of one element of `ty` [GPU-BUFFER-ELEM] — the numeric
+/// table's `bits / 8`, one byte for `bool` — and the 8-byte word when the
+/// element is unknown. This is the one spelling of a buffer's element size in
+/// the backend; the runtime receives it as `osprey_gpu_alloc`'s second
+/// argument.
+fn elem_bytes(elem: Option<LType>) -> i64 {
+    match elem {
+        Some(LType::Num(n)) => i64::from(n.bytes()),
+        Some(LType::I1) => 1,
+        _ => 8,
+    }
+}
+
+/// A bare scalar word — [`is_scalar`] with no `Result` wrapper, which would
+/// travel as an erased pointer the flat ABI has no slot for.
 fn is_scalar_value(v: &Value) -> bool {
     v.result_inner.is_none() && is_scalar(v.ty)
 }
@@ -129,10 +135,13 @@ fn buffer_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     crate::cast::coerce_to(cg, v, LType::Ptr)
 }
 
-/// A freshly allocated buffer of `len` elements, owned by the current region
-/// and tagged with its element's owner tag.
-fn buffer_alloc(cg: &mut Codegen, len: &str, owner: String) -> Value {
-    let raw = cg.call("i8*", "osprey_gpu_alloc", "i64", &[len]);
+/// A freshly allocated buffer of `len` elements of `elem`'s width, owned by
+/// the current region and tagged with its element's owner tag — the one
+/// allocator entry point, taking the element size as its argument
+/// [GPU-BUFFER-ELEM].
+fn buffer_alloc(cg: &mut Codegen, len: &str, elem: Option<LType>, owner: String) -> Value {
+    let bytes = elem_bytes(elem).to_string();
+    let raw = cg.call("i8*", "osprey_gpu_alloc", "i64, i64", &[len, &bytes]);
     let v = Value::handle(raw, owner);
     crate::arc::own(cg, &v);
     v
@@ -155,15 +164,16 @@ fn buffer_set(cg: &mut Codegen, buf: &Value, index: &str, word: &str) {
 }
 
 /// A buffer word recovered at the kernel's element type: a `float` element's
-/// raw bits become a `double` operand (never an integer conversion), a `bool`
+/// raw bits become a `double` operand (never an integer conversion), a sized
+/// element narrows from its zero-extended bytes to its own width, a `bool`
 /// becomes `i1`, and an unknown element passes through as the raw word.
 fn elem_value(cg: &mut Codegen, raw: String, elem: Option<LType>) -> Value {
     crate::conv::from_word(cg, raw, elem.map(crate::llty::scalar_spelling))
 }
 
-/// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer word is a numeric
-/// or `bool`, boxed to its raw `i64` word — the host path stores 8-byte words
-/// at every width ([TYPE-NUMERIC-WORD]). An unhandled `Result` gets its own
+/// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer element is a
+/// numeric or `bool`, boxed to its `i64` word whose low bytes the runtime
+/// stores at the element's width. An unhandled `Result` gets its own
 /// diagnostic, because the fix (handle it inside the kernel) differs from a
 /// non-scalar's.
 fn scalar_word(cg: &mut Codegen, v: Value, what: &str) -> Result<Value> {
@@ -172,9 +182,9 @@ fn scalar_word(cg: &mut Codegen, v: Value, what: &str) -> Result<Value> {
             "{what} cannot be an unhandled Result; handle it inside the kernel"
         )));
     }
-    if !is_word(v.ty) {
+    if !is_scalar(v.ty) {
         return Err(CodegenError::unsupported(format!(
-            "{what} must be a scalar (int, float, or bool)"
+            "{what} must be a scalar (a numeric type or bool)"
         )));
     }
     Ok(box_to_i64(cg, v))
@@ -225,31 +235,31 @@ fn rejoin(cg: &mut Codegen, join: &str) {
 /// The shared chassis of `gpuMap`/`gpuZipWith`: `launch` asks the device to
 /// fill the fresh `len`-element buffer, and otherwise `apply` runs at every
 /// index of `src` and each scalar result is stored at that index. The
-/// kernel's result `LType` is codegen-time knowledge, so the handle is
-/// retagged with it and downstream combinators recover the element without a
-/// kernel signature.
+/// kernel's result `LType` comes from its signature — the buffer is sized at
+/// that element's width BEFORE the loop runs [GPU-BUFFER-ELEM] — so the
+/// handle is tagged with it and downstream combinators recover the element
+/// without a kernel signature.
 fn map_into(
     cg: &mut Codegen,
     src: &Value,
     len: &str,
     elem: Option<LType>,
+    result: LType,
     what: &str,
     launch: impl FnOnce(&mut Codegen, &Value) -> Result<String>,
     mut apply: impl FnMut(&mut Codegen, Value, &str) -> Result<Value>,
 ) -> Result<Value> {
-    let out = buffer_alloc(cg, len, GPU_OWNER.to_string());
+    let out = buffer_alloc(cg, len, Some(result), elem_owner(Some(result)));
     let done = launch(cg, &out)?;
     let join = host_fallback(cg, &done);
-    let mut mapped_ty = LType::I64;
     kernel_loop(cg, src, len, elem, |cg, arg, i| {
         let mapped = apply(cg, arg, i)?;
-        mapped_ty = mapped.ty;
         let stored = scalar_word(cg, mapped, what)?;
         buffer_set(cg, &out, i, &stored.operand);
         Ok(())
     })?;
     rejoin(cg, &join);
-    Ok(out.with_owner(Some(elem_owner(Some(mapped_ty)))))
+    Ok(out)
 }
 
 /// `(buffer, kernel)` — the preamble `gpuMap` and `gpuFilter` share: the source
@@ -266,12 +276,14 @@ fn unary_kernel(cg: &mut Codegen, args: &[Expr]) -> Result<(Value, Option<LType>
 /// `gpuMap(buffer, kernel)` — apply a pure kernel to every element [GPU-MAP].
 fn gpu_map(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let (src, elem, kernel) = unary_kernel(cg, args)?;
+    let result = result_of(cg, nth(args, 1)?, &kernel, "a gpuMap kernel result")?;
     let len = buffer_len(cg, &src);
     map_into(
         cg,
         &src,
         &len,
         elem,
+        result,
         "a gpuMap kernel result",
         |cg, out| launch_map(cg, "gpuMap", &kernel, &[slot(elem)], &[&src], out, &len),
         |cg, arg, _| invoke(cg, &kernel, vec![arg]),
@@ -285,6 +297,7 @@ fn gpu_zip_with(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let (kernel, left_elem) = kernel_of(cg, args, 2, &left, 0)?;
     let right_elem = kernel_elem(cg, nth(args, 2)?, &kernel, &right, 1);
     let kernel = extract(cg, kernel, &[slot(left_elem), slot(right_elem)])?;
+    let result = result_of(cg, nth(args, 2)?, &kernel, "a gpuZipWith kernel result")?;
     let len = shorter_len(cg, &left, &right);
     let slots = [slot(left_elem), slot(right_elem)];
     map_into(
@@ -292,6 +305,7 @@ fn gpu_zip_with(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         &left,
         &len,
         left_elem,
+        result,
         "a gpuZipWith kernel result",
         |cg, out| {
             launch_map(
@@ -310,6 +324,18 @@ fn gpu_zip_with(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
             invoke(cg, &kernel, vec![a, b])
         },
     )
+}
+
+/// The kernel's result element, from its own signature — the width the
+/// buffer it fills is allocated at [GPU-BUFFER-ELEM]. Fails closed when no
+/// concrete signature exists, because a map's buffer cannot be sized at a
+/// type only the first iteration would reveal.
+fn result_of(cg: &Codegen, kernel_expr: &Expr, kernel: &Callback, what: &str) -> Result<LType> {
+    callback_result(cg, kernel_expr, kernel).ok_or_else(|| {
+        CodegenError::unsupported(format!(
+            "{what} has no resolvable element type; annotate the kernel's return type"
+        ))
+    })
 }
 
 /// The shorter of two buffers' lengths, so a ragged pair truncates rather than
@@ -344,7 +370,7 @@ fn reduction(cg: &mut Codegen, args: &[Expr], what: &str) -> Result<Reduction> {
     let (acc, tmpl) = acc_init(cg, args)?;
     if !is_scalar_value(&tmpl) {
         return Err(CodegenError::unsupported(format!(
-            "a {what} accumulator must be a scalar (int, float, or bool)"
+            "a {what} accumulator must be a scalar (a numeric type or bool)"
         )));
     }
     let (combine, elem) = kernel_of(cg, args, 2, &src, 1)?;
@@ -387,7 +413,7 @@ fn gpu_fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 fn gpu_iota(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let n = gen_expr(cg, nth(args, 0)?)?;
     let n = crate::conv::as_i64(cg, n)?;
-    let out = buffer_alloc(cg, &n.operand, elem_owner(Some(LType::I64)));
+    let out = buffer_alloc(cg, &n.operand, Some(LType::I64), elem_owner(Some(LType::I64)));
     // The trip count is the ALLOCATED length, never the requested `n`: the
     // runtime clamps negative/oversized requests and a failed data allocation
     // to the empty buffer, and a loop bounded by `n` would spin up to 2^63
@@ -424,7 +450,7 @@ fn gpu_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let _ = declined(cg, "gpuScan has no device form yet");
     let r = reduction(cg, args, "gpuScan")?;
-    let out = buffer_alloc(cg, &r.len, elem_owner(Some(r.tmpl.ty)));
+    let out = buffer_alloc(cg, &r.len, Some(r.tmpl.ty), elem_owner(Some(r.tmpl.ty)));
     kernel_loop(cg, &r.src, &r.len, r.elem, |cg, arg, i| {
         step(cg, &r, arg)?;
         // The slot already holds the boxed running value — exactly a buffer
@@ -443,7 +469,7 @@ fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let _ = declined(cg, "gpuFilter has no device form yet");
     let (src, elem, predicate) = unary_kernel(cg, args)?;
     let len = buffer_len(cg, &src);
-    let out = buffer_alloc(cg, &len, elem_owner(elem));
+    let out = buffer_alloc(cg, &len, elem, elem_owner(elem));
     let kept = kept_counter(cg);
     kernel_loop(cg, &src, &len, elem, |cg, arg, _i| {
         // The loop already loaded this element: box the typed value back to its

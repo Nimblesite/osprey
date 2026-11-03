@@ -70,9 +70,11 @@ const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const SORTABLE_DISPLAY: &str = "List<int> | List<string>";
 const PRINTABLE_DISPLAY: &str =
     "int | float | bool | string | Unit | any | Result<printable, printable>";
-const GPU_SOURCE_DISPLAY: &str = "List<int> | List<float> | List<bool> \
-     | Iterator<int> | Iterator<float> | Iterator<bool>";
-const GPU_BUFFER_DISPLAY: &str = "GpuBuffer<int> | GpuBuffer<float> | GpuBuffer<bool>";
+const GPU_SOURCE_DISPLAY: &str = "List<T> | Iterator<T>, where T is a scalar \
+     (bool or any numeric type)";
+const GPU_BUFFER_DISPLAY: &str = "GpuBuffer<T>, where T is a scalar \
+     (bool or any numeric type)";
+const GPU_PRODUCT_DISPLAY: &str = "GpuBuffer<float> | GpuBuffer<float32>";
 
 /// Human-facing parameter type for a constrained `any` scheme.
 pub(crate) fn display_param_type(name: &str, index: usize) -> Option<&'static str> {
@@ -84,6 +86,7 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<&'static st
         "listSort" => Some(SORTABLE_DISPLAY),
         "print" | "toString" => Some(PRINTABLE_DISPLAY),
         "toGpu" => Some(GPU_SOURCE_DISPLAY),
+        "gpuMatMul" => Some(GPU_PRODUCT_DISPLAY),
         name if is_gpu_buffer_builtin(name) => Some(GPU_BUFFER_DISPLAY),
         _ => None,
     }
@@ -137,6 +140,11 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         name if is_gpu_buffer_builtin(name) && !is_gpu_buffer(ty) => Some(format!(
             "`{name}` supports only {GPU_BUFFER_DISPLAY}; got {ty}"
         )),
+        // [GPU-MATMUL]: the product is open over `float` and `float32` only,
+        // one element type for all three buffers.
+        "gpuMatMul" if !is_float_buffer(ty) => Some(format!(
+            "`gpuMatMul` supports only {GPU_PRODUCT_DISPLAY}; got {ty}"
+        )),
         _ => None,
     }
 }
@@ -189,6 +197,27 @@ fn is_gpu_source(ty: &Type) -> bool {
 
 fn is_gpu_buffer(ty: &Type) -> bool {
     is_gpu_container(ty, names::GPU_BUFFER)
+}
+
+/// A `GpuBuffer` of `float` or `float32` [GPU-MATMUL]; still-unresolved
+/// variables defer exactly as the scalar constraint does.
+fn is_float_buffer(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::Con { name, args } if name == names::GPU_BUFFER => {
+            matches!(args.as_slice(), [elem] if is_float_elem(elem))
+        }
+        _ => false,
+    }
+}
+
+/// `float` or `float32` — the two widths the product's device and host kernels
+/// compute at [GPU-MATMUL].
+fn is_float_elem(ty: &Type) -> bool {
+    matches!(
+        crate::numeric::Numeric::of_type(ty),
+        Some(n) if n == crate::numeric::Numeric::FLOAT || n == crate::numeric::Numeric::FLOAT32
+    )
 }
 
 /// Unresolved variables are deferred by the checker and remain accepted when

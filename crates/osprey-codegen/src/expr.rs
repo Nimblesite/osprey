@@ -67,11 +67,36 @@ fn list_type(cg: &Codegen, position: Option<Position>) -> Option<osprey_types::T
 pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     let inferred = static_type(cg, expr);
     let folded = osprey_types::fold_arithmetic(expr).map_err(CodegenError::invalid)?;
-    let mut value = gen_expr_raw(cg, folded.as_ref().map_or(expr, |value| value))?;
+    // The innermost enclosing positioned expression anchors a positionless
+    // call node, mirroring the checker's `expr_position` — the key
+    // [GPU-BUFFER-TENSOR] publishes a `gpuLoadTensor` call's asked-for element
+    // type under.
+    let outer = cg.current_position;
+    cg.current_position = positioned(expr).or(outer);
+    let value = gen_expr_raw(cg, folded.as_ref().map_or(expr, |value| value));
+    cg.current_position = outer;
+    let mut value = value?;
     if let Some(ty) = inferred.filter(|ty| !osprey_types::has_type_var(ty)) {
         value.inferred_type = Some(ty);
     }
     Ok(value)
+}
+
+/// The source position an expression itself carries, when it has one — the
+/// checker's `expression_position` list, mirrored so the two agree on the key.
+fn positioned(expr: &Expr) -> Option<Position> {
+    match expr {
+        Expr::List(_, position)
+        | Expr::Binary { position, .. }
+        | Expr::TypeApply { position, .. }
+        | Expr::Lambda { position, .. }
+        | Expr::Block { position, .. }
+        | Expr::Perform { position, .. }
+        | Expr::Handler { position, .. }
+        | Expr::Mask { position, .. }
+        | Expr::Instance { position, .. } => *position,
+        _ => None,
+    }
 }
 
 fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {

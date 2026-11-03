@@ -30,6 +30,10 @@ pub(crate) const RANGE_OWNER: &str = "Range";
 pub(crate) struct IterOp {
     pub map: bool, // true = map (transform), false = filter (predicate)
     pub cb: Callback,
+    /// A map stage's result `LType`, when its callback has a concrete
+    /// signature — the element width a fused `toGpu` sizes its buffer at
+    /// before the loop runs [GPU-BUFFER-FUSE] [GPU-BUFFER-ELEM].
+    pub result: Option<LType>,
 }
 
 /// An iterator callback in any of its three spellings.
@@ -65,7 +69,7 @@ pub(crate) enum Callback {
 }
 
 mod callback;
-pub(crate) use callback::of as callback_of;
+pub(crate) use callback::{of as callback_of, result_type as callback_result};
 
 /// Apply a callback to already-evaluated argument values.
 pub(crate) fn invoke(cg: &mut Codegen, cb: &Callback, args: Vec<Value>) -> Result<Value> {

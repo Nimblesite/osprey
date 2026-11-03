@@ -59,6 +59,11 @@ pub(crate) struct Lowered {
 /// Accumulates a whole module while lowering one function at a time.
 pub(crate) struct Codegen {
     pub(crate) application_caller: Option<ProgramTypes>,
+    /// The innermost enclosing positioned expression or function body — the
+    /// anchor a positionless call node has, mirroring the checker's
+    /// `expr_position`. [GPU-BUFFER-TENSOR] publishes the element type a
+    /// `gpuLoadTensor` call asked for at exactly this key.
+    pub(crate) current_position: Option<Position>,
     /// Physical pointer width of the target: 8 natively, 4 on wasm32. Every
     /// allocation-mask bit is a byte offset divided by this stride.
     pub(crate) pointer_bytes: u64,
@@ -352,6 +357,7 @@ impl Codegen {
             lambdas: HashMap::new(),
             file_lambdas: HashMap::new(),
             application_caller: None,
+            current_position: None,
             pointer_bytes: crate::meta::pointer_bytes_for(options.wasm32),
             file_lambda_prefix: HashMap::new(),
             file_aliases: HashMap::new(),

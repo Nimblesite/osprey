@@ -96,9 +96,11 @@ pub(super) fn publish_program(
     let lambda_tys = checker.lambda_tys.clone();
     let let_tys = checker.let_tys.clone();
     let list_tys = checker.list_tys.clone();
+    let gpu_tensor_tys = checker.gpu_tensor_tys.clone();
     let mut lambdas = resolve_positioned(&mut checker.ctx, &lambda_tys);
     let mut lets = resolve_positioned(&mut checker.ctx, &let_tys);
     let mut lists = resolve_positioned(&mut checker.ctx, &list_tys);
+    let mut gpu_tensors = resolve_positioned(&mut checker.ctx, &gpu_tensor_tys);
     let handler_sites: HashSet<_> = checker
         .handler_tys
         .iter()
@@ -107,12 +109,12 @@ pub(super) fn publish_program(
     let lambda_candidates = open_lambda_vars(&lambdas, &handler_sites, &mut checker.ctx);
     resolve_aliases(
         &lambda_candidates,
-        &mut [&mut lambdas, &mut lets, &mut lists],
+        &mut [&mut lambdas, &mut lets, &mut lists, &mut gpu_tensors],
         &checker.instantiations,
         &mut checker.ctx,
     );
     let source_lets = Arc::new(lets.clone());
-    for table in [&mut lambdas, &mut lets, &mut lists] {
+    for table in [&mut lambdas, &mut lets, &mut lists, &mut gpu_tensors] {
         for ty in table.values_mut() {
             *ty = runtime_site_type(&checker.ctx, ty);
         }
@@ -149,6 +151,7 @@ pub(super) fn publish_program(
         lets,
         source_lets,
         lists,
+        gpu_tensors,
         performs,
         handler_ops,
         capabilities: published_capabilities(&checker),

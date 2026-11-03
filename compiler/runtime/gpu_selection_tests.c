@@ -15,7 +15,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-void *osprey_gpu_alloc(int64_t length);
+void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
+int64_t osprey_gpu_elem_bytes(void *buffer);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols);
@@ -31,17 +32,17 @@ static uint64_t last_threads;
 
 #if defined(OSPREY_GPU_METAL) || defined(OSPREY_GPU_OPENCL)
 static int64_t injected_fault;
-// The mock device holds a buffer as a copy of its words.
+// The mock device holds a buffer as a copy of its bytes [GPU-BUFFER-ELEM].
 typedef struct {
   uint64_t count;
-  int64_t words[];
+  unsigned char bytes[];
 } MockObject;
 
 static MockObject *mock_object(const OspreyGpuArg *arg) {
   MockObject *o = malloc(sizeof *o + osprey_gpu_arg_bytes(arg));
   assert(o);
   o->count = arg->count;
-  memcpy(o->words, arg->words, osprey_gpu_arg_bytes(arg));
+  memcpy(o->bytes, arg->bytes, osprey_gpu_arg_bytes(arg));
   uploads++;
   return o;
 }
@@ -66,16 +67,19 @@ static int mock_dispatch(const OspreyGpuDispatch *d, int64_t mark) {
     const OspreyGpuArg *arg = &d->args[i];
     if (arg->kind == OSPREY_GPU_SCALAR) continue;
     MockObject *o = bind(arg);
-    if (arg->kind == OSPREY_GPU_OUTPUT) o->words[0] = i == 3 ? injected_fault : mark;
-    if (arg->kind == OSPREY_GPU_OUTPUT && arg->out) memcpy(arg->out, o->words, arg->count * 8);
+    if (arg->kind == OSPREY_GPU_OUTPUT) {
+      int64_t stamp = i == 3 ? injected_fault : mark;
+      memcpy(o->bytes, &stamp, sizeof stamp);
+    }
+    if (arg->kind == OSPREY_GPU_OUTPUT && arg->out) memcpy(arg->out, o->bytes, osprey_gpu_arg_bytes(arg));
     if (!arg->slot) free(o);
   }
   return device_error ? -1 : 1;
 }
 
-static int mock_download(void *object, int64_t *out, uint64_t count) {
+static int mock_download(void *object, void *out, uint64_t bytes) {
   downloads++;
-  memcpy(out, ((MockObject *)object)->words, count * 8);
+  memcpy(out, ((MockObject *)object)->bytes, bytes);
   return 1;
 }
 
@@ -87,13 +91,13 @@ static void mock_release(void *object) {
 #if defined(OSPREY_GPU_METAL)
 const char *osprey_gpu_metal_name(void) { return "metal:mock"; }
 int osprey_gpu_metal_dispatch(const OspreyGpuDispatch *d) { return mock_dispatch(d, 42); }
-int osprey_gpu_metal_download(void *object, int64_t *out, uint64_t count) { return mock_download(object, out, count); }
+int osprey_gpu_metal_download(void *object, void *out, uint64_t bytes) { return mock_download(object, out, bytes); }
 void osprey_gpu_metal_release(void *object) { mock_release(object); }
 #endif
 #if defined(OSPREY_GPU_OPENCL)
 const char *osprey_gpu_opencl_name(void) { return "opencl:mock"; }
 int osprey_gpu_opencl_dispatch(const OspreyGpuDispatch *d) { return mock_dispatch(d, 43); }
-int osprey_gpu_opencl_download(void *object, int64_t *out, uint64_t count) { return mock_download(object, out, count); }
+int osprey_gpu_opencl_download(void *object, void *out, uint64_t bytes) { return mock_download(object, out, bytes); }
 void osprey_gpu_opencl_release(void *object) { mock_release(object); }
 #endif
 
@@ -111,19 +115,19 @@ static int64_t one_word(void) {
 
 // A one-element float buffer holding 1.0.
 static void *unit(void) {
-  void *b = osprey_gpu_alloc(1);
+  void *b = osprey_gpu_alloc(1, 8);
   osprey_gpu_set(b, 0, one_word());
   return b;
 }
 
 static int32_t launch(void *out, const char *kinds, const int64_t *uniforms) {
-  void *in = osprey_gpu_alloc(3);
+  void *in = osprey_gpu_alloc(3, 8);
   return osprey_gpu_launch("osprey_kernel_1", "kernel void osprey_kernel_1() {}", kinds, uniforms, in, NULL, out, NULL, 3);
 }
 
 static void host_case(const char *mode) {
   select_mode(mode);
-  void *a = unit(), *out = osprey_gpu_alloc(1);
+  void *a = unit(), *out = osprey_gpu_alloc(1, 8);
   osprey_gpu_set(out, 0, 99);
   unsigned before = dispatches;
   assert(strcmp(osprey_gpu_device_name(), "host") == 0);
@@ -151,7 +155,7 @@ static void resident_product(void *a, void *product, int64_t mark) {
 // as a resident input with its length, a fold's accumulator comes straight
 // back, and a host write forgets the device copy.
 static void resident_launch(int64_t mark) {
-  void *out = osprey_gpu_alloc(1), *table = osprey_gpu_alloc(4), *in = osprey_gpu_alloc(3);
+  void *out = osprey_gpu_alloc(1, 8), *table = osprey_gpu_alloc(4, 8), *in = osprey_gpu_alloc(3, 8);
   int64_t uniforms[2] = {7, (int64_t)(intptr_t)table}, acc = 5;
   unsigned down = downloads;
   assert(launch(out, "sb", uniforms) == 1 && downloads == down);
@@ -180,7 +184,7 @@ static void device_case(const char *mode, int available, const char *name) {
   assert(!osprey_gpu_matmul(a, a, 1, 1, 1));
   device_error = 0;
   unsigned before = dispatches;
-  assert(osprey_gpu_matmul(osprey_gpu_alloc(0), a, 0, 1, 1) && dispatches == before);
+  assert(osprey_gpu_matmul(osprey_gpu_alloc(0, 8), a, 0, 1, 1) && dispatches == before);
   resident_launch(name[0] == 'm' ? 42 : 43);
 }
 
@@ -221,7 +225,7 @@ static void declined_on_device(void) {
 static void faulting_launch(void) {
   select_mode("auto");
   injected_fault = OSPREY_GPU_FAULT_OVERFLOW;
-  (void)launch(osprey_gpu_alloc(1), "", NULL);
+  (void)launch(osprey_gpu_alloc(1, 8), "", NULL);
 }
 static void too_many_uniforms(void) {
   select_mode("auto");
@@ -229,12 +233,12 @@ static void too_many_uniforms(void) {
   char kinds[OSPREY_GPU_MAX_ARGS + 1];
   memset(kinds, 's', OSPREY_GPU_MAX_ARGS);
   kinds[OSPREY_GPU_MAX_ARGS] = '\0';
-  (void)launch(osprey_gpu_alloc(1), kinds, uniforms);
+  (void)launch(osprey_gpu_alloc(1, 8), kinds, uniforms);
 }
 static void device_failure_on_launch(void) {
   select_mode("auto");
   device_error = 1;
-  (void)launch(osprey_gpu_alloc(1), "", NULL);
+  (void)launch(osprey_gpu_alloc(1, 8), "", NULL);
 }
 #endif
 

@@ -7,24 +7,28 @@
 
 // The shared device contract [GPU-BACKEND-PORTABILITY] [GPU-BACKEND-DEVICE]:
 // one dispatch description every adapter executes. An argument is a buffer of
-// 8-byte words the kernel reads, a buffer it writes, or one scalar word. A
-// buffer argument names the slot its device object lives in
-// [GPU-BUFFER-RESIDENT]: the adapter creates the object from the words the
-// first time and reuses it after, so a buffer is uploaded once however many
-// kernels read it, and an output stays on the device until the host asks.
+// elements the kernel reads, a buffer it writes, or one scalar word. A buffer
+// argument carries its elements at their own width [GPU-BUFFER-ELEM]: `count`
+// elements of `elem` bytes each, uploaded and downloaded BY BYTE COUNT, so the
+// same contract serves every row of the numeric table. A buffer argument also
+// names the slot its device object lives in [GPU-BUFFER-RESIDENT]: the adapter
+// creates the object from the bytes the first time and reuses it after, so a
+// buffer is uploaded once however many kernels read it, and an output stays on
+// the device until the host asks.
 typedef enum { OSPREY_GPU_INPUT = 0, OSPREY_GPU_OUTPUT = 1, OSPREY_GPU_SCALAR = 2 } OspreyGpuArgKind;
 
 typedef struct {
   OspreyGpuArgKind kind;
-  // INPUT/OUTPUT: the words the device object is created from when its slot
-  // holds none yet.
-  const int64_t *words;
-  // OUTPUT: where the device's words are copied after completion; NULL
+  // INPUT/OUTPUT: the bytes the device object is created from when its slot
+  // holds none yet [GPU-BUFFER-ELEM].
+  const void *bytes;
+  // OUTPUT: where the device's bytes are copied after completion; NULL
   // leaves them on the device for a later download.
-  int64_t *out;
-  // INPUT/OUTPUT: the word count (at least one word is always transferred);
-  // SCALAR: the value.
+  void *out;
+  // INPUT/OUTPUT: the element count; SCALAR: the value, one 8-byte word.
   uint64_t count;
+  // One element's width in bytes [GPU-BUFFER-ELEM]; a scalar word carries 8.
+  uint64_t elem;
   // The buffer's device object, kept across dispatches; NULL for a transient
   // argument whose object the adapter releases after this dispatch.
   void **slot;
@@ -48,9 +52,9 @@ int osprey_gpu_device_dispatch(OspreyGpuDispatch *dispatch);
 // The builtin product over three buffer handles [GPU-MATMUL]; `out` is left
 // on the device.
 int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, int64_t inner, int64_t cols);
-// Copy a device object's first `count` words to `out`: 1, or -1 with the
+// Copy a device object's first `bytes` bytes to `out`: 1, or -1 with the
 // reason on the io_error channel.
-int osprey_gpu_device_download(void *object, int64_t *out, uint64_t count);
+int osprey_gpu_device_download(void *object, void *out, uint64_t bytes);
 // Release a device object its buffer no longer needs.
 void osprey_gpu_device_release(void *object);
 const char *osprey_gpu_device_name(void);
@@ -75,35 +79,42 @@ static inline void osprey_gpu_report(const char *device, uint64_t count, const O
                   (unsigned long long)count, dispatch->kernel, (unsigned long long)dispatch->threads);
 }
 
-// The word an empty buffer uploads, so every transfer has at least one word
-// to read; `count` keeps the kernel from using it.
-static const int64_t osprey_gpu_zero_word = 0;
+// The word an empty buffer uploads, so every transfer has at least one
+// element to read; `count` keeps the kernel from using it.
+static const uint64_t osprey_gpu_zero_word = 0;
 
 // Append one argument bound to the device object in `slot` (NULL for a
 // transient one); the dispatch is refused (count left at the cap) when full.
-// A buffer argument without words has nothing to hold: the zero word is
-// transferred with a count of 0, so no thread reads it and nothing comes back.
-static inline void osprey_gpu_arg_at(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, const int64_t *words,
-                                     int64_t *out, uint64_t count, void **slot) {
+// A buffer argument without bytes has nothing to hold: the zero word is
+// transferred as one element, so no thread reads it and nothing comes back.
+static inline void osprey_gpu_arg_at(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, const void *bytes,
+                                     void *out, uint64_t count, uint64_t elem, void **slot) {
   if (dispatch->count >= OSPREY_GPU_MAX_ARGS) return;
-  const int64_t *uploaded = words ? words : &osprey_gpu_zero_word;
-  uint64_t kept = kind != OSPREY_GPU_SCALAR && !words ? 0 : count;
-  dispatch->args[dispatch->count++] = (OspreyGpuArg){kind, uploaded, out, kept, slot};
+  const void *uploaded = bytes ? bytes : (const void *)&osprey_gpu_zero_word;
+  uint64_t kept = kind != OSPREY_GPU_SCALAR && !bytes ? 0 : count;
+  dispatch->args[dispatch->count++] = (OspreyGpuArg){kind, uploaded, out, kept, elem, slot};
 }
 
-// Append one transient argument: its words serve this dispatch only.
-static inline void osprey_gpu_arg(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, const int64_t *words,
-                                  int64_t *out, uint64_t count) {
-  osprey_gpu_arg_at(dispatch, kind, words, out, count, NULL);
+// Append one transient argument: its bytes serve this dispatch only.
+static inline void osprey_gpu_arg(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, const void *bytes,
+                                  void *out, uint64_t count, uint64_t elem) {
+  osprey_gpu_arg_at(dispatch, kind, bytes, out, count, elem, NULL);
 }
 
+// The bytes one argument transfers [GPU-BUFFER-ELEM]: its element count at
+// its element width, one element at least so an empty buffer still uploads.
 static inline uint64_t osprey_gpu_arg_bytes(const OspreyGpuArg *arg) {
-  return (arg->count ? arg->count : 1) * 8;
+  return (arg->count ? arg->count : 1) * arg->elem;
+}
+
+// A scalar argument is one 8-byte word.
+static inline void osprey_gpu_arg_scalar(OspreyGpuDispatch *dispatch, uint64_t word) {
+  osprey_gpu_arg(dispatch, OSPREY_GPU_SCALAR, NULL, NULL, word, 8);
 }
 
 #if defined(OSPREY_GPU_METAL)
 int osprey_gpu_metal_dispatch(const OspreyGpuDispatch *dispatch);
-int osprey_gpu_metal_download(void *object, int64_t *out, uint64_t count);
+int osprey_gpu_metal_download(void *object, void *out, uint64_t bytes);
 void osprey_gpu_metal_release(void *object);
 const char *osprey_gpu_metal_name(void);
 uint64_t osprey_gpu_metal_completed(void);

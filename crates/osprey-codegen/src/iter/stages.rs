@@ -7,7 +7,7 @@
 //! it is given. One function-wide list let a consumer run the stages of every
 //! pipeline still pending: a second pipeline stole the first one's `map`.
 
-use super::{callback_of, invoke, nth, Callback, IterOp};
+use super::{callback_of, callback_result, invoke, nth, Callback, IterOp};
 use crate::builder::Codegen;
 use crate::conv::as_i64;
 use crate::error::{CodegenError, Result};
@@ -35,8 +35,16 @@ pub(super) fn record(cg: &mut Codegen, args: &[Expr], is_map: bool) -> Result<Va
         }
         (_, cb) => cb,
     };
+    // A map stage's result type is recorded with it: a consuming `toGpu` must
+    // size its buffer at the pipeline's final element width before the loop
+    // runs [GPU-BUFFER-FUSE] [GPU-BUFFER-ELEM].
+    let result = if is_map {
+        callback_result(cg, stage, &cb)
+    } else {
+        None
+    };
     let mut stages = stages_of(cg, &source);
-    stages.push(IterOp { map: is_map, cb });
+    stages.push(IterOp { map: is_map, cb, result });
     let ty = source.llvm_ty();
     let operand = cg.emit_reg(format!("bitcast {ty} {} to {ty}", source.operand));
     let _ = cg.iter_stages.insert(operand.clone(), stages);

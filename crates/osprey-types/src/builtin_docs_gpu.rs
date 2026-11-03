@@ -72,19 +72,19 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "gpuMatMul",
-        "The dense row-major product of a rows x inner float buffer and an inner x cols one, as a rows x cols buffer. Every element accumulates in k order from 0.0 in double; a length that disagrees with the stated shape is an Error naming the operand.",
+        "The dense row-major product of a rows x inner float or float32 buffer and an inner x cols one, as a rows x cols buffer of the same element type. Every element accumulates in k order from 0.0 at that width, each product formed before it is added; a length that disagrees with the stated shape is an Error naming the operand.",
         ["left" => "The rows x inner buffer", "right" => "The inner x cols buffer", "rows" => "The left operand's row count", "inner" => "The shared dimension", "cols" => "The right operand's column count"],
         "let left = toGpu([1.0, 2.0, 3.0, 4.0])\nlet right = toGpu([5.0, 6.0, 7.0, 8.0])\nmatch gpuMatMul(left, right, 2, 2, 2) {\n    Success { value } => print(gpuGet(value, 0) ?: 0.0)  // 19.0\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "gpuLoad",
-        "Reads count little-endian IEEE-754 binary32 values starting at a byte offset of a file into a `GpuBuffer<float>`, widening each exactly. A missing file or a short read is an Error carrying the operating system's reason.",
+        "Reads count little-endian IEEE-754 binary32 values starting at a byte offset of a file into a `GpuBuffer<float32>`, byte for byte with no widening — the layout of llm.c's checkpoints. A missing file or a short read is an Error carrying the operating system's reason.",
         ["path" => "The file to read", "offset" => "The byte offset the first value starts at", "count" => "How many values to read"],
         "// Supply a file containing little-endian float32 values.\nmatch gpuLoad(\"weights.bin\", 0, 3) {\n    Success { value } => print(\"${gpuLength(value)} values\")\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "gpuLoadTensor",
-        "Reads one named tensor out of a safetensors file into a `GpuBuffer<float>`, widening F64, F32, F16 or BF16 storage exactly. An unknown name, another dtype or a truncated file returns Error.",
+        "Reads one named tensor out of a safetensors file into the `GpuBuffer<T>` the program's own use of the result pins: F64 into `float`, F32 and BF16 into `float32`, F16 into `float16`. A dtype T does not admit, an unknown name or a truncated file returns Error.",
         ["path" => "The safetensors file", "name" => "The tensor's name in the header"],
         "// Supply a safetensors file containing the named tensor.\nmatch gpuLoadTensor(\"model.safetensors\", \"wte.weight\") {\n    Success { value } => print(\"${gpuLength(value)} values\")\n    Error { message } => print(message)\n}",
     ),

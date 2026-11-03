@@ -413,6 +413,14 @@ fn bind_uniforms(cg: &mut Codegen, caps: &[crate::closure::Capture]) -> Vec<(LTy
     out
 }
 
+impl Extracted {
+    /// The kernel's result slot — the element a map's buffer is sized at
+    /// [GPU-BUFFER-ELEM].
+    pub(crate) fn result(&self) -> LType {
+        self.sig.1
+    }
+}
+
 /// Call an extracted kernel: the uniforms first, then this element's slots.
 pub(crate) fn extracted_call(
     cg: &mut Codegen,

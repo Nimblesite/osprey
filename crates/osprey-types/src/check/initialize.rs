@@ -19,6 +19,7 @@ impl Checker {
             lambda_tys: Vec::new(),
             let_tys: Vec::new(),
             list_tys: Vec::new(),
+            gpu_tensor_tys: Vec::new(),
             instantiations: HashMap::new(),
             methods: HashMap::new(),
             application_tys: Vec::new(),

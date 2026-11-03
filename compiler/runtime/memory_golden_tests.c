@@ -32,7 +32,7 @@ size_t osp_arc_live_objects(void);
 size_t osp_arc_live_bytes(void);
 size_t osp_arc_peak_bytes(void);
 void osp_arc_peak_reset(void);
-void *osprey_gpu_alloc(int64_t length);
+void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 int64_t osprey_gpu_len(void *buffer);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
@@ -188,14 +188,14 @@ static void t_strdup_exact(void) {
   at_floor();
 }
 
-// A GPU buffer is exactly two managed objects — { len, data, device, stale }
-// header plus the word array — and ONE release reclaims both via the
+// A GPU buffer is exactly two managed objects — { len, data, elem, device,
+// stale } header plus the byte payload — and ONE release reclaims both via the
 // LIST_HDR_EXTERN layout, whose finalizer releases the device copy
 // [GPU-BUFFER-RESIDENT]. Pins the gpu_runtime.c/[GPU-BUFFER] contract that a
 // buffer's drop under ARC is one release.
 static void t_gpu_buffer_accounting(void) {
   osp_arc_peak_reset();
-  void *buf = osprey_gpu_alloc(GPU_LEN);
+  void *buf = osprey_gpu_alloc(GPU_LEN, 8);
   CHECK(buf != NULL && osprey_gpu_len(buf) == GPU_LEN);
   size_t data_bytes = (size_t)GPU_LEN * W;
   CHECK(osp_arc_live_objects() == g_floor_objs + 2);
@@ -205,8 +205,8 @@ static void t_gpu_buffer_accounting(void) {
   osp_release(buf);
   at_floor();
   // Empty and clamped-negative buffers still cost header + one guard word.
-  void *empty = osprey_gpu_alloc(0);
-  void *neg = osprey_gpu_alloc(-7);
+  void *empty = osprey_gpu_alloc(0, 8);
+  void *neg = osprey_gpu_alloc(-7, 8);
   CHECK(empty && neg);
   CHECK(osprey_gpu_len(empty) == 0 && osprey_gpu_len(neg) == 0);
   CHECK(osp_arc_live_objects() == g_floor_objs + 4);
@@ -222,7 +222,7 @@ static void t_gpu_churn_flat(void) {
   osp_arc_peak_reset();
   size_t one = GPU_HDR_BYTES + (size_t)GPU_LEN * W;
   for (size_t i = 0; i < CHURN_ITERS / 100; i++) {
-    void *buf = osprey_gpu_alloc(GPU_LEN);
+    void *buf = osprey_gpu_alloc(GPU_LEN, 8);
     CHECK(buf != NULL);
     osprey_gpu_set(buf, (int64_t)(i % (size_t)GPU_LEN), (int64_t)i);
     osp_release(buf);

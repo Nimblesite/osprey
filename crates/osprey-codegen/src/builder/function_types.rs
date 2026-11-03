@@ -57,7 +57,7 @@ impl Codegen {
 
     /// The function type of a named callee: a function-typed local first (its
     /// inferred value type), else a top-level function's resolved signature.
-    pub(super) fn identifier_fn_type(&self, name: &str) -> Option<Type> {
+    pub(crate) fn identifier_fn_type(&self, name: &str) -> Option<Type> {
         if let Some(t) = self.fn_value_types.get(name).or_else(|| {
             self.lambda_def(name).and_then(|(_, _, position)| {
                 self.prog

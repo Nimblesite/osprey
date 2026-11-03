@@ -41,9 +41,13 @@ impl Ty {
     pub(crate) const INT: Ty = Ty::Num(Numeric::INT);
     pub(crate) const FLOAT: Ty = Ty::Num(Numeric::FLOAT);
 
+    /// The device word a lowered slot maps to. Only the 8-byte rows of the
+    /// numeric table are device words until plan 0050 phase 5 spells the
+    /// dialect's narrower rows [GPU-BUFFER-ELEM]: a kernel whose slot or
+    /// uniform is narrower declines here and keeps its host loop.
     fn of(ty: LType) -> Option<Ty> {
         match ty {
-            LType::Num(n) => Some(Ty::Num(n)),
+            LType::Num(n) if n.bytes() == 8 => Some(Ty::Num(n)),
             LType::I1 => Some(Ty::Bool),
             _ => None,
         }
@@ -59,7 +63,7 @@ impl Ty {
     /// A raw buffer word as a value of this type.
     fn value_of(self, word: &str) -> String {
         match self {
-            Ty::Num(n) if n.is_float() => word.to_string(),
+            Ty::Num(n) if n == Numeric::FLOAT => word.to_string(),
             Ty::Num(n) => format!("({})({word})", n.device()),
             Ty::Bool => format!("({word} != 0ul)"),
         }
@@ -68,7 +72,7 @@ impl Ty {
     /// A value of this type as the raw buffer word that stores it.
     fn word_of(self, value: &str) -> String {
         match self {
-            Ty::Num(n) if n.is_float() => value.to_string(),
+            Ty::Num(n) if n == Numeric::FLOAT => value.to_string(),
             Ty::Num(_) | Ty::Bool => format!("(ulong)({value})"),
         }
     }

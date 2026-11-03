@@ -1,5 +1,5 @@
 //! Preserve application types and lexical bindings when selecting callbacks.
-use super::{Callback, Codegen, CodegenError, Expr, Parameter, Result};
+use super::{Callback, Codegen, CodegenError, Expr, LType, Parameter, Result};
 use crate::expr::gen_expr;
 
 /// Resolve known local bodies; computed and module-stored values retain cells.
@@ -51,6 +51,29 @@ pub(crate) fn param_type(
         .get(index)
         .filter(|ty| !osprey_types::has_type_var(ty))
         .cloned()
+}
+
+/// The `LType` a callback returns, from its own signature: the declared type
+/// its call expression names when it has one, else the signature the callback
+/// carries. `None` when neither exists — the body alone will say, which is too
+/// late for a consumer that must size a container before the loop runs
+/// [GPU-BUFFER-ELEM].
+pub(crate) fn result_type(cg: &Codegen, expr: &Expr, callback: &Callback) -> Option<LType> {
+    let declared = cg
+        .callee_fn_type(expr)
+        .as_ref()
+        .and_then(|t| Codegen::fn_value_sig(&cg.prog, t));
+    let carried = match callback {
+        Callback::Lambda(.., sig, _) | Callback::Closed(.., sig, _) => sig.as_ref().map(|s| s.1),
+        Callback::Local(_, sig) | Callback::Value(_, sig) => Some(sig.1),
+        Callback::Named(name) => cg
+            .identifier_fn_type(name)
+            .as_ref()
+            .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
+            .map(|s| s.1),
+        Callback::Extracted(kernel) => Some(kernel.result()),
+    };
+    declared.map(|s| s.1).or(carried)
 }
 
 fn identifier(cg: &mut Codegen, name: &str) -> Result<Callback> {

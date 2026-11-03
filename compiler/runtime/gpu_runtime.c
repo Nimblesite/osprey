@@ -1,15 +1,17 @@
 // Dense scalar buffers for GPU computation — the host execution backend
 // [GPU-BACKEND-HOST] behind toGpu/fromGpu and every gpu* combinator
-// (docs/specs/runtime/0034-GPUComputation.md). A buffer is { length, data, device,
-// stale }: length in elements, data a contiguous array of raw 8-byte scalar
-// words (int bits, double bits, or 0/1 bools) — the staging layout a device
-// transfer consumes — device the selected adapter's object holding the same
-// words once a kernel has used the buffer, and stale whether that object
-// holds a result the host has not read yet [GPU-BUFFER-RESIDENT]. Elements
-// are scalars only [GPU-BUFFER-ELEM], so the memory backends never walk the
-// words (OSP_MEM_RAW data under an OSP_MEM_LIST_HDR_EXTERN header, whose
-// finalizer releases the device object), and one object serves every
-// backend, native and wasm alike.
+// (docs/specs/runtime/0034-GPUComputation.md). A buffer is { length, data,
+// elem_bytes, device, stale }: length in elements, data a contiguous array of
+// raw bytes holding each element at its own width [GPU-BUFFER-ELEM] — one byte
+// for bool, int8 and uint8, two for int16, uint16 and float16, four for int32,
+// uint32 and float32, eight for int and float; the same bytes are what the
+// device reads [GPU-BUFFER-RESIDENT] — device the selected adapter's object
+// holding them once a kernel has used the buffer, and stale whether that object
+// holds a result the host has not read yet. Elements are scalars only
+// [GPU-BUFFER-ELEM], so the memory backends never walk the bytes
+// (OSP_MEM_RAW data under an OSP_MEM_LIST_HDR_EXTERN header, whose finalizer
+// releases the device object), and one object serves every backend, native and
+// wasm alike.
 
 #include "memory_hooks.h"
 #include "gpu_device.h"
@@ -26,12 +28,20 @@
 
 typedef struct OspreyGpuBuffer {
   int64_t length;
-  int64_t *data;
+  unsigned char *data;
+  int64_t elem_bytes;
   void *device;
   int64_t stale;
 } OspreyGpuBuffer;
 
+// One element's width in bytes [GPU-BUFFER-ELEM]; the numeric table's bits/8,
+// one byte for bool. Every element travels a little-endian byte sequence, so
+// the loaders' file layout and a buffer's memory layout are the same bytes.
+#define GPU_ELEM_MIN 1
+#define GPU_ELEM_MAX 8
+
 int64_t osprey_gpu_len(void *buffer);
+int64_t osprey_gpu_elem_bytes(void *buffer);
 
 static int device_selection(void) {
   const char *mode = getenv("OSPREY_GPU");
@@ -80,19 +90,20 @@ int osprey_gpu_device_dispatch(OspreyGpuDispatch *dispatch) {
   return no_adapter(dispatch->kernel, "device selection");
 }
 
-// Read a device object's words back through the selected adapter [GPU-BUFFER-RESIDENT].
-int osprey_gpu_device_download(void *object, int64_t *out, uint64_t count) {
+// Read a device object's bytes back through the selected adapter
+// [GPU-BUFFER-RESIDENT].
+int osprey_gpu_device_download(void *object, void *out, uint64_t bytes) {
   int selected = device_selection();
 #if defined(OSPREY_GPU_METAL)
-  if (selected == 1 || selected == 2) return osprey_gpu_metal_download(object, out, count);
+  if (selected == 1 || selected == 2) return osprey_gpu_metal_download(object, out, bytes);
 #endif
 #if defined(OSPREY_GPU_OPENCL)
-  if (selected == 1 || selected == 3) return osprey_gpu_opencl_download(object, out, count);
+  if (selected == 1 || selected == 3) return osprey_gpu_opencl_download(object, out, bytes);
 #endif
   (void)selected;
   (void)object;
   (void)out;
-  (void)count;
+  (void)bytes;
   return no_adapter("gpu", "device readback");
 }
 
@@ -115,25 +126,22 @@ void osprey_gpu_device_release(void *object) {
   (void)object;
 }
 
-// The stored words of a buffer with any: NULL for an empty, failed or NULL
+// The stored bytes of a buffer with any: NULL for an empty, failed or NULL
 // buffer, whose length is 0.
-static int64_t *stored(const OspreyGpuBuffer *b) {
+static unsigned char *stored(const OspreyGpuBuffer *b) {
   return b && b->length > 0 ? b->data : NULL;
 }
 
-static void scalar_argument(OspreyGpuDispatch *dispatch, int64_t word) {
-  osprey_gpu_arg(dispatch, OSPREY_GPU_SCALAR, NULL, NULL, (uint64_t)word);
-}
-
 // A buffer handle as a dispatch argument [GPU-BUFFER-RESIDENT]: bound to the
-// device object in its slot, created from its words on first use and reused
-// by every later dispatch; an output is left on the device. An empty or NULL
-// buffer has no words and binds the zero word that `count` keeps every
-// thread from reading.
+// device object in its slot, created from its bytes on first use and reused by
+// every later dispatch; an output is left on the device. An empty or NULL
+// buffer has no bytes and binds the zero word that `count` keeps every thread
+// from reading.
 static void buffer_argument(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, void *handle) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)handle;
-  int64_t *words = stored(b);
-  osprey_gpu_arg_at(dispatch, kind, words, NULL, (uint64_t)osprey_gpu_len(handle), words ? &b->device : NULL);
+  unsigned char *bytes = stored(b);
+  osprey_gpu_arg_at(dispatch, kind, bytes, NULL, (uint64_t)osprey_gpu_len(handle),
+                    (uint64_t)osprey_gpu_elem_bytes(handle), bytes ? &b->device : NULL);
 }
 
 // A completed dispatch leaves its result on the device; the host reads it on demand.
@@ -143,26 +151,30 @@ static int settled(int status, void *out) {
   return status;
 }
 
-// The builtin product as a library-kernel dispatch [GPU-MATMUL].
+// The builtin product as a library-kernel dispatch [GPU-MATMUL]. Only the
+// 8-byte element product has a device kernel; a narrower one answers 0 so the
+// host runs it (and `osprey_gpu_matmul` asks the declined question first, so a
+// selected device is never silently substituted by the host).
 int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, int64_t inner, int64_t cols) {
-  OspreyGpuDispatch dispatch = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL}}, 0, (uint64_t)(rows * cols)};
+  if (osprey_gpu_elem_bytes(left) != 8) return 0;
+  OspreyGpuDispatch dispatch = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, 0, NULL}}, 0, (uint64_t)(rows * cols)};
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, left);
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, right);
   buffer_argument(&dispatch, OSPREY_GPU_OUTPUT, out);
-  scalar_argument(&dispatch, rows);
-  scalar_argument(&dispatch, inner);
-  scalar_argument(&dispatch, cols);
+  osprey_gpu_arg_scalar(&dispatch, (uint64_t)rows);
+  osprey_gpu_arg_scalar(&dispatch, (uint64_t)inner);
+  osprey_gpu_arg_scalar(&dispatch, (uint64_t)cols);
   return settled(osprey_gpu_device_dispatch(&dispatch), out);
 }
 
 // One uniform of a compiled kernel: `s` a scalar word, `b` a buffer handle
-// bound as its words followed by its length ([GPU-KERNEL-EXTRACT] uniforms).
+// bound as its bytes followed by its length ([GPU-KERNEL-EXTRACT] uniforms).
 static void uniform_argument(OspreyGpuDispatch *dispatch, char kind, int64_t word) {
   if (kind == 'b') {
     buffer_argument(dispatch, OSPREY_GPU_INPUT, (void *)(intptr_t)word);
-    scalar_argument(dispatch, osprey_gpu_len((void *)(intptr_t)word));
+    osprey_gpu_arg_scalar(dispatch, (uint64_t)osprey_gpu_len((void *)(intptr_t)word));
   } else {
-    scalar_argument(dispatch, word);
+    osprey_gpu_arg_scalar(dispatch, (uint64_t)word);
   }
 }
 
@@ -192,21 +204,31 @@ static int32_t abort_launch(const char *kernel, const char *reason) {
   return -1;
 }
 
+// The fault word a launch writes instead of aborting mid-kernel.
+static OspreyGpuDispatch empty_dispatch(const char *kernel, const char *source, uint64_t threads) {
+  OspreyGpuDispatch dispatch;
+  memset(&dispatch, 0, sizeof dispatch);
+  dispatch.kernel = kernel;
+  dispatch.source = source;
+  dispatch.threads = threads;
+  return dispatch;
+}
+
 // A compiled kernel's launch site [GPU-BACKEND-DEVICE]: 1 when the device ran
-// the kernel, 0 when the host loop must run. A map runs one thread per
-// element into `out`, a buffer left on the device [GPU-BUFFER-RESIDENT]; a
-// fold runs one thread over `count` elements seeded from and reducing into
-// `acc`, the host's accumulator. The `kinds` string names each uniform's kind.
+// the kernel, 0 when the host loop must run. A map runs one thread per element
+// into `out`, a buffer left on the device [GPU-BUFFER-RESIDENT]; a fold runs
+// one thread over `count` elements seeded from and reducing into `acc`, the
+// host's accumulator. The `kinds` string names each uniform's kind.
 int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *kinds, const int64_t *uniforms,
                           void *in0, void *in1, void *out, int64_t *acc, int64_t count) {
   int64_t fault = 0;
-  OspreyGpuDispatch dispatch = {kernel, source, {{0, NULL, NULL, 0, NULL}}, 0, acc ? 1 : (uint64_t)count};
+  OspreyGpuDispatch dispatch = empty_dispatch(kernel, source, acc ? 1 : (uint64_t)count);
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, in0);
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, in1);
-  if (acc) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1);
+  if (acc) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1, 8);
   else buffer_argument(&dispatch, OSPREY_GPU_OUTPUT, out);
-  osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, &fault, &fault, 1);
-  scalar_argument(&dispatch, count);
+  osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, &fault, &fault, 1, 8);
+  osprey_gpu_arg_scalar(&dispatch, (uint64_t)count);
   for (size_t i = 0; kinds[i]; i++) uniform_argument(&dispatch, kinds[i], uniforms[i]);
   int status = settled(osprey_gpu_device_dispatch(&dispatch), out);
   if (status < 0) return abort_launch(kernel, osp_io_error());
@@ -227,14 +249,12 @@ int32_t osprey_gpu_declined(const char *what) {
   return -1;
 }
 
-// { i64 len, ptr data, ptr device, i64 stale }: the drop runs
+// { i64 len, ptr data, i64 elem, ptr device, i64 stale }: the drop runs
 // osprey_gpu_finalize over the body, then releases data only — the
 // OSP_MEM_LIST_HDR_EXTERN contract, so a dead buffer's device object goes
-// with it under every memory backend that reclaims.
+// with it under every memory backend that reclaims. The ARC drop reads `len`
+// at offset 0 and `data` at offset 8, so those two fields come first.
 #define GPU_HDR_LAYOUT ((int64_t)OSP_MEM_LIST_HDR_EXTERN)
-
-// Elements are 8-byte words; lengths above this would overflow the byte count.
-#define GPU_MAX_LEN (INT64_MAX / 8)
 
 // The memory backends' drop of a buffer [GPU-BUFFER-RESIDENT]: its device
 // object is released with it.
@@ -252,34 +272,39 @@ static void register_finalizer(void) {
   }
 }
 
-// A requested length made total: negative or byte-overflowing requests
-// become zero, so every allocation below is for a representable size.
-static int64_t clamped_len(int64_t length) {
-  return (length < 0 || length > GPU_MAX_LEN) ? 0 : length;
+// A requested length made total at `elem` bytes per element: negative lengths
+// and lengths whose byte count would overflow become zero, so every allocation
+// below is for a representable size.
+static int64_t clamped_len(int64_t length, int64_t elem) {
+  if (length < 0 || length > INT64_MAX / elem) return 0;
+  return length;
 }
 
-// `length` zero-filled scalar words (at least one, so the empty buffer still
-// owns a payload), or NULL when the data allocation fails.
-static int64_t *zeroed_words(int64_t length) {
-  int64_t bytes = (length > 0 ? length : 1) * 8;
-  int64_t *data = (int64_t *)osp_alloc_tagged(bytes, OSP_MEM_RAW);
-  for (int64_t i = 0; data && i < length; i++) {
-    data[i] = 0;
-  }
+// `length` zero-filled elements of `elem` bytes (at least one element, so the
+// empty buffer still owns a payload), or NULL when the data allocation fails.
+static unsigned char *zeroed_bytes(int64_t length, int64_t elem) {
+  int64_t bytes = (length > 0 ? length : 1) * elem;
+  unsigned char *data = (unsigned char *)osp_alloc_tagged(bytes, OSP_MEM_RAW);
+  if (data) memset(data, 0, (size_t)bytes);
   return data;
 }
 
-// Allocate a zero-filled buffer of `length` scalar words. Out-of-range
-// lengths clamp to zero and allocation failure yields NULL; every accessor
-// below treats both as an empty buffer instead of trapping.
-void *osprey_gpu_alloc(int64_t length) {
+// Allocate a zero-filled buffer of `length` elements of `elem` bytes each
+// [GPU-BUFFER-ELEM] — the one allocator entry point; the element width is an
+// argument, never a second table. Out-of-range lengths clamp to zero, an
+// out-of-range width is treated as the word, and allocation failure yields
+// NULL; every accessor below treats all three as an empty buffer instead of
+// trapping.
+void *osprey_gpu_alloc(int64_t length, int64_t elem) {
   register_finalizer();
-  length = clamped_len(length);
+  if (elem < GPU_ELEM_MIN || elem > GPU_ELEM_MAX) elem = 8;
+  length = clamped_len(length, elem);
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)osp_alloc_tagged((int64_t)sizeof(OspreyGpuBuffer), GPU_HDR_LAYOUT);
   if (!b) {
     return NULL;
   }
-  b->data = zeroed_words(length);
+  b->elem_bytes = elem;
+  b->data = zeroed_bytes(length, elem);
   b->length = b->data ? length : 0;
   b->device = NULL;
   b->stale = 0;
@@ -292,35 +317,60 @@ int64_t osprey_gpu_len(void *buffer) {
   return b ? b->length : 0;
 }
 
-// The buffer with its host words current [GPU-BUFFER-RESIDENT]: a result the
+// One element's width in bytes [GPU-BUFFER-ELEM]; the word for a NULL buffer,
+// which is the empty buffer.
+int64_t osprey_gpu_elem_bytes(void *buffer) {
+  OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
+  return b && b->elem_bytes >= GPU_ELEM_MIN && b->elem_bytes <= GPU_ELEM_MAX ? b->elem_bytes : 8;
+}
+
+// The buffer with its host bytes current [GPU-BUFFER-RESIDENT]: a result the
 // device holds and the host has not read yet is downloaded first, once. A
 // download that fails cannot become zeros, so it aborts (broken-code quarantine).
 static OspreyGpuBuffer *current(void *buffer) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
   if (b && b->stale && b->device) {
-    if (osprey_gpu_device_download(b->device, b->data, (uint64_t)b->length) < 0) (void)osprey_gpu_panic(osp_io_error());
+    uint64_t bytes = (uint64_t)(b->length > 0 ? b->length : 1) * (uint64_t)b->elem_bytes;
+    if (osprey_gpu_device_download(b->device, b->data, bytes) < 0) (void)osprey_gpu_panic(osp_io_error());
     b->stale = 0;
   }
   return b;
 }
 
-// Forget the device copy of a buffer whose host words are about to diverge.
+// Forget the device copy of a buffer whose host bytes are about to diverge.
 static void forget_device(OspreyGpuBuffer *b) {
   if (b->device) osprey_gpu_device_release(b->device);
   b->device = NULL;
   b->stale = 0;
 }
 
-// The current words themselves, for the host-backend operations in gpu_host.c
+// The current bytes themselves, for the host-backend operations in gpu_host.c
 // that walk whole buffers (the dense product, the file loaders) and read-outs;
 // NULL for an empty or failed buffer, whose length is 0, so a caller bounding
 // its loops by osprey_gpu_len never dereferences it. Only a buffer no kernel
-// has used yet is written through this pointer.
-int64_t *osprey_gpu_data(void *buffer) {
+// has used yet is written through this pointer. The payload allocation is
+// max-aligned, so a caller may read its elements as words.
+void *osprey_gpu_bytes(void *buffer) {
   return stored(current(buffer));
 }
 
-// Whether `index` names a stored word: the ONE bounds predicate every accessor
+// The little-endian `elem` bytes at `at`, zero-extended to a word.
+static int64_t load_le(const unsigned char *at, int64_t elem) {
+  uint64_t word = 0;
+  for (int64_t i = elem - 1; i >= 0; i--) word = (word << 8) | at[i];
+  return (int64_t)word;
+}
+
+// The low `elem` bytes of `word`, little-endian, at `at`.
+static void store_le(unsigned char *at, int64_t elem, int64_t word) {
+  uint64_t wide = (uint64_t)word;
+  for (int64_t i = 0; i < elem; i++) {
+    at[i] = (unsigned char)(wide & 0xff);
+    wide >>= 8;
+  }
+}
+
+// Whether `index` names a stored element: the ONE bounds predicate every accessor
 // below shares, so a read, a write and the Result gate can never disagree
 // about which indices exist. NULL, a data-less (failed) allocation and the
 // published-length tail are all out of bounds.
@@ -328,20 +378,23 @@ static int addressable(const OspreyGpuBuffer *b, int64_t index) {
   return b && b->data && index >= 0 && index < b->length;
 }
 
-// The raw word at `index`, or 0 out of bounds. Codegen's counted loops stay
-// in bounds by construction; the guard is the no-trap backstop.
+// The zero-extended bytes of the element at `index`, or 0 out of bounds.
+// Codegen's counted loops stay in bounds by construction; the guard is the
+// no-trap backstop. A caller that knows the element's type narrows the word:
+// an int8's byte sign-extends back when it is read at int8.
 int64_t osprey_gpu_get(void *buffer, int64_t index) {
   const OspreyGpuBuffer *b = current(buffer);
-  return addressable(b, index) ? b->data[index] : 0;
+  return addressable(b, index) ? load_le(b->data + index * b->elem_bytes, b->elem_bytes) : 0;
 }
 
-// Store the raw word at `index`; out-of-bounds stores are ignored. Buffers
-// are immutable at the language surface — only the combinator loops filling
-// a freshly allocated buffer call this — so a device copy, if any, is forgotten.
+// Store the low bytes of `word` at `index`; out-of-bounds stores are ignored.
+// Buffers are immutable at the language surface — only the combinator loops
+// filling a freshly allocated buffer call this — so a device copy, if any, is
+// forgotten.
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word) {
   OspreyGpuBuffer *b = current(buffer);
   if (addressable(b, index)) {
-    b->data[index] = word;
+    store_le(b->data + index * b->elem_bytes, b->elem_bytes, word);
     forget_device(b);
   }
 }

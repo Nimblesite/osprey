@@ -91,11 +91,12 @@ static bool within_limits(const OspreyGpuDispatch *d) {
 }
 
 // The device object a buffer argument is bound to [GPU-BUFFER-RESIDENT]: the
-// one its slot holds, else a new one created from its words, kept in the slot
-// of a resident argument and alive only for this dispatch otherwise.
+// one its slot holds, else a new one created from its bytes — `elem`-byte
+// elements [GPU-BUFFER-ELEM] — kept in the slot of a resident argument and
+// alive only for this dispatch otherwise.
 static id<MTLBuffer> object_of(const OspreyGpuArg *arg) {
   if (arg->slot && *arg->slot) return (__bridge id<MTLBuffer>)*arg->slot;
-  id<MTLBuffer> buffer = [gpu_device newBufferWithBytes:arg->words length:(NSUInteger)osprey_gpu_arg_bytes(arg)
+  id<MTLBuffer> buffer = [gpu_device newBufferWithBytes:arg->bytes length:(NSUInteger)osprey_gpu_arg_bytes(arg)
                                                 options:MTLResourceStorageModeShared];
   if (buffer != nil && arg->slot) {
     CFTypeRef retained = CFBridgingRetain(buffer);
@@ -128,17 +129,17 @@ static bool bind_arguments(id<MTLComputeCommandEncoder> encoder, const OspreyGpu
 static void write_back(const OspreyGpuDispatch *d, id<MTLBuffer> __strong *buffers) {
   for (unsigned i = 0; i < d->count; i++) {
     if (d->args[i].kind == OSPREY_GPU_OUTPUT && d->args[i].out)
-      memcpy(d->args[i].out, buffers[i].contents, (size_t)(d->args[i].count * 8));
+      memcpy(d->args[i].out, buffers[i].contents, (size_t)osprey_gpu_arg_bytes(&d->args[i]));
   }
 }
 
 // Every dispatch waits for completion under the lock, so a shared-storage
-// buffer's contents are the device's final words by the time they are read.
+// buffer's contents are the device's final bytes by the time they are read.
 // The caller is plain C with no autorelease pool, so the bridge gets its own.
-int osprey_gpu_metal_download(void *object, int64_t *out, uint64_t count) {
+int osprey_gpu_metal_download(void *object, void *out, uint64_t bytes) {
   (void)pthread_mutex_lock(&gpu_lock);
   @autoreleasepool {
-    memcpy(out, ((__bridge id<MTLBuffer>)object).contents, (size_t)(count * 8));
+    memcpy(out, ((__bridge id<MTLBuffer>)object).contents, (size_t)bytes);
   }
   (void)pthread_mutex_unlock(&gpu_lock);
   return 1;

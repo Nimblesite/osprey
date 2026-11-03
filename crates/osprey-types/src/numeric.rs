@@ -154,6 +154,14 @@ impl Numeric {
         })
     }
 
+    /// The byte width of one element of this type [GPU-BUFFER-ELEM]
+    /// (docs/specs/runtime/0034-GPUComputation.md): the table's own column,
+    /// so a dense buffer's element size has no second spelling anywhere.
+    #[must_use]
+    pub const fn bytes(self) -> u8 {
+        self.bits / 8
+    }
+
     /// The inclusive range of an integer type; `None` for a float.
     #[must_use]
     pub const fn range(self) -> Option<(i128, i128)> {
@@ -240,6 +248,10 @@ mod tests {
         assert_eq!(Numeric::FLOAT.device(), "ulong");
         assert_eq!(Numeric::FLOAT16.llvm(), "i16");
         assert_eq!(Numeric::FLOAT16.tag(), "f16");
+        assert_eq!(Numeric::UINT8.bytes(), 1);
+        assert_eq!(Numeric::FLOAT16.bytes(), 2);
+        assert_eq!(Numeric::UINT32.bytes(), 4);
+        assert_eq!(Numeric::INT.bytes(), 8);
         assert!(Numeric::UINT32.is_integer() && Numeric::FLOAT32.is_float());
     }
 }

@@ -24,7 +24,10 @@ static long g_checks = 0;
 
 #include "tensor_file_tests.h"
 
-static void *load(const char *path, const char *name) {
+// The host list widens every dtype to float [BUILTIN-FILE-TENSOR], so the
+// asked-for element width is not part of its contract and is ignored here.
+static void *load(const char *path, const char *name, int64_t elem) {
+  (void)elem;
   return osprey_load_tensor(path, name);
 }
 

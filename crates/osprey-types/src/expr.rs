@@ -619,7 +619,35 @@ impl Checker {
         }
         let (fname, ft) = self.infer_callee(function, env);
         let args = self.ordered_arg_types(fname.as_deref(), &ft, arguments, named, env);
-        self.apply_bound_fn(fname.as_deref(), &ft, args, env)
+        let result = self.apply_bound_fn(fname.as_deref(), &ft, args, env);
+        self.note_gpu_tensor(fname.as_deref(), &result);
+        result
+    }
+
+    /// [GPU-BUFFER-TENSOR] Record a `gpuLoadTensor` call's resolved element
+    /// type, keyed by the call node's address — the one key the backend can
+    /// produce again at the same node. Recorded UNRESOLVED and solved with
+    /// the rest of the program, so a context that pins the type later in the
+    /// same body still publishes it.
+    fn note_gpu_tensor(&mut self, name: Option<&str>, result: &Type) {
+        if name != Some("gpuLoadTensor") {
+            return;
+        }
+        let Type::Con { name, args } = result else { return };
+        if name != names::RESULT {
+            return;
+        }
+        let Some(Type::Con { name: buffer, args: elements }) = args.first() else {
+            return;
+        };
+        if buffer == names::GPU_BUFFER {
+            if let (Some(elem), Some(position)) = (elements.first(), self.expr_position) {
+                // Recorded unresolved and solved with the program: the use
+                // that pins the element type may sit after this call.
+                let site = (self.current_fn.clone(), position);
+                let _ = self.gpu_tensor_tys.push((site, elem.clone()));
+            }
+        }
     }
 
     fn infer_callee(&mut self, function: &Expr, env: &TypeEnv) -> (Option<String>, Type) {
@@ -1461,7 +1489,7 @@ fn both_vars(l: &Type, r: &Type) -> bool {
 fn constrained_builtin(name: &str) -> bool {
     matches!(
         name,
-        "length" | "isEmpty" | "print" | "toString" | "toGpu" | "listSort"
+        "length" | "isEmpty" | "print" | "toString" | "toGpu" | "listSort" | "gpuMatMul"
     ) || crate::builtin_constraints::is_gpu_buffer_builtin(name)
 }
 

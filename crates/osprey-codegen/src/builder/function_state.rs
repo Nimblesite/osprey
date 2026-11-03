@@ -186,6 +186,9 @@ impl Codegen {
     }
 
     pub(crate) fn begin_function(&mut self, name: &str, position: Option<Position>) {
+        // The body's calls anchor here, exactly as the checker's `expr_position`
+        // anchors at the function's position when inferring it.
+        self.current_position = position;
         self.reg_count = 0;
         self.label_count = 0;
         self.cur_lines.clear();

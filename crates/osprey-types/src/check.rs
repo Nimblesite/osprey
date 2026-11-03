@@ -198,6 +198,12 @@ pub(crate) struct Checker {
     /// representation from, so this table is its only source of one. Resolved
     /// and published by [`infer_program`].
     pub(crate) list_tys: Vec<(Site, Type)>,
+    /// [GPU-BUFFER-TENSOR] Every `gpuLoadTensor` call's element type, keyed by
+    /// the innermost enclosing positioned expression — a call node carries no
+    /// position of its own — resolved and published by [`infer_program`]: the
+    /// backend asks for the type the program's own use of the result pinned,
+    /// never the file's dtype.
+    pub(crate) gpu_tensor_tys: Vec<(Site, Type)>,
     /// Fresh substitutions at value uses, retained for the effect proof.
     pub(crate) instantiations: HashMap<usize, HashMap<VarId, Type>>,
     /// Dotted call identity: a field name, or receiver-first function dispatch.

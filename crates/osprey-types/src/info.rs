@@ -107,6 +107,13 @@ pub struct ProgramTypes {
     /// The backend reads it when the literal itself cannot supply an element
     /// representation — i.e. when it is empty.
     pub(crate) lists: SiteTable,
+    /// [GPU-BUFFER-TENSOR] Each `gpuLoadTensor` call's resolved element type,
+    /// keyed by the innermost enclosing positioned expression — a call node
+    /// carries no source position of its own — because the backend asks for
+    /// the type the program's own use of the result pinned — F64 into `float`,
+    /// F32 and BF16 into `float32`, F16 into `float16` — never the file's
+    /// dtype.
+    pub(crate) gpu_tensors: SiteTable,
     /// `perform` site position `(line, column)` → the operation signature and
     /// effect type arguments instantiated at that site, so the backend can
     /// box/unbox erased generic operation slots against the site's concrete
@@ -347,6 +354,20 @@ impl ProgramTypes {
             Type::Con { name, args } if name == names::LIST => args.first(),
             _ => None,
         })
+    }
+
+    /// [GPU-BUFFER-TENSOR] The element type the program asked the
+    /// `gpuLoadTensor` call at `position` for, when its context resolved one —
+    /// the position the innermost enclosing positioned expression carries,
+    /// which is the one anchor a positionless call node has. Anything else
+    /// fails closed in the backend rather than guessing a width.
+    #[must_use]
+    pub fn gpu_tensor_elem(
+        &self,
+        function: Option<&str>,
+        position: Option<osprey_ast::Position>,
+    ) -> Option<&Type> {
+        self.gpu_tensors.get(function, position)
     }
 }
 

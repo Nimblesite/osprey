@@ -63,19 +63,29 @@ pub(super) fn declare(e: &mut TypeEnv) {
         buf_t(),
     );
     // [GPU-MATMUL] The dense row-major product of two float buffers at a
-    // caller-stated shape; a length that disagrees with the shape is an Error.
-    let floats = || Type::gpu_buffer(Type::float());
-    mono(
+    // caller-stated shape — one float type for all three buffers, `float` or
+    // `float32`, fixed by this one variable; a length that disagrees with the
+    // shape is an Error.
+    let product = || Type::gpu_buffer(t());
+    poly(
         e,
         "gpuMatMul",
-        vec![floats(), floats(), i(), i(), i()],
-        res(floats()),
+        vec![0],
+        vec![product(), product(), i(), i(), i()],
+        res(product()),
     );
-    // [GPU-BUFFER-LOAD] / [GPU-BUFFER-TENSOR] Trained weights enter as float
-    // buffers straight from a file: raw little-endian binary32 words at a byte
-    // offset, or one named tensor of a safetensors file.
-    mono(e, "gpuLoad", vec![s(), i(), i()], res(floats()));
-    mono(e, "gpuLoadTensor", vec![s(), s()], res(floats()));
+    // [GPU-BUFFER-LOAD] Raw little-endian binary32 words at a byte offset,
+    // byte for byte with no widening, as a `float32` buffer.
+    mono(
+        e,
+        "gpuLoad",
+        vec![s(), i(), i()],
+        res(Type::gpu_buffer(Type::prim("float32"))),
+    );
+    // [GPU-BUFFER-TENSOR] One named tensor of a safetensors file, at the float
+    // type `T` the program's own use of the result pins — F64 into `float`,
+    // F32 and BF16 into `float32`, F16 into `float16`; never the file's dtype.
+    poly(e, "gpuLoadTensor", vec![0], vec![s(), s()], res(buf_t()));
     // [GPU-DEVICE] The active execution backend's name. Selection between
     // devices arrives with the `Gpu` effect at roadmap stage 5.
     mono(e, "gpuDevice", vec![], s());
