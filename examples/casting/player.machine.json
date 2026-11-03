@@ -987,7 +987,8 @@
     "danger": "#B3261E",
     "decor1": "#FFAA86",
     "decor2": "#D8C3EF",
-    "decor3": "#FFE4A1"
+    "decor3": "#FFE4A1",
+    "onAccent": "#FFFFFF"
    },
    "canvas": {
     "width": 868,
@@ -1896,7 +1897,8 @@
     "danger": "#FF8A80",
     "decor1": "#B4A5FF",
     "decor2": "#70B9C4",
-    "decor3": "#A8EED4"
+    "decor3": "#A8EED4",
+    "onAccent": "#10192B"
    }
   },
   "poolside": {
@@ -1912,7 +1914,8 @@
     "danger": "#B3261E",
     "decor1": "#FF7828",
     "decor2": "#FFD44F",
-    "decor3": "#174EC6"
+    "decor3": "#174EC6",
+    "onAccent": "#FFFFFF"
    }
   }
  }

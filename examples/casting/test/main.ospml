@@ -316,6 +316,20 @@ test ("a Windows launch finds the TVs with the helper `--browse` names, a Mac la
     started ()
     expect (browser (), "/usr/bin/perl -e alarm 3; exec @ARGV /usr/bin/dns-sd -Z _googlecast._tcp local")))
 
+skinContrast key = match readFile "examples/casting/player.machine.json"
+    Error problem => expect (problem, "readable casting machine")
+    Success source =>
+        base = App::loaded source
+        machine = ui::Machines::feed (base.screen.screenMachine, [ui::Fact(factName = "skin", factValue = ui::Values::text key)])
+        theme = ui::Templates::theme machine
+        match ui::Themes::named (theme, "accent")
+            Error _ => expect (key + " accent", "present")
+            Success fill => match ui::Themes::named (theme, "onAccent")
+                Error _ => expect (key + " onAccent", "present")
+                Success ink =>
+                    expect (ui::Contrast::ratio (fill.tokenLight, ink.tokenLight) >= 4.5, true)
+                    expect (ui::Contrast::ratio (fill.tokenDark, ink.tokenDark) >= 4.5, true)
+
 test ("skins change the palette, never the controls", \() => bench (\() =>
     started ()
     discovered ()
@@ -323,7 +337,10 @@ test ("skins change the palette, never the controls", \() => bench (\() =>
     expect (selected "Skin", "midnight")
     expect (shows "Open file…", true)
     choose ("Skin", "poolside")
-    expect (selected "Skin", "poolside")))
+    expect (selected "Skin", "poolside")
+    skinContrast "sherbet"
+    skinContrast "midnight"
+    skinContrast "poolside"))
 
 test ("no TVs found offers another search, and an unreachable TV shows why", \() => bench (\() =>
     started ()
