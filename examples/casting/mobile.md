@@ -18,6 +18,7 @@ Both native apps build and run in the simulator/emulator. Both platforms' Sherbe
 - [ ] Replace process-based discovery with native Bonjour and Android network service discovery; handle permission denial, retries and disappearing receivers.
 - [ ] Implement document selection and copying scoped files into app storage, including cancellation and failed reads.
 - [ ] Link native TLS, local HTTP serving and media rendering without shelling out to desktop tools; surface unsupported formats and service failures.
+- [x] Tear down the Android app and TLS fixture after native journeys, leaving no port forwards; reject malformed fixture payloads and report port cleanup failures.
 - [ ] Handle foreground/background transitions, connection loss, interrupted playback and cleanup of network/file resources.
 - [ ] Add per-platform launch and test Makefile targets and required CI coverage gates.
 - [x] Rotate Android during playback, use landscape pause/resume and volume, preserve the connection, return to portrait and restore the previous system rotation policy.

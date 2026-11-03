@@ -39,6 +39,7 @@ def run(platform):
         env["CAST_TEST_AUDIO_SOURCE"] = str(work / "Casting mobile test.mp3")
         process = subprocess.Popen([sys.executable, str(APP / "mobile_receiver.py"), "--cert", str(work / "cert.pem"),
             "--key", str(work / "key.pem"), "--port-file", str(work / "port"), "--log", str(log)], env=env)
+        adb = None
         try:
             port = wait_port(process, work / "port")
             env["CAST_TEST_RECEIVER"] = receiver_fixture(port)
@@ -54,9 +55,12 @@ def run(platform):
             verify_log(log, platform)
             verify_pictures(platform, output)
         finally:
-            process.terminate()
-            try: process.wait(timeout=5)
-            except subprocess.TimeoutExpired: process.kill(); process.wait()
+            try:
+                if adb is not None: command(adb + ["shell", "am", "force-stop", "org.ospreylang.casting"], timeout=15)
+            finally:
+                process.terminate()
+                try: process.wait(timeout=5)
+                except subprocess.TimeoutExpired: process.kill(); process.wait()
 
 
 def wait_port(process, path):

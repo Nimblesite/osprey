@@ -2,6 +2,7 @@
 """Portable mobile tooling checks and an explicit macOS host ownership oracle."""
 
 import os
+import io
 import importlib.util
 import json
 import shlex
@@ -419,11 +420,40 @@ class BankAndroidVerdict(unittest.TestCase):
                 self.assertIn("screenshot", result.stderr.lower())
 
 
+def casting_tool(name):
+    spec = importlib.util.spec_from_file_location(name, ROOT / f"examples/casting/{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class CastingGoldenVerdict(unittest.TestCase):
+    def test_receiver_rejects_malformed_payloads(self):
+        module = casting_tool("mobile_receiver")
+        for payload in ("", "[]", "true", "null", '\"bad\"'):
+            log = io.StringIO()
+            frame = module.build_frame("sender", "receiver", "urn:x-cast:test", payload)
+            self.assertFalse(module.deliver({}, frame[4:], mock.Mock(), log), payload)
+            self.assertIn('"event": "error"', log.getvalue())
+        frame = module.build_frame("sender", "receiver", module.NS_PREFIX + "tp.heartbeat", '{"type":"PING"}')
+        self.assertTrue(module.deliver({}, frame[4:], mock.Mock(), io.StringIO()))
+
+    def test_receiver_cannot_hide_failed_port_cleanup(self):
+        module = casting_tool("mobile_receiver")
+        with mock.patch.object(module.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="", stderr="")):
+            self.assertEqual(module.adb("stub", ["forward", "--remove", "tcp:12345"]), ("", None))
+        with mock.patch.dict(os.environ, {"OSPREY_ANDROID_SERIAL": "stub"}), \
+             mock.patch.object(module, "forward_port", return_value=(12345, None)), \
+             mock.patch.object(module, "http_checks", return_value=None), \
+             mock.patch.object(module, "adb", return_value=("", "cannot remove forward")) as adb:
+            self.assertEqual(module.verify_media("http://127.0.0.1:8000/media"), "cannot remove forward")
+            adb.assert_called_once_with("stub", ["forward", "--remove", "tcp:12345"])
+            module.http_checks.return_value = "bad media"
+            self.assertEqual(module.verify_media("http://127.0.0.1:8000/media"), "bad media; cannot remove forward")
+            self.assertEqual(adb.call_count, 2)
+
     def test_golden_gate_rejects_a_missing_small_control(self):
-        spec = importlib.util.spec_from_file_location("casting_mobile_test", ROOT / "examples/casting/mobile_test.py")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        module = casting_tool("mobile_test")
         baseline = (256, 256, bytes([250, 245, 240]) * 65536)
         pixels = bytearray(baseline[2])
         for y in range(10):
@@ -442,9 +472,7 @@ class CastingGoldenVerdict(unittest.TestCase):
 
     def test_pixel_threshold_rejects_changed_controls_and_wrong_dimensions(self):
         # [CAST-MOBILE-DELIVERY] Isolate the pixel oracle from simulator/ffmpeg availability.
-        spec = importlib.util.spec_from_file_location("casting_mobile_test", ROOT / "examples/casting/mobile_test.py")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        module = casting_tool("mobile_test")
         baseline = (20, 10, bytes([250, 245, 240]) * 200)
         self.assertEqual(module.picture_delta(baseline, baseline), 0)
         for channel in range(3):

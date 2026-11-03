@@ -168,7 +168,7 @@ def adb(serial, arguments):
     command = ["adb", "-s", serial] + arguments
     try:
         done = subprocess.run(command, capture_output=True, text=True, timeout=TLS_DEADLINE)
-        return done.stdout.strip(), done.returncode and f"adb failed: {done.stderr.strip()}"
+        return done.stdout.strip(), None if done.returncode == 0 else f"adb failed: {done.stderr.strip()}"
     except (OSError, subprocess.TimeoutExpired) as error:
         return "", f"adb {' '.join(arguments)}: {error}"
 
@@ -213,9 +213,10 @@ def verify_media(content_id):
     if error:
         return error
     try:
-        return http_checks(f"http://127.0.0.1:{local_port}/media")
+        failure = http_checks(f"http://127.0.0.1:{local_port}/media")
     finally:
-        adb(serial, ["forward", "--remove", f"tcp:{local_port}"])
+        _, cleanup = adb(serial, ["forward", "--remove", f"tcp:{local_port}"])
+    return failure if cleanup is None else cleanup if failure is None else f"{failure}; {cleanup}"
 
 
 def send_replies(tls, msg, replies, log):
@@ -236,9 +237,9 @@ def deliver(session, body, tls, log):
     """Parse one frame body, log it and answer it; False closes the session."""
     try:
         msg = parse_frame(body)
-        payload = json.loads(msg["payload"]) if msg["payload"] else {}
+        payload = json.loads(msg["payload"])
         if not isinstance(payload, dict):
-            payload = {}
+            raise ValueError("Cast payload must be a JSON object")
         log_event(log, event="recv", source=msg["source"], destination=msg["destination"],
                   namespace=msg["namespace"], payload=payload)
         return send_replies(tls, msg, handle(session, msg, payload, log), log)
