@@ -135,76 +135,7 @@ public final class CastingBindingCheck {
 """
 
 
-ANDROID_PUBLISHER = r"""
-import android.content.Context;
-import android.net.nsd.NsdManager;
-import android.net.nsd.NsdServiceInfo;
-import android.os.Handler;
-import android.os.Looper;
-public final class CastingNsdPublisher {
-    public static final class MediaCheck {
-        public static void main(String[] arguments) throws Exception {
-            java.net.URL url = new java.net.URL(arguments[1]);
-            java.net.InetAddress host = java.net.InetAddress.getByName(url.getHost());
-            if (!url.getProtocol().equals("http") || url.getUserInfo() != null ||
-                    java.net.NetworkInterface.getByInetAddress(host) == null)
-                throw new java.io.IOException("Media URL must address this device's HTTP server");
-            java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
-            connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(5000); connection.setReadTimeout(5000);
-            connection.setRequestMethod(arguments[0]);
-            if (!arguments[2].isEmpty()) connection.setRequestProperty("Range", arguments[2]);
-            try {
-                System.out.print("HTTP/1.1 " + connection.getResponseCode() + " " + connection.getResponseMessage() + "\r\n");
-                for (var field : connection.getHeaderFields().entrySet()) {
-                    if (field.getKey() != null)
-                        for (String value : field.getValue()) System.out.print(field.getKey() + ": " + value + "\r\n");
-                }
-                System.out.print("\r\n"); System.out.flush();
-                if (!arguments[0].equals("HEAD")) {
-                    try (var input = connection.getInputStream()) { input.transferTo(System.out); }
-                }
-            } finally { connection.disconnect(); }
-        }
-    }
-    @SuppressWarnings("deprecation")
-    public static void main(String[] arguments) throws Exception {
-        System.out.println("PID: " + android.os.Process.myPid());
-        Looper.prepareMainLooper();
-        Handler main = new Handler(Looper.getMainLooper());
-        Class<?> type = Class.forName("android.app.ActivityThread");
-        Object thread = type.getMethod("systemMain").invoke(null);
-        Context system = (Context) type.getMethod("getSystemContext").invoke(thread);
-        Context context = system.createPackageContext("com.android.shell", 0);
-        NsdManager manager = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
-        NsdServiceInfo info = new NsdServiceInfo();
-        info.setServiceName("OspreyCastingAndroid-" + arguments[0]);
-        info.setServiceType("_googlecast._tcp.");
-        info.setPort(Integer.parseInt(arguments[0]));
-        info.setAttribute("fn", "Android native test receiver");
-        NsdManager.RegistrationListener listener = new NsdManager.RegistrationListener() {
-            public void onServiceRegistered(NsdServiceInfo service) { System.out.println("REGISTERED"); }
-            public void onServiceUnregistered(NsdServiceInfo service) {
-                System.out.println("UNREGISTERED"); Looper.myLooper().quitSafely();
-            }
-            public void onRegistrationFailed(NsdServiceInfo service, int code) {
-                System.err.println("FAILED registration: " + code); Looper.myLooper().quitSafely();
-            }
-            public void onUnregistrationFailed(NsdServiceInfo service, int code) {
-                System.err.println("FAILED unregistration: " + code); Looper.myLooper().quitSafely();
-            }
-        };
-        manager.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener);
-        Thread stop = new Thread(() -> {
-            try { System.in.read(); }
-            catch (java.io.IOException error) { System.err.println("FAILED control: " + error); }
-            main.post(() -> manager.unregisterService(listener));
-        });
-        stop.setDaemon(true); stop.start();
-        Looper.loop();
-    }
-}
-"""
+
 
 
 def sdk_tool(sdk, pattern):
@@ -276,6 +207,7 @@ def finish_android_publisher(process, adb, path):
 
 @contextmanager
 def android_publisher(port, work, adb, sdk):
+    from mobile_receiver import ANDROID_PUBLISHER
     with android_java(sdk, adb, ANDROID_PUBLISHER, "CastingNsdPublisher", work) as remote:
         path = work / "android-publisher.log"
         with path.open("w") as log:
