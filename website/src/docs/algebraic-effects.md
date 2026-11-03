@@ -7,7 +7,11 @@ permalink: /docs/effects/
 tags: [algebraic-effects, handlers, applications]
 ---
 
+{% from "native-capture.njk" import capture %}
+
 An algebraic effect is a typed request for work: read configuration, save an account, write a log. A handler supplies the implementation while a function runs. Application code can make those requests without passing service objects through every intermediate function.
+
+{{ capture("/assets/images/guides/python-effects.png", "A smaller handler example in the Python flavor: the same load function produces console or audit output.", "A smaller handler example in the Python flavor: the same load function produces console or audit output.", 1440, 920) }}
 
 ## Choose storage at the application boundary
 
@@ -54,6 +58,8 @@ print(message)
 The handler covers the rest of the block, including requests made inside helpers. Nested handlers take precedence for the operations they implement. The old `handle … in …` and ML `handle … do …` forms are rejected.
 
 Handler arms run outside their own handler, so an arm can forward the same operation to an enclosing handler.
+
+{{ capture("/assets/images/guides/python-effect-error.png", "An operation without an installed handler is rejected before execution.", "An operation without an installed handler is rejected before execution.", 1440, 920) }}
 
 ## Record work in a test
 

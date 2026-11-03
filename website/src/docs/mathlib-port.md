@@ -5,6 +5,8 @@ description: "Where Osprey's proof-library port actually stands: 194 selected Le
 permalink: /docs/mathlib-port/
 ---
 
+{% from "native-capture.njk" import capture %}
+
 Mathlib is the Lean community's library of formalized mathematics: definitions, lemmas and proofs that later work can reuse instead of rebuilding them. Think of it as reusable mathematics with evidence attached, before any notation or tooling matters.
 
 Osprey is a functional language built for safety, elegance and performance: algebraic effects and `Result` instead of panics, inferred types, and native LLVM compilation. It already checks real imported proofs with a kernel written in Osprey, and the library work is underway. This page keeps two things apart: what passed at the verified checkpoint of **30 October 2026**, and what the current Mathlib import work has and has not achieved.
@@ -30,6 +32,8 @@ Lean provides pinned source, proof terms, reference execution and axiom reports 
 Known unsound oracle behaviour must become an Osprey rejection regression, never an acceptance requirement. Repairs to an implementation and changes to a theory or axiom policy have distinct version identities. A replacement or fork requires affected proofs and library dependencies to be checked afresh; withdrawing an assumption does not automatically reconstruct proofs that used it.
 
 The [completion milestones](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0041-dependent-types-and-mathlib.md#completion-milestones-proof-completion) separate full certificate coverage, readable source translation and reconstruction of every source proof. Independence requires authoring, checking, automation and a clean library rebuild with no Lean installation or service. That broader workflow remains delivery work; the working checked exports below are evidence of current capability.
+
+{{ capture("/assets/images/guides/mathlib-check.png", "Recorded Mathlib tutorial: inspect a real check and its result; the surrounding guide distinguishes imported certificates from independent operation.", "Recorded Mathlib tutorial: inspect a real check and its result; the surrounding guide distinguishes imported certificates from independent operation.", 1920, 1080) }}
 
 ## What already checks
 
@@ -108,6 +112,8 @@ target/release/osprey examples/proof/kernel --run --quiet --no-warnings --memory
 ```
 
 The output includes `checked: Nat.add_comm (export)` followed by `rejected: Nat.add_comm (export): type mismatch` for the deliberately corrupted proof. The rejection is an expected control. `--quiet` removes progress messages; it does not remove the program's checked/rejected results. Repeat with `--memory=arc` for the other managed backend.
+
+{{ capture("/assets/images/guides/mathlib-library.png", "Recorded Mathlib tutorial: browse the library and retain the displayed assumptions and verification context.", "Recorded Mathlib tutorial: browse the library and retain the displayed assumptions and verification context.", 1920, 1080) }}
 
 ## Keep assumptions visible
 

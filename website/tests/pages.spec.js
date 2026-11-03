@@ -400,3 +400,49 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 320 }
     await expectNavigationFits(page.locator("#site-navigation > li > a, #site-navigation > li > details > summary"));
   });
 }
+
+test("Python GPU documentation preserves the current fallible tensor contract", async ({ page }) => {
+  await page.goto("/docs/python-flavor/");
+  const snippets = await page.locator('code.language-python').allTextContents();
+  const source = snippets.join("\n");
+  expect(source).toContain("-> Result[B, str]");
+  expect(source).toContain("return answered(gpuMatMul(a, b, rows, inner, cols))");
+  expect(source).not.toContain("or_abort");
+});
+
+test("backend guide handles product failures without the removed abort helpers", async ({ page }) => {
+  await page.goto("/docs/one-model-two-backends/");
+  const code = (await page.locator('pre code').allTextContents()).join("\n");
+  expect(code).toContain("Result<B, string>");
+  expect(code).toContain("answered(gpuMatMul(a, b, rows, inner, cols))");
+  expect(code).not.toContain("orAbort");
+  await expect(page.locator("article")).toContainText("device-kernel faults");
+});
+
+test("long authored guides retain a useful image or inline video per 500 prose words", async ({ page }) => {
+  const { execFileSync } = require("node:child_process");
+  const markdown = require("markdown-it")();
+  const repo = path.resolve(__dirname, "../..");
+  const files = execFileSync("git", ["ls-files", "website/src/docs"], { cwd: repo, encoding: "utf8" }).trim().split("\n").filter(file => file.endsWith(".md"));
+  for (const file of files) {
+    const source = fs.readFileSync(path.join(repo, file), "utf8");
+    const prose = source.replace(/^---\n[\s\S]*?\n---\n/, "").replace(/{[%{][\s\S]*?[%}]}/g, "");
+    const words = markdown.parse(prose, {}).filter(token => token.type === "inline")
+      .flatMap(token => token.children || []).filter(token => ["text", "code_inline"].includes(token.type))
+      .reduce((count, token) => count + (token.content.match(/\b[\w]+(?:['’-][\w]+)*\b/g) || []).length, 0);
+    if (words < 500) continue;
+    const route = source.match(/^permalink:\s*["']?([^\s"']+)/m)?.[1]
+      || `/${file.replace(/^website\/src\//, "").replace(/(?:index)?\.md$/, "")}${file.endsWith("index.md") ? "" : "/"}`;
+    await page.goto(route);
+    const article = page.locator("article");
+    const images = article.locator("img:not(.video-card img)");
+    const videos = article.locator("figure.video video");
+    expect(await images.count() + await videos.count(), `${file}: ${words} words`).toBeGreaterThanOrEqual(Math.ceil(words / 500));
+    for (const image of await images.all()) {
+      await image.scrollIntoViewIfNeeded();
+      expect(await image.evaluate(async el => { await el.decode(); return el.naturalWidth; }), file).toBeGreaterThan(0);
+      await expect(image).toHaveAttribute("alt", /\S/);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), file).toBe(true);
+  }
+});

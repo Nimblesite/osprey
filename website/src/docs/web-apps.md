@@ -13,11 +13,15 @@ tags:
 title: Building Osprey Web Apps with React and WebAssembly
 ---
 
+{% from "native-capture.njk" import capture %}
+
 [Talon Bank](https://github.com/Nimblesite/osprey/tree/main/examples/projects/modules) uses algebraic effects for storage, audit logging and browser rendering. Reusable handlers select SQLite and console output on the server, or the browser bridge in the WebAssembly client. Tests replace these implementations around the same application code.
 
 Osprey owns the model, transitions, routes, validation and view description. A JavaScript host executes browser commands and gives the view to React, which updates the DOM. Start with the [effects guide](/docs/effects/) if `handler` and `perform` are new to you.
 
 The host is an application reference in this repository. Its protocol and source can be adapted for another app; there is no published framework package or `osprey new web` scaffold.
+
+{{ capture("/assets/images/native/web-bank.png", "Talon Bank · the actual Chromium dashboard after the Osprey WebAssembly client is ready.", "Talon Bank · the actual Chromium dashboard after the Osprey WebAssembly client is ready.", 1440, 960) }}
 
 ## The architecture at a glance
 
@@ -40,7 +44,7 @@ flowchart TD
     wasm -->|"command: navigate"| navCmd["history API"]
 ```
 
-This is a whole-document protocol. Osprey does not call JavaScript once per component or DOM node. It emits one render envelope; JavaScript parses it once; React performs the node-level work on its side of the boundary.
+Osprey sends one render envelope per update. JavaScript parses it once; React reconciles the DOM.
 
 ## What each layer owns
 
@@ -82,24 +86,20 @@ main () =
     0
 ```
 
-The sequence is:
+1. Instantiate the `.wasm` with WASI, `osprey_web.render` and `osprey_web.command` imports; attach its exported memory and call `_start`.
+2. `_start` calls `main`. The browser handler wraps `App::start`, which creates the initial model and account/activity requests.
+3. `Bridge::present` emits `{model, view, commands}` through the render import. JavaScript reads its NUL-terminated JSON, retains the opaque model and renders React elements.
+4. Execute commands after requesting the React commit, so newly rendered focus targets can appear.
+5. For each browser event, attach the latest model, allocate UTF-8 bytes with a trailing NUL and call `osprey_web_dispatch`.
+6. The dispatcher installs a fresh browser handler, decodes the event and model, and presents the updated envelope.
 
-1.  The host decodes or fetches the `.wasm` bytes and calls [`WebAssembly.instantiate`](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/instantiate_static).
-2.  It supplies `wasi_snapshot_preview1` plus the `osprey_web.render` and `osprey_web.command` imports.
-3.  The host attaches the module's exported linear `memory`, then calls `_start`.
-4.  WASI's `_start` reaches Osprey `main`, which passes the `browser ()` handler to `App::start`.
-5.  `App::start` runs its render callback under that handler. It creates `Model::initial()` and asks for the initial account and activity data with `Commands::hydrate()`.
-6.  `App::present` builds `{model, view, commands}` through `Bridge::present`; its `Render.present` handler calls the imported `osprey_web_render` function.
-7.  JavaScript synchronously reads the NUL-terminated JSON string from Wasm memory, stores its opaque `model`, converts `view` to React elements, and calls the React root's `render` method.
-8.  After React has been asked to commit, the host executes the envelope's commands. This ordering matters for a focus command whose target has just appeared.
-9.  A browser event is flattened to JSON. The host adds the latest model, writes the UTF-8 bytes plus a trailing NUL into Wasm memory, and calls `osprey_web_dispatch`.
-10. The dispatcher installs a fresh browser handler, then Osprey decodes the model and event, returns the next model plus commands, and presents a new view. The loop repeats.
+Startup deep links and back/forward dispatch `{kind:"location",value:window.location.hash}` through this same loop. Osprey validates the route.
 
-Deep-link startup and browser back/forward use the same loop. The host dispatches `{kind:"location",value:window.location.hash}`; Osprey validates the route and selects the page.
+{{ capture("/assets/images/native/web-bank-accounts.png", "Accounts route · Osprey selects the page and React renders its view document.", "Accounts route · Osprey selects the page and React renders its view document.", 1440, 960) }}
 
 ## How React fits in
 
-The host creates one React root with [`createRoot`](https://react.dev/reference/react-dom/client/createRoot). For every Osprey render it recursively turns a JSON node into a React element with [`createElement`](https://react.dev/reference/react/createElement):
+One [`React root`](https://react.dev/reference/react-dom/client/createRoot) renders each Osprey view. The adapter recursively maps JSON nodes to [`React elements`](https://react.dev/reference/react/createElement):
 
 ``` json
 {
@@ -136,17 +136,9 @@ The adapter prevents default form submission and anchor navigation where it owns
 
 ### React state versus Osprey state
 
-The application does not use React `useState`, reducers, or context. That is a deliberate alternative to the patterns in React's [Managing State](https://react.dev/learn/managing-state) guide: application state lives in an Osprey record, while React is the renderer.
+Application state is an Osprey record. React renders it; the browser retains input values, history, focus, selection, in-flight requests and telemetry.
 
-The browser still owns genuinely browser-local state:
-
-- uncontrolled input values before a form is submitted;
-- the URL and history stack;
-- focus and selection;
-- in-flight `fetch` requests; and
-- bridge telemetry.
-
-If an input must affect application behaviour before submit, follow React's [controlled-input contract](https://react.dev/reference/react-dom/components/input#controlling-an-input-with-a-state-variable): handle its input event and put the value in the Osprey model so the next tree returns that value. If it only matters at submit, the host can leave it uncontrolled in the DOM and serialize the form then.
+For an input that affects the app before submission, handle its event and return the value in the next view, following React's [controlled-input contract](https://react.dev/reference/react-dom/components/input#controlling-an-input-with-a-state-variable). Otherwise leave it uncontrolled and serialize its form at submit.
 
 ## The Wasm message ABI
 
@@ -193,6 +185,10 @@ The current Talon client places commands in its render envelope, so it uses the 
 
 `model` is an opaque JSON string from the host's perspective. `view` is the React-neutral element tree. `commands` is an array interpreted after rendering. Every crossing is a NUL-terminated UTF-8 string.
 
+{{ capture("/assets/images/native/web-bank-filter.png", "Type vintage into Activity search · the visible list follows the updated Osprey model.", "Type vintage into Activity search · the visible list follows the updated Osprey model.", 1440, 960) }}
+
+{{ capture("/assets/images/native/web-bank-activity.png", "Talon Bank Activity route before entering a search", "Activity before filtering · compare these rows with the search result below.", 1440, 960) }}
+
 ## State management in Osprey
 
 Talon's [`AppModel`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/model.ospml) is the authoritative application snapshot. It contains route selection, loading flags, notices, modal/menu state, filters, the selected account, and JSON API documents.
@@ -206,15 +202,13 @@ flowchart TD
     dispatch --> commands["commands — browser work as data"]
 ```
 
-`Model::decode` reconstructs the record at the start of a dispatch. `Update::dispatch` pattern-matches the event kind and returns an `UpdateResult`. `Model::set` creates a new record with one changed field rather than handing the JavaScript host mutable access to Osprey data. `Model::encode` serializes the next snapshot for the envelope.
+Each dispatch decodes the model, matches the event, creates an immutable next record and encodes the new snapshot. The host retains that string opaquely and attaches its latest value to every event. Consequently, the second hydration response sees the first response's update.
 
-The host physically retains that encoded string between Wasm calls, but treats it as opaque. It always adds its latest value at dispatch time. This matters for the two parallel hydration requests: whichever response finishes second sees the model produced after the first response, rather than the boot-time model.
+Snapshots are not automatically persisted or shared between tabs. Version and validate them before adding storage. Talon's string fields, `"true"`/`"false"` flags and nested JSON documents are application conventions; a reusable framework needs explicit codecs and versioning.
 
-This reference model is intentionally serializable. It is not automatically persisted across reloads or shared between tabs. A host can add session storage, URL encoding, or server persistence, but should version and validate the model instead of assuming old serialized data matches a new app build.
+A handler-owned state module lasts for its installed region. Because `_start` finishes before later JavaScript dispatches, that region would not remain installed across events. This example round-trips snapshots instead.
 
-Talon keeps the record deliberately simple: its fields are strings, boolean-like values use `"true"`/`"false"`, and the account/activity documents are escaped JSON strings inside the model JSON. That is an application convention, not a compiler-generated state schema; a reusable framework should replace the stringly protocol with explicit codecs and versioning.
-
-This model loop is also different from an Osprey `state module`. A state module creates handler-owned mutable cells for one installed handler region. Talon's `_start` call finishes before later JavaScript dispatch calls, so such a region would not automatically remain installed around future events. The browser example therefore round-trips an immutable application snapshot instead of relying on durable Wasm-global state.
+{{ capture("/assets/images/native/web-bank-move.png", "Move money · native browser form controls are described by the Osprey application.", "Move money · native browser form controls are described by the Osprey application.", 1440, 960) }}
 
 ## Browser work is represented as commands
 
@@ -236,7 +230,7 @@ The current host understands three command kinds:
 | `focus` | Focuses an element on the next animation frame | No return event |
 | `navigate` | Calls `history.pushState` or `replaceState` | Osprey has already changed its route; later back/forward emits `location` |
 
-This command pattern keeps `Update::dispatch` deterministic for a given event and model. It also keeps browser APIs outside the Wasm module's import surface. Adding a capability means defining a command schema, implementing it in the host, defining its completion event when needed, and testing both directions.
+Updates remain deterministic for an event and model. Add capabilities through a command schema, host implementation and, when needed, completion event; test both directions.
 
 ## Algebraic effects: what runs where
 
@@ -264,9 +258,9 @@ browser () = handler Bridge::Render
         envelope
 ```
 
-`Bridge::present` builds the envelope and calls `perform Render.present envelope`. Both startup and the exported event dispatcher install the `browser ()` handler around the application callback. A test can replace the render operation and inspect that envelope without invoking the JavaScript host.
+`Bridge::present` performs `Render.present` with the envelope. Startup and dispatch each install the browser handler; tests replace it to inspect output without JavaScript.
 
-Browser commands such as `http`, `focus` and `navigate` remain JSON data inside the envelope. JavaScript executes them and returns asynchronous HTTP results as new events. A value handler returns the render result immediately; it does not suspend Osprey until the network responds.
+HTTP, focus and navigation remain JSON commands executed by JavaScript. These application conventions do not make arbitrary browser APIs into compiler-provided effects.
 
 ### Target support
 
@@ -298,9 +292,9 @@ The output is a WASI Preview 1 command module, not a `wasm32-unknown-unknown` li
 
 ### Wasm memory today
 
-Osprey values and strings live in ordinary WebAssembly linear memory. The current `libosprey_runtime_wasm.a` is built with `memory_runtime.c`, whose allocator delegates to `malloc`; escaping allocations are not reclaimed during the instance's lifetime, although LLVM can eliminate provably non-escaping allocations at `-O2`.
+Osprey values and strings use WebAssembly linear memory. Wasm builds default to **ARC**, linking `libosprey_runtime_wasm_arc.a`; `--memory=arc` selects it explicitly. This uses the managed allocator and ARC ownership shims, not the WebAssembly GC proposal. Tracing GC is unavailable for this target.
 
-The native `--memory=gc` and `--memory=arc` runtime archives are not selected by the current Wasm driver. Passing one of those flags alongside `--target=wasm32` does not change the linked Wasm archive today. Osprey also does not target the WebAssembly GC proposal. Long-lived browser applications should therefore measure linear-memory growth and avoid retaining needlessly large serialized models or render documents.
+Measure linear-memory growth in long-running apps, especially when retaining large serialized models or render documents. Keep host/Wasm string ownership at the ABI boundary.
 
 ## Build and run Talon Bank
 
@@ -325,7 +319,7 @@ The application is served at `http://127.0.0.1:18790`. The generated `examples/p
 The example's web build performs four jobs:
 
 1.  esbuild bundles React, the host, and CSS for the browser;
-2.  `osprey examples/projects/modules/client --target=wasm32 --memory=none --compile` builds the multi-file client project;
+2.  `osprey examples/projects/modules/client --target=wasm32 --memory=arc --compile` builds the multi-file client project;
 3.  the embed script replaces one sentinel with the Wasm bytes; and
 4.  it generates an Osprey `Bundle` module whose `style()` and `script()` values the native server returns as `/app.css` and `/app.js`.
 
@@ -359,7 +353,7 @@ Start by adapting the reference host rather than installing it from npm; the pac
 Compile a directory project by pointing the compiler at the directory that contains `osprey.toml`:
 
 ``` bash
-osprey path/to/my-app/client --target=wasm32 --memory=none --compile -o path/to/app.wasm
+osprey path/to/my-app/client --target=wasm32 --memory=arc --compile -o path/to/app.wasm
 ```
 
 Then bundle or load the module with a host that supplies its WASI and `osprey_web` imports. Serve the app over HTTP rather than opening an HTML file directly; browser module loading and `fetch` are origin-based.
@@ -390,6 +384,8 @@ When extending the framework:
 | Compile/bundle pipeline | [`web/scripts/build.mjs`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/web/scripts/build.mjs) |
 | Wasm ABI runtime | [`compiler/runtime/web_runtime.c`](https://github.com/Nimblesite/osprey/blob/main/compiler/runtime/web_runtime.c) |
 | Compiler Wasm linker | [`crates/osprey-cli/src/wasm.rs`](https://github.com/Nimblesite/osprey/blob/main/crates/osprey-cli/src/wasm.rs) |
+
+{{ capture("/assets/images/native/web-bank-security.png", "Talon Bank security page · an application demo, not evidence of complete runtime confinement.", "Talon Bank security page · an application demo, not evidence of complete runtime confinement.", 1440, 960) }}
 
 ## Current limitations
 

@@ -4,7 +4,11 @@ title: Osprey documentation
 description: Start with algebraic effects and reusable handlers, then build native, web and mobile applications with Osprey.
 ---
 
+{% from "native-capture.njk" import capture %}
+
 Osprey is built for **safety, elegance and performance**: algebraic effects and `Result` instead of panics, inferred types that say more with less text, and native LLVM compilation. Typed algebraic effects separate application requests from their implementations. Start with a handler, then see the same approach in the banking and mobile applications.
+
+{% videoPlayer "agent-native", true %}
 
 ## Start here
 
@@ -28,6 +32,8 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 - **[Proof video learning paths](/docs/proofs/)** - twelve short films, organised into six topics and two audience paths.
 - **[Use the Proof Workbench](/docs/proof-workbench/)** - write an argument, inspect hypotheses and goals, and work through guided lessons.
 - **[Mathlib port progress](/docs/mathlib-port/)** - real checked imports, reproducible commands and the remaining boundaries.
+
+{{ capture("/assets/images/native/macos-synth.png", "Prism Synth · connect a patch and play it in a native macOS window.", "Prism Synth · connect a patch and play it in a native macOS window.", 2304, 1512) }}
 
 ## Build applications
 

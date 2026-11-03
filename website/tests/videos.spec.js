@@ -33,7 +33,7 @@ for (const watch of WATCH_PAGES) test(`${watch} describes its video with VideoOb
   expect(video, "VideoObject").toBeTruthy();
   for (const key of ["name", "description", "thumbnailUrl", "uploadDate", "duration", "contentUrl"]) expect(video[key], key).toBeTruthy();
   expect(video.uploadDate).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/);
-  expect(video.duration).toMatch(/^PT(\d+H)?(\d+M)?(\d+S)?$/);
+  expect(video.duration).toMatch(/^PT(\d+H)?(\d+M)?(\d+(?:\.\d+)?S)?$/);
   const title = await page.evaluate(source => new DOMParser().parseFromString(source, "text/html").title, html);
   expect(video.name).toBe(title);
   expect(fs.existsSync(path.join(SITE, new URL(video.contentUrl).pathname))).toBe(true);
@@ -270,15 +270,25 @@ test("proof watch titles and descriptions preserve punctuation once", async ({ p
   expect(breadcrumb.itemListElement.at(-1).name).toBe(entry.name);
 });
 
-test("video duration metadata matches the delivered media", async () => {
-  const { execFileSync } = require("node:child_process");
-  const { video } = await import("../lib/videos.mjs");
+test("video duration metadata matches the delivered media", async ({ page }) => {
+  await page.goto(WATCH);
+  const { video, videoObject } = await import("../lib/videos.mjs");
   const entries = require("../src/_data/videos.json");
   for (const id of Object.keys(entries).filter(id => !id.startsWith("_"))) {
     const v = video(id);
-    const file = path.resolve(__dirname, "../src", v.content.slice(1));
-    const seconds = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" }));
-    expect(v.duration, id).toBe(Math.ceil(seconds));
+    const seconds = await page.evaluate(src => new Promise((resolve, reject) => {
+      const media = document.createElement("video");
+      media.preload = "metadata";
+      media.onloadedmetadata = () => resolve(media.duration);
+      media.onerror = () => reject(new Error(`Cannot read delivered video: ${src}`));
+      media.src = src;
+    }), v.content);
+    const markup = videoObject(id, `${ORIGIN}/watch/${id}/`, { url: ORIGIN });
+    const time = markup.duration.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/);
+    expect(time, id).toBeTruthy();
+    const encoded = Number(time[1] || 0) * 3600 + Number(time[2] || 0) * 60 + Number(time[3] || 0);
+    expect(encoded, id).toBeCloseTo(seconds, 3);
+    expect(v.durationSeconds, id).toBe(seconds);
   }
 });
 

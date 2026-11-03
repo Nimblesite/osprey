@@ -7,11 +7,15 @@ permalink: /docs/mac-and-iphone-apps/
 tags: [macos, ios, swift, applications, interop]
 ---
 
+{% from "native-capture.njk" import capture %}
+
 Osprey Storage is a native disk browser for the Mac and iPhone. The Mac app starts at the whole disk, with hidden files included. On iPhone it measures its own container and, with permission, the photo library. Osprey owns the state, ranking and screens; Swift draws them and calls the platform APIs.
 
 {% videoCard "swift-interop", "/docs/tutorials/swift-interop/" %}
 
 The source is in [`examples/macos/`](https://github.com/Nimblesite/osprey/tree/main/examples/macos). You need an Apple silicon Mac with Xcode and the [Osprey toolchain](/docs/installation/).
+
+{{ capture("/assets/images/guides/storage-macos.png", "Osprey Storage on macOS · recorded frame from the Swift interop tutorial.", "Osprey Storage on macOS · recorded frame from the Swift interop tutorial.", 1920, 1080) }}
 
 ## 1. Run it
 
@@ -19,6 +23,8 @@ The source is in [`examples/macos/`](https://github.com/Nimblesite/osprey/tree/m
 make -C apps/macos storage                 # rebuild the compiler, the Mac runtime and the app, then open it
 examples/macos/run.sh ios-sim      # build and launch it in the iPhone simulator
 ```
+
+{{ capture("/assets/images/guides/storage-ios.png", "Osprey Storage on the iPhone simulator · recorded frame from the Swift interop tutorial.", "Osprey Storage on the iPhone simulator · recorded frame from the Swift interop tutorial.", 1920, 1080) }}
 
 ## 2. Who does what
 

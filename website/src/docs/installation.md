@@ -10,23 +10,15 @@ tags:
 - getting-started
 ---
 
+{% from "native-capture.njk" import capture %}
+
 # Installing Osprey
 
 *By Christian Findlay · Updated 25 October 2026*
 
-Osprey compiles your program to **textual LLVM IR** and then hands that IR to
-**`clang`** to produce and link a native executable. The `osprey` binary does
-**not** bundle LLVM — it shells out to a `clang` already on your system. So
-installing Osprey is two steps:
+Install **LLVM/clang first**, then the **Osprey compiler**. Osprey emits LLVM IR and invokes `clang` to link native programs; release packages include the compiler and C runtime archives, **not LLVM**. A missing compiler produces `clang: command not found` or `failed to spawn C compiler`.
 
-1. Install the **LLVM/clang toolchain** (the prerequisite).
-2. Install the **`osprey` compiler**.
-
-> **This is required.** The release tarballs and the Homebrew/Scoop packages ship
-> only the `osprey` binary and its C runtime archives — never LLVM itself. If
-> `clang` is not on your `PATH`, compiling any program fails with an error like
-> `clang: command not found` or `failed to spawn C compiler`. Install the
-> toolchain first.
+{% videoPlayer "agent-native", true %}
 
 ## What Osprey needs
 
@@ -38,23 +30,19 @@ installing Osprey is two steps:
 | Compile to WebAssembly (`--target=wasm32`) | `clang`, `wasm-ld` (from `lld`), a WASI sysroot |
 | Debug info (`--debug`, DWARF line tables) | LLVM **19 or newer** recommended |
 
-Any recent LLVM release works for everyday compilation — there is no exact
-version to match. When in doubt, install your platform's current LLVM.
+Use your platform's current LLVM; no exact version match is required.
 
 Native HTTP and WebSocket programs additionally link OpenSSL, even when they use plain HTTP or `ws://`. On macOS, install it with `brew install openssl@3`; the compiler checks the standard Homebrew library paths. On Debian/Ubuntu, use `sudo apt-get install libssl-dev`; on Fedora/RHEL, `sudo dnf install openssl-devel`; on Arch, `sudo pacman -S --needed openssl`. Windows needs OpenSSL libraries compatible with the MinGW toolchain and discoverable by its linker; the Scoop dependencies listed below do not install them. Programs without HTTP or WebSocket calls do not require OpenSSL.
 
 ## macOS
 
-The quickest path uses Apple's bundled clang from the Xcode Command Line Tools,
-which is enough to compile and run native Osprey programs:
+Apple's Xcode Command Line Tools supply clang for native programs:
 
 ```bash
 xcode-select --install
 ```
 
-For a **current, full LLVM** (recommended for WebAssembly, debug info, or if you
-hit an IR-compatibility error with Apple's older clang), install it with
-Homebrew:
+For WebAssembly, debug info or IR incompatibilities, install current LLVM:
 
 ```bash
 brew install llvm
@@ -118,6 +106,8 @@ Alternatively, install the official [LLVM release](https://github.com/llvm/llvm-
 and a MinGW-w64 toolchain, and make sure both `clang.exe` and `gcc.exe` are on
 your `PATH`.
 
+{{ capture("/assets/images/guides/python-hello.png", "After setup, run a greeting with Osprey. This Playground capture uses a local native compiler adapter.", "After setup, run a greeting with Osprey. This Playground capture uses a local native compiler adapter.", 1440, 920) }}
+
 ## Verify the toolchain
 
 After installing, confirm `clang` resolves and is a full LLVM clang:
@@ -134,6 +124,8 @@ osprey hello.osp --run
 ```
 
 You should see `Osprey is installed`.
+
+{% videoPlayer "profiler", true %}
 
 ## Debugging in VS Code
 
@@ -153,10 +145,7 @@ For programs that read input, add `"console": "integratedTerminal"` to the launc
 
 ## The `OSPREY_CC` override
 
-When several clangs coexist — for example a keg-only Homebrew LLVM, or the MinGW
-clang on Windows that must match the MinGW-built runtime archive — set
-`OSPREY_CC` to the exact driver Osprey should invoke instead of the default
-`clang`:
+Select a specific compiler with `OSPREY_CC`. On Windows, it must match the MinGW-built runtime archive:
 
 ```bash
 OSPREY_CC=/opt/homebrew/opt/llvm/bin/clang osprey app.osp --run
