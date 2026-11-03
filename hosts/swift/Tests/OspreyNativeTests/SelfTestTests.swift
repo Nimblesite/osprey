@@ -7,24 +7,38 @@ import XCTest
 // picture comparisons, and scripted HTTP all stay deterministic and local.
 final class SelfTestTests: XCTestCase {
     @MainActor
-    func testOpenPickerSurvivesFramesButRejectsChangedBindings() {
+    func testControlsSurviveFramesButRejectChangedBindings() {
         let picker = control("picker", "Speed", 4, ["selected": "1", "choices": .array([.object(["key": "1.5", "label": "1.5×"])])])
         let cell = RegionCell(key: "root", revision: 1, node: picker)
         let first = PickerView(node: picker) { _ in XCTFail("Rendering must not send a choice") }
         XCTAssertEqual(first, PickerView(node: picker) { _ in })
-        XCTAssertEqual(cell.pickerRevision(for: picker, choice: "1.5"), 1)
+        XCTAssertEqual(cell.controlRevision(for: picker, value: .string("1.5")), 1)
         cell.replace(revision: 20, node: .object(["body": .object(["children": .array([picker])])]))
-        XCTAssertEqual(cell.pickerRevision(for: picker, choice: "1.5"), 20)
-        XCTAssertNil(cell.pickerRevision(for: picker, choice: "unknown"))
+        XCTAssertEqual(cell.controlRevision(for: picker, value: .string("1.5")), 20)
+        XCTAssertNil(cell.controlRevision(for: picker, value: .string("unknown")))
         for (field, replacement) in [("event", JSONValue.number(5)), ("title", .string("Volume")), ("selected", .string("1.5")), ("choices", .array([]))] {
             var changed = picker.object ?? [:]; changed[field] = replacement
             let node = JSONValue.object(changed)
             XCTAssertNotEqual(first, PickerView(node: node) { _ in })
             cell.replace(revision: 21, node: node)
-            XCTAssertNil(cell.pickerRevision(for: picker, choice: "1.5"), field)
+            XCTAssertNil(cell.controlRevision(for: picker, value: .string("1.5")), field)
         }
         cell.replace(revision: 22, node: .null)
-        XCTAssertNil(cell.pickerRevision(for: picker, choice: "1.5"))
+        XCTAssertNil(cell.controlRevision(for: picker, value: .string("1.5")))
+        let button = control("button", "Stop", 5, ["enabled": .bool(true)])
+        cell.replace(revision: 23, node: button)
+        XCTAssertEqual(cell.controlRevision(for: button, value: .null), 23)
+        XCTAssertNil(cell.controlRevision(for: button, value: .string("unexpected")))
+        cell.replace(revision: 24, node: .object(["children": .array([button])]))
+        XCTAssertEqual(cell.controlRevision(for: button, value: .null), 24)
+        for (field, replacement) in [("event", JSONValue.number(6)), ("title", .string("Resume")), ("enabled", .bool(false))] {
+            var changed = button.object ?? [:]; changed[field] = replacement
+            cell.replace(revision: 25, node: .object(changed))
+            XCTAssertNil(cell.controlRevision(for: button, value: .null), field)
+        }
+        let toggle = control("toggle", "Loop", 5)
+        cell.replace(revision: 26, node: toggle)
+        XCTAssertNil(cell.controlRevision(for: toggle, value: .bool(true)))
     }
 
     private func step(_ verb: String, _ words: String...) -> SelfTestStep {

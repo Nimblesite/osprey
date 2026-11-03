@@ -9,10 +9,10 @@ struct ControlView: View {
 
     var body: some View {
         switch node.text("kind") {
-        case "button": ButtonView(node: node) { drawing.send(node.count("event"), .null) }
+        case "button": ButtonView(node: node) { drawing.act(node, .null) }
         case "field": FieldView(node: node, revision: drawing.revision) { drawing.send(node.count("event"), .string($0)) }
         case "toggle": Toggle(node.text("label"), isOn: Binding(get: { node.flag("on") }, set: { drawing.send(node.count("event"), .bool($0)) })).toggleStyle(.switch).controlSize(.small)
-        case "picker": PickerView(node: node) { drawing.choose(node, $0) }.equatable()
+        case "picker": PickerView(node: node) { drawing.act(node, .string($0)) }.equatable()
         case "disclosure": DisclosureView(node: node, drawing: drawing)
         default: AlertView(node: node) { drawing.send(node.count("event"), .null) }
         }

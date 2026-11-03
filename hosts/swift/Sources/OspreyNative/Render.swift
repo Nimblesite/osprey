@@ -11,7 +11,7 @@ public struct Drawing {
     let revision: Int
     let send: (Int, JSONValue) -> Void
     let point: (Int, JSONValue) -> Void
-    let choose: (JSONValue, String) -> Void
+    let act: (JSONValue, JSONValue) -> Void
 }
 
 extension JSONValue {
@@ -240,9 +240,9 @@ struct CellView: View {
         return Drawing(region: region, revision: revision,
                        send: { ordinal, value in store.send(region: region, revision: revision, ordinal: ordinal, value: value) },
                        point: { ordinal, value in store.send(region: region, revision: cell.revision, ordinal: ordinal, value: value) },
-                       choose: { node, key in
-                           if let current = cell.pickerRevision(for: node, choice: key) {
-                               store.send(region: region, revision: current, ordinal: node.count("event"), value: .string(key))
+                       act: { node, value in
+                           if let current = cell.controlRevision(for: node, value: value) {
+                               store.send(region: region, revision: current, ordinal: node.count("event"), value: value)
                            }
                        })
     }
