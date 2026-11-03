@@ -8,6 +8,7 @@ import ui::Runtime
 import ui::Requests
 import ui::Messages
 import ui::MachineDocs
+import ui::Doc
 import ui::Values
 import ui::Templates
 import ui::Keyed
@@ -38,6 +39,11 @@ module App
         found = launched(finder = Link::browse (after (context.arguments, "--browse", "")))
         first = Link::settled found
         restored (context.arguments, remember (Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))))
+
+    (** [UI-THEME] Begin once with the initialized store's skin, including `--machine`, `--skin` and the document's fallback. *)
+    export begun source =
+        first = initial (Runtime::context (Doc::parse source))
+        Runtime::begin (source, \_ => first, regions, Templates::theme first.stepStore.screen.screenMachine)
 
     // [CAST-MOBILE-APPEARANCE-RECOVERY] A rejected launch choice must never fail silently.
     restored (arguments, next) =
@@ -72,6 +78,3 @@ module App
             read => store.screen
         changed = signalChanges before.screen store.screen (\s => MachineDocs::snapshot s.screenMachine) (signalDependencies screenSlice)
         [Keyed::region (frames, "root", changed, root)]
-
-    (** The first skin's colours; a skin change re-themes the view in place. *)
-    export theme () = Templates::theme (MachineDocs::faulty "")

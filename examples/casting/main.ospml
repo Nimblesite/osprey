@@ -35,6 +35,7 @@ hosted work =
         shape primitive => streamed := shipped primitive
     Runtime::guarded (\() => chromecast::Wire::Native (\() => keeping (work ())))
 
-start source = hosted (\() => Runtime::begin (source, App::initial, App::regions, App::theme ()))
+// [UI-THEME] The launch is prepared once, so the host's first envelope carries the theme of the store it started: the chosen machine's skin, not an empty one.
+start source = hosted (\() => App::begun source)
 
 dispatch (_saved : string, event) = hosted (\() => Runtime::proceed (live, event, App::update, App::regions))
