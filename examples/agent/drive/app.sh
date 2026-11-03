@@ -13,7 +13,13 @@ repo=$(cd "$here/../../.." && pwd)
 name="Osprey Agent"
 bundle="$repo/hosts/swift/build/$name.app"
 helper="$repo/hosts/swift/build/window-id"
-activate() { osascript -e "tell application \"$name\" to activate" >/dev/null; sleep 0.3; }
+# Input goes to whatever is in front, so nothing is sent unless that is this app.
+activate() {
+    osascript -e "tell application \"$name\" to activate" >/dev/null
+    sleep 0.3
+    front=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true')
+    [ "$front" = "$name" ] || { echo "Refusing to send input: $front is in front" >&2; exit 1; }
+}
 case "$1" in
     open)
         [ "$helper" -nt "$here/shot.swift" ] || swiftc -O "$here/shot.swift" -o "$helper"

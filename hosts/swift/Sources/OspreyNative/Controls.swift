@@ -202,7 +202,9 @@ struct DisclosureView: View {
     let drawing: Drawing
     @Environment(\.ospreyInherited) private var inherited
     @Environment(\.ospreyTheme) private var theme
+    @Environment(\.ospreyReveal) private var reveal
     @State private var hovering = false
+    @State private var id = UUID()
 
     var body: some View {
         let open = node.flag("expanded")
@@ -222,7 +224,12 @@ struct DisclosureView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .id(id)
         .animation(.snappy(duration: 0.2), value: open)
+        .onChange(of: open) { _, opened in
+            // After the column has laid out what opened.
+            if opened { DispatchQueue.main.async { reveal?(id) } }
+        }
     }
 }
 

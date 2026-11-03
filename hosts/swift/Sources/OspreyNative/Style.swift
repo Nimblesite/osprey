@@ -80,12 +80,18 @@ private struct ThemeKey: EnvironmentKey { static let defaultValue = ThemeResolve
 private struct InheritedKey: EnvironmentKey { static let defaultValue = Inherited() }
 private struct PlacementKey: EnvironmentKey { static let defaultValue = Placement.page }
 private struct InRowKey: EnvironmentKey { static let defaultValue = false }
+private struct RevealKey: EnvironmentKey { static let defaultValue: (@MainActor (UUID) -> Void)? = nil }
 
 extension EnvironmentValues {
     public var ospreyTheme: ThemeResolver {
         get { self[ThemeKey.self] }
         set { self[ThemeKey.self] = newValue }
     }
+    var ospreyReveal: (@MainActor (UUID) -> Void)? {
+        get { self[RevealKey.self] }
+        set { self[RevealKey.self] = newValue }
+    }
+
     var ospreyInherited: Inherited {
         get { self[InheritedKey.self] }
         set { self[InheritedKey.self] = newValue }

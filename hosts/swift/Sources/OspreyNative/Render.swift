@@ -137,15 +137,24 @@ struct FramedView: View {
             .foregroundStyle(ink)
     }
 
+    private func revealing(_ proxy: ScrollViewProxy) -> (@MainActor (UUID) -> Void)? {
+        guard style.text("align") == "end" else { return nil }
+        return { id in proxy.scrollTo(id, anchor: .top) }
+    }
+
     @ViewBuilder private var inner: some View {
         if style.flag("scrollY") {
-            // A column that lines up from its end follows new content, as a conversation does.
-            ScrollView {
-                content.padding(insets).frame(maxWidth: .infinity, alignment: alignment)
+            // A column that lines up from its end follows new content, as a conversation does, so what
+            // opens inside it would grow upward past its own title; it asks to be shown instead.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    content.padding(insets).frame(maxWidth: .infinity, alignment: alignment)
+                        .environment(\.ospreyReveal, revealing(proxy))
+                }
+                .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .sizeChanges)
+                .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .initialOffset)
+                .scrollIndicators(.automatic)
             }
-            .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .sizeChanges)
-            .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .initialOffset)
-            .scrollIndicators(.automatic)
         } else {
             content.padding(insets)
         }
