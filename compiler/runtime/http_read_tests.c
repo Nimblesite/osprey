@@ -225,6 +225,20 @@ static void check_no_timeout(void) {
   http_close_client(shared_origin_client);
 }
 
+// A timeout too big for the transport is its largest, not whatever its low bits say:
+// these would otherwise be 1 ms, far less than this reply's delay.
+static void check_huge_timeout(void) {
+  ScriptedOrigin origin;
+  origin_start(&origin, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
+  origin.reply_delay_us = 100000;
+  int64_t client = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088",
+                                      ((int64_t)1 << 32) + 1);
+  assert(client > 0);
+  assert(http_get(client, (char *)(uintptr_t) "/", (char *)(uintptr_t) "") == 200);
+  origin_stop(&origin);
+  http_close_client(client);
+}
+
 // The status-only builtins read through the same bounds.
 static void check_status_only_builtins(void) {
   ScriptedOrigin origin;
@@ -390,6 +404,7 @@ void test_response_read_bounds(void) {
   check_size_limit();
   check_whole_read_bound();
   check_no_timeout();
+  check_huge_timeout();
   check_status_only_builtins();
   origin_holds_connections = false;
   osp_io_error_clear();
