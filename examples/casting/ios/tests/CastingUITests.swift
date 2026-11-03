@@ -40,6 +40,26 @@ final class CastingUITests: XCTestCase {
         restarted.name = "casting-ios-restarted"
         restarted.lifetime = .keepAlways
         add(restarted)
+        open.tap()
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10))
+        app.buttons["Browse"].tap()
+        app.buttons["Browse"].tap()
+        let location = app.staticTexts["On My iPhone"]
+        XCTAssertTrue(location.waitForExistence(timeout: 10), app.debugDescription)
+        location.tap()
+        let folder = app.staticTexts["Casting"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 10), app.debugDescription)
+        folder.tap()
+        let file = app.cells["Casting mobile test, mp3"]
+        XCTAssertTrue(file.waitForExistence(timeout: 10), app.debugDescription)
+        file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: cancel)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed, app.debugDescription)
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        app.buttons["Play"].tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
+        app.buttons["Stop"].tap()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
         app.terminate()
         app.launchEnvironment["CAST_TEST_AUDIO"] = audio
         app.launchArguments = ["--capture-envelope"]

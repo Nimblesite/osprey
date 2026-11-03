@@ -51,7 +51,7 @@ def run(platform):
             else:
                 env.pop("OSPREY_ANDROID_SERIAL", None)
                 command(["bash", str(APP / "ios/ui-test.sh")], env=env)
-            verify_log(log)
+            verify_log(log, platform)
         finally:
             process.terminate()
             try: process.wait(timeout=5)
@@ -66,14 +66,14 @@ def wait_port(process, path):
     raise RuntimeError("Cast receiver fixture did not bind")
 
 
-def verify_log(path):
+def verify_log(path, platform):
     records = [json.loads(line) for line in path.read_text().splitlines()]
     errors = [record for record in records if record.get("event") == "error"]
     assert not errors, errors
     kinds = [record["payload"].get("type") for record in records if record.get("event") == "recv"]
     for kind in ["LAUNCH", "LOAD", "PAUSE", "PLAY", "SEEK", "SET_VOLUME", "SET_PLAYBACK_RATE", "STOP"]:
         assert kind in kinds, (kind, kinds)
-    assert kinds.count("LOAD") >= 2, kinds
+    assert kinds.count("LOAD") == (3 if platform == "ios" else 2), kinds
     payloads = [record["payload"] for record in records if record.get("event") == "recv"]
     assert any(item.get("type") == "SET_VOLUME" and abs(item["volume"]["level"] - 0.5) < 0.02 for item in payloads), payloads
     assert any(item.get("type") == "SEEK" and abs(item["currentTime"] - 50) < 3 for item in payloads), payloads

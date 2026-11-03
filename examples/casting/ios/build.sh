@@ -34,7 +34,7 @@ with open(sys.argv[1], 'wb') as file:
     plistlib.dump(dict(CFBundleIdentifier='org.ospreylang.casting', CFBundleName='Casting',
         CFBundleExecutable='Casting', CFBundlePackageType='APPL', CFBundleVersion='1',
         CFBundleShortVersionString='1.0', MinimumOSVersion='18.0', LSRequiresIPhoneOS=True,
-        UILaunchScreen={}, NSLocalNetworkUsageDescription='Find your Chromecast or Google TV and play your selected audio.',
+        UILaunchScreen={}, UIFileSharingEnabled=True, LSSupportsOpeningDocumentsInPlace=True, NSLocalNetworkUsageDescription='Find your Chromecast or Google TV and play your selected audio.',
         NSBonjourServices=['_googlecast._tcp'], UISupportedInterfaceOrientations=['UIInterfaceOrientationPortrait'],
         UIDeviceFamily=[1,2]), file)
 PY
