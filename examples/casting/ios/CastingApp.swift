@@ -73,6 +73,10 @@ private func castingStore() -> RegionStore {
                              releaseString: osprey_release_string, hostABIVersion: osprey_host_abi_version)
     let folder = Bundle.main.resourceURL?.path ?? ""
     var arguments = ["--machine", folder + "/player.machine.json"] + Array(CommandLine.arguments.dropFirst())
+    // [CAST-MOBILE-SKIN-PERSISTENCE] Explicit launch arguments override local settings.
+    if !arguments.contains("--skin"), let saved = UserDefaults.standard.string(forKey: "casting.selected-skin") {
+        arguments += ["--skin", saved]
+    }
     #if DEBUG
     // Xcode may move the data container when installing the test build.
     // Resolve the fixture inside this process, after installation has finished.
@@ -83,7 +87,10 @@ private func castingStore() -> RegionStore {
     #endif
     let context = HostContext(platform: "ios", home: NSHomeDirectory(), arguments: arguments)
     let adapters: [CapabilityAdapter] = [CastBrowseAdapter(discovery: CastDiscovery()), DocumentAdapter(), FrameAdapter()]
-    return RegionStore(library: Library(entry: entry), context: context, capabilities: CapabilityRunner(adapters: adapters))
+    return RegionStore(library: Library(entry: entry), context: context, capabilities: CapabilityRunner(adapters: adapters),
+                       onSliceWrite: { slice in
+        if slice.key == "casting.selected-skin" { UserDefaults.standard.set(slice.text, forKey: slice.key) }
+    })
 }
 
 @main

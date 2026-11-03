@@ -37,10 +37,21 @@ module App
         launched = Link::launched (loaded (readFile path ?: ""), MachineDocs::folder path, after (context.arguments, "--skin", ""), opened context.arguments)
         found = launched(finder = Link::browse (after (context.arguments, "--browse", "")))
         first = Link::settled found
-        Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))
+        remember (Runtime::asking (first.stepStore, listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true)))))
+
+    // [CAST-MOBILE-SKIN-PERSISTENCE] Publish the validated, rendered choice once.
+    selected store = (Templates::skin store.screen.screenMachine).skinName
+
+    remember next = match selected next.stepStore == ""
+        true => next
+        false => next(writes = listAppend next.writes (Requests::write ("casting.selected-skin", selected next.stepStore)))
 
     (** Routes every framework message: controls pull the machine's levers, completions and frames go to the adapter. *)
-    export update (_, store, message) = Messages::route (message, \lever => Link::pulled (store, lever, Values::none ()), \(lever, text) => Link::pulled (store, lever, Values::text text), \(lever, on) => Link::pulled (store, lever, Values::flag on), \(_, _) => Runtime::step store, \(ticket, outcome) => Link::completed (store, ticket, outcome), \phase => Link::phased (store, phase), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \seconds => Link::ticked (store, seconds), \(_, input) => Link::pointed (store, input))
+    export update (_, store, message) =
+        next = Messages::route (message, \lever => Link::pulled (store, lever, Values::none ()), \(lever, text) => Link::pulled (store, lever, Values::text text), \(lever, on) => Link::pulled (store, lever, Values::flag on), \(_, _) => Runtime::step store, \(ticket, outcome) => Link::completed (store, ticket, outcome), \phase => Link::phased (store, phase), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \seconds => Link::ticked (store, seconds), \(_, input) => Link::pointed (store, input))
+        match selected store == selected next.stepStore
+            true => next
+            false => remember next
 
     screenSlice () = perform Signal<Screen>.read ()
 

@@ -17,7 +17,7 @@ import time
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from mobile_test import BINDING_CHECK, CastingArtifactContracts, android_java, native_picker, stale_volume_popup, verify_android_package
+from mobile_test import BINDING_CHECK, CastingArtifactContracts, android_java, native_picker, stale_volume_popup, verify_android_package, wait_native_skin
 
 ROOT = Path(__file__).resolve().parents[3]
 SDK = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
@@ -200,7 +200,8 @@ def playback(output):
 def launch(skin="sherbet", fixture=None, native=False):
     adb("shell", "am", "force-stop", PACKAGE)
     fixture = fixture if fixture is not None else os.environ.get("CAST_TEST_RECEIVER", base64.b64encode(b"\n").decode())
-    arguments = ["shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "skin", skin]
+    arguments = ["shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true"]
+    if skin is not None: arguments += ["--es", "skin", skin]
     if not native: arguments += ["--es", "testReceiver", fixture]
     adb(*arguments)
     assert find("Open file…").get("class") == "android.widget.Button"
@@ -293,6 +294,15 @@ def receiver_selection():
 def native_discovery(output):
     # [CAST-MOBILE-DELIVERY] No testReceiver extra: real NSD and service-info callbacks.
     launch("midnight", native=True)
+    # [CAST-MOBILE-SKIN-PERSISTENCE] Restart without an injected skin override.
+    for trigger, skin, label in [("Skin", "poolside", "Poolside Pop"), ("Skin", "sherbet", "Sherbet Signal"), ("Appearance", "midnight", "Midnight Mint")]:
+        tap(trigger); tap(label)
+        wait_native_skin(lambda: json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")), skin)
+        launch(skin=None, native=True)
+        snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
+        selected = native_picker(snapshot, "Skin")
+        assert [node["selected"] for node in selected] == ([] if skin == "sherbet" else [skin]), selected
+        assert snapshot["node"]["kind"] == ("scene" if skin == "sherbet" else "themed"), snapshot
     tap("Receiver"); tap("Android native test receiver")
     find("Receiver: Android native test receiver")
     key = receiver_selection()

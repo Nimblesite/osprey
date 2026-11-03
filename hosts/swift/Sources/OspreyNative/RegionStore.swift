@@ -72,12 +72,16 @@ public final class RegionStore: ObservableObject {
     private let context: HostContext
     private let capabilities: CapabilityRunner
     private let slices: SliceStore
+    // [CAST-MOBILE-SKIN-PERSISTENCE] Native persistence observes accepted writes.
+    private let onSliceWrite: (SliceText) throws -> Void
 
-    public init(library: Library, context: HostContext, capabilities: CapabilityRunner, slices: SliceStore = .shared) {
+    public init(library: Library, context: HostContext, capabilities: CapabilityRunner, slices: SliceStore = .shared,
+                onSliceWrite: @escaping (SliceText) throws -> Void = { _ in }) {
         self.library = library
         self.context = context
         self.capabilities = capabilities
         self.slices = slices
+        self.onSliceWrite = onSliceWrite
     }
 
     public var root: RegionCell? { cells["root"] }
@@ -122,7 +126,10 @@ public final class RegionStore: ObservableObject {
     private func accept(_ text: String) throws {
         let envelope = try Envelope.decode(text)
         state = envelope.state
-        envelope.slices.forEach { slices.write($0.key, $0.text) }
+        for slice in envelope.slices {
+            try onSliceWrite(slice)
+            slices.write(slice.key, slice.text)
+        }
         if let theme = envelope.theme { self.theme = theme }
         for patch in envelope.patches {
             if let cell = cells[patch.key] { cell.replace(revision: patch.revision, node: patch.node) } else { cells[patch.key] = RegionCell(key: patch.key, revision: patch.revision, node: patch.node) }

@@ -33,14 +33,21 @@ def native_picker(value, label):
     return [node for child in value for node in native_picker(child, label)] if isinstance(value, list) else []
 
 
-def wait_native_picker(snapshot, label):
+def wait_native_snapshot(snapshot, matches, description):
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         try:
-            if native_picker(snapshot(), label): return
+            if matches(snapshot()): return
         except json.JSONDecodeError: pass  # A frame can replace the capture while it is read.
         time.sleep(0.1)
-    raise AssertionError("Native picker never updated: " + label)
+    raise AssertionError("Native binding never updated: " + description)
+
+
+def wait_native_skin(snapshot, skin):
+    def chosen(tree):
+        picked = native_picker(tree, "Skin")
+        return tree["node"]["kind"] == "scene" if skin == "sherbet" else len(picked) == 1 and picked[0]["selected"] == skin
+    wait_native_snapshot(snapshot, chosen, skin)
 
 
 def stale_volume_popup(tap, find, snapshot):
@@ -48,7 +55,7 @@ def stale_volume_popup(tap, find, snapshot):
     control = Path(os.environ["CAST_TEST_VOLUME_FILE"])
     tap("Volume 100%")
     pending = control.with_suffix(".pending"); pending.write_text("0.25"); pending.replace(control)
-    wait_native_picker(snapshot, "Volume 25%")
+    wait_native_snapshot(snapshot, lambda tree: native_picker(tree, "Volume 25%"), "Volume 25%")
     assert not control.exists(), "The remote volume change must be consumed once"
     tap("50%")
     find("Volume 25%", timeout=5)

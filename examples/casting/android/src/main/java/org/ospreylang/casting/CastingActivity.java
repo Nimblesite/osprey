@@ -79,6 +79,7 @@ public final class CastingActivity extends ComponentActivity {
             appearance(host, new File(folder, "player.machine.json"));
             JSONArray arguments = new JSONArray().put("--machine").put(new File(folder, "player.machine.json").getAbsolutePath());
             String skin = getIntent().getStringExtra("skin");
+            if (skin == null) skin = getSharedPreferences("casting", MODE_PRIVATE).getString("casting.selected-skin", null);
             if (skin != null) arguments.put("--skin").put(skin);
             JSONObject context = object("now", System.currentTimeMillis() / 1000, "offset", 0,
                 "platform", "android", "home", getFilesDir().getAbsolutePath(), "arguments", arguments);
@@ -153,6 +154,7 @@ public final class CastingActivity extends ComponentActivity {
     private void accept(JSONObject envelope, JSONArray streamed) throws JSONException, IOException {
         JSONArray diagnostics = envelope.getJSONArray("diagnostics");
         if (diagnostics.length() > 0) throw new JSONException(diagnostics.toString());
+        rememberAppearance(envelope.getJSONArray("slices"));
         JSONArray patches = envelope.getJSONArray("patches");
         for (int i = 0; i < patches.length(); i++) {
             JSONObject patch = patches.getJSONObject(i);
@@ -164,6 +166,20 @@ public final class CastingActivity extends ComponentActivity {
         }
         JSONArray requests = envelope.getJSONArray("requests");
         for (int i = 0; i < requests.length(); i++) request(requests.getJSONObject(i));
+    }
+
+    // [CAST-MOBILE-SKIN-PERSISTENCE] Save only the shared app's accepted choice.
+    private void rememberAppearance(JSONArray slices) throws JSONException, IOException {
+        var settings = getSharedPreferences("casting", MODE_PRIVATE);
+        for (int i = 0; i < slices.length(); i++) {
+            JSONObject slice = slices.getJSONObject(i);
+            if (!slice.getString("key").equals("casting.selected-skin")) continue;
+            String skin = slice.getString("text");
+            if (skin.isEmpty()) throw new JSONException("The selected appearance is empty");
+            if (!skin.equals(settings.getString("casting.selected-skin", null)) &&
+                !settings.edit().putString("casting.selected-skin", skin).commit())
+                throw new IOException("Cannot save the selected appearance");
+        }
     }
 
     private void request(JSONObject request) throws JSONException {

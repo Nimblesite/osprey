@@ -3,6 +3,27 @@ import XCTest
 // [CAST-MOBILE-DELIVERY] Drive the real native shell and resident Osprey library.
 final class CastingUITests: XCTestCase {
     @MainActor
+    func testNativeAppearanceSurvivesProcessRestart() {
+        // [CAST-MOBILE-SKIN-PERSISTENCE] A new process must read the saved choice.
+        let app = XCUIApplication()
+        defer { app.terminate() }
+        app.launchArguments = ["--skin", "midnight"]
+        app.launch()
+        for (trigger, label) in [("Skin", "Poolside Pop"), ("Skin", "Sherbet Signal"), ("Appearance", "Midnight Mint")] {
+            XCTAssertTrue(app.buttons[trigger].waitForExistence(timeout: 15), app.debugDescription)
+            app.buttons[trigger].tap()
+            app.buttons[label].tap()
+            if label != "Sherbet Signal" { XCTAssertEqual(app.buttons["Skin"].value as? String, label) }
+            app.terminate()
+            app.launchArguments = []
+            app.launch()
+            XCTAssertTrue(app.buttons["Appearance"].waitForExistence(timeout: 15), app.debugDescription)
+            if label == "Sherbet Signal" { XCTAssertFalse(app.buttons["Skin"].exists, app.debugDescription) }
+            else { XCTAssertEqual(app.buttons["Skin"].value as? String, label) }
+        }
+    }
+
+    @MainActor
     func testNativeBonjourDiscoveryAndRescan() throws {
         let app = XCUIApplication()
         defer { app.terminate() }
@@ -51,6 +72,7 @@ final class CastingUITests: XCTestCase {
     @MainActor
     func testNativeLaunchDocumentCancellationAndRecovery() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["--skin", "sherbet"]
         defer { app.terminate() }
         app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"], "Use the native test entry point to start the receiver fixture")
         let audio = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
@@ -104,7 +126,7 @@ final class CastingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
         app.terminate()
         app.launchEnvironment["CAST_TEST_AUDIO"] = audio
-        app.launchArguments = ["--capture-envelope"]
+        app.launchArguments = ["--capture-envelope", "--skin", "sherbet"]
         app.launch()
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 15))
         app.buttons["Play"].tap()
@@ -156,6 +178,7 @@ final class CastingUITests: XCTestCase {
     @MainActor
     func testThemedPlaybackPreservesTheCastSession() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["--skin", "sherbet"]
         defer { app.terminate() }
         app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"])
         app.launchEnvironment["CAST_TEST_AUDIO"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
