@@ -70,6 +70,11 @@ final class CastingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 15))
         app.buttons["Play"].tap()
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
+        // [CAST-MOBILE-DELIVERY] Returning from Home keeps the same live cast.
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5) || app.state == .runningBackgroundSuspended)
+        app.activate()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(app.sliders["Position"].exists, app.debugDescription)
         XCTAssertTrue(app.sliders["Volume"].exists, app.debugDescription)
         app.buttons["Pause"].tap()

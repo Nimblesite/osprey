@@ -23,6 +23,7 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 - [ ] Handle foreground/background transitions, connection loss, interrupted playback and cleanup of network/file resources.
 - [ ] Add per-platform launch and test Makefile targets and required CI coverage gates.
 - [x] Rotate Android during playback, use landscape pause/resume and volume, preserve the connection, return to portrait and restore the previous system rotation policy.
+- [x] Send iOS to Home during live playback and reactivate the existing app; preserve Pause, the connection and the exact receiver command counts without another media load.
 - [x] Render the alternate themed tree on Android, verify both iOS palettes and exercise Midnight/Poolside playback with session-preserving skin changes.
 - [x] Expose a native Appearance menu from Sherbet on both hosts; switch through all three skins during playback without reloading and verify the complete screenshot/command gates.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
@@ -35,6 +36,9 @@ The existing host-free casting suite simulates the receiver and drives the real 
 ## Verified native progress [CAST-MOBILE-EVIDENCE]
 
 - iOS: the unsigned physical-device app and simulator app link successfully; the real iPhone simulator UI test passes launch, two document-picker cancellations, actual Files selection and import, fixture-file loading, play/pause/resume, seek, volume, speed, stop, replay and restart. Native sliders and speed-menu buttons are verified through XCTest. The receiver checks the requested control values and rejects duplicate slider commands.
+
+The iOS simulator also passes Home-and-return recovery while casting: the same session remains playing, subsequent controls work, and the fixture rejects any additional media load. This verifies foreground recovery; it does not establish streaming during prolonged device suspension or background audio entitlement behavior.
+
 - Android: real `Button` and `SeekBar` widgets provide touch, keyboard navigation, native accessibility and focus indicators beneath the shared skin artwork. Programmatic native range updates are paced every two seconds while the canvas keeps animating; focusing or dragging a slider synchronizes it immediately. The keyboard journey opens and cancels the native file picker. ARM64 and x64 JNI libraries link into the APK; the ARM64 emulator discovers a real LAN TV and passes two document-picker cancellations, MP3 import, scene-title verification, play/pause/resume, seek, volume, speed, stop, replay and restart. The fixture verifies exact MP3 bytes over HTTP HEAD and range requests. Android lint passes with warnings treated as errors.
 - Both TLS implementations pass a live loopback test covering handshake, fragmented reads, timeout recovery, byte preservation, writes, EOF, cleanup and route selection.
 - The shared casting suite passes all seven journeys; the Swift host passes 38 regression tests. Native network and media-render runtime suites pass.
