@@ -16,7 +16,7 @@ Out of scope: binary bodies, because bodies are NUL-terminated strings and one h
 ## Verification still open
 
 - [ ] Run the rust, Rust coverage, conformance (GC and ARC), C suite and fmt gates green on one commit. Check: all exit 0. The last rust run failed on two unused bindings in this work's tests, since renamed; osprey-cli coverage was last measured at 94.8% against a 95% threshold, on an earlier commit.
-- [ ] Rerun the 24 live raw-socket attacks against the code after `d7393587`; they last ran before it. Check: each attack gets the answer its spec line gives.
+- [x] Rerun the live raw-socket attacks against the code after `d7393587`. Check: each attack gets the answer its spec line gives. Now permanent: `crates/osprey-cli/tests/http_client_raw_origin.rs`, 59 attacks in both syntaxes under GC and ARC.
 - [x] Fetch from real HTTPS servers that omit `close_notify` and send no `Content-Length`. Check: the refusal in [HTTP-RESPONSE-FRAMING] is what a real unframed response gets, and framed responses from the same servers still succeed. Ran 2026-11-03: `www.craigslist.org/` (an unframed 302, no `close_notify`) is refused with `body: truncated`; its framed `/robots.txt` and `/about/`, and framed responses from `www.google.com`, `www.sqlite.org` and `www.openssl.org`, which omit `close_notify` too, succeed.
 
 ## Gaps still open
