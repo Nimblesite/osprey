@@ -9,20 +9,20 @@
 // one dispatch description every adapter executes. An argument is a buffer of
 // bytes with an explicit element width, or one scalar word. A
 // buffer argument names the slot its device object lives in
-// [GPU-BUFFER-RESIDENT]: the adapter creates the object from the words the
+// [GPU-BUFFER-RESIDENT]: the adapter creates the object from the bytes the
 // first time and reuses it after, so a buffer is uploaded once however many
 // kernels read it, and an output stays on the device until the host asks.
 typedef enum { OSPREY_GPU_INPUT = 0, OSPREY_GPU_OUTPUT = 1, OSPREY_GPU_SCALAR = 2 } OspreyGpuArgKind;
 
 typedef struct {
   OspreyGpuArgKind kind;
-  // INPUT/OUTPUT: the words the device object is created from when its slot
+  // INPUT/OUTPUT: the bytes the device object is created from when its slot
   // holds none yet.
   const void *words;
-  // OUTPUT: where the device's words are copied after completion; NULL
+  // OUTPUT: where the device's bytes are copied after completion; NULL
   // leaves them on the device for a later download.
   void *out;
-  // INPUT/OUTPUT: the word count (at least one word is always transferred);
+  // INPUT/OUTPUT: the element count (at least one element is allocated);
   // SCALAR: the value.
   uint64_t count;
   // The buffer's device object, kept across dispatches; NULL for a transient
@@ -77,8 +77,8 @@ static inline void osprey_gpu_report(const char *device, uint64_t count, const O
                   (unsigned long long)count, dispatch->kernel, (unsigned long long)dispatch->threads);
 }
 
-// The word an empty buffer uploads, so every transfer has at least one word
-// to read; `count` keeps the kernel from using it.
+// Zero storage an empty buffer uploads at its element width; `count` keeps
+// the kernel from using it. Eight bytes accommodate every supported element.
 static const int64_t osprey_gpu_zero_word = 0;
 
 // Append one argument bound to the device object in `slot` (NULL for a
@@ -93,7 +93,7 @@ static inline void osprey_gpu_arg_at(OspreyGpuDispatch *dispatch, OspreyGpuArgKi
   dispatch->args[dispatch->count++] = (OspreyGpuArg){kind, uploaded, out, kept, slot, elem_bytes};
 }
 
-// Append one transient argument: its words serve this dispatch only.
+// Append one transient argument: its bytes serve this dispatch only.
 static inline void osprey_gpu_arg(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, const void *words,
                                   void *out, uint64_t count, uint64_t elem_bytes) {
   osprey_gpu_arg_at(dispatch, kind, words, out, count, elem_bytes, NULL);
