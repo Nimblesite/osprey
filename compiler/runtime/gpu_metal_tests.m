@@ -29,8 +29,12 @@ static NSMutableArray *encoded;
   // [GPU-DEVICE-NATIVE]: the driver must request safe math for every library.
   assert([options isKindOfClass:[MTLCompileOptions class]]);
   MTLCompileOptions *compile = options;
-  assert(compile.mathMode == MTLMathModeSafe);
-  assert(compile.mathFloatingPointFunctions == MTLMathFloatingPointFunctionsPrecise);
+  if (@available(macOS 15.0, iOS 18.0, *)) {
+    assert(compile.mathMode == MTLMathModeSafe);
+    assert(compile.mathFloatingPointFunctions == MTLMathFloatingPointFunctionsPrecise);
+  } else {
+    assert(!compile.fastMathEnabled);
+  }
   assert([source containsString:@"#pragma METAL fp contract(off)"]);
   libraries++;
   return failure == 3 ? nil : [OspreyMockMetal new];
