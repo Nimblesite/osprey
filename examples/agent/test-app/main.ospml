@@ -39,11 +39,14 @@ module Drive
     export deliver (store, message, slice) = deliverWhere (store, message, \_ => slice)
 
     (** One message, with each host-held slice answered by name. *)
-    export deliverWhere (store, message, of) =
+    export deliverWhere (store, message, of) = deliverAt (100, store, message, of)
+
+    (** The same at the host's time `now`. *)
+    export deliverAt (now, store, message, of) =
         handle ui::Slices
             fetch key =>
                 of (key)
-        App::update (context 100, store, message)
+        App::update (context now, store, message)
 
     (** The store at launch, with its key file loaded into every empty slot. *)
     export started () = (deliver ((App::initial (context 100)).stepStore, ui::Completed(ticket = "env", outcome = ok 0), "DEEPSEEKKEY=sk-test\n")).stepStore
@@ -693,9 +696,7 @@ testing ("a dead server fails its call in words, Reconnect restarts it, and a sl
     slowWritten = Drive::deliver (slowAsking.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 60)]), "")
     stillWaiting = Drive::deliver (slowWritten.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone ("", false))), "")
     expect ((Model::active stillWaiting.stepStore).chatStage, "tools")
-    waiting = stillWaiting.stepStore
-    late = waiting(clock = satAdd waiting.clock 100000)
-    timedOut = Drive::deliver (late, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone ("", false))), "")
+    timedOut = Drive::deliverAt (100000, stillWaiting.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone ("", false))), \_ => "")
     expect ((demoOf timedOut).serverPhase, "connected")
     expectTrue (contains (Doc::text (listGet (filterList (Drive::asked timedOut, \asked => Doc::text (asked, "kind") == "http")) 0 ?: JsonNull, "body")) "did not answer within"))
 
