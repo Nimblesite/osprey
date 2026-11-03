@@ -686,7 +686,18 @@ testing ("a dead server fails its call in words, Reconnect restarts it, and a sl
     // Only a person pressing Reconnect restarts it.
     reconnected = Drive::deliver (died.stepStore, ui::Act(act = agentapp::ReconnectMcp(mcpActionName = "demo")), "")
     expect (Doc::text (listGet (Drive::asked reconnected) 0 ?: JsonNull, "kind"), "process-start")
-    expect ((demoOf reconnected).serverPhase, "connecting"))
+    expect ((demoOf reconnected).serverPhase, "connecting")
+    // A slow server fails that one call past its deadline, says so to the model, and stays connected.
+    slowOpened = Drive::typing ((mcpConnected ()).stepStore, "Go slow\n")
+    slowAsking = Drive::answering (slowOpened.stepStore, ok 200, "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"demo_slow\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}")
+    slowWritten = Drive::deliver (slowAsking.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 60)]), "")
+    stillWaiting = Drive::deliver (slowWritten.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone ("", false))), "")
+    expect ((Model::active stillWaiting.stepStore).chatStage, "tools")
+    waiting = stillWaiting.stepStore
+    late = waiting(clock = satAdd waiting.clock 100000)
+    timedOut = Drive::deliver (late, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone ("", false))), "")
+    expect ((demoOf timedOut).serverPhase, "connected")
+    expectTrue (contains (Doc::text (listGet (filterList (Drive::asked timedOut, \asked => Doc::text (asked, "kind") == "http")) 0 ?: JsonNull, "body")) "did not answer within"))
 
 testing ("remove stops the process, rewrites mcp.json and takes the tools out of the next request; the switch is remembered per folder", \() =>
     connected = mcpConnected ()

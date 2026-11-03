@@ -20,7 +20,10 @@ case "${1:-}" in
     *) echo "Usage: self-test.sh [--live [dotenv] | --update-goldens]" >&2; exit 2 ;;
 esac
 records=${OSPREY_AGENT_RECORDS:-$(mktemp -d "${TMPDIR:-/tmp}/osprey-agent-self-test.XXXXXX")}
-work=$(mktemp -d "${TMPDIR:-/tmp}/osprey-agent-work.XXXXXX")
+# One fixed folder: its path shows in the pictures, so a random name would differ from the goldens.
+work="${TMPDIR:-/tmp}/osprey-agent-work"
+rm -rf "$work"
+mkdir -p "$work"
 trap 'rm -rf "$work"' EXIT
 echo "records: $records"
 export OSPREY_SWIFT_APP="$here" OSPREY_SWIFT_NAME="$name" OSPREY_SWIFT_BUNDLE_ID=org.ospreylang.agent
