@@ -140,7 +140,7 @@ private struct SkinMenu: View, Equatable {
             ForEach(Array(choices.enumerated()), id: \.offset) { _, choice in
                 Button(choice.object?["label"]?.string ?? "") { choose(choice.object?["key"]?.string ?? "") }
             }
-        } label: { Label("Appearance", systemImage: "paintpalette") }
+        } label: { Label("Appearance", systemImage: "paintpalette").frame(minWidth: 44, minHeight: 44) }
             .buttonStyle(.bordered).accessibilityLabel("Appearance")
     }
 }

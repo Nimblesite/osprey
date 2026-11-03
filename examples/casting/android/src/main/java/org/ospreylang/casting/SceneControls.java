@@ -20,6 +20,7 @@ import org.json.JSONObject;
 // Their transparent normal state lets the same machine artwork supply every skin.
 final class SceneControls {
     private static final int STEPS = 10000;
+    private static final int MINIMUM_TOUCH_DP = 48;
     private final SceneCanvas scene;
     private final ArrayList<Binding> bindings = new ArrayList<>();
 
@@ -48,12 +49,18 @@ final class SceneControls {
     }
 
     void layout(Function<JSONObject, Rect> bounds) {
+        int minimum = Math.round(MINIMUM_TOUCH_DP * scene.getResources().getDisplayMetrics().density);
         for (Binding binding : bindings) {
             Rect frame = bounds.apply(binding.item);
+            int width = Math.max(minimum, frame.width()), height = Math.max(minimum, frame.height());
+            int left = frame.centerX() - width / 2, top = frame.centerY() - height / 2;
+            // Grow visible targets inward at viewport edges; never relocate off-screen menu rows.
+            if (frame.left >= 0 && frame.right <= scene.getWidth()) left = Math.max(0, Math.min(left, scene.getWidth() - width));
+            if (frame.top >= 0 && frame.bottom <= scene.getHeight()) top = Math.max(0, Math.min(top, scene.getHeight() - height));
             View view = binding.view;
-            view.measure(View.MeasureSpec.makeMeasureSpec(frame.width(), View.MeasureSpec.EXACTLY),
-                         View.MeasureSpec.makeMeasureSpec(frame.height(), View.MeasureSpec.EXACTLY));
-            view.layout(frame.left, frame.top, frame.right, frame.bottom);
+            view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                         View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+            view.layout(left, top, left + width, top + height);
         }
     }
 

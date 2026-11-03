@@ -3,6 +3,15 @@ import XCTest
 // [CAST-MOBILE-DELIVERY] Drive the real native shell and resident Osprey library.
 final class CastingUITests: XCTestCase {
     @MainActor
+    private func touchRegions(_ elements: [XCUIElement]) {
+        for element in elements {
+            // AX snapshots can represent 44 points as 43.99999999999999.
+            XCTAssertGreaterThanOrEqual(element.frame.width + 1e-9, 44, "\(element.label): \(element.frame)")
+            XCTAssertGreaterThanOrEqual(element.frame.height + 1e-9, 44, "\(element.label): \(element.frame)")
+        }
+    }
+
+    @MainActor
     private func drag(_ slider: XCUIElement, to fraction: CGFloat) {
         func coordinate(_ value: CGFloat) -> XCUICoordinate {
             slider.coordinate(withNormalizedOffset: CGVector(dx: min(0.999, max(0.001, value)), dy: 0.5))
@@ -21,11 +30,12 @@ final class CastingUITests: XCTestCase {
         XCTAssertTrue(open.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(app.buttons["Play"].exists)
         XCTAssertTrue(app.buttons["Receiver: Test receiver"].waitForExistence(timeout: 10))
+        touchRegions([app.buttons["Play"], open, app.buttons["Receiver: Test receiver"], app.buttons["Appearance"]])
         let initial = XCTAttachment(screenshot: app.screenshot())
         initial.name = "casting-ios-ready"
         initial.lifetime = .keepAlways
         add(initial)
-        open.tap()
+        open.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
         let cancel = app.buttons["Cancel"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 10), app.debugDescription)
         cancel.tap()
@@ -77,6 +87,7 @@ final class CastingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(app.sliders["Position"].exists, app.debugDescription)
         XCTAssertTrue(app.sliders["Volume"].exists, app.debugDescription)
+        touchRegions([app.buttons["Stop"], app.sliders["Position"], app.sliders["Volume"], app.buttons["Speed: 1×"]])
         app.buttons["Pause"].tap()
         XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
         app.buttons["Resume"].tap()
@@ -103,6 +114,7 @@ final class CastingUITests: XCTestCase {
             app.launchArguments = ["--skin", skin]
             app.launch()
             XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 15), app.debugDescription)
+            touchRegions([app.buttons["Play"], app.buttons["Open file…"], app.buttons["Receiver"], app.buttons["Skin"]])
             let title = app.staticTexts["Choose an audio file"]
             XCTAssertTrue(title.waitForExistence(timeout: 10), app.debugDescription)
             let screen = XCTAttachment(screenshot: app.screenshot())
@@ -126,6 +138,7 @@ final class CastingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 15), app.debugDescription)
         app.buttons["Play"].tap()
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
+        touchRegions([app.buttons["Pause"], app.buttons["Stop"], app.buttons["Speed"], app.buttons["Volume 100%"], app.buttons["Forward 10 seconds"]])
         app.buttons["Pause"].tap()
         XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
         app.buttons["Forward 10 seconds"].tap()

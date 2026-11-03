@@ -82,7 +82,8 @@ final class NativeRenderer extends FrameLayout {
 
     private Button button() {
         Button button = new Button(getContext());
-        button.setAllCaps(false); button.setMinWidth(0); button.setMinimumWidth(0);
+        button.setAllCaps(false); button.setMinWidth(dp(48)); button.setMinimumWidth(dp(48));
+        button.setMinHeight(dp(48)); button.setMinimumHeight(dp(48));
         button.setTextSize(14); button.setMaxLines(3);
         button.setOnClickListener(view -> {
             JSONObject node = nodes.get(view);
@@ -119,7 +120,8 @@ final class NativeRenderer extends FrameLayout {
             if (previous != null) parent.removeViewAt(i);
             LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(horizontal ? 0 : LayoutParams.MATCH_PARENT,
                 child.getString("kind").equals("scene") ? dp((int) child.getDouble("height")) : LayoutParams.WRAP_CONTENT, horizontal ? 1 : 0);
-            size.bottomMargin = dp(6);
+            // Row spacing belongs to the row; a child margin clips centred controls.
+            size.bottomMargin = horizontal ? 0 : dp(6);
             parent.addView(view, i, size);
         }
     }

@@ -67,6 +67,15 @@ def sdk_tool(pattern):
     return max(paths, key=lambda path: tuple(map(int, re.findall(r"\d+", path.parent.name))))
 
 
+def touch_regions(labels):
+    density = int(re.findall(r"density: (\d+)", adb("shell", "wm", "density"))[-1]) / 160
+    for label in labels:
+        node = find(label)
+        x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.attrib["bounds"]))
+        assert min(x2 - x1, y2 - y1) >= 48 * density, (label, node.attrib["bounds"], density)
+    print("PASS: native controls meet the 48-dp minimum touch region", flush=True)
+
+
 def index_audio(path):
     canonical = adb("shell", "readlink", "-f", path).strip()
     assert canonical.startswith("/"), f"Cannot resolve the audio fixture: {canonical}"
@@ -122,12 +131,20 @@ def window():
     return ElementTree.fromstring(adb("exec-out", "cat", WINDOW_PATH))
 
 
+def read_window():
+    for attempt in range(3):
+        try: return window()
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 137 or attempt == 2: raise
+            print("RETRY: Android automation stopped; requesting a fresh hierarchy", file=sys.stderr, flush=True)
+
+
 def picker_drawer(tree):
     return None if tree is None else next((node for node in tree.iter("node") if node.get("resource-id", "").endswith(":id/drawer_roots")), None)
 
 
 def nodes(interactive=False):
-    tree = window()
+    tree = read_window()
     if tree is None: return []
     drawer = picker_drawer(tree) if interactive else None
     return list((tree if drawer is None else drawer).iter("node"))
@@ -136,7 +153,7 @@ def nodes(interactive=False):
 def wait_rotation(expected):
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
-        tree = window()
+        tree = read_window()
         if tree is not None and tree.get("rotation") == str(expected): return
     raise AssertionError(f"Native display did not rotate to {expected}")
 
@@ -194,6 +211,7 @@ def playback(output):
     find("Pause")
     assert find("Position").get("class") == "android.widget.SeekBar"
     assert find("Volume").get("class") == "android.widget.SeekBar"
+    touch_regions(["Stop", "Position", "Volume", "Speed: 1×"])
     tap("Pause")
     tap("Resume")
     find("Pause")
@@ -202,6 +220,7 @@ def playback(output):
     try:
         adb("shell", "wm", "user-rotation", "lock", "1")
         wait_rotation(1)
+        touch_regions(["Pause", "Stop", "Position", "Volume", "Open file…", "Speed: 1×"])
         find("Pause")
         assert find("Volume").get("class") == "android.widget.SeekBar"
         tap("Pause")
@@ -243,7 +262,7 @@ def launch(skin="sherbet"):
 def open_roots():
     deadline, requested = time.monotonic() + 20, False
     while time.monotonic() < deadline:
-        tree = window()
+        tree = read_window()
         if picker_drawer(tree) is not None: return
         if tree is not None and not requested:
             controls = [node for node in tree.iter("node") if node.get("content-desc") == "Show roots"]
@@ -257,7 +276,7 @@ def open_roots():
 def select_root(label):
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
-        tree = window()
+        tree = read_window()
         if tree is None: continue
         drawer = picker_drawer(tree)
         if drawer is None:
@@ -281,6 +300,7 @@ def alternate_playback(output):
     tap("Skin"); tap("Midnight Mint")
     import_track()
     tap("Play"); find("Pause")
+    touch_regions(["Pause", "Stop", "Speed", "Volume 100%", "Forward 10 seconds", "Back 10 seconds"])
     tap("Pause"); find("Resume")
     tap("Forward 10 seconds")
     tap("Volume 100%"); tap("50%")
@@ -323,13 +343,16 @@ def main():
         adb("push", str(track), "/sdcard/Download/Casting mobile test.mp3")
         index_audio("/sdcard/Download/Casting mobile test.mp3")
         launch()
+        touch_regions(["Play", "Open file…", "Receiver: Test receiver", "Appearance"])
         tap("Appearance"); tap("Midnight Mint")
         find("Skin")
+        touch_regions(["Play", "Open file…", "Receiver", "Skin", "Appearance"])
         snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
         assert snapshot["node"]["kind"] == "themed", snapshot
         tap("Skin")
         tap("Poolside Pop")
         find("Skin")
+        touch_regions(["Play", "Open file…", "Receiver", "Skin"])
         snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
         assert any(token["name"] == "background" and token["light"] == "#D9EEFF" for token in snapshot["node"]["theme"]["tokens"]), snapshot
         (output / "poolside-ready.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
@@ -338,7 +361,9 @@ def main():
         (output / "ready.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
         keyboard_picker()
         for _ in range(2):
-            tap("Open file…")
+            node = find("Open file…")
+            x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.attrib["bounds"]))
+            adb("shell", "input", "tap", str((x1 + x2) // 2), str(round(y1 + 0.85 * (y2 - y1))))
             find("Show roots")
             adb("shell", "input", "keyevent", "KEYCODE_BACK")
             assert find("Open file…").get("clickable") == "true"
@@ -359,6 +384,17 @@ def main():
 
 
 class NativeReadContracts(unittest.TestCase):
+    def test_transient_automation_failure_requests_a_new_snapshot(self):
+        failure = subprocess.CalledProcessError(137, "uiautomator", output="interrupted before dump")
+        good = ElementTree.fromstring('<hierarchy><node text="Play"/></hierarchy>')
+        with mock.patch(__name__ + ".window", side_effect=[failure, good]) as query:
+            self.assertEqual([node.get("text") for node in nodes()], ["Play"])
+            self.assertEqual(query.call_count, 2)
+        for code, count in [(1, 1), (137, 3)]:
+            with self.subTest(code=code), mock.patch(__name__ + ".window", side_effect=subprocess.CalledProcessError(code, "uiautomator")) as query:
+                with self.assertRaises(subprocess.CalledProcessError): nodes()
+                self.assertEqual(query.call_count, count)
+
     def test_import_waits_until_the_root_drawer_really_closes(self):
         drawer = ElementTree.fromstring('<hierarchy><node resource-id="picker:id/drawer_roots"><node text="Downloads" bounds="[0,100][200,200]"/></node></hierarchy>')
         directory = ElementTree.fromstring('<hierarchy><node text="Downloads"/></hierarchy>')

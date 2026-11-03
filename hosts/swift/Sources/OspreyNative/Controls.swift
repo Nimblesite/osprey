@@ -75,7 +75,7 @@ struct Surface: ButtonStyle {
             configuration.label
                 .foregroundStyle(ink)
                 .padding(.horizontal, style.padding >= 0 ? style.padding : 12)
-                .frame(minWidth: style.round && style.height > 0 ? style.height : nil, minHeight: style.height > 0 ? style.height : 28)
+                .frame(minWidth: minimumWidth, minHeight: max(minimumTouch, style.height > 0 ? style.height : 28))
                 .background(fill, in: RoundedRectangle(cornerRadius: style.round ? max(style.height, 28) / 2 : 8, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .opacity(enabled ? 1 : 0.45)
@@ -86,6 +86,20 @@ struct Surface: ButtonStyle {
         }
 
         private var accent: Color { style.theme.color("accent", dark: style.dark) ?? .accentColor }
+
+        // [CAST-DESIGN-NATIVE] Desktop metrics remain native; phone controls keep a touch-sized target.
+        private var minimumTouch: CGFloat {
+            #if os(iOS)
+            return 44
+            #else
+            return 0
+            #endif
+        }
+
+        private var minimumWidth: CGFloat? {
+            if minimumTouch > 0 { return max(minimumTouch, style.round ? style.height : 0) }
+            return style.round && style.height > 0 ? style.height : nil
+        }
 
         private var ink: AnyShapeStyle {
             switch style.role {

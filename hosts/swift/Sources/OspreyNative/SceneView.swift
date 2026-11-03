@@ -63,8 +63,8 @@ struct SceneView: View {
                 .accessibilityHidden(true)
                 ForEach(Array(node.list("access").enumerated()), id: \.offset) { _, item in
                     accessibleControl(item)
-                        .frame(width: (item["w"]?.scalar ?? 0) * geometry.size.width / width,
-                               height: (item["h"]?.scalar ?? 0) * geometry.size.height / height)
+                        .frame(width: max(44, (item["w"]?.scalar ?? 0) * geometry.size.width / width),
+                               height: max(44, (item["h"]?.scalar ?? 0) * geometry.size.height / height))
                         .position(x: ((item["x"]?.scalar ?? 0) + (item["w"]?.scalar ?? 0) / 2) * geometry.size.width / width,
                                   y: ((item["y"]?.scalar ?? 0) + (item["h"]?.scalar ?? 0) / 2) * geometry.size.height / height)
                 }
@@ -199,6 +199,11 @@ private struct SceneSlider: UIViewRepresentable {
         @objc func moved(_ slider: SceneUISlider) { parent.changed(Double(slider.takeValue())) }
     }
     func makeCoordinator() -> Coordinator { Coordinator(self) }
+    // [CAST-DESIGN-NATIVE] UIKit's intrinsic slider height must not shrink the touch frame.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: SceneUISlider, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height else { return nil }
+        return CGSize(width: width, height: height)
+    }
     func makeUIView(context: Context) -> SceneUISlider {
         let slider = SceneUISlider()
         slider.isContinuous = false
