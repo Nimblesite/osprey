@@ -103,7 +103,7 @@ pub(crate) fn gen(
         "parseFloat" => parse_strict(
             cg,
             "osp_parse_float_strict",
-            LType::Double,
+            LType::F64,
             "parseFloat: invalid number",
             args,
             named,

@@ -17,6 +17,7 @@ use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
 use osprey_ast::Expr;
+use osprey_types::numeric::Numeric;
 use osprey_types::{names, Type};
 
 mod constructed;
@@ -135,7 +136,12 @@ fn compare_scalar(cg: &mut Codegen, ty: &Type, a: &str, b: &str) -> Option<Strin
         return None;
     };
     let r = match name.as_str() {
-        names::INT | names::UNIT | names::BOOL => cg.emit_reg(format!("icmp eq i64 {a}, {b}")),
+        // A sized integer's word is sign or zero extended, so its words compare
+        // exactly as its values do [TYPE-NUMERIC-WORD].
+        names::UNIT | names::BOOL => cg.emit_reg(format!("icmp eq i64 {a}, {b}")),
+        integer if Numeric::of_name(integer).is_some_and(Numeric::is_integer) => {
+            cg.emit_reg(format!("icmp eq i64 {a}, {b}"))
+        }
         names::FLOAT => floats_equal(cg, a, b),
         names::STRING => strings_equal(cg, a, b),
         _ => return None,
@@ -145,8 +151,8 @@ fn compare_scalar(cg: &mut Codegen, ty: &Type, a: &str, b: &str) -> Option<Strin
 
 /// [FLOAT-COMPARE]: ordered equality, so NaN is unequal to itself.
 fn floats_equal(cg: &mut Codegen, a: &str, b: &str) -> String {
-    let da = crate::conv::unbox_from_i64(cg, a, LType::Double);
-    let db = crate::conv::unbox_from_i64(cg, b, LType::Double);
+    let da = crate::conv::unbox_from_i64(cg, a, LType::F64);
+    let db = crate::conv::unbox_from_i64(cg, b, LType::F64);
     cg.emit_reg(format!("fcmp oeq double {}, {}", da.operand, db.operand))
 }
 

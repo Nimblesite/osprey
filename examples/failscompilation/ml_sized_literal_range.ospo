@@ -1,0 +1,19 @@
+// [TYPE-NUMERIC-LITERAL] A literal must fit the type its context gives it.
+// osprey: flavor=ml
+a : uint8
+a = 300
+b : uint32
+b = -1
+c : int8
+c = 128
+d : int8
+d = -129
+e : List<uint8>
+e = [1, 256]
+bump : int16 -> int16
+bump n = n + 40000
+f : uint8
+f = 200 + 100
+g = match a
+    256 => 1
+    _ => 2

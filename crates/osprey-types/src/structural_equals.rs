@@ -100,7 +100,8 @@ impl Checker {
         visited: &mut Vec<String>,
     ) -> Option<String> {
         match name {
-            names::INT | names::FLOAT | names::STRING | names::BOOL | names::UNIT => None,
+            names::STRING | names::BOOL | names::UNIT => None,
+            _ if crate::numeric::Numeric::of_name(name).is_some() => None,
             names::LIST => self.walk_one(args.first(), Part::Element, parts, visited),
             names::MAP => self.walk_one(args.get(1), Part::MapValue, parts, visited),
             names::ANY => Some("is `any`".to_string()),

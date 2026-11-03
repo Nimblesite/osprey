@@ -6,36 +6,78 @@
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
+use osprey_types::numeric::Numeric;
 
 /// Coerce to `i64`.
 pub(crate) fn as_i64(cg: &mut Codegen, v: Value) -> Result<Value> {
-    let reg = match v.ty {
-        LType::I64 => return Ok(v),
-        LType::I1 => cg.emit_reg(format!("zext i1 {} to i64", v.operand)),
-        LType::I32 => cg.emit_reg(format!("sext i32 {} to i64", v.operand)),
-        LType::Double => saturated_i64(cg, &v.operand),
+    as_num(cg, v, Numeric::INT)
+}
+
+/// Coerce a number or a bool to the numeric type `to`, by the widening or
+/// narrowing its kinds dictate [TYPE-NUMERIC-SIZED]: sign or zero extension and
+/// truncation between integers, `sitofp`/`uitofp` into a float, the saturating
+/// `fptosi.sat`/`fptoui.sat` out of one ([FLOAT-CONVERT]), `fpext`/`fptrunc`
+/// between floats.
+pub(crate) fn as_num(cg: &mut Codegen, v: Value, to: Numeric) -> Result<Value> {
+    let from = match v.ty {
+        LType::Num(n) if n == to => return Ok(v),
+        LType::Num(n) => n,
+        LType::I1 if to.is_integer() => {
+            let reg = cg.emit_reg(format!("zext i1 {} to {}", v.operand, to.llvm()));
+            return Ok(Value::new(reg, LType::Num(to)));
+        }
+        LType::I1 => {
+            let i = as_num(cg, v, Numeric::INT)?;
+            return as_num(cg, i, to);
+        }
         LType::Str | LType::Ptr => {
-            return Err(CodegenError::invalid(
-                "expected an integer, found a string/handle",
-            ))
+            return Err(CodegenError::invalid("expected a number, found a string/handle"))
         }
         LType::Any => return Err(read_through_erasure()),
     };
-    Ok(Value::new(reg, LType::I64))
+    if from == Numeric::FLOAT16 || to == Numeric::FLOAT16 {
+        // Quarantine until [TYPE-NUMERIC-ARITH-WIDTH]'s binary16 runtime
+        // conversions land (plan 0050 phase 3).
+        return Err(CodegenError::unsupported("float16 conversions"));
+    }
+    let reg = numeric_cast(cg, &v.operand, from, to);
+    Ok(Value::new(reg, LType::Num(to)))
+}
+
+/// The bits of an `int` word read as the integer type `to`: its wrap, which is
+/// what `Arith.overflow` offers a handler as `wrapped` [BUILTIN-CONVERT-INT].
+pub(crate) fn reinterpret_int(cg: &mut Codegen, word: &Value, to: Numeric) -> Value {
+    let reg = numeric_cast(cg, &word.operand, Numeric::INT, to);
+    Value::new(reg, LType::Num(to))
+}
+
+fn numeric_cast(cg: &mut Codegen, operand: &str, from: Numeric, to: Numeric) -> String {
+    let (f, t) = (from.llvm(), to.llvm());
+    let instruction = match (from.is_float(), to.is_float()) {
+        (false, false) if to.bits > from.bits && from.is_signed() => "sext",
+        (false, false) if to.bits > from.bits => "zext",
+        (false, false) if to.bits < from.bits => "trunc",
+        (false, false) => return operand.to_string(),
+        (false, true) if from.is_signed() => "sitofp",
+        (false, true) => "uitofp",
+        (true, true) if to.bits > from.bits => "fpext",
+        (true, true) => "fptrunc",
+        (true, false) => return saturated_int(cg, operand, from, to),
+    };
+    cg.emit_reg(format!("{instruction} {f} {operand} to {t}"))
 }
 
 /// [FLOAT-CONVERT] The checker rejects implicit float narrowing. Protect this
 /// internal coercion too: NaN becomes zero, extremes clamp, finite values truncate.
-fn saturated_i64(cg: &mut Codegen, operand: &str) -> String {
-    cg.add_extern("declare i64 @llvm.fptosi.sat.i64.f64(double)");
-    cg.emit_reg(format!(
-        "call i64 @llvm.fptosi.sat.i64.f64(double {operand})"
-    ))
+fn saturated_int(cg: &mut Codegen, operand: &str, from: Numeric, to: Numeric) -> String {
+    let op = if to.is_signed() { "fptosi" } else { "fptoui" };
+    let (f, t) = (from.llvm(), to.llvm());
+    let suffix = if from.bits == 32 { "f32" } else { "f64" };
+    let name = format!("llvm.{op}.sat.{t}.{suffix}");
+    cg.add_extern(format!("declare {t} @{name}({f})"));
+    cg.emit_reg(format!("call {t} @{name}({f} {operand})"))
 }
 
-/// The backend refusal for numerically consuming an erased box. The checker
-/// rejects every reachable spelling first ([TYPE-ANY]); this is the emitter's
-/// own guarantee that no future call path revives the unchecked read.
 fn read_through_erasure() -> CodegenError {
     CodegenError::invalid("cannot read through an erased `any`: match its structure instead")
 }
@@ -44,8 +86,10 @@ fn read_through_erasure() -> CodegenError {
 pub(crate) fn as_i1(cg: &mut Codegen, v: Value) -> Result<Value> {
     let reg = match v.ty {
         LType::I1 => return Ok(v),
-        LType::I64 | LType::I32 => cg.emit_reg(format!("icmp ne {} {}, 0", v.ty, v.operand)),
-        LType::Double | LType::Str | LType::Ptr => {
+        LType::Num(n) if n.is_integer() => {
+            cg.emit_reg(format!("icmp ne {} {}, 0", v.ty, v.operand))
+        }
+        LType::Num(_) | LType::Str | LType::Ptr => {
             return Err(CodegenError::invalid("expected a bool"))
         }
         LType::Any => return Err(read_through_erasure()),
@@ -72,8 +116,18 @@ pub(crate) fn box_to_i64(cg: &mut Codegen, v: Value) -> Value {
         LType::Str | LType::Ptr | LType::Any => {
             cg.emit_reg(format!("ptrtoint {} {} to i64", v.ty, v.operand))
         }
-        LType::I1 | LType::I32 => cg.emit_reg(format!("zext {} {} to i64", v.ty, v.operand)),
-        LType::Double => cg.emit_reg(format!("bitcast double {} to i64", v.operand)),
+        LType::I1 => cg.emit_reg(format!("zext i1 {} to i64", v.operand)),
+        // [TYPE-NUMERIC-WORD]: a float is its bits, a signed integer sign-
+        // extends, an unsigned one zero-extends.
+        LType::F64 => cg.emit_reg(format!("bitcast double {} to i64", v.operand)),
+        LType::Num(n) if n.is_float() => {
+            let bits = cg.emit_reg(format!("bitcast {} {} to i{}", n.llvm(), v.operand, n.bits));
+            cg.emit_reg(format!("zext i{} {bits} to i64", n.bits))
+        }
+        LType::Num(n) => {
+            let widen = if n.is_signed() { "sext" } else { "zext" };
+            cg.emit_reg(format!("{widen} {} {} to i64", n.llvm(), v.operand))
+        }
     };
     Value::new(reg, LType::I64)
 }
@@ -86,8 +140,12 @@ pub(crate) fn unbox_from_i64(cg: &mut Codegen, raw: &str, ty: LType) -> Value {
         LType::I64 => return Value::new(raw.to_string(), LType::I64),
         LType::Str | LType::Ptr | LType::Any => cg.emit_reg(format!("inttoptr i64 {raw} to i8*")),
         LType::I1 => cg.emit_reg(format!("trunc i64 {raw} to i1")),
-        LType::I32 => cg.emit_reg(format!("trunc i64 {raw} to i32")),
-        LType::Double => cg.emit_reg(format!("bitcast i64 {raw} to double")),
+        LType::F64 => cg.emit_reg(format!("bitcast i64 {raw} to double")),
+        LType::Num(n) if n.is_float() => {
+            let bits = cg.emit_reg(format!("trunc i64 {raw} to i{}", n.bits));
+            cg.emit_reg(format!("bitcast i{} {bits} to {}", n.bits, n.llvm()))
+        }
+        LType::Num(n) => cg.emit_reg(format!("trunc i64 {raw} to {}", n.llvm())),
     };
     Value::new(reg, ty)
 }
@@ -108,19 +166,7 @@ pub(crate) fn from_word(cg: &mut Codegen, raw: impl Into<String>, elem: Option<&
 
 /// Coerce to `double` (promoting an integer operand for mixed arithmetic).
 pub(crate) fn as_double(cg: &mut Codegen, v: Value) -> Result<Value> {
-    match v.ty {
-        LType::Double => Ok(v),
-        LType::I64 => Ok(Value::new(
-            cg.emit_reg(format!("sitofp i64 {} to double", v.operand)),
-            LType::Double,
-        )),
-        LType::I1 => {
-            let i = as_i64(cg, v)?;
-            as_double(cg, i)
-        }
-        LType::I32 | LType::Str | LType::Ptr => Err(CodegenError::invalid("expected a number")),
-        LType::Any => Err(read_through_erasure()),
-    }
+    as_num(cg, v, Numeric::FLOAT)
 }
 
 #[cfg(test)]
@@ -141,11 +187,11 @@ mod tests {
     fn emitted_conversions(cg: &mut Codegen) {
         let _ = as_i64(cg, Value::new("true", LType::I1));
         let _ = as_i64(cg, Value::new("-7", LType::I32));
-        let _ = as_i64(cg, Value::new("2.5", LType::Double));
+        let _ = as_i64(cg, Value::new("2.5", LType::F64));
         let _ = as_i1(cg, Value::new("-1", LType::I32));
         let _ = unbox_from_i64(cg, "1", LType::I1);
         let _ = unbox_from_i64(cg, "9", LType::I32);
-        let _ = unbox_from_i64(cg, "123", LType::Double);
+        let _ = unbox_from_i64(cg, "123", LType::F64);
         let _ = as_double(cg, Value::new("false", LType::I1));
     }
 
@@ -206,7 +252,7 @@ mod tests {
         cg.begin_function("saturation", None);
         for operand in operands {
             let value =
-                as_i64(&mut cg, Value::new(*operand, LType::Double)).expect("numeric conversion");
+                as_i64(&mut cg, Value::new(*operand, LType::F64)).expect("numeric conversion");
             assert_eq!(value.ty, LType::I64);
         }
         cg.emit("ret i64 0");
@@ -218,11 +264,13 @@ mod tests {
     fn invalid_numeric_coercions_return_precise_diagnostics() {
         let mut cg = Codegen::new();
         let integer = as_i64(&mut cg, Value::new("null", LType::Str));
-        let boolean = as_i1(&mut cg, Value::new("0.0", LType::Double));
-        let number = as_double(&mut cg, Value::new("0", LType::I32));
+        let boolean = as_i1(&mut cg, Value::new("0.0", LType::F64));
+        let number = as_double(&mut cg, Value::new("null", LType::Ptr));
+        let widened = as_double(&mut cg, Value::new("0", LType::I32)).expect("int32 is a number");
+        assert_eq!(widened.ty, LType::F64);
         assert_eq!(
             integer.unwrap_err(),
-            CodegenError::invalid("expected an integer, found a string/handle")
+            CodegenError::invalid("expected a number, found a string/handle")
         );
         assert_eq!(
             boolean.unwrap_err(),
@@ -230,7 +278,7 @@ mod tests {
         );
         assert_eq!(
             number.unwrap_err(),
-            CodegenError::invalid("expected a number")
+            CodegenError::invalid("expected a number, found a string/handle")
         );
     }
 }

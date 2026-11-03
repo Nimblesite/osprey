@@ -156,10 +156,10 @@ impl DebugState {
 
     pub(super) fn debug_type_id(&self, ty: LType) -> usize {
         match ty {
-            LType::I64 => self.i64_type_id,
             LType::I32 => self.i32_type_id,
             LType::I1 => self.bool_type_id,
-            LType::Double => self.double_type_id,
+            LType::F64 => self.double_type_id,
+            LType::Num(_) => self.i64_type_id,
             LType::Str => self.ptr_type_id,
             LType::Ptr | LType::Any => self.opaque_ptr_type_id,
         }

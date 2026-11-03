@@ -188,7 +188,9 @@ pub(super) fn inferred_data_contracts(program: &Program, source_validated: bool)
     let mut env = base_env();
     checker.collect(program, &mut env);
     checker.check(program, &mut env);
+    checker.ctx.settle_all_literals();
     checker.resolve_deferred_arithmetic();
+    checker.validate_constants();
     checker.default_untracked_receivers();
     checker
 }

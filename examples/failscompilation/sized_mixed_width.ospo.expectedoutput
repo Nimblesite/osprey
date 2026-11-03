@@ -1,0 +1,4 @@
+6:31: type mismatch: cannot unify int32 with int
+cannot compare `int32` with `int`: `<` needs two operands of one type
+8:31: type mismatch: cannot unify int32 with uint8
+9:31: type mismatch: cannot unify int32 with float

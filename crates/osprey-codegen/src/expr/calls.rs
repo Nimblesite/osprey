@@ -244,7 +244,7 @@ pub(super) fn gen_call(
 }
 
 /// A value-form builtin called with argument expressions: the operands are
-/// evaluated in call order, an integer builtin's operands are coerced to `i64`
+/// evaluated in call order, an integer builtin's operands keep their width
 /// [BUILTIN-BITWISE], and the shared value form does the lowering.
 fn gen_value_form_builtin(
     cg: &mut Codegen,
@@ -256,7 +256,7 @@ fn gen_value_form_builtin(
     let mut values = Vec::new();
     for argument in arg_exprs(arguments, named) {
         let value = gen_expr(cg, argument)?;
-        values.push(if integer {
+        values.push(if integer && !matches!(value.ty, LType::Num(_)) {
             crate::cast::coerce_to(cg, value, LType::I64)?
         } else {
             value

@@ -98,8 +98,11 @@ impl MetaField {
             // callers that only need the boolean).
             LType::Str | LType::Ptr | LType::Any => MetaField::PtrManaged,
             LType::I1 => MetaField::Byte,
-            LType::I32 => MetaField::Half,
-            LType::I64 | LType::Double => MetaField::Word,
+            LType::Num(n) if n.bits == 8 => MetaField::Byte,
+            // A 16-bit field is laid out in a 4-byte slot until a 2-byte
+            // field exists (plan 0050 phase 2).
+            LType::Num(n) if n.bits <= 32 => MetaField::Half,
+            LType::Num(_) => MetaField::Word,
         }
     }
 

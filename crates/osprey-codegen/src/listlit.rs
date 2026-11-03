@@ -132,7 +132,7 @@ pub(crate) fn gen_list(
         return Err(CodegenError::unsupported("empty list literal"));
     };
     let elem = match first.ty {
-        LType::Double => LType::Double,
+        LType::F64 => LType::F64,
         LType::I1 => LType::I1,
         LType::Str | LType::Ptr => LType::Str,
         // An erased box keeps its own slot type: folding it into `I64` here
@@ -140,7 +140,7 @@ pub(crate) fn gen_list(
         // integer list and marked its slots unmanaged, so the element neither
         // rendered through its descriptor nor was ever released.
         LType::Any => LType::Any,
-        _ => LType::I64,
+        LType::Num(_) => LType::I64,
     };
     // A handle element (nested list / record) carries its own owner so access can
     // recover it; scalars carry none.

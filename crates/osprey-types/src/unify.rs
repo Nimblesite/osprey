@@ -11,6 +11,7 @@
 
 use crate::ctx::InferCtx;
 use crate::error::TypeError;
+use crate::numeric::Numeric;
 use crate::ty::{names, Type, VarId};
 use osprey_ast::Variance;
 
@@ -23,6 +24,29 @@ pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeEr
     let (a, b) = ctx.seen_through(a, b);
     match (&a, &b) {
         (Type::Var(x), Type::Var(y)) if x == y => Ok(()),
+        // An open literal stays the root, so what is bound to it stays open
+        // with it; anything else decides it ([TYPE-NUMERIC-LITERAL]).
+        (Type::Var(x), Type::Var(y)) if literal_family_clash(ctx, *x, *y) => {
+            match settle_literal_to(ctx, *x, &b) {
+                Some(settled) => unify(ctx, &settled, &b),
+                None => Ok(()),
+            }
+        }
+        (Type::Var(x), Type::Var(y)) if ctx.literal_default(*x).is_some() => {
+            bind_var(ctx, *y, &a)
+        }
+        (Type::Var(x), _) if ctx.literal_default(*x).is_some() => {
+            match settle_literal_to(ctx, *x, &b) {
+                Some(settled) => unify(ctx, &settled, &b),
+                None => Ok(()),
+            }
+        }
+        (_, Type::Var(y)) if ctx.literal_default(*y).is_some() && !matches!(a, Type::Var(_)) => {
+            match settle_literal_to(ctx, *y, &a) {
+                Some(settled) => unify(ctx, &a, &settled),
+                None => Ok(()),
+            }
+        }
         (Type::Var(x), _) => bind_var(ctx, *x, &b),
         (_, Type::Var(y)) => bind_var(ctx, *y, &a),
 
@@ -74,7 +98,7 @@ pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeEr
             Type::Con { name, args },
         ) if name == actual => match ctx.record_fields(name, args) {
             Some(declared) => unify_record(ctx, &declared, fields, &a, &b),
-            None => Err(TypeError::mismatch(&a, &b)),
+            None => Err(ctx.mismatch(&a, &b)),
         },
 
         (
@@ -88,7 +112,7 @@ pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeEr
             },
         ) => {
             if n1 != n2 || v1.len() != v2.len() {
-                return Err(TypeError::mismatch(&a, &b));
+                return Err(ctx.mismatch(&a, &b));
             }
             unify_seq(ctx, v1, v2, &a, &b)
         }
@@ -116,7 +140,7 @@ pub(crate) fn unify_assignable(
     // `Success`), e.g. `fn f() -> Result<bool, E> = x > 0`.
     if let Type::Con { name, args } = &expected {
         if name == names::RESULT
-            && !matches!(actual, Type::Var(_))
+            && (!matches!(actual, Type::Var(_)) || ctx.is_open_literal(&actual))
             && !actual.is_named(names::RESULT)
         {
             if let Some(inner) = args.first() {
@@ -232,6 +256,28 @@ fn unify_declared_variance_args(
     ))
 }
 
+/// Two open literals of different families: an integer and a float literal.
+fn literal_family_clash(ctx: &InferCtx, x: VarId, y: VarId) -> bool {
+    matches!((ctx.literal_default(x), ctx.literal_default(y)),
+        (Some(l), Some(r)) if l.is_float() != r.is_float())
+}
+
+/// Decide an open literal against `t`. A numeric type of its family is what
+/// the literal becomes; anything else finds the literal at its default, which
+/// is returned to meet `t`, so every other rule — `any`, an alias, a mismatch —
+/// reads as it does for `int` or `float`. Implements [TYPE-NUMERIC-LITERAL].
+fn settle_literal_to(ctx: &mut InferCtx, id: VarId, t: &Type) -> Option<Type> {
+    let default = ctx.literal_default(id).unwrap_or(Numeric::INT);
+    let same_family = Numeric::of_type(t).is_some_and(|n| n.is_float() == default.is_float());
+    if same_family {
+        ctx.bind(id, t.clone());
+        return None;
+    }
+    let settled = Type::prim(default.name());
+    ctx.bind(id, settled.clone());
+    Some(settled)
+}
+
 fn bind_var(ctx: &mut InferCtx, id: VarId, t: &Type) -> Result<(), TypeError> {
     if let Type::Var(v) = t {
         if *v == id {
@@ -295,7 +341,7 @@ fn unify_record(
     b: &Type,
 ) -> Result<(), TypeError> {
     if f1.len() != f2.len() {
-        return Err(TypeError::mismatch(a, b));
+        return Err(ctx.mismatch(a, b));
     }
     for (name, t1) in f1 {
         match f2.get(name) {
@@ -318,7 +364,7 @@ fn unify_seq(
     b: &Type,
 ) -> Result<(), TypeError> {
     if xs.len() != ys.len() {
-        return Err(TypeError::mismatch(a, b));
+        return Err(ctx.mismatch(a, b));
     }
     for (x, y) in xs.iter().zip(ys) {
         unify(ctx, x, y)?;

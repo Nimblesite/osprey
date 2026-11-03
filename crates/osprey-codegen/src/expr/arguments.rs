@@ -1,6 +1,6 @@
 //! Expression arguments lowering.
 use super::{
-    as_double, as_i64, checked_intrinsic, fn_pointer, gen_checked_arith, gen_expr, gen_print,
+    as_double, checked_intrinsic, fn_pointer, gen_checked_arith, gen_expr, gen_print,
     to_string_value, with_application, with_lambda_captures, Codegen, CodegenError, Expr, FnSig,
     LType, NamedArgument, Result, Value,
 };
@@ -41,7 +41,7 @@ pub(super) fn binary_integer_builtin(
     right: Value,
 ) -> Result<Value> {
     match name {
-        "intDiv" => crate::arithmetic::int_division(cg, &left, &right),
+        "intDiv" => crate::arithmetic::int_division(cg, left, right),
         "checkedAdd" | "checkedSub" | "checkedMul" => {
             gen_checked_arith(cg, checked_intrinsic(name), left, right)
         }
@@ -54,6 +54,7 @@ pub(super) fn binary_integer_builtin(
 /// eta-expanded into an ordinary call instead ([`crate::iter`]).
 pub(crate) fn has_value_form(name: &str) -> bool {
     matches!(name, "print" | "toString" | "toFloat" | "abs" | "bitNot")
+        || crate::arithmetic::integer_conversion_target(name).is_some()
         || crate::arithmetic::is_float_function(name)
         || crate::arithmetic::is_binary_float_function(name)
         || crate::arithmetic::is_word_builtin(name)
@@ -90,9 +91,15 @@ pub(super) fn call_builtin_with_values(
     Some(match name {
         "print" => gen_print(cg, arg()),
         "toString" => to_string_value(cg, arg()),
-        // [BUILTIN-TOFLOAT] [GPU-CONVERT] the canonical float-pipeline seed
-        // `gpuIota(n) |> gpuMap(toFloat)` lowers through this arm.
-        "toFloat" => as_i64(cg, arg()).and_then(|n| as_double(cg, n)),
+        // [BUILTIN-CONVERT-FLOAT] [GPU-CONVERT] the canonical float-pipeline
+        // seed `gpuIota(n) |> gpuMap(toFloat)` lowers through this arm.
+        "toFloat" => as_double(cg, arg()),
+        name if crate::arithmetic::integer_conversion_target(name).is_some() => {
+            match crate::arithmetic::integer_conversion_target(name) {
+                Some(to) => crate::arithmetic::integer_conversion(cg, name, to, arg()),
+                None => Err(CodegenError::invalid("not a conversion")),
+            }
+        }
         "abs" => crate::arithmetic::absolute(cg, arg()),
         // [BUILTIN-MATH] `gpuMap(exp)`: a float function named as a kernel.
         name if crate::arithmetic::is_float_function(name) => {

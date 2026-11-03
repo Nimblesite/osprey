@@ -72,6 +72,7 @@ mod info;
 mod init_order;
 mod methods;
 mod multiplicity;
+pub mod numeric;
 mod pattern;
 mod prelude;
 pub use prelude::{is_prelude_line, PRELUDE_LINE_BASE};

@@ -1,0 +1,14 @@
+(** A small integer crosses a fiber as a word and comes back at its own width.
+    Implements [TYPE-NUMERIC-WORD]. *)
+
+wrapping = handler Arith
+    overflow _ _ _ wrapped => wrapped
+
+high : uint8
+high = 255
+
+run () =
+    task = spawn high
+    print "${await task + 1}"
+
+wrapping run

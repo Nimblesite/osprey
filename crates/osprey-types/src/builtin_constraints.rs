@@ -50,7 +50,7 @@ pub(crate) fn operation_name(name: &str) -> &str {
 }
 
 pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
-    ty.is_named(names::INT) || ty.is_named(names::FLOAT)
+    crate::numeric::Numeric::of_type(ty).is_some()
 }
 
 /// A known outer constructor cannot become numeric by resolving its arguments.
@@ -58,6 +58,10 @@ pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
 pub(crate) fn fixed_numeric_operand(name: &str, ty: &Type) -> bool {
     operation_name(name).starts_with(NUMERIC_OPERAND_PREFIX) && !matches!(ty, Type::Var(_))
 }
+
+/// [TYPE-NUMERIC-SIZED] The integer-only form of [`NUMERIC_OPERAND_PREFIX`],
+/// for a builtin open over the integer types.
+pub(crate) const INTEGER_OPERAND_PREFIX: &str = "integer ";
 
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const SORTABLE_DISPLAY: &str = "List<int> | List<string>";
@@ -89,6 +93,11 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
     if let Some(op) = operation_name(name).strip_prefix(NUMERIC_OPERAND_PREFIX) {
         return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
+    }
+    if let Some(op) = operation_name(name).strip_prefix(INTEGER_OPERAND_PREFIX) {
+        let integer = crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_integer);
+        return (!integer && !matches!(ty, Type::Var(_)))
+            .then(|| format!("`{op}` requires an integer; got {ty}"));
     }
     let name = operation_name(name);
     match name {
@@ -140,7 +149,8 @@ pub fn is_gpu_scalar(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
         Type::Con { name, args } => {
-            args.is_empty() && matches!(name.as_str(), names::INT | names::FLOAT | names::BOOL)
+            args.is_empty()
+                && (name == names::BOOL || crate::numeric::Numeric::of_name(name).is_some())
         }
         _ => false,
     }
@@ -201,7 +211,9 @@ fn is_sortable_elem(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
         Type::Con { name, args } => {
-            args.is_empty() && matches!(name.as_str(), names::INT | names::STRING)
+            args.is_empty()
+                && (name == names::STRING
+                    || crate::numeric::Numeric::of_name(name).is_some_and(crate::numeric::Numeric::is_integer))
         }
         _ => false,
     }
@@ -216,15 +228,11 @@ fn is_printable(ty: &Type) -> bool {
         Type::Var(_) => true,
         Type::Con { name, args }
             if args.is_empty()
-                && matches!(
-                    name.as_str(),
-                    names::INT
-                        | names::FLOAT
-                        | names::STRING
-                        | names::BOOL
-                        | names::UNIT
-                        | names::ANY
-                ) =>
+                && (crate::numeric::Numeric::of_name(name).is_some()
+                    || matches!(
+                        name.as_str(),
+                        names::STRING | names::BOOL | names::UNIT | names::ANY
+                    )) =>
         {
             true
         }

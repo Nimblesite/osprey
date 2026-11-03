@@ -24,8 +24,13 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
             Ok(crate::anybox::any_to_string(cg, &boxed))
         }
         LType::I1 => Ok(bool_to_string(cg, &v)),
-        LType::Double => Ok(float_to_string(cg, &v)),
-        LType::I64 | LType::I32 => int_to_string(cg, v),
+        LType::F64 => Ok(float_to_string(cg, &v)),
+        // Quarantine until [TYPE-NUMERIC-PRINT]'s shortest binary32 and
+        // binary16 spellings land (plan 0050 phase 3).
+        LType::Num(n) if n.is_float() => Err(crate::error::CodegenError::unsupported(
+            "printing float32 and float16",
+        )),
+        LType::Num(_) => int_to_string(cg, v),
         // An erased value renders through its shape descriptor — never the
         // raw word, which printed heap addresses as integers (finding D,
         // [TYPE-ANY]).

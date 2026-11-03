@@ -436,7 +436,7 @@ fn element_equals(cg: &mut Codegen, elem: &str, needle: &Value, boxed: &str) -> 
             let c = cg.call("i32", "strcmp", "i8*, i8*", &[&ep, &needle.operand]);
             cg.emit(format!("{eq} = icmp eq i32 {c}, 0"));
         }
-        LType::Double => {
+        LType::F64 => {
             let ed = cg.emit_reg(format!("bitcast i64 {elem} to double"));
             cg.emit(format!("{eq} = fcmp oeq double {ed}, {}", needle.operand));
         }

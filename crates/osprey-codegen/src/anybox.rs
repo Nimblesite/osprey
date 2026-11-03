@@ -285,9 +285,9 @@ fn classify(cg: &mut Codegen, v: Value) -> Result<(DescKey, Value, bool)> {
         return Ok((DescKey::Result, boxed, true));
     }
     Ok(match v.ty {
-        LType::I64 | LType::I32 => (DescKey::Int, v, false),
+        LType::Num(n) if n.is_float() => (DescKey::Float, v, false),
+        LType::Num(_) => (DescKey::Int, v, false),
         LType::I1 => (DescKey::Bool, v, false),
-        LType::Double => (DescKey::Float, v, false),
         LType::Str => (DescKey::Str, v, true),
         LType::Ptr => return classify_handle(cg, v),
         // `Any` returns before classify; every LType is covered above.

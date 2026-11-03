@@ -1,0 +1,15 @@
+/// A small integer crosses a fiber as a word and comes back at its own width.
+/// Implements [TYPE-NUMERIC-WORD].
+
+let wrapping = handler Arith {
+    overflow _ _ _ wrapped => wrapped
+}
+
+let high: uint8 = 255
+
+fn run() = {
+    let task = spawn high
+    print("${await(task) + 1}")
+}
+
+wrapping(run)

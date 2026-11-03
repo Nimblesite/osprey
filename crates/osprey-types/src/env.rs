@@ -283,6 +283,7 @@ pub(crate) fn instantiated(ctx: &mut InferCtx, scheme: &Scheme) -> (Type, Vec<(S
 
 /// Generalize a type over the variables free in it but not in the environment.
 pub(crate) fn generalize(ctx: &mut InferCtx, env: &TypeEnv, ty: &Type) -> Scheme {
+    ctx.settle_literals_in(ty);
     let ty = ctx.apply(ty);
     let mut ty_fv = BTreeSet::new();
     ctx.free_vars(&ty, &mut ty_fv);

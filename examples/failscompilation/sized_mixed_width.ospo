@@ -1,0 +1,9 @@
+// [TYPE-NUMERIC-SAME-TYPE] A binary operator takes both operands at one numeric type.
+let narrow: int32 = 1
+let wide = 2
+let small: uint8 = 3
+let policy = handler Arith { overflow _ _ _ wrapped => wrapped }
+print("${policy(fn() => narrow + wide)}")
+print("${narrow < wide}")
+print("${policy(fn() => narrow + small)}")
+print("${policy(fn() => narrow + 1.5)}")

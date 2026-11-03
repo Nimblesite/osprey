@@ -36,7 +36,7 @@ fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
             position,
             ..
         } if cg.cell_vars.contains(name) => {
-            with_stmt_debug(cg, *position, |cg| gen_cell_define(cg, name, value))
+            with_stmt_debug(cg, *position, |cg| gen_cell_define(cg, name, value, *position))
         }
         Stmt::Assignment {
             name,

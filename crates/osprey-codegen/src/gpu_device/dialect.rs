@@ -101,12 +101,12 @@ pub(super) fn bool_arms(arms: &[MatchArm]) -> Option<(&Expr, &Expr)> {
 
 pub(super) fn int_binary(op: &str, l: &str, r: &str) -> Emitted {
     Ok(match op {
-        "+" => (Ty::Int, format!("osprey_add({l}, {r}, fault)")),
-        "-" => (Ty::Int, format!("osprey_sub({l}, {r}, fault)")),
-        "*" => (Ty::Int, format!("osprey_mul({l}, {r}, fault)")),
-        "%" => (Ty::Int, format!("osprey_rem({l}, {r}, fault)")),
+        "+" => (Ty::INT, format!("osprey_add({l}, {r}, fault)")),
+        "-" => (Ty::INT, format!("osprey_sub({l}, {r}, fault)")),
+        "*" => (Ty::INT, format!("osprey_mul({l}, {r}, fault)")),
+        "%" => (Ty::INT, format!("osprey_rem({l}, {r}, fault)")),
         "/" => (
-            Ty::Float,
+            Ty::FLOAT,
             format!("osprey_fdiv(from_long({l}), from_long({r}), fault)"),
         ),
         "==" | "!=" | "<" | "<=" | ">" | ">=" => (Ty::Bool, format!("({l} {op} {r})")),
@@ -116,10 +116,10 @@ pub(super) fn int_binary(op: &str, l: &str, r: &str) -> Emitted {
 
 pub(super) fn float_binary(op: &str, l: &str, r: &str) -> Emitted {
     Ok(match op {
-        "+" => (Ty::Float, format!("add64({l}, {r})")),
-        "-" => (Ty::Float, format!("sub64({l}, {r})")),
-        "*" => (Ty::Float, format!("multiply64({l}, {r})")),
-        "/" => (Ty::Float, format!("osprey_fdiv({l}, {r}, fault)")),
+        "+" => (Ty::FLOAT, format!("add64({l}, {r})")),
+        "-" => (Ty::FLOAT, format!("sub64({l}, {r})")),
+        "*" => (Ty::FLOAT, format!("multiply64({l}, {r})")),
+        "/" => (Ty::FLOAT, format!("osprey_fdiv({l}, {r}, fault)")),
         "==" => (Ty::Bool, format!("eq64({l}, {r})")),
         "!=" => (Ty::Bool, format!("(!eq64({l}, {r}))")),
         "<" => (Ty::Bool, format!("lt64({l}, {r})")),

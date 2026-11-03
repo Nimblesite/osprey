@@ -152,8 +152,8 @@ impl Emitter<'_> {
 
     pub(super) fn expression(&mut self, expression: &Expr) -> Emitted {
         match expression {
-            Expr::Integer(n) => Ok((Ty::Int, int_literal(*n))),
-            Expr::Float(f) => Ok((Ty::Float, float_literal(*f))),
+            Expr::Integer(n) => Ok((Ty::INT, int_literal(*n))),
+            Expr::Float(f) => Ok((Ty::FLOAT, float_literal(*f))),
             Expr::Bool(b) => Ok((Ty::Bool, if *b { "true" } else { "false" }.into())),
             Expr::Identifier(name) => self.identifier(name),
             Expr::Binary {
@@ -194,8 +194,8 @@ impl Emitter<'_> {
         let (left_ty, l) = self.expression(left)?;
         let (right_ty, r) = self.expression(right)?;
         match (left_ty, right_ty) {
-            (Ty::Int, Ty::Int) => int_binary(op, &l, &r),
-            (Ty::Float, Ty::Float) => float_binary(op, &l, &r),
+            (Ty::INT, Ty::INT) => int_binary(op, &l, &r),
+            (Ty::FLOAT, Ty::FLOAT) => float_binary(op, &l, &r),
             (Ty::Bool, Ty::Bool) if op == "==" || op == "!=" => {
                 Ok((Ty::Bool, format!("({l} {op} {r})")))
             }
@@ -220,8 +220,8 @@ impl Emitter<'_> {
     fn unary(&mut self, op: &str, operand: &Expr) -> Emitted {
         let (ty, value) = self.expression(operand)?;
         match (op, ty) {
-            ("-", Ty::Int) => Ok((Ty::Int, format!("osprey_neg({value}, fault)"))),
-            ("-", Ty::Float) => Ok((Ty::Float, format!("neg64({value})"))),
+            ("-", Ty::INT) => Ok((Ty::INT, format!("osprey_neg({value}, fault)"))),
+            ("-", Ty::FLOAT) => Ok((Ty::FLOAT, format!("neg64({value})"))),
             ("!" | "not", Ty::Bool) => Ok((Ty::Bool, format!("(!{value})"))),
             _ => Err(format!("unary `{op}` over a {ty:?} operand")),
         }
@@ -263,12 +263,12 @@ impl Emitter<'_> {
             .collect::<Result<Vec<_>, _>>()?;
         let unary = |ty: Ty, text: String| Ok((ty, text));
         match (name, values.as_slice()) {
-            ("intDiv", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("osprey_div({a}, {b}, fault)"))
+            ("intDiv", [(Ty::INT, a), (Ty::INT, b)]) => {
+                unary(Ty::INT, format!("osprey_div({a}, {b}, fault)"))
             }
-            ("toFloat", [(Ty::Int, a)]) => unary(Ty::Float, format!("from_long({a})")),
-            ("sqrt" | "exp" | "ln" | "tanh", [(Ty::Float, a)]) => {
-                unary(Ty::Float, format!("{name}64({a})"))
+            ("toFloat", [(Ty::INT, a)]) => unary(Ty::FLOAT, format!("from_long({a})")),
+            ("sqrt" | "exp" | "ln" | "tanh", [(Ty::FLOAT, a)]) => {
+                unary(Ty::FLOAT, format!("{name}64({a})"))
             }
             // The unary float functions of [BUILTIN-MATH] and its sections:
             // one call into the device math library, total and pure.
@@ -276,48 +276,48 @@ impl Emitter<'_> {
                 "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sinh" | "cosh" | "asinh"
                 | "acosh" | "atanh" | "log2" | "log10" | "log1p" | "expm1" | "erf" | "erfc"
                 | "floor" | "ceil" | "trunc" | "round",
-                [(Ty::Float, a)],
-            ) => unary(Ty::Float, format!("{name}64({a})")),
+                [(Ty::FLOAT, a)],
+            ) => unary(Ty::FLOAT, format!("{name}64({a})")),
             // Binary float functions [BUILTIN-MATH-TRIG] [BUILTIN-MATH-LOG]
             // [BUILTIN-MATH-ROUNDING].
-            ("pow" | "atan2" | "hypot" | "fmod" | "copysign", [(Ty::Float, a), (Ty::Float, b)]) => {
-                unary(Ty::Float, format!("{name}64({a}, {b})"))
+            ("pow" | "atan2" | "hypot" | "fmod" | "copysign", [(Ty::FLOAT, a), (Ty::FLOAT, b)]) => {
+                unary(Ty::FLOAT, format!("{name}64({a}, {b})"))
             }
             // [BUILTIN-FLOAT32] the binary32 emulation; [BUILTIN-FLOAT-BITS]
             // the bit-level views. A device float IS its binary64 word, so
             // floatBits is the identity and floatFromBits a cast of the word.
-            ("float32", [(Ty::Float, a)]) => unary(Ty::Float, format!("float32_64({a})")),
-            ("floatBits", [(Ty::Float, a)]) => unary(Ty::Int, a.clone()),
-            ("floatFromBits", [(Ty::Int, a)]) => unary(Ty::Float, a.clone()),
-            ("float32Bits", [(Ty::Float, a)]) => unary(Ty::Int, format!("float32_bits({a})")),
-            ("float32FromBits", [(Ty::Int, a)]) => {
-                unary(Ty::Float, format!("float32_from_bits({a})"))
+            ("float32", [(Ty::FLOAT, a)]) => unary(Ty::FLOAT, format!("float32_64({a})")),
+            ("floatBits", [(Ty::FLOAT, a)]) => unary(Ty::INT, a.clone()),
+            ("floatFromBits", [(Ty::INT, a)]) => unary(Ty::FLOAT, a.clone()),
+            ("float32Bits", [(Ty::FLOAT, a)]) => unary(Ty::INT, format!("float32_bits({a})")),
+            ("float32FromBits", [(Ty::INT, a)]) => {
+                unary(Ty::FLOAT, format!("float32_from_bits({a})"))
             }
-            ("abs", [(Ty::Int, a)]) => unary(Ty::Int, format!("osprey_abs({a}, fault)")),
-            ("abs", [(Ty::Float, a)]) => unary(Ty::Float, format!("abs64({a})")),
+            ("abs", [(Ty::INT, a)]) => unary(Ty::INT, format!("osprey_abs({a}, fault)")),
+            ("abs", [(Ty::FLOAT, a)]) => unary(Ty::FLOAT, format!("abs64({a})")),
             // [BUILTIN-BITWISE] the word operations; the shifts are total on
             // the device exactly as on the host.
-            ("bitAnd", [(Ty::Int, a), (Ty::Int, b)]) => unary(Ty::Int, format!("(({a}) & ({b}))")),
-            ("bitOr", [(Ty::Int, a), (Ty::Int, b)]) => unary(Ty::Int, format!("(({a}) | ({b}))")),
-            ("bitXor", [(Ty::Int, a), (Ty::Int, b)]) => unary(Ty::Int, format!("(({a}) ^ ({b}))")),
-            ("bitNot", [(Ty::Int, a)]) => unary(Ty::Int, format!("(~({a}))")),
-            ("shiftLeft", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("shl64({a}, {b})"))
+            ("bitAnd", [(Ty::INT, a), (Ty::INT, b)]) => unary(Ty::INT, format!("(({a}) & ({b}))")),
+            ("bitOr", [(Ty::INT, a), (Ty::INT, b)]) => unary(Ty::INT, format!("(({a}) | ({b}))")),
+            ("bitXor", [(Ty::INT, a), (Ty::INT, b)]) => unary(Ty::INT, format!("(({a}) ^ ({b}))")),
+            ("bitNot", [(Ty::INT, a)]) => unary(Ty::INT, format!("(~({a}))")),
+            ("shiftLeft", [(Ty::INT, a), (Ty::INT, b)]) => {
+                unary(Ty::INT, format!("shl64({a}, {b})"))
             }
-            ("shiftRight", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("shr64({a}, {b})"))
+            ("shiftRight", [(Ty::INT, a), (Ty::INT, b)]) => {
+                unary(Ty::INT, format!("shr64({a}, {b})"))
             }
-            ("shiftRightLogical", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("shru64({a}, {b})"))
+            ("shiftRightLogical", [(Ty::INT, a), (Ty::INT, b)]) => {
+                unary(Ty::INT, format!("shru64({a}, {b})"))
             }
-            ("wrapAdd", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("(long)((ulong)({a}) + (ulong)({b}))"))
+            ("wrapAdd", [(Ty::INT, a), (Ty::INT, b)]) => {
+                unary(Ty::INT, format!("(long)((ulong)({a}) + (ulong)({b}))"))
             }
-            ("wrapSub", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("(long)((ulong)({a}) - (ulong)({b}))"))
+            ("wrapSub", [(Ty::INT, a), (Ty::INT, b)]) => {
+                unary(Ty::INT, format!("(long)((ulong)({a}) - (ulong)({b}))"))
             }
-            ("wrapMul", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("(long)((ulong)({a}) * (ulong)({b}))"))
+            ("wrapMul", [(Ty::INT, a), (Ty::INT, b)]) => {
+                unary(Ty::INT, format!("(long)((ulong)({a}) * (ulong)({b}))"))
             }
             _ => Err(format!("`{name}` has no device form")),
         }
@@ -421,7 +421,7 @@ impl Emitter<'_> {
     fn length(&mut self, arguments: &[Expr]) -> Emitted {
         match arguments {
             [Expr::Identifier(name)] => match self.lookup(name) {
-                Some(Local::Buffer(_, len)) => Ok((Ty::Int, format!("(long){len}"))),
+                Some(Local::Buffer(_, len)) => Ok((Ty::INT, format!("(long){len}"))),
                 _ => Err(format!(
                     "gpuLength of `{name}`, which is not a captured buffer"
                 )),

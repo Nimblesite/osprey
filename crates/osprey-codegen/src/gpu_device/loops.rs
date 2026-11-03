@@ -51,7 +51,7 @@ impl Emitter<'_> {
         let index = self.temp();
         let step = [
             Local::Scalar(seed_ty, acc.clone()),
-            Local::Scalar(Ty::Int, index.clone()),
+            Local::Scalar(Ty::INT, index.clone()),
         ];
         let (lines, ty, value) = self.nested(|emitter| emitter.callback(combine, &step))?;
         if ty != seed_ty {
@@ -88,10 +88,10 @@ impl Emitter<'_> {
         };
         let (start_ty, start) = self.expression(start)?;
         let (end_ty, end) = self.expression(end)?;
-        if start_ty != Ty::Int || end_ty != Ty::Int {
+        if start_ty != Ty::INT || end_ty != Ty::INT {
             return Err("range bounds that are not ints".into());
         }
-        Ok((self.declare(Ty::Int, &start), self.declare(Ty::Int, &end)))
+        Ok((self.declare(Ty::INT, &start), self.declare(Ty::INT, &end)))
     }
 
     /// Apply a callback — a lambda, a named helper or a function argument —
@@ -127,7 +127,7 @@ impl Emitter<'_> {
             ));
         };
         let (index_ty, index) = self.expression(index)?;
-        if index_ty != Ty::Int {
+        if index_ty != Ty::INT {
             return Err("a gpuGet index that is not an int".into());
         }
         let (fallback_lines, ty, fallback_value) =

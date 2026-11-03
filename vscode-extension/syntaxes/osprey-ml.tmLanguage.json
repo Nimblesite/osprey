@@ -400,7 +400,7 @@
         },
         {
           "name": "support.type.primitive.osprey-ml",
-          "match": "\\b(int|float|string|bool|any|Unit)\\b"
+          "match": "\\b(int8|int16|int32|int|uint8|uint16|uint32|float16|float32|float|string|bool|any|Unit)\\b"
         },
         {
           "name": "entity.name.type.osprey-ml",

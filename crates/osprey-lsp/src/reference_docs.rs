@@ -39,9 +39,17 @@ pub(crate) fn keyword_hover(word: &str, flavor: Flavor) -> Option<String> {
 }
 
 /// One-line summaries for the type names no source file declares.
-const BUILTIN_TYPE_DOCS: [(&str, &str); 8] = [
-    (osprey_types::names::INT, "The 64-bit integer primitive."),
-    (osprey_types::names::FLOAT, "The floating-point primitive."),
+const BUILTIN_TYPE_DOCS: [(&str, &str); 16] = [
+    (osprey_types::names::INT, "The default integer: 64 bits, signed."),
+    (osprey_types::names::FLOAT, "The default float: IEEE 754 binary64."),
+    ("int8", "A signed 8-bit integer: -128 to 127."),
+    ("int16", "A signed 16-bit integer: -32768 to 32767."),
+    ("int32", "A signed 32-bit integer."),
+    ("uint8", "An unsigned 8-bit integer: 0 to 255."),
+    ("uint16", "An unsigned 16-bit integer: 0 to 65535."),
+    ("uint32", "An unsigned 32-bit integer."),
+    ("float16", "IEEE 754 binary16, a half-width float."),
+    ("float32", "IEEE 754 binary32, a single-width float."),
     (osprey_types::names::STRING, "The string primitive."),
     (osprey_types::names::BOOL, "The boolean primitive."),
     (

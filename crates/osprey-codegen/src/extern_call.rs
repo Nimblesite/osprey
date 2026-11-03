@@ -54,7 +54,9 @@ struct Sig {
 /// `Result<int>` builtin shares the `< 0 ⇒ Error` convention, every
 /// `Result<string>` the `null ⇒ Error` one.
 fn lookup(name: &str) -> Option<Sig> {
-    use LType::{Double, Ptr, Str, I64};
+    use LType::{Ptr, Str};
+    const I64: LType = LType::I64;
+    const DOUBLE: LType = LType::F64;
     let sig = |cname, params, ret| Sig { cname, params, ret };
     Some(match name {
         // --- cryptographically-secure random + stdin (random_runtime.c) ---
@@ -123,7 +125,7 @@ fn lookup(name: &str) -> Option<Sig> {
         "__jsonWriteRaw" => sig("json_write_raw", &[I64, Str], Ret::StatusUnit),
         "__jsonWriteString" => sig("json_write_string", &[I64, Str], Ret::StatusUnit),
         "__jsonWriteInt" => sig("json_write_int", &[I64, I64], Ret::StatusUnit),
-        "__jsonWriteFloat" => sig("json_write_float", &[I64, Double], Ret::StatusUnit),
+        "__jsonWriteFloat" => sig("json_write_float", &[I64, DOUBLE], Ret::StatusUnit),
         "__jsonWriterClose" => sig("json_writer_close", &[I64], Ret::ResultStr(None)),
         // --- terminal control (term_runtime.c) [BUILTIN-TERM] ---
         "termRawMode" => sig("term_raw_mode", &[I64], Ret::StatusUnit),
@@ -237,7 +239,7 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
         )),
         Ret::Float => Ok(Value::new(
             cg.call("double", sig.cname, &params, &op_refs),
-            LType::Double,
+            LType::F64,
         )),
         Ret::Str => {
             // Fresh malloc'd C buffer — the caller owns it [GC-ARC-PERCEUS].

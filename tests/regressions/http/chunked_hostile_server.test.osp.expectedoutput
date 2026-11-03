@@ -1,0 +1,10 @@
+ok 1 - chunk sizes beyond the body are refused
+ok 2 - chunk sizes that do not parse are refused
+ok 3 - chunk data without its CRLF is refused
+ok 4 - truncated framing is refused
+ok 5 - well-formed framing decodes
+ok 6 - only a final chunked coding means chunked
+ok 7 - GET and POST share the decoder
+ok 8 - repeated attacks leave the client working
+1..8
+# tests=8 passed=8 failed=0 skipped=0

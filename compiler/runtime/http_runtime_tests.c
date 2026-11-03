@@ -171,6 +171,7 @@ static HttpResponse *live_handler(char *method, char *path, char *headers,
 // through these out-of-line symbols (same pattern as http_test_server_handler).
 void test_alloc_fail_off(void) { osp_alloc_fail_off(); }
 void test_alloc_fail_size(size_t bytes) { osp_alloc_fail_size(bytes); }
+long test_alloc_live(void) { return osp_alloc_live(); }
 
 // Allocation rejection must precede handle exhaustion; the following live
 // loopback exchange also proves both services recover after rejection.
@@ -344,6 +345,7 @@ void run_all_http_tests(void) {
   test_client_transport_failures();
   test_client_large_response();
   test_client_malformed_chunks();
+  test_chunked_decoder();
   test_client_response_allocation_failures(); // arms the alloc injector; runs before anything reallocate-hungry
   test_client_tls_handshake_failure();
   test_client_handle_bounds();

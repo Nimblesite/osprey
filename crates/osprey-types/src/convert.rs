@@ -109,9 +109,12 @@ pub(crate) fn type_name_to_type(s: &str, params: &HashMap<String, Type>) -> Type
 /// Map a bare type name to a canonical primitive where one exists, otherwise a
 /// nullary constructor (a user type or generic placeholder name).
 fn normalize_named(name: &str) -> Type {
+    if let Some(n) = crate::numeric::Numeric::of_name(name) {
+        return Type::prim(n.name());
+    }
     match name {
-        "Int" | names::INT => Type::int(),
-        "Float" | names::FLOAT => Type::float(),
+        "Int" => Type::int(),
+        "Float" => Type::float(),
         "String" | names::STRING => Type::string(),
         "Bool" | names::BOOL => Type::bool(),
         names::ANY => Type::any(),

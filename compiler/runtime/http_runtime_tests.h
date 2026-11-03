@@ -38,6 +38,7 @@ HttpResponse *http_test_server_handler(char *method, char *path,
 // The first two drive the allocation injector that lives in the main TU.
 void test_alloc_fail_off(void);
 void test_alloc_fail_size(size_t bytes);
+long test_alloc_live(void);
 void test_http_create_client(void);
 void test_http_create_server(void);
 void test_http_server_lifecycle(void);
@@ -57,6 +58,7 @@ void test_client_peer_closes_during_body(void);
 void test_client_transport_failures(void);
 void test_client_large_response(void);
 void test_client_malformed_chunks(void);
+void test_chunked_decoder(void);
 void test_client_response_allocation_failures(void);
 void test_client_tls_handshake_failure(void);
 void test_client_tls_peer_verification(void);

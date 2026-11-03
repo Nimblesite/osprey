@@ -31,7 +31,7 @@ fn render_body(cg: &mut Codegen, key: &DescKey) -> Result<Value> {
             crate::runtime::to_string_value(cg, b)
         }
         DescKey::Float => {
-            let d = crate::conv::unbox_from_i64(cg, "%payload", LType::Double);
+            let d = crate::conv::unbox_from_i64(cg, "%payload", LType::F64);
             crate::runtime::to_string_value(cg, d)
         }
         DescKey::Str => {
