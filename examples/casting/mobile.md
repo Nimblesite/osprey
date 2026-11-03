@@ -1,6 +1,6 @@
 # Native mobile delivery [CAST-MOBILE]
 
-Both native apps build and run in the simulator/emulator. All three skins pass native playback journeys on both platforms against a TLS Cast receiver fixture, including exact HTTP media bytes, seek, volume, speed, stop and replay; changing skins preserves the session. Native screenshot goldens now gate the ready and restarted player. CI coverage, broader error/lifecycle cases, the visible iOS Simulator run and physical-device verification remain incomplete.
+Both native apps build and run in the simulator/emulator. All three skins pass native playback journeys on both platforms against a TLS Cast receiver fixture, including exact HTTP media bytes, seek, volume, speed, stop and replay; changing skins preserves the session. Native screenshot goldens gate the ready and restarted player in visible and headless runs on both platforms. CI coverage, broader error/lifecycle cases and physical-device verification remain incomplete.
 
 ## Shared boundary [CAST-MOBILE-ABI]
 
@@ -34,7 +34,7 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 - [x] Expose a native Appearance menu from Sherbet on both hosts; switch through all three skins during playback without reloading and verify the complete screenshot/command gates.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
 - [x] Commit native ready/restart screenshot goldens and verify headless iOS plus visible and headless Android rendering with accessibility assertions.
-- [ ] Verify the same iOS goldens with the Simulator window visible.
+- [x] Verify the same iOS goldens with the simulator window visible in Xcode Device Hub.
 - [ ] Verify physical-device casting to a real receiver, including background playback and local network permissions.
 - [ ] Restore the selected skin after process restart; verify high contrast and reduced motion. [CAST-DESIGN-SKIN-CONTRACT]
 - [ ] Verify target separation in crowded layouts, scaled text and full accessible track titles in all skins. [CAST-DESIGN-TOKENS], [CAST-DESIGN-NATIVE]
@@ -69,7 +69,7 @@ Entry points: `make -C apps/ios casting`, `make -C apps/android casting`, and ea
 
 The platform test targets compare both ready and restarted captures with one reviewed reference per platform and pixel width. They crop only the neutral native host and OS bars around the Sherbet player; every player control remains in the comparison. The gate permits at most 0.5% changed pixels overall and 2% in any 64-pixel tile, with a channel difference above 24 counted as changed. The local check has a regression proving that a small missing control fails even when the overall percentage would pass. Native playback and accessibility assertions run before the image checks.
 
-The checked references use an iPhone 17 simulator on iOS 27 at 1206 pixels wide and a Pixel 7 emulator on API 34 at 1080 pixels wide. Start the Android emulator with `-gpu swiftshader_indirect` in both visible and headless modes so the renderer is consistent. The host GPU backend produced an entirely black framebuffer while the control journey passed; the image gate correctly rejected that run. With SwiftShader, both Android modes match the reference exactly. iOS headless captures also match exactly; this build host lacks the selected Xcode's `Simulator.app`, so its visible Simulator run remains unverified.
+The checked references use an iPhone 17 simulator on iOS 27 at 1206 pixels wide and a Pixel 7 emulator on API 34 at 1080 pixels wide. Start the Android emulator with `-gpu swiftshader_indirect` in both visible and headless modes so the renderer is consistent. The host GPU backend produced an entirely black framebuffer while the control journey passed; the image gate correctly rejected that run. With SwiftShader, both Android modes match the reference exactly. Both iOS modes also match exactly. The visible iOS journey passes in Xcode 27's Device Hub, with native coverage and the same command, palette and screenshot gates. The shared simulator selector opens the chosen device in the selected Xcode's Simulator or Device Hub; headless targets explicitly disable opening a viewer. Tooling regressions cover both installations, paths containing spaces, missing viewers and preservation of device selection.
 
 Use `make -C apps/ios/tests casting-headless` or `make -C apps/android/tests casting-headless` for comparison. Each platform also has `casting-update`, which runs the native journey, rewrites only the ready reference, and checks that restarting still matches it. Review the images under `examples/casting/goldens/<platform>` before committing an update. A missing reference or changed dimensions fails; tests never silently create a baseline. The runner uses the ffmpeg already required for its audio fixture, without an extra image-library dependency.
 

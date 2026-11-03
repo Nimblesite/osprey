@@ -19,4 +19,15 @@ print(devices[0]["udid"], devices[0]["state"])
 read -r device state <<< "$selection"
 if [[ "$state" != Booted ]]; then xcrun simctl boot "$device" >&2; fi
 xcrun simctl bootstatus "$device" -b >&2
+if [[ "${OSPREY_SIMULATOR_VISIBLE:-0}" == 1 ]]; then
+    developer=$(xcode-select -p)
+    if [[ -d "$developer/Applications/Simulator.app" ]]; then
+        open -a "$developer/Applications/Simulator.app" --args -CurrentDeviceUDID "$device" >&2
+    elif [[ -d "${developer%/*}/Applications/DeviceHub.app" ]]; then
+        open -a "${developer%/*}/Applications/DeviceHub.app" "devices://device/open?id=$device" >&2
+    else
+        echo "No simulator viewer in the selected Xcode installation: $developer" >&2
+        exit 1
+    fi
+fi
 echo "$device"

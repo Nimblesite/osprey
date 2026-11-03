@@ -3,12 +3,11 @@ ROOT ?= ../../..
 
 ## casting: Run the casting player's native UI journey with the simulator visible.
 casting:
-	open -a "$$(xcode-select -p)/Applications/Simulator.app"
-	bash $(ROOT)/examples/casting/ios/test.sh
+	OSPREY_SIMULATOR_VISIBLE=1 bash $(ROOT)/examples/casting/ios/test.sh
 
-## casting-headless: Run the same casting UI journey and screenshot capture without opening Simulator.
+## casting-headless: Run the same casting UI journey and screenshot capture without opening a viewer.
 casting-headless:
-	bash $(ROOT)/examples/casting/ios/test.sh
+	OSPREY_SIMULATOR_VISIBLE=0 bash $(ROOT)/examples/casting/ios/test.sh
 
 ## casting-update: Run native casting journeys and rewrite screenshot goldens for visual review.
 casting-update:
