@@ -1,6 +1,6 @@
 # Plan 0033: Generated-code performance
 
-Contract: [spec 0037 arithmetic effects](../specs/language/0037-ArithmeticEffects.md)
+Contract: [spec 0037 arithmetic effects](../specs/language/0037-ArithmeticEffects.md), [performance gate](../specs/ecosystem/PerformanceGate.md)
 
 ## Prerequisites in place
 The `rust-checked` column tooling is already wired: `benchmarks/run.sh` (`LANGS` includes `rust-checked`, builds it with `-C overflow-checks=on`), `benchmarks/report.py` (`ORDER`/`LABEL` include `Rust (checked)`), `benchmarks/README.md` documents the column. No timings have been recorded for it yet.

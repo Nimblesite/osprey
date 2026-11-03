@@ -1,6 +1,6 @@
 # Plan 0052 — Osprey Agent
 
-Contract: [UI-EFFECTS], [UI-STORE], [UI-EFFECTS-PROCESS] in [packages/native/README.md](../../packages/native/README.md); [UI-MACHINE-SELF-TEST] in [UiMachines](../specs/platforms/UiMachines.md); [Model Context Protocol specification](https://modelcontextprotocol.io/specification).
+Contract: [OspreyAgent](../specs/applications/OspreyAgent.md); [UI-EFFECTS], [UI-STORE], [UI-EFFECTS-PROCESS] in [packages/native/README.md](../../packages/native/README.md); [UI-MACHINE-SELF-TEST] in [UiMachines](../specs/platforms/UiMachines.md); [Model Context Protocol specification](https://modelcontextprotocol.io/specification).
 
 Out of scope: OAuth logins, fetching model lists, streaming replies, tool approval; MCP resources, prompts, sampling, elicitation.
 

@@ -169,6 +169,11 @@ the native runtime. This mode is sequential, not an interleaving scheduler;
 `yield` therefore cannot switch fibers. `fiberDone` returns `1` for a queued
 fiber because its following `await` is what drives execution.
 
+`cancel` before the victim's driving `await` MUST still dequeue the victim
+from the deterministic execution queue before it is driven. This is part of
+the [Structured Concurrency](0036-StructuredConcurrency.md) target and is not
+implemented yet, as stated in [CONCURRENCY-CANCEL-DESIGN].
+
 ## Cancellation and scopes — design direction [CONCURRENCY-CANCEL-DESIGN]
 
 The shipped runtime has **no cancellation**: a spawned fiber always runs to

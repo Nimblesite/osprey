@@ -913,6 +913,12 @@ running unit/integration/property/mutation tests, and reevaluating vulnerability
 policy. `osprey update --breaking` evaluates one newer epoch at a time and emits
 a migration report; it never silently crosses an epoch.
 
+Performance acceptance is a delivery target, not yet implemented. On a
+representative 100,000-release catalog after metadata load, ordinary add/update
+MUST complete with p95 below two seconds and adversarial unsat below ten seconds
+on the CI reference machine. Performance work MUST NOT weaken completeness or
+determinism.
+
 ## Canonical domain types `[PACKAGE-TYPES]`
 
 The normative typeDiagram model, including published releases, local overlays,

@@ -1,6 +1,6 @@
 # Plan 0049 — A local coding model on Osprey: Qwen3.8-27B
 
-Contract: ../specs/runtime/0034-GPUComputation.md, ../specs/ecosystem/0043-PythonFlavorPorts.md, ../specs/runtime/0014-HTTP.md, ../specs/applications/0053-LocalCodingModel.md (written in Phase 1; owns the `LLM-*` IDs below)
+Contract: ../specs/runtime/0034-GPUComputation.md, ../specs/ecosystem/0043-PythonFlavorPorts.md, ../specs/runtime/0014-HTTP.md, [LocalCodingModel](../specs/applications/LocalCodingModel.md)
 Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0048-runtime-memory-safety.md (its items land before Phase 7)
 
 ## Prerequisites in place
@@ -18,7 +18,6 @@ Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0048-runtime-memory-safe
 Gate [LLM-BASELINE]: the model passes enough tasks to be worth porting, and the report fixes the default quant and sampling. If 3.8 fails, run 3.6; if both fail, stop.
 
 ## Phase 1 — Storage
-- [ ] Write `docs/specs/applications/0053-LocalCodingModel.md`, defining every `LLM-*` ID used here.
 - [ ] `float32`/`float16` buffers and native device arithmetic come from plan 0050 ([TYPE-NUMERIC-SIZED], [GPU-DEVICE-NATIVE]); wait on its Phase 5 gate; add nothing of its own here.
 - [ ] [LLM-WEIGHTS-MAPPED]: a read-only buffer over a memory-mapped file region, shared with the GPU without a copy on unified memory.
 - [ ] [LLM-WEIGHTS-QUANT]: block decoders for each tensor type the chosen GGUF uses (listed from the file in Phase 0); compare against `gguf-py` on every block of a generated fixture.

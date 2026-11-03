@@ -209,6 +209,7 @@ A **turn** is an operation's arm evaluation under one logical owner. State mutat
 - Turns from distinct owners MUST be ordered and must not interleave access to its state.
 - Deep resumption retains the logical owner and may re-enter its handler under [MULTI-STAGE-TURN](0017-AlgebraicEffects.md). It must not wait on its own non-reentrant physical lock.
 - State changes occur only within a turn. Cancellation of its performer follows [CANCEL-KILLSAFE].
+- Statically discharged handlers ([Algebraic Effects](0017-AlgebraicEffects.md)) leave erased dispatch absent from the runtime turn graph; their residual memory access still requires the same synchronization or exclusivity proof.
 
 Serialization does not prove that captured resources can be duplicated. Reusable continuations also satisfy the canonical replay and ownership rules.
 
@@ -294,6 +295,9 @@ let receipt = atomic {
 
 - The block MUST execute as one turn against every region it touches; no
   other turn of any touched region interleaves.
+- A block that touches several regions MUST acquire their turns in canonical
+  order first. Optimistic logging is a later direction, not part of this
+  target.
 - `retry`, legal only inside `atomic`, abandons the attempt and blocks until
   the state of some touched region changes, then re-runs the block —
   Harris et al.'s composable blocking, so waiting-for-a-condition needs no
