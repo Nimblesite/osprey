@@ -54,9 +54,13 @@
     {"sleep": "0.3"},
     {"shot": "15-inspector-wide"},
     {"resize": "288"},
-    {"invoke": "Open folder…"},
+    {"invoke": "calc-project"},
     {"wait": "other-project"},
-    {"wait": "Explain this project"},
-    {"shot": "16-other-folder"}
+    {"wait": "Answered after trying again."},
+    {"gone": "What should we build?"},
+    {"wait": "Not sandboxed"},
+    {"shot": "16-other-folder"},
+    {"type": ["Message", "Write moved.txt\n"]},
+    {"wait": "Wrote moved.txt after the move."}
   ]
 }

@@ -62,8 +62,8 @@ private func runSelfTest(_ options: SelfTestOptions) {
     }
 }
 
-// Launch arguments belong to the application; AppKit would otherwise read paths among them as documents to open, and open no window.
-UserDefaults.standard.set(false, forKey: "NSTreatUnknownArgumentsAsOpen")
+// Launch arguments belong to the application; AppKit would otherwise read paths among them as documents to open, and open no window. A string, not a Boolean: the open panel service reads this default as text and crashes on any other type.
+UserDefaults.standard.set("NO", forKey: "NSTreatUnknownArgumentsAsOpen")
 do {
     if let options = try SelfTestOptions.parse(Array(CommandLine.arguments.dropFirst())) {
         MainActor.assumeIsolated { runSelfTest(options) }

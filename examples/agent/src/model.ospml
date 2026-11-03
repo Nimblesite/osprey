@@ -14,7 +14,7 @@ import agent::Engine
 (** Every control's action ([UI-EVENTS]). *)
 type AgentAction =
     NewChat
-    OpenFolder
+    ChangeFolder
     SendDraft
     StopTurn
     Retry

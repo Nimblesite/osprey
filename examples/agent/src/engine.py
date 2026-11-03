@@ -90,10 +90,26 @@ def system_prompt(workspace):
     return "You are a senior software engineer working in the project at " + workspace + " through tools. Read before you edit, make the smallest correct change and run the tests after every change. Paths are relative to the project. Answer concisely in Markdown; when you finish a task, say what you changed and how you verified it."
 
 
+def system_of(part):
+    """A system prompt part's content, empty for any other part."""
+    match part:
+        case M.SystemPromptPart(content=content):
+            return content
+        case _:
+            return ""
+
+
+def newest_system_prompt(messages):
+    """The most recent system prompt in the history, empty when there is none."""
+    parts = foldList(M.requests(messages), [], lambda acc, request: listConcat(acc, request.parts))
+    prompts = filterList(mapList(parts, system_of), lambda text: text != "")
+    return unwrap_or(listGet(prompts, len(prompts) - 1), "")
+
+
 def add_user(history, workspace, text):
-    """Opens a turn: the person's words, with the system prompt when the conversation is new."""
+    """Opens a turn: the person's words, with the system prompt whenever the newest one in the history does not name this folder, so a conversation moved to another project hears the move."""
     prior = messages_of(history)
-    system = [M.SystemPromptPart(content=system_prompt(workspace))] if len(prior) == 0 else []
+    system = [] if newest_system_prompt(prior) == system_prompt(workspace) else [M.SystemPromptPart(content=system_prompt(workspace))]
     request = M.ModelRequest(parts=listAppend(system, M.UserPromptPart(content=text)), instructions="")
     return M.dump_messages(listAppend(prior, M.of_request(request)))
 

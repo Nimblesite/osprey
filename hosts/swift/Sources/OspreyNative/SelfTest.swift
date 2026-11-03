@@ -86,6 +86,7 @@ public enum SelfTestAttempt: Equatable {
     case sending(SelfTestSend?)
     case recording(String)
     case sleeping(Double)
+    case panel
 }
 
 /// The regions as words and controls, with no host or window behind them.
@@ -185,6 +186,9 @@ public struct SelfTestRegions {
             guard let found = control({ $0.text("kind") == "aside" }) else { return .waiting("no column can be resized") }
             return .sending(SelfTestSend(region: found.region, ordinal: found.node.count("event"), value: .number(width)))
         case "shot": return .recording(try word(0))
+        case "panel":
+            guard try word(0) == "cancel" else { throw SelfTestProblem("panel needs cancel") }
+            return .panel
         case "sleep":
             guard let seconds = Double(try word(0)) else { throw SelfTestProblem("sleep needs a number of seconds") }
             return .sleeping(seconds)
@@ -369,6 +373,23 @@ public final class SelfTestRun {
         }
     }
 
+    // A modal panel keeps the main actor's queue to itself, so this wait rides a timer in `.common`, the one mode set a panel's run loop still serves.
+    private static func cancelOpenPanel(deadline: Date, message: String) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            let timer = Timer(timeInterval: 0.05, repeats: true) { timer in
+                if let panel = NSApp.modalWindow as? NSOpenPanel, panel.isVisible {
+                    timer.invalidate()
+                    panel.cancel(nil)
+                    continuation.resume()
+                } else if Date() >= deadline {
+                    timer.invalidate()
+                    continuation.resume(throwing: SelfTestProblem(message))
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+        }
+    }
+
     private func play(_ step: SelfTestStep) async throws {
         let deadline = Date().addingTimeInterval(options.patience)
         while true {
@@ -383,6 +404,9 @@ public final class SelfTestRun {
                 return
             case let .sleeping(seconds):
                 try await Task.sleep(for: .seconds(seconds))
+                return
+            case .panel:
+                try await Self.cancelOpenPanel(deadline: deadline, message: "Gave up after \(Int(options.patience)) s: no open panel is showing")
                 return
             case let .waiting(reason):
                 guard Date() < deadline else { throw SelfTestProblem("Gave up after \(Int(options.patience)) s: \(reason)") }

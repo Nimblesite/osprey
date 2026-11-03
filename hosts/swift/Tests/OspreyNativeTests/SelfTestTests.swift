@@ -103,6 +103,14 @@ final class SelfTestTests: XCTestCase {
         XCTAssertThrowsError(try regions.attempt(step("type", "Name")))
     }
 
+    func testPanelStepParsesAndOnlyCancels() throws {
+        let steps = try SelfTestStep.parse(#"{"steps":[{"panel":"cancel"}]}"#)
+        XCTAssertEqual(steps, [step("panel", "cancel")])
+        XCTAssertEqual(try regions().attempt(steps[0]), .panel)
+        XCTAssertThrowsError(try regions().attempt(step("panel")))
+        XCTAssertThrowsError(try regions().attempt(step("panel", "open")))
+    }
+
     func testChooseShotSleepAndUnknownSteps() throws {
         let regions = regions()
         XCTAssertEqual(try regions.attempt(step("choose", "Alpha")), send(13, .string("alpha")))

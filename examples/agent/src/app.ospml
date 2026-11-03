@@ -97,7 +97,7 @@ module Answers
     (** Applies a tap. *)
     export tapped (store, action) = match action
         NewChat => Runtime::step (Model::opening (store, (Model::active store).chatFolder))
-        OpenFolder => Runtime::asking (store, [Requests::ask ("folder", ui::ChooseFolder)])
+        ChangeFolder => Runtime::asking (store, [Requests::ask ("folder", ui::ChooseFolder)])
         SendDraft => Turn::submit (store, store.draft.draftText)
         StopTurn => Turn::stop store
         Retry => Turn::asking (store, Model::active store)
@@ -160,7 +160,9 @@ module Answers
         Error _ => Runtime::step store
         Success result => match Doc::text (result, "path") == ""
             true => Runtime::step store
-            false => Runtime::step (Model::opening (store, Doc::text (result, "path")))
+            false =>
+                chat = Model::active store
+                Model::persisting (Model::putChat (store, chat(chatFolder = Doc::text (result, "path"))))
 
     // The write in flight ended: say if it failed, and write what changed meanwhile.
     saved (store, outcome) =

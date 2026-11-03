@@ -25,6 +25,8 @@ echo "records: $records"
 export OSPREY_SWIFT_APP="$here" OSPREY_SWIFT_NAME="$name" OSPREY_SWIFT_BUNDLE_ID=org.ospreylang.agent
 bundle=$(bash "$repo/hosts/swift/run.sh" --build | tail -1)
 host="$bundle/Contents/MacOS/$name"
+iconutil -c iconset "$bundle/Contents/Resources/AppIcon.icns" -o "$work/AppIcon.iconset" || { echo "FAILED: the bundle has no icon" >&2; exit 1; }
+[ "$(sips -g pixelWidth "$work/AppIcon.iconset/icon_512x512@2x.png" | awk '/pixelWidth/ {print $2}')" = 1024 ] || { echo "FAILED: the icon has no 1024 pixel size" >&2; exit 1; }
 project="$work/calc-project"
 bash "$here/drive/demo-project.sh" "$project" >/dev/null
 os_goldens="$here/goldens/macos-$(sw_vers -productVersion | cut -d. -f1)"
@@ -55,8 +57,16 @@ printf 'DEEPSEEKKEY=sk-double\n' > "$work/key.env"
 python3 "$here/self-test/verify_calc.py" "$project"
 grep -q 'wrote calc/__init__.py' "$records/coding/requests.jsonl" || { echo "FAILED: the model never heard the write's result" >&2; exit 1; }
 
+"$host" --self-test "$here/self-test/folder-panel.json" "$records/folder-panel" --store "$work/store-folder-panel" "$project"
+
 mkdir -p "$work/other-project"
 "$host" --self-test "$here/self-test/controls.json" "$records/controls" --headless --store "$work/store-controls" --http-double "$here/self-test/controls-doubles.json" --folder-double "$work/other-project" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 "$host" --self-test "$here/self-test/restart.json" "$records/restart" --headless --store "$work/store-controls" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$project"
 if grep -rq sk-double "$work/store-controls/chats.json" "$records"; then echo "FAILED: the key reached a saved file or the records" >&2; exit 1; fi
+[ -f "$work/other-project/moved.txt" ] || { echo "FAILED: the tool did not write in the chosen folder" >&2; exit 1; }
+[ ! -e "$work/calc-project/moved.txt" ] || { echo "FAILED: the tool wrote in the old folder" >&2; exit 1; }
+python3 -c 'import json, sys
+requests = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8")]
+if not any(any(message.get("role") == "system" and sys.argv[2] in message.get("content", "") for message in request.get("messages", [])) for request in requests):
+    raise SystemExit("FAILED: no system message names the chosen folder")' "$records/controls/requests.jsonl" "$work/other-project"
 echo "self-test passed"
