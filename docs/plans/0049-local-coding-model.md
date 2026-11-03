@@ -3,6 +3,15 @@
 Contract: ../specs/runtime/0034-GPUComputation.md, ../specs/ecosystem/0043-PythonFlavorPorts.md, ../specs/runtime/0014-HTTP.md, [LocalCodingModel](../specs/applications/LocalCodingModel.md)
 Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0048-runtime-memory-safety.md (its items land before Phase 7)
 
+## Current execution sequence — 2026-11-03
+
+Work proceeds in this order; an unchecked gate blocks the dependent step. Receipts live in `target/local-coding-model/`; only verified results close checklist items.
+
+1. Finish plan 0050 Phase 4/5: typed loader constraints and byte preservation, binary32 matrix products on host and real Metal, GPT-2/transformer migration, remaining device arithmetic and explicit failure handling. Run each regression red before its fix, then the relevant broader gates; commit each verified step.
+2. In parallel, finish and review Phase 0's evaluation harness and reference corpus. Probe pi availability every ten minutes; use available providers for bounded legwork and independently verify their output.
+3. Recover the disk prerequisite safely, run the real pinned-weight Ollama baseline, publish measurements and choose the quantization/sampling configuration. Fixture harness tests cannot satisfy this gate.
+4. After both prerequisite gates pass, execute Phases 1–8 in order, including the Agent provider integration and final acceptance measurements. Keep failed or unrun checks open.
+
 ## Prerequisites in place
 - Model pins: `Qwen/Qwen3.8-27B` revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`, weights from `unsloth/Qwen3.8-27B-GGUF` revision `4ca720788d1e01f1bff70c033e0d0028fd02e502`; fallback `Qwen/Qwen3.6-27B` (same `qwen3_5` architecture, 27,781,427,952 params) is a weights swap if 3.8 fails Phase 0.
 - Harnesses already ported: `@osprey/pydantic-ai` `OllamaProvider` (packages/pydantic_ai/src/providers_http.py) and the tool-calling `Agent` (packages/pydantic_ai/src/agent.py).

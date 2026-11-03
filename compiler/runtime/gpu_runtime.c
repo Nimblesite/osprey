@@ -33,6 +33,7 @@ typedef struct OspreyGpuBuffer {
 } OspreyGpuBuffer;
 
 int64_t osprey_gpu_len(void *buffer);
+int64_t osprey_gpu_elem_bytes(void *buffer);
 
 static int device_selection(void) {
   const char *mode = getenv("OSPREY_GPU");
@@ -146,7 +147,13 @@ static int settled(int status, void *out) {
 
 // The builtin product as a library-kernel dispatch [GPU-MATMUL].
 int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, int64_t inner, int64_t cols) {
-  OspreyGpuDispatch dispatch = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL, 8}}, 0, (uint64_t)(rows * cols)};
+  int64_t width = osprey_gpu_elem_bytes(out);
+  if (width != 4 && width != 8) {
+    osp_io_error_text("gpuMatMul", "result", "missing float or float32 output buffer");
+    return -1;
+  }
+  const char *kernel = width == 4 ? "osprey_matmul32" : "osprey_matmul64";
+  OspreyGpuDispatch dispatch = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8}}, 0, (uint64_t)(rows * cols)};
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, left);
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, right);
   buffer_argument(&dispatch, OSPREY_GPU_OUTPUT, out);
@@ -291,6 +298,12 @@ void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
 int64_t osprey_gpu_len(void *buffer) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
   return b ? b->length : 0;
+}
+
+// [GPU-BUFFER-ELEM]: allocation and file/product operations share this width.
+int64_t osprey_gpu_elem_bytes(void *buffer) {
+  const OspreyGpuBuffer *b = buffer;
+  return b ? b->elem_bytes : 0;
 }
 
 // The buffer with its host words current [GPU-BUFFER-RESIDENT]: a result the

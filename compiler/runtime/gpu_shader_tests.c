@@ -341,7 +341,22 @@ static void check_matmul_kernel(void) {
   checks += 4;
 }
 
+// [GPU-MATMUL]: binary32 product shape, bounds, k-order and separate rounding.
+static void check_matmul32_kernel(void) {
+  float square[] = {0.5f, -1.0f, 2.0f, 3.0f}, out[] = {99, 99, 99, 99, 123};
+  for (ulong i = 0; i <= 4; i++) osprey_matmul32(square, square, out, 2, 2, 2, i);
+  assert(out[0] == -1.75f && out[1] == -3.5f && out[2] == 7.0f && out[3] == 7.0f && out[4] == 123);
+  float ordered[] = {0x1p24f, 1.0f, -0x1p24f}, ones[] = {1, 1, 1};
+  osprey_matmul32(ordered, ones, out, 1, 3, 1, 0);
+  assert(out[0] == 0.0f && !signbit(out[0]));
+  float a[] = {0x1.000002p0f, -1.0f}, b[] = {0x1.fffffcp-1f, 1.0f};
+  osprey_matmul32(a, b, out, 1, 2, 1, 0);
+  assert(out[0] == 0.0f && !signbit(out[0]));
+  checks += 7;
+}
+
 int main(void) {
+  check_matmul32_kernel();
   check_binary_specials();
   check_binary("add", add64, host_add);
   check_binary("sub", sub64, host_sub);

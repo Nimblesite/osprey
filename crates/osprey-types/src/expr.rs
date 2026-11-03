@@ -1461,7 +1461,7 @@ fn both_vars(l: &Type, r: &Type) -> bool {
 fn constrained_builtin(name: &str) -> bool {
     matches!(
         name,
-        "length" | "isEmpty" | "print" | "toString" | "toGpu" | "listSort"
+        "length" | "isEmpty" | "print" | "toString" | "toGpu" | "listSort" | "gpuMatMul"
     ) || crate::builtin_constraints::is_gpu_buffer_builtin(name)
 }
 

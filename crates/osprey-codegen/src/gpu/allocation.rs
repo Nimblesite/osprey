@@ -11,7 +11,7 @@ pub(super) fn width(owner: &str) -> String {
         .strip_prefix(super::GPU_TAG)
         .map(crate::llty::elem_of_spelling);
     match elem.map(|(ty, _)| ty) {
-        Some(LType::Num(n)) => n.bits / 8,
+        Some(LType::Num(n)) => n.bytes(),
         Some(LType::I1) => 1,
         _ => 8,
     }

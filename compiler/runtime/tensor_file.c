@@ -2,10 +2,10 @@
 // tensor of a safetensors file — the Hugging Face interchange format, an
 // 8-byte little-endian header length, a JSON header mapping each name to its
 // dtype, shape and data_offsets, then the raw tensor bytes. It builds no
-// container: tensor_list.c sinks the values into a List<float> for
-// `loadTensor` [BUILTIN-FILE-TENSOR], gpu_host.c into a GpuBuffer<float>.
+// container: tensor_list.c sinks the widened values into a List<float> for
+// `loadTensor` [BUILTIN-FILE-TENSOR], gpu_host.c the stored bytes into a
+// GpuBuffer at the element width its program asked for [GPU-BUFFER-TENSOR].
 //
-// Every stored float widens EXACTLY to the double either container holds.
 // Every failure path records WHY on the io_error channel; codegen turns a NULL
 // result into `Error { message }` [BUILTIN-FILE-ERRMSG].
 
@@ -40,21 +40,26 @@ static int osp_fseek(FILE *f, int64_t offset, int whence) {
 #define SAFETENSORS_HEADER_MAX ((int64_t)100 * 1024 * 1024)
 #define SAFETENSORS_PREFIX 8
 
-// Elements per fread while widening a tensor.
+// Elements per fread; eight bytes is the widest stored element.
 #define LOAD_CHUNK 4096
+#define WIDEST_ELEM 8
 
-// One read's stored bytes and widened values. It lives on the heap: on the
-// stack it alone fills wasm32's default 64 KiB, and the frame traps.
+// One read's stored bytes. It lives on the heap: on the stack it alone fills
+// wasm32's default 64 KiB, and the frame traps.
 typedef struct {
-  unsigned char bytes[LOAD_CHUNK * 8];
-  double values[LOAD_CHUNK];
+  unsigned char bytes[LOAD_CHUNK * WIDEST_ELEM];
 } ReadBuffers;
 
 // --- stored float formats ------------------------------------------------------
 
-// Byte width of one stored element.
-static size_t dtype_width(OspDtype t) {
-  return t == OSP_DT_BF16 ? 2 : (size_t)t;
+const char *osp_tensor_dtype_name(OspDtype dtype) {
+  switch (dtype) {
+  case OSP_DT_F64: return "F64";
+  case OSP_DT_F32: return "F32";
+  case OSP_DT_F16: return "F16";
+  case OSP_DT_BF16: return "BF16";
+  }
+  return NULL;
 }
 
 static double from_f32_bits(uint32_t bits) {
@@ -63,8 +68,7 @@ static double from_f32_bits(uint32_t bits) {
   return (double)f;
 }
 
-// Widen the little-endian element at `at` to a double.
-static double widen(OspDtype t, const unsigned char *at) {
+double osp_tensor_widen(OspDtype t, const unsigned char *at) {
   switch (t) {
   case OSP_DT_F64: {
     double d;
@@ -100,17 +104,14 @@ static FILE *open_at(const char *op, const char *path, int64_t offset) {
 
 static int read_span(FILE *f, const char *op, const char *path, const OspTensorSpan *span,
                      OspTensorSink sink, void *ctx, ReadBuffers *buffers) {
-  size_t width = dtype_width(span->dtype);
+  size_t width = osp_tensor_width(span->dtype);
   for (int64_t done = 0; done < span->count;) {
     size_t want = (size_t)(span->count - done < LOAD_CHUNK ? span->count - done : LOAD_CHUNK);
     if (fread(buffers->bytes, width, want, f) != want) {
       osp_io_error_text(op, path, ferror(f) ? "read failed" : "file ends before the tensor does");
       return 0;
     }
-    for (size_t i = 0; i < want; i++) {
-      buffers->values[i] = widen(span->dtype, buffers->bytes + i * width);
-    }
-    sink(ctx, buffers->values, want);
+    sink(ctx, buffers->bytes, want);
     done += (int64_t)want;
   }
   return 1;
@@ -274,7 +275,7 @@ int osp_tensor_locate(const char *op, const char *path, const char *name, OspTen
                                        : "data_offsets are missing or inverted");
     return 0;
   }
-  int64_t width = (int64_t)dtype_width(t);
+  int64_t width = (int64_t)osp_tensor_width(t);
   if ((end - begin) % width != 0) {
     osp_io_error_text(op, name, "byte span is not a whole number of elements");
     return 0;

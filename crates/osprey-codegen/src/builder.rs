@@ -59,6 +59,8 @@ pub(crate) struct Lowered {
 /// Accumulates a whole module while lowering one function at a time.
 pub(crate) struct Codegen {
     pub(crate) application_caller: Option<ProgramTypes>,
+    /// Current expression's resolved type, including its unique inferred application.
+    pub(crate) expression_type: Option<Type>,
     /// Physical pointer width of the target: 8 natively, 4 on wasm32. Every
     /// allocation-mask bit is a byte offset divided by this stride.
     pub(crate) pointer_bytes: u64,
@@ -288,6 +290,7 @@ pub(crate) type ObjField = (String, Value);
 
 /// Saved emission state of a suspended function (see [`Codegen::enter_nested_fn`]).
 pub(crate) struct SavedFn {
+    expression_type: Option<Type>,
     lines: Vec<String>,
     block: String,
     regs: usize,
@@ -352,6 +355,7 @@ impl Codegen {
             lambdas: HashMap::new(),
             file_lambdas: HashMap::new(),
             application_caller: None,
+            expression_type: None,
             pointer_bytes: crate::meta::pointer_bytes_for(options.wasm32),
             file_lambda_prefix: HashMap::new(),
             file_aliases: HashMap::new(),

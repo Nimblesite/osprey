@@ -13,12 +13,22 @@
 
 static const char OP_LOAD_TENSOR[] = "loadTensor";
 
-// Push each value as the IEEE-754 word a List<float> element holds.
-static void into_list(void *ctx, const double *values, size_t n) {
+// The reader's sink context: the span names the stored format.
+typedef struct {
+  OspreyListBuilder *builder;
+  OspTensorSpan span;
+} ListLoad;
+
+// Push each element's widened value as the IEEE-754 word a List<float>
+// element holds: the reader hands the STORED bytes [GPU-BUFFER-ELEM], and the
+// one widening definition is osp_tensor_widen's.
+static void into_list(void *ctx, const unsigned char *bytes, size_t n) {
+  const OspTensorSpan *span = &((ListLoad *)ctx)->span;
   for (size_t i = 0; i < n; i++) {
+    double value = osp_tensor_widen(span->dtype, bytes + i * osp_tensor_width(span->dtype));
     int64_t word;
-    memcpy(&word, values + i, sizeof word);
-    osprey_list_builder_push_of(ctx, word, 0);
+    memcpy(&word, &value, sizeof word);
+    osprey_list_builder_push_of(((ListLoad *)ctx)->builder, word, 0);
   }
 }
 
@@ -30,9 +40,9 @@ OspreyList *osprey_load_tensor(const char *path, const char *name) {
   if (!osp_tensor_locate(OP_LOAD_TENSOR, path, name, &span)) {
     return NULL;
   }
-  OspreyListBuilder *b = osprey_list_builder_new_of(0);
-  int read = osp_tensor_read(OP_LOAD_TENSOR, path, &span, into_list, b);
-  OspreyList *list = osprey_list_builder_seal(b);
+  ListLoad load = {osprey_list_builder_new_of(0), span};
+  int read = osp_tensor_read(OP_LOAD_TENSOR, path, &span, into_list, &load);
+  OspreyList *list = osprey_list_builder_seal(load.builder);
   if (!read) {
     osp_release(list);
     return NULL;

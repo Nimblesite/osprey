@@ -103,6 +103,7 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<String> {
                 .join(" | "),
         ),
         "toGpu" => Some(container_display(&["List", "Iterator"])),
+        "gpuMatMul" => Some("GpuBuffer<float> | GpuBuffer<float32>".to_owned()),
         name if is_gpu_buffer_builtin(name) => Some(container_display(&["GpuBuffer"])),
         _ => None,
     }
@@ -156,7 +157,22 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         name if is_gpu_buffer_builtin(name) && !is_gpu_buffer(ty) => Some(format!(
             "`{name}` supports only {}; got {ty}", container_display(&["GpuBuffer"])
         )),
+        "gpuMatMul" if !is_float_matrix(ty) => Some(format!(
+            "`gpuMatMul` supports only GpuBuffer<float> | GpuBuffer<float32>; got {ty}"
+        )),
         _ => None,
+    }
+}
+
+// [GPU-MATMUL]: retain a generic obligation until its actual element is known.
+fn is_float_matrix(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::Con { name, args } if name == names::GPU_BUFFER => {
+            matches!(args.as_slice(), [elem] if matches!(elem, Type::Var(_)) ||
+            crate::numeric::Numeric::of_type(elem).is_some_and(|n| n == crate::numeric::Numeric::FLOAT || n == crate::numeric::Numeric::FLOAT32))
+        }
+        _ => false,
     }
 }
 

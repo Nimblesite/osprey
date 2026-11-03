@@ -67,7 +67,10 @@ fn list_type(cg: &Codegen, position: Option<Position>) -> Option<osprey_types::T
 pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     let inferred = static_type(cg, expr);
     let folded = osprey_types::fold_arithmetic(expr).map_err(CodegenError::invalid)?;
-    let mut value = gen_expr_raw(cg, folded.as_ref().map_or(expr, |value| value))?;
+    let enclosing = std::mem::replace(&mut cg.expression_type, inferred.clone());
+    let value = gen_expr_raw(cg, folded.as_ref().map_or(expr, |value| value));
+    cg.expression_type = enclosing;
+    let mut value = value?;
     if let Some(ty) = inferred.filter(|ty| !osprey_types::has_type_var(ty)) {
         value.inferred_type = Some(ty);
     }

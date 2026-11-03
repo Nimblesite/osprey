@@ -98,6 +98,7 @@ impl Codegen {
     /// SSA/label counters and an isolated scope stack (handlers capture nothing).
     pub(crate) fn enter_nested_fn(&mut self) -> SavedFn {
         let saved = SavedFn {
+            expression_type: self.expression_type.take(),
             lines: std::mem::take(&mut self.cur_lines),
             block: std::mem::replace(&mut self.cur_block, String::from("entry")),
             regs: self.reg_count,
@@ -159,6 +160,7 @@ impl Codegen {
     }
 
     fn restore_function(&mut self, saved: SavedFn) {
+        self.expression_type = saved.expression_type;
         self.cur_lines = saved.lines;
         self.cur_block = saved.block;
         self.reg_count = saved.regs;

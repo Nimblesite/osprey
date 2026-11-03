@@ -182,6 +182,12 @@ impl Numeric {
         })
     }
 
+    /// The scalar storage width [GPU-BUFFER-ELEM].
+    #[must_use]
+    pub const fn bytes(self) -> u8 {
+        self.bits / 8
+    }
+
     /// The inclusive range of an integer type; `None` for a float.
     #[must_use]
     pub const fn range(self) -> Option<(i128, i128)> {

@@ -65,19 +65,26 @@ ulong osprey_fdiv(ulong a, ulong b, GPU_GLOBAL ulong *fault) {
     return (ulong)zero;
 }
 
-kernel void osprey_matmul64(GPU_GLOBAL const ulong *left GPU_BUFFER(0),
-                           GPU_GLOBAL const ulong *right GPU_BUFFER(1),
-                           GPU_GLOBAL ulong *out GPU_BUFFER(2),
-                           GPU_PARAM rows GPU_BUFFER(3),
-                           GPU_PARAM inner GPU_BUFFER(4),
-                           GPU_PARAM cols GPU_BUFFER(5) GPU_THREAD) {
-    ulong i = GPU_INDEX;
-    if (i >= rows * cols) return;
-    ulong row = i / cols, col = i % cols;
-    ulong total = 0;
-    for (ulong k = 0; k < inner; k++) {
-        ulong product = multiply64(left[row * inner + k], right[k * cols + col]);
-        total = add64(total, product);
-    }
-    out[i] = total;
+// [GPU-MATMUL]: one ordered kernel template at each supported float width.
+float multiply32(float a, float b) { return a * b; }
+float add32(float a, float b) { return a + b; }
+
+#define MATRIX_KERNEL(NAME, WORD, MULTIPLY, ADD) \
+kernel void NAME(GPU_GLOBAL const WORD *left GPU_BUFFER(0), \
+                 GPU_GLOBAL const WORD *right GPU_BUFFER(1), \
+                 GPU_GLOBAL WORD *out GPU_BUFFER(2), \
+                 GPU_PARAM rows GPU_BUFFER(3), GPU_PARAM inner GPU_BUFFER(4), \
+                 GPU_PARAM cols GPU_BUFFER(5) GPU_THREAD) { \
+    ulong i = GPU_INDEX; \
+    if (i >= rows * cols) return; \
+    ulong row = i / cols, col = i % cols; \
+    WORD total = 0; \
+    for (ulong k = 0; k < inner; k++) { \
+        WORD product = MULTIPLY(left[row * inner + k], right[k * cols + col]); \
+        total = ADD(total, product); \
+    } \
+    out[i] = total; \
 }
+MATRIX_KERNEL(osprey_matmul64, ulong, multiply64, add64)
+MATRIX_KERNEL(osprey_matmul32, float, multiply32, add32)
+#undef MATRIX_KERNEL

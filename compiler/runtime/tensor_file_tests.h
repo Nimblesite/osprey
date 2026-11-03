@@ -1,7 +1,7 @@
 // The safetensors fixture and the loader-agnostic test body every tensor
 // loader suite shares: gpu_runtime_tests.c runs it over `gpuLoadTensor`'s
 // GpuBuffer, tensor_list_tests.c over `loadTensor`'s List<float> — the same
-// reader (tensor_file.c) behind both, so both must widen, match and refuse
+// reader (tensor_file.c) behind both, so both must locate, widen and refuse
 // identically. The including suite defines CHECK and declares osp_io_error
 // and osp_io_error_clear first.
 #ifndef OSPREY_TENSOR_FILE_TESTS_H
@@ -15,11 +15,13 @@
 #include <string.h>
 #include <unistd.h>
 
-// One loader under test: its op name in failure messages, the load itself,
-// and how to measure and read what it returned.
+// One loader under test: its op name in failure messages, the load itself —
+// `elem` is the element width the program asked for [GPU-BUFFER-TENSOR], which
+// the host list loader ignores because it widens everything to float — and how
+// to measure and read what it returned.
 typedef struct {
   const char *op;
-  void *(*load)(const char *path, const char *name);
+  void *(*load)(const char *path, const char *name, int64_t elem);
   int64_t (*length)(void *tensor);
   double (*at)(void *tensor, int64_t i);
 } TensorLoader;
@@ -128,7 +130,7 @@ static void expect_reason(const TensorLoader *t, const char *subject, const char
 static void refuses(const TensorLoader *t, const char *path, const char *name, const char *subject,
                     const char *reason) {
   osp_io_error_clear();
-  CHECK(t->load(path, name) == NULL);
+  CHECK(t->load(path, name, 8) == NULL);
   expect_reason(t, subject, reason);
 }
 
@@ -142,27 +144,27 @@ static void t_whitespace_header(const TensorLoader *t) {
   memcpy(image + 8, header, strlen(header));
   put_f32(image + 8 + n, 2.5f);
   const char *path = temp_file(image, 8 + n + 4);
-  void *tensor = t->load(path, "w");
+  void *tensor = t->load(path, "w", 4);
   CHECK(unlink(path) == 0);
   CHECK(tensor != NULL);
   CHECK(t->length(tensor) == 1);
   CHECK(t->at(tensor, 0) == 2.5);
 }
 
-// Each admitted dtype widens exactly and the scanner matches whole quoted
+// Each admitted dtype lands exactly and the scanner matches whole quoted
 // names regardless of entry order.
-static void t_tensor_widens(const TensorLoader *t, const char *path) {
+static void t_tensor_each_dtype(const TensorLoader *t, const char *path) {
   osp_io_error_clear();
-  void *a = t->load(path, "a");
+  void *a = t->load(path, "a", 4);
   CHECK(a != NULL && t->length(a) == 6 && osp_io_error() == NULL);
   CHECK(t->at(a, 0) == 0.5 && t->at(a, 1) == -1.0 && t->at(a, 4) == -4.5 && t->at(a, 5) == 6.0);
-  void *h1 = t->load(path, "h.1.w");
+  void *h1 = t->load(path, "h.1.w", 2);
   CHECK(h1 != NULL && t->length(h1) == 5);
   CHECK(t->at(h1, 0) == 1.0 && t->at(h1, 1) == -2.5 && t->at(h1, 2) == ldexp(1.0, -24));
   CHECK(isinf(t->at(h1, 3)) && t->at(h1, 3) > 0 && isnan(t->at(h1, 4)));
-  void *h11 = t->load(path, "h.11.w");
+  void *h11 = t->load(path, "h.11.w", 4);
   CHECK(h11 != NULL && t->length(h11) == 2 && t->at(h11, 0) == 1.0 && t->at(h11, 1) == -3.0);
-  void *d = t->load(path, "d");
+  void *d = t->load(path, "d", 8);
   CHECK(d != NULL && t->length(d) == 2 && t->at(d, 0) == 3.25 && t->at(d, 1) == -1e300);
 }
 
@@ -175,7 +177,7 @@ static void t_tensor_entry_errors(const TensorLoader *t, const char *path) {
   refuses(t, path, "odd", "odd", "byte span is not a whole number of elements");
   refuses(t, path, NULL, "<null path>", "no tensor of that name in the header");
   osp_io_error_clear();
-  CHECK(t->load(path, "beyond") == NULL);
+  CHECK(t->load(path, "beyond", 4) == NULL);
   CHECK(strstr(osp_io_error(), "file ends before the tensor does") != NULL);
 }
 
@@ -186,25 +188,25 @@ static void t_tensor_malformed_files(const TensorLoader *t) {
   unsigned char stub[16] = {0};
   const char *tiny = temp_file(stub, 4);
   osp_io_error_clear();
-  CHECK(t->load(tiny, "a") == NULL);
+  CHECK(t->load(tiny, "a", 4) == NULL);
   CHECK(strstr(osp_io_error(), "shorter than a safetensors header prefix") != NULL);
   (void)unlink(tiny);
   put_u64(stub, (uint64_t)200 * 1024 * 1024);
   const char *huge = temp_file(stub, 16);
   osp_io_error_clear();
-  CHECK(t->load(huge, "a") == NULL);
+  CHECK(t->load(huge, "a", 4) == NULL);
   CHECK(strstr(osp_io_error(), "header length is not plausible for safetensors") != NULL);
   (void)unlink(huge);
   put_u64(stub, 100);
   const char *cut = temp_file(stub, 16);
   osp_io_error_clear();
-  CHECK(t->load(cut, "a") == NULL);
+  CHECK(t->load(cut, "a", 4) == NULL);
   CHECK(strstr(osp_io_error(), "file ends inside the header") != NULL);
   (void)unlink(cut);
   char prefix[96];
   (void)snprintf(prefix, sizeof prefix, "%s: /nonexistent/osprey/model.safetensors: ", t->op);
   osp_io_error_clear();
-  CHECK(t->load("/nonexistent/osprey/model.safetensors", "a") == NULL);
+  CHECK(t->load("/nonexistent/osprey/model.safetensors", "a", 4) == NULL);
   expect_errno(prefix, ENOENT);
 }
 
@@ -213,7 +215,7 @@ static void t_tensor_loader(const TensorLoader *t) {
   t_whitespace_header(t);
   unsigned char image[1024];
   const char *path = temp_file(image, safetensors_image(image, sizeof image));
-  t_tensor_widens(t, path);
+  t_tensor_each_dtype(t, path);
   t_tensor_entry_errors(t, path);
   (void)unlink(path);
   t_tensor_malformed_files(t);

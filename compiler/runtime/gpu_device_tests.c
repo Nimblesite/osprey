@@ -18,8 +18,10 @@
 #include "gpu_device_lib.metal"
 
 void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
-void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols);
+void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
 void *osprey_gpu_data(void *buffer);
+int64_t osprey_gpu_len(void *buffer);
+int64_t osprey_gpu_elem_bytes(void *buffer);
 int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *kinds, const int64_t *uniforms,
                           void *in0, void *in1, void *out, int64_t *acc, int64_t count);
 static uint64_t state = 0x3f27d489aeb5106c;
@@ -93,10 +95,10 @@ static void same_words(const int64_t *a, const int64_t *b, int64_t count) {
 static void compare(void *left, void *right, int64_t rows, int64_t inner, int64_t cols) {
   assert(setenv("OSPREY_GPU", "host", 1) == 0);
   osp_io_error_clear();
-  void *host = osprey_gpu_matmul(left, right, rows, inner, cols);
+  void *host = osprey_gpu_matmul(left, right, rows, inner, cols, 8);
   assert(host && !osp_io_error());
   assert(setenv("OSPREY_GPU", selected, 1) == 0);
-  void *device = osprey_gpu_matmul(left, right, rows, inner, cols);
+  void *device = osprey_gpu_matmul(left, right, rows, inner, cols, 8);
   if (!device) fprintf(stderr, "%s\n", osp_io_error());
   assert(device && !osp_io_error());
   same_words(osprey_gpu_data(host), osprey_gpu_data(device), rows * cols);
@@ -112,6 +114,40 @@ static void extremes(void) {
   memcpy(osprey_gpu_data(left), words, sizeof words);
   memcpy(osprey_gpu_data(right), words, sizeof words);
   compare(left, right, count, 1, count);
+}
+
+static void *float_buffer(const float *values, int64_t count) {
+  void *buffer = osprey_gpu_alloc(count, 4);
+  assert(buffer);
+  memcpy(osprey_gpu_data(buffer), values, (size_t)count * sizeof(float));
+  return buffer;
+}
+
+// [GPU-MATMUL]: compare raw binary32 output independently on host and device.
+static void compare32(const float *a, const float *b, const float *expected, const int64_t shape[3]) {
+  void *left = float_buffer(a, shape[0] * shape[1]);
+  void *right = float_buffer(b, shape[1] * shape[2]);
+  for (int mode = 0; mode < 2; mode++) {
+    assert(setenv("OSPREY_GPU", mode ? selected : "host", 1) == 0);
+    osp_io_error_clear();
+    void *result = osprey_gpu_matmul(left, right, shape[0], shape[1], shape[2], 4);
+    if (!result) fprintf(stderr, "%s\n", osp_io_error());
+    assert(result && !osp_io_error());
+    assert(osprey_gpu_len(result) == shape[0] * shape[2]);
+    assert(osprey_gpu_elem_bytes(result) == 4);
+    assert(memcmp(osprey_gpu_data(result), expected, (size_t)(shape[0] * shape[2]) * sizeof(float)) == 0);
+    checks += 4;
+  }
+}
+
+static void native_float32_products(void) {
+  const int64_t square[] = {2, 2, 2}, ordered[] = {1, 3, 1}, rounding[] = {1, 2, 1};
+  const float a[] = {1, 2, 3, 4}, b[] = {5, 6, 7, 8}, expected[] = {19, 22, 43, 50};
+  const float cancellation[] = {0x1p24f, 1, -0x1p24f}, ones[] = {1, 1, 1}, zero[] = {0};
+  const float factors[] = {0x1.000002p0f, -1}, other[] = {0x1.fffffcp-1f, 1};
+  compare32(a, b, expected, square);
+  compare32(cancellation, ones, zero, ordered);
+  compare32(factors, other, zero, rounding);
 }
 
 // The host's fold of `words` in element order, as the sequential kernel computes it.
@@ -224,6 +260,10 @@ int main(void) {
 #if defined(OSPREY_GPU_METAL)
   if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 11);
 #endif
-  printf("[ok] device binary64 parity: %u results over five products, a compiled kernel chained into a reduction on the device, a sequential reduction and a faulting kernel\n", checks);
+  native_float32_products();
+#if defined(OSPREY_GPU_METAL)
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 14);
+#endif
+  printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults and byte transfers\n", checks);
   return 0;
 }
