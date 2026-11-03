@@ -25,6 +25,7 @@ targets:
       - path: ../skins
         type: folder
         buildPhase: resources
+      - path: ../build/ios-sim/Assets.xcassets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.ospreylang.casting
@@ -32,6 +33,7 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Bridge.h
         OTHER_LDFLAGS: ['-L$(SRCROOT)/../build/ios-sim', '-lOspreyApp', '-lsqlite3', '-lz']
         CODE_SIGNING_ALLOWED: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   CastingUITests:
     type: bundle.ui-testing
     platform: iOS

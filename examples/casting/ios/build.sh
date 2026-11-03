@@ -27,16 +27,25 @@ xcrun --sdk "$sdk" swiftc -swift-version 5 -warnings-as-errors -parse-as-library
     -framework Network -framework Security -framework SwiftUI -framework UIKit \
     -lsqlite3 -lz -o "$bundle/Casting"
 cp examples/casting/player.machine.json "$bundle/player.machine.json"
-cp -R examples/casting/skins "$bundle/skins"
-python3 - "$bundle/Info.plist" <<'PY'
+rm -rf "$bundle/skins"
+cp -R examples/casting/skins "$bundle/"
+catalog="$output/Assets.xcassets"
+xcrun swift -warnings-as-errors "$here/tools/Icon.swift" examples/casting/designs/logo-icon.png "$catalog"
+xcrun --sdk "$sdk" actool "$catalog" --compile "$bundle" --platform "$sdk" \
+    --minimum-deployment-target 18.0 --target-device iphone --target-device ipad \
+    --app-icon AppIcon --output-partial-info-plist "$output/icons.plist" > "$output/icons.log"
+python3 - "$bundle/Info.plist" "$output/icons.plist" <<'PY'
 import plistlib,sys
+with open(sys.argv[2], 'rb') as file:
+    icons = plistlib.load(file)
+assert icons['CFBundleIcons']['CFBundlePrimaryIcon']['CFBundleIconName'] == 'AppIcon', icons
 with open(sys.argv[1], 'wb') as file:
     plistlib.dump(dict(CFBundleIdentifier='org.ospreylang.casting', CFBundleName='Casting',
         CFBundleExecutable='Casting', CFBundlePackageType='APPL', CFBundleVersion='1',
         CFBundleShortVersionString='1.0', MinimumOSVersion='18.0', LSRequiresIPhoneOS=True,
         UILaunchScreen={}, UIFileSharingEnabled=True, LSSupportsOpeningDocumentsInPlace=True, NSLocalNetworkUsageDescription='Find your Chromecast or Google TV and play your selected audio.',
         NSBonjourServices=['_googlecast._tcp'], UISupportedInterfaceOrientations=['UIInterfaceOrientationPortrait'],
-        UIDeviceFamily=[1,2]), file)
+        UIDeviceFamily=[1,2], **icons), file)
 PY
 if [[ "$target" == ios-sim ]]; then codesign --force --sign - "$bundle"; fi
 echo "$bundle"
