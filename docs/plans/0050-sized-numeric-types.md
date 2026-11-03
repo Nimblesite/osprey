@@ -102,7 +102,9 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - [x] Tests: `tests/regressions/basics/types/sized_floats.test.osp` and twin — rounding boundaries, subnormals, `-0.0`, NaN comparison table at each width, printing, bit views, conversions in every direction, division by zero under a handler, literals in every container, builtins passed by name.
 - [x] Tests: `sized_float_literal_range.ospo` and its `ml_` twin with goldens.
 - [x] Review every line the agents wrote against this plan and correct it; `grep -rn 'names::FLOAT' crates` outside `numeric.rs` shows only rendering and float defaulting.
-- [ ] A complete `cargo test -p osprey-cli` run, which Phase 2's last goldens never got; `cargo test -p osprey-types -p osprey-codegen`; clippy clean.
+- [ ] A complete `cargo test -p osprey-cli` run. Latest run stopped at three GPU cross-flavor IR failures; root fixes are in progress, with the original assertions retained (2026-11-03).
+- [x] `cargo test -p osprey-types -p osprey-codegen`: 936 type tests and 221 codegen tests pass (2026-11-03).
+- [x] `cargo clippy -p osprey-types -p osprey-codegen -p osprey-cli --all-targets -- -D warnings` passes (2026-11-03).
 - [x] GC 312/312, ARC 312/312 and wasm 232/232 corpus lanes green with goldens, on the debug compiler (2026-11-03): release builds were on hold for another agent's suite.
 - [ ] Merge `wip/sized-numerics` into the feature branch only once it compiles and passes, and push. The branch and worktree stay for Phases 4 to 6, because agents must not work in the primary tree; Phase 6 deletes them.
 **Gate:** twins green on all lanes; `grep -rn 'float32(' tests examples packages` finds no emulation call.
