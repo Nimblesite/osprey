@@ -48,18 +48,27 @@ def _function(library, descriptor):
     function = getattr(library._native, descriptor["symbol"])
     kinds = descriptor["parameters"]
     function.argtypes = [_CTYPES[kind] for kind in kinds]
-    function.restype = _CTYPES[descriptor["returns"]]
+    returns_string = descriptor["returns"] == "string"
+    function.restype = ctypes.c_void_p if returns_string else _CTYPES[descriptor["returns"]]
     def call(*arguments, **keywords):
         library._check_thread()
         arguments = _bind(descriptor, arguments, keywords)
         converted = [_argument(value, kind) for value, kind in zip(arguments, kinds)]
         result = function(*converted)
-        if descriptor["returns"] == "string" and result is None:
-            raise RuntimeError("Osprey returned a null string")
-        return result.decode("utf-8") if descriptor["returns"] == "string" else result
+        return _copy_string(library, result) if returns_string else result
     call.__name__ = descriptor["name"]
     call.__doc__ = _signature(descriptor)
     return call
+
+
+def _copy_string(library, pointer):
+    # [PYTHON-HOST-ABI] Copy before releasing the C export's owned reference.
+    if pointer is None:
+        raise RuntimeError("Osprey returned a null string")
+    try:
+        return ctypes.string_at(pointer).decode("utf-8")
+    finally:
+        library._release_string(pointer)
 
 
 def _signature(descriptor):
@@ -88,6 +97,8 @@ class Library:
     def __init__(self, path):
         self._thread = threading.current_thread()
         self._native = ctypes.PyDLL(str(path))
+        self._release_string = self._native.osprey_release_string
+        self._release_string.argtypes, self._release_string.restype = [ctypes.c_void_p], None
         self._bridge = Bridge()
         self._callback = CALLBACK(self._bridge.call)
         self._object_callback = OBJECT_CALLBACK(self._bridge.object)

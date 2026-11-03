@@ -3,6 +3,7 @@
 import gc
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -70,6 +71,25 @@ class InteropTests(unittest.TestCase):
             self.library.numeric_float32(1e40)
         with self.assertRaises(TypeError):
             self.library.numeric_float32(1)
+
+    def test_copied_string_results_release_their_native_arc_reference(self):
+        # [PYTHON-HOST-ABI] A Python copy must not lose the native owned pointer.
+        probe = '''import pathlib, tempfile, osprey
+with tempfile.TemporaryDirectory(prefix="osprey-return-arc-") as directory:
+    path = pathlib.Path(directory) / "probe.osp"
+    path.write_text('fn echo(value) = value + "!"\\n')
+    library = osprey.build(path)
+    for _ in range(COUNT):
+        assert library.echo("世界 🐦") == "世界 🐦!"
+'''
+        for count in [0, 100]:
+            result = subprocess.run(
+                [sys.executable, "-c", probe.replace("COUNT", str(count))],
+                capture_output=True, text=True,
+                env={**os.environ, "OSPREY_ARC_DEBUG": "1"})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            counts = re.findall(r"\[osp-arc\] exit: (\d+) live objects", result.stderr)
+            self.assertEqual(counts, ["0"], f"{count} calls: {result.stderr}")
 
     def test_scalars_and_utf8_are_checked_before_native_calls(self):
         lib = self.library
