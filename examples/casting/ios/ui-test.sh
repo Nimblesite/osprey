@@ -18,10 +18,19 @@ mkdir -p "$here/../build/ios-test"
 coverage="$here/../build/ios-test/coverage.json"
 rm -f "$coverage" "$coverage.partial"
 printf '%s\n' "$result" > "$here/../build/ios-test/result-path.txt"
+test_status=0
 xcodebuild -project "$here/Casting.xcodeproj" -scheme Casting \
-    -destination "platform=iOS Simulator,id=$device" -derivedDataPath "$here/../build/ui-tests" \
+    -destination "platform=iOS Simulator,id=$device" -derivedDataPath "$here/../build/gpui-ui-tests" \
     -resultBundlePath "$result" -enableCodeCoverage YES -parallel-testing-enabled NO -collect-test-diagnostics never -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
-    CODE_SIGNING_ALLOWED=NO test
+    CODE_SIGNING_ALLOWED=NO test || test_status=$?
+# XCTest can reinstall a matching app from DerivedProducts. A retired renderer
+# there must never turn this GPUI journey green, even when its assertions pass.
+installed=$(xcrun simctl get_app_container "$device" org.ospreylang.casting app)
+if ! cmp -s "$here/../build/ios-sim/Casting.app/Casting" "$installed/Casting"; then
+    echo 'FAIL: XCTest ran a different executable from the shared GPUI build' >&2
+    exit 1
+fi
+[[ $test_status -eq 0 ]] || exit "$test_status"
 xcrun xccov view --report --json "$result" > "$coverage.partial"
 # [CAST-MOBILE-GPUI] The app is a Rust hosts/gpui binary built outside Xcode,
 # so xccov cannot see it until the Rust coverage pipeline is wired in here.

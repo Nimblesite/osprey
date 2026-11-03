@@ -10,6 +10,25 @@ final class CastingUITests: XCTestCase {
     }
 
     @MainActor
+    func testSharedSceneExposesAccessibleControlsAndOpensTheNativePicker() {
+        // [UI-MACHINE-A11Y] Shared scene semantics must reach the real OS tree.
+        let app = castingApp()
+        defer { app.terminate() }
+        app.launchArguments = ["--skin", "sherbet"]
+        app.launch()
+        let open = app.buttons["Open file…"]
+        XCTAssertTrue(open.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Choose an audio file"].exists, app.debugDescription)
+        XCTAssertTrue(open.isHittable, app.debugDescription)
+        let frame = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(open.frame.minY, frame.minY + frame.height * 0.65)
+        XCTAssertLessThanOrEqual(open.frame.maxY, frame.maxY)
+        open.tap()
+        XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(open.isHittable, "The native document picker must cover the player")
+    }
+
+    @MainActor
     func testNativeAppearanceSurvivesProcessRestart() {
         // [CAST-MOBILE-SKIN-PERSISTENCE] A new process must read the saved choice.
         let app = castingApp()
