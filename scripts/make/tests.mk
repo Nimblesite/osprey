@@ -179,7 +179,7 @@ C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns tls_client_runtime.c and file_server_runtime.c: a loopback OpenSSL echo
 # server (18092/18093) and a plain TCP client against the one-file server.
 C_FLAGS_net_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/file_server_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_net_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns media_render_runtime.c: real posix_spawnp calls against fake tools.
 C_SRC_media_render_runtime_tests = runtime/media_render_runtime_tests.c runtime/media_render_runtime.c

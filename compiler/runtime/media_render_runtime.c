@@ -13,7 +13,10 @@
 // not there yet ([FFI-FILE-SERVER-FOLDER]). Rendering runs far faster than
 // playback, so the wait happens only after a seek far ahead.
 //
-// `osprey_media_unrender` stops ffmpeg and deletes the folder. Without
+// `osprey_media_unrender` stops ffmpeg and deletes the folder, for a folder this
+// process rendered: the runtime's own record says which those are and which child
+// to stop, and nothing on disk is trusted. An unreaped child keeps its pid, so that
+// pid can't have come to mean another process. Without
 // ffmpeg and ffprobe on the PATH, render returns "" and a sender casts the
 // audio as it is.
 //
@@ -36,6 +39,7 @@ int64_t osprey_media_unrender(char *folder) {
 #else
 #include <dirent.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <spawn.h>
 #include <stdbool.h>
@@ -52,12 +56,19 @@ extern char **environ;
 #endif
 
 // MR_FILE holds the folder (under MR_PATH) and a file name inside it.
-enum { MR_SEGMENT = 4, MR_PATH = 1024, MR_FILE = MR_PATH + 32 };
+enum { MR_SEGMENT = 4, MR_PATH = 1024, MR_FILE = MR_PATH + 32, MR_RENDERS = 16 };
 
 static const char *MR_FILTER =
     "[0:a]showcqt=s=1280x720:fps=30:axis=0:bar_g=2:sono_g=3:count=2,format=yuv420p[v]";
 
-int64_t osprey_media_unrender(char *folder);
+// A render still running or not yet stopped: the folder and child that make it ours.
+typedef struct {
+  char folder[MR_PATH];
+  pid_t pid; // 0: a free slot
+} Render;
+
+static Render mr_renders[MR_RENDERS];
+static pthread_mutex_t mr_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static char *mr_copy(const char *text) { return strdup(text ? text : ""); }
 
@@ -158,14 +169,56 @@ static pid_t start_ffmpeg(const char *audio, const char *folder) {
   return pid;
 }
 
-static void write_pid(const char *folder, pid_t pid) {
-  char path[MR_FILE];
-  snprintf(path, sizeof path, "%s/pid", folder);
-  FILE *file = fopen(path, "w");
-  if (file) {
-    fprintf(file, "%ld\n", (long)pid);
-    fclose(file);
+// False when as many renders as the record holds are running.
+static bool remember_render(const char *folder, pid_t pid) {
+  bool remembered = false;
+  pthread_mutex_lock(&mr_mutex);
+  for (int i = 0; i < MR_RENDERS && !remembered; i++) {
+    if (mr_renders[i].pid == 0) {
+      snprintf(mr_renders[i].folder, sizeof mr_renders[i].folder, "%s", folder);
+      mr_renders[i].pid = pid;
+      remembered = true;
+    }
   }
+  pthread_mutex_unlock(&mr_mutex);
+  return remembered;
+}
+
+// Removes the render of exactly this folder from the record: its child, or 0 when
+// no render made the folder or it has already been stopped.
+static pid_t forget_render(const char *folder) {
+  pid_t pid = 0;
+  pthread_mutex_lock(&mr_mutex);
+  for (int i = 0; i < MR_RENDERS && pid == 0; i++) {
+    if (mr_renders[i].pid != 0 && strcmp(mr_renders[i].folder, folder) == 0) {
+      pid = mr_renders[i].pid;
+      mr_renders[i].pid = 0;
+    }
+  }
+  pthread_mutex_unlock(&mr_mutex);
+  return pid;
+}
+
+static void stop_renderer(pid_t pid) {
+  kill(pid, SIGTERM);
+  waitpid(pid, NULL, 0);
+}
+
+// Deletes a render's folder and what is in it: 0, or -1 when it can't.
+static int64_t delete_folder(const char *folder) {
+  DIR *dir = opendir(folder);
+  if (!dir) {
+    return -1;
+  }
+  char path[MR_FILE];
+  for (struct dirent *entry = readdir(dir); entry; entry = readdir(dir)) {
+    if (entry->d_name[0] != '.') {
+      snprintf(path, sizeof path, "%s/%s", folder, entry->d_name);
+      unlink(path);
+    }
+  }
+  closedir(dir);
+  return rmdir(folder) == 0 ? 0 : -1;
 }
 
 // osprey_media_render renders `audio` as a visualiser HLS stream and returns
@@ -180,52 +233,25 @@ char *osprey_media_render(char *audio) {
   }
   double seconds = probe_duration(audio);
   pid_t pid = seconds > 0 && write_playlist(folder, seconds) ? start_ffmpeg(audio, folder) : 0;
+  if (pid != 0 && !remember_render(folder, pid)) {
+    stop_renderer(pid);
+    pid = 0;
+  }
   if (pid == 0) {
-    char *copy = mr_copy(folder);
-    osprey_media_unrender(copy);
-    free(copy);
+    (void)delete_folder(folder);
     return mr_copy("");
   }
-  write_pid(folder, pid);
   return mr_copy(folder);
 }
 
-static void stop_renderer(const char *folder) {
-  char path[MR_FILE];
-  snprintf(path, sizeof path, "%s/pid", folder);
-  FILE *file = fopen(path, "r");
-  long pid = 0;
-  if (file) {
-    if (fscanf(file, "%ld", &pid) != 1) {
-      pid = 0;
-    }
-    fclose(file);
-  }
-  if (pid > 0) {
-    kill((pid_t)pid, SIGTERM);
-    waitpid((pid_t)pid, NULL, 0);
-  }
-}
-
 // osprey_media_unrender stops the render in `folder` and deletes the folder:
-// 0, or -1 when `folder` is not one render made.
+// 0, or -1 when `folder` is not one this process's render made.
 int64_t osprey_media_unrender(char *folder) {
-  if (!folder || !strstr(folder, "/osprey-cast.")) {
+  pid_t pid = folder ? forget_render(folder) : 0;
+  if (pid == 0) {
     return -1;
   }
-  stop_renderer(folder);
-  DIR *dir = opendir(folder);
-  if (!dir) {
-    return -1;
-  }
-  char path[MR_PATH];
-  for (struct dirent *entry = readdir(dir); entry; entry = readdir(dir)) {
-    if (entry->d_name[0] != '.') {
-      snprintf(path, sizeof path, "%s/%s", folder, entry->d_name);
-      unlink(path);
-    }
-  }
-  closedir(dir);
-  return rmdir(folder) == 0 ? 0 : -1;
+  stop_renderer(pid);
+  return delete_folder(folder);
 }
 #endif
