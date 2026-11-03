@@ -25,6 +25,10 @@ The order puts small, isolated fixes first. 4 comes before 5 because both change
 - [x] `http_decode_chunked` takes the body's length, parses sizes as unsigned with an overflow check, bounds every copy, and requires the CRLF after each chunk
 - [x] `http_request_capture` returns a new negative code on a malformed body instead of falling back to the raw framing at `strdup(body_start)`
 - [x] Test: a real program calling `httpGetResponse` against a local hostile server, with each of an oversized size, `7FFFFFFF`, a negative size, a missing CRLF, a truncated body and a valid multi-chunk body
+- [x] Review: `204` and `304` with chunked framing are empty, not an error; a NUL byte anywhere in a response is an `Error`, not a body cut short at it [HTTP-RESPONSE-FRAMING]
+- [x] Review: repeated `Transfer-Encoding` lines are one list; a control byte in a chunk extension is refused; running out of memory copying headers is `-9`, not raw framing returned as the body
+- [x] Adversarial review: a status is exactly three digits, so a hostile one can't overflow or pose as this API's negative codes; interim `1xx` responses are skipped; a head that is cut short, or that hides framing, is refused rather than returned as a body; a body short of its `Content-Length` is refused; control bytes in trailers are refused [HTTP-RESPONSE-FRAMING]
+- [x] Test: all of the above against the hostile Osprey server, except what its server can't send (NUL bytes, interim responses, heads cut short) and allocation failure, which the scripted C origin covers, with bodies past the transport's buffer in both, and every byte mutation of whole responses at the C level
 
 ### 2. File server [FFI-FILE-SERVER-CONTAINMENT], [FFI-FILE-SERVER-STOP]
 
@@ -84,7 +88,7 @@ These stay open as findings in the reports:
 - Compiler stack overflow on extreme nesting, and segfaults on deep non-tail recursion
 - The Chromecast recursion finding, which is unproven
 - WebSocket close, ping and fragmented frames, which [BUILTIN-WEBSOCKET-FRAMING] documents as unimplemented
-- Found while fixing item 1, and left for their own plans: `http_perform` reads a response into memory until the peer closes, with no size limit, so a hostile server can exhaust the client's memory; and response bodies travel as NUL-terminated strings, so a body with a NUL byte is cut short, whether chunked or not
+- Found while fixing item 1, and left for their own plans: `http_perform` reads a response into memory until the peer closes, with no size limit, so a hostile server can exhaust the client's memory; and response bodies travel as NUL-terminated strings, so a body holding a NUL byte can only be refused [HTTP-RESPONSE-FRAMING], which rules out binary downloads through this API; and HTTP client and server handles share one counter that is never reused (`get_next_id`), so after 100 clients a process can't create a server and after 1,000 it can't create a client, however many were closed
 
 ## Risks
 

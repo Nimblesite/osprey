@@ -1,7 +1,7 @@
 // ML twin of chunked_hostile_server.test.osp: a hostile origin written in Osprey.
 // The handler sends back, byte for byte, the chunked framing each case asks for,
 // and the client must decode it or answer Error, never crash and never hand back
-// a partial body. [HTTP-CHUNKED-DECODE] [HTTP-RESPONSE-HANDLE]
+// a partial body. [HTTP-CHUNKED-DECODE] [HTTP-RESPONSE-FRAMING] [HTTP-RESPONSE-HANDLE]
 
 framingHeaders path = match path
     "/lower" => "transfer-encoding: chunked\r\n"
@@ -13,15 +13,49 @@ framingHeaders path = match path
     "/chunked-gzip" => "Transfer-Encoding: chunked, gzip\r\n"
     "/notchunked" => "Transfer-Encoding: notchunked\r\n"
     "/plain" => ""
+    "/404-plain" => ""
+    "/four-digits" => ""
+    "/two-digits" => ""
+    "/negative" => ""
+    "/two-lines" => "Transfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n"
+    "/two-apart" => "Transfer-Encoding: gzip\r\nX-Between: 1\r\ntransfer-encoding: CHUNKED\r\n"
+    "/chunked-then-gzip" => "Transfer-Encoding: chunked\r\nTransfer-Encoding: gzip\r\n"
+    "/bare-lf" => "X-A: a\nTransfer-Encoding: chunked\r\n"
+    "/bare-cr" => "X-A: a\rb\r\n"
+    "/spaced-name" => "Transfer-Encoding : chunked\r\n"
+    "/folded" => "Transfer-Encoding: gzip,\r\n chunked\r\n"
+    "/no-colon" => "no colon here\r\n"
+    "/no-name" => ": no name\r\n"
+    "/length-lie" => "Content-Length: 100\r\n"
+    "/length-junk" => "Content-Length: x\r\n"
+    "/length-negative" => "Content-Length: -1\r\n"
     _ => "Transfer-Encoding: chunked\r\n"
+
+statusFor path = match path
+    "/204" => 204
+    "/304" => 304
+    "/500" => 500
+    "/four-digits" => 2000
+    "/two-digits" => 20
+    "/negative" => (0 - 14)
+    "/404-plain" => 404
+    _ => 200
+
+doubled (text, times) = match times
+    0 => text
+    _ => doubled ("${text}${text}", wrapSub times 1)
+
+sixteenKib () = doubled ("x", 14)
 
 framingFor (path, requested) = match path
     "/get-oversized" => "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
     "/get-valid" => "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
+    "/big" => "4000\r\n${sixteenKib ()}\r\n0\r\n\r\n"
+    "/big-then-lie" => "4000\r\n${sixteenKib ()}\r\n7FFFFFFF\r\nhi\r\n"
     _ => requested
 
 hostileOrigin (_method, path, _headers, requested) = HttpResponse(
-    status = 200,
+    status = statusFor path,
     headers = framingHeaders path,
     contentType = "text/plain",
     streamFd = (0 - 1),
@@ -114,6 +148,10 @@ sizesThatAreNotSizes client =
     badSize (client, "3\r\nabc\r\nzz\r\n")
     badSize (client, "3\r\nabc\r\n-1\r\nhi\r\n")
     badSize (client, "5\r\nhello\r\n\r\n")
+    badSize (client, "5;a\nb\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "5;a\rb\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "5;\n\r\nhello\r\n0\r\n\r\n")
+    badSize (client, "0;a\nb\r\n\r\n")
 
 dataWithoutItsCrlf client =
     noCrlf (client, "5\r\nhelloXX0\r\n\r\n")
@@ -157,6 +195,7 @@ wellFormedBodies client =
     accepts (client, "5;name=value\r\nhello\r\n0;last\r\n\r\n", "hello")
     accepts (client, "5 ;name\r\nhello\r\n0\t;last\r\n\r\n", "hello")
     accepts (client, "5  \r\nhello\r\n0 \r\n\r\n", "hello")
+    accepts (client, "5;a\tb\r\nhello\r\n0\r\n\r\n", "hello")
     accepts (client, "3\r\nabc\r\n0\r\nX-Trailer: yes\r\n\r\n", "abc")
     accepts (client, "3\r\nabc\r\n0\r\nX-One: 1\r\nX-Two: 2\r\n\r\n", "abc")
     accepts (client, "8\r\na\r\n0\r\n\r\n\r\n0\r\n\r\n", "a\r\n0\r\n\r\n")
@@ -196,6 +235,54 @@ survivesRepeatedAttacks client =
     check "200 attacks in a row" "status=200 body=survived" (hammer (client, 200))
     check "still serving" "status=200 body=alive" (posted (client, "/chunked", "5\r\nalive\r\n0\r\n\r\n"))
 
+statusesWithoutABody client =
+    lie = "7FFFFFFF\r\nhi\r\n"
+    check "304, nothing sent" "status=304 body=" (fetched (client, "/304"))
+    check "204, nothing sent" "status=204 body=" (fetched (client, "/204"))
+    check "304, a lie sent" "status=304 body=" (posted (client, "/304", lie))
+    check "204, a lie sent" "status=204 body=" (posted (client, "/204", lie))
+    check "204, a body sent" "status=204 body=" (posted (client, "/204", "2\r\nhi\r\n0\r\n\r\n"))
+    check "500 keeps its body" "status=500 body=no" (posted (client, "/500", "2\r\nno\r\n0\r\n\r\n"))
+    check "500 with a lie" "error=http response: chunked body: chunk size exceeds the remaining body" (posted (client, "/500", lie))
+    check "200 needs its framing" "error=http response: chunked body: truncated" (fetched (client, "/empty"))
+
+repeatedHeaderLines client =
+    framing = "2\r\nhi\r\n0\r\n\r\n"
+    hostile = "7FFFFFFF\r\nhi\r\n"
+    check "two lines decode" "status=200 body=hi" (posted (client, "/two-lines", framing))
+    check "two lines apart decode" "status=200 body=hi" (posted (client, "/two-apart", framing))
+    check "two lines still refuse" "error=http response: chunked body: chunk size exceeds the remaining body" (posted (client, "/two-lines", hostile))
+    check "gzip last means raw" "status=200 body=${hostile}" (posted (client, "/chunked-then-gzip", hostile))
+
+bodiesPastTheBuffer client =
+    check "16 KiB decodes" "status=200 body=${sixteenKib ()}" (fetched (client, "/big"))
+    check "a lie after 16 KiB" "error=http response: chunked body: chunk size exceeds the remaining body" (fetched (client, "/big-then-lie"))
+
+headsThatHideFraming client =
+    malformed = "error=http response: head: malformed"
+    hostile = "7FFFFFFF\r\nhi\r\n"
+    check "bare LF in a value" malformed (posted (client, "/bare-lf", hostile))
+    check "bare CR in a value" malformed (posted (client, "/bare-cr", "hello"))
+    check "space before the colon" malformed (posted (client, "/spaced-name", hostile))
+    check "a folded line" malformed (posted (client, "/folded", "2\r\nhi\r\n0\r\n\r\n"))
+    check "a line with no colon" malformed (posted (client, "/no-colon", "hello"))
+    check "a line with no name" malformed (posted (client, "/no-name", "hello"))
+    check "still serving" "status=200 body=alive" (posted (client, "/chunked", "5\r\nalive\r\n0\r\n\r\n"))
+
+statusesThatAreNotStatuses client =
+    notHttp = "error=http response: status line: not HTTP/1.x"
+    check "four digits" notHttp (fetched (client, "/four-digits"))
+    check "two digits" notHttp (fetched (client, "/two-digits"))
+    check "our own negative code" notHttp (fetched (client, "/negative"))
+    check "a real 404" "status=404 body=gone" (posted (client, "/404-plain", "gone"))
+
+lengthsThatLie client =
+    invalid = "error=http response: body: invalid Content-Length"
+    check "a second, different length" invalid (posted (client, "/length-lie", "hello"))
+    check "a length that isn't one" invalid (posted (client, "/length-junk", "hello"))
+    check "a negative length" invalid (posted (client, "/length-negative", "hello"))
+    check "chunked ignores a lie" "status=200 body=hi" (posted (client, "/two-lines", "2\r\nhi\r\n0\r\n\r\n"))
+
 sizesCase () = withHostileOrigin (18110, sizesBeyondTheBody)
 parseCase () = withHostileOrigin (18111, sizesThatAreNotSizes)
 crlfCase () = withHostileOrigin (18112, dataWithoutItsCrlf)
@@ -204,6 +291,12 @@ validCase () = withHostileOrigin (18114, wellFormedBodies)
 headerCase () = withHostileOrigin (18115, whichResponsesAreChunked)
 methodCase () = withHostileOrigin (18116, getAndPostAgree)
 repeatCase () = withHostileOrigin (18117, survivesRepeatedAttacks)
+statusCase () = withHostileOrigin (18118, statusesWithoutABody)
+linesCase () = withHostileOrigin (18119, repeatedHeaderLines)
+bigCase () = withHostileOrigin (18120, bodiesPastTheBuffer)
+headCase () = withHostileOrigin (18121, headsThatHideFraming)
+statusLineCase () = withHostileOrigin (18122, statusesThatAreNotStatuses)
+lengthCase () = withHostileOrigin (18123, lengthsThatLie)
 
 test "chunk sizes beyond the body are refused" sizesCase
 test "chunk sizes that do not parse are refused" parseCase
@@ -213,3 +306,9 @@ test "well-formed framing decodes" validCase
 test "only a final chunked coding means chunked" headerCase
 test "GET and POST share the decoder" methodCase
 test "repeated attacks leave the client working" repeatCase
+test "204 and 304 have no body" statusCase
+test "repeated Transfer-Encoding lines are one list" linesCase
+test "bodies past the transport buffer decode" bigCase
+test "heads that hide framing are refused" headCase
+test "statuses are three digits" statusLineCase
+test "lengths that lie are refused" lengthCase

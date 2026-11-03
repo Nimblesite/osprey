@@ -310,7 +310,7 @@ static int64_t http_request(int64_t client_id, int64_t method, char *path,
   if (rc != 0) {
     return rc;
   }
-  int64_t status = http_parse_status_line(raw);
+  int64_t status = http_parse_status_line(http_final_response(raw));
   free(raw);
   return status;
 }

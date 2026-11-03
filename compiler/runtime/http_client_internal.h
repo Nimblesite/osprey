@@ -18,6 +18,12 @@ int64_t http_perform(int64_t client_id, int64_t method, char *path,
 
 // Returns the numeric status from an HTTP status line, or -8.
 int64_t http_parse_status_line(const char *raw);
+const char *http_final_response(const char *raw);
+const char *http_checked_head(const char *raw, size_t len, const char **sep,
+                              int64_t *status, int64_t *rc);
+bool http_copy_response_headers(const char *head, const char *sep, char **out);
+int64_t http_response_body_of(int64_t status, const char *headers, const char *body,
+                              size_t body_len, char **out);
 
 // Reports whether the response header block declares
 // Transfer-Encoding: chunked (case-insensitive header name).

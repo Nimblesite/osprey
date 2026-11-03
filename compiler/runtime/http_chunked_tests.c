@@ -14,6 +14,7 @@ static const char TOO_BIG[] = "chunk size exceeds the remaining body";
 static const char BAD_SIZE[] = "invalid chunk size";
 static const char NO_CRLF[] = "chunk data not followed by CRLF";
 static const char CUT_SHORT[] = "truncated";
+static const char BAD_TRAILER[] = "invalid trailer";
 
 static char *decode(const char *bytes, size_t len, const char **reason) {
   char *exact = malloc(len ? len : 1);
@@ -57,13 +58,13 @@ static void check_table(void) {
   EXPECT_BODY("00000000000000000000000000000005\r\nhello\r\n0\r\n\r\n", "hello");
   EXPECT_BODY("5;a=b\r\nhello\r\n0;c\r\n\r\n", "hello");
   EXPECT_BODY("5 ;a\r\nhello\r\n0\t;c\r\n\r\n", "hello");
+  EXPECT_BODY("5;a\tb=\xc3\xa9\r\nhello\r\n0\r\n\r\n", "hello");
   EXPECT_BODY("5 \t \r\nhello\r\n0 \r\n\r\n", "hello");
   EXPECT_BODY("3\r\nabc\r\n0\r\nX-A: 1\r\nX-B: 2\r\n\r\n", "abc");
   EXPECT_BODY("8\r\na\r\n0\r\n\r\n\r\n0\r\n\r\n", "a\r\n0\r\n\r\n");
   EXPECT_BODY("2\r\n\r\n\r\n0\r\n\r\n", "\r\n");
   EXPECT_BODY("3\r\nabc\r\n0\r\n\r\nleft over", "abc");
   EXPECT_BODY("5\r\nhe\0lo\r\n0\r\n\r\n", "he\0lo");
-  EXPECT_BODY("0\r\nX\0Y: 1\r\n\r\n", "");
 
   EXPECT_REFUSED("10\r\nhi\r\n0\r\n\r\n", TOO_BIG);
   EXPECT_REFUSED("6\r\nhello", TOO_BIG);
@@ -95,6 +96,16 @@ static void check_table(void) {
   EXPECT_REFUSED("5\r\nhello\r\n\r\n", BAD_SIZE);
   EXPECT_REFUSED("\0", BAD_SIZE);
   EXPECT_REFUSED("5\0\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_REFUSED("5;a\nb\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_REFUSED("5;a\rb\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_REFUSED("5;\n\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_REFUSED("5;a\x01\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_REFUSED("5;a\x7f\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_REFUSED("5;a\0b\r\nhello\r\n0\r\n\r\n", BAD_SIZE);
+  EXPECT_REFUSED("0;a\nb\r\n\r\n", BAD_SIZE);
+  EXPECT_REFUSED("0\r\nX\nY: 1\r\n\r\n", BAD_TRAILER);
+  EXPECT_REFUSED("2\r\nhi\r\n0\r\nX: a\rb\r\n\r\n", BAD_TRAILER);
+  EXPECT_REFUSED("0\r\nX: 1\r\nY\x01: 2\r\n\r\n", BAD_TRAILER);
   EXPECT_REFUSED("0\0\r\n\r\n", BAD_SIZE);
 
   EXPECT_REFUSED("5\r\nhelloXX0\r\n\r\n", NO_CRLF);
@@ -329,6 +340,10 @@ static void check_which_headers_mean_chunked(void) {
       "Transfer-Encoding: gzip,chunked\r\n",
       "Transfer-Encoding: gzip,\tchunked\r\n",
       "Server: x\r\nTransfer-Encoding: chunked\r\nX-Other: y\r\n",
+      "Transfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n",
+      "Transfer-Encoding: gzip\r\nX-Other: y\r\ntransfer-encoding: chunked",
+      "Transfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n",
+      "Transfer-Encoding: gzip\r\nTransfer-Encoding: br\r\nTransfer-Encoding: chunked\r\n",
   };
   static const char *const other[] = {
       "",
@@ -339,6 +354,8 @@ static void check_which_headers_mean_chunked(void) {
       "Transfer-Encoding: gzip\r\n",
       "Transfer-Encoding: gzip\r\nX-Note: chunked\r\n",
       "Transfer-Encoding: chunked, gzip\r\n",
+      "Transfer-Encoding: chunked\r\nTransfer-Encoding: gzip\r\n",
+      "Transfer-Encoding: chunked\r\nX-Other: y\r\nTransfer-Encoding: gzip",
       "Transfer-Encoding: notchunked\r\n",
       "Transfer-Encoding: chunke\r\n",
       "X-Transfer-Encoding: chunked\r\n",

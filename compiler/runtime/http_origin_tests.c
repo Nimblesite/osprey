@@ -19,15 +19,6 @@
 // records the request the client actually sent [HTTP-STATUS-CLIENT].
 // ---------------------------------------------------------------------------
 
-#define ORIGIN_PORT 18088
-
-typedef struct {
-  int listen_fd;
-  const char *reply; // NULL: accept and close without writing a byte
-  char request[MAX_HTTP_BUFFER];
-  pthread_t thread;
-} ScriptedOrigin;
-
 // Reads one whole HTTP request: headers, then Content-Length bytes of body.
 static void origin_read_request(int fd, char *out, size_t capacity) {
   size_t len = 0;
@@ -66,7 +57,7 @@ static void *origin_thread(void *arg) {
   }
   origin_read_request(fd, origin->request, sizeof(origin->request));
   if (origin->reply) {
-    size_t total = strlen(origin->reply);
+    size_t total = origin->reply_len;
     size_t sent = 0;
     while (sent < total) {
       ssize_t n = osp_socket_send(fd, origin->reply + sent, total - sent);
@@ -80,9 +71,14 @@ static void *origin_thread(void *arg) {
   return NULL;
 }
 
-static void origin_start(ScriptedOrigin *origin, const char *reply) {
+void origin_start(ScriptedOrigin *origin, const char *reply) {
+  origin_start_bytes(origin, reply, reply ? strlen(reply) : 0);
+}
+
+void origin_start_bytes(ScriptedOrigin *origin, const char *reply, size_t len) {
   memset(origin, 0, sizeof(*origin));
   origin->reply = reply;
+  origin->reply_len = len;
   origin->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
   assert(origin->listen_fd >= 0);
   int opt = 1;
@@ -98,12 +94,12 @@ static void origin_start(ScriptedOrigin *origin, const char *reply) {
   assert(pthread_create(&origin->thread, NULL, origin_thread, origin) == 0);
 }
 
-static void origin_stop(ScriptedOrigin *origin) {
+void origin_stop(ScriptedOrigin *origin) {
   assert(pthread_join(origin->thread, NULL) == 0);
   close(origin->listen_fd);
 }
 
-static int64_t origin_client(void) {
+int64_t origin_client(void) {
   int64_t client_id = http_create_client(
       (char *)(uintptr_t) "http://127.0.0.1:18088", 2000);
   assert(client_id > 0);

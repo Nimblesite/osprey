@@ -34,6 +34,23 @@ extern int64_t http_response_free(int64_t handle);
 HttpResponse *http_test_server_handler(char *method, char *path,
                                        char *headers, char *body);
 
+// A raw TCP origin answering with exact bytes, NULs included, defined in
+// http_origin_tests.c.
+#define ORIGIN_PORT 18088
+
+typedef struct {
+  int listen_fd;
+  const char *reply; // NULL: accept and close without writing a byte
+  size_t reply_len;
+  char request[MAX_HTTP_BUFFER];
+  pthread_t thread;
+} ScriptedOrigin;
+
+void origin_start(ScriptedOrigin *origin, const char *reply);
+void origin_start_bytes(ScriptedOrigin *origin, const char *reply, size_t len);
+void origin_stop(ScriptedOrigin *origin);
+int64_t origin_client(void);
+
 // Test entry points, invoked in order by run_all_http_tests (main TU).
 // The first two drive the allocation injector that lives in the main TU.
 void test_alloc_fail_off(void);
@@ -59,6 +76,7 @@ void test_client_transport_failures(void);
 void test_client_large_response(void);
 void test_client_malformed_chunks(void);
 void test_chunked_decoder(void);
+void test_response_framing(void);
 void test_client_response_allocation_failures(void);
 void test_client_tls_handshake_failure(void);
 void test_client_tls_peer_verification(void);

@@ -1,0 +1,370 @@
+// Whole-response framing against a scripted origin, split from
+// http_origin_tests.c so each test TU stays under the repo size budget: what a
+// response's status, repeated headers and NUL bytes do to the body the caller
+// sees, and chunked bodies far past the transport's buffer [HTTP-RESPONSE-FRAMING],
+// [HTTP-CHUNKED-DECODE].
+#include "http_client_internal.h"
+#include "http_runtime_tests.h"
+#include "http_shared.h"
+#include "io_error.h"
+
+#include <assert.h>
+#include <stdio.h>
+
+static const char NUL_REFUSED[] = "http response: NUL byte: a string cannot hold it";
+static const char TOO_BIG_REFUSED[] =
+    "http response: chunked body: chunk size exceeds the remaining body";
+static const char HEAD_CUT[] = "http response: head: truncated";
+static const char HEAD_BAD[] = "http response: head: malformed";
+static const char BODY_CUT[] = "http response: body: truncated";
+static const char LENGTH_BAD[] = "http response: body: invalid Content-Length";
+
+// Handles are never reused, and servers share their numbering with clients, so
+// these hundreds of cases share one client rather than spend hundreds of handles.
+static int64_t client_id;
+
+static int64_t exchange(const char *reply, size_t len) {
+  ScriptedOrigin origin;
+  origin_start_bytes(&origin, reply, len);
+  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/f",
+                                     (char *)(uintptr_t) "");
+  origin_stop(&origin);
+  return handle;
+}
+
+static void expect_response_n(const char *reply, size_t len, int64_t status,
+                              const char *body) {
+  long live = test_alloc_live();
+  osp_io_error_clear();
+  int64_t handle = exchange(reply, len);
+  assert(handle >= 1);
+  assert(osp_io_error() == NULL);
+  assert(http_response_status(handle) == status);
+  char *got = http_response_body(handle);
+  assert(got != NULL && strcmp(got, body) == 0);
+  free(got);
+  assert(http_response_free(handle) == 0);
+  assert(test_alloc_live() == live);
+}
+
+// Answered with this code and message, nothing leaked, the client still usable.
+static void expect_failure_n(const char *reply, size_t len, int64_t code,
+                             const char *message) {
+  static const char good[] = "HTTP/1.1 200 OK\r\n\r\nok";
+  long live = test_alloc_live();
+  osp_io_error_clear();
+  assert(exchange(reply, len) == code);
+  assert(osp_io_error() != NULL && strcmp(osp_io_error(), message) == 0);
+  assert(test_alloc_live() == live);
+  osp_io_error_clear();
+  int64_t handle = exchange(good, sizeof(good) - 1);
+  assert(handle >= 1 && osp_io_error() == NULL);
+  assert(http_response_free(handle) == 0);
+}
+
+static void expect_refused_n(const char *reply, size_t len, const char *message) {
+  expect_failure_n(reply, len, -14, message);
+}
+
+#define EXPECT_REFUSED(reply, message)                                         \
+  expect_refused_n(reply, sizeof(reply) - 1, message)
+#define EXPECT_RESPONSE(reply, status, body)                                   \
+  expect_response_n(reply, sizeof(reply) - 1, status, body)
+#define EXPECT_NUL_REFUSED(reply)                                              \
+  expect_refused_n(reply, sizeof(reply) - 1, NUL_REFUSED)
+
+// 204 and 304 end at the blank line whatever their headers say (RFC 9112 6.3).
+static void check_statuses_without_a_body(void) {
+  EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n", 304, "");
+  EXPECT_RESPONSE("HTTP/1.1 204 No Content\r\nTransfer-Encoding: chunked\r\n\r\n", 204, "");
+  EXPECT_RESPONSE("HTTP/1.0 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n", 304, "");
+  EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\n\r\n", 304, "");
+  EXPECT_RESPONSE("HTTP/1.1 204 No Content\r\n\r\n", 204, "");
+  EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\nETag: \"a\"\r\nContent-Length: 5\r\n\r\n", 304, "");
+  EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n", 304, "");
+  EXPECT_RESPONSE("HTTP/1.1 204 No Content\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 204, "");
+  EXPECT_RESPONSE("HTTP/1.1 204 No Content\r\n\r\nstray", 204, "");
+  // A body is still required of every neighbouring status.
+  expect_refused_n("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n", 47,
+                   "http response: chunked body: truncated");
+  expect_refused_n("HTTP/1.1 203 OK\r\nTransfer-Encoding: chunked\r\n\r\n", 47,
+                   "http response: chunked body: truncated");
+  expect_refused_n("HTTP/1.1 305 OK\r\nTransfer-Encoding: chunked\r\n\r\n", 47,
+                   "http response: chunked body: truncated");
+  EXPECT_RESPONSE("HTTP/1.1 500 Oops\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nno\r\n0\r\n\r\n", 500, "no");
+}
+
+// A body a C string can't hold is refused wherever the NUL sits, never cut short
+// at it, and a NUL can't hide the rest of the head from the framing checks.
+static void check_nul_bytes(void) {
+  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhe\0lo\r\n0\r\n\r\n");
+  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\n\0\r\n0\r\n\r\n");
+  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\nX\0: 1\r\n\r\n");
+  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\0\r\nhello\r\n0\r\n\r\n");
+  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhe\0lo");
+  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\n\r\n\0");
+  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\n\r\nhello\0");
+  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nX-A: \0\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n");
+  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\n\0\r\n\r\nhello");
+  EXPECT_NUL_REFUSED("HTTP/1.1 2\0 OK\r\n\r\nhello");
+  EXPECT_NUL_REFUSED("\0HTTP/1.1 200 OK\r\n\r\nhello");
+  EXPECT_NUL_REFUSED("HTTP/1.1 304 Not Modified\r\n\r\n\0");
+}
+
+// Repeated Transfer-Encoding lines are one list, so the last line's last coding
+// decides, wherever other headers fall between them.
+static void check_repeated_transfer_encoding(void) {
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nX-A: 1\r\ntransfer-encoding: CHUNKED\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: gzip\r\n\r\n2\r\nhi\r\n", 200, "2\r\nhi\r\n");
+  static const char lying[] =
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n";
+  expect_refused_n(lying, sizeof(lying) - 1, TOO_BIG_REFUSED);
+}
+
+// Running out of memory copying the headers is -9, never a chunked body handed
+// back raw because no headers were left to name its framing. The padding gives
+// the header block a size no other allocation in the exchange asks for.
+static void check_header_allocation_failure(void) {
+  char head[600];
+  char pad[401];
+  memset(pad, 'p', sizeof(pad) - 1);
+  pad[sizeof(pad) - 1] = '\0';
+  int block = snprintf(head, sizeof(head), "X-Pad: %s\r\nTransfer-Encoding: chunked", pad);
+  char reply[700];
+  int len = snprintf(reply, sizeof(reply), "HTTP/1.1 200 OK\r\n%s\r\n\r\n2\r\nhi\r\n0\r\n\r\n", head);
+  long live = test_alloc_live();
+  test_alloc_fail_size((size_t)block + 1);
+  assert(exchange(reply, (size_t)len) == -9);
+  test_alloc_fail_off();
+  assert(test_alloc_live() == live);
+  int64_t handle = exchange(reply, (size_t)len);
+  assert(handle >= 1);
+  char *body = http_response_body(handle);
+  assert(body != NULL && strcmp(body, "hi") == 0);
+  free(body);
+  assert(http_response_free(handle) == 0);
+}
+
+static size_t put_chunks(char *out, const char *payload, size_t payload_len,
+                         size_t step) {
+  size_t at = (size_t)sprintf(out, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
+  for (size_t done = 0; done < payload_len; done += step) {
+    size_t take = payload_len - done < step ? payload_len - done : step;
+    at += (size_t)sprintf(out + at, "%zx\r\n", take);
+    memcpy(out + at, payload + done, take);
+    at += take;
+    memcpy(out + at, "\r\n", 2);
+    at += 2;
+  }
+  return at;
+}
+
+// Bodies many reads long reach the decoder whole, in one chunk or thousands, and
+// a lie told only at the very end is still caught.
+static void check_bodies_past_the_transport_buffer(void) {
+  size_t payload_len = MAX_HTTP_BUFFER * 8 + 123;
+  char *payload = malloc(payload_len + 1);
+  char *reply = malloc(payload_len * 7 + 256);
+  assert(payload != NULL && reply != NULL);
+  for (size_t i = 0; i < payload_len; i++) {
+    payload[i] = (char)('a' + i % 26);
+  }
+  payload[payload_len] = '\0';
+  static const size_t steps[] = {1, 7, 4096, MAX_HTTP_BUFFER, MAX_HTTP_BUFFER + 1, 1 << 30};
+  for (size_t s = 0; s < sizeof(steps) / sizeof(steps[0]); s++) {
+    size_t at = put_chunks(reply, payload, payload_len, steps[s]);
+    memcpy(reply + at, "0\r\n\r\n", 5);
+    expect_response_n(reply, at + 5, 200, payload);
+    memcpy(reply + at, "7FFFFFFF\r\nhi\r\n", 14);
+    expect_refused_n(reply, at + 14, TOO_BIG_REFUSED);
+  }
+  free(reply);
+  free(payload);
+}
+
+// A status is exactly three digits, so a hostile one can't overflow, or pose as
+// one of this API's own negative codes.
+static void check_status_lines(void) {
+  static const char not_http[] = "http response: status line: not HTTP/1.x";
+  static const char *const bad[] = {
+      "HTTP/1.1 -14 X\r\n\r\nb",       "HTTP/1.1 99999999999999999999 X\r\n\r\nb",
+      "HTTP/1.1 20 OK\r\n\r\nb",        "HTTP/1.1 2000 OK\r\n\r\nb",
+      "HTTP/1.1 304abc\r\n\r\nb",       "HTTP/1.1 \r\n\r\nb",
+      "HTTP/1.1 OK\r\n\r\nb",           "HTTP/1.1 +20 OK\r\n\r\nb",
+      "HTTP/1.1  200 OK\r\n\r\nb",      "HTTP/1.1 020 OK\r\n\r\nb",
+      "HTTP/1.1 2x0 OK\r\n\r\nb",       "HTTP/2 200\r\n\r\nb",
+      "HTTP/1.1\r\n\r\nb",              "NOT-HTTP\r\n\r\nb",
+      "http/1.1 200 OK\r\n\r\nb",
+      "NOT-HTTP\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n\r\n",
+      "HTTP/1.1 100 Continue\r\n\r\n",  "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 -5 X\r\n\r\nb",
+  };
+  for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+    expect_failure_n(bad[i], strlen(bad[i]), -8, not_http);
+  }
+  EXPECT_RESPONSE("HTTP/1.1 200\r\n\r\nb", 200, "b");
+  EXPECT_RESPONSE("HTTP/1.1 200 \r\n\r\nb", 200, "b");
+  EXPECT_RESPONSE("HTTP/1.0 100 x\r\n\r\nHTTP/1.0 599 y\r\n\r\nb", 599, "b");
+  EXPECT_RESPONSE("HTTP/1.1 999 z\r\n\r\nb", 999, "b");
+}
+
+// Interim responses aren't the answer: the final response's status, headers and
+// framing are what the caller gets. 101 is final, and has no body.
+static void check_interim_responses(void) {
+  EXPECT_RESPONSE("HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi", 200, "hi");
+  EXPECT_RESPONSE("HTTP/1.1 103 Hints\r\nLink: </a>\r\n\r\nHTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n\r\n", 200, "hi");
+  EXPECT_RESPONSE("HTTP/1.1 100 a\r\n\r\nHTTP/1.1 102 b\r\n\r\nHTTP/1.1 103 c\r\n\r\nHTTP/1.1 404 d\r\n\r\nno", 404, "no");
+  EXPECT_RESPONSE("HTTP/1.1 100 a\r\n\r\nHTTP/1.1 304 d\r\nTransfer-Encoding: chunked\r\n\r\n", 304, "");
+  EXPECT_RESPONSE("HTTP/1.1 101 Switching\r\nUpgrade: x\r\n\r\nraw bytes", 101, "");
+  // An interim response's headers say nothing about the final one's framing.
+  EXPECT_RESPONSE("HTTP/1.1 100 a\r\nTransfer-Encoding: chunked\r\n\r\nHTTP/1.1 200 OK\r\n\r\n7FFFFFFF", 200, "7FFFFFFF");
+  EXPECT_REFUSED("HTTP/1.1 100 a\r\n\r\nHTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n", TOO_BIG_REFUSED);
+  EXPECT_REFUSED("HTTP/1.1 100 a\r\n\r\nHTTP/1.1 200 OK\r\nX: y", HEAD_CUT);
+  // The status-only API reports the final status too.
+  static const char interim[] = "HTTP/1.1 100 a\r\n\r\nHTTP/1.1 201 b\r\n\r\n";
+  ScriptedOrigin origin;
+  origin_start(&origin, interim);
+  assert(http_get(client_id, (char *)(uintptr_t) "/s", (char *)(uintptr_t) "") == 201);
+  origin_stop(&origin);
+}
+
+// A head that never reaches its blank line, or that hides framing from the header
+// scan, is refused: its bytes must not come back as a body.
+static void check_heads(void) {
+  EXPECT_REFUSED("HTTP/1.1 200 OK", HEAD_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200", HEAD_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\n", HEAD_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n", HEAD_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nX: y\r\n\r", HEAD_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\nTransfer-Encoding: chunked\n\n7FFFFFFF\nhi\n", HEAD_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 O\nK\r\n\r\nb", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nX: a\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nX: a\rb\r\n\r\nb", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nX: a\x01\r\n\r\nb", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding : chunked\r\n\r\n7FFFFFFF\r\nhi\r\n", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding\t: chunked\r\n\r\nb", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip,\r\n chunked\r\n\r\n2\r\nhi\r\n0\r\n\r\n", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nX: a\r\n\ty\r\n\r\nb", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nno colon\r\n\r\nb", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\n: no name\r\n\r\nb", HEAD_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nX: y\r\nZ\r\n\r\nb", HEAD_BAD);
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\n\r\n", 200, "");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nX:\r\nY:\ta b:c\r\n\r\nb", 200, "b");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nX-Caf\xc3\xa9: \xc3\xa9\r\n\r\nb", 200, "b");
+}
+
+// A declared length is checked: fewer bytes than it promises is a body cut short,
+// and more is not part of this response. Chunked framing and bodiless statuses
+// take no notice of it.
+static void check_content_length(void) {
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\ncontent-length:5  \r\n\r\nhello", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", 200, "");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 0005\r\n\r\nhello", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhello", 200, "he");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nhello", 200, "");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 5\r\n\r\nhello", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 3\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: x\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n\r\n", 200, "hi");
+  EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\nContent-Length: 99\r\n\r\n", 304, "");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nX-Content-Length: 99\r\n\r\nhello", 200, "hello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Lengths: 99\r\n\r\nhello", 200, "hello");
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort", BODY_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\n", BODY_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 18446744073709551615\r\n\r\nshort", BODY_CUT);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 18446744073709551616\r\n\r\nshort", LENGTH_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 99999999999999999999999\r\n\r\nshort", LENGTH_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\nshort", LENGTH_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: +5\r\n\r\nhello", LENGTH_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 0x5\r\n\r\nhello", LENGTH_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 5 5\r\n\r\nhello", LENGTH_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 5, 5\r\n\r\nhello", LENGTH_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length:\r\n\r\nhello", LENGTH_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 2\r\n\r\nhello", LENGTH_BAD);
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: x\r\n\r\nhello", LENGTH_BAD);
+}
+
+// One damaged response through the parsing a real exchange uses, in a heap block
+// of exactly its length plus the terminator the transport adds, so a sanitizer
+// build traps any read past the end. It may be refused or accepted, never anything
+// else, and whatever is accepted obeys the rules callers rely on.
+static void parse_damaged(const char *bytes, size_t len) {
+  char *raw = malloc(len + 1);
+  assert(raw != NULL);
+  memcpy(raw, bytes, len);
+  raw[len] = '\0';
+  const char *sep = NULL;
+  int64_t status = 0;
+  int64_t rc = 0;
+  const char *head = http_checked_head(raw, len, &sep, &status, &rc);
+  if (!head) {
+    assert(rc == -8 || rc == -14);
+    osp_io_error_clear();
+    free(raw);
+    return;
+  }
+  assert(status >= 100 && status <= 999 && memchr(raw, '\0', len) == NULL);
+  char *headers = NULL;
+  assert(http_copy_response_headers(head, sep, &headers));
+  char *body = NULL;
+  const char *start = sep + 4;
+  rc = http_response_body_of(status, headers, start, len - (size_t)(start - raw), &body);
+  if (rc == 0) {
+    assert(body != NULL && strlen(body) <= len);
+    free(body);
+  } else {
+    assert(rc == -14 && body == NULL);
+    osp_io_error_clear();
+  }
+  free(headers);
+  free(raw);
+}
+
+// Every byte value at every position, every deletion, every insertion and every
+// truncation of responses that between them use all the framing there is.
+static void check_every_response_mutation(void) {
+  static const char *const responses[] = {
+      "HTTP/1.1 200 OK\r\nX-A: 1\r\nTransfer-Encoding: gzip, chunked\r\n\r\n"
+      "5;a=b\r\nhello\r\n1A\r\nabcdefghijklmnopqrstuvwxyz\r\n0;end\r\nX-T: 1\r\n\r\n",
+      "HTTP/1.0 200 OK\r\nContent-Length: 5\r\nX-B: 2\r\n\r\nhello",
+      "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 103 Hints\r\nLink: </a>\r\n\r\n"
+      "HTTP/1.1 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n",
+  };
+  char mutated[256];
+  for (size_t r = 0; r < sizeof(responses) / sizeof(responses[0]); r++) {
+    const char *good = responses[r];
+    size_t len = strlen(good);
+    assert(len + 1 < sizeof(mutated));
+    for (size_t at = 0; at < len; at++) {
+      parse_damaged(good, at);
+      memcpy(mutated, good, at);
+      memcpy(mutated + at, good + at + 1, len - at - 1);
+      parse_damaged(mutated, len - 1);
+      for (int byte = 0; byte < 256; byte++) {
+        memcpy(mutated, good, len);
+        mutated[at] = (char)byte;
+        parse_damaged(mutated, len);
+        memcpy(mutated, good, at);
+        mutated[at] = (char)byte;
+        memcpy(mutated + at + 1, good + at, len - at);
+        parse_damaged(mutated, len + 1);
+      }
+    }
+    parse_damaged(good, len);
+  }
+}
+
+void test_response_framing(void) {
+  client_id = origin_client();
+  check_every_response_mutation();
+  check_status_lines();
+  check_interim_responses();
+  check_heads();
+  check_content_length();
+  check_statuses_without_a_body();
+  check_nul_bytes();
+  check_repeated_transfer_encoding();
+  check_header_allocation_failure();
+  check_bodies_past_the_transport_buffer();
+  http_close_client(client_id);
+}
