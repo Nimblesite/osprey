@@ -158,6 +158,20 @@ fn assert_matrix_request(prefix: &str, callee: &str, name: &str) {
     );
 }
 
+/// [GPU-MATMUL] A better constraint diagnostic keeps the original call site.
+#[test]
+fn matrix_operand_rejection_keeps_its_source_position() {
+    let errors = crate::testutil::check(include_str!(
+        "../../../../examples/failscompilation/gpu_matmul_int_buffer.ospo"
+    ));
+    assert!(
+        errors.iter().any(|error| error
+            .position
+            .is_some_and(|at| at.line == 5 && at.column == 4)),
+        "{errors:?}"
+    );
+}
+
 #[test]
 fn network_builtins_match_the_runtime_status_abi() {
     let expected = [
