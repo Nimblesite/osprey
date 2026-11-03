@@ -13,6 +13,7 @@ from pydantic_ai import Direct
 from pydantic_ai import Exceptions as E
 from pydantic_ai import JsonSchema
 from pydantic_ai import JsonUtil as J
+from pydantic_ai import Mcp
 from pydantic_ai import Messages as M
 from pydantic_ai import Models
 from pydantic_ai import ModelsOpenai
@@ -435,6 +436,562 @@ def settings_cases():
     ]
 
 
+# Providers, profiles and the unified `thinking` setting: expected values read from
+# upstream's providers/moonshotai.py, providers/zai.py, profiles/moonshotai.py,
+# profiles/zai.py, models/zai.py, providers/deepseek.py and the thinking handling in
+# models/openai.py and models/__init__.py (2.46.0), per docs/plans/0052-agent-providers-settings.md.
+
+THINKING_VALUES = ["absent", "true", "false", "minimal", "low", "medium", "high", "xhigh"]
+"""The unified `thinking` permutations, in THINKING_TABLE column order."""
+
+THINKING_TABLE = [
+    ["deepseek", "deepseek-chat", "||required;||required;||required;||required;||required;||required;||required;||required", ""],
+    ["deepseek", "deepseek-reasoner", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", ""],
+    ["deepseek", "deepseek-v4-flash", "||auto;medium||auto;none||required;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "off,on,minimal,low,medium,high,xhigh"],
+    ["openai", "gpt-4o", "||required;||required;||required;||required;||required;||required;||required;||required", ""],
+    ["openai", "o1-mini", "||required;medium||required;none||required;minimal||required;low||required;medium||required;high||required;xhigh||required", "off,minimal,low,medium,high,xhigh"],
+    ["moonshotai", "kimi-k3", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "minimal,low,medium,high"],
+    ["moonshotai", "kimi-k2.6", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "minimal,low,medium,high"],
+    ["moonshotai", "kimi-thinking-preview", "||auto;medium||auto;||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto", "minimal,low,medium,high"],
+    ["moonshotai", "moonshot-v1-8k", "||auto;||auto;||auto;||auto;||auto;||auto;||auto;||auto", ""],
+    ["zai", "glm-5.3", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false}|required;low|{"clear_thinking":false,"type":"enabled"}|required;low|{"clear_thinking":false,"type":"enabled"}|required;high|{"clear_thinking":false,"type":"enabled"}|required;high|{"clear_thinking":false,"type":"enabled"}|required;max|{"clear_thinking":false,"type":"enabled"}|required', "low,high,max"],
+    ["zai", "glm-5.2", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"disabled"}|required;minimal|{"clear_thinking":false,"type":"enabled"}|required;low|{"clear_thinking":false,"type":"enabled"}|required;medium|{"clear_thinking":false,"type":"enabled"}|required;high|{"clear_thinking":false,"type":"enabled"}|required;xhigh|{"clear_thinking":false,"type":"enabled"}|required', "off,minimal,low,medium,high,xhigh"],
+    ["zai", "glm-4.7", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"disabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required', "off,on"],
+    ["zai", "glm-5", '|{"clear_thinking":false}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"disabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required;|{"clear_thinking":false,"type":"enabled"}|required', "off,on"],
+    ["zai", "glm-3-turbo", "||required;||required;||required;||required;||required;||required;||required;||required", ""],
+]
+"""Per model: the provider kind, the name, the eight `reasoning_effort|thinking|tool_choice` projections, and `thinking_levels`."""
+
+
+def provider_of(kind):
+    """The real provider of a kind, as the app would build it."""
+    if kind == "deepseek":
+        return ProvidersHttp.DeepSeekProvider("k")
+    elif kind == "moonshotai":
+        return ProvidersHttp.MoonshotAIProvider("k")
+    elif kind == "zai":
+        return ProvidersHttp.ZaiProvider("k")
+    else:
+        return ProvidersHttp.OpenAIProvider("", "k")
+
+
+def one_tool():
+    """One strict-compatible tool, so `tool_choice` and `strict` are exercised."""
+    return unwrap_or(listGet(tools(), 0), Tools.tool_definition("", "", JsonNull()))
+
+
+def thinking_settings(i):
+    """The settings map of THINKING_VALUES[i]: absent, `true`, `false`, then each level."""
+    values = [JsonNull(), JsonBool(True), JsonBool(False), JsonString("minimal"), JsonString("low"), JsonString("medium"), JsonString("high"), JsonString("xhigh")]
+    value = unwrap_or(listGet(values, i), JsonNull())
+    return {} if J.is_null(value) else {"thinking": value}
+
+
+def body_projection(body):
+    """The members a thinking permutation pins: `reasoning_effort`, `thinking`, `tool_choice`."""
+    thinking = J.object_at(body, "thinking")
+    thinking_json = "" if J.is_null(thinking) else canon(thinking)
+    return J.text_at(body, "reasoning_effort", "") + "|" + thinking_json + "|" + J.text_at(body, "tool_choice", "")
+
+
+def forced_tools():
+    """One tool with text output disallowed, so a provider that supports forcing answers `tool_choice: required`."""
+    return params_with([one_tool()], False, [])
+
+
+def thinking_body_case(i):
+    row = atl(THINKING_TABLE, i)
+    model_name = ats(row, 1)
+    model = ModelsOpenai.OpenAIChatModel(model_name, provider_of(ats(row, 0)), {})
+    projections = join(cases(8, lambda j: body_projection(ModelsOpenai.completions_body(model_name, model.profile, plain(), thinking_settings(j), forced_tools()))), ";")
+    return Check.equal(f"thinking.body.{model_name}", projections, ats(row, 2))
+
+
+def thinking_levels_case(i):
+    row = atl(THINKING_TABLE, i)
+    model_name = ats(row, 1)
+    profile = ModelsOpenai.OpenAIChatModel(model_name, provider_of(ats(row, 0)), {}).profile
+    return Check.equal(f"thinking.levels.{model_name}", join(Profiles.thinking_levels(profile, ats(row, 0)), ","), ats(row, 3))
+
+
+def thinking_setting_cases():
+    return [
+        Check.equal("thinking.setting.off", J.encode(Profiles.thinking_setting("off")), "false"),
+        Check.equal("thinking.setting.on", J.encode(Profiles.thinking_setting("on")), "true"),
+        Check.equal("thinking.setting.max", J.encode(Profiles.thinking_setting("max")), "\"xhigh\""),
+        Check.equal("thinking.setting.minimal", J.encode(Profiles.thinking_setting("minimal")), "\"minimal\""),
+        Check.equal("thinking.setting.unknown", J.encode(Profiles.thinking_setting("turbo")), "null"),
+    ]
+
+
+def pick_projection(model_name, profile, level):
+    settings = {"thinking": Profiles.thinking_setting(level)}
+    return body_projection(ModelsOpenai.completions_body(model_name, profile, plain(), settings, forced_tools()))
+
+
+def thinking_pick_cases():
+    glm53 = ModelsOpenai.OpenAIChatModel("glm-5.3", ProvidersHttp.ZaiProvider("k"), {})
+    kimi = ModelsOpenai.OpenAIChatModel("kimi-k3", ProvidersHttp.MoonshotAIProvider("k"), {})
+    glm47 = ModelsOpenai.OpenAIChatModel("glm-4.7", ProvidersHttp.ZaiProvider("k"), {})
+    v4 = ModelsOpenai.OpenAIChatModel("deepseek-v4-flash", ProvidersHttp.DeepSeekProvider("k"), {})
+    enabled = '{"clear_thinking":false,"type":"enabled"}'
+    return [
+        Check.equal("thinking.pick.glm-5.3", join(mapList(Profiles.thinking_levels(glm53.profile, "zai"), lambda level: pick_projection("glm-5.3", glm53.profile, level)), ";"), f"low|{enabled}|required;high|{enabled}|required;max|{enabled}|required"),
+        Check.equal("thinking.pick.kimi-k3", join(mapList(Profiles.thinking_levels(kimi.profile, "moonshotai"), lambda level: pick_projection("kimi-k3", kimi.profile, level)), ";"), "minimal||auto;low||auto;medium||auto;high||auto"),
+        Check.equal("thinking.pick.glm-4.7", join(mapList(Profiles.thinking_levels(glm47.profile, "zai"), lambda level: pick_projection("glm-4.7", glm47.profile, level)), ";"), '|{"clear_thinking":false,"type":"disabled"}|required;|' + enabled + "|required"),
+        Check.equal("thinking.pick.deepseek-v4-flash", join(mapList(Profiles.thinking_levels(v4.profile, "deepseek"), lambda level: pick_projection("deepseek-v4-flash", v4.profile, level)), ";"), "none||required;medium||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto"),
+    ]
+
+
+def provider_flag_cases():
+    kimi = Profiles.moonshotai_provider_profile("kimi-k3")
+    v1 = Profiles.moonshotai_provider_profile("moonshot-v1-8k")
+    glm53 = Profiles.zai_provider_profile("glm-5.3")
+    glm47 = Profiles.zai_provider_profile("glm-4.7")
+    glm3 = Profiles.zai_provider_profile("glm-3-turbo")
+    v4 = Profiles.deepseek_model_profile("deepseek-v4-flash")
+    reasoner = Profiles.deepseek_model_profile("deepseek-reasoner")
+    return [
+        same("providers.kimi_flags", [
+            Profiles.profile_bool(kimi, "openai_supports_tool_choice_required", True),
+            Profiles.profile_bool(kimi, "thinking_always_enabled", False),
+            Profiles.profile_bool(kimi, "supports_thinking", False),
+            Profiles.profile_bool(kimi, "supports_json_object_output", False),
+            Profiles.profile_bool(Profiles.moonshotai_model_profile("kimi-k3"), "supports_thinking", False),
+            Profiles.profile_bool(Profiles.moonshotai_model_profile("kimi-k3"), "ignore_streamed_leading_whitespace", False),
+            Profiles.profile_bool(Profiles.moonshotai_model_profile("moonshot-v1-8k"), "supports_thinking", True),
+        ], [False, True, True, True, True, True, False]),
+        same("providers.kimi_texts", [
+            Profiles.profile_text(kimi, "json_schema_transformer", ""),
+            Profiles.profile_text(kimi, "openai_chat_thinking_field", ""),
+            Profiles.profile_text(kimi, "openai_chat_send_back_thinking_parts", ""),
+        ], ["openai", "reasoning_content", "field"]),
+        same("providers.kimi_v1", [Profiles.profile_bool(v1, "supports_thinking", True), Profiles.profile_bool(v1, "thinking_always_enabled", True), Profiles.profile_bool(v1, "openai_supports_tool_choice_required", True)], [False, False, False]),
+        same("providers.zai_glm-5.3", [
+            Profiles.profile_bool(glm53, "supports_thinking", False),
+            Profiles.profile_bool(glm53, "thinking_always_enabled", False),
+            Profiles.profile_bool(glm53, "zai_supports_reasoning_effort", False),
+            Profiles.profile_bool(glm53, "zai_thinking_body", False),
+        ], [True, True, True, True]),
+        Check.equal("providers.zai_mapping", canon(unwrap_or(mapGet(glm53, "zai_reasoning_effort_mapping"), JsonNull())), "{\"high\":\"high\",\"low\":\"low\",\"medium\":\"high\",\"minimal\":\"low\",\"xhigh\":\"max\"}"),
+        same("providers.zai_glm-4.7_texts", [
+            Profiles.profile_text(glm47, "openai_chat_thinking_field", ""),
+            Profiles.profile_text(glm47, "openai_chat_send_back_thinking_parts", ""),
+        ], ["reasoning_content", "field"]),
+        same("providers.zai_glm-4.7_flags", [
+            Profiles.profile_bool(glm47, "supports_thinking", False),
+            Profiles.profile_bool(glm47, "thinking_always_enabled", True),
+            Profiles.profile_bool(glm47, "zai_supports_reasoning_effort", True),
+            len(J.members_of(unwrap_or(mapGet(glm47, "zai_reasoning_effort_mapping"), JsonNull()))) == 0,
+        ], [True, False, False, True]),
+        same("providers.zai_glm-3-turbo", [Profiles.profile_bool(glm3, "supports_thinking", True), Profiles.profile_bool(glm3, "zai_thinking_body", False), Profiles.profile_bool(Profiles.zai_model_profile("glm-3-turbo"), "supports_thinking", True)], [False, True, False]),
+        same("providers.deepseek_defaults", [
+            Profiles.profile_bool(v4, "openai_reasoning_enabled_by_default", True),
+            Profiles.profile_bool(v4, "openai_supports_forced_tool_choice_with_thinking", True),
+            Profiles.profile_bool(reasoner, "openai_reasoning_enabled_by_default", True),
+            Profiles.profile_bool(reasoner, "openai_supports_forced_tool_choice_with_thinking", True),
+            Profiles.profile_bool(reasoner, "openai_supports_tool_choice_required", True),
+        ], [True, False, True, True, False]),
+        Check.equal("providers.dispatch", Profiles.profile_text(ModelsOpenai.OpenAIChatModel("glm-5.3", ProvidersHttp.ZaiProvider("k"), {}).profile, "json_schema_transformer", ""), "openai"),
+        Check.equal("providers.moonshotai_url", ProvidersHttp.MoonshotAIProvider("k").base_url, "https://api.moonshot.ai/v1"),
+        Check.equal("providers.zai_url", ProvidersHttp.ZaiProvider("k").base_url, "https://api.z.ai/api/paas/v4"),
+    ]
+
+
+def coding_plan_model():
+    """A provider named differently but serving Z.AI's API, reusing the profile directly (the app's coding plan endpoint)."""
+    provider = Providers.Provider(name="zai-coding", base_url="https://api.z.ai/api/coding/paas/v4", api_key="k", post=lambda _path, _body, _headers: Error(message="not called"))
+    return ModelsOpenai.OpenAIChatModel("glm-5.3", provider, Profiles.zai_provider_profile("glm-5.3"))
+
+
+def provider_reuse_cases():
+    model = coding_plan_model()
+    return [
+        same("providers.reuse_flags", [Profiles.profile_bool(model.profile, "zai_thinking_body", False), Profiles.profile_bool(model.profile, "thinking_always_enabled", False)], [True, True]),
+        Check.equal("providers.reuse_body", body_projection(ModelsOpenai.completions_body("glm-5.3", model.profile, plain(), {"thinking": JsonString("minimal")}, forced_tools())), 'low|{"clear_thinking":false,"type":"enabled"}|required'),
+    ]
+
+
+def thinking_extra_cases():
+    glm53 = ModelsOpenai.OpenAIChatModel("glm-5.3", ProvidersHttp.ZaiProvider("k"), {}).profile
+    glm52 = ModelsOpenai.OpenAIChatModel("glm-5.2", ProvidersHttp.ZaiProvider("k"), {}).profile
+    glm47 = ModelsOpenai.OpenAIChatModel("glm-4.7", ProvidersHttp.ZaiProvider("k"), {}).profile
+    glm3 = ModelsOpenai.OpenAIChatModel("glm-3-turbo", ProvidersHttp.ZaiProvider("k"), {}).profile
+    v4 = ModelsOpenai.OpenAIChatModel("deepseek-v4-flash", ProvidersHttp.DeepSeekProvider("k"), {}).profile
+    parameters = forced_tools()
+    merged = ModelsOpenai.completions_body("glm-5.3", glm53, plain(), {"thinking": JsonBool(True), "extra_body": decode("{\"foo\":1}")}, parameters)
+    clash = ModelsOpenai.completions_body("glm-5.3", glm53, plain(), {"thinking": JsonBool(True), "extra_body": decode("{\"thinking\":{\"type\":\"disabled\"}}")}, parameters)
+    clear = ModelsOpenai.completions_body("glm-4.7", glm47, plain(), {"thinking": JsonBool(True), "zai_clear_thinking": JsonBool(True)}, parameters)
+    explicit = ModelsOpenai.completions_body("deepseek-v4-flash", v4, plain(), {"thinking": JsonString("high"), "openai_reasoning_effort": JsonString("low")}, parameters)
+    zai_explicit = ModelsOpenai.completions_body("glm-5.2", glm52, plain(), {"thinking": JsonString("low"), "openai_reasoning_effort": JsonString("high")}, parameters)
+    nonthinking = ModelsOpenai.completions_body("glm-3-turbo", glm3, plain(), {"thinking": JsonBool(True), "zai_clear_thinking": JsonBool(True)}, parameters)
+    return [
+        Check.truth("thinking.extra_body_kept", contains(canon(merged), "\"foo\":1") and body_projection(merged) == '|{"clear_thinking":false,"type":"enabled"}|required', canon(merged)),
+        Check.equal("thinking.extra_body_replaced", body_projection(clash), '|{"clear_thinking":false,"type":"enabled"}|required'),
+        Check.equal("thinking.clear_override", body_projection(clear), '|{"clear_thinking":true,"type":"enabled"}|required'),
+        Check.equal("thinking.explicit_effort_wins", body_projection(explicit), "low||auto"),
+        Check.equal("thinking.zai_ignores_openai_effort", body_projection(zai_explicit), 'low|{"clear_thinking":false,"type":"enabled"}|required'),
+        Check.equal("thinking.zai_clear_on_nonthinking", body_projection(nonthinking), '|{"clear_thinking":true}|required'),
+    ]
+
+
+def reasoning_round_trip_cases():
+    reply = '{"id":"r1","model":"m","choices":[{"message":{"role":"assistant","content":"calling","reasoning_content":"hmm","tool_calls":[{"id":"c1","type":"function","function":{"name":"add","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":2}}'
+    kimi = ModelsOpenai.OpenAIChatModel("kimi-k3", ProvidersHttp.MoonshotAIProvider("k"), {})
+    glm = ModelsOpenai.OpenAIChatModel("glm-4.7", ProvidersHttp.ZaiProvider("k"), {})
+    second = M.of_response(M.model_response([M.ToolCallPart(tool_name="get_temperature", args="{}", tool_call_id="c3")], ""))
+    parameters = Models.with_tools([one_tool()])
+    match ModelsOpenai.process_response("kimi-k3", "moonshotai", kimi.profile, reply):
+        case E.Ok(value=response):
+            messages = listConcat(history(), [M.of_response(response), M.of_request(M.ModelRequest(parts=[M.ToolReturnPart(tool_name="add", content="3", tool_call_id="c1")], instructions="")), second])
+            body = ModelsOpenai.completions_body("kimi-k3", kimi.profile, messages, {}, parameters)
+            mapped = J.list_at(body, "messages")
+            kimi_assistant = canon(unwrap_or(listGet(mapped, 9), JsonNull()))
+            kimi_backfill = canon(unwrap_or(listGet(mapped, 11), JsonNull()))
+            glm_body = J.list_at(ModelsOpenai.completions_body("glm-4.7", glm.profile, messages, {}, parameters), "messages")
+            glm_assistant = canon(unwrap_or(listGet(glm_body, 9), JsonNull()))
+            return [
+                Check.equal("thinking.reasoning_read", join(mapList(response.parts, describe_part), "|"), "thinking:hmm|text:calling|tool-call:add|{}|c1"),
+                Check.truth("thinking.kimi_sends_field", contains(kimi_assistant, '\"reasoning_content\":\"hmm\"'), kimi_assistant),
+                Check.truth("thinking.kimi_backfills", contains(kimi_backfill, '\"reasoning_content\":\"\"'), kimi_backfill),
+                Check.truth("thinking.zai_sends_field", contains(glm_assistant, '\"reasoning_content\":\"hmm\"'), glm_assistant),
+                Check.equal("thinking.strict_tools", J.bool_at(J.object_at(unwrap_or(listGet(J.list_at(body, "tools"), 0), JsonNull()), "function"), "strict", False), True),
+            ]
+        case E.Failed(error=error):
+            return [Check.failed("thinking.reasoning_read", E.message_of(error))]
+
+
+# The MCP client (pydantic_ai.mcp as a sans-IO port; the recorded flows follow upstream's
+# mcp.py and the MCP specification, per docs/plans/0051-agent-mcp.md)
+
+INIT_REPLY = '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":true},"logging":{},"experimental":{"e1":{}}},"serverInfo":{"name":"srv","title":"Server","version":"2.0"},"instructions":"be helpful"}}'
+"""A recorded `initialize` reply."""
+
+
+def incoming_text(incoming):
+    """One `Incoming` as text: which kind, and what it carries."""
+    match incoming:
+        case Mcp.ResponseOk(id=id, result=result):
+            return f"ok:{J.encode(id)}:{canon(result)}"
+        case Mcp.ResponseError(id=id, error=error):
+            return f"error:{J.encode(id)}:{Mcp.message_of(error)}"
+        case Mcp.ServerRequest(id=id, method=method):
+            return f"request:{J.encode(id)}:{method}"
+        case Mcp.ServerNotification(method=method):
+            return f"notification:{method}"
+        case Mcp.Malformed(reason=reason):
+            return f"malformed:{reason}"
+
+
+def session_checks_of(result):
+    """The checks on a recorded `initialize` reply's session."""
+    match result:
+        case Mcp.Ok(session=session):
+            return [
+                Check.equal("mcp.initialize_request", canon(Mcp.initialize_request(JsonInt(1), "osprey-agent", "1.2")), '{"id":1,"jsonrpc":"2.0","method":"initialize","params":{"capabilities":{},"clientInfo":{"name":"osprey-agent","version":"1.2"},"protocolVersion":"2025-06-18"}}'),
+                Check.equal("mcp.server_info", session.server_info.name + "/" + session.server_info.title + "/" + session.server_info.version, "srv/Server/2.0"),
+                same("mcp.capabilities", [session.capabilities.tools, session.capabilities.tools_list_changed, session.capabilities.logging, session.capabilities.prompts, session.capabilities.prompts_list_changed, session.capabilities.resources, session.capabilities.resources_list_changed, session.capabilities.completions], [True, True, True, False, False, False, False, False]),
+                same("mcp.capabilities_experimental", session.capabilities.experimental, ["e1"]),
+                Check.equal("mcp.instructions", session.instructions + "/" + session.protocol_version, "be helpful/2025-06-18"),
+            ]
+        case Mcp.Failed(error=error):
+            return [Check.failed("mcp.initialize_result", Mcp.message_of(error))]
+
+
+def initialize_error_text(result):
+    """The message of a failed `initialize_result`, empty on success."""
+    match result:
+        case Mcp.Ok(session=_s):
+            return ""
+        case Mcp.Failed(error=error):
+            return Mcp.message_of(error)
+
+
+def mcp_tool_checks():
+    """The tool-of/definition/name-round-trip checks, as one outcome list."""
+    match Mcp.tool_of(decode('{"name":"add","description":"adds","inputSchema":{"type":"object","properties":{}}}')):
+        case Success(value=tool):
+            definition = Mcp.tool_definition_of("srv", tool)
+            return [
+                Check.equal("mcp.tool_names", join(mapList([definition.name, Mcp.original_tool_name("srv", definition.name), Mcp.original_tool_name("srv", "get"), Mcp.original_tool_name("srv", "unrelated")], toString), ","), "srv_add,add,get,unrelated"),
+                Check.equal("mcp.tool_definition", definition.description + "/" + canon(definition.parameters_json_schema), 'adds/{"properties":{},"type":"object"}'),
+                Check.equal("mcp.prefixed_own_prefix", Mcp.original_tool_name("srv", Mcp.tool_definition_of("srv", Mcp.Tool(name="srv_quote", description="", input_schema=J.obj([]))).name), "srv_quote"),
+            ]
+        case Error(message=message):
+            return [Check.failed("mcp.tool_of", message)]
+
+
+def mcp_session_cases():
+    session_checks = session_checks_of(Mcp.initialize_result(J.object_at(decode(INIT_REPLY), "result")))
+    bad_version = Mcp.initialize_result(decode('{"protocolVersion":"2024-11-05","serverInfo":{"name":"s","version":"1"},"capabilities":{}}'))
+    page1 = Mcp.list_tools_result(decode('{"tools":[{"name":"add","description":"adds","inputSchema":{"type":"object"}},{"name":"broken"},{"name":"get","inputSchema":{"type":"object"},"description":""}],"nextCursor":"c2"}'))
+    page2 = Mcp.list_tools_result(decode('{"tools":[{"name":"last","inputSchema":{"type":"array"}}]}'))
+    call_reply = Mcp.call_result("add", decode('{"content":[{"type":"text","text":"3"}]}'))
+    line = Mcp.encode_line(Mcp.call_tool_request(JsonInt(7), "log", {"message": JsonString("two\nlines")}))
+    return listConcat(session_checks, listConcat([
+        Check.equal("mcp.bad_version", initialize_error_text(bad_version), "Server requested protocol version 2024-11-05, which this client does not support (code: -32602)"),
+        Check.equal("mcp.initialized", canon(Mcp.initialized_notification()), '{"jsonrpc":"2.0","method":"notifications/initialized"}'),
+        Check.equal("mcp.list_tools_request", canon(Mcp.list_tools_request(JsonInt(2), "")) + "/" + canon(Mcp.list_tools_request(JsonInt(3), "c2")), '{"id":2,"jsonrpc":"2.0","method":"tools/list","params":{}}/{"id":3,"jsonrpc":"2.0","method":"tools/list","params":{"cursor":"c2"}}'),
+        Check.equal("mcp.list_tools_page1", join(mapList(page1.tools, lambda t: t.name + ":" + t.description), ";") + "/" + page1.next_cursor + "/" + join(page1.problems, ";"), "add:adds;get:/c2/tool 'broken' needs an inputSchema object"),
+        Check.equal("mcp.list_tools_page2", join(mapList(page2.tools, lambda t: t.name), ";") + "/" + page2.next_cursor, "last/"),
+        Check.equal("mcp.call_tool_request", canon(Mcp.call_tool_request(JsonInt(4), "add", {"a": JsonInt(1), "b": JsonInt(2)})), '{"id":4,"jsonrpc":"2.0","method":"tools/call","params":{"arguments":{"a":1,"b":2},"name":"add"}}'),
+        Check.equal("mcp.ping", canon(Mcp.ping_request(JsonInt(5))) + "/" + canon(Mcp.ping_response(JsonInt(5))), '{"id":5,"jsonrpc":"2.0","method":"ping","params":{}}/{"id":5,"jsonrpc":"2.0","result":{}}'),
+        Check.equal("mcp.error_response", incoming_text(Mcp.read_message('{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"no such tool","data":{"k":1}}}')), 'error:6:no such tool (code: -32601, data: {"k":1})'),
+        Check.equal("mcp.server_request", incoming_text(Mcp.read_message('{"jsonrpc":"2.0","id":9,"method":"roots/list","params":{}}')), "request:9:roots/list"),
+        Check.equal("mcp.server_notification", incoming_text(Mcp.read_message('{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}')), "notification:notifications/tools/list_changed"),
+        Check.equal("mcp.call_text", unwrap_or(call_reply, ""), "3"),
+        Check.equal("mcp.call_json_text", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"text","text":"[1, 2]"}]}')), ""), "[1,2]"),
+        Check.equal("mcp.call_bad_json_text", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"text","text":"{not json"}]}')), ""), "{not json"),
+        Check.equal("mcp.call_structured", unwrap_or(Mcp.call_result("t", decode('{"structuredContent":{"result":7},"content":[{"type":"text","text":"7"}]}')), ""), "7"),
+        Check.equal("mcp.call_structured_object", unwrap_or(Mcp.call_result("t", decode('{"structuredContent":{"a":1,"b":[2]}}')), ""), "{\"a\":1,\"b\":[2]}"),
+        Check.equal("mcp.call_mixed", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"text","text":"a"},{"type":"image","mimeType":"image/png","data":"QUJD"}]}')), ""), "a\n[image: image/png, 3 bytes]"),
+        Check.equal("mcp.call_audio", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"audio","mimeType":"audio/wav","data":"QQ=="}]}')), ""), "[audio: audio/wav, 1 bytes]"),
+        Check.equal("mcp.call_resource", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"resource_link","uri":"file:///x"},{"type":"resource","resource":{"uri":"file:///y","mimeType":"text/plain","text":"hi"}},{"type":"resource","resource":{"uri":"file:///z","mimeType":"application/octet-stream","blob":"QUJD"}}]}')), ""), "file:///x\nhi\n[resource: application/octet-stream, 3 bytes]"),
+        Check.equal("mcp.call_unsupported", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"weird"}]}')), ""), "[unsupported content type: weird]"),
+        Check.equal("mcp.call_is_error", error_text(Mcp.call_result("t", decode('{"isError":true,"content":[{"type":"text","text":"boom"}]}'))), "boom"),
+        Check.equal("mcp.call_is_error_empty", error_text(Mcp.call_result("t", decode('{"isError":true}'))), "Tool 't' returned an error"),
+        Check.equal("mcp.call_is_error_structured", error_text(Mcp.call_result("t", decode('{"isError":true,"structuredContent":{"why":"bad"},"content":[{"type":"image","mimeType":"image/png","data":"QUJD"}]}'))), "{\"why\":\"bad\"}"),
+        Check.truth("mcp.encode_line", endsWith(line, "\n") and not contains(take(line, length(line) - 1), "\n") and incoming_text(Mcp.read_message(line)) == "request:7:tools/call", line),
+        Check.equal("mcp.tool_of_bad", error_text(Mcp.tool_of(decode('{"name":""}'))) + "/" + error_text(Mcp.tool_of(decode('{"name":"x"}'))), "a tool needs a name/tool 'x' needs an inputSchema object"),
+    ], mcp_tool_checks()))
+
+
+MALFORMED_MESSAGES = [
+    ["", "prefix:not JSON"],
+    ["nope", "prefix:not JSON"],
+    ["[1,2]", "exact:malformed:a message must be a JSON object"],
+    ["42", "exact:malformed:a message must be a JSON object"],
+    ['{"jsonrpc":"2.0"}', "exact:malformed:a message needs a method, a result or an error"],
+    ['{"method":"x"}', "exact:notification:x"],
+    ['{"method":1,"id":1}', "exact:malformed:method must be a string"],
+    ['{"id":1,"result":{"a":1}}', "exact:ok:1:{\"a\":1}"],
+    ['{"id":null,"result":1}', "exact:malformed:id must be a string or a number"],
+    ['{"id":true,"result":1}', "exact:malformed:id must be a string or a number"],
+    ['{"id":1.5,"result":1}', "exact:malformed:id must be a string or a number"],
+    ['{"id":"s","result":null}', 'exact:ok:"s":null'],
+    ['{"id":1,"error":{"message":"m"}}', "exact:malformed:an error response needs an integer code"],
+    ['{"id":1,"error":{"code":"x","message":"m"}}', "exact:malformed:an error response needs an integer code"],
+    ['{"id":1,"error":{"code":-32000,"message":"m"}}', "exact:error:1:m (code: -32000)"],
+    ['{"id":123456789012345678901234567890,"result":1}', "prefix:not JSON"],
+    ['{"id":9007199254740993,"result":1}', "exact:ok:9007199254740993:1"],
+    ['{"id":"標","result":{"文":"🚀"}}', 'exact:ok:"標":{"文":"🚀"}'],
+    ['  {"id":1,"result":1}  ', "exact:ok:1:1"],
+]
+"""Texts read through `read_message`: an exact want, or a prefix the decoder's own words finish."""
+
+
+def mcp_malformed_case(i):
+    text = ats(atl(MALFORMED_MESSAGES, i), 0)
+    want = ats(atl(MALFORMED_MESSAGES, i), 1)
+    got = incoming_text(Mcp.read_message(text))
+    if startsWith(want, "prefix:"):
+        return Check.truth(f"mcp.malformed[{i}]", contains(got, drop(want, length("prefix:"))), got)
+    else:
+        return Check.equal(f"mcp.malformed[{i}]", got, drop(want, length("exact:")))
+
+
+def framing_case(name, text, i, wants):
+    """One framing split: `text` fed as two chunks cut at `i` yields the same complete lines."""
+    first = Mcp.lines_of(Mcp.LineBuffer(pending=""), take(text, i))
+    second = Mcp.lines_of(first.buffer, drop(text, i))
+    lines = listConcat(first.lines, second.lines)
+    return Check.truth(f"{name}[{i}]", structuralEquals(lines, wants), join(lines, "/"))
+
+
+MCP_LINE_ONE = '{"id":1,"result":{}}'
+MCP_LINE_TWO = '{"method":"notifications/initialized"}'
+
+
+def mcp_framing_cases():
+    text = MCP_LINE_ONE + "\n" + MCP_LINE_TWO + "\n"
+    crlf = MCP_LINE_ONE + "\r\n" + MCP_LINE_TWO + "\r\n"
+    open_ended = MCP_LINE_ONE + "\n" + MCP_LINE_TWO
+    opened = Mcp.lines_of(Mcp.LineBuffer(pending=""), open_ended)
+    last = Mcp.lines_of(opened.buffer, "")
+    return concat([
+        cases(length(text) + 1, lambda i: framing_case("mcp.framing", text, i, [MCP_LINE_ONE, MCP_LINE_TWO])),
+        cases(length(crlf) + 1, lambda i: framing_case("mcp.framing_crlf", crlf, i, [MCP_LINE_ONE, MCP_LINE_TWO])),
+        [
+            Check.truth("mcp.framing_open", structuralEquals(opened.lines, [MCP_LINE_ONE]), open_ended),
+            Check.equal("mcp.framing_pending", last.buffer.pending, MCP_LINE_TWO),
+            Check.truth("mcp.framing_flush", structuralEquals(last.lines, []), join(last.lines, "/")),
+        ],
+    ])
+
+
+SSE_FORMS = [
+    ['data: {"id":1,"result":{"a":1}}\n\n', 'ok:1:{"a":1}'],
+    ['data: {"id": 1,\ndata: "result": 2}\n\n', 'ok:1:2'],
+    ['event: message\ndata: {"id":1,"result":1}\n\n', 'ok:1:1'],
+    [': keepalive\n\ndata: {"id":1,"result":1}\n\n', 'ok:1:1'],
+    ['data: {"id":1,"result":1}\n\ndata: {"id":2,"result":2}\n\n', 'ok:1:1;ok:2:2'],
+    ['data: {"id":1,"result":1}\n', 'ok:1:1'],
+    ['data: {"id":1,"result":1}\r\n\r\n', 'ok:1:1'],
+    ['data:{"id":1,"result":1}\n\n', 'ok:1:1'],
+    ['id: 7\ndata: {"id":1,"result":1}\n\n', 'ok:1:1'],
+    ['', ''],
+    [': only comments\n: nothing else\n\n', ''],
+    ['data: nope\n\n', 'prefix:malformed:not JSON'],
+]
+"""Streamable-HTTP event-stream bodies and the messages each carries."""
+
+
+def mcp_sse_case(i):
+    body = ats(atl(SSE_FORMS, i), 0)
+    want = ats(atl(SSE_FORMS, i), 1)
+    got = join(mapList(Mcp.http_messages("text/event-stream", body), incoming_text), ";")
+    if startsWith(want, "prefix:"):
+        return Check.truth(f"mcp.sse[{i}]", contains(got, drop(want, length("prefix:"))), got)
+    else:
+        return Check.equal(f"mcp.sse[{i}]", got, want)
+
+
+def mcp_sse_broken_case():
+    """A good event followed by a malformed one: the first is kept, the second typed as `Malformed`."""
+    messages = Mcp.http_messages("text/event-stream", 'data: {"id":1,"result":1}\n\ndata: broken\n\n')
+    return [
+        Check.equal("mcp.sse_broken_first", incoming_text(unwrap_or(listGet(messages, 0), Mcp.Malformed(reason=""))), "ok:1:1"),
+        Check.truth("mcp.sse_broken_second", contains(incoming_text(unwrap_or(listGet(messages, 1), Mcp.Malformed(reason=""))), "malformed:not JSON"), "the second event was not typed as Malformed"),
+    ]
+
+
+def mcp_http_cases():
+    json_body = '{"id":1,"result":1}'
+    return [
+        Check.equal("mcp.http_json", join(mapList(Mcp.http_messages("application/json", json_body), incoming_text), ";"), "ok:1:1"),
+        same("mcp.http_empty", [len(Mcp.http_messages("application/json", "")), len(Mcp.http_messages("application/json", "  \n")), len(Mcp.http_messages("text/event-stream", ""))], [0, 0, 0]),
+        Check.equal("mcp.http_headers", Mcp.http_headers("", ""), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18"),
+        Check.equal("mcp.http_headers_session", Mcp.http_headers("s1", ""), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18\r\nMcp-Session-Id: s1"),
+        Check.equal("mcp.http_headers_extra", Mcp.http_headers("s1", "Authorization: Bearer t"), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18\r\nMcp-Session-Id: s1\r\nAuthorization: Bearer t"),
+    ]
+
+
+def describe_config(config):
+    """One parsed server entry as text."""
+    match config:
+        case Mcp.StdioServer(name=name, command=command, args=args, env=env, cwd=cwd):
+            args_text = join(args, ",")
+            return f"stdio:{name}:{command}:{args_text}:{map_text(env)}:{cwd}"
+        case Mcp.HttpServer(name=name, url=url, headers=headers):
+            return f"http:{name}:{url}:{map_text(headers)}"
+
+
+def map_text(values):
+    """A string map as sorted `k=v` pairs joined by `;`."""
+    return join(mapList(listSort(mapKeys(values)), lambda key: key + "=" + unwrap_or(mapGet(values, key), "")), ";")
+
+
+def config_load_text(load):
+    """A config load's servers and problems as text."""
+    return join(mapList(load.servers, describe_config), ";") + "##" + join(load.problems, ";")
+
+
+CONFIG_TEXTS = [
+    '{"mcpServers":{"a":{"command":"npx","args":["-y","x"],"env":{"K":"V"},"cwd":"/tmp"}}}',
+    '{"mcpServers":{"b":{"url":"https://x/mcp","headers":{"H":"1"}}}}',
+    '{"mcpServers":{"c":{"command":"c","url":"u"}}}',
+    '{"mcpServers":{"c":{}}}',
+    '{"mcpServers":{"d":{"command":"c","args":null,"env":null,"cwd":null}}}',
+    '{"mcpServers":{"e":{"url":null}}}',
+    '{"mcpServers":{"f":{"command":"c","disabled":true,"type":"stdio","unknown":7}}}',
+    '{"mcpServers":{"g":{"command":"${BIN}","args":["${FLAG:-v}"]}}}',
+    '{"mcpServers":{"h":{"command":"${NOPE}"}}}',
+    '{"mcpServers":{"i":{"command":"${X:-}"}}}',
+    '{"mcpServers":{"j":{"command":"c","env":{"TOKEN":"${T}","DEF":"${D:-d}","EMPTY":"${D:-}"}}}}',
+    '{"mcpServers":{"k":{"command":"${A:-${B}}"}}}',
+    '{"mcpServers":{"l":{"command":"${A"}}}',
+    '{"mcpServers":{"m":{"command":"${}","args":["${P:Q}"]}}}',
+    '{"mcpServers":{"good":{"command":"c"},"bad":{"args":[]}}}',
+    '{"mcpServers":{"n":null}}',
+    '{"mcpServers":{"o":"x"}}',
+    '{not json',
+    '',
+    '{"other":{}}',
+    '{"mcpServers":null}',
+    '{"mcpServers":{"p":{"command":"c","args":["ok",7,null],"env":{"A":"a","B":3}}}}',
+]
+"""The config texts, in CONFIG_FORM order."""
+
+CONFIG_ENVIRONMENTS = [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {"BIN": "run"},
+    {},
+    {},
+    {"T": "secret"},
+    {"B": "x"},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+]
+"""The environment of each config text, in CONFIG_FORM order."""
+
+CONFIG_WANTS = [
+    'stdio:a:npx:-y,x:K=V:/tmp##',
+    'http:b:https://x/mcp:H=1##',
+    'stdio:c:c:::##',
+    "##MCP server config 'c' must have either 'command' or 'url'",
+    'stdio:d:c:::##',
+    "##MCP server config 'e' must have either 'command' or 'url'",
+    'stdio:f:c:::##',
+    'stdio:g:run:v::##',
+    "##MCP server config 'h': Environment variable ${NOPE} is not defined",
+    'stdio:i::::##',
+    'stdio:j:c::DEF=d;EMPTY=;TOKEN=secret:##',
+    'stdio:k:${B}:::##',
+    'stdio:l:${A:::##',
+    'stdio:m:${}:${P:Q}::##',
+    "stdio:good:c:::##MCP server config 'bad' must have either 'command' or 'url'",
+    "##MCP server config 'n' must be an object",
+    "##MCP server config 'o' must be an object",
+    "prefix:not valid JSON",
+    "prefix:not valid JSON",
+    '##the configuration must have an mcpServers object',
+    '##the configuration must have an mcpServers object',
+    'stdio:p:c:ok:A=a:##',
+]
+"""The servers and problems each config text reports."""
+
+
+
+def atd(xs, i):
+    """The dict element of a list at i, {} past the end."""
+    empty: dict[str, str] = {}
+    return unwrap_or(listGet(xs, i), empty)
+
+
+def mcp_config_case(i):
+    load = Mcp.parse_config(ats(CONFIG_TEXTS, i), atd(CONFIG_ENVIRONMENTS, i))
+    got = config_load_text(load)
+    want = ats(CONFIG_WANTS, i)
+    if startsWith(want, "prefix:"):
+        return Check.truth(f"mcp.config[{i}]", contains(got, drop(want, length("prefix:"))), got)
+    else:
+        return Check.equal(f"mcp.config[{i}]", got, want)
+
+
+def mcp_merge_cases():
+    global_servers = Mcp.parse_config('{"mcpServers":{"a":{"command":"global"},"b":{"url":"https://b/mcp"}}}', {}).servers
+    project_servers = Mcp.parse_config('{"mcpServers":{"a":{"command":"project"}}}', {}).servers
+    merged = Mcp.merge_configs(global_servers, project_servers)
+    return [
+        Check.equal("mcp.merge", join(mapList(merged, describe_config), ";"), 'http:b:https://b/mcp:;stdio:a:project:::'),
+        Check.equal("mcp.merge_empty", len(Mcp.merge_configs([], [])), 0),
+    ]
+
+
 def usage_cases():
     first = Usage.RequestUsage(input_tokens=10, cache_write_tokens=1, cache_read_tokens=2, output_tokens=3, input_audio_tokens=0, cache_audio_read_tokens=0, output_audio_tokens=0, details={"reasoning_tokens": 4})
     second = Usage.RequestUsage(input_tokens=20, cache_write_tokens=0, cache_read_tokens=0, output_tokens=5, input_audio_tokens=0, cache_audio_read_tokens=0, output_audio_tokens=0, details={"reasoning_tokens": 1, "other": 2})
@@ -727,6 +1284,22 @@ def suite():
         [transport_error_case(), usage_limit_case()],
         profile_cases(),
         settings_cases(),
+        cases(len(THINKING_TABLE), thinking_body_case),
+        cases(len(THINKING_TABLE), thinking_levels_case),
+        thinking_setting_cases(),
+        thinking_pick_cases(),
+        provider_flag_cases(),
+        provider_reuse_cases(),
+        thinking_extra_cases(),
+        reasoning_round_trip_cases(),
+        mcp_session_cases(),
+        cases(len(MALFORMED_MESSAGES), mcp_malformed_case),
+        mcp_framing_cases(),
+        cases(len(SSE_FORMS), mcp_sse_case),
+        mcp_sse_broken_case(),
+        mcp_http_cases(),
+        cases(len(CONFIG_TEXTS), mcp_config_case),
+        mcp_merge_cases(),
         usage_cases(),
         direct_cases(),
         exception_cases(),

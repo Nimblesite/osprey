@@ -22,13 +22,13 @@ Osprey Agent only speaks DeepSeek, keeps its key in memory, draws fenced code in
 
 ## Phases
 
-- [ ] **Package.** Providers, profiles and `thinking` mapping, the MCP protocol module finished (`osprey.toml`, tests, README, audit). Golden totals rise.
+- [x] **Package.** Providers, profiles and `thinking` mapping, the MCP protocol module finished (`osprey.toml`, tests, README, audit). Golden totals rise.
 - [ ] **Highlighting.** `highlight.py`, drawing, theme tokens with contrast of at least 4.5:1, tool output by file extension, `self-test/code-blocks.json`, goldens.
 - [ ] **Selection.** Multi-line selection across blocks, Cmd-A and Cmd-C, proved by real events in a self-test.
 - [ ] **Providers and settings.** Catalogue, settings pane, key persistence, composer's model and effort pickers, request shape per provider against a strict double, `self-test/settings.json`, goldens.
 - [ ] **MCP in the app.** Process capabilities, config, connect and call, add, remove and toggle in Settings, inspector section, `self-test/mcp.json` with the stdlib test server on both transports (plan 0052).
 - [ ] **Live proof.** `self-test.sh --live` picks whichever provider has a key, runs a real coding task and an MCP task with acceptance checks the model never sees.
-- [ ] **Credits.** The website's announcements and credits page.
+- [x] **Credits.** The website's announcements and credits page.
 - [ ] **Docs.** README sections for providers, effort, MCP.
 
 ## Out of scope
@@ -60,7 +60,7 @@ Osprey Agent's model has four hardcoded tools in `examples/agent/src/engine.py`,
 
 ## Phases
 
-- [ ] **Protocol.** `mcp.py`: `initialize`, `tools/list` with pagination, `tools/call`, error and `isError` results, text and non-text content. Tests in `packages/pydantic_ai/tests`. Licence: add the upstream module and the MCP specification to `references` in `packages/license-audit.json`, with a recorded comparison in `source-audit.json`.
+- [x] **Protocol.** `mcp.py`: `initialize`, `tools/list` with pagination, `tools/call`, error and `isError` results, text and non-text content. Tests in `packages/pydantic_ai/tests`. Licence: add the upstream module and the MCP specification to `references` in `packages/license-audit.json`, with a recorded comparison in `source-audit.json`.
 - [ ] **Process capabilities.** The four capabilities in `packages/native/src/capability.ospml` and README, `ProcessAdapter.swift` on the SwiftUI host, with every process stopped on quit; hosts without them complete with a typed error.
 - [ ] **Config.** Read and merge both files, with plain messages for a broken file, a missing command, or an unsupported entry. Host-free tests, with many permutations.
 - [ ] **Connect and call.** Connect on launch and on folder change; list tools; dispatch server tool calls through `Turn`; restart a server that exited, once a person asks. A slow or dead server fails that call and never blocks the turn or other servers.

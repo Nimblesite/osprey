@@ -3,14 +3,15 @@
 # osprey: module=ProvidersHttp
 """The providers that reach a real API over the runtime's HTTPS client.
 
-Port of pydantic_ai/providers/openai.py, providers/ollama.py and
-providers/deepseek.py (2.46.0): `OpenAIProvider`, `OllamaProvider` and
-`DeepSeekProvider`. Separate from `Providers`, because a target without runtime
-HTTP, such as a native application whose host performs requests, cannot link it.
+Port of pydantic_ai/providers/openai.py, providers/ollama.py, providers/deepseek.py,
+providers/moonshotai.py and providers/zai.py (2.46.0): `OpenAIProvider`, `OllamaProvider`,
+`DeepSeekProvider`, `MoonshotAIProvider` and `ZaiProvider`. Separate from `Providers`, because
+a target without runtime HTTP, such as a native application whose host performs requests,
+cannot link it.
 """
 from pydantic_ai import Providers as P
 
-__all__ = ["OpenAIProvider", "OllamaProvider", "DeepSeekProvider", "provider", "post_json"]
+__all__ = ["OpenAIProvider", "OllamaProvider", "DeepSeekProvider", "MoonshotAIProvider", "ZaiProvider", "provider", "post_json"]
 
 REQUEST_TIMEOUT_MS = 600000
 """The 600 s timeout `openai.AsyncOpenAI` defaults to."""
@@ -56,3 +57,13 @@ def OllamaProvider(base_url):
 def DeepSeekProvider(api_key):
     """`DeepSeekProvider(api_key=)`: https://api.deepseek.com."""
     return provider("deepseek", "https://api.deepseek.com", api_key)
+
+
+def MoonshotAIProvider(api_key):
+    """`MoonshotAIProvider(api_key=)`: MoonshotAI's OpenAI-compatible endpoint."""
+    return provider("moonshotai", "https://api.moonshot.ai/v1", api_key)
+
+
+def ZaiProvider(api_key):
+    """`ZaiProvider(api_key=)`: Z.AI's OpenAI-compatible endpoint."""
+    return provider("zai", "https://api.z.ai/api/paas/v4", api_key)
