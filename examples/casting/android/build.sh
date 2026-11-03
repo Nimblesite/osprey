@@ -52,7 +52,9 @@ mkdir -p "$apk/lib/$abi" "$apk/assets" "$apk/generated"
 "$tools/llvm-strip" --strip-unneeded "hosts/gpui/target/$rust_target/release/libosprey_gpui.so" -o "$apk/lib/$abi/libosprey_gpui.so"
 cp examples/casting/player.machine.json "$apk/assets/"
 cp -R examples/casting/skins "$apk/assets/"
-echo '["--machine", "${RESOURCES}/player.machine.json"]' > "$apk/assets/osprey-arguments.json"
+# OSPREY_CASTING_SKIN opens on one skin, as `--skin` does on desktop.
+skin_arguments=${OSPREY_CASTING_SKIN:+, \"--skin\", \"$OSPREY_CASTING_SKIN\"}
+echo "[\"--machine\", \"\${RESOURCES}/player.machine.json\"$skin_arguments]" > "$apk/assets/osprey-arguments.json"
 (cd "$apk/assets" && find . -type f ! -name osprey-files.txt | sed 's|^\./||' | sort > osprey-files.txt)
 "$build_tools/aapt2" compile --dir "$here/app/src/main/res" -o "$apk/resources.zip"
 platform=$(ls -d "$sdk"/platforms/android-* | sort -V | tail -1)/android.jar

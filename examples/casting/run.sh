@@ -16,7 +16,7 @@ export OSPREY_GPUI_LINK_LIBS="static=osprey_cast_net,dylib=ssl,dylib=crypto"
 export OSPREY_GPUI_APP="$here"
 export OSPREY_GPUI_APP_NAME=casting
 # The Sherbet canvas is 868 by 1113 mock pixels: 434 by 557 points draws it one to one on Retina.
-export OSPREY_GPUI_TITLE=Casting OSPREY_GPUI_CHROME=bare OSPREY_GPUI_WINDOW=434x557 OSPREY_GPUI_LIGHTS=9,8
+export OSPREY_GPUI_TITLE=Casting OSPREY_GPUI_CHROME=bare OSPREY_GPUI_WINDOW=${OSPREY_GPUI_WINDOW:-434x557} OSPREY_GPUI_LIGHTS=9,8
 machine="$here/player.machine.json"
 if [ "$(uname -s)" = Darwin ] && { [ $# -eq 0 ] || [ "$1" = --bundle ]; }; then
     "$repo/hosts/gpui/run.sh" --build

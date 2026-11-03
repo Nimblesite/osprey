@@ -21,7 +21,7 @@ Android: `gpui-pre` 0.3.10 has no backend, and `gpui-pre-platform` has no Androi
 - [x] Keep what only the platform can do behind the capability boundary: Bonjour and NSD discovery, document pickers, TLS, media serving, lifecycle, accessibility.
 - [x] Android: the journey passes on the GPUI app against the TLS receiver fixture, with its golden.
 - [ ] iOS: its full native journey passes on the GPUI app; it needs the accessibility bridge below, since XCTest drives by accessibility.
-- [ ] Compare each skin's mobile pictures with the desktop's widgets at the same width.
+- [ ] Compare each skin's mobile pictures with the desktop's widgets at the same size: `examples/casting/skin_parity.py` scored Android against desktop at Sherbet 0.976 and Midnight 0.901; Poolside has not finished a run, and the script needs more than five minutes and a real window, so it is not in CI.
 - [x] Delete the SwiftUI and Java casting renderers. `hosts/swift` stays for Osprey Agent.
 - [x] A fixed scene `zoom` is an upper bound: a narrower region fits the whole scene instead of clipping it, on every platform. The region around a scene takes the skin's colour, and the scene honours the safe area.
 - [ ] Windows: casting still runs on `hosts/winui` (`examples/casting/README.md`). Audit whether `hosts/gpui` can replace it there, and report.
