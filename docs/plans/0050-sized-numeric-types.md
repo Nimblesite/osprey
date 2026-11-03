@@ -82,15 +82,15 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 
 - [x] Runtime conversions: `osp_float_to_f16` (from binary64, so there is one rounding) and `osp_f16_to_f32`, round to nearest even, subnormals, infinities and NaN exact, in commit 5d7b9fd3.
 - [x] Runtime printing: `osp_float32_to_string` and `osp_float16_to_string` find the shortest decimal that round-trips at that width, tested on both the default and the portable build (`65500.0`, `1234568000.0`, `-0.0`).
-- [ ] Float literals stay open like integer literals: a `float32` or `float16` sibling or slot decides them, and between two literals or next to anything else they are `float`. Spec sentence added to `[TYPE-NUMERIC-LITERAL]`.
-- [ ] A float literal too big for its slot is rejected (`1e40` at `float32`; `70000.0` and `65520.0` at `float16`), through one check shared with integer literals.
-- [ ] `float32` with `int`, `float` or `float16` is a mismatch; `fn half(x) = x / 2.0` applied to a `float32` is rejected; the `[TYPE-NUMERIC-SAME-TYPE]` example is corrected.
-- [ ] `conv.rs` converts to and from `float32` and `float16`, with the quarantine removed. (Written by an agent, not yet reviewed.)
+- [x] Float literals stay open like integer literals: a `float32` or `float16` sibling or slot decides them, and between two literals or next to anything else they are `float`. Spec sentence added to `[TYPE-NUMERIC-LITERAL]`.
+- [x] A float literal too big for its slot is rejected (`1e40` at `float32`; `70000.0` and `65520.0` at `float16`), through one check shared with integer literals.
+- [x] `float32` with `int`, `float` or `float16` is a mismatch; `fn half(x) = x / 2.0` applied to a `float32` is rejected; the `[TYPE-NUMERIC-SAME-TYPE]` example is corrected.
+- [x] `conv.rs` converts to and from `float32` and `float16`, with the quarantine removed. (Written by an agent, not yet reviewed.)
 - [ ] One float arithmetic path: `+ - * / %`, comparison, unary minus and `abs` at each width, with `float16` through binary32 and a single final rounding.
 - [ ] `sqrt` and every other [BUILTIN-MATH] function open over floats, through the `f32` intrinsics and `libm`'s `f` entry points; an undecided operand defaults to `float`.
 - [ ] The compiler prints `float32` and `float16` through the runtime functions above, with the printing quarantine removed.
 - [ ] `toFloat`, `toFloat32`, `toFloat16` open over every numeric source; `floatToInt` open over float sources; `floatBits`/`floatFromBits` at 64, `float32Bits`/`float32FromBits` as `float32 ↔ int32`, `float16Bits`/`float16FromBits` as `float16 ↔ int16`, with docs for each.
-- [ ] One shared literal-fitting helper replaces `fit_literal` in `stmt/bindings.rs` and `fit_literal_arms` in `pattern.rs`, and covers float literals. It lands together with its callers: a callerless copy broke `make agent`.
+- [x] One shared literal-fitting helper replaces `fit_literal` in `stmt/bindings.rs` and `fit_literal_arms` in `pattern.rs`, and covers float literals. It lands together with its callers: a callerless copy broke `make agent`.
 - [ ] Float literals reach the right width in list, map, `Result`, record and generic record values, closures and match arms; where the type is unknown the backend reports an error, never a wrong word.
 - [ ] Kernels over sized types: the device emitter declines them by name until Phase 5, so the host path runs; `toGpu` of `List<float32>` either works on the host or is rejected cleanly, and the spec says which.
 - [ ] Delete `float32(x: float) -> float`, `float32_round`, the old `float32Bits` lowering, `float32_64` in `gpu_f64.metal`, their docs pages, and `[BUILTIN-FLOAT32]` and `[BUILTIN-TOFLOAT]` citations in every crate.
