@@ -1,6 +1,6 @@
 # Native mobile delivery [CAST-MOBILE]
 
-Both native apps build and run in the simulator/emulator. Android passes the full native playback journey against a TLS Cast receiver fixture, including exact HTTP media bytes. iOS slider accessibility, screenshot goldens, CI coverage and physical-device verification remain incomplete.
+Both native apps build and run in the simulator/emulator. Both platforms pass the full native playback journey against a TLS Cast receiver fixture, including exact HTTP media bytes, seek, volume, speed, stop and replay. Screenshot goldens, CI coverage, broader error/lifecycle cases and physical-device verification remain incomplete.
 
 ## Shared boundary [CAST-MOBILE-ABI]
 
@@ -25,7 +25,7 @@ The existing host-free casting suite simulates the receiver and drives the real 
 
 ## Verified native progress [CAST-MOBILE-EVIDENCE]
 
-- iOS: the unsigned physical-device app and simulator app link successfully; the real iPhone simulator UI test passes launch, two document-picker cancellations and restart.
+- iOS: the unsigned physical-device app and simulator app link successfully; the real iPhone simulator UI test passes launch, two document-picker cancellations, fixture-file loading, play/pause/resume, seek, volume, speed, stop, replay and restart. Native sliders and speed-menu buttons are verified through XCTest. The receiver checks the requested control values and rejects duplicate slider commands.
 - Android: ARM64 and x64 JNI libraries link into the APK; the ARM64 emulator discovers a real LAN TV and passes two document-picker cancellations, MP3 import, scene-title verification, play/pause/resume, seek, volume, speed, stop, replay and restart. The fixture verifies exact MP3 bytes over HTTP HEAD and range requests. Android lint passes with warnings treated as errors.
 - Both TLS implementations pass a live loopback test covering handshake, fragmented reads, timeout recovery, byte preservation, writes, EOF, cleanup and route selection.
 - The shared casting suite passes all seven journeys; the Swift host passes 37 regression tests. Native network and media-render runtime suites pass.

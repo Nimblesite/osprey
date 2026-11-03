@@ -3,6 +3,14 @@ import XCTest
 // [CAST-MOBILE-DELIVERY] Drive the real native shell and resident Osprey library.
 final class CastingUITests: XCTestCase {
     @MainActor
+    private func drag(_ slider: XCUIElement, to fraction: CGFloat) {
+        func coordinate(_ value: CGFloat) -> XCUICoordinate {
+            slider.coordinate(withNormalizedOffset: CGVector(dx: min(0.999, max(0.001, value)), dy: 0.5))
+        }
+        coordinate(slider.normalizedSliderPosition).press(forDuration: 0.1, thenDragTo: coordinate(fraction), withVelocity: .slow, thenHoldForDuration: 0.3)
+    }
+
+    @MainActor
     func testNativeLaunchDocumentCancellationAndRecovery() throws {
         let app = XCUIApplication()
         app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"], "Use the native test entry point to start the receiver fixture")
@@ -45,8 +53,8 @@ final class CastingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
         app.buttons["Resume"].tap()
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
-        app.sliders["Volume"].adjust(toNormalizedSliderPosition: 0.5)
-        app.sliders["Position"].adjust(toNormalizedSliderPosition: 0.25)
+        drag(app.sliders["Volume"], to: 0.5)
+        drag(app.sliders["Position"], to: 0.25)
         app.buttons["Speed: 1×"].tap()
         XCTAssertTrue(app.buttons["1.5×"].waitForExistence(timeout: 5))
         app.buttons["1.5×"].tap()

@@ -8,9 +8,16 @@ public final class SceneStream: ObservableObject {
     public static let shared = SceneStream()
     @Published var shapes: [JSONValue] = []
     private var pending: [JSONValue] = []
+    private let images = NSCache<NSString, UIImage>()
     public func begin() { pending.removeAll(keepingCapacity: true) }
     public func append(_ shape: JSONValue) { pending.append(shape) }
     public func commit() { if !pending.isEmpty { shapes = pending } }
+    func image(_ path: String) -> UIImage? {
+        if let cached = images.object(forKey: path as NSString) { return cached }
+        guard let image = UIImage(contentsOfFile: path) else { return nil }
+        images.setObject(image, forKey: path as NSString)
+        return image
+    }
 }
 
 private extension JSONValue {
@@ -80,9 +87,9 @@ struct SceneView: View {
     }
 
     @ViewBuilder private func accessibleControl(_ item: JSONValue) -> some View {
-            if item.text("role") == "slider", item.flag("movable") {
+            if item.text("role") == "slider" {
                 SceneSlider(item: item) { act(item, value: $0) }
-            } else if item.text("role") == "button" || item.text("role") == "popup" {
+            } else if ["button", "popup", "menuitem"].contains(item.text("role")) {
                 Button { act(item) } label: { Color.clear.contentShape(Rectangle()) }
                     .buttonStyle(.plain).accessibilityLabel(item.text("label"))
             } else { Color.clear.accessibilityLabel(item.text("label")) }
@@ -109,7 +116,7 @@ struct SceneView: View {
         case 5: vector(shape, context: context)
         case 3 where shape.count == 9:
             let atlas = node.list("atlas"), index = Int(n(1))
-            if atlas.indices.contains(index), let path = atlas[index].string, let image = UIImage(contentsOfFile: path) {
+            if atlas.indices.contains(index), let path = atlas[index].string, let image = stream.image(path) {
                 context.translateBy(x: n(2), y: n(3)); context.rotate(by: .radians(n(6)))
                 context.opacity = Double(UInt32(clamping: Int64(n(7))) & 255) / 255
                 context.draw(Image(uiImage: image), in: CGRect(x: -n(4) / 2, y: -n(5) / 2, width: n(4), height: n(5)))
@@ -194,16 +201,22 @@ private struct SceneSlider: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIView(context: Context) -> UISlider {
         let slider = UISlider()
+        slider.isContinuous = false
+        slider.isAccessibilityElement = true
+        slider.accessibilityTraits = .adjustable
         slider.minimumTrackTintColor = .clear
         slider.maximumTrackTintColor = .clear
         let clear = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1)).image { _ in }
         slider.setThumbImage(clear, for: .normal)
+        if #available(iOS 26, *) { slider.sliderStyle = .thumbless }
         slider.addTarget(context.coordinator, action: #selector(Coordinator.moved(_:)), for: .valueChanged)
         return slider
     }
     func updateUIView(_ slider: UISlider, context: Context) {
         context.coordinator.parent = self
+        guard !slider.isTracking else { return }
         slider.accessibilityLabel = item.text("label")
+        slider.accessibilityIdentifier = item.text("label")
         slider.minimumValue = Float(item["min"]?.scalar ?? 0)
         slider.maximumValue = Float(item["max"]?.scalar ?? 1)
         slider.value = Float(item["value"]?.scalar ?? 0)
