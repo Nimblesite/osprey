@@ -249,7 +249,7 @@ module Answers
                 match saved.problem == ""
                     false => Runtime::step (store(mcp = mcp(stateForm = form(formProblem = saved.problem))))
                     true =>
-                        loaded = McpModel::globalLoaded (mcp, saved.text)
+                        loaded = McpModel::globalLoaded (mcp(stateForm = McpModel::blankForm ()), saved.text)
                         connected = McpRun::connectAll (store(mcp = loaded))
                         saving = Model::persisting (connected.stepStore, "mcp.json")
                         saving(requests = listConcat connected.requests saving.requests)
@@ -262,7 +262,7 @@ module Answers
         match saved.problem == ""
             false => Runtime::step (store(mcp = mcp(stateForm = form(formProblem = saved.problem))))
             true =>
-                loaded = McpModel::globalLoaded (mcp, saved.text)
+                loaded = McpModel::globalLoaded (mcp(stateForm = McpModel::blankForm ()), saved.text)
                 connected = McpRun::connectAll (store(mcp = loaded))
                 saving = Model::persisting (connected.stepStore, "mcp.json")
                 saving(requests = listConcat connected.requests saving.requests)

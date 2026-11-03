@@ -162,8 +162,9 @@ def step_title(steps):
     count = len(steps)
     commands = len(filterList(steps, lambda s: s.stepTool == "run_command"))
     edits = len(filterList(steps, lambda s: s.stepTool == "write_file"))
-    reads = count - commands - edits
-    parts = filterList([count_words(edits, "Edited", "file", "files"), count_words(commands, "Ran", "command", "commands"), count_words(reads, "Read", "file", "files")], lambda t: t != "")
+    reads = len(filterList(steps, lambda s: s.stepTool == "read_file" or s.stepTool == "list_files"))
+    others = count - commands - edits - reads
+    parts = filterList([count_words(edits, "Edited", "file", "files"), count_words(commands, "Ran", "command", "commands"), count_words(reads, "Read", "file", "files"), count_words(others, "Used", "tool", "tools")], lambda t: t != "")
     return join(parts, ", ")
 
 

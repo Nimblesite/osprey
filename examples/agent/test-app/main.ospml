@@ -641,7 +641,11 @@ testing ("a prefixed tool call goes through its server, the answer reaches the n
     expect ((Model::active asking.stepStore).chatTicket, "mcpcall:demo")
     afterWrite = Drive::deliver (asking.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 80)]), "")
     expect (Drive::kinds afterWrite, "process-read")
-    answered = Drive::deliver (afterWrite.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (callReply (4, "zephyr-secret", false), false))), "")
+    // The read that was listening is replaced by the host, and its cancellation is no failure of the call.
+    superseded = Drive::deliver (afterWrite.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = Error(message = "Cancelled")), "")
+    expect (Drive::kinds superseded, "")
+    expect ((Model::active superseded.stepStore).chatStage, "tools")
+    answered = Drive::deliver (superseded.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (callReply (4, "zephyr-secret", false), false))), "")
     // The server's real answer went back to the model in the next request's body.
     expect (Drive::kinds answered, "process-read,http")
     expectTrue (contains (Doc::text (listGet (Drive::asked answered) 1 ?: JsonNull, "body")) "zephyr-secret")
@@ -654,7 +658,8 @@ testing ("a prefixed tool call goes through its server, the answer reaches the n
     done = Drive::answering (failedRead.stepStore, ok 200, textReply)
     expect ((Model::active done.stepStore).chatStage, "idle")
     // A tool step names its server.
-    expectTrue (contains (Drive::showing (done.stepStore, View::transcript)) "demo · $"))
+    expectTrue (contains (Drive::showing (done.stepStore, View::transcript)) "Used 2 tools")
+    expectFalse (contains (Drive::showing (done.stepStore, View::transcript)) "Read 2 files"))
 
 testing ("a dead server fails its call in words, Reconnect restarts it, and a slow server times out its own call", \() =>
     connected = mcpConnected ()
@@ -708,8 +713,13 @@ testing ("the add form validates in words, paste is atomic, broken files report 
     added = Drive::deliver (environed.stepStore, ui::Act(act = agentapp::AddMcpServer), "")
     expect (Drive::kinds added, "process-start,store-write")
     expectTrue (contains (listGet added.writes 0 ?: Requests::write ("", "")).sliceText "mcp-env-secret")
+    // The form forgets what it was given, so a secret is never on show after Add.
+    expect (added.stepStore.mcp.stateForm.formEnvironment, "")
+    expect (added.stepStore.mcp.stateForm.formName, "")
+    expectFalse (contains (Drive::showing (added.stepStore, View::settings)) "mcp-env-secret")
     // A name that clashes is refused in words and nothing is asked.
-    clashing = Drive::deliver (added.stepStore, ui::Entered(entry = agentapp::McpName, entered = "demo"), "")
+    clashingName = Drive::deliver (added.stepStore, ui::Entered(entry = agentapp::McpName, entered = "demo"), "")
+    clashing = Drive::deliver (clashingName.stepStore, ui::Entered(entry = agentapp::McpCommand, entered = "python3"), "")
     clash = Drive::deliver (clashing.stepStore, ui::Act(act = agentapp::AddMcpServer), "")
     expect (Drive::kinds clash, "")
     expectTrue (contains clash.stepStore.mcp.stateForm.formProblem "already exists")

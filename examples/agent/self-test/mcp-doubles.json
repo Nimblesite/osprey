@@ -1,0 +1,74 @@
+{
+  "replies": [
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"c1\", \"type\": \"function\", \"function\": {\"name\": \"run_command\", \"arguments\": \"{\\\"command\\\": \\\"if [ -f @LOCAL_PID@ ] && kill -0 \\\\\\\"$(cat @LOCAL_PID@)\\\\\\\" 2>/dev/null; then echo PROCESS-RUNNING; else echo PROCESS-ABSENT; fi\\\"}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Not running.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"c2\", \"type\": \"function\", \"function\": {\"name\": \"demo_secret_word\", \"arguments\": \"{}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"c3\", \"type\": \"function\", \"function\": {\"name\": \"demo_add\", \"arguments\": \"{\\\"a\\\": 2, \\\"b\\\": 3}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"c4\", \"type\": \"function\", \"function\": {\"name\": \"demo_fails\", \"arguments\": \"{}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"The word is in.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"c5\", \"type\": \"function\", \"function\": {\"name\": \"demo_die\", \"arguments\": \"{}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"It died.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"c6\", \"type\": \"function\", \"function\": {\"name\": \"web_secret_word\", \"arguments\": \"{}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"c7\", \"type\": \"function\", \"function\": {\"name\": \"sse_secret_word\", \"arguments\": \"{}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"c8\", \"type\": \"function\", \"function\": {\"name\": \"run_command\", \"arguments\": \"{\\\"command\\\": \\\"if [ -f @LOCAL_PID@ ] && kill -0 \\\\\\\"$(cat @LOCAL_PID@)\\\\\\\" 2>/dev/null; then echo PROCESS-RUNNING; else echo PROCESS-ABSENT; fi\\\"}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Web done.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"c9\", \"type\": \"function\", \"function\": {\"name\": \"run_command\", \"arguments\": \"{\\\"command\\\": \\\"if [ -f @DEMO_PID@ ] && kill -0 \\\\\\\"$(cat @DEMO_PID@)\\\\\\\" 2>/dev/null; then echo PROCESS-RUNNING; else echo PROCESS-ABSENT; fi\\\"}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.deepseek.com/chat/completions",
+      "body": "{\"id\": \"r\", \"model\": \"m\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Gone.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 5}}"
+    }
+  ]
+}

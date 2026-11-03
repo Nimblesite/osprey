@@ -445,8 +445,10 @@ def tool_summary(name, args_text):
         return arg(args_text, "command")
     elif name == "list_files":
         return "project files"
-    else:
+    elif name == "read_file" or name == "write_file":
         return arg(args_text, "path")
+    else:
+        return args_text
 
 
 def whole_characters(text, at):

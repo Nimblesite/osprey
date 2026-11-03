@@ -77,4 +77,36 @@ python3 -c 'import json, sys
 requests = [json.loads(json.loads(line)["body"]) for line in open(sys.argv[1], encoding="utf-8")]
 if not any(any(message.get("role") == "system" and sys.argv[2] in message.get("content", "") for message in request.get("messages", [])) for request in requests):
     raise SystemExit("FAILED: no system message names the chosen folder")' "$records/controls/requests.jsonl" "$work/other-project"
+
+# MCP: real servers over stdio, HTTP and SSE, only the model doubled. Secrets stay in mcp.json.
+mcp_servers=()
+trap 'rm -rf "$work"; kill "${mcp_servers[@]+"${mcp_servers[@]}"}" 2>/dev/null || true' EXIT
+serve_mcp() { # word, flags...; sets mcp_port
+    local word=$1 output="$work/mcp-port-$RANDOM"; shift
+    MCP_TEST_WORD=$word python3 "$here/self-test/mcp_server.py" --http "$@" > "$output" &
+    mcp_servers+=($!)
+    until grep -q listening "$output"; do sleep 0.1; done
+    mcp_port=$(awk '{print $2}' "$output")
+}
+serve_mcp web-word --token hdr-secret-token; web_port=$mcp_port
+serve_mcp sse-word --sse; sse_port=$mcp_port
+mcp_project="$work/mcp-project"
+mkdir -p "$mcp_project"
+python3 -c 'import json, sys
+print(json.dumps({"mcpServers": {"local": {"command": "python3", "args": [sys.argv[1], "--pid-file", sys.argv[2]]}}}))' "$here/self-test/mcp_server.py" "$work/local.pid" > "$mcp_project/.mcp.json"
+echo "DEEPSEEKKEY=sk-double" > "$work/key-double.env"
+for script in mcp.json mcp-restart.json mcp-doubles.json; do
+    python3 -c 'import json, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+for name, value in zip(("SERVER", "DEMO_PID", "LOCAL_PID", "WEB_PORT", "SSE_PORT"), sys.argv[3:]):
+    text = text.replace(f"@{name}@", value)
+open(sys.argv[2], "w", encoding="utf-8").write(text)' "$here/self-test/$script" "$work/$script" "$here/self-test/mcp_server.py" "$work/demo.pid" "$work/local.pid" "$web_port" "$sse_port"
+done
+"$host" --self-test "$work/mcp.json" "$records/mcp" --headless --store "$work/store-mcp" --http-double "$work/mcp-doubles.json" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$mcp_project" "$work/key-double.env"
+python3 "$here/self-test/verify_mcp.py" "$records/mcp/requests.jsonl"
+"$host" --self-test "$work/mcp-restart.json" "$records/mcp-restart" --headless --store "$work/store-mcp" --http-double "$work/mcp-doubles.json" --goldens "$os_goldens" "${goldens_flag[@]+"${goldens_flag[@]}"}" "$mcp_project" "$work/key-double.env"
+[ "$(stat -f %Lp "$work/store-mcp/mcp.json")" = 600 ] || { echo "FAILED: mcp.json is readable by others" >&2; exit 1; }
+grep -q hdr-secret-token "$work/store-mcp/mcp.json" || { echo "FAILED: the header was not saved" >&2; exit 1; }
+if grep -q '"demo"' "$work/store-mcp/mcp.json"; then echo "FAILED: the removed server is still saved" >&2; exit 1; fi
+if grep -rqE 'hdr-secret-token|env-only-secret' "$work/store-mcp/chats.json" "$work/store-mcp/mcp-state.json" "$records"; then echo "FAILED: an MCP secret reached the conversations, the switches or the records" >&2; exit 1; fi
 echo "self-test passed"
