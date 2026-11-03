@@ -181,6 +181,9 @@
   },
   "dismiss": {
    "type": "trigger"
+  },
+  "receiverName": {
+   "type": "text"
   }
  },
  "layers": [
@@ -636,7 +639,7 @@
    },
    {
     "kind": "progress",
-    "text": "Connecting to {{receiver}}…",
+    "text": "Connecting to {{receiverName}}…",
     "detail": "",
     "when": {
      "state": "playback",
@@ -647,7 +650,7 @@
    },
    {
     "kind": "badge",
-    "text": "Playing on {{receiver}}",
+    "text": "Playing on {{receiverName}}",
     "symbol": "play",
     "tone": "accent",
     "when": {
@@ -1262,7 +1265,7 @@
      },
      {
       "shape": "text",
-      "text": "{{receiver|fit:22}}",
+      "text": "{{receiverName|fit:22}}",
       "x": 328,
       "y": 733.0,
       "size": 24,
@@ -1695,7 +1698,7 @@
        "fire": "toggleReceivers"
       },
       "role": "popup",
-      "label": "Receiver: {{receiver}}",
+      "label": "Receiver: {{receiverName}}",
       "when": {
        "input": "receiver",
        "ne": ""

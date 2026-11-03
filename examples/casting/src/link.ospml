@@ -94,7 +94,10 @@ module Link
         Success next => asked (fed (relinked (store, true, next, store.link.clock), [fact ("connected", Values::flag true), fact ("error", Values::text ""), fact ("ended", Values::text "")]), [])
         Error problem => asked (failed (store, problem), [])
 
-    start (store, ask) = match ui::Lists::find (store.link.devices, \d => d.name == Machines::askedText (ask, "receiver"))
+    // [CAST-MOBILE-RECEIVER-IDENTITY] Friendly names are labels, never routing keys.
+    endpoint d = "${d.host}:${toString d.port}"
+
+    start (store, ask) = match ui::Lists::find (store.link.devices, \d => endpoint d == Machines::askedText (ask, "receiver"))
         Success device => started (store, Player::begin (device, Machines::askedText (ask, "file"), store.link.clock))
         Error _ => asked (failed (store, "choose a receiver first"), [])
 
@@ -133,7 +136,14 @@ module Link
     (** The store after answering every pending machine request, as a framework step. *)
     export settled store =
         out = draining (store, [], 8)
-        Runtime::asking (out.servedStore, out.servedAsks)
+        Runtime::asking (namedReceiver out.servedStore, out.servedAsks)
+
+    namedReceiver store =
+        machine = machineOf store
+        label = match ui::Lists::find (Machines::choicesOf (machine, "receivers"), \c => c.choiceKey == Machines::text (machine, "receiver"))
+            Success choice => choice.choiceLabel
+            Error _ => ""
+        fed (store, [fact ("receiverName", Values::text label)])
 
     (** A control's lever pulled with its value, then the requests answered. *)
     export pulled (store, lever, value) = settled (store(screen = Screen(screenMachine = Machines::pull (machineOf store, lever, value))))
@@ -175,14 +185,18 @@ module Link
 
     // ---- completions ----
 
-    receiver d = Ui::choice (d.name, d.name)
+    receiver (devices, d) =
+        duplicate = length (filterList (devices, \other => other.name == d.name)) > 1
+        Ui::choice (endpoint d, ui::Pick::either (duplicate, "${d.name} (${endpoint d})", d.name))
 
     discovered (store, text) =
         devices = Discovery::browse text
-        first = listGet devices 0 ?: chromecast::Discovery::Device(name = "", host = "", port = 0)
+        first = match listGet devices 0
+            Success device => endpoint device
+            Error _ => ""
         chosen = Machines::text (machineOf store, "receiver")
-        keep = ui::Lists::any (devices, \d => d.name == chosen)
-        settled (fed (withDevices (store, devices), [fact ("searched", Values::flag true), fact ("receivers", Values::list (mapList (devices, receiver))), fact ("receiver", Values::text (ui::Pick::either (keep, chosen, first.name)))]))
+        keep = ui::Lists::any (devices, \d => endpoint d == chosen)
+        settled (fed (withDevices (store, devices), [fact ("searched", Values::flag true), fact ("receivers", Values::list (mapList (devices, \d => receiver (devices, d)))), fact ("receiver", Values::text (ui::Pick::either (keep, chosen, first)))]))
 
     picked (store, doc) = match Doc::flag (doc, "cancelled")
         true => Runtime::step store

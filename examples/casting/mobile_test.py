@@ -18,8 +18,9 @@ def command(arguments, **options):
     return subprocess.run(arguments, check=True, **options)
 
 
-def receiver_fixture(port):
-    text = f'Test._googlecast._tcp SRV 0 0 {port} 127.0.0.1\nTest._googlecast._tcp TXT "fn=Test receiver"\nZUnavailable._googlecast._tcp SRV 0 0 1 127.0.0.1\nZUnavailable._googlecast._tcp TXT "fn=Unavailable receiver"\n'
+def receiver_fixture(port, duplicate=False):
+    devices = [("Same name receiver", 1), ("Same name receiver", port)] if duplicate else [("Test receiver", port), ("Unavailable receiver", 1)]
+    text = "".join(f'cast-{i} SRV 0 0 {at} 127.0.0.1\ncast-{i} TXT "fn={name}"\n' for i, (name, at) in enumerate(devices))
     return base64.b64encode(text.encode()).decode()
 
 
@@ -30,20 +31,27 @@ def stop_process(process):
 
 
 @contextmanager
-def bonjour_fixture(port, work):
-    path = work / "bonjour.log"
+def bonjour_publisher(port, name, work):
+    path = work / (name + ".log")
     with path.open("w") as log:
-        process = subprocess.Popen(["/usr/bin/dns-sd", "-P", "OspreyCasting-" + str(os.getpid()),
+        process = subprocess.Popen(["/usr/bin/dns-sd", "-P", name + "-" + str(os.getpid()),
             "_googlecast._tcp", "local.", str(port), f"osprey-casting-{os.getpid()}.local.",
             "127.0.0.1", "fn=Osprey native test receiver"], stdout=log, stderr=subprocess.STDOUT)
         try:
             for _ in range(100):
                 if process.poll() is not None: raise RuntimeError("Bonjour publisher exited: " + path.read_text())
-                if "reply for service" in path.read_text() and "registered and active" in path.read_text(): break
+                if any("reply for service" in line and "Name now registered and active" in line for line in path.read_text().splitlines()): break
                 time.sleep(0.05)
             else: raise RuntimeError("Bonjour registration timed out: " + path.read_text())
             yield
         finally: stop_process(process)
+
+
+@contextmanager
+def bonjour_fixture(port, work):
+    # [CAST-MOBILE-RECEIVER-IDENTITY] Equal display names, different endpoints.
+    with bonjour_publisher(1, "AUnavailable", work), bonjour_publisher(port, "BAvailable", work):
+        yield
 
 
 def run(platform):
@@ -67,6 +75,9 @@ def run(platform):
         try:
             port = wait_port(process, work / "port")
             env["CAST_TEST_RECEIVER"] = receiver_fixture(port)
+            env["CAST_TEST_DUPLICATE_RECEIVER"] = receiver_fixture(port, duplicate=True)
+            env["CAST_TEST_NATIVE_HOST"] = f"osprey-casting-{os.getpid()}.local"
+            env["CAST_TEST_NATIVE_PORT"] = str(port)
             if platform == "android":
                 serial = env["OSPREY_ANDROID_SERIAL"]
                 adb = [str(sdk / "platform-tools/adb"), "-s", serial]
@@ -101,7 +112,7 @@ def verify_log(path, platform):
     kinds = [record["payload"].get("type") for record in records if record.get("event") == "recv"]
     for kind in ["LAUNCH", "LOAD", "PAUSE", "PLAY", "SEEK", "SET_VOLUME", "SET_PLAYBACK_RATE", "STOP"]:
         assert kind in kinds, (kind, kinds)
-    assert kinds.count("LOAD") == (7 if platform == "ios" else 5), kinds
+    assert kinds.count("LOAD") == (7 if platform == "ios" else 6), kinds
     payloads = [record["payload"] for record in records if record.get("event") == "recv"]
     assert any(item.get("type") == "SET_VOLUME" and abs(item["volume"]["level"] - 0.5) < 0.02 for item in payloads), payloads
     assert any(item.get("type") == "SEEK" and abs(item["currentTime"] - 50) < 3 for item in payloads), payloads
@@ -119,7 +130,7 @@ def verify_log(path, platform):
         assert seeks[:2] == [10, 0] and abs(seeks[2] - 50) < 3, seeks
         rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
         assert rates == [1.5, 0.75, 1.25, 1.5], rates
-        assert kinds.count("STOP") == 5, kinds
+        assert kinds.count("STOP") == 6, kinds
     else:
         assert abs(volumes[0] - 0.5) < 0.02 and volumes[1:] == [0.5, 0.25], volumes
         seeks = [item["currentTime"] for item in payloads if item.get("type") == "SEEK"]

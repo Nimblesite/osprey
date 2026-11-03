@@ -2,7 +2,7 @@
 // machine document, the real adapter and the real @osprey/chromecast port, driven through the
 // framework's resident start/dispatch boundary with host-shaped events, against an in-memory Cast
 // device: a handler for the port's `Wire` effect that reads every frame the sender writes and
-// answers as a Default Media Receiver does, so nothing touches the network.
+// answers as a Default Media Receiver does; receiver keys follow [CAST-MOBILE-RECEIVER-IDENTITY].
 
 import ui::Doc
 import ui::Runtime
@@ -252,7 +252,7 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     expect (requested "animate", true)
     discovered ()
     expect (shows "Receiver", true)
-    expect (selected "Receiver", "Living Room TV")
+    expect (selected "Receiver", "living-room.local:8009")
     expect (length (control "Receiver").controlChoices, 2)
     expect (enabledOf "Play", false)
     press "Open file…"
@@ -313,7 +313,7 @@ test ("a Windows launch finds the TVs with the helper `--browse` names, a Mac la
     expect (shows "Looking for TVs…", true)
     expect (requested "run", true)
     discovered ()
-    expect (selected "Receiver", "Living Room TV")
+    expect (selected "Receiver", "living-room.local:8009")
     expect (length (control "Receiver").controlChoices, 2)
     started ()
     expect (browser (), "/usr/bin/perl -e alarm 3; exec @ARGV /usr/bin/dns-sd -Z _googlecast._tcp local")))

@@ -10,6 +10,8 @@ mkdir -p "$container/Documents"
 cp "$CAST_TEST_AUDIO_SOURCE" "$container/Documents/Casting mobile test.mp3"
 export TEST_RUNNER_CAST_TEST_AUDIO="Casting mobile test.mp3"
 export TEST_RUNNER_CAST_TEST_RECEIVER="$CAST_TEST_RECEIVER"
+export TEST_RUNNER_CAST_TEST_NATIVE_HOST="$CAST_TEST_NATIVE_HOST"
+export TEST_RUNNER_CAST_TEST_NATIVE_PORT="$CAST_TEST_NATIVE_PORT"
 xcodegen generate --spec "$here/project.yml" --project "$here"
 result="$here/../build/ios-test/results-$(date +%s).xcresult"
 mkdir -p "$here/../build/ios-test"
@@ -18,7 +20,7 @@ rm -f "$coverage" "$coverage.partial"
 printf '%s\n' "$result" > "$here/../build/ios-test/result-path.txt"
 xcodebuild -project "$here/Casting.xcodeproj" -scheme Casting \
     -destination "platform=iOS Simulator,id=$device" -derivedDataPath "$here/../build/ui-tests" \
-    -resultBundlePath "$result" -enableCodeCoverage YES -parallel-testing-enabled NO -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
+    -resultBundlePath "$result" -enableCodeCoverage YES -parallel-testing-enabled NO -collect-test-diagnostics never -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
     CODE_SIGNING_ALLOWED=NO test
 xcrun xccov view --report --json "$result" > "$coverage.partial"
 python3 - "$coverage.partial" <<'PY'

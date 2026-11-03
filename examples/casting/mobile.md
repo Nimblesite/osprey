@@ -31,6 +31,7 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 - [x] Verify 44-point iOS and 48-dp Android native button, slider and menu-trigger bounds in Sherbet and the themed skins, including Android landscape; open the file picker from the enlarged edge of its target.
 - [x] Collect native iOS UI-test coverage and reject missing, empty or runner-only reports before publishing the current report.
 - [x] Discover a published Bonjour receiver on iOS without an injected transcript, rescan, select it and verify playback through its advertised hostname and port.
+- [x] Keep equal receiver names distinct on both native hosts, preserve endpoint selection through rescan, and play on the selected reachable receiver while its namesake is unavailable. [CAST-MOBILE-RECEIVER-IDENTITY]
 - [x] Render the alternate themed tree on Android, verify both iOS palettes and exercise Midnight/Poolside playback with session-preserving skin changes.
 - [x] Expose a native Appearance menu from Sherbet on both hosts; switch through all three skins during playback without reloading and verify the complete screenshot/command gates.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
@@ -80,7 +81,13 @@ Use `make -C apps/ios/tests casting-headless` or `make -C apps/android/tests cas
 
 The iOS test entry point enables Xcode coverage during the same native journey, then exports [coverage.json](build/ios-test/coverage.json) with `xccov`. It removes the old report before running and publishes the replacement only after checking that the Casting application target has nonzero covered lines and source-file entries. The UI test runner's own counters cannot satisfy that check.
 
-The current report covers 1,689 of 2,853 executable native target lines, approximately 59%. `CastDiscovery.swift` covers 57 of 71 lines after adding real Bonjour discovery and rescanning; the earlier injected-only journey covered 3. This is reported line coverage of the instrumented Xcode target; it excludes the prebuilt Osprey archive and is not proof of branch coverage. Android native coverage collection and required CI coverage gates remain incomplete. No coverage threshold has been lowered.
+The current report covers 1,693 of 2,859 executable native target lines, approximately 59%. `CastDiscovery.swift` covers 57 of 71 lines after adding real Bonjour discovery and rescanning; the earlier injected-only journey covered 3. This is reported line coverage of the instrumented Xcode target; it excludes the prebuilt Osprey archive and is not proof of branch coverage. Android native coverage collection and required CI coverage gates remain incomplete. No coverage threshold has been lowered.
+
+## Receiver identity [CAST-MOBILE-RECEIVER-IDENTITY]
+
+Receiver selection and connection routing use host and port. Friendly names are presentation text; equal names include their endpoint in the native picker so users can distinguish them. Rescanning retains the selected endpoint while it remains available. The machine keeps its display label separately, preserving the existing artwork and status text for uniquely named receivers.
+
+The iOS journey publishes two real Bonjour services with the same friendly name: one on a refused port and one on the TLS fixture's port. It verifies distinct choices, rescans and plays through the selected working service without an injected transcript. Android exercises the same equal-name case through its native picker and verifies the retained selection in the resident frame. Both full suites pass their exact media-byte, control-command, palette and zero-difference screenshot gates. The shared suite passes under GC and ARC; all four mobile archives rebuild and the refreshed physical iPhone bundle passes strict signature verification. Physical playback and real Android NSD fixture playback remain unverified. XCTest retains its result bundle and explicit screenshots; verbose system diagnostic collection is disabled so an expected failing regression does not collect a system-wide diagnostic for ten minutes.
 
 ## Alternate skins [CAST-MOBILE-SKINS]
 

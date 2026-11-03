@@ -248,9 +248,9 @@ def playback(output):
     find("Play")
 
 
-def launch(skin="sherbet"):
+def launch(skin="sherbet", fixture=None):
     adb("shell", "am", "force-stop", PACKAGE)
-    fixture = os.environ.get("CAST_TEST_RECEIVER", base64.b64encode(b"\n").decode())
+    fixture = fixture if fixture is not None else os.environ.get("CAST_TEST_RECEIVER", base64.b64encode(b"\n").decode())
     adb("shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "testReceiver", fixture, "--es", "skin", skin)
     assert find("Open file…").get("class") == "android.widget.Button"
     assert find("Play").get("class") == "android.widget.Button"
@@ -333,6 +333,24 @@ def alternate_playback(output):
     print("PASS: native connection failure remains visible across skins and a reachable receiver recovers playback", flush=True)
 
 
+def duplicate_receivers():
+    # [CAST-MOBILE-RECEIVER-IDENTITY] The first equal-name device is unavailable.
+    port = os.environ["CAST_TEST_NATIVE_PORT"]
+    launch("midnight", os.environ["CAST_TEST_DUPLICATE_RECEIVER"])
+    for attempt in range(2):
+        tap("Receiver")
+        find("Same name receiver (127.0.0.1:1)")
+        if attempt == 1:
+            snapshot = adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json")
+            assert f'"selected":"127.0.0.1:{port}"' in snapshot, "Rescan lost the selected endpoint"
+        tap(f"Same name receiver (127.0.0.1:{port})")
+        if attempt == 0: tap("Search again")
+    import_track()
+    tap("Play"); find("Pause")
+    tap("Stop"); find("Play")
+    print("PASS: equal receiver names retain distinct endpoints across rescan and play on the selected receiver", flush=True)
+
+
 def main():
     output = ROOT / "examples/casting/build/android-test"
     output.mkdir(parents=True, exist_ok=True)
@@ -342,6 +360,7 @@ def main():
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(track)], check=True)
         adb("push", str(track), "/sdcard/Download/Casting mobile test.mp3")
         index_audio("/sdcard/Download/Casting mobile test.mp3")
+        if os.environ.get("CAST_TEST_RECEIVER"): duplicate_receivers()
         launch()
         touch_regions(["Play", "Open file…", "Receiver: Test receiver", "Appearance"])
         tap("Appearance"); tap("Midnight Mint")
