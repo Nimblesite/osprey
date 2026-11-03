@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The GPUI casting host as a NativeActivity: no Java code, one shared
-     library, the same view code as desktop ([CAST-MOBILE-GPUI]). -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.ospreylang.casting.gpui">
-  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/>
-  <application android:label="Casting" android:hasCode="false">
-    <activity android:name="android.app.NativeActivity"
-        android:label="Casting"
-        android:exported="true"
+<!-- The shared GPUI host as a NativeActivity: hosts/gpui draws everything ([CAST-MOBILE-GPUI]). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.ospreylang.casting">
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK"/>
+  <application android:label="Osprey Casting" android:icon="@mipmap/casting_logo" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+      android:dataExtractionRules="@xml/data_extraction_rules" android:allowBackup="false" android:usesCleartextTraffic="false" android:debuggable="true">
+    <activity android:name=".CastingActivity" android:exported="true" android:windowSoftInputMode="adjustResize"
         android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode">
       <meta-data android:name="android.app.lib_name" android:value="osprey_gpui"/>
       <intent-filter>

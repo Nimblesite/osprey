@@ -3,11 +3,11 @@
 mod files;
 // [CAST-MOBILE-DELIVERY] the iOS OS bridge; its protocol layer also compiles for
 // boundary tests, while the C calls themselves stay iOS-only.
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(target_os = "ios", target_os = "android", test))]
 mod mobile;
 mod platform;
 // iOS launches no processes: its `run` capability is OS discovery across the bridge.
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod process;
 
 use serde_json::Value;
@@ -24,9 +24,9 @@ pub fn answer(request: &Request) -> Result<Value, String> {
         // [CAST-MOBILE-DELIVERY] iOS launches no process and has no GPUI path
         // prompt: its OS services answer run (discovery) and choose-file across
         // the bridge, on the caller's background executor.
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         "run" | "choose-file" => mobile::answer(request),
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
         "run" => process::run(request),
         "list-directories" => files::list_directories(request),
         "read-texts" => files::read_texts(request),

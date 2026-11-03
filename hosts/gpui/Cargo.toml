@@ -23,6 +23,7 @@ gpui_ios = { package = "gpui-pre-ios", version = "=0.3.10" }
 [target.'cfg(target_os = "android")'.dependencies]
 android-activity = { version = "0.6", features = ["native-activity"] }
 android_logger = "0.14"
+jni = "=0.21.1"
 log = "0.4"
 gpui_android = { package = "osprey-gpui-android", path = "android" }
 

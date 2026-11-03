@@ -44,9 +44,48 @@ mod bridge {
     }
 }
 
+/// The Android OS-service boundary: `CastingActivity.answer` over JNI, one JSON
+/// request in and one JSON answer out, on this background thread.
+#[cfg(target_os = "android")]
+mod bridge {
+    use jni::objects::{JObject, JString, JValue};
+    use jni::JavaVM;
+
+    pub(super) fn call(request: &str) -> Result<String, String> {
+        let app = crate::host::ANDROID_APP
+            .get()
+            .ok_or("No Android activity answers capabilities")?;
+        // SAFETY: the VM and activity pointers stay valid for the process, and the
+        // activity is a global reference this borrow never deletes.
+        let (vm, activity) = unsafe {
+            (
+                JavaVM::from_raw(app.vm_as_ptr().cast()).map_err(|error| error.to_string())?,
+                JObject::from_raw(app.activity_as_ptr().cast()),
+            )
+        };
+        let mut env = vm.attach_current_thread().map_err(|error| error.to_string())?;
+        let input = env.new_string(request).map_err(|error| error.to_string())?;
+        let called = env.call_method(
+            &activity,
+            "answer",
+            "(Ljava/lang/String;)Ljava/lang/String;",
+            &[JValue::Object(&input)],
+        );
+        let answer = match called.and_then(|value| value.l()) {
+            Ok(answer) => JString::from(answer),
+            Err(error) => {
+                let _ = env.exception_clear();
+                return Err(format!("The OS capability bridge failed: {error}"));
+            }
+        };
+        let text = env.get_string(&answer).map_err(|error| error.to_string())?;
+        Ok(text.into())
+    }
+}
+
 /// Answers one capability through the OS bridge ([CAST-MOBILE-DELIVERY]); the
 /// caller has already moved this call onto the background executor.
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 pub(super) fn answer(request: &Request) -> Result<Value, String> {
     bridge::call(&encoded(request)).and_then(|raw| applied(&raw))
 }

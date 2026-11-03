@@ -45,15 +45,26 @@ env "$linker_variable=$tools/$clang_target-clang" OSPREY_GPUI_APP_DIR="$output" 
     OSPREY_GPUI_LINK_SEARCH="$output:$openssl/lib" OSPREY_GPUI_LINK_LIBS="static=osprey_cast_net,static=ssl,static=crypto" \
     cargo build --manifest-path hosts/gpui/Cargo.toml --target "$rust_target" --lib --release --locked
 
+export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}" PATH="$JAVA_HOME/bin:$PATH"
 apk="$output/apk"
 rm -rf "$apk"
-mkdir -p "$apk/lib/$abi" "$apk/assets"
+mkdir -p "$apk/lib/$abi" "$apk/assets" "$apk/generated"
 "$tools/llvm-strip" --strip-unneeded "hosts/gpui/target/$rust_target/release/libosprey_gpui.so" -o "$apk/lib/$abi/libosprey_gpui.so"
 cp examples/casting/player.machine.json "$apk/assets/"
 cp -R examples/casting/skins "$apk/assets/"
 echo '["--machine", "${RESOURCES}/player.machine.json"]' > "$apk/assets/osprey-arguments.json"
 (cd "$apk/assets" && find . -type f ! -name osprey-files.txt | sed 's|^\./||' | sort > osprey-files.txt)
-"$build_tools/aapt2" link -o "$apk/base.apk" --manifest "$here/gpui/AndroidManifest.xml" -I "$(ls -d "$sdk"/platforms/android-* | sort -V | tail -1)/android.jar" -A "$apk/assets"
+"$build_tools/aapt2" compile --dir "$here/app/src/main/res" -o "$apk/resources.zip"
+platform=$(ls -d "$sdk"/platforms/android-* | sort -V | tail -1)/android.jar
+"$build_tools/aapt2" link -o "$apk/base.apk" --manifest "$here/gpui/AndroidManifest.xml" -I "$platform" -A "$apk/assets" \
+    --min-sdk-version 34 --target-sdk-version 37 --java "$apk/generated" "$apk/resources.zip"
+# Only the services the platform alone provides; hosts/gpui draws everything.
+mkdir -p "$apk/classes"
+javac -nowarn --release 11 -classpath "$platform" -d "$apk/classes" "$apk/generated/org/ospreylang/casting/R.java" \
+    "$here/gpui/java/org/ospreylang/casting/CastingActivity.java" "$here/src/main/java/org/ospreylang/casting/CastDiscovery.java" \
+    "$here/src/main/java/org/ospreylang/casting/MediaDocuments.java"
+"$build_tools/d8" --lib "$platform" --min-api 34 --output "$apk" $(find "$apk/classes" -name '*.class')
+(cd "$apk" && zip -q base.apk classes.dex)
 (cd "$apk" && zip -q -0 base.apk "lib/$abi/libosprey_gpui.so")
 "$build_tools/zipalign" -f -P 16 4 "$apk/base.apk" "$apk/aligned.apk"
 "$build_tools/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --out "$output/Casting.apk" "$apk/aligned.apk"

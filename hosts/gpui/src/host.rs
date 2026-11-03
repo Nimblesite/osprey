@@ -105,7 +105,7 @@ impl HostView {
                 }
                 // [CAST-MOBILE-DELIVERY] iOS has no GPUI path prompt: its document
                 // picker is answered across the OS bridge like any blocking adapter.
-                "choose-file" if cfg!(target_os = "ios") => {
+                "choose-file" if cfg!(any(target_os = "ios", target_os = "android")) => {
                     self.answer_in_background(request, window, cx);
                 }
                 "choose-file" | "choose-folder" | "save-file" | "reveal" => {
@@ -318,7 +318,7 @@ fn new_view(
 /// The NativeActivity handle `android_main` installed before the host starts
 /// ([CAST-MOBILE-GPUI]).
 #[cfg(target_os = "android")]
-static ANDROID_APP: std::sync::OnceLock<android_activity::AndroidApp> = std::sync::OnceLock::new();
+pub(crate) static ANDROID_APP: std::sync::OnceLock<android_activity::AndroidApp> = std::sync::OnceLock::new();
 
 /// Installs the activity the Android platform backend draws through.
 #[cfg(target_os = "android")]
