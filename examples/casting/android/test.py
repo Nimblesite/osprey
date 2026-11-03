@@ -59,6 +59,8 @@ def packaged_assets(apk):
     for name in ("backdrop", "disc", "transport"):
         assert f"assets/skins/sherbet/{name}.png" in paths, name
     assert not any(path.startswith("assets/skins/skins/") for path in paths), "Nested duplicate skin assets in the APK"
+    abis = {path.split("/")[1] for path in paths if path.startswith("lib/") and path.endswith(".so")}
+    assert abis == {adb("shell", "getprop", "ro.product.cpu.abi").strip()}, ("APK contains an unselected native ABI", abis)
 
 
 def bindings():

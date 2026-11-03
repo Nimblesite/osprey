@@ -6,12 +6,14 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 
 `make -C apps/tests casting-mobile-build TARGET=ios-sim` builds the ARC runtime and the existing casting library. The other targets are `ios`, `android-arm64` and `android-x64`. The output is `build/<target>/libOspreyApp.a`. The native shell must implement `native_slice` and `native_shape`, link the Cast networking services, and drive the resident start/dispatch boundary.
 
+`make -C apps/android casting-build` packages ARM64; `TARGET=android-x64` packages x64. Each APK contains only the architecture linked by that build, using [Android's ABI filters](https://developer.android.com/ndk/guides/abis). An earlier ARM64 build also bundled a cached x64 binary. Both corrected APKs now match their freshly linked, stripped native libraries; the installed-package test rejects additional architectures. The complete ARM64 native journey and unchanged goldens pass. x64 execution remains unverified on this ARM64 host.
+
 ## Delivery checklist [CAST-MOBILE-DELIVERY]
 
 - [x] Inspect existing casting adapter, shared tests and native host implementations.
 - [x] Add a repeatable mobile shared-library build entry point.
 - [x] Verify shared library builds for physical iPhone, iOS simulator, Android ARM64 and Android x64.
-- [ ] Prevent stale JNI libraries for other architectures from being bundled into an ABI-specific Android build.
+- [x] Prevent stale JNI libraries for other architectures from being bundled into an ABI-specific Android build; verify both packages and the full ARM64 native journey.
 - [x] Package the existing logo as an opaque native iOS AppIcon for phone and tablet; verify compiled catalog metadata and keep the player screenshot goldens unchanged.
 - [x] Drive both native apps through TLS playback, pause/resume, seek, volume, speed, stop and replay; verify metadata, exact served MP3 bytes and one command per slider adjustment.
 - [x] Verify native picker cancellation twice and restart on both platforms; verify actual picker import and playback from the imported copy on both platforms.

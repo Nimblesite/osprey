@@ -26,5 +26,5 @@ cp examples/casting/player.machine.json "$assets/player.machine.json"
 rm -rf "$assets/skins"
 cp -R examples/casting/skins "$assets/"
 cd "$here"
-bash "$repo/examples/mobile/android/gradlew" --console=plain :app:assembleDebug
+bash "$repo/examples/mobile/android/gradlew" --console=plain -PcastingAbi="$abi" :app:assembleDebug
 echo "$here/app/build/outputs/apk/debug/app-debug.apk"
