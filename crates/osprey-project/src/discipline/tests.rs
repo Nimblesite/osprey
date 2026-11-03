@@ -63,7 +63,7 @@ fn write_file(root: &Path, relative: &str, text: &str) {
 fn source(text: &str) -> SourceFile {
     let parsed = osprey_syntax::parse_program_with_flavor(text, Flavor::Ml);
     let errors = &parsed.errors;
-    assert!(errors.is_empty(), "fixture parses: {:?}", errors);
+    assert!(errors.is_empty(), "fixture parses: {errors:?}");
     SourceFile {
         path: PathBuf::from("src/Proof.ospml"),
         flavor: Flavor::Ml,
@@ -149,7 +149,7 @@ fn unknown_discipline_is_one_error_on_the_marker_line() {
     let errors = apply(&config, vec![source(MARKED)], &runner).expect_err("unknown name");
     assert_eq!(errors.len(), 1);
     let message = &errors[0].message;
-    assert!(message.starts_with(ERROR_PREFIX), "{}", message);
+    assert!(message.starts_with(ERROR_PREFIX), "{message}");
     assert!(message.contains("`bounded`"));
     assert_eq!(errors[0].line, Some(1));
     assert_eq!(runner.calls.get(), 0);
@@ -259,8 +259,8 @@ fn every_checker_fault_is_a_discipline_error() {
     for (name, answer, expected) in cases {
         let errors = apply_one(name, answer).expect_err(name);
         let message = &errors[0].message;
-        assert!(message.starts_with(ERROR_PREFIX), "{name}: {}", message);
-        assert!(message.contains(expected), "{name}: {}", message);
+        assert!(message.starts_with(ERROR_PREFIX), "{name}: {message}");
+        assert!(message.contains(expected), "{name}: {message}");
     }
 }
 
