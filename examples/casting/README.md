@@ -13,7 +13,7 @@ On macOS `run.sh` compiles the app to a C archive and links it, with the TLS and
 
 ## Mobile
 
-The iPhone and Android apps are migrating to this same GPUI host. The iOS build already packages the shared `hosts/gpui` binary with native Swift cast services and launches on the simulator, and renders through GPUI; viewport fitting and platform-service integration remain in progress; the Android GPUI backend is in progress. The retired SwiftUI renderer and its evidence are archived in [archive/casting-swiftui](../../archive/casting-swiftui/README.md). Current status and the mandatory delivery checklist: [mobile.md](mobile.md).
+The iPhone and Android apps are this same GPUI host: `hosts/gpui` draws the player on both, through `gpui_ios` and through its own Android backend in `hosts/gpui/android`. Native code answers only what the platform alone can do. On iOS that is discovery, the document picker and TLS (`ios/`). On Android it is discovery and the document picker (`android/src/main/java`), with TLS and media serving from the same C runtime as desktop. `make -C apps/android casting-build` builds the APK.
 
 ## How it fits together
 
