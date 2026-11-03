@@ -225,6 +225,12 @@ impl InferCtx {
         matches!(self.prune(t), Type::Var(id) if self.literals.contains_key(&id))
     }
 
+    /// Whether arithmetic must settle this open float literal to `float` now
+    /// [TYPE-NUMERIC-LITERAL].
+    pub(crate) fn is_open_float_literal(&mut self, t: &Type) -> bool {
+        matches!(self.prune(t), Type::Var(id) if self.literal_default(id).is_some_and(Numeric::is_float))
+    }
+
     /// Fix to its default every open literal free in `t`: a binding's type is
     /// decided at the binding, so nothing quantifies over a literal.
     pub(crate) fn settle_literals_in(&mut self, t: &Type) {

@@ -326,7 +326,8 @@ fn finish_phi(
 }
 
 /// An arm that is a literal joins its sized siblings at their type: the checker
-/// proved one type, and the literal still spells `int` ([TYPE-NUMERIC-LITERAL]).
+/// proved one type, and the literal still spells its default — `int` as `i64`,
+/// `float` as `double` ([TYPE-NUMERIC-LITERAL]).
 fn fit_literal_arms(cg: &mut Codegen, arms: Vec<(Value, String)>) -> Result<Vec<(Value, String)>> {
     let sized = arms.iter().find_map(|(value, _)| match value.ty {
         LType::Num(n) if n.is_sized() => Some(n),
@@ -337,11 +338,11 @@ fn fit_literal_arms(cg: &mut Codegen, arms: Vec<(Value, String)>) -> Result<Vec<
     };
     arms.into_iter()
         .map(|(value, exit)| {
-            if value.ty != LType::I64 {
+            if !matches!(value.ty, LType::I64 | LType::F64) {
                 return Ok((value, exit));
             }
             cg.start_block(&exit);
-            let fitted = crate::conv::as_num(cg, value, sized)?;
+            let fitted = crate::conv::fit_literal(cg, value, Some(sized))?;
             let next = cg.fresh_label();
             cg.emit(format!("br label %{next}"));
             Ok((fitted, next))

@@ -139,8 +139,8 @@ typedef ulong (*device_unary)(ulong);
 typedef long double (*host_unary)(long double);
 
 // Every function whose result is exactly defined — rounding, remainder,
-// sign, the binary32 emulation and the total shifts — must agree with the
-// host bit for bit on every word [BUILTIN-MATH-ROUNDING] [BUILTIN-FLOAT32]
+// sign, binary32 narrowing and the total shifts — must agree with the
+// host bit for bit on every word [BUILTIN-MATH-ROUNDING] [GPU-DEVICE-NATIVE]
 // [BUILTIN-BITWISE].
 static void check_exact_unary(const char *what, device_unary device, double (*host)(double)) {
   for (unsigned i = 0; i < SPECIALS; i++) expect(what, specials[i], 0, device(specials[i]), bits(host(of(specials[i]))));
@@ -171,18 +171,16 @@ static uint32_t narrow_reference(uint64_t x) {
 
 static void check_binary32(void) {
   for (unsigned i = 0; i < SPECIALS; i++) {
-    expect("float32", specials[i], 0, float32_64(specials[i]),
+    expect("round trip", specials[i], 0, widen32(narrow32(specials[i])),
            isnan(of(specials[i])) ? bits(f32_widen(nan32_of(specials[i]))) : bits(f32_widen(f32_bits_of(of(specials[i])))));
-    expect("float32Bits", specials[i], 0, float32_bits(specials[i]), narrow_reference(specials[i]));
-    expect("float32FromBits", specials[i], 0, float32_from_bits(float32_bits(specials[i])), float32_64(specials[i]));
+    expect("narrow32", specials[i], 0, narrow32(specials[i]), narrow_reference(specials[i]));
   }
   for (unsigned i = 0; i < TRIALS; i++) {
     uint64_t x = word_in(0, 2047);
-    expect("float32", x, 0, float32_64(x), bits(f32_widen(narrow_reference(x))));
-    expect("float32Bits", x, 0, float32_bits(x), narrow_reference(x));
-    expect("float32FromBits", x, 0, float32_from_bits(float32_bits(x)), float32_64(x));
+    expect("round trip", x, 0, widen32(narrow32(x)), bits(f32_widen(narrow_reference(x))));
+    expect("narrow32", x, 0, narrow32(x), narrow_reference(x));
     uint64_t edge = (word_in(0, 2047) & UINT64_C(0xffffffffe0000000)) | (random_word() & UINT64_C(0x1fffffff));
-    expect("float32 tie", edge, 0, float32_64(edge), bits(f32_widen(narrow_reference(edge))));
+    expect("narrow32 tie", edge, 0, widen32(narrow32(edge)), bits(f32_widen(narrow_reference(edge))));
   }
   // Emitted floatBits/floatFromBits kernels are exercised by
   // tests/core/gpu/scalar_contracts.test.osp and its ML twin.

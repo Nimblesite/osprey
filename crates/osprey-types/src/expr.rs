@@ -63,7 +63,7 @@ impl Checker {
     fn infer_expr_raw(&mut self, e: &Expr, env: &TypeEnv) -> Type {
         match e {
             Expr::Integer(value) => self.integer_literal(*value),
-            Expr::Float(_) => Type::float(),
+            Expr::Float(value) => self.float_literal(*value),
             Expr::Str(_) => Type::string(),
             Expr::Bool(_) => Type::bool(),
             Expr::InterpolatedStr(parts) => self.infer_interpolation(parts, env),
@@ -1495,6 +1495,7 @@ fn locatable_obligation(name: &str) -> bool {
     is_deferred_arith(name)
         || name.starts_with(crate::builtin_constraints::NUMERIC_OPERAND_PREFIX)
         || name.starts_with(crate::builtin_constraints::INTEGER_OPERAND_PREFIX)
+        || name.starts_with(crate::builtin_constraints::FLOAT_OPERAND_PREFIX)
         || name.starts_with(crate::comparison::COMPARED_OPERAND_PREFIX)
         || name == "interpolation"
         || name == "structuralEquals"
@@ -1617,6 +1618,10 @@ impl Checker {
                 return result;
             }
         }
+        // [TYPE-NUMERIC-LITERAL] With no sized sibling, an open float literal
+        // settles before the existing float overload and int promotion run.
+        let l = self.settle_arith_float(&l);
+        let r = self.settle_arith_float(&r);
         if !string_concat && (op == "/" || l.is_named(names::FLOAT) || r.is_named(names::FLOAT)) {
             self.constrain_numeric_operands(op, &l, &r, position);
         }
@@ -1663,6 +1668,14 @@ impl Checker {
                     self.int_arithmetic_result(&l, &r)
                 }
             }
+        }
+    }
+
+    fn settle_arith_float(&mut self, operand: &Type) -> Type {
+        if self.ctx.is_open_float_literal(operand) {
+            self.ctx.expose_settled(operand)
+        } else {
+            self.ctx.expose(operand)
         }
     }
 
@@ -1805,6 +1818,13 @@ impl Checker {
             return;
         };
         let position = crate::builtin_constraints::source_position(name);
+        if crate::arithmetic::is_float_open(op) {
+            for operand in &params {
+                if matches!(self.ctx.apply(operand), Type::Var(_)) {
+                    self.push_unify(&Type::float(), operand);
+                }
+            }
+        }
         // The operator reads its operands where it was written, and its
         // diagnostics say so too.
         let written = self.use_sites.get(name).cloned().unwrap_or_default();

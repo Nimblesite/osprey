@@ -63,6 +63,9 @@ pub(crate) fn fixed_numeric_operand(name: &str, ty: &Type) -> bool {
 /// for a builtin open over the integer types.
 pub(crate) const INTEGER_OPERAND_PREFIX: &str = "integer ";
 
+/// [BUILTIN-MATH] The float-only form of [`NUMERIC_OPERAND_PREFIX`].
+pub(crate) const FLOAT_OPERAND_PREFIX: &str = "float ";
+
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const SORTABLE_DISPLAY: &str = "List<int> | List<string>";
 const PRINTABLE_DISPLAY: &str =
@@ -91,8 +94,18 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
     // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
     // preserving numeric polymorphism while refusing concrete nonnumeric uses.
     if let Some(op) = operation_name(name).strip_prefix(NUMERIC_OPERAND_PREFIX) {
-        return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
+        let sized_float =
+            crate::numeric::Numeric::of_type(ty).is_some_and(|n| n.is_sized() && n.is_float());
+        let arithmetic = matches!(op, "+" | "-" | "*" | "/" | "%");
+        let valid = is_numeric_scalar(ty) && !(arithmetic && sized_float);
+        return (!valid && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
+    }
+    if let Some(op) = operation_name(name).strip_prefix(FLOAT_OPERAND_PREFIX) {
+        let float =
+            crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_float);
+        return (!float && !matches!(ty, Type::Var(_)))
+            .then(|| format!("`{op}` requires a float; got {ty}"));
     }
     if let Some(op) = operation_name(name).strip_prefix(INTEGER_OPERAND_PREFIX) {
         let integer =

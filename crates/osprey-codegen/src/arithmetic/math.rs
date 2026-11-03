@@ -1,13 +1,13 @@
 //! Total math and bit-level builtins beyond the unary float functions:
-//! the binary float functions, the binary32 emulation, the bit-level views
-//! of both float formats, checked float→int truncation and the bitwise
-//! integer operations. All are pure and total — no `Arith` operation, no
-//! `Result` except `floatToInt`. Implements [BUILTIN-MATH-TRIG],
-//! [BUILTIN-MATH-LOG], [BUILTIN-MATH-ROUNDING], [BUILTIN-FLOAT32],
-//! [BUILTIN-FLOAT-BITS], [BUILTIN-FLOATTOINT] and [BUILTIN-BITWISE].
+//! the binary float functions, the bit-level views of the three float
+//! formats, checked float→int truncation and the bitwise integer operations.
+//! All are pure and total — no `Arith` operation, no `Result` except
+//! `floatToInt`. Implements [BUILTIN-MATH-TRIG], [BUILTIN-MATH-LOG],
+//! [BUILTIN-MATH-ROUNDING], [BUILTIN-FLOAT-BITS], [BUILTIN-FLOATTOINT] and
+//! [BUILTIN-BITWISE].
 
 use crate::builder::Codegen;
-use crate::conv::{as_double, as_i64, as_num, box_to_i64, unbox_from_i64};
+use crate::conv::{as_i64, as_num, box_to_i64, unbox_from_i64};
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use crate::result::make_result_if_err;
@@ -42,14 +42,15 @@ pub(crate) fn binary_float_function(
     left: Value,
     right: Value,
 ) -> Result<Value> {
-    let x = as_double(cg, left)?;
-    let y = as_double(cg, right)?;
+    let sized = super::operand_numeric(&left, &right);
+    let n = if sized.is_float() {
+        sized
+    } else {
+        Numeric::FLOAT
+    };
     if name == "fmod" {
         // Total: fmod(x, 0.0) is NaN, like any domain result.
-        return Ok(Value::new(
-            cg.emit_reg(format!("frem double {}, {}", x.operand, y.operand)),
-            LType::F64,
-        ));
+        return super::float_op(cg, "frem", n, left, right);
     }
     let symbol = BINARY_INTRINSICS
         .iter()
@@ -57,69 +58,98 @@ pub(crate) fn binary_float_function(
         .map(|(_, s)| *s)
         .or_else(|| BINARY_LIBM.contains(&name).then_some(name))
         .ok_or_else(|| CodegenError::invalid(format!("{name} is not a binary float function")))?;
-    cg.add_extern(format!("declare double @{symbol}(double, double)"));
+    // A binary16 pair computes in binary32 and rounds back once
+    // [TYPE-NUMERIC-ARITH-WIDTH].
+    let compute = n.float_compute();
+    let x = as_num(cg, left, compute)?;
+    let y = as_num(cg, right, compute)?;
+    let sym = super::unary::float_symbol_at(symbol, compute);
+    let ty = compute.llvm();
+    cg.add_extern(format!("declare {ty} @{sym}({ty}, {ty})"));
     let operand = cg.emit_reg(format!(
-        "call double @{symbol}(double {}, double {})",
+        "call {ty} @{sym}({ty} {}, {ty} {})",
         x.operand, y.operand
     ));
-    Ok(Value::new(operand, LType::F64))
+    as_num(cg, Value::new(operand, LType::Num(compute)), n)
 }
 
-/// [BUILTIN-FLOAT32] Round to the nearest binary32 (ties to even) and widen
-/// back: one `fptrunc` + one `fpext`, both correctly rounded, so the result
-/// is the value a float32 pipeline would hold.
-pub(crate) fn float32_round(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let x = as_double(cg, value)?;
-    let f = cg.emit_reg(format!("fptrunc double {} to float", x.operand));
-    Ok(Value::new(
-        cg.emit_reg(format!("fpext float {f} to double")),
-        LType::F64,
-    ))
+/// [BUILTIN-FLOAT-BITS] The six bit-level float views, paired by name.
+pub(crate) fn is_float_bits_builtin(name: &str) -> bool {
+    matches!(
+        name,
+        "floatBits"
+            | "floatFromBits"
+            | "float32Bits"
+            | "float32FromBits"
+            | "float16Bits"
+            | "float16FromBits"
+    )
+}
+
+/// [BUILTIN-FLOAT-BITS] One bit-level view by name: total and pure bitcasts
+/// that preserve NaN payloads, signed zeros, infinities and subnormals, each
+/// pair inverting at its width.
+pub(crate) fn float_bits_view(cg: &mut Codegen, name: &str, value: Value) -> Result<Value> {
+    match name {
+        "floatBits" => float_bits(cg, value),
+        "floatFromBits" => float_from_bits(cg, value),
+        "float32Bits" => float32_bits(cg, value),
+        "float32FromBits" => float32_from_bits(cg, value),
+        "float16Bits" => float16_bits(cg, value),
+        "float16FromBits" => float16_from_bits(cg, value),
+        _ => Err(CodegenError::invalid(format!(
+            "{name} is not a float bit view"
+        ))),
+    }
 }
 
 /// [BUILTIN-FLOAT-BITS] The binary64 word of `x`: a bitcast, preserving NaN
 /// payloads, signed zeros and infinities exactly.
-pub(crate) fn float_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let x = as_double(cg, value)?;
+fn float_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
+    let x = as_num(cg, value, Numeric::FLOAT)?;
     Ok(box_to_i64(cg, x))
 }
 
 /// [BUILTIN-FLOAT-BITS] The binary64 the word `bits` holds.
-pub(crate) fn float_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
+fn float_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
     let b = as_i64(cg, value)?;
     Ok(unbox_from_i64(cg, &b.operand, LType::F64))
 }
 
-/// [BUILTIN-FLOAT-BITS] The binary32 pattern of the nearest float32 to `x`
-/// (the low 32 bits of the float32 word), zero-extended to an int.
-pub(crate) fn float32_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let x = as_double(cg, value)?;
-    let f = cg.emit_reg(format!("fptrunc double {} to float", x.operand));
-    let w = cg.emit_reg(format!("bitcast float {f} to i32"));
-    Ok(Value::new(
-        cg.emit_reg(format!("zext i32 {w} to i64")),
-        LType::I64,
-    ))
+/// [BUILTIN-FLOAT-BITS] The binary32 word of a `float32`, as an `int32`.
+fn float32_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
+    let x = as_num(cg, value, Numeric::FLOAT32)?;
+    let w = cg.emit_reg(format!("bitcast float {} to i32", x.operand));
+    Ok(Value::new(w, LType::Num(Numeric::INT32)))
 }
 
-/// [BUILTIN-FLOAT-BITS] The double the binary32 pattern `bits` holds,
-/// widened exactly.
-pub(crate) fn float32_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let b = as_i64(cg, value)?;
-    let w = cg.emit_reg(format!("trunc i64 {} to i32", b.operand));
-    let f = cg.emit_reg(format!("bitcast i32 {w} to float"));
-    Ok(Value::new(
-        cg.emit_reg(format!("fpext float {f} to double")),
-        LType::F64,
-    ))
+/// [BUILTIN-FLOAT-BITS] The `float32` the `int32` word `bits` holds.
+fn float32_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
+    let b = as_num(cg, value, Numeric::INT32)?;
+    let f = cg.emit_reg(format!("bitcast i32 {} to float", b.operand));
+    Ok(Value::new(f, LType::Num(Numeric::FLOAT32)))
 }
 
-/// [BUILTIN-FLOATTOINT] Checked truncation toward zero. `fptosi` is poison
+/// [BUILTIN-FLOAT-BITS] A binary16 value already travels as its `i16` bits
+/// ([TYPE-NUMERIC-SIZED]), so the view retags the word it is given.
+fn float16_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
+    let x = as_num(cg, value, Numeric::FLOAT16)?;
+    Ok(Value::new(x.operand, LType::Num(Numeric::INT16)))
+}
+
+/// [BUILTIN-FLOAT-BITS] The `float16` the `int16` word `bits` holds.
+fn float16_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
+    let b = as_num(cg, value, Numeric::INT16)?;
+    Ok(Value::new(b.operand, LType::Num(Numeric::FLOAT16)))
+}
+
+/// [BUILTIN-FLOATTOINT] Checked truncation toward zero from any float width
+/// (`as_num` widens `float32` and `float16` exactly first). `fptosi` is poison
 /// outside the i64 range, so NaN, ±inf and out-of-range magnitudes are
 /// decided by comparisons first and reported as `Error`; the bounds ±2^63
 /// are exactly representable doubles, so one comparison each is decisive.
 pub(crate) fn float_to_int(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let x = as_double(cg, value)?;
+    let x = as_num(cg, value, Numeric::FLOAT)?;
     let not_nan = cg.emit_reg(format!("fcmp ord double {}, {}", x.operand, x.operand));
     let low = cg.emit_reg(format!(
         "fcmp oge double {}, -9223372036854775808.0",
@@ -225,18 +255,10 @@ mod tests {
     }
 
     #[test]
-    fn float32_round_narrows_and_widens() {
-        let ir = render(&mut |cg| {
-            let _ = float32_round(cg, Value::new("0.1", LType::F64)).unwrap();
-        });
-        shows(&ir, &["fptrunc double 0.1 to float", "fpext float "]);
-    }
-
-    #[test]
     fn float_bits_bitcast_preserve_the_word() {
         let ir = render(&mut |cg| {
-            let _ = float_bits(cg, Value::new("1.0", LType::F64)).unwrap();
-            let _ = float_from_bits(cg, Value::new("1", LType::I64)).unwrap();
+            let _ = float_bits_view(cg, "floatBits", Value::new("1.0", LType::F64)).unwrap();
+            let _ = float_bits_view(cg, "floatFromBits", Value::new("1", LType::I64)).unwrap();
         });
         shows(
             &ir,
@@ -245,18 +267,30 @@ mod tests {
     }
 
     #[test]
-    fn float32_bits_use_the_low_32_bits() {
+    fn float32_and_float16_bit_views_retag_their_words() {
         let ir = render(&mut |cg| {
-            let _ = float32_bits(cg, Value::new("0.1", LType::F64)).unwrap();
-            let _ = float32_from_bits(cg, Value::new("7", LType::I64)).unwrap();
+            let _ = float_bits_view(
+                cg,
+                "float32Bits",
+                Value::new("0.5", LType::Num(Numeric::FLOAT32)),
+            )
+            .unwrap();
+            let _ = float_bits_view(cg, "float32FromBits", Value::new("7", LType::I32)).unwrap();
+            let _ = float_bits_view(
+                cg,
+                "float16Bits",
+                Value::new("15360", LType::Num(Numeric::FLOAT16)),
+            )
+            .unwrap();
+            let _ =
+                float_bits_view(cg, "float16FromBits", Value::new("15360", LType::I32)).unwrap();
         });
         shows(
             &ir,
             &[
-                "fptrunc double 0.1 to float",
-                "bitcast float ",
-                "zext i32 ",
-                "trunc i64 7 to i32",
+                "bitcast float 0.5 to i32",
+                "bitcast i32 7 to float",
+                "trunc i32 15360 to i16",
             ],
         );
     }

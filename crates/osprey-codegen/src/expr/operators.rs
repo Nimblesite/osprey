@@ -1,7 +1,5 @@
 //! Expression operators lowering.
-use super::{
-    as_double, as_i1, gen_expr, to_string_value, Codegen, CodegenError, Expr, LType, Result, Value,
-};
+use super::{as_i1, gen_expr, to_string_value, Codegen, CodegenError, Expr, LType, Result, Value};
 use crate::conv::as_num;
 use osprey_types::numeric::Numeric;
 
@@ -111,18 +109,20 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     if op == "%" {
         return crate::arithmetic::remainder(cg, l, r);
     }
-    // IEEE-754 arithmetic stays plain. Integer `+ - *` below are fallible and
-    // return a Result when their exact mathematical result is outside i64.
-    if l.ty == LType::F64 || r.ty == LType::F64 {
-        let ld = as_double(cg, l)?;
-        let rd = as_double(cg, r)?;
+    // IEEE-754 arithmetic stays plain at the operands' own width
+    // [TYPE-NUMERIC-ARITH-WIDTH]: a float16 pair computes in binary32 and
+    // rounds back once, float32 is native, and a literal operand arrives as
+    // its `double` default spelling and narrows exactly. Integer `+ - *`
+    // below are fallible and return a Result when their exact mathematical
+    // result is outside i64.
+    let n = crate::arithmetic::operand_numeric(&l, &r);
+    if n.is_float() {
         let opc = match op {
             "+" => "fadd",
             "-" => "fsub",
             _ => "fmul",
         };
-        let reg = cg.emit_reg(format!("{opc} double {}, {}", ld.operand, rd.operand));
-        return Ok(Value::new(reg, LType::F64));
+        return crate::arithmetic::float_op(cg, opc, n, l, r);
     }
     let stem = match op {
         "+" => "add",
@@ -338,18 +338,21 @@ pub(crate) fn gen_comparison(cg: &mut Codegen, op: &str, l: Value, r: Value) -> 
         cg.emit(format!("{reg} = icmp {} i32 {c}, 0", cmp_code(op, false)));
         return Ok(Value::new(reg, LType::I1));
     }
-    if l.ty == LType::F64 || r.ty == LType::F64 {
-        let ld = as_double(cg, l)?;
-        let rd = as_double(cg, r)?;
+    let numeric = crate::arithmetic::operand_numeric(&l, &r);
+    if numeric.is_float() {
+        // [FLOAT-COMPARE] at the compute width — a float16 pair widens to
+        // binary32 through the one shared operand widening — so ordered and
+        // unordered predicates read real values, not bits.
+        let (compute, l, r) = crate::arithmetic::float_operands(cg, numeric, l, r)?;
         cg.emit(format!(
-            "{reg} = fcmp {} double {}, {}",
+            "{reg} = fcmp {} {} {}, {}",
             cmp_code(op, true),
-            ld.operand,
-            rd.operand
+            compute.llvm(),
+            l.operand,
+            r.operand
         ));
         return Ok(Value::new(reg, LType::I1));
     }
-    let numeric = crate::arithmetic::operand_numeric(&l, &r);
     let signed = cmp_code(op, false);
     let unsigned = signed.replacen('s', "u", usize::from(signed != "ne"));
     let cc = if numeric.is_signed() {

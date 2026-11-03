@@ -283,16 +283,15 @@ impl Emitter<'_> {
             ("pow" | "atan2" | "hypot" | "fmod" | "copysign", [(Ty::FLOAT, a), (Ty::FLOAT, b)]) => {
                 unary(Ty::FLOAT, format!("{name}64({a}, {b})"))
             }
-            // [BUILTIN-FLOAT32] the binary32 emulation; [BUILTIN-FLOAT-BITS]
-            // the bit-level views. A device float IS its binary64 word, so
-            // floatBits is the identity and floatFromBits a cast of the word.
-            ("float32", [(Ty::FLOAT, a)]) => unary(Ty::FLOAT, format!("float32_64({a})")),
+            // [BUILTIN-FLOAT-BITS] the bit-level views. A device float IS its
+            // binary64 word, so floatBits is the identity and floatFromBits a
+            // cast of the word. The sized-float views (`float32Bits`,
+            // `float16Bits` and their inverses) and every conversion named for
+            // a sized type have no device arm: the match falls through, the
+            // emitter declines by name, and the host kernel path runs (plan
+            // 0050 phase 5 owns native device arithmetic).
             ("floatBits", [(Ty::FLOAT, a)]) => unary(Ty::INT, a.clone()),
             ("floatFromBits", [(Ty::INT, a)]) => unary(Ty::FLOAT, a.clone()),
-            ("float32Bits", [(Ty::FLOAT, a)]) => unary(Ty::INT, format!("float32_bits({a})")),
-            ("float32FromBits", [(Ty::INT, a)]) => {
-                unary(Ty::FLOAT, format!("float32_from_bits({a})"))
-            }
             ("abs", [(Ty::INT, a)]) => unary(Ty::INT, format!("osprey_abs({a}, fault)")),
             ("abs", [(Ty::FLOAT, a)]) => unary(Ty::FLOAT, format!("abs64({a})")),
             // [BUILTIN-BITWISE] the word operations; the shifts are total on

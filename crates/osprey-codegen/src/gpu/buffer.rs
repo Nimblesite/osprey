@@ -42,8 +42,12 @@ fn buffer_literal(
 ) -> Result<Value> {
     let out = buffer_alloc(cg, &elements.len().to_string(), GPU_OWNER.to_string());
     let mut elem = crate::listlit::inferred_elem(cg, position);
+    // A literal element still spelled at its default type is fitted to the
+    // published width before boxing ([TYPE-NUMERIC-WORD]).
+    let sized = elem.as_deref().and_then(crate::llty::sized_of_spelling);
     for (i, e) in elements.iter().enumerate() {
         let v = gen_expr(cg, e)?;
+        let v = crate::conv::fit_literal(cg, v, sized)?;
         elem = elem.or_else(|| Some(crate::llty::scalar_spelling(v.ty).to_string()));
         let word = scalar_word(cg, v, "a GPU buffer literal element")?;
         buffer_set(cg, &out, &i.to_string(), &word.operand);
