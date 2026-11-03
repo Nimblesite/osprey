@@ -25,6 +25,11 @@ casting:
 casting-mobile-build:
 	bash $(ROOT)/examples/casting/mobile-build.sh $(or $(TARGET),ios-sim)
 
+## casting-mobile-transport: Exercise the native Cast TLS transport against a real loopback receiver.
+.PHONY: casting-mobile-transport
+casting-mobile-transport:
+	bash $(ROOT)/examples/casting/mobile-transport-test.sh $(or $(PLATFORM),ios)
+
 ## flock: Flock's herding game logic.
 flock:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=examples/gpui/flock/test

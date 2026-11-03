@@ -2,6 +2,8 @@
 """Portable mobile tooling checks and an explicit macOS host ownership oracle."""
 
 import os
+import json
+import shlex
 from pathlib import Path
 import re
 import shutil
@@ -302,6 +304,34 @@ class CorpusScheduling(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("must be a positive integer", result.stderr)
                 self.assertEqual(result.stdout, "")
+
+
+class SimulatorSelection(unittest.TestCase):
+    def test_renamed_iphones_are_selected_by_device_type_not_display_name(self):
+        phone = {"name": "ci-prep-iphone", "udid": "phone", "state": "Booted",
+                 "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17"}
+        tablet = {"name": "iPhone misleading name", "udid": "tablet", "state": "Booted",
+                  "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPad-Pro"}
+        for devices, requested, expected in [([phone], None, "phone"), ([tablet, phone], None, "phone"),
+                                              ([tablet, phone], "tablet", "tablet"), ([tablet], None, None)]:
+            with self.subTest(devices=devices, requested=requested), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                fixture = root / "devices.json"
+                fixture.write_text(json.dumps({"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-27-0": devices}}))
+                stub = root / "xcrun"
+                stub.write_text("#!/bin/sh\ncase \"$*\" in\n  *'list devices'*) cat " + shlex.quote(str(fixture)) + ";;\nesac\n")
+                stub.chmod(0o755)
+                env = dict(os.environ, PATH=folder + os.pathsep + os.environ["PATH"])
+                env.pop("OSPREY_SIMULATOR_UDID", None)
+                if requested: env["OSPREY_SIMULATOR_UDID"] = requested
+                result = subprocess.run(["bash", str(ROOT / "scripts/ios-simulator.sh")], env=env,
+                                        text=True, capture_output=True, timeout=10)
+                if expected is None:
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertIn("No matching iPhone simulator", result.stderr)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), expected)
 
 
 class GradleSelection(unittest.TestCase):

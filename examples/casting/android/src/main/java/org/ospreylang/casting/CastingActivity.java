@@ -95,14 +95,14 @@ public final class CastingActivity extends ComponentActivity {
             event.put("now", System.currentTimeMillis() / 1000);
             Native.pending = new JSONArray();
             accept(Native.dispatch(utf8(state), utf8(event.toString())));
-        } catch (JSONException | RuntimeException error) { fail(error); }
+        } catch (IOException | JSONException | RuntimeException error) { fail(error); }
     }
 
     private void control(int ordinal, long revision, JSONObject value) {
         send(object("kind", "ui", "region", "root", "revision", revision, "ordinal", ordinal, "value", value));
     }
 
-    private void accept(byte[] bytes) throws JSONException {
+    private void accept(byte[] bytes) throws JSONException, IOException {
         JSONObject envelope = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
         if (envelope.getInt("version") != 1) throw new JSONException("Unsupported native envelope version");
         state = envelope.getString("state");
@@ -116,7 +116,11 @@ public final class CastingActivity extends ComponentActivity {
         JSONArray patches = envelope.getJSONArray("patches");
         for (int i = 0; i < patches.length(); i++) {
             JSONObject patch = patches.getJSONObject(i);
-            if (patch.getString("key").equals("root")) scene.replace(patch.getJSONObject("node"), patch.getLong("revision"), Native.pending);
+            if (patch.getString("key").equals("root")) {
+                scene.replace(patch.getJSONObject("node"), patch.getLong("revision"), Native.pending);
+                if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent().getBooleanExtra("captureEnvelope", false))
+                    Files.write(new File(getFilesDir(), "test-scene.json").toPath(), utf8(patch.toString()));
+            }
         }
         JSONArray requests = envelope.getJSONArray("requests");
         for (int i = 0; i < requests.length(); i++) request(requests.getJSONObject(i));

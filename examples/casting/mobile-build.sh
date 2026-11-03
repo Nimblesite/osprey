@@ -10,6 +10,7 @@ case "$target" in
 esac
 cd "$repo"
 make "$runtime"
+if [[ -z ${OSPREY_BIN:-} ]]; then cargo build --release -p osprey-cli; fi
 compiler=${OSPREY_BIN:-$repo/target/release/osprey}
 if [[ ! -x "$compiler" ]]; then
     echo 'Build the compiler with cargo build --release -p osprey-cli' >&2

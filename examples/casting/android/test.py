@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""[CAST-MOBILE-DELIVERY] Real Android picker, file import, accessibility and restart."""
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+import time
+from xml.etree import ElementTree
+
+ROOT = Path(__file__).resolve().parents[3]
+SDK = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
+SERIAL = os.environ["OSPREY_ANDROID_SERIAL"]
+ADB = [str(SDK / "platform-tools/adb"), "-s", SERIAL]
+PACKAGE = "org.ospreylang.casting"
+
+
+def adb(*arguments, binary=False):
+    return subprocess.check_output(ADB + list(arguments), text=not binary)
+
+
+def nodes():
+    adb("shell", "uiautomator", "dump", "/sdcard/casting-test-window.xml")
+    return list(ElementTree.fromstring(adb("exec-out", "cat", "/sdcard/casting-test-window.xml")).iter("node"))
+
+
+def find(label, timeout=20):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for node in nodes():
+            if label in (node.get("text"), node.get("content-desc")):
+                return node
+        time.sleep(0.2)
+    raise AssertionError(f"Native control never appeared: {label}")
+
+
+def tap(label):
+    node = find(label)
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.attrib["bounds"]))
+    assert x2 > x1 and y2 > y1, node.attrib
+    adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+
+
+def launch():
+    adb("shell", "am", "force-stop", PACKAGE)
+    adb("shell", "am", "start", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true")
+    assert find("Open file…").get("class") == "android.widget.Button"
+    assert find("Play").get("class") == "android.widget.Button"
+
+
+def main():
+    output = ROOT / "examples/casting/build/android-test"
+    output.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="casting-mobile-") as directory:
+        track = Path(directory) / "Casting mobile test.mp3"
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(track)], check=True)
+        adb("push", str(track), "/sdcard/Download/Casting mobile test.mp3")
+        launch()
+        (output / "ready.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+        for _ in range(2):
+            tap("Open file…")
+            find("Show roots")
+            adb("shell", "input", "keyevent", "KEYCODE_BACK")
+            assert find("Open file…").get("clickable") == "true"
+        tap("Open file…")
+        tap("Show roots")
+        tap("Downloads")
+        tap("Casting mobile test.mp3")
+        find("Open file…")
+        snapshot = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
+        text = json.dumps(snapshot, ensure_ascii=False)
+        assert "Casting mobile test" in text, text[:1000]
+        assert snapshot["node"]["kind"] == "scene"
+        controls = snapshot["node"]["access"]
+        assert any(item["label"] == "Play" for item in controls), controls
+        (output / "imported.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+        launch()
+        assert find("Open file…").get("clickable") == "true"
+        (output / "restarted.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+    print("PASS: Android native controls, two picker cancellations, MP3 import, scene title and restart")
+
+
+if __name__ == "__main__":
+    main()
