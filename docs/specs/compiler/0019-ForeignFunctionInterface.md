@@ -51,16 +51,16 @@ An `extern` parameter or return of a numeric type crosses the boundary as the C 
 | --- | --- | --- | --- |
 | `int8` | `i8` | `int8_t` | `signext` |
 | `int16` | `i16` | `int16_t` | `signext` |
-| `int32` | `i32` | `int32_t` | `signext` |
+| `int32` | `i32` | `int32_t` | — |
 | `int` | `i64` | `int64_t` | — |
 | `uint8` | `i8` | `uint8_t` | `zeroext` |
 | `uint16` | `i16` | `uint16_t` | `zeroext` |
-| `uint32` | `i32` | `uint32_t` | `zeroext` |
+| `uint32` | `i32` | `uint32_t` | — |
 | `float16` | `i16` (bits) | `uint16_t` (bits) | `zeroext` |
 | `float32` | `float` | `float` | — |
 | `float` | `double` | `double` | — |
 
-A signed narrow parameter (`int8`, `int16`, `int32`) is passed `signext`, and an unsigned or `float16` parameter is passed `zeroext`, per the platform C ABI: the argument is a sub-register integer the caller widens by its kind, and `float16` travels as its binary16 bits, so it widens like an unsigned 16-bit integer. A C function taking `float` receives a `float` register, never a widened double. No numeric conversion is inserted on either side; a C signature that differs from the declaration is the program's error, as it is for any other extern.
+The extension column applies to parameters and returns on Apple ARM64, x86 System V and wasm32. Signed 8- and 16-bit integers use `signext`; unsigned 8- and 16-bit integers and the binary16 bits use `zeroext`. AAPCS64 (including Android ARM64) and Windows x64 omit these attributes; 32-bit values need no extension attribute on these targets. The compiler's native calls, extern function values, C callbacks and mobile thunks preserve the selected convention. A C function taking `float` receives a `float` register, never a widened double. No numeric conversion is inserted on either side; a C signature that differs from the declaration is the program's error, as it is for any other extern.
 
 ```osprey
 extern fn sqrtf(x: float32) -> float32

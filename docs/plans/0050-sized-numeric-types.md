@@ -130,8 +130,9 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 
 ### Phase 6 — Edges `[FFI-NUMERIC-WIDTH]`
 
-- [ ] `extern fn` parameters and returns of sized types map to the C types of the table (`int32_t`, `uint8_t`, `float`, `uint16_t` for `float16`); iOS and Android ABI tables (`osprey-cli/src/ios_abi.rs`) follow.
-- [ ] Python flavor: spec 0041 line 76 rewritten; annotations `int8` … `float32` accepted; port guidance in 0043 names `toFloat32` where it named `float32`.
+- [x] `extern fn` parameters and returns of sized types map to the C types of the table (`int32_t`, `uint8_t`, `float`, `uint16_t` for `float16`); iOS and Android ABI tables (`osprey-cli/src/ios_abi.rs`) follow. Verified 2026-11-03: 38 host ABI tests, real C round-trips of all ten numeric types, and 9 backend symbolic/FFI checks pass; direct calls, extern function values and C callbacks preserve target extension attributes.
+- [x] Python flavor: spec 0041 line 76 rewritten; annotations `int8` … `float32` accepted; port guidance in 0043 names `toFloat32` where it named `float32`. All ten numeric annotations parse and type-check in the host ABI regression (2026-11-03).
+- [ ] Python-hosted libraries: support sized numeric descriptors in ctypes and reject out-of-range host arguments before crossing the C boundary.
 - [ ] Website: regenerate builtin pages (`make` target that owns `website/src/docs/functions`), delete the three emulation pages, add the conversion pages.
 - [ ] `deslop top-offenders` over `crates/osprey-codegen` and `compiler/runtime`; `coverage-thresholds.json` only rises; `/spec-check` over 0004, 0012, 0019, 0034, 0041, 0043.
 - [ ] Plan 0049 phase 1 loses its two storage items and cites this plan.

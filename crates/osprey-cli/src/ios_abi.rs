@@ -6,6 +6,7 @@
 //! signatures must be scalar. Every export must discharge its own effects.
 
 use osprey_ast::{Program, Stmt};
+use osprey_types::numeric::Numeric;
 use osprey_types::{names, ProgramTypes, Type};
 use std::collections::BTreeSet;
 use std::fmt::Write;
@@ -35,8 +36,7 @@ const SOURCE_MAIN: &str = "main";
 /// An Osprey type with a direct C representation at the boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CType {
-    Int,
-    Float,
+    Num(Numeric),
     Bool,
     Str,
     /// An opaque host handle [FFI-PTR]: Osprey stores and passes it back.
@@ -45,6 +45,8 @@ pub(crate) enum CType {
 }
 
 impl CType {
+    pub(crate) const INT: Self = Self::Num(Numeric::INT);
+
     fn from_type(ty: &Type) -> Option<Self> {
         let Type::Con { name, args } = ty else {
             return None;
@@ -52,9 +54,10 @@ impl CType {
         if !args.is_empty() {
             return None;
         }
+        if let Some(numeric) = Numeric::of_type(ty) {
+            return Some(Self::Num(numeric));
+        }
         match name.as_str() {
-            names::INT => Some(Self::Int),
-            names::FLOAT => Some(Self::Float),
             names::BOOL => Some(Self::Bool),
             names::STRING => Some(Self::Str),
             names::PTR => Some(Self::Ptr),
@@ -65,8 +68,7 @@ impl CType {
 
     fn c(self) -> &'static str {
         match self {
-            Self::Int => "int64_t",
-            Self::Float => "double",
+            Self::Num(numeric) => numeric.c(),
             Self::Bool => "bool",
             Self::Str => "const char *",
             Self::Ptr => "void *",
@@ -76,8 +78,7 @@ impl CType {
 
     pub(crate) fn osprey(self) -> &'static str {
         match self {
-            Self::Int => names::INT,
-            Self::Float => names::FLOAT,
+            Self::Num(numeric) => numeric.name(),
             Self::Bool => names::BOOL,
             Self::Str => names::STRING,
             Self::Ptr => names::PTR,
@@ -88,8 +89,7 @@ impl CType {
     /// The LLVM type at the C boundary (`void` for `Unit`).
     fn llvm(self) -> &'static str {
         match self {
-            Self::Int => "i64",
-            Self::Float => "double",
+            Self::Num(numeric) => numeric.llvm(),
             Self::Bool => "i1",
             Self::Str | Self::Ptr => "i8*",
             Self::Unit => "void",
@@ -109,6 +109,7 @@ impl CType {
     /// The thunk must match clang for the chosen C ABI.
     fn zeroext(self, extend_bool: bool) -> &'static str {
         match self {
+            Self::Num(numeric) if extend_bool => numeric.c_extension(),
             Self::Bool if extend_bool => "zeroext ",
             _ => "",
         }

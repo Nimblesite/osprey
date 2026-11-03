@@ -27,6 +27,51 @@ fn declare_and_args(
 }
 
 impl Codegen {
+    /// C narrow integers carry target ABI extension attributes [FFI-NUMERIC-WIDTH].
+    /// Host-adapted imports get these on their boundary thunk instead.
+    pub(crate) fn foreign_extension(&self, name: &str, ty: crate::llty::LType) -> &'static str {
+        if self.import_abi != crate::builder::ImportAbi::Direct
+            || !self.extern_params.contains_key(name)
+        {
+            return "";
+        }
+        self.c_scalar_extension(ty)
+    }
+
+    pub(crate) fn c_scalar_extension(&self, ty: crate::llty::LType) -> &'static str {
+        if self.pointer_bytes != 4
+            && cfg!(any(
+                target_os = "windows",
+                all(target_os = "linux", target_arch = "aarch64")
+            ))
+        {
+            return "";
+        }
+        match ty {
+            crate::llty::LType::Num(numeric) => numeric.c_extension(),
+            _ => "",
+        }
+    }
+
+    pub(crate) fn foreign_return(&self, name: &str) -> String {
+        let ty = self.fn_ret_ltype(name).unwrap_or(crate::llty::LType::I64);
+        format!(
+            "{}{}",
+            self.foreign_extension(name, ty),
+            self.fn_ret_spelling(name)
+        )
+    }
+
+    pub(crate) fn foreign_parameter(&self, name: &str, value: &crate::llty::Value) -> String {
+        format!(
+            "{} {}",
+            value.llvm_ty(),
+            self.foreign_extension(name, value.ty)
+        )
+        .trim_end()
+        .to_owned()
+    }
+
     /// Declare `cname` and emit `r = call {ret} @{cname}(args)`, returning the
     /// result register `r`.
     pub(crate) fn call(&mut self, ret: &str, cname: &str, params: &str, args: &[&str]) -> String {

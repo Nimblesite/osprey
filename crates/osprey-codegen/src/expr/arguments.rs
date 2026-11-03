@@ -189,11 +189,23 @@ fn emit_user_call(
     coerced: &[Value],
     typed: &str,
 ) -> String {
+    let rty = if cg.extern_params.contains_key(name) {
+        cg.foreign_return(name)
+    } else {
+        rty.to_owned()
+    };
+    let typed = if cg.extern_params.contains_key(name) {
+        crate::llty::comma_join(coerced, |value| {
+            format!("{} {}", cg.foreign_parameter(name, value), value.operand)
+        })
+    } else {
+        typed.to_owned()
+    };
     if !cg.fn_params.contains_key(name) {
-        let sig = crate::llty::comma_join(coerced, Value::llvm_ty);
+        let sig = crate::llty::comma_join(coerced, |value| cg.foreign_parameter(name, value));
         cg.add_extern(format!("declare {rty} @{name}({sig})"));
     }
-    cg.emit_call_result(rty, name, typed)
+    cg.emit_call_result(&rty, name, &typed)
 }
 
 fn ordered_args(
@@ -360,8 +372,10 @@ pub(super) fn eval_arg(
 fn ffi_pointer(cg: &mut Codegen, name: &str) -> Value {
     if cg.extern_params.contains_key(name) {
         let parameters = cg.fn_param_ltypes(name).unwrap_or_default();
-        let parameters = crate::llty::comma_join(&parameters, ToString::to_string);
-        let result = cg.fn_ret_spelling(name);
+        let parameters = crate::llty::comma_join(&parameters, |ty| {
+            cg.foreign_parameter(name, &Value::new("", *ty))
+        });
+        let result = cg.foreign_return(name);
         cg.add_extern(format!("declare {result} @{name}({parameters})"));
     }
     fn_pointer(cg, name)

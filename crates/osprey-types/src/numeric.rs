@@ -112,6 +112,34 @@ impl Numeric {
         }
     }
 
+    /// The C representation at an extern or mobile boundary [FFI-NUMERIC-WIDTH].
+    #[must_use]
+    pub const fn c(self) -> &'static str {
+        match (self.kind, self.bits) {
+            (NumericKind::Signed, 8) => "int8_t",
+            (NumericKind::Signed, 16) => "int16_t",
+            (NumericKind::Signed, 32) => "int32_t",
+            (NumericKind::Signed, _) => "int64_t",
+            (NumericKind::Unsigned, 8) => "uint8_t",
+            (NumericKind::Unsigned | NumericKind::Binary, 16) => "uint16_t",
+            (NumericKind::Unsigned, _) => "uint32_t",
+            (NumericKind::Binary, 32) => "float",
+            (NumericKind::Binary, _) => "double",
+        }
+    }
+
+    /// Clang's narrow integer convention on Apple ARM64 and x86, not AAPCS64.
+    #[must_use]
+    pub const fn c_extension(self) -> &'static str {
+        if self.bits >= 32 {
+            ""
+        } else if self.is_signed() {
+            "signext "
+        } else {
+            "zeroext "
+        }
+    }
+
     /// The element spelling in a container's owner tag (`List#u8`,
     /// `Gpu#float`), distinct for every row where the LLVM type is not
     /// ([TYPE-NUMERIC-WORD]).
