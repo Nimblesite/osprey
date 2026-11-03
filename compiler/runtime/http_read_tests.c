@@ -67,7 +67,9 @@ static void check_stops_at_the_fault(void) {
   static const struct { const char *reply; int64_t code; const char *message; } cases[] = {
       {"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nok\r\n", -14, "http response: chunked body: invalid chunk size"},
       {"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nokXX", -14, "http response: chunked body: chunk data not followed by CRLF"},
+      {"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nok\rX", -14, "http response: chunked body: chunk data not followed by CRLF"},
       {"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX\001: 1\r\n\r\n", -14, "http response: chunked body: invalid trailer"},
+      {"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX\001: 1\r\n", -14, "http response: chunked body: invalid trailer"},
       {"HTTP/1.1 200 OK\r\nContent-Length: x\r\n\r\nok", -14, "http response: body: invalid Content-Length"},
       {"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\nok", -14, "http response: body: invalid Content-Length"},
       {"HTTP/1.1 200 OK\r\nno colon\r\n\r\nok", -14, "http response: head: malformed"},
@@ -175,7 +177,8 @@ static void expect_cut_off(const char *reply, int64_t timeout_ms) {
   long live = test_alloc_live();
   uint64_t started = osp_monotonic_ms();
   osp_io_error_clear();
-  assert(origin_exchange(reply, strlen(reply)) == -16);
+  int64_t code = origin_exchange(reply, strlen(reply));
+  assert(code == -16);
   int64_t took = elapsed_ms_since(started);
   assert(took >= timeout_ms * HTTP_READ_BOUND_FACTOR - 100);
   assert(took < timeout_ms * (HTTP_READ_BOUND_FACTOR + 5));
@@ -211,6 +214,14 @@ static void check_whole_read_bound(void) {
   http_close_client(shared_origin_client);
   use_client_with_timeout(200);
   EXPECT_RESPONSE(slow, 200, "ok");
+  // Falling silent near the end is still over the limit, at the limit: the last wait
+  // is the time left, not a whole timeout, which would call it a timed-out read.
+  origin_drip_us = 150000;
+  origin_holds_connections = true;
+  http_close_client(shared_origin_client);
+  use_client_with_timeout(200);
+  expect_cut_off("HTTP/1.1 200 O", 200); // the last of these is sent at 1.95 s of 2 s
+  origin_holds_connections = false;
   origin_drip_us = 0;
   http_close_client(shared_origin_client);
 }
