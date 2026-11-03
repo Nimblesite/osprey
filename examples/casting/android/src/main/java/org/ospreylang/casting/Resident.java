@@ -50,12 +50,27 @@ final class Resident {
         if (state.isEmpty()) return;
         try {
             event.put("now", System.currentTimeMillis() / 1000);
+            JSONObject binding = event.optJSONObject("binding");
+            event.remove("binding");
+            // [UI-EVENTS] Frames can overtake a click; never rebind a changed control.
+            if (binding != null && event.optString("kind").equals("ui") && containsBinding(scene, binding.toString())) event.put("revision", revision);
             // Scene drags use the current binding revision, as the desktop host does.
             if (scene != null && scene.optString("kind").equals("scene") && event.optString("kind").equals("ui") &&
                 event.optInt("ordinal", -1) == scene.optInt("event", -2)) event.put("revision", revision);
             Native.pending = new JSONArray();
             accept(Native.dispatch(utf8(state), utf8(event.toString())));
         } catch (Exception error) { main.post(() -> failed.accept(error)); }
+    }
+
+    private static boolean containsBinding(Object value, String expected) {
+        if (value instanceof JSONObject node) {
+            if (node.toString().equals(expected)) return true;
+            java.util.Iterator<String> keys = node.keys();
+            while (keys.hasNext()) if (containsBinding(node.opt(keys.next()), expected)) return true;
+        } else if (value instanceof JSONArray items) {
+            for (int i = 0; i < items.length(); i++) if (containsBinding(items.opt(i), expected)) return true;
+        }
+        return false;
     }
 
     private void accept(byte[] bytes) throws JSONException {

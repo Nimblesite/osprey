@@ -6,25 +6,96 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
+import unittest
+from unittest import mock
 import tempfile
 import time
 from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[3]
 SDK = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
-SERIAL = os.environ["OSPREY_ANDROID_SERIAL"]
+SERIAL = os.environ.get("OSPREY_ANDROID_SERIAL", "")
 ADB = [str(SDK / "platform-tools/adb"), "-s", SERIAL]
 PACKAGE = "org.ospreylang.casting"
+WINDOW_PATH = "/sdcard/casting-test-window.xml"
+
+
+# Isolate the event-binding guard on Android's real JSON/runtime implementation.
+BINDING_CHECK = r"""
+import java.lang.reflect.Method;
+import org.json.JSONArray;
+import org.json.JSONObject;
+public final class CastingBindingCheck {
+    private static void require(boolean ok, String message) {
+        if (!ok) throw new AssertionError(message);
+    }
+    public static void main(String[] arguments) throws Exception {
+        Method matches = Class.forName("org.ospreylang.casting.Resident")
+            .getDeclaredMethod("containsBinding", Object.class, String.class);
+        matches.setAccessible(true);
+        JSONObject expected = new JSONObject("{\"kind\":\"picker\",\"label\":\"Speed\",\"selected\":\"1\",\"event\":8,\"enabled\":true,\"choices\":[{\"key\":\"1.5\",\"label\":\"1.5×\"}]}");
+        String descriptor = expected.toString();
+        JSONObject tree = new JSONObject().put("body", new JSONObject().put("children", new JSONArray().put(expected)));
+        require(Boolean.TRUE.equals(matches.invoke(null, tree, descriptor)), "unchanged nested binding");
+        require(Boolean.TRUE.equals(matches.invoke(null, new JSONObject(tree.toString()), descriptor)), "independent frame snapshot");
+        String[] fields = {"event", "label", "selected", "enabled", "choices", "kind"};
+        Object[] values = {9, "Volume", "1.5", false, new JSONArray(), "button"};
+        for (int i = 0; i < fields.length; i++) {
+            JSONObject changed = new JSONObject(descriptor).put(fields[i], values[i]);
+            require(Boolean.FALSE.equals(matches.invoke(null, changed, descriptor)), "changed " + fields[i]);
+        }
+        require(Boolean.FALSE.equals(matches.invoke(null, JSONObject.NULL, descriptor)), "removed binding");
+        System.out.println("PASS: Android binding snapshots reject changed ordinals, labels, selection, enabled state, choices, kind and removal");
+    }
+}
+"""
 
 
 def adb(*arguments, binary=False):
+    if not SERIAL: raise ValueError("Set OSPREY_ANDROID_SERIAL to the Android device under test")
     return subprocess.check_output(ADB + list(arguments), text=not binary)
 
 
+def sdk_tool(pattern):
+    paths = list(SDK.glob(pattern))
+    assert paths, f"Missing Android SDK tool: {pattern}"
+    return max(paths, key=lambda path: tuple(map(int, re.findall(r"\d+", path.parent.name))))
+
+
+def bindings():
+    platform = sdk_tool("platforms/*/android.jar")
+    compiler = sdk_tool("build-tools/*/d8")
+    installed = adb("shell", "pm", "path", PACKAGE).strip().splitlines()
+    assert len(installed) == 1 and installed[0].startswith("package:"), installed
+    remote = "/data/local/tmp/osprey-casting-bindings.jar"
+    with tempfile.TemporaryDirectory(prefix="casting-bindings-") as directory:
+        work = Path(directory)
+        source = work / "CastingBindingCheck.java"; source.write_text(BINDING_CHECK)
+        subprocess.run(["javac", "-Xlint:all", "-Werror", "-classpath", str(platform), "-d", str(work), str(source)], check=True)
+        archive = work / "check.jar"
+        subprocess.run([str(compiler), "--lib", str(platform), "--output", str(archive), str(work / "CastingBindingCheck.class")], check=True)
+        adb("push", str(archive), remote)
+        try:
+            adb("shell", "chmod", "444", remote)
+            print(adb("shell", "env", "CLASSPATH=" + installed[0][8:] + ":" + remote, "app_process", "/", "CastingBindingCheck"), flush=True)
+        finally:
+            adb("shell", "rm", "-f", remote)
+
+
 def window():
-    response = adb("shell", "uiautomator", "dump", "/sdcard/casting-test-window.xml")
-    if "dumped to:" not in response: return None
-    return ElementTree.fromstring(adb("exec-out", "cat", "/sdcard/casting-test-window.xml"))
+    # A completed dump can precede UiAutomation's Binder teardown crash. Never
+    # accept a previous file, an incomplete dump or another command failure.
+    adb("shell", "rm", "-f", WINDOW_PATH)
+    completed = "dumped to: " + WINDOW_PATH
+    try:
+        response = adb("shell", "uiautomator", "dump", WINDOW_PATH)
+    except subprocess.CalledProcessError as error:
+        if error.returncode != 137 or completed not in (error.output or ""): raise
+        response = error.output
+        print("RECOVERED: UiAutomation exited 137 after completing a fresh hierarchy dump", file=sys.stderr, flush=True)
+    if completed not in response: return None
+    return ElementTree.fromstring(adb("exec-out", "cat", WINDOW_PATH))
 
 
 def nodes():
@@ -51,6 +122,7 @@ def find(label, timeout=20):
 
 
 def tap(label):
+    print(f"TAP: {label}", flush=True)
     node = find(label)
     x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.attrib["bounds"]))
     assert x2 > x1 and y2 > y1, node.attrib
@@ -170,6 +242,7 @@ def alternate_playback(output):
 def main():
     output = ROOT / "examples/casting/build/android-test"
     output.mkdir(parents=True, exist_ok=True)
+    bindings()
     with tempfile.TemporaryDirectory(prefix="casting-mobile-") as directory:
         track = Path(directory) / "Casting mobile test.mp3"
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(track)], check=True)
@@ -210,7 +283,44 @@ def main():
     print("PASS: Android native controls, two picker cancellations, MP3 import, scene title and restart")
 
 
+class NativeReadContracts(unittest.TestCase):
+    def queries(self, completed, xml="broken XML"):
+        def answer(*arguments):
+            if arguments[:2] == ("shell", "rm"): return ""
+            if arguments[0] == "exec-out":
+                if isinstance(xml, Exception): raise xml
+                return xml
+            if isinstance(completed, Exception): raise completed
+            return completed
+        return mock.patch(__name__ + ".adb", side_effect=answer)
+
+    def test_completed_snapshot_survives_android_automation_teardown_crash(self):
+        message = "UI hierchary dumped to: /sdcard/casting-test-window.xml"
+        xml = '<hierarchy rotation="0"><node text="Pause" /></hierarchy>'
+        for completed in [message, subprocess.CalledProcessError(137, "uiautomator", output=message)]:
+            with self.subTest(completed=completed), self.queries(completed, xml) as read:
+                result = window()
+                self.assertEqual(result.find("node").get("text"), "Pause")
+                self.assertEqual(read.call_args_list, [mock.call("shell", "rm", "-f", "/sdcard/casting-test-window.xml"), mock.call("shell", "uiautomator", "dump", "/sdcard/casting-test-window.xml"), mock.call("exec-out", "cat", "/sdcard/casting-test-window.xml")])
+
+    def test_incomplete_or_failed_queries_never_use_a_previous_snapshot(self):
+        for code, output in [(137, "null root"), (137, "dumped to: /sdcard/other.xml"), (1, "dumped to:"), (139, "dumped to:")]:
+            failure = subprocess.CalledProcessError(code, "uiautomator", output=output)
+            with self.subTest(code=code), self.queries(failure) as read:
+                with self.assertRaises(subprocess.CalledProcessError): window()
+                self.assertEqual(read.call_count, 2)
+        with self.queries("null root") as read:
+            self.assertIsNone(window()); self.assertEqual(read.call_count, 2)
+        with self.queries("dumped to: " + WINDOW_PATH):
+            with self.assertRaises(ElementTree.ParseError): window()
+        failure = subprocess.CalledProcessError(1, "cat", output="missing snapshot")
+        with self.queries("dumped to: " + WINDOW_PATH, failure):
+            with self.assertRaises(subprocess.CalledProcessError): window()
+
+
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--reader-contracts"]:
+        unittest.main(argv=[sys.argv[0]])
     try:
         main()
     except Exception:

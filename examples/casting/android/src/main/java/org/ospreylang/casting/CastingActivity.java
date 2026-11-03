@@ -130,8 +130,8 @@ public final class CastingActivity extends ComponentActivity {
         if (alive) resident.send(event);
     }
 
-    private void control(int ordinal, long revision, Object value) {
-        send(object("kind", "ui", "region", "root", "revision", revision, "ordinal", ordinal, "value", value));
+    private void control(int ordinal, long revision, Object value, JSONObject binding) {
+        send(object("kind", "ui", "region", "root", "revision", revision, "ordinal", ordinal, "value", value, "binding", binding));
     }
 
     private void receive(JSONObject envelope, JSONArray streamed) {

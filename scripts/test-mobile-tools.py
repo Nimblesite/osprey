@@ -495,4 +495,5 @@ if __name__ == "__main__":
     elif sys.argv[1:2] == ["--gpui-host"] and len(sys.argv) == 3:
         gpui_host_probe(Path(sys.argv[2]).resolve())
     else:
+        subprocess.run([sys.executable, str(ROOT / "examples/casting/android/test.py"), "--reader-contracts"], check=True)
         unittest.main()

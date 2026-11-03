@@ -23,7 +23,7 @@ import org.json.JSONObject;
 // [CAST-MOBILE-SKINS] Project the same resident tree into native Android widgets.
 // Reuse nodes across frames so animation never recreates focus or open pickers.
 final class NativeRenderer extends FrameLayout {
-    interface Control { void send(int ordinal, long revision, Object value); }
+    interface Control { void send(int ordinal, long revision, Object value, JSONObject binding); }
     private final Control control;
     private final WeakHashMap<View, JSONObject> nodes = new WeakHashMap<>();
     private long revision;
@@ -32,7 +32,7 @@ final class NativeRenderer extends FrameLayout {
 
     NativeRenderer(Context context, Control control) { super(context); this.control = control; }
     public NativeRenderer(Context context) {
-        this(context, (ordinal, revision, value) -> { throw new IllegalStateException("A native renderer must be attached to its resident event handler"); });
+        this(context, (ordinal, revision, value, binding) -> { throw new IllegalStateException("A native renderer must be attached to its resident event handler"); });
     }
 
     void replace(JSONObject node, long revision, JSONArray pending) throws JSONException {
@@ -71,7 +71,7 @@ final class NativeRenderer extends FrameLayout {
 
     private View create(String kind) throws JSONException {
         return switch (kind) {
-            case "scene" -> new SceneCanvas(getContext(), (ordinal, ignored, value) -> control.send(ordinal, revision, value));
+            case "scene" -> new SceneCanvas(getContext(), (ordinal, ignored, value) -> control.send(ordinal, revision, value, null));
             case "themed", "stack", "empty", "progress" -> new LinearLayout(getContext());
             case "text", "badge", "label" -> new TextView(getContext());
             case "button", "picker" -> button();
@@ -87,7 +87,7 @@ final class NativeRenderer extends FrameLayout {
         button.setOnClickListener(view -> {
             JSONObject node = nodes.get(view);
             if (node.optString("kind").equals("picker")) choose(button, node);
-            else control.send(node.optInt("event"), revision, JSONObject.NULL);
+            else control.send(node.optInt("event"), revision, JSONObject.NULL, node);
         });
         return button;
     }
@@ -100,7 +100,7 @@ final class NativeRenderer extends FrameLayout {
             String key = item.optString("key");
             popup.getMenu().add(item.optString("label")).setOnMenuItemClickListener(ignored -> {
                 JSONObject current = nodes.get(button);
-                control.send(current.optInt("event"), revision, key);
+                control.send(current.optInt("event"), revision, key, current);
                 return true;
             });
         }
