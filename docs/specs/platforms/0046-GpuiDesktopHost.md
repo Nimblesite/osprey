@@ -57,7 +57,7 @@ The host requests the next animation frame from GPUI after each dispatch, so the
 
 ## Scene [GPUI-HOST-SCENE]
 
-A `Scene` node is a surface in the application's own unit space, `width` by `height`, that the host draws at its fixed `zoom` (window pixels per unit, 1 when absent) from its region's top left, clipped to the region: resizing the window shows more or less canvas and never resizes what is on it. A `zoom` of 0 instead draws the scene as large as fits the region whole, so it grows and shrinks with the window. It is drawn from `shapes`: one small array per primitive, a type code first, so the painter reads it without a schema ([UI-SCENE](../../../packages/native/README.md)):
+A `Scene` node is a surface in the application's own unit space, `width` by `height`, that the host draws from its region's top left at up to its requested `zoom` (window pixels per unit, 1 when absent). This zoom is an upper bound: it remains fixed while the whole artboard fits, and shrinks uniformly when either viewport dimension would clip it. Painting, pointer input and accessibility use the same scale. A `zoom` of 0 instead draws the scene as large as fits the region whole, so it grows and shrinks with the window. It is drawn from `shapes`: one small array per primitive, a type code first, so the painter reads it without a schema ([UI-SCENE](../../../packages/native/README.md)):
 
 | Code | Primitive | Values after the code |
 | --- | --- | --- |
