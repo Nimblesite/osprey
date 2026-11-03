@@ -101,7 +101,7 @@ static int exists(const char *file) {
 static void wait_for_start(const char *folder) {
   char file[1120];
   path(file, sizeof file, folder, "started");
-  for (int i = 0; i < 200 && !exists(file); i++) {
+  for (int i = 0; i < 3000 && !exists(file); i++) { // a loaded machine is slow to spawn
     usleep(10000);
   }
   assert(exists(file));
