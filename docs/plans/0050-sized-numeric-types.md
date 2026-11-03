@@ -106,7 +106,7 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - [x] `cargo test -p osprey-types -p osprey-codegen`: 937 type tests and 221 codegen tests pass (2026-11-03).
 - [x] `cargo clippy -p osprey-types -p osprey-codegen -p osprey-cli --all-targets -- -D warnings` passes (2026-11-03).
 - [x] GC 312/312, ARC 312/312 and wasm 232/232 corpus lanes green with goldens, on the debug compiler (2026-11-03): release builds were on hold for another agent's suite.
-- [ ] Merge `wip/sized-numerics` into the feature branch only once it compiles and passes, and push. The branch and worktree stay for Phases 4 to 6, because agents must not work in the primary tree; Phase 6 deletes them.
+- [ ] Account for the unique `wip/sized-numerics` changes on the feature branch, verify and push. Current repository instructions require the primary checkout only; the inactive historical worktree is retained solely until its unique changes have been accounted for, then removed in Phase 6.
 **Gate:** twins green on all lanes; `grep -rn 'float32(' tests examples packages` finds no emulation call.
 
 ### Phase 4 — Dense buffers `[GPU-BUFFER-ELEM]` `[GPU-BUFFER-LOAD]` `[GPU-BUFFER-TENSOR]`
@@ -140,10 +140,20 @@ Verified storage evidence, 2026-11-03: `memory_golden_tests.c` measures exact AR
 - [x] Python-hosted libraries: support sized numeric descriptors in ctypes and reject out-of-range host arguments before crossing the C boundary. RED `KeyError: int8`; all 20 real native-library interop tests pass after the fix (2026-11-03).
 - [x] Verify the Python wrapper releases returned ARC-owned strings after copying. RED: 100 calls leaked 100 objects. GREEN: the committed UTF-8 regression reports zero live objects after both zero and 100 calls; all 35 Python tests pass (2026-11-03). The wrapper preserves the raw pointer and releases it in `finally` after copying.
 - [x] Website: regenerate builtin pages (`make` target that owns `website/src/docs/functions`), delete the three emulation pages, add the conversion pages. `make -C website docs` regenerated 220 pages and ML twins; `float32.md` is gone and the bit-view pages now carry typed signatures (2026-11-03). Hover, generated reference parameters and rejection diagnostics now derive every accepted numeric width from the descriptor; all 245 LSP tests and the exact rejection-golden gate pass.
-- [ ] `deslop top-offenders` over `crates/osprey-codegen` and `compiler/runtime`; `coverage-thresholds.json` only rises; `/spec-check` over 0004, 0012, 0019, 0034, 0041, 0043.
+- [x] `deslop top-offenders` over `crates/osprey-codegen` and `compiler/runtime`: 117 Rust files scanned; the C scan finds zero supported files, an engine limitation requiring the separate manual review below (2026-11-03).
+- [ ] Independently review runtime duplication where Deslop cannot scan C.
+- [x] `coverage-thresholds.json` only rises: all existing keys remain and no threshold is lower than `origin/main`; the only additions are two C projects at 100% (2026-11-03).
+- [ ] `/spec-check` over 0004, 0012, 0019, 0034, 0041, 0043; GPU 0034 awaits the completed Phase 4/5 implementation and hardware receipts.
 - [x] Plan 0049 phase 1 delegates sized buffers and native arithmetic to this plan and waits for its Phase 5 gate; mapped weights, block quantization and mutable state remain with 0049. Verified against the current plan (2026-11-03).
 - [ ] Merge `wip/sized-numerics` into the feature branch, push, delete that branch and its worktree `.claude/worktrees/sized-numerics`.
 - [ ] Clean caches and build files left by this plan, and check free disk (98% full when Phase 3 started).
+
+### Final verification
+
+- [x] Derive CI checks from `ci.yml`, `ci-windows.yml`, `gpui.yml` and `winui.yml`, including their platform and coverage requirements (2026-11-03).
+- [x] Run the CI scope, release-gate, skill-link, node-dependency, package-license, package-coverage wiring and Python app-port contracts. All eleven commands pass; exact commands, statuses and logs are in `target/logs/plan-0050/ci-contract-receipts.json` (2026-11-03).
+- [ ] Run final `make ci` against the completed implementation, with all required coverage thresholds intact.
+- [ ] Run workflow checks beyond `make ci`, record host-only gaps explicitly, and verify the branch's required root `CI` check is green before integration.
 
 **Gate:** `make ci` green; CI green on the branch.
 
