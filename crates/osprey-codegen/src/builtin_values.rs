@@ -43,7 +43,9 @@ fn open_builtin_cell(cg: &mut Codegen, name: &str, ty: osprey_types::Type) -> Re
         .then(|| Codegen::fn_value_sig(&cg.prog, &ty))
         .flatten()
         .ok_or_else(|| {
-            CodegenError::invalid(format!("{name} function value needs a resolved numeric type"))
+            CodegenError::invalid(format!(
+                "{name} function value needs a resolved numeric type"
+            ))
         })?;
     let arity = match &ty {
         osprey_types::Type::Fun { params, .. } => params.len(),

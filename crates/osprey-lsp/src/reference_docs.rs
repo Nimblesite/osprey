@@ -40,8 +40,14 @@ pub(crate) fn keyword_hover(word: &str, flavor: Flavor) -> Option<String> {
 
 /// One-line summaries for the type names no source file declares.
 const BUILTIN_TYPE_DOCS: [(&str, &str); 16] = [
-    (osprey_types::names::INT, "The default integer: 64 bits, signed."),
-    (osprey_types::names::FLOAT, "The default float: IEEE 754 binary64."),
+    (
+        osprey_types::names::INT,
+        "The default integer: 64 bits, signed.",
+    ),
+    (
+        osprey_types::names::FLOAT,
+        "The default float: IEEE 754 binary64.",
+    ),
     ("int8", "A signed 8-bit integer: -128 to 127."),
     ("int16", "A signed 16-bit integer: -32768 to 32767."),
     ("int32", "A signed 32-bit integer."),

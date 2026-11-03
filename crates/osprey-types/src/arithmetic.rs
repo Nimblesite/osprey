@@ -1,8 +1,8 @@
 //! Arithmetic values and implicit requests. Implements [ARITH-EFFECT].
 
+use crate::check::Checker;
 use crate::effect_rows::ExprArgs;
 use crate::error::TypeError;
-use crate::check::Checker;
 use crate::numeric::Numeric;
 use crate::ty::Type;
 use osprey_ast::{AstNode, Expr, Position};
@@ -165,7 +165,8 @@ impl Checker {
                 Some(written) => format!("constant arithmetic overflows: {written} at {name}"),
                 None => format!("literal {} does not fit {name}", site.value),
             };
-            self.errors.push(TypeError::new(message).with_pos(site.position));
+            self.errors
+                .push(TypeError::new(message).with_pos(site.position));
         }
     }
 }
@@ -237,13 +238,11 @@ pub(crate) fn operation(expr: &Expr, ty: Option<&Type>) -> Option<&'static str> 
             if nonzero_literal(right) {
                 return None;
             }
-            Some(
-                if op == "/" || ty.is_some_and(is_float) {
-                    "divideByZero"
-                } else {
-                    "remainderByZero"
-                },
-            )
+            Some(if op == "/" || ty.is_some_and(is_float) {
+                "divideByZero"
+            } else {
+                "remainderByZero"
+            })
         }
         Expr::Binary { op, .. } if matches!(op.as_str(), "+" | "-" | "*") => {
             ty.filter(|ty| is_integer(ty)).map(|_| "overflow")

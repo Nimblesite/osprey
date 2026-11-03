@@ -142,7 +142,11 @@ fn typed_initializer(
 
 /// A literal reaches a sized binding with its `int` spelling: `let x: uint8 =
 /// if c { 1 } else { 2 }`. It holds the value exactly ([TYPE-NUMERIC-LITERAL]).
-pub(super) fn fit_literal(cg: &mut Codegen, position: Option<Position>, value: Value) -> Result<Value> {
+pub(super) fn fit_literal(
+    cg: &mut Codegen,
+    position: Option<Position>,
+    value: Value,
+) -> Result<Value> {
     let sized = cg
         .prog
         .let_type(cg.source_function.as_deref(), position)

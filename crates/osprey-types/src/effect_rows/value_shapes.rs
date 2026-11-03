@@ -392,19 +392,20 @@ pub(super) fn value_shape(ty: &crate::ty::Type) -> Option<Value> {
             ..Value::default()
         }),
         Type::Con { name, .. }
-            if crate::numeric::Numeric::of_name(name).is_some() || matches!(
-                name.as_str(),
-                names::STRING
-                    | names::BOOL
-                    | names::UNIT
-                    | names::LIST
-                    | names::MAP
-                    | names::ITERATOR
-                    | names::FIBER
-                    | names::CHANNEL
-                    | names::PTR
-                    | names::GPU_BUFFER
-            ) =>
+            if crate::numeric::Numeric::of_name(name).is_some()
+                || matches!(
+                    name.as_str(),
+                    names::STRING
+                        | names::BOOL
+                        | names::UNIT
+                        | names::LIST
+                        | names::MAP
+                        | names::ITERATOR
+                        | names::FIBER
+                        | names::CHANNEL
+                        | names::PTR
+                        | names::GPU_BUFFER
+                ) =>
         {
             Some(Value {
                 field_names: Some(BTreeSet::new()),

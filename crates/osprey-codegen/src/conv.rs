@@ -31,7 +31,9 @@ pub(crate) fn as_num(cg: &mut Codegen, v: Value, to: Numeric) -> Result<Value> {
             return as_num(cg, i, to);
         }
         LType::Str | LType::Ptr => {
-            return Err(CodegenError::invalid("expected a number, found a string/handle"))
+            return Err(CodegenError::invalid(
+                "expected a number, found a string/handle",
+            ))
         }
         LType::Any => return Err(read_through_erasure()),
     };

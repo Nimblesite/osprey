@@ -149,9 +149,9 @@ impl Numeric {
     #[must_use]
     pub fn conversion_target(builtin: &str) -> Option<Numeric> {
         let written = builtin.strip_prefix("to")?;
-        Numeric::ALL
-            .into_iter()
-            .find(|n| n.name().eq_ignore_ascii_case(written) && written.starts_with(char::is_uppercase))
+        Numeric::ALL.into_iter().find(|n| {
+            n.name().eq_ignore_ascii_case(written) && written.starts_with(char::is_uppercase)
+        })
     }
 
     /// The inclusive range of an integer type; `None` for a float.
@@ -159,7 +159,10 @@ impl Numeric {
     pub const fn range(self) -> Option<(i128, i128)> {
         match self.kind {
             NumericKind::Binary => None,
-            NumericKind::Signed => Some((-(1_i128 << (self.bits - 1)), (1_i128 << (self.bits - 1)) - 1)),
+            NumericKind::Signed => Some((
+                -(1_i128 << (self.bits - 1)),
+                (1_i128 << (self.bits - 1)) - 1,
+            )),
             NumericKind::Unsigned => Some((0, (1_i128 << self.bits) - 1)),
         }
     }

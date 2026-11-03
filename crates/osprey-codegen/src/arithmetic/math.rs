@@ -155,7 +155,11 @@ pub(crate) fn bitwise(cg: &mut Codegen, name: &str, left: Value, right: Value) -
     match op {
         "and" | "or" | "xor" => {
             let ty = n.llvm();
-            Ok(word(cg, n, format!("{op} {ty} {}, {}", a.operand, b.operand)))
+            Ok(word(
+                cg,
+                n,
+                format!("{op} {ty} {}, {}", a.operand, b.operand),
+            ))
         }
         "ashr" if !n.is_signed() => Ok(total_shift(cg, "lshr", n, &a.operand, &b.operand)),
         _ => Ok(total_shift(cg, op, n, &a.operand, &b.operand)),
@@ -187,7 +191,11 @@ fn total_shift(cg: &mut Codegen, op: &str, n: Numeric, value: &str, by: &str) ->
     } else {
         "0".into()
     };
-    word(cg, n, format!("select i1 {ok}, {ty} {shifted}, {ty} {limit}"))
+    word(
+        cg,
+        n,
+        format!("select i1 {ok}, {ty} {shifted}, {ty} {limit}"),
+    )
 }
 
 /// [BUILTIN-BITWISE] One's complement: `xor` with -1.

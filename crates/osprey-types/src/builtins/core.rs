@@ -28,8 +28,19 @@ fn numbers(e: &mut TypeEnv) {
     // Open over the integer types [TYPE-NUMERIC-ARITH-WIDTH], one overload per
     // use like `abs`.
     for name in [
-        "intDiv", "wrapAdd", "wrapSub", "wrapMul", "satAdd", "satSub", "satMul", "bitAnd", "bitOr",
-        "bitXor", "shiftLeft", "shiftRight", "shiftRightLogical",
+        "intDiv",
+        "wrapAdd",
+        "wrapSub",
+        "wrapMul",
+        "satAdd",
+        "satSub",
+        "satMul",
+        "bitAnd",
+        "bitOr",
+        "bitXor",
+        "shiftLeft",
+        "shiftRight",
+        "shiftRightLogical",
     ] {
         e.insert(name, open_integer_scheme(name, 2, Type::Var(0)));
     }
@@ -38,15 +49,15 @@ fn numbers(e: &mut TypeEnv) {
     // [BUILTIN-CONVERT-INT]; out of range performs `Arith.overflow`.
     for target in Numeric::ALL.into_iter().filter(|n| n.is_integer()) {
         let name = conversion_name(target);
-        e.insert(&name, open_integer_scheme(&name, 1, Type::prim(target.name())));
+        e.insert(
+            &name,
+            open_integer_scheme(&name, 1, Type::prim(target.name())),
+        );
     }
     // Widening into a float. Total, so it is bare `float` rather than a Result:
     // every integer has a nearest double. Implements [BUILTIN-CONVERT-FLOAT] and
     // the GPU surface's explicit element conversion [GPU-CONVERT].
-    e.insert(
-        "toFloat",
-        open_integer_scheme("toFloat", 1, Type::float()),
-    );
+    e.insert("toFloat", open_integer_scheme("toFloat", 1, Type::float()));
     // The unary float functions every numeric kernel is written from. Total
     // over IEEE doubles (a domain error yields NaN, an overflow infinity), so
     // bare `float`; pure, so a kernel may call or name them [BUILTIN-MATH],

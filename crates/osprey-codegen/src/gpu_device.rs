@@ -25,8 +25,8 @@ pub(crate) use launch::{declined, launch_fold, launch_map};
 
 use crate::builder::Codegen;
 use crate::llty::LType;
-use osprey_types::numeric::Numeric;
 use osprey_ast::{Expr, Parameter, Program, Stmt};
+use osprey_types::numeric::Numeric;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 

@@ -95,7 +95,8 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
     }
     if let Some(op) = operation_name(name).strip_prefix(INTEGER_OPERAND_PREFIX) {
-        let integer = crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_integer);
+        let integer =
+            crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_integer);
         return (!integer && !matches!(ty, Type::Var(_)))
             .then(|| format!("`{op}` requires an integer; got {ty}"));
     }
@@ -213,7 +214,8 @@ fn is_sortable_elem(ty: &Type) -> bool {
         Type::Con { name, args } => {
             args.is_empty()
                 && (name == names::STRING
-                    || crate::numeric::Numeric::of_name(name).is_some_and(crate::numeric::Numeric::is_integer))
+                    || crate::numeric::Numeric::of_name(name)
+                        .is_some_and(crate::numeric::Numeric::is_integer))
         }
         _ => false,
     }

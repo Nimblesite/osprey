@@ -32,9 +32,7 @@ pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeEr
                 None => Ok(()),
             }
         }
-        (Type::Var(x), Type::Var(y)) if ctx.literal_default(*x).is_some() => {
-            bind_var(ctx, *y, &a)
-        }
+        (Type::Var(x), Type::Var(y)) if ctx.literal_default(*x).is_some() => bind_var(ctx, *y, &a),
         (Type::Var(x), _) if ctx.literal_default(*x).is_some() => {
             match settle_literal_to(ctx, *x, &b) {
                 Some(settled) => unify(ctx, &settled, &b),

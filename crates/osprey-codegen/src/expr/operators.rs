@@ -138,9 +138,14 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
 pub(super) fn gen_checked_arith(cg: &mut Codegen, stem: &str, l: Value, r: Value) -> Result<Value> {
     let numeric = crate::arithmetic::operand_numeric(&l, &r);
     let (wrapped, bad) = emit_overflow_arith(cg, stem, numeric, l, r)?;
-    gen_guarded(cg, &bad, LType::Num(numeric), "0", "integer overflow", |cg| {
-        cg.emit_reg(wrapped)
-    })
+    gen_guarded(
+        cg,
+        &bad,
+        LType::Num(numeric),
+        "0",
+        "integer overflow",
+        |cg| cg.emit_reg(wrapped),
+    )
 }
 
 /// Emit one LLVM overflow intrinsic at `numeric`'s width and kind, and return
@@ -347,7 +352,11 @@ pub(crate) fn gen_comparison(cg: &mut Codegen, op: &str, l: Value, r: Value) -> 
     let numeric = crate::arithmetic::operand_numeric(&l, &r);
     let signed = cmp_code(op, false);
     let unsigned = signed.replacen('s', "u", usize::from(signed != "ne"));
-    let cc = if numeric.is_signed() { signed } else { &unsigned };
+    let cc = if numeric.is_signed() {
+        signed
+    } else {
+        &unsigned
+    };
     let li = as_num(cg, l, numeric)?;
     let ri = as_num(cg, r, numeric)?;
     let ty = numeric.llvm();
