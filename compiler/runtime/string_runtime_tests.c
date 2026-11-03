@@ -18,12 +18,14 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "collection_runtime.h"
+#include "float_spelling.h"
 #include "string_runtime.h"
 
 /* ---------- scalar predicates ---------- */
@@ -954,6 +956,117 @@ static void test_float_to_string(void) {
     free(inf_s);
 }
 
+/* [TYPE-NUMERIC-SIZED] Exact binary64 -> binary16 rounding boundaries. */
+static void test_float16_conversion(void) {
+    struct { double in; uint16_t want; } cases[] = {
+        {0.0, 0x0000}, {-0.0, 0x8000}, {1.0, 0x3C00}, {-2.0, 0xC000},
+        {65504.0, 0x7BFF}, {65519.99, 0x7BFF}, {65520.0, 0x7C00},
+        {-65520.0, 0xFC00}, {INFINITY, 0x7C00}, {-INFINITY, 0xFC00},
+        {6.103515625e-05, 0x0400}, {5.960464477539063e-08, 0x0001},
+        {2.98023223876953125e-08, 0x0000}, {8.940696716308594e-08, 0x0002},
+        {0x1.0000000000001p-25, 0x0001}, {1.00048828125, 0x3C00},
+        {1.00146484375, 0x3C02}, {6.1005353927612305e-05, 0x0400},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        uint16_t got = osp_float_to_f16(cases[i].in);
+        if (got != cases[i].want) {
+            fprintf(stderr, "f16 case %zu (%a): got %04x want %04x\n",
+                    i, cases[i].in, got, cases[i].want);
+        }
+        assert(got == cases[i].want);
+    }
+    uint16_t nan = osp_float_to_f16(NAN);
+    assert((nan & 0x7C00) == 0x7C00 && (nan & 0x03FF) != 0);
+    nan = osp_float_to_f16(-NAN);
+    assert((nan & 0xFC00) == 0xFC00 && (nan & 0x03FF) != 0);
+    for (uint32_t b = 0; b < 65536; b++) {
+        uint16_t back = osp_float_to_f16((double)osp_f16_to_f32((uint16_t)b));
+        if ((b & 0x7C00) == 0x7C00 && (b & 0x03FF)) {
+            assert((back & 0x7C00) == 0x7C00 && (back & 0x03FF) != 0);
+            assert((back & 0x8000) == (b & 0x8000));
+        } else {
+            assert(back == b);
+        }
+    }
+    printf("  ok  float16_conversion (all 65536 bit patterns)\n");
+}
+
+/* [TYPE-NUMERIC-PRINT] Every non-NaN binary16 spelling reads back exactly. */
+static void test_float16_spelling_roundtrip(void) {
+    char buf[32];
+    for (uint32_t b = 0; b < 65536; b++) {
+        if ((b & 0x7C00) == 0x7C00 && (b & 0x03FF)) continue;
+        int n = osp_float16_spelling((uint16_t)b, buf, sizeof(buf));
+        assert(n >= 0 && (size_t)n < sizeof(buf));
+        assert(osp_float_to_f16(strtod(buf, NULL)) == b);
+    }
+    printf("  ok  float16_spelling_roundtrip (all non-NaN patterns)\n");
+}
+
+static void check_float32_spelling(float value) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    char buf[32];
+    int n = osp_float32_spelling(value, buf, sizeof(buf));
+    assert(n >= 0 && (size_t)n < sizeof(buf));
+    if ((size_t)n > 14 + (bits >> 31)) {
+        fprintf(stderr, "f32 %08x spelling too long: %s (%d)\n", bits, buf, n);
+    }
+    assert((size_t)n <= 14 + (bits >> 31));
+    float back = (float)strtod(buf, NULL);
+    uint32_t back_bits;
+    memcpy(&back_bits, &back, sizeof(back_bits));
+    assert(back_bits == bits);
+}
+
+static void test_float32_spelling_roundtrip(void) {
+    const float awkward[] = {0.0f, -0.0f, 0.1f, 16777216.0f, 1e10f,
+        1.17549435e-38f, 3.402823466e38f, 1.40129846e-45f, 1.0f / 3.0f,
+        65504.0f, -65504.0f, 9999999.0f, 0.0001f, 0.00001f};
+    for (size_t i = 0; i < sizeof(awkward) / sizeof(awkward[0]); i++) {
+        check_float32_spelling(awkward[i]);
+    }
+    uint32_t state = 0x12345678u;
+    for (int i = 0; i < 100000; i++) {
+        state = state * 1664525u + 1013904223u;
+        if ((state & 0x7F800000u) == 0x7F800000u && (state & 0x007FFFFFu)) continue;
+        float value;
+        memcpy(&value, &state, sizeof(value));
+        check_float32_spelling(value);
+    }
+    printf("  ok  float32_spelling_roundtrip (awkward + 100000 LCG patterns)\n");
+}
+
+static void expect_float32_string(float value, const char *want) {
+    char *s = osp_float32_to_string(value);
+    assert(s != NULL && strcmp(s, want) == 0);
+    free(s);
+}
+
+static void expect_float16_string(uint16_t bits, const char *want) {
+    char *s = osp_float16_to_string(bits);
+    assert(s != NULL && strcmp(s, want) == 0);
+    free(s);
+}
+
+static void test_sized_float_strings(void) {
+    expect_float32_string(0.1f, "0.1");
+    expect_float32_string(16777216.0f, "16777216.0");
+    expect_float32_string(1e10f, "1e+10");
+    expect_float32_string(1.17549435e-38f, "1.1754944e-38");
+    expect_float32_string(-0.0f, "-0.0");
+    expect_float32_string(1234567936.0f, "1234568000.0");
+    expect_float16_string(osp_float_to_f16(1.0 / 3.0), "0.3333");
+    expect_float16_string(0x7BFF, "65500.0"); /* 65504: the shortest that reads back */
+    expect_float16_string(0x0001, "6e-08");
+    expect_float16_string(0x8000, "-0.0");
+    expect_float16_string(0x7C00, "inf");
+    char *s = osp_float32_to_string(NAN);
+    assert(s != NULL && strcmp(s, "nan") == 0);
+    free(s);
+    printf("  ok  sized_float_strings\n");
+}
+
 /* The spelling toString(float) has always had, as the plain definition the
    fast path must reproduce byte for byte: the smallest precision from 10 to
    17 whose %g spelling reads back as the same double, plus ".0" when that
@@ -1127,6 +1240,10 @@ int main(void) {
     test_cursor_roundtrip_exhaustive();
     test_strlen();
     test_float_to_string();
+    test_float16_conversion();
+    test_float16_spelling_roundtrip();
+    test_float32_spelling_roundtrip();
+    test_sized_float_strings();
     test_float_to_string_matches_reference();
     test_format_measure_write();
     test_internal_helpers();

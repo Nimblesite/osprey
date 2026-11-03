@@ -306,22 +306,12 @@ int64_t osp_parse_float_strict(const char *s, double *out) {
     return 0;
 }
 
-/* Formats a double so whole-valued floats keep a visible ".0" — without
- * this, sprintf("%.10g", 3.0) yields "3", indistinguishable from int 3
- * in user output. Buffer is malloc'd and owned by the caller. NaN /
+/* Formats a spelled float so whole-valued floats keep a visible ".0" —
+ * without this, 3.0 yields "3", indistinguishable from int 3 in user output
+ * [TYPE-NUMERIC-PRINT]. The copy is malloc'd and owned by the caller. NaN /
  * +inf / -inf pass through unchanged. */
-char *osp_float_to_string(double d) {
-    char buf[64];
-    /* %.10g alone SILENTLY LOSES value: 1234567890.5 has 11 significant
-     * digits, so it rendered as "1234567890" and then gained a fabricated
-     * ".0". Widen only as far as the value needs to survive a round trip, so
-     * short decimals keep their short spelling and no printed float ever
-     * names a different double than the one held. */
-    int n = osp_float_spelling(d, buf, sizeof(buf));
-    if (n < 0 || (size_t)n >= sizeof(buf)) return osp_string_empty_internal();
-    /* If snprintf produced a representation with none of '.', 'e', 'E',
-     * 'n' (NaN), or 'i' (inf), the value lost its float-ness — re-append
-     * ".0" so the type distinction survives toString(). */
+static char *float_string(char *buf, int n, size_t cap) {
+    if (n < 0 || (size_t)n >= cap) return osp_string_empty_internal();
     int has_marker = 0;
     for (const char *p = buf; *p; p++) {
         if (*p == '.' || *p == 'e' || *p == 'E' || *p == 'n' || *p == 'i') {
@@ -329,13 +319,26 @@ char *osp_float_to_string(double d) {
             break;
         }
     }
-    if (!has_marker && (size_t)n + 2 < sizeof(buf)) {
-        buf[n] = '.';
-        buf[n + 1] = '0';
-        buf[n + 2] = '\0';
+    if (!has_marker && (size_t)n + 2 < cap) {
+        memcpy(buf + n, ".0", 3);
         n += 2;
     }
     return osp_string_dup_internal(buf, (size_t)n);
+}
+
+char *osp_float_to_string(double d) {
+    char buf[64];
+    return float_string(buf, osp_float_spelling(d, buf, sizeof(buf)), sizeof(buf));
+}
+
+char *osp_float32_to_string(float value) {
+    char buf[64];
+    return float_string(buf, osp_float32_spelling(value, buf, sizeof(buf)), sizeof(buf));
+}
+
+char *osp_float16_to_string(uint16_t bits) {
+    char buf[64];
+    return float_string(buf, osp_float16_spelling(bits, buf, sizeof(buf)), sizeof(buf));
 }
 
 /* ---------- O(1) byte / codepoint cursor (BUILTIN-STRING-CURSOR) ----------
