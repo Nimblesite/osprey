@@ -46,6 +46,7 @@ pub(super) struct Emitter<'a> {
     scopes: Vec<HashMap<String, Local>>,
     pub(super) depth: usize,
     foreign_call: Option<String>,
+    pub(super) default_float: Ty,
 }
 
 /// Helper inlining deeper than this is treated as recursion.
@@ -59,6 +60,7 @@ pub(super) fn body(
     body: &Expr,
     params: &[Ty],
     captures: &[(String, Uniform)],
+    result_ty: Option<Ty>,
 ) -> Result<DeviceBody, DeviceFailure> {
     if parameters.len() != params.len() {
         return Err("the kernel's arity disagrees with the combinator's slots".into());
@@ -70,6 +72,11 @@ pub(super) fn body(
         scopes: vec![HashMap::new()],
         depth: 0,
         foreign_call: None,
+        default_float: if result_ty == Some(Ty::FLOAT32) {
+            Ty::FLOAT32
+        } else {
+            Ty::FLOAT
+        },
     };
     for (i, (parameter, ty)) in parameters.iter().zip(params).enumerate() {
         emitter.bind(&parameter.name, Local::Scalar(*ty, format!("p{i}")));
@@ -153,7 +160,11 @@ impl Emitter<'_> {
     pub(super) fn expression(&mut self, expression: &Expr) -> Emitted {
         match expression {
             Expr::Integer(n) => Ok((Ty::INT, int_literal(*n))),
-            Expr::Float(f) => Ok((Ty::FLOAT, float_literal(*f))),
+            Expr::Float(f) => Ok((
+                self.default_float,
+                super::numeric::convert(self.default_float, Ty::FLOAT, &float_literal(*f))
+                    .ok_or_else(|| "float literal has no device representation".to_string())?,
+            )),
             Expr::Bool(b) => Ok((Ty::Bool, if *b { "true" } else { "false" }.into())),
             Expr::Identifier(name) => self.identifier(name),
             Expr::Binary {
@@ -181,7 +192,18 @@ impl Emitter<'_> {
             Some(Local::Buffer(..)) => Err(format!("`{name}` is a buffer, not a kernel value")),
             Some(Local::Function(_)) => Err(format!("`{name}` is a function, not a kernel value")),
             None => match self.cg.device.constants.get(name).cloned() {
-                Some(literal) => self.expression(&literal),
+                Some((target, literal)) => {
+                    let (ty, value) = self
+                        .with_float_context(target.unwrap_or(Ty::FLOAT), |emitter| {
+                            emitter.expression(&literal)
+                        })?;
+                    match target {
+                        Some(target) if target != ty => super::numeric::convert(target, ty, &value)
+                            .map(|value| (target, value))
+                            .ok_or_else(|| "constant has no device conversion".into()),
+                        _ => Ok((ty, value)),
+                    }
+                }
                 None => Err(format!("`{name}` is not a value a device kernel can reach")),
             },
         }
@@ -193,9 +215,12 @@ impl Emitter<'_> {
         }
         let (left_ty, l) = self.expression(left)?;
         let (right_ty, r) = self.expression(right)?;
+        let (left_ty, l) = super::numeric::fit_literal(left, left_ty, l, right_ty);
+        let (right_ty, r) = super::numeric::fit_literal(right, right_ty, r, left_ty);
         match (left_ty, right_ty) {
             (Ty::INT, Ty::INT) => int_binary(op, &l, &r),
             (Ty::FLOAT, Ty::FLOAT) => float_binary(op, &l, &r),
+            (Ty::FLOAT32, Ty::FLOAT32) => super::numeric::binary(op, &l, &r),
             (Ty::Bool, Ty::Bool) if op == "==" || op == "!=" => {
                 Ok((Ty::Bool, format!("({l} {op} {r})")))
             }
@@ -222,6 +247,7 @@ impl Emitter<'_> {
         match (op, ty) {
             ("-", Ty::INT) => Ok((Ty::INT, format!("osprey_neg({value}, fault)"))),
             ("-", Ty::FLOAT) => Ok((Ty::FLOAT, format!("neg64({value})"))),
+            ("-", Ty::FLOAT32) => Ok((Ty::FLOAT32, format!("(-({value}))"))),
             ("!" | "not", Ty::Bool) => Ok((Ty::Bool, format!("(!{value})"))),
             _ => Err(format!("unary `{op}` over a {ty:?} operand")),
         }
@@ -256,72 +282,6 @@ impl Emitter<'_> {
         }
     }
 
-    fn builtin(&mut self, name: &str, arguments: &[Expr]) -> Emitted {
-        let values = arguments
-            .iter()
-            .map(|argument| self.expression(argument))
-            .collect::<Result<Vec<_>, _>>()?;
-        let unary = |ty: Ty, text: String| Ok((ty, text));
-        match (name, values.as_slice()) {
-            ("intDiv", [(Ty::INT, a), (Ty::INT, b)]) => {
-                unary(Ty::INT, format!("osprey_div({a}, {b}, fault)"))
-            }
-            ("toFloat", [(Ty::INT, a)]) => unary(Ty::FLOAT, format!("from_long({a})")),
-            ("sqrt" | "exp" | "ln" | "tanh", [(Ty::FLOAT, a)]) => {
-                unary(Ty::FLOAT, format!("{name}64({a})"))
-            }
-            // The unary float functions of [BUILTIN-MATH] and its sections:
-            // one call into the device math library, total and pure.
-            (
-                "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sinh" | "cosh" | "asinh"
-                | "acosh" | "atanh" | "log2" | "log10" | "log1p" | "expm1" | "erf" | "erfc"
-                | "floor" | "ceil" | "trunc" | "round",
-                [(Ty::FLOAT, a)],
-            ) => unary(Ty::FLOAT, format!("{name}64({a})")),
-            // Binary float functions [BUILTIN-MATH-TRIG] [BUILTIN-MATH-LOG]
-            // [BUILTIN-MATH-ROUNDING].
-            ("pow" | "atan2" | "hypot" | "fmod" | "copysign", [(Ty::FLOAT, a), (Ty::FLOAT, b)]) => {
-                unary(Ty::FLOAT, format!("{name}64({a}, {b})"))
-            }
-            // [BUILTIN-FLOAT-BITS] the bit-level views. A device float IS its
-            // binary64 word, so floatBits is the identity and floatFromBits a
-            // cast of the word. The sized-float views (`float32Bits`,
-            // `float16Bits` and their inverses) and every conversion named for
-            // a sized type have no device arm: the match falls through, the
-            // emitter declines by name, and the host kernel path runs (plan
-            // 0050 phase 5 owns native device arithmetic).
-            ("floatBits", [(Ty::FLOAT, a)]) => unary(Ty::INT, a.clone()),
-            ("floatFromBits", [(Ty::INT, a)]) => unary(Ty::FLOAT, a.clone()),
-            ("abs", [(Ty::INT, a)]) => unary(Ty::INT, format!("osprey_abs({a}, fault)")),
-            ("abs", [(Ty::FLOAT, a)]) => unary(Ty::FLOAT, format!("abs64({a})")),
-            // [BUILTIN-BITWISE] the word operations; the shifts are total on
-            // the device exactly as on the host.
-            ("bitAnd", [(Ty::INT, a), (Ty::INT, b)]) => unary(Ty::INT, format!("(({a}) & ({b}))")),
-            ("bitOr", [(Ty::INT, a), (Ty::INT, b)]) => unary(Ty::INT, format!("(({a}) | ({b}))")),
-            ("bitXor", [(Ty::INT, a), (Ty::INT, b)]) => unary(Ty::INT, format!("(({a}) ^ ({b}))")),
-            ("bitNot", [(Ty::INT, a)]) => unary(Ty::INT, format!("(~({a}))")),
-            ("shiftLeft", [(Ty::INT, a), (Ty::INT, b)]) => {
-                unary(Ty::INT, format!("shl64({a}, {b})"))
-            }
-            ("shiftRight", [(Ty::INT, a), (Ty::INT, b)]) => {
-                unary(Ty::INT, format!("shr64({a}, {b})"))
-            }
-            ("shiftRightLogical", [(Ty::INT, a), (Ty::INT, b)]) => {
-                unary(Ty::INT, format!("shru64({a}, {b})"))
-            }
-            ("wrapAdd", [(Ty::INT, a), (Ty::INT, b)]) => {
-                unary(Ty::INT, format!("(long)((ulong)({a}) + (ulong)({b}))"))
-            }
-            ("wrapSub", [(Ty::INT, a), (Ty::INT, b)]) => {
-                unary(Ty::INT, format!("(long)((ulong)({a}) - (ulong)({b}))"))
-            }
-            ("wrapMul", [(Ty::INT, a), (Ty::INT, b)]) => {
-                unary(Ty::INT, format!("(long)((ulong)({a}) * (ulong)({b}))"))
-            }
-            _ => Err(format!("`{name}` has no device form")),
-        }
-    }
-
     /// Inline a helper: each argument is bound once, in order, then the body
     /// is emitted in a scope holding the parameters.
     fn inline(&mut self, name: &str, arguments: &[Expr]) -> Emitted {
@@ -329,7 +289,15 @@ impl Emitter<'_> {
             return Err(format!("`{name}` is not a function the device can inline"));
         };
         let bindings = self.bindings(name, &parameters, arguments)?;
-        self.apply(&body, bindings)
+        let target = self
+            .cg
+            .prog
+            .return_type(name)
+            .and_then(osprey_types::numeric::Numeric::of_type)
+            .filter(|n| n.is_float())
+            .map_or(self.default_float, Ty::Num);
+        self.with_float_context(target, |emitter| emitter.apply(&body, bindings))
+            .map_err(|reason| format!("{name}: {reason}"))
     }
 
     /// Inline a function argument the way a helper is inlined, in its own

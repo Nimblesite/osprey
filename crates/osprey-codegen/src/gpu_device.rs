@@ -18,17 +18,18 @@
 
 mod dialect;
 mod emit;
+mod entries;
 mod launch;
 mod loops;
+mod numeric;
 
-pub(crate) use launch::{declined, launch_fold, launch_map};
+pub(crate) use launch::{launch_fold, launch_map, launch_sequence};
 
 use crate::builder::Codegen;
 use crate::llty::LType;
 use osprey_ast::{Expr, Parameter, Program, Stmt};
 use osprey_types::numeric::Numeric;
 use std::collections::HashMap;
-use std::fmt::Write as _;
 
 /// The device dialect's spelling of a kernel's scalar word.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,6 +41,7 @@ pub(crate) enum Ty {
 impl Ty {
     pub(crate) const INT: Ty = Ty::Num(Numeric::INT);
     pub(crate) const FLOAT: Ty = Ty::Num(Numeric::FLOAT);
+    pub(super) const FLOAT32: Ty = Ty::Num(Numeric::FLOAT32);
 
     fn of(ty: LType) -> Option<Ty> {
         match ty {
@@ -149,7 +151,7 @@ pub(crate) struct DeviceState {
     /// Every function definition, for inlining a kernel's helpers.
     defs: HashMap<String, (Vec<Parameter>, Expr)>,
     /// File-scope immutable bindings with literal values.
-    constants: HashMap<String, Expr>,
+    constants: HashMap<String, (Option<Ty>, Expr)>,
     /// Bindings that merely rename another name (`let f = addF`, or the
     /// `let f$stage = g` a static handler arm binds), resolved to the name
     /// at the end of the chain, so a kernel passed through such a binding is
@@ -184,9 +186,18 @@ pub(crate) fn record(cg: &mut Codegen, program: &Program) {
                 name,
                 mutable: false,
                 value,
+                position,
                 ..
             } if dialect::is_literal(value) => {
-                let _ = cg.device.constants.insert(name.clone(), value.clone());
+                let ty = cg
+                    .prog
+                    .let_type(None, *position)
+                    .and_then(Numeric::of_type)
+                    .map(Ty::Num);
+                let _ = cg
+                    .device
+                    .constants
+                    .insert(name.clone(), (ty, value.clone()));
             }
             _ => {}
         }
@@ -221,6 +232,7 @@ pub(crate) fn compile(
     body: &Expr,
     slots: &[LType],
     captures: &[crate::closure::Capture],
+    result: LType,
 ) -> Result<DeviceBody, DeviceFailure> {
     let params = slots
         .iter()
@@ -230,7 +242,7 @@ pub(crate) fn compile(
         .iter()
         .map(|capture| uniform_of(&capture.val).map(|uniform| (capture.name.clone(), uniform)))
         .collect::<Result<Vec<_>, _>>()?;
-    emit::body(cg, parameters, body, &params, &uniforms)
+    emit::body(cg, parameters, body, &params, &uniforms, Ty::of(result))
 }
 
 fn uniform_of(value: &crate::llty::Value) -> Result<Uniform, String> {
@@ -257,142 +269,35 @@ fn uniform_of(value: &crate::llty::Value) -> Result<Uniform, String> {
     }
 }
 
-/// The two entry-point shapes.
+/// The entry-point shapes sharing the runtime dispatch contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Shape {
     /// One thread per element over `inputs` buffers.
     Map { inputs: usize },
     /// One thread folding `in0` into the accumulator seeded in `out[0]`.
     Fold,
+    /// One thread publishes each inclusive prefix and its final accumulator.
+    Scan,
+    /// One thread compacts matching elements and publishes the kept count.
+    Filter,
+}
+
+impl Shape {
+    fn has_state(self) -> bool {
+        matches!(self, Self::Scan | Self::Filter)
+    }
 }
 
 /// Install an entry point around `body` and hand back its name and kinds.
 fn install(cg: &mut Codegen, body: &DeviceBody, shape: Shape) -> DeviceKernel {
     let name = format!("{KERNEL_PREFIX}{}", cg.device.installed);
     cg.device.installed += 1;
-    cg.device.source.push_str(&entry(&name, body, shape));
+    cg.device
+        .source
+        .push_str(&entries::entry(&name, body, shape));
     DeviceKernel {
         name,
         kinds: body.uniforms.iter().map(Uniform::kind).collect(),
-    }
-}
-
-/// The fixed leading parameters every entry point takes, which the runtime
-/// binds first: the element buffers, the result, the fault word, the count.
-fn fixed_parameters(body: &DeviceBody, shape: Shape) -> String {
-    let offset = usize::from(shape == Shape::Fold);
-    let input = |index| {
-        body.params
-            .get(index + offset)
-            .copied()
-            .unwrap_or(Ty::INT)
-            .spelling()
-    };
-    let output = body.result_ty.spelling();
-    format!("GPU_GLOBAL const {} *in0 GPU_BUFFER(0), GPU_GLOBAL const {} *in1 GPU_BUFFER(1), \
-GPU_GLOBAL {output} *out GPU_BUFFER(2), GPU_GLOBAL ulong *fault GPU_BUFFER(3), GPU_PARAM count GPU_BUFFER(4)", input(0), input(1))
-}
-
-fn entry(name: &str, body: &DeviceBody, shape: Shape) -> String {
-    let mut text = format!(
-        "kernel void {name}({}{} GPU_THREAD) {{\n",
-        fixed_parameters(body, shape),
-        uniform_parameters(body)
-    );
-    text.push_str(&uniform_bindings(body));
-    match shape {
-        Shape::Map { inputs } => map_entry(&mut text, body, inputs),
-        Shape::Fold => fold_entry(&mut text, body),
-    }
-    text.push_str("}\n");
-    text
-}
-
-fn uniform_parameters(body: &DeviceBody) -> String {
-    let mut index = 5;
-    let mut text = String::new();
-    for (i, uniform) in body.uniforms.iter().enumerate() {
-        match uniform {
-            Uniform::Scalar(_) => {
-                let _ = write!(text, ", GPU_PARAM u{i} GPU_BUFFER({index})");
-                index += 1;
-            }
-            Uniform::Buffer(ty) => {
-                let _ = write!(
-                    text,
-                    ", GPU_GLOBAL const {} *u{i} GPU_BUFFER({index}), GPU_PARAM u{i}_len GPU_BUFFER({})", ty.spelling(),
-                    index + 1
-                );
-                index += 2;
-            }
-        }
-    }
-    text
-}
-
-/// Scalar uniforms arrive as words; bind each at its type under the name the
-/// body reads (`u{i}_v`).
-fn uniform_bindings(body: &DeviceBody) -> String {
-    body.uniforms
-        .iter()
-        .enumerate()
-        .filter_map(|(i, uniform)| match uniform {
-            Uniform::Scalar(ty) => Some(format!(
-                "  {} u{i}_v = {};\n",
-                ty.spelling(),
-                ty.value_of(&format!("u{i}"))
-            )),
-            Uniform::Buffer(_) => None,
-        })
-        .collect()
-}
-
-fn map_entry(text: &mut String, body: &DeviceBody, inputs: usize) {
-    text.push_str("  ulong gid = GPU_INDEX;\n  if (gid >= count) return;\n");
-    for (i, ty) in body.params.iter().enumerate().take(inputs) {
-        let _ = writeln!(
-            text,
-            "  {} p{i} = {};",
-            ty.spelling(),
-            ty.value_of(&format!("in{i}[gid]"))
-        );
-    }
-    indented(text, &body.lines, "  ");
-    let _ = writeln!(
-        text,
-        "  out[gid] = {};",
-        body.result_ty.word_of(&body.result)
-    );
-}
-
-fn fold_entry(text: &mut String, body: &DeviceBody) {
-    let acc = body.params.first().copied().unwrap_or(Ty::INT);
-    let elem = body.params.get(1).copied().unwrap_or(Ty::INT);
-    let _ = writeln!(
-        text,
-        "  if (GPU_INDEX != 0) return;\n  {} acc = {};\n  for (ulong i = 0; i < count; i++) {{",
-        acc.spelling(),
-        acc.value_of("out[0]")
-    );
-    let _ = writeln!(
-        text,
-        "    {} p0 = acc;\n    {} p1 = {};",
-        acc.spelling(),
-        elem.spelling(),
-        elem.value_of("in0[i]")
-    );
-    indented(text, &body.lines, "    ");
-    let _ = writeln!(
-        text,
-        "    acc = {};\n  }}\n  out[0] = {};",
-        body.result,
-        acc.word_of("acc")
-    );
-}
-
-fn indented(text: &mut String, lines: &[String], indent: &str) {
-    for line in lines {
-        let _ = writeln!(text, "{indent}{line}");
     }
 }
 

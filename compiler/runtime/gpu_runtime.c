@@ -211,10 +211,11 @@ int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *ki
   OspreyGpuDispatch dispatch = {kernel, source, {{0, NULL, NULL, 0, NULL, 8}}, 0, acc ? 1 : (uint64_t)count};
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, in0);
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, in1);
-  if (acc) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1, 8);
+  if (acc && !out) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1, 8);
   else buffer_argument(&dispatch, OSPREY_GPU_OUTPUT, out);
   osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, &fault, &fault, 1, 8);
   scalar_argument(&dispatch, count);
+  if (acc && out) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1, 8);
   for (size_t i = 0; kinds[i]; i++) uniform_argument(&dispatch, kinds[i], uniforms[i]);
   int status = settled(osprey_gpu_device_dispatch(&dispatch), out);
   if (status < 0) return abort_launch(kernel, osp_io_error());

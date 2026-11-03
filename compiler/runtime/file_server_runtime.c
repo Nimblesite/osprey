@@ -223,6 +223,18 @@ static bool is_plain_name(const char *name) {
   return name[0] != '\0' && name[0] != '.' && !strpbrk(name, "/\\:");
 }
 
+// Implements [FFI-FILE-SERVER-FOLDER]: never follow a folder entry outside its root.
+static bool is_folder_link(const char *path) {
+#ifdef _WIN32
+  DWORD attributes = GetFileAttributesA(path);
+  return attributes != INVALID_FILE_ATTRIBUTES &&
+         (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+#else
+  struct stat info;
+  return lstat(path, &info) == 0 && S_ISLNK(info.st_mode);
+#endif
+}
+
 // Resolves a request path to the file it serves: the one file at `/media`, or
 // a folder's `/<name>` once that file exists. False answers 404.
 static bool resolve(const FileServer *server, const char *path, Served *served) {
@@ -244,6 +256,9 @@ static bool resolve(const FileServer *server, const char *path, Served *served) 
       return false;
     }
     usleep(100000);
+  }
+  if (is_folder_link(served->path)) {
+    return false;
   }
   served->size = (int64_t)info.st_size;
   return S_ISREG(info.st_mode);

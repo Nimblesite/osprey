@@ -102,15 +102,61 @@ fn main() = {
     print("${wide}\n${small}")
 }
 "#;
-    let path = program("typed_sites.osp", source).expect("write typed tensor fixture");
-    let (code, stdout, stderr) = run(&path);
-    assert_eq!(code, Some(0), "{stderr}");
-    assert_eq!(stdout, "wide 4 0.5 3.0\nsmall 2 1.0 -2.5\n", "{stderr}");
-    std::fs::remove_file(path).expect("remove typed tensor fixture");
+    for prefix in [
+        "",
+        "let load = gpuLoadTensor\n",
+        "fn load(path, name) = gpuLoadTensor(path, name)\n",
+    ] {
+        let body = if prefix.is_empty() {
+            source.to_owned()
+        } else {
+            source.replace("gpuLoadTensor(", "load(")
+        };
+        let source = format!("{prefix}{body}");
+        let path = program("typed_sites.osp", &source).expect("write typed tensor fixture");
+        let (code, stdout, stderr) = run(&path);
+        assert_eq!(code, Some(0), "{prefix}: {stderr}");
+        assert_eq!(
+            stdout, "wide 4 0.5 3.0\nsmall 2 1.0 -2.5\n",
+            "{prefix}: {stderr}"
+        );
+        std::fs::remove_file(path).expect("remove typed tensor fixture");
+    }
 }
 
 fn repo() -> PathBuf {
     manifest().join("..").join("..")
+}
+
+/// [GPU-DEVICE-NATIVE] An open literal seed uses the inferred binary32 slot.
+#[test]
+fn float32_reductions_round_at_the_inferred_accumulator_width() {
+    let source = "fn add(a, b) = a + b\nfn main() = {\nlet xs = toGpu([toFloat32(16777216.0), toFloat32(1.0), toFloat32(-16777216.0)])\nprint(\"${gpuFold(xs, 0.0, add)} ${gpuGet(xs, 0) ?: toFloat32(99.0)}\")\n}\n";
+    let path = program("reduction32.osp", source).expect("write reduction fixture");
+    assert!(
+        !llvm(&path).contains("@osprey_gpu_declined"),
+        "binary32 reduction must have a device form"
+    );
+    let (code, stdout, stderr) = run(&path);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stdout, "0.0 16777216.0\n", "{stderr}");
+    std::fs::remove_file(path).expect("remove reduction fixture");
+}
+
+/// [GPU-SCAN] [GPU-FILTER] Both sequential shapes preserve binary32 elements.
+#[test]
+fn typed_scan_and_filter_keep_their_device_form_and_order() {
+    let source = "fn add(a, b) = a + b\nfn main() = {\nlet xs = toGpu([toFloat32(1.0), toFloat32(-2.0), toFloat32(3.0)])\nlet positives = gpuFilter(xs, fn(x) => x > 0.0)\nlet scanned = gpuScan(xs, 0.0, add)\nprint(\"${gpuLength(positives)} ${gpuGet(positives, 0) ?: toFloat32(99.0)} ${gpuGet(positives, 1) ?: toFloat32(99.0)} ${gpuGet(scanned, 2) ?: toFloat32(99.0)}\")\n}\n";
+    let path = program("sequence32.osp", source).expect("write sequence fixture");
+    assert!(
+        !llvm(&path).contains("@osprey_gpu_declined"),
+        "scan and filter must have device forms"
+    );
+    let backend = std::env::var("OSPREY_GPU").unwrap_or_else(|_| "host".to_owned());
+    let (code, stdout, stderr) = run_with_gpu(&path, &backend);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stdout, "2 1.0 3.0 2.0\n", "{stderr}");
+    std::fs::remove_file(path).expect("remove sequence fixture");
 }
 
 /// [GPU-BUFFER-ELEM]: actual compiled uint8 storage, not a reported width.
@@ -305,7 +351,7 @@ fn every_gpt2_kernel_has_a_device_form() {
 
 #[test]
 fn gpt2_rejects_a_failed_gpu_dispatch_instead_of_generating_with_empty_matrices() {
-    let source = "import gpt2::Backends\nimport gpt2::Model\nimport gpt2::Gpu\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(fn() => print(gpuLength(Model::product(toGpu([1.0]), toGpu([1.0]), 1, 1, 1))))) {\n    Success { value } => value\n    Error { message } => print(message)\n}\n";
+    let source = "import gpt2::Backends\nimport gpt2::Model\nimport gpt2::Gpu\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(fn() => print(gpuLength(Model::product(toGpu([toFloat32(1.0)]), toGpu([toFloat32(1.0)]), 1, 1, 1))))) {\n    Success { value } => value\n    Error { message } => print(message)\n}\n";
     let path = gpt2_project("failure", source);
     assert!(path.is_some(), "GPU failure project could not be written");
     let (code, stdout, stderr) = path

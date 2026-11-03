@@ -293,6 +293,23 @@ static void test_file_server_folder(void) {
 // [FFI-FILE-SERVER-FOLDER] Every separator any platform honours is refused, and so
 // is a drive or stream colon: on Windows "\..\..\secret" leaves the folder. These
 // files really exist in the folder, so only the name check can refuse them.
+static void assert_folder_symlink_refused(const char *folder, int64_t port) {
+  char outside[] = "/tmp/osprey-net-outside.XXXXXX";
+  int fd = mkstemp(outside);
+  assert(fd >= 0 && write(fd, "outside", 7) == 7 && close(fd) == 0);
+  char link[512];
+  snprintf(link, sizeof link, "%s/escape.txt", folder);
+  assert(symlink(outside, link) == 0);
+  Reply reply;
+  fetch((int)port, "GET /escape.txt HTTP/1.1\r\n\r\n", &reply);
+  assert(reply.status == 404 && reply.body_len == 0);
+  free(reply.body);
+  fetch((int)port, "HEAD /escape.txt HTTP/1.1\r\n\r\n", &reply);
+  assert(reply.status == 404 && reply.body_len == 0);
+  free(reply.body);
+  assert(unlink(link) == 0 && unlink(outside) == 0);
+}
+
 static void test_file_server_refuses_every_separator(void) {
   char folder[] = "/tmp/osprey-net-names.XXXXXX";
   assert(mkdtemp(folder) != NULL);
@@ -320,6 +337,7 @@ static void test_file_server_refuses_every_separator(void) {
   fetch((int)port, "GET /plain.txt HTTP/1.1\r\n\r\n", &reply);
   assert(reply.status == 200 && reply.body_len == 2);
   free(reply.body);
+  assert_folder_symlink_refused(folder, port);
   assert(osprey_file_server_stop(port) == 0);
   for (size_t i = 0; i < count; i++) {
     char path[512];

@@ -13,6 +13,15 @@ pub(super) fn is_literal(expression: &Expr) -> bool {
     match expression {
         Expr::Integer(_) | Expr::Float(_) | Expr::Bool(_) => true,
         Expr::Unary { op, operand } => op == "-" && is_literal(operand),
+        Expr::Call {
+            function,
+            arguments,
+            ..
+        } => {
+            matches!(callee(function), Expr::Identifier(name)
+            if osprey_types::numeric::Numeric::conversion_target(name).is_some())
+                && matches!(arguments.as_slice(), [value] if is_literal(value))
+        }
         _ => false,
     }
 }

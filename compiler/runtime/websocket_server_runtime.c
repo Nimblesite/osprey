@@ -113,8 +113,8 @@ static void serve_messages(const WebSocketServer *server, int fd) {
                "\"Server received: %s\",\"timestamp\":\"%lld\"}",
                payload, payload, (long long)time(NULL));
       send_websocket_frame(fd, echo_response);
-      free(payload);
     }
+    free(payload); // Empty frames also own a parser allocation [BUILTIN-WEBSOCKET-FRAMING].
   }
 }
 

@@ -134,6 +134,8 @@ Verified storage evidence, 2026-11-03: `memory_golden_tests.c` measures exact AR
 
 **Gate:** `tests/core/gpu/mlkernels.test.*` over `float32` buffers produces the host golden under forced Metal, and the GPT-2 token time is measured and recorded.
 
+Verified binary32 progress, 2026-11-03: the compiled transformer suite passes all 15 cases on host and real Metal (Apple M4 Max), with zero live ARC objects; scan/filter also pass a compiled hardware regression. `MTLMathFloatingPointFunctionsPrecise` is now selected explicitly after a red driver regression. Precise Metal `exp`/`tanh` still differed from the host by one binary32 ulp, so those two functions use the shared wider approximation followed by one rounding; tensor arithmetic and storage remain binary32. Existing numerical assertions are unchanged. Receipts: `transformer32-metal-complete.{out,err}`, `sequence32-metal-hardware.log`, and `metal-precise-functions-{red,green}.log` in `target/local-coding-model/`. Extraction-floor, sized device operations, explicit failures and timing gates remain open.
+
 ### Phase 6 — Edges `[FFI-NUMERIC-WIDTH]`
 
 - [x] `extern fn` parameters and returns of sized types map to the C types of the table (`int32_t`, `uint8_t`, `float`, `uint16_t` for `float16`); iOS and Android ABI tables (`osprey-cli/src/ios_abi.rs`) follow. Verified 2026-11-03: 38 host ABI tests, real C round-trips of all ten numeric types, and 9 backend symbolic/FFI checks pass; direct calls, extern function values and C callbacks preserve target extension attributes.

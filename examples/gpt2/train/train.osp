@@ -16,25 +16,25 @@ import gpt2::Model::{Layer, Weights, Acts, at, total, maxF, width, heads, headWi
     vocabSize, layerCount, positions, widthF, epsilon, scoreScale, geluScale, geluCubic, qAt, kAt, vAt}
 
 let defaultPrompt = "The capital of France is"
-let learningRate = 0.0001
+let learningRate: float32 = 0.0001
 
 /// The gradients of one `linear`: its input, weight and bias.
 type Grad<B> = { dx: B, dw: B, db: B }
 /// The gradients of one `layerNorm`: its input, gain and bias.
 type NormGrad<B> = { dx: B, dg: B, db: B }
 /// The loss and what flows back from it: into the final state and into the tied embedding.
-type Head<B> = { loss: float, dxf: B, dwte: B }
+type Head<B> = { loss: float32, dxf: B, dwte: B }
 type BlockGrad<B> = { dx: B, grad: Layer<B> }
 type Back<B> = { dx: B, grads: List<Layer<B>> }
 type Embed<B> = { dwte: B, dwpe: B }
-type Step<B> = { loss: float, grads: List<Layer<B>>, dwte: B, dwpe: B, dlnfG: B, dlnfB: B }
+type Step<B> = { loss: float32, grads: List<Layer<B>>, dwte: B, dwpe: B, dlnfG: B, dlnfB: B }
 
-fn onehot(hit) = match hit { true => 1.0  false => 0.0 }
+fn onehot(hit) = match hit { true => toFloat32(1.0)  false => toFloat32(0.0) }
 
 /// d gelu / dx for the tanh approximation.
 fn geluSlope(x) = {
-    let th = tanh(geluScale * (x + geluCubic * x * x * x))
-    0.5 * (1.0 + th) + 0.5 * x * (1.0 - th * th) * geluScale * (1.0 + 3.0 * geluCubic * x * x)
+    let th = tanh(toFloat32(geluScale) * (x + toFloat32(geluCubic) * x * x * x))
+    toFloat32(0.5) * (toFloat32(1.0) + th) + toFloat32(0.5) * x * (toFloat32(1.0) - th * th) * toFloat32(geluScale) * (toFloat32(1.0) + toFloat32(3.0) * toFloat32(geluCubic) * x * x)
 }
 
 fn columnSums(dy, rows, cols) = perform Backends::Tensor.build(cols, fn(c) => range(0, rows) |> fold(0.0, fn(a, r) => a + at(dy, r * cols + c)))
@@ -78,7 +78,7 @@ fn dProbAt(dout, qkv, t, i) = {
     let h = intDiv(i, t * t)
     let r = intDiv(i % (t * t), t)
     let c = i % t
-    match c <= r { true => dProb(dout, qkv, h, r, c)  false => 0.0 }
+    match c <= r { true => dProb(dout, qkv, h, r, c)  false => toFloat32(0.0) }
 }
 
 /// Element i of dqkv [t, 2304]: a query, key or value column of one head.
@@ -144,30 +144,30 @@ fn softmaxRows(logits, t) = {
 
 /// The token ids as a tensor, so a kernel reads them where it reads every
 /// other operand; an id below 2^53 is exact as a float.
-fn idTensor(ids) = perform Backends::Tensor.fromList(range(0, listLength(ids)) |> map(fn(i) => toFloat(listGet(ids, i) ?: 0)) |> toList())
+fn idTensor(ids) = perform Backends::Tensor.fromList(range(0, listLength(ids)) |> map(fn(i) => toFloat32(listGet(ids, i) ?: 0)) |> toList())
 
 /// Element i of the logit gradient [t, vocab]; the last position predicts nothing.
 fn dlogitAt(probs, idsT, t, count, i) = {
     let r = intDiv(i, vocabSize)
-    match r == t - 1 { true => 0.0  false => (at(probs, i) - onehot(toFloat(i % vocabSize) == at(idsT, r + 1))) / count }
+    match r == t - 1 { true => toFloat32(0.0)  false => (at(probs, i) - onehot(toFloat32(i % vocabSize) == at(idsT, r + 1))) / count }
 }
 
 /// The probability row r gives its target, picked by the one-hot compare the
 /// logit gradient uses: every other term is an exact 0.0, so the sum is that
 /// probability itself.
-fn targetProb(probs, idsT, r) = range(0, vocabSize) |> fold(0.0, fn(a, v) => a + at(probs, r * vocabSize + v) * onehot(toFloat(v) == at(idsT, r + 1)))
+fn targetProb(probs, idsT, r) = range(0, vocabSize) |> fold(0.0, fn(a, v) => a + at(probs, r * vocabSize + v) * onehot(toFloat32(v) == at(idsT, r + 1)))
 
 /// The mean of `0.0 - ln p0 - ln p1 …` over the first t - 1 positions, as a
 /// one-element tensor, so even the final negation and division run where the
 /// handler runs every other operation; its one element, i = 0, sums from
 /// position i. Negating the in-order sum is exact.
-fn meanLoss(probs, idsT, t, count) = perform Backends::Tensor.build(1, fn(i) => (0.0 - (range(i, t - 1) |> fold(0.0, fn(a, r) => a + ln(targetProb(probs, idsT, r))))) / count)
+fn meanLoss(probs, idsT, t, count) = perform Backends::Tensor.build(1, fn(i) => (toFloat32(0.0) - (range(i, t - 1) |> fold(0.0, fn(a, r) => a + ln(targetProb(probs, idsT, r))))) / count)
 
 /// Mean next-token cross-entropy over the first t - 1 positions of xf [t, width],
 /// and its gradient into xf and into the tied output embedding.
 fn lossHead(w, xf, ids, t) = {
     let probs = softmaxRows(Model::product(xf, w.wteT, t, width, vocabSize), t)
-    let count = toFloat(t - 1)
+    let count = toFloat32(t - 1)
     let idsT = idTensor(ids)
     let loss = at(meanLoss(probs, idsT, t, count), 0)
     let dlogits = perform Backends::Tensor.build(t * vocabSize, fn(i) => dlogitAt(probs, idsT, t, count, i))
@@ -181,7 +181,7 @@ fn lossHead(w, xf, ids, t) = {
 /// Element i of the token embedding gradient: the output projection's share
 /// plus the row of dx0 at every position holding this token.
 fn dwteAt(dx0, dwteOut, idsT, t, i) = range(0, t) |> fold(at(dwteOut, i), fn(a, r) =>
-    match at(idsT, r) == toFloat(intDiv(i, width)) { true => a + at(dx0, r * width + i % width)  false => a })
+    match at(idsT, r) == toFloat32(intDiv(i, width)) { true => a + at(dx0, r * width + i % width)  false => a })
 
 /// The embedding gradients, and dx0 [t, width] itself for the positions used.
 fn embedBack(dx0, dwteOut, ids, t) = {
@@ -203,7 +203,7 @@ fn trainStep(w, ids, t) = {
     Step { loss: head.loss, grads: back.grads, dwte: emb.dwte, dwpe: emb.dwpe, dlnfG: lnf.dg, dlnfB: lnf.db }
 }
 
-fn descend(p, g) = perform Backends::Tensor.zipWith(p, g, fn(a, d) => a - learningRate * d)
+fn descend(p, g) = perform Backends::Tensor.zipWith(p, g, fn(a, d) => a - toFloat32(learningRate) * d)
 
 fn descendLayer(l, g) = Layer {
     ln1g: descend(l.ln1g, g.ln1g), ln1b: descend(l.ln1b, g.ln1b), qkvW: descend(l.qkvW, g.qkvW), qkvB: descend(l.qkvB, g.qkvB),

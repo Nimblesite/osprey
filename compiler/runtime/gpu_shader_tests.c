@@ -313,6 +313,61 @@ static void check_transcendental(const char *what, device_unary device, host_una
   assert(trials - exact <= trials / 100);
 }
 
+// [GPU-DEVICE-NATIVE] Independent wide host arithmetic, never the shader's
+// overflow formula: all byte pairs, boundary pairs and random wider words.
+static void expect_integer(__int128 got, __int128 expected, __int128 low,
+                           __int128 high, ulong fault, ulong special) {
+  ulong wanted = special ? special : expected < low || expected > high ? FAULT_OVERFLOW : 0;
+  assert(fault == wanted);
+  assert(got == (wanted ? 0 : expected));
+  checks += 2;
+}
+
+#define INTEGER_ORACLE(SUFFIX, T, U, BITS, SIGNED) \
+static void integer_pair##SUFFIX(T a, T b) { \
+  const __int128 low = SIGNED ? -((__int128)1 << (BITS - 1)) : 0; \
+  const __int128 high = ((__int128)1 << (BITS - SIGNED)) - 1; \
+  __int128 x = a, y = b; \
+  ulong fault = 0; T got = osprey_add##SUFFIX(a, b, &fault); \
+  expect_integer(got, x + y, low, high, fault, 0); \
+  fault = 0; got = osprey_sub##SUFFIX(a, b, &fault); \
+  expect_integer(got, x - y, low, high, fault, 0); \
+  fault = 0; got = osprey_mul##SUFFIX(a, b, &fault); \
+  expect_integer(got, x * y, low, high, fault, 0); \
+  fault = 0; got = osprey_div##SUFFIX(a, b, &fault); \
+  expect_integer(got, y ? x / y : 0, low, high, fault, y ? 0 : FAULT_REMAINDER_BY_ZERO); \
+  fault = 0; got = osprey_rem##SUFFIX(a, b, &fault); \
+  expect_integer(got, y ? x % y : 0, low, high, fault, y ? 0 : FAULT_REMAINDER_BY_ZERO); \
+  fault = 0; got = osprey_neg##SUFFIX(a, &fault); \
+  expect_integer(got, -x, low, high, fault, 0); \
+  fault = 0; got = osprey_abs##SUFFIX(a, &fault); \
+  expect_integer(got, x < 0 ? -x : x, low, high, fault, 0); \
+} \
+static void integer_cases##SUFFIX(void) { \
+  const __int128 low = SIGNED ? -((__int128)1 << (BITS - 1)) : 0; \
+  const __int128 high = ((__int128)1 << (BITS - SIGNED)) - 1; \
+  T edges[] = {0, 1, (T)-1, (T)low, (T)(low + 1), (T)(high - 1), (T)high, 2}; \
+  for (size_t i = 0; i < 8; i++) for (size_t j = 0; j < 8; j++) integer_pair##SUFFIX(edges[i], edges[j]); \
+  if (BITS == 8) { \
+    for (uint i = 0; i < 256; i++) for (uint j = 0; j < 256; j++) integer_pair##SUFFIX((T)(U)i, (T)(U)j); \
+  } else { \
+    for (uint i = 0; i < 10000; i++) integer_pair##SUFFIX((T)random_word(), (T)random_word()); \
+  } \
+}
+INTEGER_ORACLE(_i8, signed char, unsigned char, 8, 1)
+INTEGER_ORACLE(_i16, short, unsigned short, 16, 1)
+INTEGER_ORACLE(_i32, int, uint, 32, 1)
+INTEGER_ORACLE(, long, ulong, 64, 1)
+INTEGER_ORACLE(_u8, unsigned char, unsigned char, 8, 0)
+INTEGER_ORACLE(_u16, unsigned short, unsigned short, 16, 0)
+INTEGER_ORACLE(_u32, uint, uint, 32, 0)
+#undef INTEGER_ORACLE
+
+static void check_sized_integer_oracles(void) {
+  integer_cases_i8(); integer_cases_i16(); integer_cases_i32(); integer_cases();
+  integer_cases_u8(); integer_cases_u16(); integer_cases_u32();
+}
+
 static void check_checked_integers(void) {
   ulong fault = 0;
   assert(osprey_add(2, 3, &fault) == 5 && osprey_sub(2, 3, &fault) == -1 && osprey_mul(-4, 5, &fault) == -20);
@@ -389,6 +444,7 @@ int main(void) {
   check_soft_binary("pow", pow64, pow, 1021, 4, 1018, 10);
   check_soft_binary("atan2", atan264, atan2, 990, 60, 990, 60);
   check_soft_binary("hypot", hypot64, hypot, 990, 60, 990, 60);
-  printf("[ok] device binary64 library: %lu host parity checks\n", checks);
+  check_sized_integer_oracles();
+  printf("[ok] device numeric library: %lu host parity checks\n", checks);
   return 0;
 }

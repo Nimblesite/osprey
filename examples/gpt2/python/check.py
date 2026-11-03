@@ -5,7 +5,7 @@ from gpt2.Backends import Tensor
 
 
 def vector(size, scale):
-    return perform(Tensor.build(size, lambda i: toFloat(i % 7) * scale))
+    return perform(Tensor.build(size, lambda i: toFloat32(i % 7) * toFloat32(scale)))
 
 
 def line(name, values):
@@ -43,7 +43,7 @@ def run():
     a = vector(6, 0.25)
     b = vector(6, -0.125)
     bias = vector(2, 0.1)
-    gelus = perform(Tensor.build(7, lambda i: Model.gelu(toFloat(i - 3) / 2.0)))
+    gelus = perform(Tensor.build(7, lambda i: Model.gelu(toFloat32(i - 3) / 2.0)))
     small = line("transpose", Model.transpose(a, 2, 3)) + line("matmul", Model.product(a, b, 2, 3, 2)) + line("linear", Model.linear(a, 2, 3, 2, b, bias)) + line("residual", Model.plus(a, b)) + line("gelu", gelus)
     print("@device:" + Model.device() + "\n" + small + sequence(1) + sequence(2) + sequence(3) + block_lines())
 

@@ -166,8 +166,23 @@ static void check_stop_ends_every_connection(void) {
   }
 }
 
+// [BUILTIN-WEBSOCKET-FRAMING] Empty text frames own no unreleased payload.
+static void check_empty_frame_payloads_are_released(int64_t server) {
+  const unsigned char empty[] = {0x81, 0x00};
+  for (int i = 0; i < 64; i++) {
+    int fd = upgraded_client();
+    assert(send(fd, (const char *)empty, sizeof empty, 0) == (ssize_t)sizeof empty);
+    assert(shutdown(fd, SHUT_WR) == 0);
+    ws_expect_peer_close(fd);
+    close(fd);
+  }
+  int ignored = 0;
+  assert(broadcast_until(server, 0, &ignored) == 0);
+}
+
 void test_websocket_lifecycle(void) {
   int64_t server = started_server();
+  check_empty_frame_payloads_are_released(server);
   check_dead_connections_leave_the_list(server);
   check_lifetime_connections_are_unlimited(server);
   check_stalled_peer_is_dropped(server);

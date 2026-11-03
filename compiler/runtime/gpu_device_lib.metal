@@ -14,18 +14,6 @@ long osprey_fault(GPU_GLOBAL ulong *fault, ulong code) {
     return 0;
 }
 
-long osprey_add(long a, long b, GPU_GLOBAL ulong *fault) {
-    ulong r = (ulong)a + (ulong)b;
-    bool overflow = (((~((ulong)a ^ (ulong)b)) & ((ulong)a ^ r)) >> 63) != 0;
-    return overflow ? osprey_fault(fault, FAULT_OVERFLOW) : (long)r;
-}
-
-long osprey_sub(long a, long b, GPU_GLOBAL ulong *fault) {
-    ulong r = (ulong)a - (ulong)b;
-    bool overflow = ((((ulong)a ^ (ulong)b) & ((ulong)a ^ r)) >> 63) != 0;
-    return overflow ? osprey_fault(fault, FAULT_OVERFLOW) : (long)r;
-}
-
 // Magnitudes as unsigned words: the device backends have no signed 64-bit
 // division, so every checked product, quotient and remainder works on these.
 ulong magnitude(long a) { return a < 0 ? 0ul - (ulong)a : (ulong)a; }
@@ -33,37 +21,113 @@ long signed_word(ulong magnitude_word, bool negative) {
     return negative ? (long)(0ul - magnitude_word) : (long)magnitude_word;
 }
 
-long osprey_mul(long a, long b, GPU_GLOBAL ulong *fault) {
-    bool negative = (a < 0) != (b < 0);
-    Wide p = wide_product(magnitude(a), magnitude(b));
-    ulong limit = negative ? SIGN : SIGN - 1;
-    if (p.high != 0 || p.low > limit) return osprey_fault(fault, FAULT_OVERFLOW);
-    return signed_word(p.low, negative);
+// [GPU-DEVICE-NATIVE] One checked-arithmetic template for every integer row.
+// Work in unsigned words, mask to the storage width, and fault before any
+// invalid signed result is exposed. The default `int` keeps its public names.
+#define CHECKED_INTEGER(SUFFIX, T, U, BITS, SIGNED) \
+constant ulong INTEGER_SIGN##SUFFIX = 1ul << (BITS - 1); \
+constant ulong INTEGER_MASK##SUFFIX = (ulong)(U)~(U)0; \
+T osprey_add##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
+    ulong x = (ulong)(U)a, y = (ulong)(U)b; \
+    ulong r = (x + y) & INTEGER_MASK##SUFFIX; \
+    bool overflow = SIGNED ? ((~(x ^ y) & (x ^ r) & INTEGER_SIGN##SUFFIX) != 0) : r < x; \
+    return overflow ? (T)osprey_fault(fault, FAULT_OVERFLOW) : (T)(U)r; \
+} \
+T osprey_sub##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
+    ulong x = (ulong)(U)a, y = (ulong)(U)b; \
+    ulong r = (x - y) & INTEGER_MASK##SUFFIX; \
+    bool overflow = SIGNED ? (((x ^ y) & (x ^ r) & INTEGER_SIGN##SUFFIX) != 0) : x < y; \
+    return overflow ? (T)osprey_fault(fault, FAULT_OVERFLOW) : (T)(U)r; \
+} \
+T osprey_mul##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
+    bool negative = SIGNED && (((long)a < 0) != ((long)b < 0)); \
+    Wide p = wide_product(SIGNED ? magnitude((long)a) : (ulong)(U)a, SIGNED ? magnitude((long)b) : (ulong)(U)b); \
+    ulong limit = SIGNED ? (negative ? INTEGER_SIGN##SUFFIX : INTEGER_SIGN##SUFFIX - 1) : INTEGER_MASK##SUFFIX; \
+    if (p.high != 0 || p.low > limit) return (T)osprey_fault(fault, FAULT_OVERFLOW); \
+    return (T)signed_word(p.low, negative); \
+} \
+T osprey_div##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
+    if (b == 0) return (T)osprey_fault(fault, FAULT_REMAINDER_BY_ZERO); \
+    if (SIGNED && (ulong)(U)a == INTEGER_SIGN##SUFFIX && (long)b == -1) return (T)osprey_fault(fault, FAULT_OVERFLOW); \
+    ulong x = SIGNED ? magnitude((long)a) : (ulong)(U)a, y = SIGNED ? magnitude((long)b) : (ulong)(U)b; \
+    return (T)signed_word(x / y, SIGNED && (((long)a < 0) != ((long)b < 0))); \
+} \
+T osprey_rem##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
+    if (b == 0) return (T)osprey_fault(fault, FAULT_REMAINDER_BY_ZERO); \
+    ulong x = SIGNED ? magnitude((long)a) : (ulong)(U)a, y = SIGNED ? magnitude((long)b) : (ulong)(U)b; \
+    return (T)signed_word(x % y, SIGNED && (long)a < 0); \
+} \
+T osprey_neg##SUFFIX(T a, GPU_GLOBAL ulong *fault) { \
+    ulong x = (ulong)(U)a; \
+    bool overflow = SIGNED ? x == INTEGER_SIGN##SUFFIX : x != 0; \
+    return overflow ? (T)osprey_fault(fault, FAULT_OVERFLOW) : (T)(U)(0ul - x); \
+} \
+T osprey_abs##SUFFIX(T a, GPU_GLOBAL ulong *fault) { \
+    return SIGNED && (long)a < 0 ? osprey_neg##SUFFIX(a, fault) : a; \
 }
-
-// intDiv: truncating division [BUILTIN-INTDIV].
-long osprey_div(long a, long b, GPU_GLOBAL ulong *fault) {
-    if (b == 0) return osprey_fault(fault, FAULT_REMAINDER_BY_ZERO);
-    if (a == LONG_MIN_WORD && b == -1) return osprey_fault(fault, FAULT_OVERFLOW);
-    return signed_word(magnitude(a) / magnitude(b), (a < 0) != (b < 0));
-}
-
-long osprey_rem(long a, long b, GPU_GLOBAL ulong *fault) {
-    if (b == 0) return osprey_fault(fault, FAULT_REMAINDER_BY_ZERO);
-    return signed_word(magnitude(a) % magnitude(b), a < 0);
-}
-
-long osprey_neg(long a, GPU_GLOBAL ulong *fault) {
-    return a == LONG_MIN_WORD ? osprey_fault(fault, FAULT_OVERFLOW) : -a;
-}
-
-long osprey_abs(long a, GPU_GLOBAL ulong *fault) { return a < 0 ? osprey_neg(a, fault) : a; }
+CHECKED_INTEGER(_i8, signed char, unsigned char, 8, 1)
+CHECKED_INTEGER(_i16, short, unsigned short, 16, 1)
+CHECKED_INTEGER(_i32, int, uint, 32, 1)
+CHECKED_INTEGER(, long, ulong, 64, 1)
+CHECKED_INTEGER(_u8, unsigned char, unsigned char, 8, 0)
+CHECKED_INTEGER(_u16, unsigned short, unsigned short, 16, 0)
+CHECKED_INTEGER(_u32, uint, uint, 32, 0)
+#undef CHECKED_INTEGER
 
 ulong osprey_fdiv(ulong a, ulong b, GPU_GLOBAL ulong *fault) {
     if (!is_zero(b)) return divide64(a, b);
     long zero = osprey_fault(fault, FAULT_DIVIDE_BY_ZERO);
     return (ulong)zero;
 }
+
+// [GPU-DEVICE-NATIVE]: explicit word boundaries; arithmetic stays binary32.
+float gpu_float32_from_bits(uint bits) {
+#if defined(__METAL_VERSION__)
+    return as_type<float>(bits);
+#elif defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
+    return as_float(bits);
+#else
+    union { uint bits; float value; } word = {bits};
+    return word.value;
+#endif
+}
+
+uint gpu_float32_bits(float value) {
+#if defined(__METAL_VERSION__)
+    return as_type<uint>(value);
+#elif defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
+    return as_uint(value);
+#else
+    union { float value; uint bits; } word = {value};
+    return word.bits;
+#endif
+}
+
+float osprey_fdiv32(float a, float b, GPU_GLOBAL ulong *fault) {
+    if (b != 0.0f) return a / b;
+    long zero = osprey_fault(fault, FAULT_DIVIDE_BY_ZERO);
+    return (float)zero;
+}
+
+#if defined(__METAL_VERSION__) || defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
+#define NATIVE_UNARY(NAME, DEVICE, HOST) float gpu32_##NAME(float x) { return DEVICE(x); }
+#else
+#define NATIVE_UNARY(NAME, DEVICE, HOST) float gpu32_##NAME(float x) { return HOST(x); }
+#endif
+NATIVE_UNARY(sqrt, sqrt, sqrtf)
+NATIVE_UNARY(ln, log, logf)
+NATIVE_UNARY(abs, fabs, fabsf)
+#undef NATIVE_UNARY
+
+// Precise Metal exp/tanh still differ by one binary32 ulp from the host.
+// Use the shared wider approximation, then round once at the result boundary;
+// surrounding tensor arithmetic and storage remain native binary32.
+#define ROUNDED_UNARY(NAME) float gpu32_##NAME(float x) { \
+    return gpu_float32_from_bits(narrow32(NAME##64(widen32(gpu_float32_bits(x))))); \
+}
+ROUNDED_UNARY(exp)
+ROUNDED_UNARY(tanh)
+#undef ROUNDED_UNARY
 
 // [GPU-MATMUL]: one ordered kernel template at each supported float width.
 float multiply32(float a, float b) { return a * b; }

@@ -141,16 +141,16 @@ fn assert_device_dialect(kernels: &str, flavor: Flavor) {
 }
 
 /// [GPU-BACKEND-DEVICE] Shapes the dialect cannot express decline by name,
-/// and the combinators without a device form decline outright.
+/// including captured strings inside otherwise supported scan/filter shapes.
 #[test]
 fn kernels_without_a_device_form_decline_by_name_in_both_flavors() -> Result<(), String> {
     for (source, flavor) in [
         (
-            "fn main() = {\n    let label = \"x\"\n    let xs = toGpu([1.0, 2.0])\n    let tag = fn(v) => match label == \"x\" { true => v  false => 0.0 }\n    let tagged = gpuMap(xs, tag)\n    let scanned = gpuScan(xs, 0.0, fn(a, v) => a + v)\n    let kept = gpuFilter(xs, fn(v) => v > 1.0)\n    print(\"${gpuLength(tagged)} ${gpuLength(scanned)} ${gpuLength(kept)}\")\n}\n",
+            "fn main() = {\n    let label = \"x\"\n    let xs = toGpu([1.0, 2.0])\n    let tag = fn(v) => match label == \"x\" { true => v  false => 0.0 }\n    let tagged = gpuMap(xs, tag)\n    let scanned = gpuScan(xs, 0.0, fn(a, v) => match label == \"x\" { true => a + v false => a })\n    let kept = gpuFilter(xs, fn(v) => match label == \"x\" { true => v > 1.0 false => false })\n    print(\"${gpuLength(tagged)} ${gpuLength(scanned)} ${gpuLength(kept)}\")\n}\n",
             Flavor::Default,
         ),
         (
-            "main () =\n    label = \"x\"\n    xs = toGpu [1.0, 2.0]\n    tag = \\v => match label == \"x\"\n        true => v\n        false => 0.0\n    tagged = gpuMap xs tag\n    scanned = gpuScan (xs, 0.0, \\(a, v) => a + v)\n    kept = gpuFilter xs (\\v => v > 1.0)\n    print \"${gpuLength tagged} ${gpuLength scanned} ${gpuLength kept}\"\n",
+            "main () =\n    label = \"x\"\n    xs = toGpu [1.0, 2.0]\n    tag = \\v => match label == \"x\"\n        true => v\n        false => 0.0\n    tagged = gpuMap xs tag\n    scan = \\(a, v) => match label == \"x\"\n        true => a + v\n        false => a\n    scanned = gpuScan (xs, 0.0, scan)\n    keep = \\v => match label == \"x\"\n        true => v > 1.0\n        false => false\n    kept = gpuFilter xs keep\n    print \"${gpuLength tagged} ${gpuLength scanned} ${gpuLength kept}\"\n",
             Flavor::Ml,
         ),
     ] {
@@ -159,8 +159,8 @@ fn kernels_without_a_device_form_decline_by_name_in_both_flavors() -> Result<(),
         assert_eq!(count(&ir, "call i32 @osprey_gpu_declined("), 3, "{flavor:?}");
         let reasons = declined_reasons(&ir).join("\n");
         assert!(reasons.contains("gpuMap kernel: the kernel captures `label`"), "{flavor:?}: {reasons}");
-        assert!(reasons.contains("gpuScan has no device form yet"), "{flavor:?}: {reasons}");
-        assert!(reasons.contains("gpuFilter has no device form yet"), "{flavor:?}: {reasons}");
+        assert!(reasons.contains("Scan kernel: the kernel captures `label`"), "{flavor:?}: {reasons}");
+        assert!(reasons.contains("Filter kernel: the kernel captures `label`"), "{flavor:?}: {reasons}");
         assert!(!ir.contains("@osprey.gpu.kernels ="), "{flavor:?}: no kernel source without a device kernel");
     }
     Ok(())

@@ -16,7 +16,7 @@ Work proceeds in this order; an unchecked gate blocks the dependent step. Receip
 - Model pins: `Qwen/Qwen3.8-27B` revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`, weights from `unsloth/Qwen3.8-27B-GGUF` revision `4ca720788d1e01f1bff70c033e0d0028fd02e502`; fallback `Qwen/Qwen3.6-27B` (same `qwen3_5` architecture, 27,781,427,952 params) is a weights swap if 3.8 fails Phase 0.
 - Harnesses already ported: `@osprey/pydantic-ai` `OllamaProvider` (packages/pydantic_ai/src/providers_http.py) and the tool-calling `Agent` (packages/pydantic_ai/src/agent.py).
 - Reusable: `@osprey/tiktoken` byte-level BPE (packages/tiktoken/src/core.py); `@osprey/transformers` top-k/top-p (packages/transformers/src/logits_process.py) and model-independent `generate` (generation.py); `@osprey/jinja2` parses macros (parser.py `parse_macro`) but rendering errors (render.py:102); `@osprey/tokenizers` has no BPE and no NFC.
-- `HttpResponse` has `streamFd` (compiler/runtime/http_shared.h:57); `gpuLoad`/`gpuLoadTensor` copy and widen (compiler/runtime/gpu_host.c), and `GpuBuffer<float>` stores binary64.
+- `HttpResponse` has `streamFd` (compiler/runtime/http_shared.h:57); `gpuLoad` now preserves binary32 bytes and `gpuLoadTensor` checks the requested storage width (compiler/runtime/gpu_host.c); dense storage and binary32 matrix products are implemented under plan 0050, whose full Phase 5 gate remains open.
 
 ## Phase 0 — Baseline, before any port code
 - [ ] Free disk: needs 60 GB for two GGUFs. Available space fell from 67 GiB to 21 GiB during concurrent builds on 2026-11-03; the prerequisite is currently unmet. Recheck before each GGUF download and clean inactive caches without deleting live build outputs.

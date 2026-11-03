@@ -14,7 +14,7 @@ use crate::builder::Codegen;
 use crate::conv::box_to_i64;
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
-use crate::gpu_device::{declined, launch_fold, launch_map};
+use crate::gpu_device::{launch_fold, launch_map, launch_sequence, Shape};
 use crate::gpu_kernel::{extract, kernel_elem, kernel_of, slot};
 use crate::iter::{acc_init, acc_result, acc_step, invoke, nth, Callback};
 use crate::llty::{LType, Value};
@@ -26,12 +26,10 @@ use osprey_ast::{Expr, NamedArgument};
 /// not statically known.
 const GPU_OWNER: &str = "GpuBuffer";
 
-/// Whether `ty` is a buffer word the DEVICE sublanguage can hold — `int`,
-/// `float`, or `bool`. Kernels over the sized types are not device-capable
-/// until Phase 5, so their extraction declines here and the host loop runs
-/// [GPU-BUFFER-ELEM].
+/// Scalar representations supported by device emission [GPU-DEVICE-NATIVE].
 pub(crate) fn is_scalar(ty: LType) -> bool {
     matches!(ty, LType::I64 | LType::F64 | LType::I1)
+        || ty == LType::Num(osprey_types::numeric::Numeric::FLOAT32)
 }
 
 /// Whether `ty` uses the host accessors' raw-word ABI: every numeric
@@ -424,9 +422,18 @@ fn gpu_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// The running accumulator is the same scalar slot `gpuFold` uses, so a device
 /// backend can swap in a work-efficient parallel scan without changing meaning.
 fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let _ = declined(cg, "gpuScan has no device form yet");
     let r = reduction(cg, args, "gpuScan")?;
     let out = buffer_alloc(cg, &r.len, elem_owner(Some(r.tmpl.ty)));
+    let done = launch_sequence(
+        cg,
+        &r.combine,
+        &[r.tmpl.ty, slot(r.elem)],
+        [&r.src, &out],
+        &r.acc,
+        &r.len,
+        Shape::Scan,
+    )?;
+    let join = host_fallback(cg, &done);
     kernel_loop(cg, &r.src, &r.len, r.elem, |cg, arg, i| {
         step(cg, &r, arg)?;
         // The slot already holds the boxed running value — exactly a buffer
@@ -435,6 +442,7 @@ fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         buffer_set(cg, &out, i, &running);
         Ok(())
     })?;
+    rejoin(cg, &join);
     Ok(out)
 }
 
@@ -442,11 +450,20 @@ fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// length is unknown until the predicate has run, so this fills a
 /// source-length scratch buffer and publishes the exact prefix length.
 fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let _ = declined(cg, "gpuFilter has no device form yet");
     let (src, elem, predicate) = unary_kernel(cg, args)?;
     let len = buffer_len(cg, &src);
     let out = buffer_alloc(cg, &len, elem_owner(elem));
     let kept = kept_counter(cg);
+    let done = launch_sequence(
+        cg,
+        &predicate,
+        &[slot(elem)],
+        [&src, &out],
+        &kept,
+        &len,
+        Shape::Filter,
+    )?;
+    let join = host_fallback(cg, &done);
     kernel_loop(cg, &src, &len, elem, |cg, arg, _i| {
         // The loop already loaded this element: box the typed value back to its
         // storage word rather than reading the buffer a second time per element.
@@ -456,6 +473,7 @@ fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         push_if_kept(cg, &verdict.operand, &out, &kept, &raw);
         Ok(())
     })?;
+    rejoin(cg, &join);
     take_kept(cg, &out, &kept);
     Ok(out)
 }
