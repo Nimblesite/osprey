@@ -10,7 +10,7 @@ awaitRecipients (server, want, polls) =
         false => match polls
             0 => reached
             _ =>
-                slept = sleep 20
+                _slept = sleep 20
                 awaitRecipients (server, want, wrapSub polls 1)
 
 dialAll (url, remaining, last) = match remaining

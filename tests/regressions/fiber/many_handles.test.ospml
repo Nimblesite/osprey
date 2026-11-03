@@ -29,7 +29,7 @@ wordsThroughChannels (i, last) = match i
 
 reusableHandles () =
     fiber = spawn (word 7)
-    pass = sumOfFibers (0, 0)
+    _pass = sumOfFibers (0, 0)
     check "first await" "w7" (await fiber)
     check "second await" "w7" (await fiber)
 
