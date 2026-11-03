@@ -403,6 +403,22 @@ class NativeReadContracts(unittest.TestCase):
                 self.assertEqual(arguments[:4], ["adb", "-s", "device", "shell"])
                 self.assertEqual(shlex.split(" ".join(arguments[4:])), ["content", "call", "--arg", path])
 
+    def test_failure_diagnostics_keep_the_original_failure_and_survive_dead_adb(self):
+        sentinel = RuntimeError("the journey failed at Pause")
+        lines = "".join(f'{{"requestId": {n}, "event": "recv"}}\n' for n in range(20))
+        closed = subprocess.CalledProcessError(1, "adb", output="error: closed")
+        for name, answers, saved in [("every adb query dead", [closed, closed], None), ("screenshot saved first", [b"\x89PNG", closed], b"\x89PNG")]:
+            with self.subTest(name), tempfile.TemporaryDirectory() as folder, mock.patch(__name__ + ".OUTPUT", Path(folder)), mock.patch(__name__ + ".main", side_effect=sentinel), mock.patch(__name__ + ".adb", side_effect=answers) as queries, mock.patch("sys.stderr", new_callable=io.StringIO) as reported:
+                (Path(folder) / "receiver.jsonl").write_text(lines)
+                with self.assertRaises(RuntimeError) as caught: run_journey()
+                self.assertIs(caught.exception, sentinel)
+                self.assertEqual(str(caught.exception), "the journey failed at Pause")
+                self.assertEqual([(call.args, call.kwargs) for call in queries.call_args_list], [(('exec-out', 'screencap', '-p'), {'binary': True}), (('logcat', '-d'), {})])
+                self.assertNotIn("test-scene.json", repr(queries.call_args_list))
+                self.assertEqual((Path(folder) / "failed-receiver.jsonl").read_text(), "".join(lines.splitlines(keepends=True)[-15:]))
+                self.assertEqual((Path(folder) / "failed.png").read_bytes() if (Path(folder) / "failed.png").exists() else None, saved)
+                self.assertIn("failed-logcat.txt unavailable", reported.getvalue())
+
     def test_picker_waits_for_the_drawer_not_the_directory_toolbar(self):
         toolbar = ElementTree.fromstring('<hierarchy><node text="Downloads"/><node content-desc="Show roots" bounds="[0,0][100,100]"/></hierarchy>')
         drawer = ElementTree.fromstring('<hierarchy><node resource-id="com.google.android.documentsui:id/drawer_roots"><node text="Downloads"/></node></hierarchy>')
@@ -455,13 +471,28 @@ class NativeReadContracts(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError): window()
 
 
-if __name__ == "__main__":
-    if sys.argv[1:] == ["--reader-contracts"]:
-        unittest.main(argv=[sys.argv[0]])
+def failure_diagnostics():
+    """Live GPUI evidence; one dead artifact never replaces the failure it explains."""
+    def tail():
+        return "\n".join((OUTPUT / "receiver.jsonl").read_text().splitlines()[-15:]) + "\n"
+    steps = [("failed.png", lambda: adb("exec-out", "screencap", "-p", binary=True)), ("failed-logcat.txt", lambda: adb("logcat", "-d")), ("failed-receiver.jsonl", tail)]
+    for name, produce in steps:
+        try:
+            data = produce()
+            (OUTPUT / name).write_bytes(data.encode() if isinstance(data, str) else data)
+        except Exception as error:
+            print(f"DIAGNOSTIC: {name} unavailable: {error}", file=sys.stderr, flush=True)
+
+
+def run_journey():
     try:
         main()
     except Exception:
-        output = ROOT / "examples/casting/build/android-test"
-        (output / "failed.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-        (output / "failed-envelope.json").write_text(adb("exec-out", "run-as", PACKAGE, "cat", "files/test-scene.json"))
+        failure_diagnostics()
         raise
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["--reader-contracts"]:
+        unittest.main(argv=[sys.argv[0]])
+    run_journey()
