@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """[CAST-MOBILE-DELIVERY] Native app journeys against a real TLS Cast receiver."""
 import base64
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 import hashlib
+import io
 import json
 import os
 import re
@@ -134,6 +135,36 @@ class CastingArtifactContracts(unittest.TestCase):
             receipt.unlink()
             with self.assertRaises(FileNotFoundError): verify_native_inputs(folder, b"native")
 
+    def test_android_receipt_rejects_changed_and_missing_load_metadata(self):
+        media = {"contentId": "receipt", "contentType": "audio/mpeg", "metadata": {"title": "Casting mobile test"}}
+        script = [(kind, {}) for kind in ("LAUNCH", "LOAD", "PAUSE", "PLAY", "SET_VOLUME", "SEEK",
+                                         "SET_PLAYBACK_RATE", "PAUSE", "PLAY", "STOP", "LOAD", "STOP")]
+        given = {"event": "load", "title": media["metadata"]["title"], "contentType": media["contentType"]}
+        records = [{"event": "recv", "payload": dict(fields, type=kind)} for kind, fields in script] + [dict(given), dict(given)]
+
+        def verdict(items):
+            with tempfile.TemporaryDirectory() as directory, redirect_stdout(io.StringIO()):
+                path = Path(directory) / "receiver.jsonl"
+                path.write_text("".join(json.dumps(record) + "\n" for record in items))
+                try: verify_log(path, "android")
+                except AssertionError: return "rejected"
+                return "accepted"
+
+        def replaced(load, edit):
+            return verdict([edit(record) if index == load else record for index, record in enumerate(records)])
+
+        self.assertEqual(verdict(records), "accepted")
+        loads_at = [index for index, record in enumerate(records) if record.get("event") == "load"]
+        self.assertEqual(len(loads_at), 2)
+        edits = [("title", "Casting mobile tests"), ("title", ""), ("title", None),
+                 ("contentType", "audio/mp3"), ("contentType", "video/mp4"), ("title",), ("contentType",)]
+        for load in loads_at:
+            for field, *value in edits:
+                edit = (lambda record, f=field, v=value[0]: dict(record, **{f: v})) if value else (lambda record, f=field: {k: v for k, v in record.items() if k != f})
+                self.assertEqual(replaced(load, edit), "rejected", (load, field, value))
+        for dropped in (loads_at[:1], loads_at, range(len(records))):
+            self.assertEqual(verdict([r for i, r in enumerate(records) if i not in dropped]), "rejected", dropped)
+
 
 # Isolate the event-binding guard on Android's real JSON/runtime implementation.
 BINDING_CHECK = r"""
@@ -164,9 +195,6 @@ public final class CastingBindingCheck {
     }
 }
 """
-
-
-
 
 
 def sdk_tool(sdk, pattern):
@@ -324,6 +352,15 @@ def wait_port(process, path):
     raise RuntimeError("Cast receiver fixture did not bind")
 
 
+def verify_load_metadata(records, kinds):
+    """[CAST-MOBILE-GPUI] Every LOAD command must be answered with its exact media metadata."""
+    loads = [record for record in records if record.get("event") == "load"]
+    assert loads and len(loads) == kinds.count("LOAD"), loads
+    for record in loads:
+        assert record.get("title") == "Casting mobile test", record
+        assert record.get("contentType") == "audio/mpeg", record
+
+
 def verify_log(path, platform):
     records = [json.loads(line) for line in path.read_text().splitlines()]
     errors = [record for record in records if record.get("event") == "error"]
@@ -331,6 +368,7 @@ def verify_log(path, platform):
     remote = [record["level"] for record in records if record.get("event") == "remote-volume"]
     assert remote == [], remote
     kinds = [record["payload"].get("type") for record in records if record.get("event") == "recv"]
+    verify_load_metadata(records, kinds)
     if platform == "android":
         # [CAST-MOBILE-GPUI] the journey in android/test.py waits for each command itself.
         for kind in ["LAUNCH", "LOAD", "PAUSE", "PLAY", "SEEK", "SET_VOLUME", "SET_PLAYBACK_RATE", "STOP"]:
@@ -346,26 +384,16 @@ def verify_log(path, platform):
     assert any(item.get("type") == "SEEK" and abs(item["currentTime"] - 50) < 3 for item in payloads), payloads
     assert any(item.get("type") == "SET_PLAYBACK_RATE" and item["playbackRate"] == 1.5 for item in payloads), payloads
     assert kinds.count("STOP") == 7, kinds
-    assert kinds.count("PAUSE") == (4 if platform == "android" else 3), kinds
-    assert kinds.count("PLAY") == (3 if platform == "android" else 2), kinds
+    assert kinds.count("PAUSE") == 3, kinds
+    assert kinds.count("PLAY") == 2, kinds
     assert kinds.count("SEEK") == 3, kinds
     volumes = [item["volume"]["level"] for item in payloads if item.get("type") == "SET_VOLUME"]
-    assert len(volumes) == (5 if platform == "android" else 3), volumes
-    if platform == "android":
-        assert volumes[:3] == [0.5, 0.5, 0.25] and abs(volumes[3] - 0.5) < 0.02, volumes
-        assert abs(volumes[4] - volumes[3] - 0.01) < 0.001, volumes
-        seeks = [item["currentTime"] for item in payloads if item.get("type") == "SEEK"]
-        assert seeks[:2] == [10, 0] and abs(seeks[2] - 50) < 3, seeks
-        rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
-        assert rates == [1.5, 0.75, 1.25, 1.5], rates
-    else:
-        assert abs(volumes[0] - 0.5) < 0.02 and volumes[1:] == [0.5, 0.25], volumes
-        seeks = [item["currentTime"] for item in payloads if item.get("type") == "SEEK"]
-        assert abs(seeks[0] - 50) < 3 and seeks[1:] == [10, 0], seeks
-        rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
-        assert rates == [1.5, 1.5, 0.75, 1.25], rates
-    loads = [record for record in records if record.get("event") == "load"]
-    assert all(record["title"] == "Casting mobile test" and record["contentType"] == "audio/mpeg" for record in loads), loads
+    assert len(volumes) == 3, volumes
+    assert abs(volumes[0] - 0.5) < 0.02 and volumes[1:] == [0.5, 0.25], volumes
+    seeks = [item["currentTime"] for item in payloads if item.get("type") == "SEEK"]
+    assert abs(seeks[0] - 50) < 3 and seeks[1:] == [10, 0], seeks
+    rates = [item["playbackRate"] for item in payloads if item.get("type") == "SET_PLAYBACK_RATE"]
+    assert rates == [1.5, 1.5, 0.75, 1.25], rates
     print("PASS: native app Cast commands, replay, metadata and real HTTP HEAD/range fetches")
 
 
