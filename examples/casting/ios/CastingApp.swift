@@ -46,6 +46,14 @@ private struct CastBrowseAdapter: CapabilityAdapter {
         guard request.ticket == "discover", try request.text("slice") == "cast-browse" else {
             throw CapabilityError.notAllowed("Mobile casting does not execute processes")
         }
+        #if DEBUG
+        if let encoded = ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"] {
+            guard let data = Data(base64Encoded: encoded), data.count <= 65536,
+                  let text = String(data: data, encoding: .utf8) else { throw CapabilityError.invalidArgument("Invalid receiver fixture") }
+            slices.write("cast-browse", text)
+            return .object([:])
+        }
+        #endif
         let transcript: String = try await withCheckedThrowingContinuation { continuation in
             Task { @MainActor in discovery.start { continuation.resume(with: $0) } }
         }
@@ -64,7 +72,16 @@ private func castingStore() -> RegionStore {
     let entry = LibraryEntry(main: osprey_main, start: residentStart, dispatch: residentDispatch,
                              releaseString: osprey_release_string, hostABIVersion: osprey_host_abi_version)
     let folder = Bundle.main.resourceURL?.path ?? ""
-    let context = HostContext(platform: "ios", home: NSHomeDirectory(), arguments: ["--machine", folder + "/player.machine.json"])
+    var arguments = ["--machine", folder + "/player.machine.json"] + Array(CommandLine.arguments.dropFirst())
+    #if DEBUG
+    // Xcode may move the data container when installing the test build.
+    // Resolve the fixture inside this process, after installation has finished.
+    if ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"] == "Casting mobile test.mp3" {
+        let audio = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Casting mobile test.mp3")
+        arguments += ["--open", audio.path]
+    }
+    #endif
+    let context = HostContext(platform: "ios", home: NSHomeDirectory(), arguments: arguments)
     let adapters: [CapabilityAdapter] = [CastBrowseAdapter(discovery: CastDiscovery()), DocumentAdapter(), FrameAdapter()]
     return RegionStore(library: Library(entry: entry), context: context, capabilities: CapabilityRunner(adapters: adapters))
 }

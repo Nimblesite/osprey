@@ -76,7 +76,15 @@ public final class Check {
 JAVA
 case "$platform" in
     ios) xcrun swiftc -swift-version 5 -warnings-as-errors "$here/ios/CastTLS.swift" "$work/main.swift" -o "$work/check" ;;
-    android) javac -Xlint:all -Werror -d "$work" "$here/android/src/main/java/org/ospreylang/casting/CastTLS.java" "$work/Check.java" ;;
+    android)
+        platform_jar=$(python3 - "${ANDROID_HOME:-$HOME/Library/Android/sdk}/platforms" <<'JAR'
+import pathlib,sys
+paths=list(pathlib.Path(sys.argv[1]).glob('*/android.jar'))
+if not paths: sys.exit('An Android SDK platform is required')
+print(paths[0])
+JAR
+)
+        javac -Xlint:all -Werror -classpath "$platform_jar" -d "$work" "$here/android/src/main/java/org/ospreylang/casting/CastTLS.java" "$work/Check.java" ;;
     *) echo 'Usage: mobile-transport-test.sh [ios|android]' >&2; exit 2 ;;
 esac
 python3 "$work/server.py" "$work" &

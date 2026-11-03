@@ -5,6 +5,8 @@ final class CastingUITests: XCTestCase {
     @MainActor
     func testNativeLaunchDocumentCancellationAndRecovery() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"], "Use the native test entry point to start the receiver fixture")
+        let audio = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
         app.launch()
         let open = app.buttons["Open file…"]
         XCTAssertTrue(open.waitForExistence(timeout: 15), app.debugDescription)
@@ -30,5 +32,34 @@ final class CastingUITests: XCTestCase {
         restarted.name = "casting-ios-restarted"
         restarted.lifetime = .keepAlways
         add(restarted)
+        app.terminate()
+        app.launchEnvironment["CAST_TEST_AUDIO"] = audio
+        app.launchArguments = ["--capture-envelope"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 15))
+        app.buttons["Play"].tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.sliders["Position"].exists, app.debugDescription)
+        XCTAssertTrue(app.sliders["Volume"].exists, app.debugDescription)
+        app.buttons["Pause"].tap()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
+        app.buttons["Resume"].tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
+        app.sliders["Volume"].adjust(toNormalizedSliderPosition: 0.5)
+        app.sliders["Position"].adjust(toNormalizedSliderPosition: 0.25)
+        app.buttons["Speed: 1×"].tap()
+        XCTAssertTrue(app.buttons["1.5×"].waitForExistence(timeout: 5))
+        app.buttons["1.5×"].tap()
+        XCTAssertTrue(app.buttons["Speed: 1.5×"].waitForExistence(timeout: 5))
+        let playing = XCTAttachment(screenshot: app.screenshot())
+        playing.name = "casting-ios-playing"
+        playing.lifetime = .keepAlways
+        add(playing)
+        app.buttons["Stop"].tap()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
+        app.buttons["Play"].tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15))
+        app.buttons["Stop"].tap()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
     }
 }

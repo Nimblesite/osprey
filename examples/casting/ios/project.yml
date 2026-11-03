@@ -6,6 +6,9 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: '18.0'
     SWIFT_VERSION: '5.0'
     SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
 targets:
   Casting:
     type: application

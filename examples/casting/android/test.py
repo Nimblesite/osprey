@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """[CAST-MOBILE-DELIVERY] Real Android picker, file import, accessibility and restart."""
 import json
+import base64
 import os
 from pathlib import Path
 import re
@@ -21,16 +22,17 @@ def adb(*arguments, binary=False):
 
 
 def nodes():
-    adb("shell", "uiautomator", "dump", "/sdcard/casting-test-window.xml")
+    response = adb("shell", "uiautomator", "dump", "/sdcard/casting-test-window.xml")
+    if "dumped to:" not in response: return []
     return list(ElementTree.fromstring(adb("exec-out", "cat", "/sdcard/casting-test-window.xml")).iter("node"))
 
 
 def find(label, timeout=20):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        for node in nodes():
-            if label in (node.get("text"), node.get("content-desc")):
-                return node
+        matches = [node for node in nodes() if label in (node.get("text"), node.get("content-desc"))]
+        # The drawer is the last layer; its Downloads row can share the toolbar's label.
+        if matches: return matches[-1]
         time.sleep(0.2)
     raise AssertionError(f"Native control never appeared: {label}")
 
@@ -42,9 +44,41 @@ def tap(label):
     adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
 
 
+def slide(label, fraction):
+    node = find(label)
+    assert node.get("class") == "android.widget.SeekBar", node.attrib
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.attrib["bounds"]))
+    x = round(x1 + (x2 - x1) * fraction)
+    y = (y1 + y2) // 2
+    adb("shell", "input", "swipe", str((x1 + x2) // 2), str(y), str(x), str(y), "150")
+
+
+def playback(output):
+    tap("Play")
+    find("Pause")
+    assert find("Position").get("class") == "android.widget.SeekBar"
+    assert find("Volume").get("class") == "android.widget.SeekBar"
+    tap("Pause")
+    tap("Resume")
+    find("Pause")
+    slide("Volume", 0.5)
+    slide("Position", 0.25)
+    tap("Speed: 1×")
+    tap("1.5×")
+    find("Speed: 1.5×")
+    (output / "playing.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+    tap("Stop")
+    find("Play")
+    tap("Play")
+    find("Pause")
+    tap("Stop")
+    find("Play")
+
+
 def launch():
     adb("shell", "am", "force-stop", PACKAGE)
-    adb("shell", "am", "start", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true")
+    fixture = os.environ.get("CAST_TEST_RECEIVER", base64.b64encode(b"\n").decode())
+    adb("shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "testReceiver", fixture)
     assert find("Open file…").get("class") == "android.widget.Button"
     assert find("Play").get("class") == "android.widget.Button"
 
@@ -75,6 +109,8 @@ def main():
         controls = snapshot["node"]["access"]
         assert any(item["label"] == "Play" for item in controls), controls
         (output / "imported.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+        if os.environ.get("CAST_TEST_RECEIVER"):
+            playback(output)
         launch()
         assert find("Open file…").get("clickable") == "true"
         (output / "restarted.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
