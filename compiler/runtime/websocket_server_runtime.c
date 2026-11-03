@@ -106,7 +106,7 @@ static void serve_messages(const WebSocketServer *server, int fd) {
     char *payload = NULL;
     int payload_len = parse_websocket_frame(frame_buffer, frame_bytes, &payload);
     if (payload_len > 0 && payload) {
-      printf("WebSocket received: %s\n", payload);
+      fprintf(stderr, "WebSocket received: %s\n", payload);
       char echo_response[1024];
       snprintf(echo_response, sizeof(echo_response),
                "{\"type\":\"echo\",\"original\":\"%s\",\"echo\":"
@@ -175,13 +175,14 @@ void *websocket_server_thread(void *arg) {
         accept(server->socket_fd, (struct sockaddr *)&client_addr, &client_len);
     if (client_fd < 0) {
       if (server->is_listening) {
-        printf("WebSocket server accept error: %s\n", strerror(errno));
+        fprintf(stderr, "WebSocket server accept error: %s\n", strerror(errno));
       }
       continue;
     }
 
-    printf("WebSocket server: New connection from %s\n",
-           inet_ntoa(client_addr.sin_addr));
+    // The program's stdout is the program's: logs go to stderr, as the HTTP server's do.
+    fprintf(stderr, "WebSocket server: New connection from %s\n",
+            inet_ntoa(client_addr.sin_addr));
 
     // Create connection data and spawn thread
     ConnectionData *data = malloc(sizeof(ConnectionData));
@@ -203,7 +204,7 @@ void *websocket_server_thread(void *arg) {
     pthread_mutex_unlock(&server->mutex);
     if (pthread_create(&connection_thread, NULL, handle_websocket_connection,
                        data) != 0) {
-      printf("Failed to create connection thread\n");
+      fprintf(stderr, "Failed to create connection thread\n");
       close(client_fd);
       free(data);
       pthread_mutex_lock(&server->mutex);

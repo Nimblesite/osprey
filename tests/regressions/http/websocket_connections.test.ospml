@@ -18,9 +18,9 @@ dialAll (url, remaining, last) = match remaining
     _ => dialAll (url, wrapSub remaining 1, websocketConnect url)
 
 closedConnectionsStopCounting () =
-    server = websocketCreateServer 18126 "127.0.0.1" "/live"
+    server = websocketCreateServer 18124 "127.0.0.1" "/live"
     check "listens" "0" "${websocketServerListen server}"
-    url = "ws://127.0.0.1:18126/live"
+    url = "ws://127.0.0.1:18124/live"
     first = websocketConnect url
     second = websocketConnect url
     check "both counted" "2" "${awaitRecipients (server, 2, 100)}"
@@ -35,15 +35,15 @@ closedConnectionsStopCounting () =
     check "stops" "0" "${websocket_stop_server server}"
 
 stopEndsLiveConnections () =
-    server = websocketCreateServer 18127 "127.0.0.1" "/live"
+    server = websocketCreateServer 18125 "127.0.0.1" "/live"
     check "listens" "0" "${websocketServerListen server}"
-    url = "ws://127.0.0.1:18127/live"
+    url = "ws://127.0.0.1:18125/live"
     live = dialAll (url, 5, 0)
     check "all counted" "5" "${awaitRecipients (server, 5, 100)}"
     check "stops with them connected" "0" "${websocket_stop_server server}"
     check "a stopped server broadcasts to nobody" "-2" "${websocketServerBroadcast server "x"}"
     check "the last client closes" "0" "${websocketClose live}"
-    again = websocketCreateServer 18127 "127.0.0.1" "/live"
+    again = websocketCreateServer 18125 "127.0.0.1" "/live"
     check "the port serves again" "0" "${websocketServerListen again}"
     check "stops again" "0" "${websocket_stop_server again}"
 

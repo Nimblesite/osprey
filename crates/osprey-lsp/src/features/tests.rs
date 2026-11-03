@@ -459,15 +459,56 @@ fn assert_variant_navigates(src: &str, uri: &str, word: &str, declared: &str, sh
 #[test]
 fn union_variants_hover_and_define_from_every_site_in_both_flavors() {
     for (src, uri, declared) in [
-        (VARIANTS_ML, "file:///variants.ospml", "        platformName"),
+        (
+            VARIANTS_ML,
+            "file:///variants.ospml",
+            "        platformName",
+        ),
         (VARIANTS_DEFAULT, "file:///variants.osp", "type Platform"),
     ] {
         let symbols = "type Symbol";
-        assert_variant_navigates(src, uri, "NoSymbol", symbols, &["NoSymbol", "Symbol", "A semantic icon"]);
-        assert_variant_navigates(src, uri, "Clock", symbols, &["Clock", "Symbol", "A semantic icon"]);
-        assert_variant_navigates(src, uri, "Macos", if declared == "type Platform" { declared } else { "    Macos" }, &["Macos", "Platform", "A host's system"]);
-        let other = if declared == "type Platform" { declared } else { "    OtherPlatform" };
-        assert_variant_navigates(src, uri, "OtherPlatform", other, &["OtherPlatform", "platformName", "Platform", "A host's system"]);
+        assert_variant_navigates(
+            src,
+            uri,
+            "NoSymbol",
+            symbols,
+            &["NoSymbol", "Symbol", "A semantic icon"],
+        );
+        assert_variant_navigates(
+            src,
+            uri,
+            "Clock",
+            symbols,
+            &["Clock", "Symbol", "A semantic icon"],
+        );
+        assert_variant_navigates(
+            src,
+            uri,
+            "Macos",
+            if declared == "type Platform" {
+                declared
+            } else {
+                "    Macos"
+            },
+            &["Macos", "Platform", "A host's system"],
+        );
+        let other = if declared == "type Platform" {
+            declared
+        } else {
+            "    OtherPlatform"
+        };
+        assert_variant_navigates(
+            src,
+            uri,
+            "OtherPlatform",
+            other,
+            &[
+                "OtherPlatform",
+                "platformName",
+                "Platform",
+                "A host's system",
+            ],
+        );
     }
 }
 
