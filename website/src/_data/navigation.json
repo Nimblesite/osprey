@@ -44,6 +44,10 @@
       "url": "/blog/"
     },
     {
+      "text": "Credits",
+      "url": "/credits/"
+    },
+    {
       "text": "Discord",
       "url": "https://discord.gg/faH4xjd5zh",
       "external": true
@@ -296,6 +300,10 @@
         {
           "text": "Blog",
           "url": "/blog/"
+        },
+        {
+          "text": "Announcements and credits",
+          "url": "/credits/"
         },
         {
           "text": "Discord",

@@ -38,6 +38,10 @@
   .nav-links { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: none; }
   .nav-links > li:has(.nav-group[open]) { grid-column: 1 / -1; }
   .nav-group[open] .nav-submenu { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* Short landscape screens: compact the menu so all links (including the
+     Credits entry) still fit above the fold without scrolling. */
+  .nav-links .nav-link { min-height: 44px; }
+  .nav-links .nav-submenu .nav-link { min-height: 40px; }
 }
 @media (max-width: 768px) {
   .two-column { grid-template-columns: 1fr; }

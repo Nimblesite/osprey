@@ -205,7 +205,8 @@ test.describe("desktop interactions", () => {
 
   test("nav links navigate to the right pages", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("#site-navigation > li")).toHaveCount(5);
+    // Docs group + Playground, Blog, Credits, Discord, GitHub.
+    await expect(page.locator("#site-navigation > li")).toHaveCount(6);
     await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
     await page.locator(".nav-submenu").getByRole("link", { name: "Language", exact: true }).click();
     await expect(page).toHaveURL(/\/spec\/language\/$/);
