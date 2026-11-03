@@ -23,11 +23,20 @@ xcodebuild -project "$here/Casting.xcodeproj" -scheme Casting \
     -resultBundlePath "$result" -enableCodeCoverage YES -parallel-testing-enabled NO -collect-test-diagnostics never -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
     CODE_SIGNING_ALLOWED=NO test
 xcrun xccov view --report --json "$result" > "$coverage.partial"
+# [CAST-MOBILE-GPUI] The app is a Rust hosts/gpui binary built outside Xcode,
+# so xccov cannot see it until the Rust coverage pipeline is wired in here.
+# The gate must fail clearly rather than fabricate app coverage; it passes
+# unchanged once Casting.app coverage lands in the report.
 python3 - "$coverage.partial" <<'PY'
 import json,sys
 report=json.load(open(sys.argv[1]))
 apps=[target for target in report['targets'] if target['name']=='Casting.app']
-assert len(apps)==1, 'Expected one native casting coverage target'
+assert len(apps)<=1, 'Expected at most one native casting coverage target'
+if not apps:
+    sys.exit('FAIL: Casting.app has no coverage in the Xcode report. The GPUI app is a '
+             'Rust binary built by build.sh outside Xcode; Rust coverage integration is '
+             'pending. Wire the Rust profdata/lcov export into this gate instead of '
+             'weakening it.')
 app=apps[0]
 assert type(app['coveredLines']) is int and type(app['executableLines']) is int
 assert 0 < app['coveredLines'] <= app['executableLines'], 'Missing native application coverage'

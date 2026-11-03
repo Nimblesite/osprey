@@ -1,11 +1,18 @@
 import XCTest
 
-// [CAST-MOBILE-DELIVERY] Drive the real native shell and resident Osprey library.
+// [CAST-MOBILE-DELIVERY] [CAST-MOBILE-GPUI] Drive the installed GPUI
+// Casting.app that build.sh packages from the shared Rust host and native
+// Swift cast services. The runner has no app target, so it attaches by
+// bundle identifier like a third-party XCUITest would.
 final class CastingUITests: XCTestCase {
+    private func castingApp() -> XCUIApplication {
+        XCUIApplication(bundleIdentifier: "org.ospreylang.casting")
+    }
+
     @MainActor
     func testNativeAppearanceSurvivesProcessRestart() {
         // [CAST-MOBILE-SKIN-PERSISTENCE] A new process must read the saved choice.
-        let app = XCUIApplication()
+        let app = castingApp()
         defer { app.terminate() }
         app.launchArguments = ["--skin", "midnight"]
         app.launch()
@@ -26,7 +33,7 @@ final class CastingUITests: XCTestCase {
     @MainActor
     func testNativeInvalidAppearanceRecovery() {
         // [CAST-MOBILE-APPEARANCE-RECOVERY] The fixture writes real app-scoped defaults.
-        let app = XCUIApplication()
+        let app = castingApp()
         defer { app.terminate() }
         for saved in ["removed-skin", "", "poolside & <v2>' ☄"] {
             app.launchEnvironment["CAST_TEST_SAVED_SKIN"] = saved
@@ -52,7 +59,7 @@ final class CastingUITests: XCTestCase {
 
     @MainActor
     func testNativeBonjourDiscoveryAndRescan() throws {
-        let app = XCUIApplication()
+        let app = castingApp()
         defer { app.terminate() }
         app.launchArguments = ["--skin", "midnight"]
         app.launchEnvironment["CAST_TEST_AUDIO"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
@@ -98,7 +105,7 @@ final class CastingUITests: XCTestCase {
 
     @MainActor
     func testNativeLaunchDocumentCancellationAndRecovery() throws {
-        let app = XCUIApplication()
+        let app = castingApp()
         app.launchArguments = ["--skin", "sherbet"]
         defer { app.terminate() }
         app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"], "Use the native test entry point to start the receiver fixture")
@@ -204,7 +211,7 @@ final class CastingUITests: XCTestCase {
 
     @MainActor
     func testThemedPlaybackPreservesTheCastSession() throws {
-        let app = XCUIApplication()
+        let app = castingApp()
         app.launchArguments = ["--skin", "sherbet"]
         defer { app.terminate() }
         app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"])

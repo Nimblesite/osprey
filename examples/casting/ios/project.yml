@@ -1,3 +1,8 @@
+# [CAST-MOBILE-GPUI] No app target lives here: build.sh packages the shared
+# Rust hosts/gpui executable with the native Swift cast services into
+# build/ios-sim/Casting.app. This project only builds the standalone UI test
+# runner (Target Application: None); the tests attach to the installed
+# org.ospreylang.casting bundle by identifier.
 name: Casting
 options:
   bundleIdPrefix: org.ospreylang
@@ -10,46 +15,19 @@ settings:
     Debug:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
 targets:
-  Casting:
-    type: application
-    platform: iOS
-    sources:
-      - path: .
-        includes: ['*.swift']
-        excludes: [tests]
-      - path: ../../../hosts/swift/Sources/OspreyNative
-      - path: ../../../compiler/runtime/file_server_runtime.c
-      - path: ../../../compiler/runtime/media_render_runtime.c
-      - path: ../player.machine.json
-        buildPhase: resources
-      - path: ../skins
-        type: folder
-        buildPhase: resources
-      - path: ../build/ios-sim/Assets.xcassets
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.ospreylang.casting
-        INFOPLIST_FILE: ../build/ios-sim/Casting.app/Info.plist
-        SWIFT_OBJC_BRIDGING_HEADER: Bridge.h
-        OTHER_LDFLAGS: ['-L$(SRCROOT)/../build/ios-sim', '-lOspreyApp', '-lsqlite3', '-lz']
-        CODE_SIGNING_ALLOWED: NO
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   CastingUITests:
     type: bundle.ui-testing
     platform: iOS
     sources: [tests]
-    dependencies:
-      - target: Casting
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        TEST_TARGET_NAME: Casting
         CODE_SIGNING_ALLOWED: NO
 schemes:
   Casting:
     build:
       targets:
-        Casting: all
+        CastingUITests: all
     test:
       targets:
         - CastingUITests
