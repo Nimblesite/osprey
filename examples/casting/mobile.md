@@ -11,6 +11,8 @@ Both native apps build and run in the simulator/emulator. Both platforms pass th
 - [x] Inspect existing casting adapter, shared tests and native host implementations.
 - [x] Add a repeatable mobile shared-library build entry point.
 - [x] Verify shared library builds for physical iPhone, iOS simulator, Android ARM64 and Android x64.
+- [x] Drive both native apps through TLS playback, pause/resume, seek, volume, speed, stop and replay; verify metadata, exact served MP3 bytes and one command per slider adjustment.
+- [x] Verify native picker cancellation twice and restart on both platforms; verify actual picker import on Android.
 - [ ] Implement reusable SwiftUI and Android rendering for the casting machine, including canvas, native controls, accessibility, frame clock and responsive layout.
 - [ ] Replace process-based discovery with native Bonjour and Android network service discovery; handle permission denial, retries and disappearing receivers.
 - [ ] Implement document selection and copying scoped files into app storage, including cancellation and failed reads.
