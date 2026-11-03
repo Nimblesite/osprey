@@ -11,6 +11,7 @@
 
 #include "io_error.h"
 #include "tensor_file.h"
+#include "float_spelling.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -62,23 +63,6 @@ static double from_f32_bits(uint32_t bits) {
   return (double)f;
 }
 
-// IEEE-754 binary16 → double, exactly: normals, subnormals, zeros, infinities
-// and NaN each widen to the double with the same value.
-static double from_f16_bits(uint16_t bits) {
-  int sign = (bits >> 15) & 1;
-  int exponent = (bits >> 10) & 0x1f;
-  uint32_t mantissa = bits & 0x3ff;
-  double magnitude;
-  if (exponent == 0x1f) {
-    magnitude = mantissa ? __builtin_nan("") : __builtin_inf();
-  } else if (exponent == 0) {
-    magnitude = (double)mantissa * 0x1p-24;
-  } else {
-    magnitude = (double)(mantissa | 0x400) * __builtin_ldexp(0x1p-10, exponent - 15);
-  }
-  return sign ? -magnitude : magnitude;
-}
-
 // Widen the little-endian element at `at` to a double.
 static double widen(OspDtype t, const unsigned char *at) {
   switch (t) {
@@ -91,7 +75,7 @@ static double widen(OspDtype t, const unsigned char *at) {
     return from_f32_bits((uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) |
                          ((uint32_t)at[3] << 24));
   case OSP_DT_F16:
-    return from_f16_bits((uint16_t)(at[0] | (at[1] << 8)));
+    return (double)osp_f16_to_f32((uint16_t)(at[0] | (at[1] << 8)));
   case OSP_DT_BF16:
     return from_f32_bits(((uint32_t)at[0] << 16) | ((uint32_t)at[1] << 24));
   }
