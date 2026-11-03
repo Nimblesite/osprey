@@ -22,7 +22,7 @@ __all__ = [
     "PROTOCOL_VERSION", "MCPError", "message_of", "Implementation", "ServerCapabilities", "capabilities_of",
     "Session", "InitializeResult", "initialize_result", "initialize_request", "initialized_notification", "list_tools_request",
     "call_tool_request", "ping_request", "ping_response", "encode_line", "Incoming", "read_message",
-    "LineBuffer", "Lines", "lines_of", "http_headers", "http_messages", "Tool", "tool_of", "ToolList",
+    "LineBuffer", "Lines", "lines_of", "request_headers", "reply_messages", "Tool", "tool_of", "ToolList",
     "list_tools_result", "call_result", "tool_definition_of", "original_tool_name", "MCPServerConfig",
     "ConfigLoad", "parse_config", "merge_configs", "name_of",
 ]
@@ -313,7 +313,7 @@ def without_cr(line) -> str:
     return take(line, length(line) - 1) if endsWith(line, "\r") else line
 
 
-def http_headers(session_id, extra) -> str:
+def request_headers(session_id, extra) -> str:
     """The headers a streamable-HTTP request carries: both accept types, our protocol version,
     the session once the server assigned one, then `extra` (authentication, content type)."""
     session = "" if session_id == "" else f"\r\nMcp-Session-Id: {session_id}"
@@ -321,7 +321,7 @@ def http_headers(session_id, extra) -> str:
     return f"Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: {PROTOCOL_VERSION}{session}{extra_headers}"
 
 
-def http_messages(content_type, body) -> list[Incoming]:
+def reply_messages(content_type, body) -> list[Incoming]:
     """The messages one HTTP reply carries: an event stream holds many, JSON one, an empty body none."""
     if contains(content_type, "text/event-stream"):
         return sse_messages(body)

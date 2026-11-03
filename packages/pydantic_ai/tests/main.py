@@ -839,7 +839,7 @@ SSE_FORMS = [
 def mcp_sse_case(i):
     body = ats(atl(SSE_FORMS, i), 0)
     want = ats(atl(SSE_FORMS, i), 1)
-    got = join(mapList(Mcp.http_messages("text/event-stream", body), incoming_text), ";")
+    got = join(mapList(Mcp.reply_messages("text/event-stream", body), incoming_text), ";")
     if startsWith(want, "prefix:"):
         return Check.truth(f"mcp.sse[{i}]", contains(got, drop(want, length("prefix:"))), got)
     else:
@@ -848,7 +848,7 @@ def mcp_sse_case(i):
 
 def mcp_sse_broken_case():
     """A good event followed by a malformed one: the first is kept, the second typed as `Malformed`."""
-    messages = Mcp.http_messages("text/event-stream", 'data: {"id":1,"result":1}\n\ndata: broken\n\n')
+    messages = Mcp.reply_messages("text/event-stream", 'data: {"id":1,"result":1}\n\ndata: broken\n\n')
     return [
         Check.equal("mcp.sse_broken_first", incoming_text(unwrap_or(listGet(messages, 0), Mcp.Malformed(reason=""))), "ok:1:1"),
         Check.truth("mcp.sse_broken_second", contains(incoming_text(unwrap_or(listGet(messages, 1), Mcp.Malformed(reason=""))), "malformed:not JSON"), "the second event was not typed as Malformed"),
@@ -858,11 +858,11 @@ def mcp_sse_broken_case():
 def mcp_http_cases():
     json_body = '{"id":1,"result":1}'
     return [
-        Check.equal("mcp.http_json", join(mapList(Mcp.http_messages("application/json", json_body), incoming_text), ";"), "ok:1:1"),
-        same("mcp.http_empty", [len(Mcp.http_messages("application/json", "")), len(Mcp.http_messages("application/json", "  \n")), len(Mcp.http_messages("text/event-stream", ""))], [0, 0, 0]),
-        Check.equal("mcp.http_headers", Mcp.http_headers("", ""), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18"),
-        Check.equal("mcp.http_headers_session", Mcp.http_headers("s1", ""), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18\r\nMcp-Session-Id: s1"),
-        Check.equal("mcp.http_headers_extra", Mcp.http_headers("s1", "Authorization: Bearer t"), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18\r\nMcp-Session-Id: s1\r\nAuthorization: Bearer t"),
+        Check.equal("mcp.http_json", join(mapList(Mcp.reply_messages("application/json", json_body), incoming_text), ";"), "ok:1:1"),
+        same("mcp.http_empty", [len(Mcp.reply_messages("application/json", "")), len(Mcp.reply_messages("application/json", "  \n")), len(Mcp.reply_messages("text/event-stream", ""))], [0, 0, 0]),
+        Check.equal("mcp.http_headers", Mcp.request_headers("", ""), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18"),
+        Check.equal("mcp.http_headers_session", Mcp.request_headers("s1", ""), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18\r\nMcp-Session-Id: s1"),
+        Check.equal("mcp.http_headers_extra", Mcp.request_headers("s1", "Authorization: Bearer t"), "Accept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-06-18\r\nMcp-Session-Id: s1\r\nAuthorization: Bearer t"),
     ]
 
 
