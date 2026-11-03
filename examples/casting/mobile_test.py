@@ -80,7 +80,10 @@ def verify_log(path, platform):
     assert any(item.get("type") == "SEEK" and abs(item["currentTime"] - 50) < 3 for item in payloads), payloads
     assert any(item.get("type") == "SET_PLAYBACK_RATE" and item["playbackRate"] == 1.5 for item in payloads), payloads
     assert kinds.count("STOP") >= 2, kinds
-    assert kinds.count("SEEK") == 1 and kinds.count("SET_VOLUME") == 1, kinds
+    assert kinds.count("SEEK") == 1, kinds
+    volumes = [item["volume"]["level"] for item in payloads if item.get("type") == "SET_VOLUME"]
+    assert len(volumes) == (2 if platform == "android" else 1), volumes
+    if platform == "android": assert abs(volumes[1] - volumes[0] - 0.01) < 0.001, volumes
     loads = [record for record in records if record.get("event") == "load"]
     assert all(record["title"] == "Casting mobile test" and record["contentType"] == "audio/mpeg" for record in loads), loads
     print("PASS: native app Cast commands, replay, metadata and real HTTP HEAD/range fetches")

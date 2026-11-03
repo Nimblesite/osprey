@@ -53,18 +53,21 @@ def slide(label, fraction):
     adb("shell", "input", "swipe", str((x1 + x2) // 2), str(y), str(x), str(y), "150")
 
 
-def keyboard_picker():
-    for _ in range(8):
+def focus(label):
+    for _ in range(12):
         adb("shell", "input", "keyevent", "KEYCODE_TAB")
         focused = [item for item in nodes() if item.get("focused") == "true"]
-        if any(item.get("content-desc") == "Open file…" for item in focused):
-            adb("shell", "input", "keyevent", "KEYCODE_ENTER")
-            find("Show roots")
-            adb("shell", "input", "keyevent", "KEYCODE_BACK")
-            find("Open file…")
-            print("PASS: native Tab focus and Enter open the Android file picker")
-            return
-    raise AssertionError("Open file never received native keyboard focus")
+        if any(item.get("content-desc") == label for item in focused): return
+    raise AssertionError(f"{label} never received native keyboard focus")
+
+
+def keyboard_picker():
+    focus("Open file…")
+    adb("shell", "input", "keyevent", "KEYCODE_ENTER")
+    find("Show roots")
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    find("Open file…")
+    print("PASS: native Tab focus and Enter open the Android file picker", flush=True)
 
 
 def playback(output):
@@ -81,6 +84,9 @@ def playback(output):
     tap("1.5×")
     find("Speed: 1.5×")
     (output / "playing.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+    focus("Volume")
+    adb("shell", "input", "keyevent", "KEYCODE_DPAD_RIGHT")
+    (output / "keyboard-volume.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
     tap("Stop")
     find("Play")
     tap("Play")

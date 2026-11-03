@@ -13,7 +13,7 @@ Both native apps build and run in the simulator/emulator. Both platforms pass th
 - [x] Verify shared library builds for physical iPhone, iOS simulator, Android ARM64 and Android x64.
 - [x] Drive both native apps through TLS playback, pause/resume, seek, volume, speed, stop and replay; verify metadata, exact served MP3 bytes and one command per slider adjustment.
 - [x] Verify native picker cancellation twice and restart on both platforms; verify actual picker import and playback from the imported copy on both platforms.
-- [x] Replace Android virtual accessibility controls with real native buttons and seek bars; verify Tab focus and Enter activation against the actual file picker.
+- [x] Replace Android virtual accessibility controls with real native buttons and seek bars; verify Tab focus and Enter activation against the actual file picker, plus a native keyboard volume increment reported by the TLS receiver.
 - [ ] Implement reusable SwiftUI and Android rendering for the casting machine, including canvas, native controls, accessibility, frame clock and responsive layout.
 - [ ] Replace process-based discovery with native Bonjour and Android network service discovery; handle permission denial, retries and disappearing receivers.
 - [ ] Implement document selection and copying scoped files into app storage, including cancellation and failed reads.
