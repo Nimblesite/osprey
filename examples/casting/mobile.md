@@ -29,6 +29,7 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 - [x] Verify Midnight's loaded iOS title, ordinary button and receiver menu against the declared text colours, alongside both ready-state palettes and the unchanged Sherbet goldens.
 - [x] Preserve the actual iOS slider touch endpoint through UIKit's delayed change event; verify a 50-second seek, 50% volume and one Cast command per adjustment.
 - [x] Verify 44-point iOS and 48-dp Android native button, slider and menu-trigger bounds in Sherbet and the themed skins, including Android landscape; open the file picker from the enlarged edge of its target.
+- [x] Collect native iOS UI-test coverage and reject missing, empty or runner-only reports before publishing the current report.
 - [x] Render the alternate themed tree on Android, verify both iOS palettes and exercise Midnight/Poolside playback with session-preserving skin changes.
 - [x] Expose a native Appearance menu from Sherbet on both hosts; switch through all three skins during playback without reloading and verify the complete screenshot/command gates.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
@@ -71,6 +72,12 @@ The platform test targets compare both ready and restarted captures with one rev
 The checked references use an iPhone 17 simulator on iOS 27 at 1206 pixels wide and a Pixel 7 emulator on API 34 at 1080 pixels wide. Start the Android emulator with `-gpu swiftshader_indirect` in both visible and headless modes so the renderer is consistent. The host GPU backend produced an entirely black framebuffer while the control journey passed; the image gate correctly rejected that run. With SwiftShader, both Android modes match the reference exactly. iOS headless captures also match exactly; this build host lacks the selected Xcode's `Simulator.app`, so its visible Simulator run remains unverified.
 
 Use `make -C apps/ios/tests casting-headless` or `make -C apps/android/tests casting-headless` for comparison. Each platform also has `casting-update`, which runs the native journey, rewrites only the ready reference, and checks that restarting still matches it. Review the images under `examples/casting/goldens/<platform>` before committing an update. A missing reference or changed dimensions fails; tests never silently create a baseline. The runner uses the ffmpeg already required for its audio fixture, without an extra image-library dependency.
+
+## Native coverage [CAST-MOBILE-COVERAGE]
+
+The iOS test entry point enables Xcode coverage during the same native journey, then exports [coverage.json](build/ios-test/coverage.json) with `xccov`. It removes the old report before running and publishes the replacement only after checking that the Casting application target has nonzero covered lines and source-file entries. The UI test runner's own counters cannot satisfy that check.
+
+The current report covers 1,625 of 2,853 executable native target lines, approximately 57%. `CastDiscovery.swift` reports only 3 of 71 covered lines: receiver injection exercises the player without proving real Bonjour discovery. This is reported line coverage of the instrumented Xcode target; it excludes the prebuilt Osprey archive and is not proof of branch coverage. Android native coverage collection and required CI coverage gates remain incomplete. No coverage threshold has been lowered.
 
 ## Alternate skins [CAST-MOBILE-SKINS]
 
