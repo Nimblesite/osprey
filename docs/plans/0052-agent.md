@@ -8,7 +8,7 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 
 - `@osprey/pydantic-ai` ships the Kimi/GLM providers, profiles and unified `thinking` (`packages/pydantic_ai/src/profiles.py`, `providers_http.py`) and the sans-IO MCP client `packages/pydantic_ai/src/mcp.py`, with tests and licence references.
 - `examples/agent/src/highlight.py` and its `Ui::rich` drawing in `examples/agent/src/view.ospml` are done.
-- Framework process capabilities `ProcessStart/Write/Read/Stop` are declared in `packages/native/src/capability.ospml` and specified as [UI-EFFECTS-PROCESS] in `packages/native/README.md`, but the SwiftUI host has no adapter for them.
+- Framework process capabilities `ProcessStart/Write/Read/Stop` are declared in `packages/native/src/capability.ospml`, specified as [UI-EFFECTS-PROCESS] in `packages/native/README.md`, and implemented in the SwiftUI host's `ProcessAdapter.swift` with real-process tests, stopped on quit.
 - `examples/agent/self-test/mcp_server.py` (stdlib, stdio + streamable HTTP) exists.
 
 ## Selection
@@ -22,12 +22,16 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 
 ## Settings and keys
 
+- [ ] [AGENT-SETTINGS] A `Settings` button always visible at the sidebar's foot, replacing the `API key set` badge. Acceptance: `self-test/settings.json` presses it from a state with a key and from one without.
+- [ ] [AGENT-COMPOSER] The composer's model picker lists every provider with a key, with an `Effort` picker per model and `Add an API key` with none. Acceptance: test-app and `self-test/settings.json`.
+- [ ] [AGENT-SETTINGS] Refused requests say what to do, with `Open Settings`. Acceptance: test-app covers 401, 402, 403, 429.
+- [ ] [AGENT-BLANK-REPLY] A turn that ends with no text says so and leaves no gap. Acceptance: a failing test-app case first.
+
 - [ ] `examples/agent/src/view.ospml` + `model.ospml`: a Settings pane replacing the conversation column, opened from the sidebar foot, with Providers and MCP servers tabs; the composer's model picker gains the provider catalogue and an effort picker. Acceptance: `self-test/settings.json` drives provider + model + effort and matches goldens.
 - [ ] Key persistence in `examples/agent/src/app.ospml` + `model.ospml`: write `providers.json` in the app's private store (mode 0600), never `chats.json`, never records; seed an empty slot from `.env` names `DEEPSEEKKEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`, `KIMI_API_KEY`, `ZAI_API_KEY`, `GLM_API_KEY`. Acceptance: a restart self-test shows a saved provider key and `grep -rq` finds it in neither `chats.json` nor the records.
 
 ## MCP in the app
 
-- [ ] Implement the four process capabilities [UI-EFFECTS-PROCESS] in the SwiftUI host: an adapter for `process-start/process-write/process-read/process-stop` (`hosts/swift/Sources/OspreyNative/ProcessAdapter.swift` currently only `run`), registered in `Adapters.standard` (`hosts/swift/Sources/OspreyNative/RegionStore.swift`), with every process stopped on quit. Acceptance: host tests for the four kinds and stop-on-quit; an unregistered kind still completes with the typed unknown-kind error.
 - [ ] `examples/agent/src/app.ospml` + `engine.py`: read and merge `mcp.json` (private store) and `.mcp.json` (project; the project entry wins on a name clash), connect on launch and folder change, list tools, dispatch `<server>_<tool>` calls through `Turn`, restart an exited server once a person asks; a slow or dead server fails only its call, never the turn or other servers; project servers stay off until turned on. Acceptance: `self-test/mcp.json` doubled run covers connect, a tool call, a tool error, a dead server, and a project server off then on.
 - [ ] Secrecy: MCP `env` and `headers` values never reach `chats.json`, the records or the transcript. Acceptance: extend `self-test.sh`'s existing `grep -rq` key check to a planted MCP secret.
 - [ ] `examples/agent/src/view.ospml`: the MCP tab adds, removes and toggles servers; an inspector section shows each server's state, tool count, its problem in words, a switch, and buttons to open the config file and reload; tool steps show the server's name.
