@@ -49,6 +49,7 @@ static bool ensure_library(const char *source) {
   // [GPU-DEVICE-NATIVE]: preserve IEEE arithmetic independently of driver defaults.
   MTLCompileOptions *options = [MTLCompileOptions new];
   options.mathMode = MTLMathModeSafe;
+  options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
   gpu_library = [gpu_device newLibraryWithSource:text options:options error:&error];
   [gpu_pipelines removeAllObjects];
   gpu_source = source;

@@ -30,6 +30,7 @@ static NSMutableArray *encoded;
   assert([options isKindOfClass:[MTLCompileOptions class]]);
   MTLCompileOptions *compile = options;
   assert(compile.mathMode == MTLMathModeSafe);
+  assert(compile.mathFloatingPointFunctions == MTLMathFloatingPointFunctionsPrecise);
   assert([source containsString:@"#pragma METAL fp contract(off)"]);
   libraries++;
   return failure == 3 ? nil : [OspreyMockMetal new];
