@@ -26,6 +26,6 @@ Python exceptions return explicit error data for Osprey to handle. `library.keep
 
 The [Python-flavor example](../examples/python/interop.py) also compiles and calls Python through typed `@extern` signatures. The bridge is shared by Default, ML and the implemented Python frontend subset. The proposed `@python("module", "callable")` marker is not delivered syntax.
 
-Current boundaries: Linux/macOS, scalar native exports, one loading thread, retained GIL, explicit unmanaged `--memory=none` allocation and explicit object release. [Spec 0042](../docs/specs/platforms/0042-PythonInterop.md) defines the exact supported protocol and [plan 0032](../docs/plans/0032-python-interop.md) tracks typed direct calls and tensor storage.
+Current boundaries: Linux/macOS, scalar native exports, one loading thread, retained GIL, explicit unmanaged `--memory=none` allocation and explicit object release. [Spec 0042](../docs/specs/platforms/0042-PythonInterop.md) defines the exact supported protocol and [plan 0031](../docs/plans/0031-python.md) tracks typed direct calls and tensor storage.
 
 Run integration tests with `cargo test -p osprey-cli --test python_interop`. They use the compiler Cargo builds and do not require PyTorch, NumPy or a GPU.

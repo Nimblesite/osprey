@@ -1,6 +1,6 @@
 # Organization Package Governance
 
-**Status:** normative model and DataProvider structural migration; hosted permission endpoints and mutation policies remain delivery work. This refines [names and ownership](0029-PackageManagement.md#names-and-ownership-package-names), [deployment security](0044-PackageRegistryDeploymentAndOwnership.md) and [rollout](../../plans/0020-package-manager-rollout.md). The canonical typeDiagram is [package-registry.td](../../../schemas/package-registry.td); the database source is [DataProvider schema.yaml](../../../packages/manager/supabase/migrations/schema.yaml). Neither a diagram nor an applied structural migration proves working authenticated publication.
+**Status:** normative model and DataProvider structural migration; hosted permission endpoints and mutation policies remain delivery work. This refines [names and ownership](0029-PackageManagement.md#names-and-ownership-package-names), [deployment security](0044-PackageRegistryDeploymentAndOwnership.md) and [rollout](../../plans/0020-package-manager.md). The canonical typeDiagram is [package-registry.td](../../../schemas/package-registry.td); the database source is [DataProvider schema.yaml](../../../packages/manager/supabase/migrations/schema.yaml). Neither a diagram nor an applied structural migration proves working authenticated publication.
 
 ## Prevent name sitting `[PACKAGE-NAMES-NO-SITTING]`
 
@@ -99,4 +99,4 @@ Runtime enforcement must independently distinguish package-admin control operati
 - Apply the actual DataProvider YAML to disposable PostgreSQL; verify all eleven tables, constraints, forced RLS, default denial, composite FKs and convergence on a second migration. SQLite emulation and owner-only tests are insufficient security evidence.
 - Before hosted writes, run positive and negative Osprey tests as actual runtime roles for every table/operation, direct Supabase access path and pool-reuse/error/cancellation case. An applied bootstrap schema is not permission-test completion.
 
-The [rollout](../../plans/0020-package-manager-rollout.md) must not mark ownership complete until these tests and the wider trust/hosted conformance suite pass.
+The [rollout](../../plans/0020-package-manager.md) must not mark ownership complete until these tests and the wider trust/hosted conformance suite pass.

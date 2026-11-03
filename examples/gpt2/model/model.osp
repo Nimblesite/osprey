@@ -6,7 +6,7 @@
 // block's activations, so examples/gpt2/generate reads the final state and
 // examples/gpt2/train runs the backward pass over the same trace.
 //
-// This is plan 0023's reference application (docs/plans/0023-gpu-computation.md)
+// This is plan 0023's reference application (docs/plans/0023-gpu.md)
 // and its stage 5, effect-selected execution: one model, two interpretations,
 // chosen per lexical region ([STAGE-BACKEND], [GPU-DEVICE]). Under `onGpu`,
 // kernels and matrix products run on Metal or OpenCL when a device is selected,

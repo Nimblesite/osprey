@@ -229,7 +229,7 @@ module View
         panel = panelNow ()
         settings = settingsNow ()
         quiet = Frames::inset (8, 10, 4, 10)
-        actions = Ui::framed (quiet(frameQuietControls = true, frameGap = 2, frameTop = 44), Ui::column [Ui::button ("New chat", Symbols::name ui::Edit, NewChat), Ui::button ("Open folder…", Symbols::name ui::Folder, OpenFolder)])
+        actions = Ui::framed (quiet(frameQuietControls = true, frameGap = 2, frameTop = 44), Ui::column [Ui::button ("New chat", Symbols::name ui::Edit, NewChat)])
         foot = Frames::inset (10, 16, 14, 16)
         status = Pick::either (settings.apiKey == "", Ui::badge ("No API key", Symbols::name ui::Warning, ui::Caution), Ui::badge ("API key set", Symbols::name ui::Check, ui::Good))
         base5 = Frames::plain
@@ -317,6 +317,11 @@ module View
         true => Ui::action ("Stop", Symbols::name ui::Stop, ui::Filled, true, StopTurn)
         false => Ui::action ("Send", Symbols::name ui::Send, ui::Filled, trim words != "", SendDraft)
 
+    (** The one-line truth about the agent's power, always on show under the composer. *)
+    access () =
+        above = Frames::inset (4, 0, 0, 0)
+        Ui::framed (above(frameTextSize = 11, frameInk = "secondary", frameHug = true), Ui::label ("Not sandboxed: the agent can run any command and change any file your account can.", Symbols::name ui::Warning))
+
     (** The floating composer: the words, the model and the one action that matters. *)
     export composer () =
         chat = activeChat ()
@@ -326,14 +331,14 @@ module View
         field = Ui::framed (base17(frameTextSize = 14, frameLineHeight = 21.0, frameQuietControls = true), ui::Field(label = "Message", value = words, prompt = "Ask Osprey to change something…", secure = false, multiline = true, commit = ui::OnEdit, bind = Typed))
         base18 = Frames::plain
         model = Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::picker ("Model", modelChoices (), chat.chatModel, PickModel))
-        place = Ui::framed (Look::sized (12, "secondary"), ui::Label(label = folderName chat.chatFolder, symbol = Symbols::name ui::Folder))
+        place = Ui::framed (base18(frameQuietControls = true, frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::action (folderName chat.chatFolder, Symbols::name ui::Folder, ui::Plain, Model::busy chat == false, ChangeFolder))
         base19 = Frames::plain
         sending = Ui::framed (base19(frameIconOnly = true, frameControlHeight = 30, frameSymbolSize = 13, frameHug = true), primary (chat, words))
         controls = Ui::row [place, model, ui::Spacer, sending]
         box = Look::card ("surface", 12, 14, 18)
-        outer = Frames::inset (0, 24, 18, 24)
+        outer = Frames::inset (0, 24, 2, 24)
         inner = (Look::gapped 10)
-        Ui::framed (outer(frameCross = "center"), Ui::framed (box(frameWidth = Look::column, frameShadow = "floating"), Ui::framed (inner, Ui::column (listConcat [field, controls] (keyField settings)))))
+        Ui::framed (outer(frameCross = "center"), Ui::column [Ui::framed (box(frameWidth = Look::column, frameShadow = "floating"), Ui::framed (inner, Ui::column (listConcat [field, controls] (keyField settings)))), access ()])
 
     fact (label, value) = Ui::pair (label, value)
 

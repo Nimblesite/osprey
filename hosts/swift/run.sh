@@ -27,6 +27,18 @@ bundle="$here/build/$name.app"
 mkdir -p "$bundle/Contents/MacOS"
 cp "$binary" "$bundle/Contents/MacOS/$name.new"
 mv -f "$bundle/Contents/MacOS/$name.new" "$bundle/Contents/MacOS/$name"
+# An application's icon.png, 1024 pixels square, becomes the bundle's icon in every size a Mac asks for.
+mkdir -p "$bundle/Contents/Resources"
+if [ -f "$app/icon.png" ]; then
+    iconset="$here/build/app/AppIcon.iconset"
+    rm -rf "$iconset"
+    mkdir -p "$iconset"
+    for size in 16 32 128 256 512; do
+        sips -z "$size" "$size" "$app/icon.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
+        sips -z "$((size * 2))" "$((size * 2))" "$app/icon.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+    done
+    iconutil -c icns "$iconset" -o "$bundle/Contents/Resources/AppIcon.icns"
+fi
 cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -38,6 +50,7 @@ cat > "$bundle/Contents/Info.plist" <<PLIST
 <key>CFBundleShortVersionString</key><string>0.1</string>
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
+<key>CFBundleIconFile</key><string>AppIcon</string>
 </dict></plist>
 PLIST
 codesign --force --sign - "$bundle" 2>/dev/null

@@ -1,6 +1,6 @@
 # Osprey Native and its hosts [NATIVE-HOSTS]
 
-**Status:** two hosts run today: Vigil's SwiftUI host over the C ABI and the VS Code webview host over WASI frames ([`vscode-extension/client/src/osprey-ui`](../../../vscode-extension/client/src/osprey-ui)). A third, the GPUI desktop host ([0046](../platforms/0046-GpuiDesktopHost.md)), runs on macOS. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native-hosts.md) delivers it.
+**Status:** two hosts run today: Vigil's SwiftUI host over the C ABI and the VS Code webview host over WASI frames ([`vscode-extension/client/src/osprey-ui`](../../../vscode-extension/client/src/osprey-ui)). A third, the GPUI desktop host ([0046](../platforms/0046-GpuiDesktopHost.md)), runs on macOS. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native.md) delivers it.
 
 ## Aim [NATIVE-HOSTS-AIM]
 
@@ -64,4 +64,4 @@ One recorded-event fixture set, kept beside the framework in `packages/native/co
 
 ## Framework neutrality [NATIVE-HOSTS-NEUTRAL]
 
-`@osprey/native` carries nothing that only one host or one product can honour. Platform-specific work goes through `HostCall` with a namespace the host answers or rejects. Constructors and capabilities that exist for one product are moved out or generalized; [plan 0036 phase 3](../../plans/0036-gpui-desktop-host.md) lists the current ones.
+`@osprey/native` carries nothing that only one host or one product can honour. Platform-specific work goes through `HostCall` with a namespace the host answers or rejects. Constructors and capabilities that exist for one product are moved out or generalized; [plan 0037](../../plans/0037-osprey-native.md) lists the current ones.

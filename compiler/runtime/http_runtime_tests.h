@@ -42,6 +42,8 @@ typedef struct {
   int listen_fd;
   const char *reply; // NULL: accept and close without writing a byte
   size_t reply_len;
+  unsigned reply_delay_us; // wait this long before replying
+  bool hold_open; // keep the socket open after replying, until the client leaves
   char request[MAX_HTTP_BUFFER];
   pthread_t thread;
 } ScriptedOrigin;

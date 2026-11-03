@@ -187,7 +187,7 @@ unimplemented capabilities must not be presented as established facts.
 
 Reactive dependency reporting now uses checked operation identities and sound may-read sets. Immutable snapshots selectively rebuild on changed identities or unknown remainders, with both-flavor dashboard and fiber/control regression programs.
 Device effects (`Parallel`, `Tensor`, `Alloc`) depend on
-[GPU delivery](0023-gpu-computation.md); a host fallback is not a device proof.
+[GPU delivery](0023-gpu.md); a host fallback is not a device proof.
 Keep static discharge a separate checked pass. MLIR remains a backend option
 when measured device-lowering needs justify its dependency; adopting it cannot
 change source semantics.

@@ -11,7 +11,7 @@ const DRAWN: &[&str] = &[
 ];
 
 /// Node kinds drawn as an "unknown node kind" diagnostic until this host draws them
-/// ([plan 0036](../../../docs/plans/0036-gpui-desktop-host.md), [plan 0039](../../../docs/plans/0039-examples-on-osprey-native.md)).
+/// ([plan 0037](../../../docs/plans/0037-osprey-native.md)).
 const REFUSED: &[&str] = &[
     "split",
     "layer",

@@ -1,6 +1,6 @@
 # Dependent types, proofs and the Mathlib port [PROOF]
 
-> **STOP — NOT YET IN FORCE.** The `.lean`-only direction in this document ([PROOF-SOURCE], the format ban, the deletion list, and the matching sections of specs 0051 and 0052 and plans 0041 to 0044) was written on 2026-10-31 while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores every `.lean`-source section until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test or document because of this text before then. After the merge, [plan 0044](../../plans/0044-lean-source-compatibility.md) is the order of work.
+> **STOP — NOT YET IN FORCE.** The `.lean`-only direction in this document ([PROOF-SOURCE], the format ban, the deletion list, and the matching sections of specs 0051 and 0052 and plans 0041 to 0044) was written on 2026-10-31 while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores every `.lean`-source section until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test or document because of this text before then. After the merge, [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) is the order of work.
 
 ## First goal: soundness, trust, verifiability [PROOF-GOAL]
 
@@ -39,7 +39,7 @@ This contract adds; it never alters. The rules below are testable and each has a
 
 ## Discipline [PROOF-DISCIPLINE]
 
-`lean4` is a discipline under [spec 0050](0050-TypeDisciplines.md): a package declaring `[discipline] name = "lean4"`, run as a checker process through [TYPES-DISCIPLINE-PROTOCOL](0050-TypeDisciplines.md#checker-protocol-types-discipline-protocol), and meeting every other module at an HM export signature. Its input is `.lean` files ([PROOF-SOURCE]); it never reads proof text written inside a `.ospml` module. How an Osprey module names the `.lean` file that proves things about it is an open design item of plan 0041 phase 6. Everything about registration, the seam, the protocol, caching and the no-harm rules lives in spec 0050 and is not restated here.
+`lean4` is a discipline under [spec 0050](0050-TypeDisciplines.md): a package declaring `[discipline] name = "lean4"`, run as a checker process through [TYPES-DISCIPLINE-PROTOCOL](0050-TypeDisciplines.md#checker-protocol-types-discipline-protocol), and meeting every other module at an HM export signature. Its input is `.lean` files ([PROOF-SOURCE]); it never reads proof text written inside a `.ospml` module. How an Osprey module names the `.lean` file that proves things about it is an open design item of plan 0041. Everything about registration, the seam, the protocol, caching and the no-harm rules lives in spec 0050 and is not restated here.
 
 ### Boundary with Hindley-Milner [PROOF-BOUNDARY]
 
@@ -75,7 +75,7 @@ Trust claims name the checker, intended rules, assumptions and independently rep
 
 1. **Specification.** The kernel's judgements are written as prose and inference rules in this contract's companion document before the code, and every kernel function names the rule it implements.
 2. **Cross-checking.** Every release re-checks the same Lean export with the Osprey kernel and with at least one independent checker of Lean's theory (`lean4lean` or `nanoda`), with agreement required on the intended compatible fragment. A disagreement blocks the release until explained in the report. Known unsound certificates remain mandatory rejections even when an affected reference release accepts them; their original reproduction, corrected rule and Osprey rejection must remain explicit tests. No declaration is silently skipped.
-3. **Report.** `docs/reports/proof-trust-<date>.md` records the Mathlib commit, the export hash, declarations checked, wall time, the axioms used, and the cross-check result. The website's claim is a link to the latest report.
+3. **Report.** `docs/reviews/review.md` records the Mathlib commit, the export hash, declarations checked, wall time, the axioms used, and the cross-check result. The website's claim is a link to the latest report.
 4. **No trusted tactics.** A tactic, an SMT solver or a learned guide proposes terms; only the kernel accepts them ([PROOF-TACTICS-CERT]).
 
 `[PROOF-TRUST-LESSONS]` The [wrong-structure projection exploit in Lean issue 14576](https://github.com/leanprover/lean4/issues/14576) supplies a concrete rejection fixture. Each additional published exploit requires its own primary report, affected/fixed revision and reproducer before attribution. The following are requirements, not claims that every regression or isolation mechanism is already implemented:
@@ -109,7 +109,7 @@ Timing is a record, never a gate, and never a claim. There is no "faster than Le
 
 `[PROOF-SOURCE-LEAN]` **The proof source format is `.lean`.** A proof file is a Lean 4 source file exactly as the pinned toolchain (Lean v4.25.0, Lake, Mathlib at its pin) accepts it: same syntax, same elaboration, same tactics, same imports, same `lakefile`. Osprey adds no keyword, marker, header or dialect. A file Lean accepts, Osprey accepts; a file Lean rejects, Osprey rejects, with the same error at the same position. Lean's own test suite, `Init`, `Std` and Mathlib are the acceptance corpus, in that order, and the verdicts must match declaration for declaration.
 
-`[PROOF-SOURCE-STAGES]` Three stages, each a shipped product and each gated on the corpus above ([plan 0044](../../plans/0044-lean-source-compatibility.md)):
+`[PROOF-SOURCE-STAGES]` Three stages, each a shipped product and each gated on the corpus above ([plan 0041](../../plans/0041-dependent-types-and-mathlib.md)):
 
 1. **Toolchain stage.** `osprey prove check Foo.lean` runs the pinned Lean toolchain on the file, exports it through the pinned `lean4export`, and checks the export with Osprey's kernel ([PROOF-KERNEL]). Goals, hovers and errors come from Lean's language server. The toolchain is a bundled or required dependency; without it there is no verdict, and the tool says so.
 2. **Front-end stage.** Osprey reads `.olean` files and runs Lean's compiled front end (parser, elaborator, tactics, Mathlib's metaprograms) itself through an interpreter for Lean's IR, with no Lean executable installed. Verdicts and exported terms are byte-identical to stage 1.

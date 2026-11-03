@@ -1,6 +1,6 @@
 # GPU Computation
 
-**Status: partially implemented.** The typed buffer surface, kernel purity checking, host execution, and direct Metal/OpenCL execution of `gpuMatMul` exist today. General extracted-kernel device emission, SPIR-V/WebGPU coverage, and optional CUDA interoperability remain roadmap work; the staged plan and its detailed checklist live in [plan 0023](../../plans/0023-gpu-computation.md). The scholarly work each design choice rests on is cited inline and collected in [References](#references--gpu-research) at the end of this document.
+**Status: partially implemented.** The typed buffer surface, kernel purity checking, host execution, and direct Metal/OpenCL execution of `gpuMatMul` exist today. General extracted-kernel device emission, SPIR-V/WebGPU coverage, and optional CUDA interoperability remain roadmap work; the staged plan and its detailed checklist live in [plan 0023](../../plans/0023-gpu.md). The scholarly work each design choice rests on is cited inline and collected in [References](#references--gpu-research) at the end of this document.
 
 GPU computation in Osprey is a language surface, not a bound library. The type system separates host data from device-shaped data, and the compiler proves at compile time that every kernel is pure — a kernel that logs, performs an effect, or calls something the checker cannot see is a compile error, not a runtime fault. This is the same machinery that already rejects an unhandled effect ([0017](../language/0017-AlgebraicEffects.md)), pointed at data parallelism: parallel-safe by construction, checked before anything runs.
 
@@ -84,7 +84,7 @@ wte = gpuLoad ("gpt2_124M.bin", 1024, 50257 * 768) ?: toGpu [toFloat32 0.0]
 
 Reads one named tensor out of a [safetensors](https://github.com/huggingface/safetensors/blob/main/README.md) file — the Hugging Face interchange format: an 8-byte little-endian header length `N`, then `N` bytes of JSON mapping each tensor name to its `dtype`, `shape` and `data_offsets`, then the tensor bytes — into a buffer of the float type `T` the program's own use of the result pins (an annotation, a `gpuMatMul` operand, a kernel's element type); `T` is never inferred from the file. The entry is located by its quoted name followed by a colon, so `h.1.attn.weight` never matches inside `h.11.attn.weight`, and the header's entry order is irrelevant: `__metadata__` may come first or last. `data_offsets` are relative to the start of the data section, byte `8 + N`. Four storage types are admitted, each into exactly one element type: `F64` into `float`, `F32` into `float32`, `F16` (binary16, including subnormals, infinities and NaN) into `float16`, and `BF16` (the upper sixteen bits of a binary32) into `float32` by exact widening. A tensor whose `dtype` is not the one `T` admits is `tensor wte.weight is F16, the program asked for float32`, never a silent conversion. The byte span must be a whole number of elements.
 
-The tensor's `shape` is read past but **not returned**: a buffer is rank-1, which [plan 0023](../../plans/0023-gpu-computation.md) names as the first surface gap, so the program states the shape it knows to [GPU-MATMUL]. Until a multi-dimensional index space exists this is the honest contract rather than a shape the type cannot carry.
+The tensor's `shape` is read past but **not returned**: a buffer is rank-1, which [plan 0023](../../plans/0023-gpu.md) names as the first surface gap, so the program states the shape it knows to [GPU-MATMUL]. Until a multi-dimensional index space exists this is the honest contract rather than a shape the type cannot carry.
 
 Errors are an `Error` naming the file or the tensor and one of: `shorter than a safetensors header prefix`, `header length is not plausible for safetensors` (above 100 MiB), `file ends inside the header`, `no tensor of that name in the header`, `dtype is not F64, F32, F16 or BF16`, the dtype mismatch sentence above, `data_offsets are missing or inverted`, `byte span is not a whole number of elements` — plus every reason [GPU-BUFFER-LOAD] reports for reading the bytes themselves.
 
@@ -187,7 +187,7 @@ The dense product of a `rows × inner` matrix and an `inner × cols` matrix, bot
 
 The element type is one float type for all three buffers, fixed by the signature: an int buffer operand, a `float16` operand, or a `float` beside a `float32` is a type error at the call, never a silent widening. At `float32` both device backends run the native product (`osprey_matmul32`); at `float` they run the software binary64 one (`osprey_matmul64`). A shape the operands do not have is an `Error`, never a partial buffer: `gpuMatMul: left operand: has N elements, the stated shape needs M` (likewise `right operand`), `gpuMatMul: result: rows * cols is negative or overflows`, or the operating system's out-of-memory wording when the result cannot be allocated. Any zero dimension with consistent lengths yields the zero-filled `rows × cols` result — empty when `rows` or `cols` is zero, all zeros when `inner` is.
 
-A matrix is a flat buffer plus the shape the program states, because a buffer is rank-1; the multi-dimensional surface [plan 0023](../../plans/0023-gpu-computation.md) owes is what removes the three shape arguments.
+A matrix is a flat buffer plus the shape the program states, because a buffer is rank-1; the multi-dimensional surface [plan 0023](../../plans/0023-gpu.md) owes is what removes the three shape arguments.
 
 ```osprey
 fn linear(x, w, tokens, inputs, outputs) = gpuMatMul(x, w, tokens, inputs, outputs)
@@ -388,7 +388,7 @@ The rounding, bit-view and shift families retain their exact-result contract. Th
 
 A device kernel cannot reach a runtime `Arith` policy ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)). An integer operation that would overflow, an `intDiv` or `%` by zero, or a float division by zero records a fault word instead (`FAULT_OVERFLOW`, `FAULT_DIVIDE_BY_ZERO`, `FAULT_REMAINDER_BY_ZERO` in `gpu_device_lib.metal`), and when the dispatch completes with a fault the runtime aborts the program naming the kernel and the fault. The caller must select the host backend when runtime recovery is required; the implementation does not automatically route a faulting device kernel to that policy. An accepted kernel containing `n + 1` under a wrapping handler returns the wrapped value on the host but aborts on Metal/OpenCL when `n` is the maximum integer. Explicit `wrapAdd` succeeds on all three. This is the [device-recovery delivery gap](../language/0037-ArithmeticEffects.md#device-recovery-arith-device-recovery) against the required arithmetic contract.
 
-`gpuIota`, `toGpu`, `gpuLoad` and `gpuLoadTensor` build their buffers on the host; from the first launch that reads one, the buffer is resident on the device ([GPU-BUFFER-RESIDENT]). The kernel-to-kernel fusion the host backend also lacks remains roadmap work in [plan 0023](../../plans/0023-gpu-computation.md). Backend selection must satisfy [GPU-BACKEND-PORTABILITY]; the Metal and OpenCL adapters are the two that exist, and SPIR-V and WebGPU adapters implement the same dispatch contract over the same dialect.
+`gpuIota`, `toGpu`, `gpuLoad` and `gpuLoadTensor` build their buffers on the host; from the first launch that reads one, the buffer is resident on the device ([GPU-BUFFER-RESIDENT]). The kernel-to-kernel fusion the host backend also lacks remains roadmap work in [plan 0023](../../plans/0023-gpu.md). Backend selection must satisfy [GPU-BACKEND-PORTABILITY]; the Metal and OpenCL adapters are the two that exist, and SPIR-V and WebGPU adapters implement the same dispatch contract over the same dialect.
 
 #### Device-resident buffers — [GPU-BUFFER-RESIDENT]
 
@@ -468,7 +468,7 @@ Within the GPU-surface handler, `OSPREY_GPU=host|auto|metal|opencl` is the boots
 
 *Non-normative on implementation:* this section constrains how the staged work proceeds, not what any code path does, so it has no implementing file. Its one requirement — that stages ratchet — is enforced by the harness gates the plan lists, not by a compiler behaviour.
 
-Implementation is staged in [plan 0023](../../plans/0023-gpu-computation.md), which carries the stage descriptions and the detailed TODO checklist. The normative invariant this spec imposes on every stage: stages ratchet — each keeps `make ci` green and the differential harness byte-exact, and a later stage must not change the meaning of any program accepted by an earlier stage.
+Implementation is staged in [plan 0023](../../plans/0023-gpu.md), which carries the stage descriptions and the detailed TODO checklist. The normative invariant this spec imposes on every stage: stages ratchet — each keeps `make ci` green and the differential harness byte-exact, and a later stage must not change the meaning of any program accepted by an earlier stage.
 
 ## GPU compute and GPUI rendering — [GPU-VS-GPUI]
 
@@ -489,7 +489,7 @@ GPU compute is raw access: the program's own arithmetic runs on the device, with
 
 *Non-normative:* a bibliography, not a requirement. It has no implementing code and no test.
 
-The scholarly and vendor work Osprey's GPU features are grounded in. Inline citations above point here; the design decisions these produced are recorded in [plan 0023](../../plans/0023-gpu-computation.md). Every entry was re-verified against its primary source on 2026-10-12.
+The scholarly and vendor work Osprey's GPU features are grounded in. Inline citations above point here; the design decisions these produced are recorded in [plan 0023](../../plans/0023-gpu.md). Every entry was re-verified against its primary source on 2026-10-12.
 
 **The device sublanguage and functional GPU compilation**
 

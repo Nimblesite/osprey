@@ -56,6 +56,7 @@ static void *origin_thread(void *arg) {
     return NULL;
   }
   origin_read_request(fd, origin->request, sizeof(origin->request));
+  usleep(origin->reply_delay_us);
   if (origin->reply) {
     size_t total = origin->reply_len;
     size_t sent = 0;
@@ -66,6 +67,9 @@ static void *origin_thread(void *arg) {
       }
       sent += (size_t)n;
     }
+  }
+  char byte;
+  while (origin->hold_open && recv(fd, &byte, 1, 0) > 0) {
   }
   close(fd); // Connection: close is what makes the client stop draining
   return NULL;

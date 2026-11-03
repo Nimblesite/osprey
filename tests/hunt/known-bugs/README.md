@@ -4,7 +4,7 @@ This directory documents known bugs. `tests/hunt/clean.osp` itself stays in `tes
 
 ## `clean.osp` — GC and ARC
 
-`clean.osp` prints a symbolic integer (`picked ${v} at ${i}`), and the digit/length queries over the unconstrained value exceed the 30-second engine budget: ~49 seconds of solver work on an idle Apple-silicon machine with the best measured engine flags (`--solver-backend=z3 --solver-optimize-divides`), which makes the pass flaky even locally and red on CI hardware. Under `--memory=gc` it is strictly worse (the input line's bytes reach the conservative scan as one expression web; see `docs/reports/klee-gc-status-2026-10-26.md`).
+`clean.osp` prints a symbolic integer (`picked ${v} at ${i}`), and the digit/length queries over the unconstrained value exceed the 30-second engine budget: ~49 seconds of solver work on an idle Apple-silicon machine with the best measured engine flags (`--solver-backend=z3 --solver-optimize-divides`), which makes the pass flaky even locally and red on CI hardware. Under `--memory=gc` it is strictly worse (the input line's bytes reach the conservative scan as one expression web; see `docs/reviews/review.md`).
 
 Plan item: `docs/plans/0034-symbolic-execution.md`, "Phase 3 completion proof" and "Phase 3 KNOWN BUG (GC backend)" — both unchecked. Fixing this is an open item; the 64-byte / 30-second settings are pinned by the plan and must not be relaxed.
 

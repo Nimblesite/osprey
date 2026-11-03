@@ -12,6 +12,9 @@ framingHeaders path = match path
     "/note" => "Transfer-Encoding: gzip\r\nX-Note: chunked\r\n"
     "/chunked-gzip" => "Transfer-Encoding: chunked, gzip\r\n"
     "/notchunked" => "Transfer-Encoding: notchunked\r\n"
+    "/trailing-comma" => "Transfer-Encoding: chunked, \r\n"
+    "/empty-line-after" => "Transfer-Encoding: chunked\r\nTransfer-Encoding: ,\r\n"
+    "/gzip-length" => "Transfer-Encoding: gzip\r\nContent-Length: 1\r\n"
     "/plain" => ""
     "/404-plain" => ""
     "/four-digits" => ""
@@ -210,6 +213,9 @@ whichResponsesAreChunked client =
     check "upper-case header" "status=200 body=hi" (posted (client, "/upper", framing))
     check "padded value" "status=200 body=hi" (posted (client, "/padded", framing))
     check "chunked last" "status=200 body=hi" (posted (client, "/gzip-chunked", framing))
+    check "trailing comma" "status=200 body=hi" (posted (client, "/trailing-comma", framing))
+    check "empty line after" "status=200 body=hi" (posted (client, "/empty-line-after", framing))
+    check "coding beats length" "status=200 body=${hostile}" (posted (client, "/gzip-length", hostile))
     check "named header only" "status=200 body=${hostile}" (posted (client, "/x-te", hostile))
     check "another header's value" "status=200 body=${hostile}" (posted (client, "/note", hostile))
     check "chunked not last" "status=200 body=${hostile}" (posted (client, "/chunked-gzip", hostile))

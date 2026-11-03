@@ -1,6 +1,6 @@
 # Python Flavor Syntax
 
-**Status: partially implemented frontend; GPT-2 generation matches the Default generator byte for byte on the host, Metal and OpenCL; the complete flavor and the deferred training port remain delivery targets.** [Plan 0031](../../plans/0031-python-flavor.md) owns delivery and the [GPT-2 port sources](../../plans/python-flavor-port/README.md). This specification adds a surface to [Language Flavors](0023-LanguageFlavors.md), not a Python execution environment.
+**Status: partially implemented frontend; GPT-2 generation matches the Default generator byte for byte on the host, Metal and OpenCL; the complete flavor and the deferred training port remain delivery targets.** [Plan 0031](../../plans/0031-python.md) owns delivery and the [GPT-2 port sources](../../../examples/gpt2/python/README.md#port-notes). This specification adds a surface to [Language Flavors](0023-LanguageFlavors.md), not a Python execution environment.
 
 ## One language — [FLAVOR-PYTHON-BOUNDARY]
 

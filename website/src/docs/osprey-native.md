@@ -55,6 +55,6 @@ Osprey can reach the GPU in two unrelated ways. [GPU compute](/spec/0034-gpucomp
 - [`packages/native`](https://github.com/Nimblesite/osprey/tree/main/packages/native): the framework and its tests.
 - [`packages/vscode`](https://github.com/Nimblesite/osprey/tree/main/packages/vscode): typed VS Code capabilities for applications hosted in the extension.
 - [Osprey Native and its hosts](/spec/0047-OspreyNativeHosts/): the host contract, transports, coverage and conformance.
-- [GPUI desktop host](/spec/0046-gpuidesktophost/) and its [plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0036-gpui-desktop-host.md).
+- [GPUI desktop host](/spec/0046-gpuidesktophost/) and its [plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0037-osprey-native.md).
 
-Osprey is actively evolving. The framework runs Vigil, the package manager's editor and the GPUI examples today; the browser host, Linux and Windows builds of the GPUI host, the conformance suite and the coverage matrix are delivery work tracked in [plan 0037](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0037-osprey-native-hosts.md).
+Osprey is actively evolving. The framework runs Vigil, the package manager's editor and the GPUI examples today; the browser host, Linux and Windows builds of the GPUI host, the conformance suite and the coverage matrix are delivery work tracked in [plan 0037](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0037-osprey-native.md).

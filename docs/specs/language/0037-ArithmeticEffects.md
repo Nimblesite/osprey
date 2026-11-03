@@ -209,7 +209,7 @@ Rechecked on 25 October 2026, Apple M4 Max, `--memory=arc`, with completed Metal
 | `n + 1` | `-9223372036854775808` from the policy | `SIGABRT`, integer-overflow diagnostic |
 | `wrapAdd(n, 1)` | `-9223372036854775808` | `-9223372036854775808` |
 
-Use the host backend when runtime recovery is required. Explicit total wrapping helpers express wrapping directly and remain device-admissible. Device policy preservation or rejection of unsupported recovering regions remains tracked in [plan 0023](../../plans/0023-gpu-computation.md); the no-trap conformance requirements remain binding.
+Use the host backend when runtime recovery is required. Explicit total wrapping helpers express wrapping directly and remain device-admissible. Device policy preservation or rejection of unsupported recovering regions remains tracked in [plan 0023](../../plans/0023-gpu.md); the no-trap conformance requirements remain binding.
 
 ## Implementation and verification
 

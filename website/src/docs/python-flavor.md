@@ -267,7 +267,7 @@ The Python flavor borrows Python's look, not its runtime. Code that depends on P
 - `while`, `break`, `continue`, `try`/`except`, `raise`, `async`/`await` and `yield` are rejected. Use `fold`, recursion, `Result` and fibers instead.
 - Classes are records, effects or handlers. There is no inheritance, `__init__`, `self` or method dispatch.
 
-`for` loops and list comprehensions are implemented over the existing iterator operations; `for` takes an iterator, not an arbitrary Python iterable. `@union` declares sum types, and keyword patterns may bind a different name (`case Circle(radius=r)`). These forms share Osprey's type and effect checks. Frontend and tooling coverage remain incomplete: VS Code still opens `.py` files as ordinary Python. [Plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md) tracks the remaining requirements.
+`for` loops and list comprehensions are implemented over the existing iterator operations; `for` takes an iterator, not an arbitrary Python iterable. `@union` declares sum types, and keyword patterns may bind a different name (`case Circle(radius=r)`). These forms share Osprey's type and effect checks. Frontend and tooling coverage remain incomplete: VS Code still opens `.py` files as ordinary Python. [Plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python.md) tracks the remaining requirements.
 
 ## Run the Python-flavor GPT-2
 

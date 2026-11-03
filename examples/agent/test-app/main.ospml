@@ -4,11 +4,13 @@
 namespace agentapptests
 
 import ui::Doc
+import ui::Encode
 import ui::Requests
 import ui::Runtime
 import agent::Engine
 import agentapp::App
 import agentapp::Model
+import agentapp::View
 import agentapptests::Drive
 
 context now = ui::Context(now = now, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project", "/keys/env"])
@@ -38,6 +40,18 @@ module Drive
 
     (** The completion of what the open conversation waits on. *)
     export answering (store, outcome, slice) = deliver (store, ui::Completed(ticket = (Model::active store).chatTicket, outcome = outcome), slice)
+
+    (** A region's encoded controls and text, with the store answering its signals. *)
+    export showing (store, view) =
+        handle static Signal<agentapp::Chats>
+            read => agentapp::Chats(chatList = store.chats)
+        handle static Signal<agentapp::Draft>
+            read => store.draft
+        handle static Signal<agentapp::Panel>
+            read => store.panel
+        handle static Signal<agentapp::Settings>
+            read => store.settings
+        jsonEncode (listGet (Encode::walk ([], view ())).nodes 0 ?: JsonNull) ?: ""
 
     (** A step's requests as the host receives them. *)
     export asked step = mapList (step.requests, \request => Requests::encode request)
@@ -151,6 +165,57 @@ testing ("new conversations, switching and the model choice stay per conversatio
     back = (Drive::deliver (chosen, ui::Chose(chooser = agentapp::PickChat, chosen = other.chatId), "")).stepStore
     expect ((Model::active back).chatTitle, "One")
     expect ((Model::active back).chatModel, "deepseek-chat"))
+
+testing ("changing folder keeps the active history, saves it and leaves every other chat alone", \() =>
+    first = (Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)).stepStore
+    firstId = (Model::active first).chatId
+    second = (Drive::answering ((Drive::typing ((Drive::deliver (first, ui::Act(act = agentapp::NewChat), "")).stepStore, "Two\n")).stepStore, ok 200, textReply)).stepStore
+    secondId = (Model::active second).chatId
+    chosen = (Drive::deliver (second, ui::Chose(chooser = agentapp::PickChat, chosen = firstId), "")).stepStore
+    before = Model::active chosen
+    asked = Drive::deliver (chosen, ui::Act(act = agentapp::ChangeFolder), "")
+    expect (Drive::kinds asked, "choose-folder")
+    expect (Doc::write (App::save asked.stepStore), Doc::write (App::save chosen))
+    moved = Drive::deliver (asked.stepStore, ui::Completed(ticket = "folder", outcome = Success(value = JsonObject [Doc::str ("path", "/work/other")])), "")
+    active = Model::active moved.stepStore
+    other = listGet moved.stepStore.chats 0 ?: active
+    expect (active.chatId, firstId)
+    expect (active.chatFolder, "/work/other")
+    expect (Doc::write active.chatHistory, Doc::write before.chatHistory)
+    expect (other.chatId, secondId)
+    expect (other.chatFolder, "/work/project")
+    expect (Drive::kinds moved, "")
+    resaved = Drive::deliver (moved.stepStore, ui::Completed(ticket = "save:0", outcome = Success(value = JsonObject [])), "")
+    expect (Drive::kinds resaved, "store-write")
+    expectTrue (contains (listGet resaved.writes 0 ?: Requests::write ("", "")).sliceText "/work/other")
+    movedComposer = Drive::showing (moved.stepStore, View::composer)
+    expectTrue (contains movedComposer "\"kind\":\"button\",\"label\":\"other\",\"symbol\":\"folder\",\"role\":\"plain\",\"enabled\":true")
+    expectFalse (contains movedComposer "\"label\":\"project\"")
+    cancelled = Drive::deliver (moved.stepStore, ui::Completed(ticket = "folder", outcome = Success(value = JsonObject [Doc::str ("path", "")])), "")
+    expect (Doc::write (App::save cancelled.stepStore), Doc::write (App::save moved.stepStore))
+    failed = Drive::deliver (moved.stepStore, ui::Completed(ticket = "folder", outcome = Error(message = "denied")), "")
+    expect (Doc::write (App::save failed.stepStore), Doc::write (App::save moved.stepStore))
+    inherited = (Drive::deliver (moved.stepStore, ui::Act(act = agentapp::NewChat), "")).stepStore
+    expect ((Model::active inherited).chatFolder, "/work/other"))
+
+testing ("the folder chip follows busy state, the old sidebar action is gone and the access warning stays visible", \() =>
+    started = Drive::started ()
+    idle = Drive::showing (started, View::composer)
+    busyStore = (Drive::typing (started, "One\n")).stepStore
+    busy = Drive::showing (busyStore, View::composer)
+    failedStore = (Drive::answering (busyStore, ok 429, "{\"error\":\"busy\"}")).stepStore
+    failed = Drive::showing (failedStore, View::composer)
+    sidebar = Drive::showing (started, View::sidebar)
+    enabledChip = "\"kind\":\"button\",\"label\":\"project\",\"symbol\":\"folder\",\"role\":\"plain\",\"enabled\":true"
+    disabledChip = "\"kind\":\"button\",\"label\":\"project\",\"symbol\":\"folder\",\"role\":\"plain\",\"enabled\":false"
+    warning = "Not sandboxed: the agent can run any command and change any file your account can."
+    expectTrue (contains idle enabledChip)
+    expectTrue (contains busy disabledChip)
+    expectFalse (contains sidebar "Open folder")
+    expectTrue (contains idle warning)
+    expectTrue (contains busy warning)
+    expectTrue (contains failed warning)
+    expectTrue (contains idle "\"symbol\":\"warning\""))
 
 testing ("a restart restores conversations with distinct identities and fresh tickets", \() =>
     first = Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)

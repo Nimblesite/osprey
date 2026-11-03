@@ -35,7 +35,7 @@ Git worktrees are banned. There may be only **ONE active feature branch across A
 
 ## What to Work On
 
-Osprey is in stabilization mode. Prioritize reliability of existing features, truthful diagnostics, and conformance to the documented contract. Active [plans](docs/plans/README.md) distinguish unfinished requirements from shipped behavior.
+Osprey is in stabilization mode. Prioritize reliability of existing features, truthful diagnostics, and conformance to the documented contract. Active [plans](docs/plans/) distinguish unfinished requirements from shipped behavior.
 
 1. Harden existing language features and built-ins.
 2. Expand acceptance and rejection coverage for edge cases.

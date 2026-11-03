@@ -2,6 +2,7 @@
 #include "http_shared.h"
 #include "socket_safety.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <openssl/err.h>
@@ -109,9 +110,16 @@ static bool transport_send_all(SSL *ssl, int sock, const char *buf, size_t len) 
 
 static ssize_t transport_recv(SSL *ssl, int sock, char *buf, int cap) {
   if (ssl) {
+    ERR_clear_error(); // a stale error would misreport this read's outcome
     return SSL_read(ssl, buf, cap);
   }
   return recv(sock, buf, (size_t)cap, 0);
+}
+
+// Whether a read that returned n, and no bytes, was the peer closing in good order.
+// Over TLS that takes a close_notify: a bare TCP close can be forged on the wire.
+static bool transport_closed(SSL *ssl, ssize_t n) {
+  return ssl ? SSL_get_error(ssl, (int)n) == SSL_ERROR_ZERO_RETURN : n == 0;
 }
 
 // tls_client_ctx builds the verified client context [HTTP-STATUS-CLIENT]:
@@ -157,7 +165,7 @@ static int tls_expect_peer(SSL *ssl, const char *host) {
 // set (caller frees *out_raw), or a negative error code.
 int64_t http_perform(int64_t client_id, int64_t method, char *path,
                       char *headers, char *body, char **out_raw,
-                      size_t *out_len) {
+                      size_t *out_len, bool *out_closed) {
   if (!valid_client_id(client_id)) {
     return -1;
   }
@@ -283,8 +291,9 @@ int64_t http_perform(int64_t client_id, int64_t method, char *path,
     ssize_t n = transport_recv(ssl, sock, buf + len, CHUNK_SIZE);
     if (n > 0) {
       len += (size_t)n;
-    } else {
-      break; // 0 = peer closed, <0 = timeout/error: stop draining
+    } else if (ssl || n == 0 || errno != EINTR) {
+      *out_closed = transport_closed(ssl, n);
+      break; // peer closed, or a timeout/error: stop draining
     }
   }
 
@@ -306,7 +315,8 @@ static int64_t http_request(int64_t client_id, int64_t method, char *path,
                             char *headers, char *body) {
   char *raw = NULL;
   size_t len = 0;
-  int64_t rc = http_perform(client_id, method, path, headers, body, &raw, &len);
+  bool closed = false;
+  int64_t rc = http_perform(client_id, method, path, headers, body, &raw, &len, &closed);
   if (rc != 0) {
     return rc;
   }

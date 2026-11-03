@@ -6,7 +6,7 @@ The framework names no host, product or operating system. An application is Ospr
 
 | Host | Where | Renders with |
 | --- | --- | --- |
-| GPUI desktop host | [hosts/gpui](../../hosts/gpui) ([spec 0046](../../docs/specs/platforms/0046-GpuiDesktopHost.md)) | Zed's GPU-accelerated Rust UI framework through `gpui-kit`; macOS today, Linux and Windows planned in [plan 0036](../../docs/plans/0036-gpui-desktop-host.md) |
+| GPUI desktop host | [hosts/gpui](../../hosts/gpui) ([spec 0046](../../docs/specs/platforms/0046-GpuiDesktopHost.md)) | Zed's GPU-accelerated Rust UI framework through `gpui-kit`; macOS today, Linux and Windows planned in [plan 0037](../../docs/plans/0037-osprey-native.md) |
 | VS Code webview host | [vscode-extension/client/src/osprey-ui](../../vscode-extension/client/src/osprey-ui) | HTML, CSS and Codicons, with the application compiled to WebAssembly ([packages/vscode](../vscode)) |
 | WinUI host | [hosts/winui](../../hosts/winui) ([spec 0048](../../docs/specs/platforms/0048-WinUiHost.md)) | WinUI controls and Segoe Fluent Icons on Windows, with the application compiled to a DLL |
 | External hosts | their own repositories | Any native toolkit, such as a SwiftUI host with SF Symbols, that implements this protocol |
@@ -222,7 +222,7 @@ Semantic colour tokens, spacing, shapes and motion durations are Osprey values. 
 
 A `Scene` node is a surface in the application's own unit space, drawn from a list of `Primitive` values: rectangles, discs, line strips, sprites by atlas index and glyph runs, each with a position, size, rotation, a packed `0xRRGGBBAA` colour and a depth that orders layers, and paths: path-builder steps (move, line, quadratic and cubic curves, arcs, polygons, close), a fill or a stroke with width, dashes and joins, a solid or linear-gradient `Paint` of float `Tint`s, and a translate-and-scale transform. `Scenes` builds them. `Ui::canvas` is a scene in window pixels, with its origin at the window's top left; `examples/gpui/painting` uses it to reproduce GPUI's own painting example pixel for pixel. The host draws the surface at its fixed `zoom` from its region's top left, never resizing it with the window, draws one pass per depth and sends keys and pointer positions with the Shift state, in scene units, through the node's single binding as `Controlled` messages; `Inputs::route` takes them apart. The encoding is one small array per primitive with a type code first, so a painter reads it without a schema and the encoder builds it in one `mapList`.
 
-An application that animates asks for the host's frame clock with the `Animate` capability and turns it off the same way. While the clock runs, every display refresh reaches `update` as a `Frame` carrying the seconds since the previous one; `update` moves the store and the scene's region refreshes like any other. Nothing in the host steps a simulation. The framework's per-frame cost at a given entity count is measured by `hosts/gpui/bench` and recorded in [plan 0036](../../docs/plans/0036-gpui-desktop-host.md).
+An application that animates asks for the host's frame clock with the `Animate` capability and turns it off the same way. While the clock runs, every display refresh reaches `update` as a `Frame` carrying the seconds since the previous one; `update` moves the store and the scene's region refreshes like any other. Nothing in the host steps a simulation. The framework's per-frame cost at a given entity count is measured by `hosts/gpui/bench` and recorded in [plan 0037](../../docs/plans/0037-osprey-native.md).
 
 ## Protocol [UI-PROTOCOL]
 

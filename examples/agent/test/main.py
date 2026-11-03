@@ -6,6 +6,7 @@ Markdown the model writes. Live runs are driven through the window by drive/."""
 from agent import Engine
 from agent import Transcript
 from pydantic_ai import JsonUtil as J
+from pydantic_ai import Messages as M
 from testing import Check
 
 MODEL = "deepseek-chat"
@@ -82,6 +83,51 @@ def conversation_cases():
 
 def step_blank():
     return Transcript.Step(stepId="", stepTool="", stepSummary="", stepOutput="", stepDone=False, stepFailed=False)
+
+
+def system_text(part):
+    match part:
+        case M.SystemPromptPart(content=content):
+            return content
+        case _:
+            return ""
+
+
+def last_request(history):
+    requests = M.requests(unwrap_or(M.validate_messages(history), []))
+    return at(requests, len(requests) - 1, M.ModelRequest(parts=[], instructions=""))
+
+
+def last_systems(history):
+    return filterList(mapList(last_request(history).parts, system_text), lambda text: text != "")
+
+
+def folder_prompt_cases():
+    other = "/work/other"
+    empty = Engine.add_user(Engine.new_history(), FOLDER, "one")
+    same = Engine.add_user(empty, FOLDER, "two")
+    moved = Engine.add_user(same, other, "three")
+    unchanged = Engine.add_user(moved, other, "four")
+    back = Engine.add_user(unchanged, FOLDER, "five")
+    corrupt = Engine.add_user(JsonString("broken"), FOLDER, "fresh")
+    wire = J.list_at(unwrap_or(J.decode(Engine.request_body(moved, MODEL)), JsonNull()), "messages")
+    prompt = J.text_at(at(wire, len(wire) - 2, JsonNull()), "content", "")
+    return [
+        Check.equal("folder.empty_gets_prompt", len(last_systems(empty)), 1),
+        Check.truth("folder.empty_names_path", contains(at(last_systems(empty), 0, ""), FOLDER), J.encode(empty)),
+        Check.equal("folder.same_adds_no_part", len(last_request(same).parts), 1),
+        Check.equal("folder.changed_adds_one_prompt", len(last_systems(moved)), 1),
+        Check.truth("folder.changed_names_new_not_old", contains(at(last_systems(moved), 0, ""), other) and not contains(at(last_systems(moved), 0, ""), FOLDER), J.encode(moved)),
+        Check.equal("folder.only_last_prompt_counts", len(last_request(unchanged).parts), 1),
+        Check.equal("folder.changing_back_adds_prompt", len(last_systems(back)), 1),
+        Check.truth("folder.changing_back_names_original", contains(at(last_systems(back), 0, ""), FOLDER), J.encode(back)),
+        Check.equal("folder.corrupt_reads_empty", len(M.requests(unwrap_or(M.validate_messages(corrupt), []))), 1),
+        Check.equal("folder.corrupt_gets_prompt", len(last_systems(corrupt)), 1),
+        Check.equal("folder.wire_system_role", J.text_at(at(wire, len(wire) - 2, JsonNull()), "role", ""), "system"),
+        Check.equal("folder.wire_user_role", J.text_at(at(wire, len(wire) - 1, JsonNull()), "role", ""), "user"),
+        Check.equal("folder.wire_user_words", J.text_at(at(wire, len(wire) - 1, JsonNull()), "content", ""), "three"),
+        Check.truth("folder.wire_prompt_before_user", contains(prompt, other) and not contains(prompt, FOLDER), J.encode(JsonArray(wire))),
+    ]
 
 
 def in_flight_cases():
@@ -174,7 +220,7 @@ def markdown_cases():
 
 
 def suite():
-    return listConcat(listConcat(listConcat(conversation_cases(), in_flight_cases()), listConcat(failure_cases(), command_cases())), markdown_cases())
+    return listConcat(listConcat(listConcat(listConcat(conversation_cases(), folder_prompt_cases()), in_flight_cases()), listConcat(failure_cases(), command_cases())), markdown_cases())
 
 
 def report_suite():

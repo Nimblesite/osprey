@@ -5,6 +5,9 @@
     {"wait": "Take your time"},
     {"choose": "Think about it"},
     {"wait": "The reasoned answer."},
+    {"choose": "Find how this project"},
+    {"wait": "Answered after trying again."},
+    {"wait": "other-project"},
     {"shot": "17-restored"}
   ]
 }
