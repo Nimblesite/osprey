@@ -18,12 +18,25 @@ const MALFORMED: [&str; 6] = [
     "type Amount =\n",
 ];
 
-fn parse(source: &str) -> Tree {
+fn parser() -> Parser {
     let mut parser = Parser::new();
     parser
         .set_language(&super::LANGUAGE.into())
         .expect("ML grammar loads");
-    let tree = parser.parse(source, None).expect("native ML tree");
+    parser
+}
+
+#[track_caller]
+fn assert_has_error(tree: &Tree, source: &str) {
+    assert!(
+        tree.root_node().has_error(),
+        "{source}: {}",
+        tree.root_node().to_sexp()
+    );
+}
+
+fn parse(source: &str) -> Tree {
+    let tree = parser().parse(source, None).expect("native ML tree");
     assert!(
         !tree.root_node().has_error(),
         "{}",
@@ -44,13 +57,37 @@ fn nodes<'tree>(node: Node<'tree>, kind: &str) -> Vec<Node<'tree>> {
     found
 }
 
+#[track_caller]
+fn counted<'tree>(root: Node<'tree>, kind: &str, expected: usize) -> Vec<Node<'tree>> {
+    let found = nodes(root, kind);
+    assert_eq!(found.len(), expected, "unexpected {kind} count");
+    found
+}
+
+#[track_caller]
+fn sole_slice<'a>(source: &'a str, kind: &str) -> &'a str {
+    let tree = parse(source);
+    &source[counted(tree.root_node(), kind, 1)[0].byte_range()]
+}
+
+fn replace(tree: &mut Tree, byte: usize, old_len: usize, new_len: usize, row: usize, col: usize) {
+    tree.edit(&InputEdit {
+        start_byte: byte,
+        old_end_byte: byte + old_len,
+        new_end_byte: byte + new_len,
+        start_position: Point::new(row, col),
+        old_end_position: Point::new(row, col + old_len),
+        new_end_position: Point::new(row, col + new_len),
+    });
+}
+
 #[test]
 fn interpolation_retains_native_operators_and_unicode_byte_ranges() {
     let tree = parse(BINDINGS);
     let root = tree.root_node();
-    assert_eq!(nodes(root, "function_declaration").len(), 2);
-    assert_eq!(nodes(root, "interpolation").len(), 1);
-    let expressions = nodes(root, "binary_expression");
+    counted(root, "function_declaration", 2);
+    counted(root, "interpolation", 1);
+    let expressions = counted(root, "binary_expression", 2);
     let slices: Vec<_> = expressions
         .iter()
         .map(|node| &BINDINGS[node.byte_range()])
@@ -66,60 +103,34 @@ fn interpolation_retains_native_operators_and_unicode_byte_ranges() {
 #[test]
 fn layout_effects_handlers_and_nested_bracket_regions_are_native_nodes() {
     let tree = parse(LAYOUT);
-    assert_eq!(nodes(tree.root_node(), "effect_declaration").len(), 1);
-    assert_eq!(nodes(tree.root_node(), "handler_arm").len(), 1);
-    assert_eq!(nodes(tree.root_node(), "perform_expression").len(), 1);
+    counted(tree.root_node(), "effect_declaration", 1);
+    counted(tree.root_node(), "handler_arm", 1);
+    counted(tree.root_node(), "perform_expression", 1);
     let nested = parse(NESTED);
-    assert_eq!(nodes(nested.root_node(), "block").len(), 2);
-    assert_eq!(nodes(nested.root_node(), "function_declaration").len(), 3);
-    assert_eq!(nodes(nested.root_node(), "lambda_expression").len(), 1);
+    counted(nested.root_node(), "block", 2);
+    counted(nested.root_node(), "function_declaration", 3);
+    counted(nested.root_node(), "lambda_expression", 1);
 }
 
 #[test]
 fn invalid_interpolation_is_a_visible_parse_error() {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&super::LANGUAGE.into())
-        .expect("ML grammar loads");
-    let tree = parser.parse(INVALID, None).expect("error tree");
-    assert!(
-        tree.root_node().has_error(),
-        "{}",
-        tree.root_node().to_sexp()
-    );
+    let tree = parser().parse(INVALID, None).expect("error tree");
+    assert_has_error(&tree, INVALID);
 }
 
 #[test]
 fn malformed_fields_bodies_and_interpolation_never_parse_cleanly() {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&super::LANGUAGE.into())
-        .expect("ML grammar loads");
     for source in MALFORMED {
-        let tree = parser.parse(source, None).expect("visible recovery tree");
-        assert!(
-            tree.root_node().has_error(),
-            "{source}: {}",
-            tree.root_node().to_sexp()
-        );
+        let tree = parser().parse(source, None).expect("visible recovery tree");
+        assert_has_error(&tree, source);
     }
 }
 
 #[test]
 fn incremental_operator_edit_matches_fresh_parse_and_ranges() {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&super::LANGUAGE.into())
-        .expect("ML grammar loads");
+    let mut parser = parser();
     let mut original = parse(ORIGINAL);
-    original.edit(&InputEdit {
-        start_byte: OPERATOR_BYTE,
-        old_end_byte: OPERATOR_END,
-        new_end_byte: OPERATOR_END,
-        start_position: Point::new(0, OPERATOR_BYTE),
-        old_end_position: Point::new(0, OPERATOR_END),
-        new_end_position: Point::new(0, OPERATOR_END),
-    });
+    replace(&mut original, OPERATOR_BYTE, 1, 1, 0, OPERATOR_BYTE);
     let changed = parser
         .parse(CHANGED, Some(&original))
         .expect("incremental parse");
@@ -128,8 +139,7 @@ fn incremental_operator_edit_matches_fresh_parse_and_ranges() {
         changed.root_node().to_sexp(),
         parse(CHANGED).root_node().to_sexp()
     );
-    let binaries = nodes(changed.root_node(), "binary_expression");
-    assert_eq!(binaries.len(), 1);
+    let binaries = counted(changed.root_node(), "binary_expression", 1);
     let operator = binaries[0]
         .child_by_field_name("operator")
         .expect("operator field");
@@ -163,14 +173,9 @@ fn ml_sources(directory: &std::path::Path) -> std::io::Result<Vec<std::path::Pat
 #[test]
 fn abstract_signature_types_preserve_the_following_members() {
     let source = "signature MoneyApi\n    type Amount\n    fromCents : int -> Amount\n";
-    let tree = parse(source);
-    let types = nodes(tree.root_node(), "signature_type");
-    assert_eq!(types.len(), 1);
-    assert_eq!(&source[types[0].byte_range()], "type Amount");
-    let signatures = nodes(tree.root_node(), "ml_signature");
-    assert_eq!(signatures.len(), 1);
+    assert_eq!(sole_slice(source, "signature_type"), "type Amount");
     assert_eq!(
-        &source[signatures[0].byte_range()],
+        sole_slice(source, "ml_signature"),
         "fromCents : int -> Amount"
     );
 }
@@ -179,15 +184,13 @@ fn abstract_signature_types_preserve_the_following_members() {
 fn empty_maps_and_function_lists_remain_distinct_collections() {
     let source = "empty = [=>]\ncallbacks = [(\\x => x + 1)]\nvalues = [\"key\" => 3]\nbare = [\\x => x + 1]\n";
     let tree = parse(source);
-    let maps = nodes(tree.root_node(), "map_literal");
-    assert_eq!(maps.len(), 2);
+    let maps = counted(tree.root_node(), "map_literal", 2);
     assert_eq!(&source[maps[0].byte_range()], "[=>]");
-    let lists = nodes(tree.root_node(), "list_literal");
-    assert_eq!(lists.len(), 2);
+    let lists = counted(tree.root_node(), "list_literal", 2);
     for list in lists {
-        assert_eq!(nodes(list, "lambda_expression").len(), 1);
+        counted(list, "lambda_expression", 1);
     }
-    assert_eq!(nodes(maps[1], "map_entry").len(), 1);
+    counted(maps[1], "map_entry", 1);
 }
 
 #[test]
@@ -195,35 +198,32 @@ fn layout_types_and_effect_rows_retain_structural_nodes() {
     let source = "type Envelope T U =\n    payload : T\n    metadata : U\ntype Tree T =\n    Leaf\n    Node\n        value : T\nread : Unit -> List<int> ! [Clock]\n";
     let tree = parse(source);
     let root = tree.root_node();
-    assert_eq!(nodes(root, "type_declaration").len(), 2);
-    assert_eq!(nodes(root, "type_parameter").len(), 3);
-    assert_eq!(nodes(root, "field_declaration").len(), 3);
-    assert_eq!(nodes(root, "ml_variant").len(), 2);
-    assert_eq!(nodes(root, "ml_effect_row").len(), 1);
-    assert_eq!(nodes(root, "generic_type").len(), 1);
+    counted(root, "type_declaration", 2);
+    counted(root, "type_parameter", 3);
+    counted(root, "field_declaration", 3);
+    counted(root, "ml_variant", 2);
+    counted(root, "ml_effect_row", 1);
+    counted(root, "generic_type", 1);
 }
 
 #[test]
 fn multiargument_type_application_stays_one_signature_statement() {
     let source = "value : Result string Error\n";
     let tree = parse(source);
-    assert_eq!(nodes(tree.root_node(), "statement").len(), 1);
-    assert_eq!(nodes(tree.root_node(), "ml_signature").len(), 1);
-    assert_eq!(nodes(tree.root_node(), "type_identifier").len(), 3);
-    let signatures = nodes(tree.root_node(), "ml_signature");
-    assert_eq!(&source[signatures[0].byte_range()], source.trim_end());
+    counted(tree.root_node(), "statement", 1);
+    counted(tree.root_node(), "type_identifier", 3);
+    assert_eq!(sole_slice(source, "ml_signature"), source.trim_end());
 }
 
 #[test]
 fn tupled_and_curried_parameter_shapes_remain_distinct() {
     let source = "flat (x, y) = x + y\ncurried x y = x + y\n";
     let tree = parse(source);
-    let functions = nodes(tree.root_node(), "function_declaration");
-    assert_eq!(functions.len(), 2);
-    assert_eq!(nodes(functions[0], "tuple_parameters").len(), 1);
-    assert!(nodes(functions[1], "tuple_parameters").is_empty());
+    let functions = counted(tree.root_node(), "function_declaration", 2);
+    counted(functions[0], "tuple_parameters", 1);
+    counted(functions[1], "tuple_parameters", 0);
     for function in functions {
-        assert_eq!(nodes(function, "parameter").len(), 2);
+        counted(function, "parameter", 2);
     }
 }
 
@@ -238,11 +238,7 @@ fn concurrency_keywords_have_native_operation_nodes() {
         "recv_expression",
         "yield_expression",
     ] {
-        assert_eq!(
-            nodes(tree.root_node(), kind).len(),
-            1,
-            "missing native {kind}"
-        );
+        counted(tree.root_node(), kind, 1);
     }
 }
 
@@ -250,18 +246,16 @@ fn concurrency_keywords_have_native_operation_nodes() {
 fn negative_argument_spacing_preserves_calls_and_subtraction() {
     let source = "applied = f -3\ntight = f-3\nspaced = f - 3\n";
     let tree = parse(source);
-    let functions = nodes(tree.root_node(), "function_declaration");
-    assert_eq!(functions.len(), 3);
-    assert_eq!(nodes(functions[0], "call_expression").len(), 1);
-    assert!(nodes(functions[0], "binary_expression").is_empty());
+    let functions = counted(tree.root_node(), "function_declaration", 3);
+    counted(functions[0], "call_expression", 1);
+    counted(functions[0], "binary_expression", 0);
     for function in &functions[1..] {
-        let binary = nodes(*function, "binary_expression");
-        assert_eq!(binary.len(), 1);
+        let binary = counted(*function, "binary_expression", 1);
         let operator = binary[0]
             .child_by_field_name("operator")
             .expect("subtraction operator");
         assert_eq!(&source[operator.byte_range()], "-");
-        assert!(nodes(*function, "call_expression").is_empty());
+        counted(*function, "call_expression", 0);
     }
 }
 
@@ -285,16 +279,8 @@ fn incremental_nested_layout_edit_preserves_every_node_range(
     let start = NESTED.find('3').ok_or("nested literal")?;
     let changed = NESTED.replacen('3', "30", 1);
     let mut original = parse(NESTED);
-    original.edit(&InputEdit {
-        start_byte: start,
-        old_end_byte: start + 1,
-        new_end_byte: start + 2,
-        start_position: Point::new(2, 16),
-        old_end_position: Point::new(2, 17),
-        new_end_position: Point::new(2, 18),
-    });
-    let mut parser = Parser::new();
-    parser.set_language(&super::LANGUAGE.into())?;
+    replace(&mut original, start, 1, 2, 2, 16);
+    let mut parser = parser();
     let incremental = parser
         .parse(&changed, Some(&original))
         .ok_or("incremental tree")?;
@@ -322,8 +308,7 @@ fn real_ml_programs_parse_without_errors() -> Result<(), Box<dyn std::error::Err
         files.len() >= 203,
         "the real-program corpus must not shrink"
     );
-    let mut parser = Parser::new();
-    parser.set_language(&super::LANGUAGE.into())?;
+    let mut parser = parser();
     let mut failures = Vec::new();
     for path in &files {
         let source = std::fs::read_to_string(path)?;
