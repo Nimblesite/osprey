@@ -53,7 +53,7 @@ final class SceneCanvas extends View {
             info.setClassName(role.equals("slider") ? "android.widget.SeekBar" : "android.widget.Button");
             int[] screen = new int[2]; getLocationOnScreen(screen);
             Rect bounds = bounds(item); bounds.offset(screen[0], screen[1]); info.setBoundsInScreen(bounds);
-            if (role.equals("slider") && item.optBoolean("movable")) {
+            if (role.equals("slider")) {
                 info.setRangeInfo(new AccessibilityNodeInfo.RangeInfo(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT,
                     (float) item.optDouble("min"), (float) item.optDouble("max"), (float) item.optDouble("value")));
                 info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS);
