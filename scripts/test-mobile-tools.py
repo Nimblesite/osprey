@@ -2,6 +2,7 @@
 """Portable mobile tooling checks and an explicit macOS host ownership oracle."""
 
 import os
+import importlib.util
 import json
 import shlex
 from pathlib import Path
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -244,6 +246,24 @@ class BuildFragments(unittest.TestCase):
             listed = set(PANEL_ENTRY.findall(text)) - set(RULE.findall(text))
             self.assertEqual(listed, set(), f"{makefile.relative_to(ROOT)}: `NAME :=` lines a task panel lists")
 
+    def test_casting_windowed_target_opens_selected_xcodes_simulator(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stubs = {
+                "xcode-select": '#!/bin/sh\nprintf \'%s\\n\' "$TEST_XCODE_DEVELOPER"\n',
+                "open": '#!/bin/sh\n[ "$1" = "-a" ] && [ "$2" = "$TEST_XCODE_DEVELOPER/Applications/Simulator.app" ]\n',
+                "bash": '#!/bin/sh\nexit 0\n',
+            }
+            for name, script in stubs.items():
+                tool = root / name
+                tool.write_text(script)
+                tool.chmod(0o755)
+            for developer in ["/Applications/Xcode.app/Contents/Developer", "/Applications/Selected Xcode.app/Contents/Developer"]:
+                env = dict(os.environ, PATH=str(root) + ":" + BASE_PATH, TEST_XCODE_DEVELOPER=developer)
+                result = subprocess.run(["/usr/bin/make", "-f", str(ROOT / "apps/ios/tests/Makefile"), "casting"],
+                                        cwd=root, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_node_dependency_guard_follows_nested_build_fragments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -397,6 +417,46 @@ class BankAndroidVerdict(unittest.TestCase):
                 result = instrumentation_result("OK (6 tests)", mode)
                 self.assertNotEqual(result.returncode, 0, result.stderr)
                 self.assertIn("screenshot", result.stderr.lower())
+
+
+class CastingGoldenVerdict(unittest.TestCase):
+    def test_golden_gate_rejects_a_missing_small_control(self):
+        spec = importlib.util.spec_from_file_location("casting_mobile_test", ROOT / "examples/casting/mobile_test.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        baseline = (256, 256, bytes([250, 245, 240]) * 65536)
+        pixels = bytearray(baseline[2])
+        for y in range(10):
+            for x in range(10): pixels[(y * 256 + x) * 3:(y * 256 + x) * 3 + 3] = bytes([0, 0, 0])
+        changed = (256, 256, pixels)
+        self.assertLess(module.picture_delta(changed, baseline), 0.005)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            references = root / "goldens/android"
+            references.mkdir(parents=True)
+            (references / "256-ready.png").touch()
+            with mock.patch.object(module, "APP", root), mock.patch.object(module, "player_pixels", return_value=changed), \
+                 mock.patch.object(module, "png_pixels", return_value=baseline), mock.patch.object(module, "png_write"), \
+                 mock.patch.dict(os.environ, {"OSPREY_UPDATE_GOLDENS": "0"}):
+                with self.assertRaises(AssertionError): module.verify_pictures("android", root)
+
+    def test_pixel_threshold_rejects_changed_controls_and_wrong_dimensions(self):
+        # [CAST-MOBILE-DELIVERY] Isolate the pixel oracle from simulator/ffmpeg availability.
+        spec = importlib.util.spec_from_file_location("casting_mobile_test", ROOT / "examples/casting/mobile_test.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        baseline = (20, 10, bytes([250, 245, 240]) * 200)
+        self.assertEqual(module.picture_delta(baseline, baseline), 0)
+        for channel in range(3):
+            for delta, expected in [(24, 0), (25, 0.005)]:
+                pixels = bytearray(baseline[2])
+                pixels[channel] -= delta
+                with self.subTest(channel=channel, delta=delta):
+                    self.assertEqual(module.picture_delta((20, 10, pixels), baseline), expected)
+            pixels = bytearray(baseline[2])
+            for at in range(channel, 30, 3): pixels[at] = 0
+            self.assertGreater(module.picture_delta((20, 10, pixels), baseline), 0.005)
+        with self.assertRaises(AssertionError): module.picture_delta((10, 20, baseline[2]), baseline)
 
 
 if __name__ == "__main__":

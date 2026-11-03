@@ -19,6 +19,7 @@ final class CastingUITests: XCTestCase {
         let open = app.buttons["Open file…"]
         XCTAssertTrue(open.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(app.buttons["Play"].exists)
+        XCTAssertTrue(app.buttons["Receiver: Test receiver"].waitForExistence(timeout: 10))
         let initial = XCTAttachment(screenshot: app.screenshot())
         initial.name = "casting-ios-ready"
         initial.lifetime = .keepAlways
@@ -36,6 +37,7 @@ final class CastingUITests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["Receiver: Test receiver"].waitForExistence(timeout: 10))
         let restarted = XCTAttachment(screenshot: app.screenshot())
         restarted.name = "casting-ios-restarted"
         restarted.lifetime = .keepAlways

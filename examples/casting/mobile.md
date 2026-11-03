@@ -1,6 +1,6 @@
 # Native mobile delivery [CAST-MOBILE]
 
-Both native apps build and run in the simulator/emulator. Both platforms pass the full native playback journey against a TLS Cast receiver fixture, including exact HTTP media bytes, seek, volume, speed, stop and replay. Screenshot goldens, CI coverage, broader error/lifecycle cases and physical-device verification remain incomplete.
+Both native apps build and run in the simulator/emulator. Both platforms pass the full native playback journey against a TLS Cast receiver fixture, including exact HTTP media bytes, seek, volume, speed, stop and replay. Native screenshot goldens now gate the ready and restarted player. CI coverage, broader error/lifecycle cases, the visible iOS Simulator run and physical-device verification remain incomplete.
 
 ## Shared boundary [CAST-MOBILE-ABI]
 
@@ -20,7 +20,8 @@ Both native apps build and run in the simulator/emulator. Both platforms pass th
 - [ ] Handle foreground/background transitions, connection loss, interrupted playback and cleanup of network/file resources.
 - [ ] Add per-platform launch and test Makefile targets and required CI coverage gates.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
-- [ ] Commit and compare native screenshot goldens in windowed and headless modes, with accessibility assertions.
+- [x] Commit native ready/restart screenshot goldens and verify headless iOS plus visible and headless Android rendering with accessibility assertions.
+- [ ] Verify the same iOS goldens with the Simulator window visible.
 - [ ] Verify physical-device casting to a real receiver, including background playback and local network permissions.
 
 The existing host-free casting suite simulates the receiver and drives the real resident application. It does not prove native mobile rendering, permission behavior, ABI linkage or real-device playback.
@@ -34,3 +35,11 @@ The existing host-free casting suite simulates the receiver and drives the real 
 - The mobile media runtime uses the existing contract's original-audio fallback because sandboxed apps cannot launch desktop ffmpeg. A native TV visualization renderer is not implemented.
 
 Entry points: `make -C apps/ios casting`, `make -C apps/android casting`, and each platform's `tests` directory with `casting` or `casting-headless`. Android selects a connected device with `OSPREY_ANDROID_SERIAL`; `OSPREY_BIN` selects the compiler binary.
+
+## Native screenshot checks [CAST-MOBILE-GOLDENS]
+
+The platform test targets compare both ready and restarted captures with one reviewed reference per platform and pixel width. They crop only the neutral native host and OS bars around the Sherbet player; every player control remains in the comparison. The gate permits at most 0.5% changed pixels overall and 2% in any 64-pixel tile, with a channel difference above 24 counted as changed. The local check has a regression proving that a small missing control fails even when the overall percentage would pass. Native playback and accessibility assertions run before the image checks.
+
+The checked references use an iPhone 17 simulator on iOS 27 at 1206 pixels wide and a Pixel 7 emulator on API 34 at 1080 pixels wide. Start the Android emulator with `-gpu swiftshader_indirect` in both visible and headless modes so the renderer is consistent. The host GPU backend produced an entirely black framebuffer while the control journey passed; the image gate correctly rejected that run. With SwiftShader, both Android modes match the reference exactly. iOS headless captures also match exactly; this build host lacks the selected Xcode's `Simulator.app`, so its visible Simulator run remains unverified.
+
+Use `make -C apps/ios/tests casting-headless` or `make -C apps/android/tests casting-headless` for comparison. Each platform also has `casting-update`, which runs the native journey, rewrites only the ready reference, and checks that restarting still matches it. Review the images under `examples/casting/goldens/<platform>` before committing an update. A missing reference or changed dimensions fails; tests never silently create a baseline. The runner uses the ffmpeg already required for its audio fixture, without an extra image-library dependency.

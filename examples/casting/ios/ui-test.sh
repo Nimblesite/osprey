@@ -11,7 +11,10 @@ cp "$CAST_TEST_AUDIO_SOURCE" "$container/Documents/Casting mobile test.mp3"
 export TEST_RUNNER_CAST_TEST_AUDIO="Casting mobile test.mp3"
 export TEST_RUNNER_CAST_TEST_RECEIVER="$CAST_TEST_RECEIVER"
 xcodegen generate --spec "$here/project.yml" --project "$here"
+result="$here/../build/ios-test/results-$(date +%s).xcresult"
+mkdir -p "$here/../build/ios-test"
+printf '%s\n' "$result" > "$here/../build/ios-test/result-path.txt"
 xcodebuild -project "$here/Casting.xcodeproj" -scheme Casting \
     -destination "platform=iOS Simulator,id=$device" -derivedDataPath "$here/../build/ui-tests" \
-    -parallel-testing-enabled NO -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
+    -resultBundlePath "$result" -parallel-testing-enabled NO -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
     CODE_SIGNING_ALLOWED=NO test

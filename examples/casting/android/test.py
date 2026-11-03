@@ -81,6 +81,7 @@ def launch():
     adb("shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/.CastingActivity", "--ez", "captureEnvelope", "true", "--es", "testReceiver", fixture)
     assert find("Open file…").get("class") == "android.widget.Button"
     assert find("Play").get("class") == "android.widget.Button"
+    if os.environ.get("CAST_TEST_RECEIVER"): find("Receiver: Test receiver")
 
 
 def main():
