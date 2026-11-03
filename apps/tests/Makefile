@@ -20,6 +20,11 @@ bank-mobile:
 casting:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=examples/casting/test
 
+## casting-mobile-build: Cross-compile the casting C ABI; TARGET selects ios, ios-sim, android-arm64 or android-x64.
+.PHONY: casting-mobile-build
+casting-mobile-build:
+	bash $(ROOT)/examples/casting/mobile-build.sh $(or $(TARGET),ios-sim)
+
 ## flock: Flock's herding game logic.
 flock:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=examples/gpui/flock/test
