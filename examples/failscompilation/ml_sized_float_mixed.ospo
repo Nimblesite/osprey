@@ -1,0 +1,10 @@
+// [TYPE-NUMERIC-SAME-TYPE] A binary operator takes both operands at one numeric type.
+// osprey: flavor=ml
+narrow : float32
+narrow = 1.0
+wide = 2.0
+small : float16
+small = 3.0
+print "${narrow + wide}"
+print "${narrow < wide}"
+print "${small + narrow}"

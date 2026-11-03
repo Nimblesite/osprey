@@ -1,0 +1,4 @@
+// [TYPE-NUMERIC-LITERAL] A float literal must fit the type its context gives it.
+let a: float32 = 10000000000000000000000000000000000000000.0
+let b: float16 = 70000.0
+let c: float16 = 65520.0

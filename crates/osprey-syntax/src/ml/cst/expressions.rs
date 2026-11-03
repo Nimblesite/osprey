@@ -297,6 +297,8 @@ pub(crate) enum MlPattern {
     Wildcard,
     /// An integer literal pattern.
     Int(i64),
+    /// A float literal, negative included.
+    Float(f64),
     /// A string literal pattern (raw).
     Str(String),
     /// A boolean literal pattern.

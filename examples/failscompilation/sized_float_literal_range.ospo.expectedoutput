@@ -1,0 +1,3 @@
+2:0: literal 1e40 does not fit float32
+3:0: literal 7e4 does not fit float16
+4:0: literal 6.552e4 does not fit float16
