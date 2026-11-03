@@ -78,8 +78,10 @@ tests/regressions/fiber/fiber_determinism.test.osp foreign C import `fiber_set_d
 tests/regressions/fiber/fiber_exact_replica.test.osp foreign C import `fiber_set_deterministic_mode`
 tests/regressions/fiber/fiber_showcase.test.osp fiber concurrency
 tests/regressions/fiber/fiber_showcase.test.ospml fiber concurrency
-tests/regressions/http/chunked_hostile_server.test.osp HTTP builtin `httpCreateServer`
-tests/regressions/http/chunked_hostile_server.test.ospml HTTP builtin `httpCreateServer`
+tests/regressions/fiber/many_handles.test.osp fiber concurrency
+tests/regressions/fiber/many_handles.test.ospml fiber concurrency
+tests/regressions/http/chunked_hostile_server.test.osp HTTP builtin `httpResponseFree`
+tests/regressions/http/chunked_hostile_server.test.ospml HTTP builtin `httpResponseFree`
 tests/regressions/http/http_client_example.test.osp HTTP builtin `httpCreateServer`
 tests/regressions/http/http_client_example.test.ospml HTTP builtin `httpCreateServer`
 tests/regressions/http/http_create_client.test.osp HTTP builtin `httpCreateClient`
@@ -92,3 +94,5 @@ tests/regressions/http/net_local_address.test.osp foreign C import `osprey_net_l
 tests/regressions/http/net_local_address.test.ospml foreign C import `osprey_net_local_address`
 tests/regressions/http/tui_repo_table.test.osp HTTP builtin `httpResponseBody`
 tests/regressions/http/tui_repo_table.test.ospml HTTP builtin `httpResponseBody`
+tests/regressions/http/websocket_connections.test.osp foreign C import `websocket_stop_server`
+tests/regressions/http/websocket_connections.test.ospml foreign C import `websocket_stop_server`

@@ -242,7 +242,7 @@ suite("package workspace capabilities", () => {
   test("every framework capability is answered here or refused by name", async () => {
     // Every `Capability` constructor in packages/native/src/capability.ospml, as the encoder names it
     // ([NATIVE-HOSTS-COVERAGE]): a capability added to the framework fails here until this host answers or refuses it.
-    const refused = ["run", "list-directories", "read-texts", "store-read", "store-write", "store-list", "store-delete", "choose-file", "choose-folder", "save-file", "measure-folders", "reveal", "cancel", "animate", "fingerprint", "open-settings", "read-plists", "recognise", "running-applications"];
+    const refused = ["run", "list-directories", "read-texts", "store-read", "store-write", "store-list", "store-delete", "choose-file", "choose-folder", "save-file", "measure-folders", "reveal", "cancel", "animate", "fingerprint", "open-settings", "read-plists", "recognise", "running-applications", "process-start", "process-write", "process-read", "process-stop"];
     const source = fs.readFileSync(path.resolve(__dirname, "..", "..", "..", "..", "packages", "native", "src", "capability.ospml"), "utf8").replace(/\r/g, "");
     const block = source.slice(source.indexOf("type Capability ="));
     const body = block.slice(0, block.search(/\n\S/));
