@@ -32,6 +32,7 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 - [x] Collect native iOS UI-test coverage and reject missing, empty or runner-only reports before publishing the current report.
 - [x] Discover a published Bonjour receiver on iOS without an injected transcript, rescan, select it and verify playback through its advertised hostname and port.
 - [x] Keep equal receiver names distinct on both native hosts, verify Android's selected endpoint survives rescan, and play on the selected reachable receiver while its namesake is unavailable. [CAST-MOBILE-RECEIVER-IDENTITY]
+- [x] Announce native iOS picker selections for receiver, skin, volume and speed, including the selected receiver after a real Bonjour rescan.
 - [x] Render the alternate themed tree on Android, verify both iOS palettes and exercise Midnight/Poolside playback with session-preserving skin changes.
 - [x] Expose a native Appearance menu from Sherbet on both hosts; switch through all three skins during playback without reloading and verify the complete screenshot/command gates.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
@@ -86,6 +87,8 @@ The current report covers 1,693 of 2,859 executable native target lines, approxi
 ## Receiver identity [CAST-MOBILE-RECEIVER-IDENTITY]
 
 Receiver selection and connection routing use host and port. Friendly names are presentation text; equal names include their endpoint in the native picker so users can distinguish them. Rescanning retains the selected endpoint while it remains available. The machine keeps its display label separately, preserving the existing artwork and status text for uniquely named receivers.
+
+Native SwiftUI pickers expose their selected display label as an accessibility value. The receiver regression first failed because XCTest read an empty value; it now reads the selected endpoint's complete label before and after the Bonjour rescan. The loaded skin journey also verifies Midnight and Poolside selections, volume changes and playback speed values. All three native iOS journeys, the original screenshot and protocol gates, and 38 Swift host regressions pass.
 
 The iOS journey publishes two real Bonjour services with the same friendly name: one on a refused port and one on the TLS fixture's port. It verifies distinct choices, rescans and plays through the selected working service without an injected transcript. Android exercises the same equal-name case through its native picker and verifies the retained selection in the resident frame. Both full suites pass their exact media-byte, control-command, palette and zero-difference screenshot gates. The shared suite passes under GC and ARC; all four mobile archives rebuild and the refreshed physical iPhone bundle passes strict signature verification. Physical playback and real Android NSD fixture playback remain unverified. XCTest retains its result bundle and explicit screenshots; verbose system diagnostic collection is disabled so an expected failing regression does not collect a system-wide diagnostic for ten minutes.
 

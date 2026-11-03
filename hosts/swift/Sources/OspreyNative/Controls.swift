@@ -213,6 +213,7 @@ struct PickerView: View, Equatable {
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel(node.text("label"))
+        .accessibilityValue(selected)
     }
 }
 
