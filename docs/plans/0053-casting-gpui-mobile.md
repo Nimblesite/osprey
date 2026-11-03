@@ -25,5 +25,6 @@ Android: `gpui-pre` 0.3.10 has no backend, and `gpui-pre-platform` has no Androi
 - [x] Delete the SwiftUI and Java casting renderers. `hosts/swift` stays for Osprey Agent.
 - [x] A fixed scene `zoom` is an upper bound: a narrower region fits the whole scene instead of clipping it, on every platform. The region around a scene takes the skin's colour, and the scene honours the safe area.
 - [ ] Windows: casting still runs on `hosts/winui` (`examples/casting/README.md`). Audit whether `hosts/gpui` can replace it there, and report.
-- [ ] Screen readers: `hosts/gpui` has no accessibility bridge on iOS or Android, where the deleted native renderers had one. A person using VoiceOver or TalkBack cannot use the player until the scene's access tree reaches the platform.
+- [x] Android screen readers: the scene's AccessKit tree reaches TalkBack, and the journey presses through its action.
+- [ ] iOS screen readers: the same tree through `accesskit_ios`.
 - [ ] Automate real NSD and Bonjour discovery against a published fixture. Android found a real TV by hand; its journey uses the receiver fixture so that it can never reach a real TV.
