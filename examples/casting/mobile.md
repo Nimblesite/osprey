@@ -31,7 +31,7 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 - [x] Verify 44-point iOS and 48-dp Android native button, slider and menu-trigger bounds in Sherbet and the themed skins, including Android landscape; open the file picker from the enlarged edge of its target.
 - [x] Collect native iOS UI-test coverage and reject missing, empty or runner-only reports before publishing the current report.
 - [x] Discover a published Bonjour receiver on iOS without an injected transcript, rescan, select it and verify playback through its advertised hostname and port.
-- [x] Keep equal receiver names distinct on both native hosts, preserve endpoint selection through rescan, and play on the selected reachable receiver while its namesake is unavailable. [CAST-MOBILE-RECEIVER-IDENTITY]
+- [x] Keep equal receiver names distinct on both native hosts, verify Android's selected endpoint survives rescan, and play on the selected reachable receiver while its namesake is unavailable. [CAST-MOBILE-RECEIVER-IDENTITY]
 - [x] Render the alternate themed tree on Android, verify both iOS palettes and exercise Midnight/Poolside playback with session-preserving skin changes.
 - [x] Expose a native Appearance menu from Sherbet on both hosts; switch through all three skins during playback without reloading and verify the complete screenshot/command gates.
 - [ ] Exercise real simulator/emulator journeys: discovery, file selection, play/pause/resume/stop/replay, seek, volume, speed, skins, offline/error paths and app restart.
