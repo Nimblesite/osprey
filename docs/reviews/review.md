@@ -1,6 +1,6 @@
 # Osprey review
 
-The one review for this repository. It replaces every earlier review and report; those files remain in git history (last present at `7910ab65`).
+The one review for this repository. It replaces every earlier review and report; those files remain in git history (last present at `ebcb47f3`).
 
 **Status values**, checked against `7910ab65` on 2026-11-03:
 
@@ -115,7 +115,7 @@ All fixed with regression tests, with one exception. Open sub-item: the resoluti
 
 ## 2. System issues not logged on GitHub
 
-Each was compared by title against all 115 GitHub issues on 2026-11-03. [Findings left out](#already-on-github) because an issue already covers them are listed at the end.
+Each was compared by title against the 82 open GitHub issues on 2026-11-03; closed issues were not compared. [Findings left out](#already-on-github) because an issue already covers them are listed at the end.
 
 ### Runtime and security
 
