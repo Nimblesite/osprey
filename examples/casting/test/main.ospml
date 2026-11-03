@@ -275,6 +275,8 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     expect (shows "Playing on Living Room TV", true)
     expect (shows "Pause", true)
     expect (shows "03:20", true)
+    post "{\"kind\":\"lifecycle\",\"phase\":\"skin:poolside\",\"now\":2}"
+    expect (selected "Skin", "poolside")
     expect (enabledOf "Back 10 seconds", true)
     press "Pause"
     frame 0.2
@@ -336,7 +338,9 @@ test ("skins change the palette, never the controls", \() => bench (\() =>
     choose ("Skin", "midnight")
     expect (selected "Skin", "midnight")
     expect (shows "Open file…", true)
-    choose ("Skin", "poolside")
+    post "{\"kind\":\"lifecycle\",\"phase\":\"skin:poolside\",\"now\":2}"
+    expect (selected "Skin", "poolside")
+    post "{\"kind\":\"lifecycle\",\"phase\":\"skin:unknown\",\"now\":3}"
     expect (selected "Skin", "poolside")
     skinContrast "sherbet"
     skinContrast "midnight"

@@ -89,13 +89,14 @@ private func castingStore() -> RegionStore {
 @main
 struct CastingHost: App {
     @StateObject private var store = castingStore()
+    private let skins = Result { try castingSkins() }
     @Environment(\.scenePhase) private var phase
     @State private var previousFrame = 0.0
     private let frames = Timer.publish(every: 1.0 / 30, on: .main, in: .common).autoconnect()
 
     var body: some Scene {
         WindowGroup {
-            RootView(store: store)
+            content
                 .onReceive(frames) { _ in
                     let now = CACurrentMediaTime()
                     if phase == .active, previousFrame > 0 { store.frame(elapsed: min(0.25, max(0, now - previousFrame))) }
@@ -103,5 +104,43 @@ struct CastingHost: App {
                 }
                 .onChange(of: phase) { _, next in store.lifecycle(next == .active ? "active" : "inactive") }
         }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch skins {
+        case let .success(choices):
+            RootView(store: store).frame(maxWidth: .infinity, maxHeight: .infinity).overlay(alignment: .topTrailing) {
+                SkinMenu(choices: choices) { store.lifecycle("skin:" + $0) }.equatable().padding(12)
+            }
+        case let .failure(error):
+            ContentUnavailableView("Cannot load player appearances", systemImage: "exclamationmark.triangle", description: Text(error.localizedDescription))
+        }
+    }
+}
+
+// [CAST-MOBILE-SKINS] The menu uses the bundled machine's choices on every host.
+private func castingSkins() throws -> [JSONValue] {
+    guard let url = Bundle.main.url(forResource: "player.machine", withExtension: "json") else {
+        throw CapabilityError.invalidArgument("The player machine is missing")
+    }
+    let doc = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
+    guard let choices = doc.object?["inputs"]?.object?["skins"]?.object?["value"]?.array, !choices.isEmpty,
+          choices.allSatisfy({ !($0.object?["key"]?.string ?? "").isEmpty && !($0.object?["label"]?.string ?? "").isEmpty }) else {
+        throw CapabilityError.invalidArgument("The player has no valid appearance choices")
+    }
+    return choices
+}
+
+private struct SkinMenu: View, Equatable {
+    let choices: [JSONValue]
+    let choose: (String) -> Void
+    static func == (left: Self, right: Self) -> Bool { left.choices == right.choices }
+    var body: some View {
+        Menu {
+            ForEach(Array(choices.enumerated()), id: \.offset) { _, choice in
+                Button(choice.object?["label"]?.string ?? "") { choose(choice.object?["key"]?.string ?? "") }
+            }
+        } label: { Label("Appearance", systemImage: "paintpalette") }
+            .buttonStyle(.bordered).accessibilityLabel("Appearance")
     }
 }
