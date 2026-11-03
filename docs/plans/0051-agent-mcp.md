@@ -17,7 +17,7 @@ Osprey Agent's model has four hardcoded tools in `examples/agent/src/engine.py`,
 | Transports | stdio and streamable HTTP | HTTP fits the existing `Http` capability; most local servers are stdio |
 | Long-lived processes | New `@osprey/native` capabilities `ProcessStart`, `ProcessWrite`, `ProcessRead`, `ProcessStop` | `Run` is one shot. Every request stays bounded: a read returns the output so far, within a limit and a deadline, as one completion |
 | Protocol code | `packages/pydantic_ai/src/mcp.py`: JSON-RPC messages and results, sans-IO, following upstream `pydantic_ai.mcp` names | Testable without a process; the app owns the IO through capabilities |
-| Tool names | `mcp__<server>__<tool>`, each joining the engine's tool list | No clash with `run_command`, and the transcript can name the server |
+| Tool names | `<server>_<tool>`, each joining the engine's tool list | What upstream's `PrefixedToolset` does; the transcript can name the server |
 | Approval | None, the same as the built-in tools; the "Not sandboxed" note stays true | An approval step is its own feature |
 | Secrets | `env` and `headers` values never reach `chats.json`, the records or the transcript | Same rule the API key follows, same self-test check |
 
@@ -26,7 +26,7 @@ Osprey Agent's model has four hardcoded tools in `examples/agent/src/engine.py`,
 - [ ] **Protocol.** `mcp.py`: `initialize`, `tools/list` with pagination, `tools/call`, error and `isError` results, text and non-text content. Tests in `packages/pydantic_ai/tests`. Licence: add the upstream module and the MCP specification to `references` in `packages/license-audit.json`, with a recorded comparison in `source-audit.json`.
 - [ ] **Process capabilities.** The four capabilities in `packages/native/src/capability.ospml` and README, `ProcessAdapter.swift` on the SwiftUI host, with every process stopped on quit; hosts without them complete with a typed error.
 - [ ] **Config.** Read and merge both files, with plain messages for a broken file, a missing command, or an unsupported entry. Host-free tests, with many permutations.
-- [ ] **Connect and call.** Connect on launch and on folder change; list tools; dispatch `mcp__…` calls through `Turn`; restart a server that exited, once a person asks. A slow or dead server fails that call and never blocks the turn or other servers.
+- [ ] **Connect and call.** Connect on launch and on folder change; list tools; dispatch server tool calls through `Turn`; restart a server that exited, once a person asks. A slow or dead server fails that call and never blocks the turn or other servers.
 - [ ] **Window.** An inspector section: each server's state, its tool count, its problem in words, a switch for each server, and buttons to open the config file and reload. Tool steps show the server's name.
 - [ ] **Proof.** An in-repo test MCP server, python standard library only, on both transports. `self-test/mcp.json` runs the doubled model through config, connect, a tool call, a tool error, a dead server, a project server left off and then turned on, a secret kept out of the records, goldens per OS. `self-test.sh --live` gives DeepSeek a task that it can only solve through the server, with acceptance checks it never sees.
 - [ ] **Docs.** The README section "MCP servers", with a pasteable example.

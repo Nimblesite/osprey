@@ -46,6 +46,7 @@ Active plans track unfinished language, runtime, tooling and ecosystem work. Ret
 | [0049](0049-local-coding-model.md) | A local coding model on Osprey: Qwen3.8-27B | runtime/packages/apps | Not started. Native `float32` storage and speed gate, then the model, tool calls and an Ollama-compatible server, in 24 GB of RAM. | Large |
 | [0050](0050-sized-numeric-types.md) | Sized numeric types (`int8`…`uint32`, `float16`, `float32`), dense buffers at element width, native device binary32 | types/codegen/runtime/GPU | Started 2026-11-03. Spec written; phase 1 (one numeric descriptor) in progress. Removes the 64-bit-only limit that blocks plan 0049. | High |
 | [0051](0051-agent-mcp.md) | MCP servers in Osprey Agent: config files, stdio and HTTP, tools in real conversations | examples/agent, @osprey/pydantic-ai, @osprey/native, SwiftUI host | Not started. Queued behind the folder, highlighting and selection fixes. | High |
+| [0052](0052-agent-providers-settings.md) | Osprey Agent: Kimi and GLM providers, model and effort pickers, a settings screen with MCP add and remove, syntax highlighting, multi-line selection | examples/agent, @osprey/pydantic-ai, @osprey/native, SwiftUI host | In progress. | High |
 
 [0031 — Python flavor](0031-python-flavor.md) tracks the implemented `.py` frontend subset, restricted records and effect/handler syntax over the shared AST. GPT-2 generation has host, Metal and OpenCL acceptance evidence. Complete frontend/tooling coverage and edge-case checks remain open; Python-flavor training is deferred.
 
