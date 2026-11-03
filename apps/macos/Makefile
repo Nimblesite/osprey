@@ -9,7 +9,7 @@ ROOT ?= ../..
 ##        folder it works in; the key comes from DEEPSEEKKEY in the repository's .env.
 PROJECT ?= $(CURDIR)
 agent:
-	$(MAKE) -C $(ROOT) build
+	$(MAKE) -C $(ROOT) build _runtime_macos
 	bash $(ROOT)/examples/agent/run.sh "$(PROJECT)"
 
 ## casting: Open the casting player: pick a file or stream and cast it to a TV
