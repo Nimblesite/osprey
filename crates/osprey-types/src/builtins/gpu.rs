@@ -67,13 +67,12 @@ pub(super) fn declare(e: &mut TypeEnv) {
     // `float32`, fixed by this one variable; a length that disagrees with the
     // shape is an Error.
     let product = || Type::gpu_buffer(t());
-    poly(
-        e,
-        "gpuMatMul",
+    let mut matrix = super::Scheme::poly(
         vec![0],
-        vec![product(), product(), i(), i(), i()],
-        res(product()),
+        Type::fun(vec![product(), product(), i(), i(), i()], res(product())),
     );
+    matrix.obligations = vec![("matrix gpuMatMul".into(), product())];
+    e.insert("gpuMatMul", matrix);
     // [GPU-BUFFER-LOAD] Raw little-endian binary32 words at a byte offset,
     // byte for byte with no widening, as a `float32` buffer.
     mono(

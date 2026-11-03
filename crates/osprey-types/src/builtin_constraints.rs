@@ -65,6 +65,7 @@ pub(crate) const INTEGER_OPERAND_PREFIX: &str = "integer ";
 
 /// [BUILTIN-MATH] The float-only form of [`NUMERIC_OPERAND_PREFIX`].
 pub(crate) const FLOAT_OPERAND_PREFIX: &str = "float ";
+pub(crate) const MATRIX_OPERAND_PREFIX: &str = "matrix ";
 
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const SORTABLE_DISPLAY: &str = "List<int> | List<string>";
@@ -134,6 +135,7 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
             .then(|| format!("`{op}` requires an integer; got {ty}"));
     }
     let name = operation_name(name);
+    let name = name.strip_prefix(MATRIX_OPERAND_PREFIX).unwrap_or(name);
     match name {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()

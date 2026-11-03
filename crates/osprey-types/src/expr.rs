@@ -1461,7 +1461,7 @@ fn both_vars(l: &Type, r: &Type) -> bool {
 fn constrained_builtin(name: &str) -> bool {
     matches!(
         name,
-        "length" | "isEmpty" | "print" | "toString" | "toGpu" | "listSort" | "gpuMatMul"
+        "length" | "isEmpty" | "print" | "toString" | "toGpu" | "listSort"
     ) || crate::builtin_constraints::is_gpu_buffer_builtin(name)
 }
 
@@ -1496,6 +1496,7 @@ fn locatable_obligation(name: &str) -> bool {
         || name.starts_with(crate::builtin_constraints::NUMERIC_OPERAND_PREFIX)
         || name.starts_with(crate::builtin_constraints::INTEGER_OPERAND_PREFIX)
         || name.starts_with(crate::builtin_constraints::FLOAT_OPERAND_PREFIX)
+        || name.starts_with(crate::builtin_constraints::MATRIX_OPERAND_PREFIX)
         || name.starts_with(crate::comparison::COMPARED_OPERAND_PREFIX)
         || name == "interpolation"
         || name == "structuralEquals"
