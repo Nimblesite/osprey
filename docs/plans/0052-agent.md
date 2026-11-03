@@ -38,6 +38,11 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 
 ## Self-tests and goldens
 
+- [ ] `examples/agent/test/main.py` `prov.*`: every catalogue model and every level: URL, exact body members, no `strict` where forbidden, `reasoning_effort` or `thinking` per the package, `reasoning_content` read and sent back, old `deepseek-chat` resolves, an unknown provider fails in words.
+- [ ] `examples/agent/test-app/main.ospml`: open and close settings; per provider save, restart, remove a key; `.env` fills only empty slots; provider then model then effort in Settings, inherited by a new chat; a composer pick changes only that chat; effort kept or cleared; sending blocked without a key; each failure status. MCP: config outcomes, add, remove, clash, toggle, project server off and remembered per folder, a dead server, tools gone after remove, secrets absent from every saved document.
+- [ ] Strict HTTP double (`requireBearer`, `requireUrl`) with Swift tests, and `self-test/verify_providers.py`, `self-test/verify_mcp.py`.
+- [ ] Read every golden and judge the look. Remove any control that does nothing.
+
 - [ ] `examples/agent/self-test/code-blocks.json` + goldens: a doubled run draws fenced code and tool output through `Highlight.tokens_of`; assert the `Ui::rich` runs and that every code token pair meets 4.5:1 via `packages/native` `Contrast::ratio` (`packages/native/src/theme.ospml`).
 - [ ] `examples/agent/self-test/settings.json` + goldens: configure each provider, pick a model and effort, and check the per-provider request shape against a strict double.
 - [ ] `examples/agent/self-test/mcp.json` + goldens per OS: run the doubled model through config, connect, a tool call, a tool error, a dead server, a project server off then on, and a secret kept out of the records, using `self-test/mcp_server.py` on stdio and streamable HTTP.
@@ -48,4 +53,4 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 
 ## Docs
 
-- [ ] `examples/agent/README.md`: sections for providers, effort, and MCP servers, with a pasteable MCP config example.
+- [ ] `examples/agent/README.md`: sections for providers, keys, effort, and MCP servers ("How do I configure MCPs in this app?"), with a pasteable MCP config example.

@@ -29,7 +29,17 @@ Each request, in the words it was made, with the section that holds it. A reques
 
 Not implemented yet: `Engine.url` returns DeepSeek's Chat Completions endpoint for every model, `Engine.profile_of` chooses DeepSeek's or OpenAI's profile, `chatModel` holds a bare model name and there is no `chatEffort`.
 
-The app's catalogue names DeepSeek, Kimi and GLM entries. The coding-plan entries reuse the upstream provider's profile with another base URL: `https://api.kimi.com/coding/v1` and `https://api.z.ai/api/coding/paas/v4`.
+The catalogue is one table in `examples/agent/src/engine.py`, `Provider(id, label, keyNames, base, models)` and `ModelEntry(id, label, levels, wire)`, and every lookup goes through it. Nothing else names a provider.
+
+| Id | Label | Base URL | Key names in `.env` |
+| --- | --- | --- | --- |
+| `deepseek` | DeepSeek | `https://api.deepseek.com` | `DEEPSEEKKEY`, `DEEPSEEK_API_KEY` |
+| `moonshotai` | Kimi (Moonshot API) | `https://api.moonshot.ai/v1` | `MOONSHOT_API_KEY` |
+| `kimi-coding` | Kimi Code plan | `https://api.kimi.com/coding/v1` | `KIMI_API_KEY` |
+| `zai` | GLM (Z.ai API) | `https://api.z.ai/api/paas/v4` | `ZAI_API_KEY`, `GLM_API_KEY` |
+| `zai-coding` | GLM Coding Plan | `https://api.z.ai/api/coding/paas/v4` | `ZAI_CODING_API_KEY` |
+
+The coding-plan entries reuse the upstream provider's profile at another base URL, overridden per model where the provider requires it (no `strict`, `reasoning_content` required). Each model lists its own effort levels in order, such as `k3`: Low, High, Max. Switching provider mid-conversation produces a body the new provider accepts, even with another provider's thinking parts in the history.
 
 `chatModel` holds `provider/model`. A value with no `/` reads as DeepSeek, which is what saved conversations hold, so a saved conversation with no `/` restores as DeepSeek.
 
@@ -51,7 +61,7 @@ Providers tab: first configure the provider, then select the model. A card per p
 
 A refused request says what to do in one sentence with an `Open Settings` button: 401 or 403 "This key was refused.", 402 "<provider> has no credit left. Pick another model, or add credit.", 429 "<provider> is rate limiting: try again shortly." The raw detail and `Try again` stay, and changing the model then pressing it works.
 
-Provider keys are written to `providers.json` in the app's private store with mode 0600 — never `chats.json`, never the records. An empty key slot is still seeded from `.env` names `DEEPSEEKKEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`, `KIMI_API_KEY`, `ZAI_API_KEY`, `GLM_API_KEY`.
+`providers.json` in the app's private store, mode 0600, holds the provider keys, the default model and the default effort, and is never `chats.json` or the records. Writes are serial, sharing the conversation file's save code, and a failed write says so in words. A `.env` at launch fills only empty key slots, by the names in [AGENT-PROVIDERS]: a saved or pasted key always wins.
 
 ## MCP servers [AGENT-MCP]
 
@@ -59,7 +69,11 @@ Not implemented yet: the app reads no `mcp.json` or `.mcp.json`, connects to no 
 
 `mcp.json` in the app's support folder configures servers for every project; `.mcp.json` in the project folder configures servers for that one project. The app reads and merges both, and the project entry wins on a name clash. Servers connect on launch and folder change.
 
-The MCP tab of the Settings pane has a card per server: name, transport and command or URL (`env` and header values never shown), a coloured state (Off, Connecting, Connected with its tool count, Failed), the problem in words, a switch, `Reconnect`, `Remove`, and a disclosure listing its tools. `Add server` is a form with Name, Type (`Command` or `URL`), Command and Arguments or URL and Headers, and Environment, validated in words; `Paste JSON` takes the standard `{"mcpServers": ...}` block. Adding connects at once. Removing stops the process and takes its tools out of the next request. The tab writes `mcp.json` in the private store. `.mcp.json` servers are listed but off until the person turns them on, remembered per folder.
+The MCP tab of the Settings pane has a card per server: name, transport and command or URL (`env` and header values never shown), a coloured state (Off, Connecting, Connected with its tool count, Failed), the problem in words, a switch, `Reconnect`, `Remove`, and a disclosure listing its tools. `Add server` is a form with Name, Type (`Command` or `URL`), Command and Arguments or URL and Headers, and Environment, validated in words; `Paste JSON` takes the standard `{"mcpServers": ...}` block. Adding connects at once. Removing stops the process and takes its tools out of the next request. The tab writes `mcp.json` in the private store. `.mcp.json` servers are listed with a `.mcp.json` label and no `Remove`, and stay off until the person turns them on, because a cloned repository's file starts commands. Both per-server switches and the per-folder memory live in `mcp-state.json` beside `providers.json`.
+
+A broken file, a missing command and an unsupported entry each get a plain message. `Reconnect` restarts a server that exited, only when a person presses it. A slow or dead server fails that one call, with a deadline, and never blocks the turn or other servers. `isError` goes back to the model as the tool's text. A server's `ping` is answered. `${VAR}` expands from what a person configured, never the app's own secrets. Streamable HTTP keeps session ids and reads SSE, through the `Http` capability.
+
+The inspector has an `MCP` section with each enabled server's state and tool count, opening Settings when pressed. A tool step names its server.
 
 Servers speak stdio and streamable HTTP. Each tool joins the engine's tool list named `<server>_<tool>`. A tool call asks for no approval: none, the same as the built-in tools.
 
@@ -85,4 +99,4 @@ Not implemented yet: a request that returned no text leaves an empty gap in the 
 
 ## Proof [AGENT-PROOF]
 
-`examples/agent/self-test.sh` runs the real window with doubled requests and asserts records and goldens; `--live` runs it with real LLM calls through whichever provider has a key, with acceptance checks the model never sees. Controls that do nothing are removed, not hidden.
+`examples/agent/self-test.sh` runs the real window with doubled requests and asserts records and goldens; `--live` runs it with real LLM calls through the first provider with a key, in the order `zai-coding`, `zai`, `kimi-coding`, `moonshotai`, `deepseek`, with acceptance checks the model never sees, and never prints the key. MCP proofs use real server processes (`self-test/mcp_server.py`), not doubles. A strict HTTP double can require a bearer token and a URL and answers 401 or 404 otherwise, as a real server would, and `self-test/verify_providers.py` and `verify_mcp.py` assert each request's URL and exact body. Controls that do nothing are removed, not hidden. The look is judged by reading every golden.
