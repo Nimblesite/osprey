@@ -113,6 +113,48 @@ fn repo() -> PathBuf {
     manifest().join("..").join("..")
 }
 
+/// [GPU-BUFFER-ELEM]: actual compiled uint8 storage, not a reported width.
+#[test]
+fn a_million_uint8_elements_allocate_one_megabyte_and_drop_cleanly() {
+    let source = "extern fn osp_arc_live_bytes() -> int\nfn main() = {\nlet byte: uint8 = 127\nlet before = osp_arc_live_bytes()\nlet buffer = range(0, 1000000) |> map(fn(_index) => byte) |> toGpu()\nlet used = wrapSub(osp_arc_live_bytes(), before)\nprint(\"${used} ${gpuLength(buffer)} ${gpuGet(buffer, 999999) ?: byte}\")\n}\n";
+    for mode in ["extract", "inline"] {
+        let path = std::env::temp_dir().join(format!(
+            "osprey_dense_uint8_{}_{mode}.osp",
+            std::process::id()
+        ));
+        std::fs::write(&path, source).expect("write dense buffer fixture");
+        let output = dense_fixture_output(&path, mode).expect("compile and run dense fixture");
+        assert_dense_fixture(&output, mode);
+        std::fs::remove_file(path).expect("remove dense fixture");
+    }
+}
+
+fn dense_fixture_output(path: &Path, mode: &str) -> std::io::Result<std::process::Output> {
+    Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .current_dir(repo())
+        .arg(path)
+        .args(["--run", "--quiet", "--memory=arc", "--no-warnings"])
+        .env("OSPREY_ARC_DEBUG", "1")
+        .env("OSPREY_GPU_KERNELS", mode)
+        .output()
+}
+
+fn assert_dense_fixture(output: &std::process::Output, mode: &str) {
+    assert!(
+        output.status.success(),
+        "{mode}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        output.stdout, b"1000040 1000000 127\n",
+        "{mode}: payload + 40-byte header"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
+        "{mode}: leaked"
+    );
+}
+
 /// `directory` holding `config` and the entry `entry`, whose `@FIXTURE@` names
 /// the committed safetensors fixture.
 fn project_at(directory: PathBuf, entry: &str, source: &str, config: &str) -> Option<PathBuf> {

@@ -27,9 +27,9 @@
 #include <stdio.h>
 #include <string.h>
 
-void *osprey_gpu_alloc(int64_t length);
+void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 int64_t osprey_gpu_len(void *buffer);
-int64_t *osprey_gpu_data(void *buffer);
+void *osprey_gpu_data(void *buffer);
 
 // Elements are 8-byte words; mirrors gpu_runtime.c's GPU_MAX_LEN.
 #define GPU_MAX_LEN (INT64_MAX / 8)
@@ -103,7 +103,7 @@ static void *matrix_result(void *left, void *right, int64_t rows, int64_t inner,
       !shaped(right, area(inner, cols), "right operand")) {
     return NULL;
   }
-  void *out = osprey_gpu_alloc(n);
+  void *out = osprey_gpu_alloc(n, 8);
   if (!out || osprey_gpu_len(out) != n) {
     osp_io_error_set(OP_MATMUL, "result", ENOMEM);
     return abandoned(out);
@@ -146,7 +146,7 @@ static void *load(const char *op, const char *path, const OspTensorSpan *span) {
     osp_io_error_text(op, path, "a negative element count");
     return NULL;
   }
-  void *out = span->count > GPU_MAX_LEN ? NULL : osprey_gpu_alloc(span->count);
+  void *out = span->count > GPU_MAX_LEN ? NULL : osprey_gpu_alloc(span->count, 8);
   int64_t *cursor = osprey_gpu_data(out);
   if (!out || osprey_gpu_len(out) != span->count || (span->count > 0 && !cursor)) {
     osp_io_error_set(op, path, ENOMEM);

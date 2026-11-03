@@ -111,19 +111,22 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 
 ### Phase 4 — Dense buffers `[GPU-BUFFER-ELEM]` `[GPU-BUFFER-LOAD]` `[GPU-BUFFER-TENSOR]`
 
-- [ ] `OspreyGpuBuffer` gains `elem_bytes`; `data` becomes bytes. `OspreyGpuArg` carries bytes and an element size; `osprey_gpu_arg_bytes` uses it. Metal and OpenCL adapters upload and download by byte count.
-- [ ] `toGpu`, `fromGpu`, `gpuGet`, `gpuIota`, `gpuLength`, `gpuScan`, `gpuFilter` and the host loops of every combinator read and write at the element's width; the codegen tag names it.
+- [x] `OspreyGpuBuffer` gains `elem_bytes`; `data` becomes bytes. `OspreyGpuArg` carries bytes and an element size; `osprey_gpu_arg_bytes` uses it. Metal and OpenCL adapters upload and download by byte count. C/runtime and both mock-driver suites pass; real Metal verifies byte and binary32 transfers, including output guards.
+- [x] `toGpu`, `fromGpu`, `gpuGet`, `gpuIota`, `gpuLength`, `gpuScan`, `gpuFilter` and the host loops of every combinator read and write at the element's width; the codegen tag names it. The expanded `flavor_parity` twins pass all eleven scalar widths under GC and ARC, including inline/extracted lowering. Signed words are sign-extended when returning to lists; float32 scan/fold/filter/zip are verified. The unchanged cross-flavor allocation/fusion gates pass 24/24.
 - [ ] `gpuLoad` returns `Result<GpuBuffer<float32>, Error>` with no widening. `gpuLoadTensor` returns `Result<GpuBuffer<T>, Error>` where the caller's `T` must match the tensor: `F64`→`float`, `F32` and `BF16`→`float32`, `F16`→`float16`; a mismatch is `tensor wte.weight is F16, the program asked for float32`. The `tensor_fixture` regression with two direct record-field calls requesting different widths must pass; the current monomorphic loader rejects both (2026-11-03).
 - [ ] `examples/gpt2` (both flavors), `tests/core/gpu/transformer.test.*` and `@osprey/transformers` compute in `float32`, as llm.c does; new goldens, with the existing tolerance rule for `exp` and `tanh`.
 - [ ] Tests: `tests/core/gpu/buffers.test.*` round-trips every element type through `toGpu`/`fromGpu`/`gpuGet`; `gpu_runtime_tests.c` checks byte counts, empty buffers and the loader errors; the ARC lane's zero-leak sentinel still passes.
 
 **Gate:** `GpuBuffer<uint8>` of 1,000,000 elements allocates 1 MB, measured in `gpu_runtime_tests.c`.
 
+Verified storage evidence, 2026-11-03: `memory_golden_tests.c` measures exact ARC bytes for widths 1/2/4/8; `gpu_runtime_tests.c` verifies truncation and adjacent elements. The real compiled `tensor_fixture::a_million_uint8_elements_allocate_one_megabyte_and_drop_cleanly` program measures 1,000,040 live bytes (1,000,000 payload + 40 header) under both lowering modes and exits with zero live objects. The remaining loader, GPT-2, device arithmetic and failure-handling items still gate phase completion.
+
 ### Phase 5 — Native device arithmetic `[GPU-DEVICE-NATIVE]` `[GPU-MATMUL]`
 
 - [ ] The dialect spells each row: `char uchar short ushort int uint long`, `half` storage read and written as `float`, native `float`, `ulong` for binary64. `FIXED_PARAMETERS` and `gpuGet` captures are typed per buffer.
 - [x] Metal: `MTLCompileOptions` with safe math and `#pragma METAL fp contract(off)` in the library source; OpenCL: `#pragma OPENCL FP_CONTRACT OFF`. Verified 2026-11-03: Metal and OpenCL driver regressions failed before the fix; both pass after, as do 28,802,095 shader checks and the forced-Metal hardware suite (6,741 checks, including binary32 FMA and `2^24 + 1 - 2^24` discriminators) on Apple M4 Max. OpenCL hardware is not verified by its mock driver.
 - [ ] Checked integer ops at each width in `gpu_device_lib.metal`, one template instantiated per width, no copies.
+- [ ] Remove GPU allocation/dispatch/readback/decline panic paths and fabricated empty allocation results; pin typed or handled failures and migrate their callers under [FAILURE-EXPLICIT]. Existing abort assertions are not evidence of this invariant.
 - [ ] `gpuMatMul` is open over `float` and `float32` with one element type for all three buffers; `osprey_matmul32` accumulates in binary32 in `k` order with no FMA; the order test at `2^24 + 1 - 2^24`.
 - [ ] Conversions in kernels: `toFloat32` of a `float` is `narrow32`, `toFloat` of a `float32` is `widen32` (both exist), every other conversion is the device's own cast.
 - [ ] `gpu_shader_tests.c` compiles the dialect as host C and checks every `float32` operation, conversion and width-checked integer op bit for bit against the host; a forced Metal run of `tests/core/gpu/*` is recorded in the spec with the date and device.

@@ -17,9 +17,9 @@
 #include "gpu_math_ext.metal"
 #include "gpu_device_lib.metal"
 
-void *osprey_gpu_alloc(int64_t length);
+void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols);
-int64_t *osprey_gpu_data(void *buffer);
+void *osprey_gpu_data(void *buffer);
 int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *kinds, const int64_t *uniforms,
                           void *in0, void *in1, void *out, int64_t *acc, int64_t count);
 static uint64_t state = 0x3f27d489aeb5106c;
@@ -49,7 +49,10 @@ static const char KERNELS[] =
     " GPU_GLOBAL const float *b GPU_BUFFER(1), GPU_GLOBAL float *out GPU_BUFFER(2) GPU_THREAD) {\n"
     "  if (GPU_INDEX != 0) return;\n"
     "  out[0] = a[0] * b[0] + a[1];\n"
-    "  out[1] = (a[2] + a[3]) - a[2];\n}\n";
+    "  out[1] = (a[2] + a[3]) - a[2];\n}\n"
+    "kernel void osprey_kernel_bytes(GPU_GLOBAL const uchar *in GPU_BUFFER(0),"
+    " GPU_GLOBAL uchar *out GPU_BUFFER(1) GPU_THREAD) {\n"
+    "  if (GPU_INDEX < 3) out[GPU_INDEX] = in[GPU_INDEX] + 1;\n}\n";
 
 static uint64_t random_word(void) {
   state ^= state << 13;
@@ -59,7 +62,7 @@ static uint64_t random_word(void) {
 }
 
 static void *random_buffer(int64_t count, int low, int range) {
-  void *buffer = osprey_gpu_alloc(count);
+  void *buffer = osprey_gpu_alloc(count, 8);
   int64_t *words = osprey_gpu_data(buffer);
   assert(words);
   for (int64_t i = 0; i < count; i++) {
@@ -105,7 +108,7 @@ static void extremes(void) {
       UINT64_C(0x3ff0000000000001), UINT64_C(0x7fefffffffffffff),
       UINT64_C(0x7ff0000000000000), UINT64_C(0xfff0000000000000)};
   int64_t count = (int64_t)(sizeof words / sizeof words[0]);
-  void *left = osprey_gpu_alloc(count), *right = osprey_gpu_alloc(count);
+  void *left = osprey_gpu_alloc(count, 8), *right = osprey_gpu_alloc(count, 8);
   memcpy(osprey_gpu_data(left), words, sizeof words);
   memcpy(osprey_gpu_data(right), words, sizeof words);
   compare(left, right, count, 1, count);
@@ -125,7 +128,7 @@ static void compiled_probe(void) {
   void *a = random_buffer(n, 1010, 20), *b = random_buffer(n, 1000, 30), *table = random_buffer(n - 1, 900, 300);
   int64_t *ta = osprey_gpu_data(table);
   for (int64_t i = 0; i < n - 1; i++) ta[i] &= (int64_t)~SIGN;
-  void *out = osprey_gpu_alloc(n);
+  void *out = osprey_gpu_alloc(n, 8);
   double scale = 1.5;
   int64_t uniforms[2] = {0, (int64_t)(intptr_t)table};
   memcpy(uniforms, &scale, sizeof scale);
@@ -157,15 +160,15 @@ static void compiled_reduction(void) {
 // itself is covered by gpu_selection_tests.c, since a Metal device must not be
 // used across a fork.
 static void compiled_fault(void) {
-  void *a = osprey_gpu_alloc(4);
-  osprey_gpu_data(a)[2] = INT64_MAX;
+  void *a = osprey_gpu_alloc(4, 8);
+  ((int64_t *)osprey_gpu_data(a))[2] = INT64_MAX;
   int64_t out[4] = {7, 7, 7, 7}, fault = 0;
-  OspreyGpuDispatch d = {"osprey_kernel_fault", KERNELS, {{0, NULL, NULL, 0, NULL}}, 0, 4};
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4);
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4);
-  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 4);
-  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &fault, &fault, 1);
-  osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 4);
+  OspreyGpuDispatch d = {"osprey_kernel_fault", KERNELS, {{0, NULL, NULL, 0, NULL, 8}}, 0, 4};
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 4, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &fault, &fault, 1, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 4, 8);
   assert(osprey_gpu_device_dispatch(&d) == 1 && fault == OSPREY_GPU_FAULT_OVERFLOW);
   assert(out[0] == 0 && out[1] == 0 && out[2] == 0 && out[3] == 0);
   checks += 5;
@@ -176,18 +179,26 @@ static void compiled_fault(void) {
 static void native_float32_rounding(void) {
   float a[4] = {0x1.000002p0f, -1.0f, 0x1p24f, 1.0f};
   float b[4] = {0x1.fffffcp-1f, 0.0f, 0.0f, 0.0f}, actual[2] = {99.0f, 99.0f};
-  int64_t left[2], right[2], output = 0;
-  memcpy(left, a, sizeof left);
-  memcpy(right, b, sizeof right);
-  OspreyGpuDispatch d = {"osprey_kernel_float32", KERNELS, {{0, NULL, NULL, 0, NULL}}, 0, 1};
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, left, NULL, 2);
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, right, NULL, 2);
-  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &output, &output, 1);
+  OspreyGpuDispatch d = {"osprey_kernel_float32", KERNELS, {{0, NULL, NULL, 0, NULL, 8}}, 0, 1};
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, a, NULL, 4, 4);
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, b, NULL, 4, 4);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, actual, actual, 2, 4);
   assert(osprey_gpu_device_dispatch(&d) == 1);
-  memcpy(actual, &output, sizeof actual);
   assert(actual[0] == 0.0f && !signbit(actual[0]));
   assert(actual[1] == 0.0f && !signbit(actual[1]));
   checks += 2;
+}
+
+// [GPU-BUFFER-ELEM]: a three-byte GPU output cannot overwrite either guard.
+static void native_byte_transfers(void) {
+  uint8_t input[3] = {0, 127, 254}, output[5] = {0xaa, 0, 0, 0, 0xbb};
+  OspreyGpuDispatch d = {"osprey_kernel_bytes", KERNELS, {{0, NULL, NULL, 0, NULL, 8}}, 0, 3};
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, input, NULL, 3, 1);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, output + 1, output + 1, 3, 1);
+  assert(osprey_gpu_device_dispatch(&d) == 1);
+  assert(output[0] == 0xaa && output[4] == 0xbb);
+  assert(output[1] == 1 && output[2] == 128 && output[3] == 255);
+  checks += 5;
 }
 
 int main(void) {
@@ -208,6 +219,10 @@ int main(void) {
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
   if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 10);
+#endif
+  native_byte_transfers();
+#if defined(OSPREY_GPU_METAL)
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 11);
 #endif
   printf("[ok] device binary64 parity: %u results over five products, a compiled kernel chained into a reduction on the device, a sequential reduction and a faulting kernel\n", checks);
   return 0;

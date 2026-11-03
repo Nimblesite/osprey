@@ -1,4 +1,6 @@
 ok 1 - minimum int literals are flavor-equivalent in GPU buffers
 ok 2 - negative gpuIota arguments are flavor-equivalent
-1..2
-# tests=2 passed=2 failed=0 skipped=0
+ok 3 - every scalar width survives dense storage and a generic identity kernel
+ok 4 - float32 reductions scans filters and zip keep their width
+1..4
+# tests=4 passed=4 failed=0 skipped=0

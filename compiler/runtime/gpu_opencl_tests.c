@@ -88,11 +88,11 @@ static const OspreyOpenCLApi mock = {platforms, devices, info, context, queue, p
     build_info, kernel, buffer, arg, launch, read_buffer, release, release, release, release, release};
 
 static OspreyGpuDispatch product_of(const int64_t *in, int64_t *out, void **in_slot, void **out_slot) {
-  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL}}, 0, 1};
-  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 1, in_slot);
-  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 1, in_slot);
-  osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, out, out_slot ? NULL : out, 1, out_slot);
-  for (uint64_t i = 0; i < 3; i++) osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 1);
+  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL, 8}}, 0, 1};
+  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 1, 8, in_slot);
+  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 1, 8, in_slot);
+  osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, out, out_slot ? NULL : out, 1, 8, out_slot);
+  for (uint64_t i = 0; i < 3; i++) osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 1, 8);
   expected_threads = 1;
   return d;
 }
@@ -105,12 +105,12 @@ static int product(int64_t *out) {
 
 static int compiled(const char *name, const char *source, int64_t *out, size_t threads) {
   int64_t in = 7, fault = 0;
-  OspreyGpuDispatch d = {name, source, {{0, NULL, NULL, 0, NULL}}, 0, threads};
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 1);
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 0);
-  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 2);
-  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &fault, &fault, 1);
-  osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, threads);
+  OspreyGpuDispatch d = {name, source, {{0, NULL, NULL, 0, NULL, 8}}, 0, threads};
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 1, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 0, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 2, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &fault, &fault, 1, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, threads, 8);
   expected_threads = threads;
   int result = osprey_gpu_opencl_dispatch(&d);
   assert(result != 1 || fault == MOCK_MARK);
@@ -164,7 +164,7 @@ static void resident_case(void) {
     if (!round) held = live;
   }
   assert(live == held); // the second dispatch created and released nothing
-  assert(osprey_gpu_opencl_download(out_slot, &out, 1) == 1 && out == MOCK_MARK);
+  assert(osprey_gpu_opencl_download(out_slot, &out, sizeof out) == 1 && out == MOCK_MARK);
   osprey_gpu_opencl_release(in_slot);
   osprey_gpu_opencl_release(out_slot);
   assert(live == held - 2);

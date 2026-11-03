@@ -26,7 +26,7 @@
 #include <string.h>
 #include <unistd.h>
 
-void *osprey_gpu_alloc(int64_t length);
+void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 int64_t osprey_gpu_len(void *buffer);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
@@ -52,7 +52,7 @@ static long g_checks = 0;
 
 // A fresh buffer reports its exact length and reads zero at every index.
 static void t_alloc_zero_filled(void) {
-  void *b = osprey_gpu_alloc(SMALL_LEN);
+  void *b = osprey_gpu_alloc(SMALL_LEN, 8);
   CHECK(b != NULL);
   CHECK(osprey_gpu_len(b) == SMALL_LEN);
   for (int64_t i = 0; i < SMALL_LEN; i++) {
@@ -67,7 +67,7 @@ static void t_alloc_zero_filled(void) {
 static void t_alloc_clamps_to_empty(void) {
   int64_t bad[] = {-1, INT64_MIN, GPU_MAX_LEN + 1, INT64_MAX};
   for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
-    void *b = osprey_gpu_alloc(bad[i]);
+    void *b = osprey_gpu_alloc(bad[i], 8);
     CHECK(b != NULL);
     CHECK(osprey_gpu_len(b) == 0);
     CHECK(osprey_gpu_in_bounds(b, 0) == 0);
@@ -75,14 +75,14 @@ static void t_alloc_clamps_to_empty(void) {
     osprey_gpu_set(b, 0, 99); // ignored, not a wild store
     CHECK(osprey_gpu_get(b, 0) == 0);
   }
-  void *zero = osprey_gpu_alloc(0);
+  void *zero = osprey_gpu_alloc(0, 8);
   CHECK(zero != NULL && osprey_gpu_len(zero) == 0);
 }
 
 // An IN-range length whose data allocation fails (no machine has 2^63-aligned
 // bytes) still yields the empty buffer, never NULL-deref or a partial length.
 static void t_alloc_failure_is_empty(void) {
-  void *b = osprey_gpu_alloc(GPU_MAX_LEN);
+  void *b = osprey_gpu_alloc(GPU_MAX_LEN, 8);
   CHECK(b != NULL);
   CHECK(osprey_gpu_len(b) == 0);
   CHECK(osprey_gpu_in_bounds(b, 0) == 0);
@@ -103,7 +103,7 @@ static void t_null_safety(void) {
 // Full write/read round trip, and out-of-bounds stores land NOWHERE: after
 // poking every invalid index the whole payload is still byte-identical.
 static void t_set_get_roundtrip(void) {
-  void *b = osprey_gpu_alloc(ROUND_LEN);
+  void *b = osprey_gpu_alloc(ROUND_LEN, 8);
   CHECK(b != NULL && osprey_gpu_len(b) == ROUND_LEN);
   for (int64_t i = 0; i < ROUND_LEN; i++) {
     osprey_gpu_set(b, i, i * i - 3);
@@ -119,7 +119,7 @@ static void t_set_get_roundtrip(void) {
 
 // Extreme word values survive storage exactly (raw 8-byte words, no coercion).
 static void t_boundary_words(void) {
-  void *b = osprey_gpu_alloc(2);
+  void *b = osprey_gpu_alloc(2, 8);
   CHECK(b != NULL);
   osprey_gpu_set(b, 0, INT64_MIN);
   osprey_gpu_set(b, 1, INT64_MAX);
@@ -130,7 +130,7 @@ static void t_boundary_words(void) {
 // take publishes a compaction prefix: it only ever SHRINKS, the surviving
 // prefix is untouched, and the amputated tail becomes unaddressable.
 static void t_take_shrinks_only(void) {
-  void *b = osprey_gpu_alloc(10);
+  void *b = osprey_gpu_alloc(10, 8);
   CHECK(b != NULL);
   for (int64_t i = 0; i < 10; i++) {
     osprey_gpu_set(b, i, 100 + i);
@@ -166,7 +166,7 @@ static double at(void *b, int64_t i) {
 
 // A float buffer holding `xs` verbatim.
 static void *floats(const double *xs, int64_t n) {
-  void *b = osprey_gpu_alloc(n);
+  void *b = osprey_gpu_alloc(n, 8);
   CHECK(b != NULL && osprey_gpu_len(b) == n);
   for (int64_t i = 0; i < n; i++) {
     int64_t word;
@@ -216,9 +216,9 @@ static void t_matmul_zero_dimensions(void) {
   for (int64_t i = 0; i < 4; i++) {
     CHECK(at(inner0, i) == 0.0);
   }
-  void *rows0 = osprey_gpu_matmul(osprey_gpu_alloc(0), floats(two, 2), 0, 2, 1);
+  void *rows0 = osprey_gpu_matmul(osprey_gpu_alloc(0, 8), floats(two, 2), 0, 2, 1);
   CHECK(rows0 != NULL && osprey_gpu_len(rows0) == 0);
-  void *cols0 = osprey_gpu_matmul(floats(two, 2), osprey_gpu_alloc(0), 1, 2, 0);
+  void *cols0 = osprey_gpu_matmul(floats(two, 2), osprey_gpu_alloc(0, 8), 1, 2, 0);
   CHECK(cols0 != NULL && osprey_gpu_len(cols0) == 0);
 }
 
@@ -305,6 +305,20 @@ static void t_matmul_reaches_metal(void) {
 #if defined(OSPREY_GPU_BUFFER_SUITE)
 #define main osprey_gpu_buffer_tests
 #endif
+
+// [GPU-BUFFER-ELEM]: narrowing preserves low bits without touching neighbours.
+static void t_dense_word_roundtrip(void) {
+  int64_t values[] = {0, -1, INT64_MIN, INT64_MAX, 127};
+  for (int64_t width = 1; width <= 8; width *= 2) {
+    void *buffer = osprey_gpu_alloc(5, width);
+    uint64_t mask = width == 8 ? UINT64_MAX : (UINT64_C(1) << (width * 8)) - 1;
+    for (int64_t i = 0; i < 5; i++) osprey_gpu_set(buffer, i, values[i]);
+    for (int64_t i = 0; i < 5; i++) CHECK((uint64_t)osprey_gpu_get(buffer, i) == ((uint64_t)values[i] & mask));
+    CHECK(!osprey_gpu_in_bounds(buffer, 5));
+    CHECK(!osprey_gpu_in_bounds(buffer, -1));
+  }
+}
+
 int main(int argc, char **argv) {
 #if defined(__APPLE__)
   if (argc == 2 && strcmp(argv[1], "--metal") == 0) {
@@ -319,6 +333,7 @@ int main(int argc, char **argv) {
   (void)argc;
   (void)argv;
 #endif
+  t_dense_word_roundtrip();
   t_alloc_zero_filled();
   t_alloc_clamps_to_empty();
   t_alloc_failure_is_empty();

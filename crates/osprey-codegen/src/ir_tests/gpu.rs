@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn dense_buffer_allocations_follow_the_inferred_element_width() {
+    // [GPU-BUFFER-ELEM]: storage width is independent of the boxed list ABI.
+    for (ty, value, width) in [
+        ("uint8", "255", 1),
+        ("int8", "-128", 1),
+        ("bool", "true", 1),
+        ("int16", "-32768", 2),
+        ("uint16", "65535", 2),
+        ("float16", "1.5", 2),
+        ("int32", "-2147483648", 4),
+        ("uint32", "4294967295", 4),
+        ("float32", "1.5", 4),
+        ("int", "42", 8),
+        ("float", "1.5", 8),
+    ] {
+        let ir = module(&format!("let values: List<{ty}> = [{value}]\nlet buffer = toGpu(values)\nprint(fromGpu(buffer))\n"));
+        let call = ir
+            .lines()
+            .find(|line| line.contains("call i8* @osprey_gpu_alloc("))
+            .expect("allocation");
+        assert!(call.ends_with(&format!(", i64 {width})")), "{ty}: {call}");
+    }
+}
+
+#[test]
+fn boolean_device_inputs_and_captured_buffers_use_byte_storage() {
+    // [GPU-BUFFER-ELEM]: a word pointer would stride eight byte-sized booleans.
+    let ir = module("let values: List<bool> = [true, false]\nlet table = toGpu(values)\nlet mapped = gpuMap(table, fn(value) => value && (gpuGet(table, 0) ?: false))\nprint(fromGpu(mapped))\n");
+    shows(
+        &ir,
+        &["GPU_GLOBAL const bool *in0", "GPU_GLOBAL const bool *u0"],
+    );
+}
+
+#[test]
 fn foreign_intrinsics_keep_host_identity_and_refuse_device_emission() {
     let ir = module("extern fn abs(value: int) -> int\nlet answer = abs(-3)\n");
     shows(&ir, &["call i64 @abs(i64"]);

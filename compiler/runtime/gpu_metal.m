@@ -131,17 +131,17 @@ static bool bind_arguments(id<MTLComputeCommandEncoder> encoder, const OspreyGpu
 static void write_back(const OspreyGpuDispatch *d, id<MTLBuffer> __strong *buffers) {
   for (unsigned i = 0; i < d->count; i++) {
     if (d->args[i].kind == OSPREY_GPU_OUTPUT && d->args[i].out)
-      memcpy(d->args[i].out, buffers[i].contents, (size_t)(d->args[i].count * 8));
+      memcpy(d->args[i].out, buffers[i].contents, (size_t)(d->args[i].count * d->args[i].elem_bytes));
   }
 }
 
 // Every dispatch waits for completion under the lock, so a shared-storage
 // buffer's contents are the device's final words by the time they are read.
 // The caller is plain C with no autorelease pool, so the bridge gets its own.
-int osprey_gpu_metal_download(void *object, int64_t *out, uint64_t count) {
+int osprey_gpu_metal_download(void *object, void *out, uint64_t count) {
   (void)pthread_mutex_lock(&gpu_lock);
   @autoreleasepool {
-    memcpy(out, ((__bridge id<MTLBuffer>)object).contents, (size_t)(count * 8));
+    memcpy(out, ((__bridge id<MTLBuffer>)object).contents, (size_t)count);
   }
   (void)pthread_mutex_unlock(&gpu_lock);
   return 1;

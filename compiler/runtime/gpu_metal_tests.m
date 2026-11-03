@@ -81,11 +81,11 @@ id<MTLDevice> MTLCreateSystemDefaultDevice(void) {
 }
 
 static OspreyGpuDispatch product_of(const int64_t *in, int64_t *out, void **in_slot, void **out_slot) {
-  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL}}, 0, 1};
-  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, in_slot);
-  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, in_slot);
-  osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, out, out_slot ? NULL : out, 2, out_slot);
-  for (uint64_t i = 0; i < 3; i++) osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 1);
+  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL, 8}}, 0, 1};
+  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, 8, in_slot);
+  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, 8, in_slot);
+  osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, out, out_slot ? NULL : out, 2, 8, out_slot);
+  for (uint64_t i = 0; i < 3; i++) osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 1, 8);
   expected_threads = 1;
   return d;
 }
@@ -98,12 +98,12 @@ static int product(int64_t *out) {
 
 static int compiled(const char *source, int64_t *out, uint64_t threads) {
   int64_t in = 7, fault = 0;
-  OspreyGpuDispatch d = {"osprey_kernel_1", source, {{0, NULL, NULL, 0, NULL}}, 0, threads};
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 1);
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 0);
-  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 2);
-  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &fault, &fault, 1);
-  osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, threads);
+  OspreyGpuDispatch d = {"osprey_kernel_1", source, {{0, NULL, NULL, 0, NULL, 8}}, 0, threads};
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 1, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 0, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 2, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &fault, &fault, 1, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, threads, 8);
   expected_threads = (NSUInteger)threads;
   int status = osprey_gpu_metal_dispatch(&d);
   assert(status != 1 || fault == MOCK_MARK);
@@ -122,7 +122,7 @@ static void resident_case(void) {
     assert(osprey_gpu_metal_dispatch(&d) == 1 && in_slot && out_slot);
     assert(creations == before + (round ? 0 : 2) && out[0] == 99);
   }
-  assert(osprey_gpu_metal_download(out_slot, out, 2) == 1 && out[0] == MOCK_MARK && out[1] == 99);
+  assert(osprey_gpu_metal_download(out_slot, out, sizeof out) == 1 && out[0] == MOCK_MARK && out[1] == 99);
   unsigned before = deallocs;
   osprey_gpu_metal_release(in_slot);
   osprey_gpu_metal_release(out_slot);

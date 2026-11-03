@@ -6,6 +6,7 @@
 //! layout is the staging layout a device transfer will use; kernels reaching
 //! codegen are already proven pure by the effect checker [GPU-KERNEL-PURE].
 
+mod allocation;
 mod buffer;
 mod io;
 
@@ -33,17 +34,17 @@ pub(crate) fn is_scalar(ty: LType) -> bool {
     matches!(ty, LType::I64 | LType::F64 | LType::I1)
 }
 
-/// Whether `ty` boxes into a buffer's 8-byte word on the host: every numeric
+/// Whether `ty` uses the host accessors' raw-word ABI: every numeric
 /// ([TYPE-NUMERIC-WORD] — a sized integer sign- or zero-extended, a sized
 /// float its bit pattern zero-extended) and `bool`.
 fn is_word(ty: LType) -> bool {
     matches!(ty, LType::Num(_) | LType::I1)
 }
 
-/// Whether `v` is a bare scalar word — [`is_scalar`] with no `Result` wrapper,
+/// Whether `v` is a bare scalar word — [`is_word`] with no `Result` wrapper,
 /// which would travel as an erased pointer the flat ABI has no slot for.
 fn is_scalar_value(v: &Value) -> bool {
-    v.result_inner.is_none() && is_scalar(v.ty)
+    v.result_inner.is_none() && is_word(v.ty)
 }
 
 /// Owner-tag prefix marking a buffer whose element `LType` is known; the suffix
@@ -132,7 +133,7 @@ fn buffer_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
 /// A freshly allocated buffer of `len` elements, owned by the current region
 /// and tagged with its element's owner tag.
 fn buffer_alloc(cg: &mut Codegen, len: &str, owner: String) -> Value {
-    let raw = cg.call("i8*", "osprey_gpu_alloc", "i64", &[len]);
+    let raw = allocation::raw(cg, len, &owner);
     let v = Value::handle(raw, owner);
     crate::arc::own(cg, &v);
     v
@@ -162,8 +163,8 @@ fn elem_value(cg: &mut Codegen, raw: String, elem: Option<LType>) -> Value {
 }
 
 /// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer word is a numeric
-/// or `bool`, boxed to its raw `i64` word — the host path stores 8-byte words
-/// at every width ([TYPE-NUMERIC-WORD]). An unhandled `Result` gets its own
+/// or `bool`, boxed to its raw `i64` word; storage then narrows to the element
+/// width ([TYPE-NUMERIC-WORD]). An unhandled `Result` gets its own
 /// diagnostic, because the fix (handle it inside the kernel) differs from a
 /// non-scalar's.
 fn scalar_word(cg: &mut Codegen, v: Value, what: &str) -> Result<Value> {
@@ -237,19 +238,20 @@ fn map_into(
     launch: impl FnOnce(&mut Codegen, &Value) -> Result<String>,
     mut apply: impl FnMut(&mut Codegen, Value, &str) -> Result<Value>,
 ) -> Result<Value> {
-    let out = buffer_alloc(cg, len, GPU_OWNER.to_string());
-    let done = launch(cg, &out)?;
+    let pending = allocation::Pending::new(cg, len);
+    let out = &pending.value;
+    let done = launch(cg, out)?;
     let join = host_fallback(cg, &done);
     let mut mapped_ty = LType::I64;
     kernel_loop(cg, src, len, elem, |cg, arg, i| {
         let mapped = apply(cg, arg, i)?;
         mapped_ty = mapped.ty;
         let stored = scalar_word(cg, mapped, what)?;
-        buffer_set(cg, &out, i, &stored.operand);
+        buffer_set(cg, out, i, &stored.operand);
         Ok(())
     })?;
     rejoin(cg, &join);
-    Ok(out.with_owner(Some(elem_owner(Some(mapped_ty)))))
+    pending.finish(cg, Some(mapped_ty))
 }
 
 /// `(buffer, kernel)` — the preamble `gpuMap` and `gpuFilter` share: the source

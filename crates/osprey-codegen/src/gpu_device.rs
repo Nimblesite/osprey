@@ -79,14 +79,14 @@ impl Ty {
 #[derive(Clone, Debug)]
 pub(crate) enum Uniform {
     Scalar(Ty),
-    Buffer,
+    Buffer(Ty),
 }
 
 impl Uniform {
     fn kind(&self) -> char {
         match self {
             Uniform::Scalar(_) => 's',
-            Uniform::Buffer => 'b',
+            Uniform::Buffer(_) => 'b',
         }
     }
 }
@@ -245,7 +245,10 @@ fn uniform_of(value: &crate::llty::Value) -> Result<Uniform, String> {
                 .as_deref()
                 .is_some_and(crate::gpu::is_buffer_owner) =>
         {
-            Ok(Uniform::Buffer)
+            crate::gpu::tagged_elem(value)
+                .and_then(Ty::of)
+                .map(Uniform::Buffer)
+                .ok_or_else(|| "a captured buffer has no concrete element type".to_string())
         }
         None => Err(format!(
             "a {} capture has no device representation",
@@ -276,12 +279,24 @@ fn install(cg: &mut Codegen, body: &DeviceBody, shape: Shape) -> DeviceKernel {
 
 /// The fixed leading parameters every entry point takes, which the runtime
 /// binds first: the element buffers, the result, the fault word, the count.
-const FIXED_PARAMETERS: &str = "GPU_GLOBAL const ulong *in0 GPU_BUFFER(0), GPU_GLOBAL const ulong *in1 GPU_BUFFER(1), \
-GPU_GLOBAL ulong *out GPU_BUFFER(2), GPU_GLOBAL ulong *fault GPU_BUFFER(3), GPU_PARAM count GPU_BUFFER(4)";
+fn fixed_parameters(body: &DeviceBody, shape: Shape) -> String {
+    let offset = usize::from(shape == Shape::Fold);
+    let input = |index| {
+        body.params
+            .get(index + offset)
+            .copied()
+            .unwrap_or(Ty::INT)
+            .spelling()
+    };
+    let output = body.result_ty.spelling();
+    format!("GPU_GLOBAL const {} *in0 GPU_BUFFER(0), GPU_GLOBAL const {} *in1 GPU_BUFFER(1), \
+GPU_GLOBAL {output} *out GPU_BUFFER(2), GPU_GLOBAL ulong *fault GPU_BUFFER(3), GPU_PARAM count GPU_BUFFER(4)", input(0), input(1))
+}
 
 fn entry(name: &str, body: &DeviceBody, shape: Shape) -> String {
     let mut text = format!(
-        "kernel void {name}({FIXED_PARAMETERS}{} GPU_THREAD) {{\n",
+        "kernel void {name}({}{} GPU_THREAD) {{\n",
+        fixed_parameters(body, shape),
         uniform_parameters(body)
     );
     text.push_str(&uniform_bindings(body));
@@ -302,10 +317,10 @@ fn uniform_parameters(body: &DeviceBody) -> String {
                 let _ = write!(text, ", GPU_PARAM u{i} GPU_BUFFER({index})");
                 index += 1;
             }
-            Uniform::Buffer => {
+            Uniform::Buffer(ty) => {
                 let _ = write!(
                     text,
-                    ", GPU_GLOBAL const ulong *u{i} GPU_BUFFER({index}), GPU_PARAM u{i}_len GPU_BUFFER({})",
+                    ", GPU_GLOBAL const {} *u{i} GPU_BUFFER({index}), GPU_PARAM u{i}_len GPU_BUFFER({})", ty.spelling(),
                     index + 1
                 );
                 index += 2;
@@ -327,7 +342,7 @@ fn uniform_bindings(body: &DeviceBody) -> String {
                 ty.spelling(),
                 ty.value_of(&format!("u{i}"))
             )),
-            Uniform::Buffer => None,
+            Uniform::Buffer(_) => None,
         })
         .collect()
 }

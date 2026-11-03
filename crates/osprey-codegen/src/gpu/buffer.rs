@@ -6,8 +6,8 @@
 //! parent module.
 
 use super::{
-    buffer_alloc, buffer_arg, buffer_get, buffer_len, buffer_set, elem_owner, owner_of,
-    scalar_word, tagged_elem, GPU_OWNER,
+    buffer_alloc, buffer_arg, buffer_get, buffer_len, buffer_set, elem_owner, scalar_word,
+    tagged_elem,
 };
 use crate::builder::Codegen;
 use crate::error::Result;
@@ -40,7 +40,8 @@ fn buffer_literal(
     elements: &[Expr],
     position: Option<osprey_ast::Position>,
 ) -> Result<Value> {
-    let out = buffer_alloc(cg, &elements.len().to_string(), GPU_OWNER.to_string());
+    let pending = super::allocation::Pending::new(cg, &elements.len().to_string());
+    let out = &pending.value;
     let mut elem = crate::listlit::inferred_elem(cg, position);
     // A literal element still spelled at its default type is fitted to the
     // published width before boxing ([TYPE-NUMERIC-WORD]).
@@ -50,9 +51,12 @@ fn buffer_literal(
         let v = crate::conv::fit_literal(cg, v, sized)?;
         elem = elem.or_else(|| Some(crate::llty::scalar_spelling(v.ty).to_string()));
         let word = scalar_word(cg, v, "a GPU buffer literal element")?;
-        buffer_set(cg, &out, &i.to_string(), &word.operand);
+        buffer_set(cg, out, &i.to_string(), &word.operand);
     }
-    Ok(out.with_owner(Some(owner_of(elem.as_deref()))))
+    let elem = elem
+        .as_deref()
+        .map(|tag| crate::llty::elem_of_spelling(tag).0);
+    pending.finish(cg, elem)
 }
 
 /// The compaction counter shared by `gpuFilter` and iterator fusion: a stack
@@ -98,18 +102,19 @@ fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
     let stages = crate::iter::stages_of(cg, range);
     let (start, end) = crate::iter::bounds(cg, range);
     let span = span_of(cg, &start, &end);
-    let out = buffer_alloc(cg, &span, GPU_OWNER.to_string());
+    let pending = super::allocation::Pending::new(cg, &span);
+    let out = &pending.value;
     let kept = kept_counter(cg);
     let lp = open_range_loop(cg, &start, &end);
     crate::arc::push_frame(cg, crate::arc::FrameKind::Scope);
     let v = crate::iter::replay(cg, &stages, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
     let elem = v.ty;
     let word = scalar_word(cg, v, "a toGpu element")?;
-    push_kept(cg, &out, &kept, &word.operand);
+    push_kept(cg, out, &kept, &word.operand);
     crate::arc::pop_frame(cg);
     close_range_loop(cg, &lp);
-    take_kept(cg, &out, &kept);
-    Ok(out.with_owner(Some(elem_owner(Some(elem)))))
+    take_kept(cg, out, &kept);
+    pending.finish(cg, Some(elem))
 }
 
 /// The element count of `[start, end)`. An inverted range yields no elements,
@@ -153,7 +158,10 @@ pub(super) fn from_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let len = buffer_len(cg, &b);
     let lp = open_range_loop(cg, "0", &len);
     let elem = buffer_get(cg, &b, &lp.i);
-    crate::collections::list_builder_push(cg, &bld, &elem, "0");
+    // [GPU-BUFFER-TO-LIST]: signed narrow words regain canonical sign extension.
+    let value = super::elem_value(cg, elem, tagged_elem(&b));
+    let word = scalar_word(cg, value, "a fromGpu element")?;
+    crate::collections::list_builder_push(cg, &bld, &word.operand, "0");
     close_range_loop(cg, &lp);
     // The buffer's element type crosses to the list's owner tag: a float buffer
     // materializes as a `List<float>` that reads back as floats, not as the

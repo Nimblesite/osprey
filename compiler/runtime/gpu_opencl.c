@@ -263,7 +263,7 @@ static int read_back(const OspreyGpuDispatch *d, void **buffers) {
   for (unsigned i = 0; i < d->count; i++) {
     const OspreyGpuArg *arg = &d->args[i];
     if (arg->kind != OSPREY_GPU_OUTPUT || !arg->count || !arg->out) continue;
-    int status = cl.read(cl_queue, buffers[i], 1, 0, (size_t)(arg->count * 8), arg->out, 0, NULL, NULL);
+    int status = cl.read(cl_queue, buffers[i], 1, 0, (size_t)(arg->count * arg->elem_bytes), arg->out, 0, NULL, NULL);
     if (status) return failed("GPU completion/readback", status);
   }
   return 0;
@@ -291,9 +291,9 @@ static int dispatch_locked(const OspreyGpuDispatch *d) {
   return kernel ? dispatch(kernel, d) : -1;
 }
 
-int osprey_gpu_opencl_download(void *object, int64_t *out, uint64_t count) {
+int osprey_gpu_opencl_download(void *object, void *out, uint64_t count) {
   (void)pthread_mutex_lock(&cl_lock);
-  int status = cl.read ? cl.read(cl_queue, object, 1, 0, (size_t)(count * 8), out, 0, NULL, NULL) : -1;
+  int status = cl.read ? cl.read(cl_queue, object, 1, 0, (size_t)count, out, 0, NULL, NULL) : -1;
   if (status) {
     (void)failed("GPU readback", status);
     osp_io_error_text("gpu", cl_name[0] ? cl_name : "OpenCL", cl_failure);

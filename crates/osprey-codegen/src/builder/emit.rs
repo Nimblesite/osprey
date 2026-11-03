@@ -3,6 +3,30 @@ use super::{escape_c_string, Codegen, DebugState, LType, Value, FRAME_POINTER_AT
 use std::fmt::Write as _;
 
 impl Codegen {
+    /// SSA identity survives hoisted allocas; a line index does not.
+    pub(crate) fn fix_instruction(
+        &mut self,
+        register: &str,
+        before: &str,
+        after: &str,
+    ) -> crate::error::Result<()> {
+        let prefix = format!("  {register} = ");
+        let line = self
+            .cur_lines
+            .iter_mut()
+            .find(|line| line.starts_with(&prefix))
+            .ok_or_else(|| {
+                crate::error::CodegenError::invalid("instruction fixup is outside its function")
+            })?;
+        if !line.contains(before) {
+            return Err(crate::error::CodegenError::invalid(
+                "instruction fixup does not match its allocation",
+            ));
+        }
+        *line = line.replacen(before, after, 1);
+        Ok(())
+    }
+
     // ---- SSA + block naming (function-local) ----
 
     pub(crate) fn fresh_reg(&mut self) -> String {
