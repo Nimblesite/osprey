@@ -138,7 +138,6 @@ fn join_params(name: &str, docs: &[ParamDoc], types: &[Type]) -> Vec<BuiltinPara
         .map(|(i, p)| BuiltinParam {
             name: p.name.to_string(),
             ty: crate::builtin_constraints::display_param_type(name, i)
-                .map(str::to_string)
                 .or_else(|| types.get(i).map(Type::to_string))
                 .unwrap_or_default(),
             description: p.description.to_string(),
