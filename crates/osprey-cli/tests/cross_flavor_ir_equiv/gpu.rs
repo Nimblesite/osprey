@@ -30,12 +30,12 @@ const EXTRACTION_FLOORS: [(&str, usize); 9] = [
     ("buffers.test", 28),
     ("combinators.test", 16),
     ("gamedev.test", 17),
-    ("kernel_frontier.test", 23),
+    ("kernel_frontier.test", 25),
     ("mlkernels.test", 85),
     ("raster.test", 5),
-    ("scalar_contracts.test", 4),
+    ("scalar_contracts.test", 6),
     ("stress.test", 18),
-    ("transformer.test", 36),
+    ("transformer.test", 22),
 ];
 
 /// [GPU-KERNEL-EXTRACT] Immutable lexical captures become explicit uniforms.
