@@ -1,6 +1,6 @@
 # Plan 0048 — Runtime memory safety and failure handling
 
-Evidence: [worst three bugs](../reports/worst-three-bugs-2026-11-03.md), [Kimi review](../reports/adversarial-review-v0.28.2-kimi.md), [GLM review](../reports/adversarial-review-v0.28.2-glm.md).
+Evidence: [the review](../reviews/review.md).
 Specs: [0014 HTTP](../specs/runtime/0014-HTTP.md), [0015 WebSockets](../specs/runtime/0015-WebSockets.md), [0011 Fibers](../specs/language/0011-LightweightFibersAndConcurrency.md), [0019 FFI](../specs/compiler/0019-ForeignFunctionInterface.md).
 
 ## Goal

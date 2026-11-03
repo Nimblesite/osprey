@@ -127,7 +127,7 @@ Each phase ends with its gate met, its tests in the suite, its spec IDs written,
 - [ ] Free disk. There is **17 GB free** at 99% full and two GGUFs won't fit. Needs 60 GB; `target` (10 GB) and `hosts/gpui/target` (14 GB) are shared with other agents, so coordinate through Too Many Cooks first.
 - [ ] `apps/llm/eval/`: 30 coding tasks with deterministic pass/fail scripts, drawn from this repo's closed bugs and small features, plus 200 tool-call cases covering nested objects, multi-line strings, enums and error recovery over 15+ turns.
 - [ ] Run them on real Ollama with the unmodified GGUFs: `UD-Q4_K_XL`, `UD-Q5_K_M` and `UD-IQ3_XXS`, and at temperature 1.0 against 0.6.
-- [ ] Record pass rate, tool-call validity, tokens per second, prompt processing rate and peak RSS in `docs/reports/`.
+- [ ] Record pass rate, tool-call validity, tokens per second, prompt processing rate and peak RSS in `docs/reviews/review.md`.
 
 **Gate [LLM-BASELINE]:** the model passes enough of the tasks to be worth porting, and the report fixes the default quant and sampling. If 3.8 fails here, run 3.6. If both fail, stop: no port can beat its own weights.
 

@@ -5,4 +5,4 @@
 - [Active plans](plans/README.md): delivery status and remaining work.
 - [Language guides](../website/src/docs/index.md): using Osprey.
 - [Release process](RELEASING.md): building and publishing releases.
-- [Historical reviews](reviews/): findings against the revisions named in each review.
+- [Review](reviews/review.md): regressions by commit and system issues not logged on GitHub.

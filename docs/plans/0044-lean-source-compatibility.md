@@ -52,7 +52,7 @@ Exit: the lesson suite and both host smoke tests pass on the rewritten lessons.
 
 ## Phase 4 — native stage
 
-One component at a time, each behind a switch that is off until the corpus is identical: the exporter, then the unifier, then type-class search, then individual tactics. A component that differs anywhere on corpora 1, 2 or Mathlib stays off. Record each switch-on with its corpus receipt in `docs/reports/`.
+One component at a time, each behind a switch that is off until the corpus is identical: the exporter, then the unifier, then type-class search, then individual tactics. A component that differs anywhere on corpora 1, 2 or Mathlib stays off. Record each switch-on with its corpus receipt in `docs/reviews/review.md`.
 
 ## What this plan never does
 

@@ -5,7 +5,7 @@
 Giant leaps - not baby steps
 Violent refactoring
 
-Contracts: [spec 0050](../specs/language/0050-TypeDisciplines.md) for the pluggable discipline seam and [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) for the `lean4` discipline, `.lean` source and Mathlib. Source compatibility (the stages, the deletions) is [plan 0044](0044-lean-source-compatibility.md) and runs before any further phase here. Status: **M0, M1 (a `Prop`/`→` theorem from a recorded Lean export) implemented and gated by `make _test_proof_kernel`; M2 (the `.ospml` proof surface) is deleted under plan 0044; M3 recorded And/Eq/Iff export checks; broader inductive verification remains unfinished; phase 1 implemented except the two open boxes below.** The road test (M0 to M3) is the first work; it needed one resolver change (positional constructors across files) and one codegen change (recursive `Result` returns). The adversarial reviews [1](../reviews/0041-dependent-types-and-mathlib-review.md), [2](../reviews/0041-dependent-types-and-mathlib-review-2.md) and [3](../reviews/0041-dependent-types-and-mathlib-review-3.md) are each answered item by item at their foot. Stabilization mode holds for the phases after it: none begins without the owner's go.
+Contracts: [spec 0050](../specs/language/0050-TypeDisciplines.md) for the pluggable discipline seam and [spec 0049](../specs/language/0049-DependentTypesAndProofs.md) for the `lean4` discipline, `.lean` source and Mathlib. Source compatibility (the stages, the deletions) is [plan 0044](0044-lean-source-compatibility.md) and runs before any further phase here. Status: **M0, M1 (a `Prop`/`→` theorem from a recorded Lean export) implemented and gated by `make _test_proof_kernel`; M2 (the `.ospml` proof surface) is deleted under plan 0044; M3 recorded And/Eq/Iff export checks; broader inductive verification remains unfinished; phase 1 implemented except the two open boxes below.** The road test (M0 to M3) is the first work; it needed one resolver change (positional constructors across files) and one codegen change (recursive `Result` returns). The adversarial reviews are consolidated in [the review](../reviews/review.md#proof-kernel-and-plan-0041). Stabilization mode holds for the phases after it: none begins without the owner's go.
 
 ## Summary
 
@@ -31,7 +31,7 @@ Implement [PROOF-RUNNABLE-LIBRARY] before broad source translation. The immediat
 Verified on 2026-10-29: the real `Nat.add_comm` export checks from an empty Osprey environment. Its statement matches universal addition commutativity structurally, and the recorded closure contains zero axioms. The expanded suite passes all 164 cases under GC, ARC and wasm32, including projection, literal, annotation and adversarial recursor controls. The canonical example now also checks `Nat.add_comm` and rejects its corrupted proof; its original thirteen output lines remain unchanged. `make BIN=target/ci/osprey _test_proof_kernel` and the existing proof speed gates pass. These controls do not mark the Mathlib port or VSIX visual acceptance complete.
 
 - [x] Recorded And/Eq/Iff export accepted; every modified inductive claim refused, with positive and negative recursor reduction tests.
-- [x] Real `Nat.add_comm` dependency export checked from an empty Osprey environment; its statement compared structurally against the intended universal equality and its axiom dependencies recorded ([execution evidence](../reports/proof-m3-export-shape-2026-10-29.md#common-arithmetic-proof-execution)).
+- [x] Real `Nat.add_comm` dependency export checked from an empty Osprey environment; its statement compared structurally against the intended universal equality and its axiom dependencies recorded ([execution evidence](../reviews/review.md#export-shape-and-nat-add-comm)).
 - [x] A changed arithmetic statement or corrupted proof rejected by the same checker; no declaration skipped, assumed or replaced with a toy implementation.
 - [x] Exact runnable command and expected checked/rejected output documented under AGENTS.md Commands; GC, ARC and wasm32 evidence retained with pinned input/tool versions.
 - [ ] Move to a selected Mathlib theorem using the same dependency-driven workflow. (The speed gate is deleted by plan 0044; exports are no longer added to it.)
@@ -70,7 +70,7 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [x] `examples/proof/kernel/expectedoutput` and `make _test_proof_kernel` (in `make test`) running the kernel under GC, ARC and wasm32
 - [x] `benchmarks/proof/run.sh` and `m0_identity` — **deleted by plan 0044 phase 0**: the two sides did different work, and no timing gates CI any more ([PROOF-SPEED])
 - [x] Lean (elan) installed in CI (`test-proof` job, toolchain pinned); the benchmark run is removed from that job by plan 0044
-- [x] `docs/reports/proof-road-test-2026-10-29.md`: lines, hours, language gaps
+- [x] `docs/reviews/review.md`: lines, hours, language gaps
 - [x] Compiler: a recursive function returning `Result<T, _>` no longer needs a written signature (`abi_shape_concrete` at the return slot); an open success payload still does
 - [x] Review P0.1: `Terms::equal` is structural (indices, every universe argument), never printed; repeated-binder and universe-argument rejections in `tests/terms.ospml` and `tests/infer.ospml`
 - [x] Review P0.2: universe parameters instantiated at every constant use and unfold; arity and scope checked; `Levels::equal` structural on normal forms
@@ -83,7 +83,7 @@ Ticked as the work lands on `feat/type-disciplines`; a box is ticked only when i
 - [x] Mutated exports (`tests/export_mutations.ospml`, 29 cases): every single-edit corruption of the recorded export is rejected, asserted on the rejection's kind, the statement as read and the proof's inferred type compared by `Terms::equal` with hand-built terms (`tests/shapes.ospml`), never on a rendering of Lean's hygienic names
 - [x] Every declaration of an export goes through `Infer::sort`/`Infer::check` before `Environment::add` (`Checked::exported` in `src/checked.ospml`, shared by the example and the benchmark entry)
 - [x] `id_imp` from a Lean export checks; the wrong proof is rejected with the kernel's mismatch (last two lines of `expectedoutput`)
-- [x] Fixture regenerated by a recorded Lean and `lean4export` version: `scripts/proof-export.sh` builds `benchmarks/proof/tools` (Lean 4.25.0, `lean4export` and `lean4checker` at their `v4.25.0` tags) and records `examples/proof/kernel/exports/id_imp.ndjson` (sha256 `2adb6bc5…8330d`); `Fixtures::idImp` is that text byte for byte and `idImpBad` is one documented edit of it ([report](../reports/proof-export-fixture-2026-10-29.md))
+- [x] Fixture regenerated by a recorded Lean and `lean4export` version: `scripts/proof-export.sh` builds `benchmarks/proof/tools` (Lean 4.25.0, `lean4export` and `lean4checker` at their `v4.25.0` tags) and records `examples/proof/kernel/exports/id_imp.ndjson` (sha256 `2adb6bc5…8330d`); `Fixtures::idImp` is that text byte for byte and `idImpBad` is one documented edit of it ([report](../reviews/review.md#recorded-proof-evidence))
 - [x] `m1_export` benchmark input: `benchmarks/proof/m1_export` reads the recorded export from disk on the Osprey side and replays the same module through `lean4checker` on the Lean side; `lean.setup` re-exports the module every run and byte-compares it with the case's copy
 - [x] `m1_export` recorded, 2026-10-29, `PROOF_RUNS=10`, Lean 4.25.0 on arm64 macOS: Osprey 3 ms / 2256 KiB against `lean4checker` 433 ms / 52576 KiB, pass (`osprey_input` `2ab95a53…e053`, `lean_input` `637f6d7d…246d`, `osprey_binary` `748e523c…f7adf0`, `lean_binary` `be06b289…f9201`). Generated rows live in `target/proof/` and are not committed; this line is the record
 
@@ -157,7 +157,7 @@ The proof CI entry point is now `make -j3 _test_proof_ci`, defined in [proof.mk]
 
 ## Road test first: the first proof
 
-The plan is ordered so that a proof checks on an Osprey-written kernel before any compiler, standard-library or syntax work starts. Each milestone answers one question about how hard this is going to be, and records the answer in `docs/reports/proof-road-test-<date>.md`: lines of Osprey written, hours taken, and every language or library gap that hurt.
+The plan is ordered so that a proof checks on an Osprey-written kernel before any compiler, standard-library or syntax work starts. Each milestone answers one question about how hard this is going to be, and records the answer in `docs/reviews/review.md`: lines of Osprey written, hours taken, and every language or library gap that hurt.
 
 ### M0 — a proof checks (days, not weeks)
 
@@ -223,7 +223,7 @@ Exit: both reference packages green; byte-identical output and diagnostics for e
 4. `tests/proof/adversarial/` seeded with the pinned issue 14576 proof of concept and other independently verified published cases; the collision test; the overflow test. Record the primary report and affected/fixed checker revision for each case.
 5. Cross-check against `lean4lean` and `nanoda` at current release on the same export.
 
-Gates, in order: Lean's core library checks; `Std` checks; the full pinned Mathlib export checks, cross-checked, with the first `docs/reports/proof-trust-<date>.md`. Timings are recorded by hand and gate nothing ([PROOF-SPEED]).
+Gates, in order: Lean's core library checks; `Std` checks; the full pinned Mathlib export checks, cross-checked, with the first `docs/reviews/review.md`. Timings are recorded by hand and gate nothing ([PROOF-SPEED]).
 
 ### Phase 3 — `.lean` source [PROOF-SOURCE], [PROOF-ELAB]
 
@@ -265,14 +265,14 @@ Bulk, mechanical work goes to pi under the AGENTS.md rules: the `lean4export` pa
 
 ## Results first
 
-Every public claim about trust, speed or automation is a link to a dated report in `docs/reports/` ([PROOF-TRUST], [PROOF-TACTICS-BENCH]). Lean supplies the development oracle for the compatible discipline; Osprey independently checks the evidence and rejects known unsound certificates. Reports track implemented capabilities, exact library coverage, assumptions, retained failures and independent-operation milestones. Performance comparisons are engineering checks rather than competitive positioning. The bridge stays two-way while that happens ([PROOF-MATHLIB-UPSTREAM]).
+Every public claim about trust, speed or automation is a link to a dated entry in `docs/reviews/review.md` ([PROOF-TRUST], [PROOF-TACTICS-BENCH]). Lean supplies the development oracle for the compatible discipline; Osprey independently checks the evidence and rejects known unsound certificates. Reports track implemented capabilities, exact library coverage, assumptions, retained failures and independent-operation milestones. Performance comparisons are engineering checks rather than competitive positioning. The bridge stays two-way while that happens ([PROOF-MATHLIB-UPSTREAM]).
 
 ## What this plan never does
 
 - Change `Type`, unification, effect rows or monomorphisation in `crates/osprey-types`.
 - Put a discipline name, a theory or a tactic in `crates/`.
 - Trust a tactic, a solver, a model or a hash.
-- Make a trust, capability or performance claim without its dated evidence in `docs/reports/`.
+- Make a trust, capability or performance claim without its dated evidence in `docs/reviews/review.md`.
 - Gate CI on a timing, or claim to be faster than Lean.
 - Read, write or describe any proof format but `.lean` ([PROOF-SOURCE-DELETED]).
 

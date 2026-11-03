@@ -31,7 +31,7 @@ A box is ticked only when its test exists in `apps/workbench/tests/`.
 - [ ] Browser: `hosts/web/`, wasm32 page, Unavailable until plan 0044 phase 2; headless smoke test
 - [ ] macOS and iPadOS: `hosts/apple/` SwiftUI host, toolchain bundled on macOS; simulator smoke test
 - [ ] ❓ Decide: `what-is-a-solver` has no prove challenge, which [LESSONS-CURRICULUM] requires unless noted — add one or note the exception in 0052's table
-- [ ] Road test recorded in `docs/reports/`: a newcomer writes and checks `and_swap` in a fresh `.lean` file in under ten minutes
+- [ ] Road test recorded in `docs/reviews/review.md`: a newcomer writes and checks `and_swap` in a fresh `.lean` file in under ten minutes
 
 ## Phase 1 — the `.lean` document [WORKBENCH-DOCUMENT] [WORKBENCH-CHECK] [WORKBENCH-VERDICT] [WORKBENCH-STORE] [WORKBENCH-REGIONS]
 
@@ -54,7 +54,7 @@ The bundled-library flow stands: `assets/proof-libraries.json` lists the pinned 
 2. **Browser.** The same renderer as a page under `hosts/web/`; never a second implementation.
 3. **macOS and iPadOS.** The SwiftUI host under `hosts/apple/` with a `Math` layout view; the toolchain bundled in the macOS app.
 
-Exit per host: the smoke test passes in CI where the platform is available; the screenshot beside a printed page is in `docs/reports/`; the production VSIX matches the surviving reference screens pixel for pixel at identical viewport and state.
+Exit per host: the smoke test passes in CI where the platform is available; the screenshot beside a printed page is in `docs/reviews/review.md`; the production VSIX matches the surviving reference screens pixel for pixel at identical viewport and state.
 
 ## Later
 
