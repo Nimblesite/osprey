@@ -65,6 +65,8 @@ both u1 u2 = scope
     "${await a} and ${await b}"
 ```
 
+Scope ownership also reclaims the memory of a scope's fiber and channel handles when the scope exits. This is not implemented yet.
+
 ### Requesting cancellation — [CANCEL-REQUEST]
 
 `cancel(fiber: Fiber<T>) -> Unit` requests cancellation of one fiber and,

@@ -20,7 +20,7 @@ Contract: [0036-StructuredConcurrency](../specs/language/0036-StructuredConcurre
 ## Phase 1 — Scopes [CANCEL-SCOPE]
 
 - [ ] Add `scope` keyword and `scope_expression` to `tree-sitter-osprey/grammar.js` and `tree-sitter-osprey-ml/grammar.js`; lower both flavors to one `Expr::Scope` in `crates/osprey-syntax/src/default/expr.rs` and `crates/osprey-syntax/src/ml/`; add `Expr::Scope` to `enum Expr` in `crates/osprey-ast/src/lib.rs`. Check: `cargo test -p osprey-syntax` parses `scope { ... }` in both flavors to `Expr::Scope`.
-- [ ] Scope registry in `compiler/runtime/fiber_runtime.c`: `spawn` attaches to the innermost scope, normal exit waits for children, and the implicit root scope wraps program entry. Check: `crates/run_test_corpus.sh gc` and `arc` reproduce every existing golden byte-for-byte.
+- [ ] Scope registry in `compiler/runtime/fiber_runtime.c`: `spawn` attaches to the innermost scope, normal exit waits for children, scope exit reclaims its fiber and channel handle memory, and the implicit root scope wraps program entry. Check: `crates/run_test_corpus.sh gc` and `arc` reproduce every existing golden byte-for-byte.
 
 ## Phase 2 — Cancellation core [CANCEL-REQUEST] [CANCEL-POINTS] [CANCEL-DELIVERY] [CANCEL-JOIN]
 
