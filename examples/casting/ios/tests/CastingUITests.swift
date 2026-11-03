@@ -28,6 +28,50 @@ final class CastingUITests: XCTestCase {
         XCTAssertFalse(open.isHittable, "The native document picker must cover the player")
     }
 
+    // The shared scene names a picker's choice on the control itself. A canvas announces its
+    // choices as menu items, which iOS exposes without a button trait, so resolve a choice by
+    // the exact label the scene announces rather than by one element type.
+    @MainActor
+    private func labeled(_ app: XCUIApplication, _ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    // [CAST-MOBILE-SKIN-PERSISTENCE] A chosen skin is announced as the selected choice.
+    @MainActor
+    private func assertSelected(_ app: XCUIApplication, _ label: String, _ message: String,
+                                file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(labeled(app, label).waitForExistence(timeout: 5), message, file: file, line: line)
+        XCTAssertTrue(labeled(app, label).isSelected, message, file: file, line: line)
+    }
+
+    // [CAST-MOBILE-RECEIVER-IDENTITY] Equal display names are chosen by endpoint.
+    private func nativeReceivers() throws -> (available: String, unavailable: String, host: String) {
+        let host = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_NATIVE_HOST"],
+                                 "Use the native test entry point to publish the receiver fixture")
+        let port = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_NATIVE_PORT"])
+        return ("Osprey native test receiver (\(host):\(port))",
+                "Osprey native test receiver (\(host):1)", host)
+    }
+
+    // The Sherbet canvas announces the chosen endpoint in its popup's label.
+    @MainActor
+    private func receiverPopup(_ app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label != %@",
+                                         "Receiver: ", "Receiver: none")).firstMatch
+    }
+
+    @MainActor
+    private func selectReceiver(_ app: XCUIApplication, _ label: String) {
+        let popup = receiverPopup(app)
+        XCTAssertTrue(popup.waitForExistence(timeout: 10), app.debugDescription)
+        popup.tap()
+        let choice = labeled(app, label)
+        XCTAssertTrue(choice.waitForExistence(timeout: 10), app.debugDescription)
+        choice.tap()
+        XCTAssertTrue(app.buttons["Receiver: \(label)"].waitForExistence(timeout: 10),
+                      "The selected receiver must be announced: \(app.debugDescription)")
+    }
+
     @MainActor
     func testNativeAppearanceSurvivesProcessRestart() {
         // [CAST-MOBILE-SKIN-PERSISTENCE] A new process must read the saved choice.
@@ -78,27 +122,25 @@ final class CastingUITests: XCTestCase {
 
     @MainActor
     func testNativeBonjourDiscoveryAndRescan() throws {
+        // [CAST-MOBILE-NATIVE-DISCOVERY] Real Bonjour, with equal names kept apart by endpoint.
         let app = castingApp()
         defer { app.terminate() }
-        app.launchArguments = ["--skin", "midnight"]
-        app.launchEnvironment["CAST_TEST_AUDIO"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
-        let host = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_NATIVE_HOST"])
-        let port = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_NATIVE_PORT"])
-        let receiver = "Osprey native test receiver (\(host):\(port))"
+        let receivers = try nativeReceivers()
+        let audio = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO_PATH"],
+                                  "Use the native test entry point to stage the imported audio")
+        app.launchArguments = ["--skin", "midnight", "--open", audio]
         app.launch()
-        XCTAssertTrue(app.buttons["Receiver"].waitForExistence(timeout: 15), app.debugDescription)
-        app.buttons["Receiver"].tap()
-        XCTAssertTrue(app.buttons[receiver].waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertTrue(app.buttons["Osprey native test receiver (\(host):1)"].exists, app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Receiver"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons[receivers.available].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.buttons[receivers.unavailable].exists, app.debugDescription)
         XCTAssertFalse(app.buttons["Test receiver"].exists, "Native discovery must not use the injected transcript")
-        app.buttons[receiver].tap()
-        XCTAssertEqual(app.buttons["Receiver"].value as? String, receiver, "The selected receiver must be announced")
+        app.buttons[receivers.available].tap()
+        XCTAssertTrue(app.buttons[receivers.available].isSelected, "The selected receiver must be announced")
         app.buttons["Search again"].tap()
-        XCTAssertTrue(app.buttons["Receiver"].waitForExistence(timeout: 10))
-        app.buttons["Receiver"].tap()
-        XCTAssertTrue(app.buttons[receiver].waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertEqual(app.buttons["Receiver"].value as? String, receiver, "Rescanning must retain and announce the selected endpoint")
-        app.buttons[receiver].tap()
+        XCTAssertTrue(app.staticTexts["Receiver"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons[receivers.available].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.buttons[receivers.available].isSelected, "Rescanning must retain and announce the selected endpoint")
+        app.buttons[receivers.available].tap()
         app.buttons["Play"].tap()
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
         app.buttons["Stop"].tap()
@@ -123,22 +165,31 @@ final class CastingUITests: XCTestCase {
     }
 
     @MainActor
+    private func attach(_ app: XCUIApplication, _ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    @MainActor
     func testNativeLaunchDocumentCancellationAndRecovery() throws {
+        // [CAST-DESIGN-STATE] The native picker opens, cancels, imports and reopens a real MP3.
         let app = castingApp()
         app.launchArguments = ["--skin", "sherbet"]
         defer { app.terminate() }
-        app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"], "Use the native test entry point to start the receiver fixture")
-        let audio = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
+        let receivers = try nativeReceivers()
+        let audio = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO_PATH"],
+                                  "Use the native test entry point to stage the imported audio")
         app.launch()
         let open = app.buttons["Open file…"]
         XCTAssertTrue(open.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(app.buttons["Play"].exists)
-        XCTAssertTrue(app.buttons["Receiver: Test receiver"].waitForExistence(timeout: 10))
-        touchRegions([app.buttons["Play"], open, app.buttons["Receiver: Test receiver"], app.buttons["Appearance"]])
-        let initial = XCTAttachment(screenshot: app.screenshot())
-        initial.name = "casting-ios-ready"
-        initial.lifetime = .keepAlways
-        add(initial)
+        selectReceiver(app, receivers.available)
+        // Preserve the original appearance target contract; the shared Sherbet scene
+        // does not currently offer it, so this journey must remain red rather than omit it.
+        touchRegions([app.buttons["Play"], open, app.buttons["Receiver: \(receivers.available)"], app.buttons["Appearance"]])
+        attach(app, "casting-ios-ready")
         open.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
         let cancel = app.buttons["Cancel"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 10), app.debugDescription)
@@ -152,11 +203,9 @@ final class CastingUITests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["Receiver: Test receiver"].waitForExistence(timeout: 10))
-        let restarted = XCTAttachment(screenshot: app.screenshot())
-        restarted.name = "casting-ios-restarted"
-        restarted.lifetime = .keepAlways
-        add(restarted)
+        XCTAssertTrue(receiverPopup(app).waitForExistence(timeout: 10), app.debugDescription)
+        selectReceiver(app, receivers.available)
+        attach(app, "casting-ios-restarted")
         open.tap()
         XCTAssertTrue(cancel.waitForExistence(timeout: 10))
         app.buttons["Browse"].tap()
@@ -178,10 +227,11 @@ final class CastingUITests: XCTestCase {
         app.buttons["Stop"].tap()
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
         app.terminate()
-        app.launchEnvironment["CAST_TEST_AUDIO"] = audio
-        app.launchArguments = ["--capture-envelope", "--skin", "sherbet"]
+        // [CAST-MOBILE-GPUI] The shared host opens a file from its argument, not a launch environment.
+        app.launchArguments = ["--skin", "sherbet", "--open", audio]
         app.launch()
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 15))
+        selectReceiver(app, receivers.available)
         app.buttons["Play"].tap()
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
         // [CAST-MOBILE-DELIVERY] Returning from Home keeps the same live cast.
@@ -199,84 +249,85 @@ final class CastingUITests: XCTestCase {
         drag(app.sliders["Volume"], to: 0.5)
         drag(app.sliders["Position"], to: 0.25)
         app.buttons["Speed: 1×"].tap()
-        XCTAssertTrue(app.buttons["1.5×"].waitForExistence(timeout: 5))
-        app.buttons["1.5×"].tap()
-        XCTAssertTrue(app.buttons["Speed: 1.5×"].waitForExistence(timeout: 5))
-        let playing = XCTAttachment(screenshot: app.screenshot())
-        playing.name = "casting-ios-playing"
-        playing.lifetime = .keepAlways
-        add(playing)
+        XCTAssertTrue(labeled(app, "1.5×").waitForExistence(timeout: 5))
+        labeled(app, "1.5×").tap()
+        XCTAssertTrue(app.buttons["Speed: 1.5×"].waitForExistence(timeout: 5), app.debugDescription)
+        attach(app, "casting-ios-playing")
         app.buttons["Stop"].tap()
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
         app.buttons["Play"].tap()
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15))
         app.buttons["Stop"].tap()
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
-        app.launchEnvironment.removeValue(forKey: "CAST_TEST_AUDIO")
-        for skin in ["midnight", "poolside"] {
+        for (skin, title) in ["midnight": "Midnight Mint", "poolside": "Poolside Pop"] {
             app.terminate()
             app.launchArguments = ["--skin", skin]
             app.launch()
             XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 15), app.debugDescription)
-            touchRegions([app.buttons["Play"], app.buttons["Open file…"], app.buttons["Receiver"], app.buttons["Skin"]])
-            let title = app.staticTexts["Choose an audio file"]
-            XCTAssertTrue(title.waitForExistence(timeout: 10), app.debugDescription)
-            let screen = XCTAttachment(screenshot: app.screenshot())
-            screen.name = "casting-ios-\(skin)-ready"; screen.lifetime = .keepAlways; add(screen)
-            let text = XCTAttachment(screenshot: title.screenshot())
-            text.name = "casting-ios-\(skin)-title"; text.lifetime = .keepAlways; add(text)
+            XCTAssertTrue(app.buttons[receivers.available].waitForExistence(timeout: 10), app.debugDescription)
+            touchRegions([app.buttons["Play"], app.buttons["Open file…"],
+                          app.buttons[receivers.available], labeled(app, title)])
+            let empty = app.staticTexts["Choose an audio file"]
+            XCTAssertTrue(empty.waitForExistence(timeout: 10), app.debugDescription)
+            attach(app, "casting-ios-\(skin)-ready")
+            let text = XCTAttachment(screenshot: empty.screenshot())
+            text.name = "casting-ios-\(skin)-title"
+            text.lifetime = .keepAlways
+            add(text)
         }
     }
 
     @MainActor
     func testThemedPlaybackPreservesTheCastSession() throws {
+        // [CAST-MOBILE-SKINS] Every skin renders and switches during playback without a reload.
         let app = castingApp()
-        app.launchArguments = ["--skin", "sherbet"]
         defer { app.terminate() }
-        app.launchEnvironment["CAST_TEST_RECEIVER"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_RECEIVER"])
-        app.launchEnvironment["CAST_TEST_AUDIO"] = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO"])
+        let receivers = try nativeReceivers()
+        let audio = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_AUDIO_PATH"])
+        app.launchArguments = ["--skin", "sherbet", "--open", audio]
         app.launch()
-        XCTAssertTrue(app.buttons["Appearance"].waitForExistence(timeout: 15), app.debugDescription)
-        app.buttons["Appearance"].tap()
-        app.buttons["Midnight Mint"].tap()
-        XCTAssertTrue(app.buttons["Skin"].waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertEqual(app.buttons["Skin"].value as? String, "Midnight Mint")
+        XCTAssertTrue(labeled(app, "Midnight Mint").waitForExistence(timeout: 15),
+                      "The shared appearance choice must reach every skin: \(app.debugDescription)")
+        labeled(app, "Midnight Mint").tap()
+        assertSelected(app, "Midnight Mint", "The chosen appearance must be announced")
+        XCTAssertTrue(app.staticTexts["Receiver"].waitForExistence(timeout: 15), app.debugDescription)
+        app.buttons[receivers.available].tap()
+        XCTAssertTrue(app.buttons[receivers.available].isSelected, "The selected receiver must be announced")
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 15), app.debugDescription)
         app.buttons["Play"].tap()
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
-        touchRegions([app.buttons["Pause"], app.buttons["Stop"], app.buttons["Speed"], app.buttons["Volume 100%"], app.buttons["Forward 10 seconds"]])
-        XCTAssertEqual(app.buttons["Speed"].value as? String, "1×")
+        touchRegions([app.buttons["Pause"], app.buttons["Stop"], app.buttons["1×"], app.buttons["100%"], app.buttons["Forward 10 seconds"]])
+        assertSelected(app, "1×", "The playing rate must be announced")
         app.buttons["Pause"].tap()
         XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
         app.buttons["Forward 10 seconds"].tap()
-        app.buttons["Volume 100%"].tap()
         app.buttons["50%"].tap()
-        XCTAssertEqual(app.buttons["Volume 50%"].value as? String, "50%")
-        app.buttons["Speed"].tap()
+        XCTAssertTrue(app.staticTexts["Volume 50%"].waitForExistence(timeout: 5), app.debugDescription)
+        assertSelected(app, "50%", "The chosen volume must be announced")
         app.buttons["1.5×"].tap()
-        XCTAssertEqual(app.buttons["Speed"].value as? String, "1.5×")
-        app.buttons["Skin"].tap()
-        app.buttons["Poolside Pop"].tap()
+        assertSelected(app, "1.5×", "The chosen rate must be announced")
+        labeled(app, "Poolside Pop").tap()
         XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertEqual(app.buttons["Skin"].value as? String, "Poolside Pop")
+        assertSelected(app, "Poolside Pop", "The chosen skin must be announced")
         XCTAssertTrue(app.staticTexts["Casting mobile test"].exists)
         app.buttons["Back 10 seconds"].tap()
-        app.buttons["Volume 50%"].tap()
         app.buttons["25%"].tap()
-        XCTAssertEqual(app.buttons["Volume 25%"].value as? String, "25%")
-        app.buttons["Speed"].tap()
+        XCTAssertTrue(app.staticTexts["Volume 25%"].waitForExistence(timeout: 5), app.debugDescription)
+        assertSelected(app, "25%", "The chosen volume must be announced")
         app.buttons["0.75×"].tap()
-        XCTAssertEqual(app.buttons["Speed"].value as? String, "0.75×")
+        assertSelected(app, "0.75×", "The chosen rate must be announced")
         app.buttons["Resume"].tap()
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
-        app.buttons["Appearance"].tap()
-        app.buttons["Sherbet Signal"].tap()
-        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
-        app.buttons["Appearance"].tap()
-        app.buttons["Poolside Pop"].tap()
-        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
-        app.buttons["Speed"].tap()
+        XCTAssertTrue(labeled(app, "Sherbet Signal").waitForExistence(timeout: 5),
+                      "Every skin must offer the shared appearance choice: \(app.debugDescription)")
+        labeled(app, "Sherbet Signal").tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5), "The Sherbet skin must keep the live cast")
+        XCTAssertTrue(labeled(app, "Poolside Pop").waitForExistence(timeout: 5),
+                      "The Sherbet canvas must offer the shared appearance choice: \(app.debugDescription)")
+        labeled(app, "Poolside Pop").tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5), "Returning to Poolside must keep the live cast")
         app.buttons["1.25×"].tap()
+        assertSelected(app, "1.25×", "The chosen rate must be announced")
         app.buttons["Pause"].tap()
         XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 5))
         let paused = XCTAttachment(screenshot: app.screenshot())
@@ -287,23 +338,20 @@ final class CastingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15))
         app.buttons["Stop"].tap()
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
-        app.buttons["Receiver"].tap()
-        app.buttons["Unavailable receiver"].tap()
+        app.buttons[receivers.unavailable].tap()
         app.buttons["Play"].tap()
-        let failure = app.staticTexts["127.0.0.1:1: connection refused or timed out"]
+        let failure = app.staticTexts["\(receivers.host):1: connection refused or timed out"]
         XCTAssertTrue(failure.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(app.buttons["Play"].exists)
-        app.buttons["Skin"].tap()
-        app.buttons["Midnight Mint"].tap()
+        labeled(app, "Midnight Mint").tap()
         XCTAssertTrue(failure.waitForExistence(timeout: 5), app.debugDescription)
-        for (name, element) in [("loaded-title", app.staticTexts["Casting mobile test"]), ("search", app.buttons["Search again"]), ("receiver", app.buttons["Receiver"])] {
+        for (name, element) in [("loaded-title", app.staticTexts["Casting mobile test"]), ("search", app.buttons["Search again"]), ("receiver", app.staticTexts["Receiver"])] {
             let image = XCTAttachment(screenshot: element.screenshot())
             image.name = "casting-ios-midnight-\(name)"; image.lifetime = .keepAlways; add(image)
         }
         let refused = XCTAttachment(screenshot: app.screenshot())
         refused.name = "casting-ios-connection-refused"; refused.lifetime = .keepAlways; add(refused)
-        app.buttons["Receiver"].tap()
-        app.buttons["Test receiver"].tap()
+        app.buttons[receivers.available].tap()
         app.buttons["Play"].tap()
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 15), app.debugDescription)
         app.buttons["Stop"].tap()
