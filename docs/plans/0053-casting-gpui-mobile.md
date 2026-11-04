@@ -2,7 +2,7 @@
 
 The request, verbatim: "the fucking ios and android apps must use the same GPUI code as the fucking desktop version."
 
-**Status: unfinished.** Casting's iOS and Android apps draw through the shared GPUI host and their old renderers are gone, but neither is a finished app. No PR CI job builds or runs them; [Remaining](#remaining) lists what is left. CI covers only what is finished: desktop casting, the host's tests and the mobile tools' regressions in `scripts/test-mobile-tools.py`.
+**Status: unfinished.** Casting's iOS and Android apps draw through the shared GPUI host and their old renderers are gone, but neither is a finished app. They are not part of CI, and `scripts/ci-scope.test.mjs` fails if a workflow, `scripts/test-mobile-tools.py` or the host's default tests reach them. Their tool and bridge regressions run by hand with `make -C apps/tests casting-mobile-tools`. [Remaining](#remaining) lists what is left. CI covers only desktop casting.
 
 Today the three apps share `player.machine.json` and the compiled Osprey core, and each draws it differently: macOS through `hosts/gpui`, iOS through SwiftUI (`hosts/swift`, `examples/casting/ios/CastingApp.swift`), Android through its own Java views (`examples/casting/android`). Their widgets and layout differ, so the same skin looks different.
 
@@ -53,7 +53,7 @@ Android:
 Both:
 
 - [ ] Finish the Poolside parity run; make `skin_parity.py` fast enough and headless enough for CI.
-- [ ] Add PR CI jobs for the iOS simulator and Android emulator journeys, once they are green, against the receiver fixture so that no run can reach a real TV.
+- [ ] Only when both apps are finished: lift the exclusion test in `scripts/ci-scope.test.mjs` and add PR CI jobs for the iOS simulator and Android emulator journeys, against the receiver fixture so that no run can reach a real TV.
 
 Windows:
 

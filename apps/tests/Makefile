@@ -25,6 +25,12 @@ casting:
 casting-mobile-build:
 	bash $(ROOT)/examples/casting/mobile-build.sh $(or $(TARGET),ios-sim)
 
+## casting-mobile-tools: The unfinished mobile apps' tool and bridge regressions, which CI does not run.
+.PHONY: casting-mobile-tools
+casting-mobile-tools:
+	python3 $(ROOT)/examples/casting/test_mobile_tools.py
+	cargo test --manifest-path $(ROOT)/hosts/gpui/Cargo.toml --features mobile-bridge-tests adapters::mobile
+
 ## casting-mobile-transport: Exercise the native Cast TLS transport against a real loopback receiver.
 .PHONY: casting-mobile-transport
 casting-mobile-transport:

@@ -6,6 +6,10 @@ description = "The GPUI host of Osprey Native: the seam between GPUI and an Ospr
 license = "MIT"
 publish = false
 
+[features]
+# [CAST-MOBILE-GPUI] the unfinished mobile bridge's tests, which CI does not run.
+mobile-bridge-tests = []
+
 [dependencies]
 gpui-kit = "0.8.1"
 # Decodes and turns scene sprite images; the same release GPUI decodes images with.
