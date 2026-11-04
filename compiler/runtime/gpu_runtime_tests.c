@@ -308,6 +308,9 @@ static void t_matmul_shape_errors(void) {
   osp_io_error_clear();
   CHECK(osprey_gpu_matmul(l, r, 2, -3, 2, 8) == NULL);
   CHECK(strncmp(osp_io_error(), "gpuMatMul: left operand:", 24) == 0);
+  osp_io_error_clear();
+  CHECK(osprey_gpu_matmul(NULL, NULL, GPU_MAX_LEN, 0, 1, 8) == NULL);
+  expect_errno("gpuMatMul: result: ", ENOMEM);
 }
 
 static void *singles(const float *xs, int64_t n) {
@@ -391,6 +394,9 @@ static void t_load_f32(void) {
   osp_io_error_clear();
   CHECK(osprey_gpu_load_f32(NULL, 0, 1) == NULL);
   expect_errno("gpuLoad: ", EINVAL);
+  osp_io_error_clear();
+  CHECK(osprey_gpu_load_f32(path, 0, INT64_MAX) == NULL);
+  expect_errno(prefix, ENOMEM);
   (void)unlink(path);
 }
 
