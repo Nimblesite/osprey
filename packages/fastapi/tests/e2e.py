@@ -2,6 +2,7 @@
 import concurrent.futures
 from contextlib import closing
 import http.client
+import json
 import subprocess
 import time
 from pathlib import Path
@@ -9,11 +10,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def request(port, method, path, body=None):
+def request(port, method, path, body=None, headers=None):
     with closing(http.client.HTTPConnection("127.0.0.1", port, timeout=5)) as connection:
-        connection.request(method, path, body=body)
+        connection.request(method, path, body=body, headers=headers or {})
         reply = connection.getresponse()
         return reply.status, dict(reply.getheaders()), reply.read()
+
+
+def assert_redirect(port, path, target):
+    status, headers, body = request(port, "GET", path)
+    assert (status, body) == (307, b"")
+    assert headers["Location"] == f"http://127.0.0.1:{port}{target}"
 
 
 def health_cases(port):
@@ -21,7 +28,7 @@ def health_cases(port):
     assert (status, body) == (200, b'{"status":"ok"}'), (status, body)
     assert headers["Content-Type"] == "application/json", headers
     assert request(port, "GET", "/health?probe=true")[0] == 200
-    assert request(port, "GET", "/health/")[0] == 307
+    assert_redirect(port, "/health/?probe=1", "/health?probe=1")
     assert request(port, "GET", "/missing")[::2] == (404, b'{"detail":"Not Found"}')
     status, headers, body = request(port, "GET", "/readyz")
     assert (status, body) == (503, b'{"detail":"database unavailable"}')
@@ -45,11 +52,28 @@ def body_cases(port):
         assert headers["X-Echo"] == "yes"
 
 
+def parameter_cases(port):
+    path = Path(__file__).with_name("parameters.expected.json")
+    for case in json.loads(path.read_text()):
+        status, headers, body = request(port, case["method"], case["path"], headers=case["headers"])
+        actual = json.loads(body) if body and headers.get("Content-Type", "").startswith("application/json") else body.decode() if body else None
+        assert body.decode() == case["body_text"], (case, status, body)
+        assert (status, actual) == (case["status"], case["body"]), (case, status, actual)
+
+
+def failure_cases(port):
+    status, _, body = request(port, "GET", "/bundle/%00")
+    assert (status, json.loads(body)) == (400, {"detail": "NUL is not representable in the native HTTP string boundary"})
+    assert_redirect(port, "/bundle?tags=x", "/bundle/?tags=x")
+
+
 def cases(port):
     for _ in range(3):
         health_cases(port)
         method_cases(port)
         body_cases(port)
+        parameter_cases(port)
+        failure_cases(port)
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         results = pool.map(lambda _: request(port, "GET", "/health"), range(32))
         assert all(result[::2] == (200, b'{"status":"ok"}') for result in results)
@@ -59,7 +83,7 @@ def build(memory):
     binary = ROOT / "target" / "fastapi" / f"e2e-{memory}"
     binary.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(ROOT / "target/release/osprey"), str(Path(__file__).parent / "service"),
-                    "--compile", f"--memory={memory}", "--no-warnings", "-o", str(binary)], check=True)
+                    "--compile", f"--memory={memory}", "--no-warnings", "-o", str(binary)], check=True, timeout=60)
     return binary
 
 
@@ -75,8 +99,8 @@ def wait_ready(process, port):
     raise TimeoutError("server did not listen within 5 seconds")
 
 
-def run(memory):
-    binary = build(memory)
+def run(built):
+    memory, binary = built
     port = {"gc": 18786, "arc": 18788}[memory]
     with binary.with_suffix(".log").open("w") as log:
         process = subprocess.Popen([str(binary)], stdin=subprocess.PIPE, stdout=log, stderr=log)
@@ -93,4 +117,4 @@ def run(memory):
 
 if __name__ == "__main__":
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as workers:
-        list(workers.map(run, ("gc", "arc")))
+        list(workers.map(run, [(memory, build(memory)) for memory in ("gc", "arc")]))

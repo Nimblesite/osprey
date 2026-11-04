@@ -10,11 +10,12 @@ __all__ = ["serve"]
 
 
 def serve(port, host, routes):
+    """Start the native listener; return its handle or the creation/listen/cleanup error."""
     match httpCreateServer(port, host):
         case Error(message=message):
             return Error(message=message)
         case Success(value=server):
-            listening = httpListen(server, lambda method, url, headers, body: R.native(Routing.dispatch(routes, M.Request(method=method, url=url, headers=headers, body=body))))
+            listening = httpListen(server, lambda method, url, headers, body: R.native(Routing.dispatch(routes, M.Request(method=method, url=url, headers=headers, body=body, path_params={}))))
             match listening:
                 case Success():
                     return Success(value=server)

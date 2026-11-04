@@ -8,7 +8,7 @@ The reference is FastAPI 0.135.3, pinned in NAP's `uv.lock`. Source modules are 
 
 `Applications.serve(port, host, routes)` returns a fallible server handle. `Routing.route(method, path, handler)` stores a typed request handler; `include_router` composes immutable router lists with a prefix. `Responses` constructs responses and translates them to the runtime ABI. Errors from listener creation propagate to the application.
 
-The current route implementation provides exact paths, method selection, query-independent path lookup, trailing-slash redirects, 404 and 405 responses, and custom status/media type/headers. JSON text crosses only the response boundary; domain handlers should use typed records. It does not yet provide CPython decorator execution or automatic Pydantic binding.
+Routing now supports ordered literal, single-segment and greedy `{path:path}` routes, percent-decoded Unicode, method selection, query-preserving redirects, 404/405 and custom responses. `Params` exposes repeated queries, scalar last-value selection and case-insensitive headers. `Validation` and `Uuids` return typed `Valid`/`Invalid` outcomes, combine errors and render 422 locations, inputs and typed contexts. `Errors` renders typed HTTP exceptions with status and headers. Domain handlers receive typed values after this boundary; CPython decorator execution and automatic Pydantic binding remain unfinished.
 
 ## Required NAP parity [FASTAPI-NAP]
 
@@ -37,4 +37,8 @@ Generate records: `python3 packages/fastapi/generate_models.py`. The generator c
 
 Real HTTP acceptance: `python3 packages/fastapi/tests/e2e.py`. It compiles the actual Osprey sources and makes HTTP requests against the native listener, including parallel requests. Logs are in `target/fastapi/`.
 
-Current own-source measurement: 59/61 executable lines (96.7%) under both GC and ARC; the gate ratchets to 96.7. This measures the implemented HTTP layer, not the unfinished NAP parity checklist.
+Current own-source measurement: 364/372 executable lines (97.8%) under both GC and ARC; the gate ratchets to 97.8. This measures the implemented HTTP and validation layer, not the unfinished NAP parity checklist. The loaded native suite drives 128 recorded FastAPI 0.135.3 real HTTP cases and compares status and response bytes; the parallel external suite also checks parsed bodies, headers and concurrent requests.
+
+Regenerate the reference with the NAP environment: `../NimblesiteAgenticPlatform/.venv/bin/python -I scripts/oracles/oracle.py fastapi > packages/fastapi/tests/parameters.expected.json`. The oracle starts a real Uvicorn listener; in-process ASGI calls would miss HTTP header parsing.
+
+Known remaining parameter limits: implicit `Annotated`/decorator binding is not implemented, integers use the native 64-bit domain, and embedded NUL cannot traverse the current native string ABI. NUL path input produces an explicit 400 rather than truncation; this is a recorded runtime limitation, not complete CPython parity.
