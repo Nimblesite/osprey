@@ -17,6 +17,12 @@ impl Checker {
             return scheme;
         }
         self.generalize_connected_obligations(env, &mut scheme.vars);
+        // A computed numeric value has one representation. Only a callable
+        // may instantiate its division relation at different operand widths.
+        if !matches!(self.ctx.apply(ty), Type::Fun { .. }) {
+            let pinned = self.arith_operand_vars(&self.builtin_uses.clone());
+            scheme.vars.retain(|var| !pinned.contains(var));
+        }
         let (deferred, kept) = self.split_obligations(&scheme.vars);
         // Quantifying a variable that still carries a pending arithmetic
         // overload would hand every call site its own fresh copy, so no use
@@ -61,7 +67,7 @@ impl Checker {
     pub(super) fn arith_operand_vars(&mut self, obligations: &[(String, Type)]) -> BTreeSet<VarId> {
         let mut vars = BTreeSet::new();
         for (name, ty) in obligations {
-            if crate::expr::is_monomorphic_arith(name) {
+            if crate::expr::is_deferred_arith(name) {
                 self.ctx.free_vars(ty, &mut vars);
             }
         }
@@ -87,7 +93,13 @@ impl Checker {
             // ([`Checker::deferred_arith`]), and the variables it rests on stay
             // monomorphic so every use of the definition constrains the SAME
             // choice.
+            // A local result depends on its enclosing function's operands.
+            // Generalize the relation only when every variable travels with it.
+            let mut free = BTreeSet::new();
+            self.ctx.free_vars(&ty, &mut free);
             if crate::expr::is_monomorphic_arith(&name)
+                || (crate::expr::is_deferred_arith(&name)
+                    && free.iter().any(|var| !vars.contains(var)))
                 || crate::builtin_constraints::fixed_numeric_operand(&name, &ty)
                 || !self.mentions_any(&ty, vars)
             {

@@ -52,7 +52,9 @@ The guard names all five operators. Only `/` was reproduced; check each operator
 - [x] Native Default regression matches independently computed Python `struct` bit goldens for all five operators at both widths. Cancellation distinguishes binary32 and binary16 intermediate rounding from binary64.
 - [x] All 940 type-checker tests and strict package clippy pass.
 - [x] Current primary checkout transformer package retains all 395 GC assertions. It has no `toFloat32(0.0)` workaround anchors; the separate Phase 4/5 migration owner has been notified.
-- [ ] Verify the final Default/ML regression, aliases, signed zero and subnormals under GC, ARC and wasm32.
-- [ ] Finish full GC, ARC and wasm32 corpus lanes and transformer ARC assertions.
+- [x] Verify Default/ML regression, aliases, signed zero and subnormals under GC, ARC and wasm32. Added a further `Result` wrapper regression after the wide corpus exposed premature value generalization; its final rerun remains part of the full verification below.
+- [ ] Finish full GC, ARC and wasm32 corpus lanes and final regression assertions. Transformer package GC and ARC both retain all 395 assertions (ARC: zero live objects).
 
 Receipts are in `target/logs/plan-0050/polymorphic-*`. No codegen change was needed for the verified native arithmetic: existing specialization emits the sized operations once inference supplies the correct result type. Other arithmetic operators retain the existing one-overload-per-definition rule; the division relation preserves its existing ability to instantiate mixed integer/binary64 operands.
+
+The first wide run exposed a division `Result` regression (`good elvis = 0.0` instead of `5.0`), fixed by keeping computed numeric values monomorphic and generalizing the relation only with all its operand variables. The original golden is unchanged. Wasm transformer math assertion 4 also fails with the older release compiler; the GPU owner has its receipts, and this remains an open whole-corpus gate.
