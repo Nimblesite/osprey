@@ -383,12 +383,13 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Value {
-        let source = arguments
+        let mut source = arguments
             .first()
             .and_then(|argument| self.value(argument, scope, env))
             .unwrap_or_default();
-        let source_element = source.element.as_deref().cloned();
-        let mut deferred = source.deferred;
+        let mut deferred = std::mem::take(&mut source.deferred);
+        // Preserve symbolic parameter projections as well as concrete elements.
+        let source_element = project_element(source);
         let callback = arguments
             .get(1)
             .and_then(|argument| self.callable(argument, scope, env));

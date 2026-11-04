@@ -128,3 +128,22 @@ fn a_type_that_can_hold_a_function_keeps_its_provenance() {
         assert_eq!(data_shape(&ty, &data), None, "{ty}");
     }
 }
+
+#[test]
+fn parameter_collection_transforms_keep_route_handler_provenance() {
+    for transform in [
+        "filterList(items, fn(item) => true)",
+        "mapList(items, fn(item) => item)",
+    ] {
+        let source = format!(
+            "effect Alarm {{ ring: fn() -> int }}\n\
+            type Route = {{ handle: fn(int) -> int }}\n\
+            fn dispatch(items) = match listGet({transform}, 0) {{\n\
+                Success {{ value }} => value.handle(7)\nError {{ message }} => 0\n}}\n"
+        );
+        crate::effect_rows_tests::assert_accepted(&format!(
+            "{source}let answer = dispatch([Route {{ handle: fn(x) => x }}])\n"
+        ));
+        crate::effect_rows_tests::assert_rejected_with(&format!("{source}let answer = dispatch([Route {{ handle: fn(x) => perform Alarm.ring() }}])\n"), &["Alarm.ring"]);
+    }
+}
