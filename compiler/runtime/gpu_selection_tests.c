@@ -3,17 +3,13 @@
 // [GPU-BUFFER-RESIDENT]: the host oracle runs when the host is selected, a
 // selected device never falls back to it, a buffer is uploaded once and its
 // result downloaded once, when first read, and a fault or a kernel without a
-// device form aborts by name.
+// device form returns Error by name ([FAILURE-EXPLICIT]).
 #include "gpu_device.h"
 #include "gpu_opencl_api.h"
 #include "io_error.h"
-#include "test_death.h"
 #include <assert.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
@@ -26,6 +22,7 @@ void osprey_gpu_finalize(void *buffer);
 int osprey_gpu_buffer_tests(int argc, char **argv);
 
 static int device_error;
+static int download_error;
 static unsigned dispatches, last_args, uploads, downloads, releases;
 static uint64_t last_threads;
 
@@ -62,6 +59,10 @@ static int mock_dispatch(const OspreyGpuDispatch *d, int64_t mark) {
   dispatches++;
   last_args = d->count;
   last_threads = d->threads;
+  if (device_error) {
+    osp_io_error_text(d->kernel, "device", "mock dispatch failed");
+    return -1;
+  }
   for (unsigned i = 0; i < d->count; i++) {
     const OspreyGpuArg *arg = &d->args[i];
     if (arg->kind == OSPREY_GPU_SCALAR) continue;
@@ -75,6 +76,10 @@ static int mock_dispatch(const OspreyGpuDispatch *d, int64_t mark) {
 
 static int mock_download(void *object, void *out, uint64_t count) {
   downloads++;
+  if (download_error) {
+    osp_io_error_text("gpu", "device", "mock readback failed");
+    return -1;
+  }
   memcpy(out, ((MockObject *)object)->words, count);
   return 1;
 }
@@ -179,6 +184,7 @@ static void device_case(const char *mode, int available, const char *name) {
   device_error = 1;
   assert(!osprey_gpu_matmul(a, a, 1, 1, 1, 8));
   device_error = 0;
+  osp_io_error_clear();
   unsigned before = dispatches;
   assert(osprey_gpu_matmul(osprey_gpu_alloc(0, 8), a, 0, 1, 1, 8) && dispatches == before);
   resident_launch(name[0] == 'm' ? 42 : 43);
@@ -191,50 +197,59 @@ static void invalid_case(void) {
   assert(!osprey_gpu_matmul(a, a, 1, 1, 1, 8) && strstr(osp_io_error(), "unknown backend") != NULL);
 }
 
-// Runs `scenario` in a child that must abort with `expected` on stderr.
-static void aborts(void (*scenario)(void), const char *expected) {
-  int pipes[2];
-  assert(pipe(pipes) == 0);
-  pid_t child = fork();
-  assert(child >= 0);
-  if (!child) {
-    // The guard's own lines count: dump the coverage counters before the abort.
-    (void)signal(SIGABRT, osp_death_dump_and_reraise);
-    assert(dup2(pipes[1], 2) >= 0);
-    scenario();
-    _exit(0);
-  }
-  close(pipes[1]);
-  char text[1024] = {0};
-  ssize_t n = read(pipes[0], text, sizeof text - 1);
-  close(pipes[0]);
-  int status = 0;
-  assert(waitpid(child, &status, 0) == child && n > 0);
-  assert(WIFSIGNALED(status) && strstr(text, expected) != NULL);
+// [FAILURE-EXPLICIT]: a declined kernel on a selected device returns -1 with
+// the reason on the io_error channel, never an abort.
+static void declined_returns_error(void) {
+  select_mode("auto");
+  osp_io_error_clear();
+  assert(osprey_gpu_declined("gpuScan over a kernel the device cannot run") == -1);
+  assert(strstr(osp_io_error(), "a selected device cannot run it") != NULL);
 }
 
-static void declined_on_device(void) {
-  select_mode("auto");
-  (void)osprey_gpu_declined("gpuScan over a kernel the device cannot run");
-}
+#if defined(OSPREY_GPU_METAL) || defined(OSPREY_GPU_OPENCL)
+// The mark the compiled-in mock adapter stamps into a result's first word.
+static int64_t mock_mark(void) {
 #if defined(OSPREY_GPU_METAL)
-static void faulting_launch(void) {
-  select_mode("auto");
-  injected_fault = OSPREY_GPU_FAULT_OVERFLOW;
-  (void)launch(osprey_gpu_alloc(1, 8), "", NULL);
+  return 42;
+#else
+  return 43;
+#endif
 }
-static void too_many_uniforms(void) {
+
+// [FAILURE-EXPLICIT]: a recorded fault, an argument overflow, a dispatch
+// failure and a readback failure each return with the reason on the io_error
+// channel — never an abort.
+static void launch_failures_return_error(void) {
   select_mode("auto");
+
+  injected_fault = OSPREY_GPU_FAULT_OVERFLOW;
+  osp_io_error_clear();
+  assert(launch(osprey_gpu_alloc(1, 8), "", NULL) == -1);
+  assert(strstr(osp_io_error(), "integer overflow") != NULL);
+  injected_fault = 0;
+
   int64_t uniforms[OSPREY_GPU_MAX_ARGS] = {0};
   char kinds[OSPREY_GPU_MAX_ARGS + 1];
   memset(kinds, 's', OSPREY_GPU_MAX_ARGS);
   kinds[OSPREY_GPU_MAX_ARGS] = '\0';
-  (void)launch(osprey_gpu_alloc(1, 8), kinds, uniforms);
-}
-static void device_failure_on_launch(void) {
-  select_mode("auto");
+  osp_io_error_clear();
+  assert(launch(osprey_gpu_alloc(1, 8), kinds, uniforms) == -1);
+  assert(strstr(osp_io_error(), "too many kernel arguments") != NULL);
+
   device_error = 1;
-  (void)launch(osprey_gpu_alloc(1, 8), "", NULL);
+  osp_io_error_clear();
+  assert(launch(osprey_gpu_alloc(1, 8), "", NULL) == -1);
+  assert(strstr(osp_io_error(), "mock dispatch failed") != NULL);
+  device_error = 0;
+
+  void *resident = osprey_gpu_alloc(1, 8);
+  assert(launch(resident, "", NULL) == 1);
+  download_error = 1;
+  osp_io_error_clear();
+  assert(osprey_gpu_get(resident, 0) == 0);
+  assert(strstr(osp_io_error(), "mock readback failed") != NULL);
+  download_error = 0;
+  assert(osprey_gpu_get(resident, 0) == mock_mark());
 }
 #endif
 
@@ -243,13 +258,12 @@ int main(void) {
   assert(osprey_gpu_buffer_tests(0, NULL) == 0);
 #if defined(OSPREY_GPU_METAL)
   device_case("auto", 1, "metal:mock"); device_case("metal", 1, "metal:mock");
-  aborts(faulting_launch, "kernel osprey_kernel_1: integer overflow");
-  aborts(declined_on_device, "gpuScan over a kernel the device cannot run; a selected device cannot run it");
-  aborts(too_many_uniforms, "too many kernel arguments");
-  aborts(device_failure_on_launch, "kernel osprey_kernel_1:");
 #else
   device_case("auto", 0, "unavailable:device"); device_case("metal", 0, "unavailable:device");
-  aborts(declined_on_device, "a selected device cannot run it");
+#endif
+  declined_returns_error();
+#if defined(OSPREY_GPU_METAL) || defined(OSPREY_GPU_OPENCL)
+  launch_failures_return_error();
 #endif
 #if defined(OSPREY_GPU_OPENCL)
   device_case("opencl", 1, "opencl:mock");
@@ -260,6 +274,6 @@ int main(void) {
   assert(unsetenv("OSPREY_GPU_TRACE") == 0 && osprey_gpu_traced(1) && !osprey_gpu_traced(2));
   assert(setenv("OSPREY_GPU_TRACE", "0", 1) == 0 && !osprey_gpu_traced(2));
   assert(setenv("OSPREY_GPU_TRACE", "1", 1) == 0 && osprey_gpu_traced(2));
-  puts("[ok] GPU selection: host, auto, Metal, OpenCL, missing adapter, compiled-kernel launch, resident buffers uploaded once and read back on demand, faults and declines abort by name, trace switch and no silent CPU fallback");
+  puts("[ok] GPU selection: host, auto, Metal, OpenCL, missing adapter, compiled-kernel launch, resident buffers uploaded once and read back on demand, faults, declines and failures return Error by name, trace switch and no silent CPU fallback");
   return 0;
 }

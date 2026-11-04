@@ -20,7 +20,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -174,30 +173,14 @@ static void uniform_argument(OspreyGpuDispatch *dispatch, char kind, int64_t wor
   }
 }
 
-// Broken-code quarantine: a failed load, product or kernel launch used to
-// become an empty buffer, and GPT-2 generated from fabricated zeros. Every
-// handler and launch site aborts through this instead.
-void *osprey_gpu_panic(const char *message) {
-  (void)fprintf(stderr, "GPU execution cannot continue: %s\n", message ? message : "unknown GPU failure");
-  abort();
-}
-
+// [GPU-DEVICE-FAULT]: a recorded fault's name, for the Error a launch returns.
 static const char *fault_message(int64_t fault) {
   switch (fault) {
-  case OSPREY_GPU_FAULT_OVERFLOW: return "integer overflow, which no device kernel can hand to an Arith policy";
-  case OSPREY_GPU_FAULT_DIVIDE_BY_ZERO: return "division by zero, which no device kernel can hand to an Arith policy";
-  case OSPREY_GPU_FAULT_REMAINDER_BY_ZERO: return "remainder by zero, which no device kernel can hand to an Arith policy";
+  case OSPREY_GPU_FAULT_OVERFLOW: return "integer overflow";
+  case OSPREY_GPU_FAULT_DIVIDE_BY_ZERO: return "division by zero";
+  case OSPREY_GPU_FAULT_REMAINDER_BY_ZERO: return "remainder by zero";
   default: return "unknown fault";
   }
-}
-
-// Broken-code quarantine: a `gpuMap` has no error channel, so a device failure
-// aborts naming the kernel rather than continuing with an unwritten buffer.
-static int32_t abort_launch(const char *kernel, const char *reason) {
-  char text[512];
-  (void)snprintf(text, sizeof text, "kernel %s: %s", kernel, reason ? reason : "device failure");
-  (void)osprey_gpu_panic(text);
-  return -1;
 }
 
 // A compiled kernel's launch site [GPU-BACKEND-DEVICE]: 1 when the device ran
@@ -218,21 +201,24 @@ int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *ki
   if (acc && out) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1, 8);
   for (size_t i = 0; kinds[i]; i++) uniform_argument(&dispatch, kinds[i], uniforms[i]);
   int status = settled(osprey_gpu_device_dispatch(&dispatch), out);
-  if (status < 0) return abort_launch(kernel, osp_io_error());
-  if (status > 0 && fault) return abort_launch(kernel, fault_message(fault));
+  // [FAILURE-EXPLICIT]: a dispatch failure and a recorded fault both return -1
+  // with the reason on the io_error channel; the runtime never aborts.
+  if (status < 0) return status;
+  if (status > 0 && fault) {
+    osp_io_error_text(kernel, "device", fault_message(fault));
+    return -1;
+  }
   return status;
 }
 
 // A launch site whose kernel has no device form [GPU-BACKEND-DEVICE]: the host
-// runs it when the host is selected, and a selected device rejects it by name
-// rather than silently running it on the CPU.
+// runs it when the host is selected, and a selected device returns -1 naming it
+// rather than silently running it on the CPU ([FAILURE-EXPLICIT]).
 int32_t osprey_gpu_declined(const char *what) {
   int selected = device_selection();
   if (!selected) return 0;
-  if (selected < 0) return abort_launch(what, osp_io_error());
-  char text[512];
-  (void)snprintf(text, sizeof text, "%s; a selected device cannot run it", what);
-  (void)osprey_gpu_panic(text);
+  if (selected < 0) return -1;
+  osp_io_error_text(what, "device", "a selected device cannot run it");
   return -1;
 }
 
@@ -309,11 +295,12 @@ int64_t osprey_gpu_elem_bytes(void *buffer) {
 
 // The buffer with its host words current [GPU-BUFFER-RESIDENT]: a result the
 // device holds and the host has not read yet is downloaded first, once. A
-// download that fails cannot become zeros, so it aborts (broken-code quarantine).
+// download that fails returns NULL with the reason on the io_error channel, so
+// a buffer never reads back as fabricated zeros ([FAILURE-EXPLICIT]).
 static OspreyGpuBuffer *current(void *buffer) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
   if (b && b->stale && b->device) {
-    if (osprey_gpu_device_download(b->device, b->data, (uint64_t)(b->length * b->elem_bytes)) < 0) (void)osprey_gpu_panic(osp_io_error());
+    if (osprey_gpu_device_download(b->device, b->data, (uint64_t)(b->length * b->elem_bytes)) < 0) return NULL;
     b->stale = 0;
   }
   return b;
